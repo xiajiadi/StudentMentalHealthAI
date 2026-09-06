@@ -48,6 +48,7 @@ env/
 **/backups/
 **/mysql-data/
 **/qdrant-data/
+data/qdrant-integration-check/
 **/ollama/
 
 # Model, embedding, and search caches. Durable manifests and reports remain tracked.
