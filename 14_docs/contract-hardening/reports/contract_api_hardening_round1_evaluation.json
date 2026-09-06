@@ -1,0 +1,155 @@
+{
+  "round": "contract-api-hardening-r1",
+  "timestamp": "2026-09-06T23:43:09+08:00",
+  "overall_status": "PARTIAL PASS",
+  "git": {
+    "baseline_commit": "65c3df2c28f955a3cbadfc3e01c466d6d89f81a6",
+    "baseline_tag": "integration-r1-accepted",
+    "candidate_commit": "a65ac71897a2a26fb157d04b4f253eb01af65f58",
+    "remote_push_performed": false
+  },
+  "frozen_contracts": {
+    "before": {
+      "00_architecture/openapi.v1.json": "235C8FDB0B35F2DE870127A18D4CD8C72A1C7795AF02656B2A6C7274AB071897",
+      "00_architecture/schemas/assessment.v1.schema.json": "56B9FC990261D0B826EEEA0E84417754798EF3A980F50A414CCB565168375A52",
+      "00_architecture/schemas/knowledge.v1.schema.json": "5334533DB35B30840F57E8012208037A6809BFED7CE08094BDA1517C801D8BCF",
+      "00_architecture/schemas/generation.v1.schema.json": "8365D7EA825A30D9429361107750E87E8C6446D0A6576C47F3A8ECE564DCA62C",
+      "00_architecture/schemas/config.v1.schema.json": "65F378B8D0C0080E484F3947D6A11A48B14186F43B23A6EDA7B5DC321B395D16",
+      "00_architecture/schemas/logging.v1.schema.json": "88A95532F42C2077959D6360844DF4EB0490342AF78492BC0D81C8AE9190256D",
+      "CONTRACTS.md": "2AE5320C5B12EFE57DD90D7352AE192D1BEE8387B595E36DDD3919B90C486CBB"
+    },
+    "after": {
+      "00_architecture/openapi.v1.json": "235C8FDB0B35F2DE870127A18D4CD8C72A1C7795AF02656B2A6C7274AB071897",
+      "00_architecture/schemas/assessment.v1.schema.json": "56B9FC990261D0B826EEEA0E84417754798EF3A980F50A414CCB565168375A52",
+      "00_architecture/schemas/knowledge.v1.schema.json": "5334533DB35B30840F57E8012208037A6809BFED7CE08094BDA1517C801D8BCF",
+      "00_architecture/schemas/generation.v1.schema.json": "8365D7EA825A30D9429361107750E87E8C6446D0A6576C47F3A8ECE564DCA62C",
+      "00_architecture/schemas/config.v1.schema.json": "65F378B8D0C0080E484F3947D6A11A48B14186F43B23A6EDA7B5DC321B395D16",
+      "00_architecture/schemas/logging.v1.schema.json": "88A95532F42C2077959D6360844DF4EB0490342AF78492BC0D81C8AE9190256D",
+      "CONTRACTS.md": "2AE5320C5B12EFE57DD90D7352AE192D1BEE8387B595E36DDD3919B90C486CBB"
+    },
+    "modified": false
+  },
+  "openapi": {
+    "dialect": "OpenAPI 3.1.0",
+    "operation_count": 21,
+    "browser_operation_count": 17,
+    "health_operation_count": 4,
+    "meaningful_2xx_empty_schema_count": 0,
+    "missing_operation_id_count": 0,
+    "duplicate_operation_id_count": 0,
+    "candidate_sha256": "5E3B5BB8327146D82ECC3210DCE76FE1244E53EED95764C31DDA29B953641673"
+  },
+  "errors": {
+    "rfc9457": "typed ProblemDetails on the single existing runtime error path",
+    "problem_json_content_type": "documented as application/problem+json",
+    "detail_string_machine_logic_remaining": 0,
+    "validation_input_echo": false
+  },
+  "provenance": {
+    "retrieval_count": 2,
+    "persisted_count": 2,
+    "api_report_count": 2,
+    "silent_truncation": false,
+    "evidence_mode": "synthetic in-process report persistence and API readback"
+  },
+  "generation_semantics": {
+    "fake_model_id_remaining_on_not_run_paths": 0,
+    "crisis_generation_status": "NOT_RUN",
+    "crisis_model_id": null,
+    "controlled_synthetic_label": "CONTROLLED_SYNTHETIC"
+  },
+  "redocly": {
+    "version": "2.51.2",
+    "errors": 0,
+    "warnings": 0,
+    "triaged_warnings": 0
+  },
+  "oasdiff": {
+    "version": "1.28.0",
+    "integration_to_hardened": {
+      "exit_code": 1,
+      "changes": 233,
+      "errors": 226,
+      "warnings": 7
+    },
+    "root_to_hardened": {
+      "exit_code": 1,
+      "changes": 50,
+      "errors": 43,
+      "warnings": 7
+    },
+    "unintentional_breaks": 226
+  },
+  "schemathesis": {
+    "version": "4.25.2",
+    "operations_tested": 21,
+    "cases": 620,
+    "failures": 0,
+    "coverage_fuzzing_cases": 614,
+    "stateful_cases": 6,
+    "stateful_status": "PASS",
+    "warnings": {
+      "authentication_operations": 12,
+      "schema_mismatch_operations": 17
+    }
+  },
+  "arazzo": {
+    "dialect": "1.0.1",
+    "workflow_count": 3,
+    "respect_version": "2.51.2",
+    "passed": 1,
+    "failed": 2,
+    "failed_reason": "Respect did not provide a supported opaque-cookie handoff for normal/crisis mutation steps"
+  },
+  "sdk": {
+    "hey_api_version": "0.99.0",
+    "generation_pass": true,
+    "repeatable_generation": true,
+    "generated_file_count": 16,
+    "manual_generated_file_edits": false
+  },
+  "security": {
+    "gitleaks_worktree_before": "316 redacted generic-api-key findings before ignore policy; 0 confirmed credentials",
+    "gitleaks_worktree_after": "0 findings",
+    "gitleaks_git_after": "0 findings",
+    "gitleaks_staged_before_candidate_commit": "0 findings",
+    "real_secret_findings_remaining": 0
+  },
+  "tests": {
+    "root_contract": {"passed": 13, "failed": 0, "validator": "openapi-spec-validator 0.9.0"},
+    "backend": {"passed": 16, "failed": 0},
+    "backend_ruff": {"passed": true, "errors": 0},
+    "backend_pyright": {"passed": true, "errors": 0},
+    "database": {"passed": 10, "failed": 0, "skipped": 6, "skip_reason": "live MySQL unavailable"},
+    "frontend_typecheck": {"passed": true},
+    "frontend_lint": {"passed": true},
+    "frontend_unit": {"passed": 9, "failed": 0},
+    "frontend_build": {"passed": true},
+    "integration": {
+      "provenance_probe": {"passed": true, "normal_status": 202, "crisis_status": 202},
+      "respect_workflows": {"passed": 1, "failed": 2},
+      "live_mysql": "NOT_RUN"
+    }
+  },
+  "promotion": {
+    "proposal_created": true,
+    "root_v0_2_promoted": false,
+    "state": "PROPOSAL_ONLY_HOLD"
+  },
+  "limitations": [
+    "oasdiff compatibility findings require an owner-approved migration or compatibility decision",
+    "normal and crisis Respect workflows need a supported opaque-cookie handoff",
+    "live MySQL persistence integration was not executed",
+    "fresh Playwright hardening E2E was not executed in this round"
+  ],
+  "evidence_paths": [
+    "14_docs/contract-hardening/CURRENT_STATE_INVENTORY.md",
+    "14_docs/contract-hardening/API_OPERATION_INVENTORY.md",
+    "14_docs/contract-hardening/ERROR_CATALOG.md",
+    "14_docs/contract-hardening/PROVENANCE_TRACE_REPORT.md",
+    "14_docs/contract-hardening/OASDIFF_COMPATIBILITY_REPORT.md",
+    "14_docs/contract-hardening/reports/CONTRACT_API_HARDENING_ROUND1_ACCEPTANCE.md",
+    "14_docs/contract-hardening/reports/CONTRACT_PROMOTION_PROPOSAL_V0_2.md",
+    "14_docs/contract-hardening/evidence/"
+  ]
+}
