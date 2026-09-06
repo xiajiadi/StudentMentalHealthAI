@@ -1,0 +1,175 @@
+{
+  "files": {
+    ".\\workflows\\review_queue.arazzo.yaml": {
+      "totalRequests": 2,
+      "executedWorkflows": [
+        {
+          "type": "workflow",
+          "workflowId": "reviewerQueueProjection",
+          "startTime": 303.3927,
+          "endTime": 458.7553,
+          "totalTimeMs": 99,
+          "executedSteps": [
+            {
+              "type": "step",
+              "stepId": "login",
+              "workflowId": "reviewerQueueProjection",
+              "request": {
+                "method": "post",
+                "url": "http://127.0.0.1:8080/api/v1/auth/login",
+                "headers": {
+                  "content-type": "application/json",
+                  "accept": "application/json, application/problem+json"
+                },
+                "body": {
+                  "username": "reviewer",
+                  "password": "synthetic-reviewer"
+                }
+              },
+              "response": {
+                "statusCode": 200,
+                "body": {
+                  "request_id": "REQ_5442c17d8db622b28173e1c599915435",
+                  "trace_id": "TRACE_bf719e98a5689c2525ec6c8aa51fc4c2",
+                  "data": {
+                    "actor": {
+                      "user_id": "USER_reviewer",
+                      "username": "reviewer",
+                      "role": "REVIEWER",
+                      "subject_id": null
+                    },
+                    "csrf_token": "<REDACTED_SYNTHETIC_TOKEN>",
+                    "synthetic_fixture_only": true
+                  }
+                },
+                "headers": {
+                  "cache-control": "no-store",
+                  "content-length": "297",
+                  "content-security-policy": "frame-ancestors 'none'",
+                  "content-type": "application/json",
+                  "date": "Sun, 06 Sep 2026 15:07:25 GMT",
+                  "server": "uvicorn",
+                  "set-cookie": "<REDACTED_SYNTHETIC_TOKEN>",
+                  "x-content-type-options": "nosniff",
+                  "x-request-id": "REQ_5442c17d8db622b28173e1c599915435",
+                  "x-trace-id": "TRACE_bf719e98a5689c2525ec6c8aa51fc4c2"
+                },
+                "time": 90,
+                "size": 297
+              },
+              "checks": [
+                {
+                  "name": "success criteria check",
+                  "passed": true,
+                  "message": "Checking simple criteria: {\"condition\":\"$statusCode == 200\"}",
+                  "severity": "error",
+                  "condition": "$statusCode == 200",
+                  "status": "success"
+                },
+                {
+                  "name": "status code check",
+                  "passed": true,
+                  "message": "List of valid response codes are inferred from description \n\nExpected value to be in the list:\n  200, 400, 401, 403, 422, 429\nReceived:\n  200",
+                  "condition": "$statusCode in [200, 400, 401, 403, 422, 429]",
+                  "severity": "error",
+                  "status": "success"
+                },
+                {
+                  "name": "content-type check",
+                  "passed": true,
+                  "message": "Content type \"application/json\" is described in the schema.",
+                  "severity": "error",
+                  "status": "success"
+                },
+                {
+                  "name": "schema check",
+                  "passed": true,
+                  "message": "",
+                  "severity": "error",
+                  "status": "success"
+                }
+              ],
+              "totalTimeMs": 90,
+              "status": "success"
+            },
+            {
+              "type": "step",
+              "stepId": "listReviews",
+              "workflowId": "reviewerQueueProjection",
+              "request": {
+                "method": "get",
+                "url": "http://127.0.0.1:8080/api/v1/reviews",
+                "headers": {
+                  "accept": "application/json, application/problem+json",
+                  "cookie": "<REDACTED_SYNTHETIC_TOKEN>"
+                }
+              },
+              "response": {
+                "statusCode": 200,
+                "body": {
+                  "request_id": "REQ_3474e800f70847adeb2bf1edb767c0c3",
+                  "trace_id": "TRACE_3e1f19fb01ca643aa89e1daa0bd1281a",
+                  "data": []
+                },
+                "headers": {
+                  "cache-control": "no-store",
+                  "content-length": "115",
+                  "content-security-policy": "frame-ancestors 'none'",
+                  "content-type": "application/json",
+                  "date": "Sun, 06 Sep 2026 15:07:25 GMT",
+                  "server": "uvicorn",
+                  "x-content-type-options": "nosniff",
+                  "x-request-id": "REQ_3474e800f70847adeb2bf1edb767c0c3",
+                  "x-trace-id": "TRACE_3e1f19fb01ca643aa89e1daa0bd1281a"
+                },
+                "time": 9,
+                "size": 115
+              },
+              "checks": [
+                {
+                  "name": "success criteria check",
+                  "passed": true,
+                  "message": "Checking simple criteria: {\"condition\":\"$statusCode == 200\"}",
+                  "severity": "error",
+                  "condition": "$statusCode == 200",
+                  "status": "success"
+                },
+                {
+                  "name": "status code check",
+                  "passed": true,
+                  "message": "List of valid response codes are inferred from description \n\nExpected value to be in the list:\n  200, 400, 401, 403, 422\nReceived:\n  200",
+                  "condition": "$statusCode in [200, 400, 401, 403, 422]",
+                  "severity": "error",
+                  "status": "success"
+                },
+                {
+                  "name": "content-type check",
+                  "passed": true,
+                  "message": "Content type \"application/json\" is described in the schema.",
+                  "severity": "error",
+                  "status": "success"
+                },
+                {
+                  "name": "schema check",
+                  "passed": true,
+                  "message": "",
+                  "severity": "error",
+                  "status": "success"
+                }
+              ],
+              "totalTimeMs": 9,
+              "status": "success"
+            }
+          ],
+          "globalTimeoutError": false,
+          "status": "success",
+          "totalRequests": 2
+        }
+      ],
+      "totalTimeMs": 240.3359,
+      "globalTimeoutError": false
+    }
+  },
+  "status": "success",
+  "totalTime": 241.636
+}

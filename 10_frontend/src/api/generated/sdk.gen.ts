@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { CheckSafetyData, CheckSafetyErrors, CheckSafetyResponses, CompleteAssessmentData, CompleteAssessmentErrors, CompleteAssessmentResponses, CreateAssessmentData, CreateAssessmentErrors, CreateAssessmentResponses, CreateGenerationData, CreateGenerationErrors, CreateGenerationResponses, CreateRetrievalData, CreateRetrievalErrors, CreateRetrievalResponses, CreateSupportApiV1SupportRequestsPostData, CreateSupportApiV1SupportRequestsPostErrors, CreateSupportApiV1SupportRequestsPostResponses, CsrfApiV1AuthCsrfGetData, CsrfApiV1AuthCsrfGetErrors, CsrfApiV1AuthCsrfGetResponses, DependenciesHealthDependenciesGetData, DependenciesHealthDependenciesGetErrors, DependenciesHealthDependenciesGetResponses, GetAssessmentData, GetAssessmentErrors, GetAssessmentResponses, GetAssessmentStateData, GetAssessmentStateErrors, GetAssessmentStateResponses, GetHealthData, GetHealthErrors, GetHealthResponses, GetReportData, GetReportErrors, GetReportResponses, GetReviewApiV1ReviewsReviewIdGetData, GetReviewApiV1ReviewsReviewIdGetErrors, GetReviewApiV1ReviewsReviewIdGetResponses, ListReviewsApiV1ReviewsGetData, ListReviewsApiV1ReviewsGetErrors, ListReviewsApiV1ReviewsGetResponses, LiveHealthLiveGetData, LiveHealthLiveGetErrors, LiveHealthLiveGetResponses, LoginApiV1AuthLoginPostData, LoginApiV1AuthLoginPostErrors, LoginApiV1AuthLoginPostResponses, LogoutApiV1AuthLogoutPostData, LogoutApiV1AuthLogoutPostErrors, LogoutApiV1AuthLogoutPostResponses, MeApiV1AuthMeGetData, MeApiV1AuthMeGetErrors, MeApiV1AuthMeGetResponses, ReadyHealthReadyGetData, ReadyHealthReadyGetErrors, ReadyHealthReadyGetResponses, RecordAssessmentResponseData, RecordAssessmentResponseErrors, RecordAssessmentResponseResponses, ReviewReportData, ReviewReportErrors, ReviewReportResponses } from './types.gen';
+import type { AuthCsrfData, AuthCsrfErrors, AuthCsrfResponses, AuthLoginData, AuthLoginErrors, AuthLoginResponses, AuthLogoutData, AuthLogoutErrors, AuthLogoutResponses, AuthMeData, AuthMeErrors, AuthMeResponses, CheckSafetyData, CheckSafetyErrors, CheckSafetyResponses, CompleteAssessmentData, CompleteAssessmentErrors, CompleteAssessmentResponses, CreateAssessmentData, CreateAssessmentErrors, CreateAssessmentResponses, CreateGenerationData, CreateGenerationErrors, CreateGenerationResponses, CreateRetrievalData, CreateRetrievalErrors, CreateRetrievalResponses, CreateSupportData, CreateSupportErrors, CreateSupportResponses, GetAssessmentData, GetAssessmentErrors, GetAssessmentResponses, GetAssessmentStateData, GetAssessmentStateErrors, GetAssessmentStateResponses, GetHealthData, GetHealthErrors, GetHealthResponses, GetReportData, GetReportErrors, GetReportResponses, GetReviewData, GetReviewErrors, GetReviewResponses, HealthDependenciesData, HealthDependenciesErrors, HealthDependenciesResponses, HealthLiveData, HealthLiveResponses, HealthReadyData, HealthReadyErrors, HealthReadyResponses, ListReviewsData, ListReviewsErrors, ListReviewsResponses, RecordAssessmentResponseData, RecordAssessmentResponseErrors, RecordAssessmentResponseResponses, ReviewReportData, ReviewReportErrors, ReviewReportResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -21,24 +21,27 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
 /**
  * Check that the Backend process is alive
  */
-export const liveHealthLiveGet = <ThrowOnError extends boolean = false>(options?: Options<LiveHealthLiveGetData, ThrowOnError>): RequestResult<LiveHealthLiveGetResponses, LiveHealthLiveGetErrors, ThrowOnError> => (options?.client ?? client).get<LiveHealthLiveGetResponses, LiveHealthLiveGetErrors, ThrowOnError>({ url: '/health/live', ...options });
+export const healthLive = <ThrowOnError extends boolean = false>(options?: Options<HealthLiveData, ThrowOnError>): RequestResult<HealthLiveResponses, unknown, ThrowOnError> => (options?.client ?? client).get<HealthLiveResponses, unknown, ThrowOnError>({ url: '/health/live', ...options });
 
 /**
  * Check Backend core readiness
  */
-export const readyHealthReadyGet = <ThrowOnError extends boolean = false>(options?: Options<ReadyHealthReadyGetData, ThrowOnError>): RequestResult<ReadyHealthReadyGetResponses, ReadyHealthReadyGetErrors, ThrowOnError> => (options?.client ?? client).get<ReadyHealthReadyGetResponses, ReadyHealthReadyGetErrors, ThrowOnError>({ url: '/health/ready', ...options });
+export const healthReady = <ThrowOnError extends boolean = false>(options?: Options<HealthReadyData, ThrowOnError>): RequestResult<HealthReadyResponses, HealthReadyErrors, ThrowOnError> => (options?.client ?? client).get<HealthReadyResponses, HealthReadyErrors, ThrowOnError>({ url: '/health/ready', ...options });
 
 /**
  * Read dependency capability statuses
  */
-export const dependenciesHealthDependenciesGet = <ThrowOnError extends boolean = false>(options?: Options<DependenciesHealthDependenciesGetData, ThrowOnError>): RequestResult<DependenciesHealthDependenciesGetResponses, DependenciesHealthDependenciesGetErrors, ThrowOnError> => (options?.client ?? client).get<DependenciesHealthDependenciesGetResponses, DependenciesHealthDependenciesGetErrors, ThrowOnError>({ url: '/health/dependencies', ...options });
+export const healthDependencies = <ThrowOnError extends boolean = false>(options?: Options<HealthDependenciesData, ThrowOnError>): RequestResult<HealthDependenciesResponses, HealthDependenciesErrors, ThrowOnError> => (options?.client ?? client).get<HealthDependenciesResponses, HealthDependenciesErrors, ThrowOnError>({ url: '/health/dependencies', ...options });
 
+/**
+ * Read candidate health envelope
+ */
 export const getHealth = <ThrowOnError extends boolean = false>(options?: Options<GetHealthData, ThrowOnError>): RequestResult<GetHealthResponses, GetHealthErrors, ThrowOnError> => (options?.client ?? client).get<GetHealthResponses, GetHealthErrors, ThrowOnError>({ url: '/api/v1/health', ...options });
 
 /**
  * Create an opaque server-side session
  */
-export const loginApiV1AuthLoginPost = <ThrowOnError extends boolean = false>(options: Options<LoginApiV1AuthLoginPostData, ThrowOnError>): RequestResult<LoginApiV1AuthLoginPostResponses, LoginApiV1AuthLoginPostErrors, ThrowOnError> => (options.client ?? client).post<LoginApiV1AuthLoginPostResponses, LoginApiV1AuthLoginPostErrors, ThrowOnError>({
+export const authLogin = <ThrowOnError extends boolean = false>(options: Options<AuthLoginData, ThrowOnError>): RequestResult<AuthLoginResponses, AuthLoginErrors, ThrowOnError> => (options.client ?? client).post<AuthLoginResponses, AuthLoginErrors, ThrowOnError>({
     url: '/api/v1/auth/login',
     ...options,
     headers: {
@@ -50,7 +53,7 @@ export const loginApiV1AuthLoginPost = <ThrowOnError extends boolean = false>(op
 /**
  * Revoke the current server-side session
  */
-export const logoutApiV1AuthLogoutPost = <ThrowOnError extends boolean = false>(options?: Options<LogoutApiV1AuthLogoutPostData, ThrowOnError>): RequestResult<LogoutApiV1AuthLogoutPostResponses, LogoutApiV1AuthLogoutPostErrors, ThrowOnError> => (options?.client ?? client).post<LogoutApiV1AuthLogoutPostResponses, LogoutApiV1AuthLogoutPostErrors, ThrowOnError>({
+export const authLogout = <ThrowOnError extends boolean = false>(options?: Options<AuthLogoutData, ThrowOnError>): RequestResult<AuthLogoutResponses, AuthLogoutErrors, ThrowOnError> => (options?.client ?? client).post<AuthLogoutResponses, AuthLogoutErrors, ThrowOnError>({
     security: [{
             in: 'cookie',
             name: 'smhai_dev_session',
@@ -63,7 +66,7 @@ export const logoutApiV1AuthLogoutPost = <ThrowOnError extends boolean = false>(
 /**
  * Read the current actor
  */
-export const meApiV1AuthMeGet = <ThrowOnError extends boolean = false>(options?: Options<MeApiV1AuthMeGetData, ThrowOnError>): RequestResult<MeApiV1AuthMeGetResponses, MeApiV1AuthMeGetErrors, ThrowOnError> => (options?.client ?? client).get<MeApiV1AuthMeGetResponses, MeApiV1AuthMeGetErrors, ThrowOnError>({
+export const authMe = <ThrowOnError extends boolean = false>(options?: Options<AuthMeData, ThrowOnError>): RequestResult<AuthMeResponses, AuthMeErrors, ThrowOnError> => (options?.client ?? client).get<AuthMeResponses, AuthMeErrors, ThrowOnError>({
     security: [{
             in: 'cookie',
             name: 'smhai_dev_session',
@@ -76,7 +79,7 @@ export const meApiV1AuthMeGet = <ThrowOnError extends boolean = false>(options?:
 /**
  * Obtain the session-bound CSRF token
  */
-export const csrfApiV1AuthCsrfGet = <ThrowOnError extends boolean = false>(options?: Options<CsrfApiV1AuthCsrfGetData, ThrowOnError>): RequestResult<CsrfApiV1AuthCsrfGetResponses, CsrfApiV1AuthCsrfGetErrors, ThrowOnError> => (options?.client ?? client).get<CsrfApiV1AuthCsrfGetResponses, CsrfApiV1AuthCsrfGetErrors, ThrowOnError>({
+export const authCsrf = <ThrowOnError extends boolean = false>(options?: Options<AuthCsrfData, ThrowOnError>): RequestResult<AuthCsrfResponses, AuthCsrfErrors, ThrowOnError> => (options?.client ?? client).get<AuthCsrfResponses, AuthCsrfErrors, ThrowOnError>({
     security: [{
             in: 'cookie',
             name: 'smhai_dev_session',
@@ -86,6 +89,9 @@ export const csrfApiV1AuthCsrfGet = <ThrowOnError extends boolean = false>(optio
     ...options
 });
 
+/**
+ * Start an assessment session
+ */
 export const createAssessment = <ThrowOnError extends boolean = false>(options: Options<CreateAssessmentData, ThrowOnError>): RequestResult<CreateAssessmentResponses, CreateAssessmentErrors, ThrowOnError> => (options.client ?? client).post<CreateAssessmentResponses, CreateAssessmentErrors, ThrowOnError>({
     security: [{
             in: 'cookie',
@@ -100,6 +106,9 @@ export const createAssessment = <ThrowOnError extends boolean = false>(options: 
     }
 });
 
+/**
+ * Record an assessment response
+ */
 export const recordAssessmentResponse = <ThrowOnError extends boolean = false>(options: Options<RecordAssessmentResponseData, ThrowOnError>): RequestResult<RecordAssessmentResponseResponses, RecordAssessmentResponseErrors, ThrowOnError> => (options.client ?? client).post<RecordAssessmentResponseResponses, RecordAssessmentResponseErrors, ThrowOnError>({
     security: [{
             in: 'cookie',
@@ -114,6 +123,9 @@ export const recordAssessmentResponse = <ThrowOnError extends boolean = false>(o
     }
 });
 
+/**
+ * Complete an assessment
+ */
 export const completeAssessment = <ThrowOnError extends boolean = false>(options: Options<CompleteAssessmentData, ThrowOnError>): RequestResult<CompleteAssessmentResponses, CompleteAssessmentErrors, ThrowOnError> => (options.client ?? client).post<CompleteAssessmentResponses, CompleteAssessmentErrors, ThrowOnError>({
     security: [{
             in: 'cookie',
@@ -154,6 +166,9 @@ export const getAssessment = <ThrowOnError extends boolean = false>(options: Opt
     ...options
 });
 
+/**
+ * Retrieve contract-shaped citations
+ */
 export const createRetrieval = <ThrowOnError extends boolean = false>(options: Options<CreateRetrievalData, ThrowOnError>): RequestResult<CreateRetrievalResponses, CreateRetrievalErrors, ThrowOnError> => (options.client ?? client).post<CreateRetrievalResponses, CreateRetrievalErrors, ThrowOnError>({
     security: [{
             in: 'cookie',
@@ -168,6 +183,9 @@ export const createRetrieval = <ThrowOnError extends boolean = false>(options: O
     }
 });
 
+/**
+ * Run a Safety decision
+ */
 export const checkSafety = <ThrowOnError extends boolean = false>(options: Options<CheckSafetyData, ThrowOnError>): RequestResult<CheckSafetyResponses, CheckSafetyErrors, ThrowOnError> => (options.client ?? client).post<CheckSafetyResponses, CheckSafetyErrors, ThrowOnError>({
     security: [{
             in: 'cookie',
@@ -185,7 +203,7 @@ export const checkSafety = <ThrowOnError extends boolean = false>(options: Optio
 /**
  * Create a buffered support result
  */
-export const createSupportApiV1SupportRequestsPost = <ThrowOnError extends boolean = false>(options: Options<CreateSupportApiV1SupportRequestsPostData, ThrowOnError>): RequestResult<CreateSupportApiV1SupportRequestsPostResponses, CreateSupportApiV1SupportRequestsPostErrors, ThrowOnError> => (options.client ?? client).post<CreateSupportApiV1SupportRequestsPostResponses, CreateSupportApiV1SupportRequestsPostErrors, ThrowOnError>({
+export const createSupport = <ThrowOnError extends boolean = false>(options: Options<CreateSupportData, ThrowOnError>): RequestResult<CreateSupportResponses, CreateSupportErrors, ThrowOnError> => (options.client ?? client).post<CreateSupportResponses, CreateSupportErrors, ThrowOnError>({
     security: [{
             in: 'cookie',
             name: 'smhai_dev_session',
@@ -199,6 +217,9 @@ export const createSupportApiV1SupportRequestsPost = <ThrowOnError extends boole
     }
 });
 
+/**
+ * Create a candidate generation result
+ */
 export const createGeneration = <ThrowOnError extends boolean = false>(options: Options<CreateGenerationData, ThrowOnError>): RequestResult<CreateGenerationResponses, CreateGenerationErrors, ThrowOnError> => (options.client ?? client).post<CreateGenerationResponses, CreateGenerationErrors, ThrowOnError>({
     security: [{
             in: 'cookie',
@@ -213,6 +234,9 @@ export const createGeneration = <ThrowOnError extends boolean = false>(options: 
     }
 });
 
+/**
+ * Read an authorized report projection
+ */
 export const getReport = <ThrowOnError extends boolean = false>(options: Options<GetReportData, ThrowOnError>): RequestResult<GetReportResponses, GetReportErrors, ThrowOnError> => (options.client ?? client).get<GetReportResponses, GetReportErrors, ThrowOnError>({
     security: [{
             in: 'cookie',
@@ -223,6 +247,9 @@ export const getReport = <ThrowOnError extends boolean = false>(options: Options
     ...options
 });
 
+/**
+ * Action a review projection
+ */
 export const reviewReport = <ThrowOnError extends boolean = false>(options: Options<ReviewReportData, ThrowOnError>): RequestResult<ReviewReportResponses, ReviewReportErrors, ThrowOnError> => (options.client ?? client).post<ReviewReportResponses, ReviewReportErrors, ThrowOnError>({
     security: [{
             in: 'cookie',
@@ -240,7 +267,7 @@ export const reviewReport = <ThrowOnError extends boolean = false>(options: Opti
 /**
  * List pending review projections
  */
-export const listReviewsApiV1ReviewsGet = <ThrowOnError extends boolean = false>(options?: Options<ListReviewsApiV1ReviewsGetData, ThrowOnError>): RequestResult<ListReviewsApiV1ReviewsGetResponses, ListReviewsApiV1ReviewsGetErrors, ThrowOnError> => (options?.client ?? client).get<ListReviewsApiV1ReviewsGetResponses, ListReviewsApiV1ReviewsGetErrors, ThrowOnError>({
+export const listReviews = <ThrowOnError extends boolean = false>(options?: Options<ListReviewsData, ThrowOnError>): RequestResult<ListReviewsResponses, ListReviewsErrors, ThrowOnError> => (options?.client ?? client).get<ListReviewsResponses, ListReviewsErrors, ThrowOnError>({
     security: [{
             in: 'cookie',
             name: 'smhai_dev_session',
@@ -253,7 +280,7 @@ export const listReviewsApiV1ReviewsGet = <ThrowOnError extends boolean = false>
 /**
  * Read a review projection
  */
-export const getReviewApiV1ReviewsReviewIdGet = <ThrowOnError extends boolean = false>(options: Options<GetReviewApiV1ReviewsReviewIdGetData, ThrowOnError>): RequestResult<GetReviewApiV1ReviewsReviewIdGetResponses, GetReviewApiV1ReviewsReviewIdGetErrors, ThrowOnError> => (options.client ?? client).get<GetReviewApiV1ReviewsReviewIdGetResponses, GetReviewApiV1ReviewsReviewIdGetErrors, ThrowOnError>({
+export const getReview = <ThrowOnError extends boolean = false>(options: Options<GetReviewData, ThrowOnError>): RequestResult<GetReviewResponses, GetReviewErrors, ThrowOnError> => (options.client ?? client).get<GetReviewResponses, GetReviewErrors, ThrowOnError>({
     security: [{
             in: 'cookie',
             name: 'smhai_dev_session',

@@ -1,0 +1,4627 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "StudentMentalHealthAI Backend Orchestrator",
+    "description": "MODULE-LOCAL PROVISIONAL API for safe education-support orchestration. This service does not provide diagnosis or treatment.",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health/live": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Check that the Backend process is alive",
+        "operationId": "healthLive",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthLiveDto"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Check Backend core readiness",
+        "operationId": "healthReady",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_HealthReadyDto_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/health/dependencies": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Read dependency capability statuses",
+        "operationId": "healthDependencies",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_dict_str__DependencyStatusDto__"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependency unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Read candidate health envelope",
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_ApiHealthDto_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependency unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Create an opaque server-side session",
+        "operationId": "authLogin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_LoginResponse_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CSRF validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Revoke the current server-side session",
+        "operationId": "authLogout",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_LogoutResponse_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CSRF validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "csrfToken": []
+          },
+          {
+            "sessionCookie": [],
+            "csrfToken": []
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Read the current actor",
+        "operationId": "authMe",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_ActorDto_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/csrf": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Obtain the session-bound CSRF token",
+        "operationId": "authCsrf",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_CsrfResponse_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/assessments": {
+      "post": {
+        "tags": [
+          "assessment"
+        ],
+        "summary": "Start an assessment session",
+        "operationId": "createAssessment",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssessmentStartRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_AssessmentDto_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CSRF validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Workflow conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "csrfToken": []
+          },
+          {
+            "sessionCookie": [],
+            "csrfToken": []
+          }
+        ]
+      }
+    },
+    "/api/v1/assessments/{assessment_id}/responses": {
+      "post": {
+        "tags": [
+          "assessment"
+        ],
+        "summary": "Record an assessment response",
+        "operationId": "recordAssessmentResponse",
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "csrfToken": []
+          },
+          {
+            "sessionCookie": [],
+            "csrfToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "assessment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Assessment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResponseEvent"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_AssessmentStateDto_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CSRF validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Workflow conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/assessments/{assessment_id}/complete": {
+      "post": {
+        "tags": [
+          "assessment"
+        ],
+        "summary": "Complete an assessment",
+        "operationId": "completeAssessment",
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "csrfToken": []
+          },
+          {
+            "sessionCookie": [],
+            "csrfToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "assessment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Assessment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_AssessmentDto_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CSRF validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Workflow conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/assessments/{assessment_id}/state": {
+      "get": {
+        "tags": [
+          "assessment"
+        ],
+        "summary": "Read CAT presentation state",
+        "operationId": "getAssessmentState",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "assessment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Assessment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_AssessmentStateDto_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/assessments/{assessment_id}": {
+      "get": {
+        "tags": [
+          "assessment"
+        ],
+        "summary": "Read an authorized assessment",
+        "operationId": "getAssessment",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "assessment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Assessment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_AssessmentDto_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/retrievals": {
+      "post": {
+        "tags": [
+          "support",
+          "retrieval",
+          "generation",
+          "report"
+        ],
+        "summary": "Retrieve contract-shaped citations",
+        "operationId": "createRetrieval",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetrievalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_RetrievalResponseDto_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CSRF validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependency unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Dependency timeout",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "csrfToken": []
+          },
+          {
+            "sessionCookie": [],
+            "csrfToken": []
+          }
+        ]
+      }
+    },
+    "/api/v1/safety/checks": {
+      "post": {
+        "tags": [
+          "support",
+          "retrieval",
+          "generation",
+          "report"
+        ],
+        "summary": "Run a Safety decision",
+        "operationId": "checkSafety",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SafetyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_SafetyResponseDto_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CSRF validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependency unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "csrfToken": []
+          },
+          {
+            "sessionCookie": [],
+            "csrfToken": []
+          }
+        ]
+      }
+    },
+    "/api/v1/support/requests": {
+      "post": {
+        "tags": [
+          "support",
+          "retrieval",
+          "generation",
+          "report"
+        ],
+        "summary": "Create a buffered support result",
+        "operationId": "createSupport",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_SupportResult_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CSRF validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Workflow conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Dependency timeout",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Dependency response invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "csrfToken": []
+          },
+          {
+            "sessionCookie": [],
+            "csrfToken": []
+          }
+        ]
+      }
+    },
+    "/api/v1/generations": {
+      "post": {
+        "tags": [
+          "support",
+          "retrieval",
+          "generation",
+          "report"
+        ],
+        "summary": "Create a candidate generation result",
+        "operationId": "createGeneration",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_GenerationProjection_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CSRF validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Workflow conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Dependency timeout",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Dependency response invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "csrfToken": []
+          },
+          {
+            "sessionCookie": [],
+            "csrfToken": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reports/{report_id}": {
+      "get": {
+        "tags": [
+          "support",
+          "retrieval",
+          "generation",
+          "report"
+        ],
+        "summary": "Read an authorized report projection",
+        "operationId": "getReport",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_ReportDto_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reports/{report_id}/reviews": {
+      "post": {
+        "tags": [
+          "support",
+          "retrieval",
+          "generation",
+          "report"
+        ],
+        "summary": "Action a review projection",
+        "operationId": "reviewReport",
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "csrfToken": []
+          },
+          {
+            "sessionCookie": [],
+            "csrfToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_ReviewActionResponseDto_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Workflow conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reviews": {
+      "get": {
+        "tags": [
+          "support",
+          "retrieval",
+          "generation",
+          "report"
+        ],
+        "summary": "List pending review projections",
+        "operationId": "listReviews",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_list_ReviewProjectionDto__"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reviews/{review_id}": {
+      "get": {
+        "tags": [
+          "support",
+          "retrieval",
+          "generation",
+          "report"
+        ],
+        "summary": "Read a review projection",
+        "operationId": "getReview",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "review_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Review Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_ReviewProjectionDto_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ActorDto": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "role": {
+            "$ref": "#/components/schemas/BackendRole"
+          },
+          "subject_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "username",
+          "role",
+          "subject_id"
+        ],
+        "title": "ActorDto"
+      },
+      "ApiEnvelope_ActorDto_": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "trace_id": {
+            "type": "string",
+            "title": "Trace Id"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ActorDto"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "data"
+        ],
+        "title": "ApiEnvelope[ActorDto]"
+      },
+      "ApiEnvelope_ApiHealthDto_": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "trace_id": {
+            "type": "string",
+            "title": "Trace Id"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ApiHealthDto"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "data"
+        ],
+        "title": "ApiEnvelope[ApiHealthDto]"
+      },
+      "ApiEnvelope_AssessmentDto_": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "trace_id": {
+            "type": "string",
+            "title": "Trace Id"
+          },
+          "data": {
+            "$ref": "#/components/schemas/AssessmentDto"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "data"
+        ],
+        "title": "ApiEnvelope[AssessmentDto]"
+      },
+      "ApiEnvelope_AssessmentStateDto_": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "trace_id": {
+            "type": "string",
+            "title": "Trace Id"
+          },
+          "data": {
+            "$ref": "#/components/schemas/AssessmentStateDto"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "data"
+        ],
+        "title": "ApiEnvelope[AssessmentStateDto]"
+      },
+      "ApiEnvelope_CsrfResponse_": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "trace_id": {
+            "type": "string",
+            "title": "Trace Id"
+          },
+          "data": {
+            "$ref": "#/components/schemas/CsrfResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "data"
+        ],
+        "title": "ApiEnvelope[CsrfResponse]"
+      },
+      "ApiEnvelope_GenerationProjection_": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "trace_id": {
+            "type": "string",
+            "title": "Trace Id"
+          },
+          "data": {
+            "$ref": "#/components/schemas/GenerationProjection"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "data"
+        ],
+        "title": "ApiEnvelope[GenerationProjection]"
+      },
+      "ApiEnvelope_HealthReadyDto_": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "trace_id": {
+            "type": "string",
+            "title": "Trace Id"
+          },
+          "data": {
+            "$ref": "#/components/schemas/HealthReadyDto"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "data"
+        ],
+        "title": "ApiEnvelope[HealthReadyDto]"
+      },
+      "ApiEnvelope_LoginResponse_": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "trace_id": {
+            "type": "string",
+            "title": "Trace Id"
+          },
+          "data": {
+            "$ref": "#/components/schemas/LoginResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "data"
+        ],
+        "title": "ApiEnvelope[LoginResponse]"
+      },
+      "ApiEnvelope_LogoutResponse_": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "trace_id": {
+            "type": "string",
+            "title": "Trace Id"
+          },
+          "data": {
+            "$ref": "#/components/schemas/LogoutResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "data"
+        ],
+        "title": "ApiEnvelope[LogoutResponse]"
+      },
+      "ApiEnvelope_ReportDto_": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "trace_id": {
+            "type": "string",
+            "title": "Trace Id"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ReportDto"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "data"
+        ],
+        "title": "ApiEnvelope[ReportDto]"
+      },
+      "ApiEnvelope_RetrievalResponseDto_": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "trace_id": {
+            "type": "string",
+            "title": "Trace Id"
+          },
+          "data": {
+            "$ref": "#/components/schemas/RetrievalResponseDto"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "data"
+        ],
+        "title": "ApiEnvelope[RetrievalResponseDto]"
+      },
+      "ApiEnvelope_ReviewActionResponseDto_": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "trace_id": {
+            "type": "string",
+            "title": "Trace Id"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ReviewActionResponseDto"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "data"
+        ],
+        "title": "ApiEnvelope[ReviewActionResponseDto]"
+      },
+      "ApiEnvelope_ReviewProjectionDto_": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "trace_id": {
+            "type": "string",
+            "title": "Trace Id"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ReviewProjectionDto"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "data"
+        ],
+        "title": "ApiEnvelope[ReviewProjectionDto]"
+      },
+      "ApiEnvelope_SafetyResponseDto_": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "trace_id": {
+            "type": "string",
+            "title": "Trace Id"
+          },
+          "data": {
+            "$ref": "#/components/schemas/SafetyResponseDto"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "data"
+        ],
+        "title": "ApiEnvelope[SafetyResponseDto]"
+      },
+      "ApiEnvelope_SupportResult_": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "trace_id": {
+            "type": "string",
+            "title": "Trace Id"
+          },
+          "data": {
+            "$ref": "#/components/schemas/SupportResult"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "data"
+        ],
+        "title": "ApiEnvelope[SupportResult]"
+      },
+      "ApiEnvelope_dict_str__DependencyStatusDto__": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "trace_id": {
+            "type": "string",
+            "title": "Trace Id"
+          },
+          "data": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/DependencyStatusDto"
+            },
+            "type": "object",
+            "title": "Data"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "data"
+        ],
+        "title": "ApiEnvelope[dict[str, DependencyStatusDto]]"
+      },
+      "ApiEnvelope_list_ReviewProjectionDto__": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "trace_id": {
+            "type": "string",
+            "title": "Trace Id"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewProjectionDto"
+            },
+            "type": "array",
+            "title": "Data"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "data"
+        ],
+        "title": "ApiEnvelope[list[ReviewProjectionDto]]"
+      },
+      "ApiHealthDto": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "contract_version": {
+            "type": "string",
+            "title": "Contract Version"
+          },
+          "dependencies": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/DependencyStatusDto"
+            },
+            "type": "object",
+            "title": "Dependencies"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "contract_version",
+          "dependencies"
+        ],
+        "title": "ApiHealthDto"
+      },
+      "AssessmentDimensionDto": {
+        "properties": {
+          "theta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Theta"
+          },
+          "se": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Se"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "band": {
+            "type": "string",
+            "enum": [
+              "normal",
+              "attention",
+              "high",
+              "unknown"
+            ],
+            "title": "Band"
+          },
+          "interpretation_status": {
+            "type": "string",
+            "enum": [
+              "estimated",
+              "insufficient_data",
+              "not_scored"
+            ],
+            "title": "Interpretation Status"
+          },
+          "items_answered": {
+            "type": "integer",
+            "title": "Items Answered"
+          }
+        },
+        "type": "object",
+        "required": [
+          "theta",
+          "se",
+          "score",
+          "band",
+          "interpretation_status",
+          "items_answered"
+        ],
+        "title": "AssessmentDimensionDto"
+      },
+      "AssessmentDto": {
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "title": "Schema Version"
+          },
+          "assessment_id": {
+            "type": "string",
+            "title": "Assessment Id"
+          },
+          "subject_id": {
+            "type": "string",
+            "title": "Subject Id"
+          },
+          "instrument": {
+            "$ref": "#/components/schemas/AssessmentInstrumentDto"
+          },
+          "population_scope": {
+            "type": "string",
+            "title": "Population Scope"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "dimensions": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AssessmentDimensionDto"
+            },
+            "type": "object",
+            "title": "Dimensions"
+          },
+          "risk": {
+            "$ref": "#/components/schemas/AssessmentRiskDto"
+          },
+          "response_summary": {
+            "$ref": "#/components/schemas/AssessmentResponseSummaryDto"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/AssessmentProvenanceDto"
+          },
+          "timestamps": {
+            "$ref": "#/components/schemas/AssessmentTimestampsDto"
+          }
+        },
+        "type": "object",
+        "required": [
+          "schema_version",
+          "assessment_id",
+          "subject_id",
+          "instrument",
+          "population_scope",
+          "status",
+          "dimensions",
+          "risk",
+          "response_summary",
+          "provenance",
+          "timestamps"
+        ],
+        "title": "AssessmentDto"
+      },
+      "AssessmentInstrumentDto": {
+        "properties": {
+          "instrument_id": {
+            "type": "string",
+            "title": "Instrument Id"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "instrument_id",
+          "version"
+        ],
+        "title": "AssessmentInstrumentDto"
+      },
+      "AssessmentProvenanceDto": {
+        "properties": {
+          "source_adapter": {
+            "type": "string",
+            "title": "Source Adapter"
+          },
+          "adapter_version": {
+            "type": "string",
+            "title": "Adapter Version"
+          },
+          "cat_engine_version": {
+            "type": "string",
+            "title": "Cat Engine Version"
+          },
+          "item_bank_version": {
+            "type": "string",
+            "title": "Item Bank Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_adapter",
+          "adapter_version",
+          "cat_engine_version",
+          "item_bank_version"
+        ],
+        "title": "AssessmentProvenanceDto"
+      },
+      "AssessmentResponseSummaryDto": {
+        "properties": {
+          "items_answered": {
+            "type": "integer",
+            "title": "Items Answered"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items_answered",
+          "duration_seconds"
+        ],
+        "title": "AssessmentResponseSummaryDto"
+      },
+      "AssessmentRiskDto": {
+        "properties": {
+          "level": {
+            "type": "string",
+            "enum": [
+              "normal",
+              "attention",
+              "high",
+              "crisis"
+            ],
+            "title": "Level"
+          },
+          "need_human_review": {
+            "type": "boolean",
+            "title": "Need Human Review"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reason Codes"
+          },
+          "ruleset_id": {
+            "type": "string",
+            "title": "Ruleset Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "level",
+          "need_human_review",
+          "reason_codes",
+          "ruleset_id"
+        ],
+        "title": "AssessmentRiskDto"
+      },
+      "AssessmentStartRequest": {
+        "properties": {
+          "subject_id": {
+            "type": "string",
+            "pattern": "^SUBJ_[A-Za-z0-9][A-Za-z0-9_.-]*$",
+            "title": "Subject Id"
+          },
+          "instrument_id": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Instrument Id"
+          },
+          "instrument_version": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Instrument Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "subject_id",
+          "instrument_id",
+          "instrument_version"
+        ],
+        "title": "AssessmentStartRequest"
+      },
+      "AssessmentStateDto": {
+        "properties": {
+          "assessment_id": {
+            "type": "string",
+            "title": "Assessment Id"
+          },
+          "subject_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "selected_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Item Id"
+          },
+          "current_item": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CurrentItemDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "current_index": {
+            "type": "integer",
+            "title": "Current Index",
+            "default": 0
+          },
+          "answered_count": {
+            "type": "integer",
+            "title": "Answered Count",
+            "default": 0
+          },
+          "administered_count": {
+            "type": "integer",
+            "title": "Administered Count",
+            "default": 0
+          },
+          "can_complete": {
+            "type": "boolean",
+            "title": "Can Complete",
+            "default": false
+          },
+          "max_items": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Items"
+          },
+          "cat_provider_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cat Provider Version"
+          },
+          "cat_item_bank_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cat Item Bank Version"
+          },
+          "cat_config_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cat Config Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "assessment_id",
+          "status"
+        ],
+        "title": "AssessmentStateDto"
+      },
+      "AssessmentTimestampsDto": {
+        "properties": {
+          "started_at": {
+            "type": "string",
+            "title": "Started At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "started_at",
+          "completed_at"
+        ],
+        "title": "AssessmentTimestampsDto"
+      },
+      "BackendRole": {
+        "type": "string",
+        "enum": [
+          "STUDENT",
+          "TEACHER",
+          "REVIEWER",
+          "PARENT",
+          "ADMIN"
+        ],
+        "title": "BackendRole"
+      },
+      "Citation": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Title"
+          },
+          "organization": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Organization"
+          },
+          "locator": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Locator"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "title",
+          "organization",
+          "locator"
+        ],
+        "title": "Citation"
+      },
+      "CompleteRequest": {
+        "properties": {},
+        "additionalProperties": false,
+        "type": "object",
+        "title": "CompleteRequest"
+      },
+      "CsrfResponse": {
+        "properties": {
+          "csrf_token": {
+            "type": "string",
+            "title": "Csrf Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "csrf_token"
+        ],
+        "title": "CsrfResponse"
+      },
+      "CurrentItemDto": {
+        "properties": {
+          "item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Id"
+          },
+          "prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/CurrentItemOptionDto"
+            },
+            "type": "array",
+            "title": "Options"
+          }
+        },
+        "type": "object",
+        "title": "CurrentItemDto"
+      },
+      "CurrentItemOptionDto": {
+        "properties": {
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          }
+        },
+        "type": "object",
+        "title": "CurrentItemOptionDto"
+      },
+      "DependencyStatusDto": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "integration": {
+            "type": "string",
+            "title": "Integration"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "integration"
+        ],
+        "title": "DependencyStatusDto"
+      },
+      "GenerationContent": {
+        "properties": {
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Summary"
+          },
+          "observations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Observations"
+          },
+          "suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/Suggestion"
+            },
+            "type": "array",
+            "title": "Suggestions"
+          },
+          "disclaimer": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Disclaimer"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "summary",
+          "observations",
+          "suggestions",
+          "disclaimer"
+        ],
+        "title": "GenerationContent"
+      },
+      "GenerationProjection": {
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "const": "generation.v1",
+            "title": "Schema Version"
+          },
+          "generation_id": {
+            "type": "string",
+            "title": "Generation Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "target_role": {
+            "type": "string",
+            "enum": [
+              "student",
+              "teacher",
+              "parent",
+              "admin"
+            ],
+            "title": "Target Role"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GenerationContent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "safety": {
+            "$ref": "#/components/schemas/GenerationSafetyProjection"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/GenerationProvenanceProjection"
+          },
+          "review": {
+            "$ref": "#/components/schemas/GenerationReviewProjection"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "schema_version",
+          "generation_id",
+          "status",
+          "target_role",
+          "content",
+          "safety",
+          "provenance",
+          "review",
+          "created_at"
+        ],
+        "title": "GenerationProjection"
+      },
+      "GenerationProvenanceProjection": {
+        "properties": {
+          "assessment_id": {
+            "type": "string",
+            "title": "Assessment Id"
+          },
+          "retrieval_id": {
+            "type": "string",
+            "title": "Retrieval Id"
+          },
+          "prompt_id": {
+            "type": "string",
+            "title": "Prompt Id"
+          },
+          "prompt_version": {
+            "type": "string",
+            "title": "Prompt Version"
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id"
+          },
+          "model_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Version"
+          },
+          "runtime_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runtime Version"
+          },
+          "generation_status": {
+            "type": "string",
+            "enum": [
+              "EXECUTED",
+              "NOT_RUN"
+            ],
+            "title": "Generation Status",
+            "default": "EXECUTED"
+          },
+          "candidate_source": {
+            "type": "string",
+            "enum": [
+              "MODEL_EXECUTED",
+              "CONTROLLED_SYNTHETIC",
+              "NOT_RUN"
+            ],
+            "title": "Candidate Source",
+            "default": "MODEL_EXECUTED"
+          }
+        },
+        "type": "object",
+        "required": [
+          "assessment_id",
+          "retrieval_id",
+          "prompt_id",
+          "prompt_version",
+          "model_id",
+          "model_version",
+          "runtime_version"
+        ],
+        "title": "GenerationProvenanceProjection"
+      },
+      "GenerationRequest": {
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "const": "generation.v1",
+            "title": "Schema Version"
+          },
+          "generation_id": {
+            "type": "string",
+            "pattern": "^GEN_[A-Za-z0-9][A-Za-z0-9_.-]*$",
+            "title": "Generation Id"
+          },
+          "assessment_id": {
+            "type": "string",
+            "pattern": "^ASSESS_[A-Za-z0-9][A-Za-z0-9_.-]*$",
+            "title": "Assessment Id"
+          },
+          "subject_id": {
+            "type": "string",
+            "pattern": "^SUBJ_[A-Za-z0-9][A-Za-z0-9_.-]*$",
+            "title": "Subject Id"
+          },
+          "target_role": {
+            "type": "string",
+            "enum": [
+              "student",
+              "teacher",
+              "parent",
+              "admin"
+            ],
+            "title": "Target Role"
+          },
+          "purpose": {
+            "type": "string",
+            "const": "education_support",
+            "title": "Purpose"
+          },
+          "language": {
+            "type": "string",
+            "minLength": 2,
+            "title": "Language"
+          },
+          "safety_mode": {
+            "type": "string",
+            "enum": [
+              "standard",
+              "restricted"
+            ],
+            "title": "Safety Mode"
+          },
+          "retrieval": {
+            "$ref": "#/components/schemas/RetrievalRef"
+          },
+          "prompt_ref": {
+            "$ref": "#/components/schemas/PromptRef"
+          },
+          "model_policy": {
+            "$ref": "#/components/schemas/ModelPolicy"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "schema_version",
+          "generation_id",
+          "assessment_id",
+          "subject_id",
+          "target_role",
+          "purpose",
+          "language",
+          "safety_mode",
+          "retrieval",
+          "prompt_ref",
+          "model_policy"
+        ],
+        "title": "GenerationRequest"
+      },
+      "GenerationReviewProjection": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected",
+              "not_required",
+              "closed"
+            ],
+            "title": "Status"
+          },
+          "reviewer_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Id"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "reviewer_id",
+          "reviewed_at"
+        ],
+        "title": "GenerationReviewProjection"
+      },
+      "GenerationSafetyProjection": {
+        "properties": {
+          "precheck": {
+            "type": "string",
+            "enum": [
+              "passed",
+              "warn",
+              "blocked",
+              "needs_review"
+            ],
+            "title": "Precheck"
+          },
+          "postcheck": {
+            "type": "string",
+            "enum": [
+              "passed",
+              "warn",
+              "blocked",
+              "needs_review"
+            ],
+            "title": "Postcheck"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reason Codes"
+          },
+          "human_review_required": {
+            "type": "boolean",
+            "title": "Human Review Required"
+          }
+        },
+        "type": "object",
+        "required": [
+          "precheck",
+          "postcheck",
+          "reason_codes",
+          "human_review_required"
+        ],
+        "title": "GenerationSafetyProjection"
+      },
+      "HealthLiveDto": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "service": {
+            "type": "string",
+            "title": "Service"
+          },
+          "contract_version": {
+            "type": "string",
+            "title": "Contract Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "service",
+          "contract_version"
+        ],
+        "title": "HealthLiveDto"
+      },
+      "HealthReadyDto": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "core": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Core"
+          },
+          "optional_dependencies_not_used_for_core_readiness": {
+            "type": "boolean",
+            "title": "Optional Dependencies Not Used For Core Readiness",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "core"
+        ],
+        "title": "HealthReadyDto"
+      },
+      "KnowledgeChunk": {
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "title": "Schema Version",
+            "default": "knowledge.v1"
+          },
+          "chunk_id": {
+            "type": "string",
+            "title": "Chunk Id"
+          },
+          "document_id": {
+            "type": "string",
+            "title": "Document Id"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Text"
+          },
+          "content_type": {
+            "type": "string",
+            "title": "Content Type",
+            "default": "approved_summary"
+          },
+          "location": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Location"
+          },
+          "citation": {
+            "$ref": "#/components/schemas/Citation"
+          },
+          "population_scope": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Population Scope"
+          },
+          "role_scope": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Role Scope"
+          },
+          "risk_scope": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Risk Scope"
+          },
+          "review_status": {
+            "type": "string",
+            "title": "Review Status",
+            "default": "approved"
+          },
+          "rights_status": {
+            "type": "string",
+            "title": "Rights Status",
+            "default": "verified"
+          },
+          "content_hash": {
+            "type": "string",
+            "title": "Content Hash"
+          },
+          "embedding": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Embedding"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "chunk_id",
+          "document_id",
+          "text",
+          "location",
+          "citation",
+          "population_scope",
+          "role_scope",
+          "risk_scope",
+          "content_hash"
+        ],
+        "title": "KnowledgeChunk"
+      },
+      "LoginRequest": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Username"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Password"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "LoginRequest"
+      },
+      "LoginResponse": {
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/ActorDto"
+          },
+          "csrf_token": {
+            "type": "string",
+            "title": "Csrf Token"
+          },
+          "synthetic_fixture_only": {
+            "type": "boolean",
+            "title": "Synthetic Fixture Only",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "actor",
+          "csrf_token"
+        ],
+        "title": "LoginResponse"
+      },
+      "LogoutResponse": {
+        "properties": {
+          "logged_out": {
+            "type": "boolean",
+            "title": "Logged Out",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "LogoutResponse"
+      },
+      "ModelPolicy": {
+        "properties": {
+          "model_id": {
+            "type": "string",
+            "pattern": "^MODEL_[A-Za-z0-9][A-Za-z0-9_.-]*$",
+            "title": "Model Id"
+          },
+          "provider_class": {
+            "type": "string",
+            "enum": [
+              "local",
+              "mock"
+            ],
+            "title": "Provider Class"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "model_id",
+          "provider_class"
+        ],
+        "title": "ModelPolicy"
+      },
+      "ProblemDetails": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "status": {
+            "type": "integer",
+            "title": "Status"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "instance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instance"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "retryable": {
+            "type": "boolean",
+            "title": "Retryable",
+            "default": false
+          },
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "trace_id": {
+            "type": "string",
+            "title": "Trace Id"
+          },
+          "errors": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ProblemFieldError"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "title",
+          "status",
+          "detail",
+          "code",
+          "request_id",
+          "trace_id"
+        ],
+        "title": "ProblemDetails",
+        "description": "RFC 9457 problem projection used by every Backend error path."
+      },
+      "ProblemFieldError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Loc"
+          },
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "code",
+          "message"
+        ],
+        "title": "ProblemFieldError",
+        "description": "Safe, typed validation detail without echoing submitted values."
+      },
+      "PromptRef": {
+        "properties": {
+          "prompt_id": {
+            "type": "string",
+            "pattern": "^PROMPT_[A-Za-z0-9][A-Za-z0-9_.-]*$",
+            "title": "Prompt Id"
+          },
+          "prompt_version": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+            "title": "Prompt Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "prompt_id",
+          "prompt_version"
+        ],
+        "title": "PromptRef"
+      },
+      "ReportDto": {
+        "properties": {
+          "report_id": {
+            "type": "string",
+            "title": "Report Id"
+          },
+          "assessment_id": {
+            "type": "string",
+            "title": "Assessment Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "generation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Generation Ids"
+          },
+          "review_status": {
+            "type": "string",
+            "title": "Review Status"
+          },
+          "review_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Id"
+          },
+          "generation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GenerationProjection"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/SupportCitation"
+            },
+            "type": "array",
+            "title": "Citations"
+          }
+        },
+        "type": "object",
+        "required": [
+          "report_id",
+          "assessment_id",
+          "status",
+          "generation_ids",
+          "review_status"
+        ],
+        "title": "ReportDto"
+      },
+      "ResponseEvent": {
+        "properties": {
+          "item_id": {
+            "type": "string",
+            "pattern": "^ITEM_[A-Za-z0-9][A-Za-z0-9_.-]*$",
+            "title": "Item Id"
+          },
+          "response": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ],
+            "title": "Response"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "item_id",
+          "response"
+        ],
+        "title": "ResponseEvent"
+      },
+      "RetrievalRef": {
+        "properties": {
+          "retrieval_id": {
+            "type": "string",
+            "pattern": "^RETR_[A-Za-z0-9][A-Za-z0-9_.-]*$",
+            "title": "Retrieval Id"
+          },
+          "chunk_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Chunk Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "retrieval_id",
+          "chunk_ids"
+        ],
+        "title": "RetrievalRef"
+      },
+      "RetrievalRequest": {
+        "properties": {
+          "assessment_id": {
+            "type": "string",
+            "pattern": "^ASSESS_[A-Za-z0-9][A-Za-z0-9_.-]*$",
+            "title": "Assessment Id"
+          },
+          "target_role": {
+            "type": "string",
+            "enum": [
+              "student",
+              "teacher",
+              "parent",
+              "admin"
+            ],
+            "title": "Target Role"
+          },
+          "query": {
+            "type": "string",
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Query"
+          },
+          "top_k": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Top K",
+            "default": 5
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "assessment_id",
+          "target_role",
+          "query"
+        ],
+        "title": "RetrievalRequest"
+      },
+      "RetrievalResponseDto": {
+        "properties": {
+          "retrieval_id": {
+            "type": "string",
+            "title": "Retrieval Id"
+          },
+          "chunks": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeChunk"
+            },
+            "type": "array",
+            "title": "Chunks"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "trace": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trace"
+          }
+        },
+        "type": "object",
+        "required": [
+          "retrieval_id",
+          "chunks"
+        ],
+        "title": "RetrievalResponseDto"
+      },
+      "ReviewActionResponseDto": {
+        "properties": {
+          "report_id": {
+            "type": "string",
+            "title": "Report Id"
+          },
+          "review_status": {
+            "type": "string",
+            "title": "Review Status"
+          },
+          "review_id": {
+            "type": "string",
+            "title": "Review Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "report_id",
+          "review_status",
+          "review_id"
+        ],
+        "title": "ReviewActionResponseDto"
+      },
+      "ReviewProjectionDto": {
+        "properties": {
+          "review_id": {
+            "type": "string",
+            "title": "Review Id"
+          },
+          "report_id": {
+            "type": "string",
+            "title": "Report Id"
+          },
+          "assessment_id": {
+            "type": "string",
+            "title": "Assessment Id"
+          },
+          "generation_id": {
+            "type": "string",
+            "title": "Generation Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reason Codes"
+          },
+          "safety_action": {
+            "type": "string",
+            "title": "Safety Action"
+          },
+          "safety_review_case_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Safety Review Case Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "review_id",
+          "report_id",
+          "assessment_id",
+          "generation_id",
+          "status",
+          "reason_codes",
+          "safety_action"
+        ],
+        "title": "ReviewProjectionDto"
+      },
+      "ReviewRequest": {
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "approved",
+              "rejected"
+            ],
+            "title": "Decision"
+          },
+          "reviewer_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Id"
+          },
+          "note_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note Code"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "decision"
+        ],
+        "title": "ReviewRequest"
+      },
+      "SafetyRequest": {
+        "properties": {
+          "assessment_id": {
+            "type": "string",
+            "pattern": "^ASSESS_[A-Za-z0-9][A-Za-z0-9_.-]*$",
+            "title": "Assessment Id"
+          },
+          "generation_candidate": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generation Candidate"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "assessment_id"
+        ],
+        "title": "SafetyRequest"
+      },
+      "SafetyResponseDto": {
+        "properties": {
+          "decision": {
+            "type": "string",
+            "title": "Decision"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reason Codes"
+          },
+          "human_review_required": {
+            "type": "boolean",
+            "title": "Human Review Required"
+          },
+          "safety_action": {
+            "type": "string",
+            "title": "Safety Action"
+          }
+        },
+        "type": "object",
+        "required": [
+          "decision",
+          "reason_codes",
+          "human_review_required",
+          "safety_action"
+        ],
+        "title": "SafetyResponseDto"
+      },
+      "Suggestion": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Text"
+          },
+          "source_chunk_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Source Chunk Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "text",
+          "source_chunk_ids"
+        ],
+        "title": "Suggestion"
+      },
+      "SupportCitation": {
+        "properties": {
+          "citation_id": {
+            "type": "string",
+            "title": "Citation Id"
+          },
+          "chunk_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chunk Id"
+          },
+          "document_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Id"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "organization": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization"
+          },
+          "locator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locator"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank"
+          },
+          "source_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Version"
+          },
+          "source_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Hash"
+          }
+        },
+        "type": "object",
+        "required": [
+          "citation_id"
+        ],
+        "title": "SupportCitation",
+        "description": "Citation identity retained from RAG through persistence and reports."
+      },
+      "SupportRequest": {
+        "properties": {
+          "assessment_id": {
+            "type": "string",
+            "pattern": "^ASSESS_[A-Za-z0-9][A-Za-z0-9_.-]*$",
+            "title": "Assessment Id"
+          },
+          "target_role": {
+            "type": "string",
+            "enum": [
+              "student",
+              "teacher",
+              "parent",
+              "admin"
+            ],
+            "title": "Target Role"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Message"
+          },
+          "language": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 2,
+            "title": "Language",
+            "default": "zh-CN"
+          },
+          "purpose": {
+            "type": "string",
+            "const": "education_support",
+            "title": "Purpose",
+            "default": "education_support"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "assessment_id",
+          "target_role",
+          "message"
+        ],
+        "title": "SupportRequest"
+      },
+      "SupportResult": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "safety_action": {
+            "type": "string",
+            "title": "Safety Action"
+          },
+          "normal_generation": {
+            "type": "boolean",
+            "title": "Normal Generation"
+          },
+          "generation": {
+            "$ref": "#/components/schemas/GenerationProjection"
+          },
+          "report_id": {
+            "type": "string",
+            "title": "Report Id"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GenerationContent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/SupportCitation"
+            },
+            "type": "array",
+            "title": "Citations"
+          },
+          "review_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Reference"
+          },
+          "crisis_response": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Crisis Response"
+          },
+          "trace_id": {
+            "type": "string",
+            "title": "Trace Id"
+          },
+          "synthetic_fixture_only": {
+            "type": "boolean",
+            "title": "Synthetic Fixture Only",
+            "default": true
+          },
+          "integration_labels": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Integration Labels"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "safety_action",
+          "normal_generation",
+          "generation",
+          "report_id",
+          "trace_id",
+          "integration_labels"
+        ],
+        "title": "SupportResult"
+      }
+    },
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "smhai_dev_session"
+      },
+      "csrfToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-CSRF-Token"
+      }
+    }
+  }
+}

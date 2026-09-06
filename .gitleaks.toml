@@ -27,3 +27,12 @@ paths = [
   '''^15_demo/integration/reports/integration_round1_evaluation\.json$''',
   '''^15_demo/integration/scripts/write_final_evaluation\.py$'''
 ]
+
+[[allowlists]]
+description = "Known non-secret contract hashes recorded as provenance for the candidate-only round."
+paths = [
+  '''^14_docs/contract-hardening/API_OPERATION_INVENTORY\.md$''',
+  '''^14_docs/contract-hardening/CONTRACT_PROMOTION_PROPOSAL_V0_2\.md$''',
+  '''^14_docs/contract-hardening/reports/CONTRACT_API_HARDENING_ROUND1_ACCEPTANCE\.md$''',
+  '''^14_docs/contract-hardening/reports/contract_api_hardening_round1_evaluation\.json$'''
+]

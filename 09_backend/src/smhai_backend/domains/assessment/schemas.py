@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, StrictInt, StrictStr
 
@@ -26,30 +26,95 @@ class CompleteRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class AssessmentInstrumentDto(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    instrument_id: str
+    version: str
+
+
+class AssessmentDimensionDto(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    theta: float | None
+    se: float | None
+    score: float | None
+    band: Literal["normal", "attention", "high", "unknown"]
+    interpretation_status: Literal["estimated", "insufficient_data", "not_scored"]
+    items_answered: int
+
+
+class AssessmentRiskDto(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    level: Literal["normal", "attention", "high", "crisis"]
+    need_human_review: bool
+    reason_codes: list[str]
+    ruleset_id: str
+
+
+class AssessmentResponseSummaryDto(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    items_answered: int
+    duration_seconds: int | None
+
+
+class AssessmentProvenanceDto(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    source_adapter: str
+    adapter_version: str
+    cat_engine_version: str
+    item_bank_version: str
+
+
+class AssessmentTimestampsDto(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    started_at: str
+    completed_at: str | None
+
+
 class AssessmentDto(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     schema_version: str
     assessment_id: str
     subject_id: str
-    instrument: dict[str, Any]
+    instrument: AssessmentInstrumentDto
     population_scope: str
     status: str
-    dimensions: dict[str, Any]
-    risk: dict[str, Any]
-    response_summary: dict[str, Any]
-    provenance: dict[str, Any]
-    timestamps: dict[str, Any]
+    dimensions: dict[str, AssessmentDimensionDto]
+    risk: AssessmentRiskDto
+    response_summary: AssessmentResponseSummaryDto
+    provenance: AssessmentProvenanceDto
+    timestamps: AssessmentTimestampsDto
+
+
+class CurrentItemOptionDto(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    value: str | None = None
+    label: str | None = None
+
+
+class CurrentItemDto(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    item_id: str | None = None
+    prompt: str | None = None
+    options: list[CurrentItemOptionDto] = Field(default_factory=list)
 
 
 class AssessmentStateDto(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     assessment_id: str
     subject_id: str | None = None
     status: str
     selected_item_id: str | None = None
-    current_item: dict[str, Any] | None = None
+    current_item: CurrentItemDto | None = None
     current_index: int = 0
     answered_count: int = 0
     administered_count: int = 0

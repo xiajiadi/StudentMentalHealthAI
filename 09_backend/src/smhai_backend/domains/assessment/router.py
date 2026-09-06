@@ -6,6 +6,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from smhai_backend.core.api_models import ApiEnvelope
+from smhai_backend.core.errors import ErrorCode, problem_responses
 from smhai_backend.core.idempotency import (
     fingerprint,
     prior_result_async,
@@ -13,7 +15,11 @@ from smhai_backend.core.idempotency import (
     request_key,
 )
 from smhai_backend.core.request_context import current_request_context
-from smhai_backend.domains.auth.dependencies import CsrfActor, CurrentActor
+from smhai_backend.domains.auth.dependencies import (
+    CSRF_SECURITY_OPENAPI_EXTRA,
+    CsrfActor,
+    CurrentActor,
+)
 
 from .schemas import (
     AssessmentDto,
@@ -36,7 +42,18 @@ def envelope(request: Request, data: object) -> dict[str, object]:
 
 
 @router.post(
-    "", status_code=201, operation_id="createAssessment", summary="Start an assessment session"
+    "",
+    status_code=201,
+    operation_id="createAssessment",
+    response_model=ApiEnvelope[AssessmentDto],
+    openapi_extra=CSRF_SECURITY_OPENAPI_EXTRA,
+    responses=problem_responses(
+        ErrorCode.AUTH_SESSION_EXPIRED,
+        ErrorCode.CSRF_FAILED,
+        ErrorCode.VALIDATION_FAILED,
+        ErrorCode.WORKFLOW_CONFLICT,
+    ),
+    summary="Start an assessment session",
 )
 async def create_assessment(
     request: Request, payload: AssessmentStartRequest, actor: CsrfActor
@@ -72,6 +89,14 @@ async def create_assessment(
 @router.post(
     "/{assessment_id}/responses",
     operation_id="recordAssessmentResponse",
+    response_model=ApiEnvelope[AssessmentStateDto],
+    openapi_extra=CSRF_SECURITY_OPENAPI_EXTRA,
+    responses=problem_responses(
+        ErrorCode.AUTH_SESSION_EXPIRED,
+        ErrorCode.CSRF_FAILED,
+        ErrorCode.RESOURCE_NOT_FOUND,
+        ErrorCode.WORKFLOW_CONFLICT,
+    ),
     summary="Record an assessment response",
 )
 async def record_response(
@@ -123,7 +148,17 @@ async def record_response(
 
 
 @router.post(
-    "/{assessment_id}/complete", operation_id="completeAssessment", summary="Complete an assessment"
+    "/{assessment_id}/complete",
+    operation_id="completeAssessment",
+    response_model=ApiEnvelope[AssessmentDto],
+    openapi_extra=CSRF_SECURITY_OPENAPI_EXTRA,
+    responses=problem_responses(
+        ErrorCode.AUTH_SESSION_EXPIRED,
+        ErrorCode.CSRF_FAILED,
+        ErrorCode.RESOURCE_NOT_FOUND,
+        ErrorCode.WORKFLOW_CONFLICT,
+    ),
+    summary="Complete an assessment",
 )
 async def complete_assessment(
     request: Request, assessment_id: str, payload: CompleteRequest, actor: CsrfActor
@@ -157,6 +192,8 @@ async def complete_assessment(
 @router.get(
     "/{assessment_id}/state",
     operation_id="getAssessmentState",
+    response_model=ApiEnvelope[AssessmentStateDto],
+    responses=problem_responses(ErrorCode.AUTH_SESSION_EXPIRED, ErrorCode.RESOURCE_NOT_FOUND),
     summary="Read CAT presentation state",
 )
 async def get_assessment_state(
@@ -189,7 +226,11 @@ async def get_assessment_state(
 
 
 @router.get(
-    "/{assessment_id}", operation_id="getAssessment", summary="Read an authorized assessment"
+    "/{assessment_id}",
+    operation_id="getAssessment",
+    response_model=ApiEnvelope[AssessmentDto],
+    responses=problem_responses(ErrorCode.AUTH_SESSION_EXPIRED, ErrorCode.RESOURCE_NOT_FOUND),
+    summary="Read an authorized assessment",
 )
 async def get_assessment(request: Request, assessment_id: str, actor: CurrentActor) -> JSONResponse:
     record = await request.app.state.container.assessments.get_for_actor(

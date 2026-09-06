@@ -15,6 +15,11 @@ main and committed with the required message:
 - message: chore: establish Software Integration R1 accepted baseline
 - tag: integration-r1-accepted
 
+The baseline tag remains on the required baseline commit. A follow-up local
+cleanup commit `dfbf1bd` removed two local Qdrant runtime files that were
+accidentally staged during initial repository setup; no accepted source or
+contract file was changed by that cleanup.
+
 No remote, push, release, or promotion action was performed.
 
 ## Evidence used for acceptance

@@ -70,10 +70,11 @@ export interface Assessment {
 
 export interface Citation {
   citation_id: string
-  chunk_id: string
-  title?: string
-  organization?: string
-  locator?: string
+  chunk_id: string | null
+  document_id?: string | null
+  title?: string | null
+  organization?: string | null
+  locator?: string | null
   excerpt?: string
 }
 
@@ -104,9 +105,11 @@ export interface GenerationResult {
     retrieval_id: string
     prompt_id: string
     prompt_version: string
-    model_id: string
-    model_version: string
-    runtime_version: string
+    model_id: string | null
+    model_version: string | null
+    runtime_version: string | null
+    generation_status: 'EXECUTED' | 'NOT_RUN'
+    candidate_source: 'MODEL_EXECUTED' | 'CONTROLLED_SYNTHETIC' | 'NOT_RUN'
   }
   review: {
     status: ReviewStatus

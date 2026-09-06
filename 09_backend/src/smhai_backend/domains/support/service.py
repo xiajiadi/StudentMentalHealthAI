@@ -29,7 +29,14 @@ from smhai_backend.integrations.llm import CandidateResponse, LLMRuntimeClient
 from smhai_backend.integrations.rag import RagClient, RetrievalResult
 from smhai_backend.integrations.safety import SafetyAction, SafetyCheckView, SafetyClient
 
-from .schemas import GenerationContent, RetrievalRequest, SupportRequest, SupportResult
+from .schemas import (
+    GenerationContent,
+    GenerationProjection,
+    RetrievalRequest,
+    SupportCitation,
+    SupportRequest,
+    SupportResult,
+)
 
 
 class SupportOrchestrator:
@@ -282,14 +289,25 @@ class SupportOrchestrator:
             prompt_version=prompt_version,
             candidate=candidate,
         )
+        candidate_source = (
+            "CONTROLLED_SYNTHETIC" if candidate.label == "CONTRACT_FAKE" else "MODEL_EXECUTED"
+        )
+        generation_projection = _candidate_generation(
+            generation,
+            generation_status="EXECUTED",
+            candidate_source=candidate_source,
+        )
+        citations = _citations_from_retrieval(retrieval)
         report = ReportRecord(
             report_id=report_id,
             assessment_id=payload.assessment_id,
             subject_id=record.subject_id,
             generation_id=generation_id,
             status="generated",
-            generation=generation,
+            generation=generation_projection.model_dump(mode="json"),
             safety_action=output_check.decision.action,
+            citations=[item.model_dump(mode="json") for item in citations],
+            candidate_source=candidate_source,
         )
         await maybe_await(self.reports.save(report))
         await maybe_await(self.conversations.save_metadata(
@@ -321,10 +339,10 @@ class SupportOrchestrator:
             status="generated",
             safety_action=output_check.decision.action,
             normal_generation=True,
-            generation=generation,
+            generation=generation_projection,
             report_id=report_id,
             content=content,
-            citations=[chunk.citation for chunk in retrieval.chunks],
+            citations=citations,
             trace_id=context.trace_id,
             integration_labels=dict(self.integration_labels),
         )
@@ -472,6 +490,10 @@ class SupportOrchestrator:
         review_reference = check.review_reference
         if check.decision.requires_human and review_reference is None:
             review_reference = f"REVIEW_{uuid4().hex}"
+        candidate_source = "CONTROLLED_SYNTHETIC" if candidate is not None else "NOT_RUN"
+        generation_model_id = candidate.model_id if candidate is not None else None
+        generation_model_version = candidate.model_version if candidate is not None else None
+        generation_runtime_version = candidate.runtime_version if candidate is not None else None
         generation = self._blocked_generation(
             assessment_id=payload.assessment_id,
             generation_id=generation_id,
@@ -486,18 +508,28 @@ class SupportOrchestrator:
             else ["CHUNK_not_run"],
             prompt_id=prompt_id,
             prompt_version=prompt_version,
-            model_id=model_id,
+            model_id=generation_model_id,
+            model_version=generation_model_version,
+            runtime_version=generation_runtime_version,
         )
+        generation_projection = _candidate_generation(
+            generation,
+            generation_status="EXECUTED" if candidate is not None else "NOT_RUN",
+            candidate_source=candidate_source,
+        )
+        citations = _citations_from_retrieval(retrieval)
         report = ReportRecord(
             report_id=report_id,
             assessment_id=payload.assessment_id,
             subject_id=record.subject_id,
             generation_id=generation_id,
             status="needs_review" if check.decision.requires_human else "safety_blocked",
-            generation=generation,
+            generation=generation_projection.model_dump(mode="json"),
             review_id=review_reference,
             review_status="pending" if check.decision.requires_human else "not_required",
             safety_action=action,
+            citations=[item.model_dump(mode="json") for item in citations],
+            candidate_source=candidate_source,
         )
         await maybe_await(self.reports.save(report))
         if check.decision.requires_human and review_reference:
@@ -520,10 +552,10 @@ class SupportOrchestrator:
             status=report.status,
             safety_action=action,
             normal_generation=False,
-            generation=generation,
+            generation=generation_projection,
             report_id=report_id,
             content=None,
-            citations=[chunk.citation for chunk in retrieval.chunks] if retrieval else [],
+            citations=citations,
             review_reference=review_reference,
             crisis_response=crisis_response,
             trace_id=input_check.trace_id,
@@ -538,6 +570,7 @@ class SupportOrchestrator:
         actor: Actor,
         message: str,
     ) -> None:
+        generation = result.generation.model_dump(mode="json")
         await maybe_await(self.conversations.complete_workflow(result))
         await maybe_await(self.conversations.save_metadata(
             request_id=context.request_id,
@@ -546,7 +579,7 @@ class SupportOrchestrator:
                 "support_request": True,
                 "message_length": len(message),
                 "message_digest": _digest(message),
-                "generation_id": result.generation["generation_id"],
+                "generation_id": generation["generation_id"],
                 "report_id": result.report_id,
                 "safety_action": result.safety_action,
                 "normal_generation": result.normal_generation,
@@ -559,8 +592,8 @@ class SupportOrchestrator:
             trace_id=context.trace_id,
             outcome=result.safety_action,
             metadata={
-                "assessment_id": result.generation.get("provenance", {}).get("assessment_id"),
-                "generation_id": result.generation["generation_id"],
+                "assessment_id": generation.get("provenance", {}).get("assessment_id"),
+                "generation_id": generation["generation_id"],
                 "report_id": result.report_id,
                 "review_reference": result.review_reference,
             },
@@ -670,7 +703,9 @@ class SupportOrchestrator:
         chunk_ids: list[str],
         prompt_id: str,
         prompt_version: str,
-        model_id: str,
+        model_id: str | None,
+        model_version: str | None = None,
+        runtime_version: str | None = None,
     ) -> dict[str, Any]:
         result = {
             "schema_version": "generation.v1",
@@ -690,8 +725,8 @@ class SupportOrchestrator:
                 "prompt_id": prompt_id,
                 "prompt_version": prompt_version,
                 "model_id": model_id,
-                "model_version": "not_used",
-                "runtime_version": "not_used",
+                "model_version": model_version,
+                "runtime_version": runtime_version,
             },
             "review": {
                 "status": "pending"
@@ -711,6 +746,48 @@ def _safety_status(action: SafetyAction) -> str:
     if action == "REVIEW_REQUIRED":
         return "needs_review"
     return "blocked"
+
+
+def _citations_from_retrieval(retrieval: RetrievalResult | None) -> list[SupportCitation]:
+    if retrieval is None:
+        return []
+    citations: list[SupportCitation] = []
+    for rank, chunk in enumerate(retrieval.chunks, start=1):
+        digest = _digest(f"{chunk.document_id}|{chunk.chunk_id}|{chunk.content_hash}")[:24]
+        citations.append(
+            SupportCitation(
+                citation_id=f"CITE_{digest}",
+                chunk_id=chunk.chunk_id,
+                document_id=chunk.document_id,
+                title=chunk.citation.title,
+                organization=chunk.citation.organization,
+                locator=chunk.citation.locator,
+                rank=rank,
+                source_version=chunk.schema_version,
+                source_hash=chunk.content_hash,
+            )
+        )
+    return citations
+
+
+def _candidate_generation(
+    generation: dict[str, Any],
+    *,
+    generation_status: str,
+    candidate_source: str,
+) -> GenerationProjection:
+    """Add candidate-only execution metadata without mutating frozen v1 data."""
+
+    value = dict(generation)
+    provenance = dict(value.get("provenance", {}))
+    if generation_status == "NOT_RUN":
+        provenance["model_id"] = None
+        provenance["model_version"] = None
+        provenance["runtime_version"] = None
+    provenance["generation_status"] = generation_status
+    provenance["candidate_source"] = candidate_source
+    value["provenance"] = provenance
+    return GenerationProjection.model_validate(value)
 
 
 def _unique(values: list[str]) -> list[str]:

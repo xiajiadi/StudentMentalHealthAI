@@ -1,0 +1,95 @@
+Schemathesis v4.25.2
+━━━━━━━━━━━━━━━━━━━━
+
+
+ ✅  Loaded specification from
+ ..\..\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+ (in 0.20s)
+
+     Base URL:         http://127.0.0.1:8080
+     Specification:    Open API 3.1.0
+     Operations:       21 selected / 21 total
+     Configuration:    D:\Projects\StudentMentalHealthAI\14_docs\contract-
+                       hardening\schemathesis.toml
+
+
+ ✅  API capabilities:
+
+     Supports NULL byte in headers:                            ✘
+     Accepts backslash and control characters in URL paths:    ✓
+
+ ✅  Coverage (in 10.55s)
+
+     ✅ 21 passed
+
+ ✅  Fuzzing (in 1.46s)
+
+     ✅ 21 passed
+
+=================================== WARNINGS ===================================
+
+Authentication failed: 12 operations returned authentication errors
+
+401 Unauthorized (12 operations):
+  - GET /api/v1/assessments/{assessment_id}
+  - GET /api/v1/assessments/{assessment_id}/state
+  - GET /api/v1/auth/csrf
+  - GET /api/v1/auth/me
+  - GET /api/v1/reports/{report_id}
+  - GET /api/v1/reviews
+  - GET /api/v1/reviews/{review_id}
+  - POST /api/v1/assessments/{assessment_id}/complete
+  - POST /api/v1/assessments/{assessment_id}/responses
+  - POST /api/v1/auth/logout
+  - POST /api/v1/generations
+  - POST /api/v1/reports/{report_id}/reviews
+
+💡 Ensure valid authentication credentials are set via --auth or -H
+
+Schema validation mismatch: 17 operations mostly rejected generated data due to validation errors, indicating schema constraints don't match API validation
+
+  - GET /api/v1/assessments/{assessment_id}
+  - GET /api/v1/assessments/{assessment_id}/state
+  - GET /api/v1/auth/csrf
+  - GET /api/v1/auth/me
+  - GET /api/v1/reports/{report_id}
+  - GET /api/v1/reviews
+  - GET /api/v1/reviews/{review_id}
+  - POST /api/v1/assessments
+  - POST /api/v1/assessments/{assessment_id}/complete
+  - POST /api/v1/assessments/{assessment_id}/responses
+  - POST /api/v1/auth/login
+  - POST /api/v1/auth/logout
+  - POST /api/v1/generations
+  - POST /api/v1/reports/{report_id}/reviews
+  - POST /api/v1/retrievals
+  - POST /api/v1/safety/checks
+  - POST /api/v1/support/requests
+
+💡 Check your schema constraints - API validation may be stricter than documented
+
+=================================== SUMMARY ====================================
+
+API Operations:
+  Selected: 21/21
+  Tested: 21
+
+Test Phases:
+  ⏭  Examples (disabled)
+  ✅ Coverage
+  ✅ Fuzzing
+  ⏭  Stateful (disabled)
+
+Warnings:
+  ⚠️ Missing authentication: 12 operations returned only 401/403 responses
+  ⚠️ Schema validation mismatch: 17 operations mostly rejected generated data
+
+Test cases:
+  614 generated, 614 passed
+
+Reports:
+  - NDJSON: schemathesis-round1-coverage-3.ndjson
+
+Seed: not used in the deterministic mode
+
+============================= 2 warnings in 12.14s =============================

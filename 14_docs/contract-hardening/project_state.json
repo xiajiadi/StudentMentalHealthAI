@@ -2,8 +2,8 @@
   "schema_version": "contract-api-hardening.state.v1",
   "updated_at": "2026-09-06",
   "objective": "Candidate-only Contract/API Hardening Round 1",
-  "phase": "stage_0_baseline_setup",
-  "root_contract": {
+  "phase": "candidate_hardening_evidence_complete",
+    "root_contract": {
     "version": "v0.1.0",
     "status": "FROZEN",
     "promotion_authority": "not_granted"
@@ -13,8 +13,23 @@
     "reference_audit",
     "root_hash_reconstruction",
     "pre_git_secret_scan",
-    "post_ignore_secret_scan"
+    "post_ignore_secret_scan",
+    "accepted_integration_git_baseline",
+    "source_generated_candidate",
+    "response_error_security_hardening",
+    "provenance_round_trip_probe",
+    "redocly_lint",
+    "oasdiff_comparison",
+    "schemathesis_coverage_fuzzing_stateful",
+    "arazzo_respect_execution",
+    "sdk_determinism",
+    "post_hardening_secret_scans",
+    "acceptance_report_and_promotion_proposal"
   ],
-  "blockers": [],
-  "next_action": "establish accepted Software Integration R1 Git baseline"
+  "blockers": [
+    "oasdiff compatibility findings require owner-approved migration or compatibility decision",
+    "normal and crisis Respect workflows need a supported opaque-cookie handoff",
+    "live MySQL integration evidence was not available in the final run"
+  ],
+  "next_action": "owner review of compatibility findings and promotion proposal; do not promote root v0.2"
 }

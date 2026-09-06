@@ -1,0 +1,179 @@
+{
+  "schema_version": "contract-api-hardening.sdk-manifest.v1",
+  "candidate_path": "00_architecture/contracts/candidates/openapi.hardened.candidate.json",
+  "candidate_sha256": "5E3B5BB8327146D82ECC3210DCE76FE1244E53EED95764C31DDA29B953641673",
+  "generator": "@hey-api/openapi-ts",
+  "generator_version": "0.99.0",
+  "client": "@hey-api/client-fetch",
+  "output_a": "D:/Dev/caches/smhai-contract-sdk-h",
+  "output_b": "D:/Dev/caches/smhai-contract-sdk-i",
+  "file_count_a": 16,
+  "file_count_b": 16,
+  "byte_identical": true,
+  "frontend_generated_path": "10_frontend/src/api/generated",
+  "frontend_copy_source": "D:/Dev/caches/smhai-contract-sdk-h",
+  "files_a": [
+    {
+      "path": "client.gen.ts",
+      "size": 906,
+      "sha256": "09F762A0B1DF3F426BBF41510970DE6CD9252EB4DE4DE92D621BABB0E930E63E"
+    },
+    {
+      "path": "client\\client.gen.ts",
+      "size": 7759,
+      "sha256": "8A17B0BF1540258734A128F176F6CB915C849B97D8064A613DBA5EF8390E58D9"
+    },
+    {
+      "path": "client\\index.ts",
+      "size": 861,
+      "sha256": "949CC7333527C91928C32410C4A4A2DD2B90B99FE080EB8CE4505647852FBE1B"
+    },
+    {
+      "path": "client\\types.gen.ts",
+      "size": 6731,
+      "sha256": "1A182888235BC21FA2EFEB0409589DDF833317B8DD7DB4855F198DFC1C47BB4A"
+    },
+    {
+      "path": "client\\utils.gen.ts",
+      "size": 8503,
+      "sha256": "DCE96188F7DFD8E9E5543199A42A5117E23042A7DD48E1CEAFF9BB20898F8522"
+    },
+    {
+      "path": "core\\auth.gen.ts",
+      "size": 1056,
+      "sha256": "4B4ACA5BD9B2C43A112BB74617295278D84F86360ADA71A8DB57F09CD0C254F4"
+    },
+    {
+      "path": "core\\bodySerializer.gen.ts",
+      "size": 2488,
+      "sha256": "A74163DE6731F06F185948895CC4B5F8900E7D30CE76B9588717BAD99AB165A7"
+    },
+    {
+      "path": "core\\params.gen.ts",
+      "size": 4248,
+      "sha256": "097C75F6E269C6C8680641091832A69B38E8828E8EE8465318D32A177593330F"
+    },
+    {
+      "path": "core\\pathSerializer.gen.ts",
+      "size": 4295,
+      "sha256": "6E80A19627D36FD2A9E8DAEE113713B2E047D107D42EAD9B4A9AB344690B998C"
+    },
+    {
+      "path": "core\\queryKeySerializer.gen.ts",
+      "size": 2922,
+      "sha256": "ADC570C9357A08624CCE81DC503ABD8D8FF60A76D25BD4D3A4AFBE349D82D1F0"
+    },
+    {
+      "path": "core\\serverSentEvents.gen.ts",
+      "size": 7204,
+      "sha256": "DF993567ABBE3E5B477D81517FB967CF63CF40B7866957D5DC6CC03238CB1426"
+    },
+    {
+      "path": "core\\types.gen.ts",
+      "size": 3459,
+      "sha256": "0C33C5E096608FC1F859D89BC17CE428E306C7AA3C2C30ACD8AFFA5A734370AF"
+    },
+    {
+      "path": "core\\utils.gen.ts",
+      "size": 3417,
+      "sha256": "1B637C521D8136DFDBF8DFC4FCC8BB73E0C554466E4D2CA9C9086D4C712983C4"
+    },
+    {
+      "path": "index.ts",
+      "size": 4005,
+      "sha256": "DCDCFE3133074C97B5E90373FD95CAA7BD3A98B8657BB10FA9C285F4D8A6B6B7"
+    },
+    {
+      "path": "sdk.gen.ts",
+      "size": 13390,
+      "sha256": "A3ED20579BC61F69CEEF049845E49B63C5D1F9EAB6F01198BB469C6753501727"
+    },
+    {
+      "path": "types.gen.ts",
+      "size": 38596,
+      "sha256": "113D84E616BC61BED18F60B3B3DA8E69A4C4F279DC10FCA3D709AD59802A06FE"
+    }
+  ],
+  "files_b": [
+    {
+      "path": "client.gen.ts",
+      "size": 906,
+      "sha256": "09F762A0B1DF3F426BBF41510970DE6CD9252EB4DE4DE92D621BABB0E930E63E"
+    },
+    {
+      "path": "client\\client.gen.ts",
+      "size": 7759,
+      "sha256": "8A17B0BF1540258734A128F176F6CB915C849B97D8064A613DBA5EF8390E58D9"
+    },
+    {
+      "path": "client\\index.ts",
+      "size": 861,
+      "sha256": "949CC7333527C91928C32410C4A4A2DD2B90B99FE080EB8CE4505647852FBE1B"
+    },
+    {
+      "path": "client\\types.gen.ts",
+      "size": 6731,
+      "sha256": "1A182888235BC21FA2EFEB0409589DDF833317B8DD7DB4855F198DFC1C47BB4A"
+    },
+    {
+      "path": "client\\utils.gen.ts",
+      "size": 8503,
+      "sha256": "DCE96188F7DFD8E9E5543199A42A5117E23042A7DD48E1CEAFF9BB20898F8522"
+    },
+    {
+      "path": "core\\auth.gen.ts",
+      "size": 1056,
+      "sha256": "4B4ACA5BD9B2C43A112BB74617295278D84F86360ADA71A8DB57F09CD0C254F4"
+    },
+    {
+      "path": "core\\bodySerializer.gen.ts",
+      "size": 2488,
+      "sha256": "A74163DE6731F06F185948895CC4B5F8900E7D30CE76B9588717BAD99AB165A7"
+    },
+    {
+      "path": "core\\params.gen.ts",
+      "size": 4248,
+      "sha256": "097C75F6E269C6C8680641091832A69B38E8828E8EE8465318D32A177593330F"
+    },
+    {
+      "path": "core\\pathSerializer.gen.ts",
+      "size": 4295,
+      "sha256": "6E80A19627D36FD2A9E8DAEE113713B2E047D107D42EAD9B4A9AB344690B998C"
+    },
+    {
+      "path": "core\\queryKeySerializer.gen.ts",
+      "size": 2922,
+      "sha256": "ADC570C9357A08624CCE81DC503ABD8D8FF60A76D25BD4D3A4AFBE349D82D1F0"
+    },
+    {
+      "path": "core\\serverSentEvents.gen.ts",
+      "size": 7204,
+      "sha256": "DF993567ABBE3E5B477D81517FB967CF63CF40B7866957D5DC6CC03238CB1426"
+    },
+    {
+      "path": "core\\types.gen.ts",
+      "size": 3459,
+      "sha256": "0C33C5E096608FC1F859D89BC17CE428E306C7AA3C2C30ACD8AFFA5A734370AF"
+    },
+    {
+      "path": "core\\utils.gen.ts",
+      "size": 3417,
+      "sha256": "1B637C521D8136DFDBF8DFC4FCC8BB73E0C554466E4D2CA9C9086D4C712983C4"
+    },
+    {
+      "path": "index.ts",
+      "size": 4005,
+      "sha256": "DCDCFE3133074C97B5E90373FD95CAA7BD3A98B8657BB10FA9C285F4D8A6B6B7"
+    },
+    {
+      "path": "sdk.gen.ts",
+      "size": 13390,
+      "sha256": "A3ED20579BC61F69CEEF049845E49B63C5D1F9EAB6F01198BB469C6753501727"
+    },
+    {
+      "path": "types.gen.ts",
+      "size": 38596,
+      "sha256": "113D84E616BC61BED18F60B3B3DA8E69A4C4F279DC10FCA3D709AD59802A06FE"
+    }
+  ]
+}

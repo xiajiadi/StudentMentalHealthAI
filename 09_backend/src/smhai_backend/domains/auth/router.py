@@ -6,10 +6,17 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from smhai_backend.core.api_models import ApiEnvelope
+from smhai_backend.core.errors import ErrorCode, problem_responses
 from smhai_backend.core.request_context import current_request_context
 from smhai_backend.core.security import credential_identity, validate_mutation_origin
 
-from .dependencies import CsrfActor, CurrentActor
+from .dependencies import (
+    CSRF_SECURITY_OPENAPI_EXTRA,
+    PUBLIC_SECURITY_OPENAPI_EXTRA,
+    CsrfActor,
+    CurrentActor,
+)
 from .schemas import ActorDto, CsrfResponse, LoginRequest, LoginResponse, LogoutResponse
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -24,7 +31,18 @@ def envelope(request: Request, data: object) -> dict[str, object]:
     }
 
 
-@router.post("/login", summary="Create an opaque server-side session")
+@router.post(
+    "/login",
+    operation_id="authLogin",
+    response_model=ApiEnvelope[LoginResponse],
+    openapi_extra=PUBLIC_SECURITY_OPENAPI_EXTRA,
+    responses=problem_responses(
+        ErrorCode.AUTH_INVALID_CREDENTIALS,
+        ErrorCode.RATE_LIMITED,
+        ErrorCode.CSRF_FAILED,
+    ),
+    summary="Create an opaque server-side session",
+)
 async def login(request: Request, payload: LoginRequest) -> JSONResponse:
     container = request.app.state.container
     validate_mutation_origin(request, container.settings)
@@ -56,7 +74,14 @@ async def login(request: Request, payload: LoginRequest) -> JSONResponse:
     return response
 
 
-@router.post("/logout", summary="Revoke the current server-side session")
+@router.post(
+    "/logout",
+    operation_id="authLogout",
+    response_model=ApiEnvelope[LogoutResponse],
+    openapi_extra=CSRF_SECURITY_OPENAPI_EXTRA,
+    responses=problem_responses(ErrorCode.AUTH_SESSION_EXPIRED, ErrorCode.CSRF_FAILED),
+    summary="Revoke the current server-side session",
+)
 async def logout(request: Request, actor: CsrfActor) -> JSONResponse:
     container = request.app.state.container
     context = current_request_context(request)
@@ -79,7 +104,13 @@ async def logout(request: Request, actor: CsrfActor) -> JSONResponse:
     return response
 
 
-@router.get("/me", summary="Read the current actor")
+@router.get(
+    "/me",
+    operation_id="authMe",
+    response_model=ApiEnvelope[ActorDto],
+    responses=problem_responses(ErrorCode.AUTH_SESSION_EXPIRED),
+    summary="Read the current actor",
+)
 async def me(request: Request, actor: CurrentActor) -> dict[str, object]:
     return envelope(
         request,
@@ -92,7 +123,13 @@ async def me(request: Request, actor: CurrentActor) -> dict[str, object]:
     )
 
 
-@router.get("/csrf", summary="Obtain the session-bound CSRF token")
+@router.get(
+    "/csrf",
+    operation_id="authCsrf",
+    response_model=ApiEnvelope[CsrfResponse],
+    responses=problem_responses(ErrorCode.AUTH_SESSION_EXPIRED),
+    summary="Obtain the session-bound CSRF token",
+)
 async def csrf(request: Request, actor: CurrentActor) -> dict[str, object]:
     session = request.state.session
     return envelope(request, CsrfResponse(csrf_token=session.csrf_token))

@@ -1,0 +1,88 @@
+arazzo: 1.0.1
+info:
+  title: Normal synthetic support workflow
+  version: 0.1.0
+  description: Normal education-support path using only synthetic fixtures.
+sourceDescriptions:
+  - name: backendCandidate
+    type: openapi
+    url: ../../../00_architecture/contracts/candidates/openapi.hardened.candidate.json
+workflows:
+  - workflowId: normalSyntheticSupport
+    summary: Login, complete a synthetic assessment, and request support.
+    inputs:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string }
+        password: { type: string }
+    steps:
+      - stepId: login
+        operationId: authLogin
+        requestBody:
+          contentType: application/json
+          payload:
+            username: $inputs.username
+            password: $inputs.password
+        successCriteria:
+          - condition: $statusCode == 200
+        outputs:
+          csrfToken: $response.body#/data/csrf_token
+          sessionCookie: $response.header.Set-Cookie
+      - stepId: startAssessment
+        operationId: createAssessment
+        parameters:
+          - name: Cookie
+            in: header
+            value: $steps.login.outputs.sessionCookie
+          - name: X-CSRF-Token
+            in: header
+            value: $steps.login.outputs.csrfToken
+        requestBody:
+          contentType: application/json
+          payload:
+            subject_id: SUBJ_arazzo_normal
+            instrument_id: instrument.synthetic
+            instrument_version: "1.0"
+        successCriteria:
+          - condition: $statusCode == 201
+        outputs:
+          assessmentId: $response.body#/data/assessment_id
+      - stepId: completeAssessment
+        operationId: completeAssessment
+        parameters:
+          - name: assessment_id
+            in: path
+            value: $steps.startAssessment.outputs.assessmentId
+          - name: Cookie
+            in: header
+            value: $steps.login.outputs.sessionCookie
+          - name: X-CSRF-Token
+            in: header
+            value: $steps.login.outputs.csrfToken
+        requestBody:
+          contentType: application/json
+          payload: {}
+        successCriteria:
+          - condition: $statusCode == 200
+      - stepId: createSupport
+        operationId: createSupport
+        parameters:
+          - name: Cookie
+            in: header
+            value: $steps.login.outputs.sessionCookie
+          - name: X-CSRF-Token
+            in: header
+            value: $steps.login.outputs.csrfToken
+        requestBody:
+          contentType: application/json
+          payload:
+            assessment_id: $steps.startAssessment.outputs.assessmentId
+            target_role: student
+            message: Please split this synthetic task into small steps.
+            language: zh-CN
+            purpose: education_support
+        successCriteria:
+          - condition: $statusCode == 202
+        outputs:
+          reportId: $response.body#/data/report_id

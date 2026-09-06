@@ -1,0 +1,184 @@
+{
+  "files": {
+    ".\\workflows\\normal_support.arazzo.yaml": {
+      "totalRequests": 2,
+      "executedWorkflows": [
+        {
+          "type": "workflow",
+          "workflowId": "normalSyntheticSupport",
+          "startTime": 454.3055,
+          "endTime": 677.7991,
+          "totalTimeMs": 134,
+          "executedSteps": [
+            {
+              "type": "step",
+              "stepId": "login",
+              "workflowId": "normalSyntheticSupport",
+              "request": {
+                "method": "post",
+                "url": "http://127.0.0.1:8080/api/v1/auth/login",
+                "headers": {
+                  "content-type": "application/json",
+                  "accept": "application/json, application/problem+json"
+                },
+                "body": {
+                  "username": "student_a",
+                  "password": "synthetic-student-a"
+                }
+              },
+              "response": {
+                "statusCode": 200,
+                "body": {
+                  "request_id": "REQ_4fbce0d43a93e4f4fd587f13612288e5",
+                  "trace_id": "TRACE_3af7c4ea9d2e701515834a980f98c1e1",
+                  "data": {
+                    "actor": {
+                      "user_id": "USER_student_a",
+                      "username": "student_a",
+                      "role": "STUDENT",
+                      "subject_id": "SUBJ_demo_a"
+                    },
+                    "csrf_token": "<REDACTED_SYNTHETIC_TOKEN>",
+                    "synthetic_fixture_only": true
+                  }
+                },
+                "headers": {
+                  "cache-control": "no-store",
+                  "content-length": "307",
+                  "content-security-policy": "frame-ancestors 'none'",
+                  "content-type": "application/json",
+                  "date": "Sun, 06 Sep 2026 15:04:49 GMT",
+                  "server": "uvicorn",
+                  "set-cookie": "<REDACTED_SYNTHETIC_TOKEN>",
+                  "x-content-type-options": "nosniff",
+                  "x-request-id": "REQ_4fbce0d43a93e4f4fd587f13612288e5",
+                  "x-trace-id": "TRACE_3af7c4ea9d2e701515834a980f98c1e1"
+                },
+                "time": 120,
+                "size": 307
+              },
+              "checks": [
+                {
+                  "name": "success criteria check",
+                  "passed": true,
+                  "message": "Checking simple criteria: {\"condition\":\"$statusCode == 200\"}",
+                  "severity": "error",
+                  "condition": "$statusCode == 200",
+                  "status": "success"
+                },
+                {
+                  "name": "status code check",
+                  "passed": true,
+                  "message": "List of valid response codes are inferred from description \n\nExpected value to be in the list:\n  200, 400, 401, 403, 422, 429\nReceived:\n  200",
+                  "condition": "$statusCode in [200, 400, 401, 403, 422, 429]",
+                  "severity": "error",
+                  "status": "success"
+                },
+                {
+                  "name": "content-type check",
+                  "passed": true,
+                  "message": "Content type \"application/json\" is described in the schema.",
+                  "severity": "error",
+                  "status": "success"
+                },
+                {
+                  "name": "schema check",
+                  "passed": true,
+                  "message": "",
+                  "severity": "error",
+                  "status": "success"
+                }
+              ],
+              "totalTimeMs": 120,
+              "status": "success"
+            },
+            {
+              "type": "step",
+              "stepId": "startAssessment",
+              "workflowId": "normalSyntheticSupport",
+              "request": {
+                "method": "post",
+                "url": "http://127.0.0.1:8080/api/v1/assessments",
+                "headers": {
+                  "content-type": "application/json",
+                  "accept": "application/json, application/problem+json",
+                  "cookie": "<REDACTED_SYNTHETIC_TOKEN>",
+                  "x-csrf-token": "<REDACTED_SYNTHETIC_TOKEN>"
+                },
+                "body": {
+                  "subject_id": "SUBJ_arazzo_normal",
+                  "instrument_id": "instrument.synthetic",
+                  "instrument_version": "1.0"
+                }
+              },
+              "response": {
+                "statusCode": 403,
+                "headers": {
+                  "cache-control": "no-store",
+                  "content-length": "267",
+                  "content-security-policy": "frame-ancestors 'none'",
+                  "content-type": "application/problem+json",
+                  "date": "Sun, 06 Sep 2026 15:04:49 GMT",
+                  "server": "uvicorn",
+                  "x-content-type-options": "nosniff",
+                  "x-request-id": "REQ_db57b7e832785d625deeb635b4710ac5",
+                  "x-trace-id": "TRACE_7ffe882b37b38296c8607a73edd1d7a0"
+                },
+                "time": 14,
+                "size": 267
+              },
+              "checks": [
+                {
+                  "name": "success criteria check",
+                  "passed": false,
+                  "message": "Checking simple criteria: {\"condition\":\"$statusCode == 201\"}",
+                  "severity": "error",
+                  "condition": "$statusCode == 201",
+                  "status": "error"
+                },
+                {
+                  "name": "status code check",
+                  "passed": true,
+                  "message": "List of valid response codes are inferred from description \n\nExpected value to be in the list:\n  201, 400, 401, 403, 409, 422\nReceived:\n  403",
+                  "condition": "$statusCode in [201, 400, 401, 403, 409, 422]",
+                  "severity": "error",
+                  "status": "success"
+                },
+                {
+                  "name": "content-type check",
+                  "passed": true,
+                  "message": "Content type \"application/problem+json\" is described in the schema.",
+                  "severity": "error",
+                  "status": "success"
+                },
+                {
+                  "name": "schema check",
+                  "passed": true,
+                  "message": "",
+                  "severity": "error",
+                  "status": "success"
+                },
+                {
+                  "name": "unexpected error",
+                  "message": "Error in resolving runtime expression '$response.body#/data/assessment_id'. \nThis could be because the expression references a value from a previous failed step, or is trying to reference a variable that hasn't been set.",
+                  "passed": false,
+                  "severity": "error",
+                  "status": "error"
+                }
+              ],
+              "totalTimeMs": 0,
+              "status": "error"
+            }
+          ],
+          "globalTimeoutError": false,
+          "status": "error",
+          "totalRequests": 2
+        }
+      ],
+      "totalTimeMs": 332.82640000000004,
+      "globalTimeoutError": false
+    }
+  },
+  "status": "error",
+  "totalTime": 334.0922
+}
