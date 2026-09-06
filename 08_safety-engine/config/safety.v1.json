@@ -1,0 +1,57 @@
+{
+  "schema_version": "safety.v1",
+  "service_version": "0.1.0",
+  "policy_package_version": "1.0.0",
+  "policy_revision": "computed-from-working-tree",
+  "runtime": {
+    "python": ">=3.12,<3.13",
+    "bind_host": "127.0.0.1",
+    "opa_loopback_only": true,
+    "real_student_data_allowed": false
+  },
+  "component_requirements": {
+    "opa": true,
+    "presidio": true,
+    "nemo_guardrails": true,
+    "qwen3guard": true,
+    "human_review": true
+  },
+  "timeouts_seconds": {
+    "opa": 2.0,
+    "presidio": 2.0,
+    "nemo_guardrails": 4.0,
+    "qwen3guard": 30.0
+  },
+  "models": {
+    "qwen3guard": {
+      "name": "Qwen/Qwen3Guard-Gen-0.6B",
+      "revision": "fada3b2f655b89601929198343c94cd2f64d93cc",
+      "device": "cpu",
+      "stream_status": "DEFERRED_ROUND_2_GPU"
+    }
+  },
+  "deterministic_rules": {
+    "rule_manifest": "rules.v1.json",
+    "explicit_crisis_signal_metadata_key": "explicit_crisis_signal",
+    "synthetic_fixture_metadata_key": "synthetic_fixture",
+    "approved_synthetic_crisis_phrases": [
+      "SYNTHETIC_CRISIS_SIGNAL",
+      "这是合成危机测试信号"
+    ],
+    "clinical_threshold_calculation": false
+  },
+  "disclosure_matrix": {
+    "STUDENT": "FULL",
+    "TEACHER": "SUMMARY",
+    "PARENT": "SUMMARY",
+    "REVIEWER": "FULL",
+    "SYSTEM": "FULL",
+    "pii_override": "REDACTED",
+    "restricted_override": "HIDDEN"
+  },
+  "retention": {
+    "raw_sensitive_content_in_signal_metadata": false,
+    "raw_sensitive_content_in_trace": false,
+    "raw_student_data_round1": false
+  }
+}

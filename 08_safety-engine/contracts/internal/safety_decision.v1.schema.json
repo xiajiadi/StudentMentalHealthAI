@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studentmentalhealthai.local/contracts/internal/safety_decision.v1.schema.json",
+  "title": "SafetyDecision v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["decision_id", "action", "reason_codes", "source_signal_ids", "requires_human", "crisis_template_id", "review_case_id", "disclosure_policy", "policy_version", "policy_revision", "safety_service_version", "trace_id", "timestamp", "decision_type"],
+  "properties": {
+    "decision_id": {"type": "string", "minLength": 5},
+    "action": {"enum": ["PROCEED", "PROCEED_WITH_BOUNDARY", "BLOCK", "REVIEW_REQUIRED", "CRISIS_ROUTE"]},
+    "reason_codes": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "source_signal_ids": {"type": "array", "items": {"type": "string"}},
+    "requires_human": {"type": "boolean"},
+    "crisis_template_id": {"type": ["string", "null"]},
+    "review_case_id": {"type": ["string", "null"]},
+    "disclosure_policy": {"enum": ["FULL", "SUMMARY", "REDACTED", "HIDDEN"]},
+    "policy_version": {"type": "string"},
+    "policy_revision": {"type": "string"},
+    "safety_service_version": {"type": "string"},
+    "trace_id": {"type": "string"},
+    "timestamp": {"type": "string", "format": "date-time"},
+    "decision_type": {"const": "ENGINEERING_CONTROL_DECISION"}
+  }
+}
+

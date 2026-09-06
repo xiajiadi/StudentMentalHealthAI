@@ -1,0 +1,20 @@
+{
+  "schema_version": "contract-api-hardening.state.v1",
+  "updated_at": "2026-09-06",
+  "objective": "Candidate-only Contract/API Hardening Round 1",
+  "phase": "stage_0_baseline_setup",
+  "root_contract": {
+    "version": "v0.1.0",
+    "status": "FROZEN",
+    "promotion_authority": "not_granted"
+  },
+  "completed": [
+    "evidence_reconstruction",
+    "reference_audit",
+    "root_hash_reconstruction",
+    "pre_git_secret_scan",
+    "post_ignore_secret_scan"
+  ],
+  "blockers": [],
+  "next_action": "establish accepted Software Integration R1 Git baseline"
+}

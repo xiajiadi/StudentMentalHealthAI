@@ -1,0 +1,482 @@
+{
+  "schema_version": "software-integration-round1.evaluation.v1",
+  "status": "PASS",
+  "generated_at": "2026-09-05T19:07:02+00:00",
+  "scope": {
+    "round": "Software Integration Round 1",
+    "baseline": "V0.9 synthetic runnable baseline",
+    "synthetic_fixture_only": true,
+    "real_student_data_used": false,
+    "clinical_claims": false,
+    "cloud_fallback_enabled": false,
+    "frozen_contract_modified": false
+  },
+  "health": {
+    "all_ready": true,
+    "services": {
+      "backend": {
+        "http_status": 200,
+        "body": {
+          "request_id": "REQ_322a4fb71718784bf5c7e6ec237b3c19",
+          "trace_id": "TRACE_6defe7ce894269eedad3d17e1b49b77f",
+          "data": {
+            "status": "ok",
+            "contract_version": "v0.1.0",
+            "dependencies": {
+              "cat": {
+                "status": "READY",
+                "integration": "REAL_HTTP"
+              },
+              "rag": {
+                "status": "READY",
+                "integration": "REAL_HTTP"
+              },
+              "llm_runtime": {
+                "status": "READY",
+                "integration": "REAL_HTTP"
+              },
+              "safety": {
+                "status": "READY",
+                "integration": "REAL_HTTP"
+              }
+            }
+          }
+        }
+      },
+      "cat": {
+        "http_status": 200,
+        "body": {
+          "status": "READY",
+          "service": "cat",
+          "provider": "adaptivetesting",
+          "provider_version": "adaptivetesting-1.2.1",
+          "item_bank_id": "ITEMBANK_demo_cat",
+          "item_bank_version": "demo.v1",
+          "config_version": "demo.cat.v1",
+          "session_count": 24,
+          "synthetic_fixture_only": true
+        }
+      },
+      "rag": {
+        "http_status": 200,
+        "body": {
+          "status": "READY",
+          "service": "rag",
+          "retrieval_mode": "hybrid",
+          "rerank_enabled": false,
+          "corpus_version": "sha256:4553317e36b1064880df01643a3171f7937e0ec420ead380c5d6702f2396aad2",
+          "eligible_chunk_count": 14,
+          "provider": {
+            "embedding": {
+              "status": "ok",
+              "provider": "FlagEmbedding",
+              "package_version": "1.4.2",
+              "model_id": "MODEL_bge_m3",
+              "model_name": "BAAI/bge-m3",
+              "model_version": "1.4.2",
+              "model_revision": "5617a9f61b028005a4858fdac845db406aefb181",
+              "dimension": 1024,
+              "device": "cpu",
+              "precision": "fp32",
+              "cache_path": "D:\\Dev\\caches\\huggingface",
+              "loaded": true,
+              "sparse_output_requested": true,
+              "sparse_output_observed": true,
+              "sparse_nonempty_rows_observed": 1,
+              "sparse_terms_observed": 5,
+              "load_error": null
+            }
+          },
+          "error": null,
+          "synthetic_fixture_only": true
+        }
+      },
+      "llm_runtime": {
+        "http_status": 200,
+        "body": {
+          "providers": {
+            "ollama": {
+              "provider": "ollama",
+              "liveness": "pass",
+              "readiness": "pass",
+              "version": "0.21.1",
+              "endpoint": "http://127.0.0.1:11434",
+              "error_code": null,
+              "message": null
+            },
+            "llama.cpp": {
+              "provider": "llama.cpp",
+              "liveness": "fail",
+              "readiness": "fail",
+              "version": null,
+              "endpoint": "http://127.0.0.1:8080",
+              "error_code": "RUNTIME_ERROR",
+              "message": "llama.cpp returned HTTP 404."
+            },
+            "mock": {
+              "provider": "mock",
+              "liveness": "pass",
+              "readiness": "pass",
+              "version": "mock-0.1.0",
+              "endpoint": "in-process",
+              "error_code": null,
+              "message": null
+            }
+          },
+          "models": {
+            "qwen2.5-0.5b-engineering": {
+              "logical_model_id": "qwen2.5:0.5b",
+              "provider_model_id": "qwen2.5:0.5b",
+              "availability": "available",
+              "inference_readiness": "ready",
+              "loaded": false,
+              "error_code": null,
+              "message": null
+            },
+            "qwen2.5-1.5b-engineering-fallback": {
+              "logical_model_id": "qwen2.5:1.5b",
+              "provider_model_id": "qwen2.5:1.5b",
+              "availability": "available",
+              "inference_readiness": "ready",
+              "loaded": false,
+              "error_code": null,
+              "message": null
+            },
+            "qwen2.5-7b-instruct": {
+              "logical_model_id": "qwen2.5:7b",
+              "provider_model_id": "qwen2.5:7b",
+              "availability": "unavailable",
+              "inference_readiness": "unavailable",
+              "loaded": false,
+              "error_code": "MODEL_NOT_FOUND",
+              "message": "Model is not present in the provider model list."
+            }
+          }
+        }
+      },
+      "safety": {
+        "http_status": 200,
+        "body": {
+          "status": "READY",
+          "components": {
+            "opa": {
+              "component": "opa",
+              "available": true,
+              "ready": true,
+              "version": "1.20.2",
+              "detail_code": null,
+              "checked_at": "2026-09-05T19:07:02.433365Z",
+              "latency_ms": 53.11070001334883
+            },
+            "presidio": {
+              "component": "presidio",
+              "available": true,
+              "ready": true,
+              "version": "2.2.364",
+              "detail_code": null,
+              "checked_at": "2026-09-05T19:07:02.433365Z",
+              "latency_ms": null
+            },
+            "nemo_guardrails": {
+              "component": "nemo_guardrails",
+              "available": true,
+              "ready": true,
+              "version": "0.24.0",
+              "detail_code": null,
+              "checked_at": "2026-09-05T19:07:02.433365Z",
+              "latency_ms": null
+            },
+            "qwen3guard": {
+              "component": "qwen3guard",
+              "available": true,
+              "ready": true,
+              "version": "fada3b2f655b89601929198343c94cd2f64d93cc",
+              "detail_code": null,
+              "checked_at": "2026-09-05T19:07:02.436497Z",
+              "latency_ms": 2237.64140001731
+            },
+            "human_review": {
+              "component": "human_review",
+              "available": true,
+              "ready": true,
+              "version": "1.0",
+              "detail_code": null,
+              "checked_at": "2026-09-05T19:07:02.436497Z",
+              "latency_ms": null
+            }
+          }
+        }
+      }
+    }
+  },
+  "frozen_contract": {
+    "sha256": {
+      "openapi": "235C8FDB0B35F2DE870127A18D4CD8C72A1C7795AF02656B2A6C7274AB071897",
+      "assessment_schema": "56B9FC990261D0B826EEEA0E84417754798EF3A980F50A414CCB565168375A52",
+      "knowledge_schema": "5334533DB35B30840F57E8012208037A6809BFED7CE08094BDA1517C801D8BCF",
+      "generation_schema": "8365D7EA825A30D9429361107750E87E8C6446D0A6576C47F3A8ECE564DCA62C",
+      "contracts": "2AE5320C5B12EFE57DD90D7352AE192D1BEE8387B595E36DDD3919B90C486CBB",
+      "backend_inventory": "D6A2E79013CC724E609065C4E8226D1A2F8767E0012D2020A17D1D4E093B8158"
+    },
+    "expected_sha256": {
+      "openapi": "235C8FDB0B35F2DE870127A18D4CD8C72A1C7795AF02656B2A6C7274AB071897",
+      "assessment_schema": "56B9FC990261D0B826EEEA0E84417754798EF3A980F50A414CCB565168375A52",
+      "knowledge_schema": "5334533DB35B30840F57E8012208037A6809BFED7CE08094BDA1517C801D8BCF",
+      "generation_schema": "8365D7EA825A30D9429361107750E87E8C6446D0A6576C47F3A8ECE564DCA62C",
+      "contracts": "2AE5320C5B12EFE57DD90D7352AE192D1BEE8387B595E36DDD3919B90C486CBB",
+      "backend_inventory": "D6A2E79013CC724E609065C4E8226D1A2F8767E0012D2020A17D1D4E093B8158"
+    },
+    "unchanged": true
+  },
+  "candidate_openapi": {
+    "sha256": "BE71134A1691C87A5BDF7874C8B68A667897CCD94FFD00497DF7AA24A10757BB",
+    "openapi": "3.1.0",
+    "path_count": 21,
+    "operation_count": 21,
+    "root_operation_ids": [
+      "checkSafety",
+      "completeAssessment",
+      "createAssessment",
+      "createGeneration",
+      "createRetrieval",
+      "getHealth",
+      "getReport",
+      "recordAssessmentResponse",
+      "reviewReport"
+    ]
+  },
+  "oasdiff": {
+    "status": "PASS",
+    "version": "1.28.0",
+    "exit_code": 0,
+    "summary": "No breaking changes to report, but specs are different"
+  },
+  "schemathesis": {
+    "status": "PASS",
+    "version": "4.25.2",
+    "report": "15_demo/integration/reports/schemathesis-final-5/ndjson-20260906T024400Z.ndjson",
+    "selected_operations": 21,
+    "total_operations": 21,
+    "phases": {
+      "probing": "success",
+      "schema_analysis": "success",
+      "examples": "skip",
+      "coverage": "success",
+      "fuzzing": "success",
+      "stateful": "skip"
+    },
+    "generated_cases": 541,
+    "passed_cases": 541,
+    "warnings": [
+      "17 operations returned expected 401/403 authentication responses without credentials",
+      "17 operations mostly rejected generated data at business validation boundaries"
+    ]
+  },
+  "generated_client_drift": {
+    "status": "PASS",
+    "canonical_file_count": 16,
+    "fresh_generation_file_count": 16,
+    "missing": [],
+    "extra": [],
+    "changed": [],
+    "canonical_manifest_sha256": "DE5C74FD83A0B2BB2B15804FC9507AA57ADDBFF45008B2E6755ECAB1984723DC"
+  },
+  "real_primary_smoke": {
+    "phase": "primary",
+    "elapsed_seconds": 16.398,
+    "assessment_id": "ASSESS_bb98f25911ee4c1b84025d1b478f5782",
+    "assessment": {
+      "response_count": 8,
+      "administered_count": 8,
+      "provider_version": "adaptivetesting-1.2.1",
+      "item_bank_version": "demo.v1",
+      "config_version": "demo.cat.v1",
+      "completed": true
+    },
+    "support": {
+      "normal": {
+        "report_id": "REPORT_4d12c6624d004b01bf1a7804d472e9e3",
+        "status": "generated",
+        "safety_action": "PROCEED_WITH_BOUNDARY",
+        "normal_generation": true,
+        "citation_count": 5,
+        "has_content": true,
+        "review_reference": null,
+        "has_crisis_response": false,
+        "trace_id": "TRACE_3769175a35ee8f22235a8b2ee4715cbd",
+        "integration_labels": {
+          "CAT": "REAL_HTTP",
+          "RAG": "REAL_HTTP",
+          "LLM_RUNTIME": "REAL_HTTP",
+          "SAFETY": "REAL_HTTP"
+        },
+        "retrieval_id": "RETR_329da2351b0208086c54",
+        "model_id": "MODEL_local_cpu_test"
+      },
+      "normal_replay_same_report": true,
+      "crisis": {
+        "report_id": "REPORT_1429d620fd194618b277b089d4df099e",
+        "status": "needs_review",
+        "safety_action": "CRISIS_ROUTE",
+        "normal_generation": false,
+        "citation_count": 0,
+        "has_content": false,
+        "review_reference": "REVIEW_8c3f18aef9ee4e22858f2dad43fbaca9",
+        "has_crisis_response": true,
+        "trace_id": "TRACE_a832641bb4902a5fc6455774536014d3",
+        "integration_labels": {
+          "CAT": "REAL_HTTP",
+          "RAG": "REAL_HTTP",
+          "LLM_RUNTIME": "REAL_HTTP",
+          "SAFETY": "REAL_HTTP"
+        },
+        "retrieval_id": "RETR_not_run",
+        "model_id": "MODEL_backend_fake"
+      },
+      "unsafe_output": {
+        "report_id": "REPORT_dfec56565ee340b3a88481adbe34053f",
+        "status": "safety_blocked",
+        "safety_action": "BLOCK",
+        "normal_generation": false,
+        "citation_count": 0,
+        "has_content": false,
+        "review_reference": null,
+        "has_crisis_response": false,
+        "trace_id": "TRACE_14089419f818a6c76d94a89566fd8d25",
+        "integration_labels": {
+          "CAT": "REAL_HTTP",
+          "RAG": "REAL_HTTP",
+          "LLM_RUNTIME": "REAL_HTTP",
+          "SAFETY": "REAL_HTTP"
+        },
+        "retrieval_id": "RETR_not_run",
+        "model_id": "MODEL_backend_fake"
+      }
+    },
+    "reports": {
+      "normal": {
+        "report_id": "REPORT_4d12c6624d004b01bf1a7804d472e9e3",
+        "status": "generated",
+        "review_status": "not_required",
+        "review_id": null,
+        "generation_exposed": true,
+        "citation_count": 1
+      },
+      "crisis": {
+        "report_id": "REPORT_1429d620fd194618b277b089d4df099e",
+        "status": "needs_review",
+        "review_status": "pending",
+        "review_id": "REVIEW_8c3f18aef9ee4e22858f2dad43fbaca9",
+        "generation_exposed": false,
+        "citation_count": 0
+      },
+      "unsafe_output": {
+        "report_id": "REPORT_dfec56565ee340b3a88481adbe34053f",
+        "status": "safety_blocked",
+        "review_status": "not_required",
+        "review_id": null,
+        "generation_exposed": false,
+        "citation_count": 0
+      }
+    },
+    "review": {
+      "pending_count_before_action": 1,
+      "approved": {
+        "report_id": "REPORT_1429d620fd194618b277b089d4df099e",
+        "review_status": "approved",
+        "review_id": "REVIEW_8c3f18aef9ee4e22858f2dad43fbaca9"
+      }
+    },
+    "synthetic_fixture_only": true
+  },
+  "restart_resume": {
+    "status": "PASS",
+    "session_rehydrated": true,
+    "assessment_status": "completed",
+    "report_ids_reused": true,
+    "source": "15_demo/integration/scripts/real_smoke.py resume --state real_smoke_state_final.json"
+  },
+  "safety_down": {
+    "status": "PASS",
+    "transport_probe": "dependency_timeout -> HTTP 504, fail_closed=true",
+    "browser_ui": "1 passed against a separate Backend configured with Safety loopback port 8199"
+  },
+  "database": {
+    "status": "PASS",
+    "row_counts": {
+      "accounts": 4,
+      "subjects": 2,
+      "assessment_sessions": 19,
+      "assessment_responses": 147,
+      "assessment_results": 16,
+      "support_sessions": 22,
+      "support_runs": 22,
+      "support_messages": 31,
+      "safety_decisions": 18,
+      "review_cases": 6,
+      "review_events": 9,
+      "idempotency_records": 204,
+      "audit_events": 253
+    },
+    "encrypted_field_counts": {
+      "assessment_response_ciphertext": 147,
+      "assessment_result_ciphertext": 16,
+      "support_message_ciphertext": 31,
+      "safety_detail_ciphertext": 18
+    }
+  },
+  "verification": {
+    "root_contract": {
+      "status": "PASS",
+      "summary": "13 passed",
+      "command": "00_architecture\\tests\\run_contract_checks.ps1"
+    },
+    "backend": {
+      "status": "PASS",
+      "summary": "pytest 12 passed; Ruff, Pyright, compileall passed",
+      "command": "09_backend\\.venv\\Scripts\\python.exe -m pytest -q tests"
+    },
+    "database": {
+      "status": "PASS",
+      "summary": "pytest 16 passed; Ruff, Pyright, Alembic check passed",
+      "command": "11_database\\.venv\\Scripts\\python.exe -m pytest -q"
+    },
+    "cat": {
+      "status": "PASS",
+      "summary": "24 passed",
+      "command": "01_cat-engine\\.venv314\\Scripts\\python.exe -m pytest -q"
+    },
+    "rag": {
+      "status": "PASS_WITH_EXPLICIT_SKIPS",
+      "summary": "18 passed, 4 reranker tests skipped by opt-in gate",
+      "command": "05_rag-engine\\.venv\\Scripts\\python.exe -m pytest -q"
+    },
+    "llm_runtime": {
+      "status": "PASS_WITH_EXPLICIT_SKIP",
+      "summary": "23 passed, 1 Ollama integration test skipped by opt-in gate",
+      "command": "06_llm-runtime\\.venv\\Scripts\\python.exe -m pytest -q"
+    },
+    "safety": {
+      "status": "PASS_WITH_EXPLICIT_SKIP",
+      "summary": "20 passed, 1 Qwen CPU gate skipped by default; targeted Qwen gate 1 passed",
+      "command": "08_safety-engine\\.venv\\Scripts\\python.exe -m pytest -q"
+    },
+    "frontend": {
+      "status": "PASS",
+      "summary": "typecheck, build, unit 9/9, and ESLint passed",
+      "command": "10_frontend\\npm run typecheck/build/test:unit/lint"
+    },
+    "browser": {
+      "status": "PASS",
+      "summary": "real primary/crisis browser-context 2 passed; Safety-down 1 passed; Mock 3 passed, 3 real-only tests skipped by mode gate",
+      "command": "10_frontend\\npx playwright test"
+    }
+  },
+  "deferred": [
+    "RAG abstention/no-evidence policy, Qdrant production benchmark, and reranker default enable",
+    "Qwen3Guard streaming, GPU tuning, and llama.cpp execution",
+    "full Docker/Kubernetes/service mesh, production authentication, OTel collector, and Argilla",
+    "expert crisis wording, notifications, clinical validation, real-school pilot, and multilingual validation",
+    "production review reconciliation daemon, broad load benchmarking, and final visual polish"
+  ]
+}

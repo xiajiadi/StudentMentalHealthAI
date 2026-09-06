@@ -1,0 +1,38 @@
+{
+  "schema_version": "config.v1",
+  "environment": "test",
+  "components": {
+    "backend": {
+      "base_path": "/api/v1",
+      "port_env": "SMHAI_BACKEND_PORT"
+    },
+    "database": {
+      "kind": "mock",
+      "url_env": "SMHAI_DATABASE_URL"
+    },
+    "vector_store": {
+      "kind": "mock",
+      "collection": "contract_test"
+    },
+    "llm_runtime": {
+      "provider_class": "mock",
+      "model_id": "MODEL_local_primary",
+      "model_version": "mock-0.1.0"
+    },
+    "embedding": {
+      "model_id": "MODEL_embedding_demo",
+      "model_version": "0.1.0"
+    }
+  },
+  "limits": {
+    "request_timeout_seconds": 30,
+    "retrieval_top_k": 5,
+    "max_context_chars": 12000,
+    "max_output_tokens": 1024
+  },
+  "paths": {
+    "data_dir_env": "SMHAI_DATA_DIR",
+    "cache_dir_env": "SMHAI_CACHE_DIR",
+    "model_dir_env": "SMHAI_MODEL_DIR"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studentmentalhealthai.local/contracts/internal/human_review_case.v1.schema.json",
+  "title": "HumanReviewCase v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["review_case_id", "review_id", "case_id", "decision_id", "trace_id", "status", "reason_codes", "priority", "actor_role", "assigned_role", "disclosure_policy", "created_at", "updated_at", "assigned_reviewer_id", "reviewer_id", "decision", "decision_reason", "audit_event_ids", "notification_sent", "synthetic_fixture_only"],
+  "properties": {
+    "review_case_id": {"type": "string", "minLength": 8},
+    "review_id": {"type": ["string", "null"]},
+    "case_id": {"type": ["string", "null"]},
+    "decision_id": {"type": "string"},
+    "trace_id": {"type": "string"},
+    "status": {"enum": ["PENDING", "ASSIGNED", "IN_REVIEW", "APPROVED", "REJECTED", "ESCALATED", "CLOSED"]},
+    "reason_codes": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "priority": {"enum": ["LOW", "NORMAL", "HIGH", "CRITICAL"]},
+    "actor_role": {"enum": ["STUDENT", "TEACHER", "PARENT", "REVIEWER", "SYSTEM"]},
+    "assigned_role": {"enum": ["STUDENT", "TEACHER", "PARENT", "REVIEWER", "SYSTEM", null]},
+    "disclosure_policy": {"enum": ["FULL", "SUMMARY", "REDACTED", "HIDDEN"]},
+    "created_at": {"type": "string", "format": "date-time"},
+    "updated_at": {"type": "string", "format": "date-time"},
+    "assigned_reviewer_id": {"type": ["string", "null"]},
+    "reviewer_id": {"type": ["string", "null"]},
+    "decision": {"type": ["string", "null"]},
+    "decision_reason": {"type": ["string", "null"]},
+    "audit_event_ids": {"type": "array", "items": {"type": "string"}},
+    "notification_sent": {"const": false},
+    "synthetic_fixture_only": {"const": true}
+  }
+}

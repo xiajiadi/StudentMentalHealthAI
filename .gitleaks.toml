@@ -1,0 +1,29 @@
+title = "StudentMentalHealthAI secret scan policy"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Workspace dependencies, build caches, and generated runtime data are not repository inputs."
+paths = [
+  '''(^|[\\/])\.venv([\\/]|$)''',
+  '''(^|[\\/])\.venv[0-9]+([\\/]|$)''',
+  '''(^|[\\/])node_modules([\\/]|$)''',
+  '''(^|[\\/])\.pytest_cache([\\/]|$)''',
+  '''(^|[\\/])\.ruff_cache([\\/]|$)''',
+  '''(^|[\\/])\.hypothesis([\\/]|$)''',
+  '''(^|[\\/])\.schemathesis([\\/]|$)''',
+  '''(^|[\\/])dist([\\/]|$)''',
+  '''(^|[\\/])data[\\/]indexes([\\/]|$)''',
+  '''(^|[\\/])data[\\/]cache([\\/]|$)'''
+]
+
+[[allowlists]]
+description = "Known non-secret SHA-256 evidence and tokenizer labels in accepted synthetic fixtures."
+paths = [
+  '''^05_rag-engine/src/rag_engine/cli\.py$''',
+  '''^05_rag-engine/reports/RAG_RUNTIME_COMPATIBILITY\.md$''',
+  '''^05_rag-engine/reports/rag_eval_round1\.json$''',
+  '''^15_demo/integration/reports/integration_round1_evaluation\.json$''',
+  '''^15_demo/integration/scripts/write_final_evaluation\.py$'''
+]

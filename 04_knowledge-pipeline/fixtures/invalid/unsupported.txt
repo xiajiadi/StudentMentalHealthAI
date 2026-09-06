@@ -1,0 +1,1 @@
+This fixture deliberately uses an unsupported format so a batch can record a document-level parse failure.

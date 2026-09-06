@@ -1,0 +1,30 @@
+{"query_id":"GQ_001","query":"第十三条 支持性沟通","relevant_chunk_ids":["CHUNK_8f85f2c0472e21acd2fa","CHUNK_c3718c65fcf4151af391"],"query_type":"exact_keyword","role":"teacher","layer":"policy","intent":"policy"}
+{"query_id":"GQ_002","query":"第十二条 非评判性支持环境","relevant_chunk_ids":["CHUNK_b34d75824a36a99466fc","CHUNK_aded0067f15377aa83e1","CHUNK_81cfc83a8ee77e0d2fcc","CHUNK_73dea0ea11c13057ae5b"],"query_type":"exact_keyword","role":"teacher","layer":"policy","intent":"policy"}
+{"query_id":"GQ_003","query":"第十四条 诊断或治疗","relevant_chunk_ids":["CHUNK_f4b8d47cca28f33baaf9","CHUNK_10c1a30901fe3b68faa7"],"query_type":"exact_keyword","role":"teacher","layer":"policy","intent":"policy"}
+{"query_id":"GQ_004","query":"学生持续困扰时教师先做什么","relevant_chunk_ids":["CHUNK_8f85f2c0472e21acd2fa","CHUNK_c3718c65fcf4151af391"],"query_type":"semantic_paraphrase","role":"teacher","layer":"policy","intent":"policy"}
+{"query_id":"GQ_005","query":"日常教学怎样营造尊重和保密的支持环境","relevant_chunk_ids":["CHUNK_b34d75824a36a99466fc","CHUNK_73dea0ea11c13057ae5b"],"query_type":"policy","role":"teacher","layer":"policy","intent":"policy"}
+{"query_id":"GQ_006","query":"教育支持的表述边界是什么","relevant_chunk_ids":["CHUNK_f4b8d47cca28f33baaf9","CHUNK_10c1a30901fe3b68faa7"],"query_type":"policy","role":"parent","layer":"policy","intent":"policy"}
+{"query_id":"GQ_007","query":"学校提供的支持不能被说成医学诊断","relevant_chunk_ids":["CHUNK_f4b8d47cca28f33baaf9","CHUNK_10c1a30901fe3b68faa7"],"query_type":"semantic_paraphrase","role":"parent","layer":"policy","intent":"policy"}
+{"query_id":"GQ_008","query":"概念：压力","relevant_chunk_ids":["CHUNK_106197a3e73c227f2028"],"query_type":"exact_keyword","role":"student","layer":"theory","intent":"theory"}
+{"query_id":"GQ_009","query":"要求和资源之间关系带来的主观感受","relevant_chunk_ids":["CHUNK_106197a3e73c227f2028"],"query_type":"semantic_paraphrase","role":"student","layer":"theory","intent":"theory"}
+{"query_id":"GQ_010","query":"概念：应对","relevant_chunk_ids":["CHUNK_bcbe71382652340b2249"],"query_type":"exact_keyword","role":"student","layer":"theory","intent":"theory"}
+{"query_id":"GQ_011","query":"重新评估问题、寻求支持和调整行动","relevant_chunk_ids":["CHUNK_bcbe71382652340b2249"],"query_type":"exact_keyword","role":"teacher","layer":"theory","intent":"theory"}
+{"query_id":"GQ_012","query":"同伴家庭和学校支持网络","relevant_chunk_ids":["CHUNK_3d2d02ba1c8fbc506665"],"query_type":"exact_keyword","role":"parent","layer":"theory","intent":"theory"}
+{"query_id":"GQ_013","query":"哪些支持网络可能帮助学生表达困难","relevant_chunk_ids":["CHUNK_3d2d02ba1c8fbc506665"],"query_type":"semantic_paraphrase","role":"teacher","layer":"theory","intent":"theory"}
+{"query_id":"GQ_014","query":"考试压力支持建议","relevant_chunk_ids":["CHUNK_67b56abe21fe9860a26d"],"query_type":"intervention","role":"student","layer":"intervention","intent":"intervention"}
+{"query_id":"GQ_015","query":"把任务拆成可在短时间内完成的小步骤","relevant_chunk_ids":["CHUNK_67b56abe21fe9860a26d"],"query_type":"exact_keyword","role":"student","layer":"intervention","intent":"intervention"}
+{"query_id":"GQ_016","query":"用开放式问题了解学生当前最困扰的环节","relevant_chunk_ids":["CHUNK_67b56abe21fe9860a26d"],"query_type":"exact_keyword","role":"teacher","layer":"intervention","intent":"intervention"}
+{"query_id":"GQ_017","query":"approved 可进入后续审核流程","relevant_chunk_ids":["CHUNK_fe0153fc5c3472e79982","CHUNK_8a23f59abc838d8f66e0"],"query_type":"exact_keyword","role":"teacher","layer":"policy","intent":"policy"}
+{"query_id":"GQ_018","query":"按照审核流程记录支持性沟通","relevant_chunk_ids":["CHUNK_fe0153fc5c3472e79982","CHUNK_8a23f59abc838d8f66e0"],"query_type":"exact_keyword","role":"teacher","layer":"policy","intent":"policy"}
+{"query_id":"GQ_019","query":"学校应该提供尊重而不评判的环境","relevant_chunk_ids":["CHUNK_aded0067f15377aa83e1","CHUNK_81cfc83a8ee77e0d2fcc"],"query_type":"semantic_paraphrase","role":"student","layer":"policy","intent":"policy"}
+{"query_id":"GQ_020","query":"教师发现学生持续困扰","relevant_chunk_ids":["CHUNK_8f85f2c0472e21acd2fa","CHUNK_c3718c65fcf4151af391"],"query_type":"role_specific","role":"teacher","layer":"policy","intent":"policy"}
+{"query_id":"GQ_021","query":"学生今天可以完成的小步骤","relevant_chunk_ids":["CHUNK_67b56abe21fe9860a26d"],"query_type":"role_specific","role":"student","layer":"intervention","intent":"intervention"}
+{"query_id":"GQ_022","query":"家庭支持网络如何帮助表达困难","relevant_chunk_ids":["CHUNK_3d2d02ba1c8fbc506665"],"query_type":"role_specific","role":"parent","layer":"theory","intent":"theory"}
+{"query_id":"GQ_023","query":"记录支持安排的执行步骤和边界","relevant_chunk_ids":["CHUNK_f4b8d47cca28f33baaf9","CHUNK_10c1a30901fe3b68faa7"],"query_type":"role_specific","role":"teacher","layer":"policy","intent":"policy"}
+{"query_id":"GQ_024","query":"第十二条","relevant_chunk_ids":["CHUNK_b34d75824a36a99466fc","CHUNK_aded0067f15377aa83e1","CHUNK_81cfc83a8ee77e0d2fcc","CHUNK_73dea0ea11c13057ae5b"],"query_type":"exact_keyword","role":"parent","layer":"policy","intent":"policy"}
+{"query_id":"GQ_025","query":"第十四条 支持安排","relevant_chunk_ids":["CHUNK_f4b8d47cca28f33baaf9","CHUNK_10c1a30901fe3b68faa7"],"query_type":"exact_keyword","role":"teacher","layer":"policy","intent":"policy"}
+{"query_id":"GQ_026","query":"压力较大时可以怎样重新评估和调整行动","relevant_chunk_ids":["CHUNK_bcbe71382652340b2249","CHUNK_67b56abe21fe9860a26d"],"query_type":"semantic_paraphrase","role":"student","layer":"intervention","intent":"support"}
+{"query_id":"GQ_027","query":"同一件事为什么可能产生不同感受","relevant_chunk_ids":["CHUNK_106197a3e73c227f2028"],"query_type":"semantic_paraphrase","role":"student","layer":"theory","intent":"theory"}
+{"query_id":"GQ_028","query":"支持性沟通不是诊断或治疗","relevant_chunk_ids":["CHUNK_8f85f2c0472e21acd2fa","CHUNK_f4b8d47cca28f33baaf9","CHUNK_c3718c65fcf4151af391","CHUNK_10c1a30901fe3b68faa7"],"query_type":"policy","role":"teacher","layer":"policy","intent":"policy"}
+{"query_id":"GQ_029","query":"校园食堂菜单和公交线路","relevant_chunk_ids":[],"query_type":"negative","role":"teacher","layer":"policy","intent":"policy"}
+{"query_id":"GQ_030","query":"量子计算机编程接口","relevant_chunk_ids":[],"query_type":"negative","role":"student","layer":"theory","intent":"theory"}

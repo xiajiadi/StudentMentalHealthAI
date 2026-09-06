@@ -1,0 +1,11 @@
+pipeline_version: 0.1.0
+contract_release: v0.1.0
+chunk:
+  min_tokens: 16
+  target_tokens: 96
+  max_tokens: 160
+  overlap_tokens: 0
+  tokenizer: approximate_unicode_v1
+publish_only_approved: true
+allow_test_auto_approve: false
+

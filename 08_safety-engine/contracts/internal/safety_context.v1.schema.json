@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studentmentalhealthai.local/contracts/internal/safety_context.v1.schema.json",
+  "title": "SafetyContext v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["trace_id", "request_id", "actor_role", "age_group", "assessment_signals", "current_user_message", "conversation_metadata", "retrieval_metadata", "generation_metadata", "component_health"],
+  "properties": {
+    "trace_id": {"type": "string", "minLength": 1},
+    "request_id": {"type": "string", "minLength": 1},
+    "actor_role": {"enum": ["STUDENT", "TEACHER", "PARENT", "REVIEWER", "SYSTEM"]},
+    "age_group": {"enum": ["CHILD", "ADOLESCENT", "ADULT", "UNKNOWN"]},
+    "assessment_signals": {"type": "array", "items": {"type": "object"}},
+    "current_user_message": {"type": "string", "maxLength": 20000},
+    "conversation_metadata": {"type": "object"},
+    "retrieval_metadata": {"type": "object"},
+    "generation_metadata": {"type": "object"},
+    "component_health": {"type": "object", "additionalProperties": {"$ref": "#/$defs/componentHealth"}}
+  },
+  "$defs": {
+    "componentHealth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["component", "available", "ready", "version", "detail_code", "checked_at", "latency_ms"],
+      "properties": {
+        "component": {"type": "string"},
+        "available": {"type": "boolean"},
+        "ready": {"type": "boolean"},
+        "version": {"type": ["string", "null"]},
+        "detail_code": {"type": ["string", "null"]},
+        "checked_at": {"type": "string", "format": "date-time"},
+        "latency_ms": {"type": ["number", "null"], "minimum": 0}
+      }
+    }
+  }
+}

@@ -1,0 +1,59 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "student-mental-health-ai-safety-engine"
+version = "0.1.0"
+description = "Independent Safety Control Plane for StudentMentalHealthAI"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "Apache-2.0" }
+authors = [{ name = "StudentMentalHealthAI Project" }]
+dependencies = [
+  "fastapi>=0.116,<1",
+  "httpx>=0.28,<1",
+  "jsonschema>=4.23,<5",
+  "pydantic>=2.11,<3",
+  "pyyaml>=6.0,<7",
+  "uvicorn[standard]>=0.35,<1",
+]
+
+[project.optional-dependencies]
+runtime = [
+  "nemoguardrails==0.24.0",
+  "presidio-analyzer==2.2.364",
+  "presidio-anonymizer==2.2.364",
+  "torch>=2.6,<3",
+  "transformers>=4.51,<6",
+]
+test = [
+  "pytest>=8.4,<9",
+  "pytest-asyncio>=1.1,<2",
+  "pytest-cov>=6,<7",
+  "ruff>=0.12,<1",
+]
+
+[project.scripts]
+safety-engine = "safety_engine.api.app:main"
+safety-evaluate = "evaluation.harness:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/safety_engine", "evaluation"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+asyncio_mode = "auto"
+markers = [
+  "integration: uses one or more real optional safety components",
+  "e2e: starts real local processes or HTTP services",
+  "qwen: requires the pinned Qwen3Guard model and CPU inference",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

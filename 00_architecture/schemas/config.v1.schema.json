@@ -1,0 +1,189 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://student-mental-health-ai.invalid/schemas/config.v1.schema.json",
+  "x-contract-release": "v0.1.0",
+  "x-contract-status": "FROZEN",
+  "title": "Configuration v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "environment",
+    "components",
+    "limits"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "config.v1"
+    },
+    "environment": {
+      "enum": [
+        "local",
+        "test",
+        "demo",
+        "research"
+      ]
+    },
+    "components": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "backend",
+        "database",
+        "vector_store",
+        "llm_runtime",
+        "embedding"
+      ],
+      "properties": {
+        "backend": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "base_path"
+          ],
+          "properties": {
+            "base_path": {
+              "const": "/api/v1"
+            },
+            "port_env": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]*$"
+            }
+          }
+        },
+        "database": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "url_env"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "local",
+                "mock",
+                "mysql"
+              ]
+            },
+            "url_env": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]*$"
+            }
+          }
+        },
+        "vector_store": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "collection"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "local",
+                "mock",
+                "chroma"
+              ]
+            },
+            "collection": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$"
+            }
+          }
+        },
+        "llm_runtime": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "provider_class",
+            "model_id",
+            "model_version"
+          ],
+          "properties": {
+            "provider_class": {
+              "enum": [
+                "local",
+                "mock"
+              ]
+            },
+            "model_id": {
+              "type": "string",
+              "pattern": "^MODEL_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+            },
+            "model_version": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "embedding": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "model_id",
+            "model_version"
+          ],
+          "properties": {
+            "model_id": {
+              "type": "string",
+              "pattern": "^MODEL_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+            },
+            "model_version": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "request_timeout_seconds",
+        "retrieval_top_k",
+        "max_context_chars",
+        "max_output_tokens"
+      ],
+      "properties": {
+        "request_timeout_seconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "retrieval_top_k": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "max_context_chars": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_output_tokens": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "data_dir_env": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$"
+        },
+        "cache_dir_env": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$"
+        },
+        "model_dir_env": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$"
+        }
+      }
+    }
+  }
+}

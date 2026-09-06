@@ -1,0 +1,51 @@
+{
+  "schema_version": "assessment.v1",
+  "assessment_id": "ASSESS_contract_001",
+  "subject_id": "SUBJ_contract_001",
+  "instrument": {
+    "instrument_id": "instrument_demo",
+    "version": "1.0.0"
+  },
+  "population_scope": "demo_population",
+  "status": "completed",
+  "dimensions": {
+    "emotion": {
+      "theta": -0.82,
+      "se": 0.24,
+      "score": null,
+      "band": "attention",
+      "interpretation_status": "estimated",
+      "items_answered": 5
+    },
+    "learning": {
+      "theta": 0.15,
+      "se": 0.31,
+      "score": null,
+      "band": "normal",
+      "interpretation_status": "estimated",
+      "items_answered": 4
+    }
+  },
+  "risk": {
+    "level": "attention",
+    "need_human_review": false,
+    "reason_codes": [
+      "RULESET_CONTRACT_ATTENTION"
+    ],
+    "ruleset_id": "RULESET_contract_v1"
+  },
+  "response_summary": {
+    "items_answered": 9,
+    "duration_seconds": 180
+  },
+  "provenance": {
+    "source_adapter": "contract_fixture",
+    "adapter_version": "0.1.0",
+    "cat_engine_version": "0.1.0",
+    "item_bank_version": "0.1.0"
+  },
+  "timestamps": {
+    "started_at": "2026-09-04T12:00:00Z",
+    "completed_at": "2026-09-04T12:03:00Z"
+  }
+}

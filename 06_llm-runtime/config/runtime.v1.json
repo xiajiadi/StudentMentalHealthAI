@@ -1,0 +1,25 @@
+{
+  "schema_version": "llm-runtime.runtime.v1",
+  "runtime_version": "0.1.0",
+  "default_model_id": "qwen2.5-0.5b-engineering",
+  "cloud_fallback": false,
+  "ollama": {
+    "base_url": "http://127.0.0.1:11434",
+    "timeout_seconds": 60,
+    "keep_alive": "5m"
+  },
+  "llama_cpp": {
+    "base_url": "http://127.0.0.1:8080",
+    "enabled": false,
+    "server_path": null,
+    "model_path": null
+  },
+  "retry": {
+    "max_attempts": 2,
+    "backoff_seconds": [0.25, 0.5]
+  },
+  "paths": {
+    "artifact_dir": "artifacts",
+    "model_dir_env": "SMHAI_MODEL_DIR"
+  }
+}

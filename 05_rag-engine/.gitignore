@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+
+data/
+reports/rag_eval_round1.json
+reports/RAG_RETRIEVAL_BENCHMARK.md
+reports/runtime_snapshot.json
+
+# Model weights and provider caches stay outside the repository.
+*.safetensors
+*.bin
+*.pt
+*.pth

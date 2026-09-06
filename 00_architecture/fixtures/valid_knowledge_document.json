@@ -1,0 +1,28 @@
+{
+  "schema_version": "knowledge.v1",
+  "document_id": "KB_contract_001",
+  "title": "Approved contract fixture source",
+  "source": {
+    "organization": "Contract Test Authority",
+    "author": null,
+    "published_year": 2024,
+    "source_type": "government",
+    "locator": {
+      "url": null,
+      "file_name": "contract_fixture_source.md"
+    }
+  },
+  "language": "zh-CN",
+  "population_scope": [
+    "demo_population"
+  ],
+  "category": "practice_guidance",
+  "rights_status": "verified",
+  "review_status": "approved",
+  "version": "1.0.0",
+  "content_hash": "sha256:contract-document-001",
+  "ingestion": {
+    "pipeline_version": "0.1.0",
+    "ingested_at": "2026-09-04T12:00:00Z"
+  }
+}

@@ -1,0 +1,1134 @@
+{
+  "openapi": "3.1.0",
+  "x-contract-release": "v0.1.0",
+  "x-contract-status": "FROZEN",
+  "info": {
+    "title": "Student Mental Health AI API",
+    "version": "0.1.0",
+    "description": "A-phase local-first contract surface. This API supports education support workflows and does not provide diagnosis or treatment."
+  },
+  "servers": [
+    {
+      "url": "http://localhost"
+    }
+  ],
+  "tags": [
+    {
+      "name": "health"
+    },
+    {
+      "name": "assessment"
+    },
+    {
+      "name": "retrieval"
+    },
+    {
+      "name": "safety"
+    },
+    {
+      "name": "generation"
+    },
+    {
+      "name": "report"
+    }
+  ],
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/HealthSuccess"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/api/v1/assessments": {
+      "post": {
+        "tags": [
+          "assessment"
+        ],
+        "operationId": "createAssessment",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssessmentStartRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "$ref": "#/components/responses/AssessmentSuccess"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/v1/assessments/{assessment_id}/responses": {
+      "post": {
+        "tags": [
+          "assessment"
+        ],
+        "operationId": "recordAssessmentResponse",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/AssessmentId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResponseEvent"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/AssessmentStateSuccess"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          }
+        }
+      }
+    },
+    "/api/v1/assessments/{assessment_id}/complete": {
+      "post": {
+        "tags": [
+          "assessment"
+        ],
+        "operationId": "completeAssessment",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/AssessmentId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/AssessmentSuccess"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          }
+        }
+      }
+    },
+    "/api/v1/retrievals": {
+      "post": {
+        "tags": [
+          "retrieval"
+        ],
+        "operationId": "createRetrieval",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetrievalRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/RetrievalSuccess"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/api/v1/safety/checks": {
+      "post": {
+        "tags": [
+          "safety"
+        ],
+        "operationId": "checkSafety",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SafetyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/SafetySuccess"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          }
+        }
+      }
+    },
+    "/api/v1/generations": {
+      "post": {
+        "tags": [
+          "generation"
+        ],
+        "operationId": "createGeneration",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "$ref": "#/components/responses/GenerationSuccess"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/api/v1/reports/{report_id}": {
+      "get": {
+        "tags": [
+          "report"
+        ],
+        "operationId": "getReport",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ReportId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/ReportSuccess"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/reports/{report_id}/reviews": {
+      "post": {
+        "tags": [
+          "report"
+        ],
+        "operationId": "reviewReport",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ReportId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/ReviewSuccess"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "AssessmentId": {
+        "name": "assessment_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^ASSESS_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+        }
+      },
+      "ReportId": {
+        "name": "report_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^REPORT_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+        }
+      }
+    },
+    "schemas": {
+      "Assessment": {
+        "type": "object",
+        "x-contract-schema": "schemas/assessment.v1.schema.json",
+        "required": [
+          "schema_version",
+          "assessment_id",
+          "subject_id",
+          "instrument",
+          "population_scope",
+          "status",
+          "dimensions",
+          "risk",
+          "response_summary",
+          "provenance",
+          "timestamps"
+        ],
+        "properties": {
+          "schema_version": {
+            "const": "assessment.v1"
+          },
+          "assessment_id": {
+            "type": "string"
+          },
+          "subject_id": {
+            "type": "string"
+          },
+          "instrument": {
+            "type": "object"
+          },
+          "population_scope": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "dimensions": {
+            "type": "object"
+          },
+          "risk": {
+            "type": "object"
+          },
+          "response_summary": {
+            "type": "object"
+          },
+          "provenance": {
+            "type": "object"
+          },
+          "timestamps": {
+            "type": "object"
+          }
+        }
+      },
+      "AssessmentStartRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "subject_id",
+          "instrument_id",
+          "instrument_version"
+        ],
+        "properties": {
+          "subject_id": {
+            "type": "string",
+            "pattern": "^SUBJ_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "instrument_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "instrument_version": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "ResponseEvent": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "item_id",
+          "response"
+        ],
+        "properties": {
+          "item_id": {
+            "type": "string",
+            "pattern": "^ITEM_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "response": {
+            "type": [
+              "string",
+              "number",
+              "integer",
+              "boolean"
+            ]
+          }
+        }
+      },
+      "CompleteRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "RetrievalRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "assessment_id",
+          "target_role",
+          "query"
+        ],
+        "properties": {
+          "assessment_id": {
+            "type": "string",
+            "pattern": "^ASSESS_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "target_role": {
+            "type": "string",
+            "enum": [
+              "student",
+              "teacher",
+              "parent",
+              "admin"
+            ]
+          },
+          "query": {
+            "type": "string",
+            "minLength": 1
+          },
+          "top_k": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        }
+      },
+      "SafetyRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "assessment_id"
+        ],
+        "properties": {
+          "assessment_id": {
+            "type": "string",
+            "pattern": "^ASSESS_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "generation_candidate": {
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        }
+      },
+      "GenerationRequest": {
+        "type": "object",
+        "x-contract-schema": "schemas/generation.v1.schema.json",
+        "required": [
+          "schema_version",
+          "generation_id",
+          "assessment_id",
+          "subject_id",
+          "target_role",
+          "purpose",
+          "language",
+          "safety_mode",
+          "retrieval",
+          "prompt_ref",
+          "model_policy"
+        ],
+        "properties": {
+          "schema_version": {
+            "const": "generation.v1"
+          },
+          "generation_id": {
+            "type": "string"
+          },
+          "assessment_id": {
+            "type": "string"
+          },
+          "subject_id": {
+            "type": "string"
+          },
+          "target_role": {
+            "type": "string"
+          },
+          "purpose": {
+            "const": "education_support"
+          },
+          "language": {
+            "type": "string"
+          },
+          "safety_mode": {
+            "type": "string"
+          },
+          "retrieval": {
+            "type": "object"
+          },
+          "prompt_ref": {
+            "type": "object"
+          },
+          "model_policy": {
+            "type": "object"
+          }
+        }
+      },
+      "GenerationResult": {
+        "type": "object",
+        "x-contract-schema": "schemas/generation.v1.schema.json",
+        "required": [
+          "schema_version",
+          "generation_id",
+          "status",
+          "target_role",
+          "content",
+          "safety",
+          "provenance",
+          "review",
+          "created_at"
+        ],
+        "properties": {
+          "schema_version": {
+            "const": "generation.v1"
+          },
+          "generation_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "target_role": {
+            "type": "string"
+          },
+          "content": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "safety": {
+            "type": "object"
+          },
+          "provenance": {
+            "type": "object"
+          },
+          "review": {
+            "type": "object"
+          },
+          "created_at": {
+            "type": "string"
+          }
+        }
+      },
+      "KnowledgeChunk": {
+        "type": "object",
+        "x-contract-schema": "schemas/knowledge.v1.schema.json",
+        "required": [
+          "schema_version",
+          "chunk_id",
+          "document_id",
+          "text",
+          "citation"
+        ],
+        "properties": {
+          "schema_version": {
+            "const": "knowledge.v1"
+          },
+          "chunk_id": {
+            "type": "string"
+          },
+          "document_id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "citation": {
+            "type": "object"
+          }
+        }
+      },
+      "RetrievalResponse": {
+        "type": "object",
+        "required": [
+          "retrieval_id",
+          "chunks"
+        ],
+        "properties": {
+          "retrieval_id": {
+            "type": "string",
+            "pattern": "^RETR_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "chunks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeChunk"
+            }
+          }
+        }
+      },
+      "SafetyResponse": {
+        "type": "object",
+        "required": [
+          "decision",
+          "reason_codes",
+          "human_review_required"
+        ],
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "allow",
+              "warn",
+              "block",
+              "needs_review"
+            ]
+          },
+          "reason_codes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "human_review_required": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Report": {
+        "type": "object",
+        "required": [
+          "report_id",
+          "assessment_id",
+          "status",
+          "generation_ids"
+        ],
+        "properties": {
+          "report_id": {
+            "type": "string",
+            "pattern": "^REPORT_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "assessment_id": {
+            "type": "string",
+            "pattern": "^ASSESS_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "status": {
+            "type": "string"
+          },
+          "generation_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^GEN_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+            }
+          }
+        }
+      },
+      "ReviewRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "decision"
+        ],
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "approved",
+              "rejected"
+            ]
+          },
+          "reviewer_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "note_code": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "AssessmentEnvelope": {
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "data"
+        ],
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "pattern": "^REQ_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "trace_id": {
+            "type": "string",
+            "pattern": "^TRACE_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "data": {
+            "$ref": "#/components/schemas/Assessment"
+          }
+        }
+      },
+      "AssessmentStateEnvelope": {
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "data"
+        ],
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "pattern": "^REQ_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "trace_id": {
+            "type": "string",
+            "pattern": "^TRACE_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "data": {
+            "type": "object",
+            "required": [
+              "assessment_id",
+              "status"
+            ],
+            "properties": {
+              "assessment_id": {
+                "type": "string",
+                "pattern": "^ASSESS_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+              },
+              "status": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "RetrievalEnvelope": {
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "data"
+        ],
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "pattern": "^REQ_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "trace_id": {
+            "type": "string",
+            "pattern": "^TRACE_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "data": {
+            "$ref": "#/components/schemas/RetrievalResponse"
+          }
+        }
+      },
+      "SafetyEnvelope": {
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "data"
+        ],
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "pattern": "^REQ_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "trace_id": {
+            "type": "string",
+            "pattern": "^TRACE_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "data": {
+            "$ref": "#/components/schemas/SafetyResponse"
+          }
+        }
+      },
+      "GenerationEnvelope": {
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "data"
+        ],
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "pattern": "^REQ_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "trace_id": {
+            "type": "string",
+            "pattern": "^TRACE_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "data": {
+            "$ref": "#/components/schemas/GenerationResult"
+          }
+        }
+      },
+      "ReportEnvelope": {
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "data"
+        ],
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "pattern": "^REQ_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "trace_id": {
+            "type": "string",
+            "pattern": "^TRACE_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "data": {
+            "$ref": "#/components/schemas/Report"
+          }
+        }
+      },
+      "ReviewEnvelope": {
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "data"
+        ],
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "pattern": "^REQ_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "trace_id": {
+            "type": "string",
+            "pattern": "^TRACE_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "data": {
+            "type": "object",
+            "required": [
+              "report_id",
+              "review_status"
+            ],
+            "properties": {
+              "report_id": {
+                "type": "string",
+                "pattern": "^REPORT_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+              },
+              "review_status": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "approved",
+                  "rejected"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "Health": {
+        "type": "object",
+        "required": [
+          "status",
+          "contract_version"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "degraded",
+              "unavailable"
+            ]
+          },
+          "contract_version": {
+            "const": "v0.1.0"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "error"
+        ],
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "pattern": "^REQ_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "trace_id": {
+            "type": "string",
+            "pattern": "^TRACE_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message",
+              "retryable"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]+$"
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1
+              },
+              "retryable": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "HealthSuccess": {
+        "description": "Health status",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "request_id",
+                "trace_id",
+                "data"
+              ],
+              "properties": {
+                "request_id": {
+                  "type": "string",
+                  "pattern": "^REQ_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+                },
+                "trace_id": {
+                  "type": "string",
+                  "pattern": "^TRACE_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+                },
+                "data": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      },
+      "AssessmentSuccess": {
+        "description": "Assessment result",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/AssessmentEnvelope"
+            }
+          }
+        }
+      },
+      "AssessmentStateSuccess": {
+        "description": "Assessment state",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/AssessmentStateEnvelope"
+            }
+          }
+        }
+      },
+      "RetrievalSuccess": {
+        "description": "Retrieval result with citations",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/RetrievalEnvelope"
+            }
+          }
+        }
+      },
+      "SafetySuccess": {
+        "description": "Safety decision",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/SafetyEnvelope"
+            }
+          }
+        }
+      },
+      "GenerationSuccess": {
+        "description": "Generation result",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/GenerationEnvelope"
+            }
+          }
+        }
+      },
+      "ReportSuccess": {
+        "description": "Report",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ReportEnvelope"
+            }
+          }
+        }
+      },
+      "ReviewSuccess": {
+        "description": "Review status",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ReviewEnvelope"
+            }
+          }
+        }
+      },
+      "BadRequest": {
+        "description": "Invalid request",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Forbidden",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Resource not found",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "Idempotency or state conflict",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "UnprocessableEntity": {
+        "description": "Contract validation failed",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "ServiceUnavailable": {
+        "description": "Dependency unavailable",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Internal error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    }
+  }
+}

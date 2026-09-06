@@ -1,0 +1,64 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "student-mental-health-ai-backend"
+version = "0.1.0"
+description = "Application orchestration and BFF layer for StudentMentalHealthAI"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "Apache-2.0" }
+authors = [{ name = "StudentMentalHealthAI Project" }]
+dependencies = [
+  "fastapi>=0.116,<1",
+  "httpx>=0.28,<1",
+  "jsonschema>=4.23,<5",
+  "pydantic>=2.11,<3",
+  "pydantic-settings>=2.10,<3",
+  "pwdlib[argon2]>=0.2,<1",
+  "structlog>=25,<26",
+  "uvicorn[standard]>=0.35,<1",
+]
+
+[project.optional-dependencies]
+test = [
+  "openapi-spec-validator>=0.7,<1",
+  "pytest>=8.4,<9",
+  "pytest-asyncio>=1.1,<2",
+  "pytest-httpx>=0.35,<1",
+]
+quality = [
+  "pyright>=1.1,<2",
+  "ruff>=0.12,<1",
+]
+
+[project.scripts]
+smhai-backend = "smhai_backend.main:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/smhai_backend"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+asyncio_mode = "auto"
+markers = [
+  "real_integration: uses a real local module HTTP service",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pyright]
+include = ["src", "tests", "scripts"]
+exclude = ["**/__pycache__", ".venv"]
+pythonVersion = "3.12"
+typeCheckingMode = "basic"
+venvPath = "."
+venv = ".venv"
+extraPaths = ["../11_database", "../11_database/.venv/Lib/site-packages"]

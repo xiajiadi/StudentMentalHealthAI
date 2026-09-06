@@ -1,0 +1,165 @@
+{
+  "config": {
+    "argv": [
+      "D:\\Software\\Node.js\\node.exe",
+      "D:\\Projects\\StudentMentalHealthAI\\10_frontend\\node_modules\\@playwright\\test\\cli.js",
+      "test",
+      "e2e/real.integration.spec.ts"
+    ],
+    "configFile": "D:\\Projects\\StudentMentalHealthAI\\10_frontend\\playwright.config.ts",
+    "rootDir": "D:/Projects/StudentMentalHealthAI/10_frontend/e2e",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "D:/Projects/StudentMentalHealthAI/10_frontend/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "",
+        "name": "",
+        "testDir": "D:/Projects/StudentMentalHealthAI/10_frontend/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "reports/artifacts/playwright-results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.63.0",
+    "workers": 11,
+    "webServer": {
+      "command": "npm run dev -- --host 127.0.0.1 --port 4173",
+      "url": "http://127.0.0.1:4173",
+      "reuseExistingServer": true,
+      "timeout": 120000
+    }
+  },
+  "suites": [
+    {
+      "title": "real.integration.spec.ts",
+      "file": "real.integration.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "真实接口：登录 → CAT → 支持请求 → 报告",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "failed",
+                  "duration": 8671,
+                  "error": {
+                    "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/\\/student\\/result\\/REPORT_/\u001b[39m\nReceived string:  \u001b[31m\"http://127.0.0.1:4173/student/assessment\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 5000ms\u001b[22m\n\u001b[2m    14 × locator resolved to <html lang=\"zh-CN\">…</html>\u001b[22m\n\u001b[2m       - unexpected value \"http://127.0.0.1:4173/student/assessment\"\u001b[22m\n",
+                    "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/\\/student\\/result\\/REPORT_/\u001b[39m\nReceived string:  \u001b[31m\"http://127.0.0.1:4173/student/assessment\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 5000ms\u001b[22m\n\u001b[2m    14 × locator resolved to <html lang=\"zh-CN\">…</html>\u001b[22m\n\u001b[2m       - unexpected value \"http://127.0.0.1:4173/student/assessment\"\u001b[22m\n\n    at D:\\Projects\\StudentMentalHealthAI\\10_frontend\\e2e\\real.integration.spec.ts:33:22",
+                    "location": {
+                      "file": "D:\\Projects\\StudentMentalHealthAI\\10_frontend\\e2e\\real.integration.spec.ts",
+                      "column": 22,
+                      "line": 33
+                    },
+                    "snippet": "  31 |   await expect(completeButton).toBeEnabled({ timeout: 10_000 })\n  32 |   await completeButton.click()\n> 33 |   await expect(page).toHaveURL(/\\/student\\/result\\/REPORT_/)\n     |                      ^\n  34 |   await expect(page.getByRole('heading', { name: '你的支持参考' })).toBeVisible({ timeout: 120_000 })\n  35 |   await expect(page.getByRole('heading', { name: '为什么会看到这些建议' })).toBeVisible()\n  36 |   await expect(page.locator('body')).not.toContainText('theta')"
+                  },
+                  "errors": [
+                    {
+                      "location": {
+                        "file": "D:\\Projects\\StudentMentalHealthAI\\10_frontend\\e2e\\real.integration.spec.ts",
+                        "column": 22,
+                        "line": 33
+                      },
+                      "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/\\/student\\/result\\/REPORT_/\u001b[39m\nReceived string:  \u001b[31m\"http://127.0.0.1:4173/student/assessment\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 5000ms\u001b[22m\n\u001b[2m    14 × locator resolved to <html lang=\"zh-CN\">…</html>\u001b[22m\n\u001b[2m       - unexpected value \"http://127.0.0.1:4173/student/assessment\"\u001b[22m\n\n\n  31 |   await expect(completeButton).toBeEnabled({ timeout: 10_000 })\n  32 |   await completeButton.click()\n> 33 |   await expect(page).toHaveURL(/\\/student\\/result\\/REPORT_/)\n     |                      ^\n  34 |   await expect(page.getByRole('heading', { name: '你的支持参考' })).toBeVisible({ timeout: 120_000 })\n  35 |   await expect(page.getByRole('heading', { name: '为什么会看到这些建议' })).toBeVisible()\n  36 |   await expect(page.locator('body')).not.toContainText('theta')\n    at D:\\Projects\\StudentMentalHealthAI\\10_frontend\\e2e\\real.integration.spec.ts:33:22"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-05T17:54:26.106Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "D:\\Projects\\StudentMentalHealthAI\\10_frontend\\test-results\\real.integration-真实接口：登录-→-CAT-→-支持请求-→-报告\\test-failed-1.png"
+                    },
+                    {
+                      "name": "error-context",
+                      "contentType": "text/markdown",
+                      "path": "D:\\Projects\\StudentMentalHealthAI\\10_frontend\\test-results\\real.integration-真实接口：登录-→-CAT-→-支持请求-→-报告\\error-context.md"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "D:\\Projects\\StudentMentalHealthAI\\10_frontend\\test-results\\real.integration-真实接口：登录-→-CAT-→-支持请求-→-报告\\trace.zip"
+                    }
+                  ],
+                  "errorLocation": {
+                    "file": "D:\\Projects\\StudentMentalHealthAI\\10_frontend\\e2e\\real.integration.spec.ts",
+                    "column": 22,
+                    "line": 33
+                  }
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "be70d3ead05d772198d5-6b2aab8ec43926b24ee5",
+          "file": "real.integration.spec.ts",
+          "line": 14,
+          "column": 1
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-09-05T17:54:21.094Z",
+    "duration": 14438.688,
+    "expected": 0,
+    "skipped": 0,
+    "unexpected": 1,
+    "flaky": 0
+  }
+}

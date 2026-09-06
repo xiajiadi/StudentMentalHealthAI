@@ -1,0 +1,37 @@
+{
+  "schema_version": "knowledge.v1",
+  "chunk_id": "CHUNK_contract_001_001",
+  "document_id": "KB_contract_001",
+  "text": "This is an approved contract-test source excerpt.",
+  "content_type": "source_excerpt",
+  "location": {
+    "section": "contract-fixture",
+    "page_start": null,
+    "page_end": null
+  },
+  "citation": {
+    "title": "Approved contract fixture source",
+    "organization": "Contract Test Authority",
+    "locator": "section:contract-fixture"
+  },
+  "population_scope": [
+    "demo_population"
+  ],
+  "role_scope": [
+    "student",
+    "teacher",
+    "parent"
+  ],
+  "risk_scope": [
+    "normal",
+    "attention"
+  ],
+  "review_status": "approved",
+  "rights_status": "verified",
+  "content_hash": "sha256:contract-chunk-001",
+  "embedding": {
+    "model_id": "MODEL_embedding_demo",
+    "model_version": "1.0.0",
+    "status": "indexed"
+  }
+}
