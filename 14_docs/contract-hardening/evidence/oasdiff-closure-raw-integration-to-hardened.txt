@@ -1,0 +1,342 @@
+83 changes: 76 error, 7 warning, 0 info
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/assessments
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/assessments
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `403`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/assessments
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `409`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API GET /api/v1/assessments/{assessment_id}
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API GET /api/v1/assessments/{assessment_id}
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `404`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API GET /api/v1/assessments/{assessment_id}
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/assessments/{assessment_id}/complete
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/assessments/{assessment_id}/complete
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `403`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/assessments/{assessment_id}/responses
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/assessments/{assessment_id}/responses
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `403`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API GET /api/v1/assessments/{assessment_id}/state
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API GET /api/v1/assessments/{assessment_id}/state
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `404`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API GET /api/v1/assessments/{assessment_id}/state
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API GET /api/v1/auth/csrf
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API GET /api/v1/auth/csrf
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/auth/login
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/auth/login
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `403`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/auth/login
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/auth/login
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `429`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/auth/logout
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/auth/logout
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `403`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/auth/logout
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API GET /api/v1/auth/me
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API GET /api/v1/auth/me
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`
+
+error	[new-required-request-property] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/generations
+		added the new required request property `model_policy/model_id`
+
+error	[new-required-request-property] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/generations
+		added the new required request property `model_policy/provider_class`
+
+error	[new-required-request-property] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/generations
+		added the new required request property `prompt_ref/prompt_id`
+
+error	[new-required-request-property] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/generations
+		added the new required request property `prompt_ref/prompt_version`
+
+error	[new-required-request-property] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/generations
+		added the new required request property `retrieval/chunk_ids`
+
+error	[new-required-request-property] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/generations
+		added the new required request property `retrieval/retrieval_id`
+
+error	[request-property-became-enum] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/generations
+		request property `safety_mode` was restricted to a list of enum values
+
+error	[request-property-became-enum] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/generations
+		request property `target_role` was restricted to a list of enum values
+
+error	[request-property-min-length-increased] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/generations
+		the `language` request property's minLength was increased from `0` to `2`
+
+error	[request-property-pattern-added] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/generations
+		added the pattern `^ASSESS_[A-Za-z0-9][A-Za-z0-9_.-]*$` to the request property `assessment_id`
+		This is a breaking change because adding a pattern restriction to a previously unrestricted parameter will reject values that were previously accepted, breaking existing clients
+
+error	[request-property-pattern-added] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/generations
+		added the pattern `^GEN_[A-Za-z0-9][A-Za-z0-9_.-]*$` to the request property `generation_id`
+		This is a breaking change because adding a pattern restriction to a previously unrestricted parameter will reject values that were previously accepted, breaking existing clients
+
+error	[request-property-pattern-added] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/generations
+		added the pattern `^SUBJ_[A-Za-z0-9][A-Za-z0-9_.-]*$` to the request property `subject_id`
+		This is a breaking change because adding a pattern restriction to a previously unrestricted parameter will reject values that were previously accepted, breaking existing clients
+
+error	[request-property-type-changed] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/generations
+		the `purpose` request property `type` changed from `any` to `string`
+
+error	[request-property-type-changed] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/generations
+		the `schema_version` request property `type` changed from `any` to `string`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/generations
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/generations
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `403`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/generations
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `404`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/generations
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `502`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/generations
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `504`
+
+error	[response-property-type-changed] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/generations
+		the `data/content` response's property `type` changed from `object, null` to `any` for status `202`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API GET /api/v1/health
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API GET /api/v1/health
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `500`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API GET /api/v1/reports/{report_id}
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API GET /api/v1/reports/{report_id}
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/reports/{report_id}/reviews
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/reports/{report_id}/reviews
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/retrievals
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/retrievals
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `404`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/retrievals
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/retrievals
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `504`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API GET /api/v1/reviews
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API GET /api/v1/reviews
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `403`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API GET /api/v1/reviews
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API GET /api/v1/reviews/{review_id}
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API GET /api/v1/reviews/{review_id}
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `403`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API GET /api/v1/reviews/{review_id}
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `404`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API GET /api/v1/reviews/{review_id}
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/safety/checks
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/safety/checks
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `403`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/safety/checks
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `404`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/safety/checks
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `503`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/support/requests
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/support/requests
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `403`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/support/requests
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `404`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/support/requests
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `409`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/support/requests
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/support/requests
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `502`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/support/requests
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `504`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API GET /health/dependencies
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API GET /health/dependencies
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `500`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API GET /health/ready
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`
+
+error	[response-property-list-of-types-widened] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API GET /health/ready
+		response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `500`
+
+warning	[request-property-max-length-set] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/assessments
+		the `instrument_id` request property's maxLength was set to `160`
+		This is a warning because the restriction is sometimes legitimately required. Before making such a change, confirm that clients can handle the new restriction.
+
+warning	[request-property-max-length-set] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/assessments
+		the `instrument_version` request property's maxLength was set to `64`
+		This is a warning because the restriction is sometimes legitimately required. Before making such a change, confirm that clients can handle the new restriction.
+
+warning	[response-property-enum-value-added] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/generations
+		added the new `admin` enum value to the `data/target_role` response property for the response status `202`
+		Adding new enum values to a response can be unexpected for clients; use x-extensible-enum instead.
+
+warning	[response-property-enum-value-added] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/generations
+		added the new `parent` enum value to the `data/target_role` response property for the response status `202`
+		Adding new enum values to a response can be unexpected for clients; use x-extensible-enum instead.
+
+warning	[response-property-enum-value-added] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/generations
+		added the new `student` enum value to the `data/target_role` response property for the response status `202`
+		Adding new enum values to a response can be unexpected for clients; use x-extensible-enum instead.
+
+warning	[response-property-enum-value-added] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/generations
+		added the new `teacher` enum value to the `data/target_role` response property for the response status `202`
+		Adding new enum values to a response can be unexpected for clients; use x-extensible-enum instead.
+
+warning	[request-property-max-length-set] at D:\Projects\StudentMentalHealthAI\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+	in API POST /api/v1/retrievals
+		the `query` request property's maxLength was set to `20000`
+		This is a warning because the restriction is sometimes legitimately required. Before making such a change, confirm that clients can handle the new restriction.

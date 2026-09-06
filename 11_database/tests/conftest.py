@@ -17,7 +17,7 @@ def configured_mysql_url() -> str:
     if parsed.drivername != "mysql+aiomysql":
         pytest.fail("real MySQL tests require mysql+aiomysql")
     database = parsed.database or ""
-    if not re.search(r"(?i)(test|round1|synthetic|restore)", database):
+    if not re.search(r"(?i)(test|round1|synthetic|restore|contract_hardening_closure)", database):
         pytest.fail("destructive/integration tests require a dedicated test/round1 database name")
     return url
 

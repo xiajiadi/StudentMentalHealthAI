@@ -1,0 +1,166 @@
+{
+  "phase": "capture",
+  "backend_url": "http://127.0.0.1:8081",
+  "report_id": "REPORT_c57a5a07c4c04cd594fc3d0c91e7a809",
+  "api": {
+    "report_id": "REPORT_c57a5a07c4c04cd594fc3d0c91e7a809",
+    "status": "generated",
+    "safety_action": null,
+    "normal_generation": true,
+    "citation_count": 5,
+    "citations": [
+      {
+        "citation_id": "CITE_603e91867956cd43ba179bf2",
+        "chunk_id": "CHUNK_67b56abe21fe9860a26d",
+        "document_id": "KB_2f2c286d6e2e32abcb52",
+        "title": "考试压力支持建议（合成夹具）",
+        "organization": "合成学校支持项目",
+        "locator": "file:intervention.md; section:场景：考试压力; pages:unknown",
+        "rank": 1,
+        "source_version": "knowledge.v1",
+        "source_hash": "sha256:7b44760976a0d815147dfda2a45b6513158ac169343701565dbc7e34526f0be6"
+      },
+      {
+        "citation_id": "CITE_c54be5009b986ad06a174975",
+        "chunk_id": "CHUNK_bcbe71382652340b2249",
+        "document_id": "KB_7723360cccbf4f9c45ee",
+        "title": "学生压力与应对理论摘录（合成夹具）",
+        "organization": "合成心理教育研究组",
+        "locator": "file:theory.md; section:概念：应对; pages:unknown",
+        "rank": 2,
+        "source_version": "knowledge.v1",
+        "source_hash": "sha256:55066670ce36181cfe821ecf1515eca6e7994471bbbff3dc4bf05fa433d7280b"
+      },
+      {
+        "citation_id": "CITE_f96f24b2bcfcafbb32d12bd4",
+        "chunk_id": "CHUNK_106197a3e73c227f2028",
+        "document_id": "KB_7723360cccbf4f9c45ee",
+        "title": "学生压力与应对理论摘录（合成夹具）",
+        "organization": "合成心理教育研究组",
+        "locator": "file:theory.md; section:学生压力与应对理论摘录; pages:unknown",
+        "rank": 3,
+        "source_version": "knowledge.v1",
+        "source_hash": "sha256:d5503373022db42414aaa210c4e097df2804025fb1ddd7f930945a525e413b11"
+      },
+      {
+        "citation_id": "CITE_839a134394b8f862a0f935f1",
+        "chunk_id": "CHUNK_81cfc83a8ee77e0d2fcc",
+        "document_id": "KB_14520fbc0ecbe74ed44b",
+        "title": "学校支持流程（DOCX合成夹具）",
+        "organization": "合成教育资料委员会",
+        "locator": "file:docling_sample.docx; section:学校支持流程（DOCX合成夹具）; pages:unknown",
+        "rank": 4,
+        "source_version": "knowledge.v1",
+        "source_hash": "sha256:33a628cc5ef7fc2f89f84f08fc8abfa304204a0ab1cc74d9ec57dcb4b88cb51d"
+      },
+      {
+        "citation_id": "CITE_9dc414770a681681d8e2f61d",
+        "chunk_id": "CHUNK_8a23f59abc838d8f66e0",
+        "document_id": "KB_14520fbc0ecbe74ed44b",
+        "title": "学校支持流程（DOCX合成夹具）",
+        "organization": "合成教育资料委员会",
+        "locator": "file:docling_sample.docx; section:第二章 工作要求; pages:unknown",
+        "rank": 5,
+        "source_version": "knowledge.v1",
+        "source_hash": "sha256:41168e78b4bf8693592116f2818ea3bcccd22ca6838fa7d8f0be09ae6ba0f1d3"
+      }
+    ],
+    "retrieval_id": "RETR_eda418856f55e81cc1ec",
+    "model_id": "MODEL_local_cpu_test",
+    "generation_id": "GEN_67ef5a6846064c0789dcb67445ed2b84",
+    "integration_labels": null,
+    "content_present": false,
+    "session_cookie_names": [
+      "smhai_dev_session"
+    ],
+    "csrf_received": true
+  },
+  "database": {
+    "runtime": {
+      "version": "8.4.8",
+      "edition": "MySQL Community Server - GPL",
+      "time_zone": "+00:00",
+      "database": "smhai_contract_hardening_closure_20260907_005908"
+    },
+    "migration_head": "20260906_0002",
+    "run": {
+      "run_ref": "REPORT_c57a5a07c4c04cd594fc3d0c91e7a809",
+      "retrieval_ref": "RETR_eda418856f55e81cc1ec",
+      "generation_ref": "GEN_67ef5a6846064c0789dcb67445ed2b84",
+      "status": "COMPLETED",
+      "workflow_action": "PROCEED_WITH_BOUNDARY"
+    },
+    "evidence": [
+      {
+        "citation_id": "CITE_603e91867956cd43ba179bf2",
+        "chunk_id": "CHUNK_67b56abe21fe9860a26d",
+        "document_id": "KB_2f2c286d6e2e32abcb52",
+        "rank": 1,
+        "source_version": "knowledge.v1",
+        "source_hash": "sha256:7b44760976a0d815147dfda2a45b6513158ac169343701565dbc7e34526f0be6",
+        "title": "考试压力支持建议（合成夹具）",
+        "organization": "合成学校支持项目",
+        "locator": "file:intervention.md; section:场景：考试压力; pages:unknown"
+      },
+      {
+        "citation_id": "CITE_c54be5009b986ad06a174975",
+        "chunk_id": "CHUNK_bcbe71382652340b2249",
+        "document_id": "KB_7723360cccbf4f9c45ee",
+        "rank": 2,
+        "source_version": "knowledge.v1",
+        "source_hash": "sha256:55066670ce36181cfe821ecf1515eca6e7994471bbbff3dc4bf05fa433d7280b",
+        "title": "学生压力与应对理论摘录（合成夹具）",
+        "organization": "合成心理教育研究组",
+        "locator": "file:theory.md; section:概念：应对; pages:unknown"
+      },
+      {
+        "citation_id": "CITE_f96f24b2bcfcafbb32d12bd4",
+        "chunk_id": "CHUNK_106197a3e73c227f2028",
+        "document_id": "KB_7723360cccbf4f9c45ee",
+        "rank": 3,
+        "source_version": "knowledge.v1",
+        "source_hash": "sha256:d5503373022db42414aaa210c4e097df2804025fb1ddd7f930945a525e413b11",
+        "title": "学生压力与应对理论摘录（合成夹具）",
+        "organization": "合成心理教育研究组",
+        "locator": "file:theory.md; section:学生压力与应对理论摘录; pages:unknown"
+      },
+      {
+        "citation_id": "CITE_839a134394b8f862a0f935f1",
+        "chunk_id": "CHUNK_81cfc83a8ee77e0d2fcc",
+        "document_id": "KB_14520fbc0ecbe74ed44b",
+        "rank": 4,
+        "source_version": "knowledge.v1",
+        "source_hash": "sha256:33a628cc5ef7fc2f89f84f08fc8abfa304204a0ab1cc74d9ec57dcb4b88cb51d",
+        "title": "学校支持流程（DOCX合成夹具）",
+        "organization": "合成教育资料委员会",
+        "locator": "file:docling_sample.docx; section:学校支持流程（DOCX合成夹具）; pages:unknown"
+      },
+      {
+        "citation_id": "CITE_9dc414770a681681d8e2f61d",
+        "chunk_id": "CHUNK_8a23f59abc838d8f66e0",
+        "document_id": "KB_14520fbc0ecbe74ed44b",
+        "rank": 5,
+        "source_version": "knowledge.v1",
+        "source_hash": "sha256:41168e78b4bf8693592116f2818ea3bcccd22ca6838fa7d8f0be09ae6ba0f1d3",
+        "title": "学校支持流程（DOCX合成夹具）",
+        "organization": "合成教育资料委员会",
+        "locator": "file:docling_sample.docx; section:第二章 工作要求; pages:unknown"
+      }
+    ],
+    "encrypted_message_count": 2,
+    "encrypted_message_bytes": [
+      332,
+      2104
+    ],
+    "plaintext_probe_matches": 0
+  },
+  "provenance": {
+    "retrieval_count": 5,
+    "support_result_count": 5,
+    "persisted_count": 5,
+    "api_readback_count": 5,
+    "identity_match": true,
+    "silent_truncation": false,
+    "plaintext_not_persisted": true
+  }
+}

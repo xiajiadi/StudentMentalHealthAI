@@ -75,6 +75,16 @@ class ProblemFieldError(BaseModel):
     message: str = Field(min_length=1)
 
 
+class LegacyError(BaseModel):
+    """Typed compatibility projection retained for existing API consumers."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    code: str = Field(pattern=r"^[A-Z][A-Z0-9_]+$")
+    message: str = Field(min_length=1)
+    retryable: bool
+
+
 class ProblemDetails(BaseModel):
     """RFC 9457 problem projection used by every Backend error path."""
 
@@ -84,11 +94,12 @@ class ProblemDetails(BaseModel):
     title: str
     status: int
     detail: str
-    instance: str | None = None
+    instance: str | None
     code: str
-    retryable: bool = False
+    retryable: bool
     request_id: str
     trace_id: str
+    error: LegacyError
     errors: list[ProblemFieldError] | None = None
 
     def as_dict(self) -> dict[str, Any]:
@@ -142,9 +153,15 @@ def problem_response(request: Request, exc: BackendError) -> JSONResponse:
         code=exc.code,
         status=exc.status_code,
         detail=exc.detail,
+        instance=None,
         request_id=context.request_id,
         trace_id=context.trace_id,
         retryable=exc.retryable,
+        error=LegacyError(
+            code=exc.code.value.upper(),
+            message=exc.detail,
+            retryable=exc.retryable,
+        ),
         errors=exc.field_errors,
     )
     headers = {"Cache-Control": "no-store"}

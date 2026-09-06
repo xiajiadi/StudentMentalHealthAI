@@ -1,0 +1,10 @@
+{
+  "tool": "oasdiff",
+  "version": "1.28.0",
+  "command": "oasdiff.exe breaking 15_demo\\integration\\contracts\\openapi.integration.candidate.json 00_architecture\\contracts\\candidates\\openapi.hardened.candidate.json --format text --fail-on ERR --color never",
+  "base": "15_demo\\integration\\contracts\\openapi.integration.candidate.json",
+  "revision": "00_architecture\\contracts\\candidates\\openapi.hardened.candidate.json",
+  "exit_code": 1,
+  "raw_file": "14_docs\\contract-hardening\\evidence\\oasdiff-closure-raw-integration-to-hardened.txt",
+  "raw_summary": "233 changes: 226 error, 7 warning, 0 info"
+}

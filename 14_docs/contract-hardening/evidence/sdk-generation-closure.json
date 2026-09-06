@@ -1,0 +1,25 @@
+{
+  "round": "contract-api-hardening-r1-closure",
+  "candidate": "00_architecture/contracts/candidates/openapi.hardened.candidate.json",
+  "candidate_sha256": "556ED7A3F777D83C0DE828DF08B7AC51A730ACEDCBE42B9153D4B4414C5F1940",
+  "generator": "@hey-api/openapi-ts",
+  "generator_version": "0.99.0",
+  "client": "@hey-api/client-fetch",
+  "command": "10_frontend/node_modules/.bin/openapi-ts.cmd --input 00_architecture/contracts/candidates/openapi.hardened.candidate.json --output <output> --client @hey-api/client-fetch",
+  "output_a": "D:/Dev/caches/smhai-contract-closure-sdk-a-20260907",
+  "output_b": "D:/Dev/caches/smhai-contract-closure-sdk-b-20260907",
+  "canonical_output": "10_frontend/src/api/generated",
+  "file_count": {
+    "output_a": 16,
+    "output_b": 16,
+    "canonical_output": 16
+  },
+  "repeatable": true,
+  "canonical_matches_output_a": true,
+  "missing_from_canonical": [],
+  "extra_in_canonical": [],
+  "changed_between_generations": [],
+  "changed_against_canonical": [],
+  "manual_edits_to_generated_files": false,
+  "consumer_scope": "10_frontend/src/services/real-api.ts consumes generated operations; generated files were copied from output_a after the deterministic comparison."
+}

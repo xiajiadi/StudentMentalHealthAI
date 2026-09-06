@@ -4,7 +4,7 @@
       "D:\\Software\\Node.js\\node.exe",
       "D:\\Projects\\StudentMentalHealthAI\\10_frontend\\node_modules\\@playwright\\test\\cli.js",
       "test",
-      "e2e/real.integration.spec.ts"
+      "e2e/contract-hardening-closure.spec.ts"
     ],
     "configFile": "D:\\Projects\\StudentMentalHealthAI\\10_frontend\\playwright.config.ts",
     "rootDir": "D:/Projects/StudentMentalHealthAI/10_frontend/e2e",
@@ -71,19 +71,28 @@
   },
   "suites": [
     {
-      "title": "real.integration.spec.ts",
-      "file": "real.integration.spec.ts",
+      "title": "contract-hardening-closure.spec.ts",
+      "file": "contract-hardening-closure.spec.ts",
       "column": 0,
       "line": 0,
       "specs": [
         {
-          "title": "真实接口：登录 → CAT → 支持请求 → 报告",
-          "ok": false,
+          "title": "闭环登录：服务端会话保持 HttpOnly，前端不持有会话令牌",
+          "ok": true,
           "tags": [],
           "tests": [
             {
-              "timeout": 180000,
-              "annotations": [],
+              "timeout": 30000,
+              "annotations": [
+                {
+                  "type": "serial",
+                  "location": {
+                    "file": "D:\\Projects\\StudentMentalHealthAI\\10_frontend\\e2e\\contract-hardening-closure.spec.ts",
+                    "line": 0,
+                    "column": 0
+                  }
+                }
+              ],
               "expectedStatus": "passed",
               "projectId": "",
               "projectName": "",
@@ -91,63 +100,188 @@
                 {
                   "workerIndex": 0,
                   "parallelIndex": 0,
-                  "status": "failed",
-                  "duration": 8671,
-                  "error": {
-                    "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/\\/student\\/result\\/REPORT_/\u001b[39m\nReceived string:  \u001b[31m\"http://127.0.0.1:4173/student/assessment\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 5000ms\u001b[22m\n\u001b[2m    14 × locator resolved to <html lang=\"zh-CN\">…</html>\u001b[22m\n\u001b[2m       - unexpected value \"http://127.0.0.1:4173/student/assessment\"\u001b[22m\n",
-                    "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/\\/student\\/result\\/REPORT_/\u001b[39m\nReceived string:  \u001b[31m\"http://127.0.0.1:4173/student/assessment\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 5000ms\u001b[22m\n\u001b[2m    14 × locator resolved to <html lang=\"zh-CN\">…</html>\u001b[22m\n\u001b[2m       - unexpected value \"http://127.0.0.1:4173/student/assessment\"\u001b[22m\n\n    at D:\\Projects\\StudentMentalHealthAI\\10_frontend\\e2e\\real.integration.spec.ts:33:22",
-                    "location": {
-                      "file": "D:\\Projects\\StudentMentalHealthAI\\10_frontend\\e2e\\real.integration.spec.ts",
-                      "column": 22,
-                      "line": 33
-                    },
-                    "snippet": "  31 |   await expect(completeButton).toBeEnabled({ timeout: 10_000 })\n  32 |   await completeButton.click()\n> 33 |   await expect(page).toHaveURL(/\\/student\\/result\\/REPORT_/)\n     |                      ^\n  34 |   await expect(page.getByRole('heading', { name: '你的支持参考' })).toBeVisible({ timeout: 120_000 })\n  35 |   await expect(page.getByRole('heading', { name: '为什么会看到这些建议' })).toBeVisible()\n  36 |   await expect(page.locator('body')).not.toContainText('theta')"
-                  },
-                  "errors": [
-                    {
-                      "location": {
-                        "file": "D:\\Projects\\StudentMentalHealthAI\\10_frontend\\e2e\\real.integration.spec.ts",
-                        "column": 22,
-                        "line": 33
-                      },
-                      "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/\\/student\\/result\\/REPORT_/\u001b[39m\nReceived string:  \u001b[31m\"http://127.0.0.1:4173/student/assessment\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 5000ms\u001b[22m\n\u001b[2m    14 × locator resolved to <html lang=\"zh-CN\">…</html>\u001b[22m\n\u001b[2m       - unexpected value \"http://127.0.0.1:4173/student/assessment\"\u001b[22m\n\n\n  31 |   await expect(completeButton).toBeEnabled({ timeout: 10_000 })\n  32 |   await completeButton.click()\n> 33 |   await expect(page).toHaveURL(/\\/student\\/result\\/REPORT_/)\n     |                      ^\n  34 |   await expect(page.getByRole('heading', { name: '你的支持参考' })).toBeVisible({ timeout: 120_000 })\n  35 |   await expect(page.getByRole('heading', { name: '为什么会看到这些建议' })).toBeVisible()\n  36 |   await expect(page.locator('body')).not.toContainText('theta')\n    at D:\\Projects\\StudentMentalHealthAI\\10_frontend\\e2e\\real.integration.spec.ts:33:22"
-                    }
-                  ],
+                  "status": "passed",
+                  "duration": 938,
+                  "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-09-05T17:54:26.106Z",
-                  "annotations": [],
-                  "attachments": [
+                  "startTime": "2026-09-06T18:28:33.503Z",
+                  "annotations": [
                     {
-                      "name": "screenshot",
-                      "contentType": "image/png",
-                      "path": "D:\\Projects\\StudentMentalHealthAI\\10_frontend\\test-results\\real.integration-真实接口：登录-→-CAT-→-支持请求-→-报告\\test-failed-1.png"
-                    },
-                    {
-                      "name": "error-context",
-                      "contentType": "text/markdown",
-                      "path": "D:\\Projects\\StudentMentalHealthAI\\10_frontend\\test-results\\real.integration-真实接口：登录-→-CAT-→-支持请求-→-报告\\error-context.md"
-                    },
-                    {
-                      "name": "trace",
-                      "contentType": "application/zip",
-                      "path": "D:\\Projects\\StudentMentalHealthAI\\10_frontend\\test-results\\real.integration-真实接口：登录-→-CAT-→-支持请求-→-报告\\trace.zip"
+                      "type": "serial",
+                      "location": {
+                        "file": "D:\\Projects\\StudentMentalHealthAI\\10_frontend\\e2e\\contract-hardening-closure.spec.ts",
+                        "line": 0,
+                        "column": 0
+                      }
                     }
                   ],
-                  "errorLocation": {
-                    "file": "D:\\Projects\\StudentMentalHealthAI\\10_frontend\\e2e\\real.integration.spec.ts",
-                    "column": 22,
-                    "line": 33
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "9da1aa86e61713a1407b-3a2e26b4b76e98daf5ab",
+          "file": "contract-hardening-closure.spec.ts",
+          "line": 171,
+          "column": 1
+        },
+        {
+          "title": "闭环正常支持：真实接口返回执行来源、引用并在页面展示",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [
+                {
+                  "type": "serial",
+                  "location": {
+                    "file": "D:\\Projects\\StudentMentalHealthAI\\10_frontend\\e2e\\contract-hardening-closure.spec.ts",
+                    "line": 0,
+                    "column": 0
                   }
                 }
               ],
-              "status": "unexpected"
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 18885,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-06T18:28:34.545Z",
+                  "annotations": [
+                    {
+                      "type": "serial",
+                      "location": {
+                        "file": "D:\\Projects\\StudentMentalHealthAI\\10_frontend\\e2e\\contract-hardening-closure.spec.ts",
+                        "line": 0,
+                        "column": 0
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
             }
           ],
-          "id": "be70d3ead05d772198d5-6b2aab8ec43926b24ee5",
-          "file": "real.integration.spec.ts",
-          "line": 14,
+          "id": "9da1aa86e61713a1407b-8495d289a4a441afb5b4",
+          "file": "contract-hardening-closure.spec.ts",
+          "line": 179,
+          "column": 1
+        },
+        {
+          "title": "闭环危机路由：安全决策后不执行普通检索和生成",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [
+                {
+                  "type": "serial",
+                  "location": {
+                    "file": "D:\\Projects\\StudentMentalHealthAI\\10_frontend\\e2e\\contract-hardening-closure.spec.ts",
+                    "line": 0,
+                    "column": 0
+                  }
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 2028,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-06T18:28:53.438Z",
+                  "annotations": [
+                    {
+                      "type": "serial",
+                      "location": {
+                        "file": "D:\\Projects\\StudentMentalHealthAI\\10_frontend\\e2e\\contract-hardening-closure.spec.ts",
+                        "line": 0,
+                        "column": 0
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "9da1aa86e61713a1407b-457e6d515e31851708d6",
+          "file": "contract-hardening-closure.spec.ts",
+          "line": 220,
+          "column": 1
+        },
+        {
+          "title": "闭环复核：复核员读取危机记录并完成通过动作",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [
+                {
+                  "type": "serial",
+                  "location": {
+                    "file": "D:\\Projects\\StudentMentalHealthAI\\10_frontend\\e2e\\contract-hardening-closure.spec.ts",
+                    "line": 0,
+                    "column": 0
+                  }
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 3902,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-06T18:28:55.474Z",
+                  "annotations": [
+                    {
+                      "type": "serial",
+                      "location": {
+                        "file": "D:\\Projects\\StudentMentalHealthAI\\10_frontend\\e2e\\contract-hardening-closure.spec.ts",
+                        "line": 0,
+                        "column": 0
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "9da1aa86e61713a1407b-016e403e0aacbef77115",
+          "file": "contract-hardening-closure.spec.ts",
+          "line": 247,
           "column": 1
         }
       ]
@@ -155,11 +289,11 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-09-05T17:54:21.094Z",
-    "duration": 14438.688,
-    "expected": 0,
+    "startTime": "2026-09-06T18:28:33.145Z",
+    "duration": 26436.274,
+    "expected": 4,
     "skipped": 0,
-    "unexpected": 1,
+    "unexpected": 0,
     "flaky": 0
   }
 }

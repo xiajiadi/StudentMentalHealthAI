@@ -1,0 +1,29 @@
+{
+  "round": "contract-api-hardening-r1-closure",
+  "tool": "gitleaks",
+  "version": "8.30.1",
+  "redacted": true,
+  "working_tree": {
+    "command": "gitleaks detect --source . --redact --report-format json --report-path <external> --no-banner",
+    "exit_code": 0,
+    "findings": 0,
+    "commits_scanned": 5
+  },
+  "history": {
+    "command": "gitleaks git --redact --report-format json --report-path <external> --no-banner",
+    "exit_code": 0,
+    "findings": 0,
+    "commits_scanned": 5
+  },
+  "staged": {
+    "command": "gitleaks protect --staged --redact --report-format json --report-path <external> --no-banner",
+    "exit_code": 0,
+    "findings": 0
+  },
+  "external_reports": [
+    "D:/Dev/studentmentalhealthai/contract-hardening-closure-20260907_005908/gitleaks-closure-working-tree-final.json",
+    "D:/Dev/studentmentalhealthai/contract-hardening-closure-20260907_005908/gitleaks-closure-history-final.json",
+    "D:/Dev/studentmentalhealthai/contract-hardening-closure-20260907_005908/gitleaks-closure-staged-final.json"
+  ],
+  "confirmed_secrets": 0
+}
