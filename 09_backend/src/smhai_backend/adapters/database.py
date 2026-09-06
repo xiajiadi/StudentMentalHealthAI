@@ -718,7 +718,13 @@ class MySqlBackendAdapter:
                 .where(m.SafetyDecision.support_run_id == run.id)
                 .order_by(m.SafetyDecision.created_at.desc())
             )
-            generation = result.generation if isinstance(result.generation, dict) else {}
+            generation = (
+                result.generation.model_dump(mode="json")
+                if hasattr(result.generation, "model_dump")
+                else result.generation
+                if isinstance(result.generation, dict)
+                else {}
+            )
             detail = {
                 "generation": generation,
                 "reason_codes": list(generation.get("safety", {}).get("reason_codes", [])),
@@ -780,10 +786,15 @@ class MySqlBackendAdapter:
                         support_run_id=run.id,
                         citation_id=citation_id,
                         source_id=source_id,
-                        source_version="knowledge.v1",
-                        source_hash=None,
-                        locator=str(citation.locator),
-                        rank_order=rank,
+                        chunk_id=getattr(citation, "chunk_id", None),
+                        document_id=getattr(citation, "document_id", None),
+                        source_version=getattr(citation, "source_version", None)
+                        or "knowledge.v1",
+                        source_hash=getattr(citation, "source_hash", None),
+                        citation_title=getattr(citation, "title", None),
+                        citation_organization=getattr(citation, "organization", None),
+                        locator=getattr(citation, "locator", None),
+                        rank_order=getattr(citation, "rank", None) or rank,
                     )
             if result.review_reference:
                 existing_case = await uow.session.scalar(
@@ -841,6 +852,10 @@ class MySqlBackendAdapter:
 
     @staticmethod
     def _citation_ids(citation) -> tuple[str, str]:
+        explicit_citation_id = getattr(citation, "citation_id", None)
+        explicit_source_id = getattr(citation, "document_id", None)
+        if explicit_citation_id:
+            return str(explicit_citation_id), str(explicit_source_id or explicit_citation_id)
         value = f"{citation.title}|{citation.organization}|{citation.locator}"
         digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:24]
         return f"CITE_{digest}", f"SRC_{digest}"
@@ -892,6 +907,29 @@ class MySqlBackendAdapter:
                 if isinstance(detail, dict) and isinstance(detail.get("generation"), dict):
                     generation = detail["generation"]
             generation = generation or self._fallback_blocked_generation(run, assessment, decision)
+            evidence_rows = list(
+                (
+                    await uow.session.scalars(
+                        self._select(m.SupportEvidence)
+                        .where(m.SupportEvidence.support_run_id == run.id)
+                        .order_by(m.SupportEvidence.rank_order, m.SupportEvidence.id)
+                    )
+                ).all()
+            )
+            citations = [
+                {
+                    "citation_id": row.citation_id,
+                    "chunk_id": row.chunk_id,
+                    "document_id": row.document_id,
+                    "title": row.citation_title,
+                    "organization": row.citation_organization,
+                    "locator": row.locator,
+                    "rank": row.rank_order,
+                    "source_version": row.source_version,
+                    "source_hash": row.source_hash,
+                }
+                for row in evidence_rows
+            ]
             review_status = "not_required"
             review_id = case.review_ref if case else None
             if case is not None:
@@ -921,6 +959,15 @@ class MySqlBackendAdapter:
                 review_status=review_status,
                 safety_action=str(
                     run.workflow_action or (decision.action if decision else "BLOCK")
+                ),
+                citations=citations,
+                candidate_source=str(
+                    generation.get("provenance", {}).get("candidate_source")
+                    or (
+                        "NOT_RUN"
+                        if generation.get("provenance", {}).get("model_id") is None
+                        else "MODEL_EXECUTED"
+                    )
                 ),
             )
 
@@ -978,9 +1025,9 @@ class MySqlBackendAdapter:
                 "retrieval_id": run.retrieval_ref or "RETR_not_run",
                 "prompt_id": "PROMPT_persisted",
                 "prompt_version": "1.0",
-                "model_id": "MODEL_not_used",
-                "model_version": "not_used",
-                "runtime_version": "not_used",
+                "model_id": None,
+                "model_version": None,
+                "runtime_version": None,
             },
             "review": {
                 "status": "pending"

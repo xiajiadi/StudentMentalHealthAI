@@ -1,0 +1,394 @@
+[
+  {
+    "method": "POST",
+    "path": "/api/v1/assessments",
+    "operation_id": "createAssessment",
+    "success_statuses": [
+      "201"
+    ],
+    "success_schemas": [
+      "#/components/schemas/ApiEnvelope_AssessmentDto_"
+    ],
+    "error_statuses": [
+      "422",
+      "401",
+      "403",
+      "409",
+      "400"
+    ],
+    "security": "session+csrf-or-generated"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/assessments/{assessment_id}",
+    "operation_id": "getAssessment",
+    "success_statuses": [
+      "200"
+    ],
+    "success_schemas": [
+      "#/components/schemas/ApiEnvelope_AssessmentDto_"
+    ],
+    "error_statuses": [
+      "422",
+      "401",
+      "404",
+      "400"
+    ],
+    "security": "session+csrf-or-generated"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/assessments/{assessment_id}/complete",
+    "operation_id": "completeAssessment",
+    "success_statuses": [
+      "200"
+    ],
+    "success_schemas": [
+      "#/components/schemas/ApiEnvelope_AssessmentDto_"
+    ],
+    "error_statuses": [
+      "422",
+      "401",
+      "403",
+      "404",
+      "409",
+      "400"
+    ],
+    "security": "session+csrf-or-generated"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/assessments/{assessment_id}/responses",
+    "operation_id": "recordAssessmentResponse",
+    "success_statuses": [
+      "200"
+    ],
+    "success_schemas": [
+      "#/components/schemas/ApiEnvelope_AssessmentStateDto_"
+    ],
+    "error_statuses": [
+      "422",
+      "401",
+      "403",
+      "404",
+      "409",
+      "400"
+    ],
+    "security": "session+csrf-or-generated"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/assessments/{assessment_id}/state",
+    "operation_id": "getAssessmentState",
+    "success_statuses": [
+      "200"
+    ],
+    "success_schemas": [
+      "#/components/schemas/ApiEnvelope_AssessmentStateDto_"
+    ],
+    "error_statuses": [
+      "422",
+      "401",
+      "404",
+      "400"
+    ],
+    "security": "session+csrf-or-generated"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/auth/csrf",
+    "operation_id": "authCsrf",
+    "success_statuses": [
+      "200"
+    ],
+    "success_schemas": [
+      "#/components/schemas/ApiEnvelope_CsrfResponse_"
+    ],
+    "error_statuses": [
+      "422",
+      "401",
+      "400"
+    ],
+    "security": "session+csrf-or-generated"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/auth/login",
+    "operation_id": "authLogin",
+    "success_statuses": [
+      "200"
+    ],
+    "success_schemas": [
+      "#/components/schemas/ApiEnvelope_LoginResponse_"
+    ],
+    "error_statuses": [
+      "422",
+      "401",
+      "429",
+      "403",
+      "400"
+    ],
+    "security": "public"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/auth/logout",
+    "operation_id": "authLogout",
+    "success_statuses": [
+      "200"
+    ],
+    "success_schemas": [
+      "#/components/schemas/ApiEnvelope_LogoutResponse_"
+    ],
+    "error_statuses": [
+      "422",
+      "401",
+      "403",
+      "400"
+    ],
+    "security": "session+csrf-or-generated"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/auth/me",
+    "operation_id": "authMe",
+    "success_statuses": [
+      "200"
+    ],
+    "success_schemas": [
+      "#/components/schemas/ApiEnvelope_ActorDto_"
+    ],
+    "error_statuses": [
+      "422",
+      "401",
+      "400"
+    ],
+    "security": "session+csrf-or-generated"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/generations",
+    "operation_id": "createGeneration",
+    "success_statuses": [
+      "202"
+    ],
+    "success_schemas": [
+      "#/components/schemas/ApiEnvelope_GenerationProjection_"
+    ],
+    "error_statuses": [
+      "422",
+      "401",
+      "403",
+      "404",
+      "409",
+      "504",
+      "502",
+      "400"
+    ],
+    "security": "session+csrf-or-generated"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/health",
+    "operation_id": "getHealth",
+    "success_statuses": [
+      "200"
+    ],
+    "success_schemas": [
+      "#/components/schemas/ApiEnvelope_ApiHealthDto_"
+    ],
+    "error_statuses": [
+      "422",
+      "500",
+      "503",
+      "400"
+    ],
+    "security": "public"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/reports/{report_id}",
+    "operation_id": "getReport",
+    "success_statuses": [
+      "200"
+    ],
+    "success_schemas": [
+      "#/components/schemas/ApiEnvelope_ReportDto_"
+    ],
+    "error_statuses": [
+      "422",
+      "401",
+      "404",
+      "400"
+    ],
+    "security": "session+csrf-or-generated"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/reports/{report_id}/reviews",
+    "operation_id": "reviewReport",
+    "success_statuses": [
+      "200"
+    ],
+    "success_schemas": [
+      "#/components/schemas/ApiEnvelope_ReviewActionResponseDto_"
+    ],
+    "error_statuses": [
+      "422",
+      "401",
+      "403",
+      "404",
+      "409",
+      "400"
+    ],
+    "security": "session+csrf-or-generated"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/retrievals",
+    "operation_id": "createRetrieval",
+    "success_statuses": [
+      "200"
+    ],
+    "success_schemas": [
+      "#/components/schemas/ApiEnvelope_RetrievalResponseDto_"
+    ],
+    "error_statuses": [
+      "422",
+      "401",
+      "403",
+      "404",
+      "503",
+      "504",
+      "400"
+    ],
+    "security": "session+csrf-or-generated"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/reviews",
+    "operation_id": "listReviews",
+    "success_statuses": [
+      "200"
+    ],
+    "success_schemas": [
+      "#/components/schemas/ApiEnvelope_list_ReviewProjectionDto__"
+    ],
+    "error_statuses": [
+      "422",
+      "401",
+      "403",
+      "400"
+    ],
+    "security": "session+csrf-or-generated"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/reviews/{review_id}",
+    "operation_id": "getReview",
+    "success_statuses": [
+      "200"
+    ],
+    "success_schemas": [
+      "#/components/schemas/ApiEnvelope_ReviewProjectionDto_"
+    ],
+    "error_statuses": [
+      "422",
+      "401",
+      "403",
+      "404",
+      "400"
+    ],
+    "security": "session+csrf-or-generated"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/safety/checks",
+    "operation_id": "checkSafety",
+    "success_statuses": [
+      "200"
+    ],
+    "success_schemas": [
+      "#/components/schemas/ApiEnvelope_SafetyResponseDto_"
+    ],
+    "error_statuses": [
+      "422",
+      "401",
+      "403",
+      "404",
+      "503",
+      "400"
+    ],
+    "security": "session+csrf-or-generated"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/support/requests",
+    "operation_id": "createSupport",
+    "success_statuses": [
+      "202"
+    ],
+    "success_schemas": [
+      "#/components/schemas/ApiEnvelope_SupportResult_"
+    ],
+    "error_statuses": [
+      "422",
+      "401",
+      "403",
+      "404",
+      "409",
+      "504",
+      "502",
+      "400"
+    ],
+    "security": "session+csrf-or-generated"
+  },
+  {
+    "method": "GET",
+    "path": "/health/dependencies",
+    "operation_id": "healthDependencies",
+    "success_statuses": [
+      "200"
+    ],
+    "success_schemas": [
+      "#/components/schemas/ApiEnvelope_dict_str__DependencyStatusDto__"
+    ],
+    "error_statuses": [
+      "422",
+      "500",
+      "503",
+      "400"
+    ],
+    "security": "public"
+  },
+  {
+    "method": "GET",
+    "path": "/health/live",
+    "operation_id": "healthLive",
+    "success_statuses": [
+      "200"
+    ],
+    "success_schemas": [
+      "#/components/schemas/HealthLiveDto"
+    ],
+    "error_statuses": [],
+    "security": "public"
+  },
+  {
+    "method": "GET",
+    "path": "/health/ready",
+    "operation_id": "healthReady",
+    "success_statuses": [
+      "200"
+    ],
+    "success_schemas": [
+      "#/components/schemas/ApiEnvelope_HealthReadyDto_"
+    ],
+    "error_statuses": [
+      "422",
+      "500",
+      "400"
+    ],
+    "security": "public"
+  }
+]

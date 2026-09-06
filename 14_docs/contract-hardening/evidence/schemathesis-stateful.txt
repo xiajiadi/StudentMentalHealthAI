@@ -1,0 +1,49 @@
+Schemathesis v4.25.2
+━━━━━━━━━━━━━━━━━━━━
+
+
+ ✅  Loaded specification from
+ ..\..\00_architecture\contracts\candidates\openapi.hardened.candidate.json
+ (in 0.22s)
+
+     Base URL:         http://127.0.0.1:8080
+     Specification:    Open API 3.1.0
+     Operations:       21 selected / 21 total
+     Configuration:    D:\Projects\StudentMentalHealthAI\14_docs\contract-
+                       hardening\schemathesis.toml
+
+
+ ✅  API capabilities:
+
+     Supports NULL byte in headers:                            ✘
+     Accepts backslash and control characters in URL paths:    ✓
+
+ ✅  Stateful (in 0.66s)
+
+     Scenarios:    1
+     API Links:    0 covered / 26 selected / 26 total (26 inferred)
+
+     ✅ 1 passed
+
+=================================== SUMMARY ====================================
+
+API Operations:
+  Selected: 21/21
+  Tested: 2
+  Skipped: 19
+
+Test Phases:
+  ⏭  Examples (disabled)
+  ⏭  Coverage (disabled)
+  ⏭  Fuzzing (disabled)
+  ✅ Stateful
+
+Test cases:
+  6 generated, 6 passed
+
+Reports:
+  - NDJSON: schemathesis-round1-stateful.ndjson
+
+Seed: not used in the deterministic mode
+
+=========================== No issues found in 0.72s ===========================

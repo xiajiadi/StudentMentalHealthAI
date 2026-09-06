@@ -6,6 +6,13 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from smhai_backend.core.api_models import (
+    ApiEnvelope,
+    RetrievalResponseDto,
+    ReviewActionResponseDto,
+    SafetyResponseDto,
+)
+from smhai_backend.core.errors import ErrorCode, problem_responses
 from smhai_backend.core.idempotency import (
     fingerprint,
     prior_result_async,
@@ -13,10 +20,15 @@ from smhai_backend.core.idempotency import (
     request_key,
 )
 from smhai_backend.core.request_context import current_request_context
-from smhai_backend.domains.auth.dependencies import CsrfActor, CurrentActor
+from smhai_backend.domains.auth.dependencies import (
+    CSRF_SECURITY_OPENAPI_EXTRA,
+    CsrfActor,
+    CurrentActor,
+)
 from smhai_backend.domains.models import BackendRole
 
 from .schemas import (
+    GenerationProjection,
     GenerationRequest,
     ReportDto,
     RetrievalRequest,
@@ -24,6 +36,7 @@ from .schemas import (
     ReviewRequest,
     SafetyRequest,
     SupportRequest,
+    SupportResult,
 )
 
 router = APIRouter(tags=["support", "retrieval", "generation", "report"])
@@ -53,7 +66,20 @@ def envelope(request: Request, data: object) -> dict[str, object]:
     }
 
 
-@router.post("/retrievals", summary="Retrieve contract-shaped citations")
+@router.post(
+    "/retrievals",
+    operation_id="createRetrieval",
+    response_model=ApiEnvelope[RetrievalResponseDto],
+    openapi_extra=CSRF_SECURITY_OPENAPI_EXTRA,
+    responses=problem_responses(
+        ErrorCode.AUTH_SESSION_EXPIRED,
+        ErrorCode.CSRF_FAILED,
+        ErrorCode.RESOURCE_NOT_FOUND,
+        ErrorCode.DEPENDENCY_UNAVAILABLE,
+        ErrorCode.DEPENDENCY_TIMEOUT,
+    ),
+    summary="Retrieve contract-shaped citations",
+)
 async def create_retrieval(
     request: Request, payload: RetrievalRequest, actor: CsrfActor
 ) -> JSONResponse:
@@ -68,7 +94,19 @@ async def create_retrieval(
     return JSONResponse(envelope(request, data))
 
 
-@router.post("/safety/checks", summary="Run a Safety decision")
+@router.post(
+    "/safety/checks",
+    operation_id="checkSafety",
+    response_model=ApiEnvelope[SafetyResponseDto],
+    openapi_extra=CSRF_SECURITY_OPENAPI_EXTRA,
+    responses=problem_responses(
+        ErrorCode.AUTH_SESSION_EXPIRED,
+        ErrorCode.CSRF_FAILED,
+        ErrorCode.RESOURCE_NOT_FOUND,
+        ErrorCode.DEPENDENCY_UNAVAILABLE,
+    ),
+    summary="Run a Safety decision",
+)
 async def check_safety(request: Request, payload: SafetyRequest, actor: CsrfActor) -> JSONResponse:
     candidate = payload.generation_candidate
     candidate_text = None
@@ -98,7 +136,22 @@ async def check_safety(request: Request, payload: SafetyRequest, actor: CsrfActo
     return JSONResponse(envelope(request, data))
 
 
-@router.post("/support/requests", status_code=202, summary="Create a buffered support result")
+@router.post(
+    "/support/requests",
+    status_code=202,
+    operation_id="createSupport",
+    response_model=ApiEnvelope[SupportResult],
+    openapi_extra=CSRF_SECURITY_OPENAPI_EXTRA,
+    responses=problem_responses(
+        ErrorCode.AUTH_SESSION_EXPIRED,
+        ErrorCode.CSRF_FAILED,
+        ErrorCode.RESOURCE_NOT_FOUND,
+        ErrorCode.WORKFLOW_CONFLICT,
+        ErrorCode.DEPENDENCY_TIMEOUT,
+        ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+    ),
+    summary="Create a buffered support result",
+)
 async def create_support(
     request: Request, payload: SupportRequest, actor: CsrfActor
 ) -> JSONResponse:
@@ -127,7 +180,22 @@ async def create_support(
     return JSONResponse(body, status_code=202)
 
 
-@router.post("/generations", status_code=202, summary="Create a frozen generation result")
+@router.post(
+    "/generations",
+    status_code=202,
+    operation_id="createGeneration",
+    response_model=ApiEnvelope[GenerationProjection],
+    openapi_extra=CSRF_SECURITY_OPENAPI_EXTRA,
+    responses=problem_responses(
+        ErrorCode.AUTH_SESSION_EXPIRED,
+        ErrorCode.CSRF_FAILED,
+        ErrorCode.RESOURCE_NOT_FOUND,
+        ErrorCode.WORKFLOW_CONFLICT,
+        ErrorCode.DEPENDENCY_TIMEOUT,
+        ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+    ),
+    summary="Create a candidate generation result",
+)
 async def create_generation(
     request: Request, payload: GenerationRequest, actor: CsrfActor
 ) -> JSONResponse:
@@ -173,7 +241,13 @@ async def create_generation(
     return JSONResponse(body, status_code=202)
 
 
-@router.get("/reports/{report_id}", summary="Read an authorized report projection")
+@router.get(
+    "/reports/{report_id}",
+    operation_id="getReport",
+    response_model=ApiEnvelope[ReportDto],
+    responses=problem_responses(ErrorCode.AUTH_SESSION_EXPIRED, ErrorCode.RESOURCE_NOT_FOUND),
+    summary="Read an authorized report projection",
+)
 async def get_report(request: Request, report_id: str, actor: CurrentActor) -> JSONResponse:
     report = await request.app.state.container.support.report_for_actor(actor, report_id)
     expose_generation = actor.role in {
@@ -191,11 +265,25 @@ async def get_report(request: Request, report_id: str, actor: CurrentActor) -> J
         generation=report.generation
         if expose_generation and report.status == "generated"
         else None,
+        citations=report.citations,
     )
     return JSONResponse(envelope(request, data))
 
 
-@router.post("/reports/{report_id}/reviews", summary="Action a review projection")
+@router.post(
+    "/reports/{report_id}/reviews",
+    operation_id="reviewReport",
+    response_model=ApiEnvelope[ReviewActionResponseDto],
+    openapi_extra=CSRF_SECURITY_OPENAPI_EXTRA,
+    responses=problem_responses(
+        ErrorCode.AUTH_SESSION_EXPIRED,
+        ErrorCode.CSRF_FAILED,
+        ErrorCode.FORBIDDEN,
+        ErrorCode.RESOURCE_NOT_FOUND,
+        ErrorCode.WORKFLOW_CONFLICT,
+    ),
+    summary="Action a review projection",
+)
 async def review_report(
     request: Request, report_id: str, payload: ReviewRequest, actor: CsrfActor
 ) -> JSONResponse:
@@ -217,14 +305,30 @@ async def review_report(
     return JSONResponse(envelope(request, data))
 
 
-@router.get("/reviews", summary="List pending review projections")
+@router.get(
+    "/reviews",
+    operation_id="listReviews",
+    response_model=ApiEnvelope[list[ReviewProjectionDto]],
+    responses=problem_responses(ErrorCode.AUTH_SESSION_EXPIRED, ErrorCode.FORBIDDEN),
+    summary="List pending review projections",
+)
 async def list_reviews(request: Request, actor: CurrentActor) -> JSONResponse:
     projections = await request.app.state.container.support.pending_reviews(actor)
     data = [review_dto(item).model_dump(mode="json") for item in projections]
     return JSONResponse(envelope(request, data))
 
 
-@router.get("/reviews/{review_id}", summary="Read a review projection")
+@router.get(
+    "/reviews/{review_id}",
+    operation_id="getReview",
+    response_model=ApiEnvelope[ReviewProjectionDto],
+    responses=problem_responses(
+        ErrorCode.AUTH_SESSION_EXPIRED,
+        ErrorCode.FORBIDDEN,
+        ErrorCode.RESOURCE_NOT_FOUND,
+    ),
+    summary="Read a review projection",
+)
 async def get_review(request: Request, review_id: str, actor: CurrentActor) -> JSONResponse:
     projection = await request.app.state.container.support.review_detail(actor, review_id)
     return JSONResponse(envelope(request, review_dto(projection)))

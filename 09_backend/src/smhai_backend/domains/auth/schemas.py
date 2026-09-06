@@ -15,7 +15,7 @@ class LoginRequest(BaseModel):
 
 
 class ActorDto(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     user_id: str
     username: str
@@ -24,7 +24,7 @@ class ActorDto(BaseModel):
 
 
 class LoginResponse(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     actor: ActorDto
     csrf_token: str
@@ -32,12 +32,12 @@ class LoginResponse(BaseModel):
 
 
 class LogoutResponse(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     logged_out: bool = True
 
 
 class CsrfResponse(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     csrf_token: str

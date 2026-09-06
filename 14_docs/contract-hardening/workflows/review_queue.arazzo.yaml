@@ -1,0 +1,40 @@
+arazzo: 1.0.1
+info:
+  title: Reviewer queue synthetic workflow
+  version: 0.1.0
+  description: Reviewer session and queue projection using synthetic fixtures.
+sourceDescriptions:
+  - name: backendCandidate
+    type: openapi
+    url: ../../../00_architecture/contracts/candidates/openapi.hardened.candidate.json
+workflows:
+  - workflowId: reviewerQueueProjection
+    summary: Login as the synthetic reviewer and read the queue.
+    inputs:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string }
+        password: { type: string }
+    steps:
+      - stepId: login
+        operationId: authLogin
+        requestBody:
+          contentType: application/json
+          payload:
+            username: $inputs.username
+            password: $inputs.password
+        successCriteria:
+          - condition: $statusCode == 200
+        outputs:
+          sessionCookie: $response.header.Set-Cookie
+      - stepId: listReviews
+        operationId: listReviews
+        parameters:
+          - name: Cookie
+            in: header
+            value: $steps.login.outputs.sessionCookie
+        successCriteria:
+          - condition: $statusCode == 200
+        outputs:
+          queue: $response.body#/data

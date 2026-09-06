@@ -6,7 +6,9 @@ from enum import StrEnum
 from typing import Any
 
 from fastapi import Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .logging import logger
@@ -63,41 +65,34 @@ _STATUS_BY_CODE: dict[ErrorCode, int] = {
 }
 
 
-class ProblemDetails:
-    """Small serializable representation of an RFC 9457 problem."""
+class ProblemFieldError(BaseModel):
+    """Safe, typed validation detail without echoing submitted values."""
 
-    def __init__(
-        self,
-        *,
-        code: ErrorCode,
-        status: int,
-        detail: str,
-        request_id: str,
-        trace_id: str,
-        retryable: bool = False,
-    ) -> None:
-        self.type = f"urn:smhai:problem:{code.value}"
-        self.title = _TITLES[code]
-        self.status = status
-        self.detail = detail
-        self.instance = None
-        self.code = code.value
-        self.retryable = retryable
-        self.request_id = request_id
-        self.trace_id = trace_id
+    model_config = ConfigDict(extra="ignore")
+
+    loc: list[str | int] = Field(min_length=1)
+    code: str = Field(min_length=1)
+    message: str = Field(min_length=1)
+
+
+class ProblemDetails(BaseModel):
+    """RFC 9457 problem projection used by every Backend error path."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    type: str
+    title: str
+    status: int
+    detail: str
+    instance: str | None = None
+    code: str
+    retryable: bool = False
+    request_id: str
+    trace_id: str
+    errors: list[ProblemFieldError] | None = None
 
     def as_dict(self) -> dict[str, Any]:
-        return {
-            "type": self.type,
-            "title": self.title,
-            "status": self.status,
-            "detail": self.detail,
-            "instance": self.instance,
-            "code": self.code,
-            "retryable": self.retryable,
-            "request_id": self.request_id,
-            "trace_id": self.trace_id,
-        }
+        return self.model_dump(mode="json", exclude_none=False)
 
 
 class BackendError(Exception):
@@ -109,12 +104,14 @@ class BackendError(Exception):
         detail: str | None = None,
         retryable: bool = False,
         retry_after: int | None = None,
+        field_errors: list[ProblemFieldError] | None = None,
     ) -> None:
         self.code = code
         self.status_code = status_code or _STATUS_BY_CODE[code]
         self.detail = detail or _TITLES[code]
         self.retryable = retryable
         self.retry_after = retry_after
+        self.field_errors = field_errors
         super().__init__(code.value)
 
 
@@ -125,6 +122,7 @@ def error(
     detail: str | None = None,
     retryable: bool = False,
     retry_after: int | None = None,
+    field_errors: list[ProblemFieldError] | None = None,
 ) -> BackendError:
     return BackendError(
         code,
@@ -132,18 +130,22 @@ def error(
         detail=detail,
         retryable=retryable,
         retry_after=retry_after,
+        field_errors=field_errors,
     )
 
 
 def problem_response(request: Request, exc: BackendError) -> JSONResponse:
     context = current_request_context(request)
     problem = ProblemDetails(
+        type=f"urn:smhai:problem:{exc.code.value}",
+        title=_TITLES[exc.code],
         code=exc.code,
         status=exc.status_code,
         detail=exc.detail,
         request_id=context.request_id,
         trace_id=context.trace_id,
         retryable=exc.retryable,
+        errors=exc.field_errors,
     )
     headers = {"Cache-Control": "no-store"}
     if exc.retry_after is not None:
@@ -165,11 +167,58 @@ async def backend_error_handler(request: Request, exc: Exception) -> JSONRespons
 
 
 async def validation_error_handler(request: Request, exc: Exception) -> JSONResponse:
-    del exc
+    field_errors: list[ProblemFieldError] = []
+    if isinstance(exc, RequestValidationError):
+        for item in exc.errors():
+            location = [
+                str(part) if not isinstance(part, int) else part for part in item.get("loc", ())
+            ]
+            field_errors.append(
+                ProblemFieldError(
+                    loc=location or ["request"],
+                    code=str(item.get("type", "invalid")),
+                    message=str(item.get("msg", "request value is invalid")),
+                )
+            )
     return problem_response(
         request,
-        error(ErrorCode.VALIDATION_FAILED, detail="request validation failed"),
+        error(
+            ErrorCode.VALIDATION_FAILED,
+            detail="request validation failed",
+            field_errors=field_errors or None,
+        ),
     )
+
+
+def problem_responses(*codes: ErrorCode) -> dict[int | str, dict[str, Any]]:
+    """Build OpenAPI response documentation from the single runtime model."""
+
+    selected = list(dict.fromkeys((ErrorCode.VALIDATION_FAILED, *codes)))
+    responses: dict[int | str, dict[str, Any]] = {}
+    for code in selected:
+        status = _STATUS_BY_CODE[code]
+        responses[status] = {
+            "model": ProblemDetails,
+            "description": _TITLES[code],
+            "content": {
+                "application/problem+json": {
+                    "schema": {"$ref": "#/components/schemas/ProblemDetails"}
+                }
+            },
+        }
+    responses.setdefault(
+        400,
+        {
+            "model": ProblemDetails,
+            "description": "Malformed request",
+            "content": {
+                "application/problem+json": {
+                    "schema": {"$ref": "#/components/schemas/ProblemDetails"}
+                }
+            },
+        },
+    )
+    return responses
 
 
 async def http_error_handler(request: Request, exc: Exception) -> JSONResponse:
@@ -192,7 +241,11 @@ async def http_error_handler(request: Request, exc: Exception) -> JSONResponse:
             status_code=exc.status_code,
             detail="request could not be processed",
         )
-    return problem_response(request, backend_exc)
+    response = problem_response(request, backend_exc)
+    if exc.headers:
+        for name, value in exc.headers.items():
+            response.headers[name] = value
+    return response
 
 
 async def unhandled_error_handler(request: Request, exc: Exception) -> JSONResponse:

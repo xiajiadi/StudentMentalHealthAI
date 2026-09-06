@@ -1,0 +1,10 @@
+# Schemathesis Round 1 execution profile. The live base URL is supplied by the
+# verification command so this file contains deterministic test policy.
+seed = 20260906
+
+[generation]
+max-examples = 5
+mode = "all"
+
+[checks]
+enabled = true

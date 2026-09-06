@@ -1,0 +1,16 @@
+{
+  "comparisons": [
+    {
+      "revision": "00_architecture/contracts/candidates/openapi.hardened.candidate.json",
+      "exit_code": 1,
+      "base": "15_demo/integration/contracts/openapi.integration.candidate.json"
+    },
+    {
+      "revision": "00_architecture/contracts/candidates/openapi.hardened.candidate.json",
+      "exit_code": 1,
+      "base": "00_architecture/openapi.v1.json"
+    }
+  ],
+  "tool": "oasdiff",
+  "version": "1.28.0"
+}

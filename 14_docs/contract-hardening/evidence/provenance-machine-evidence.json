@@ -1,0 +1,28 @@
+{
+  "schema_version": "contract-api-hardening.provenance-evidence.v1",
+  "synthetic_fixture_only": true,
+  "normal": {
+    "support_status": 202,
+    "generation_status": "EXECUTED",
+    "candidate_source": "CONTROLLED_SYNTHETIC",
+    "model_id_present": true,
+    "citation_count": 2,
+    "citation_identity": {
+      "chunk_id_present": true,
+      "document_id_present": true,
+      "rank_present": true,
+      "source_version_present": true,
+      "source_hash_present": true
+    },
+    "report_citations_equal": true,
+    "report_generation_status": "EXECUTED"
+  },
+  "crisis": {
+    "support_status": 202,
+    "generation_status": "NOT_RUN",
+    "candidate_source": "NOT_RUN",
+    "model_id_is_null": true,
+    "model_version_is_null": true,
+    "runtime_version_is_null": true
+  }
+}

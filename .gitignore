@@ -67,6 +67,14 @@ data/qdrant-integration-check/
 # Repeated local property-test traces are regenerated from the candidate.
 15_demo/integration/reports/schemathesis*/
 
+# Raw verbose Arazzo runs can contain ephemeral synthetic session material.
+14_docs/contract-hardening/respect-*.json
+14_docs/contract-hardening/respect-*.txt
+14_docs/contract-hardening/schemathesis-round*.ndjson
+14_docs/contract-hardening/redocly-lint.json
+14_docs/contract-hardening/evidence_oasdiff_*.txt
+09_backend/reports/backend_round1_hardened.openapi.json
+
 # Secrets and local configuration. Keep example files trackable.
 .env
 .env.*

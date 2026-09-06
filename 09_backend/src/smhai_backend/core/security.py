@@ -28,10 +28,16 @@ def validate_mutation_origin(request: Request, settings: BackendSettings) -> Non
         raise error(ErrorCode.CSRF_FAILED, detail="cross-site mutation rejected")
 
 
-def validate_csrf(request: Request, expected: str, settings: BackendSettings) -> None:
+def validate_csrf(
+    request: Request,
+    expected: str,
+    settings: BackendSettings,
+    *,
+    supplied: str | None = None,
+) -> None:
     validate_mutation_origin(request, settings)
-    supplied = request.headers.get(settings.auth.csrf_header_name)
-    if not supplied or not hmac.compare_digest(supplied, expected):
+    token = supplied or request.headers.get(settings.auth.csrf_header_name)
+    if not token or not hmac.compare_digest(token, expected):
         raise error(ErrorCode.CSRF_FAILED, detail="csrf token is missing or invalid")
 
 

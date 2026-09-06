@@ -13,4 +13,4 @@ import type { ClientOptions as ClientOptions2 } from './types.gen';
  */
 export type CreateClientConfig<T extends ClientOptions = ClientOptions2> = (override?: Config<ClientOptions & T>) => Config<Required<ClientOptions> & T>;
 
-export const client: Client = createClient(createConfig<ClientOptions2>({ baseUrl: '..\\15_demo\\integration\\contracts\\openapi.integration.candidate.json' }));
+export const client: Client = createClient(createConfig<ClientOptions2>({ baseUrl: '..\\00_architecture\\contracts\\candidates\\openapi.hardened.candidate.json' }));

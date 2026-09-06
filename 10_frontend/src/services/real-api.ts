@@ -1,14 +1,14 @@
 import {
   createAssessment,
-  createSupportApiV1SupportRequestsPost,
+  createSupport,
   completeAssessment,
   getAssessment,
   getAssessmentState,
   getReport,
-  getReviewApiV1ReviewsReviewIdGet,
-  listReviewsApiV1ReviewsGet,
-  loginApiV1AuthLoginPost,
-  meApiV1AuthMeGet,
+  getReview,
+  listReviews,
+  authLogin,
+  authMe,
   recordAssessmentResponse,
   reviewReport,
 } from '@/api/generated/sdk.gen'
@@ -56,11 +56,10 @@ const isRecord = (value: unknown): value is UnknownRecord => Boolean(value) && t
 
 const requestError = (value: unknown): RealApiError => {
   if (isRecord(value)) {
-    const detail = value.detail
-    if (typeof detail === 'string') return new RealApiError(String(value.code || 'API_ERROR'), detail)
-    if (Array.isArray(detail)) return new RealApiError(String(value.code || 'API_VALIDATION_ERROR'), '请求参数没有通过校验。')
-    const message = typeof value.message === 'string' ? value.message : '接口请求没有完成。'
-    return new RealApiError(String(value.code || 'API_ERROR'), message, Boolean(value.retryable))
+     const code = typeof value.code === 'string' ? value.code : 'API_ERROR'
+     const detail = typeof value.detail === 'string' ? value.detail : '接口请求没有完成。'
+     const message = Array.isArray(value.errors) ? '请求参数没有通过校验。' : detail
+     return new RealApiError(code, message, Boolean(value.retryable))
   }
   return new RealApiError('API_ERROR', '接口请求没有完成。', true)
 }
@@ -91,6 +90,7 @@ const nowToken = (prefix: string) => {
 }
 
 const valueAsString = (value: unknown, fallback = '') => typeof value === 'string' ? value : fallback
+const nullableString = (value: unknown): string | null => typeof value === 'string' ? value : null
 
 const mapQuestion = (value: unknown): CatQuestion | null => {
   if (!isRecord(value) || typeof value.item_id !== 'string' || typeof value.prompt !== 'string') return null
@@ -220,6 +220,11 @@ const mapGeneration = (value: unknown, report: UnknownRecord, assessmentId: stri
   const provenance = isRecord(source.provenance) ? source.provenance : {}
   const review = isRecord(source.review) ? source.review : {}
   const reviewStatus = valueAsString(review.status, valueAsString(report.review_status, 'not_required'))
+  const generationStatus = provenance.generation_status === 'NOT_RUN'
+    || (!rawContent && status !== 'generated') ? 'NOT_RUN' : 'EXECUTED'
+  const candidateSource = provenance.candidate_source === 'CONTROLLED_SYNTHETIC'
+    ? 'CONTROLLED_SYNTHETIC'
+    : generationStatus === 'NOT_RUN' ? 'NOT_RUN' : 'MODEL_EXECUTED'
   return {
     schema_version: 'generation.v1',
     generation_id: valueAsString(source.generation_id, valueAsString(report.generation_id, 'GEN_not_exposed')),
@@ -237,9 +242,11 @@ const mapGeneration = (value: unknown, report: UnknownRecord, assessmentId: stri
       retrieval_id: valueAsString(provenance.retrieval_id, 'RETR_not_run'),
       prompt_id: valueAsString(provenance.prompt_id, 'PROMPT_backend_support_v1'),
       prompt_version: valueAsString(provenance.prompt_version, '1.0'),
-      model_id: valueAsString(provenance.model_id, 'MODEL_not_used'),
-      model_version: valueAsString(provenance.model_version, 'not_used'),
-      runtime_version: valueAsString(provenance.runtime_version, 'not_used'),
+      model_id: generationStatus === 'NOT_RUN' ? null : nullableString(provenance.model_id),
+      model_version: generationStatus === 'NOT_RUN' ? null : nullableString(provenance.model_version),
+      runtime_version: generationStatus === 'NOT_RUN' ? null : nullableString(provenance.runtime_version),
+      generation_status: generationStatus,
+      candidate_source: candidateSource,
     },
     review: {
       status: reviewStatus === 'approved' || reviewStatus === 'rejected' || reviewStatus === 'pending' ? reviewStatus : 'not_required',
@@ -250,17 +257,16 @@ const mapGeneration = (value: unknown, report: UnknownRecord, assessmentId: stri
   }
 }
 
-const citationsFromGeneration = (generation: GenerationResult): Citation[] => {
-  const ids = new Set<string>()
-  for (const suggestion of generation.content?.suggestions || []) {
-    for (const chunkId of suggestion.source_chunk_ids) ids.add(chunkId)
-  }
-  return [...ids].map((chunkId, index) => ({
-    citation_id: `CITE_${index + 1}_${chunkId}`,
-    chunk_id: chunkId,
-    title: '已审核资料片段',
-    organization: '合成教育资料库',
-    locator: `knowledge.v1 · ${chunkId}`,
+const citationsFromApi = (value: unknown): Citation[] => {
+  if (!Array.isArray(value)) return []
+  return value.filter(isRecord).map((item, index) => ({
+    citation_id: valueAsString(item.citation_id, `CITE_unavailable_${index + 1}`),
+    chunk_id: nullableString(item.chunk_id),
+    document_id: nullableString(item.document_id),
+    title: nullableString(item.title),
+    organization: nullableString(item.organization),
+    locator: nullableString(item.locator),
+    excerpt: nullableString(item.excerpt),
   }))
 }
 
@@ -299,7 +305,7 @@ const mapReport = (rawReport: unknown, rawAssessment: unknown): StudentReportVie
       dimensions,
     },
     actions,
-    evidence: citationsFromGeneration(generation),
+    evidence: citationsFromApi(report.citations),
   }
 }
 
@@ -340,7 +346,7 @@ export class RealApiProvider implements FrontendApi {
   private readonly reviewCases = new Map<string, ReviewCase>()
 
   async login(input: LoginInput): Promise<ApiEnvelope<LoginResult>> {
-    const response = await unwrap<UnknownRecord>(() => loginApiV1AuthLoginPost({
+    const response = await unwrap<UnknownRecord>(() => authLogin({
       client: apiClient,
       body: { username: input.account, password: input.password },
     }))
@@ -358,7 +364,7 @@ export class RealApiProvider implements FrontendApi {
   }
 
   async getStudentHome(): Promise<ApiEnvelope<StudentHomeViewModel | null>> {
-    const response = await unwrap<UnknownRecord>(() => meApiV1AuthMeGet({ client: apiClient }))
+    const response = await unwrap<UnknownRecord>(() => authMe({ client: apiClient }))
     return { ...response, data: null }
   }
 
@@ -403,7 +409,7 @@ export class RealApiProvider implements FrontendApi {
   }
 
   async createSupport(assessmentId: string, message: string): Promise<ApiEnvelope<SupportResult>> {
-    return unwrap<SupportResult>(() => createSupportApiV1SupportRequestsPost({
+    return unwrap<SupportResult>(() => createSupport({
       client: apiClient,
       body: {
         assessment_id: assessmentId,
@@ -431,7 +437,7 @@ export class RealApiProvider implements FrontendApi {
   }
 
   async getTeacherOverview(): Promise<ApiEnvelope<TeacherOverviewViewModel>> {
-    const response = await unwrap<UnknownRecord>(() => meApiV1AuthMeGet({ client: apiClient }))
+    const response = await unwrap<UnknownRecord>(() => authMe({ client: apiClient }))
     return {
       ...response,
       data: { fixtureLabel: SYNTHETIC_FIXTURE_LABEL, summary: [], trend: [], attentionCases: [] },
@@ -439,7 +445,7 @@ export class RealApiProvider implements FrontendApi {
   }
 
   async getReviewQueue(): Promise<ApiEnvelope<ReviewQueueViewModel>> {
-    const response = await unwrap<unknown>(() => listReviewsApiV1ReviewsGet({ client: apiClient }))
+    const response = await unwrap<unknown>(() => listReviews({ client: apiClient }))
     const rawCases = Array.isArray(response.data) ? response.data : []
     const cases = rawCases.map(mapReviewCase)
     for (const item of cases) this.reviewCases.set(item.report_id, item)
@@ -450,7 +456,7 @@ export class RealApiProvider implements FrontendApi {
   }
 
   async getReviewDetail(reviewCaseId: string): Promise<ApiEnvelope<ReviewDetailViewModel>> {
-    const response = await unwrap<unknown>(() => getReviewApiV1ReviewsReviewIdGet({
+    const response = await unwrap<unknown>(() => getReview({
       client: apiClient,
       path: { review_id: reviewCaseId },
     }))

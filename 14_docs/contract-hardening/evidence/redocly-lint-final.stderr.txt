@@ -1,0 +1,6 @@
+npm notice run npx
+npm notice run openapi lint ..\..\00_architecture\contracts\candidates\openapi.hardened.candidate.json --config .\redocly.yaml --format json
+validating ..\..\00_architecture\contracts\candidates\openapi.hardened.candidate.json using lint rules for api 'hardened-candidate'...
+..\..\00_architecture\contracts\candidates\openapi.hardened.candidate.json: validated in 54ms
+
+Woohoo! Your API description is valid. 🎉

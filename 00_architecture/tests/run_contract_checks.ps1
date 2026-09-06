@@ -11,7 +11,10 @@ if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
-uvx --from openapi-spec-validator openapi-spec-validator $openApiFile
+# Use the module-local Backend environment so the root gate is reproducible
+# without resolving a package from the network during every acceptance run.
+$backendProject = Join-Path $PSScriptRoot "..\..\09_backend"
+uv run --project $backendProject python -m openapi_spec_validator $openApiFile
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }

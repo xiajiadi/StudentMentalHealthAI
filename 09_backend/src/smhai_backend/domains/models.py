@@ -87,6 +87,8 @@ class ReportRecord:
     review_id: str | None = None
     review_status: str = "not_required"
     safety_action: str = "PROCEED"
+    citations: list[dict[str, Any]] = field(default_factory=list)
+    candidate_source: str = "MODEL_EXECUTED"
 
 
 @dataclass(slots=True)

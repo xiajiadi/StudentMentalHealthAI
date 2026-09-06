@@ -6,8 +6,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from smhai_backend.integrations.rag import Citation
-
 TargetRole = Literal["student", "teacher", "parent", "admin"]
 
 
@@ -90,16 +88,79 @@ class GenerationContent(BaseModel):
     disclaimer: str = Field(min_length=1)
 
 
+class SupportCitation(BaseModel):
+    """Citation identity retained from RAG through persistence and reports."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    citation_id: str
+    chunk_id: str | None = None
+    document_id: str | None = None
+    title: str | None = None
+    organization: str | None = None
+    locator: str | None = None
+    rank: int | None = Field(default=None, ge=1)
+    source_version: str | None = None
+    source_hash: str | None = None
+
+
+class GenerationSafetyProjection(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    precheck: Literal["passed", "warn", "blocked", "needs_review"]
+    postcheck: Literal["passed", "warn", "blocked", "needs_review"]
+    reason_codes: list[str]
+    human_review_required: bool
+
+
+class GenerationProvenanceProjection(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    assessment_id: str
+    retrieval_id: str
+    prompt_id: str
+    prompt_version: str
+    model_id: str | None
+    model_version: str | None
+    runtime_version: str | None
+    generation_status: Literal["EXECUTED", "NOT_RUN"] = "EXECUTED"
+    candidate_source: Literal[
+        "MODEL_EXECUTED", "CONTROLLED_SYNTHETIC", "NOT_RUN"
+    ] = "MODEL_EXECUTED"
+
+
+class GenerationReviewProjection(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    status: Literal["pending", "approved", "rejected", "not_required", "closed"]
+    reviewer_id: str | None
+    reviewed_at: str | None
+
+
+class GenerationProjection(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    schema_version: Literal["generation.v1"]
+    generation_id: str
+    status: str
+    target_role: TargetRole
+    content: GenerationContent | None
+    safety: GenerationSafetyProjection
+    provenance: GenerationProvenanceProjection
+    review: GenerationReviewProjection
+    created_at: str
+
+
 class SupportResult(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     status: str
     safety_action: str
     normal_generation: bool
-    generation: dict[str, Any]
+    generation: GenerationProjection
     report_id: str
     content: GenerationContent | None = None
-    citations: list[Citation] = Field(default_factory=list)
+    citations: list[SupportCitation] = Field(default_factory=list)
     review_reference: str | None = None
     crisis_response: str | None = None
     trace_id: str
@@ -116,7 +177,7 @@ class ReviewRequest(BaseModel):
 
 
 class ReportDto(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     report_id: str
     assessment_id: str
@@ -124,11 +185,12 @@ class ReportDto(BaseModel):
     generation_ids: list[str]
     review_status: str
     review_id: str | None = None
-    generation: dict[str, Any] | None = None
+    generation: GenerationProjection | None = None
+    citations: list[SupportCitation] = Field(default_factory=list)
 
 
 class ReviewProjectionDto(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     review_id: str
     report_id: str

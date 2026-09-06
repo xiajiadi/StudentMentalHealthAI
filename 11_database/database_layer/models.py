@@ -396,8 +396,12 @@ class SupportEvidence(ResourceIdentityMixin, TimestampMixin, Base):
     )
     citation_id: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
     source_id: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    chunk_id: Mapped[str | None] = mapped_column(ascii_id(128), nullable=True)
+    document_id: Mapped[str | None] = mapped_column(ascii_id(128), nullable=True)
     source_version: Mapped[str | None] = mapped_column(ascii_id(64), nullable=True)
     source_hash: Mapped[str | None] = mapped_column(ascii_id(128), nullable=True)
+    citation_title: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    citation_organization: Mapped[str | None] = mapped_column(String(512), nullable=True)
     locator: Mapped[str | None] = mapped_column(String(512), nullable=True)
     rank_order: Mapped[int] = mapped_column(Integer, nullable=False)
 
