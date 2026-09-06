@@ -1,6 +1,7 @@
 {
-  "history_exit_code": 0,
+  "history_commits_scanned": 4,
+  "tool": "gitleaks",
   "version": "8.30.1",
   "working_tree_no_git_exit_code": 0,
-  "tool": "gitleaks"
+  "history_exit_code": 0
 }
