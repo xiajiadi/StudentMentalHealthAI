@@ -1,0 +1,508 @@
+{
+  "files": {
+    ".\\workflows\\normal_support.arazzo.yaml": {
+      "totalRequests": 4,
+      "executedWorkflows": [
+        {
+          "type": "workflow",
+          "workflowId": "normalSyntheticSupport",
+          "startTime": 226.2121,
+          "endTime": 499.684,
+          "totalTimeMs": 197,
+          "executedSteps": [
+            {
+              "type": "step",
+              "stepId": "login",
+              "workflowId": "normalSyntheticSupport",
+              "request": {
+                "method": "post",
+                "url": "http://127.0.0.1:8090/api/v1/auth/login",
+                "headers": {
+                  "content-type": "application/json",
+                  "accept": "application/json, application/problem+json"
+                },
+                "body": {
+                  "username": "<synthetic-username>",
+                  "password": "<redacted>"
+                }
+              },
+              "response": {
+                "statusCode": 200,
+                "body": {
+                  "request_id": "REQ_657ac13cc5399ce4346615dd7a7bbf6c",
+                  "trace_id": "TRACE_a32ced008d664fdfb6a9349f808113c2",
+                  "data": {
+                    "actor": {
+                      "user_id": "USER_student_a",
+                      "username": "<synthetic-username>",
+                      "role": "STUDENT",
+                      "subject_id": "SUBJ_demo_a"
+                    },
+                    "csrf_token": "<redacted>",
+                    "synthetic_fixture_only": true
+                  }
+                },
+                "headers": {
+                  "cache-control": "no-store",
+                  "content-security-policy": "frame-ancestors 'none'",
+                  "content-type": "application/json",
+                  "date": "Sun, 06 Sep 2026 18:16:58 GMT, Sun, 06 Sep 2026 18:16:58 GMT",
+                  "server": "BaseHTTP/0.6 Python/3.12.13, uvicorn",
+                  "set-cookie": "smhai_dev_session=<redacted>; HttpOnly; Max-Age=1800; Path=/; SameSite=lax",
+                  "x-content-type-options": "nosniff",
+                  "x-request-id": "REQ_657ac13cc5399ce4346615dd7a7bbf6c",
+                  "x-trace-id": "TRACE_a32ced008d664fdfb6a9349f808113c2"
+                },
+                "time": 111,
+                "size": 307
+              },
+              "checks": [
+                {
+                  "name": "success criteria check",
+                  "passed": true,
+                  "message": "Checking simple criteria: {\"condition\":\"$statusCode == 200\"}",
+                  "severity": "error",
+                  "condition": "$statusCode == 200",
+                  "status": "success"
+                },
+                {
+                  "name": "status code check",
+                  "passed": true,
+                  "message": "List of valid response codes are inferred from description \n\nExpected value to be in the list:\n  200, 400, 401, 403, 422, 429\nReceived:\n  200",
+                  "condition": "$statusCode in [200, 400, 401, 403, 422, 429]",
+                  "severity": "error",
+                  "status": "success"
+                },
+                {
+                  "name": "content-type check",
+                  "passed": true,
+                  "message": "Content type \"application/json\" is described in the schema.",
+                  "severity": "error",
+                  "status": "success"
+                },
+                {
+                  "name": "schema check",
+                  "passed": true,
+                  "message": "",
+                  "severity": "error",
+                  "status": "success"
+                }
+              ],
+              "totalTimeMs": 111,
+              "status": "success"
+            },
+            {
+              "type": "step",
+              "stepId": "startAssessment",
+              "workflowId": "normalSyntheticSupport",
+              "request": {
+                "method": "post",
+                "url": "http://127.0.0.1:8090/api/v1/assessments",
+                "headers": {
+                  "content-type": "application/json",
+                  "accept": "application/json, application/problem+json",
+                  "x-csrf-token": "<redacted>"
+                },
+                "body": {
+                  "subject_id": "SUBJ_demo_a",
+                  "instrument_id": "instrument.synthetic",
+                  "instrument_version": "1.0"
+                }
+              },
+              "response": {
+                "statusCode": 201,
+                "body": {
+                  "request_id": "REQ_c35255e24ef3757c72247efd7feabcb5",
+                  "trace_id": "TRACE_986490d554f93b907e2b4cb59f7de02d",
+                  "data": {
+                    "schema_version": "assessment.v1",
+                    "assessment_id": "ASSESS_06130cdf30264c8f991c678baf48c07a",
+                    "subject_id": "SUBJ_demo_a",
+                    "instrument": {
+                      "instrument_id": "instrument.synthetic",
+                      "version": "1.0"
+                    },
+                    "population_scope": "synthetic_demo",
+                    "status": "created",
+                    "dimensions": {
+                      "wellbeing": {
+                        "theta": null,
+                        "se": null,
+                        "score": null,
+                        "band": "unknown",
+                        "interpretation_status": "insufficient_data",
+                        "items_answered": 0
+                      }
+                    },
+                    "risk": {
+                      "level": "normal",
+                      "need_human_review": false,
+                      "reason_codes": [
+                        "ASSESSMENT_NOT_COMPLETED"
+                      ],
+                      "ruleset_id": "RULESET_backend_contract_fake"
+                    },
+                    "response_summary": {
+                      "items_answered": 0,
+                      "duration_seconds": null
+                    },
+                    "provenance": {
+                      "source_adapter": "backend-contract-fake-cat",
+                      "adapter_version": "1.0",
+                      "cat_engine_version": "CONTRACT_FAKE",
+                      "item_bank_version": "ITEMBANK_synthetic_v1"
+                    },
+                    "timestamps": {
+                      "started_at": "2026-09-06T18:16:58.516Z",
+                      "completed_at": null
+                    }
+                  }
+                },
+                "headers": {
+                  "cache-control": "no-store",
+                  "content-security-policy": "frame-ancestors 'none'",
+                  "content-type": "application/json",
+                  "date": "Sun, 06 Sep 2026 18:16:58 GMT, Sun, 06 Sep 2026 18:16:58 GMT",
+                  "server": "BaseHTTP/0.6 Python/3.12.13, uvicorn",
+                  "x-content-type-options": "nosniff",
+                  "x-request-id": "REQ_c35255e24ef3757c72247efd7feabcb5",
+                  "x-trace-id": "TRACE_986490d554f93b907e2b4cb59f7de02d"
+                },
+                "time": 19,
+                "size": 947
+              },
+              "checks": [
+                {
+                  "name": "success criteria check",
+                  "passed": true,
+                  "message": "Checking simple criteria: {\"condition\":\"$statusCode == 201\"}",
+                  "severity": "error",
+                  "condition": "$statusCode == 201",
+                  "status": "success"
+                },
+                {
+                  "name": "status code check",
+                  "passed": true,
+                  "message": "List of valid response codes are inferred from description \n\nExpected value to be in the list:\n  201, 400, 401, 403, 409, 422\nReceived:\n  201",
+                  "condition": "$statusCode in [201, 400, 401, 403, 409, 422]",
+                  "severity": "error",
+                  "status": "success"
+                },
+                {
+                  "name": "content-type check",
+                  "passed": true,
+                  "message": "Content type \"application/json\" is described in the schema.",
+                  "severity": "error",
+                  "status": "success"
+                },
+                {
+                  "name": "schema check",
+                  "passed": true,
+                  "message": "",
+                  "severity": "error",
+                  "status": "success"
+                }
+              ],
+              "totalTimeMs": 19,
+              "status": "success"
+            },
+            {
+              "type": "step",
+              "stepId": "completeAssessment",
+              "workflowId": "normalSyntheticSupport",
+              "request": {
+                "method": "post",
+                "url": "http://127.0.0.1:8090/api/v1/assessments/ASSESS_06130cdf30264c8f991c678baf48c07a/complete",
+                "headers": {
+                  "content-type": "application/json",
+                  "accept": "application/json, application/problem+json",
+                  "x-csrf-token": "<redacted>"
+                },
+                "body": {}
+              },
+              "response": {
+                "statusCode": 200,
+                "body": {
+                  "request_id": "REQ_e20075bc5e9e24b3b1d39d81b5d66ea5",
+                  "trace_id": "TRACE_576261fa86f2f3b5854771b1a3044b60",
+                  "data": {
+                    "schema_version": "assessment.v1",
+                    "assessment_id": "ASSESS_06130cdf30264c8f991c678baf48c07a",
+                    "subject_id": "SUBJ_demo_a",
+                    "instrument": {
+                      "instrument_id": "instrument.synthetic",
+                      "version": "1.0"
+                    },
+                    "population_scope": "synthetic_demo",
+                    "status": "completed",
+                    "dimensions": {
+                      "wellbeing": {
+                        "theta": null,
+                        "se": null,
+                        "score": null,
+                        "band": "unknown",
+                        "interpretation_status": "insufficient_data",
+                        "items_answered": 0
+                      }
+                    },
+                    "risk": {
+                      "level": "normal",
+                      "need_human_review": false,
+                      "reason_codes": [
+                        "SYNTHETIC_FIXTURE"
+                      ],
+                      "ruleset_id": "RULESET_backend_contract_fake"
+                    },
+                    "response_summary": {
+                      "items_answered": 0,
+                      "duration_seconds": null
+                    },
+                    "provenance": {
+                      "source_adapter": "backend-contract-fake-cat",
+                      "adapter_version": "1.0",
+                      "cat_engine_version": "CONTRACT_FAKE",
+                      "item_bank_version": "ITEMBANK_synthetic_v1"
+                    },
+                    "timestamps": {
+                      "started_at": "2026-09-06T18:16:58.516Z",
+                      "completed_at": "2026-09-06T18:16:58.557Z"
+                    }
+                  }
+                },
+                "headers": {
+                  "cache-control": "no-store",
+                  "content-security-policy": "frame-ancestors 'none'",
+                  "content-type": "application/json",
+                  "date": "Sun, 06 Sep 2026 18:16:58 GMT, Sun, 06 Sep 2026 18:16:58 GMT",
+                  "server": "BaseHTTP/0.6 Python/3.12.13, uvicorn",
+                  "x-content-type-options": "nosniff",
+                  "x-request-id": "REQ_e20075bc5e9e24b3b1d39d81b5d66ea5",
+                  "x-trace-id": "TRACE_576261fa86f2f3b5854771b1a3044b60"
+                },
+                "time": 25,
+                "size": 964
+              },
+              "checks": [
+                {
+                  "name": "success criteria check",
+                  "passed": true,
+                  "message": "Checking simple criteria: {\"condition\":\"$statusCode == 200\"}",
+                  "severity": "error",
+                  "condition": "$statusCode == 200",
+                  "status": "success"
+                },
+                {
+                  "name": "status code check",
+                  "passed": true,
+                  "message": "List of valid response codes are inferred from description \n\nExpected value to be in the list:\n  200, 400, 401, 403, 404, 409, 422\nReceived:\n  200",
+                  "condition": "$statusCode in [200, 400, 401, 403, 404, 409, 422]",
+                  "severity": "error",
+                  "status": "success"
+                },
+                {
+                  "name": "content-type check",
+                  "passed": true,
+                  "message": "Content type \"application/json\" is described in the schema.",
+                  "severity": "error",
+                  "status": "success"
+                },
+                {
+                  "name": "schema check",
+                  "passed": true,
+                  "message": "",
+                  "severity": "error",
+                  "status": "success"
+                }
+              ],
+              "totalTimeMs": 25,
+              "status": "success"
+            },
+            {
+              "type": "step",
+              "stepId": "createSupport",
+              "workflowId": "normalSyntheticSupport",
+              "request": {
+                "method": "post",
+                "url": "http://127.0.0.1:8090/api/v1/support/requests",
+                "headers": {
+                  "content-type": "application/json",
+                  "accept": "application/json, application/problem+json",
+                  "x-csrf-token": "<redacted>"
+                },
+                "body": {
+                  "assessment_id": "ASSESS_06130cdf30264c8f991c678baf48c07a",
+                  "target_role": "student",
+                  "message": "Please split this synthetic task into small steps.",
+                  "language": "zh-CN",
+                  "purpose": "education_support"
+                }
+              },
+              "response": {
+                "statusCode": 202,
+                "body": {
+                  "request_id": "REQ_c47bf967cc1677642627ca6a4bcdcc9b",
+                  "trace_id": "TRACE_40af5748b3379d244c30add5a8117c23",
+                  "data": {
+                    "status": "generated",
+                    "safety_action": "PROCEED",
+                    "normal_generation": true,
+                    "generation": {
+                      "schema_version": "generation.v1",
+                      "generation_id": "GEN_ca91b20430834eec9c22a529b9805fe4",
+                      "status": "generated",
+                      "target_role": "student",
+                      "content": {
+                        "summary": "这是合成演示中的教育支持摘要。",
+                        "observations": [
+                          "当前结果仅用于工程链路演示。"
+                        ],
+                        "suggestions": [
+                          {
+                            "text": "把下一步拆成一个今天可以完成的小行动。",
+                            "source_chunk_ids": [
+                              "CHUNK_backend_0"
+                            ]
+                          }
+                        ],
+                        "disclaimer": "这不是诊断或治疗建议；需要时请使用已确认的人工支持流程。"
+                      },
+                      "safety": {
+                        "precheck": "passed",
+                        "postcheck": "passed",
+                        "reason_codes": [
+                          "NO_BLOCKING_SIGNAL",
+                          "CONTENT_SAFE"
+                        ],
+                        "human_review_required": false
+                      },
+                      "provenance": {
+                        "assessment_id": "ASSESS_06130cdf30264c8f991c678baf48c07a",
+                        "retrieval_id": "RETR_1a39dcc4cc694e16afdcc604982fc805",
+                        "prompt_id": "PROMPT_backend_support_v1",
+                        "prompt_version": "1.0",
+                        "model_id": "MODEL_backend_fake",
+                        "model_version": "1.0",
+                        "runtime_version": "contract-fake-1.0",
+                        "generation_status": "EXECUTED",
+                        "candidate_source": "CONTROLLED_SYNTHETIC"
+                      },
+                      "review": {
+                        "status": "not_required",
+                        "reviewer_id": null,
+                        "reviewed_at": null
+                      },
+                      "created_at": "2026-09-06T18:16:58.609Z"
+                    },
+                    "report_id": "REPORT_384c9f0d76574d7bbc447873970a8ffd",
+                    "content": {
+                      "summary": "这是合成演示中的教育支持摘要。",
+                      "observations": [
+                        "当前结果仅用于工程链路演示。"
+                      ],
+                      "suggestions": [
+                        {
+                          "text": "把下一步拆成一个今天可以完成的小行动。",
+                          "source_chunk_ids": [
+                            "CHUNK_backend_0"
+                          ]
+                        }
+                      ],
+                      "disclaimer": "这不是诊断或治疗建议；需要时请使用已确认的人工支持流程。"
+                    },
+                    "citations": [
+                      {
+                        "citation_id": "CITE_aa4039dbed4eee02759826a5",
+                        "chunk_id": "CHUNK_backend_0",
+                        "document_id": "KB_backend_synthetic",
+                        "title": "Synthetic education support guidance",
+                        "organization": "StudentMentalHealthAI synthetic fixture",
+                        "locator": "fixture://backend/synthetic-guidance",
+                        "rank": 1,
+                        "source_version": "knowledge.v1",
+                        "source_hash": "sha256:chunk_backend_0"
+                      },
+                      {
+                        "citation_id": "CITE_f5bdf2e557a2c35ac80d29f4",
+                        "chunk_id": "CHUNK_backend_1",
+                        "document_id": "KB_backend_synthetic",
+                        "title": "Synthetic education support guidance",
+                        "organization": "StudentMentalHealthAI synthetic fixture",
+                        "locator": "fixture://backend/synthetic-guidance",
+                        "rank": 2,
+                        "source_version": "knowledge.v1",
+                        "source_hash": "sha256:chunk_backend_1"
+                      }
+                    ],
+                    "review_reference": null,
+                    "crisis_response": null,
+                    "trace_id": "TRACE_40af5748b3379d244c30add5a8117c23",
+                    "synthetic_fixture_only": true,
+                    "integration_labels": {
+                      "CAT": "CONTRACT_FAKE",
+                      "RAG": "CONTRACT_FAKE",
+                      "LLM_RUNTIME": "CONTRACT_FAKE",
+                      "SAFETY": "CONTRACT_FAKE"
+                    }
+                  }
+                },
+                "headers": {
+                  "cache-control": "no-store",
+                  "content-security-policy": "frame-ancestors 'none'",
+                  "content-type": "application/json",
+                  "date": "Sun, 06 Sep 2026 18:16:58 GMT, Sun, 06 Sep 2026 18:16:58 GMT",
+                  "server": "BaseHTTP/0.6 Python/3.12.13, uvicorn",
+                  "x-content-type-options": "nosniff",
+                  "x-request-id": "REQ_c47bf967cc1677642627ca6a4bcdcc9b",
+                  "x-trace-id": "TRACE_40af5748b3379d244c30add5a8117c23"
+                },
+                "time": 42,
+                "size": 2663
+              },
+              "checks": [
+                {
+                  "name": "success criteria check",
+                  "passed": true,
+                  "message": "Checking simple criteria: {\"condition\":\"$statusCode == 202\"}",
+                  "severity": "error",
+                  "condition": "$statusCode == 202",
+                  "status": "success"
+                },
+                {
+                  "name": "status code check",
+                  "passed": true,
+                  "message": "List of valid response codes are inferred from description \n\nExpected value to be in the list:\n  202, 400, 401, 403, 404, 409, 422, 502, 504\nReceived:\n  202",
+                  "condition": "$statusCode in [202, 400, 401, 403, 404, 409, 422, 502, 504]",
+                  "severity": "error",
+                  "status": "success"
+                },
+                {
+                  "name": "content-type check",
+                  "passed": true,
+                  "message": "Content type \"application/json\" is described in the schema.",
+                  "severity": "error",
+                  "status": "success"
+                },
+                {
+                  "name": "schema check",
+                  "passed": true,
+                  "message": "",
+                  "severity": "error",
+                  "status": "success"
+                }
+              ],
+              "totalTimeMs": 42,
+              "status": "success"
+            }
+          ],
+          "globalTimeoutError": false,
+          "status": "success",
+          "totalRequests": 4
+        }
+      ],
+      "totalTimeMs": 331.271,
+      "globalTimeoutError": false
+    }
+  },
+  "status": "success",
+  "totalTime": 332.043
+}

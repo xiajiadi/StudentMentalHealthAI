@@ -1,0 +1,2908 @@
+{
+  "round": "contract-api-hardening-r1-closure",
+  "tool": "oasdiff",
+  "tool_version": "1.28.0",
+  "binary": "D:\\Dev\\tools\\oasdiff\\1.28.0\\oasdiff.exe",
+  "classification_policy": [
+    "UNINTENTIONAL_BREAK",
+    "INTENTIONAL_PRE-PROMOTION_CORRECTION",
+    "EXPECTED_SURFACE_DIFFERENCE",
+    "FALSE_POSITIVE_WITH_EVIDENCE",
+    "NON_BREAKING / WARNING"
+  ],
+  "comparisons": {
+    "integration_to_hardened": {
+      "base": "15_demo/integration/contracts/openapi.integration.candidate.json",
+      "revision": "00_architecture/contracts/candidates/openapi.hardened.candidate.json",
+      "raw_file": "oasdiff-closure-raw-integration-to-hardened.txt",
+      "raw_json_file": "oasdiff-closure-json-integration-to-hardened.json",
+      "command": "D:\\Dev\\tools\\oasdiff\\1.28.0\\oasdiff.exe breaking 15_demo/integration/contracts/openapi.integration.candidate.json 00_architecture/contracts/candidates/openapi.hardened.candidate.json --format json --fail-on ERR --color never",
+      "raw_findings": [
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createAssessment",
+          "path": "/api/v1/assessments",
+          "section": "paths",
+          "fingerprint": "d0fba7e210ad"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `403`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createAssessment",
+          "path": "/api/v1/assessments",
+          "section": "paths",
+          "fingerprint": "00596b386c49"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `409`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createAssessment",
+          "path": "/api/v1/assessments",
+          "section": "paths",
+          "fingerprint": "9b391c12c07d"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "level": 3,
+          "operation": "GET",
+          "operationId": "getAssessment",
+          "path": "/api/v1/assessments/{assessment_id}",
+          "section": "paths",
+          "fingerprint": "07ca24636fb1"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `404`",
+          "level": 3,
+          "operation": "GET",
+          "operationId": "getAssessment",
+          "path": "/api/v1/assessments/{assessment_id}",
+          "section": "paths",
+          "fingerprint": "e0bd3ef93801"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`",
+          "level": 3,
+          "operation": "GET",
+          "operationId": "getAssessment",
+          "path": "/api/v1/assessments/{assessment_id}",
+          "section": "paths",
+          "fingerprint": "f888b24a6d62"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "completeAssessment",
+          "path": "/api/v1/assessments/{assessment_id}/complete",
+          "section": "paths",
+          "fingerprint": "0fe139546647"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `403`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "completeAssessment",
+          "path": "/api/v1/assessments/{assessment_id}/complete",
+          "section": "paths",
+          "fingerprint": "e1298796ec3b"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "recordAssessmentResponse",
+          "path": "/api/v1/assessments/{assessment_id}/responses",
+          "section": "paths",
+          "fingerprint": "737cd907b72b"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `403`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "recordAssessmentResponse",
+          "path": "/api/v1/assessments/{assessment_id}/responses",
+          "section": "paths",
+          "fingerprint": "ae4afbc12832"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "level": 3,
+          "operation": "GET",
+          "operationId": "getAssessmentState",
+          "path": "/api/v1/assessments/{assessment_id}/state",
+          "section": "paths",
+          "fingerprint": "4cd8fb972b1a"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `404`",
+          "level": 3,
+          "operation": "GET",
+          "operationId": "getAssessmentState",
+          "path": "/api/v1/assessments/{assessment_id}/state",
+          "section": "paths",
+          "fingerprint": "a8e7faf8d0fa"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`",
+          "level": 3,
+          "operation": "GET",
+          "operationId": "getAssessmentState",
+          "path": "/api/v1/assessments/{assessment_id}/state",
+          "section": "paths",
+          "fingerprint": "85ddbae90895"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "level": 3,
+          "operation": "GET",
+          "operationId": "authCsrf",
+          "path": "/api/v1/auth/csrf",
+          "section": "paths",
+          "fingerprint": "32df891d43fd"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`",
+          "level": 3,
+          "operation": "GET",
+          "operationId": "authCsrf",
+          "path": "/api/v1/auth/csrf",
+          "section": "paths",
+          "fingerprint": "967dbe4ee762"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "authLogin",
+          "path": "/api/v1/auth/login",
+          "section": "paths",
+          "fingerprint": "1e72701944d2"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `403`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "authLogin",
+          "path": "/api/v1/auth/login",
+          "section": "paths",
+          "fingerprint": "7f422337bd10"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "authLogin",
+          "path": "/api/v1/auth/login",
+          "section": "paths",
+          "fingerprint": "960971ad5509"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `429`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "authLogin",
+          "path": "/api/v1/auth/login",
+          "section": "paths",
+          "fingerprint": "c308b4d8d404"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "authLogout",
+          "path": "/api/v1/auth/logout",
+          "section": "paths",
+          "fingerprint": "c6ccaa015268"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `403`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "authLogout",
+          "path": "/api/v1/auth/logout",
+          "section": "paths",
+          "fingerprint": "7c67f43a69a0"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "authLogout",
+          "path": "/api/v1/auth/logout",
+          "section": "paths",
+          "fingerprint": "f99d3c388fd8"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "level": 3,
+          "operation": "GET",
+          "operationId": "authMe",
+          "path": "/api/v1/auth/me",
+          "section": "paths",
+          "fingerprint": "ddd8378b13e6"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`",
+          "level": 3,
+          "operation": "GET",
+          "operationId": "authMe",
+          "path": "/api/v1/auth/me",
+          "section": "paths",
+          "fingerprint": "bda29ebc0be6"
+        },
+        {
+          "id": "new-required-request-property",
+          "text": "added the new required request property `model_policy/model_id`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "34ba0c9765ab"
+        },
+        {
+          "id": "new-required-request-property",
+          "text": "added the new required request property `model_policy/provider_class`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "d98669f4f0c8"
+        },
+        {
+          "id": "new-required-request-property",
+          "text": "added the new required request property `prompt_ref/prompt_id`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "3fa0cb0a59a5"
+        },
+        {
+          "id": "new-required-request-property",
+          "text": "added the new required request property `prompt_ref/prompt_version`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "660afa72bc35"
+        },
+        {
+          "id": "new-required-request-property",
+          "text": "added the new required request property `retrieval/chunk_ids`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "7e5c4ee5e45a"
+        },
+        {
+          "id": "new-required-request-property",
+          "text": "added the new required request property `retrieval/retrieval_id`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "fc4c75134cd3"
+        },
+        {
+          "id": "request-property-became-enum",
+          "text": "request property `safety_mode` was restricted to a list of enum values",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "c397f5748152"
+        },
+        {
+          "id": "request-property-became-enum",
+          "text": "request property `target_role` was restricted to a list of enum values",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "7f6a09f57493"
+        },
+        {
+          "id": "request-property-min-length-increased",
+          "text": "the `language` request property's minLength was increased from `0` to `2`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "ab281c09dde4"
+        },
+        {
+          "id": "request-property-pattern-added",
+          "text": "added the pattern `^ASSESS_[A-Za-z0-9][A-Za-z0-9_.-]*$` to the request property `assessment_id`",
+          "comment": "This is a breaking change because adding a pattern restriction to a previously unrestricted parameter will reject values that were previously accepted, breaking existing clients",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "a61b87564622"
+        },
+        {
+          "id": "request-property-pattern-added",
+          "text": "added the pattern `^GEN_[A-Za-z0-9][A-Za-z0-9_.-]*$` to the request property `generation_id`",
+          "comment": "This is a breaking change because adding a pattern restriction to a previously unrestricted parameter will reject values that were previously accepted, breaking existing clients",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "813c9d749f90"
+        },
+        {
+          "id": "request-property-pattern-added",
+          "text": "added the pattern `^SUBJ_[A-Za-z0-9][A-Za-z0-9_.-]*$` to the request property `subject_id`",
+          "comment": "This is a breaking change because adding a pattern restriction to a previously unrestricted parameter will reject values that were previously accepted, breaking existing clients",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "b7280cffe6ec"
+        },
+        {
+          "id": "request-property-type-changed",
+          "text": "the `purpose` request property `type` changed from `any` to `string`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "321b1dc1c437"
+        },
+        {
+          "id": "request-property-type-changed",
+          "text": "the `schema_version` request property `type` changed from `any` to `string`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "24823466f715"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "dbb71fd646ca"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `403`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "712195c9375b"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `404`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "0f9f763b6157"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `502`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "989da317b3ad"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `504`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "6e90dd7b0624"
+        },
+        {
+          "id": "response-property-type-changed",
+          "text": "the `data/content` response's property `type` changed from `object, null` to `any` for status `202`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "8e8b98f3954e"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`",
+          "level": 3,
+          "operation": "GET",
+          "operationId": "getHealth",
+          "path": "/api/v1/health",
+          "section": "paths",
+          "fingerprint": "38331d335621"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `500`",
+          "level": 3,
+          "operation": "GET",
+          "operationId": "getHealth",
+          "path": "/api/v1/health",
+          "section": "paths",
+          "fingerprint": "20db0520f47d"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "level": 3,
+          "operation": "GET",
+          "operationId": "getReport",
+          "path": "/api/v1/reports/{report_id}",
+          "section": "paths",
+          "fingerprint": "a6a93a592047"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`",
+          "level": 3,
+          "operation": "GET",
+          "operationId": "getReport",
+          "path": "/api/v1/reports/{report_id}",
+          "section": "paths",
+          "fingerprint": "f92cd1f89c94"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "reviewReport",
+          "path": "/api/v1/reports/{report_id}/reviews",
+          "section": "paths",
+          "fingerprint": "8bb17216562b"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "reviewReport",
+          "path": "/api/v1/reports/{report_id}/reviews",
+          "section": "paths",
+          "fingerprint": "3d646a331a39"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createRetrieval",
+          "path": "/api/v1/retrievals",
+          "section": "paths",
+          "fingerprint": "d0524b288bef"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `404`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createRetrieval",
+          "path": "/api/v1/retrievals",
+          "section": "paths",
+          "fingerprint": "4b580bd20f1f"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createRetrieval",
+          "path": "/api/v1/retrievals",
+          "section": "paths",
+          "fingerprint": "db750cd9acc7"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `504`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createRetrieval",
+          "path": "/api/v1/retrievals",
+          "section": "paths",
+          "fingerprint": "865b6b1e1aac"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "level": 3,
+          "operation": "GET",
+          "operationId": "listReviews",
+          "path": "/api/v1/reviews",
+          "section": "paths",
+          "fingerprint": "d432cfa7805b"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `403`",
+          "level": 3,
+          "operation": "GET",
+          "operationId": "listReviews",
+          "path": "/api/v1/reviews",
+          "section": "paths",
+          "fingerprint": "b25b730056db"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`",
+          "level": 3,
+          "operation": "GET",
+          "operationId": "listReviews",
+          "path": "/api/v1/reviews",
+          "section": "paths",
+          "fingerprint": "ce827b32d6d6"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "level": 3,
+          "operation": "GET",
+          "operationId": "getReview",
+          "path": "/api/v1/reviews/{review_id}",
+          "section": "paths",
+          "fingerprint": "dd1a3a92539a"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `403`",
+          "level": 3,
+          "operation": "GET",
+          "operationId": "getReview",
+          "path": "/api/v1/reviews/{review_id}",
+          "section": "paths",
+          "fingerprint": "b0e397ca0906"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `404`",
+          "level": 3,
+          "operation": "GET",
+          "operationId": "getReview",
+          "path": "/api/v1/reviews/{review_id}",
+          "section": "paths",
+          "fingerprint": "d0c6f98194da"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`",
+          "level": 3,
+          "operation": "GET",
+          "operationId": "getReview",
+          "path": "/api/v1/reviews/{review_id}",
+          "section": "paths",
+          "fingerprint": "926cb81036cf"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "checkSafety",
+          "path": "/api/v1/safety/checks",
+          "section": "paths",
+          "fingerprint": "1225afaf5d91"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `403`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "checkSafety",
+          "path": "/api/v1/safety/checks",
+          "section": "paths",
+          "fingerprint": "5fb07cb724c5"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `404`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "checkSafety",
+          "path": "/api/v1/safety/checks",
+          "section": "paths",
+          "fingerprint": "c193a85df0fc"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `503`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "checkSafety",
+          "path": "/api/v1/safety/checks",
+          "section": "paths",
+          "fingerprint": "4ac1113c0fb6"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createSupport",
+          "path": "/api/v1/support/requests",
+          "section": "paths",
+          "fingerprint": "973bded69616"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `403`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createSupport",
+          "path": "/api/v1/support/requests",
+          "section": "paths",
+          "fingerprint": "15c54dbfacaa"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `404`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createSupport",
+          "path": "/api/v1/support/requests",
+          "section": "paths",
+          "fingerprint": "62c84b308579"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `409`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createSupport",
+          "path": "/api/v1/support/requests",
+          "section": "paths",
+          "fingerprint": "1cbb877982cf"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createSupport",
+          "path": "/api/v1/support/requests",
+          "section": "paths",
+          "fingerprint": "f2e651c4724f"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `502`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createSupport",
+          "path": "/api/v1/support/requests",
+          "section": "paths",
+          "fingerprint": "100674a203f0"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `504`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createSupport",
+          "path": "/api/v1/support/requests",
+          "section": "paths",
+          "fingerprint": "5d9590711e88"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`",
+          "level": 3,
+          "operation": "GET",
+          "operationId": "healthDependencies",
+          "path": "/health/dependencies",
+          "section": "paths",
+          "fingerprint": "65fd9a56c0e7"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `500`",
+          "level": 3,
+          "operation": "GET",
+          "operationId": "healthDependencies",
+          "path": "/health/dependencies",
+          "section": "paths",
+          "fingerprint": "49fb32daf821"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`",
+          "level": 3,
+          "operation": "GET",
+          "operationId": "healthReady",
+          "path": "/health/ready",
+          "section": "paths",
+          "fingerprint": "6adf313bdfd5"
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "text": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `500`",
+          "level": 3,
+          "operation": "GET",
+          "operationId": "healthReady",
+          "path": "/health/ready",
+          "section": "paths",
+          "fingerprint": "ddef890599ca"
+        },
+        {
+          "id": "request-property-max-length-set",
+          "text": "the `instrument_id` request property's maxLength was set to `160`",
+          "comment": "This is a warning because the restriction is sometimes legitimately required. Before making such a change, confirm that clients can handle the new restriction.",
+          "level": 2,
+          "operation": "POST",
+          "operationId": "createAssessment",
+          "path": "/api/v1/assessments",
+          "section": "paths",
+          "fingerprint": "34af479fc194"
+        },
+        {
+          "id": "request-property-max-length-set",
+          "text": "the `instrument_version` request property's maxLength was set to `64`",
+          "comment": "This is a warning because the restriction is sometimes legitimately required. Before making such a change, confirm that clients can handle the new restriction.",
+          "level": 2,
+          "operation": "POST",
+          "operationId": "createAssessment",
+          "path": "/api/v1/assessments",
+          "section": "paths",
+          "fingerprint": "0065925ad5d0"
+        },
+        {
+          "id": "response-property-enum-value-added",
+          "text": "added the new `admin` enum value to the `data/target_role` response property for the response status `202`",
+          "comment": "Adding new enum values to a response can be unexpected for clients; use x-extensible-enum instead.",
+          "level": 2,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "3c4d007fa938"
+        },
+        {
+          "id": "response-property-enum-value-added",
+          "text": "added the new `parent` enum value to the `data/target_role` response property for the response status `202`",
+          "comment": "Adding new enum values to a response can be unexpected for clients; use x-extensible-enum instead.",
+          "level": 2,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "937d5ec55d73"
+        },
+        {
+          "id": "response-property-enum-value-added",
+          "text": "added the new `student` enum value to the `data/target_role` response property for the response status `202`",
+          "comment": "Adding new enum values to a response can be unexpected for clients; use x-extensible-enum instead.",
+          "level": 2,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "25673d65c841"
+        },
+        {
+          "id": "response-property-enum-value-added",
+          "text": "added the new `teacher` enum value to the `data/target_role` response property for the response status `202`",
+          "comment": "Adding new enum values to a response can be unexpected for clients; use x-extensible-enum instead.",
+          "level": 2,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "3feeaf9ab5f8"
+        },
+        {
+          "id": "request-property-max-length-set",
+          "text": "the `query` request property's maxLength was set to `20000`",
+          "comment": "This is a warning because the restriction is sometimes legitimately required. Before making such a change, confirm that clients can handle the new restriction.",
+          "level": 2,
+          "operation": "POST",
+          "operationId": "createRetrieval",
+          "path": "/api/v1/retrievals",
+          "section": "paths",
+          "fingerprint": "f0b69fc40157"
+        }
+      ],
+      "classifications": [
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/assessments",
+          "operation": "POST",
+          "operationId": "createAssessment",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/assessments",
+          "operation": "POST",
+          "operationId": "createAssessment",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `403`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/assessments",
+          "operation": "POST",
+          "operationId": "createAssessment",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `409`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/assessments/{assessment_id}",
+          "operation": "GET",
+          "operationId": "getAssessment",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/assessments/{assessment_id}",
+          "operation": "GET",
+          "operationId": "getAssessment",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `404`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/assessments/{assessment_id}",
+          "operation": "GET",
+          "operationId": "getAssessment",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/assessments/{assessment_id}/complete",
+          "operation": "POST",
+          "operationId": "completeAssessment",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/assessments/{assessment_id}/complete",
+          "operation": "POST",
+          "operationId": "completeAssessment",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `403`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/assessments/{assessment_id}/responses",
+          "operation": "POST",
+          "operationId": "recordAssessmentResponse",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/assessments/{assessment_id}/responses",
+          "operation": "POST",
+          "operationId": "recordAssessmentResponse",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `403`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/assessments/{assessment_id}/state",
+          "operation": "GET",
+          "operationId": "getAssessmentState",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/assessments/{assessment_id}/state",
+          "operation": "GET",
+          "operationId": "getAssessmentState",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `404`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/assessments/{assessment_id}/state",
+          "operation": "GET",
+          "operationId": "getAssessmentState",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/auth/csrf",
+          "operation": "GET",
+          "operationId": "authCsrf",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/auth/csrf",
+          "operation": "GET",
+          "operationId": "authCsrf",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/auth/login",
+          "operation": "POST",
+          "operationId": "authLogin",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/auth/login",
+          "operation": "POST",
+          "operationId": "authLogin",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `403`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/auth/login",
+          "operation": "POST",
+          "operationId": "authLogin",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/auth/login",
+          "operation": "POST",
+          "operationId": "authLogin",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `429`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/auth/logout",
+          "operation": "POST",
+          "operationId": "authLogout",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/auth/logout",
+          "operation": "POST",
+          "operationId": "authLogout",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `403`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/auth/logout",
+          "operation": "POST",
+          "operationId": "authLogout",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/auth/me",
+          "operation": "GET",
+          "operationId": "authMe",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/auth/me",
+          "operation": "GET",
+          "operationId": "authMe",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "new-required-request-property",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "added the new required request property `model_policy/model_id`",
+          "classification": "INTENTIONAL_PRE-PROMOTION_CORRECTION",
+          "reason": "The hardened candidate makes generation provenance explicit and typed: schema version, stable identities, retrieval/prompt/model references, and bounded enums/patterns. The legacy comparison surface was incomplete for the accepted provenance correction and is not the frozen root contract.",
+          "consumer_impact": "Consumers of the candidate generation surface must use the typed provenance fields; the RealApiProvider primary path uses the support operation and does not depend on the legacy generation request as an anonymous payload.",
+          "action": "Keep the correction candidate-only, document the v0.2 migration, and regenerate the SDK from the candidate rather than hand-editing generated code.",
+          "evidence": [
+            "09_backend/src/smhai_backend/domains/support/schemas.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/PROVENANCE_TRACE_REPORT.md"
+          ]
+        },
+        {
+          "id": "new-required-request-property",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "added the new required request property `model_policy/provider_class`",
+          "classification": "INTENTIONAL_PRE-PROMOTION_CORRECTION",
+          "reason": "The hardened candidate makes generation provenance explicit and typed: schema version, stable identities, retrieval/prompt/model references, and bounded enums/patterns. The legacy comparison surface was incomplete for the accepted provenance correction and is not the frozen root contract.",
+          "consumer_impact": "Consumers of the candidate generation surface must use the typed provenance fields; the RealApiProvider primary path uses the support operation and does not depend on the legacy generation request as an anonymous payload.",
+          "action": "Keep the correction candidate-only, document the v0.2 migration, and regenerate the SDK from the candidate rather than hand-editing generated code.",
+          "evidence": [
+            "09_backend/src/smhai_backend/domains/support/schemas.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/PROVENANCE_TRACE_REPORT.md"
+          ]
+        },
+        {
+          "id": "new-required-request-property",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "added the new required request property `prompt_ref/prompt_id`",
+          "classification": "INTENTIONAL_PRE-PROMOTION_CORRECTION",
+          "reason": "The hardened candidate makes generation provenance explicit and typed: schema version, stable identities, retrieval/prompt/model references, and bounded enums/patterns. The legacy comparison surface was incomplete for the accepted provenance correction and is not the frozen root contract.",
+          "consumer_impact": "Consumers of the candidate generation surface must use the typed provenance fields; the RealApiProvider primary path uses the support operation and does not depend on the legacy generation request as an anonymous payload.",
+          "action": "Keep the correction candidate-only, document the v0.2 migration, and regenerate the SDK from the candidate rather than hand-editing generated code.",
+          "evidence": [
+            "09_backend/src/smhai_backend/domains/support/schemas.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/PROVENANCE_TRACE_REPORT.md"
+          ]
+        },
+        {
+          "id": "new-required-request-property",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "added the new required request property `prompt_ref/prompt_version`",
+          "classification": "INTENTIONAL_PRE-PROMOTION_CORRECTION",
+          "reason": "The hardened candidate makes generation provenance explicit and typed: schema version, stable identities, retrieval/prompt/model references, and bounded enums/patterns. The legacy comparison surface was incomplete for the accepted provenance correction and is not the frozen root contract.",
+          "consumer_impact": "Consumers of the candidate generation surface must use the typed provenance fields; the RealApiProvider primary path uses the support operation and does not depend on the legacy generation request as an anonymous payload.",
+          "action": "Keep the correction candidate-only, document the v0.2 migration, and regenerate the SDK from the candidate rather than hand-editing generated code.",
+          "evidence": [
+            "09_backend/src/smhai_backend/domains/support/schemas.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/PROVENANCE_TRACE_REPORT.md"
+          ]
+        },
+        {
+          "id": "new-required-request-property",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "added the new required request property `retrieval/chunk_ids`",
+          "classification": "INTENTIONAL_PRE-PROMOTION_CORRECTION",
+          "reason": "The hardened candidate makes generation provenance explicit and typed: schema version, stable identities, retrieval/prompt/model references, and bounded enums/patterns. The legacy comparison surface was incomplete for the accepted provenance correction and is not the frozen root contract.",
+          "consumer_impact": "Consumers of the candidate generation surface must use the typed provenance fields; the RealApiProvider primary path uses the support operation and does not depend on the legacy generation request as an anonymous payload.",
+          "action": "Keep the correction candidate-only, document the v0.2 migration, and regenerate the SDK from the candidate rather than hand-editing generated code.",
+          "evidence": [
+            "09_backend/src/smhai_backend/domains/support/schemas.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/PROVENANCE_TRACE_REPORT.md"
+          ]
+        },
+        {
+          "id": "new-required-request-property",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "added the new required request property `retrieval/retrieval_id`",
+          "classification": "INTENTIONAL_PRE-PROMOTION_CORRECTION",
+          "reason": "The hardened candidate makes generation provenance explicit and typed: schema version, stable identities, retrieval/prompt/model references, and bounded enums/patterns. The legacy comparison surface was incomplete for the accepted provenance correction and is not the frozen root contract.",
+          "consumer_impact": "Consumers of the candidate generation surface must use the typed provenance fields; the RealApiProvider primary path uses the support operation and does not depend on the legacy generation request as an anonymous payload.",
+          "action": "Keep the correction candidate-only, document the v0.2 migration, and regenerate the SDK from the candidate rather than hand-editing generated code.",
+          "evidence": [
+            "09_backend/src/smhai_backend/domains/support/schemas.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/PROVENANCE_TRACE_REPORT.md"
+          ]
+        },
+        {
+          "id": "request-property-became-enum",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "request property `safety_mode` was restricted to a list of enum values",
+          "classification": "INTENTIONAL_PRE-PROMOTION_CORRECTION",
+          "reason": "The hardened candidate makes generation provenance explicit and typed: schema version, stable identities, retrieval/prompt/model references, and bounded enums/patterns. The legacy comparison surface was incomplete for the accepted provenance correction and is not the frozen root contract.",
+          "consumer_impact": "Consumers of the candidate generation surface must use the typed provenance fields; the RealApiProvider primary path uses the support operation and does not depend on the legacy generation request as an anonymous payload.",
+          "action": "Keep the correction candidate-only, document the v0.2 migration, and regenerate the SDK from the candidate rather than hand-editing generated code.",
+          "evidence": [
+            "09_backend/src/smhai_backend/domains/support/schemas.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/PROVENANCE_TRACE_REPORT.md"
+          ]
+        },
+        {
+          "id": "request-property-became-enum",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "request property `target_role` was restricted to a list of enum values",
+          "classification": "INTENTIONAL_PRE-PROMOTION_CORRECTION",
+          "reason": "The hardened candidate makes generation provenance explicit and typed: schema version, stable identities, retrieval/prompt/model references, and bounded enums/patterns. The legacy comparison surface was incomplete for the accepted provenance correction and is not the frozen root contract.",
+          "consumer_impact": "Consumers of the candidate generation surface must use the typed provenance fields; the RealApiProvider primary path uses the support operation and does not depend on the legacy generation request as an anonymous payload.",
+          "action": "Keep the correction candidate-only, document the v0.2 migration, and regenerate the SDK from the candidate rather than hand-editing generated code.",
+          "evidence": [
+            "09_backend/src/smhai_backend/domains/support/schemas.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/PROVENANCE_TRACE_REPORT.md"
+          ]
+        },
+        {
+          "id": "request-property-min-length-increased",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "the `language` request property's minLength was increased from `0` to `2`",
+          "classification": "INTENTIONAL_PRE-PROMOTION_CORRECTION",
+          "reason": "The hardened candidate makes generation provenance explicit and typed: schema version, stable identities, retrieval/prompt/model references, and bounded enums/patterns. The legacy comparison surface was incomplete for the accepted provenance correction and is not the frozen root contract.",
+          "consumer_impact": "Consumers of the candidate generation surface must use the typed provenance fields; the RealApiProvider primary path uses the support operation and does not depend on the legacy generation request as an anonymous payload.",
+          "action": "Keep the correction candidate-only, document the v0.2 migration, and regenerate the SDK from the candidate rather than hand-editing generated code.",
+          "evidence": [
+            "09_backend/src/smhai_backend/domains/support/schemas.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/PROVENANCE_TRACE_REPORT.md"
+          ]
+        },
+        {
+          "id": "request-property-pattern-added",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "added the pattern `^ASSESS_[A-Za-z0-9][A-Za-z0-9_.-]*$` to the request property `assessment_id`",
+          "classification": "INTENTIONAL_PRE-PROMOTION_CORRECTION",
+          "reason": "The hardened candidate makes generation provenance explicit and typed: schema version, stable identities, retrieval/prompt/model references, and bounded enums/patterns. The legacy comparison surface was incomplete for the accepted provenance correction and is not the frozen root contract.",
+          "consumer_impact": "Consumers of the candidate generation surface must use the typed provenance fields; the RealApiProvider primary path uses the support operation and does not depend on the legacy generation request as an anonymous payload.",
+          "action": "Keep the correction candidate-only, document the v0.2 migration, and regenerate the SDK from the candidate rather than hand-editing generated code.",
+          "evidence": [
+            "09_backend/src/smhai_backend/domains/support/schemas.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/PROVENANCE_TRACE_REPORT.md"
+          ]
+        },
+        {
+          "id": "request-property-pattern-added",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "added the pattern `^GEN_[A-Za-z0-9][A-Za-z0-9_.-]*$` to the request property `generation_id`",
+          "classification": "INTENTIONAL_PRE-PROMOTION_CORRECTION",
+          "reason": "The hardened candidate makes generation provenance explicit and typed: schema version, stable identities, retrieval/prompt/model references, and bounded enums/patterns. The legacy comparison surface was incomplete for the accepted provenance correction and is not the frozen root contract.",
+          "consumer_impact": "Consumers of the candidate generation surface must use the typed provenance fields; the RealApiProvider primary path uses the support operation and does not depend on the legacy generation request as an anonymous payload.",
+          "action": "Keep the correction candidate-only, document the v0.2 migration, and regenerate the SDK from the candidate rather than hand-editing generated code.",
+          "evidence": [
+            "09_backend/src/smhai_backend/domains/support/schemas.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/PROVENANCE_TRACE_REPORT.md"
+          ]
+        },
+        {
+          "id": "request-property-pattern-added",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "added the pattern `^SUBJ_[A-Za-z0-9][A-Za-z0-9_.-]*$` to the request property `subject_id`",
+          "classification": "INTENTIONAL_PRE-PROMOTION_CORRECTION",
+          "reason": "The hardened candidate makes generation provenance explicit and typed: schema version, stable identities, retrieval/prompt/model references, and bounded enums/patterns. The legacy comparison surface was incomplete for the accepted provenance correction and is not the frozen root contract.",
+          "consumer_impact": "Consumers of the candidate generation surface must use the typed provenance fields; the RealApiProvider primary path uses the support operation and does not depend on the legacy generation request as an anonymous payload.",
+          "action": "Keep the correction candidate-only, document the v0.2 migration, and regenerate the SDK from the candidate rather than hand-editing generated code.",
+          "evidence": [
+            "09_backend/src/smhai_backend/domains/support/schemas.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/PROVENANCE_TRACE_REPORT.md"
+          ]
+        },
+        {
+          "id": "request-property-type-changed",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "the `purpose` request property `type` changed from `any` to `string`",
+          "classification": "INTENTIONAL_PRE-PROMOTION_CORRECTION",
+          "reason": "The hardened candidate makes generation provenance explicit and typed: schema version, stable identities, retrieval/prompt/model references, and bounded enums/patterns. The legacy comparison surface was incomplete for the accepted provenance correction and is not the frozen root contract.",
+          "consumer_impact": "Consumers of the candidate generation surface must use the typed provenance fields; the RealApiProvider primary path uses the support operation and does not depend on the legacy generation request as an anonymous payload.",
+          "action": "Keep the correction candidate-only, document the v0.2 migration, and regenerate the SDK from the candidate rather than hand-editing generated code.",
+          "evidence": [
+            "09_backend/src/smhai_backend/domains/support/schemas.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/PROVENANCE_TRACE_REPORT.md"
+          ]
+        },
+        {
+          "id": "request-property-type-changed",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "the `schema_version` request property `type` changed from `any` to `string`",
+          "classification": "INTENTIONAL_PRE-PROMOTION_CORRECTION",
+          "reason": "The hardened candidate makes generation provenance explicit and typed: schema version, stable identities, retrieval/prompt/model references, and bounded enums/patterns. The legacy comparison surface was incomplete for the accepted provenance correction and is not the frozen root contract.",
+          "consumer_impact": "Consumers of the candidate generation surface must use the typed provenance fields; the RealApiProvider primary path uses the support operation and does not depend on the legacy generation request as an anonymous payload.",
+          "action": "Keep the correction candidate-only, document the v0.2 migration, and regenerate the SDK from the candidate rather than hand-editing generated code.",
+          "evidence": [
+            "09_backend/src/smhai_backend/domains/support/schemas.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/PROVENANCE_TRACE_REPORT.md"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `403`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `404`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `502`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `504`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-type-changed",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "the `data/content` response's property `type` changed from `object, null` to `any` for status `202`",
+          "classification": "INTENTIONAL_PRE-PROMOTION_CORRECTION",
+          "reason": "The hardened candidate makes generation provenance explicit and typed: schema version, stable identities, retrieval/prompt/model references, and bounded enums/patterns. The legacy comparison surface was incomplete for the accepted provenance correction and is not the frozen root contract.",
+          "consumer_impact": "Consumers of the candidate generation surface must use the typed provenance fields; the RealApiProvider primary path uses the support operation and does not depend on the legacy generation request as an anonymous payload.",
+          "action": "Keep the correction candidate-only, document the v0.2 migration, and regenerate the SDK from the candidate rather than hand-editing generated code.",
+          "evidence": [
+            "09_backend/src/smhai_backend/domains/support/schemas.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/PROVENANCE_TRACE_REPORT.md"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/health",
+          "operation": "GET",
+          "operationId": "getHealth",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/health",
+          "operation": "GET",
+          "operationId": "getHealth",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `500`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/reports/{report_id}",
+          "operation": "GET",
+          "operationId": "getReport",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/reports/{report_id}",
+          "operation": "GET",
+          "operationId": "getReport",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/reports/{report_id}/reviews",
+          "operation": "POST",
+          "operationId": "reviewReport",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/reports/{report_id}/reviews",
+          "operation": "POST",
+          "operationId": "reviewReport",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/retrievals",
+          "operation": "POST",
+          "operationId": "createRetrieval",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/retrievals",
+          "operation": "POST",
+          "operationId": "createRetrieval",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `404`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/retrievals",
+          "operation": "POST",
+          "operationId": "createRetrieval",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/retrievals",
+          "operation": "POST",
+          "operationId": "createRetrieval",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `504`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/reviews",
+          "operation": "GET",
+          "operationId": "listReviews",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/reviews",
+          "operation": "GET",
+          "operationId": "listReviews",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `403`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/reviews",
+          "operation": "GET",
+          "operationId": "listReviews",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/reviews/{review_id}",
+          "operation": "GET",
+          "operationId": "getReview",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/reviews/{review_id}",
+          "operation": "GET",
+          "operationId": "getReview",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `403`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/reviews/{review_id}",
+          "operation": "GET",
+          "operationId": "getReview",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `404`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/reviews/{review_id}",
+          "operation": "GET",
+          "operationId": "getReview",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/safety/checks",
+          "operation": "POST",
+          "operationId": "checkSafety",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/safety/checks",
+          "operation": "POST",
+          "operationId": "checkSafety",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `403`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/safety/checks",
+          "operation": "POST",
+          "operationId": "checkSafety",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `404`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/safety/checks",
+          "operation": "POST",
+          "operationId": "checkSafety",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `503`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/support/requests",
+          "operation": "POST",
+          "operationId": "createSupport",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `401`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/support/requests",
+          "operation": "POST",
+          "operationId": "createSupport",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `403`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/support/requests",
+          "operation": "POST",
+          "operationId": "createSupport",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `404`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/support/requests",
+          "operation": "POST",
+          "operationId": "createSupport",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `409`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/support/requests",
+          "operation": "POST",
+          "operationId": "createSupport",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/support/requests",
+          "operation": "POST",
+          "operationId": "createSupport",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `502`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/api/v1/support/requests",
+          "operation": "POST",
+          "operationId": "createSupport",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `504`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/health/dependencies",
+          "operation": "GET",
+          "operationId": "healthDependencies",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/health/dependencies",
+          "operation": "GET",
+          "operationId": "healthDependencies",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `500`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/health/ready",
+          "operation": "GET",
+          "operationId": "healthReady",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `422`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "response-property-list-of-types-widened",
+          "path": "/health/ready",
+          "operation": "GET",
+          "operationId": "healthReady",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "response property `instance` list-of-types was widened by adding types `null` to media type `application/problem+json` of response `500`",
+          "classification": "FALSE_POSITIVE_WITH_EVIDENCE",
+          "reason": "OpenAPI 3.0 type-array and OpenAPI 3.1 anyOf encode the same nullable instance value; the generated schemas differ representationally while the runtime typed Problem Details response returns instance=null.",
+          "consumer_impact": "No accepted value was narrowed and the runtime response remains a typed RFC 9457 shape.",
+          "action": "Retain the source DTO and document the schema-encoding equivalence; do not add a broad oasdiff ignore.",
+          "evidence": [
+            "09_backend/src/smhai_backend/core/errors.py",
+            "09_backend/tests/test_contract_api_hardening.py",
+            "14_docs/contract-hardening/evidence/oasdiff-closure-runtime-problem-details.json"
+          ]
+        },
+        {
+          "id": "request-property-max-length-set",
+          "path": "/api/v1/assessments",
+          "operation": "POST",
+          "operationId": "createAssessment",
+          "oasdiff_severity": "warning",
+          "oasdiff_message": "the `instrument_id` request property's maxLength was set to `160`",
+          "classification": "NON_BREAKING / WARNING",
+          "reason": "oasdiff reported a warning-level change; it is retained as a visible warning and is not an unintentional breaking change.",
+          "consumer_impact": "Warning-level compatibility review remains part of the closure record.",
+          "action": "Retain the warning and verify the bounded schema change against the source contract.",
+          "evidence": [
+            "oasdiff-closure-raw-integration-to-hardened.txt"
+          ]
+        },
+        {
+          "id": "request-property-max-length-set",
+          "path": "/api/v1/assessments",
+          "operation": "POST",
+          "operationId": "createAssessment",
+          "oasdiff_severity": "warning",
+          "oasdiff_message": "the `instrument_version` request property's maxLength was set to `64`",
+          "classification": "NON_BREAKING / WARNING",
+          "reason": "oasdiff reported a warning-level change; it is retained as a visible warning and is not an unintentional breaking change.",
+          "consumer_impact": "Warning-level compatibility review remains part of the closure record.",
+          "action": "Retain the warning and verify the bounded schema change against the source contract.",
+          "evidence": [
+            "oasdiff-closure-raw-integration-to-hardened.txt"
+          ]
+        },
+        {
+          "id": "response-property-enum-value-added",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "warning",
+          "oasdiff_message": "added the new `admin` enum value to the `data/target_role` response property for the response status `202`",
+          "classification": "NON_BREAKING / WARNING",
+          "reason": "oasdiff reported a warning-level change; it is retained as a visible warning and is not an unintentional breaking change.",
+          "consumer_impact": "Warning-level compatibility review remains part of the closure record.",
+          "action": "Retain the warning and verify the bounded schema change against the source contract.",
+          "evidence": [
+            "oasdiff-closure-raw-integration-to-hardened.txt"
+          ]
+        },
+        {
+          "id": "response-property-enum-value-added",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "warning",
+          "oasdiff_message": "added the new `parent` enum value to the `data/target_role` response property for the response status `202`",
+          "classification": "NON_BREAKING / WARNING",
+          "reason": "oasdiff reported a warning-level change; it is retained as a visible warning and is not an unintentional breaking change.",
+          "consumer_impact": "Warning-level compatibility review remains part of the closure record.",
+          "action": "Retain the warning and verify the bounded schema change against the source contract.",
+          "evidence": [
+            "oasdiff-closure-raw-integration-to-hardened.txt"
+          ]
+        },
+        {
+          "id": "response-property-enum-value-added",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "warning",
+          "oasdiff_message": "added the new `student` enum value to the `data/target_role` response property for the response status `202`",
+          "classification": "NON_BREAKING / WARNING",
+          "reason": "oasdiff reported a warning-level change; it is retained as a visible warning and is not an unintentional breaking change.",
+          "consumer_impact": "Warning-level compatibility review remains part of the closure record.",
+          "action": "Retain the warning and verify the bounded schema change against the source contract.",
+          "evidence": [
+            "oasdiff-closure-raw-integration-to-hardened.txt"
+          ]
+        },
+        {
+          "id": "response-property-enum-value-added",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "warning",
+          "oasdiff_message": "added the new `teacher` enum value to the `data/target_role` response property for the response status `202`",
+          "classification": "NON_BREAKING / WARNING",
+          "reason": "oasdiff reported a warning-level change; it is retained as a visible warning and is not an unintentional breaking change.",
+          "consumer_impact": "Warning-level compatibility review remains part of the closure record.",
+          "action": "Retain the warning and verify the bounded schema change against the source contract.",
+          "evidence": [
+            "oasdiff-closure-raw-integration-to-hardened.txt"
+          ]
+        },
+        {
+          "id": "request-property-max-length-set",
+          "path": "/api/v1/retrievals",
+          "operation": "POST",
+          "operationId": "createRetrieval",
+          "oasdiff_severity": "warning",
+          "oasdiff_message": "the `query` request property's maxLength was set to `20000`",
+          "classification": "NON_BREAKING / WARNING",
+          "reason": "oasdiff reported a warning-level change; it is retained as a visible warning and is not an unintentional breaking change.",
+          "consumer_impact": "Warning-level compatibility review remains part of the closure record.",
+          "action": "Retain the warning and verify the bounded schema change against the source contract.",
+          "evidence": [
+            "oasdiff-closure-raw-integration-to-hardened.txt"
+          ]
+        }
+      ],
+      "counts": {
+        "total_findings": 83,
+        "raw_errors": 76,
+        "raw_warnings": 7,
+        "unintentional": 0,
+        "intentional_pre_promotion": 15,
+        "expected_surface_difference": 0,
+        "false_positive": 61,
+        "warning": 7,
+        "unclassified": 0,
+        "pending_owner_decisions": 0
+      }
+    },
+    "root_to_hardened": {
+      "base": "00_architecture/openapi.v1.json",
+      "revision": "00_architecture/contracts/candidates/openapi.hardened.candidate.json",
+      "raw_file": "oasdiff-closure-raw-frozen-root-to-hardened.txt",
+      "raw_json_file": "oasdiff-closure-json-frozen-root-to-hardened.json",
+      "command": "D:\\Dev\\tools\\oasdiff\\1.28.0\\oasdiff.exe breaking 00_architecture/openapi.v1.json 00_architecture/contracts/candidates/openapi.hardened.candidate.json --format json --fail-on ERR --color never",
+      "raw_findings": [
+        {
+          "id": "new-required-request-property",
+          "text": "added the new required request property `model_policy/model_id`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "34ba0c9765ab"
+        },
+        {
+          "id": "new-required-request-property",
+          "text": "added the new required request property `model_policy/provider_class`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "d98669f4f0c8"
+        },
+        {
+          "id": "new-required-request-property",
+          "text": "added the new required request property `prompt_ref/prompt_id`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "3fa0cb0a59a5"
+        },
+        {
+          "id": "new-required-request-property",
+          "text": "added the new required request property `prompt_ref/prompt_version`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "660afa72bc35"
+        },
+        {
+          "id": "new-required-request-property",
+          "text": "added the new required request property `retrieval/chunk_ids`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "7e5c4ee5e45a"
+        },
+        {
+          "id": "new-required-request-property",
+          "text": "added the new required request property `retrieval/retrieval_id`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "fc4c75134cd3"
+        },
+        {
+          "id": "request-property-became-enum",
+          "text": "request property `safety_mode` was restricted to a list of enum values",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "c397f5748152"
+        },
+        {
+          "id": "request-property-became-enum",
+          "text": "request property `target_role` was restricted to a list of enum values",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "7f6a09f57493"
+        },
+        {
+          "id": "request-property-min-length-increased",
+          "text": "the `language` request property's minLength was increased from `0` to `2`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "ab281c09dde4"
+        },
+        {
+          "id": "request-property-pattern-added",
+          "text": "added the pattern `^ASSESS_[A-Za-z0-9][A-Za-z0-9_.-]*$` to the request property `assessment_id`",
+          "comment": "This is a breaking change because adding a pattern restriction to a previously unrestricted parameter will reject values that were previously accepted, breaking existing clients",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "a61b87564622"
+        },
+        {
+          "id": "request-property-pattern-added",
+          "text": "added the pattern `^GEN_[A-Za-z0-9][A-Za-z0-9_.-]*$` to the request property `generation_id`",
+          "comment": "This is a breaking change because adding a pattern restriction to a previously unrestricted parameter will reject values that were previously accepted, breaking existing clients",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "813c9d749f90"
+        },
+        {
+          "id": "request-property-pattern-added",
+          "text": "added the pattern `^SUBJ_[A-Za-z0-9][A-Za-z0-9_.-]*$` to the request property `subject_id`",
+          "comment": "This is a breaking change because adding a pattern restriction to a previously unrestricted parameter will reject values that were previously accepted, breaking existing clients",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "b7280cffe6ec"
+        },
+        {
+          "id": "request-property-type-changed",
+          "text": "the `purpose` request property `type` changed from `any` to `string`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "321b1dc1c437"
+        },
+        {
+          "id": "request-property-type-changed",
+          "text": "the `schema_version` request property `type` changed from `any` to `string`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "24823466f715"
+        },
+        {
+          "id": "response-property-type-changed",
+          "text": "the `data/content` response's property `type` changed from `object, null` to `any` for status `202`",
+          "level": 3,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "8e8b98f3954e"
+        },
+        {
+          "id": "request-property-max-length-set",
+          "text": "the `instrument_id` request property's maxLength was set to `160`",
+          "comment": "This is a warning because the restriction is sometimes legitimately required. Before making such a change, confirm that clients can handle the new restriction.",
+          "level": 2,
+          "operation": "POST",
+          "operationId": "createAssessment",
+          "path": "/api/v1/assessments",
+          "section": "paths",
+          "fingerprint": "34af479fc194"
+        },
+        {
+          "id": "request-property-max-length-set",
+          "text": "the `instrument_version` request property's maxLength was set to `64`",
+          "comment": "This is a warning because the restriction is sometimes legitimately required. Before making such a change, confirm that clients can handle the new restriction.",
+          "level": 2,
+          "operation": "POST",
+          "operationId": "createAssessment",
+          "path": "/api/v1/assessments",
+          "section": "paths",
+          "fingerprint": "0065925ad5d0"
+        },
+        {
+          "id": "response-property-enum-value-added",
+          "text": "added the new `admin` enum value to the `data/target_role` response property for the response status `202`",
+          "comment": "Adding new enum values to a response can be unexpected for clients; use x-extensible-enum instead.",
+          "level": 2,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "3c4d007fa938"
+        },
+        {
+          "id": "response-property-enum-value-added",
+          "text": "added the new `parent` enum value to the `data/target_role` response property for the response status `202`",
+          "comment": "Adding new enum values to a response can be unexpected for clients; use x-extensible-enum instead.",
+          "level": 2,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "937d5ec55d73"
+        },
+        {
+          "id": "response-property-enum-value-added",
+          "text": "added the new `student` enum value to the `data/target_role` response property for the response status `202`",
+          "comment": "Adding new enum values to a response can be unexpected for clients; use x-extensible-enum instead.",
+          "level": 2,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "25673d65c841"
+        },
+        {
+          "id": "response-property-enum-value-added",
+          "text": "added the new `teacher` enum value to the `data/target_role` response property for the response status `202`",
+          "comment": "Adding new enum values to a response can be unexpected for clients; use x-extensible-enum instead.",
+          "level": 2,
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "path": "/api/v1/generations",
+          "section": "paths",
+          "fingerprint": "3feeaf9ab5f8"
+        },
+        {
+          "id": "request-property-max-length-set",
+          "text": "the `query` request property's maxLength was set to `20000`",
+          "comment": "This is a warning because the restriction is sometimes legitimately required. Before making such a change, confirm that clients can handle the new restriction.",
+          "level": 2,
+          "operation": "POST",
+          "operationId": "createRetrieval",
+          "path": "/api/v1/retrievals",
+          "section": "paths",
+          "fingerprint": "f0b69fc40157"
+        }
+      ],
+      "classifications": [
+        {
+          "id": "new-required-request-property",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "added the new required request property `model_policy/model_id`",
+          "classification": "EXPECTED_SURFACE_DIFFERENCE",
+          "reason": "The frozen v0.1 root surface and the browser-facing hardened candidate are intentionally different comparison surfaces; the candidate exposes the typed generation/provenance DTO needed by the accepted hardening slice.",
+          "consumer_impact": "The frozen root remains unchanged and is not promoted by this closure.",
+          "action": "Keep the root contract frozen; carry the candidate-only surface through the documented v0.2 promotion proposal and migration review.",
+          "evidence": [
+            "00_architecture/CONTRACTS.md",
+            "00_architecture/openapi.v1.json",
+            "00_architecture/contracts/candidates/openapi.hardened.candidate.json",
+            "14_docs/contract-hardening/PROVENANCE_TRACE_REPORT.md"
+          ]
+        },
+        {
+          "id": "new-required-request-property",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "added the new required request property `model_policy/provider_class`",
+          "classification": "EXPECTED_SURFACE_DIFFERENCE",
+          "reason": "The frozen v0.1 root surface and the browser-facing hardened candidate are intentionally different comparison surfaces; the candidate exposes the typed generation/provenance DTO needed by the accepted hardening slice.",
+          "consumer_impact": "The frozen root remains unchanged and is not promoted by this closure.",
+          "action": "Keep the root contract frozen; carry the candidate-only surface through the documented v0.2 promotion proposal and migration review.",
+          "evidence": [
+            "00_architecture/CONTRACTS.md",
+            "00_architecture/openapi.v1.json",
+            "00_architecture/contracts/candidates/openapi.hardened.candidate.json",
+            "14_docs/contract-hardening/PROVENANCE_TRACE_REPORT.md"
+          ]
+        },
+        {
+          "id": "new-required-request-property",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "added the new required request property `prompt_ref/prompt_id`",
+          "classification": "EXPECTED_SURFACE_DIFFERENCE",
+          "reason": "The frozen v0.1 root surface and the browser-facing hardened candidate are intentionally different comparison surfaces; the candidate exposes the typed generation/provenance DTO needed by the accepted hardening slice.",
+          "consumer_impact": "The frozen root remains unchanged and is not promoted by this closure.",
+          "action": "Keep the root contract frozen; carry the candidate-only surface through the documented v0.2 promotion proposal and migration review.",
+          "evidence": [
+            "00_architecture/CONTRACTS.md",
+            "00_architecture/openapi.v1.json",
+            "00_architecture/contracts/candidates/openapi.hardened.candidate.json",
+            "14_docs/contract-hardening/PROVENANCE_TRACE_REPORT.md"
+          ]
+        },
+        {
+          "id": "new-required-request-property",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "added the new required request property `prompt_ref/prompt_version`",
+          "classification": "EXPECTED_SURFACE_DIFFERENCE",
+          "reason": "The frozen v0.1 root surface and the browser-facing hardened candidate are intentionally different comparison surfaces; the candidate exposes the typed generation/provenance DTO needed by the accepted hardening slice.",
+          "consumer_impact": "The frozen root remains unchanged and is not promoted by this closure.",
+          "action": "Keep the root contract frozen; carry the candidate-only surface through the documented v0.2 promotion proposal and migration review.",
+          "evidence": [
+            "00_architecture/CONTRACTS.md",
+            "00_architecture/openapi.v1.json",
+            "00_architecture/contracts/candidates/openapi.hardened.candidate.json",
+            "14_docs/contract-hardening/PROVENANCE_TRACE_REPORT.md"
+          ]
+        },
+        {
+          "id": "new-required-request-property",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "added the new required request property `retrieval/chunk_ids`",
+          "classification": "EXPECTED_SURFACE_DIFFERENCE",
+          "reason": "The frozen v0.1 root surface and the browser-facing hardened candidate are intentionally different comparison surfaces; the candidate exposes the typed generation/provenance DTO needed by the accepted hardening slice.",
+          "consumer_impact": "The frozen root remains unchanged and is not promoted by this closure.",
+          "action": "Keep the root contract frozen; carry the candidate-only surface through the documented v0.2 promotion proposal and migration review.",
+          "evidence": [
+            "00_architecture/CONTRACTS.md",
+            "00_architecture/openapi.v1.json",
+            "00_architecture/contracts/candidates/openapi.hardened.candidate.json",
+            "14_docs/contract-hardening/PROVENANCE_TRACE_REPORT.md"
+          ]
+        },
+        {
+          "id": "new-required-request-property",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "added the new required request property `retrieval/retrieval_id`",
+          "classification": "EXPECTED_SURFACE_DIFFERENCE",
+          "reason": "The frozen v0.1 root surface and the browser-facing hardened candidate are intentionally different comparison surfaces; the candidate exposes the typed generation/provenance DTO needed by the accepted hardening slice.",
+          "consumer_impact": "The frozen root remains unchanged and is not promoted by this closure.",
+          "action": "Keep the root contract frozen; carry the candidate-only surface through the documented v0.2 promotion proposal and migration review.",
+          "evidence": [
+            "00_architecture/CONTRACTS.md",
+            "00_architecture/openapi.v1.json",
+            "00_architecture/contracts/candidates/openapi.hardened.candidate.json",
+            "14_docs/contract-hardening/PROVENANCE_TRACE_REPORT.md"
+          ]
+        },
+        {
+          "id": "request-property-became-enum",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "request property `safety_mode` was restricted to a list of enum values",
+          "classification": "EXPECTED_SURFACE_DIFFERENCE",
+          "reason": "The frozen v0.1 root surface and the browser-facing hardened candidate are intentionally different comparison surfaces; the candidate exposes the typed generation/provenance DTO needed by the accepted hardening slice.",
+          "consumer_impact": "The frozen root remains unchanged and is not promoted by this closure.",
+          "action": "Keep the root contract frozen; carry the candidate-only surface through the documented v0.2 promotion proposal and migration review.",
+          "evidence": [
+            "00_architecture/CONTRACTS.md",
+            "00_architecture/openapi.v1.json",
+            "00_architecture/contracts/candidates/openapi.hardened.candidate.json",
+            "14_docs/contract-hardening/PROVENANCE_TRACE_REPORT.md"
+          ]
+        },
+        {
+          "id": "request-property-became-enum",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "request property `target_role` was restricted to a list of enum values",
+          "classification": "EXPECTED_SURFACE_DIFFERENCE",
+          "reason": "The frozen v0.1 root surface and the browser-facing hardened candidate are intentionally different comparison surfaces; the candidate exposes the typed generation/provenance DTO needed by the accepted hardening slice.",
+          "consumer_impact": "The frozen root remains unchanged and is not promoted by this closure.",
+          "action": "Keep the root contract frozen; carry the candidate-only surface through the documented v0.2 promotion proposal and migration review.",
+          "evidence": [
+            "00_architecture/CONTRACTS.md",
+            "00_architecture/openapi.v1.json",
+            "00_architecture/contracts/candidates/openapi.hardened.candidate.json",
+            "14_docs/contract-hardening/PROVENANCE_TRACE_REPORT.md"
+          ]
+        },
+        {
+          "id": "request-property-min-length-increased",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "the `language` request property's minLength was increased from `0` to `2`",
+          "classification": "EXPECTED_SURFACE_DIFFERENCE",
+          "reason": "The frozen v0.1 root surface and the browser-facing hardened candidate are intentionally different comparison surfaces; the candidate exposes the typed generation/provenance DTO needed by the accepted hardening slice.",
+          "consumer_impact": "The frozen root remains unchanged and is not promoted by this closure.",
+          "action": "Keep the root contract frozen; carry the candidate-only surface through the documented v0.2 promotion proposal and migration review.",
+          "evidence": [
+            "00_architecture/CONTRACTS.md",
+            "00_architecture/openapi.v1.json",
+            "00_architecture/contracts/candidates/openapi.hardened.candidate.json",
+            "14_docs/contract-hardening/PROVENANCE_TRACE_REPORT.md"
+          ]
+        },
+        {
+          "id": "request-property-pattern-added",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "added the pattern `^ASSESS_[A-Za-z0-9][A-Za-z0-9_.-]*$` to the request property `assessment_id`",
+          "classification": "EXPECTED_SURFACE_DIFFERENCE",
+          "reason": "The frozen v0.1 root surface and the browser-facing hardened candidate are intentionally different comparison surfaces; the candidate exposes the typed generation/provenance DTO needed by the accepted hardening slice.",
+          "consumer_impact": "The frozen root remains unchanged and is not promoted by this closure.",
+          "action": "Keep the root contract frozen; carry the candidate-only surface through the documented v0.2 promotion proposal and migration review.",
+          "evidence": [
+            "00_architecture/CONTRACTS.md",
+            "00_architecture/openapi.v1.json",
+            "00_architecture/contracts/candidates/openapi.hardened.candidate.json",
+            "14_docs/contract-hardening/PROVENANCE_TRACE_REPORT.md"
+          ]
+        },
+        {
+          "id": "request-property-pattern-added",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "added the pattern `^GEN_[A-Za-z0-9][A-Za-z0-9_.-]*$` to the request property `generation_id`",
+          "classification": "EXPECTED_SURFACE_DIFFERENCE",
+          "reason": "The frozen v0.1 root surface and the browser-facing hardened candidate are intentionally different comparison surfaces; the candidate exposes the typed generation/provenance DTO needed by the accepted hardening slice.",
+          "consumer_impact": "The frozen root remains unchanged and is not promoted by this closure.",
+          "action": "Keep the root contract frozen; carry the candidate-only surface through the documented v0.2 promotion proposal and migration review.",
+          "evidence": [
+            "00_architecture/CONTRACTS.md",
+            "00_architecture/openapi.v1.json",
+            "00_architecture/contracts/candidates/openapi.hardened.candidate.json",
+            "14_docs/contract-hardening/PROVENANCE_TRACE_REPORT.md"
+          ]
+        },
+        {
+          "id": "request-property-pattern-added",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "added the pattern `^SUBJ_[A-Za-z0-9][A-Za-z0-9_.-]*$` to the request property `subject_id`",
+          "classification": "EXPECTED_SURFACE_DIFFERENCE",
+          "reason": "The frozen v0.1 root surface and the browser-facing hardened candidate are intentionally different comparison surfaces; the candidate exposes the typed generation/provenance DTO needed by the accepted hardening slice.",
+          "consumer_impact": "The frozen root remains unchanged and is not promoted by this closure.",
+          "action": "Keep the root contract frozen; carry the candidate-only surface through the documented v0.2 promotion proposal and migration review.",
+          "evidence": [
+            "00_architecture/CONTRACTS.md",
+            "00_architecture/openapi.v1.json",
+            "00_architecture/contracts/candidates/openapi.hardened.candidate.json",
+            "14_docs/contract-hardening/PROVENANCE_TRACE_REPORT.md"
+          ]
+        },
+        {
+          "id": "request-property-type-changed",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "the `purpose` request property `type` changed from `any` to `string`",
+          "classification": "EXPECTED_SURFACE_DIFFERENCE",
+          "reason": "The frozen v0.1 root surface and the browser-facing hardened candidate are intentionally different comparison surfaces; the candidate exposes the typed generation/provenance DTO needed by the accepted hardening slice.",
+          "consumer_impact": "The frozen root remains unchanged and is not promoted by this closure.",
+          "action": "Keep the root contract frozen; carry the candidate-only surface through the documented v0.2 promotion proposal and migration review.",
+          "evidence": [
+            "00_architecture/CONTRACTS.md",
+            "00_architecture/openapi.v1.json",
+            "00_architecture/contracts/candidates/openapi.hardened.candidate.json",
+            "14_docs/contract-hardening/PROVENANCE_TRACE_REPORT.md"
+          ]
+        },
+        {
+          "id": "request-property-type-changed",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "the `schema_version` request property `type` changed from `any` to `string`",
+          "classification": "EXPECTED_SURFACE_DIFFERENCE",
+          "reason": "The frozen v0.1 root surface and the browser-facing hardened candidate are intentionally different comparison surfaces; the candidate exposes the typed generation/provenance DTO needed by the accepted hardening slice.",
+          "consumer_impact": "The frozen root remains unchanged and is not promoted by this closure.",
+          "action": "Keep the root contract frozen; carry the candidate-only surface through the documented v0.2 promotion proposal and migration review.",
+          "evidence": [
+            "00_architecture/CONTRACTS.md",
+            "00_architecture/openapi.v1.json",
+            "00_architecture/contracts/candidates/openapi.hardened.candidate.json",
+            "14_docs/contract-hardening/PROVENANCE_TRACE_REPORT.md"
+          ]
+        },
+        {
+          "id": "response-property-type-changed",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "error",
+          "oasdiff_message": "the `data/content` response's property `type` changed from `object, null` to `any` for status `202`",
+          "classification": "EXPECTED_SURFACE_DIFFERENCE",
+          "reason": "The frozen v0.1 root surface and the browser-facing hardened candidate are intentionally different comparison surfaces; the candidate exposes the typed generation/provenance DTO needed by the accepted hardening slice.",
+          "consumer_impact": "The frozen root remains unchanged and is not promoted by this closure.",
+          "action": "Keep the root contract frozen; carry the candidate-only surface through the documented v0.2 promotion proposal and migration review.",
+          "evidence": [
+            "00_architecture/CONTRACTS.md",
+            "00_architecture/openapi.v1.json",
+            "00_architecture/contracts/candidates/openapi.hardened.candidate.json",
+            "14_docs/contract-hardening/PROVENANCE_TRACE_REPORT.md"
+          ]
+        },
+        {
+          "id": "request-property-max-length-set",
+          "path": "/api/v1/assessments",
+          "operation": "POST",
+          "operationId": "createAssessment",
+          "oasdiff_severity": "warning",
+          "oasdiff_message": "the `instrument_id` request property's maxLength was set to `160`",
+          "classification": "NON_BREAKING / WARNING",
+          "reason": "oasdiff reported a warning-level change; it is retained as a visible warning and is not an unintentional breaking change.",
+          "consumer_impact": "Warning-level compatibility review remains part of the closure record.",
+          "action": "Retain the warning and verify the bounded schema change against the source contract.",
+          "evidence": [
+            "oasdiff-closure-raw-frozen-root-to-hardened.txt"
+          ]
+        },
+        {
+          "id": "request-property-max-length-set",
+          "path": "/api/v1/assessments",
+          "operation": "POST",
+          "operationId": "createAssessment",
+          "oasdiff_severity": "warning",
+          "oasdiff_message": "the `instrument_version` request property's maxLength was set to `64`",
+          "classification": "NON_BREAKING / WARNING",
+          "reason": "oasdiff reported a warning-level change; it is retained as a visible warning and is not an unintentional breaking change.",
+          "consumer_impact": "Warning-level compatibility review remains part of the closure record.",
+          "action": "Retain the warning and verify the bounded schema change against the source contract.",
+          "evidence": [
+            "oasdiff-closure-raw-frozen-root-to-hardened.txt"
+          ]
+        },
+        {
+          "id": "response-property-enum-value-added",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "warning",
+          "oasdiff_message": "added the new `admin` enum value to the `data/target_role` response property for the response status `202`",
+          "classification": "NON_BREAKING / WARNING",
+          "reason": "oasdiff reported a warning-level change; it is retained as a visible warning and is not an unintentional breaking change.",
+          "consumer_impact": "Warning-level compatibility review remains part of the closure record.",
+          "action": "Retain the warning and verify the bounded schema change against the source contract.",
+          "evidence": [
+            "oasdiff-closure-raw-frozen-root-to-hardened.txt"
+          ]
+        },
+        {
+          "id": "response-property-enum-value-added",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "warning",
+          "oasdiff_message": "added the new `parent` enum value to the `data/target_role` response property for the response status `202`",
+          "classification": "NON_BREAKING / WARNING",
+          "reason": "oasdiff reported a warning-level change; it is retained as a visible warning and is not an unintentional breaking change.",
+          "consumer_impact": "Warning-level compatibility review remains part of the closure record.",
+          "action": "Retain the warning and verify the bounded schema change against the source contract.",
+          "evidence": [
+            "oasdiff-closure-raw-frozen-root-to-hardened.txt"
+          ]
+        },
+        {
+          "id": "response-property-enum-value-added",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "warning",
+          "oasdiff_message": "added the new `student` enum value to the `data/target_role` response property for the response status `202`",
+          "classification": "NON_BREAKING / WARNING",
+          "reason": "oasdiff reported a warning-level change; it is retained as a visible warning and is not an unintentional breaking change.",
+          "consumer_impact": "Warning-level compatibility review remains part of the closure record.",
+          "action": "Retain the warning and verify the bounded schema change against the source contract.",
+          "evidence": [
+            "oasdiff-closure-raw-frozen-root-to-hardened.txt"
+          ]
+        },
+        {
+          "id": "response-property-enum-value-added",
+          "path": "/api/v1/generations",
+          "operation": "POST",
+          "operationId": "createGeneration",
+          "oasdiff_severity": "warning",
+          "oasdiff_message": "added the new `teacher` enum value to the `data/target_role` response property for the response status `202`",
+          "classification": "NON_BREAKING / WARNING",
+          "reason": "oasdiff reported a warning-level change; it is retained as a visible warning and is not an unintentional breaking change.",
+          "consumer_impact": "Warning-level compatibility review remains part of the closure record.",
+          "action": "Retain the warning and verify the bounded schema change against the source contract.",
+          "evidence": [
+            "oasdiff-closure-raw-frozen-root-to-hardened.txt"
+          ]
+        },
+        {
+          "id": "request-property-max-length-set",
+          "path": "/api/v1/retrievals",
+          "operation": "POST",
+          "operationId": "createRetrieval",
+          "oasdiff_severity": "warning",
+          "oasdiff_message": "the `query` request property's maxLength was set to `20000`",
+          "classification": "NON_BREAKING / WARNING",
+          "reason": "oasdiff reported a warning-level change; it is retained as a visible warning and is not an unintentional breaking change.",
+          "consumer_impact": "Warning-level compatibility review remains part of the closure record.",
+          "action": "Retain the warning and verify the bounded schema change against the source contract.",
+          "evidence": [
+            "oasdiff-closure-raw-frozen-root-to-hardened.txt"
+          ]
+        }
+      ],
+      "counts": {
+        "total_findings": 22,
+        "raw_errors": 15,
+        "raw_warnings": 7,
+        "unintentional": 0,
+        "intentional_pre_promotion": 0,
+        "expected_surface_difference": 15,
+        "false_positive": 0,
+        "warning": 7,
+        "unclassified": 0,
+        "pending_owner_decisions": 0
+      }
+    }
+  },
+  "closure_gates": {
+    "unintentional_breaks": 0,
+    "unclassified_findings": 0,
+    "pending_owner_decisions": 0
+  }
+}

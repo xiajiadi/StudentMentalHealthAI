@@ -45,3 +45,23 @@ candidate projection data. A model candidate that is actually produced before
 Safety blocks content retains its execution identity and is labelled
 `CONTROLLED_SYNTHETIC` when the returned content is a controlled fixture; a
 crisis/no-call path never receives a fabricated model identity.
+
+## Acceptance Closure Evidence
+
+The isolated real MySQL closure environment was
+`smhai_contract_hardening_closure_20260907_005908` on MySQL 8.4.8, with
+migration head `20260906_0002`. The real HTTP composition produced five API
+citation records and five persisted evidence records for the same report;
+canonical citation identity matched on report readback. The sanitized machine
+evidence records two encrypted message payloads, zero plaintext probe matches,
+`silent_truncation=false`, and `plaintext_not_persisted=true`:
+
+- `evidence/mysql-closure-capture.json`
+- `evidence/mysql-closure-post-restart.json`
+
+The post-restart capture read back the same report and citation identity from a
+new Backend process. The fresh real-mode Playwright run separately verified the
+browser boundary: the session cookie is HttpOnly and absent from
+`document.cookie` and local storage; normal support displays real module labels,
+citations, and generation provenance; the crisis route has no normal retrieval
+or generation; and a reviewer can approve the resulting case.

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict
 
 from smhai_backend.integrations.rag import KnowledgeChunk
@@ -20,7 +22,7 @@ class HealthLiveDto(BaseModel):
 
     status: str
     service: str
-    contract_version: str
+    contract_version: Literal["v0.1.0"]
 
 
 class HealthReadyDto(BaseModel):
@@ -42,7 +44,7 @@ class ApiHealthDto(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     status: str
-    contract_version: str
+    contract_version: Literal["v0.1.0"]
     dependencies: dict[str, DependencyStatusDto]
 
 

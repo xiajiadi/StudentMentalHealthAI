@@ -31,17 +31,17 @@ workflows:
           sessionCookie: $response.header.Set-Cookie
       - stepId: startAssessment
         operationId: createAssessment
-        parameters:
-          - name: Cookie
-            in: header
-            value: $steps.login.outputs.sessionCookie
-          - name: X-CSRF-Token
-            in: header
-            value: $steps.login.outputs.csrfToken
+        x-security:
+          - schemeName: sessionCookie
+            values:
+              apiKey: $steps.login.outputs.sessionCookie
+          - schemeName: csrfToken
+            values:
+              apiKey: $steps.login.outputs.csrfToken
         requestBody:
           contentType: application/json
           payload:
-            subject_id: SUBJ_arazzo_crisis
+            subject_id: SUBJ_demo_a
             instrument_id: instrument.synthetic
             instrument_version: "1.0"
         successCriteria:
@@ -50,16 +50,17 @@ workflows:
           assessmentId: $response.body#/data/assessment_id
       - stepId: completeAssessment
         operationId: completeAssessment
+        x-security:
+          - schemeName: sessionCookie
+            values:
+              apiKey: $steps.login.outputs.sessionCookie
+          - schemeName: csrfToken
+            values:
+              apiKey: $steps.login.outputs.csrfToken
         parameters:
           - name: assessment_id
             in: path
             value: $steps.startAssessment.outputs.assessmentId
-          - name: Cookie
-            in: header
-            value: $steps.login.outputs.sessionCookie
-          - name: X-CSRF-Token
-            in: header
-            value: $steps.login.outputs.csrfToken
         requestBody:
           contentType: application/json
           payload: {}
@@ -67,13 +68,13 @@ workflows:
           - condition: $statusCode == 200
       - stepId: routeCrisis
         operationId: createSupport
-        parameters:
-          - name: Cookie
-            in: header
-            value: $steps.login.outputs.sessionCookie
-          - name: X-CSRF-Token
-            in: header
-            value: $steps.login.outputs.csrfToken
+        x-security:
+          - schemeName: sessionCookie
+            values:
+              apiKey: $steps.login.outputs.sessionCookie
+          - schemeName: csrfToken
+            values:
+              apiKey: $steps.login.outputs.csrfToken
         requestBody:
           contentType: application/json
           payload:

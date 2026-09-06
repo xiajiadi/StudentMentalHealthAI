@@ -2698,6 +2698,7 @@
           },
           "contract_version": {
             "type": "string",
+            "const": "v0.1.0",
             "title": "Contract Version"
           },
           "dependencies": {
@@ -2790,6 +2791,7 @@
         "properties": {
           "schema_version": {
             "type": "string",
+            "const": "assessment.v1",
             "title": "Schema Version"
           },
           "assessment_id": {
@@ -3620,6 +3622,7 @@
           },
           "contract_version": {
             "type": "string",
+            "const": "v0.1.0",
             "title": "Contract Version"
           }
         },
@@ -3661,8 +3664,8 @@
         "properties": {
           "schema_version": {
             "type": "string",
-            "title": "Schema Version",
-            "default": "knowledge.v1"
+            "const": "knowledge.v1",
+            "title": "Schema Version"
           },
           "chunk_id": {
             "type": "string",
@@ -3737,6 +3740,7 @@
         "additionalProperties": false,
         "type": "object",
         "required": [
+          "schema_version",
           "chunk_id",
           "document_id",
           "text",
@@ -3748,6 +3752,32 @@
           "content_hash"
         ],
         "title": "KnowledgeChunk"
+      },
+      "LegacyError": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]+$",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Message"
+          },
+          "retryable": {
+            "type": "boolean",
+            "title": "Retryable"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "retryable"
+        ],
+        "title": "LegacyError",
+        "description": "Typed compatibility projection retained for existing API consumers."
       },
       "LoginRequest": {
         "properties": {
@@ -3864,8 +3894,7 @@
           },
           "retryable": {
             "type": "boolean",
-            "title": "Retryable",
-            "default": false
+            "title": "Retryable"
           },
           "request_id": {
             "type": "string",
@@ -3874,6 +3903,9 @@
           "trace_id": {
             "type": "string",
             "title": "Trace Id"
+          },
+          "error": {
+            "$ref": "#/components/schemas/LegacyError"
           },
           "errors": {
             "anyOf": [
@@ -3896,9 +3928,12 @@
           "title",
           "status",
           "detail",
+          "instance",
           "code",
+          "retryable",
           "request_id",
-          "trace_id"
+          "trace_id",
+          "error"
         ],
         "title": "ProblemDetails",
         "description": "RFC 9457 problem projection used by every Backend error path."

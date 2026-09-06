@@ -1,0 +1,10 @@
+{
+  "tool": "oasdiff",
+  "version": "1.28.0",
+  "command": "oasdiff.exe breaking 00_architecture\\openapi.v1.json 00_architecture\\contracts\\candidates\\openapi.hardened.candidate.json --format text --fail-on ERR --color never",
+  "base": "00_architecture\\openapi.v1.json",
+  "revision": "00_architecture\\contracts\\candidates\\openapi.hardened.candidate.json",
+  "exit_code": 1,
+  "raw_file": "14_docs\\contract-hardening\\evidence\\oasdiff-closure-raw-frozen-root-to-hardened.txt",
+  "raw_summary": "50 changes: 43 error, 7 warning, 0 info"
+}

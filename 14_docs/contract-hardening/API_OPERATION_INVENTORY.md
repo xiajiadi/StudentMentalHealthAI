@@ -3,7 +3,7 @@
 Date: 2026-09-06 (Asia/Shanghai)
 Source: `create_app().openapi()` from the Backend application
 Candidate: `00_architecture/contracts/candidates/openapi.hardened.candidate.json`
-Candidate SHA-256: `5E3B5BB8327146D82ECC3210DCE76FE1244E53EED95764C31DDA29B953641673`
+Candidate SHA-256: `556ED7A3F777D83C0DE828DF08B7AC51A730ACEDCBE42B9153D4B4414C5F1940`
 
 The source-generated candidate is OpenAPI 3.1.0 with 21 paths and 21
 operations. Operation IDs are unique and deterministic. All 21 meaningful 2xx

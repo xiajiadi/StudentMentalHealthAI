@@ -1,0 +1,27 @@
+{
+  "source": "live local backend unauthorized response",
+  "request": {
+    "method": "GET",
+    "path": "/api/v1/reports/REPORT_REDACTED",
+    "origin": "http://127.0.0.1:4173"
+  },
+  "status": 401,
+  "content_type": "application/problem+json",
+  "problem_type": "urn:smhai:problem:auth_session_expired",
+  "typed_fields": {
+    "title": "Authentication required",
+    "status": 401,
+    "detail": "authentication is required",
+    "instance": null,
+    "code": "auth_session_expired",
+    "retryable": false,
+    "error": {
+      "code": "AUTH_SESSION_EXPIRED",
+      "message": "authentication is required",
+      "retryable": false
+    },
+    "errors": null
+  },
+  "request_and_trace_ids_present": true,
+  "ids_redacted": true
+}

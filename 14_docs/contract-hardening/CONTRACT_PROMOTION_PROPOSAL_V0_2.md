@@ -1,9 +1,9 @@
 # Contract v0.2 Promotion Proposal
 
-**Decision state: PROPOSAL ONLY — HOLD / NOT READY FOR PROMOTION**
+**Decision state: PROPOSAL ONLY — NOT PROMOTED**
 **Date:** 2026-09-06
 **Candidate:** `00_architecture/contracts/candidates/openapi.hardened.candidate.json`
-**Candidate SHA-256:** `5E3B5BB8327146D82ECC3210DCE76FE1244E53EED95764C31DDA29B953641673`
+**Candidate SHA-256:** `556ED7A3F777D83C0DE828DF08B7AC51A730ACEDCBE42B9153D4B4414C5F1940`
 
 This document records a controller-facing proposal. It does not promote or
 modify the frozen root contract. `00_architecture/openapi.v1.json` and the
@@ -52,3 +52,35 @@ Before any owner considers v0.2 promotion:
    proposed promotion commit.
 5. Obtain the contract owner's explicit approval. No promotion, remote
    operation, release, or root-file edit is authorized by this round.
+
+## Acceptance Closure Update
+
+Closure date: 2026-09-07 (Asia/Shanghai)
+
+The previously recorded hold reasons are historical controller state. The
+closure reran the required gates against the current candidate and resolved
+the evidence gaps without changing the frozen root contract:
+
+- oasdiff raw output remains visible: integration → hardened `76 ERR / 7 WARN`
+  and frozen root → hardened `15 ERR / 7 WARN`. Every finding is classified;
+  unintentional, unclassified, and pending-owner counts are all zero. The
+  `createGeneration` corrections remain candidate-only and still require an
+  owner-approved future v0.2 decision.
+- Respect 2.51.2 executed all three workflows through the actual Backend
+  implementation using an in-memory, loopback-only cookie-pair bridge. The
+  bridge forwards only `name=value`, preserves the server's HttpOnly cookie,
+  and does not alter production authentication. Sanitized evidence is stored
+  under `evidence/respect-*-closure.json`.
+- A real isolated MySQL 8.4.8 environment completed the migration stairway,
+  provenance persistence, encrypted-message boundary, API readback, and
+  post-restart readback. No real student data was used.
+- The current candidate was regenerated into the Hey API SDK twice with exact
+  `@hey-api/openapi-ts` 0.99.0 output; 16/16 files match the canonical frontend
+  directory and no generated file was hand-edited. The current evidence is
+  `evidence/sdk-generation-closure.json`.
+- Fresh real-mode Playwright completed login, normal support, crisis routing,
+  and reviewer approval: `4 passed, 0 failed, 0 skipped`.
+
+The proposal remains **PROPOSAL ONLY — NOT PROMOTED**. Contract-owner approval,
+formal v0.2 versioning, and any remote/tag/release action remain outside this
+closure.

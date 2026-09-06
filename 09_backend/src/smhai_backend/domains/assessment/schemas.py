@@ -79,7 +79,7 @@ class AssessmentTimestampsDto(BaseModel):
 class AssessmentDto(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    schema_version: str
+    schema_version: Literal["assessment.v1"]
     assessment_id: str
     subject_id: str
     instrument: AssessmentInstrumentDto

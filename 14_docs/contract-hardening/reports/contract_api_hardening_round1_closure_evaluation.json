@@ -1,0 +1,140 @@
+{
+  "round": "contract-api-hardening-r1-closure",
+  "timestamp": "2026-09-07T02:39:57+08:00",
+  "previous_controller_status": "PARTIAL PASS",
+  "closure_status": "FULL PASS",
+  "candidate": {
+    "path": "00_architecture/contracts/candidates/openapi.hardened.candidate.json",
+    "sha256": "556ED7A3F777D83C0DE828DF08B7AC51A730ACEDCBE42B9153D4B4414C5F1940",
+    "openapi": "3.1.0",
+    "paths": 21,
+    "operations": 21,
+    "unique_operation_ids": true,
+    "typed_meaningful_2xx_responses": 21
+  },
+  "git": {
+    "integration_baseline_commit": "65c3df2c28f955a3cbadfc3e01c466d6d89f81a6",
+    "integration_baseline_tag": "integration-r1-accepted",
+    "cleanup_commit": "dfbf1bd61845b31b5d1c1bd28ddf1325669d7969",
+    "hardening_implementation_commit": "a65ac71897a2a26fb157d04b4f253eb01af65f58",
+    "hardening_evidence_commit": "160db3cb5452cdf1cef17b2e9334f3ddd3314c58",
+    "pre_closure_head": "1ca4248384b0c8b63383515ceeebbf80509455f4",
+    "closure_commit": "455960fbb0b56433df513d5a255573900559f67e",
+    "final_head": "455960fbb0b56433df513d5a255573900559f67e",
+    "working_tree_clean": true,
+    "remote_push_performed": false,
+    "accepted_tag_created": false,
+    "root_v0_2_promoted": false
+  },
+  "frozen_contracts": {
+    "before": {
+      "00_architecture/openapi.v1.json": "235C8FDB0B35F2DE870127A18D4CD8C72A1C7795AF02656B2A6C7274AB071897",
+      "00_architecture/schemas/assessment.v1.schema.json": "56B9FC990261D0B826EEEA0E84417754798EF3A980F50A414CCB565168375A52",
+      "00_architecture/schemas/knowledge.v1.schema.json": "5334533DB35B30840F57E8012208037A6809BFED7CE08094BDA1517C801D8BCF",
+      "00_architecture/schemas/generation.v1.schema.json": "8365D7EA825A30D9429361107750E87E8C6446D0A6576C47F3A8ECE564DCA62C",
+      "00_architecture/schemas/config.v1.schema.json": "65F378B8D0C0080E484F3947D6A11A48B14186F43B23A6EDA7B5DC321B395D16",
+      "00_architecture/schemas/logging.v1.schema.json": "88A95532F42C2077959D6360844DF4EB0490342AF78492BC0D81C8AE9190256D",
+      "CONTRACTS.md": "2AE5320C5B12EFE57DD90D7352AE192D1BEE8387B595E36DDD3919B90C486CBB"
+    },
+    "after": {
+      "00_architecture/openapi.v1.json": "235C8FDB0B35F2DE870127A18D4CD8C72A1C7795AF02656B2A6C7274AB071897",
+      "00_architecture/schemas/assessment.v1.schema.json": "56B9FC990261D0B826EEEA0E84417754798EF3A980F50A414CCB565168375A52",
+      "00_architecture/schemas/knowledge.v1.schema.json": "5334533DB35B30840F57E8012208037A6809BFED7CE08094BDA1517C801D8BCF",
+      "00_architecture/schemas/generation.v1.schema.json": "8365D7EA825A30D9429361107750E87E8C6446D0A6576C47F3A8ECE564DCA62C",
+      "00_architecture/schemas/config.v1.schema.json": "65F378B8D0C0080E484F3947D6A11A48B14186F43B23A6EDA7B5DC321B395D16",
+      "00_architecture/schemas/logging.v1.schema.json": "88A95532F42C2077959D6360844DF4EB0490342AF78492BC0D81C8AE9190256D",
+      "CONTRACTS.md": "2AE5320C5B12EFE57DD90D7352AE192D1BEE8387B595E36DDD3919B90C486CBB"
+    },
+    "modified": false
+  },
+  "oasdiff": {
+    "version": "1.28.0",
+    "integration_to_hardened": {
+      "raw_errors": 76,
+      "raw_warnings": 7,
+      "intentional_pre_promotion": 15,
+      "expected_surface_difference": 0,
+      "false_positive_with_evidence": 61,
+      "unintentional_breaks": 0,
+      "unclassified": 0,
+      "pending_owner_decisions": 0
+    },
+    "frozen_root_to_hardened": {
+      "raw_errors": 15,
+      "raw_warnings": 7,
+      "intentional_pre_promotion": 0,
+      "expected_surface_difference": 15,
+      "false_positive_with_evidence": 0,
+      "unintentional_breaks": 0,
+      "unclassified": 0,
+      "pending_owner_decisions": 0
+    }
+  },
+  "respect": {
+    "version": "2.51.2",
+    "arazzo_version": "1.0.1",
+    "workflow_count": 3,
+    "passed": 3,
+    "failed": 0,
+    "session_security_weakened": false,
+    "cookie_handoff_mode": "loopback in-memory cookie-pair bridge",
+    "actual_backend_implementation": true,
+    "uses_contract_fake_module_adapters": true,
+    "evidence": [
+      "14_docs/contract-hardening/evidence/respect-normal-closure.json",
+      "14_docs/contract-hardening/evidence/respect-crisis-closure.json",
+      "14_docs/contract-hardening/evidence/respect-reviewer-closure.json"
+    ]
+  },
+  "mysql": {
+    "version": "8.4.8",
+    "edition": "MySQL Community Server - GPL",
+    "database": "smhai_contract_hardening_closure_20260907_005908",
+    "time_zone": "+00:00",
+    "migration_head": "20260906_0002",
+    "upgrade": "PASS",
+    "downgrade": "PASS",
+    "reupgrade": "PASS",
+    "migration_check": "PASS",
+    "provenance": {
+      "api_count": 5,
+      "persisted_count": 5,
+      "identity_match": true,
+      "silent_truncation": false,
+      "plaintext_not_persisted": true,
+      "encrypted_message_count": 2,
+      "encrypted_message_bytes": [332, 2104],
+      "plaintext_probe_matches": 0
+    },
+    "post_restart_readback": "PASS",
+    "real_student_data_used": false
+  },
+  "playwright": {
+    "fresh_run": true,
+    "real_api_provider": true,
+    "login": "PASS",
+    "normal": "PASS",
+    "crisis": "PASS",
+    "reviewer": "PASS",
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0,
+    "browser_version": "Playwright 1.63.0",
+    "evidence": "10_frontend/reports/artifacts/playwright-results.json"
+  },
+  "regression": {
+    "root_contract": {"status": "PASS", "passed": 13, "failed": 0},
+    "backend": {"status": "PASS", "passed": 16, "failed": 0, "ruff": "PASS", "pyright": "PASS"},
+    "database": {"status": "PASS", "passed": 16, "failed": 0, "skipped": 0, "deselected": 0, "ruff": "PASS", "pyright": "PASS"},
+    "frontend": {"typecheck": "PASS", "lint": "PASS", "unit_passed": 9, "unit_failed": 0, "build": "PASS"},
+    "redocly": {"version": "2.51.2", "errors": 0, "warnings": 0},
+    "schemathesis": {"version": "4.25.2", "operations": 21, "coverage_fuzzing_generated": 665, "coverage_fuzzing_passed": 665, "stateful_scenarios": 5, "stateful_generated": 30, "stateful_passed": 30, "failures": 0},
+    "sdk": {"generator_version": "0.99.0", "generated_files": 16, "repeatable": true, "canonical_match": true, "manual_edits": false},
+    "gitleaks": {"version": "8.30.1", "working_tree": {"exit_code": 0, "findings": 0, "commits_scanned": 5}, "history": {"exit_code": 0, "findings": 0, "commits_scanned": 5}, "staged": {"exit_code": 0, "findings": 0}}
+  },
+  "real_student_data_used": false,
+  "root_v0_2_promoted": false,
+  "accepted_tag_created": false,
+  "remaining_p0": [],
+  "remaining_p1": ["Future v0.2 promotion still requires contract-owner approval and versioned migration planning."]
+}

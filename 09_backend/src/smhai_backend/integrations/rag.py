@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -27,7 +27,7 @@ class Citation(BaseModel):
 class KnowledgeChunk(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: str = "knowledge.v1"
+    schema_version: Literal["knowledge.v1"]
     chunk_id: str
     document_id: str
     text: str = Field(min_length=1)
@@ -112,6 +112,7 @@ class ContractFakeRagClient:
         chunk_ids = [f"CHUNK_backend_{index}" for index in range(max(1, min(top_k, 2)))]
         chunks = tuple(
             KnowledgeChunk(
+                schema_version="knowledge.v1",
                 chunk_id=chunk_id,
                 document_id="KB_backend_synthetic",
                 text=("合成教育支持资料：把问题拆成可执行的小步骤，并和可信任的支持者讨论下一步。"),

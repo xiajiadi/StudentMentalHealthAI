@@ -89,3 +89,28 @@ report citation equality. The crisis response recorded HTTP 202,
 Promotion is **proposal-only and on hold**. See
 `CONTRACT_PROMOTION_PROPOSAL_V0_2.md`. No root contract edit, remote operation,
 release, or v0.2 promotion was performed.
+
+# Acceptance Closure
+
+Closure date: 2026-09-07 (Asia/Shanghai)
+
+The historical verdict above is preserved as the previous controller verdict.
+The closure reran the P0 gates against the current candidate and recorded the
+results in
+`14_docs/contract-hardening/reports/CONTRACT_API_HARDENING_ROUND1_CLOSURE_EVIDENCE.md`
+and
+`14_docs/contract-hardening/reports/contract_api_hardening_round1_closure_evaluation.json`.
+
+| Gate | Closure result |
+|---|---|
+| P0-1 oasdiff closure classification | PASS: `0` unintentional, `0` unclassified, `0` pending owner decisions |
+| P0-2 Respect session/cookie workflow | PASS: 3/3 workflows, 3/3 successful; production session security unchanged |
+| P0-3 real MySQL and provenance | PASS: isolated MySQL 8.4.8, migration stairway, API/DB identity equality, encrypted-message boundary, restart readback |
+| P0-4 regression and consumer closure | PASS: root contract, backend/database/frontend, Redocly, Schemathesis, SDK, Gitleaks, and fresh real-mode Playwright |
+| Git reconciliation | PASS: closure candidate committed locally; no remote push and no accepted tag created |
+
+Closure recommendation: **FULL PASS for the Round 1 acceptance-closure
+controller gates**. This does not promote contract v0.2: the candidate remains
+proposal-only, the frozen v0.1.0 root remains byte-identical, and the
+`createGeneration` compatibility corrections still require future owner
+approval and versioned migration planning.

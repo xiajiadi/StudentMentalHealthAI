@@ -60,3 +60,23 @@ Software Integration Round 1 evidence supplies the previously recorded real
 composition evidence. The root v0.1.0 contract and its SHA-256 manifest are
 unchanged. Contract/API hardening starts after this commit/tag and must remain
 candidate-only.
+
+## Contract/API Hardening Closure Reconciliation
+
+The local history was reconciled before the closure candidate commit:
+
+| Role | Commit | Message |
+|---|---|---|
+| Accepted integration baseline | `65c3df2c28f955a3cbadfc3e01c466d6d89f81a6` | `chore: establish Software Integration R1 accepted baseline` |
+| Runtime-artifact cleanup | `dfbf1bd61845b31b5d1c1bd28ddf1325669d7969` | `chore: remove local runtime artifacts from repository baseline` |
+| Hardening implementation | `a65ac71897a2a26fb157d04b4f253eb01af65f58` | `feat: harden contract and API candidate` |
+| Hardening evidence | `160db3cb5452cdf1cef17b2e9334f3ddd3314c58` | `chore: finalize contract hardening evidence` |
+| Pre-closure evidence head | `1ca4248384b0c8b63383515ceeebbf80509455f4` | `chore: refresh final secret scan evidence` |
+| Closure candidate | `455960fbb0b56433df513d5a255573900559f67e` | `chore: close contract api hardening acceptance` |
+
+The required `integration-r1-accepted` tag remains on the accepted baseline.
+No `contract-hardening-r1-accepted` tag was created, no remote is configured,
+and no push, merge, release, or root-contract promotion was performed. The
+closure report and machine evaluation replace the historical PARTIAL PASS
+controller state with the fresh gate-by-gate result; they do not rewrite the
+baseline history.

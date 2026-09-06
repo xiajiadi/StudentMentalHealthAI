@@ -30,10 +30,10 @@ workflows:
           sessionCookie: $response.header.Set-Cookie
       - stepId: listReviews
         operationId: listReviews
-        parameters:
-          - name: Cookie
-            in: header
-            value: $steps.login.outputs.sessionCookie
+        x-security:
+          - schemeName: sessionCookie
+            values:
+              apiKey: $steps.login.outputs.sessionCookie
         successCriteria:
           - condition: $statusCode == 200
         outputs:
