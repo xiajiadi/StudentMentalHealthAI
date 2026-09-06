@@ -1,0 +1,22 @@
+colang_version: "1.0"
+
+rails:
+  input:
+    flows:
+      - regex check input
+  output:
+    flows:
+      - regex check output
+  config:
+    regex_detection:
+      input:
+        patterns:
+          - '\bignore\s+(?:all\s+)?previous\s+instructions\b'
+          - '\b(?:system|developer)\s+message\s*:'
+          - '\b(?:DAN|jailbreak|bypass\s+safety)\b'
+        case_insensitive: true
+      output:
+        patterns:
+          - '\b(?:you\s+have|diagnosis|clinical\s+diagnosis)\b'
+          - '(?:临床诊断|确诊|你患有)'
+        case_insensitive: true

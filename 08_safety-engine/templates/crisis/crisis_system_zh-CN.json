@@ -1,0 +1,15 @@
+{
+  "template_id": "CRISIS_ROUTE_PLACEHOLDER_SYSTEM_ZH_CN",
+  "version": "1.0.0",
+  "language": "zh-CN",
+  "target_role": "SYSTEM",
+  "approval_status": "PENDING_PSYCH_REVIEW",
+  "clinically_approved": false,
+  "content": "CRISIS_ROUTE: synthetic fixture only; normal LLM generation bypassed; human review case required; NOT CLINICALLY APPROVED.",
+  "metadata": {
+    "purpose": "round1_deterministic_placeholder",
+    "contact_information_included": false,
+    "normal_llm_generation_allowed": false
+  }
+}
+

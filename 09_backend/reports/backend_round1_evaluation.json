@@ -1,0 +1,123 @@
+{
+  "round": "Backend Round 1",
+  "status": "PASS",
+  "date": "2026-09-05",
+  "runtime": {
+    "python": "3.12.13",
+    "fastapi": "0.141.1",
+    "starlette": "1.6.0",
+    "httpx": "0.28.1",
+    "pydantic": "2.13.5",
+    "pwdlib": "0.3.1",
+    "structlog": "25.5.0",
+    "uvicorn": "0.52.4",
+    "pytest": "8.4.2",
+    "ruff": "0.16.6",
+    "pyright": "1.1.411",
+    "openapi_spec_validator": "0.9.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "environment": "09_backend/.venv"
+  },
+  "test_counts": {
+    "standard": {
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0,
+      "command": "uv run pytest -q"
+    },
+    "real_integration_harness": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "command": "uv run python scripts/run_real_safety_integration.py",
+      "scope": "one normal, one synthetic crisis, and one real Safety review transition"
+    }
+  },
+  "root_contract": {
+    "status": "PASS",
+    "tests_passed": 13,
+    "tests_failed": 0,
+    "command": ".\\00_architecture\\tests\\run_contract_checks.ps1",
+    "frozen_openapi_validated": true
+  },
+  "provisional_openapi": {
+    "status": "PASS",
+    "label": "MODULE-LOCAL PROVISIONAL API",
+    "path": "09_backend/reports/backend_round1_openapi.json",
+    "validated": true,
+    "validator": "openapi-spec-validator 0.9.0"
+  },
+  "auth": "PASS",
+  "session": {
+    "status": "PASS",
+    "mode": "opaque server-side in-memory session",
+    "production_cookie": "__Host-smhai_session",
+    "development_cookie": "smhai_dev_session"
+  },
+  "argon2": "PASS",
+  "csrf": "PASS",
+  "authorization": "PASS",
+  "bola": "PASS",
+  "bopla": "PASS",
+  "bfla": "PASS",
+  "rate_limit": {
+    "status": "PASS",
+    "mode": "single-process in-memory engineering baseline"
+  },
+  "rfc9457": "PASS",
+  "httpx": {
+    "status": "PASS",
+    "local_trust_env": false,
+    "timeouts": ["connect", "read", "write", "pool"],
+    "blind_retry": false,
+    "long_lived_clients": true
+  },
+  "module_integrations": {
+    "cat": "CONTRACT_FAKE",
+    "rag": "CONTRACT_FAKE",
+    "llm_runtime": "CONTRACT_FAKE",
+    "safety": "REAL_HTTP"
+  },
+  "real_safety_integration": {
+    "status": "PASS",
+    "label": "REAL_HTTP",
+    "service_url": "http://127.0.0.1:8190",
+    "health": "READY",
+    "normal_action": "PROCEED",
+    "normal_generation": true,
+    "crisis_action": "CRISIS_ROUTE",
+    "crisis_review_reference_present": true,
+    "real_review_action": "approved"
+  },
+  "crisis_no_rag": true,
+  "crisis_no_llm": true,
+  "safety_down_fail_closed": true,
+  "output_safety_candidate_not_leaked": true,
+  "privacy_log_test": true,
+  "audit": true,
+  "health": true,
+  "idempotency": true,
+  "vertical_slice": {
+    "status": "PASS",
+    "labels": {
+      "cat": "CONTRACT_FAKE",
+      "rag": "CONTRACT_FAKE",
+      "llm_runtime": "CONTRACT_FAKE",
+      "safety": "CONTRACT_FAKE",
+      "repositories": "IN_MEMORY"
+    },
+    "real_student_data": "NONE"
+  },
+  "real_student_data": "NONE",
+  "database_schema": "NOT_CREATED",
+  "cloud_fallback": false,
+  "frozen_contract_modified": false,
+  "static_quality": {
+    "ruff_format": "PASS",
+    "ruff_check": "PASS",
+    "pyright": "PASS",
+    "compileall": "PASS",
+    "uv_lock_check": "PASS",
+    "uv_pip_check": "PASS"
+  }
+}

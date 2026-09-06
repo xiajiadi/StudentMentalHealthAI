@@ -1,0 +1,14 @@
+# Local runtime data must stay outside version control.
+models/
+weights/
+cache/
+*.gguf
+*.safetensors
+artifacts/*.json
+artifacts/*.jsonl
+artifacts/*.log
+reports/*_raw.*
+.venv/
+__pycache__/
+.pytest_cache/
+*.egg-info/

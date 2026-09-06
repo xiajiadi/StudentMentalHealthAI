@@ -1,0 +1,44 @@
+{
+  "schema_version": "generation.v1",
+  "generation_id": "GEN_contract_001",
+  "status": "generated",
+  "target_role": "teacher",
+  "content": {
+    "summary": "用于契约测试的教育支持摘要。",
+    "observations": [
+      "这是合成案例，不代表真实学生结果。"
+    ],
+    "suggestions": [
+      {
+        "text": "建议进行一次非评判性的支持性沟通。",
+        "source_chunk_ids": [
+          "CHUNK_contract_001_001"
+        ]
+      }
+    ],
+    "disclaimer": "此内容用于教育支持，不构成诊断或治疗建议。"
+  },
+  "safety": {
+    "precheck": "passed",
+    "postcheck": "passed",
+    "reason_codes": [
+      "OUTPUT_CONTRACT_PASS"
+    ],
+    "human_review_required": false
+  },
+  "provenance": {
+    "assessment_id": "ASSESS_contract_001",
+    "retrieval_id": "RETR_contract_001",
+    "prompt_id": "PROMPT_teacher_contract_v1",
+    "prompt_version": "0.1.0",
+    "model_id": "MODEL_local_primary",
+    "model_version": "mock-0.1.0",
+    "runtime_version": "0.1.0"
+  },
+  "review": {
+    "status": "not_required",
+    "reviewer_id": null,
+    "reviewed_at": null
+  },
+  "created_at": "2026-09-04T12:04:00Z"
+}

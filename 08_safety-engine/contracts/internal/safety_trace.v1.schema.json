@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studentmentalhealthai.local/contracts/internal/safety_trace.v1.schema.json",
+  "title": "SafetyTrace v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["trace_id", "request_id", "operation", "events", "final_action", "action", "signal_count", "signals", "component_versions", "policy_version", "policy_decision_id", "review_case_id", "crisis_template_id", "latencies", "failure", "degraded", "created_at", "trace_version"],
+  "properties": {
+    "trace_id": {"type": "string"},
+    "request_id": {"type": "string"},
+    "operation": {"enum": ["INPUT", "OUTPUT", "RETRIEVAL"]},
+    "events": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["stage", "component", "outcome", "latency_ms", "signal_ids", "metadata"], "properties": {"stage": {"type": "string"}, "component": {"type": "string"}, "outcome": {"type": "string"}, "latency_ms": {"type": "number", "minimum": 0}, "signal_ids": {"type": "array", "items": {"type": "string"}}, "metadata": {"type": "object"}}}},
+    "final_action": {"enum": ["PROCEED", "PROCEED_WITH_BOUNDARY", "BLOCK", "REVIEW_REQUIRED", "CRISIS_ROUTE"]},
+    "action": {"enum": ["PROCEED", "PROCEED_WITH_BOUNDARY", "BLOCK", "REVIEW_REQUIRED", "CRISIS_ROUTE"]},
+    "signal_count": {"type": "integer", "minimum": 0},
+    "signals": {"type": "array", "items": {"type": "string"}},
+    "component_versions": {"type": "object", "additionalProperties": {"type": "string"}},
+    "policy_version": {"type": ["string", "null"]},
+    "policy_decision_id": {"type": ["string", "null"]},
+    "review_case_id": {"type": ["string", "null"]},
+    "crisis_template_id": {"type": ["string", "null"]},
+    "latencies": {"type": "object", "additionalProperties": {"type": "number", "minimum": 0}},
+    "failure": {"type": "boolean"},
+    "degraded": {"type": "boolean"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "trace_version": {"type": "string"}
+  }
+}

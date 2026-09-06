@@ -1,0 +1,17 @@
+.venv/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Source data and generated run outputs are local evidence, not repository data.
+data/raw/*
+!data/raw/.gitkeep
+data/curated/*
+!data/curated/.gitkeep
+data/canonical/*
+!data/canonical/.gitkeep
+data/chunks/*
+!data/chunks/.gitkeep
+data/published/*
+!data/published/.gitkeep

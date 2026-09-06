@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "student-mental-health-ai-rag-engine"
+version = "0.1.0"
+description = "Provider-neutral retrieval, reranking, context, citation, trace, and evaluation engine"
+requires-python = ">=3.10,<3.15"
+dependencies = [
+  "fastapi==0.141.1",
+  "httpx==0.28.1",
+  "jsonschema>=4.23,<5",
+  "numpy>=2,<3",
+  "uvicorn==0.52.4",
+]
+
+[project.optional-dependencies]
+runtime = [
+  "FlagEmbedding==1.4.2",
+  "chromadb==1.5.9",
+  "qdrant-client==1.19.0",
+  "bm25s==0.3.11",
+]
+test = [
+  "pytest>=8,<9",
+]
+
+[project.scripts]
+rag-engine-benchmark = "rag_engine.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra"
+markers = [
+  "integration: exercises installed provider adapters and frozen contract boundaries",
+]

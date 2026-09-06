@@ -1,0 +1,2724 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "StudentMentalHealthAI Backend Orchestrator",
+    "description": "MODULE-LOCAL PROVISIONAL API for safe education-support orchestration. This service does not provide diagnosis or treatment.",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health/live": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Check that the Backend process is alive",
+        "operationId": "live_health_live_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Live Health Live Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed (422)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error (500)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Check Backend core readiness",
+        "operationId": "ready_health_ready_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Ready Health Ready Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed (422)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error (500)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/dependencies": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Read dependency capability statuses",
+        "operationId": "dependencies_health_dependencies_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Dependencies Health Dependencies Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed (422)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error (500)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/HealthSuccess"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "422": {
+            "description": "Request validation failed (422)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error (500)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Create an opaque server-side session",
+        "operationId": "login_api_v1_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed (422)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed (401)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Mutation origin rejected (403)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Workflow conflict (409)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found (404)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded (429)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error (500)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Revoke the current server-side session",
+        "operationId": "logout_api_v1_auth_logout_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required (401)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden (403)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Workflow conflict (409)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found (404)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed (422)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error (500)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": [],
+            "csrfToken": []
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Read the current actor",
+        "operationId": "me_api_v1_auth_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Me Api V1 Auth Me Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required (401)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden (403)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed (422)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error (500)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/csrf": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Obtain the session-bound CSRF token",
+        "operationId": "csrf_api_v1_auth_csrf_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Csrf Api V1 Auth Csrf Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required (401)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden (403)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed (422)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error (500)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/assessments": {
+      "post": {
+        "tags": [
+          "assessment"
+        ],
+        "operationId": "createAssessment",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssessmentStartRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "$ref": "#/components/responses/AssessmentSuccess"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "401": {
+            "description": "Authentication required (401)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden (403)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Workflow conflict (409)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found (404)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": [],
+            "csrfToken": []
+          }
+        ]
+      }
+    },
+    "/api/v1/assessments/{assessment_id}/responses": {
+      "post": {
+        "tags": [
+          "assessment"
+        ],
+        "operationId": "recordAssessmentResponse",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/AssessmentId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResponseEvent"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/AssessmentStateSuccess"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "401": {
+            "description": "Authentication required (401)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden (403)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error (500)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": [],
+            "csrfToken": []
+          }
+        ]
+      }
+    },
+    "/api/v1/assessments/{assessment_id}/complete": {
+      "post": {
+        "tags": [
+          "assessment"
+        ],
+        "operationId": "completeAssessment",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/AssessmentId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/AssessmentSuccess"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "401": {
+            "description": "Authentication required (401)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden (403)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error (500)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": [],
+            "csrfToken": []
+          }
+        ]
+      }
+    },
+    "/api/v1/assessments/{assessment_id}/state": {
+      "get": {
+        "tags": [
+          "assessment"
+        ],
+        "summary": "Read CAT presentation state",
+        "operationId": "getAssessmentState",
+        "parameters": [
+          {
+            "name": "assessment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Assessment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed (422)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required (401)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden (403)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found (404)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error (500)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/assessments/{assessment_id}": {
+      "get": {
+        "tags": [
+          "assessment"
+        ],
+        "summary": "Read an authorized assessment",
+        "operationId": "getAssessment",
+        "parameters": [
+          {
+            "name": "assessment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Assessment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed (422)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required (401)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden (403)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found (404)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error (500)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/retrievals": {
+      "post": {
+        "tags": [
+          "retrieval"
+        ],
+        "operationId": "createRetrieval",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetrievalRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/RetrievalSuccess"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "401": {
+            "description": "Authentication required (401)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Workflow conflict (409)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found (404)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Dependency response invalid (502)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Dependency timeout (504)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed (422)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error (500)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": [],
+            "csrfToken": []
+          }
+        ]
+      }
+    },
+    "/api/v1/safety/checks": {
+      "post": {
+        "tags": [
+          "safety"
+        ],
+        "operationId": "checkSafety",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SafetyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/SafetySuccess"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "401": {
+            "description": "Authentication required (401)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden (403)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Workflow conflict (409)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found (404)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Dependency response invalid (502)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependency unavailable (503)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Dependency timeout (504)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error (500)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": [],
+            "csrfToken": []
+          }
+        ]
+      }
+    },
+    "/api/v1/support/requests": {
+      "post": {
+        "tags": [
+          "support",
+          "retrieval",
+          "generation",
+          "report"
+        ],
+        "summary": "Create a buffered support result",
+        "operationId": "create_support_api_v1_support_requests_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed (422)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required (401)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden (403)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Workflow conflict (409)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found (404)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded (429)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Dependency response invalid (502)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependency unavailable (503)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Dependency timeout (504)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error (500)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": [],
+            "csrfToken": []
+          }
+        ]
+      }
+    },
+    "/api/v1/generations": {
+      "post": {
+        "tags": [
+          "generation"
+        ],
+        "operationId": "createGeneration",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "$ref": "#/components/responses/GenerationSuccess"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "401": {
+            "description": "Authentication required (401)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden (403)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found (404)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded (429)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Dependency response invalid (502)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Dependency timeout (504)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error (500)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": [],
+            "csrfToken": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reports/{report_id}": {
+      "get": {
+        "tags": [
+          "report"
+        ],
+        "operationId": "getReport",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ReportId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/ReportSuccess"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "401": {
+            "description": "Authentication required (401)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed (422)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error (500)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reports/{report_id}/reviews": {
+      "post": {
+        "tags": [
+          "report"
+        ],
+        "operationId": "reviewReport",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ReportId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/ReviewSuccess"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "401": {
+            "description": "Authentication required (401)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed (422)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error (500)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": [],
+            "csrfToken": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reviews": {
+      "get": {
+        "tags": [
+          "support",
+          "retrieval",
+          "generation",
+          "report"
+        ],
+        "summary": "List pending review projections",
+        "operationId": "list_reviews_api_v1_reviews_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required (401)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden (403)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed (422)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error (500)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reviews/{review_id}": {
+      "get": {
+        "tags": [
+          "support",
+          "retrieval",
+          "generation",
+          "report"
+        ],
+        "summary": "Read a review projection",
+        "operationId": "get_review_api_v1_reviews__review_id__get",
+        "parameters": [
+          {
+            "name": "review_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Review Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed (422)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required (401)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden (403)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found (404)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error (500)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AssessmentStartRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "subject_id",
+          "instrument_id",
+          "instrument_version"
+        ],
+        "properties": {
+          "subject_id": {
+            "type": "string",
+            "pattern": "^SUBJ_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "instrument_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "instrument_version": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "CompleteRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "GenerationRequest": {
+        "type": "object",
+        "x-contract-schema": "schemas/generation.v1.schema.json",
+        "required": [
+          "schema_version",
+          "generation_id",
+          "assessment_id",
+          "subject_id",
+          "target_role",
+          "purpose",
+          "language",
+          "safety_mode",
+          "retrieval",
+          "prompt_ref",
+          "model_policy"
+        ],
+        "properties": {
+          "schema_version": {
+            "const": "generation.v1"
+          },
+          "generation_id": {
+            "type": "string"
+          },
+          "assessment_id": {
+            "type": "string"
+          },
+          "subject_id": {
+            "type": "string"
+          },
+          "target_role": {
+            "type": "string"
+          },
+          "purpose": {
+            "const": "education_support"
+          },
+          "language": {
+            "type": "string"
+          },
+          "safety_mode": {
+            "type": "string"
+          },
+          "retrieval": {
+            "type": "object"
+          },
+          "prompt_ref": {
+            "type": "object"
+          },
+          "model_policy": {
+            "type": "object"
+          }
+        }
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "LoginRequest": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Username"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Password"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "LoginRequest"
+      },
+      "ModelPolicy": {
+        "properties": {
+          "model_id": {
+            "type": "string",
+            "pattern": "^MODEL_[A-Za-z0-9][A-Za-z0-9_.-]*$",
+            "title": "Model Id"
+          },
+          "provider_class": {
+            "type": "string",
+            "enum": [
+              "local",
+              "mock"
+            ],
+            "title": "Provider Class"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "model_id",
+          "provider_class"
+        ],
+        "title": "ModelPolicy"
+      },
+      "PromptRef": {
+        "properties": {
+          "prompt_id": {
+            "type": "string",
+            "pattern": "^PROMPT_[A-Za-z0-9][A-Za-z0-9_.-]*$",
+            "title": "Prompt Id"
+          },
+          "prompt_version": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+            "title": "Prompt Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "prompt_id",
+          "prompt_version"
+        ],
+        "title": "PromptRef"
+      },
+      "ResponseEvent": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "item_id",
+          "response"
+        ],
+        "properties": {
+          "item_id": {
+            "type": "string",
+            "pattern": "^ITEM_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "response": {
+            "type": [
+              "string",
+              "number",
+              "integer",
+              "boolean"
+            ]
+          }
+        }
+      },
+      "RetrievalRef": {
+        "properties": {
+          "retrieval_id": {
+            "type": "string",
+            "pattern": "^RETR_[A-Za-z0-9][A-Za-z0-9_.-]*$",
+            "title": "Retrieval Id"
+          },
+          "chunk_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Chunk Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "retrieval_id",
+          "chunk_ids"
+        ],
+        "title": "RetrievalRef"
+      },
+      "RetrievalRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "assessment_id",
+          "target_role",
+          "query"
+        ],
+        "properties": {
+          "assessment_id": {
+            "type": "string",
+            "pattern": "^ASSESS_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "target_role": {
+            "type": "string",
+            "enum": [
+              "student",
+              "teacher",
+              "parent",
+              "admin"
+            ]
+          },
+          "query": {
+            "type": "string",
+            "minLength": 1
+          },
+          "top_k": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        }
+      },
+      "ReviewRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "decision"
+        ],
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "approved",
+              "rejected"
+            ]
+          },
+          "reviewer_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "note_code": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "SafetyRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "assessment_id"
+        ],
+        "properties": {
+          "assessment_id": {
+            "type": "string",
+            "pattern": "^ASSESS_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "generation_candidate": {
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        }
+      },
+      "SupportRequest": {
+        "properties": {
+          "assessment_id": {
+            "type": "string",
+            "pattern": "^ASSESS_[A-Za-z0-9][A-Za-z0-9_.-]*$",
+            "title": "Assessment Id"
+          },
+          "target_role": {
+            "type": "string",
+            "enum": [
+              "student",
+              "teacher",
+              "parent",
+              "admin"
+            ],
+            "title": "Target Role"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Message"
+          },
+          "language": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 2,
+            "title": "Language",
+            "default": "zh-CN"
+          },
+          "purpose": {
+            "type": "string",
+            "const": "education_support",
+            "title": "Purpose",
+            "default": "education_support"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "assessment_id",
+          "target_role",
+          "message"
+        ],
+        "title": "SupportRequest"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "Assessment": {
+        "type": "object",
+        "x-contract-schema": "schemas/assessment.v1.schema.json",
+        "required": [
+          "schema_version",
+          "assessment_id",
+          "subject_id",
+          "instrument",
+          "population_scope",
+          "status",
+          "dimensions",
+          "risk",
+          "response_summary",
+          "provenance",
+          "timestamps"
+        ],
+        "properties": {
+          "schema_version": {
+            "const": "assessment.v1"
+          },
+          "assessment_id": {
+            "type": "string"
+          },
+          "subject_id": {
+            "type": "string"
+          },
+          "instrument": {
+            "type": "object"
+          },
+          "population_scope": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "dimensions": {
+            "type": "object"
+          },
+          "risk": {
+            "type": "object"
+          },
+          "response_summary": {
+            "type": "object"
+          },
+          "provenance": {
+            "type": "object"
+          },
+          "timestamps": {
+            "type": "object"
+          }
+        }
+      },
+      "GenerationResult": {
+        "type": "object",
+        "x-contract-schema": "schemas/generation.v1.schema.json",
+        "required": [
+          "schema_version",
+          "generation_id",
+          "status",
+          "target_role",
+          "content",
+          "safety",
+          "provenance",
+          "review",
+          "created_at"
+        ],
+        "properties": {
+          "schema_version": {
+            "const": "generation.v1"
+          },
+          "generation_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "target_role": {
+            "type": "string"
+          },
+          "content": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "safety": {
+            "type": "object"
+          },
+          "provenance": {
+            "type": "object"
+          },
+          "review": {
+            "type": "object"
+          },
+          "created_at": {
+            "type": "string"
+          }
+        }
+      },
+      "KnowledgeChunk": {
+        "type": "object",
+        "x-contract-schema": "schemas/knowledge.v1.schema.json",
+        "required": [
+          "schema_version",
+          "chunk_id",
+          "document_id",
+          "text",
+          "citation"
+        ],
+        "properties": {
+          "schema_version": {
+            "const": "knowledge.v1"
+          },
+          "chunk_id": {
+            "type": "string"
+          },
+          "document_id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "citation": {
+            "type": "object"
+          }
+        }
+      },
+      "RetrievalResponse": {
+        "type": "object",
+        "required": [
+          "retrieval_id",
+          "chunks"
+        ],
+        "properties": {
+          "retrieval_id": {
+            "type": "string",
+            "pattern": "^RETR_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "chunks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeChunk"
+            }
+          }
+        }
+      },
+      "SafetyResponse": {
+        "type": "object",
+        "required": [
+          "decision",
+          "reason_codes",
+          "human_review_required"
+        ],
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "allow",
+              "warn",
+              "block",
+              "needs_review"
+            ]
+          },
+          "reason_codes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "human_review_required": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Report": {
+        "type": "object",
+        "required": [
+          "report_id",
+          "assessment_id",
+          "status",
+          "generation_ids"
+        ],
+        "properties": {
+          "report_id": {
+            "type": "string",
+            "pattern": "^REPORT_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "assessment_id": {
+            "type": "string",
+            "pattern": "^ASSESS_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "status": {
+            "type": "string"
+          },
+          "generation_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^GEN_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+            }
+          }
+        }
+      },
+      "AssessmentEnvelope": {
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "data"
+        ],
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "pattern": "^REQ_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "trace_id": {
+            "type": "string",
+            "pattern": "^TRACE_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "data": {
+            "$ref": "#/components/schemas/Assessment"
+          }
+        }
+      },
+      "AssessmentStateEnvelope": {
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "data"
+        ],
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "pattern": "^REQ_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "trace_id": {
+            "type": "string",
+            "pattern": "^TRACE_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "data": {
+            "type": "object",
+            "required": [
+              "assessment_id",
+              "status"
+            ],
+            "properties": {
+              "assessment_id": {
+                "type": "string",
+                "pattern": "^ASSESS_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+              },
+              "status": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "RetrievalEnvelope": {
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "data"
+        ],
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "pattern": "^REQ_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "trace_id": {
+            "type": "string",
+            "pattern": "^TRACE_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "data": {
+            "$ref": "#/components/schemas/RetrievalResponse"
+          }
+        }
+      },
+      "SafetyEnvelope": {
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "data"
+        ],
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "pattern": "^REQ_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "trace_id": {
+            "type": "string",
+            "pattern": "^TRACE_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "data": {
+            "$ref": "#/components/schemas/SafetyResponse"
+          }
+        }
+      },
+      "GenerationEnvelope": {
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "data"
+        ],
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "pattern": "^REQ_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "trace_id": {
+            "type": "string",
+            "pattern": "^TRACE_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "data": {
+            "$ref": "#/components/schemas/GenerationResult"
+          }
+        }
+      },
+      "ReportEnvelope": {
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "data"
+        ],
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "pattern": "^REQ_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "trace_id": {
+            "type": "string",
+            "pattern": "^TRACE_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "data": {
+            "$ref": "#/components/schemas/Report"
+          }
+        }
+      },
+      "ReviewEnvelope": {
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "data"
+        ],
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "pattern": "^REQ_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "trace_id": {
+            "type": "string",
+            "pattern": "^TRACE_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "data": {
+            "type": "object",
+            "required": [
+              "report_id",
+              "review_status"
+            ],
+            "properties": {
+              "report_id": {
+                "type": "string",
+                "pattern": "^REPORT_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+              },
+              "review_status": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "approved",
+                  "rejected"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "Health": {
+        "type": "object",
+        "required": [
+          "status",
+          "contract_version"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "degraded",
+              "unavailable"
+            ]
+          },
+          "contract_version": {
+            "const": "v0.1.0"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": [
+          "request_id",
+          "trace_id",
+          "error"
+        ],
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "pattern": "^REQ_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "trace_id": {
+            "type": "string",
+            "pattern": "^TRACE_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message",
+              "retryable"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]+$"
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1
+              },
+              "retryable": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      },
+      "ProblemDetails": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type",
+          "title",
+          "status",
+          "detail",
+          "instance",
+          "code",
+          "retryable",
+          "request_id",
+          "trace_id"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer",
+            "minimum": 400,
+            "maximum": 599
+          },
+          "detail": {
+            "type": "string"
+          },
+          "instance": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "code": {
+            "type": "string"
+          },
+          "retryable": {
+            "type": "boolean"
+          },
+          "request_id": {
+            "type": "string",
+            "pattern": "^REQ_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "trace_id": {
+            "type": "string",
+            "pattern": "^TRACE_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          }
+        }
+      }
+    },
+    "parameters": {
+      "AssessmentId": {
+        "name": "assessment_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^ASSESS_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+        }
+      },
+      "ReportId": {
+        "name": "report_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^REPORT_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+        }
+      }
+    },
+    "responses": {
+      "HealthSuccess": {
+        "description": "Health status",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "request_id",
+                "trace_id",
+                "data"
+              ],
+              "properties": {
+                "request_id": {
+                  "type": "string",
+                  "pattern": "^REQ_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+                },
+                "trace_id": {
+                  "type": "string",
+                  "pattern": "^TRACE_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+                },
+                "data": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      },
+      "AssessmentSuccess": {
+        "description": "Assessment result",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/AssessmentEnvelope"
+            }
+          }
+        }
+      },
+      "AssessmentStateSuccess": {
+        "description": "Assessment state",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/AssessmentStateEnvelope"
+            }
+          }
+        }
+      },
+      "RetrievalSuccess": {
+        "description": "Retrieval result with citations",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/RetrievalEnvelope"
+            }
+          }
+        }
+      },
+      "SafetySuccess": {
+        "description": "Safety decision",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/SafetyEnvelope"
+            }
+          }
+        }
+      },
+      "GenerationSuccess": {
+        "description": "Generation result",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/GenerationEnvelope"
+            }
+          }
+        }
+      },
+      "ReportSuccess": {
+        "description": "Report",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ReportEnvelope"
+            }
+          }
+        }
+      },
+      "ReviewSuccess": {
+        "description": "Review status",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ReviewEnvelope"
+            }
+          }
+        }
+      },
+      "BadRequest": {
+        "description": "Invalid request",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Forbidden",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Resource not found",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "Idempotency or state conflict",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "UnprocessableEntity": {
+        "description": "Contract validation failed",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "ServiceUnavailable": {
+        "description": "Dependency unavailable",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Internal error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "smhai_dev_session",
+        "description": "Local Round 1 opaque server-side session cookie."
+      },
+      "csrfToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-CSRF-Token",
+        "description": "Session-bound token required for state-changing requests."
+      }
+    }
+  }
+}

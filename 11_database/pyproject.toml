@@ -1,0 +1,43 @@
+[project]
+name = "student-mental-health-database"
+version = "0.1.0"
+description = "Versioned, privacy-aware relational persistence for StudentMentalHealthAI"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "SQLAlchemy==2.0.52",
+  "alembic==1.19.2",
+  "aiomysql>=0.3,<0.4",
+  "cryptography>=45,<47",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3,<10",
+  "pytest-asyncio>=0.24,<2",
+  "ruff>=0.12,<1",
+  "pyright>=1.1.390,<2",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = [
+  "mysql: requires a real MySQL 8.4 test database",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["database_layer", "migrations", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pyright]
+include = ["database_layer", "migrations", "tests", "scripts"]
+exclude = ["**/__pycache__", ".venv"]
+pythonVersion = "3.12"
+typeCheckingMode = "basic"
+reportMissingImports = true
+reportMissingTypeStubs = false

@@ -1,0 +1,15 @@
+{
+  "template_id": "CRISIS_ROUTE_PLACEHOLDER_REVIEWER_ZH_CN",
+  "version": "1.0.0",
+  "language": "zh-CN",
+  "target_role": "REVIEWER",
+  "approval_status": "PENDING_PSYCH_REVIEW",
+  "clinically_approved": false,
+  "content": "合成危机路由已触发。普通自由生成已绕过，事件已创建人工审核案件。该模板尚未经过心理专业审核（NOT CLINICALLY APPROVED），不构成诊断、治疗或紧急服务建议。",
+  "metadata": {
+    "purpose": "round1_deterministic_placeholder",
+    "contact_information_included": false,
+    "normal_llm_generation_allowed": false
+  }
+}
+

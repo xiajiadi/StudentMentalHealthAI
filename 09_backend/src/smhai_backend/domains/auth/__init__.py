@@ -1,0 +1,1 @@
+"""Session authentication vertical slice."""

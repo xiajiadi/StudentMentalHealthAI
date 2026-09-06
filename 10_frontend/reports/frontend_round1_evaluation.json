@@ -1,0 +1,138 @@
+{
+  "evaluation_date": "2026-09-05",
+  "project": "StudentMentalHealthAI",
+  "scope": "10_frontend and explicitly authorized frontend design documentation",
+  "overall_status": "PARTIAL_PASS",
+  "status_reason": "Synthetic-data frontend vertical slice and engineering gates passed; production API/auth integration and full accessibility audit remain deferred.",
+  "toolchain": {
+    "node": "24.15.0",
+    "npm": "12.0.2",
+    "vue": "3.5.42",
+    "typescript": "5.9.3",
+    "vite": "8.2.2",
+    "pinia": "4.0.3",
+    "vue_router": "5.3.1",
+    "tailwindcss": "4.3.3",
+    "shadcn_vue": "2.8.2",
+    "reka_ui": "2.10.4",
+    "lucide_vue": "1.41.0",
+    "echarts": "6.1.0",
+    "vitest": "5.0.0",
+    "vue_test_utils": "2.5.0",
+    "playwright": "1.63.0",
+    "vue_tsc": "3.3.11"
+  },
+  "surfaces": {
+    "login": "PASS",
+    "student_home": "PASS",
+    "cat_focus_mode": "PASS",
+    "student_result": "PASS",
+    "teacher_overview": "PASS",
+    "teacher_students": "PASS",
+    "teacher_student_detail": "PASS",
+    "review_queue": "PASS",
+    "review_detail": "PASS",
+    "not_found": "PASS"
+  },
+  "safety_workflow": {
+    "status": "PASS",
+    "required_copy_present": true,
+    "ordinary_generation_cta_present_in_review_detail": false,
+    "external_notification_sent": false,
+    "frontend_implements_safety_policy": false
+  },
+  "boundary_checks": {
+    "synthetic_data_only": true,
+    "student_internal_psychometric_fields_exposed": false,
+    "direct_model_rag_safety_calls_from_vue": false,
+    "root_contract_modified": false,
+    "backend_database_or_engine_modules_modified": false
+  },
+  "responsive_evidence": {
+    "status": "PASS",
+    "viewports": [375, 768, 1024, 1440],
+    "surface_files_per_viewport": 7,
+    "png_count": 28,
+    "page_level_horizontal_overflow_assertion": true,
+    "artifact_root": "10_frontend/reports/artifacts/visual"
+  },
+  "accessibility_evidence": {
+    "status": "PARTIAL_PASS",
+    "implemented": [
+      "semantic headings and form labels",
+      "RadioGroup semantics and keyboard selection path",
+      "Reka UI Dialog and mobile drawer primitives",
+      "visible focus styles",
+      "reduced-motion support",
+      "chart text alternatives",
+      "non-color-only status language"
+    ],
+    "axe": "NOT_RUN",
+    "screen_reader_manual_walkthrough": "NOT_RUN",
+    "full_wcag_conformance_claim": false
+  },
+  "verification": {
+    "typecheck": {
+      "status": "PASS",
+      "command": "npm run typecheck"
+    },
+    "lint": {
+      "status": "PASS",
+      "command": "npm run lint"
+    },
+    "unit_tests": {
+      "status": "PASS",
+      "command": "npm run test:unit",
+      "test_files": 3,
+      "tests": 9,
+      "failed": 0
+    },
+    "production_build": {
+      "status": "PASS",
+      "command": "npm run build",
+      "vite_version": "8.2.2"
+    },
+    "e2e": {
+      "status": "PASS",
+      "command": "$env:PLAYWRIGHT_BROWSERS_PATH = 'D:\\Dev\\caches\\ms-playwright'; npm run test:e2e",
+      "tests": 3,
+      "passed": 3,
+      "unexpected": 0,
+      "flaky": 0,
+      "skipped": 0
+    },
+    "root_contract": {
+      "status": "PASS",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\00_architecture\\tests\\run_contract_checks.ps1",
+      "tests": 13,
+      "passed": 13,
+      "failed": 0,
+      "openapi_check": "PASS"
+    }
+  },
+  "open_source_reference_audit": {
+    "status": "RECORDED",
+    "required_urls_recorded": 21,
+    "audit_file": "10_frontend/research/OPEN_SOURCE_REFERENCE_AUDIT.md",
+    "code_copied_from_references": false,
+    "known_access_limits_recorded": true
+  },
+  "human_facing_text": {
+    "humanizer_review": "DONE",
+    "vale": "NOT_RUN",
+    "vale_reason": "No project Vale configuration was found; no Vale pass is claimed."
+  },
+  "known_risks": [
+    "npm install reported 7 moderate audit advisories; no automatic remediation was run.",
+    "Authentication and data access are memory-only mock behavior.",
+    "Full axe, screen-reader, real-device, cross-browser visual and production API integration checks remain pending."
+  ],
+  "evidence_files": {
+    "design_source": "DESIGN.md",
+    "technical_decision": "10_frontend/FRONTEND_TECHNICAL_DECISION_V1.md",
+    "design_audit": "10_frontend/reports/FRONTEND_DESIGN_AUDIT.md",
+    "acceptance_report": "10_frontend/reports/FRONTEND_ROUND1_ACCEPTANCE.md",
+    "playwright_results": "10_frontend/reports/artifacts/playwright-results.json",
+    "visual_artifacts": "10_frontend/reports/artifacts/visual"
+  }
+}

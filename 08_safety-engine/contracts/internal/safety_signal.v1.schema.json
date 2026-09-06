@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studentmentalhealthai.local/contracts/internal/safety_signal.v1.schema.json",
+  "title": "SafetySignal v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["signal_id", "source", "signal_type", "category", "severity_hint", "confidence", "reason_code", "component", "component_version", "timestamp", "trace_id", "metadata"],
+  "properties": {
+    "signal_id": {"type": "string", "minLength": 5},
+    "source": {"enum": ["ASSESSMENT", "PRESIDIO", "NEMO", "QWEN3GUARD", "DETERMINISTIC_RULE", "SYSTEM_HEALTH"]},
+    "signal_type": {"enum": ["ASSESSMENT", "CONTENT", "PRIVACY", "INJECTION", "CRISIS", "CLINICAL_BOUNDARY", "RETRIEVAL", "DISCLOSURE", "COMPONENT_HEALTH"]},
+    "category": {"type": "string", "minLength": 1},
+    "severity_hint": {"enum": ["UNKNOWN", "LOW", "MODERATE", "HIGH", "CRITICAL"]},
+    "confidence": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+    "reason_code": {"type": "string", "minLength": 1},
+    "component": {"type": "string", "minLength": 1},
+    "component_version": {"type": "string", "minLength": 1},
+    "timestamp": {"type": "string", "format": "date-time"},
+    "trace_id": {"type": "string", "minLength": 1},
+    "metadata": {"type": "object"}
+  }
+}
+

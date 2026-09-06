@@ -1,0 +1,70 @@
+{
+  "schema_version": "rules.v1",
+  "status": "PROVISIONALLY_FROZEN",
+  "owner": "Project Technical Lead",
+  "rules": [
+    {
+      "rule_id": "SAFETY-R1-CRISIS-SYNTHETIC",
+      "version": "1.0",
+      "status": "ACTIVE",
+      "owner": "Project Technical Lead",
+      "approval_status": "PENDING_PSYCH_REVIEW",
+      "source": "src/safety_engine/service/rules.py",
+      "scope": "explicitly marked synthetic crisis fixtures only"
+    },
+    {
+      "rule_id": "SAFETY-R1-INJECTION-TIER0",
+      "version": "1.0",
+      "status": "ACTIVE",
+      "owner": "Project Technical Lead",
+      "approval_status": "ENGINEERING_APPROVED",
+      "source": "src/safety_engine/service/rules.py",
+      "scope": "deterministic instruction-integrity signals; not a completeness claim"
+    },
+    {
+      "rule_id": "SAFETY-R1-CLINICAL-BOUNDARY",
+      "version": "1.0",
+      "status": "ACTIVE",
+      "owner": "Project Technical Lead",
+      "approval_status": "ENGINEERING_APPROVED",
+      "source": "src/safety_engine/clinical_boundary/guard.py",
+      "scope": "engineering boundary checks; no diagnosis or clinical threshold"
+    },
+    {
+      "rule_id": "SAFETY-R1-DISCLOSURE-MATRIX",
+      "version": "1.0",
+      "status": "ACTIVE",
+      "owner": "Project Technical Lead",
+      "approval_status": "SYNTHETIC_POLICY_ONLY",
+      "source": "src/safety_engine/privacy/disclosure.py",
+      "scope": "role-aware metadata disclosure for Round 1 fixtures"
+    },
+    {
+      "rule_id": "SAFETY-R1-PII-RECOGNIZERS",
+      "version": "1.0",
+      "status": "ACTIVE",
+      "owner": "Project Technical Lead",
+      "approval_status": "ENGINEERING_APPROVED",
+      "source": "src/safety_engine/adapters/presidio/adapter.py",
+      "scope": "synthetic phone, email, Chinese ID, and student-ID patterns"
+    },
+    {
+      "rule_id": "SAFETY-R1-RETRIEVAL-ELIGIBILITY",
+      "version": "1.0",
+      "status": "ACTIVE",
+      "owner": "Project Technical Lead",
+      "approval_status": "SYNTHETIC_POLICY_ONLY",
+      "source": "src/safety_engine/retrieval/adapter.py",
+      "scope": "approved review status and verified rights metadata"
+    },
+    {
+      "rule_id": "SAFETY-R1-OPA-ACTION-ORDER",
+      "version": "1.0",
+      "status": "ACTIVE",
+      "owner": "Project Technical Lead",
+      "approval_status": "ENGINEERING_APPROVED",
+      "source": "policies/*.rego",
+      "scope": "deterministic engineering actions only"
+    }
+  ]
+}

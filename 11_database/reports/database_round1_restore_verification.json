@@ -1,0 +1,677 @@
+{
+  "generated_at": "2026-09-05T15:10:40.108953+00:00",
+  "source_database": "smhai_round1_test_c01",
+  "restored_database": "smhai_round1_restore_c01",
+  "mysql_version": "8.4.8",
+  "backup": {
+    "path": "D:\\Dev\\backups\\studentmentalhealthai\\database-round1-c01.sql",
+    "size_bytes": 42636,
+    "sha256": "028f857aac25818407516bb0f1c8978e661c33f5407495dee00b768901ab5a01",
+    "timestamp_utc": "2026-09-05T15:10:38.5467287Z",
+    "artifact_identity": true
+  },
+  "restore_process": {
+    "database": "smhai_round1_restore_c01",
+    "fresh_target": true,
+    "mysql_version": "8.4.8",
+    "restore_start_utc": "2026-09-05T15:10:38.5664805Z",
+    "restore_completion_utc": "2026-09-05T15:10:39.3428427Z",
+    "command_category": "mysqldump logical backup + mysql SOURCE into a new empty database",
+    "exit_code": 0
+  },
+  "migration": {
+    "expected": "20260905_0001",
+    "source": "20260905_0001",
+    "restored": "20260905_0001",
+    "match": true
+  },
+  "tables": {
+    "source_count": 20,
+    "restored_count": 20,
+    "expected_count": 20,
+    "source_names": [
+      "account_roles",
+      "accounts",
+      "assessment_responses",
+      "assessment_results",
+      "assessment_sessions",
+      "audit_events",
+      "auth_sessions",
+      "consent_records",
+      "database_alembic_version",
+      "idempotency_records",
+      "review_cases",
+      "review_events",
+      "roles",
+      "safety_decisions",
+      "subject_access_grants",
+      "subjects",
+      "support_evidence",
+      "support_messages",
+      "support_runs",
+      "support_sessions"
+    ],
+    "restored_names": [
+      "account_roles",
+      "accounts",
+      "assessment_responses",
+      "assessment_results",
+      "assessment_sessions",
+      "audit_events",
+      "auth_sessions",
+      "consent_records",
+      "database_alembic_version",
+      "idempotency_records",
+      "review_cases",
+      "review_events",
+      "roles",
+      "safety_decisions",
+      "subject_access_grants",
+      "subjects",
+      "support_evidence",
+      "support_messages",
+      "support_runs",
+      "support_sessions"
+    ],
+    "match": true
+  },
+  "row_counts": {
+    "account_roles": {
+      "source": 0,
+      "restored": 0,
+      "match": true
+    },
+    "accounts": {
+      "source": 1,
+      "restored": 1,
+      "match": true
+    },
+    "assessment_responses": {
+      "source": 1,
+      "restored": 1,
+      "match": true
+    },
+    "assessment_results": {
+      "source": 1,
+      "restored": 1,
+      "match": true
+    },
+    "assessment_sessions": {
+      "source": 1,
+      "restored": 1,
+      "match": true
+    },
+    "audit_events": {
+      "source": 2,
+      "restored": 2,
+      "match": true
+    },
+    "auth_sessions": {
+      "source": 0,
+      "restored": 0,
+      "match": true
+    },
+    "consent_records": {
+      "source": 0,
+      "restored": 0,
+      "match": true
+    },
+    "idempotency_records": {
+      "source": 0,
+      "restored": 0,
+      "match": true
+    },
+    "review_cases": {
+      "source": 1,
+      "restored": 1,
+      "match": true
+    },
+    "review_events": {
+      "source": 1,
+      "restored": 1,
+      "match": true
+    },
+    "roles": {
+      "source": 5,
+      "restored": 5,
+      "match": true
+    },
+    "safety_decisions": {
+      "source": 1,
+      "restored": 1,
+      "match": true
+    },
+    "subject_access_grants": {
+      "source": 0,
+      "restored": 0,
+      "match": true
+    },
+    "subjects": {
+      "source": 2,
+      "restored": 2,
+      "match": true
+    },
+    "support_evidence": {
+      "source": 0,
+      "restored": 0,
+      "match": true
+    },
+    "support_messages": {
+      "source": 2,
+      "restored": 2,
+      "match": true
+    },
+    "support_runs": {
+      "source": 1,
+      "restored": 1,
+      "match": true
+    },
+    "support_sessions": {
+      "source": 1,
+      "restored": 1,
+      "match": true
+    }
+  },
+  "safe_content_hashes": {
+    "subjects": {
+      "fields": [
+        "public_id",
+        "subject_ref",
+        "status",
+        "data_origin",
+        "retention_due_at",
+        "erased_at",
+        "created_at",
+        "updated_at"
+      ],
+      "source_sha256": "a614ee8d1ad112e8176598874fc7d3ad3d988153cd11456e9cf2a0569dcbc796",
+      "restored_sha256": "a614ee8d1ad112e8176598874fc7d3ad3d988153cd11456e9cf2a0569dcbc796",
+      "match": true
+    },
+    "assessment_sessions": {
+      "fields": [
+        "public_id",
+        "assessment_ref",
+        "instrument_id",
+        "instrument_version",
+        "item_bank_version",
+        "config_version",
+        "schema_version",
+        "status",
+        "trace_id",
+        "started_at",
+        "completed_at",
+        "created_at",
+        "updated_at"
+      ],
+      "source_sha256": "835c0880f1157e9b9f06d851e8c794fe27e521fdb7c1a014efaac808d1c44bc0",
+      "restored_sha256": "835c0880f1157e9b9f06d851e8c794fe27e521fdb7c1a014efaac808d1c44bc0",
+      "match": true
+    },
+    "support_runs": {
+      "fields": [
+        "public_id",
+        "run_ref",
+        "generation_ref",
+        "retrieval_ref",
+        "trace_id",
+        "status",
+        "workflow_action",
+        "component_versions",
+        "started_at",
+        "completed_at",
+        "duration_ms",
+        "created_at",
+        "updated_at"
+      ],
+      "source_sha256": "87c9f8c50c2dfaa1f0881cbb3ce58e388bab9b70684d63e51924a56b774c014d",
+      "restored_sha256": "87c9f8c50c2dfaa1f0881cbb3ce58e388bab9b70684d63e51924a56b774c014d",
+      "match": true
+    },
+    "support_evidence": {
+      "fields": [
+        "public_id",
+        "citation_id",
+        "source_id",
+        "source_version",
+        "source_hash",
+        "locator",
+        "rank_order",
+        "created_at",
+        "updated_at"
+      ],
+      "source_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "restored_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "match": true
+    },
+    "review_cases": {
+      "fields": [
+        "public_id",
+        "review_ref",
+        "priority",
+        "status",
+        "assigned_account_id",
+        "version",
+        "closed_at",
+        "created_at",
+        "updated_at"
+      ],
+      "source_sha256": "6c368a74cebd7f7c57dd678afef6e083934a2cf45c0ace533de6db37b96023fe",
+      "restored_sha256": "6c368a74cebd7f7c57dd678afef6e083934a2cf45c0ace533de6db37b96023fe",
+      "match": true
+    },
+    "audit_events": {
+      "fields": [
+        "public_id",
+        "action",
+        "resource_type",
+        "resource_public_id",
+        "result",
+        "trace_id",
+        "safe_metadata",
+        "created_at"
+      ],
+      "source_sha256": "c8ad5a303686872f0228a993be201206fe1bf00cb2aadb88d1bc8ebcfb883d29",
+      "restored_sha256": "c8ad5a303686872f0228a993be201206fe1bf00cb2aadb88d1bc8ebcfb883d29",
+      "match": true
+    },
+    "idempotency_records": {
+      "fields": [
+        "public_id",
+        "scope",
+        "state",
+        "result_resource_type",
+        "result_public_id",
+        "expires_at",
+        "created_at",
+        "updated_at"
+      ],
+      "source_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "restored_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "match": true
+    }
+  },
+  "ciphertext_hashes": {
+    "assessment_response": {
+      "table": "assessment_responses",
+      "column": "response_ciphertext",
+      "source_public_id": "b6bde93b-eef8-47e5-889d-6643492f92a1",
+      "restored_public_id": "b6bde93b-eef8-47e5-889d-6643492f92a1",
+      "source_ciphertext_sha256": "f2f350d4aa85245239aa7a1f318513d3b13dffc1bb7dd66548fb98d6332405be",
+      "restored_ciphertext_sha256": "f2f350d4aa85245239aa7a1f318513d3b13dffc1bb7dd66548fb98d6332405be",
+      "present_in_source": true,
+      "present_in_restored": true,
+      "match": true
+    },
+    "assessment_result": {
+      "table": "assessment_results",
+      "column": "payload_ciphertext",
+      "source_public_id": "d4163111-3523-4974-9b02-4760fa247389",
+      "restored_public_id": "d4163111-3523-4974-9b02-4760fa247389",
+      "source_ciphertext_sha256": "59ceca4ff4e764199b57e57668a697530bc9d898ce50e3bc17796b15eaf14985",
+      "restored_ciphertext_sha256": "59ceca4ff4e764199b57e57668a697530bc9d898ce50e3bc17796b15eaf14985",
+      "present_in_source": true,
+      "present_in_restored": true,
+      "match": true
+    },
+    "support_message": {
+      "table": "support_messages",
+      "column": "payload_ciphertext",
+      "source_public_id": "c7dc5f55-4804-4aff-a980-9e19ad7d703b",
+      "restored_public_id": "c7dc5f55-4804-4aff-a980-9e19ad7d703b",
+      "source_ciphertext_sha256": "ebc96ece3bbd9e6ec4260a521cfcd641a05e46e3d356f5417431719d6febaa53",
+      "restored_ciphertext_sha256": "ebc96ece3bbd9e6ec4260a521cfcd641a05e46e3d356f5417431719d6febaa53",
+      "present_in_source": true,
+      "present_in_restored": true,
+      "match": true
+    },
+    "safety_decision": {
+      "table": "safety_decisions",
+      "column": "detail_ciphertext",
+      "source_public_id": "1ed99297-5e57-4957-9198-6bccd673834b",
+      "restored_public_id": "1ed99297-5e57-4957-9198-6bccd673834b",
+      "source_ciphertext_sha256": "3aa7a27f273f3725b480bf59453efa13f53d4ac93451945cb0489bf9a2e7e900",
+      "restored_ciphertext_sha256": "3aa7a27f273f3725b480bf59453efa13f53d4ac93451945cb0489bf9a2e7e900",
+      "present_in_source": true,
+      "present_in_restored": true,
+      "match": true
+    },
+    "review_case": {
+      "table": "review_cases",
+      "column": "case_note_ciphertext",
+      "source_public_id": "75eecb18-35fb-4be6-900a-fa95a75d9423",
+      "restored_public_id": "75eecb18-35fb-4be6-900a-fa95a75d9423",
+      "source_ciphertext_sha256": "23d29236f14e65ff8a7f664ebd48a94aba931185b993f8430add7aaa79fbae92",
+      "restored_ciphertext_sha256": "23d29236f14e65ff8a7f664ebd48a94aba931185b993f8430add7aaa79fbae92",
+      "present_in_source": true,
+      "present_in_restored": true,
+      "match": true
+    },
+    "review_event": {
+      "table": "review_events",
+      "column": "note_ciphertext",
+      "source_public_id": null,
+      "restored_public_id": null,
+      "source_ciphertext_sha256": null,
+      "restored_ciphertext_sha256": null,
+      "present_in_source": false,
+      "present_in_restored": false,
+      "match": true
+    }
+  },
+  "decryptability": {
+    "assessment_response": {
+      "status": "PASS",
+      "decryptable": true,
+      "schema_version": "assessment-response.v1",
+      "expected_schema_version": "assessment-response.v1",
+      "schema_matches": true,
+      "payload_keys": [
+        "answer",
+        "source"
+      ],
+      "expected_keys_present": true
+    },
+    "assessment_result": {
+      "status": "PASS",
+      "decryptable": true,
+      "schema_version": "assessment-result.v1",
+      "expected_schema_version": "assessment-result.v1",
+      "schema_matches": true,
+      "payload_keys": [
+        "schema_version",
+        "source"
+      ],
+      "expected_keys_present": true
+    },
+    "support_message": {
+      "status": "PASS",
+      "decryptable": true,
+      "schema_version": "support-message.v1",
+      "expected_schema_version": "support-message.v1",
+      "schema_matches": true,
+      "payload_keys": [
+        "text"
+      ],
+      "expected_keys_present": true
+    },
+    "safety_decision": {
+      "status": "PASS",
+      "decryptable": true,
+      "schema_version": "safety-detail.v1",
+      "expected_schema_version": "safety-detail.v1",
+      "schema_matches": true,
+      "payload_keys": [
+        "reason_code"
+      ],
+      "expected_keys_present": true
+    },
+    "review_case": {
+      "status": "PASS",
+      "decryptable": true,
+      "schema_version": "review-note.v1",
+      "expected_schema_version": "review-note.v1",
+      "schema_matches": true,
+      "payload_keys": [
+        "note"
+      ],
+      "expected_keys_present": true
+    },
+    "review_event": {
+      "status": "NOT_POPULATED",
+      "decryptable": false,
+      "payload_keys": [],
+      "schema_version": null
+    }
+  },
+  "wrong_key": {
+    "tested_payload_class": "assessment_response",
+    "failure_type": "EncryptionFailure",
+    "wrong_key_failure": true
+  },
+  "foreign_keys": {
+    "relationships_checked": 24,
+    "orphan_rows": 0,
+    "checks": [
+      {
+        "constraint": "fk_account_roles_account",
+        "child": "account_roles.account_id",
+        "parent": "accounts.id",
+        "orphan_rows": 0
+      },
+      {
+        "constraint": "fk_account_roles_role",
+        "child": "account_roles.role_id",
+        "parent": "roles.id",
+        "orphan_rows": 0
+      },
+      {
+        "constraint": "fk_assessment_responses_session",
+        "child": "assessment_responses.assessment_session_id",
+        "parent": "assessment_sessions.id",
+        "orphan_rows": 0
+      },
+      {
+        "constraint": "fk_assessment_results_session",
+        "child": "assessment_results.assessment_session_id",
+        "parent": "assessment_sessions.id",
+        "orphan_rows": 0
+      },
+      {
+        "constraint": "fk_assessment_sessions_subject",
+        "child": "assessment_sessions.subject_id",
+        "parent": "subjects.id",
+        "orphan_rows": 0
+      },
+      {
+        "constraint": "fk_audit_events_actor",
+        "child": "audit_events.actor_account_id",
+        "parent": "accounts.id",
+        "orphan_rows": 0
+      },
+      {
+        "constraint": "fk_auth_sessions_account",
+        "child": "auth_sessions.account_id",
+        "parent": "accounts.id",
+        "orphan_rows": 0
+      },
+      {
+        "constraint": "fk_consent_records_granted_by",
+        "child": "consent_records.granted_by_account_id",
+        "parent": "accounts.id",
+        "orphan_rows": 0
+      },
+      {
+        "constraint": "fk_consent_records_subject",
+        "child": "consent_records.subject_id",
+        "parent": "subjects.id",
+        "orphan_rows": 0
+      },
+      {
+        "constraint": "fk_review_cases_assignee",
+        "child": "review_cases.assigned_account_id",
+        "parent": "accounts.id",
+        "orphan_rows": 0
+      },
+      {
+        "constraint": "fk_review_cases_safety",
+        "child": "review_cases.safety_decision_id",
+        "parent": "safety_decisions.id",
+        "orphan_rows": 0
+      },
+      {
+        "constraint": "fk_review_cases_subject",
+        "child": "review_cases.subject_id",
+        "parent": "subjects.id",
+        "orphan_rows": 0
+      },
+      {
+        "constraint": "fk_review_events_actor",
+        "child": "review_events.actor_account_id",
+        "parent": "accounts.id",
+        "orphan_rows": 0
+      },
+      {
+        "constraint": "fk_review_events_case",
+        "child": "review_events.review_case_id",
+        "parent": "review_cases.id",
+        "orphan_rows": 0
+      },
+      {
+        "constraint": "fk_safety_decisions_run",
+        "child": "safety_decisions.support_run_id",
+        "parent": "support_runs.id",
+        "orphan_rows": 0
+      },
+      {
+        "constraint": "fk_subject_access_grants_account",
+        "child": "subject_access_grants.principal_account_id",
+        "parent": "accounts.id",
+        "orphan_rows": 0
+      },
+      {
+        "constraint": "fk_subject_access_grants_subject",
+        "child": "subject_access_grants.subject_id",
+        "parent": "subjects.id",
+        "orphan_rows": 0
+      },
+      {
+        "constraint": "fk_support_evidence_run",
+        "child": "support_evidence.support_run_id",
+        "parent": "support_runs.id",
+        "orphan_rows": 0
+      },
+      {
+        "constraint": "fk_support_messages_safety",
+        "child": "support_messages.safety_decision_id",
+        "parent": "safety_decisions.id",
+        "orphan_rows": 0
+      },
+      {
+        "constraint": "fk_support_messages_session",
+        "child": "support_messages.support_session_id",
+        "parent": "support_sessions.id",
+        "orphan_rows": 0
+      },
+      {
+        "constraint": "fk_support_runs_assessment",
+        "child": "support_runs.assessment_session_id",
+        "parent": "assessment_sessions.id",
+        "orphan_rows": 0
+      },
+      {
+        "constraint": "fk_support_runs_session",
+        "child": "support_runs.support_session_id",
+        "parent": "support_sessions.id",
+        "orphan_rows": 0
+      },
+      {
+        "constraint": "fk_support_sessions_assessment",
+        "child": "support_sessions.assessment_session_id",
+        "parent": "assessment_sessions.id",
+        "orphan_rows": 0
+      },
+      {
+        "constraint": "fk_support_sessions_subject",
+        "child": "support_sessions.subject_id",
+        "parent": "subjects.id",
+        "orphan_rows": 0
+      }
+    ],
+    "pass": true
+  },
+  "foreign_key_checks": {
+    "session": 1,
+    "global": 1,
+    "pass": true
+  },
+  "schema_sanity": {
+    "checks": {
+      "all_tables_innodb": true,
+      "all_tables_utf8mb4": true,
+      "all_tables_expected_collation": true,
+      "public_id_unique_for_all_domain_tables": true,
+      "idempotency_scope_key_hash_unique": true,
+      "review_case_version_field": true,
+      "session_hashes_binary_32": true,
+      "encrypted_payloads_binary_or_blob": true
+    },
+    "details": {
+      "public_id_unique_tables": [
+        "account_roles",
+        "accounts",
+        "assessment_responses",
+        "assessment_results",
+        "assessment_sessions",
+        "audit_events",
+        "auth_sessions",
+        "consent_records",
+        "idempotency_records",
+        "review_cases",
+        "review_events",
+        "roles",
+        "safety_decisions",
+        "subject_access_grants",
+        "subjects",
+        "support_evidence",
+        "support_messages",
+        "support_runs",
+        "support_sessions"
+      ],
+      "idempotency_unique_columns": [
+        "scope",
+        "key_hash"
+      ],
+      "review_version_column": {
+        "DATA_TYPE": "int",
+        "COLUMN_TYPE": "int"
+      },
+      "session_hash_types": {
+        "csrf_token_hash": "binary(32)",
+        "session_token_hash": "binary(32)",
+        "user_agent_hash": "binary(32)"
+      },
+      "encrypted_payload_types": {
+        "assessment_responses.response_ciphertext": "mediumblob",
+        "assessment_results.payload_ciphertext": "mediumblob",
+        "support_messages.payload_ciphertext": "mediumblob",
+        "safety_decisions.detail_ciphertext": "mediumblob",
+        "review_cases.case_note_ciphertext": "mediumblob",
+        "review_events.note_ciphertext": "mediumblob"
+      }
+    },
+    "pass": true
+  },
+  "runtime": {
+    "source": {
+      "version": "8.4.8",
+      "edition": "MySQL Community Server - GPL",
+      "time_zone": "+00:00",
+      "session_fk_checks": 1,
+      "global_fk_checks": 1
+    },
+    "restored": {
+      "version": "8.4.8",
+      "edition": "MySQL Community Server - GPL",
+      "time_zone": "+00:00",
+      "session_fk_checks": 1,
+      "global_fk_checks": 1
+    }
+  },
+  "summary": {
+    "source_database": "smhai_round1_test_c01",
+    "restored_database": "smhai_round1_restore_c01",
+    "mysql_version": "8.4.8",
+    "source_mysql_version": "8.4.8",
+    "migration_revision_match": true,
+    "table_count_match": true,
+    "table_names_match": true,
+    "row_counts_match": true,
+    "safe_content_hashes_match": true,
+    "ciphertext_hashes_match": true,
+    "encrypted_payloads_decryptable": true,
+    "foreign_key_integrity": true,
+    "schema_sanity": true
+  },
+  "overall": "PASS"
+}

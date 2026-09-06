@@ -1,0 +1,24 @@
+{
+  "schema_version": "generation.v1",
+  "generation_id": "GEN_contract_001",
+  "assessment_id": "ASSESS_contract_001",
+  "subject_id": "SUBJ_contract_001",
+  "target_role": "teacher",
+  "purpose": "education_support",
+  "language": "zh-CN",
+  "safety_mode": "standard",
+  "retrieval": {
+    "retrieval_id": "RETR_contract_001",
+    "chunk_ids": [
+      "CHUNK_contract_001_001"
+    ]
+  },
+  "prompt_ref": {
+    "prompt_id": "PROMPT_teacher_contract_v1",
+    "prompt_version": "0.1.0"
+  },
+  "model_policy": {
+    "model_id": "MODEL_local_primary",
+    "provider_class": "mock"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "schema_version": "logging.v1",
+  "timestamp": "2026-09-04T12:04:00Z",
+  "level": "INFO",
+  "event": "GENERATION_COMPLETED",
+  "component": "09_backend",
+  "request_id": "REQ_contract_001",
+  "trace_id": "TRACE_contract_001",
+  "outcome": "success",
+  "duration_ms": 125,
+  "error_code": null,
+  "entity_refs": {
+    "assessment_id": "ASSESS_contract_001",
+    "retrieval_id": "RETR_contract_001",
+    "generation_id": "GEN_contract_001"
+  },
+  "metadata": {
+    "operation": "contract_test",
+    "route": "/api/v1/generations",
+    "dependency": "mock_runtime",
+    "attempt": 1,
+    "retryable": false
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "config_version": "demo.cat.v1",
+  "model": "GRM",
+  "estimator": "EAP",
+  "selection_method": "MFI",
+  "min_items": 3,
+  "max_items": 8,
+  "se_threshold": 0.55,
+  "initial_theta": 0.0,
+  "prior_mean": 0.0,
+  "prior_sd": 1.0,
+  "optimization_interval": [-4.0, 4.0],
+  "seed": 20260904,
+  "exposure_control": "none",
+  "content_balancing": "none"
+}
+

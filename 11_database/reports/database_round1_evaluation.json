@@ -1,0 +1,76 @@
+{
+  "generated_at": "2026-09-05",
+  "mysql_version": "8.4.8",
+  "sqlalchemy_version": "2.0.52",
+  "alembic_version": "1.19.2",
+  "aiomysql_version": "0.3.2",
+  "cryptography_version": "46.0.7",
+  "migration_head": "20260905_0001",
+  "migration_test": "PASS_ALEMBIC_UPGRADE_CHECK_DOWNGRADE_REUPGRADE_CHECK",
+  "table_count": 20,
+  "constraint_count": 99,
+  "index_count": 114,
+  "encryption_roundtrip": true,
+  "wrong_key_failure": true,
+  "key_rotation": true,
+  "least_privilege": "PASS_APP_SHOW_GRANTS_CREATE_DROP_GRANT_FILE_DENIED",
+  "backup": "PASS_LOGICAL_DUMP_D:\\Dev\\backups\\studentmentalhealthai\\database-round1-c01.sql",
+  "restore": "PASS_FRESH_DATABASE_AND_COMPLETE_RESTORE_VERIFICATION",
+  "restore_verification": "PASS",
+  "restore_migration_match": true,
+  "restore_table_count_match": true,
+  "restore_row_counts_match": true,
+  "restore_content_hash_match": true,
+  "restore_ciphertext_hash_match": true,
+  "restore_fk_integrity": true,
+  "restore_schema_sanity": true,
+  "overall_restore_verification": "PASS",
+  "restore_verification_artifact": "D:\\Projects\\StudentMentalHealthAI\\11_database\\reports\\database_round1_restore_verification.json",
+  "tests": {
+    "unit": {
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0,
+      "exit_code": 0
+    },
+    "real_mysql_integration": "PASS_6_REAL_MYSQL_TESTS"
+  },
+  "root_contract": {
+    "status": "PASS",
+    "passed": 13,
+    "failed": 0,
+    "exit_code": 0
+  },
+  "real_student_data": false,
+  "frozen_contract_modified": false,
+  "frozen_contract_hashes": {
+    "files_unchanged": {
+      "CONTRACTS.md": true,
+      "00_architecture/openapi.v1.json": true
+    },
+    "all_unchanged": true
+  },
+  "real_mysql": {
+    "connected": true,
+    "status": "CONNECTED",
+    "sanitized_url": "mysql+aiomysql://smhai_app_c01:***@127.0.0.1:3307/smhai_round1_test_c01?charset=utf8mb4",
+    "version": "8.4.8",
+    "edition": "MySQL Community Server - GPL",
+    "charset": "utf8mb4",
+    "collation": "utf8mb4_0900_ai_ci",
+    "default_engine": "InnoDB",
+    "time_zone": "+00:00",
+    "sql_mode": "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION",
+    "table_count": 20,
+    "constraint_count": 99,
+    "index_count": 114,
+    "migration_head": "20260905_0001",
+    "show_grants": [
+      "GRANT USAGE ON *.* TO `smhai_app_c01`@`127.0.0.1`",
+      "GRANT SELECT, INSERT, UPDATE, DELETE ON `smhai_round1_test_c01`.* TO `smhai_app_c01`@`127.0.0.1`"
+    ],
+    "least_privilege": "PASS_APP_SHOW_GRANTS_CREATE_DROP_GRANT_FILE_DENIED",
+    "backup": "PASS_LOGICAL_DUMP_D:\\Dev\\backups\\studentmentalhealthai\\database-round1-c01.sql",
+    "restore": "PASS_FRESH_DATABASE_AND_COMPLETE_RESTORE_VERIFICATION"
+  }
+}
