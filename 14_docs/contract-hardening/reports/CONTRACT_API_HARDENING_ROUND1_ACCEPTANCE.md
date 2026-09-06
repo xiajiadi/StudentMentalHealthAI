@@ -23,6 +23,7 @@ contract was not modified or promoted.
   (`chore: establish Software Integration R1 accepted baseline`).
 - Required tag: `integration-r1-accepted`.
 - Local cleanup commit after baseline: `dfbf1bd`; no remote is configured.
+- Candidate hardening commit: `a65ac71897a2a26fb157d04b4f253eb01af65f58`.
 - Frozen root OpenAPI SHA-256:
   `235C8FDB0B35F2DE870127A18D4CD8C72A1C7795AF02656B2A6C7274AB071897`.
 - Frozen v1 schema and root governance hashes remained unchanged; the official
