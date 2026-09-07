@@ -8,17 +8,31 @@ from typing import Any, Mapping
 
 
 class RuntimeErrorCode(str, Enum):
+    RUNTIME_NOT_READY = "RUNTIME_NOT_READY"
+    RUNTIME_BUSY = "RUNTIME_BUSY"
     PROVIDER_UNAVAILABLE = "PROVIDER_UNAVAILABLE"
     PROVIDER_NOT_READY = "PROVIDER_NOT_READY"
+    PROVIDER_PROTOCOL_ERROR = "PROVIDER_PROTOCOL_ERROR"
     MODEL_NOT_FOUND = "MODEL_NOT_FOUND"
+    MODEL_UNAVAILABLE = "MODEL_UNAVAILABLE"
     MODEL_NOT_READY = "MODEL_NOT_READY"
     MODEL_LOAD_FAILED = "MODEL_LOAD_FAILED"
+    CONTEXT_LIMIT_EXCEEDED = "CONTEXT_LIMIT_EXCEEDED"
     OUT_OF_MEMORY = "OUT_OF_MEMORY"
     REQUEST_TIMEOUT = "REQUEST_TIMEOUT"
+    PROVIDER_TIMEOUT = "REQUEST_TIMEOUT"
     STREAM_INTERRUPTED = "STREAM_INTERRUPTED"
     INVALID_STRUCTURED_OUTPUT = "INVALID_STRUCTURED_OUTPUT"
+    STRUCTURED_OUTPUT_INVALID = "INVALID_STRUCTURED_OUTPUT"
     UNSUPPORTED_CAPABILITY = "UNSUPPORTED_CAPABILITY"
     CANCELLED = "CANCELLED"
+    GENERATION_CANCELLED = "CANCELLED"
+    GENERATION_FAILED = "GENERATION_FAILED"
+    FALLBACK_EXHAUSTED = "FALLBACK_EXHAUSTED"
+    PROCESS_START_FAILED = "PROCESS_START_FAILED"
+    PROCESS_EXITED = "PROCESS_EXITED"
+    PROCESS_STOP_FAILED = "PROCESS_STOP_FAILED"
+    CONFIGURATION_ERROR = "CONFIGURATION_ERROR"
     RUNTIME_ERROR = "RUNTIME_ERROR"
 
 
@@ -96,6 +110,8 @@ def map_provider_error(message: str, *, provider: str, status_code: int | None =
     lowered = message.lower()
     if "out of memory" in lowered or "oom" in lowered or "not enough memory" in lowered:
         code = RuntimeErrorCode.OUT_OF_MEMORY
+    elif "context" in lowered and ("limit" in lowered or "exceed" in lowered or "length" in lowered):
+        code = RuntimeErrorCode.CONTEXT_LIMIT_EXCEEDED
     elif "not found" in lowered or "model does not exist" in lowered:
         code = RuntimeErrorCode.MODEL_NOT_FOUND
     elif "timeout" in lowered or "timed out" in lowered:
@@ -104,6 +120,8 @@ def map_provider_error(message: str, *, provider: str, status_code: int | None =
         code = RuntimeErrorCode.PROVIDER_NOT_READY
     elif "connection" in lowered or "refused" in lowered or "unreachable" in lowered:
         code = RuntimeErrorCode.PROVIDER_UNAVAILABLE
+    elif "protocol" in lowered or "invalid json" in lowered or "malformed" in lowered:
+        code = RuntimeErrorCode.PROVIDER_PROTOCOL_ERROR
     else:
         code = RuntimeErrorCode.RUNTIME_ERROR
     return LLMRuntimeError(

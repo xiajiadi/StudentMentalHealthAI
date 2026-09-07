@@ -1,8 +1,4 @@
-"""Loopback buffered-generation service.
-
-Backend talks to this process instead of reaching Ollama directly.  The
-runtime owns model resolution, retries, fallback policy, and provider traces.
-"""
+"""Loopback HTTP boundary for the buffered local runtime service."""
 
 from __future__ import annotations
 
@@ -12,11 +8,13 @@ from typing import Any
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field
 
 from llm_runtime.cli import build_service
 from llm_runtime.domain.models import GenerationConfig, GenerationRequest
-from llm_runtime.errors import LLMRuntimeError
+from llm_runtime.errors import LLMRuntimeError, RuntimeErrorCode
+from llm_runtime.runtime.service import GenerationResult, RuntimeService
 
 
 class GenerateRequest(BaseModel):
@@ -46,22 +44,27 @@ class GenerateRequest(BaseModel):
 
 
 class Runtime:
-    def __init__(self) -> None:
-        self.service = build_service()
+    def __init__(self, service: RuntimeService | None = None) -> None:
+        self.service = service or build_service()
+
+    def startup(self) -> dict[str, Any]:
+        return self.service.startup()
+
+    def shutdown(self) -> None:
+        self.service.shutdown()
 
     def health(self) -> dict[str, Any]:
         return self.service.health()
 
     def ready(self) -> bool:
-        health = self.health()
-        primary = health.get("models", {}).get("qwen2.5-0.5b-engineering", {})
-        return primary.get("availability") in {"available", "ready"} and primary.get(
-            "inference_readiness"
-        ) in {"ready", "loaded"}
+        return self.service.ready()
 
     def generate(self, payload: GenerateRequest) -> dict[str, Any]:
         if payload.stream:
-            raise HTTPException(status_code=422, detail="Round 1 integration accepts buffered generation only")
+            raise HTTPException(
+                status_code=422,
+                detail="Round 1 integration accepts buffered generation only",
+            )
         try:
             config_values = {
                 key: value
@@ -93,27 +96,9 @@ class Runtime:
                 metadata=payload.metadata,
             )
             result = self.service.generate(request)
-        except KeyError as exc:
-            raise HTTPException(status_code=422, detail="requested model is not in the local registry") from exc
         except LLMRuntimeError as exc:
-            status = 504 if exc.code.value in {"REQUEST_TIMEOUT", "STREAM_INTERRUPTED"} else 503
-            raise HTTPException(status_code=status, detail={"code": exc.code.value, "retryable": exc.retryable}) from exc
-        trace = result.trace.to_dict()
-        actual_entry = self.service.registry.resolve(result.actual_model_id)
-        return {
-            "request_id": payload.request_id,
-            "trace_id": payload.trace_id,
-            "data": {
-                "text": result.text,
-                "model_id": actual_entry.contract_model_id,
-                "logical_model_id": result.actual_model_id,
-                "model_version": trace.get("model_revision") or actual_entry.provider_model_id,
-                "runtime_version": trace.get("runtime_version", "unknown"),
-                "trace": trace,
-                "buffered": True,
-                "synthetic_fixture_only": True,
-            },
-        }
+            raise HTTPException(status_code=_status_for_error(exc), detail=exc.to_dict()) from exc
+        return _result_payload(result)
 
 
 def create_app(*, runtime: Runtime | None = None) -> FastAPI:
@@ -122,7 +107,11 @@ def create_app(*, runtime: Runtime | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.llm_runtime = runtime
-        yield
+        runtime.startup()
+        try:
+            yield
+        finally:
+            runtime.shutdown()
 
     app = FastAPI(
         title="StudentMentalHealthAI LLM Runtime",
@@ -155,16 +144,59 @@ def create_app(*, runtime: Runtime | None = None) -> FastAPI:
             "buffered_generation": True,
             "streaming": False,
             "cloud_fallback": False,
-            "default_model": "MODEL_local_cpu_test",
-            "synthetic_fixture_only": True,
+            "default_model": runtime.service.default_model_id,
+            "synthetic_fixture_only": False,
         }
 
-    @app.post("/internal/llm/generations", operation_id="llmGenerate")
+    @app.get("/internal/llm/models", operation_id="llmModels")
+    async def models() -> dict[str, Any]:
+        return {
+            "models": runtime.service.list_models(),
+            "cloud_fallback": runtime.service.registry.cloud_fallback,
+        }
+
+    @app.post("/internal/llm/generate", operation_id="llmGenerate")
+    @app.post("/internal/llm/generations", operation_id="llmGenerations")
     async def generate(payload: GenerateRequest, request: Request) -> dict[str, Any]:
         del request
-        return runtime.generate(payload)
+        return await run_in_threadpool(runtime.generate, payload)
 
     return app
+
+
+def _result_payload(result: GenerationResult) -> dict[str, Any]:
+    trace = result.trace.to_dict()
+    return {
+        "request_id": result.request_id,
+        "trace_id": result.trace_id,
+        "data": {
+            "text": result.text,
+            "model_id": result.executed_model.contract_model_id,
+            "logical_model_id": result.actual_model_id,
+            "model_version": trace.get("model_revision") or result.executed_model.provider_model_id,
+            "runtime_version": trace.get("runtime_version", "unknown"),
+            "trace": trace,
+            "buffered": True,
+            "synthetic_fixture_only": bool(result.response.metadata.get("synthetic", False)),
+        },
+    }
+
+
+def _status_for_error(error: LLMRuntimeError) -> int:
+    if error.status_code is not None:
+        return error.status_code
+    if error.code is RuntimeErrorCode.MODEL_NOT_FOUND:
+        return 404
+    if error.code is RuntimeErrorCode.RUNTIME_BUSY:
+        return 429
+    if error.code in {
+        RuntimeErrorCode.INVALID_STRUCTURED_OUTPUT,
+        RuntimeErrorCode.CONFIGURATION_ERROR,
+    }:
+        return 422
+    if error.code is RuntimeErrorCode.REQUEST_TIMEOUT:
+        return 504
+    return 503
 
 
 app = create_app()
@@ -176,4 +208,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

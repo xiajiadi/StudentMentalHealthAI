@@ -82,15 +82,21 @@ class RuntimeTraceBuilder:
         """Record a model-level fallback before the fallback request starts."""
 
         error = dict(primary_error)
-        self.trace.primary_error = error
-        code = error.get("code")
-        self.trace.primary_error_normalized_code = str(code) if code else None
+        if self.trace.primary_error is None:
+            self.trace.primary_error = error
+            code = error.get("code")
+            self.trace.primary_error_normalized_code = str(code) if code else None
         self.trace.fallback_attempted = True
         self.trace.fallback_model = fallback_model.logical_model_id
         self.trace.fallback_provider_model = fallback_model.provider_model_id
         self.trace.fallback_generation_success = False
         self.trace.fallback_count += 1
         self.trace.fallback_reason = fallback_reason
+
+    def set_attempts(self, attempts: list[Mapping[str, Any]] | tuple[Mapping[str, Any], ...]) -> None:
+        """Attach redacted attempt metadata without prompts or generated text."""
+
+        self.trace.attempts = tuple(dict(attempt) for attempt in attempts)
 
     def complete(self, response: ProviderResponse, *, retry_count: int = 0) -> RuntimeTrace:
         finished = time.perf_counter()

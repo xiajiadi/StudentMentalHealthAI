@@ -11,6 +11,8 @@ import time
 from collections.abc import Iterator
 from typing import Any, Mapping
 
+import httpx
+
 from ..domain.models import (
     Capabilities,
     GenerationRequest,
@@ -24,7 +26,7 @@ from ..domain.models import (
 from ..errors import LLMRuntimeError, RuntimeErrorCode, map_provider_error
 from ..validation import parse_and_validate
 from .base import LLMProvider
-from .http import ActiveHTTPStream, LocalHTTPClient
+from .http import LocalHTTPClient
 
 
 class OllamaProvider(LLMProvider):
@@ -33,8 +35,19 @@ class OllamaProvider(LLMProvider):
     def __init__(self, base_url: str = "http://127.0.0.1:11434", *, timeout_seconds: float = 60.0) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
-        self.http = LocalHTTPClient(self.base_url, provider=self.name)
+        self.http = LocalHTTPClient(
+            self.base_url,
+            provider=self.name,
+            timeout_seconds=timeout_seconds,
+        )
         self._version: str | None = None
+
+    def close(self) -> None:
+        """Close the provider-scoped pooled client."""
+
+        close = getattr(self.http, "close", None)
+        if callable(close):
+            close()
 
     def discover_models(self) -> list[dict[str, Any]]:
         data = self.http.request_json("GET", "/api/tags", timeout=self.timeout_seconds)
@@ -231,7 +244,12 @@ class OllamaProvider(LLMProvider):
                 trace_id=request.trace_id,
                 metadata={"provider": self.name, "provider_model": provider_model_id},
             )
-            for raw_line in active.response:
+            response_lines = (
+                active.response.iter_lines()
+                if hasattr(active.response, "iter_lines")
+                else active.response
+            )
+            for raw_line in response_lines:
                 if active.cancel_event.is_set():
                     yield RuntimeStreamEvent(
                         event_type=StreamEventType.CANCELLED,
@@ -241,7 +259,11 @@ class OllamaProvider(LLMProvider):
                         error_message="Generation was cancelled.",
                     )
                     return
-                line = raw_line.decode("utf-8", errors="replace").strip()
+                line = (
+                    raw_line.decode("utf-8", errors="replace")
+                    if isinstance(raw_line, bytes)
+                    else str(raw_line)
+                ).strip()
                 if not line:
                     continue
                 try:
@@ -294,7 +316,7 @@ class OllamaProvider(LLMProvider):
                 )
         except LLMRuntimeError as exc:
             yield self._error_event(request, exc.code, exc.message, partial=saw_delta)
-        except (OSError, RuntimeError, ValueError, AttributeError) as exc:
+        except (httpx.TransportError, OSError, RuntimeError, ValueError, AttributeError) as exc:
             if active.cancel_event.is_set():
                 yield RuntimeStreamEvent(
                     event_type=StreamEventType.CANCELLED,
@@ -351,8 +373,17 @@ class OllamaProvider(LLMProvider):
         )
         updates: list[dict[str, Any]] = []
         try:
-            for raw_line in active.response:
-                line = raw_line.decode("utf-8", errors="replace").strip()
+            response_lines = (
+                active.response.iter_lines()
+                if hasattr(active.response, "iter_lines")
+                else active.response
+            )
+            for raw_line in response_lines:
+                line = (
+                    raw_line.decode("utf-8", errors="replace")
+                    if isinstance(raw_line, bytes)
+                    else str(raw_line)
+                ).strip()
                 if line:
                     update = json.loads(line)
                     updates.append(update)

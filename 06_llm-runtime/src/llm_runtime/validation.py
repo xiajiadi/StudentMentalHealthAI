@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 from typing import Any, Mapping
 
 from .errors import LLMRuntimeError, RuntimeErrorCode
@@ -17,10 +16,11 @@ def parse_and_validate(text: str, schema: Mapping[str, Any]) -> Any:
     gets the same semantic acceptance rule.
     """
 
+    # Deliberately do not strip Markdown fences or surrounding prose. A
+    # provider-native structured response must be valid JSON as returned;
+    # repairing arbitrary text would turn an invalid candidate into a false
+    # success and would make provenance/audit behavior ambiguous.
     candidate_text = text.strip()
-    fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", candidate_text, re.IGNORECASE | re.DOTALL)
-    if fenced:
-        candidate_text = fenced.group(1).strip()
     try:
         value = json.loads(candidate_text)
     except json.JSONDecodeError as exc:
