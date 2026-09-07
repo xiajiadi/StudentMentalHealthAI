@@ -1,0 +1,147 @@
+{
+  "schema_version": "llm-runtime-reconstruction-r1.evaluation.v1",
+  "evaluation_date": "2026-09-07",
+  "baseline": {
+    "tag": "contract-hardening-r1-accepted",
+    "commit": "66cb0e8a5eeecd05c8c5c1a3d0a3018a63920772",
+    "target_branch": "exp/llm-runtime-service-reconstruction-v1",
+    "target_worktree": "D:\\Projects\\StudentMentalHealthAI-runtime-reconstruction",
+    "main_worktree": "D:\\Projects\\StudentMentalHealthAI",
+    "main_worktree_clean": true
+  },
+  "scope": {
+    "mode": "authorized_reconstruction",
+    "historical_source_recovered": false,
+    "primary_write_owner": "06_llm-runtime",
+    "evidence_write_owner": "12_evaluation/runtime-reconstruction-r1",
+    "documentation_write_owner": "14_docs/runtime-reconstruction",
+    "frozen_root_contracts_modified": false,
+    "other_module_source_modified": false,
+    "cloud_fallback": false,
+    "student_data_used": false
+  },
+  "checks": [
+    {
+      "id": "source-inventory",
+      "status": "PASS",
+      "summary": "Current source inventory records the missing runtime package and surviving provider/domain interfaces.",
+      "evidence": ["14_docs/runtime-reconstruction/CURRENT_RUNTIME_SOURCE_INVENTORY.md"]
+    },
+    {
+      "id": "requirements-and-conflicts",
+      "status": "PASS",
+      "summary": "Requirements matrix and conflict register cover the reconstructed service boundary and accepted deviations.",
+      "evidence": [
+        "14_docs/runtime-reconstruction/RUNTIME_RECONSTRUCTION_REQUIREMENTS_MATRIX.md",
+        "14_docs/runtime-reconstruction/RUNTIME_RECONSTRUCTION_CONFLICT_REGISTER.md"
+      ]
+    },
+    {
+      "id": "runtime-unit-tests",
+      "status": "PASS",
+      "summary": "31 passed, 1 skipped by explicit real-Ollama opt-in guard.",
+      "command": "uv run --frozen pytest -q",
+      "evidence": ["06_llm-runtime/tests", "12_evaluation/runtime-reconstruction-r1/HUMAN_EVIDENCE.md"]
+    },
+    {
+      "id": "runtime-targeted-ruff",
+      "status": "PASS",
+      "summary": "Reconstructed runtime, API, hardware detector, and reconstruction test files pass Ruff.",
+      "command": "uvx ruff check src/llm_runtime/runtime src/llm_runtime/api/app.py src/llm_runtime/hardware/detector.py tests/test_runtime_reconstruction.py"
+    },
+    {
+      "id": "compileall",
+      "status": "PASS",
+      "summary": "Runtime source and tests compile successfully.",
+      "command": "uv run --frozen python -m compileall -q src tests"
+    },
+    {
+      "id": "real-ollama-integration",
+      "status": "PASS",
+      "summary": "Three explicit integration tests passed against a managed local Ollama process.",
+      "command": "SMHAI_RUN_OLLAMA_INTEGRATION=1 pytest -q tests/integration/test_ollama_integration.py",
+      "result": "3 passed",
+      "evidence": [
+        "06_llm-runtime/artifacts/ollama_integration.json",
+        "06_llm-runtime/artifacts/real_model_switching.json",
+        "06_llm-runtime/artifacts/real_fallback.json"
+      ]
+    },
+    {
+      "id": "root-contract-gate",
+      "status": "PASS",
+      "summary": "The 13 Python contract tests and the follow-on OpenAPI validator passed after installing the validator into the ignored backend test environment.",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\00_architecture\\tests\\run_contract_checks.ps1",
+      "result": "13 passed; A-phase contract, Schema, and OpenAPI checks passed"
+    },
+    {
+      "id": "full-ruff",
+      "status": "PARTIAL",
+      "summary": "Full module Ruff remains non-clean with 74 findings across pre-existing and touched legacy files; targeted reconstructed files pass.",
+      "command": "uvx ruff check src tests"
+    },
+    {
+      "id": "gpu-detection",
+      "status": "PASS",
+      "summary": "Hardware detection reports the available RTX 3060 without synthetic GPU evidence.",
+      "result": "NVIDIA GeForce RTX 3060, 12288 MiB, driver 596.36"
+    },
+    {
+      "id": "llama-cpp-gpu-server",
+      "status": "DEFERRED",
+      "summary": "No llama-server binary was available for a real managed/external GPU server run; the adapter and ownership boundary remain report-only for this round."
+    },
+    {
+      "id": "frozen-artifacts",
+      "status": "PASS",
+      "summary": "Frozen root contract files retain their baseline SHA-256 fingerprints.",
+      "evidence": ["12_evaluation/runtime-reconstruction-r1/HUMAN_EVIDENCE.md"]
+    },
+    {
+      "id": "workspace-boundary",
+      "status": "PASS",
+      "summary": "Main worktree remained clean; no Ollama process remained after the managed integration run."
+    }
+  ],
+  "real_runtime": {
+    "provider": "ollama",
+    "version": "0.21.1",
+    "endpoint": "http://127.0.0.1:11434",
+    "temporary_server_owned_by": "ManagedProcess",
+    "models": [
+      {
+        "logical_model_id": "qwen2.5-0.5b-engineering",
+        "provider_model_id": "qwen2.5:0.5b",
+        "digest": "a8b0c51577010a279d933d14c2a8ab4b268079d44c5c8830c0a93900f1827c67",
+        "result": "success"
+      },
+      {
+        "logical_model_id": "qwen2.5-1.5b-engineering-fallback",
+        "provider_model_id": "qwen2.5:1.5b",
+        "digest": "65ec06548149b04c096a120e4a6da9d4017ea809c91734ea5631e89f96ddc57b",
+        "result": "success"
+      }
+    ],
+    "structured_output": "success",
+    "stream_completion": "START + DELTA + USAGE + DONE",
+    "stream_cancellation": "START + DELTA + CANCELLED; no DONE",
+    "real_fallback": {
+      "primary_error": "MODEL_NOT_FOUND",
+      "primary_provider_model_id": "smhai-acceptance-missing-model:round1",
+      "actual_logical_model_id": "qwen2.5-1.5b-engineering-fallback",
+      "fallback_generation_success": true
+    },
+    "hardware": {
+      "gpu_present": true,
+      "gpu": "NVIDIA GeForce RTX 3060",
+      "vram_bytes": 12884901888,
+      "driver": "596.36"
+    }
+  },
+  "overall_status": "PARTIAL_PASS",
+  "runtime_service_round1_status": "PASS",
+  "remaining_blockers": [
+    "Full module Ruff is not clean outside the targeted reconstructed surface.",
+    "No real llama-server GPU acceptance run was performed in this round."
+  ]
+}

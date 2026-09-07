@@ -13,6 +13,7 @@ from .domain.models import (
     Usage,
 )
 from .errors import LLMRuntimeError, RuntimeErrorCode
+from .runtime import GenerationResult, ManagedProcess, RuntimeService
 
 __all__ = [
     "Capabilities",
@@ -20,10 +21,13 @@ __all__ = [
     "GenerationRequest",
     "HardwareInfo",
     "LLMRuntimeError",
+    "ManagedProcess",
     "ModelEntry",
     "ModelStatus",
     "ProviderResponse",
     "RuntimeErrorCode",
+    "RuntimeService",
+    "GenerationResult",
     "RuntimeStreamEvent",
     "StreamEventType",
     "Usage",

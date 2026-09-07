@@ -40,6 +40,7 @@ def build_service() -> RuntimeService:
         runtime_version=runtime["runtime_version"],
         max_attempts=int(retry["max_attempts"]),
         backoff_seconds=tuple(float(value) for value in retry["backoff_seconds"]),
+        default_model_id=str(runtime["default_model_id"]),
     )
 
 

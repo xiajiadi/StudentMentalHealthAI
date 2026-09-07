@@ -93,6 +93,13 @@ class ModelEntry:
     fallback_model_id: str | None = None
     provider_version: str | None = None
     notes: str | None = None
+    priority: int = 0
+    enabled: bool = True
+    fallback_eligible: bool = True
+    context_limit: int | None = None
+    structured_output_supported: bool | None = None
+    local_only: bool = True
+    expected_digest: str | None = None
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "ModelEntry":
@@ -131,6 +138,17 @@ class ModelEntry:
             fallback_model_id=value.get("fallback_model_id"),
             provider_version=value.get("provider_version"),
             notes=value.get("notes"),
+            priority=int(value.get("priority", 0)),
+            enabled=bool(value.get("enabled", True)),
+            fallback_eligible=bool(value.get("fallback_eligible", True)),
+            context_limit=(int(value["context_limit"]) if value.get("context_limit") is not None else None),
+            structured_output_supported=(
+                bool(value["structured_output_supported"])
+                if value.get("structured_output_supported") is not None
+                else None
+            ),
+            local_only=bool(value.get("local_only", True)),
+            expected_digest=value.get("expected_digest") or value.get("digest"),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -158,23 +176,36 @@ class ModelEntry:
             "fallback_model_id": self.fallback_model_id,
             "provider_version": self.provider_version,
             "notes": self.notes,
+            "priority": self.priority,
+            "enabled": self.enabled,
+            "fallback_eligible": self.fallback_eligible,
+            "context_limit": self.context_limit,
+            "structured_output_supported": self.structured_output_supported,
+            "local_only": self.local_only,
+            "expected_digest": self.expected_digest,
         }
 
     def update_from_discovery(self, discovered: Mapping[str, Any]) -> "ModelEntry":
         """Return a copy enriched by an actual provider discovery response."""
 
+        actual_digest = discovered.get("digest") or self.digest
+        digest_matches = (
+            self.expected_digest is None
+            or actual_digest is None
+            or str(actual_digest) == str(self.expected_digest)
+        )
         return replace(
             self,
             provider_model_id=str(discovered.get("provider_model_id", self.provider_model_id)),
             revision=discovered.get("revision") or self.revision,
-            digest=discovered.get("digest") or self.digest,
+            digest=actual_digest,
             format=discovered.get("format") or self.format,
             quantization=discovered.get("quantization") or self.quantization,
             license=discovered.get("license") or self.license,
             size_bytes=discovered.get("size_bytes") or self.size_bytes,
             provider_version=discovered.get("provider_version") or self.provider_version,
-            status=ModelStatus.READY,
-            compatibility=Compatibility.SUPPORTED,
+            status=ModelStatus.READY if digest_matches else ModelStatus.DEGRADED,
+            compatibility=Compatibility.SUPPORTED if digest_matches else Compatibility.DEGRADED,
         )
 
 
@@ -410,6 +441,7 @@ class RuntimeTrace:
     fallback_provider_model: str | None = None
     fallback_generation_success: bool | None = None
     fallback_count: int = 0
+    attempts: tuple[Mapping[str, Any], ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -444,6 +476,7 @@ class RuntimeTrace:
             "fallback_provider_model": self.fallback_provider_model,
             "fallback_generation_success": self.fallback_generation_success,
             "fallback_count": self.fallback_count,
+            "attempts": [dict(attempt) for attempt in self.attempts],
         }
 
 

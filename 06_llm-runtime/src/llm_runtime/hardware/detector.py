@@ -8,7 +8,6 @@ import platform
 import re
 import shutil
 import subprocess
-from typing import Any
 
 from ..domain.models import GPUInfo, HardwareInfo
 
@@ -35,11 +34,17 @@ class HardwareDetector:
             return [], None, "nvidia-smi not found"
         command = [
             executable,
-            "--query-gpu=name,memory.total,driver_version,cuda_version",
+            "--query-gpu=name,memory.total,driver_version",
             "--format=csv,noheader,nounits",
         ]
         try:
-            result = subprocess.run(command, capture_output=True, text=True, timeout=10, check=False)
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
         except (OSError, subprocess.TimeoutExpired) as exc:
             return [], executable, f"nvidia-smi unavailable: {type(exc).__name__}"
         if result.returncode != 0:
@@ -48,7 +53,7 @@ class HardwareDetector:
         gpus: list[GPUInfo] = []
         for row in result.stdout.splitlines():
             values = [part.strip() for part in row.split(",")]
-            if len(values) < 4 or not values[0]:
+            if len(values) < 3 or not values[0]:
                 continue
             vram_mib = _parse_number(values[1])
             gpus.append(
@@ -56,7 +61,7 @@ class HardwareDetector:
                     name=values[0],
                     vram_bytes=int(vram_mib * 1024 * 1024) if vram_mib is not None else None,
                     driver=values[2] or None,
-                    cuda_version=values[3] or None,
+                    cuda_version=None,
                 )
             )
         return gpus, executable, None if gpus else "nvidia-smi returned no GPU rows"

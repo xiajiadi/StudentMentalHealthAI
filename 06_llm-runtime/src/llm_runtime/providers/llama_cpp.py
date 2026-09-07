@@ -11,6 +11,8 @@ import json
 from collections.abc import Iterator
 from typing import Any, Mapping
 
+import httpx
+
 from ..domain.models import (
     Capabilities,
     GenerationRequest,
@@ -24,7 +26,7 @@ from ..domain.models import (
 from ..errors import LLMRuntimeError, RuntimeErrorCode, map_provider_error
 from ..validation import parse_and_validate
 from .base import LLMProvider
-from .http import ActiveHTTPStream, LocalHTTPClient
+from .http import LocalHTTPClient
 
 
 class LlamaCppProvider(LLMProvider):
@@ -33,7 +35,16 @@ class LlamaCppProvider(LLMProvider):
     def __init__(self, base_url: str = "http://127.0.0.1:8080", *, timeout_seconds: float = 60.0) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
-        self.http = LocalHTTPClient(self.base_url, provider=self.name)
+        self.http = LocalHTTPClient(
+            self.base_url,
+            provider=self.name,
+            timeout_seconds=timeout_seconds,
+        )
+
+    def close(self) -> None:
+        close = getattr(self.http, "close", None)
+        if callable(close):
+            close()
 
     def discover_models(self) -> list[dict[str, Any]]:
         data = self.http.request_json("GET", "/v1/models", timeout=self.timeout_seconds)
@@ -150,7 +161,12 @@ class LlamaCppProvider(LLMProvider):
                 request.trace_id,
                 metadata={"provider": self.name, "provider_model": request.effective_provider_model_id},
             )
-            for raw_line in active.response:
+            response_lines = (
+                active.response.iter_lines()
+                if hasattr(active.response, "iter_lines")
+                else active.response
+            )
+            for raw_line in response_lines:
                 if active.cancel_event.is_set():
                     yield RuntimeStreamEvent(
                         StreamEventType.CANCELLED,
@@ -160,7 +176,11 @@ class LlamaCppProvider(LLMProvider):
                         error_message="Generation was cancelled.",
                     )
                     return
-                line = raw_line.decode("utf-8", errors="replace").strip()
+                line = (
+                    raw_line.decode("utf-8", errors="replace")
+                    if isinstance(raw_line, bytes)
+                    else str(raw_line)
+                ).strip()
                 if not line or not line.startswith("data:"):
                     continue
                 value = line[5:].strip()
@@ -212,7 +232,7 @@ class LlamaCppProvider(LLMProvider):
                 )
         except LLMRuntimeError as exc:
             yield self._error_event(request, exc.code, exc.message, saw_delta)
-        except (OSError, ValueError) as exc:
+        except (httpx.TransportError, OSError, ValueError) as exc:
             if active.cancel_event.is_set():
                 yield RuntimeStreamEvent(
                     StreamEventType.CANCELLED,

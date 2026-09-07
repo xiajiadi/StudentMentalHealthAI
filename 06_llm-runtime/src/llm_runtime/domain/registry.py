@@ -14,6 +14,7 @@ class ModelRegistry:
 
     def __init__(self, entries: Iterable[ModelEntry], *, registry_version: str = "0.1.0") -> None:
         self.registry_version = registry_version
+        self.cloud_fallback = False
         self._entries: dict[str, ModelEntry] = {}
         for entry in entries:
             if entry.logical_model_id in self._entries:
@@ -23,6 +24,14 @@ class ModelRegistry:
                 for existing in self._entries.values()
             ):
                 raise ValueError(f"duplicate contract model id: {entry.contract_model_id}")
+            if entry.provider_model_id.lower() == "latest" or entry.provider_model_id.lower().endswith(":latest"):
+                raise ValueError("latest is not a formal model identity")
+            if not entry.local_only:
+                raise ValueError("cloud model entries are not permitted in the local runtime registry")
+            if entry.priority < 0:
+                raise ValueError("model priority must be non-negative")
+            if entry.context_limit is not None and entry.context_limit < 1:
+                raise ValueError("model context_limit must be positive")
             self._entries[entry.logical_model_id] = entry
 
     @classmethod
@@ -39,6 +48,39 @@ class ModelRegistry:
 
     def all(self) -> tuple[ModelEntry, ...]:
         return tuple(self._entries.values())
+
+    def enabled(self) -> tuple[ModelEntry, ...]:
+        return tuple(entry for entry in self._entries.values() if entry.enabled)
+
+    def resolve_primary(self, model_id: str | None = None) -> ModelEntry:
+        if model_id is not None:
+            entry = self.resolve(model_id)
+            if not entry.enabled:
+                raise KeyError(f"model is disabled: {model_id}")
+            return entry
+        candidates = sorted(
+            (entry for entry in self._entries.values() if entry.enabled and entry.local_only),
+            key=lambda entry: (entry.priority, entry.logical_model_id),
+        )
+        if not candidates:
+            raise KeyError("no enabled local model is registered")
+        return candidates[0]
+
+    def fallback_chain(self, model_id: str) -> tuple[ModelEntry, ...]:
+        """Return the explicit, cycle-checked local fallback chain."""
+
+        chain: list[ModelEntry] = []
+        seen = {model_id}
+        current = self.resolve(model_id)
+        while current.fallback_model_id:
+            fallback = self.resolve(current.fallback_model_id)
+            if fallback.logical_model_id in seen:
+                raise ValueError(f"fallback cycle detected at {fallback.logical_model_id}")
+            seen.add(fallback.logical_model_id)
+            if fallback.enabled and fallback.local_only and fallback.fallback_eligible:
+                chain.append(fallback)
+            current = fallback
+        return tuple(chain)
 
     def resolve(self, model_id: str) -> ModelEntry:
         if model_id in self._entries:
