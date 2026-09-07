@@ -4,6 +4,7 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from typing import cast
 
 import pytest
 from fastapi.testclient import TestClient
@@ -142,7 +143,9 @@ def test_fallback_exhaustion_is_explicit(hardware, request_factory):
         service.generate(request)
     assert error.value.code is RuntimeErrorCode.FALLBACK_EXHAUSTED
     assert error.value.details["trace_id"] == request.trace_id
-    assert service.last_trace(request.request_id).fallback_count == 1
+    trace = service.last_trace(request.request_id)
+    assert trace is not None
+    assert trace.fallback_count == 1
 
 
 class SlowMockProvider(MockProvider):
@@ -237,5 +240,6 @@ def test_managed_process_does_not_use_shell(tmp_path):
         stderr_path=tmp_path / "stderr.log",
     )
     manager.start()
-    assert manager.metadata()["command"][0] == sys.executable
+    command = cast(list[str], manager.metadata()["command"])
+    assert command[0] == sys.executable
     manager.stop(timeout_seconds=2)

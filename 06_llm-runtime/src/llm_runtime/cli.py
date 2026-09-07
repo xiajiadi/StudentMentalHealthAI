@@ -14,7 +14,6 @@ from .providers.mock import MockProvider
 from .providers.ollama import OllamaProvider
 from .runtime.service import RuntimeService
 
-
 MODULE_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -23,12 +22,14 @@ def build_service() -> RuntimeService:
     runtime = json.loads((MODULE_ROOT / "config" / "runtime.v1.json").read_text(encoding="utf-8"))
     ollama_config = runtime["ollama"]
     llama_config = runtime["llama_cpp"]
+    llama_timeout = llama_config.get("timeout_seconds", 60)
     providers = {
         "ollama": OllamaProvider(
             ollama_config["base_url"], timeout_seconds=float(ollama_config["timeout_seconds"])
         ),
         "llama.cpp": LlamaCppProvider(
-            llama_config["base_url"], timeout_seconds=float(ollama_config["timeout_seconds"] if "timeout_seconds" in llama_config else 60)
+            llama_config["base_url"],
+            timeout_seconds=float(llama_timeout),
         ),
         "mock": MockProvider(("mock-model",)),
     }
@@ -45,7 +46,11 @@ def build_service() -> RuntimeService:
 
 
 def make_request(model_id: str, prompt: str, *, stream: bool = False) -> GenerationRequest:
-    schema = {"type": "object", "required": ["answer"], "properties": {"answer": {"type": "string"}}}
+    schema = {
+        "type": "object",
+        "required": ["answer"],
+        "properties": {"answer": {"type": "string"}},
+    }
     return GenerationRequest(
         request_id="REQ_cli_001",
         trace_id="TRACE_cli_001",
@@ -97,7 +102,13 @@ def main() -> int:
                 print(json.dumps(event.to_dict(), ensure_ascii=False))
         else:
             result = service.generate(request)
-            print(json.dumps({"text": result.text, "trace": result.trace.to_dict()}, ensure_ascii=False, indent=2))
+            print(
+                json.dumps(
+                    {"text": result.text, "trace": result.trace.to_dict()},
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
     return 0
 
 

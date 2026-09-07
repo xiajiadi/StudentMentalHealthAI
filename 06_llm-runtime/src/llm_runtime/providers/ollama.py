@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Iterator
-from typing import Any, Mapping
+from collections.abc import Iterator, Mapping
+from typing import Any
 
 import httpx
 
@@ -32,7 +32,12 @@ from .http import LocalHTTPClient
 class OllamaProvider(LLMProvider):
     name = "ollama"
 
-    def __init__(self, base_url: str = "http://127.0.0.1:11434", *, timeout_seconds: float = 60.0) -> None:
+    def __init__(
+        self,
+        base_url: str = "http://127.0.0.1:11434",
+        *,
+        timeout_seconds: float = 60.0,
+    ) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
         self.http = LocalHTTPClient(
@@ -55,7 +60,8 @@ class OllamaProvider(LLMProvider):
         for model in data.get("models", []):
             if not isinstance(model, Mapping):
                 continue
-            details = model.get("details") if isinstance(model.get("details"), Mapping) else {}
+            raw_details = model.get("details")
+            details: Mapping[str, Any] = raw_details if isinstance(raw_details, Mapping) else {}
             result.append(
                 {
                     "provider_model_id": model.get("name") or model.get("model"),
@@ -80,8 +86,12 @@ class OllamaProvider(LLMProvider):
             {"model": provider_model_id},
             timeout=self.timeout_seconds,
         )
-        details = data.get("details") if isinstance(data.get("details"), Mapping) else {}
-        model_info = data.get("model_info") if isinstance(data.get("model_info"), Mapping) else {}
+        raw_details = data.get("details")
+        details: Mapping[str, Any] = raw_details if isinstance(raw_details, Mapping) else {}
+        raw_model_info = data.get("model_info")
+        model_info: Mapping[str, Any] = (
+            raw_model_info if isinstance(raw_model_info, Mapping) else {}
+        )
         return {
             "provider_model_id": provider_model_id,
             "revision": data.get("modified_at") or provider_model_id,
@@ -99,7 +109,11 @@ class OllamaProvider(LLMProvider):
 
     def health_check(self) -> ProviderHealth:
         try:
-            data = self.http.request_json("GET", "/api/version", timeout=min(self.timeout_seconds, 10.0))
+            data = self.http.request_json(
+                "GET",
+                "/api/version",
+                timeout=min(self.timeout_seconds, 10.0),
+            )
             self._version = str(data.get("version")) if data.get("version") else None
             return ProviderHealth(
                 provider=self.name,
@@ -161,7 +175,11 @@ class OllamaProvider(LLMProvider):
                 message=exc.message,
             )
 
-    def load_model(self, provider_model_id: str, request: GenerationRequest | None = None) -> dict[str, Any]:
+    def load_model(
+        self,
+        provider_model_id: str,
+        request: GenerationRequest | None = None,
+    ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "model": provider_model_id,
             "prompt": "",
@@ -170,7 +188,12 @@ class OllamaProvider(LLMProvider):
         }
         if request is not None:
             payload["options"] = request.config.to_ollama_options()
-        return self.http.request_json("POST", "/api/generate", payload, timeout=self.timeout_seconds)
+        return self.http.request_json(
+            "POST",
+            "/api/generate",
+            payload,
+            timeout=self.timeout_seconds,
+        )
 
     def unload_model(self, provider_model_id: str) -> dict[str, Any]:
         response = self.http.request_json(
@@ -223,7 +246,10 @@ class OllamaProvider(LLMProvider):
             usage=Usage.from_ollama(data),
             finish_reason=str(data.get("done_reason")) if data.get("done_reason") else None,
             structured=structured,
-            metadata={"load_duration_ns": data.get("load_duration"), "total_duration_ns": data.get("total_duration")},
+            metadata={
+                "load_duration_ns": data.get("load_duration"),
+                "total_duration_ns": data.get("total_duration"),
+            },
         )
 
     def stream_generate(self, request: GenerationRequest) -> Iterator[RuntimeStreamEvent]:

@@ -7,12 +7,13 @@ mapping without changing that contract.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
-from enum import Enum
-from typing import Any, Mapping
+from enum import StrEnum
+from typing import Any
 
 
-class ModelStatus(str, Enum):
+class ModelStatus(StrEnum):
     DISCOVERED = "DISCOVERED"
     NOT_INSTALLED = "NOT_INSTALLED"
     DOWNLOADING = "DOWNLOADING"
@@ -24,21 +25,21 @@ class ModelStatus(str, Enum):
     UNAVAILABLE = "UNAVAILABLE"
 
 
-class HardwareProfile(str, Enum):
+class HardwareProfile(StrEnum):
     CPU_ONLY = "CPU_ONLY"
     CONSUMER_GPU = "CONSUMER_GPU"
     SERVER_GPU = "SERVER_GPU"
     UNKNOWN = "UNKNOWN"
 
 
-class Compatibility(str, Enum):
+class Compatibility(StrEnum):
     SUPPORTED = "SUPPORTED"
     DEGRADED = "DEGRADED"
     UNSUPPORTED = "UNSUPPORTED"
     UNKNOWN = "UNKNOWN"
 
 
-class StreamEventType(str, Enum):
+class StreamEventType(StrEnum):
     START = "START"
     DELTA = "DELTA"
     USAGE = "USAGE"
@@ -59,7 +60,7 @@ class Capabilities:
     embeddings: bool = False
 
     @classmethod
-    def from_dict(cls, value: Mapping[str, Any] | None) -> "Capabilities":
+    def from_dict(cls, value: Mapping[str, Any] | None) -> Capabilities:
         value = value or {}
         fields = {name: bool(value.get(name, False)) for name in cls.__dataclass_fields__}
         return cls(**fields)
@@ -102,7 +103,7 @@ class ModelEntry:
     expected_digest: str | None = None
 
     @classmethod
-    def from_dict(cls, value: Mapping[str, Any]) -> "ModelEntry":
+    def from_dict(cls, value: Mapping[str, Any]) -> ModelEntry:
         required = (
             "logical_model_id",
             "contract_model_id",
@@ -131,7 +132,9 @@ class ModelEntry:
             license=value.get("license"),
             size_bytes=value.get("size_bytes"),
             capabilities=Capabilities.from_dict(value.get("capabilities")),
-            hardware_profile=HardwareProfile(value.get("hardware_profile", HardwareProfile.UNKNOWN)),
+            hardware_profile=HardwareProfile(
+                value.get("hardware_profile", HardwareProfile.UNKNOWN)
+            ),
             compatibility=Compatibility(value.get("compatibility", Compatibility.UNKNOWN)),
             status=ModelStatus(value.get("status", ModelStatus.NOT_INSTALLED)),
             validation_status=value.get("validation_status"),
@@ -141,7 +144,9 @@ class ModelEntry:
             priority=int(value.get("priority", 0)),
             enabled=bool(value.get("enabled", True)),
             fallback_eligible=bool(value.get("fallback_eligible", True)),
-            context_limit=(int(value["context_limit"]) if value.get("context_limit") is not None else None),
+            context_limit=(
+                int(value["context_limit"]) if value.get("context_limit") is not None else None
+            ),
             structured_output_supported=(
                 bool(value["structured_output_supported"])
                 if value.get("structured_output_supported") is not None
@@ -185,7 +190,7 @@ class ModelEntry:
             "expected_digest": self.expected_digest,
         }
 
-    def update_from_discovery(self, discovered: Mapping[str, Any]) -> "ModelEntry":
+    def update_from_discovery(self, discovered: Mapping[str, Any]) -> ModelEntry:
         """Return a copy enriched by an actual provider discovery response."""
 
         actual_digest = discovered.get("digest") or self.digest
@@ -216,7 +221,7 @@ class Usage:
     total_tokens: int | None = None
 
     @classmethod
-    def from_ollama(cls, value: Mapping[str, Any]) -> "Usage":
+    def from_ollama(cls, value: Mapping[str, Any]) -> Usage:
         prompt = value.get("prompt_eval_count")
         completion = value.get("eval_count")
         total = None
@@ -229,7 +234,7 @@ class Usage:
         )
 
     @classmethod
-    def from_openai(cls, value: Mapping[str, Any] | None) -> "Usage":
+    def from_openai(cls, value: Mapping[str, Any] | None) -> Usage:
         value = value or {}
         return cls(
             prompt_tokens=_optional_int(value.get("prompt_tokens")),
@@ -323,7 +328,7 @@ class GenerationRequest:
     provider_model_id: str | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
-    def with_provider_model(self, provider_model_id: str) -> "GenerationRequest":
+    def with_provider_model(self, provider_model_id: str) -> GenerationRequest:
         return replace(self, provider_model_id=provider_model_id)
 
     @property
@@ -370,7 +375,9 @@ class GenerationRequest:
             },
             "model_policy": {
                 "model_id": self.contract_model_id,
-                "provider_class": "mock" if self.contract_model_id.startswith("MODEL_mock") else "local",
+                "provider_class": (
+                    "mock" if self.contract_model_id.startswith("MODEL_mock") else "local"
+                ),
             },
         }
 

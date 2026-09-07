@@ -1,0 +1,109 @@
+{
+  "schema_version": "llm-runtime-reconstruction-r1.gpu-smoke.v1",
+  "evaluation_date": "2026-09-07",
+  "status": "PASS",
+  "execution_path": "RuntimeService -> ProviderRegistry -> OllamaProvider -> isolated Ollama managed process",
+  "provider": "ollama",
+  "ollama_version": "0.33.3",
+  "endpoint": "http://127.0.0.1:11437",
+  "isolated_executable": "D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\ollama.exe",
+  "model": {
+    "provider_model_id": "qwen2.5:7b-instruct-q4_K_M",
+    "logical_model_id": "qwen2.5-7b-instruct-gpu-acceptance",
+    "contract_model_id": "MODEL_local_gpu_acceptance",
+    "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+    "discovery_digest_exact": true,
+    "format": "gguf",
+    "quantization": "Q4_K_M",
+    "size_bytes": 4683087332
+  },
+  "hardware": {
+    "gpu": "NVIDIA GeForce RTX 3060",
+    "vram_bytes": 12884901888,
+    "driver": "596.36",
+    "cuda_available": true
+  },
+  "runtime_configuration": {
+    "context_length": 8192,
+    "kv_cache": "f16",
+    "parallel": 1,
+    "keep_alive": "5m",
+    "temperature": 0.0,
+    "thinking": false,
+    "fallback_allowed": false
+  },
+  "requests": [
+    {
+      "index": 1,
+      "status": "success",
+      "structured_valid": true,
+      "structured_status": "GPU_SMOKE_OK",
+      "structured_request_index": 1,
+      "fallback_used": false,
+      "actual_model_id": "qwen2.5-7b-instruct-gpu-acceptance",
+      "provider_model": "qwen2.5:7b-instruct-q4_K_M",
+      "runtime_version": "0.33.3",
+      "trace_digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+      "attempt_count": 1
+    },
+    {
+      "index": 2,
+      "status": "success",
+      "structured_valid": true,
+      "structured_status": "GPU_SMOKE_OK",
+      "structured_request_index": 2,
+      "fallback_used": false,
+      "actual_model_id": "qwen2.5-7b-instruct-gpu-acceptance",
+      "provider_model": "qwen2.5:7b-instruct-q4_K_M",
+      "runtime_version": "0.33.3",
+      "trace_digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+      "attempt_count": 1
+    },
+    {
+      "index": 3,
+      "status": "success",
+      "structured_valid": true,
+      "structured_status": "GPU_SMOKE_OK",
+      "structured_request_index": 3,
+      "fallback_used": false,
+      "actual_model_id": "qwen2.5-7b-instruct-gpu-acceptance",
+      "provider_model": "qwen2.5:7b-instruct-q4_K_M",
+      "runtime_version": "0.33.3",
+      "trace_digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+      "attempt_count": 1
+    }
+  ],
+  "evidence_triangle": {
+    "ollama_ps": {
+      "processor": "100% GPU",
+      "context": 8192,
+      "model": "qwen2.5:7b-instruct-q4_K_M",
+      "digest_prefix": "845dbda0ea48"
+    },
+    "nvidia_smi": {
+      "gpu_row": "NVIDIA GeForce RTX 3060, 12288, 596.36, 93, 5066",
+      "compute_process_observed": true,
+      "runner_process": "D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe"
+    },
+    "ollama_runtime_log": {
+      "path": "D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\logs\\runtime_service_gpu_smoke_20260907.stderr.log",
+      "cuda": true,
+      "runner_parallel": 1,
+      "runner_num_ctx": 8192,
+      "kv_k": "f16",
+      "kv_v": "f16",
+      "model_loaded": true
+    }
+  },
+  "managed_process": {
+    "mode": "MANAGED",
+    "pid": 56620,
+    "owned": true,
+    "state_before_shutdown": "RUNNING",
+    "state_after_shutdown": "STOPPED",
+    "returncode_after_shutdown": 15,
+    "no_isolated_ollama_or_llama_server_remaining": true
+  },
+  "synthetic_data_only": true,
+  "not_a_benchmark_matrix": true
+}

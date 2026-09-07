@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from .errors import LLMRuntimeError, RuntimeErrorCode
 
@@ -61,7 +62,11 @@ def example_for_schema(schema: Mapping[str, Any]) -> Any:
     if schema_type == "object" or "properties" in schema:
         properties = schema.get("properties", {})
         required = schema.get("required", list(properties))
-        return {name: example_for_schema(properties[name]) for name in required if name in properties}
+        return {
+            name: example_for_schema(properties[name])
+            for name in required
+            if name in properties
+        }
     if schema_type == "array":
         return [example_for_schema(schema.get("items", {}))]
     if schema_type == "integer":

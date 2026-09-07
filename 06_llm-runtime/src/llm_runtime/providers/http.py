@@ -8,8 +8,9 @@ for loopback traffic, finite-timeout and explicitly closeable.
 from __future__ import annotations
 
 import threading
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Mapping
+from typing import Any
 
 import httpx
 
@@ -140,7 +141,11 @@ class LocalHTTPClient:
         except OSError as exc:
             context.__exit__(type(exc), exc, exc.__traceback__)
             raise map_provider_error(str(exc), provider=self.provider) from exc
-        active = ActiveHTTPStream(response=response, cancel_event=threading.Event(), context=context)
+        active = ActiveHTTPStream(
+            response=response,
+            cancel_event=threading.Event(),
+            context=context,
+        )
         with self._lock:
             self._active[request_id] = active
         return active

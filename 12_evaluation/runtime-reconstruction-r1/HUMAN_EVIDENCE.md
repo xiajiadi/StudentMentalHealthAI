@@ -2,10 +2,12 @@
 
 Date: 2026-09-07
 
-Runtime-service result: **PASS** for the reconstructed Round 1 surface.
+Historical candidate result: **PASS** for the reconstructed Round 1 surface.
 
-Project-level result: **PARTIAL PASS** because the existing full-module Ruff
-surface is not clean and no real llama-server GPU run was available.
+Current closure result: **ENGINEERING PASS — READY FOR CONTROLLER REVIEW**.
+
+Controller status: **PENDING FINAL ACCEPTANCE**. This evidence file is not an
+acceptance grant and does not create or imply an accepted tag.
 
 ## Boundary and provenance
 
@@ -47,14 +49,17 @@ The worktree now contains:
 | Check | Result | Evidence |
 |---|---|---|
 | Official plus reconstruction tests | `31 passed, 1 skipped` | `uv run --frozen pytest -q` |
-| Reconstruction targeted Ruff | Pass | `uvx ruff check src/llm_runtime/runtime src/llm_runtime/api/app.py src/llm_runtime/hardware/detector.py tests/test_runtime_reconstruction.py` |
+| Reconstructed-scope Pyright | Pass | `uvx pyright --pythonpath .venv\Scripts\python.exe --outputjson src\llm_runtime tests\test_runtime_reconstruction.py` |
+| Ruff differential | Pass for closure gate | Baseline 79, candidate 23, new 0, resolved 56; every Runtime Reconstruction touched Python file is clean. |
 | Compile check | Pass | `uv run --frozen python -m compileall -q src tests` |
 | Real Ollama integration | `3 passed` | `06_llm-runtime/artifacts/ollama_integration.json`, `real_model_switching.json`, `real_fallback.json` |
+| Backend consumer compatibility | Pass | Existing `09_backend` `REAL_HTTP` client consumed the reconstructed loopback endpoint; no Backend source change. |
+| Formal GPU RuntimeService smoke | Pass | Isolated Ollama 0.33.3, Qwen digest `845dbda0...`, 3/3 structured valid, `100% GPU`, CUDA/f16/8192/parallel-1 evidence. |
 | Root contract Python tests | `13 passed` | First stage of `00_architecture/tests/run_contract_checks.ps1` |
 | Root OpenAPI validator | Pass | Validator installed only into the ignored backend test environment; the root Gate completed successfully |
-| Full module Ruff | Partial | 74 legacy findings remain outside the targeted reconstructed surface |
+| Full module Ruff | Differential pass | 23 legacy findings remain after 79 baseline findings; none are new, and touched files are clean. |
 | Main worktree boundary | Pass | `git -C D:\Projects\StudentMentalHealthAI status --porcelain` was empty |
-| Temporary server cleanup | Pass | No `ollama` process remained after the managed run |
+| Temporary server cleanup | Pass | No isolated Ollama or llama-server process remained after the managed GPU run |
 
 ## Real Ollama evidence
 
@@ -93,13 +98,26 @@ These hashes match the accepted baseline:
 | `00_architecture/schemas/config.v1.schema.json` | `2541EB5EFAA4E02B30F16771C3AF13397CD22EC4A0C7EA7363C778A222B70824` |
 | `00_architecture/schemas/logging.v1.schema.json` | `A5965C8B327185043C9D68A7165D0A7AA3F68BB837643FFA6BBA74F6C9B76D1C` |
 
+## Closure addendum
+
+- Decision fidelity: `RTS-01..RTS-52 = 52/52`; the exact register is now in the
+  technical decision document and its reconciliation report.
+- Backend compatibility was verified with a synthetic-only Runtime provider
+  behind the real HTTP transport; this proves the consumer boundary, not real
+  model semantics.
+- The default full test run still skips the explicit real-Ollama module guard.
+  The skip reason and closure treatment are recorded in
+  `14_docs/runtime-reconstruction/SKIPPED_TEST_RECONCILIATION.md`; the formal
+  GPU smoke is a separate fresh 3-request RuntimeService execution.
+- The current final machine-readable result is in
+  `12_evaluation/runtime-reconstruction-r1/runtime_reconstruction_round1_closure_evaluation.json`.
+
 ## Limits and deferred work
 
-- The runtime Round 1 surface and root contract Gate are accepted locally; the
-  project-level result remains partial for the separate Ruff/GPU limitations.
-- Full Ruff cleanup is outside this reconstruction scope; the targeted changed
-  surface is clean.
-- No real llama-server binary or GPU-serving acceptance run was available.
+- The full module still has 23 legacy Ruff findings outside the clean touched
+  Runtime files; this is a P1 hygiene item, not a new closure finding.
+- The GPU evidence is a narrow acceptance smoke, not a benchmark matrix or a
+  production load claim.
 - The generated JSON files under `06_llm-runtime/artifacts/` are local run
   artifacts ignored by the module policy; the durable summary is the machine
   evaluation JSON in this directory.

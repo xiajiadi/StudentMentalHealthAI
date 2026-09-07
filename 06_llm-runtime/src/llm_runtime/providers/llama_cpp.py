@@ -8,8 +8,8 @@ coupling business code to Python bindings.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
-from typing import Any, Mapping
+from collections.abc import Iterator, Mapping
+from typing import Any
 
 import httpx
 
@@ -32,7 +32,12 @@ from .http import LocalHTTPClient
 class LlamaCppProvider(LLMProvider):
     name = "llama.cpp"
 
-    def __init__(self, base_url: str = "http://127.0.0.1:8080", *, timeout_seconds: float = 60.0) -> None:
+    def __init__(
+        self,
+        base_url: str = "http://127.0.0.1:8080",
+        *,
+        timeout_seconds: float = 60.0,
+    ) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
         self.http = LocalHTTPClient(
@@ -65,7 +70,10 @@ class LlamaCppProvider(LLMProvider):
         for item in self.discover_models():
             if item.get("provider_model_id") == provider_model_id:
                 return item
-        raise LLMRuntimeError(RuntimeErrorCode.MODEL_NOT_FOUND, "llama-server model was not listed.")
+        raise LLMRuntimeError(
+            RuntimeErrorCode.MODEL_NOT_FOUND,
+            "llama-server model was not listed.",
+        )
 
     def health_check(self) -> ProviderHealth:
         try:
@@ -104,7 +112,11 @@ class LlamaCppProvider(LLMProvider):
                 exc.message,
             )
 
-    def load_model(self, provider_model_id: str, request: GenerationRequest | None = None) -> dict[str, Any]:
+    def load_model(
+        self,
+        provider_model_id: str,
+        request: GenerationRequest | None = None,
+    ) -> dict[str, Any]:
         raise LLMRuntimeError(
             RuntimeErrorCode.UNSUPPORTED_CAPABILITY,
             "llama-server PoC does not expose a portable load endpoint.",
@@ -130,10 +142,21 @@ class LlamaCppProvider(LLMProvider):
             raise map_provider_error(str(data["error"]), provider=self.name)
         text = self._content(data)
         if not text:
-            raise LLMRuntimeError(RuntimeErrorCode.RUNTIME_ERROR, "llama-server returned an empty response.")
-        structured = parse_and_validate(text, request.structured_schema) if request.structured_schema else None
+            raise LLMRuntimeError(
+                RuntimeErrorCode.RUNTIME_ERROR,
+                "llama-server returned an empty response.",
+            )
+        structured = (
+            parse_and_validate(text, request.structured_schema)
+            if request.structured_schema
+            else None
+        )
         choices = data.get("choices")
-        finish_reason = choices[0].get("finish_reason") if choices and isinstance(choices[0], Mapping) else None
+        finish_reason = (
+            choices[0].get("finish_reason")
+            if choices and isinstance(choices[0], Mapping)
+            else None
+        )
         return ProviderResponse(
             text=text,
             provider=self.name,
@@ -159,7 +182,10 @@ class LlamaCppProvider(LLMProvider):
                 StreamEventType.START,
                 request.request_id,
                 request.trace_id,
-                metadata={"provider": self.name, "provider_model": request.effective_provider_model_id},
+                metadata={
+                    "provider": self.name,
+                    "provider_model": request.effective_provider_model_id,
+                },
             )
             response_lines = (
                 active.response.iter_lines()
@@ -196,10 +222,20 @@ class LlamaCppProvider(LLMProvider):
                 try:
                     data = json.loads(value)
                 except json.JSONDecodeError:
-                    yield self._error_event(request, RuntimeErrorCode.STREAM_INTERRUPTED, "Invalid SSE event.", saw_delta)
+                    yield self._error_event(
+                        request,
+                        RuntimeErrorCode.STREAM_INTERRUPTED,
+                        "Invalid SSE event.",
+                        saw_delta,
+                    )
                     return
                 if data.get("error"):
-                    yield self._error_event(request, RuntimeErrorCode.RUNTIME_ERROR, str(data["error"]), saw_delta)
+                    yield self._error_event(
+                        request,
+                        RuntimeErrorCode.RUNTIME_ERROR,
+                        str(data["error"]),
+                        saw_delta,
+                    )
                     return
                 choices = data.get("choices")
                 delta = ""
