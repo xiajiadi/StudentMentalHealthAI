@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
-from enum import Enum
-from typing import Any, Mapping
+from collections.abc import Mapping
+from enum import StrEnum
+from typing import Any
 
 
-class RuntimeErrorCode(str, Enum):
+class RuntimeErrorCode(StrEnum):
     RUNTIME_NOT_READY = "RUNTIME_NOT_READY"
     RUNTIME_BUSY = "RUNTIME_BUSY"
     PROVIDER_UNAVAILABLE = "PROVIDER_UNAVAILABLE"
@@ -106,11 +107,18 @@ def map_http_error(
     )
 
 
-def map_provider_error(message: str, *, provider: str, status_code: int | None = None) -> LLMRuntimeError:
+def map_provider_error(
+    message: str,
+    *,
+    provider: str,
+    status_code: int | None = None,
+) -> LLMRuntimeError:
     lowered = message.lower()
     if "out of memory" in lowered or "oom" in lowered or "not enough memory" in lowered:
         code = RuntimeErrorCode.OUT_OF_MEMORY
-    elif "context" in lowered and ("limit" in lowered or "exceed" in lowered or "length" in lowered):
+    elif "context" in lowered and (
+        "limit" in lowered or "exceed" in lowered or "length" in lowered
+    ):
         code = RuntimeErrorCode.CONTEXT_LIMIT_EXCEEDED
     elif "not found" in lowered or "model does not exist" in lowered:
         code = RuntimeErrorCode.MODEL_NOT_FOUND

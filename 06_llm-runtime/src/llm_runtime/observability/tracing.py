@@ -5,7 +5,8 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from ..domain.models import (
     GenerationConfig,
@@ -93,7 +94,10 @@ class RuntimeTraceBuilder:
         self.trace.fallback_count += 1
         self.trace.fallback_reason = fallback_reason
 
-    def set_attempts(self, attempts: list[Mapping[str, Any]] | tuple[Mapping[str, Any], ...]) -> None:
+    def set_attempts(
+        self,
+        attempts: list[Mapping[str, Any]] | tuple[Mapping[str, Any], ...],
+    ) -> None:
         """Attach redacted attempt metadata without prompts or generated text."""
 
         self.trace.attempts = tuple(dict(attempt) for attempt in attempts)
@@ -179,10 +183,14 @@ class StructuredRuntimeLogger:
             "metadata": {
                 key: value
                 for key, value in (metadata or {}).items()
-                if key in {"operation", "route", "dependency", "reason_code", "attempt", "retryable"}
+                if key
+                in {"operation", "route", "dependency", "reason_code", "attempt", "retryable"}
             },
         }
-        self.logger.log(getattr(logging, level, logging.INFO), json.dumps(record, ensure_ascii=False))
+        self.logger.log(
+            getattr(logging, level, logging.INFO),
+            json.dumps(record, ensure_ascii=False),
+        )
         return record
 
 

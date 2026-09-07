@@ -160,9 +160,9 @@ class RuntimeService:
         self.max_attempts = max_attempts
         self.backoff_seconds = tuple(backoff_seconds)
         self.shutdown_timeout_seconds = shutdown_timeout_seconds
-        self.default_model_id = default_model_id
-        if self.default_model_id is None:
-            self.default_model_id = self.registry.resolve_primary().logical_model_id
+        self.default_model_id: str = (
+            default_model_id or self.registry.resolve_primary().logical_model_id
+        )
         self.preload_primary = preload_primary
         self.coordinator = GenerationCoordinator(
             max_concurrency=max_generation_concurrency,

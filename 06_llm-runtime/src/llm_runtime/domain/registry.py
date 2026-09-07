@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 from .models import ModelEntry
 
@@ -24,10 +25,13 @@ class ModelRegistry:
                 for existing in self._entries.values()
             ):
                 raise ValueError(f"duplicate contract model id: {entry.contract_model_id}")
-            if entry.provider_model_id.lower() == "latest" or entry.provider_model_id.lower().endswith(":latest"):
+            provider_model_id = entry.provider_model_id.lower()
+            if provider_model_id == "latest" or provider_model_id.endswith(":latest"):
                 raise ValueError("latest is not a formal model identity")
             if not entry.local_only:
-                raise ValueError("cloud model entries are not permitted in the local runtime registry")
+                raise ValueError(
+                    "cloud model entries are not permitted in the local runtime registry"
+                )
             if entry.priority < 0:
                 raise ValueError("model priority must be non-negative")
             if entry.context_limit is not None and entry.context_limit < 1:
@@ -35,7 +39,7 @@ class ModelRegistry:
             self._entries[entry.logical_model_id] = entry
 
     @classmethod
-    def from_file(cls, path: str | Path) -> "ModelRegistry":
+    def from_file(cls, path: str | Path) -> ModelRegistry:
         data = json.loads(Path(path).read_text(encoding="utf-8"))
         if data.get("schema_version") != "llm-runtime.models.v1":
             raise ValueError("unsupported model registry schema")
@@ -104,7 +108,9 @@ class ModelRegistry:
         discovered: Iterable[Mapping[str, Any]],
     ) -> tuple[ModelEntry, ...]:
         by_provider_id = {
-            str(item.get("provider_model_id")): item for item in discovered if item.get("provider_model_id")
+            str(item.get("provider_model_id")): item
+            for item in discovered
+            if item.get("provider_model_id")
         }
         updated: list[ModelEntry] = []
         for entry in self.by_provider(provider):

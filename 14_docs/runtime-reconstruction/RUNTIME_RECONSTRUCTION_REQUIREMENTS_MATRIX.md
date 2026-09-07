@@ -70,3 +70,23 @@ Confidence values are intentionally explicit: `FROZEN`,
 | R-058 | Secret scan covers new source, docs, logs, fixtures and reports | request section 93; project scan policy | request; `.gitleaks.toml` | final hygiene | FROZEN | no credentials/log bodies | gitleaks if available, manual scan | none |
 | R-059 | Fresh upstream audit records adoption/rejection and licenses | request section 12 | official Ollama/FastAPI/HTTPX/Python/psutil/LiteLLM sources | audit document | FROZEN | `OPEN_SOURCE_RUNTIME_REFERENCE_AUDIT.md` | document review | LiteLLM is reference only |
 | R-060 | LiteLLM is not added or launched | request section 13 and integration decision | request; `SOFTWARE_INTEGRATION_TECHNICAL_DECISION_V1.md` | dependency boundary | FROZEN | no dependency/gateway | dependency tree and source scan | none |
+
+## Matrix reconciliation summary
+
+The matrix contains `60/60` requirement rows and remains the multi-source
+requirements authority for this reconstruction. Current evidence classes are:
+
+| Evidence class | Count |
+|---|---:|
+| `FROZEN` | 35 |
+| `MULTI_SOURCE_CONFIRMED` | 20 |
+| `TEST_CONFIRMED` | 3 |
+| `REPORT_ONLY` | 2 |
+| `INFERRED` | 0 |
+| `HUMAN_DECISION_REQUIRED` | 0 |
+
+The two report-only rows (R-052 and R-054) were execution-sensitive at the
+candidate baseline. The current closure supplies fresh RuntimeService GPU
+evidence for R-054; the historical opt-in CPU integration evidence and its
+closure treatment are recorded separately in
+`SKIPPED_TEST_RECONCILIATION.md`.

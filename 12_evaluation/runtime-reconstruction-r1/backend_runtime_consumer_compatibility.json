@@ -1,0 +1,46 @@
+{
+  "schema_version": "llm-runtime-reconstruction-r1.backend-consumer.v1",
+  "evaluation_date": "2026-09-07",
+  "status": "PASS",
+  "backend_source_modified": false,
+  "runtime_source_scope": "06_llm-runtime",
+  "runtime_endpoint": "http://127.0.0.1:8161",
+  "health_route": "/health/ready",
+  "generation_route": "/internal/llm/generations",
+  "client_class": "smhai_backend.integrations.llm.HttpLLMRuntimeClient",
+  "client_label": "REAL_HTTP",
+  "runtime_provider_for_probe": "synthetic MockProvider in the configured ollama registry slot",
+  "synthetic_fixture_only": true,
+  "health": {
+    "status": "READY",
+    "runtime_state": "READY",
+    "cloud_fallback": false,
+    "runtime_version": "runtime-backend-probe-0.1.0",
+    "provider_readiness": "pass"
+  },
+  "request_projection": {
+    "stream": false,
+    "provider_class": "local",
+    "contract_model_id": "MODEL_local_cpu_test",
+    "structured_schema": "Backend existing generation content schema",
+    "metadata_probe": "backend_runtime_compatibility"
+  },
+  "candidate_response": {
+    "label": "REAL_HTTP",
+    "model_id": "MODEL_local_cpu_test",
+    "model_version": "qwen2.5-0.5b",
+    "runtime_version": "runtime-backend-probe-0.1.0",
+    "structured_keys": [
+      "disclaimer",
+      "observations",
+      "suggestions",
+      "summary"
+    ]
+  },
+  "cleanup": {
+    "temporary_server_pid": 73088,
+    "stopped_by_exact_pid": true,
+    "port_8161_listener_remaining": false
+  },
+  "evidence_boundary": "Consumer compatibility only; synthetic provider output is not real-model evidence."
+}
