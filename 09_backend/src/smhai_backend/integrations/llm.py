@@ -166,7 +166,7 @@ class HttpLLMRuntimeClient(LongLivedHttpClient):
             "stream": False,
             "structured_schema": _generation_content_schema(),
             "config": {
-                "max_output_tokens": 384,
+                "max_output_tokens": 768,
                 "temperature": 0.1,
                 "top_p": 0.9,
                 "timeout_seconds": 60.0,

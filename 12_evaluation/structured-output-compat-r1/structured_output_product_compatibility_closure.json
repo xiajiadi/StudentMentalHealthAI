@@ -1,0 +1,150 @@
+{
+  "round": "STRUCTURED_OUTPUT_PRODUCT_COMPATIBILITY_CLOSURE_R1",
+  "status": "GPU_PRODUCT_INTEGRATION_FULL_PASS_READY_FOR_CONTROLLER_REVIEW",
+  "agent_authority": "CONTROLLER_REVIEW_REQUIRED",
+  "baseline": {
+    "runtime_accepted_commit": "2972be77e537ef03033332039a6ed0eed8e451ef",
+    "gpi_partial_checkpoint": "e31d44423dd64592c11320b98b063eb90bdd8268",
+    "fix_branch": "fix/structured-output-product-compat-v1",
+    "fix_worktree": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat"
+  },
+  "accepted_boundary": {
+    "publication_sha256": "2d5736ae741d675ca5856b8004665ea3043aeccea34e2b007498ff04c2b501a2",
+    "service_corpus_version": "sha256:4553317e36b1064880df01643a3171f7937e0ec420ead380c5d6702f2396aad2",
+    "eligible_chunk_count": 14,
+    "d2_candidate_used": false,
+    "rag_algorithm_changed": false
+  },
+  "formal_provider": {
+    "ollama": "0.33.3",
+    "model": "qwen2.5:7b-instruct-q4_K_M",
+    "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+    "context": 8192,
+    "kv": "f16",
+    "parallel": 1,
+    "seed": 20260906,
+    "temperature": 0.1,
+    "top_p": 0.9
+  },
+  "before_fix": {
+    "reproduced": true,
+    "exact_product_prompt_runs": 3,
+    "failures": 3,
+    "http_statuses": [200, 200, 200],
+    "response_length": 700,
+    "response_sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85",
+    "json_parse": "FAIL",
+    "json_location": "line 26, column 9",
+    "done_reason": "length",
+    "eval_count": 384,
+    "runtime_error": "INVALID_STRUCTURED_OUTPUT",
+    "runtime_parser_reached": false,
+    "provider_parser_replay": "FAIL"
+  },
+  "root_cause": {
+    "class": "OUTPUT_TRUNCATION",
+    "secondary_finding": "Exact provenance representation increases structured response length under the current prompt; transport bytes remain identical.",
+    "owning_module": "09_backend/src/smhai_backend/integrations/llm.py::HttpLLMRuntimeClient",
+    "minimal_trigger": "Exact current product prompt + native JSON Schema + num_predict=384",
+    "budget_ladder": {
+      "384": "FAIL / length / eval_count=384",
+      "512": "FAIL / length / eval_count=512",
+      "640": "FAIL / length / eval_count=640",
+      "768": "PASS / stop / eval_count=742",
+      "1024": "PASS / stop / eval_count=742"
+    },
+    "transport_corruption": false,
+    "schema_mismatch": false
+  },
+  "fix": {
+    "class": "B_PROVIDER_REQUEST_FIX",
+    "product_file": "09_backend/src/smhai_backend/integrations/llm.py",
+    "change": "config.max_output_tokens 384 -> 768",
+    "external_contract_changed": false,
+    "generation_v1_changed": false,
+    "rag_identity_changed": false,
+    "generic_json_repair_added": false,
+    "regex_extraction_added": false,
+    "blind_retry_added": false,
+    "schema_weakened": false,
+    "model_changed": false
+  },
+  "exact_compatibility": {
+    "direct_provider": {
+      "passed": 3,
+      "total": 3,
+      "structured_valid": true,
+      "finish_reason": "stop",
+      "required_keys": ["summary", "observations", "suggestions", "disclaimer"],
+      "source_chunk_ids_mapping": "EXACT_ACCEPTED_IDS"
+    },
+    "runtime_service": {
+      "passed": 3,
+      "total": 3,
+      "structured_valid": true,
+      "fallback_used": false,
+      "finish_reason": "stop",
+      "provider_model": "qwen2.5:7b-instruct-q4_K_M",
+      "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+      "transport_generation_calls": 6
+    }
+  },
+  "gpi_closure": {
+    "normal_product": {"passed": 3, "total": 3},
+    "normal_real_rag": {"passed": 3, "total": 3, "retrieval_calls": 3},
+    "normal_formal_gpu": {"passed": 3, "total": 3, "model": "qwen2.5:7b-instruct-q4_K_M", "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e"},
+    "normal_trace": {"passed": 3, "total": 3, "no_trace": 0},
+    "normal_output_safety": {"passed": 3, "total": 3, "real_safety": true},
+    "normal_persistence": {"passed": 3, "total": 3, "status": "COMPLETED", "fallback_used": false},
+    "citation_roundtrip": {"passed": 3, "total": 3, "status": "PASS", "identity_mismatches": 0, "fabricated": 0, "unknown": 0, "orphan": 0},
+    "fallback": {"passed": 3, "total": 3, "local_only": true, "cloud_calls": 0, "model": "qwen2.5-1.5b"},
+    "crisis": {"passed": 3, "total": 3, "rag_calls": 0, "runtime_generation_calls": 0, "ollama_generation_calls": 0},
+    "safety_down": {"passed": 2, "total": 2, "fail_closed": true, "rag_calls": 0, "runtime_calls": 0, "ollama_calls": 0},
+    "controlled_output_safety": {"status": "PASS", "direct_delivery": false, "unsafe_candidate_persisted": false},
+    "mysql": {"real": true, "migration_head": "20260906_0002", "real_student_data": false}
+  },
+  "regressions": {
+    "runtime": "31 passed, 1 skipped",
+    "backend": "18 passed",
+    "rag": "18 passed, 4 skipped",
+    "safety": "20 passed, 1 skipped",
+    "ruff": "PASS for product and changed evidence Python files",
+    "pyright": "0 errors, 0 warnings, 0 informations",
+    "compileall": "PASS",
+    "root_contract": "13 tests passed; OpenAPI validator PASS"
+  },
+  "frozen_root": {
+    "status": "UNCHANGED",
+    "baseline_commit": "2972be77e537ef03033332039a6ed0eed8e451ef",
+    "before_after_hashes_equal": true,
+    "evidence": "12_evaluation/gpu-product-integration-closure-r1/frozen_root_hashes_before.json and frozen_root_hashes_after.json"
+  },
+  "gpi_decision_fidelity": {
+    "materialized": "50/50",
+    "semantic_deviations": 0,
+    "renumbering_corrected": true
+  },
+  "cleanup": {
+    "all_target_ports_free": true,
+    "evidence": "post_run_cleanup_probe.json",
+    "harness_cleanup_exit_code": 1,
+    "note": "One already-exited PID caused the orchestration cleanup command to return nonzero; explicit post-run process/port verification found no target listeners."
+  },
+  "git_policy": {
+    "real_student_data": false,
+    "main_preserved": true,
+    "merge": false,
+    "push": false,
+    "accepted_tag_created": false
+  },
+  "evidence": {
+    "root_cause_report": "14_docs/structured-output-compat/STRUCTURED_OUTPUT_ROOT_CAUSE_REPORT.md",
+    "soc_decision": "14_docs/structured-output-compat/STRUCTURED_OUTPUT_PRODUCT_COMPATIBILITY_TECHNICAL_DECISION_V1.md",
+    "minimized_reproducer": "12_evaluation/structured-output-compat-r1/minimized_reproducer.json",
+    "prompt_bisection_matrix": "12_evaluation/structured-output-compat-r1/prompt_bisection_matrix.jsonl",
+    "post_fix_compatibility": "12_evaluation/structured-output-compat-r1/post_fix_compatibility.json",
+    "gpi_controller_correction": "14_docs/gpu-product-integration/GPU_PRODUCT_INTEGRATION_TECHNICAL_DECISION_V1_1_CONTROLLER_CORRECTION.md",
+    "gpi_fidelity_report": "14_docs/gpu-product-integration/GPI_CONTROLLER_DECISION_FIDELITY_REPORT.md",
+    "gpi_final_closure": "14_docs/gpu-product-integration/GPU_PRODUCT_INTEGRATION_FINAL_CLOSURE_EVIDENCE.md"
+  }
+}

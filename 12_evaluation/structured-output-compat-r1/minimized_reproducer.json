@@ -1,0 +1,90 @@
+{
+  "round": "STRUCTURED_OUTPUT_PRODUCT_COMPATIBILITY_CLOSURE_R1",
+  "synthetic_only": true,
+  "status": "AFTER_FIX_PROVEN",
+  "accepted_publication": {
+    "sha256": "2d5736ae741d675ca5856b8004665ea3043aeccea34e2b007498ff04c2b501a2",
+    "d2_candidate_used": false,
+    "exact_chunk_ids": [
+      "CHUNK_67b56abe21fe9860a26d",
+      "CHUNK_8f85f2c0472e21acd2fa",
+      "CHUNK_c3718c65fcf4151af391",
+      "CHUNK_3d2d02ba1c8fbc506665",
+      "CHUNK_bcbe71382652340b2249"
+    ]
+  },
+  "provider": {
+    "version": "0.33.3",
+    "model": "qwen2.5:7b-instruct-q4_K_M",
+    "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+    "context": 8192,
+    "kv": "f16",
+    "parallel": 1,
+    "seed": 20260906,
+    "temperature": 0.1,
+    "top_p": 0.9
+  },
+  "input": {
+    "prompt_source": "09_backend/src/smhai_backend/domains/support/service.py::SupportService._build_prompt",
+    "prompt": "Return JSON only, matching the requested generation schema. Do not diagnose, assign clinical risk, or invent citations. education_support; target_role=student; message=请给出简短建议。; source_chunk_ids=CHUNK_67b56abe21fe9860a26d,CHUNK_8f85f2c0472e21acd2fa,CHUNK_c3718c65fcf4151af391,CHUNK_3d2d02ba1c8fbc506665,CHUNK_bcbe71382652340b2249",
+    "prompt_length": 329,
+    "prompt_sha256": "f3384226b70e34df5bb392f06789de649e9aa2674d24f121c3ea08b0465425e5",
+    "schema_source": "09_backend/src/smhai_backend/integrations/llm.py::_generation_content_schema",
+    "schema_sha256": "ebb901d8b57074e5fc7b0b8630385c0579ed66206111a9928b76dc6f3356f3b9",
+    "provider_request_sha256": "f4c38dbf94c7c044f7ff9ead194209a7d5bdf5530b55cdc317c8d24a6fe03f1f"
+  },
+  "before_fix": {
+    "num_predict": 384,
+    "runs": 3,
+    "failures": 3,
+    "native_http_status": [200, 200, 200],
+    "response_length": 700,
+    "response_sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85",
+    "json_parse": "FAIL",
+    "json_line": 26,
+    "json_column": 9,
+    "done": true,
+    "done_reason": "length",
+    "prompt_eval_count": 177,
+    "eval_count": 384,
+    "runtime_error": "INVALID_STRUCTURED_OUTPUT",
+    "runtime_parser_reached": false,
+    "provider_parser_replay": "FAIL"
+  },
+  "budget_ladder": {
+    "384": "FAIL / length / eval_count=384",
+    "512": "FAIL / length / eval_count=512",
+    "640": "FAIL / length / eval_count=640",
+    "768": "PASS / stop / eval_count=742",
+    "1024": "PASS / stop / eval_count=742"
+  },
+  "minimal_trigger": {
+    "operational": "Exact current product prompt plus native JSON Schema plus num_predict=384",
+    "smallest_successful_tested_change": "num_predict=768",
+    "interpretation": "Accepted provenance identifiers increase the model's structured response length under this prompt; the hard failure is output-budget truncation, not a provenance identity mutation or parser transport mutation."
+  },
+  "after_fix": {
+    "status": "PASS",
+    "num_predict": 768,
+    "provider_direct": {
+      "passed": 3,
+      "total": 3,
+      "finish_reason": "stop",
+      "structured_valid": true,
+      "required_keys": ["summary", "observations", "suggestions", "disclaimer"],
+      "source_chunk_ids_mapping": "EXACT_ACCEPTED_IDS"
+    },
+    "runtime_service": {
+      "passed": 3,
+      "total": 3,
+      "finish_reason": "stop",
+      "structured_valid": true,
+      "fallback_used": false,
+      "provider_model": "qwen2.5:7b-instruct-q4_K_M",
+      "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e"
+    },
+    "transport_generation_calls": 6,
+    "no_malformed_json_acceptance": true,
+    "evidence": "post_fix_compatibility.json"
+  }
+}

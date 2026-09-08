@@ -1,28 +1,472 @@
 {
-  "generated_at": "2026-09-07T17:14:08.176483Z",
+  "generated_at": "2026-09-08T15:00:56.310479Z",
   "rows": [
     {
       "fixture_id": "GPI_NORMAL_01",
       "kind": "normal",
-      "trace_id": null,
-      "evidence": "NO_TRACE"
+      "trace_id": "TRACE_587fbc5d3645a377edfacea2d0a7de63",
+      "cat_calls": 0,
+      "rag_calls": 1,
+      "llm_transport_calls": 1,
+      "runtime_generation_calls": 1,
+      "safety_calls": 3,
+      "ollama_generation_calls": 1,
+      "runtime_events": [
+        {
+          "timestamp": "2026-09-08T14:57:57.627923Z",
+          "request_id": "REQ_addb0e1fa8ea18b6eab4e3141b5d1933",
+          "trace_id": "TRACE_587fbc5d3645a377edfacea2d0a7de63",
+          "status": "success",
+          "provider_id": "ollama_gpu",
+          "logical_model_id": "qwen2.5-0.5b-engineering",
+          "actual_model_id": "qwen2.5-0.5b-engineering",
+          "provider_model": "qwen2.5:7b-instruct-q4_K_M",
+          "runtime_version": "0.33.3",
+          "fallback_used": false,
+          "buffered": true,
+          "model_revision": "qwen2.5:7b-instruct-q4_K_M",
+          "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+          "quantization": "Q4_K_M",
+          "hardware": {
+            "os": "Windows 11 (AMD64)",
+            "cpu": "Intel64 Family 6 Model 170 Stepping 4, GenuineIntel",
+            "threads": 22,
+            "ram_bytes": 33752997888,
+            "gpu_present": true,
+            "gpus": [
+              {
+                "name": "NVIDIA GeForce RTX 3060",
+                "vram_bytes": 12884901888,
+                "driver": "596.36",
+                "cuda_version": null
+              }
+            ],
+            "cuda_available": true,
+            "nvidia_smi_path": "C:\\WINDOWS\\system32\\nvidia-smi.EXE",
+            "detection_error": null,
+            "profile": "CONSUMER_GPU"
+          },
+          "attempts": [
+            {
+              "attempt_index": 1,
+              "provider_id": "ollama_gpu",
+              "logical_model_id": "qwen2.5-0.5b-engineering",
+              "provider_model_id": "qwen2.5:7b-instruct-q4_K_M",
+              "outcome": "success",
+              "error_code": null,
+              "fallback_reason": null
+            }
+          ]
+        }
+      ],
+      "rag_response_summaries": [
+        {
+          "retrieval_id": "RETR_0b34d19126fe7a1c77ab",
+          "chunk_ids": [
+            "CHUNK_67b56abe21fe9860a26d",
+            "CHUNK_8f85f2c0472e21acd2fa",
+            "CHUNK_c3718c65fcf4151af391",
+            "CHUNK_3d2d02ba1c8fbc506665",
+            "CHUNK_bcbe71382652340b2249"
+          ],
+          "document_ids": [
+            "KB_2f2c286d6e2e32abcb52",
+            "KB_4e52e08e5384be10b493",
+            "KB_1814fbd0be27f07bbe9c",
+            "KB_7723360cccbf4f9c45ee",
+            "KB_7723360cccbf4f9c45ee"
+          ],
+          "source_ids": [],
+          "content_hashes": [
+            "sha256:7b44760976a0d815147dfda2a45b6513158ac169343701565dbc7e34526f0be6",
+            "sha256:640eb25c1a5cfbb8891d2a41de1ea4cc058ac66b7bbe0e5bd8e03423b9442493",
+            "sha256:640eb25c1a5cfbb8891d2a41de1ea4cc058ac66b7bbe0e5bd8e03423b9442493",
+            "sha256:cb7bd69ec6fc7c7a0c4e9d0fd4d1428856bf7bc7b75624780e81b9f30158ed45",
+            "sha256:55066670ce36181cfe821ecf1515eca6e7994471bbbff3dc4bf05fa433d7280b"
+          ],
+          "citation_ids": [
+            "S1",
+            "S2",
+            "S3",
+            "S4",
+            "S5"
+          ]
+        }
+      ],
+      "llm_response_summaries": [
+        {
+          "model_id": "MODEL_local_gpu_acceptance",
+          "logical_model_id": "qwen2.5-0.5b-engineering",
+          "runtime_version": "0.1.0-gpi-r1",
+          "buffered": true,
+          "request_id": "REQ_addb0e1fa8ea18b6eab4e3141b5d1933",
+          "trace_id": "TRACE_587fbc5d3645a377edfacea2d0a7de63",
+          "provider_model": "qwen2.5:7b-instruct-q4_K_M",
+          "model_revision": "qwen2.5:7b-instruct-q4_K_M",
+          "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+          "hardware": {
+            "os": "Windows 11 (AMD64)",
+            "cpu": "Intel64 Family 6 Model 170 Stepping 4, GenuineIntel",
+            "threads": 22,
+            "ram_bytes": 33752997888,
+            "gpu_present": true,
+            "gpus": [
+              {
+                "name": "NVIDIA GeForce RTX 3060",
+                "vram_bytes": 12884901888,
+                "driver": "596.36",
+                "cuda_version": null
+              }
+            ],
+            "cuda_available": true,
+            "nvidia_smi_path": "C:\\WINDOWS\\system32\\nvidia-smi.EXE",
+            "detection_error": null,
+            "profile": "CONSUMER_GPU"
+          }
+        }
+      ],
+      "safety_response_summaries": [
+        {
+          "action": "PROCEED",
+          "reason_codes": [
+            "NO_BLOCKING_SIGNAL",
+            "ASSESSMENT_SIGNAL_RECEIVED",
+            "CONTENT_SAFE"
+          ],
+          "requires_human": false,
+          "crisis_response_present": false
+        },
+        {
+          "action": "PROCEED",
+          "reason_codes": [
+            "NO_BLOCKING_SIGNAL"
+          ],
+          "requires_human": false,
+          "crisis_response_present": false
+        },
+        {
+          "action": "PROCEED_WITH_BOUNDARY",
+          "reason_codes": [
+            "PII_DETECTED",
+            "CONTENT_SAFE"
+          ],
+          "requires_human": false,
+          "crisis_response_present": false
+        }
+      ]
     },
     {
       "fixture_id": "GPI_NORMAL_02",
       "kind": "normal",
-      "trace_id": null,
-      "evidence": "NO_TRACE"
+      "trace_id": "TRACE_68ea737c7d30d27115031882e331df79",
+      "cat_calls": 0,
+      "rag_calls": 1,
+      "llm_transport_calls": 1,
+      "runtime_generation_calls": 1,
+      "safety_calls": 3,
+      "ollama_generation_calls": 1,
+      "runtime_events": [
+        {
+          "timestamp": "2026-09-08T14:58:31.175409Z",
+          "request_id": "REQ_ffcaf8ae0b86acb0985099af5d46fd22",
+          "trace_id": "TRACE_68ea737c7d30d27115031882e331df79",
+          "status": "success",
+          "provider_id": "ollama_gpu",
+          "logical_model_id": "qwen2.5-0.5b-engineering",
+          "actual_model_id": "qwen2.5-0.5b-engineering",
+          "provider_model": "qwen2.5:7b-instruct-q4_K_M",
+          "runtime_version": "0.33.3",
+          "fallback_used": false,
+          "buffered": true,
+          "model_revision": "qwen2.5:7b-instruct-q4_K_M",
+          "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+          "quantization": "Q4_K_M",
+          "hardware": {
+            "os": "Windows 11 (AMD64)",
+            "cpu": "Intel64 Family 6 Model 170 Stepping 4, GenuineIntel",
+            "threads": 22,
+            "ram_bytes": 33752997888,
+            "gpu_present": true,
+            "gpus": [
+              {
+                "name": "NVIDIA GeForce RTX 3060",
+                "vram_bytes": 12884901888,
+                "driver": "596.36",
+                "cuda_version": null
+              }
+            ],
+            "cuda_available": true,
+            "nvidia_smi_path": "C:\\WINDOWS\\system32\\nvidia-smi.EXE",
+            "detection_error": null,
+            "profile": "CONSUMER_GPU"
+          },
+          "attempts": [
+            {
+              "attempt_index": 1,
+              "provider_id": "ollama_gpu",
+              "logical_model_id": "qwen2.5-0.5b-engineering",
+              "provider_model_id": "qwen2.5:7b-instruct-q4_K_M",
+              "outcome": "success",
+              "error_code": null,
+              "fallback_reason": null
+            }
+          ]
+        }
+      ],
+      "rag_response_summaries": [
+        {
+          "retrieval_id": "RETR_88cd23d76377dc624829",
+          "chunk_ids": [
+            "CHUNK_67b56abe21fe9860a26d",
+            "CHUNK_8f85f2c0472e21acd2fa",
+            "CHUNK_c3718c65fcf4151af391",
+            "CHUNK_3d2d02ba1c8fbc506665",
+            "CHUNK_bcbe71382652340b2249"
+          ],
+          "document_ids": [
+            "KB_2f2c286d6e2e32abcb52",
+            "KB_4e52e08e5384be10b493",
+            "KB_1814fbd0be27f07bbe9c",
+            "KB_7723360cccbf4f9c45ee",
+            "KB_7723360cccbf4f9c45ee"
+          ],
+          "source_ids": [],
+          "content_hashes": [
+            "sha256:7b44760976a0d815147dfda2a45b6513158ac169343701565dbc7e34526f0be6",
+            "sha256:640eb25c1a5cfbb8891d2a41de1ea4cc058ac66b7bbe0e5bd8e03423b9442493",
+            "sha256:640eb25c1a5cfbb8891d2a41de1ea4cc058ac66b7bbe0e5bd8e03423b9442493",
+            "sha256:cb7bd69ec6fc7c7a0c4e9d0fd4d1428856bf7bc7b75624780e81b9f30158ed45",
+            "sha256:55066670ce36181cfe821ecf1515eca6e7994471bbbff3dc4bf05fa433d7280b"
+          ],
+          "citation_ids": [
+            "S1",
+            "S2",
+            "S3",
+            "S4",
+            "S5"
+          ]
+        }
+      ],
+      "llm_response_summaries": [
+        {
+          "model_id": "MODEL_local_gpu_acceptance",
+          "logical_model_id": "qwen2.5-0.5b-engineering",
+          "runtime_version": "0.1.0-gpi-r1",
+          "buffered": true,
+          "request_id": "REQ_ffcaf8ae0b86acb0985099af5d46fd22",
+          "trace_id": "TRACE_68ea737c7d30d27115031882e331df79",
+          "provider_model": "qwen2.5:7b-instruct-q4_K_M",
+          "model_revision": "qwen2.5:7b-instruct-q4_K_M",
+          "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+          "hardware": {
+            "os": "Windows 11 (AMD64)",
+            "cpu": "Intel64 Family 6 Model 170 Stepping 4, GenuineIntel",
+            "threads": 22,
+            "ram_bytes": 33752997888,
+            "gpu_present": true,
+            "gpus": [
+              {
+                "name": "NVIDIA GeForce RTX 3060",
+                "vram_bytes": 12884901888,
+                "driver": "596.36",
+                "cuda_version": null
+              }
+            ],
+            "cuda_available": true,
+            "nvidia_smi_path": "C:\\WINDOWS\\system32\\nvidia-smi.EXE",
+            "detection_error": null,
+            "profile": "CONSUMER_GPU"
+          }
+        }
+      ],
+      "safety_response_summaries": [
+        {
+          "action": "PROCEED",
+          "reason_codes": [
+            "NO_BLOCKING_SIGNAL",
+            "ASSESSMENT_SIGNAL_RECEIVED",
+            "CONTENT_SAFE"
+          ],
+          "requires_human": false,
+          "crisis_response_present": false
+        },
+        {
+          "action": "PROCEED",
+          "reason_codes": [
+            "NO_BLOCKING_SIGNAL"
+          ],
+          "requires_human": false,
+          "crisis_response_present": false
+        },
+        {
+          "action": "PROCEED_WITH_BOUNDARY",
+          "reason_codes": [
+            "PII_DETECTED",
+            "CONTENT_SAFE"
+          ],
+          "requires_human": false,
+          "crisis_response_present": false
+        }
+      ]
     },
     {
       "fixture_id": "GPI_NORMAL_03",
       "kind": "normal",
-      "trace_id": null,
-      "evidence": "NO_TRACE"
+      "trace_id": "TRACE_56aa67959dde5c3d0d1952384d53e208",
+      "cat_calls": 0,
+      "rag_calls": 1,
+      "llm_transport_calls": 1,
+      "runtime_generation_calls": 1,
+      "safety_calls": 3,
+      "ollama_generation_calls": 1,
+      "runtime_events": [
+        {
+          "timestamp": "2026-09-08T14:59:04.898113Z",
+          "request_id": "REQ_9619234f29bdf98f96c1f2f0189c3556",
+          "trace_id": "TRACE_56aa67959dde5c3d0d1952384d53e208",
+          "status": "success",
+          "provider_id": "ollama_gpu",
+          "logical_model_id": "qwen2.5-0.5b-engineering",
+          "actual_model_id": "qwen2.5-0.5b-engineering",
+          "provider_model": "qwen2.5:7b-instruct-q4_K_M",
+          "runtime_version": "0.33.3",
+          "fallback_used": false,
+          "buffered": true,
+          "model_revision": "qwen2.5:7b-instruct-q4_K_M",
+          "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+          "quantization": "Q4_K_M",
+          "hardware": {
+            "os": "Windows 11 (AMD64)",
+            "cpu": "Intel64 Family 6 Model 170 Stepping 4, GenuineIntel",
+            "threads": 22,
+            "ram_bytes": 33752997888,
+            "gpu_present": true,
+            "gpus": [
+              {
+                "name": "NVIDIA GeForce RTX 3060",
+                "vram_bytes": 12884901888,
+                "driver": "596.36",
+                "cuda_version": null
+              }
+            ],
+            "cuda_available": true,
+            "nvidia_smi_path": "C:\\WINDOWS\\system32\\nvidia-smi.EXE",
+            "detection_error": null,
+            "profile": "CONSUMER_GPU"
+          },
+          "attempts": [
+            {
+              "attempt_index": 1,
+              "provider_id": "ollama_gpu",
+              "logical_model_id": "qwen2.5-0.5b-engineering",
+              "provider_model_id": "qwen2.5:7b-instruct-q4_K_M",
+              "outcome": "success",
+              "error_code": null,
+              "fallback_reason": null
+            }
+          ]
+        }
+      ],
+      "rag_response_summaries": [
+        {
+          "retrieval_id": "RETR_22c97fc133671fbdbe02",
+          "chunk_ids": [
+            "CHUNK_67b56abe21fe9860a26d",
+            "CHUNK_8f85f2c0472e21acd2fa",
+            "CHUNK_c3718c65fcf4151af391",
+            "CHUNK_3d2d02ba1c8fbc506665",
+            "CHUNK_bcbe71382652340b2249"
+          ],
+          "document_ids": [
+            "KB_2f2c286d6e2e32abcb52",
+            "KB_4e52e08e5384be10b493",
+            "KB_1814fbd0be27f07bbe9c",
+            "KB_7723360cccbf4f9c45ee",
+            "KB_7723360cccbf4f9c45ee"
+          ],
+          "source_ids": [],
+          "content_hashes": [
+            "sha256:7b44760976a0d815147dfda2a45b6513158ac169343701565dbc7e34526f0be6",
+            "sha256:640eb25c1a5cfbb8891d2a41de1ea4cc058ac66b7bbe0e5bd8e03423b9442493",
+            "sha256:640eb25c1a5cfbb8891d2a41de1ea4cc058ac66b7bbe0e5bd8e03423b9442493",
+            "sha256:cb7bd69ec6fc7c7a0c4e9d0fd4d1428856bf7bc7b75624780e81b9f30158ed45",
+            "sha256:55066670ce36181cfe821ecf1515eca6e7994471bbbff3dc4bf05fa433d7280b"
+          ],
+          "citation_ids": [
+            "S1",
+            "S2",
+            "S3",
+            "S4",
+            "S5"
+          ]
+        }
+      ],
+      "llm_response_summaries": [
+        {
+          "model_id": "MODEL_local_gpu_acceptance",
+          "logical_model_id": "qwen2.5-0.5b-engineering",
+          "runtime_version": "0.1.0-gpi-r1",
+          "buffered": true,
+          "request_id": "REQ_9619234f29bdf98f96c1f2f0189c3556",
+          "trace_id": "TRACE_56aa67959dde5c3d0d1952384d53e208",
+          "provider_model": "qwen2.5:7b-instruct-q4_K_M",
+          "model_revision": "qwen2.5:7b-instruct-q4_K_M",
+          "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+          "hardware": {
+            "os": "Windows 11 (AMD64)",
+            "cpu": "Intel64 Family 6 Model 170 Stepping 4, GenuineIntel",
+            "threads": 22,
+            "ram_bytes": 33752997888,
+            "gpu_present": true,
+            "gpus": [
+              {
+                "name": "NVIDIA GeForce RTX 3060",
+                "vram_bytes": 12884901888,
+                "driver": "596.36",
+                "cuda_version": null
+              }
+            ],
+            "cuda_available": true,
+            "nvidia_smi_path": "C:\\WINDOWS\\system32\\nvidia-smi.EXE",
+            "detection_error": null,
+            "profile": "CONSUMER_GPU"
+          }
+        }
+      ],
+      "safety_response_summaries": [
+        {
+          "action": "PROCEED",
+          "reason_codes": [
+            "NO_BLOCKING_SIGNAL",
+            "ASSESSMENT_SIGNAL_RECEIVED",
+            "CONTENT_SAFE"
+          ],
+          "requires_human": false,
+          "crisis_response_present": false
+        },
+        {
+          "action": "PROCEED",
+          "reason_codes": [
+            "NO_BLOCKING_SIGNAL"
+          ],
+          "requires_human": false,
+          "crisis_response_present": false
+        },
+        {
+          "action": "PROCEED_WITH_BOUNDARY",
+          "reason_codes": [
+            "PII_DETECTED",
+            "CONTENT_SAFE"
+          ],
+          "requires_human": false,
+          "crisis_response_present": false
+        }
+      ]
     },
     {
       "fixture_id": "GPI_CRISIS_01",
       "kind": "crisis",
-      "trace_id": "TRACE_c3f065873468782e1d4148fd43a4eb4a",
+      "trace_id": "TRACE_100e0fdda52e1b577c53e09ea28fcbdf",
       "cat_calls": 0,
       "rag_calls": 0,
       "llm_transport_calls": 0,
@@ -47,7 +491,7 @@
     {
       "fixture_id": "GPI_CRISIS_02",
       "kind": "crisis",
-      "trace_id": "TRACE_021485f79d99ac824099147dfb8cac56",
+      "trace_id": "TRACE_d67b8a7b61115e8e152bd8920a69c2f7",
       "cat_calls": 0,
       "rag_calls": 0,
       "llm_transport_calls": 0,
@@ -72,7 +516,7 @@
     {
       "fixture_id": "GPI_CRISIS_03",
       "kind": "crisis",
-      "trace_id": "TRACE_ca02e8fbde7cc4250d8782c3a6fc9a99",
+      "trace_id": "TRACE_8f37cb9d4ed08e2df2dc1c7e95879297",
       "cat_calls": 0,
       "rag_calls": 0,
       "llm_transport_calls": 0,
@@ -97,7 +541,7 @@
     {
       "fixture_id": "GPI_FALLBACK_01",
       "kind": "fallback",
-      "trace_id": "TRACE_6959ca2890fb6f770fcc23c26dd1d2bb",
+      "trace_id": "TRACE_387358e56450264356fc306bb39cbe6e",
       "cat_calls": 0,
       "rag_calls": 1,
       "llm_transport_calls": 1,
@@ -106,9 +550,9 @@
       "ollama_generation_calls": 1,
       "runtime_events": [
         {
-          "timestamp": "2026-09-07T17:13:13.458521Z",
-          "request_id": "REQ_52fc7041c6a6aceeb61d06c91d542154",
-          "trace_id": "TRACE_6959ca2890fb6f770fcc23c26dd1d2bb",
+          "timestamp": "2026-09-08T15:00:09.743239Z",
+          "request_id": "REQ_795c57f00159e984de91c094684faf37",
+          "trace_id": "TRACE_387358e56450264356fc306bb39cbe6e",
           "status": "success",
           "provider_id": "ollama_cpu",
           "logical_model_id": "qwen2.5-1.5b-engineering-fallback",
@@ -163,7 +607,7 @@
       ],
       "rag_response_summaries": [
         {
-          "retrieval_id": "RETR_5b15de1cce8d5d8d5fd6",
+          "retrieval_id": "RETR_0721299ecce722bb2a52",
           "chunk_ids": [
             "CHUNK_67b56abe21fe9860a26d",
             "CHUNK_8f85f2c0472e21acd2fa",
@@ -201,8 +645,8 @@
           "logical_model_id": "qwen2.5-1.5b-engineering-fallback",
           "runtime_version": "0.1.0-gpi-r1",
           "buffered": true,
-          "request_id": "REQ_52fc7041c6a6aceeb61d06c91d542154",
-          "trace_id": "TRACE_6959ca2890fb6f770fcc23c26dd1d2bb",
+          "request_id": "REQ_795c57f00159e984de91c094684faf37",
+          "trace_id": "TRACE_387358e56450264356fc306bb39cbe6e",
           "provider_model": "qwen2.5:1.5b",
           "model_revision": "qwen2.5:1.5b",
           "digest": "65ec06548149b04c096a120e4a6da9d4017ea809c91734ea5631e89f96ddc57b",
@@ -260,7 +704,7 @@
     {
       "fixture_id": "GPI_FALLBACK_02",
       "kind": "fallback",
-      "trace_id": "TRACE_91d0de4ee635da9473a66b3d8ed048d7",
+      "trace_id": "TRACE_21257961f135a6fe23b06df7cc872943",
       "cat_calls": 0,
       "rag_calls": 1,
       "llm_transport_calls": 1,
@@ -269,9 +713,9 @@
       "ollama_generation_calls": 1,
       "runtime_events": [
         {
-          "timestamp": "2026-09-07T17:13:41.445037Z",
-          "request_id": "REQ_3ff92540edb74c5ee58eb089ef3cd533",
-          "trace_id": "TRACE_91d0de4ee635da9473a66b3d8ed048d7",
+          "timestamp": "2026-09-08T15:00:30.803315Z",
+          "request_id": "REQ_460a6dc072bc19768a6bc0e9a23643e2",
+          "trace_id": "TRACE_21257961f135a6fe23b06df7cc872943",
           "status": "success",
           "provider_id": "ollama_cpu",
           "logical_model_id": "qwen2.5-1.5b-engineering-fallback",
@@ -326,7 +770,7 @@
       ],
       "rag_response_summaries": [
         {
-          "retrieval_id": "RETR_31fd5379be4766febcfa",
+          "retrieval_id": "RETR_7411c5368d58728f229f",
           "chunk_ids": [
             "CHUNK_67b56abe21fe9860a26d",
             "CHUNK_8f85f2c0472e21acd2fa",
@@ -364,8 +808,8 @@
           "logical_model_id": "qwen2.5-1.5b-engineering-fallback",
           "runtime_version": "0.1.0-gpi-r1",
           "buffered": true,
-          "request_id": "REQ_3ff92540edb74c5ee58eb089ef3cd533",
-          "trace_id": "TRACE_91d0de4ee635da9473a66b3d8ed048d7",
+          "request_id": "REQ_460a6dc072bc19768a6bc0e9a23643e2",
+          "trace_id": "TRACE_21257961f135a6fe23b06df7cc872943",
           "provider_model": "qwen2.5:1.5b",
           "model_revision": "qwen2.5:1.5b",
           "digest": "65ec06548149b04c096a120e4a6da9d4017ea809c91734ea5631e89f96ddc57b",
@@ -423,7 +867,7 @@
     {
       "fixture_id": "GPI_FALLBACK_03",
       "kind": "fallback",
-      "trace_id": "TRACE_3f68a1919e1824ebdc7e634716aa87cc",
+      "trace_id": "TRACE_b91ff315da0725c5cad52cff78848712",
       "cat_calls": 0,
       "rag_calls": 1,
       "llm_transport_calls": 1,
@@ -432,9 +876,9 @@
       "ollama_generation_calls": 1,
       "runtime_events": [
         {
-          "timestamp": "2026-09-07T17:14:02.946316Z",
-          "request_id": "REQ_8dac5613da337fe1b921e15b3cec8e66",
-          "trace_id": "TRACE_3f68a1919e1824ebdc7e634716aa87cc",
+          "timestamp": "2026-09-08T15:00:50.824100Z",
+          "request_id": "REQ_6456df7b8a1143cb2dca4437a48a0149",
+          "trace_id": "TRACE_b91ff315da0725c5cad52cff78848712",
           "status": "success",
           "provider_id": "ollama_cpu",
           "logical_model_id": "qwen2.5-1.5b-engineering-fallback",
@@ -489,7 +933,7 @@
       ],
       "rag_response_summaries": [
         {
-          "retrieval_id": "RETR_e7a58224f20f96ad0f70",
+          "retrieval_id": "RETR_70d5acb6e982717573c3",
           "chunk_ids": [
             "CHUNK_67b56abe21fe9860a26d",
             "CHUNK_8f85f2c0472e21acd2fa",
@@ -527,8 +971,8 @@
           "logical_model_id": "qwen2.5-1.5b-engineering-fallback",
           "runtime_version": "0.1.0-gpi-r1",
           "buffered": true,
-          "request_id": "REQ_8dac5613da337fe1b921e15b3cec8e66",
-          "trace_id": "TRACE_3f68a1919e1824ebdc7e634716aa87cc",
+          "request_id": "REQ_6456df7b8a1143cb2dca4437a48a0149",
+          "trace_id": "TRACE_b91ff315da0725c5cad52cff78848712",
           "provider_model": "qwen2.5:1.5b",
           "model_revision": "qwen2.5:1.5b",
           "digest": "65ec06548149b04c096a120e4a6da9d4017ea809c91734ea5631e89f96ddc57b",

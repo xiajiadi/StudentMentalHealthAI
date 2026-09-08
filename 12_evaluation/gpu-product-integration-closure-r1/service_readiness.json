@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-07T17:14:10.751521Z",
+  "generated_at": "2026-09-08T15:00:58.701396Z",
   "initial": {
     "cat": {
       "endpoint": "http://127.0.0.1:8180/health/ready",
@@ -42,8 +42,8 @@
             "loaded": true,
             "sparse_output_requested": true,
             "sparse_output_observed": true,
-            "sparse_nonempty_rows_observed": 1,
-            "sparse_terms_observed": 5,
+            "sparse_nonempty_rows_observed": 14,
+            "sparse_terms_observed": 675,
             "load_error": null
           }
         },
@@ -110,8 +110,8 @@
             "ready": true,
             "version": "1.20.2",
             "detail_code": null,
-            "checked_at": "2026-09-07T17:09:53.785306Z",
-            "latency_ms": 47.19539999496192
+            "checked_at": "2026-09-08T14:57:23.143558Z",
+            "latency_ms": 38.70009999991453
           },
           "presidio": {
             "component": "presidio",
@@ -119,7 +119,7 @@
             "ready": true,
             "version": "2.2.364",
             "detail_code": null,
-            "checked_at": "2026-09-07T17:09:53.785306Z",
+            "checked_at": "2026-09-08T14:57:23.143558Z",
             "latency_ms": null
           },
           "nemo_guardrails": {
@@ -128,7 +128,7 @@
             "ready": true,
             "version": "0.24.0",
             "detail_code": null,
-            "checked_at": "2026-09-07T17:09:53.785306Z",
+            "checked_at": "2026-09-08T14:57:23.143558Z",
             "latency_ms": null
           },
           "qwen3guard": {
@@ -137,7 +137,7 @@
             "ready": true,
             "version": "fada3b2f655b89601929198343c94cd2f64d93cc",
             "detail_code": null,
-            "checked_at": "2026-09-07T17:09:53.788295Z",
+            "checked_at": "2026-09-08T14:57:23.145564Z",
             "latency_ms": null
           },
           "human_review": {
@@ -146,7 +146,7 @@
             "ready": true,
             "version": "1.0",
             "detail_code": null,
-            "checked_at": "2026-09-07T17:09:53.788295Z",
+            "checked_at": "2026-09-08T14:57:23.145564Z",
             "latency_ms": null
           }
         }
@@ -156,8 +156,8 @@
       "endpoint": "http://127.0.0.1:8080/api/v1/health",
       "status_code": 200,
       "health": {
-        "request_id": "REQ_c38848d76c7dc5673673c57cb65d4f70",
-        "trace_id": "TRACE_e6097eb4803339429378264fc563acab",
+        "request_id": "REQ_fef10e953c76538c7dd5edfa3e99c74a",
+        "trace_id": "TRACE_5835f8292f5ab9c0d2e5b8aa57386530",
         "data": {
           "status": "ok",
           "contract_version": "v0.1.0",
@@ -198,7 +198,7 @@
     },
     "mysql": {
       "version": "8.4.8",
-      "database": "smhai_gpi_closure_20260908_010905",
+      "database": "smhai_gpi_closure_20260908_225638",
       "alembic_head": "20260906_0002"
     },
     "opa": {
@@ -282,8 +282,8 @@
             "loaded": true,
             "sparse_output_requested": true,
             "sparse_output_observed": true,
-            "sparse_nonempty_rows_observed": 1,
-            "sparse_terms_observed": 5,
+            "sparse_nonempty_rows_observed": 14,
+            "sparse_terms_observed": 675,
             "load_error": null
           }
         },
@@ -374,8 +374,8 @@
             "ready": true,
             "version": "1.20.2",
             "detail_code": null,
-            "checked_at": "2026-09-07T17:14:10.268566Z",
-            "latency_ms": 51.27240001456812
+            "checked_at": "2026-09-08T15:00:58.156500Z",
+            "latency_ms": 84.38029999979335
           },
           "presidio": {
             "component": "presidio",
@@ -383,7 +383,7 @@
             "ready": true,
             "version": "2.2.364",
             "detail_code": null,
-            "checked_at": "2026-09-07T17:14:10.268566Z",
+            "checked_at": "2026-09-08T15:00:58.156500Z",
             "latency_ms": null
           },
           "nemo_guardrails": {
@@ -392,7 +392,7 @@
             "ready": true,
             "version": "0.24.0",
             "detail_code": null,
-            "checked_at": "2026-09-07T17:14:10.268566Z",
+            "checked_at": "2026-09-08T15:00:58.156500Z",
             "latency_ms": null
           },
           "qwen3guard": {
@@ -401,8 +401,8 @@
             "ready": true,
             "version": "fada3b2f655b89601929198343c94cd2f64d93cc",
             "detail_code": null,
-            "checked_at": "2026-09-07T17:14:10.271570Z",
-            "latency_ms": 4502.291899989359
+            "checked_at": "2026-09-08T15:00:58.160501Z",
+            "latency_ms": 4777.340600000571
           },
           "human_review": {
             "component": "human_review",
@@ -410,7 +410,7 @@
             "ready": true,
             "version": "1.0",
             "detail_code": null,
-            "checked_at": "2026-09-07T17:14:10.271570Z",
+            "checked_at": "2026-09-08T15:00:58.160501Z",
             "latency_ms": null
           }
         }
@@ -420,8 +420,8 @@
       "endpoint": "http://127.0.0.1:8080/api/v1/health",
       "status_code": 200,
       "health": {
-        "request_id": "REQ_9d2514251915b3afffd8069e60b337aa",
-        "trace_id": "TRACE_c96e2df29e042d5dd8227d5615cc0e41",
+        "request_id": "REQ_3929f4f8f6f50f3d2be7bd5bc3a9b04c",
+        "trace_id": "TRACE_b5245710a04a6fb6ffd469f56fd8cc22",
         "data": {
           "status": "ok",
           "contract_version": "v0.1.0",
@@ -462,7 +462,7 @@
     },
     "mysql": {
       "version": "8.4.8",
-      "database": "smhai_gpi_closure_20260908_010905",
+      "database": "smhai_gpi_closure_20260908_225638",
       "alembic_head": "20260906_0002"
     },
     "opa": {

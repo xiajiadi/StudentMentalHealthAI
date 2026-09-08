@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-09-07T17:12:50.104056Z",
+  "generated_at": "2026-09-08T14:59:49.053266Z",
   "flows": [
     {
       "fixture_id": "GPI_SAFETY_DOWN_01",
       "kind": "safety_down",
-      "assessment_id": "ASSESS_090e93467fc547efa66c99ea5e43a888",
+      "assessment_id": "ASSESS_bac26acf4dde46ddb0dd5aa1e8628a0e",
       "ollama_generation_log_before": 3,
       "response_status": 503,
       "fail_closed": true,
@@ -13,7 +13,7 @@
     {
       "fixture_id": "GPI_SAFETY_DOWN_02",
       "kind": "safety_down",
-      "assessment_id": "ASSESS_0eb482e34c1b4e74a064e4053c38ecb5",
+      "assessment_id": "ASSESS_d82792e43bff4740b80d135387ba4231",
       "ollama_generation_log_before": 3,
       "response_status": 503,
       "fail_closed": true,

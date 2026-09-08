@@ -1,22 +1,22 @@
 {
-  "generated_at": "2026-09-07T17:14:10.754037Z",
+  "generated_at": "2026-09-08T15:00:58.703395Z",
   "python": "3.12.13",
   "platform": "Windows-11-10.0.26200-SP0",
   "baseline_commit": "2972be77e537ef03033332039a6ed0eed8e451ef",
   "branch": "exp/gpu-product-integration-closure-v1",
-  "worktree": "D:\\Projects\\StudentMentalHealthAI-gpu-product-integration-closure",
+  "worktree": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat",
   "gpu_tool_root": "D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance",
   "dedicated_ollama_endpoint": "http://127.0.0.1:11435",
   "dedicated_cpu_fallback_endpoint": "http://127.0.0.1:11436",
   "mysql": {
-    "database": "smhai_gpi_closure_20260908_010905",
+    "database": "smhai_gpi_closure_20260908_225638",
     "port": "3307",
     "real_student_data": false
   },
   "nvidia_smi": {
-    "gpu": "NVIDIA GeForce RTX 3060, 12288, 12040, 0",
+    "gpu": "NVIDIA GeForce RTX 3060, 12288, 11890, 0",
     "gpu_exit_code": "0",
-    "compute_apps": "25564, [Insufficient Permissions], [N/A]\n23644, C:\\Users\\15848\\AppData\\Local\\Programs\\Ollama\\ollama.exe, [N/A]\n66500, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n30524, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n70376, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]",
+    "compute_apps": "16032, [Insufficient Permissions], [N/A]\n34488, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n29288, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n35192, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n12672, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n8316, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]",
     "compute_apps_exit_code": "0"
   },
   "secrets_logged": false

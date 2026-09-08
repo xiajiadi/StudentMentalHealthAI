@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-09-07T17:14:08.104906Z",
+  "generated_at": "2026-09-08T15:00:56.258105Z",
   "flows": [
     {
       "fixture_id": "GPI_FALLBACK_01",
       "kind": "fallback",
-      "assessment_id": "ASSESS_17afef7abbb54c24b259796eb79f868c",
+      "assessment_id": "ASSESS_3ea9179c2368457891a278c78f368c13",
       "cat": {
         "provider_version": "adaptivetesting-1.2.1",
         "item_bank_version": "demo.v1",
@@ -12,9 +12,9 @@
         "administered_count": 8
       },
       "cat_response_count": 8,
-      "request_id": "REQ_52fc7041c6a6aceeb61d06c91d542154",
-      "trace_id": "TRACE_6959ca2890fb6f770fcc23c26dd1d2bb",
-      "report_id": "REPORT_b50714a1f22247b0b903b0d2ae1e0ef6",
+      "request_id": "REQ_795c57f00159e984de91c094684faf37",
+      "trace_id": "TRACE_387358e56450264356fc306bb39cbe6e",
+      "report_id": "REPORT_5cbe106f5cd04598a2f95b114d0e9a83",
       "status": "generated",
       "response_status": 202,
       "safety_action": "PROCEED_WITH_BOUNDARY",
@@ -22,8 +22,8 @@
       "content_present": true,
       "review_reference": null,
       "crisis_response_present": false,
-      "retrieval_id": "RETR_5b15de1cce8d5d8d5fd6",
-      "generation_id": "GEN_a392f13dc1af4fafbbe57d7606a9430e",
+      "retrieval_id": "RETR_0721299ecce722bb2a52",
+      "generation_id": "GEN_dd7f611ea8a84de4a71570180e13b3a0",
       "generation_status": "EXECUTED",
       "candidate_source": "MODEL_EXECUTED",
       "model_id": "MODEL_local_cpu_fallback",
@@ -117,7 +117,7 @@
     {
       "fixture_id": "GPI_FALLBACK_02",
       "kind": "fallback",
-      "assessment_id": "ASSESS_62756e1cc758487bb99ee91e92252127",
+      "assessment_id": "ASSESS_70085d70483c4fa4a886ea909ec4a778",
       "cat": {
         "provider_version": "adaptivetesting-1.2.1",
         "item_bank_version": "demo.v1",
@@ -125,9 +125,9 @@
         "administered_count": 8
       },
       "cat_response_count": 8,
-      "request_id": "REQ_3ff92540edb74c5ee58eb089ef3cd533",
-      "trace_id": "TRACE_91d0de4ee635da9473a66b3d8ed048d7",
-      "report_id": "REPORT_d983e0ae6b4945a0970c677472c1326b",
+      "request_id": "REQ_460a6dc072bc19768a6bc0e9a23643e2",
+      "trace_id": "TRACE_21257961f135a6fe23b06df7cc872943",
+      "report_id": "REPORT_54d9bd2affcd41d08c552ddcef14bf14",
       "status": "generated",
       "response_status": 202,
       "safety_action": "PROCEED_WITH_BOUNDARY",
@@ -135,8 +135,8 @@
       "content_present": true,
       "review_reference": null,
       "crisis_response_present": false,
-      "retrieval_id": "RETR_31fd5379be4766febcfa",
-      "generation_id": "GEN_d6906b6109a14db9ac27911a6f170fb1",
+      "retrieval_id": "RETR_7411c5368d58728f229f",
+      "generation_id": "GEN_d6670f85847444efbc1c979dbbeb4296",
       "generation_status": "EXECUTED",
       "candidate_source": "MODEL_EXECUTED",
       "model_id": "MODEL_local_cpu_fallback",
@@ -230,7 +230,7 @@
     {
       "fixture_id": "GPI_FALLBACK_03",
       "kind": "fallback",
-      "assessment_id": "ASSESS_7f40a6f9d18646799877fc2806635bb2",
+      "assessment_id": "ASSESS_f7abbea5b18b467e90bdd81c2717098c",
       "cat": {
         "provider_version": "adaptivetesting-1.2.1",
         "item_bank_version": "demo.v1",
@@ -238,9 +238,9 @@
         "administered_count": 8
       },
       "cat_response_count": 8,
-      "request_id": "REQ_8dac5613da337fe1b921e15b3cec8e66",
-      "trace_id": "TRACE_3f68a1919e1824ebdc7e634716aa87cc",
-      "report_id": "REPORT_9f698649cbe94740b970870fdbae4643",
+      "request_id": "REQ_6456df7b8a1143cb2dca4437a48a0149",
+      "trace_id": "TRACE_b91ff315da0725c5cad52cff78848712",
+      "report_id": "REPORT_f72f3fffc9bb4f32a0ba8a83dfd7caeb",
       "status": "generated",
       "response_status": 202,
       "safety_action": "PROCEED_WITH_BOUNDARY",
@@ -248,8 +248,8 @@
       "content_present": true,
       "review_reference": null,
       "crisis_response_present": false,
-      "retrieval_id": "RETR_e7a58224f20f96ad0f70",
-      "generation_id": "GEN_32727af29fa34e8793ec3f5c6c269999",
+      "retrieval_id": "RETR_70d5acb6e982717573c3",
+      "generation_id": "GEN_bb04acb09d6b450fbd7d383221fa37a9",
       "generation_status": "EXECUTED",
       "candidate_source": "MODEL_EXECUTED",
       "model_id": "MODEL_local_cpu_fallback",
@@ -343,9 +343,9 @@
   ],
   "runtime_events": [
     {
-      "timestamp": "2026-09-07T17:13:13.458521Z",
-      "request_id": "REQ_52fc7041c6a6aceeb61d06c91d542154",
-      "trace_id": "TRACE_6959ca2890fb6f770fcc23c26dd1d2bb",
+      "timestamp": "2026-09-08T15:00:09.743239Z",
+      "request_id": "REQ_795c57f00159e984de91c094684faf37",
+      "trace_id": "TRACE_387358e56450264356fc306bb39cbe6e",
       "status": "success",
       "provider_id": "ollama_cpu",
       "logical_model_id": "qwen2.5-1.5b-engineering-fallback",
@@ -398,9 +398,9 @@
       ]
     },
     {
-      "timestamp": "2026-09-07T17:13:41.445037Z",
-      "request_id": "REQ_3ff92540edb74c5ee58eb089ef3cd533",
-      "trace_id": "TRACE_91d0de4ee635da9473a66b3d8ed048d7",
+      "timestamp": "2026-09-08T15:00:30.803315Z",
+      "request_id": "REQ_460a6dc072bc19768a6bc0e9a23643e2",
+      "trace_id": "TRACE_21257961f135a6fe23b06df7cc872943",
       "status": "success",
       "provider_id": "ollama_cpu",
       "logical_model_id": "qwen2.5-1.5b-engineering-fallback",
@@ -453,9 +453,9 @@
       ]
     },
     {
-      "timestamp": "2026-09-07T17:14:02.946316Z",
-      "request_id": "REQ_8dac5613da337fe1b921e15b3cec8e66",
-      "trace_id": "TRACE_3f68a1919e1824ebdc7e634716aa87cc",
+      "timestamp": "2026-09-08T15:00:50.824100Z",
+      "request_id": "REQ_6456df7b8a1143cb2dca4437a48a0149",
+      "trace_id": "TRACE_b91ff315da0725c5cad52cff78848712",
       "status": "success",
       "provider_id": "ollama_cpu",
       "logical_model_id": "qwen2.5-1.5b-engineering-fallback",
@@ -509,11 +509,11 @@
     }
   ],
   "cpu_snapshot": {
-    "timestamp": "2026-09-07T17:14:07.814778Z",
+    "timestamp": "2026-09-08T15:00:55.920462Z",
     "nvidia_smi": {
-      "gpu": "NVIDIA GeForce RTX 3060, 12288, 12040, 0",
+      "gpu": "NVIDIA GeForce RTX 3060, 12288, 11890, 0",
       "gpu_exit_code": "0",
-      "compute_apps": "25564, [Insufficient Permissions], [N/A]\n23644, C:\\Users\\15848\\AppData\\Local\\Programs\\Ollama\\ollama.exe, [N/A]\n66500, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n30524, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n70376, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]",
+      "compute_apps": "16032, [Insufficient Permissions], [N/A]\n34488, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n29288, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n35192, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n12672, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n8316, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]",
       "compute_apps_exit_code": "0"
     },
     "gpu_ollama_ps": {
@@ -521,7 +521,7 @@
         {
           "name": "qwen2.5:7b-instruct-q4_K_M",
           "model": "qwen2.5:7b-instruct-q4_K_M",
-          "size": 4987132312,
+          "size": 5378513303,
           "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
           "details": {
             "parent_model": "",
@@ -533,8 +533,8 @@
             "parameter_size": "7.6B",
             "quantization_level": "Q4_K_M"
           },
-          "expires_at": "2026-09-08T01:17:13.8437698+08:00",
-          "size_vram": 4987132312,
+          "expires_at": "2026-09-08T23:04:04.8885555+08:00",
+          "size_vram": 1780303789,
           "context_length": 8192
         }
       ]
@@ -556,18 +556,18 @@
             "parameter_size": "1.5B",
             "quantization_level": "Q4_K_M"
           },
-          "expires_at": "2026-09-08T01:19:02.9440906+08:00",
+          "expires_at": "2026-09-08T23:05:50.8219713+08:00",
           "size_vram": 0,
           "context_length": 8192
         }
       ]
     },
-    "gpu_classification": "GPU_FULL",
+    "gpu_classification": "GPU_PARTIAL",
     "target_model": {
       "name": "qwen2.5:7b-instruct-q4_K_M",
       "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
-      "size": 4987132312,
-      "size_vram": 4987132312,
+      "size": 5378513303,
+      "size_vram": 1780303789,
       "context_length": 8192
     },
     "fallback_device_observed": "CPU",

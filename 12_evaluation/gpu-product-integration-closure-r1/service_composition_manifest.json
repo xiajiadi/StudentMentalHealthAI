@@ -39,7 +39,7 @@
   },
   "mysql": {
     "real_or_fake": "REAL",
-    "database": "smhai_gpi_closure_20260908_010905",
+    "database": "smhai_gpi_closure_20260908_225638",
     "isolated": true
   },
   "contract_fake_count": 0,

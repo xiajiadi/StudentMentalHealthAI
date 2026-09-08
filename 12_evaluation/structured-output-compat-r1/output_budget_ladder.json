@@ -1,0 +1,196 @@
+{
+  "round": "STRUCTURED_OUTPUT_PRODUCT_COMPATIBILITY_CLOSURE_R1_OUTPUT_BUDGET_LADDER",
+  "synthetic_only": true,
+  "model": "qwen2.5:7b-instruct-q4_K_M",
+  "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+  "context": 8192,
+  "seed": 20260906,
+  "temperature": 0.1,
+  "top_p": 0.9,
+  "schema_sha256": "ebb901d8b57074e5fc7b0b8630385c0579ed66206111a9928b76dc6f3356f3b9",
+  "exact_prompt_sha256": "f3384226b70e34df5bb392f06789de649e9aa2674d24f121c3ea08b0465425e5",
+  "budgets": [
+    {
+      "num_predict": 384,
+      "http_status": 200,
+      "request_sha256": "f4c38dbf94c7c044f7ff9ead194209a7d5bdf5530b55cdc317c8d24a6fe03f1f",
+      "response_body_sha256": "7fdc78418a2d863c5d8d1eef53a4d0da6658de28effd090b5e633151857e1fe4",
+      "response_sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85",
+      "response_length": 700,
+      "prompt_eval_count": 177,
+      "eval_count": 384,
+      "done": true,
+      "done_reason": "length",
+      "parse": {
+        "response_length": 700,
+        "response_sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85",
+        "response_prefix": "{\n  \"summary\": \"请根据具体情况调整学习策略，合理安排时间，保持积极心态，遇到困难及时寻求帮助。\",\n  \"observations\": [\n    \"CHUNK_67b56abe21fe9860a26d\",\n    \"CHUNK_8f85f2c0472e21acd2fa\",\n    \"CHUNK_c37",
+        "json_parse": "FAIL",
+        "json_line": 26,
+        "json_column": 9,
+        "json_error": "Unterminated string starting at",
+        "schema_validation": "NOT_RUN"
+      },
+      "local_artifacts": [
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\budget_384_request.json",
+          "length": 1124,
+          "sha256": "f74caf161ee76a1f2d2ae403a5dfd62aeca663b463c450d7697387557099c55f"
+        },
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\budget_384_response.json",
+          "length": 3386,
+          "sha256": "7fdc78418a2d863c5d8d1eef53a4d0da6658de28effd090b5e633151857e1fe4"
+        }
+      ]
+    },
+    {
+      "num_predict": 512,
+      "http_status": 200,
+      "request_sha256": "18d810193e189acf7c96bda3bb2267f4407a80d3edada1f35a25794aecd539fa",
+      "response_body_sha256": "c0e298c2d582cfca04527bc0b181dbab6eae56949c7144a50c9bd37be998ab31",
+      "response_sha256": "ac10c21da23a3007ff2ec4f345d76ba7daeaaf0b90113e80a9e2c2927054d482",
+      "response_length": 949,
+      "prompt_eval_count": 177,
+      "eval_count": 512,
+      "done": true,
+      "done_reason": "length",
+      "parse": {
+        "response_length": 949,
+        "response_sha256": "ac10c21da23a3007ff2ec4f345d76ba7daeaaf0b90113e80a9e2c2927054d482",
+        "response_prefix": "{\n  \"summary\": \"请根据具体情况调整学习策略，合理安排时间，保持积极心态，遇到困难及时寻求帮助。\",\n  \"observations\": [\n    \"CHUNK_67b56abe21fe9860a26d\",\n    \"CHUNK_8f85f2c0472e21acd2fa\",\n    \"CHUNK_c37",
+        "json_parse": "FAIL",
+        "json_line": 36,
+        "json_column": 9,
+        "json_error": "Unterminated string starting at",
+        "schema_validation": "NOT_RUN"
+      },
+      "local_artifacts": [
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\budget_512_request.json",
+          "length": 1124,
+          "sha256": "87e1e26ff1f5ec94492017bda3940bb0b3efb50c4aaf48036f0cf2a59555a432"
+        },
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\budget_512_response.json",
+          "length": 4150,
+          "sha256": "c0e298c2d582cfca04527bc0b181dbab6eae56949c7144a50c9bd37be998ab31"
+        }
+      ]
+    },
+    {
+      "num_predict": 640,
+      "http_status": 200,
+      "request_sha256": "b5a0456e9804f7ae47a4d9d111ac84cca21639d24efbd4bfa0b94067b4a8b171",
+      "response_body_sha256": "7776a11b1c0430bc8838b3d60c7f1e2e590f4a6075c3b5b1ce3ebfc6c7b8572f",
+      "response_sha256": "a42c9c2c82037b6e6e91c8d7b2ad00448bff3e8c883236e8ea214cb908f31281",
+      "response_length": 1186,
+      "prompt_eval_count": 177,
+      "eval_count": 640,
+      "done": true,
+      "done_reason": "length",
+      "parse": {
+        "response_length": 1186,
+        "response_sha256": "a42c9c2c82037b6e6e91c8d7b2ad00448bff3e8c883236e8ea214cb908f31281",
+        "response_prefix": "{\n  \"summary\": \"请根据具体情况调整学习策略，合理安排时间，保持积极心态，遇到困难及时寻求帮助。\",\n  \"observations\": [\n    \"CHUNK_67b56abe21fe9860a26d\",\n    \"CHUNK_8f85f2c0472e21acd2fa\",\n    \"CHUNK_c37",
+        "json_parse": "FAIL",
+        "json_line": 45,
+        "json_column": 9,
+        "json_error": "Unterminated string starting at",
+        "schema_validation": "NOT_RUN"
+      },
+      "local_artifacts": [
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\budget_640_request.json",
+          "length": 1124,
+          "sha256": "9bd7655dde7801f47ecbb502d6a466b7105f331b4105f0127e622fe738cf9afe"
+        },
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\budget_640_response.json",
+          "length": 4907,
+          "sha256": "7776a11b1c0430bc8838b3d60c7f1e2e590f4a6075c3b5b1ce3ebfc6c7b8572f"
+        }
+      ]
+    },
+    {
+      "num_predict": 768,
+      "http_status": 200,
+      "request_sha256": "4bd502aa95fec86cfba2ccdc0f748b5c500e0e70abe0f04bf4ed410d33cc9225",
+      "response_body_sha256": "a4cc589f43760e53ae130437fdd2ea1de2202360f571eb633235f352dce1d55e",
+      "response_sha256": "2767e823298ed955a9e867bd500009a5c3ceefc3038f475b53a33b8bdf3c9b3b",
+      "response_length": 1370,
+      "prompt_eval_count": 177,
+      "eval_count": 742,
+      "done": true,
+      "done_reason": "stop",
+      "parse": {
+        "response_length": 1370,
+        "response_sha256": "2767e823298ed955a9e867bd500009a5c3ceefc3038f475b53a33b8bdf3c9b3b",
+        "response_prefix": "{\n  \"summary\": \"请根据具体情况调整学习策略，合理安排时间，保持积极心态，遇到困难及时寻求帮助。\",\n  \"observations\": [\n    \"CHUNK_67b56abe21fe9860a26d\",\n    \"CHUNK_8f85f2c0472e21acd2fa\",\n    \"CHUNK_c37",
+        "json_parse": "PASS",
+        "json_type": "dict",
+        "json_keys": [
+          "disclaimer",
+          "observations",
+          "suggestions",
+          "summary"
+        ],
+        "schema_validation": "PASS"
+      },
+      "local_artifacts": [
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\budget_768_request.json",
+          "length": 1124,
+          "sha256": "8325dec379cea09cabfd250a15c3f274a0bc8dd26b2dee263c41e75524a60c4f"
+        },
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\budget_768_response.json",
+          "length": 5549,
+          "sha256": "a4cc589f43760e53ae130437fdd2ea1de2202360f571eb633235f352dce1d55e"
+        }
+      ]
+    },
+    {
+      "num_predict": 1024,
+      "http_status": 200,
+      "request_sha256": "8189cefb20aa54c5ba5004aa57449b800b99b308251a6ee3822393b1173e558e",
+      "response_body_sha256": "ccdb93d78ca0a53594a72882b05b65a88c86990cb352d8cb28079a05fcf500a6",
+      "response_sha256": "2767e823298ed955a9e867bd500009a5c3ceefc3038f475b53a33b8bdf3c9b3b",
+      "response_length": 1370,
+      "prompt_eval_count": 177,
+      "eval_count": 742,
+      "done": true,
+      "done_reason": "stop",
+      "parse": {
+        "response_length": 1370,
+        "response_sha256": "2767e823298ed955a9e867bd500009a5c3ceefc3038f475b53a33b8bdf3c9b3b",
+        "response_prefix": "{\n  \"summary\": \"请根据具体情况调整学习策略，合理安排时间，保持积极心态，遇到困难及时寻求帮助。\",\n  \"observations\": [\n    \"CHUNK_67b56abe21fe9860a26d\",\n    \"CHUNK_8f85f2c0472e21acd2fa\",\n    \"CHUNK_c37",
+        "json_parse": "PASS",
+        "json_type": "dict",
+        "json_keys": [
+          "disclaimer",
+          "observations",
+          "suggestions",
+          "summary"
+        ],
+        "schema_validation": "PASS"
+      },
+      "local_artifacts": [
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\budget_1024_request.json",
+          "length": 1125,
+          "sha256": "66b5dca05e66574de3b3943158df5cb126978327dc449e9ae22bd9f0a6ce323e"
+        },
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\budget_1024_response.json",
+          "length": 5549,
+          "sha256": "ccdb93d78ca0a53594a72882b05b65a88c86990cb352d8cb28079a05fcf500a6"
+        }
+      ]
+    }
+  ],
+  "process": {
+    "ollama_process_owned_by_diagnostic": true,
+    "terminated_by_diagnostic": true
+  }
+}

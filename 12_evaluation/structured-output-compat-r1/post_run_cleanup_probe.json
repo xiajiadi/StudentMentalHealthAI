@@ -1,0 +1,23 @@
+{
+  "round": "STRUCTURED_OUTPUT_PRODUCT_COMPATIBILITY_CLOSURE_R1",
+  "verified_date": "2026-09-08",
+  "target_ports": {
+    "3307": "FREE",
+    "11435": "FREE",
+    "11436": "FREE",
+    "11535": "FREE",
+    "8080": "FREE",
+    "8160": "FREE",
+    "8170": "FREE",
+    "8180": "FREE",
+    "8190": "FREE",
+    "8181": "FREE",
+    "8260": "FREE",
+    "8270": "FREE",
+    "8280": "FREE",
+    "8290": "FREE"
+  },
+  "all_target_ports_free": true,
+  "harness_cleanup_exit_code": 1,
+  "harness_cleanup_note": "The harness attempted to taskkill one PID that had already exited; a fresh explicit post-run probe found all target ports free."
+}
