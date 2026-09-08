@@ -1,0 +1,2 @@
+{"case": "exact", "http_status": 200, "json_column": 9, "json_line": 26, "json_parse": "FAIL", "response_length": 700, "response_sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85"}
+{"case": "control", "http_status": 200, "json_keys": ["disclaimer", "observations", "suggestions", "summary"], "json_parse": "PASS", "json_type": "dict", "response_length": 533, "response_sha256": "f23a9d203b160b7a5944b23f79573a7e434b05838cfcfcb4c7d9b24c70ba57aa"}

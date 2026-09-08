@@ -1,0 +1,76 @@
+{
+  "checked_at": "2026-09-07T17:19:41.9216866Z",
+  "ports": [
+    {
+      "port": 3307,
+      "status": "FREE",
+      "pids": []
+    },
+    {
+      "port": 11435,
+      "status": "FREE",
+      "pids": []
+    },
+    {
+      "port": 11436,
+      "status": "FREE",
+      "pids": []
+    },
+    {
+      "port": 11535,
+      "status": "FREE",
+      "pids": []
+    },
+    {
+      "port": 8080,
+      "status": "FREE",
+      "pids": []
+    },
+    {
+      "port": 8160,
+      "status": "FREE",
+      "pids": []
+    },
+    {
+      "port": 8170,
+      "status": "FREE",
+      "pids": []
+    },
+    {
+      "port": 8180,
+      "status": "FREE",
+      "pids": []
+    },
+    {
+      "port": 8190,
+      "status": "FREE",
+      "pids": []
+    },
+    {
+      "port": 8181,
+      "status": "FREE",
+      "pids": []
+    },
+    {
+      "port": 8260,
+      "status": "FREE",
+      "pids": []
+    },
+    {
+      "port": 8270,
+      "status": "FREE",
+      "pids": []
+    },
+    {
+      "port": 8280,
+      "status": "FREE",
+      "pids": []
+    },
+    {
+      "port": 8290,
+      "status": "FREE",
+      "pids": []
+    }
+  ],
+  "all_free": true
+}

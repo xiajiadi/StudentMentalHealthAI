@@ -1,0 +1,67 @@
+{
+  "status": "REUSED_ACCEPTED_PUBLISHED_ARTIFACT",
+  "source": "read-only accepted Knowledge Round 1 publication in the preserved main workspace",
+  "published_artifact_path": "D:\\Projects\\StudentMentalHealthAI\\04_knowledge-pipeline\\data\\published\\round1\\embedding_ready.jsonl",
+  "published_artifact_sha256": "2d5736ae741d675ca5856b8004665ea3043aeccea34e2b007498ff04c2b501a2",
+  "reconstruction_compiler_command": "D:\\Projects\\StudentMentalHealthAI\\04_knowledge-pipeline\\.venv\\Scripts\\python.exe 04_knowledge-pipeline\\scripts\\run_round1.py with PYTHONPATH=target\\04_knowledge-pipeline\\src",
+  "compiler_command": "not used: exact accepted publication was available",
+  "compiler_version": "0.1.0",
+  "config_hash": "sha256:49d413bd314bcf789d48b36313220ba3e46c29e3d22b69fbd477cba3256f7292",
+  "target_fixture_hashes": [
+    {
+      "path": "04_knowledge-pipeline\\fixtures\\intervention\\intervention.md",
+      "sha256": "3246ff7f7d70e5d8f9da516abddcd0d0f76ede300d14f07b23100a62997076ac",
+      "bytes": 1007
+    },
+    {
+      "path": "04_knowledge-pipeline\\fixtures\\invalid\\garbled.md",
+      "sha256": "47841d81e3c65380baa2d63667f43454195749312fee8a21a8c9b48f8cab26ac",
+      "bytes": 334
+    },
+    {
+      "path": "04_knowledge-pipeline\\fixtures\\invalid\\missing_source.md",
+      "sha256": "17563685369e7fbf2b0f5490c394ce85d36c854de5e7acf69b786f4cb857efb7",
+      "bytes": 245
+    },
+    {
+      "path": "04_knowledge-pipeline\\fixtures\\invalid\\policy_copy.md",
+      "sha256": "030dbbad3cf983e26b3f5fe5efdb3f656b8b52d4e88df1206aa299ff68e0e21b",
+      "bytes": 1027
+    },
+    {
+      "path": "04_knowledge-pipeline\\fixtures\\invalid\\unsupported.txt",
+      "sha256": "8c4dce42c46c0fad7681a38a2d642f6da27c7a3d466e97153330e4a8fa878a3c",
+      "bytes": 108
+    },
+    {
+      "path": "04_knowledge-pipeline\\fixtures\\policy\\docling_sample.docx",
+      "sha256": "14538cc44ad102f47af3380d6b1f4d5929051af38f4b95d3027fcd7ba6e37fbd",
+      "bytes": 35718
+    },
+    {
+      "path": "04_knowledge-pipeline\\fixtures\\policy\\docling_sample.pdf",
+      "sha256": "d15c36913e0f712eb6350b74ba38b6a5c0e857d39ecd8f74f71fd6a7872dffe0",
+      "bytes": 17562
+    },
+    {
+      "path": "04_knowledge-pipeline\\fixtures\\policy\\policy.md",
+      "sha256": "030dbbad3cf983e26b3f5fe5efdb3f656b8b52d4e88df1206aa299ff68e0e21b",
+      "bytes": 1027
+    },
+    {
+      "path": "04_knowledge-pipeline\\fixtures\\theory\\theory.md",
+      "sha256": "5ed2a7b2bc172f744fb88767c06ad32edb445252f3842450ad5ca019191f7648",
+      "bytes": 990
+    }
+  ],
+  "document_count": 7,
+  "chunk_count": 15,
+  "embedding_ready_count": 14,
+  "output_sha256": "2d5736ae741d675ca5856b8004665ea3043aeccea34e2b007498ff04c2b501a2",
+  "main_ignored_output_sha256": "2d5736ae741d675ca5856b8004665ea3043aeccea34e2b007498ff04c2b501a2",
+  "rag_service_corpus_version": "sha256:4553317e36b1064880df01643a3171f7937e0ec420ead380c5d6702f2396aad2",
+  "historical_report_corpus_version": "sha256:4553317e36b1064880df01643a3171f7937e0ec420ead380c5d6702f2396aad2",
+  "accepted_synthetic_round1": true,
+  "d2_candidate_used": false,
+  "d2_worktree_used": false
+}

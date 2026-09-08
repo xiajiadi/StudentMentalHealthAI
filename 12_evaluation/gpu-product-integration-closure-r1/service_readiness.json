@@ -1,0 +1,507 @@
+{
+  "generated_at": "2026-09-07T17:14:10.751521Z",
+  "initial": {
+    "cat": {
+      "endpoint": "http://127.0.0.1:8180/health/ready",
+      "status_code": 200,
+      "health": {
+        "status": "READY",
+        "service": "cat",
+        "provider": "adaptivetesting",
+        "provider_version": "adaptivetesting-1.2.1",
+        "item_bank_id": "ITEMBANK_demo_cat",
+        "item_bank_version": "demo.v1",
+        "config_version": "demo.cat.v1",
+        "session_count": 0,
+        "synthetic_fixture_only": true
+      }
+    },
+    "rag": {
+      "endpoint": "http://127.0.0.1:8170/health/ready",
+      "status_code": 200,
+      "health": {
+        "status": "READY",
+        "service": "rag",
+        "retrieval_mode": "hybrid",
+        "rerank_enabled": false,
+        "corpus_version": "sha256:4553317e36b1064880df01643a3171f7937e0ec420ead380c5d6702f2396aad2",
+        "eligible_chunk_count": 14,
+        "provider": {
+          "embedding": {
+            "status": "ok",
+            "provider": "FlagEmbedding",
+            "package_version": "1.4.2",
+            "model_id": "MODEL_bge_m3",
+            "model_name": "BAAI/bge-m3",
+            "model_version": "1.4.2",
+            "model_revision": "5617a9f61b028005a4858fdac845db406aefb181",
+            "dimension": 1024,
+            "device": "cpu",
+            "precision": "fp32",
+            "cache_path": "D:\\Dev\\caches\\huggingface",
+            "loaded": true,
+            "sparse_output_requested": true,
+            "sparse_output_observed": true,
+            "sparse_nonempty_rows_observed": 1,
+            "sparse_terms_observed": 5,
+            "load_error": null
+          }
+        },
+        "error": null,
+        "synthetic_fixture_only": true
+      }
+    },
+    "runtime": {
+      "endpoint": "http://127.0.0.1:8160/health/ready",
+      "status_code": 200,
+      "health": {
+        "status": "READY",
+        "service": "llm_runtime",
+        "health": {
+          "status": "READY",
+          "state": "READY",
+          "liveness": "pass",
+          "readiness": "pass",
+          "runtime_version": "0.1.0-gpi-r1",
+          "cloud_fallback": false,
+          "providers": {
+            "ollama_gpu": {
+              "provider": "ollama_gpu",
+              "liveness": "pass",
+              "readiness": "pass",
+              "version": "0.33.3",
+              "endpoint": "http://127.0.0.1:11535",
+              "error_code": null,
+              "message": null
+            }
+          },
+          "models": {
+            "qwen2.5-0.5b-engineering": {
+              "logical_model_id": "qwen2.5-0.5b-engineering",
+              "provider_model_id": "qwen2.5:7b-instruct-q4_K_M",
+              "availability": "available",
+              "inference_readiness": "ready",
+              "loaded": false,
+              "error_code": null,
+              "message": null
+            }
+          },
+          "processes": {
+            "ollama_gpu": {
+              "mode": "EXTERNAL",
+              "state": "EXTERNAL",
+              "endpoint": "http://127.0.0.1:11535",
+              "owned": false
+            }
+          },
+          "last_error": null
+        }
+      }
+    },
+    "safety": {
+      "endpoint": "http://127.0.0.1:8190/health/ready",
+      "status_code": 200,
+      "health": {
+        "status": "READY",
+        "components": {
+          "opa": {
+            "component": "opa",
+            "available": true,
+            "ready": true,
+            "version": "1.20.2",
+            "detail_code": null,
+            "checked_at": "2026-09-07T17:09:53.785306Z",
+            "latency_ms": 47.19539999496192
+          },
+          "presidio": {
+            "component": "presidio",
+            "available": true,
+            "ready": true,
+            "version": "2.2.364",
+            "detail_code": null,
+            "checked_at": "2026-09-07T17:09:53.785306Z",
+            "latency_ms": null
+          },
+          "nemo_guardrails": {
+            "component": "nemo_guardrails",
+            "available": true,
+            "ready": true,
+            "version": "0.24.0",
+            "detail_code": null,
+            "checked_at": "2026-09-07T17:09:53.785306Z",
+            "latency_ms": null
+          },
+          "qwen3guard": {
+            "component": "qwen3guard",
+            "available": true,
+            "ready": true,
+            "version": "fada3b2f655b89601929198343c94cd2f64d93cc",
+            "detail_code": null,
+            "checked_at": "2026-09-07T17:09:53.788295Z",
+            "latency_ms": null
+          },
+          "human_review": {
+            "component": "human_review",
+            "available": true,
+            "ready": true,
+            "version": "1.0",
+            "detail_code": null,
+            "checked_at": "2026-09-07T17:09:53.788295Z",
+            "latency_ms": null
+          }
+        }
+      }
+    },
+    "backend": {
+      "endpoint": "http://127.0.0.1:8080/api/v1/health",
+      "status_code": 200,
+      "health": {
+        "request_id": "REQ_c38848d76c7dc5673673c57cb65d4f70",
+        "trace_id": "TRACE_e6097eb4803339429378264fc563acab",
+        "data": {
+          "status": "ok",
+          "contract_version": "v0.1.0",
+          "dependencies": {
+            "cat": {
+              "status": "READY",
+              "integration": "REAL_HTTP"
+            },
+            "rag": {
+              "status": "READY",
+              "integration": "REAL_HTTP"
+            },
+            "llm_runtime": {
+              "status": "READY",
+              "integration": "REAL_HTTP"
+            },
+            "safety": {
+              "status": "READY",
+              "integration": "REAL_HTTP"
+            }
+          }
+        }
+      }
+    },
+    "ollama": {
+      "endpoint": "http://127.0.0.1:11435",
+      "version": {
+        "version": "0.33.3"
+      },
+      "tags": [
+        {
+          "name": "qwen2.5:7b-instruct-q4_K_M",
+          "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+          "size": 4683087332,
+          "quantization": "Q4_K_M"
+        }
+      ]
+    },
+    "mysql": {
+      "version": "8.4.8",
+      "database": "smhai_gpi_closure_20260908_010905",
+      "alembic_head": "20260906_0002"
+    },
+    "opa": {
+      "endpoint": "http://127.0.0.1:8181",
+      "health_status_code": 200,
+      "decision_status_code": 200,
+      "decision_action": "PROCEED"
+    },
+    "safety_components": {
+      "opa": {
+        "ready": true,
+        "available": true,
+        "version": "1.20.2",
+        "detail_code": null
+      },
+      "presidio": {
+        "ready": true,
+        "available": true,
+        "version": "2.2.364",
+        "detail_code": null
+      },
+      "nemo_guardrails": {
+        "ready": true,
+        "available": true,
+        "version": "0.24.0",
+        "detail_code": null
+      },
+      "qwen3guard": {
+        "ready": true,
+        "available": true,
+        "version": "fada3b2f655b89601929198343c94cd2f64d93cc",
+        "detail_code": null
+      },
+      "human_review": {
+        "ready": true,
+        "available": true,
+        "version": "1.0",
+        "detail_code": null
+      }
+    }
+  },
+  "final": {
+    "cat": {
+      "endpoint": "http://127.0.0.1:8180/health/ready",
+      "status_code": 200,
+      "health": {
+        "status": "READY",
+        "service": "cat",
+        "provider": "adaptivetesting",
+        "provider_version": "adaptivetesting-1.2.1",
+        "item_bank_id": "ITEMBANK_demo_cat",
+        "item_bank_version": "demo.v1",
+        "config_version": "demo.cat.v1",
+        "session_count": 10,
+        "synthetic_fixture_only": true
+      }
+    },
+    "rag": {
+      "endpoint": "http://127.0.0.1:8170/health/ready",
+      "status_code": 200,
+      "health": {
+        "status": "READY",
+        "service": "rag",
+        "retrieval_mode": "hybrid",
+        "rerank_enabled": false,
+        "corpus_version": "sha256:4553317e36b1064880df01643a3171f7937e0ec420ead380c5d6702f2396aad2",
+        "eligible_chunk_count": 14,
+        "provider": {
+          "embedding": {
+            "status": "ok",
+            "provider": "FlagEmbedding",
+            "package_version": "1.4.2",
+            "model_id": "MODEL_bge_m3",
+            "model_name": "BAAI/bge-m3",
+            "model_version": "1.4.2",
+            "model_revision": "5617a9f61b028005a4858fdac845db406aefb181",
+            "dimension": 1024,
+            "device": "cpu",
+            "precision": "fp32",
+            "cache_path": "D:\\Dev\\caches\\huggingface",
+            "loaded": true,
+            "sparse_output_requested": true,
+            "sparse_output_observed": true,
+            "sparse_nonempty_rows_observed": 1,
+            "sparse_terms_observed": 5,
+            "load_error": null
+          }
+        },
+        "error": null,
+        "synthetic_fixture_only": true
+      }
+    },
+    "runtime": {
+      "endpoint": "http://127.0.0.1:8160/health/ready",
+      "status_code": 200,
+      "health": {
+        "status": "READY",
+        "service": "llm_runtime",
+        "health": {
+          "status": "READY",
+          "state": "READY",
+          "liveness": "pass",
+          "readiness": "pass",
+          "runtime_version": "0.1.0-gpi-r1",
+          "cloud_fallback": false,
+          "providers": {
+            "ollama_gpu": {
+              "provider": "ollama_gpu",
+              "liveness": "pass",
+              "readiness": "pass",
+              "version": "0.33.3",
+              "endpoint": "http://127.0.0.1:11535",
+              "error_code": null,
+              "message": null
+            },
+            "ollama_cpu": {
+              "provider": "ollama_cpu",
+              "liveness": "pass",
+              "readiness": "pass",
+              "version": "0.33.3",
+              "endpoint": "http://127.0.0.1:11436",
+              "error_code": null,
+              "message": null
+            }
+          },
+          "models": {
+            "qwen2.5-0.5b-engineering": {
+              "logical_model_id": "qwen2.5-0.5b-engineering",
+              "provider_model_id": "qwen2.5:7b-instruct-q4_K_M__acceptance_unavailable",
+              "availability": "unavailable",
+              "inference_readiness": "unavailable",
+              "loaded": false,
+              "error_code": "MODEL_NOT_FOUND",
+              "message": "Model is not present in the provider model list."
+            },
+            "qwen2.5-1.5b-engineering-fallback": {
+              "logical_model_id": "qwen2.5-1.5b-engineering-fallback",
+              "provider_model_id": "qwen2.5:1.5b",
+              "availability": "available",
+              "inference_readiness": "loaded",
+              "loaded": true,
+              "error_code": null,
+              "message": null
+            }
+          },
+          "processes": {
+            "ollama_gpu": {
+              "mode": "EXTERNAL",
+              "state": "EXTERNAL",
+              "endpoint": "http://127.0.0.1:11535",
+              "owned": false
+            },
+            "ollama_cpu": {
+              "mode": "EXTERNAL",
+              "state": "EXTERNAL",
+              "endpoint": "http://127.0.0.1:11436",
+              "owned": false
+            }
+          },
+          "last_error": null
+        }
+      }
+    },
+    "safety": {
+      "endpoint": "http://127.0.0.1:8190/health/ready",
+      "status_code": 200,
+      "health": {
+        "status": "READY",
+        "components": {
+          "opa": {
+            "component": "opa",
+            "available": true,
+            "ready": true,
+            "version": "1.20.2",
+            "detail_code": null,
+            "checked_at": "2026-09-07T17:14:10.268566Z",
+            "latency_ms": 51.27240001456812
+          },
+          "presidio": {
+            "component": "presidio",
+            "available": true,
+            "ready": true,
+            "version": "2.2.364",
+            "detail_code": null,
+            "checked_at": "2026-09-07T17:14:10.268566Z",
+            "latency_ms": null
+          },
+          "nemo_guardrails": {
+            "component": "nemo_guardrails",
+            "available": true,
+            "ready": true,
+            "version": "0.24.0",
+            "detail_code": null,
+            "checked_at": "2026-09-07T17:14:10.268566Z",
+            "latency_ms": null
+          },
+          "qwen3guard": {
+            "component": "qwen3guard",
+            "available": true,
+            "ready": true,
+            "version": "fada3b2f655b89601929198343c94cd2f64d93cc",
+            "detail_code": null,
+            "checked_at": "2026-09-07T17:14:10.271570Z",
+            "latency_ms": 4502.291899989359
+          },
+          "human_review": {
+            "component": "human_review",
+            "available": true,
+            "ready": true,
+            "version": "1.0",
+            "detail_code": null,
+            "checked_at": "2026-09-07T17:14:10.271570Z",
+            "latency_ms": null
+          }
+        }
+      }
+    },
+    "backend": {
+      "endpoint": "http://127.0.0.1:8080/api/v1/health",
+      "status_code": 200,
+      "health": {
+        "request_id": "REQ_9d2514251915b3afffd8069e60b337aa",
+        "trace_id": "TRACE_c96e2df29e042d5dd8227d5615cc0e41",
+        "data": {
+          "status": "ok",
+          "contract_version": "v0.1.0",
+          "dependencies": {
+            "cat": {
+              "status": "READY",
+              "integration": "REAL_HTTP"
+            },
+            "rag": {
+              "status": "READY",
+              "integration": "REAL_HTTP"
+            },
+            "llm_runtime": {
+              "status": "READY",
+              "integration": "REAL_HTTP"
+            },
+            "safety": {
+              "status": "READY",
+              "integration": "REAL_HTTP"
+            }
+          }
+        }
+      }
+    },
+    "ollama": {
+      "endpoint": "http://127.0.0.1:11435",
+      "version": {
+        "version": "0.33.3"
+      },
+      "tags": [
+        {
+          "name": "qwen2.5:7b-instruct-q4_K_M",
+          "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+          "size": 4683087332,
+          "quantization": "Q4_K_M"
+        }
+      ]
+    },
+    "mysql": {
+      "version": "8.4.8",
+      "database": "smhai_gpi_closure_20260908_010905",
+      "alembic_head": "20260906_0002"
+    },
+    "opa": {
+      "endpoint": "http://127.0.0.1:8181",
+      "health_status_code": 200,
+      "decision_status_code": 200,
+      "decision_action": "PROCEED"
+    },
+    "safety_components": {
+      "opa": {
+        "ready": true,
+        "available": true,
+        "version": "1.20.2",
+        "detail_code": null
+      },
+      "presidio": {
+        "ready": true,
+        "available": true,
+        "version": "2.2.364",
+        "detail_code": null
+      },
+      "nemo_guardrails": {
+        "ready": true,
+        "available": true,
+        "version": "0.24.0",
+        "detail_code": null
+      },
+      "qwen3guard": {
+        "ready": true,
+        "available": true,
+        "version": "fada3b2f655b89601929198343c94cd2f64d93cc",
+        "detail_code": null
+      },
+      "human_review": {
+        "ready": true,
+        "available": true,
+        "version": "1.0",
+        "detail_code": null
+      }
+    }
+  }
+}

@@ -1,0 +1,584 @@
+{
+  "generated_at": "2026-09-07T17:14:08.104906Z",
+  "flows": [
+    {
+      "fixture_id": "GPI_FALLBACK_01",
+      "kind": "fallback",
+      "assessment_id": "ASSESS_17afef7abbb54c24b259796eb79f868c",
+      "cat": {
+        "provider_version": "adaptivetesting-1.2.1",
+        "item_bank_version": "demo.v1",
+        "config_version": "demo.cat.v1",
+        "administered_count": 8
+      },
+      "cat_response_count": 8,
+      "request_id": "REQ_52fc7041c6a6aceeb61d06c91d542154",
+      "trace_id": "TRACE_6959ca2890fb6f770fcc23c26dd1d2bb",
+      "report_id": "REPORT_b50714a1f22247b0b903b0d2ae1e0ef6",
+      "status": "generated",
+      "response_status": 202,
+      "safety_action": "PROCEED_WITH_BOUNDARY",
+      "normal_generation": true,
+      "content_present": true,
+      "review_reference": null,
+      "crisis_response_present": false,
+      "retrieval_id": "RETR_5b15de1cce8d5d8d5fd6",
+      "generation_id": "GEN_a392f13dc1af4fafbbe57d7606a9430e",
+      "generation_status": "EXECUTED",
+      "candidate_source": "MODEL_EXECUTED",
+      "model_id": "MODEL_local_cpu_fallback",
+      "model_version": "qwen2.5-1.5b",
+      "runtime_version": "0.1.0-gpi-r1",
+      "citations": [
+        {
+          "citation_id": "CITE_603e91867956cd43ba179bf2",
+          "chunk_id": "CHUNK_67b56abe21fe9860a26d",
+          "document_id": "KB_2f2c286d6e2e32abcb52",
+          "source_hash": "sha256:7b44760976a0d815147dfda2a45b6513158ac169343701565dbc7e34526f0be6",
+          "source_version": "knowledge.v1"
+        },
+        {
+          "citation_id": "CITE_e0eedaccc452ac547774ca52",
+          "chunk_id": "CHUNK_8f85f2c0472e21acd2fa",
+          "document_id": "KB_4e52e08e5384be10b493",
+          "source_hash": "sha256:640eb25c1a5cfbb8891d2a41de1ea4cc058ac66b7bbe0e5bd8e03423b9442493",
+          "source_version": "knowledge.v1"
+        },
+        {
+          "citation_id": "CITE_c1a5a65ea001bccb0d89a926",
+          "chunk_id": "CHUNK_c3718c65fcf4151af391",
+          "document_id": "KB_1814fbd0be27f07bbe9c",
+          "source_hash": "sha256:640eb25c1a5cfbb8891d2a41de1ea4cc058ac66b7bbe0e5bd8e03423b9442493",
+          "source_version": "knowledge.v1"
+        },
+        {
+          "citation_id": "CITE_3ceb5df7b0dd1264fc79c1fa",
+          "chunk_id": "CHUNK_3d2d02ba1c8fbc506665",
+          "document_id": "KB_7723360cccbf4f9c45ee",
+          "source_hash": "sha256:cb7bd69ec6fc7c7a0c4e9d0fd4d1428856bf7bc7b75624780e81b9f30158ed45",
+          "source_version": "knowledge.v1"
+        },
+        {
+          "citation_id": "CITE_c54be5009b986ad06a174975",
+          "chunk_id": "CHUNK_bcbe71382652340b2249",
+          "document_id": "KB_7723360cccbf4f9c45ee",
+          "source_hash": "sha256:55066670ce36181cfe821ecf1515eca6e7994471bbbff3dc4bf05fa433d7280b",
+          "source_version": "knowledge.v1"
+        }
+      ],
+      "report_citations": [
+        {
+          "citation_id": "CITE_603e91867956cd43ba179bf2",
+          "chunk_id": "CHUNK_67b56abe21fe9860a26d",
+          "document_id": "KB_2f2c286d6e2e32abcb52",
+          "source_hash": "sha256:7b44760976a0d815147dfda2a45b6513158ac169343701565dbc7e34526f0be6",
+          "source_version": "knowledge.v1"
+        },
+        {
+          "citation_id": "CITE_e0eedaccc452ac547774ca52",
+          "chunk_id": "CHUNK_8f85f2c0472e21acd2fa",
+          "document_id": "KB_4e52e08e5384be10b493",
+          "source_hash": "sha256:640eb25c1a5cfbb8891d2a41de1ea4cc058ac66b7bbe0e5bd8e03423b9442493",
+          "source_version": "knowledge.v1"
+        },
+        {
+          "citation_id": "CITE_c1a5a65ea001bccb0d89a926",
+          "chunk_id": "CHUNK_c3718c65fcf4151af391",
+          "document_id": "KB_1814fbd0be27f07bbe9c",
+          "source_hash": "sha256:640eb25c1a5cfbb8891d2a41de1ea4cc058ac66b7bbe0e5bd8e03423b9442493",
+          "source_version": "knowledge.v1"
+        },
+        {
+          "citation_id": "CITE_3ceb5df7b0dd1264fc79c1fa",
+          "chunk_id": "CHUNK_3d2d02ba1c8fbc506665",
+          "document_id": "KB_7723360cccbf4f9c45ee",
+          "source_hash": "sha256:cb7bd69ec6fc7c7a0c4e9d0fd4d1428856bf7bc7b75624780e81b9f30158ed45",
+          "source_version": "knowledge.v1"
+        },
+        {
+          "citation_id": "CITE_c54be5009b986ad06a174975",
+          "chunk_id": "CHUNK_bcbe71382652340b2249",
+          "document_id": "KB_7723360cccbf4f9c45ee",
+          "source_hash": "sha256:55066670ce36181cfe821ecf1515eca6e7994471bbbff3dc4bf05fa433d7280b",
+          "source_version": "knowledge.v1"
+        }
+      ],
+      "suggestion_source_chunk_ids": [
+        "CHUNK_3d2d02ba1c8fbc506665",
+        "CHUNK_67b56abe21fe9860a26d",
+        "CHUNK_8f85f2c0472e21acd2fa",
+        "CHUNK_bcbe71382652340b2249",
+        "CHUNK_c3718c65fcf4151af391"
+      ],
+      "ollama_generation_log_before": 3,
+      "ollama_generation_log_after": 4,
+      "synthetic_fixture_only": true
+    },
+    {
+      "fixture_id": "GPI_FALLBACK_02",
+      "kind": "fallback",
+      "assessment_id": "ASSESS_62756e1cc758487bb99ee91e92252127",
+      "cat": {
+        "provider_version": "adaptivetesting-1.2.1",
+        "item_bank_version": "demo.v1",
+        "config_version": "demo.cat.v1",
+        "administered_count": 8
+      },
+      "cat_response_count": 8,
+      "request_id": "REQ_3ff92540edb74c5ee58eb089ef3cd533",
+      "trace_id": "TRACE_91d0de4ee635da9473a66b3d8ed048d7",
+      "report_id": "REPORT_d983e0ae6b4945a0970c677472c1326b",
+      "status": "generated",
+      "response_status": 202,
+      "safety_action": "PROCEED_WITH_BOUNDARY",
+      "normal_generation": true,
+      "content_present": true,
+      "review_reference": null,
+      "crisis_response_present": false,
+      "retrieval_id": "RETR_31fd5379be4766febcfa",
+      "generation_id": "GEN_d6906b6109a14db9ac27911a6f170fb1",
+      "generation_status": "EXECUTED",
+      "candidate_source": "MODEL_EXECUTED",
+      "model_id": "MODEL_local_cpu_fallback",
+      "model_version": "qwen2.5-1.5b",
+      "runtime_version": "0.1.0-gpi-r1",
+      "citations": [
+        {
+          "citation_id": "CITE_603e91867956cd43ba179bf2",
+          "chunk_id": "CHUNK_67b56abe21fe9860a26d",
+          "document_id": "KB_2f2c286d6e2e32abcb52",
+          "source_hash": "sha256:7b44760976a0d815147dfda2a45b6513158ac169343701565dbc7e34526f0be6",
+          "source_version": "knowledge.v1"
+        },
+        {
+          "citation_id": "CITE_e0eedaccc452ac547774ca52",
+          "chunk_id": "CHUNK_8f85f2c0472e21acd2fa",
+          "document_id": "KB_4e52e08e5384be10b493",
+          "source_hash": "sha256:640eb25c1a5cfbb8891d2a41de1ea4cc058ac66b7bbe0e5bd8e03423b9442493",
+          "source_version": "knowledge.v1"
+        },
+        {
+          "citation_id": "CITE_c1a5a65ea001bccb0d89a926",
+          "chunk_id": "CHUNK_c3718c65fcf4151af391",
+          "document_id": "KB_1814fbd0be27f07bbe9c",
+          "source_hash": "sha256:640eb25c1a5cfbb8891d2a41de1ea4cc058ac66b7bbe0e5bd8e03423b9442493",
+          "source_version": "knowledge.v1"
+        },
+        {
+          "citation_id": "CITE_3ceb5df7b0dd1264fc79c1fa",
+          "chunk_id": "CHUNK_3d2d02ba1c8fbc506665",
+          "document_id": "KB_7723360cccbf4f9c45ee",
+          "source_hash": "sha256:cb7bd69ec6fc7c7a0c4e9d0fd4d1428856bf7bc7b75624780e81b9f30158ed45",
+          "source_version": "knowledge.v1"
+        },
+        {
+          "citation_id": "CITE_c54be5009b986ad06a174975",
+          "chunk_id": "CHUNK_bcbe71382652340b2249",
+          "document_id": "KB_7723360cccbf4f9c45ee",
+          "source_hash": "sha256:55066670ce36181cfe821ecf1515eca6e7994471bbbff3dc4bf05fa433d7280b",
+          "source_version": "knowledge.v1"
+        }
+      ],
+      "report_citations": [
+        {
+          "citation_id": "CITE_603e91867956cd43ba179bf2",
+          "chunk_id": "CHUNK_67b56abe21fe9860a26d",
+          "document_id": "KB_2f2c286d6e2e32abcb52",
+          "source_hash": "sha256:7b44760976a0d815147dfda2a45b6513158ac169343701565dbc7e34526f0be6",
+          "source_version": "knowledge.v1"
+        },
+        {
+          "citation_id": "CITE_e0eedaccc452ac547774ca52",
+          "chunk_id": "CHUNK_8f85f2c0472e21acd2fa",
+          "document_id": "KB_4e52e08e5384be10b493",
+          "source_hash": "sha256:640eb25c1a5cfbb8891d2a41de1ea4cc058ac66b7bbe0e5bd8e03423b9442493",
+          "source_version": "knowledge.v1"
+        },
+        {
+          "citation_id": "CITE_c1a5a65ea001bccb0d89a926",
+          "chunk_id": "CHUNK_c3718c65fcf4151af391",
+          "document_id": "KB_1814fbd0be27f07bbe9c",
+          "source_hash": "sha256:640eb25c1a5cfbb8891d2a41de1ea4cc058ac66b7bbe0e5bd8e03423b9442493",
+          "source_version": "knowledge.v1"
+        },
+        {
+          "citation_id": "CITE_3ceb5df7b0dd1264fc79c1fa",
+          "chunk_id": "CHUNK_3d2d02ba1c8fbc506665",
+          "document_id": "KB_7723360cccbf4f9c45ee",
+          "source_hash": "sha256:cb7bd69ec6fc7c7a0c4e9d0fd4d1428856bf7bc7b75624780e81b9f30158ed45",
+          "source_version": "knowledge.v1"
+        },
+        {
+          "citation_id": "CITE_c54be5009b986ad06a174975",
+          "chunk_id": "CHUNK_bcbe71382652340b2249",
+          "document_id": "KB_7723360cccbf4f9c45ee",
+          "source_hash": "sha256:55066670ce36181cfe821ecf1515eca6e7994471bbbff3dc4bf05fa433d7280b",
+          "source_version": "knowledge.v1"
+        }
+      ],
+      "suggestion_source_chunk_ids": [
+        "CHUNK_3d2d02ba1c8fbc506665",
+        "CHUNK_67b56abe21fe9860a26d",
+        "CHUNK_8f85f2c0472e21acd2fa",
+        "CHUNK_bcbe71382652340b2249",
+        "CHUNK_c3718c65fcf4151af391"
+      ],
+      "ollama_generation_log_before": 4,
+      "ollama_generation_log_after": 5,
+      "synthetic_fixture_only": true
+    },
+    {
+      "fixture_id": "GPI_FALLBACK_03",
+      "kind": "fallback",
+      "assessment_id": "ASSESS_7f40a6f9d18646799877fc2806635bb2",
+      "cat": {
+        "provider_version": "adaptivetesting-1.2.1",
+        "item_bank_version": "demo.v1",
+        "config_version": "demo.cat.v1",
+        "administered_count": 8
+      },
+      "cat_response_count": 8,
+      "request_id": "REQ_8dac5613da337fe1b921e15b3cec8e66",
+      "trace_id": "TRACE_3f68a1919e1824ebdc7e634716aa87cc",
+      "report_id": "REPORT_9f698649cbe94740b970870fdbae4643",
+      "status": "generated",
+      "response_status": 202,
+      "safety_action": "PROCEED_WITH_BOUNDARY",
+      "normal_generation": true,
+      "content_present": true,
+      "review_reference": null,
+      "crisis_response_present": false,
+      "retrieval_id": "RETR_e7a58224f20f96ad0f70",
+      "generation_id": "GEN_32727af29fa34e8793ec3f5c6c269999",
+      "generation_status": "EXECUTED",
+      "candidate_source": "MODEL_EXECUTED",
+      "model_id": "MODEL_local_cpu_fallback",
+      "model_version": "qwen2.5-1.5b",
+      "runtime_version": "0.1.0-gpi-r1",
+      "citations": [
+        {
+          "citation_id": "CITE_603e91867956cd43ba179bf2",
+          "chunk_id": "CHUNK_67b56abe21fe9860a26d",
+          "document_id": "KB_2f2c286d6e2e32abcb52",
+          "source_hash": "sha256:7b44760976a0d815147dfda2a45b6513158ac169343701565dbc7e34526f0be6",
+          "source_version": "knowledge.v1"
+        },
+        {
+          "citation_id": "CITE_e0eedaccc452ac547774ca52",
+          "chunk_id": "CHUNK_8f85f2c0472e21acd2fa",
+          "document_id": "KB_4e52e08e5384be10b493",
+          "source_hash": "sha256:640eb25c1a5cfbb8891d2a41de1ea4cc058ac66b7bbe0e5bd8e03423b9442493",
+          "source_version": "knowledge.v1"
+        },
+        {
+          "citation_id": "CITE_c1a5a65ea001bccb0d89a926",
+          "chunk_id": "CHUNK_c3718c65fcf4151af391",
+          "document_id": "KB_1814fbd0be27f07bbe9c",
+          "source_hash": "sha256:640eb25c1a5cfbb8891d2a41de1ea4cc058ac66b7bbe0e5bd8e03423b9442493",
+          "source_version": "knowledge.v1"
+        },
+        {
+          "citation_id": "CITE_3ceb5df7b0dd1264fc79c1fa",
+          "chunk_id": "CHUNK_3d2d02ba1c8fbc506665",
+          "document_id": "KB_7723360cccbf4f9c45ee",
+          "source_hash": "sha256:cb7bd69ec6fc7c7a0c4e9d0fd4d1428856bf7bc7b75624780e81b9f30158ed45",
+          "source_version": "knowledge.v1"
+        },
+        {
+          "citation_id": "CITE_c54be5009b986ad06a174975",
+          "chunk_id": "CHUNK_bcbe71382652340b2249",
+          "document_id": "KB_7723360cccbf4f9c45ee",
+          "source_hash": "sha256:55066670ce36181cfe821ecf1515eca6e7994471bbbff3dc4bf05fa433d7280b",
+          "source_version": "knowledge.v1"
+        }
+      ],
+      "report_citations": [
+        {
+          "citation_id": "CITE_603e91867956cd43ba179bf2",
+          "chunk_id": "CHUNK_67b56abe21fe9860a26d",
+          "document_id": "KB_2f2c286d6e2e32abcb52",
+          "source_hash": "sha256:7b44760976a0d815147dfda2a45b6513158ac169343701565dbc7e34526f0be6",
+          "source_version": "knowledge.v1"
+        },
+        {
+          "citation_id": "CITE_e0eedaccc452ac547774ca52",
+          "chunk_id": "CHUNK_8f85f2c0472e21acd2fa",
+          "document_id": "KB_4e52e08e5384be10b493",
+          "source_hash": "sha256:640eb25c1a5cfbb8891d2a41de1ea4cc058ac66b7bbe0e5bd8e03423b9442493",
+          "source_version": "knowledge.v1"
+        },
+        {
+          "citation_id": "CITE_c1a5a65ea001bccb0d89a926",
+          "chunk_id": "CHUNK_c3718c65fcf4151af391",
+          "document_id": "KB_1814fbd0be27f07bbe9c",
+          "source_hash": "sha256:640eb25c1a5cfbb8891d2a41de1ea4cc058ac66b7bbe0e5bd8e03423b9442493",
+          "source_version": "knowledge.v1"
+        },
+        {
+          "citation_id": "CITE_3ceb5df7b0dd1264fc79c1fa",
+          "chunk_id": "CHUNK_3d2d02ba1c8fbc506665",
+          "document_id": "KB_7723360cccbf4f9c45ee",
+          "source_hash": "sha256:cb7bd69ec6fc7c7a0c4e9d0fd4d1428856bf7bc7b75624780e81b9f30158ed45",
+          "source_version": "knowledge.v1"
+        },
+        {
+          "citation_id": "CITE_c54be5009b986ad06a174975",
+          "chunk_id": "CHUNK_bcbe71382652340b2249",
+          "document_id": "KB_7723360cccbf4f9c45ee",
+          "source_hash": "sha256:55066670ce36181cfe821ecf1515eca6e7994471bbbff3dc4bf05fa433d7280b",
+          "source_version": "knowledge.v1"
+        }
+      ],
+      "suggestion_source_chunk_ids": [
+        "CHUNK_3d2d02ba1c8fbc506665",
+        "CHUNK_67b56abe21fe9860a26d",
+        "CHUNK_8f85f2c0472e21acd2fa",
+        "CHUNK_bcbe71382652340b2249",
+        "CHUNK_c3718c65fcf4151af391"
+      ],
+      "ollama_generation_log_before": 5,
+      "ollama_generation_log_after": 6,
+      "synthetic_fixture_only": true
+    }
+  ],
+  "runtime_events": [
+    {
+      "timestamp": "2026-09-07T17:13:13.458521Z",
+      "request_id": "REQ_52fc7041c6a6aceeb61d06c91d542154",
+      "trace_id": "TRACE_6959ca2890fb6f770fcc23c26dd1d2bb",
+      "status": "success",
+      "provider_id": "ollama_cpu",
+      "logical_model_id": "qwen2.5-1.5b-engineering-fallback",
+      "actual_model_id": "qwen2.5-1.5b-engineering-fallback",
+      "provider_model": "qwen2.5:1.5b",
+      "runtime_version": "0.33.3",
+      "fallback_used": true,
+      "buffered": true,
+      "model_revision": "qwen2.5:1.5b",
+      "digest": "65ec06548149b04c096a120e4a6da9d4017ea809c91734ea5631e89f96ddc57b",
+      "quantization": "Q4_K_M",
+      "hardware": {
+        "os": "Windows 11 (AMD64)",
+        "cpu": "Intel64 Family 6 Model 170 Stepping 4, GenuineIntel",
+        "threads": 22,
+        "ram_bytes": 33752997888,
+        "gpu_present": true,
+        "gpus": [
+          {
+            "name": "NVIDIA GeForce RTX 3060",
+            "vram_bytes": 12884901888,
+            "driver": "596.36",
+            "cuda_version": null
+          }
+        ],
+        "cuda_available": true,
+        "nvidia_smi_path": "C:\\WINDOWS\\system32\\nvidia-smi.EXE",
+        "detection_error": null,
+        "profile": "CONSUMER_GPU"
+      },
+      "attempts": [
+        {
+          "attempt_index": 1,
+          "provider_id": "ollama_gpu",
+          "logical_model_id": "qwen2.5-0.5b-engineering",
+          "provider_model_id": "qwen2.5:7b-instruct-q4_K_M__acceptance_unavailable",
+          "outcome": "error",
+          "error_code": "MODEL_NOT_FOUND",
+          "fallback_reason": null
+        },
+        {
+          "attempt_index": 2,
+          "provider_id": "ollama_cpu",
+          "logical_model_id": "qwen2.5-1.5b-engineering-fallback",
+          "provider_model_id": "qwen2.5:1.5b",
+          "outcome": "success",
+          "error_code": null,
+          "fallback_reason": "MODEL_NOT_FOUND"
+        }
+      ]
+    },
+    {
+      "timestamp": "2026-09-07T17:13:41.445037Z",
+      "request_id": "REQ_3ff92540edb74c5ee58eb089ef3cd533",
+      "trace_id": "TRACE_91d0de4ee635da9473a66b3d8ed048d7",
+      "status": "success",
+      "provider_id": "ollama_cpu",
+      "logical_model_id": "qwen2.5-1.5b-engineering-fallback",
+      "actual_model_id": "qwen2.5-1.5b-engineering-fallback",
+      "provider_model": "qwen2.5:1.5b",
+      "runtime_version": "0.33.3",
+      "fallback_used": true,
+      "buffered": true,
+      "model_revision": "qwen2.5:1.5b",
+      "digest": "65ec06548149b04c096a120e4a6da9d4017ea809c91734ea5631e89f96ddc57b",
+      "quantization": "Q4_K_M",
+      "hardware": {
+        "os": "Windows 11 (AMD64)",
+        "cpu": "Intel64 Family 6 Model 170 Stepping 4, GenuineIntel",
+        "threads": 22,
+        "ram_bytes": 33752997888,
+        "gpu_present": true,
+        "gpus": [
+          {
+            "name": "NVIDIA GeForce RTX 3060",
+            "vram_bytes": 12884901888,
+            "driver": "596.36",
+            "cuda_version": null
+          }
+        ],
+        "cuda_available": true,
+        "nvidia_smi_path": "C:\\WINDOWS\\system32\\nvidia-smi.EXE",
+        "detection_error": null,
+        "profile": "CONSUMER_GPU"
+      },
+      "attempts": [
+        {
+          "attempt_index": 1,
+          "provider_id": "ollama_gpu",
+          "logical_model_id": "qwen2.5-0.5b-engineering",
+          "provider_model_id": "qwen2.5:7b-instruct-q4_K_M__acceptance_unavailable",
+          "outcome": "error",
+          "error_code": "MODEL_NOT_FOUND",
+          "fallback_reason": null
+        },
+        {
+          "attempt_index": 2,
+          "provider_id": "ollama_cpu",
+          "logical_model_id": "qwen2.5-1.5b-engineering-fallback",
+          "provider_model_id": "qwen2.5:1.5b",
+          "outcome": "success",
+          "error_code": null,
+          "fallback_reason": "MODEL_NOT_FOUND"
+        }
+      ]
+    },
+    {
+      "timestamp": "2026-09-07T17:14:02.946316Z",
+      "request_id": "REQ_8dac5613da337fe1b921e15b3cec8e66",
+      "trace_id": "TRACE_3f68a1919e1824ebdc7e634716aa87cc",
+      "status": "success",
+      "provider_id": "ollama_cpu",
+      "logical_model_id": "qwen2.5-1.5b-engineering-fallback",
+      "actual_model_id": "qwen2.5-1.5b-engineering-fallback",
+      "provider_model": "qwen2.5:1.5b",
+      "runtime_version": "0.33.3",
+      "fallback_used": true,
+      "buffered": true,
+      "model_revision": "qwen2.5:1.5b",
+      "digest": "65ec06548149b04c096a120e4a6da9d4017ea809c91734ea5631e89f96ddc57b",
+      "quantization": "Q4_K_M",
+      "hardware": {
+        "os": "Windows 11 (AMD64)",
+        "cpu": "Intel64 Family 6 Model 170 Stepping 4, GenuineIntel",
+        "threads": 22,
+        "ram_bytes": 33752997888,
+        "gpu_present": true,
+        "gpus": [
+          {
+            "name": "NVIDIA GeForce RTX 3060",
+            "vram_bytes": 12884901888,
+            "driver": "596.36",
+            "cuda_version": null
+          }
+        ],
+        "cuda_available": true,
+        "nvidia_smi_path": "C:\\WINDOWS\\system32\\nvidia-smi.EXE",
+        "detection_error": null,
+        "profile": "CONSUMER_GPU"
+      },
+      "attempts": [
+        {
+          "attempt_index": 1,
+          "provider_id": "ollama_gpu",
+          "logical_model_id": "qwen2.5-0.5b-engineering",
+          "provider_model_id": "qwen2.5:7b-instruct-q4_K_M__acceptance_unavailable",
+          "outcome": "error",
+          "error_code": "MODEL_NOT_FOUND",
+          "fallback_reason": null
+        },
+        {
+          "attempt_index": 2,
+          "provider_id": "ollama_cpu",
+          "logical_model_id": "qwen2.5-1.5b-engineering-fallback",
+          "provider_model_id": "qwen2.5:1.5b",
+          "outcome": "success",
+          "error_code": null,
+          "fallback_reason": "MODEL_NOT_FOUND"
+        }
+      ]
+    }
+  ],
+  "cpu_snapshot": {
+    "timestamp": "2026-09-07T17:14:07.814778Z",
+    "nvidia_smi": {
+      "gpu": "NVIDIA GeForce RTX 3060, 12288, 12040, 0",
+      "gpu_exit_code": "0",
+      "compute_apps": "25564, [Insufficient Permissions], [N/A]\n23644, C:\\Users\\15848\\AppData\\Local\\Programs\\Ollama\\ollama.exe, [N/A]\n66500, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n30524, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n70376, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]",
+      "compute_apps_exit_code": "0"
+    },
+    "gpu_ollama_ps": {
+      "models": [
+        {
+          "name": "qwen2.5:7b-instruct-q4_K_M",
+          "model": "qwen2.5:7b-instruct-q4_K_M",
+          "size": 4987132312,
+          "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+          "details": {
+            "parent_model": "",
+            "format": "gguf",
+            "family": "qwen2",
+            "families": [
+              "qwen2"
+            ],
+            "parameter_size": "7.6B",
+            "quantization_level": "Q4_K_M"
+          },
+          "expires_at": "2026-09-08T01:17:13.8437698+08:00",
+          "size_vram": 4987132312,
+          "context_length": 8192
+        }
+      ]
+    },
+    "cpu_ollama_ps": {
+      "models": [
+        {
+          "name": "qwen2.5:1.5b",
+          "model": "qwen2.5:1.5b",
+          "size": 1367647190,
+          "digest": "65ec06548149b04c096a120e4a6da9d4017ea809c91734ea5631e89f96ddc57b",
+          "details": {
+            "parent_model": "",
+            "format": "gguf",
+            "family": "qwen2",
+            "families": [
+              "qwen2"
+            ],
+            "parameter_size": "1.5B",
+            "quantization_level": "Q4_K_M"
+          },
+          "expires_at": "2026-09-08T01:19:02.9440906+08:00",
+          "size_vram": 0,
+          "context_length": 8192
+        }
+      ]
+    },
+    "gpu_classification": "GPU_FULL",
+    "target_model": {
+      "name": "qwen2.5:7b-instruct-q4_K_M",
+      "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+      "size": 4987132312,
+      "size_vram": 4987132312,
+      "context_length": 8192
+    },
+    "fallback_device_observed": "CPU",
+    "fallback_model": {
+      "name": "qwen2.5:1.5b",
+      "digest": "65ec06548149b04c096a120e4a6da9d4017ea809c91734ea5631e89f96ddc57b",
+      "size": 1367647190,
+      "size_vram": 0,
+      "context_length": 8192
+    }
+  },
+  "cloud_calls": 0,
+  "local_only": true
+}

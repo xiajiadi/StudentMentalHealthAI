@@ -1,0 +1,65 @@
+{
+  "backend": {
+    "real_or_fake": "REAL",
+    "transport": "HTTP",
+    "direct_ollama_call": false,
+    "persistence": "MYSQL"
+  },
+  "cat": {
+    "real_or_fake": "REAL",
+    "endpoint": "http://127.0.0.1:8180",
+    "provider": "adaptivetesting-1.2.1"
+  },
+  "rag": {
+    "real_or_fake": "REAL",
+    "endpoint": "http://127.0.0.1:8170",
+    "retrieval": "BGE-M3 + BM25S hybrid + RRF",
+    "reranker": "OFF"
+  },
+  "runtime": {
+    "real_or_fake": "REAL",
+    "endpoint": "http://127.0.0.1:8160",
+    "implementation": "accepted RuntimeService + OllamaProvider",
+    "buffered": true
+  },
+  "ollama": {
+    "real_or_fake": "REAL",
+    "actual_endpoint": "http://127.0.0.1:11435",
+    "observer_endpoint": "http://127.0.0.1:11535"
+  },
+  "safety": {
+    "real_or_fake": "REAL",
+    "endpoint": "http://127.0.0.1:8190",
+    "fail_closed": true
+  },
+  "opa": {
+    "real_or_fake": "REAL",
+    "endpoint": "http://127.0.0.1:8181",
+    "policy_as_code": true
+  },
+  "mysql": {
+    "real_or_fake": "REAL",
+    "database": "smhai_gpi_closure_20260908_010905",
+    "isolated": true
+  },
+  "contract_fake_count": 0,
+  "backend_dependency_labels": {
+    "cat": {
+      "status": "READY",
+      "integration": "REAL_HTTP"
+    },
+    "rag": {
+      "status": "READY",
+      "integration": "REAL_HTTP"
+    },
+    "llm_runtime": {
+      "status": "READY",
+      "integration": "REAL_HTTP"
+    },
+    "safety": {
+      "status": "READY",
+      "integration": "REAL_HTTP"
+    }
+  },
+  "observer_semantics": "transparent byte-forwarding with sanitized ID/hash summaries; no decision/body rewrite"
+}
