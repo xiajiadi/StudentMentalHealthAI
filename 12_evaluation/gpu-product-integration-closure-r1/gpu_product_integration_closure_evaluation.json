@@ -1,0 +1,301 @@
+{
+  "round": "GPU_PRODUCT_INTEGRATION_CLOSURE_R1",
+  "status": "PARTIAL_PASS",
+  "baseline": {
+    "runtime_accepted_commit": "2972be77e537ef03033332039a6ed0eed8e451ef"
+  },
+  "realness": {
+    "backend": "REAL",
+    "cat": "REAL",
+    "rag": "REAL",
+    "runtime": "REAL",
+    "ollama": "REAL",
+    "safety": "REAL",
+    "opa": "REAL",
+    "mysql": "REAL"
+  },
+  "realness_contract_fake_count": 0,
+  "gpu": {
+    "ollama": "0.33.3",
+    "model": "qwen2.5:7b-instruct-q4_K_M",
+    "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+    "context": 8192,
+    "kv": "f16",
+    "parallel": 1,
+    "classification": "GPU_FULL"
+  },
+  "normal": {
+    "passed": 0,
+    "total": 3,
+    "real_rag": 0,
+    "real_gpu": 0,
+    "output_safety_real": 0,
+    "persistence_real": 0,
+    "citation_identity": false
+  },
+  "crisis": {
+    "passed": 3,
+    "total": 3,
+    "rag_calls": 0,
+    "runtime_generation_calls": 0,
+    "ollama_generation_calls": 0,
+    "gpu_generation_calls": 0,
+    "normal_content_count": 0,
+    "normal_citation_count": 0
+  },
+  "controlled_output_safety": {
+    "status": "PASS",
+    "real_safety": true,
+    "direct_delivery": false,
+    "unsafe_candidate_persisted": false
+  },
+  "safety_down": {
+    "passed": 2,
+    "total": 2,
+    "fail_closed": true,
+    "rag_calls": 0,
+    "runtime_calls": 0,
+    "ollama_calls": 0
+  },
+  "fallback": {
+    "passed": 3,
+    "total": 3,
+    "runtime_service": true,
+    "local_only": true,
+    "cloud_calls": 0,
+    "fallback_used": true,
+    "output_safety_real": 3
+  },
+  "synthetic_rag_boundary": {
+    "accepted_round1": true,
+    "d2_candidate_used": false,
+    "hash": "2d5736ae741d675ca5856b8004665ea3043aeccea34e2b007498ff04c2b501a2"
+  },
+  "database": {
+    "mysql_real": true,
+    "migration_head": "20260906_0002",
+    "real_student_data": false
+  },
+  "readiness": {
+    "safety_ready": true,
+    "components": {
+      "opa": {
+        "ready": true,
+        "available": true,
+        "version": "1.20.2",
+        "detail_code": null
+      },
+      "presidio": {
+        "ready": true,
+        "available": true,
+        "version": "2.2.364",
+        "detail_code": null
+      },
+      "nemo_guardrails": {
+        "ready": true,
+        "available": true,
+        "version": "0.24.0",
+        "detail_code": null
+      },
+      "qwen3guard": {
+        "ready": true,
+        "available": true,
+        "version": "fada3b2f655b89601929198343c94cd2f64d93cc",
+        "detail_code": null
+      },
+      "human_review": {
+        "ready": true,
+        "available": true,
+        "version": "1.0",
+        "detail_code": null
+      }
+    }
+  },
+  "frozen_root_modified": false,
+  "product_source_modified": false,
+  "main_preserved": true,
+  "real_student_data_used": false,
+  "push": false,
+  "merge": false,
+  "accepted_tag_created": false,
+  "remaining_p0": [
+    "GPI-25 normal product hard gate: 0/3 due reproducible RuntimeService INVALID_STRUCTURED_OUTPUT.",
+    "GPI-29 citation round trip cannot pass without a generated normal response."
+  ],
+  "remaining_p1": [
+    "Resolve the exact accepted-publication structured-output blocker without weakening the frozen RAG boundary.",
+    "Rerun the three normal product flows and citation round trip after the product-level fix."
+  ],
+  "started_at": "2026-09-07T17:09:53.446790Z",
+  "completed_at": "2026-09-07T17:14:11.352225Z",
+  "regressions": {
+    "cat": {
+      "status": "PASS",
+      "tail": "24 passed in 21.79s"
+    },
+    "knowledge": {
+      "status": "PASS",
+      "tail": "18 passed, 2 warnings in 25.36s"
+    },
+    "rag": {
+      "status": "PASS",
+      "tail": "18 passed, 4 skipped, 3 warnings in 2.28s"
+    },
+    "runtime": {
+      "status": "PASS",
+      "tail": "31 passed, 1 skipped, 2 warnings in 1.77s"
+    },
+    "safety": {
+      "status": "PASS",
+      "tail": "20 passed, 1 skipped, 3 warnings in 13.00s"
+    },
+    "backend": {
+      "status": "PASS",
+      "tail": "16 passed in 4.41s"
+    },
+    "database": {
+      "status": "PASS",
+      "tail": "10 passed, 6 skipped in 0.18s"
+    },
+    "root_contract": {
+      "status": "PASS",
+      "tail": "A-phase contract, Schema, and OpenAPI checks passed."
+    }
+  },
+  "frozen_root_integrity": {
+    "status": "UNCHANGED",
+    "baseline_commit": "2972be77e537ef03033332039a6ed0eed8e451ef",
+    "file_count": 8,
+    "before": "frozen_root_hashes_before.json",
+    "after": "frozen_root_hashes_after.json"
+  },
+  "structured_output_diagnosis": [
+    {
+      "case": "exact",
+      "http_status": 200,
+      "json_column": 9,
+      "json_line": 26,
+      "json_parse": "FAIL",
+      "response_length": 700,
+      "response_sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85"
+    },
+    {
+      "case": "control",
+      "http_status": 200,
+      "json_keys": [
+        "disclaimer",
+        "observations",
+        "suggestions",
+        "summary"
+      ],
+      "json_parse": "PASS",
+      "json_type": "dict",
+      "response_length": 533,
+      "response_sha256": "f23a9d203b160b7a5944b23f79573a7e434b05838cfcfcb4c7d9b24c70ba57aa"
+    }
+  ],
+  "cleanup": {
+    "status": "PASS",
+    "processes_cleaned_by_explicit_pid": true,
+    "database": "smhai_gpi_closure_20260908_010905",
+    "mysql_run_root": "D:\\Dev\\studentmentalhealthai\\mysql-gpi-closure-20260908_010905",
+    "ports": {
+      "checked_at": "2026-09-07T17:19:41.9216866Z",
+      "ports": [
+        {
+          "port": 3307,
+          "status": "FREE",
+          "pids": []
+        },
+        {
+          "port": 11435,
+          "status": "FREE",
+          "pids": []
+        },
+        {
+          "port": 11436,
+          "status": "FREE",
+          "pids": []
+        },
+        {
+          "port": 11535,
+          "status": "FREE",
+          "pids": []
+        },
+        {
+          "port": 8080,
+          "status": "FREE",
+          "pids": []
+        },
+        {
+          "port": 8160,
+          "status": "FREE",
+          "pids": []
+        },
+        {
+          "port": 8170,
+          "status": "FREE",
+          "pids": []
+        },
+        {
+          "port": 8180,
+          "status": "FREE",
+          "pids": []
+        },
+        {
+          "port": 8190,
+          "status": "FREE",
+          "pids": []
+        },
+        {
+          "port": 8181,
+          "status": "FREE",
+          "pids": []
+        },
+        {
+          "port": 8260,
+          "status": "FREE",
+          "pids": []
+        },
+        {
+          "port": 8270,
+          "status": "FREE",
+          "pids": []
+        },
+        {
+          "port": 8280,
+          "status": "FREE",
+          "pids": []
+        },
+        {
+          "port": 8290,
+          "status": "FREE",
+          "pids": []
+        }
+      ],
+      "all_free": true
+    }
+  },
+  "controller_review": {
+    "required": true,
+    "candidate_commit_created": false,
+    "push": false,
+    "merge": false,
+    "tag": false
+  },
+  "evidence_files": {
+    "live_evaluation": "gpu_product_integration_closure_evaluation.json",
+    "normal": "full_real_normal_flows.json",
+    "crisis": "full_real_crisis_flows.json",
+    "controlled_output": "controlled_output_safety.json",
+    "safety_down": "safety_down_results.json",
+    "fallback": "product_fallback_results.json",
+    "calls": "call_count_matrix.json",
+    "persistence": "persistence_evidence.json",
+    "readiness": "service_readiness.json",
+    "resources": "gpu_resource_ownership.json",
+    "rag_boundary": "synthetic_rag_boundary.json",
+    "diagnosis": "ollama_structured_output_diagnosis.jsonl",
+    "port_cleanup": "port_cleanup.json"
+  }
+}

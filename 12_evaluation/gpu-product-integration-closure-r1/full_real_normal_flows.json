@@ -1,0 +1,62 @@
+{
+  "generated_at": "2026-09-07T17:12:21.341651Z",
+  "flows": [
+    {
+      "fixture_id": "GPI_NORMAL_01",
+      "kind": "normal",
+      "status": "HARNESS_ERROR",
+      "error_type": "HarnessError",
+      "error_message": "POST /api/v1/support/requests returned HTTP 502",
+      "response_status": 502,
+      "assessment_id": "ASSESS_090e93467fc547efa66c99ea5e43a888",
+      "cat": {
+        "provider_version": "adaptivetesting-1.2.1",
+        "item_bank_version": "demo.v1",
+        "config_version": "demo.cat.v1",
+        "administered_count": 8
+      },
+      "cat_response_count": 8,
+      "ollama_generation_log_before": 0,
+      "ollama_generation_log_after": 1,
+      "synthetic_fixture_only": true
+    },
+    {
+      "fixture_id": "GPI_NORMAL_02",
+      "kind": "normal",
+      "status": "HARNESS_ERROR",
+      "error_type": "HarnessError",
+      "error_message": "POST /api/v1/support/requests returned HTTP 502",
+      "response_status": 502,
+      "assessment_id": "ASSESS_0eb482e34c1b4e74a064e4053c38ecb5",
+      "cat": {
+        "provider_version": "adaptivetesting-1.2.1",
+        "item_bank_version": "demo.v1",
+        "config_version": "demo.cat.v1",
+        "administered_count": 8
+      },
+      "cat_response_count": 8,
+      "ollama_generation_log_before": 1,
+      "ollama_generation_log_after": 2,
+      "synthetic_fixture_only": true
+    },
+    {
+      "fixture_id": "GPI_NORMAL_03",
+      "kind": "normal",
+      "status": "HARNESS_ERROR",
+      "error_type": "HarnessError",
+      "error_message": "POST /api/v1/support/requests returned HTTP 502",
+      "response_status": 502,
+      "assessment_id": "ASSESS_57a1ef507b664418a3b1509da7e2b2ce",
+      "cat": {
+        "provider_version": "adaptivetesting-1.2.1",
+        "item_bank_version": "demo.v1",
+        "config_version": "demo.cat.v1",
+        "administered_count": 8
+      },
+      "cat_response_count": 8,
+      "ollama_generation_log_before": 2,
+      "ollama_generation_log_after": 3,
+      "synthetic_fixture_only": true
+    }
+  ]
+}

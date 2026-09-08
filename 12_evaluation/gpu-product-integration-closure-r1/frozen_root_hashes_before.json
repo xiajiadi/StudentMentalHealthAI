@@ -1,0 +1,46 @@
+{
+  "captured_at": "2026-09-07T15:57:16.4323531Z",
+  "baseline_commit": "2972be77e537ef03033332039a6ed0eed8e451ef",
+  "files": [
+    {
+      "path": "CONTRACTS.md",
+      "sha256": "8064776edeb9277dea212c4b18c83fa8684e7ef505910732ccb70075b2be423a",
+      "bytes": 16018
+    },
+    {
+      "path": "00_architecture\\openapi.v1.json",
+      "sha256": "aff8bf040ef90455cecd7df9962344f0fa9c9e8017b03186068beb88f42c4e89",
+      "bytes": 28712
+    },
+    {
+      "path": "00_architecture\\schemas\\assessment.v1.schema.json",
+      "sha256": "2d5b5cbd232670cfe6653ba86726e012e4a096874ff4e4ce09a3209344cb4fb9",
+      "bytes": 6394
+    },
+    {
+      "path": "00_architecture\\schemas\\knowledge.v1.schema.json",
+      "sha256": "b1abbb93a6563162c44bc29c2d4570608f91756b58309e753deb7df9d087841d",
+      "bytes": 8304
+    },
+    {
+      "path": "00_architecture\\schemas\\generation.v1.schema.json",
+      "sha256": "52497665c543267acf1840e5cce7e74a2a407c57ecf130e18d35300dc099b0d1",
+      "bytes": 10631
+    },
+    {
+      "path": "00_architecture\\schemas\\config.v1.schema.json",
+      "sha256": "2541eb5efaa4e02b30f16771c3af13397cd22ec4a0c7ea7363c778a222b70824",
+      "bytes": 4629
+    },
+    {
+      "path": "00_architecture\\schemas\\logging.v1.schema.json",
+      "sha256": "a5965c8b327185043c9d68a7165d0a7aa3f68bb837643ffa6bba74f6c9b76d1c",
+      "bytes": 2833
+    },
+    {
+      "path": "00_architecture\\contracts\\candidates\\openapi.hardened.candidate.json",
+      "sha256": "556ed7a3f777d83c0de828df08b7ac51a730acedcbe42b9153d4b4414c5f1940",
+      "bytes": 127559
+    }
+  ]
+}

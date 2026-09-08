@@ -1,0 +1,20 @@
+{
+  "status": "FAIL",
+  "items": [
+    {
+      "fixture_id": "GPI_NORMAL_01",
+      "status": "FAIL",
+      "reason": "missing_trace_id"
+    },
+    {
+      "fixture_id": "GPI_NORMAL_02",
+      "status": "FAIL",
+      "reason": "missing_trace_id"
+    },
+    {
+      "fixture_id": "GPI_NORMAL_03",
+      "status": "FAIL",
+      "reason": "missing_trace_id"
+    }
+  ]
+}
