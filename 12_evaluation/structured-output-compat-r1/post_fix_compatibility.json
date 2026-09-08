@@ -1,0 +1,590 @@
+{
+  "round": "STRUCTURED_OUTPUT_PRODUCT_COMPATIBILITY_CLOSURE_R1_POST_FIX_COMPATIBILITY",
+  "synthetic_only": true,
+  "provider_parameters": {
+    "ollama": "0.33.3",
+    "model": "qwen2.5:7b-instruct-q4_K_M",
+    "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+    "context": 8192,
+    "kv": "f16",
+    "parallel": 1,
+    "num_predict": 768,
+    "temperature": 0.1,
+    "top_p": 0.9,
+    "seed": 20260906
+  },
+  "schema_sha256": "ebb901d8b57074e5fc7b0b8630385c0579ed66206111a9928b76dc6f3356f3b9",
+  "exact_prompt_sha256": "f3384226b70e34df5bb392f06789de649e9aa2674d24f121c3ea08b0465425e5",
+  "direct_provider": {
+    "passed": 3,
+    "total": 3,
+    "runs": [
+      {
+        "run": 1,
+        "status": "PASS",
+        "provider": "ollama",
+        "provider_model": "qwen2.5:7b-instruct-q4_K_M",
+        "runtime_version": "0.33.3",
+        "structured_summary": {
+          "present": true,
+          "keys": [
+            "disclaimer",
+            "observations",
+            "suggestions",
+            "summary"
+          ],
+          "observations_count": 5,
+          "suggestions_count": 4,
+          "suggestion_source_chunk_ids": [
+            [
+              "CHUNK_67b56abe21fe9860a26d",
+              "CHUNK_8f85f2c0472e21acd2fa",
+              "CHUNK_c3718c65fcf4151af391",
+              "CHUNK_3d2d02ba1c8fbc506665",
+              "CHUNK_bcbe71382652340b2249"
+            ],
+            [
+              "CHUNK_67b56abe21fe9860a26d",
+              "CHUNK_8f85f2c0472e21acd2fa",
+              "CHUNK_c3718c65fcf4151af391",
+              "CHUNK_3d2d02ba1c8fbc506665",
+              "CHUNK_bcbe71382652340b2249"
+            ],
+            [
+              "CHUNK_67b56abe21fe9860a26d",
+              "CHUNK_8f85f2c0472e21acd2fa",
+              "CHUNK_c3718c65fcf4151af391",
+              "CHUNK_3d2d02ba1c8fbc506665",
+              "CHUNK_bcbe71382652340b2249"
+            ],
+            [
+              "CHUNK_67b56abe21fe9860a26d",
+              "CHUNK_8f85f2c0472e21acd2fa",
+              "CHUNK_c3718c65fcf4151af391",
+              "CHUNK_3d2d02ba1c8fbc506665",
+              "CHUNK_bcbe71382652340b2249"
+            ]
+          ],
+          "disclaimer_present": true
+        },
+        "structured_valid": true,
+        "usage": {
+          "prompt_tokens": 177,
+          "completion_tokens": 742,
+          "total_tokens": 919
+        },
+        "finish_reason": "stop",
+        "transport": [
+          {
+            "request_sha256": "4bd502aa95fec86cfba2ccdc0f748b5c500e0e70abe0f04bf4ed410d33cc9225",
+            "request_length": 1054,
+            "response_sha256": "509684873ddf988b0c1219ae0e7381ec62ceff2eb3258bc72a6c511b98a87aa7",
+            "response_length": 5550,
+            "response_text_sha256": "2767e823298ed955a9e867bd500009a5c3ceefc3038f475b53a33b8bdf3c9b3b",
+            "response_text_length": 1370,
+            "response_text_prefix": "{\n  \"summary\": \"请根据具体情况调整学习策略，合理安排时间，保持积极心态，遇到困难及时寻求帮助。\",\n  \"observations\": [\n    \"CHUNK_67b56abe21fe9860a26d\",\n    \"CHUNK_8f85f2c0472e21acd2fa\",\n    \"CHUNK_c37",
+            "done": true,
+            "done_reason": "stop",
+            "eval_count": 742,
+            "prompt_eval_count": 177
+          }
+        ]
+      },
+      {
+        "run": 2,
+        "status": "PASS",
+        "provider": "ollama",
+        "provider_model": "qwen2.5:7b-instruct-q4_K_M",
+        "runtime_version": "0.33.3",
+        "structured_summary": {
+          "present": true,
+          "keys": [
+            "disclaimer",
+            "observations",
+            "suggestions",
+            "summary"
+          ],
+          "observations_count": 5,
+          "suggestions_count": 1,
+          "suggestion_source_chunk_ids": [
+            [
+              "CHUNK_67b56abe21fe9860a26d",
+              "CHUNK_8f85f2c0472e21acd2fa",
+              "CHUNK_c3718c65fcf4151af391",
+              "CHUNK_3d2d02ba1c8fbc506665",
+              "CHUNK_bcbe71382652340b2249"
+            ]
+          ],
+          "disclaimer_present": true
+        },
+        "structured_valid": true,
+        "usage": {
+          "prompt_tokens": 177,
+          "completion_tokens": 327,
+          "total_tokens": 504
+        },
+        "finish_reason": "stop",
+        "transport": [
+          {
+            "request_sha256": "4bd502aa95fec86cfba2ccdc0f748b5c500e0e70abe0f04bf4ed410d33cc9225",
+            "request_length": 1054,
+            "response_sha256": "8b99250e3e3d6671b4cebf482a665fe4044e95d991ec37c6d3f6474e2073407e",
+            "response_length": 3144,
+            "response_text_sha256": "9b3664846c7cdf93659b6e45c6b2f4bbfac537e32ea1e5a718cc9f5f44cf7333",
+            "response_text_length": 592,
+            "response_text_prefix": "{\n  \"summary\": \"请根据具体情况调整学习计划，合理安排时间，保持积极的学习态度。\",\n  \"observations\": [\n    \"CHUNK_67b56abe21fe9860a26d\",\n    \"CHUNK_8f85f2c0472e21acd2fa\",\n    \"CHUNK_c3718c65fcf",
+            "done": true,
+            "done_reason": "stop",
+            "eval_count": 327,
+            "prompt_eval_count": 177
+          }
+        ]
+      },
+      {
+        "run": 3,
+        "status": "PASS",
+        "provider": "ollama",
+        "provider_model": "qwen2.5:7b-instruct-q4_K_M",
+        "runtime_version": "0.33.3",
+        "structured_summary": {
+          "present": true,
+          "keys": [
+            "disclaimer",
+            "observations",
+            "suggestions",
+            "summary"
+          ],
+          "observations_count": 5,
+          "suggestions_count": 1,
+          "suggestion_source_chunk_ids": [
+            [
+              "CHUNK_67b56abe21fe9860a26d",
+              "CHUNK_8f85f2c0472e21acd2fa",
+              "CHUNK_c3718c65fcf4151af391",
+              "CHUNK_3d2d02ba1c8fbc506665",
+              "CHUNK_bcbe71382652340b2249"
+            ]
+          ],
+          "disclaimer_present": true
+        },
+        "structured_valid": true,
+        "usage": {
+          "prompt_tokens": 177,
+          "completion_tokens": 327,
+          "total_tokens": 504
+        },
+        "finish_reason": "stop",
+        "transport": [
+          {
+            "request_sha256": "4bd502aa95fec86cfba2ccdc0f748b5c500e0e70abe0f04bf4ed410d33cc9225",
+            "request_length": 1054,
+            "response_sha256": "e16c95a57084e50b189d7d464533b61c5452fad97a7665f1a4fea28e71f72fdd",
+            "response_length": 3143,
+            "response_text_sha256": "9b3664846c7cdf93659b6e45c6b2f4bbfac537e32ea1e5a718cc9f5f44cf7333",
+            "response_text_length": 592,
+            "response_text_prefix": "{\n  \"summary\": \"请根据具体情况调整学习计划，合理安排时间，保持积极的学习态度。\",\n  \"observations\": [\n    \"CHUNK_67b56abe21fe9860a26d\",\n    \"CHUNK_8f85f2c0472e21acd2fa\",\n    \"CHUNK_c3718c65fcf",
+            "done": true,
+            "done_reason": "stop",
+            "eval_count": 327,
+            "prompt_eval_count": 177
+          }
+        ]
+      }
+    ]
+  },
+  "runtime_service": {
+    "passed": 3,
+    "total": 3,
+    "runs": [
+      {
+        "run": 1,
+        "status": "success",
+        "structured_valid": true,
+        "fallback_used": false,
+        "provider": "ollama",
+        "provider_model": "qwen2.5:7b-instruct-q4_K_M",
+        "runtime_version": "0.33.3",
+        "structured_summary": {
+          "present": true,
+          "keys": [
+            "disclaimer",
+            "observations",
+            "suggestions",
+            "summary"
+          ],
+          "observations_count": 5,
+          "suggestions_count": 1,
+          "suggestion_source_chunk_ids": [
+            [
+              "CHUNK_67b56abe21fe9860a26d",
+              "CHUNK_8f85f2c0472e21acd2fa",
+              "CHUNK_c3718c65fcf4151af391",
+              "CHUNK_3d2d02ba1c8fbc506665",
+              "CHUNK_bcbe71382652340b2249"
+            ]
+          ],
+          "disclaimer_present": true
+        },
+        "usage": {
+          "prompt_tokens": 177,
+          "completion_tokens": 327,
+          "total_tokens": 504
+        },
+        "finish_reason": "stop",
+        "trace": {
+          "trace_id": "TRACE_STRUCTURED_COMPAT_RUNTIME_01",
+          "request_id": "REQ_STRUCTURED_COMPAT_RUNTIME_01",
+          "logical_model": "qwen2.5-7b-instruct-compat",
+          "provider": "ollama",
+          "provider_model": "qwen2.5:7b-instruct-q4_K_M",
+          "model_revision": "qwen2.5:7b-instruct-q4_K_M",
+          "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+          "quantization": "Q4_K_M",
+          "runtime_version": "0.1.0-structured-output-compat-r1",
+          "hardware": {
+            "os": "Windows 11 (AMD64)",
+            "cpu": "Intel64 Family 6 Model 170 Stepping 4, GenuineIntel",
+            "threads": 22,
+            "ram_bytes": 33752997888,
+            "gpu_present": true,
+            "gpus": [
+              {
+                "name": "NVIDIA GeForce RTX 3060",
+                "vram_bytes": 12884901888,
+                "driver": "596.36",
+                "cuda_version": null
+              }
+            ],
+            "cuda_available": true,
+            "nvidia_smi_path": "C:\\WINDOWS\\system32\\nvidia-smi.EXE",
+            "detection_error": null,
+            "profile": "CONSUMER_GPU"
+          },
+          "generation_config": {
+            "max_output_tokens": 768,
+            "max_tokens": 768,
+            "temperature": 0.1,
+            "top_p": 0.9,
+            "top_k": null,
+            "context_length": 8192,
+            "timeout_seconds": 180.0,
+            "keep_alive": "5m",
+            "seed": 20260906,
+            "stop": [],
+            "think": null
+          },
+          "prompt_tokens": 177,
+          "completion_tokens": 327,
+          "ttft_ms": null,
+          "generation_latency_ms": 27045.685200000662,
+          "total_latency_ms": 27045.685200000662,
+          "tokens_per_second": 12.090653188553418,
+          "retry_count": 0,
+          "requested_model": "qwen2.5-7b-instruct-compat",
+          "actual_model": "qwen2.5-7b-instruct-compat",
+          "fallback_reason": null,
+          "finish_reason": "stop",
+          "error": null,
+          "requested_provider_model": "qwen2.5:7b-instruct-q4_K_M",
+          "primary_error": null,
+          "primary_error_normalized_code": null,
+          "fallback_attempted": false,
+          "fallback_model": null,
+          "fallback_provider_model": null,
+          "fallback_generation_success": null,
+          "fallback_count": 0,
+          "attempts": [
+            {
+              "attempt_index": 1,
+              "provider_id": "ollama",
+              "logical_model_id": "qwen2.5-7b-instruct-compat",
+              "provider_model_id": "qwen2.5:7b-instruct-q4_K_M",
+              "started_at": "2026-09-08T15:24:46.164747Z",
+              "ended_at": "2026-09-08T15:25:13.210257Z",
+              "outcome": "success",
+              "error_code": null,
+              "fallback_reason": null,
+              "retry": false
+            }
+          ]
+        },
+        "transport": [
+          {
+            "request_sha256": "4bd502aa95fec86cfba2ccdc0f748b5c500e0e70abe0f04bf4ed410d33cc9225",
+            "request_length": 1054,
+            "response_sha256": "cfab6d8860c31cfbc752ed2e421bc81574302ceb90ef409feb4aa3c3147296b4",
+            "response_length": 3144,
+            "response_text_sha256": "9b3664846c7cdf93659b6e45c6b2f4bbfac537e32ea1e5a718cc9f5f44cf7333",
+            "response_text_length": 592,
+            "response_text_prefix": "{\n  \"summary\": \"请根据具体情况调整学习计划，合理安排时间，保持积极的学习态度。\",\n  \"observations\": [\n    \"CHUNK_67b56abe21fe9860a26d\",\n    \"CHUNK_8f85f2c0472e21acd2fa\",\n    \"CHUNK_c3718c65fcf",
+            "done": true,
+            "done_reason": "stop",
+            "eval_count": 327,
+            "prompt_eval_count": 177
+          }
+        ]
+      },
+      {
+        "run": 2,
+        "status": "success",
+        "structured_valid": true,
+        "fallback_used": false,
+        "provider": "ollama",
+        "provider_model": "qwen2.5:7b-instruct-q4_K_M",
+        "runtime_version": "0.33.3",
+        "structured_summary": {
+          "present": true,
+          "keys": [
+            "disclaimer",
+            "observations",
+            "suggestions",
+            "summary"
+          ],
+          "observations_count": 5,
+          "suggestions_count": 1,
+          "suggestion_source_chunk_ids": [
+            [
+              "CHUNK_67b56abe21fe9860a26d",
+              "CHUNK_8f85f2c0472e21acd2fa",
+              "CHUNK_c3718c65fcf4151af391",
+              "CHUNK_3d2d02ba1c8fbc506665",
+              "CHUNK_bcbe71382652340b2249"
+            ]
+          ],
+          "disclaimer_present": true
+        },
+        "usage": {
+          "prompt_tokens": 177,
+          "completion_tokens": 327,
+          "total_tokens": 504
+        },
+        "finish_reason": "stop",
+        "trace": {
+          "trace_id": "TRACE_STRUCTURED_COMPAT_RUNTIME_02",
+          "request_id": "REQ_STRUCTURED_COMPAT_RUNTIME_02",
+          "logical_model": "qwen2.5-7b-instruct-compat",
+          "provider": "ollama",
+          "provider_model": "qwen2.5:7b-instruct-q4_K_M",
+          "model_revision": "qwen2.5:7b-instruct-q4_K_M",
+          "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+          "quantization": "Q4_K_M",
+          "runtime_version": "0.1.0-structured-output-compat-r1",
+          "hardware": {
+            "os": "Windows 11 (AMD64)",
+            "cpu": "Intel64 Family 6 Model 170 Stepping 4, GenuineIntel",
+            "threads": 22,
+            "ram_bytes": 33752997888,
+            "gpu_present": true,
+            "gpus": [
+              {
+                "name": "NVIDIA GeForce RTX 3060",
+                "vram_bytes": 12884901888,
+                "driver": "596.36",
+                "cuda_version": null
+              }
+            ],
+            "cuda_available": true,
+            "nvidia_smi_path": "C:\\WINDOWS\\system32\\nvidia-smi.EXE",
+            "detection_error": null,
+            "profile": "CONSUMER_GPU"
+          },
+          "generation_config": {
+            "max_output_tokens": 768,
+            "max_tokens": 768,
+            "temperature": 0.1,
+            "top_p": 0.9,
+            "top_k": null,
+            "context_length": 8192,
+            "timeout_seconds": 180.0,
+            "keep_alive": "5m",
+            "seed": 20260906,
+            "stop": [],
+            "think": null
+          },
+          "prompt_tokens": 177,
+          "completion_tokens": 327,
+          "ttft_ms": null,
+          "generation_latency_ms": 27069.138300000304,
+          "total_latency_ms": 27069.138300000304,
+          "tokens_per_second": 12.080177668603374,
+          "retry_count": 0,
+          "requested_model": "qwen2.5-7b-instruct-compat",
+          "actual_model": "qwen2.5-7b-instruct-compat",
+          "fallback_reason": null,
+          "finish_reason": "stop",
+          "error": null,
+          "requested_provider_model": "qwen2.5:7b-instruct-q4_K_M",
+          "primary_error": null,
+          "primary_error_normalized_code": null,
+          "fallback_attempted": false,
+          "fallback_model": null,
+          "fallback_provider_model": null,
+          "fallback_generation_success": null,
+          "fallback_count": 0,
+          "attempts": [
+            {
+              "attempt_index": 1,
+              "provider_id": "ollama",
+              "logical_model_id": "qwen2.5-7b-instruct-compat",
+              "provider_model_id": "qwen2.5:7b-instruct-q4_K_M",
+              "started_at": "2026-09-08T15:25:40.533249Z",
+              "ended_at": "2026-09-08T15:26:07.601945Z",
+              "outcome": "success",
+              "error_code": null,
+              "fallback_reason": null,
+              "retry": false
+            }
+          ]
+        },
+        "transport": [
+          {
+            "request_sha256": "4bd502aa95fec86cfba2ccdc0f748b5c500e0e70abe0f04bf4ed410d33cc9225",
+            "request_length": 1054,
+            "response_sha256": "3e56d4004c72ef1a47b76236d4be84fed76712d4e5bd8e02a4123dd1c1952621",
+            "response_length": 3144,
+            "response_text_sha256": "9b3664846c7cdf93659b6e45c6b2f4bbfac537e32ea1e5a718cc9f5f44cf7333",
+            "response_text_length": 592,
+            "response_text_prefix": "{\n  \"summary\": \"请根据具体情况调整学习计划，合理安排时间，保持积极的学习态度。\",\n  \"observations\": [\n    \"CHUNK_67b56abe21fe9860a26d\",\n    \"CHUNK_8f85f2c0472e21acd2fa\",\n    \"CHUNK_c3718c65fcf",
+            "done": true,
+            "done_reason": "stop",
+            "eval_count": 327,
+            "prompt_eval_count": 177
+          }
+        ]
+      },
+      {
+        "run": 3,
+        "status": "success",
+        "structured_valid": true,
+        "fallback_used": false,
+        "provider": "ollama",
+        "provider_model": "qwen2.5:7b-instruct-q4_K_M",
+        "runtime_version": "0.33.3",
+        "structured_summary": {
+          "present": true,
+          "keys": [
+            "disclaimer",
+            "observations",
+            "suggestions",
+            "summary"
+          ],
+          "observations_count": 5,
+          "suggestions_count": 1,
+          "suggestion_source_chunk_ids": [
+            [
+              "CHUNK_67b56abe21fe9860a26d",
+              "CHUNK_8f85f2c0472e21acd2fa",
+              "CHUNK_c3718c65fcf4151af391",
+              "CHUNK_3d2d02ba1c8fbc506665",
+              "CHUNK_bcbe71382652340b2249"
+            ]
+          ],
+          "disclaimer_present": true
+        },
+        "usage": {
+          "prompt_tokens": 177,
+          "completion_tokens": 327,
+          "total_tokens": 504
+        },
+        "finish_reason": "stop",
+        "trace": {
+          "trace_id": "TRACE_STRUCTURED_COMPAT_RUNTIME_03",
+          "request_id": "REQ_STRUCTURED_COMPAT_RUNTIME_03",
+          "logical_model": "qwen2.5-7b-instruct-compat",
+          "provider": "ollama",
+          "provider_model": "qwen2.5:7b-instruct-q4_K_M",
+          "model_revision": "qwen2.5:7b-instruct-q4_K_M",
+          "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+          "quantization": "Q4_K_M",
+          "runtime_version": "0.1.0-structured-output-compat-r1",
+          "hardware": {
+            "os": "Windows 11 (AMD64)",
+            "cpu": "Intel64 Family 6 Model 170 Stepping 4, GenuineIntel",
+            "threads": 22,
+            "ram_bytes": 33752997888,
+            "gpu_present": true,
+            "gpus": [
+              {
+                "name": "NVIDIA GeForce RTX 3060",
+                "vram_bytes": 12884901888,
+                "driver": "596.36",
+                "cuda_version": null
+              }
+            ],
+            "cuda_available": true,
+            "nvidia_smi_path": "C:\\WINDOWS\\system32\\nvidia-smi.EXE",
+            "detection_error": null,
+            "profile": "CONSUMER_GPU"
+          },
+          "generation_config": {
+            "max_output_tokens": 768,
+            "max_tokens": 768,
+            "temperature": 0.1,
+            "top_p": 0.9,
+            "top_k": null,
+            "context_length": 8192,
+            "timeout_seconds": 180.0,
+            "keep_alive": "5m",
+            "seed": 20260906,
+            "stop": [],
+            "think": null
+          },
+          "prompt_tokens": 177,
+          "completion_tokens": 327,
+          "ttft_ms": null,
+          "generation_latency_ms": 28125.44969999999,
+          "total_latency_ms": 28125.44969999999,
+          "tokens_per_second": 11.626480766990193,
+          "retry_count": 0,
+          "requested_model": "qwen2.5-7b-instruct-compat",
+          "actual_model": "qwen2.5-7b-instruct-compat",
+          "fallback_reason": null,
+          "finish_reason": "stop",
+          "error": null,
+          "requested_provider_model": "qwen2.5:7b-instruct-q4_K_M",
+          "primary_error": null,
+          "primary_error_normalized_code": null,
+          "fallback_attempted": false,
+          "fallback_model": null,
+          "fallback_provider_model": null,
+          "fallback_generation_success": null,
+          "fallback_count": 0,
+          "attempts": [
+            {
+              "attempt_index": 1,
+              "provider_id": "ollama",
+              "logical_model_id": "qwen2.5-7b-instruct-compat",
+              "provider_model_id": "qwen2.5:7b-instruct-q4_K_M",
+              "started_at": "2026-09-08T15:26:34.645827Z",
+              "ended_at": "2026-09-08T15:27:02.770923Z",
+              "outcome": "success",
+              "error_code": null,
+              "fallback_reason": null,
+              "retry": false
+            }
+          ]
+        },
+        "transport": [
+          {
+            "request_sha256": "4bd502aa95fec86cfba2ccdc0f748b5c500e0e70abe0f04bf4ed410d33cc9225",
+            "request_length": 1054,
+            "response_sha256": "22269e70ba9eda7170e9c154c41a8a0a9fdc72da44019c1dc8da4407223e65d9",
+            "response_length": 3144,
+            "response_text_sha256": "9b3664846c7cdf93659b6e45c6b2f4bbfac537e32ea1e5a718cc9f5f44cf7333",
+            "response_text_length": 592,
+            "response_text_prefix": "{\n  \"summary\": \"请根据具体情况调整学习计划，合理安排时间，保持积极的学习态度。\",\n  \"observations\": [\n    \"CHUNK_67b56abe21fe9860a26d\",\n    \"CHUNK_8f85f2c0472e21acd2fa\",\n    \"CHUNK_c3718c65fcf",
+            "done": true,
+            "done_reason": "stop",
+            "eval_count": 327,
+            "prompt_eval_count": 177
+          }
+        ]
+      }
+    ]
+  },
+  "transport_generation_calls": 6,
+  "process": {
+    "ollama_process_owned_by_diagnostic": true,
+    "terminated_by_diagnostic": true
+  }
+}

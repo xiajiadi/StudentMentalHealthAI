@@ -1,25 +1,151 @@
 {
-  "generated_at": "2026-09-07T17:14:09.829672Z",
+  "generated_at": "2026-09-08T15:00:57.709103Z",
   "normal_snapshots": [
     {
       "fixture_id": "GPI_NORMAL_01",
-      "snapshot": null
+      "snapshot": {
+        "timestamp": "2026-09-08T14:58:01.362968Z",
+        "nvidia_smi": {
+          "gpu": "NVIDIA GeForce RTX 3060, 12288, 11890, 0",
+          "gpu_exit_code": "0",
+          "compute_apps": "16032, [Insufficient Permissions], [N/A]\n34488, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n29288, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n35192, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n12672, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n8316, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]",
+          "compute_apps_exit_code": "0"
+        },
+        "gpu_ollama_ps": {
+          "models": [
+            {
+              "name": "qwen2.5:7b-instruct-q4_K_M",
+              "model": "qwen2.5:7b-instruct-q4_K_M",
+              "size": 5378513303,
+              "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+              "details": {
+                "parent_model": "",
+                "format": "gguf",
+                "family": "qwen2",
+                "families": [
+                  "qwen2"
+                ],
+                "parameter_size": "7.6B",
+                "quantization_level": "Q4_K_M"
+              },
+              "expires_at": "2026-09-08T23:02:57.49385+08:00",
+              "size_vram": 1780303789,
+              "context_length": 8192
+            }
+          ]
+        },
+        "cpu_ollama_ps": {
+          "models": []
+        },
+        "gpu_classification": "GPU_PARTIAL",
+        "target_model": {
+          "name": "qwen2.5:7b-instruct-q4_K_M",
+          "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+          "size": 5378513303,
+          "size_vram": 1780303789,
+          "context_length": 8192
+        }
+      }
     },
     {
       "fixture_id": "GPI_NORMAL_02",
-      "snapshot": null
+      "snapshot": {
+        "timestamp": "2026-09-08T14:58:34.938042Z",
+        "nvidia_smi": {
+          "gpu": "NVIDIA GeForce RTX 3060, 12288, 11890, 0",
+          "gpu_exit_code": "0",
+          "compute_apps": "16032, [Insufficient Permissions], [N/A]\n34488, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n29288, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n35192, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n12672, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n8316, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]",
+          "compute_apps_exit_code": "0"
+        },
+        "gpu_ollama_ps": {
+          "models": [
+            {
+              "name": "qwen2.5:7b-instruct-q4_K_M",
+              "model": "qwen2.5:7b-instruct-q4_K_M",
+              "size": 5378513303,
+              "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+              "details": {
+                "parent_model": "",
+                "format": "gguf",
+                "family": "qwen2",
+                "families": [
+                  "qwen2"
+                ],
+                "parameter_size": "7.6B",
+                "quantization_level": "Q4_K_M"
+              },
+              "expires_at": "2026-09-08T23:03:31.1652859+08:00",
+              "size_vram": 1780303789,
+              "context_length": 8192
+            }
+          ]
+        },
+        "cpu_ollama_ps": {
+          "models": []
+        },
+        "gpu_classification": "GPU_PARTIAL",
+        "target_model": {
+          "name": "qwen2.5:7b-instruct-q4_K_M",
+          "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+          "size": 5378513303,
+          "size_vram": 1780303789,
+          "context_length": 8192
+        }
+      }
     },
     {
       "fixture_id": "GPI_NORMAL_03",
-      "snapshot": null
+      "snapshot": {
+        "timestamp": "2026-09-08T14:59:10.546041Z",
+        "nvidia_smi": {
+          "gpu": "NVIDIA GeForce RTX 3060, 12288, 11890, 0",
+          "gpu_exit_code": "0",
+          "compute_apps": "16032, [Insufficient Permissions], [N/A]\n34488, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n29288, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n35192, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n12672, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n8316, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]",
+          "compute_apps_exit_code": "0"
+        },
+        "gpu_ollama_ps": {
+          "models": [
+            {
+              "name": "qwen2.5:7b-instruct-q4_K_M",
+              "model": "qwen2.5:7b-instruct-q4_K_M",
+              "size": 5378513303,
+              "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+              "details": {
+                "parent_model": "",
+                "format": "gguf",
+                "family": "qwen2",
+                "families": [
+                  "qwen2"
+                ],
+                "parameter_size": "7.6B",
+                "quantization_level": "Q4_K_M"
+              },
+              "expires_at": "2026-09-08T23:04:04.8885555+08:00",
+              "size_vram": 1780303789,
+              "context_length": 8192
+            }
+          ]
+        },
+        "cpu_ollama_ps": {
+          "models": []
+        },
+        "gpu_classification": "GPU_PARTIAL",
+        "target_model": {
+          "name": "qwen2.5:7b-instruct-q4_K_M",
+          "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+          "size": 5378513303,
+          "size_vram": 1780303789,
+          "context_length": 8192
+        }
+      }
     }
   ],
   "fallback_snapshot": {
-    "timestamp": "2026-09-07T17:14:07.814778Z",
+    "timestamp": "2026-09-08T15:00:55.920462Z",
     "nvidia_smi": {
-      "gpu": "NVIDIA GeForce RTX 3060, 12288, 12040, 0",
+      "gpu": "NVIDIA GeForce RTX 3060, 12288, 11890, 0",
       "gpu_exit_code": "0",
-      "compute_apps": "25564, [Insufficient Permissions], [N/A]\n23644, C:\\Users\\15848\\AppData\\Local\\Programs\\Ollama\\ollama.exe, [N/A]\n66500, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n30524, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n70376, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]",
+      "compute_apps": "16032, [Insufficient Permissions], [N/A]\n34488, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n29288, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n35192, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n12672, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n8316, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]",
       "compute_apps_exit_code": "0"
     },
     "gpu_ollama_ps": {
@@ -27,7 +153,7 @@
         {
           "name": "qwen2.5:7b-instruct-q4_K_M",
           "model": "qwen2.5:7b-instruct-q4_K_M",
-          "size": 4987132312,
+          "size": 5378513303,
           "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
           "details": {
             "parent_model": "",
@@ -39,8 +165,8 @@
             "parameter_size": "7.6B",
             "quantization_level": "Q4_K_M"
           },
-          "expires_at": "2026-09-08T01:17:13.8437698+08:00",
-          "size_vram": 4987132312,
+          "expires_at": "2026-09-08T23:04:04.8885555+08:00",
+          "size_vram": 1780303789,
           "context_length": 8192
         }
       ]
@@ -62,18 +188,18 @@
             "parameter_size": "1.5B",
             "quantization_level": "Q4_K_M"
           },
-          "expires_at": "2026-09-08T01:19:02.9440906+08:00",
+          "expires_at": "2026-09-08T23:05:50.8219713+08:00",
           "size_vram": 0,
           "context_length": 8192
         }
       ]
     },
-    "gpu_classification": "GPU_FULL",
+    "gpu_classification": "GPU_PARTIAL",
     "target_model": {
       "name": "qwen2.5:7b-instruct-q4_K_M",
       "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
-      "size": 4987132312,
-      "size_vram": 4987132312,
+      "size": 5378513303,
+      "size_vram": 1780303789,
       "context_length": 8192
     },
     "fallback_device_observed": "CPU",
@@ -92,9 +218,9 @@
     "cat_backend_mysql": "CPU"
   },
   "nvidia_smi_at_closure": {
-    "gpu": "NVIDIA GeForce RTX 3060, 12288, 12040, 0",
+    "gpu": "NVIDIA GeForce RTX 3060, 12288, 11890, 0",
     "gpu_exit_code": "0",
-    "compute_apps": "25564, [Insufficient Permissions], [N/A]\n23644, C:\\Users\\15848\\AppData\\Local\\Programs\\Ollama\\ollama.exe, [N/A]\n66500, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n30524, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n70376, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]",
+    "compute_apps": "16032, [Insufficient Permissions], [N/A]\n34488, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n29288, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n35192, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n12672, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]\n8316, D:\\Dev\\tools\\StudentMentalHealthAI\\gpu-acceptance\\ollama-0.33.3\\lib\\ollama\\llama-server.exe, [N/A]",
     "compute_apps_exit_code": "0"
   },
   "formal_gpu_model": "qwen2.5:7b-instruct-q4_K_M",

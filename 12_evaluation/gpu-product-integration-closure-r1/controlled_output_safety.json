@@ -1,5 +1,5 @@
 {
-  "assessment_id": "ASSESS_090e93467fc547efa66c99ea5e43a888",
+  "assessment_id": "ASSESS_bac26acf4dde46ddb0dd5aa1e8628a0e",
   "status": "PASS",
   "decision": "BLOCK",
   "decision_projection": "block",
@@ -9,14 +9,14 @@
     "CONTENT_SAFE"
   ],
   "human_review_required": false,
-  "request_id": "REQ_500f96a730783f704ea3e44b9091e3d4",
-  "trace_id": "TRACE_a51eb9e1df049328e1e9949ae0ce51fa",
+  "request_id": "REQ_8a689f1b8ceb325c35ea53b0237fa83a",
+  "trace_id": "TRACE_42e5c64ffc930151f1a9410fa1ecdad5",
   "candidate_fixture": "PROMPT_INJECTION",
   "real_output_safety": true,
   "backend_controlled_flow": {
     "fixture_id": "GPI_CONTROLLED_OUTPUT_FLOW",
     "kind": "controlled_output",
-    "assessment_id": "ASSESS_acdbd7a763b44c198878a4b5d2cb45da",
+    "assessment_id": "ASSESS_31e609ab59254a8e899764de0d385e1c",
     "cat": {
       "provider_version": "adaptivetesting-1.2.1",
       "item_bank_version": "demo.v1",
@@ -24,9 +24,9 @@
       "administered_count": 8
     },
     "cat_response_count": 8,
-    "request_id": "REQ_8445d10344afba75286b616ef22f64f1",
-    "trace_id": "TRACE_7a957d1a9bd7f5d877b18a1daa32604a",
-    "report_id": "REPORT_525131c9816243de8a038f370dfec5ef",
+    "request_id": "REQ_c8a73d76d5da91ca2b1a02d9a481fd97",
+    "trace_id": "TRACE_2b78bf9a1b232e7a6f0366f9cd3d30b0",
+    "report_id": "REPORT_3845489303d547b9a941c5d1af8ff40c",
     "status": "safety_blocked",
     "response_status": 202,
     "safety_action": "BLOCK",
@@ -35,7 +35,7 @@
     "review_reference": null,
     "crisis_response_present": false,
     "retrieval_id": "RETR_not_run",
-    "generation_id": "GEN_616b1dcdb88a4f16ba0691004a1992a4",
+    "generation_id": "GEN_72a78ba4a6664b389a75f3abb1dfca6b",
     "generation_status": "NOT_RUN",
     "candidate_source": "NOT_RUN",
     "model_id": null,

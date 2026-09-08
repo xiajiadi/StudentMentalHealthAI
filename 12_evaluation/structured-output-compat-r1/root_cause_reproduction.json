@@ -1,0 +1,1772 @@
+{
+  "round": "STRUCTURED_OUTPUT_PRODUCT_COMPATIBILITY_CLOSURE_R1_ROOT_CAUSE",
+  "synthetic_only": true,
+  "accepted_publication": {
+    "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\04_knowledge-pipeline\\data\\published\\round1\\embedding_ready.jsonl",
+    "sha256": "2d5736ae741d675ca5856b8004665ea3043aeccea34e2b007498ff04c2b501a2",
+    "chunk_ids": [
+      "CHUNK_67b56abe21fe9860a26d",
+      "CHUNK_8f85f2c0472e21acd2fa",
+      "CHUNK_c3718c65fcf4151af391",
+      "CHUNK_3d2d02ba1c8fbc506665",
+      "CHUNK_bcbe71382652340b2249"
+    ],
+    "d2_candidate_used": false
+  },
+  "prompt_source": {
+    "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\09_backend\\src\\smhai_backend\\domains\\support\\service.py",
+    "symbol": "SupportService._build_prompt",
+    "serialization": "source_chunk_ids=comma_joined_chunk_ids",
+    "message": "请给出简短建议。",
+    "target_role": "student"
+  },
+  "schema": {
+    "schema_source": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\09_backend\\src\\smhai_backend\\integrations\\llm.py",
+    "schema_source_sha256": "4e32bd5a0d5efb89168645698b79c9037459c85cdc7c49f539a24c4b02abc39a",
+    "schema_factory": "_generation_content_schema",
+    "schema_sha256": "ebb901d8b57074e5fc7b0b8630385c0579ed66206111a9928b76dc6f3356f3b9",
+    "pydantic_validation_target": "GenerationContent",
+    "pydantic_source": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\09_backend\\src\\smhai_backend\\domains\\support\\schemas.py",
+    "pydantic_source_sha256": "2ee0dae883bc69530d4cf0fcae08a7e6e2c23976620cb12466a345cd814c0832"
+  },
+  "provider": {
+    "endpoint": "http://127.0.0.1:11435",
+    "version": "0.33.3",
+    "model": "qwen2.5:7b-instruct-q4_K_M",
+    "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+    "context": 8192,
+    "kv": "f16",
+    "parallel": 1,
+    "max_output_tokens": 384,
+    "temperature": 0.1,
+    "top_p": 0.9,
+    "seed": 20260906,
+    "snapshot": {
+      "endpoint": "http://127.0.0.1:11435",
+      "expected_model": "qwen2.5:7b-instruct-q4_K_M",
+      "expected_digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+      "version": {
+        "version": "0.33.3"
+      },
+      "tags": [
+        {
+          "name": "qwen2.5:7b-instruct-q4_K_M",
+          "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+          "size": 4683087332,
+          "quantization": "Q4_K_M"
+        }
+      ],
+      "show": {
+        "digest": null,
+        "details": {
+          "parent_model": "",
+          "format": "gguf",
+          "family": "qwen2",
+          "families": [
+            "qwen2"
+          ],
+          "parameter_size": "7.6B",
+          "quantization_level": "Q4_K_M"
+        },
+        "model_info_keys": [
+          "general.architecture",
+          "general.base_model.0.name",
+          "general.base_model.0.organization",
+          "general.base_model.0.repo_url",
+          "general.base_model.count",
+          "general.basename",
+          "general.file_type",
+          "general.finetune",
+          "general.languages",
+          "general.license",
+          "general.license.link",
+          "general.parameter_count",
+          "general.quantization_version",
+          "general.size_label",
+          "general.tags",
+          "general.type",
+          "qwen2.attention.head_count",
+          "qwen2.attention.head_count_kv",
+          "qwen2.attention.layer_norm_rms_epsilon",
+          "qwen2.block_count",
+          "qwen2.context_length",
+          "qwen2.embedding_length",
+          "qwen2.feed_forward_length",
+          "qwen2.rope.freq_base",
+          "tokenizer.ggml.add_bos_token",
+          "tokenizer.ggml.bos_token_id",
+          "tokenizer.ggml.eos_token_id",
+          "tokenizer.ggml.merges",
+          "tokenizer.ggml.model",
+          "tokenizer.ggml.padding_token_id",
+          "tokenizer.ggml.pre",
+          "tokenizer.ggml.token_type",
+          "tokenizer.ggml.tokens"
+        ]
+      },
+      "ps": {
+        "models": []
+      }
+    }
+  },
+  "exact_product_prompt_runs": [
+    {
+      "native": {
+        "case": "exact_product_prompt_01",
+        "run_index": 1,
+        "request_identity": {
+          "model": "qwen2.5:7b-instruct-q4_K_M",
+          "seed": 20260906,
+          "num_ctx": 8192,
+          "num_predict": 384,
+          "temperature": 0.1,
+          "top_p": 0.9
+        },
+        "prompt_sha256": "f3384226b70e34df5bb392f06789de649e9aa2674d24f121c3ea08b0465425e5",
+        "prompt_length": 329,
+        "schema_sha256": "ebb901d8b57074e5fc7b0b8630385c0579ed66206111a9928b76dc6f3356f3b9",
+        "provider_request_sha256": "f4c38dbf94c7c044f7ff9ead194209a7d5bdf5530b55cdc317c8d24a6fe03f1f",
+        "native_http_status": 200,
+        "native_response_body_sha256": "54e11edce8a02584ab4fe9500a671dea3d4ca97eeeb50995ea79ddccb5546805",
+        "native_response_text_sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85",
+        "native_response_text_length": 700,
+        "native": {
+          "response_length": 700,
+          "response_sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85",
+          "response_prefix": "{\n  \"summary\": \"请根据具体情况调整学习策略，合理安排时间，保持积极心态，遇到困难及时寻求帮助。\",\n  \"observations\": [\n    \"CHUNK_67b56abe21fe9860a26d\",\n    \"CHUNK_8f85f2c0472e21acd2fa\",\n    \"CHUNK_c37",
+          "json_parse": "FAIL",
+          "json_line": 26,
+          "json_column": 9,
+          "json_error": "Unterminated string starting at",
+          "schema_validation": "NOT_RUN"
+        },
+        "termination": {
+          "done": true,
+          "done_reason": "length",
+          "error": null,
+          "prompt_eval_count": 177,
+          "eval_count": 384,
+          "total_duration": 45482974300,
+          "load_duration": 6736340200,
+          "response_present": true,
+          "response_terminated": true
+        },
+        "local_artifacts": [
+          {
+            "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\exact_product_prompt_01_run_01_request.json",
+            "length": 1054,
+            "sha256": "f4c38dbf94c7c044f7ff9ead194209a7d5bdf5530b55cdc317c8d24a6fe03f1f"
+          },
+          {
+            "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\exact_product_prompt_01_run_01_response.json",
+            "length": 3387,
+            "sha256": "54e11edce8a02584ab4fe9500a671dea3d4ca97eeeb50995ea79ddccb5546805"
+          },
+          {
+            "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\exact_product_prompt_01_run_01_prompt.txt",
+            "length": 345,
+            "sha256": "f3384226b70e34df5bb392f06789de649e9aa2674d24f121c3ea08b0465425e5"
+          }
+        ]
+      },
+      "runtime": {
+        "request_id": "REQ_STRUCTURED_COMPAT_01",
+        "trace_id": "TRACE_STRUCTURED_COMPAT_01",
+        "prompt_sha256": "f3384226b70e34df5bb392f06789de649e9aa2674d24f121c3ea08b0465425e5",
+        "runtime_request_contract_sha256": "94c6b629abc539a00750162a0ee6c75799f603487142e5d1fefb2aa46fc80fe2",
+        "status": "FAIL",
+        "error": {
+          "code": "INVALID_STRUCTURED_OUTPUT",
+          "message": "Provider output is not valid JSON.",
+          "retryable": false,
+          "status_code": null,
+          "provider": null,
+          "partial_output": false,
+          "details": {
+            "validation": "json_parse",
+            "line": 26,
+            "column": 9,
+            "trace_id": "TRACE_STRUCTURED_COMPAT_01",
+            "attempts": [
+              {
+                "attempt_index": 1,
+                "provider_id": "ollama",
+                "logical_model_id": "qwen2.5-7b-instruct-compat",
+                "provider_model_id": "qwen2.5:7b-instruct-q4_K_M",
+                "started_at": "2026-09-08T15:13:14.713656Z",
+                "ended_at": "2026-09-08T15:13:51.780001Z",
+                "outcome": "error",
+                "error_code": "INVALID_STRUCTURED_OUTPUT",
+                "fallback_reason": null,
+                "retry": false
+              }
+            ]
+          }
+        },
+        "transport": [
+          {
+            "method": "POST",
+            "path": "/api/generate",
+            "request_sha256": "f4c38dbf94c7c044f7ff9ead194209a7d5bdf5530b55cdc317c8d24a6fe03f1f",
+            "request_length": 1054,
+            "response_sha256": "c8c804051739cc9e50a6c9b0db0d646b8ff2d67016bc9cb9e61683924d241508",
+            "response_length": 3385,
+            "response_text_sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85",
+            "response_text_length": 700,
+            "response_text_prefix": "{\n  \"summary\": \"请根据具体情况调整学习策略，合理安排时间，保持积极心态，遇到困难及时寻求帮助。\",\n  \"observations\": [\n    \"CHUNK_67b56abe21fe9860a26d\",\n    \"CHUNK_8f85f2c0472e21acd2fa\",\n    \"CHUNK_c37",
+            "termination": {
+              "done": true,
+              "done_reason": "length",
+              "error": null,
+              "prompt_eval_count": 177,
+              "eval_count": 384,
+              "total_duration": 37062735300,
+              "load_duration": 2207700,
+              "response_present": true,
+              "response_terminated": true
+            }
+          }
+        ],
+        "parser_inputs": [
+          {
+            "length": 700,
+            "sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85",
+            "summary": {
+              "response_length": 700,
+              "response_sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85",
+              "response_prefix": "{\n  \"summary\": \"请根据具体情况调整学习策略，合理安排时间，保持积极心态，遇到困难及时寻求帮助。\",\n  \"observations\": [\n    \"CHUNK_67b56abe21fe9860a26d\",\n    \"CHUNK_8f85f2c0472e21acd2fa\",\n    \"CHUNK_c37",
+              "json_parse": "FAIL",
+              "json_line": 26,
+              "json_column": 9,
+              "json_error": "Unterminated string starting at",
+              "schema_validation": "NOT_RUN"
+            }
+          }
+        ],
+        "runtime_service_parser_inputs": [],
+        "runtime_trace": {
+          "trace_id": "TRACE_STRUCTURED_COMPAT_01",
+          "request_id": "REQ_STRUCTURED_COMPAT_01",
+          "logical_model": "qwen2.5-7b-instruct-compat",
+          "provider": "ollama",
+          "provider_model": "qwen2.5:7b-instruct-q4_K_M",
+          "model_revision": "qwen2.5:7b-instruct-q4_K_M",
+          "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+          "quantization": "Q4_K_M",
+          "runtime_version": "0.1.0-structured-output-compat-r1",
+          "hardware": {
+            "os": "Windows 11 (AMD64)",
+            "cpu": "Intel64 Family 6 Model 170 Stepping 4, GenuineIntel",
+            "threads": 22,
+            "ram_bytes": 33752997888,
+            "gpu_present": true,
+            "gpus": [
+              {
+                "name": "NVIDIA GeForce RTX 3060",
+                "vram_bytes": 12884901888,
+                "driver": "596.36",
+                "cuda_version": null
+              }
+            ],
+            "cuda_available": true,
+            "nvidia_smi_path": "C:\\WINDOWS\\system32\\nvidia-smi.EXE",
+            "detection_error": null,
+            "profile": "CONSUMER_GPU"
+          },
+          "generation_config": {
+            "max_output_tokens": 384,
+            "max_tokens": 384,
+            "temperature": 0.1,
+            "top_p": 0.9,
+            "top_k": null,
+            "context_length": 8192,
+            "timeout_seconds": 180.0,
+            "keep_alive": "5m",
+            "seed": 20260906,
+            "stop": [],
+            "think": null
+          },
+          "prompt_tokens": null,
+          "completion_tokens": null,
+          "ttft_ms": null,
+          "generation_latency_ms": 37066.648499999246,
+          "total_latency_ms": 37066.648499999246,
+          "tokens_per_second": null,
+          "retry_count": 0,
+          "requested_model": "qwen2.5-7b-instruct-compat",
+          "actual_model": "qwen2.5-7b-instruct-compat",
+          "fallback_reason": null,
+          "finish_reason": null,
+          "error": {
+            "code": "INVALID_STRUCTURED_OUTPUT",
+            "message": "Provider output is not valid JSON.",
+            "retryable": false,
+            "status_code": null,
+            "provider": null,
+            "partial_output": false,
+            "details": {
+              "validation": "json_parse",
+              "line": 26,
+              "column": 9,
+              "trace_id": "TRACE_STRUCTURED_COMPAT_01",
+              "attempts": [
+                {
+                  "attempt_index": 1,
+                  "provider_id": "ollama",
+                  "logical_model_id": "qwen2.5-7b-instruct-compat",
+                  "provider_model_id": "qwen2.5:7b-instruct-q4_K_M",
+                  "started_at": "2026-09-08T15:13:14.713656Z",
+                  "ended_at": "2026-09-08T15:13:51.780001Z",
+                  "outcome": "error",
+                  "error_code": "INVALID_STRUCTURED_OUTPUT",
+                  "fallback_reason": null,
+                  "retry": false
+                }
+              ]
+            }
+          },
+          "requested_provider_model": "qwen2.5:7b-instruct-q4_K_M",
+          "primary_error": null,
+          "primary_error_normalized_code": null,
+          "fallback_attempted": false,
+          "fallback_model": null,
+          "fallback_provider_model": null,
+          "fallback_generation_success": null,
+          "fallback_count": 0,
+          "attempts": [
+            {
+              "attempt_index": 1,
+              "provider_id": "ollama",
+              "logical_model_id": "qwen2.5-7b-instruct-compat",
+              "provider_model_id": "qwen2.5:7b-instruct-q4_K_M",
+              "started_at": "2026-09-08T15:13:14.713656Z",
+              "ended_at": "2026-09-08T15:13:51.780001Z",
+              "outcome": "error",
+              "error_code": "INVALID_STRUCTURED_OUTPUT",
+              "fallback_reason": null,
+              "retry": false
+            }
+          ]
+        },
+        "transport_identity": {
+          "native_text_sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85",
+          "provider_assembled_text_sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85",
+          "provider_parser_input_sha256": [
+            "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85"
+          ],
+          "runtime_service_parser_input_sha256": [],
+          "native_equals_provider": true,
+          "provider_equals_provider_parser": true,
+          "runtime_service_parser_reached": false,
+          "native_length": 700,
+          "provider_length": 700,
+          "provider_parser_lengths": [
+            700
+          ],
+          "runtime_service_parser_lengths": [],
+          "termination": {
+            "done": true,
+            "done_reason": "length",
+            "error": null,
+            "prompt_eval_count": 177,
+            "eval_count": 384,
+            "total_duration": 37062735300,
+            "load_duration": 2207700,
+            "response_present": true,
+            "response_terminated": true
+          }
+        },
+        "local_artifacts": [
+          {
+            "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\runtime_run_01_request.json",
+            "length": 1124,
+            "sha256": "f74caf161ee76a1f2d2ae403a5dfd62aeca663b463c450d7697387557099c55f"
+          },
+          {
+            "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\runtime_run_01_response.json",
+            "length": 3964,
+            "sha256": "eac5c1a56fa06922db789c9748ce989d42c838ceb7df6e278ceb9d90ac816111"
+          }
+        ],
+        "runtime_static_parser": {
+          "status": "FAIL",
+          "error_type": "LLMRuntimeError",
+          "error": {
+            "code": "INVALID_STRUCTURED_OUTPUT",
+            "message": "Provider output is not valid JSON.",
+            "retryable": false,
+            "status_code": null,
+            "provider": null,
+            "partial_output": false,
+            "details": {
+              "validation": "json_parse",
+              "line": 26,
+              "column": 9
+            }
+          }
+        }
+      }
+    },
+    {
+      "native": {
+        "case": "exact_product_prompt_02",
+        "run_index": 2,
+        "request_identity": {
+          "model": "qwen2.5:7b-instruct-q4_K_M",
+          "seed": 20260906,
+          "num_ctx": 8192,
+          "num_predict": 384,
+          "temperature": 0.1,
+          "top_p": 0.9
+        },
+        "prompt_sha256": "f3384226b70e34df5bb392f06789de649e9aa2674d24f121c3ea08b0465425e5",
+        "prompt_length": 329,
+        "schema_sha256": "ebb901d8b57074e5fc7b0b8630385c0579ed66206111a9928b76dc6f3356f3b9",
+        "provider_request_sha256": "f4c38dbf94c7c044f7ff9ead194209a7d5bdf5530b55cdc317c8d24a6fe03f1f",
+        "native_http_status": 200,
+        "native_response_body_sha256": "8c5383c5a0b94f7fdd8fbb374da91521fade9261fd6c15ac8ab5859be9f1df6f",
+        "native_response_text_sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85",
+        "native_response_text_length": 700,
+        "native": {
+          "response_length": 700,
+          "response_sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85",
+          "response_prefix": "{\n  \"summary\": \"请根据具体情况调整学习策略，合理安排时间，保持积极心态，遇到困难及时寻求帮助。\",\n  \"observations\": [\n    \"CHUNK_67b56abe21fe9860a26d\",\n    \"CHUNK_8f85f2c0472e21acd2fa\",\n    \"CHUNK_c37",
+          "json_parse": "FAIL",
+          "json_line": 26,
+          "json_column": 9,
+          "json_error": "Unterminated string starting at",
+          "schema_validation": "NOT_RUN"
+        },
+        "termination": {
+          "done": true,
+          "done_reason": "length",
+          "error": null,
+          "prompt_eval_count": 177,
+          "eval_count": 384,
+          "total_duration": 36903724200,
+          "load_duration": 2071600,
+          "response_present": true,
+          "response_terminated": true
+        },
+        "local_artifacts": [
+          {
+            "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\exact_product_prompt_02_run_02_request.json",
+            "length": 1054,
+            "sha256": "f4c38dbf94c7c044f7ff9ead194209a7d5bdf5530b55cdc317c8d24a6fe03f1f"
+          },
+          {
+            "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\exact_product_prompt_02_run_02_response.json",
+            "length": 3384,
+            "sha256": "8c5383c5a0b94f7fdd8fbb374da91521fade9261fd6c15ac8ab5859be9f1df6f"
+          },
+          {
+            "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\exact_product_prompt_02_run_02_prompt.txt",
+            "length": 345,
+            "sha256": "f3384226b70e34df5bb392f06789de649e9aa2674d24f121c3ea08b0465425e5"
+          }
+        ]
+      },
+      "runtime": {
+        "request_id": "REQ_STRUCTURED_COMPAT_02",
+        "trace_id": "TRACE_STRUCTURED_COMPAT_02",
+        "prompt_sha256": "f3384226b70e34df5bb392f06789de649e9aa2674d24f121c3ea08b0465425e5",
+        "runtime_request_contract_sha256": "6d2715b73d8d7dbb3cc8dc993ca311f9397e12179b25195f64c173e55bec78a2",
+        "status": "FAIL",
+        "error": {
+          "code": "INVALID_STRUCTURED_OUTPUT",
+          "message": "Provider output is not valid JSON.",
+          "retryable": false,
+          "status_code": null,
+          "provider": null,
+          "partial_output": false,
+          "details": {
+            "validation": "json_parse",
+            "line": 26,
+            "column": 9,
+            "trace_id": "TRACE_STRUCTURED_COMPAT_02",
+            "attempts": [
+              {
+                "attempt_index": 1,
+                "provider_id": "ollama",
+                "logical_model_id": "qwen2.5-7b-instruct-compat",
+                "provider_model_id": "qwen2.5:7b-instruct-q4_K_M",
+                "started_at": "2026-09-08T15:14:28.693715Z",
+                "ended_at": "2026-09-08T15:15:06.496866Z",
+                "outcome": "error",
+                "error_code": "INVALID_STRUCTURED_OUTPUT",
+                "fallback_reason": null,
+                "retry": false
+              }
+            ]
+          }
+        },
+        "transport": [
+          {
+            "method": "POST",
+            "path": "/api/generate",
+            "request_sha256": "f4c38dbf94c7c044f7ff9ead194209a7d5bdf5530b55cdc317c8d24a6fe03f1f",
+            "request_length": 1054,
+            "response_sha256": "84162cbbb5f83fcef68ff7cfaaa7db46cf88e36e82efc6b4ac6c3b828484ffd5",
+            "response_length": 3385,
+            "response_text_sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85",
+            "response_text_length": 700,
+            "response_text_prefix": "{\n  \"summary\": \"请根据具体情况调整学习策略，合理安排时间，保持积极心态，遇到困难及时寻求帮助。\",\n  \"observations\": [\n    \"CHUNK_67b56abe21fe9860a26d\",\n    \"CHUNK_8f85f2c0472e21acd2fa\",\n    \"CHUNK_c37",
+            "termination": {
+              "done": true,
+              "done_reason": "length",
+              "error": null,
+              "prompt_eval_count": 177,
+              "eval_count": 384,
+              "total_duration": 37791505100,
+              "load_duration": 1661100,
+              "response_present": true,
+              "response_terminated": true
+            }
+          }
+        ],
+        "parser_inputs": [
+          {
+            "length": 700,
+            "sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85",
+            "summary": {
+              "response_length": 700,
+              "response_sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85",
+              "response_prefix": "{\n  \"summary\": \"请根据具体情况调整学习策略，合理安排时间，保持积极心态，遇到困难及时寻求帮助。\",\n  \"observations\": [\n    \"CHUNK_67b56abe21fe9860a26d\",\n    \"CHUNK_8f85f2c0472e21acd2fa\",\n    \"CHUNK_c37",
+              "json_parse": "FAIL",
+              "json_line": 26,
+              "json_column": 9,
+              "json_error": "Unterminated string starting at",
+              "schema_validation": "NOT_RUN"
+            }
+          }
+        ],
+        "runtime_service_parser_inputs": [],
+        "runtime_trace": {
+          "trace_id": "TRACE_STRUCTURED_COMPAT_02",
+          "request_id": "REQ_STRUCTURED_COMPAT_02",
+          "logical_model": "qwen2.5-7b-instruct-compat",
+          "provider": "ollama",
+          "provider_model": "qwen2.5:7b-instruct-q4_K_M",
+          "model_revision": "qwen2.5:7b-instruct-q4_K_M",
+          "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+          "quantization": "Q4_K_M",
+          "runtime_version": "0.1.0-structured-output-compat-r1",
+          "hardware": {
+            "os": "Windows 11 (AMD64)",
+            "cpu": "Intel64 Family 6 Model 170 Stepping 4, GenuineIntel",
+            "threads": 22,
+            "ram_bytes": 33752997888,
+            "gpu_present": true,
+            "gpus": [
+              {
+                "name": "NVIDIA GeForce RTX 3060",
+                "vram_bytes": 12884901888,
+                "driver": "596.36",
+                "cuda_version": null
+              }
+            ],
+            "cuda_available": true,
+            "nvidia_smi_path": "C:\\WINDOWS\\system32\\nvidia-smi.EXE",
+            "detection_error": null,
+            "profile": "CONSUMER_GPU"
+          },
+          "generation_config": {
+            "max_output_tokens": 384,
+            "max_tokens": 384,
+            "temperature": 0.1,
+            "top_p": 0.9,
+            "top_k": null,
+            "context_length": 8192,
+            "timeout_seconds": 180.0,
+            "keep_alive": "5m",
+            "seed": 20260906,
+            "stop": [],
+            "think": null
+          },
+          "prompt_tokens": null,
+          "completion_tokens": null,
+          "ttft_ms": null,
+          "generation_latency_ms": 37803.29689999962,
+          "total_latency_ms": 37803.29689999962,
+          "tokens_per_second": null,
+          "retry_count": 0,
+          "requested_model": "qwen2.5-7b-instruct-compat",
+          "actual_model": "qwen2.5-7b-instruct-compat",
+          "fallback_reason": null,
+          "finish_reason": null,
+          "error": {
+            "code": "INVALID_STRUCTURED_OUTPUT",
+            "message": "Provider output is not valid JSON.",
+            "retryable": false,
+            "status_code": null,
+            "provider": null,
+            "partial_output": false,
+            "details": {
+              "validation": "json_parse",
+              "line": 26,
+              "column": 9,
+              "trace_id": "TRACE_STRUCTURED_COMPAT_02",
+              "attempts": [
+                {
+                  "attempt_index": 1,
+                  "provider_id": "ollama",
+                  "logical_model_id": "qwen2.5-7b-instruct-compat",
+                  "provider_model_id": "qwen2.5:7b-instruct-q4_K_M",
+                  "started_at": "2026-09-08T15:14:28.693715Z",
+                  "ended_at": "2026-09-08T15:15:06.496866Z",
+                  "outcome": "error",
+                  "error_code": "INVALID_STRUCTURED_OUTPUT",
+                  "fallback_reason": null,
+                  "retry": false
+                }
+              ]
+            }
+          },
+          "requested_provider_model": "qwen2.5:7b-instruct-q4_K_M",
+          "primary_error": null,
+          "primary_error_normalized_code": null,
+          "fallback_attempted": false,
+          "fallback_model": null,
+          "fallback_provider_model": null,
+          "fallback_generation_success": null,
+          "fallback_count": 0,
+          "attempts": [
+            {
+              "attempt_index": 1,
+              "provider_id": "ollama",
+              "logical_model_id": "qwen2.5-7b-instruct-compat",
+              "provider_model_id": "qwen2.5:7b-instruct-q4_K_M",
+              "started_at": "2026-09-08T15:14:28.693715Z",
+              "ended_at": "2026-09-08T15:15:06.496866Z",
+              "outcome": "error",
+              "error_code": "INVALID_STRUCTURED_OUTPUT",
+              "fallback_reason": null,
+              "retry": false
+            }
+          ]
+        },
+        "transport_identity": {
+          "native_text_sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85",
+          "provider_assembled_text_sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85",
+          "provider_parser_input_sha256": [
+            "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85"
+          ],
+          "runtime_service_parser_input_sha256": [],
+          "native_equals_provider": true,
+          "provider_equals_provider_parser": true,
+          "runtime_service_parser_reached": false,
+          "native_length": 700,
+          "provider_length": 700,
+          "provider_parser_lengths": [
+            700
+          ],
+          "runtime_service_parser_lengths": [],
+          "termination": {
+            "done": true,
+            "done_reason": "length",
+            "error": null,
+            "prompt_eval_count": 177,
+            "eval_count": 384,
+            "total_duration": 37791505100,
+            "load_duration": 1661100,
+            "response_present": true,
+            "response_terminated": true
+          }
+        },
+        "local_artifacts": [
+          {
+            "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\runtime_run_02_request.json",
+            "length": 1124,
+            "sha256": "f74caf161ee76a1f2d2ae403a5dfd62aeca663b463c450d7697387557099c55f"
+          },
+          {
+            "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\runtime_run_02_response.json",
+            "length": 3964,
+            "sha256": "a84e400c5d348e49ce9a2b7a60683732d7bae1b5d0bb670915204aec4ab901d9"
+          }
+        ],
+        "runtime_static_parser": {
+          "status": "FAIL",
+          "error_type": "LLMRuntimeError",
+          "error": {
+            "code": "INVALID_STRUCTURED_OUTPUT",
+            "message": "Provider output is not valid JSON.",
+            "retryable": false,
+            "status_code": null,
+            "provider": null,
+            "partial_output": false,
+            "details": {
+              "validation": "json_parse",
+              "line": 26,
+              "column": 9
+            }
+          }
+        }
+      }
+    },
+    {
+      "native": {
+        "case": "exact_product_prompt_03",
+        "run_index": 3,
+        "request_identity": {
+          "model": "qwen2.5:7b-instruct-q4_K_M",
+          "seed": 20260906,
+          "num_ctx": 8192,
+          "num_predict": 384,
+          "temperature": 0.1,
+          "top_p": 0.9
+        },
+        "prompt_sha256": "f3384226b70e34df5bb392f06789de649e9aa2674d24f121c3ea08b0465425e5",
+        "prompt_length": 329,
+        "schema_sha256": "ebb901d8b57074e5fc7b0b8630385c0579ed66206111a9928b76dc6f3356f3b9",
+        "provider_request_sha256": "f4c38dbf94c7c044f7ff9ead194209a7d5bdf5530b55cdc317c8d24a6fe03f1f",
+        "native_http_status": 200,
+        "native_response_body_sha256": "970c94f80b6d5df459aa2dcf520fe3f3be5b5cec33806b79b6c5dcdcc3d5a652",
+        "native_response_text_sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85",
+        "native_response_text_length": 700,
+        "native": {
+          "response_length": 700,
+          "response_sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85",
+          "response_prefix": "{\n  \"summary\": \"请根据具体情况调整学习策略，合理安排时间，保持积极心态，遇到困难及时寻求帮助。\",\n  \"observations\": [\n    \"CHUNK_67b56abe21fe9860a26d\",\n    \"CHUNK_8f85f2c0472e21acd2fa\",\n    \"CHUNK_c37",
+          "json_parse": "FAIL",
+          "json_line": 26,
+          "json_column": 9,
+          "json_error": "Unterminated string starting at",
+          "schema_validation": "NOT_RUN"
+        },
+        "termination": {
+          "done": true,
+          "done_reason": "length",
+          "error": null,
+          "prompt_eval_count": 177,
+          "eval_count": 384,
+          "total_duration": 38107590600,
+          "load_duration": 1560900,
+          "response_present": true,
+          "response_terminated": true
+        },
+        "local_artifacts": [
+          {
+            "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\exact_product_prompt_03_run_03_request.json",
+            "length": 1054,
+            "sha256": "f4c38dbf94c7c044f7ff9ead194209a7d5bdf5530b55cdc317c8d24a6fe03f1f"
+          },
+          {
+            "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\exact_product_prompt_03_run_03_response.json",
+            "length": 3385,
+            "sha256": "970c94f80b6d5df459aa2dcf520fe3f3be5b5cec33806b79b6c5dcdcc3d5a652"
+          },
+          {
+            "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\exact_product_prompt_03_run_03_prompt.txt",
+            "length": 345,
+            "sha256": "f3384226b70e34df5bb392f06789de649e9aa2674d24f121c3ea08b0465425e5"
+          }
+        ]
+      },
+      "runtime": {
+        "request_id": "REQ_STRUCTURED_COMPAT_03",
+        "trace_id": "TRACE_STRUCTURED_COMPAT_03",
+        "prompt_sha256": "f3384226b70e34df5bb392f06789de649e9aa2674d24f121c3ea08b0465425e5",
+        "runtime_request_contract_sha256": "44d6f9a2c39ea46d09cd7fb52c394d8eb37dae94474b1d79d29f3ec93eb25abe",
+        "status": "FAIL",
+        "error": {
+          "code": "INVALID_STRUCTURED_OUTPUT",
+          "message": "Provider output is not valid JSON.",
+          "retryable": false,
+          "status_code": null,
+          "provider": null,
+          "partial_output": false,
+          "details": {
+            "validation": "json_parse",
+            "line": 26,
+            "column": 9,
+            "trace_id": "TRACE_STRUCTURED_COMPAT_03",
+            "attempts": [
+              {
+                "attempt_index": 1,
+                "provider_id": "ollama",
+                "logical_model_id": "qwen2.5-7b-instruct-compat",
+                "provider_model_id": "qwen2.5:7b-instruct-q4_K_M",
+                "started_at": "2026-09-08T15:15:44.613845Z",
+                "ended_at": "2026-09-08T15:16:23.214513Z",
+                "outcome": "error",
+                "error_code": "INVALID_STRUCTURED_OUTPUT",
+                "fallback_reason": null,
+                "retry": false
+              }
+            ]
+          }
+        },
+        "transport": [
+          {
+            "method": "POST",
+            "path": "/api/generate",
+            "request_sha256": "f4c38dbf94c7c044f7ff9ead194209a7d5bdf5530b55cdc317c8d24a6fe03f1f",
+            "request_length": 1054,
+            "response_sha256": "9f3357d044b52a9ccefd63c4de52a80fffef4c3805208a0ff181517a550f7aba",
+            "response_length": 3385,
+            "response_text_sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85",
+            "response_text_length": 700,
+            "response_text_prefix": "{\n  \"summary\": \"请根据具体情况调整学习策略，合理安排时间，保持积极心态，遇到困难及时寻求帮助。\",\n  \"observations\": [\n    \"CHUNK_67b56abe21fe9860a26d\",\n    \"CHUNK_8f85f2c0472e21acd2fa\",\n    \"CHUNK_c37",
+            "termination": {
+              "done": true,
+              "done_reason": "length",
+              "error": null,
+              "prompt_eval_count": 177,
+              "eval_count": 384,
+              "total_duration": 38596720900,
+              "load_duration": 1046000,
+              "response_present": true,
+              "response_terminated": true
+            }
+          }
+        ],
+        "parser_inputs": [
+          {
+            "length": 700,
+            "sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85",
+            "summary": {
+              "response_length": 700,
+              "response_sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85",
+              "response_prefix": "{\n  \"summary\": \"请根据具体情况调整学习策略，合理安排时间，保持积极心态，遇到困难及时寻求帮助。\",\n  \"observations\": [\n    \"CHUNK_67b56abe21fe9860a26d\",\n    \"CHUNK_8f85f2c0472e21acd2fa\",\n    \"CHUNK_c37",
+              "json_parse": "FAIL",
+              "json_line": 26,
+              "json_column": 9,
+              "json_error": "Unterminated string starting at",
+              "schema_validation": "NOT_RUN"
+            }
+          }
+        ],
+        "runtime_service_parser_inputs": [],
+        "runtime_trace": {
+          "trace_id": "TRACE_STRUCTURED_COMPAT_03",
+          "request_id": "REQ_STRUCTURED_COMPAT_03",
+          "logical_model": "qwen2.5-7b-instruct-compat",
+          "provider": "ollama",
+          "provider_model": "qwen2.5:7b-instruct-q4_K_M",
+          "model_revision": "qwen2.5:7b-instruct-q4_K_M",
+          "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+          "quantization": "Q4_K_M",
+          "runtime_version": "0.1.0-structured-output-compat-r1",
+          "hardware": {
+            "os": "Windows 11 (AMD64)",
+            "cpu": "Intel64 Family 6 Model 170 Stepping 4, GenuineIntel",
+            "threads": 22,
+            "ram_bytes": 33752997888,
+            "gpu_present": true,
+            "gpus": [
+              {
+                "name": "NVIDIA GeForce RTX 3060",
+                "vram_bytes": 12884901888,
+                "driver": "596.36",
+                "cuda_version": null
+              }
+            ],
+            "cuda_available": true,
+            "nvidia_smi_path": "C:\\WINDOWS\\system32\\nvidia-smi.EXE",
+            "detection_error": null,
+            "profile": "CONSUMER_GPU"
+          },
+          "generation_config": {
+            "max_output_tokens": 384,
+            "max_tokens": 384,
+            "temperature": 0.1,
+            "top_p": 0.9,
+            "top_k": null,
+            "context_length": 8192,
+            "timeout_seconds": 180.0,
+            "keep_alive": "5m",
+            "seed": 20260906,
+            "stop": [],
+            "think": null
+          },
+          "prompt_tokens": null,
+          "completion_tokens": null,
+          "ttft_ms": null,
+          "generation_latency_ms": 38600.802300000396,
+          "total_latency_ms": 38600.802300000396,
+          "tokens_per_second": null,
+          "retry_count": 0,
+          "requested_model": "qwen2.5-7b-instruct-compat",
+          "actual_model": "qwen2.5-7b-instruct-compat",
+          "fallback_reason": null,
+          "finish_reason": null,
+          "error": {
+            "code": "INVALID_STRUCTURED_OUTPUT",
+            "message": "Provider output is not valid JSON.",
+            "retryable": false,
+            "status_code": null,
+            "provider": null,
+            "partial_output": false,
+            "details": {
+              "validation": "json_parse",
+              "line": 26,
+              "column": 9,
+              "trace_id": "TRACE_STRUCTURED_COMPAT_03",
+              "attempts": [
+                {
+                  "attempt_index": 1,
+                  "provider_id": "ollama",
+                  "logical_model_id": "qwen2.5-7b-instruct-compat",
+                  "provider_model_id": "qwen2.5:7b-instruct-q4_K_M",
+                  "started_at": "2026-09-08T15:15:44.613845Z",
+                  "ended_at": "2026-09-08T15:16:23.214513Z",
+                  "outcome": "error",
+                  "error_code": "INVALID_STRUCTURED_OUTPUT",
+                  "fallback_reason": null,
+                  "retry": false
+                }
+              ]
+            }
+          },
+          "requested_provider_model": "qwen2.5:7b-instruct-q4_K_M",
+          "primary_error": null,
+          "primary_error_normalized_code": null,
+          "fallback_attempted": false,
+          "fallback_model": null,
+          "fallback_provider_model": null,
+          "fallback_generation_success": null,
+          "fallback_count": 0,
+          "attempts": [
+            {
+              "attempt_index": 1,
+              "provider_id": "ollama",
+              "logical_model_id": "qwen2.5-7b-instruct-compat",
+              "provider_model_id": "qwen2.5:7b-instruct-q4_K_M",
+              "started_at": "2026-09-08T15:15:44.613845Z",
+              "ended_at": "2026-09-08T15:16:23.214513Z",
+              "outcome": "error",
+              "error_code": "INVALID_STRUCTURED_OUTPUT",
+              "fallback_reason": null,
+              "retry": false
+            }
+          ]
+        },
+        "transport_identity": {
+          "native_text_sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85",
+          "provider_assembled_text_sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85",
+          "provider_parser_input_sha256": [
+            "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85"
+          ],
+          "runtime_service_parser_input_sha256": [],
+          "native_equals_provider": true,
+          "provider_equals_provider_parser": true,
+          "runtime_service_parser_reached": false,
+          "native_length": 700,
+          "provider_length": 700,
+          "provider_parser_lengths": [
+            700
+          ],
+          "runtime_service_parser_lengths": [],
+          "termination": {
+            "done": true,
+            "done_reason": "length",
+            "error": null,
+            "prompt_eval_count": 177,
+            "eval_count": 384,
+            "total_duration": 38596720900,
+            "load_duration": 1046000,
+            "response_present": true,
+            "response_terminated": true
+          }
+        },
+        "local_artifacts": [
+          {
+            "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\runtime_run_03_request.json",
+            "length": 1124,
+            "sha256": "f74caf161ee76a1f2d2ae403a5dfd62aeca663b463c450d7697387557099c55f"
+          },
+          {
+            "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\runtime_run_03_response.json",
+            "length": 3964,
+            "sha256": "db7a9d4a1504a1050b632363ddd4e9fdb5f920b556a7bf3de18df52ef7165db5"
+          }
+        ],
+        "runtime_static_parser": {
+          "status": "FAIL",
+          "error_type": "LLMRuntimeError",
+          "error": {
+            "code": "INVALID_STRUCTURED_OUTPUT",
+            "message": "Provider output is not valid JSON.",
+            "retryable": false,
+            "status_code": null,
+            "provider": null,
+            "partial_output": false,
+            "details": {
+              "validation": "json_parse",
+              "line": 26,
+              "column": 9
+            }
+          }
+        }
+      }
+    }
+  ],
+  "deterministic_failure_count": 3,
+  "prompt_bisection_matrix": [
+    {
+      "case": "A_exact_full",
+      "run_index": null,
+      "request_identity": {
+        "model": "qwen2.5:7b-instruct-q4_K_M",
+        "seed": 20260906,
+        "num_ctx": 8192,
+        "num_predict": 384,
+        "temperature": 0.1,
+        "top_p": 0.9
+      },
+      "prompt_sha256": "f3384226b70e34df5bb392f06789de649e9aa2674d24f121c3ea08b0465425e5",
+      "prompt_length": 329,
+      "schema_sha256": "ebb901d8b57074e5fc7b0b8630385c0579ed66206111a9928b76dc6f3356f3b9",
+      "provider_request_sha256": "f4c38dbf94c7c044f7ff9ead194209a7d5bdf5530b55cdc317c8d24a6fe03f1f",
+      "native_http_status": 200,
+      "native_response_body_sha256": "e842606071cf724192a343e38e4b1cc36687c053977b4834c893ebdd71966ae3",
+      "native_response_text_sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85",
+      "native_response_text_length": 700,
+      "native": {
+        "response_length": 700,
+        "response_sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85",
+        "response_prefix": "{\n  \"summary\": \"请根据具体情况调整学习策略，合理安排时间，保持积极心态，遇到困难及时寻求帮助。\",\n  \"observations\": [\n    \"CHUNK_67b56abe21fe9860a26d\",\n    \"CHUNK_8f85f2c0472e21acd2fa\",\n    \"CHUNK_c37",
+        "json_parse": "FAIL",
+        "json_line": 26,
+        "json_column": 9,
+        "json_error": "Unterminated string starting at",
+        "schema_validation": "NOT_RUN"
+      },
+      "termination": {
+        "done": true,
+        "done_reason": "length",
+        "error": null,
+        "prompt_eval_count": 177,
+        "eval_count": 384,
+        "total_duration": 37782662600,
+        "load_duration": 2109200,
+        "response_present": true,
+        "response_terminated": true
+      },
+      "local_artifacts": [
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\A_exact_full_direct_request.json",
+          "length": 1054,
+          "sha256": "f4c38dbf94c7c044f7ff9ead194209a7d5bdf5530b55cdc317c8d24a6fe03f1f"
+        },
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\A_exact_full_direct_response.json",
+          "length": 3385,
+          "sha256": "e842606071cf724192a343e38e4b1cc36687c053977b4834c893ebdd71966ae3"
+        },
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\A_exact_full_direct_prompt.txt",
+          "length": 345,
+          "sha256": "f3384226b70e34df5bb392f06789de649e9aa2674d24f121c3ea08b0465425e5"
+        }
+      ],
+      "description": "exact current product prompt with accepted chunk identities"
+    },
+    {
+      "case": "B_neutral_chunk_ids",
+      "run_index": null,
+      "request_identity": {
+        "model": "qwen2.5:7b-instruct-q4_K_M",
+        "seed": 20260906,
+        "num_ctx": 8192,
+        "num_predict": 384,
+        "temperature": 0.1,
+        "top_p": 0.9
+      },
+      "prompt_sha256": "80a6c86912d752c622855d8d742a5aab80d8f8e6abdf6e26c1044dae6c4a8fab",
+      "prompt_length": 234,
+      "schema_sha256": "ebb901d8b57074e5fc7b0b8630385c0579ed66206111a9928b76dc6f3356f3b9",
+      "provider_request_sha256": "3e56213aa248c5d24dc8eea44026400c278ad7510f06c2d66c01f013ba2cd05e",
+      "native_http_status": 200,
+      "native_response_body_sha256": "8022cc0202668be79917813b74c34dabe3fdecf7d3e28b0261c06c836e4aa8ec",
+      "native_response_text_sha256": "f23a9d203b160b7a5944b23f79573a7e434b05838cfcfcb4c7d9b24c70ba57aa",
+      "native_response_text_length": 533,
+      "native": {
+        "response_length": 533,
+        "response_sha256": "f23a9d203b160b7a5944b23f79573a7e434b05838cfcfcb4c7d9b24c70ba57aa",
+        "response_prefix": "{\n  \"summary\": \"请给出简短建议。\",\n  \"observations\": [\n    \"CHUNK_A\",\n    \"CHUNK_B\",\n    \"CHUNK_C\",\n    \"CHUNK_D\",\n    \"CHUNK_E\"\n  ],\n  \"suggestions\": [\n    {\n      \"te",
+        "json_parse": "PASS",
+        "json_type": "dict",
+        "json_keys": [
+          "disclaimer",
+          "observations",
+          "suggestions",
+          "summary"
+        ],
+        "schema_validation": "PASS"
+      },
+      "termination": {
+        "done": true,
+        "done_reason": "stop",
+        "error": null,
+        "prompt_eval_count": 91,
+        "eval_count": 197,
+        "total_duration": 19352400100,
+        "load_duration": 2623100,
+        "response_present": true,
+        "response_terminated": true
+      },
+      "local_artifacts": [
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\B_neutral_chunk_ids_direct_request.json",
+          "length": 959,
+          "sha256": "3e56213aa248c5d24dc8eea44026400c278ad7510f06c2d66c01f013ba2cd05e"
+        },
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\B_neutral_chunk_ids_direct_response.json",
+          "length": 2470,
+          "sha256": "8022cc0202668be79917813b74c34dabe3fdecf7d3e28b0261c06c836e4aa8ec"
+        },
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\B_neutral_chunk_ids_direct_prompt.txt",
+          "length": 250,
+          "sha256": "80a6c86912d752c622855d8d742a5aab80d8f8e6abdf6e26c1044dae6c4a8fab"
+        }
+      ],
+      "description": "same product message with neutral chunk identities"
+    },
+    {
+      "case": "C_neutral_document_ids_not_present",
+      "run_index": null,
+      "request_identity": {
+        "model": "qwen2.5:7b-instruct-q4_K_M",
+        "seed": 20260906,
+        "num_ctx": 8192,
+        "num_predict": 384,
+        "temperature": 0.1,
+        "top_p": 0.9
+      },
+      "prompt_sha256": "f3384226b70e34df5bb392f06789de649e9aa2674d24f121c3ea08b0465425e5",
+      "prompt_length": 329,
+      "schema_sha256": "ebb901d8b57074e5fc7b0b8630385c0579ed66206111a9928b76dc6f3356f3b9",
+      "provider_request_sha256": "f4c38dbf94c7c044f7ff9ead194209a7d5bdf5530b55cdc317c8d24a6fe03f1f",
+      "native_http_status": 200,
+      "native_response_body_sha256": "e2b6a08da55bccb7b701238583cb6d844e0a5c324647888c6534a87a0cc638c0",
+      "native_response_text_sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85",
+      "native_response_text_length": 700,
+      "native": {
+        "response_length": 700,
+        "response_sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85",
+        "response_prefix": "{\n  \"summary\": \"请根据具体情况调整学习策略，合理安排时间，保持积极心态，遇到困难及时寻求帮助。\",\n  \"observations\": [\n    \"CHUNK_67b56abe21fe9860a26d\",\n    \"CHUNK_8f85f2c0472e21acd2fa\",\n    \"CHUNK_c37",
+        "json_parse": "FAIL",
+        "json_line": 26,
+        "json_column": 9,
+        "json_error": "Unterminated string starting at",
+        "schema_validation": "NOT_RUN"
+      },
+      "termination": {
+        "done": true,
+        "done_reason": "length",
+        "error": null,
+        "prompt_eval_count": 177,
+        "eval_count": 384,
+        "total_duration": 37081133800,
+        "load_duration": 1562000,
+        "response_present": true,
+        "response_terminated": true
+      },
+      "local_artifacts": [
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\C_neutral_document_ids_not_present_direct_request.json",
+          "length": 1054,
+          "sha256": "f4c38dbf94c7c044f7ff9ead194209a7d5bdf5530b55cdc317c8d24a6fe03f1f"
+        },
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\C_neutral_document_ids_not_present_direct_response.json",
+          "length": 3385,
+          "sha256": "e2b6a08da55bccb7b701238583cb6d844e0a5c324647888c6534a87a0cc638c0"
+        },
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\C_neutral_document_ids_not_present_direct_prompt.txt",
+          "length": 345,
+          "sha256": "f3384226b70e34df5bb392f06789de649e9aa2674d24f121c3ea08b0465425e5"
+        }
+      ],
+      "description": "document IDs are not serialized by current product prompt"
+    },
+    {
+      "case": "D_neutral_source_hashes_not_present",
+      "run_index": null,
+      "request_identity": {
+        "model": "qwen2.5:7b-instruct-q4_K_M",
+        "seed": 20260906,
+        "num_ctx": 8192,
+        "num_predict": 384,
+        "temperature": 0.1,
+        "top_p": 0.9
+      },
+      "prompt_sha256": "f3384226b70e34df5bb392f06789de649e9aa2674d24f121c3ea08b0465425e5",
+      "prompt_length": 329,
+      "schema_sha256": "ebb901d8b57074e5fc7b0b8630385c0579ed66206111a9928b76dc6f3356f3b9",
+      "provider_request_sha256": "f4c38dbf94c7c044f7ff9ead194209a7d5bdf5530b55cdc317c8d24a6fe03f1f",
+      "native_http_status": 200,
+      "native_response_body_sha256": "132aef3f7806e39fa4388ba8b4ed516919bfb77dc14cd6fdccf7675819aa5931",
+      "native_response_text_sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85",
+      "native_response_text_length": 700,
+      "native": {
+        "response_length": 700,
+        "response_sha256": "0724991b852d678eba4729eb25fddb875a04522d60fb6168d4049bc7d2746d85",
+        "response_prefix": "{\n  \"summary\": \"请根据具体情况调整学习策略，合理安排时间，保持积极心态，遇到困难及时寻求帮助。\",\n  \"observations\": [\n    \"CHUNK_67b56abe21fe9860a26d\",\n    \"CHUNK_8f85f2c0472e21acd2fa\",\n    \"CHUNK_c37",
+        "json_parse": "FAIL",
+        "json_line": 26,
+        "json_column": 9,
+        "json_error": "Unterminated string starting at",
+        "schema_validation": "NOT_RUN"
+      },
+      "termination": {
+        "done": true,
+        "done_reason": "length",
+        "error": null,
+        "prompt_eval_count": 177,
+        "eval_count": 384,
+        "total_duration": 36877867400,
+        "load_duration": 2138400,
+        "response_present": true,
+        "response_terminated": true
+      },
+      "local_artifacts": [
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\D_neutral_source_hashes_not_present_direct_request.json",
+          "length": 1054,
+          "sha256": "f4c38dbf94c7c044f7ff9ead194209a7d5bdf5530b55cdc317c8d24a6fe03f1f"
+        },
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\D_neutral_source_hashes_not_present_direct_response.json",
+          "length": 3385,
+          "sha256": "132aef3f7806e39fa4388ba8b4ed516919bfb77dc14cd6fdccf7675819aa5931"
+        },
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\D_neutral_source_hashes_not_present_direct_prompt.txt",
+          "length": 345,
+          "sha256": "f3384226b70e34df5bb392f06789de649e9aa2674d24f121c3ea08b0465425e5"
+        }
+      ],
+      "description": "source hashes are not serialized by current product prompt"
+    },
+    {
+      "case": "E_strict_json_escaped_evidence",
+      "run_index": null,
+      "request_identity": {
+        "model": "qwen2.5:7b-instruct-q4_K_M",
+        "seed": 20260906,
+        "num_ctx": 8192,
+        "num_predict": 384,
+        "temperature": 0.1,
+        "top_p": 0.9
+      },
+      "prompt_sha256": "f039959283f8a707ac07d178ef0943609e9c00149709edf55721be6fc78b884b",
+      "prompt_length": 533,
+      "schema_sha256": "ebb901d8b57074e5fc7b0b8630385c0579ed66206111a9928b76dc6f3356f3b9",
+      "provider_request_sha256": "8940c16093aca0f6cab92e28d0c235e59d9a68055ffa103ffc67a1cbc2701653",
+      "native_http_status": 200,
+      "native_response_body_sha256": "233ec01ad73194118139f8ee7d8616c662a7648f94c56b62aa7b6b63976df8e3",
+      "native_response_text_sha256": "f4d0a19655084996d2c18a6b7e2f80ae87edde2cfeb317db6f19bbc213410144",
+      "native_response_text_length": 561,
+      "native": {
+        "response_length": 561,
+        "response_sha256": "f4d0a19655084996d2c18a6b7e2f80ae87edde2cfeb317db6f19bbc213410144",
+        "response_prefix": "{\n  \"summary\": \"请给出简短建议。\",\n  \"observations\": [\n    \"CHUNK_67b56abe21fe9860a26d\",\n    \"CHUNK_8f85f2c0472e21acd2fa\",\n    \"CHUNK_c3718c65fcf4151af391\",\n    \"CHUNK_",
+        "json_parse": "PASS",
+        "json_type": "dict",
+        "json_keys": [
+          "disclaimer",
+          "observations",
+          "suggestions",
+          "summary"
+        ],
+        "schema_validation": "PASS"
+      },
+      "termination": {
+        "done": true,
+        "done_reason": "stop",
+        "error": null,
+        "prompt_eval_count": 300,
+        "eval_count": 315,
+        "total_duration": 32058405800,
+        "load_duration": 2590700,
+        "response_present": true,
+        "response_terminated": true
+      },
+      "local_artifacts": [
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\E_strict_json_escaped_evidence_direct_request.json",
+          "length": 1290,
+          "sha256": "8940c16093aca0f6cab92e28d0c235e59d9a68055ffa103ffc67a1cbc2701653"
+        },
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\E_strict_json_escaped_evidence_direct_response.json",
+          "length": 3437,
+          "sha256": "233ec01ad73194118139f8ee7d8616c662a7648f94c56b62aa7b6b63976df8e3"
+        },
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\E_strict_json_escaped_evidence_direct_prompt.txt",
+          "length": 565,
+          "sha256": "f039959283f8a707ac07d178ef0943609e9c00149709edf55721be6fc78b884b"
+        }
+      ],
+      "description": "exact identities represented in a JSON-escaped evidence suffix"
+    },
+    {
+      "case": "F_delimited_structured_container",
+      "run_index": null,
+      "request_identity": {
+        "model": "qwen2.5:7b-instruct-q4_K_M",
+        "seed": 20260906,
+        "num_ctx": 8192,
+        "num_predict": 384,
+        "temperature": 0.1,
+        "top_p": 0.9
+      },
+      "prompt_sha256": "d035430a927b056856fc39de8805b166345aa2e2dc1ce98e9d04fcb0203df69a",
+      "prompt_length": 407,
+      "schema_sha256": "ebb901d8b57074e5fc7b0b8630385c0579ed66206111a9928b76dc6f3356f3b9",
+      "provider_request_sha256": "b292b2fecaf20c80ad7c0bfe3f2c1674c79336c63c78d587429793835af80c7d",
+      "native_http_status": 200,
+      "native_response_body_sha256": "7858467f5a25016a5bdac1233e147d0bbd8a45c24b3225ea0cdccf9f5782c445",
+      "native_response_text_sha256": "bebbc8b5e6bba677b98a3a2ce73e36ea6167c42b2ec28874f9c4f9dcabe8907d",
+      "native_response_text_length": 566,
+      "native": {
+        "response_length": 566,
+        "response_sha256": "bebbc8b5e6bba677b98a3a2ce73e36ea6167c42b2ec28874f9c4f9dcabe8907d",
+        "response_prefix": "{\n  \"summary\": \"请给出简短建议。\",\n  \"observations\": [\n    \"CHUNK_67b56abe21fe9860a26d\",\n    \"CHUNK_8f85f2c0472e21acd2fa\",\n    \"CHUNK_c3718c65fcf4151af391\",\n    \"CHUNK_",
+        "json_parse": "PASS",
+        "json_type": "dict",
+        "json_keys": [
+          "disclaimer",
+          "observations",
+          "suggestions",
+          "summary"
+        ],
+        "schema_validation": "PASS"
+      },
+      "termination": {
+        "done": true,
+        "done_reason": "stop",
+        "error": null,
+        "prompt_eval_count": 201,
+        "eval_count": 317,
+        "total_duration": 31896244200,
+        "load_duration": 2123000,
+        "response_present": true,
+        "response_terminated": true
+      },
+      "local_artifacts": [
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\F_delimited_structured_container_direct_request.json",
+          "length": 1164,
+          "sha256": "b292b2fecaf20c80ad7c0bfe3f2c1674c79336c63c78d587429793835af80c7d"
+        },
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\F_delimited_structured_container_direct_response.json",
+          "length": 3130,
+          "sha256": "7858467f5a25016a5bdac1233e147d0bbd8a45c24b3225ea0cdccf9f5782c445"
+        },
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\F_delimited_structured_container_direct_prompt.txt",
+          "length": 439,
+          "sha256": "d035430a927b056856fc39de8805b166345aa2e2dc1ce98e9d04fcb0203df69a"
+        }
+      ],
+      "description": "exact identities in a clearly delimited JSON evidence container"
+    },
+    {
+      "case": "G_remove_citation_instruction",
+      "run_index": null,
+      "request_identity": {
+        "model": "qwen2.5:7b-instruct-q4_K_M",
+        "seed": 20260906,
+        "num_ctx": 8192,
+        "num_predict": 384,
+        "temperature": 0.1,
+        "top_p": 0.9
+      },
+      "prompt_sha256": "d2109b287aba70c64eaca6014e3c0e9aa2ab08f956419538242cffde21ecb504",
+      "prompt_length": 269,
+      "schema_sha256": "ebb901d8b57074e5fc7b0b8630385c0579ed66206111a9928b76dc6f3356f3b9",
+      "provider_request_sha256": "6f3f6e1dd668c6e7a9f988ee41683399f2ba11e993f41cefb6e6871003ba8cb3",
+      "native_http_status": 200,
+      "native_response_body_sha256": "f7382e1d181a439b199a853a99c8b0940e06dc18bb59e7cc44b900d48ed97a60",
+      "native_response_text_sha256": "a1c1a2c724256e61278205fa192ee67ec1633447641d02b9b60ac4036ff2935b",
+      "native_response_text_length": 564,
+      "native": {
+        "response_length": 564,
+        "response_sha256": "a1c1a2c724256e61278205fa192ee67ec1633447641d02b9b60ac4036ff2935b",
+        "response_prefix": "{\n  \"summary\": \"请给出简短建议。\",\n  \"observations\": [\n    \"CHUNK_67b56abe21fe9860a26d\",\n    \"CHUNK_8f85f2c0472e21acd2fa\",\n    \"CHUNK_c3718c65fcf4151af391\",\n    \"CHUNK_",
+        "json_parse": "PASS",
+        "json_type": "dict",
+        "json_keys": [
+          "disclaimer",
+          "observations",
+          "suggestions",
+          "summary"
+        ],
+        "schema_validation": "PASS"
+      },
+      "termination": {
+        "done": true,
+        "done_reason": "stop",
+        "error": null,
+        "prompt_eval_count": 165,
+        "eval_count": 316,
+        "total_duration": 33065603600,
+        "load_duration": 1547700,
+        "response_present": true,
+        "response_terminated": true
+      },
+      "local_artifacts": [
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\G_remove_citation_instruction_direct_request.json",
+          "length": 994,
+          "sha256": "6f3f6e1dd668c6e7a9f988ee41683399f2ba11e993f41cefb6e6871003ba8cb3"
+        },
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\G_remove_citation_instruction_direct_response.json",
+          "length": 2926,
+          "sha256": "f7382e1d181a439b199a853a99c8b0940e06dc18bb59e7cc44b900d48ed97a60"
+        },
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\G_remove_citation_instruction_direct_prompt.txt",
+          "length": 285,
+          "sha256": "d2109b287aba70c64eaca6014e3c0e9aa2ab08f956419538242cffde21ecb504"
+        }
+      ],
+      "description": "exact identities with citation-invention instruction removed"
+    },
+    {
+      "case": "H_minimized_evidence_prose",
+      "run_index": null,
+      "request_identity": {
+        "model": "qwen2.5:7b-instruct-q4_K_M",
+        "seed": 20260906,
+        "num_ctx": 8192,
+        "num_predict": 384,
+        "temperature": 0.1,
+        "top_p": 0.9
+      },
+      "prompt_sha256": "0cdb97ccf7066e1357ecc44aa3e78ed3a9b7af6793832ef8cd9c35e49967810f",
+      "prompt_length": 211,
+      "schema_sha256": "ebb901d8b57074e5fc7b0b8630385c0579ed66206111a9928b76dc6f3356f3b9",
+      "provider_request_sha256": "cff5e591d1d163f1f10ec14e406c88a3bd60315b24b42ab0244f9a6bb838cffd",
+      "native_http_status": 200,
+      "native_response_body_sha256": "058e2c7d6e44ef49747e6005270b1630f3b69c4cef78934d6c6d9d8d4ed1aef7",
+      "native_response_text_sha256": "b1f520f2d304a91e2458f13c1663dd43ec926194253e377dda2a29f29ee4c1a6",
+      "native_response_text_length": 769,
+      "native": {
+        "response_length": 769,
+        "response_sha256": "b1f520f2d304a91e2458f13c1663dd43ec926194253e377dda2a29f29ee4c1a6",
+        "response_prefix": "{\n  \"summary\": \"JSON response provided\",\n  \"observations\": [\n    \"source_chunk_ids=CHUNK_67b56abe21fe9860a26d\",\n    \"source_chunk_ids=CHUNK_8f85f2c0472e21acd2fa",
+        "json_parse": "FAIL",
+        "json_line": 25,
+        "json_column": 28,
+        "json_error": "Unterminated string starting at",
+        "schema_validation": "NOT_RUN"
+      },
+      "termination": {
+        "done": true,
+        "done_reason": "length",
+        "error": null,
+        "prompt_eval_count": 148,
+        "eval_count": 384,
+        "total_duration": 39289924100,
+        "load_duration": 1566800,
+        "response_present": true,
+        "response_terminated": true
+      },
+      "local_artifacts": [
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\H_minimized_evidence_prose_direct_request.json",
+          "length": 920,
+          "sha256": "cff5e591d1d163f1f10ec14e406c88a3bd60315b24b42ab0244f9a6bb838cffd"
+        },
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\H_minimized_evidence_prose_direct_response.json",
+          "length": 3176,
+          "sha256": "058e2c7d6e44ef49747e6005270b1630f3b69c4cef78934d6c6d9d8d4ed1aef7"
+        },
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\H_minimized_evidence_prose_direct_prompt.txt",
+          "length": 211,
+          "sha256": "0cdb97ccf7066e1357ecc44aa3e78ed3a9b7af6793832ef8cd9c35e49967810f"
+        }
+      ],
+      "description": "exact identities with only minimal instruction prose"
+    },
+    {
+      "case": "I_reduced_id_lengths",
+      "run_index": null,
+      "request_identity": {
+        "model": "qwen2.5:7b-instruct-q4_K_M",
+        "seed": 20260906,
+        "num_ctx": 8192,
+        "num_predict": 384,
+        "temperature": 0.1,
+        "top_p": 0.9
+      },
+      "prompt_sha256": "e33bc63a9dceb75b83670c18ef84e9201d1cc20ef2af1ad1b4456e01a156a9b9",
+      "prompt_length": 234,
+      "schema_sha256": "ebb901d8b57074e5fc7b0b8630385c0579ed66206111a9928b76dc6f3356f3b9",
+      "provider_request_sha256": "2abbc852a6ad3b282105a0e20594473fec9883e039f27e0dc3a55c1d627dda4b",
+      "native_http_status": 200,
+      "native_response_body_sha256": "987ad09ac127f3443e9bce3837de24b9f2c5b7ed6c7a844ecf6a7932e76ac51b",
+      "native_response_text_sha256": "b5d29c7ce52e96b1bc87c64f7299c058096975cb7896e60e06691471b6f9e86b",
+      "native_response_text_length": 533,
+      "native": {
+        "response_length": 533,
+        "response_sha256": "b5d29c7ce52e96b1bc87c64f7299c058096975cb7896e60e06691471b6f9e86b",
+        "response_prefix": "{\n  \"summary\": \"请给出简短建议。\",\n  \"observations\": [\n    \"CHUNK_1\",\n    \"CHUNK_2\",\n    \"CHUNK_3\",\n    \"CHUNK_4\",\n    \"CHUNK_5\"\n  ],\n  \"suggestions\": [\n    {\n      \"te",
+        "json_parse": "PASS",
+        "json_type": "dict",
+        "json_keys": [
+          "disclaimer",
+          "observations",
+          "suggestions",
+          "summary"
+        ],
+        "schema_validation": "PASS"
+      },
+      "termination": {
+        "done": true,
+        "done_reason": "stop",
+        "error": null,
+        "prompt_eval_count": 96,
+        "eval_count": 208,
+        "total_duration": 21252070400,
+        "load_duration": 1599100,
+        "response_present": true,
+        "response_terminated": true
+      },
+      "local_artifacts": [
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\I_reduced_id_lengths_direct_request.json",
+          "length": 959,
+          "sha256": "2abbc852a6ad3b282105a0e20594473fec9883e039f27e0dc3a55c1d627dda4b"
+        },
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\I_reduced_id_lengths_direct_response.json",
+          "length": 2488,
+          "sha256": "987ad09ac127f3443e9bce3837de24b9f2c5b7ed6c7a844ecf6a7932e76ac51b"
+        },
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\I_reduced_id_lengths_direct_prompt.txt",
+          "length": 250,
+          "sha256": "e33bc63a9dceb75b83670c18ef84e9201d1cc20ef2af1ad1b4456e01a156a9b9"
+        }
+      ],
+      "description": "same shape with reduced chunk ID lengths"
+    },
+    {
+      "case": "J_previous_neutral_control",
+      "run_index": null,
+      "request_identity": {
+        "model": "qwen2.5:7b-instruct-q4_K_M",
+        "seed": 20260906,
+        "num_ctx": 8192,
+        "num_predict": 384,
+        "temperature": 0.1,
+        "top_p": 0.9
+      },
+      "prompt_sha256": "80a6c86912d752c622855d8d742a5aab80d8f8e6abdf6e26c1044dae6c4a8fab",
+      "prompt_length": 234,
+      "schema_sha256": "ebb901d8b57074e5fc7b0b8630385c0579ed66206111a9928b76dc6f3356f3b9",
+      "provider_request_sha256": "3e56213aa248c5d24dc8eea44026400c278ad7510f06c2d66c01f013ba2cd05e",
+      "native_http_status": 200,
+      "native_response_body_sha256": "7e011a902472f456f21bc0d2f163d3491904046b49716063aad5fd21225e8a42",
+      "native_response_text_sha256": "f74df9fd25e7962a54724d7e5453dfa89a3243f67721fbb562a3c920f4f0d169",
+      "native_response_text_length": 541,
+      "native": {
+        "response_length": 541,
+        "response_sha256": "f74df9fd25e7962a54724d7e5453dfa89a3243f67721fbb562a3c920f4f0d169",
+        "response_prefix": "{\n  \"summary\": \"请给出简短建议。\",\n  \"observations\": [\n    \"CHUNK_A\",\n    \"CHUNK_B\",\n    \"CHUNK_C\",\n    \"CHUNK_D\",\n    \"CHUNK_E\"\n  ],\n  \"suggestions\": [\n    {\n      \"te",
+        "json_parse": "PASS",
+        "json_type": "dict",
+        "json_keys": [
+          "disclaimer",
+          "observations",
+          "suggestions",
+          "summary"
+        ],
+        "schema_validation": "PASS"
+      },
+      "termination": {
+        "done": true,
+        "done_reason": "stop",
+        "error": null,
+        "prompt_eval_count": 91,
+        "eval_count": 200,
+        "total_duration": 19897089700,
+        "load_duration": 1607800,
+        "response_present": true,
+        "response_terminated": true
+      },
+      "local_artifacts": [
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\J_previous_neutral_control_direct_request.json",
+          "length": 959,
+          "sha256": "3e56213aa248c5d24dc8eea44026400c278ad7510f06c2d66c01f013ba2cd05e"
+        },
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\J_previous_neutral_control_direct_response.json",
+          "length": 2524,
+          "sha256": "7e011a902472f456f21bc0d2f163d3491904046b49716063aad5fd21225e8a42"
+        },
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\J_previous_neutral_control_direct_prompt.txt",
+          "length": 250,
+          "sha256": "80a6c86912d752c622855d8d742a5aab80d8f8e6abdf6e26c1044dae6c4a8fab"
+        }
+      ],
+      "description": "previous closure neutral-control shape"
+    },
+    {
+      "case": "K_one_exact_id_rest_neutral",
+      "run_index": null,
+      "request_identity": {
+        "model": "qwen2.5:7b-instruct-q4_K_M",
+        "seed": 20260906,
+        "num_ctx": 8192,
+        "num_predict": 384,
+        "temperature": 0.1,
+        "top_p": 0.9
+      },
+      "prompt_sha256": "0e445acc144d87ea92d13ab167f9f6bd6fd7a38f61cf0eb1e4adac6b3f345819",
+      "prompt_length": 253,
+      "schema_sha256": "ebb901d8b57074e5fc7b0b8630385c0579ed66206111a9928b76dc6f3356f3b9",
+      "provider_request_sha256": "e79739c6dea877f42a596bfea51da86b531fce993d145bc104e57be17eb6fbef",
+      "native_http_status": 200,
+      "native_response_body_sha256": "a7f6b124bcb50d677104bb53b7e7609f8f5da9e7fa92255159a80e16791a0f38",
+      "native_response_text_sha256": "1e2a760fe47e624a603c7411ff31cb5711757c957f44838f8bfdbee44b8d07ee",
+      "native_response_text_length": 576,
+      "native": {
+        "response_length": 576,
+        "response_sha256": "1e2a760fe47e624a603c7411ff31cb5711757c957f44838f8bfdbee44b8d07ee",
+        "response_prefix": "{\n  \"summary\": \"请给出简短建议。\",\n  \"observations\": [\n    \"CHUNK_67b56abe21fe9860a26d\",\n    \"CHUNK_B\",\n    \"CHUNK_C\",\n    \"CHUNK_D\",\n    \"CHUNK_E\"\n  ],\n  \"suggestions\"",
+        "json_parse": "PASS",
+        "json_type": "dict",
+        "json_keys": [
+          "disclaimer",
+          "observations",
+          "suggestions",
+          "summary"
+        ],
+        "schema_validation": "PASS"
+      },
+      "termination": {
+        "done": true,
+        "done_reason": "stop",
+        "error": null,
+        "prompt_eval_count": 108,
+        "eval_count": 234,
+        "total_duration": 23120871300,
+        "load_duration": 2137300,
+        "response_present": true,
+        "response_terminated": true
+      },
+      "local_artifacts": [
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\K_one_exact_id_rest_neutral_direct_request.json",
+          "length": 978,
+          "sha256": "e79739c6dea877f42a596bfea51da86b531fce993d145bc104e57be17eb6fbef"
+        },
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\K_one_exact_id_rest_neutral_direct_response.json",
+          "length": 2707,
+          "sha256": "a7f6b124bcb50d677104bb53b7e7609f8f5da9e7fa92255159a80e16791a0f38"
+        },
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\K_one_exact_id_rest_neutral_direct_prompt.txt",
+          "length": 269,
+          "sha256": "0e445acc144d87ea92d13ab167f9f6bd6fd7a38f61cf0eb1e4adac6b3f345819"
+        }
+      ],
+      "description": "one exact ID plus neutral IDs"
+    },
+    {
+      "case": "L_only_longest_exact_id",
+      "run_index": null,
+      "request_identity": {
+        "model": "qwen2.5:7b-instruct-q4_K_M",
+        "seed": 20260906,
+        "num_ctx": 8192,
+        "num_predict": 384,
+        "temperature": 0.1,
+        "top_p": 0.9
+      },
+      "prompt_sha256": "3d4ec8222bde114bc019eea9a2e2928a4d76d344efaad35ee4cd823457d6caa3",
+      "prompt_length": 221,
+      "schema_sha256": "ebb901d8b57074e5fc7b0b8630385c0579ed66206111a9928b76dc6f3356f3b9",
+      "provider_request_sha256": "079960077fb6f9206227abd46bb1a0a14f97c9125b13f35412c1ac387e20246c",
+      "native_http_status": 200,
+      "native_response_body_sha256": "b47fb764a654ca24e1e23d7f22eafe808b3b28b76c4612bab939da73d1ca64b1",
+      "native_response_text_sha256": "560ba14bbb5bd9a3079fc97618229bad038e1ae235932f1d7d17485b7e9e4c0f",
+      "native_response_text_length": 648,
+      "native": {
+        "response_length": 648,
+        "response_sha256": "560ba14bbb5bd9a3079fc97618229bad038e1ae235932f1d7d17485b7e9e4c0f",
+        "response_prefix": "{\n  \"summary\": \"请给出简短建议。\",\n  \"observations\": [\n    \"学生应制定合理的学习计划，确保每天都有固定的学习时间。\",\n    \"积极参与课堂讨论，与老师和同学多交流，有助于提高学习兴趣和理解能力。\",\n    \"遇到难题时，不要害怕寻求帮助，可以向老师或同学请教。\",\n  ",
+        "json_parse": "PASS",
+        "json_type": "dict",
+        "json_keys": [
+          "disclaimer",
+          "observations",
+          "suggestions",
+          "summary"
+        ],
+        "schema_validation": "PASS"
+      },
+      "termination": {
+        "done": true,
+        "done_reason": "stop",
+        "error": null,
+        "prompt_eval_count": 92,
+        "eval_count": 295,
+        "total_duration": 28957414800,
+        "load_duration": 2178900,
+        "response_present": true,
+        "response_terminated": true
+      },
+      "local_artifacts": [
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\L_only_longest_exact_id_direct_request.json",
+          "length": 946,
+          "sha256": "079960077fb6f9206227abd46bb1a0a14f97c9125b13f35412c1ac387e20246c"
+        },
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\L_only_longest_exact_id_direct_response.json",
+          "length": 3208,
+          "sha256": "b47fb764a654ca24e1e23d7f22eafe808b3b28b76c4612bab939da73d1ca64b1"
+        },
+        {
+          "path": "D:\\Projects\\StudentMentalHealthAI-structured-output-compat\\_local-evidence\\structured-output-compat\\L_only_longest_exact_id_direct_prompt.txt",
+          "length": 237,
+          "sha256": "3d4ec8222bde114bc019eea9a2e2928a4d76d344efaad35ee4cd823457d6caa3"
+        }
+      ],
+      "description": "only the first exact ID"
+    }
+  ],
+  "truncation_analysis": {
+    "required_fields": [
+      "num_ctx",
+      "prompt_eval_count",
+      "eval_count",
+      "num_predict",
+      "done_reason",
+      "response_terminated"
+    ],
+    "conclusion": "RECORDED_PER_CASE"
+  },
+  "transport_analysis": {
+    "conclusion": "RECORDED_PER_RUNTIME_CASE",
+    "layers": [
+      "native Ollama response",
+      "OllamaProvider._response_text",
+      "provider parser input",
+      "RuntimeService.parse_structured replay"
+    ]
+  },
+  "process": {
+    "ollama_process_owned_by_diagnostic": true,
+    "terminated_by_diagnostic": true
+  }
+}

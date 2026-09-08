@@ -1,29 +1,173 @@
 {
-  "database": "smhai_gpi_closure_20260908_010905",
+  "database": "smhai_gpi_closure_20260908_225638",
   "counts": {
     "accounts": 4,
     "subjects": 2,
     "assessment_sessions": 10,
     "support_sessions": 12,
     "support_runs": 12,
-    "support_evidence": 15,
-    "safety_decisions": 7,
+    "support_evidence": 30,
+    "safety_decisions": 10,
     "review_cases": 3,
-    "support_messages": 15,
-    "approved_output_messages": 3,
+    "support_messages": 18,
+    "approved_output_messages": 6,
     "blocked_approved_output_messages": 0,
     "crisis_approved_output_messages": 0,
     "encrypted_user_messages": 12,
-    "encrypted_approved_messages": 3
+    "encrypted_approved_messages": 6
   },
   "per_trace": {
+    "GPI_NORMAL_01": {
+      "runs": [
+        {
+          "run_ref": "REPORT_9a575624ab064114bc66e6d3086fec36",
+          "status": "COMPLETED",
+          "workflow_action": "PROCEED_WITH_BOUNDARY",
+          "generation_ref": "GEN_4bf80caae92142c3894283c8fa00dff3",
+          "retrieval_ref": "RETR_0b34d19126fe7a1c77ab"
+        }
+      ],
+      "evidence": [
+        {
+          "citation_id": "CITE_603e91867956cd43ba179bf2",
+          "source_id": "KB_2f2c286d6e2e32abcb52",
+          "chunk_id": "CHUNK_67b56abe21fe9860a26d",
+          "document_id": "KB_2f2c286d6e2e32abcb52",
+          "source_hash": "sha256:7b44760976a0d815147dfda2a45b6513158ac169343701565dbc7e34526f0be6"
+        },
+        {
+          "citation_id": "CITE_e0eedaccc452ac547774ca52",
+          "source_id": "KB_4e52e08e5384be10b493",
+          "chunk_id": "CHUNK_8f85f2c0472e21acd2fa",
+          "document_id": "KB_4e52e08e5384be10b493",
+          "source_hash": "sha256:640eb25c1a5cfbb8891d2a41de1ea4cc058ac66b7bbe0e5bd8e03423b9442493"
+        },
+        {
+          "citation_id": "CITE_c1a5a65ea001bccb0d89a926",
+          "source_id": "KB_1814fbd0be27f07bbe9c",
+          "chunk_id": "CHUNK_c3718c65fcf4151af391",
+          "document_id": "KB_1814fbd0be27f07bbe9c",
+          "source_hash": "sha256:640eb25c1a5cfbb8891d2a41de1ea4cc058ac66b7bbe0e5bd8e03423b9442493"
+        },
+        {
+          "citation_id": "CITE_3ceb5df7b0dd1264fc79c1fa",
+          "source_id": "KB_7723360cccbf4f9c45ee",
+          "chunk_id": "CHUNK_3d2d02ba1c8fbc506665",
+          "document_id": "KB_7723360cccbf4f9c45ee",
+          "source_hash": "sha256:cb7bd69ec6fc7c7a0c4e9d0fd4d1428856bf7bc7b75624780e81b9f30158ed45"
+        },
+        {
+          "citation_id": "CITE_c54be5009b986ad06a174975",
+          "source_id": "KB_7723360cccbf4f9c45ee",
+          "chunk_id": "CHUNK_bcbe71382652340b2249",
+          "document_id": "KB_7723360cccbf4f9c45ee",
+          "source_hash": "sha256:55066670ce36181cfe821ecf1515eca6e7994471bbbff3dc4bf05fa433d7280b"
+        }
+      ]
+    },
+    "GPI_NORMAL_02": {
+      "runs": [
+        {
+          "run_ref": "REPORT_3015ecf951254998993922af7087db18",
+          "status": "COMPLETED",
+          "workflow_action": "PROCEED_WITH_BOUNDARY",
+          "generation_ref": "GEN_424035c38af2446f9f6be656f76fd275",
+          "retrieval_ref": "RETR_88cd23d76377dc624829"
+        }
+      ],
+      "evidence": [
+        {
+          "citation_id": "CITE_603e91867956cd43ba179bf2",
+          "source_id": "KB_2f2c286d6e2e32abcb52",
+          "chunk_id": "CHUNK_67b56abe21fe9860a26d",
+          "document_id": "KB_2f2c286d6e2e32abcb52",
+          "source_hash": "sha256:7b44760976a0d815147dfda2a45b6513158ac169343701565dbc7e34526f0be6"
+        },
+        {
+          "citation_id": "CITE_e0eedaccc452ac547774ca52",
+          "source_id": "KB_4e52e08e5384be10b493",
+          "chunk_id": "CHUNK_8f85f2c0472e21acd2fa",
+          "document_id": "KB_4e52e08e5384be10b493",
+          "source_hash": "sha256:640eb25c1a5cfbb8891d2a41de1ea4cc058ac66b7bbe0e5bd8e03423b9442493"
+        },
+        {
+          "citation_id": "CITE_c1a5a65ea001bccb0d89a926",
+          "source_id": "KB_1814fbd0be27f07bbe9c",
+          "chunk_id": "CHUNK_c3718c65fcf4151af391",
+          "document_id": "KB_1814fbd0be27f07bbe9c",
+          "source_hash": "sha256:640eb25c1a5cfbb8891d2a41de1ea4cc058ac66b7bbe0e5bd8e03423b9442493"
+        },
+        {
+          "citation_id": "CITE_3ceb5df7b0dd1264fc79c1fa",
+          "source_id": "KB_7723360cccbf4f9c45ee",
+          "chunk_id": "CHUNK_3d2d02ba1c8fbc506665",
+          "document_id": "KB_7723360cccbf4f9c45ee",
+          "source_hash": "sha256:cb7bd69ec6fc7c7a0c4e9d0fd4d1428856bf7bc7b75624780e81b9f30158ed45"
+        },
+        {
+          "citation_id": "CITE_c54be5009b986ad06a174975",
+          "source_id": "KB_7723360cccbf4f9c45ee",
+          "chunk_id": "CHUNK_bcbe71382652340b2249",
+          "document_id": "KB_7723360cccbf4f9c45ee",
+          "source_hash": "sha256:55066670ce36181cfe821ecf1515eca6e7994471bbbff3dc4bf05fa433d7280b"
+        }
+      ]
+    },
+    "GPI_NORMAL_03": {
+      "runs": [
+        {
+          "run_ref": "REPORT_6ff03f3370f54a7a838668cc920ed5d6",
+          "status": "COMPLETED",
+          "workflow_action": "PROCEED_WITH_BOUNDARY",
+          "generation_ref": "GEN_4c8fb5a969c2476683f9d02c0c36a5dc",
+          "retrieval_ref": "RETR_22c97fc133671fbdbe02"
+        }
+      ],
+      "evidence": [
+        {
+          "citation_id": "CITE_603e91867956cd43ba179bf2",
+          "source_id": "KB_2f2c286d6e2e32abcb52",
+          "chunk_id": "CHUNK_67b56abe21fe9860a26d",
+          "document_id": "KB_2f2c286d6e2e32abcb52",
+          "source_hash": "sha256:7b44760976a0d815147dfda2a45b6513158ac169343701565dbc7e34526f0be6"
+        },
+        {
+          "citation_id": "CITE_e0eedaccc452ac547774ca52",
+          "source_id": "KB_4e52e08e5384be10b493",
+          "chunk_id": "CHUNK_8f85f2c0472e21acd2fa",
+          "document_id": "KB_4e52e08e5384be10b493",
+          "source_hash": "sha256:640eb25c1a5cfbb8891d2a41de1ea4cc058ac66b7bbe0e5bd8e03423b9442493"
+        },
+        {
+          "citation_id": "CITE_c1a5a65ea001bccb0d89a926",
+          "source_id": "KB_1814fbd0be27f07bbe9c",
+          "chunk_id": "CHUNK_c3718c65fcf4151af391",
+          "document_id": "KB_1814fbd0be27f07bbe9c",
+          "source_hash": "sha256:640eb25c1a5cfbb8891d2a41de1ea4cc058ac66b7bbe0e5bd8e03423b9442493"
+        },
+        {
+          "citation_id": "CITE_3ceb5df7b0dd1264fc79c1fa",
+          "source_id": "KB_7723360cccbf4f9c45ee",
+          "chunk_id": "CHUNK_3d2d02ba1c8fbc506665",
+          "document_id": "KB_7723360cccbf4f9c45ee",
+          "source_hash": "sha256:cb7bd69ec6fc7c7a0c4e9d0fd4d1428856bf7bc7b75624780e81b9f30158ed45"
+        },
+        {
+          "citation_id": "CITE_c54be5009b986ad06a174975",
+          "source_id": "KB_7723360cccbf4f9c45ee",
+          "chunk_id": "CHUNK_bcbe71382652340b2249",
+          "document_id": "KB_7723360cccbf4f9c45ee",
+          "source_hash": "sha256:55066670ce36181cfe821ecf1515eca6e7994471bbbff3dc4bf05fa433d7280b"
+        }
+      ]
+    },
     "GPI_CRISIS_01": {
       "runs": [
         {
-          "run_ref": "REPORT_a68f4606d1ac41ebbe49d5077c33ffee",
+          "run_ref": "REPORT_7a67cfaa1f594786b99d85fd55a1b636",
           "status": "BLOCKED",
           "workflow_action": "CRISIS_ROUTE",
-          "generation_ref": "GEN_8da5d5544a244039b49ffeb667559262",
+          "generation_ref": "GEN_e1c29bfa46f64805a4bc4f44c4da0aa1",
           "retrieval_ref": "RETR_not_run"
         }
       ],
@@ -32,10 +176,10 @@
     "GPI_CRISIS_02": {
       "runs": [
         {
-          "run_ref": "REPORT_91818c0c130e4114979b38bb9bb65e49",
+          "run_ref": "REPORT_7ef942674b6249fa8d6a3e1844cc8cb3",
           "status": "BLOCKED",
           "workflow_action": "CRISIS_ROUTE",
-          "generation_ref": "GEN_5ba7665a3247451390454fe80ba5b5fa",
+          "generation_ref": "GEN_0f4c287a0b83485c9a322a198f099929",
           "retrieval_ref": "RETR_not_run"
         }
       ],
@@ -44,10 +188,10 @@
     "GPI_CRISIS_03": {
       "runs": [
         {
-          "run_ref": "REPORT_ce4a69005cdb465281c5b5b91986fdc9",
+          "run_ref": "REPORT_03c6ccc897c5491fad46259dd6724b2c",
           "status": "BLOCKED",
           "workflow_action": "CRISIS_ROUTE",
-          "generation_ref": "GEN_25a1f336b3984b36905c681973f77e6d",
+          "generation_ref": "GEN_170ceab2f6414f5cb176e38d7ce621cd",
           "retrieval_ref": "RETR_not_run"
         }
       ],
@@ -56,11 +200,11 @@
     "GPI_FALLBACK_01": {
       "runs": [
         {
-          "run_ref": "REPORT_b50714a1f22247b0b903b0d2ae1e0ef6",
+          "run_ref": "REPORT_5cbe106f5cd04598a2f95b114d0e9a83",
           "status": "COMPLETED",
           "workflow_action": "PROCEED_WITH_BOUNDARY",
-          "generation_ref": "GEN_a392f13dc1af4fafbbe57d7606a9430e",
-          "retrieval_ref": "RETR_5b15de1cce8d5d8d5fd6"
+          "generation_ref": "GEN_dd7f611ea8a84de4a71570180e13b3a0",
+          "retrieval_ref": "RETR_0721299ecce722bb2a52"
         }
       ],
       "evidence": [
@@ -104,11 +248,11 @@
     "GPI_FALLBACK_02": {
       "runs": [
         {
-          "run_ref": "REPORT_d983e0ae6b4945a0970c677472c1326b",
+          "run_ref": "REPORT_54d9bd2affcd41d08c552ddcef14bf14",
           "status": "COMPLETED",
           "workflow_action": "PROCEED_WITH_BOUNDARY",
-          "generation_ref": "GEN_d6906b6109a14db9ac27911a6f170fb1",
-          "retrieval_ref": "RETR_31fd5379be4766febcfa"
+          "generation_ref": "GEN_d6670f85847444efbc1c979dbbeb4296",
+          "retrieval_ref": "RETR_7411c5368d58728f229f"
         }
       ],
       "evidence": [
@@ -152,11 +296,11 @@
     "GPI_FALLBACK_03": {
       "runs": [
         {
-          "run_ref": "REPORT_9f698649cbe94740b970870fdbae4643",
+          "run_ref": "REPORT_f72f3fffc9bb4f32a0ba8a83dfd7caeb",
           "status": "COMPLETED",
           "workflow_action": "PROCEED_WITH_BOUNDARY",
-          "generation_ref": "GEN_32727af29fa34e8793ec3f5c6c269999",
-          "retrieval_ref": "RETR_e7a58224f20f96ad0f70"
+          "generation_ref": "GEN_bb04acb09d6b450fbd7d383221fa37a9",
+          "retrieval_ref": "RETR_70d5acb6e982717573c3"
         }
       ],
       "evidence": [
@@ -200,10 +344,10 @@
     "GPI_CONTROLLED_OUTPUT_FLOW": {
       "runs": [
         {
-          "run_ref": "REPORT_525131c9816243de8a038f370dfec5ef",
+          "run_ref": "REPORT_3845489303d547b9a941c5d1af8ff40c",
           "status": "BLOCKED",
           "workflow_action": "BLOCK",
-          "generation_ref": "GEN_616b1dcdb88a4f16ba0691004a1992a4",
+          "generation_ref": "GEN_72a78ba4a6664b389a75f3abb1dfca6b",
           "retrieval_ref": "RETR_not_run"
         }
       ],
