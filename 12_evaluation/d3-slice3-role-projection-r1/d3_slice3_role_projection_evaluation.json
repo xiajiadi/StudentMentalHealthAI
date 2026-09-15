@@ -1,0 +1,123 @@
+{
+  "schema_version": "d3_slice3_role_projection_evaluation.v1",
+  "mission": "D3-3 Role Projection and Minimum Disclosure R1",
+  "recorded_at": "2026-09-16T03:00:38.9875025+08:00",
+  "worktree": "D:\\Projects\\StudentMentalHealthAI-d3-role-projection",
+  "branch": "exp/d3-role-projection-v1",
+  "baseline_commit": "d9e1cba8b02c26b5661bd139339daed8629f3d1e",
+  "d3_2_tested_commit": "3539927939ff0340871bb01a329feddb830875e6",
+  "deterministic": true,
+  "llm_calls": 0,
+  "rag_calls": 0,
+  "new_claim_generation": false,
+  "monotonicity": "PASS",
+  "teacher_default_deny": "PASS",
+  "parent_real_user": false,
+  "parent_synthetic_demo": "PASS_COARSE_NO_PERSONALIZED_DISCLOSURE",
+  "admin_content_access": false,
+  "unknown_content_access": false,
+  "prompt_audit_separation": "PASS",
+  "existence_side_channel": "PASS",
+  "raw_theta_se": false,
+  "raw_score_band_interval_latent": false,
+  "diagnostic_clinical_risk_treatment_language": false,
+  "safety_leak": false,
+  "safety_bypass_stop": "PASS",
+  "policy_hash": "PASS",
+  "exact_policy_selection": "PASS",
+  "fallback_default_latest_wildcard": false,
+  "trusted_audience_context": "PASS_TYPED_PROCESS_LOCAL_CAPABILITY",
+  "raw_caller_forgery": "FAIL_CLOSED",
+  "real_student_data": false,
+  "d3_4_started": false,
+  "role_matrix": {
+    "STUDENT_SELF": {
+      "purpose": "SELF_UNDERSTANDING",
+      "relation": "SELF",
+      "mode": "SYNTHETIC_DEMO",
+      "public_status": "READY_FOR_PROMPT",
+      "claims": 0
+    },
+    "TEACHER_SUPPORT": {
+      "purpose": "EDUCATIONAL_SUPPORT",
+      "relation": "ASSIGNED_SUPPORT",
+      "mode": "SYNTHETIC_DEMO",
+      "public_status": "NO_PERSONALIZED_DISCLOSURE",
+      "claims": 0
+    },
+    "PARENT_DEMO": {
+      "purpose": "SYNTHETIC_PARENT_DEMO",
+      "relation": "SYNTHETIC_DEMO",
+      "mode": "SYNTHETIC_DEMO",
+      "public_status": "NO_PERSONALIZED_DISCLOSURE",
+      "claims": 0
+    },
+    "SYSTEM_ADMIN": {
+      "public_status": "NO_PERSONALIZED_DISCLOSURE",
+      "content_access": false
+    },
+    "UNKNOWN": {
+      "public_status": "NO_PERSONALIZED_DISCLOSURE",
+      "content_access": false
+    }
+  },
+  "policy_hashes": {
+    "ROLE_PROJECTION_STUDENT_SELF_V09": "sha256:7396fa34f2e08d24cf415bd526d3647b254492f8ec715150e76e7c22515e40d4",
+    "ROLE_PROJECTION_TEACHER_SUPPORT_V09": "sha256:378adb0b7a701e1c27bd65c89939d081d9abcf325db622595591f33c81817d7b",
+    "ROLE_PROJECTION_PARENT_DEMO_V09": "sha256:d562fd172a496674b77d5943502f9413345166c8c3e582a771735e7a5c9be912"
+  },
+  "tests": {
+    "d3_3_focused": {
+      "passed": 99,
+      "failed": 0
+    },
+    "prompt_engine_full": {
+      "passed": 147,
+      "failed": 0
+    },
+    "d3_2_regression": {
+      "passed": 41,
+      "failed": 0
+    },
+    "d3_1_regression": {
+      "passed": 48,
+      "failed": 0
+    },
+    "cat_regression": {
+      "passed": 24,
+      "failed": 0
+    },
+    "root_contract": {
+      "passed": 13,
+      "failed": 0
+    }
+  },
+  "static": {
+    "ruff": "PASS",
+    "pyright": "0 errors, 0 warnings, 0 informations",
+    "compileall": "PASS",
+    "openapi": "PASS",
+    "frozen_root": "PASS_8_OF_8_UNCHANGED",
+    "forbidden_module_scope": "PASS",
+    "diff_check": "PASS"
+  },
+  "worker_review": {
+    "A": "PASS_READ_ONLY_RECONCILIATION",
+    "B": "PASS_READ_ONLY_PRIVACY_BOUNDARY",
+    "C": "PASS_READ_ONLY_ABUSE_MATRIX",
+    "D": "PASS_CONTRACTS_REGISTRY",
+    "E": "PASS_ENGINE_SOURCE_DENYLIST_FIX",
+    "F": "PASS_DOCS_README",
+    "G": "PARTIAL_P1_CITATION_BINDING_DEFERRED_SOURCE_FIX_CONFIRMED",
+    "H": "PASS_EXECUTABLE_GATES",
+    "I": "PASS_NO_SEMANTIC_DEVIATION"
+  },
+  "remaining_p0": [],
+  "remaining_p1": [
+    "Opaque citation to trusted RAG/document snapshot binding is deferred to D3-4",
+    "Hostile same-process private seam or subclass bypass is outside the stated D3-3 threat model"
+  ],
+  "commit_boundary": "ONE_LOCAL_D3_3_CLOSURE_COMMIT_NO_MERGE_NO_PUSH_NO_ACCEPTED_TAG",
+  "controller_acceptance": false,
+  "recommendation": "READY_FOR_CONTROLLER_REVIEW"
+}
