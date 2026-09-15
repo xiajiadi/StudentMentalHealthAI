@@ -21,7 +21,12 @@ from .models import (
     SafetyAction,
     TrustedInterpretationContext,
 )
-from .policy import PolicyRegistry, is_forbidden_claim_code, load_policy_registry
+from .policy import (
+    PolicyRegistry,
+    canonical_policy_hash,
+    is_forbidden_claim_code,
+    load_policy_registry,
+)
 from .schema import AssessmentValidationError, validate_assessment_v1
 
 DEFAULT_POLICY_PATH = (
@@ -32,6 +37,11 @@ _BYPASS_ACTIONS = {
     SafetyAction.CRISIS_ROUTE,
     SafetyAction.REVIEW_REQUIRED,
     SafetyAction.BLOCK,
+}
+_SAFETY_REASON_CODES = {
+    SafetyAction.CRISIS_ROUTE: ReasonCode.CRISIS_ROUTE,
+    SafetyAction.REVIEW_REQUIRED: ReasonCode.REVIEW_REQUIRED,
+    SafetyAction.BLOCK: ReasonCode.BLOCK,
 }
 _REQUIRED_MEASUREMENT_LIMITATIONS = (
     "SYNTHETIC_ONLY",
@@ -283,8 +293,8 @@ class InterpretationAdapter:
             )
         if context.safety_action in _BYPASS_ACTIONS:
             return _result(
-                status=InterpretationStatus.ABSTAIN_SAFETY_BYPASS,
-                reason_codes=(ReasonCode.SAFETY_BYPASS.value,),
+                status=InterpretationStatus.BYPASS_SAFETY,
+                reason_codes=(_SAFETY_REASON_CODES[context.safety_action].value,),
                 request=request,
                 context=context,
             )
@@ -351,6 +361,18 @@ class InterpretationAdapter:
                 context=context,
             )
         policy = lookup.policy
+        try:
+            policy_hash_matches = canonical_policy_hash(policy.to_dict()) == policy.policy_hash
+        except (TypeError, ValueError):
+            policy_hash_matches = False
+        if not policy_hash_matches:
+            return _result(
+                status=InterpretationStatus.ABSTAIN_POLICY_HASH_MISMATCH,
+                reason_codes=(ReasonCode.POLICY_HASH_MISMATCH.value,),
+                request=request,
+                context=context,
+                policy=policy,
+            )
         instrument = assessment.get("instrument")
         instrument_id = instrument.get("instrument_id") if isinstance(instrument, Mapping) else None
         instrument_version = instrument.get("version") if isinstance(instrument, Mapping) else None

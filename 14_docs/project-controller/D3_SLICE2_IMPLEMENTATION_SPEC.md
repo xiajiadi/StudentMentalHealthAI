@@ -96,7 +96,9 @@ shipped psychology policy.
 The canonical policy hash is SHA-256 over UTF-8 JSON after parsing the policy,
 removing `policy_hash`, sorting keys and using separators `(',', ':')` with
 `ensure_ascii=False`. The stored value is compared exactly. A missing,
-duplicate, malformed or hash-mismatched policy is rejected.
+duplicate, malformed or hash-mismatched policy is rejected. The adapter also
+rechecks the canonical hash of a selected typed policy object, so a same-process
+caller cannot bypass this gate by constructing a dataclass directly.
 
 Selection is exact over policy id/version/hash, instrument id/version,
 assessment population and trusted execution mode. No wildcard, latest, default,
@@ -105,19 +107,34 @@ the assessment population; content/RAG population is outside this module.
 
 ## 6. Status machine and reason codes
 
-The adapter returns one explicit status and one or more stable reason codes;
-empty interpretation is never used:
+`CONTROLLER_STATUS_VOCABULARY_CORRECTION` records the canonical status
+vocabulary required by the Controller. The adapter returns one explicit status
+and one or more stable reason codes; empty interpretation is never used.
+
+Canonical statuses:
 
 - `READY_FOR_RENDERING`: only a test-only neutral policy may reach this state;
 - `MEASUREMENT_ONLY`: accepted synthetic measurement with no psychological
   meaning claims;
-- `ABSTAIN_POLICY_MISSING`, `ABSTAIN_POLICY_MISMATCH`,
-  `ABSTAIN_POLICY_HASH_MISMATCH`;
-- `ABSTAIN_INSTRUMENT_MISMATCH`, `ABSTAIN_VERSION_MISMATCH`,
-  `ABSTAIN_POPULATION_MISMATCH`;
-- `ABSTAIN_CONSTRUCT_UNAPPROVED`, `ABSTAIN_REAL_USER_BLOCKED`,
-  `ABSTAIN_SAFETY_BYPASS`, `ABSTAIN_MODE_NOT_ALLOWED`;
-- `ABSTAIN_INPUT_INVALID` for malformed or incomplete assessment data.
+- `ABSTAIN_POLICY_MISSING`;
+- `ABSTAIN_POLICY_NOT_APPROVED` (reserved for an actually ineligible policy
+  scope; the current synthetic engineering policy does not use it);
+- `ABSTAIN_INSTRUMENT_MISMATCH`;
+- `ABSTAIN_POPULATION_MISMATCH`;
+- `ABSTAIN_PRECISION_INSUFFICIENT` (reserved; no V1 SE threshold emits it);
+- `ABSTAIN_CONSTRUCT_UNAPPROVED`;
+- `BYPASS_SAFETY`.
+
+Approved module extensions:
+
+- `ABSTAIN_POLICY_MISMATCH`, `ABSTAIN_POLICY_HASH_MISMATCH`,
+  `ABSTAIN_VERSION_MISMATCH`;
+- `ABSTAIN_REAL_USER_BLOCKED`, `ABSTAIN_MODE_NOT_ALLOWED`,
+  `ABSTAIN_INPUT_INVALID`.
+
+The canonical Safety status is `BYPASS_SAFETY`. Its stable reason code is
+`CRISIS_ROUTE`, `REVIEW_REQUIRED`, or `BLOCK`, matching the trusted Safety
+action without changing it.
 
 Reason codes identify the first deterministic boundary failure and preserve
 the trusted context identifiers. They do not expose a psychological diagnosis
@@ -141,8 +158,8 @@ not calculated.
 
 The result never changes or emits Safety actions. If trusted Safety is
 `CRISIS_ROUTE`, `REVIEW_REQUIRED` or `BLOCK`, the adapter returns
-`ABSTAIN_SAFETY_BYPASS` while preserving that action only as trusted audit
-context; all three states are tested separately.
+`BYPASS_SAFETY` with the matching reason code while preserving that action only
+as trusted audit context; all three states are tested separately.
 
 ## 8. Modes, population and human review
 

@@ -15,6 +15,9 @@ frozen root contracts and D3I-01 through D3I-40. Do not start D3-3/D3-4/D4/D5/D6
 
 Baseline is accepted D3-1 commit `c6727af1e722134617952383b34db596ed26ca15` in a
 clean worktree. The original main worktree was not used for implementation.
+The pre-closure candidate commit is
+`464728be6d335a275195cc7e2f6eb7d1f57f3f6d`. The final closure commit is bound
+in the machine evidence after the status/evidence correction commit.
 
 ## 3. Frozen Decision
 
@@ -62,7 +65,9 @@ claim codes, limitations, and a canonical hash.
 ## 10. Policy Hash
 
 The registry recomputes canonical `sha256:` content and rejects a missing or
-mismatched policy hash. Hash identity is part of exact policy selection.
+mismatched policy hash. The adapter also recomputes the selected typed policy's
+canonical hash, so direct dataclass construction cannot bypass this gate.
+Hash identity is part of exact policy selection.
 
 ## 11. Exact Policy Match
 
@@ -105,22 +110,31 @@ registry objects receive a second defensive check.
 
 ## 17. Status Machine
 
-The adapter returns explicit statuses for invalid input, missing/mismatched
-policy, population/version/mode mismatch, unapproved construct, Safety bypass,
-conservative measurement-only output, and the test-only ready path. It never
-returns an empty silent interpretation.
+The Controller canonical statuses are `READY_FOR_RENDERING`,
+`MEASUREMENT_ONLY`, `ABSTAIN_POLICY_MISSING`, `ABSTAIN_POLICY_NOT_APPROVED`,
+`ABSTAIN_INSTRUMENT_MISMATCH`, `ABSTAIN_POPULATION_MISMATCH`,
+`ABSTAIN_PRECISION_INSUFFICIENT`, `ABSTAIN_CONSTRUCT_UNAPPROVED`, and
+`BYPASS_SAFETY`. The approved module extensions are
+`ABSTAIN_POLICY_MISMATCH`, `ABSTAIN_POLICY_HASH_MISMATCH`,
+`ABSTAIN_VERSION_MISMATCH`, `ABSTAIN_REAL_USER_BLOCKED`,
+`ABSTAIN_MODE_NOT_ALLOWED`, and `ABSTAIN_INPUT_INVALID`. The two newly added
+canonical abstentions are reserved in V1; no SE threshold or fabricated policy
+approval emits them. The adapter never returns an empty silent interpretation.
 
 ## 18. Reason Codes
 
 Every abstention/bypass path includes a typed reason code, including policy
 invalid/hash mismatch, construct unapproved, trusted context required,
-assessment schema invalid, and Safety bypass.
+assessment schema invalid, and Safety bypass. `BYPASS_SAFETY` uses
+`CRISIS_ROUTE`, `REVIEW_REQUIRED`, or `BLOCK` to preserve the trusted Safety
+action identity.
 
 ## 19. Safety
 
-Trusted `CRISIS_ROUTE`, `REVIEW_REQUIRED`, and `BLOCK` actions bypass/abstain
-before interpretation. The adapter preserves the action in audit metadata and
-does not change or generate a Safety decision.
+Trusted `CRISIS_ROUTE`, `REVIEW_REQUIRED`, and `BLOCK` actions return the
+canonical `BYPASS_SAFETY` status before interpretation. The matching reason
+code and audit action are preserved; the adapter does not change or generate a
+Safety decision.
 
 ## 20. REAL_USER
 
@@ -152,16 +166,20 @@ source, chunk, rights decision, or corpus hash was introduced.
 
 ## 25. Tests
 
-Fresh module verification: `35 passed`, with no failures. This includes policy,
+Fresh module verification: `41 passed`, with no failures. This includes policy,
 hash, exact matching, Safety, modes, output schema, import-scope, deny-list,
 identity sanitization, and synthetic-only tests.
 
+Fresh D3I-39 command:
+`python -m pytest -q -p no:cacheprovider 03_assessment_adapter/tests/test_assessment_adapter.py -k "synthetic_only or test_only_neutral_policy"`
+collected `41`, selected `3`, passed `3`, failed `0`, deselected `38`, exit code `0`.
+
 ## 26. Security negative tests
 
-Twelve forbidden aliases, a direct typed-registry bypass, human-looking invalid
-identity values, plain context, REAL_USER, three Safety actions, and
-`synthetic_only=false` were exercised. Each failed closed or preserved the
-trusted action as required.
+Twelve forbidden aliases, a direct typed-registry bypass, tampered typed policy
+hash, human-looking invalid identity values, plain context, REAL_USER, three
+Safety actions, and `synthetic_only=false` were exercised. Each failed closed
+or preserved the trusted action as required.
 
 ## 27. Static
 
@@ -202,7 +220,8 @@ frozen anonymous ID forms.
 
 Product implementation and tests are confined to `03_assessment-adapter`.
 Lead-owned evidence/specification files are under `14_docs/project-controller`
-and the machine-readable evaluation is under `12_evaluation`.
+(including `D3_SLICE2_CONTROLLER_ACCEPTANCE_CLOSURE.md`) and the
+machine-readable evaluation is under `12_evaluation`.
 
 ## 35. Scope Integrity
 
@@ -212,9 +231,12 @@ D3-4, D4, D5, or D6 work was started.
 
 ## 36. Decision Fidelity
 
-Decision fidelity report: 40/40 D3I identifiers materialized, zero semantic
-deviations after the repaired synthetic-only gate, and governance declarations
-remain explicitly labelled as governance rather than runtime evidence.
+Decision fidelity report: final status `READY_FOR_CONTROLLER_REVIEW`, 40/40 D3I
+identifiers materialized, zero semantic deviations after the repaired
+synthetic-only gate, typed-policy hash defense, and canonical status correction.
+The initial fidelity
+finding remains recorded as `PARTIAL`; governance declarations remain
+explicitly labelled as governance rather than runtime evidence.
 
 ## 37. Worker Dispatch Ledger
 
@@ -234,9 +256,13 @@ visible to the Lead and is recorded as such.
 | `/root/d3_slice2_static_review` | gpt-5.6-luna / max / none | module, CAT, D3-1, Root, OpenAPI | none | none | Initial static/test review returned pass | Lead reran every affected gate after final repairs. |
 | `/root/d3_review_static` | requested gpt-5.6-luna / max / none; reused-slot routing not independently visible | D3I-01..40 and implementation | none | none | Returned fidelity `PARTIAL` because D3I-39 gate was missing | Lead repaired D3I-39 and reconciled the report. |
 | `/root/d3_slice2_gate_repair2` | gpt-5.6-luna / max / none | module repair target | `03_assessment-adapter` only | `adapter.py`, `test_assessment_adapter.py` | Added all-mode synthetic-only gate and tests; final module run `35 passed` | Lead reran module, static, security, CAT, D3-1, Root, OpenAPI, and frozen checks. |
+| `/root/d3_slice2_status_contract` | gpt-5.6-luna / max / none | status enum, adapter emission, result schema, tests, README | `03_assessment-adapter` only | `models.py`, `adapter.py`, result schema, tests, README | Added canonical statuses, `BYPASS_SAFETY`, reserved statuses, and no-cutoff tests; module run `40 passed` | Lead verified Safety reason codes, canonical schema vocabulary, and fresh targeted count. |
+| `/root/d3_slice2_status_contract` (follow-up) | gpt-5.6-luna / max / none | typed policy hash defense | `03_assessment-adapter` only | `adapter.py`, `test_assessment_adapter.py` | Added canonical hash recheck for direct typed policies; final module run `41 passed` | Lead verified tamper probe fails with `ABSTAIN_POLICY_HASH_MISMATCH`. |
+| `/root/d3_slice2_final_fidelity` | gpt-5.6-luna / max / none | D3I-01..40, status/policy/safety/scope/evidence | none | none | Fresh read-only final fidelity review after all repairs; report is the Controller review authority | Lead independently reconciles report and evidence before closure commit. |
 
-No Worker committed, merged, pushed, tagged, changed root contracts, or
-delegated recursively.
+Historical reused-slot entries are `ROUTING_NOT_INDEPENDENTLY_VERIFIED`,
+`READ_ONLY`, and `NOT_USED_AS_FINAL_ACCEPTANCE_AUTHORITY`. No Worker committed,
+merged, pushed, tagged, changed root contracts, or delegated recursively.
 
 ## 38. Remaining P0
 
