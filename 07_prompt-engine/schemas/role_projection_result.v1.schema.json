@@ -1,0 +1,769 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://student-mental-health-ai.invalid/schemas/role_projection_result.v1.schema.json",
+  "title": "D3-3 Role Projection Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "status",
+    "prompt",
+    "audit"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "role_projection_result.v1"
+    },
+    "status": {
+      "$ref": "#/$defs/projectionStatus"
+    },
+    "prompt": {
+      "$ref": "#/$defs/promptFacingProjection"
+    },
+    "audit": {
+      "$ref": "#/$defs/auditProjection"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "READY_FOR_PROMPT"
+          }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "prompt": {
+            "properties": {
+              "status": {
+                "const": "READY_FOR_PROMPT"
+              }
+            }
+          },
+          "audit": {
+            "properties": {
+              "status": {
+                "const": "READY_FOR_PROMPT"
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "if": {
+          "properties": {
+            "status": {
+              "const": "NO_PERSONALIZED_DISCLOSURE"
+            }
+          },
+          "required": ["status"]
+        },
+        "then": {
+          "properties": {
+            "prompt": {
+              "properties": {
+                "status": {
+                  "const": "NO_PERSONALIZED_DISCLOSURE"
+                }
+              }
+            },
+            "audit": {
+              "properties": {
+                "status": {
+                  "const": "NO_PERSONALIZED_DISCLOSURE"
+                }
+              }
+            }
+          }
+        },
+        "else": {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "ABSTAIN_POLICY_MISSING"
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "prompt": {
+                "properties": {
+                  "status": {
+                    "const": "ABSTAIN_POLICY_MISSING"
+                  }
+                }
+              },
+              "audit": {
+                "properties": {
+                  "status": {
+                    "const": "ABSTAIN_POLICY_MISSING"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "ABSTAIN_POLICY_MISMATCH"
+                }
+              },
+              "required": ["status"]
+            },
+            "then": {
+              "properties": {
+                "prompt": {
+                  "properties": {
+                    "status": {
+                      "const": "ABSTAIN_POLICY_MISMATCH"
+                    }
+                  }
+                },
+                "audit": {
+                  "properties": {
+                    "status": {
+                      "const": "ABSTAIN_POLICY_MISMATCH"
+                    }
+                  }
+                }
+              }
+            },
+            "else": {
+              "if": {
+                "properties": {
+                  "status": {
+                    "const": "ABSTAIN_ROLE_NOT_ALLOWED"
+                  }
+                },
+                "required": ["status"]
+              },
+              "then": {
+                "properties": {
+                  "prompt": {
+                    "properties": {
+                      "status": {
+                        "const": "ABSTAIN_ROLE_NOT_ALLOWED"
+                      }
+                    }
+                  },
+                  "audit": {
+                    "properties": {
+                      "status": {
+                        "const": "ABSTAIN_ROLE_NOT_ALLOWED"
+                      }
+                    }
+                  }
+                }
+              },
+              "else": {
+                "if": {
+                  "properties": {
+                    "status": {
+                      "const": "ABSTAIN_PURPOSE_NOT_ALLOWED"
+                    }
+                  },
+                  "required": ["status"]
+                },
+                "then": {
+                  "properties": {
+                    "prompt": {
+                      "properties": {
+                        "status": {
+                          "const": "ABSTAIN_PURPOSE_NOT_ALLOWED"
+                        }
+                      }
+                    },
+                    "audit": {
+                      "properties": {
+                        "status": {
+                          "const": "ABSTAIN_PURPOSE_NOT_ALLOWED"
+                        }
+                      }
+                    }
+                  }
+                },
+                "else": {
+                  "if": {
+                    "properties": {
+                      "status": {
+                        "const": "ABSTAIN_RELATIONSHIP_MISMATCH"
+                      }
+                    },
+                    "required": ["status"]
+                  },
+                  "then": {
+                    "properties": {
+                      "prompt": {
+                        "properties": {
+                          "status": {
+                            "const": "ABSTAIN_RELATIONSHIP_MISMATCH"
+                          }
+                        }
+                      },
+                      "audit": {
+                        "properties": {
+                          "status": {
+                            "const": "ABSTAIN_RELATIONSHIP_MISMATCH"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "else": {
+                    "if": {
+                      "properties": {
+                        "status": {
+                          "const": "ABSTAIN_DISCLOSURE_NOT_AUTHORIZED"
+                        }
+                      },
+                      "required": ["status"]
+                    },
+                    "then": {
+                      "properties": {
+                        "prompt": {
+                          "properties": {
+                            "status": {
+                              "const": "ABSTAIN_DISCLOSURE_NOT_AUTHORIZED"
+                            }
+                          }
+                        },
+                        "audit": {
+                          "properties": {
+                            "status": {
+                              "const": "ABSTAIN_DISCLOSURE_NOT_AUTHORIZED"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "else": {
+                      "if": {
+                        "properties": {
+                          "status": {
+                            "const": "ABSTAIN_MODE_NOT_ALLOWED"
+                          }
+                        },
+                        "required": ["status"]
+                      },
+                      "then": {
+                        "properties": {
+                          "prompt": {
+                            "properties": {
+                              "status": {
+                                "const": "ABSTAIN_MODE_NOT_ALLOWED"
+                              }
+                            }
+                          },
+                          "audit": {
+                            "properties": {
+                              "status": {
+                                "const": "ABSTAIN_MODE_NOT_ALLOWED"
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "else": {
+                        "if": {
+                          "properties": {
+                            "status": {
+                              "const": "ABSTAIN_SOURCE_STATUS"
+                            }
+                          },
+                          "required": ["status"]
+                        },
+                        "then": {
+                          "properties": {
+                            "prompt": {
+                              "properties": {
+                                "status": {
+                                  "const": "ABSTAIN_SOURCE_STATUS"
+                                }
+                              }
+                            },
+                            "audit": {
+                              "properties": {
+                                "status": {
+                                  "const": "ABSTAIN_SOURCE_STATUS"
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "else": {
+                          "if": {
+                            "properties": {
+                              "status": {
+                                "const": "BYPASS_SAFETY"
+                              }
+                            },
+                            "required": ["status"]
+                          },
+                          "then": {
+                            "properties": {
+                              "prompt": {
+                                "properties": {
+                                  "status": {
+                                    "const": "BYPASS_SAFETY"
+                                  }
+                                }
+                              },
+                              "audit": {
+                                "properties": {
+                                  "status": {
+                                    "const": "BYPASS_SAFETY"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "projectionStatus": {
+      "type": "string",
+      "enum": [
+        "READY_FOR_PROMPT",
+        "NO_PERSONALIZED_DISCLOSURE",
+        "ABSTAIN_POLICY_MISSING",
+        "ABSTAIN_POLICY_MISMATCH",
+        "ABSTAIN_ROLE_NOT_ALLOWED",
+        "ABSTAIN_PURPOSE_NOT_ALLOWED",
+        "ABSTAIN_RELATIONSHIP_MISMATCH",
+        "ABSTAIN_DISCLOSURE_NOT_AUTHORIZED",
+        "ABSTAIN_MODE_NOT_ALLOWED",
+        "ABSTAIN_SOURCE_STATUS",
+        "BYPASS_SAFETY"
+      ]
+    },
+    "audienceRole": {
+      "type": "string",
+      "enum": [
+        "STUDENT_SELF",
+        "TEACHER_SUPPORT",
+        "PARENT_DEMO",
+        "SYSTEM_ADMIN",
+        "UNKNOWN"
+      ]
+    },
+    "purposeOfUse": {
+      "type": "string",
+      "enum": [
+        "SELF_UNDERSTANDING",
+        "EDUCATIONAL_SUPPORT",
+        "SYNTHETIC_PARENT_DEMO"
+      ]
+    },
+    "trustedRelation": {
+      "type": "string",
+      "enum": [
+        "SELF",
+        "ASSIGNED_SUPPORT",
+        "SYNTHETIC_DEMO"
+      ]
+    },
+    "projectionMode": {
+      "type": "string",
+      "enum": [
+        "SYNTHETIC_DEMO",
+        "REAL_USER"
+      ]
+    },
+    "disclosureAuthorization": {
+      "type": ["string", "null"],
+      "enum": [
+        "NOT_AUTHORIZED",
+        "SYNTHETIC_SELF",
+        "SYNTHETIC_SUPPORT",
+        "SYNTHETIC_PARENT_DEMO",
+        null
+      ]
+    },
+    "sourceStatus": {
+      "type": ["string", "null"],
+      "enum": [
+        "READY_FOR_RENDERING",
+        "MEASUREMENT_ONLY",
+        "ABSTAIN_POLICY_MISSING",
+        "ABSTAIN_POLICY_NOT_APPROVED",
+        "ABSTAIN_INSTRUMENT_MISMATCH",
+        "ABSTAIN_POPULATION_MISMATCH",
+        "ABSTAIN_PRECISION_INSUFFICIENT",
+        "ABSTAIN_CONSTRUCT_UNAPPROVED",
+        "ABSTAIN_POLICY_MISMATCH",
+        "ABSTAIN_POLICY_HASH_MISMATCH",
+        "ABSTAIN_VERSION_MISMATCH",
+        "ABSTAIN_REAL_USER_BLOCKED",
+        "ABSTAIN_MODE_NOT_ALLOWED",
+        "ABSTAIN_INPUT_INVALID",
+        "BYPASS_SAFETY",
+        null
+      ]
+    },
+    "safetyAction": {
+      "type": ["string", "null"],
+      "enum": [
+        "PROCEED",
+        "PROCEED_WITH_BOUNDARY",
+        "CRISIS_ROUTE",
+        "REVIEW_REQUIRED",
+        "BLOCK",
+        null
+      ]
+    },
+    "reasonCode": {
+      "type": "string",
+      "enum": [
+        "READY_FOR_PROMPT",
+        "NO_PERSONALIZED_DISCLOSURE",
+        "POLICY_MISSING",
+        "POLICY_MISMATCH",
+        "POLICY_HASH_MISMATCH",
+        "POLICY_REFERENCE_INVALID",
+        "ROLE_NOT_ALLOWED",
+        "PURPOSE_NOT_ALLOWED",
+        "RELATIONSHIP_MISMATCH",
+        "DISCLOSURE_NOT_AUTHORIZED",
+        "DISCLOSURE_AUTHORIZATION_MISSING",
+        "CONSENT_MISSING",
+        "CLAIM_NOT_VISIBLE",
+        "RELATION_FAILED",
+        "SENSITIVE_SOURCE_PRESENT",
+        "MODE_NOT_ALLOWED",
+        "REAL_USER_DISCLOSURE_BLOCKED",
+        "SOURCE_STATUS_NOT_ALLOWED",
+        "SOURCE_CLAIMS_NOT_SUBSET",
+        "TRUSTED_CONTEXT_REQUIRED",
+        "SAFETY_BYPASS",
+        "REGISTRY_INVALID",
+        "POLICY_TAMPERED"
+      ]
+    },
+    "forbiddenPromptCode": {
+      "type": "string",
+      "allOf": [
+        {
+          "not": {
+            "pattern": "DIAGNOS|DIAGNOST|DISORDER|CLINICAL|SUICIDE|SELF_HARM|SELFHARM|CRISIS|TREATMENT|THERAPY|MEDICATION|THETA|SCORE|BAND|CUTOFF|THRESHOLD|RISK|SEVERITY|PRECISION|STANDARD_ERROR|LATENT|LEVEL|INTERVAL|RESPONSE|PROMPT|PII|PERSONAL_DATA|EMAIL|PHONE|NAME|SELF_INJURY"
+          }
+        },
+        {
+          "not": {
+            "pattern": "(^|[_\\.-])SE($|[_\\.-])"
+          }
+        },
+        {
+          "not": {
+            "pattern": "^LEVEL([_\\.-]|[0-9])"
+          }
+        }
+      ]
+    },
+    "safePromptLimitation": {
+      "type": "string",
+      "enum": [
+        "SYNTHETIC_ONLY",
+        "NOT_DIAGNOSTIC",
+        "NO_VALIDATED_CUTOFF",
+        "NO_CLINICAL_INFERENCE",
+        "NO_CRISIS_INFERENCE",
+        "NO_PERSONALIZED_DISCLOSURE"
+      ]
+    },
+    "promptClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim_code", "value"],
+      "properties": {
+        "claim_code": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_.-]+$",
+          "allOf": [
+            {
+              "$ref": "#/$defs/forbiddenPromptCode"
+            }
+          ]
+        },
+        "value": {
+          "type": ["string", "boolean", "integer", "number"]
+        }
+      }
+    },
+    "promptCitation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_chunk_id", "locator"],
+      "properties": {
+        "source_chunk_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+        },
+        "locator": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "promptFacingProjection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "claims", "limitations", "citations"],
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/projectionStatus"
+        },
+        "claims": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/promptClaim"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/safePromptLimitation"
+              },
+              {
+                "allOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[A-Z][A-Z0-9_.-]+$"
+                  },
+                  {
+                    "$ref": "#/$defs/forbiddenPromptCode"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "citations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/promptCitation"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "READY_FOR_PROMPT"
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {},
+          "else": {
+            "properties": {
+              "claims": {
+                "maxItems": 0
+              },
+              "limitations": {
+                "maxItems": 0
+              },
+              "citations": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "auditProjection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "reason_codes",
+        "request_id",
+        "trace_id",
+        "context_id",
+        "context_version",
+        "audience_role",
+        "purpose_of_use",
+        "relation",
+        "disclosure_authorization",
+        "mode",
+        "source_status",
+        "safety_action",
+        "policy_id",
+        "policy_version",
+        "policy_hash",
+        "effective_version",
+        "review_status",
+        "review_decision_id",
+        "source_approved_claim_codes",
+        "emitted_claim_codes",
+        "suppressed_claim_codes",
+        "source_chunk_ids",
+        "status_extension"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/projectionStatus"
+        },
+        "reason_codes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/reasonCode"
+          }
+        },
+        "request_id": {
+          "type": ["string", "null"]
+        },
+        "trace_id": {
+          "type": ["string", "null"]
+        },
+        "context_id": {
+          "type": ["string", "null"]
+        },
+        "context_version": {
+          "type": ["string", "null"]
+        },
+        "audience_role": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/audienceRole"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "purpose_of_use": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/purposeOfUse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "relation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/trustedRelation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "disclosure_authorization": {
+          "$ref": "#/$defs/disclosureAuthorization"
+        },
+        "mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/projectionMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_status": {
+          "$ref": "#/$defs/sourceStatus"
+        },
+        "safety_action": {
+          "$ref": "#/$defs/safetyAction"
+        },
+        "policy_id": {
+          "type": ["string", "null"]
+        },
+        "policy_version": {
+          "type": ["string", "null"]
+        },
+        "policy_hash": {
+          "type": ["string", "null"],
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "effective_version": {
+          "type": ["string", "null"]
+        },
+        "review_status": {
+          "type": ["string", "null"]
+        },
+        "review_decision_id": {
+          "type": ["string", "null"]
+        },
+        "source_approved_claim_codes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_.-]+$"
+          }
+        },
+        "emitted_claim_codes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_.-]+$"
+          }
+        },
+        "suppressed_claim_codes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_.-]+$"
+          }
+        },
+        "source_chunk_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+          }
+        },
+        "status_extension": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["code", "justification"],
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{1,127}$"
+                },
+                "justification": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

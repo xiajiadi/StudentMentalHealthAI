@@ -1,0 +1,131 @@
+{
+  "schema_version": "role-projection-policy-registry.v1",
+  "registry_version": "1.0.0",
+  "policies": [
+    {
+      "schema_version": "role-projection-policy.v1",
+      "policy_id": "ROLE_PROJECTION_STUDENT_SELF_V09",
+      "policy_version": "1.0.0",
+      "policy_hash": "sha256:7396fa34f2e08d24cf415bd526d3647b254492f8ec715150e76e7c22515e40d4",
+      "audience_role": "STUDENT_SELF",
+      "purpose_of_use": "SELF_UNDERSTANDING",
+      "allowed_modes": [
+        "SYNTHETIC_DEMO"
+      ],
+      "allowed_source_statuses": [
+        "MEASUREMENT_ONLY"
+      ],
+      "allowed_claim_codes": [],
+      "allowed_limitation_codes": [
+        "SYNTHETIC_ONLY",
+        "NOT_DIAGNOSTIC",
+        "NO_VALIDATED_CUTOFF",
+        "NO_CLINICAL_INFERENCE",
+        "NO_CRISIS_INFERENCE"
+      ],
+      "public_field_allowlist": [
+        "status",
+        "claims",
+        "limitations",
+        "citations"
+      ],
+      "required_relation": "SELF",
+      "disclosure_requirement": "SELF_ONLY",
+      "synthetic_only": true,
+      "review_metadata": {
+        "review_status": "ENGINEERING_REVIEWED_SYNTHETIC_ONLY",
+        "review_decision_id": "D3R_POLICY_REVIEW_2026-09-16",
+        "evidence_refs": [
+          "D3-2_INTERPRETATION_RESULT_V1",
+          "D3-3_ROLE_PROJECTION_R1"
+        ]
+      },
+      "effective_version": "V0.9",
+      "status": "active"
+    },
+    {
+      "schema_version": "role-projection-policy.v1",
+      "policy_id": "ROLE_PROJECTION_TEACHER_SUPPORT_V09",
+      "policy_version": "1.0.0",
+      "policy_hash": "sha256:378adb0b7a701e1c27bd65c89939d081d9abcf325db622595591f33c81817d7b",
+      "audience_role": "TEACHER_SUPPORT",
+      "purpose_of_use": "EDUCATIONAL_SUPPORT",
+      "allowed_modes": [
+        "SYNTHETIC_DEMO"
+      ],
+      "allowed_source_statuses": [
+        "MEASUREMENT_ONLY"
+      ],
+      "allowed_claim_codes": [],
+      "allowed_limitation_codes": [
+        "SYNTHETIC_ONLY",
+        "NOT_DIAGNOSTIC",
+        "NO_VALIDATED_CUTOFF",
+        "NO_CLINICAL_INFERENCE",
+        "NO_CRISIS_INFERENCE",
+        "NO_PERSONALIZED_DISCLOSURE"
+      ],
+      "public_field_allowlist": [
+        "status",
+        "claims",
+        "limitations",
+        "citations"
+      ],
+      "required_relation": "ASSIGNED_SUPPORT",
+      "disclosure_requirement": "NO_PERSONALIZED_DISCLOSURE",
+      "synthetic_only": true,
+      "review_metadata": {
+        "review_status": "ENGINEERING_REVIEWED_SYNTHETIC_ONLY",
+        "review_decision_id": "D3R_POLICY_REVIEW_2026-09-16",
+        "evidence_refs": [
+          "D3-2_INTERPRETATION_RESULT_V1",
+          "D3-3_ROLE_PROJECTION_R1"
+        ]
+      },
+      "effective_version": "V0.9",
+      "status": "active"
+    },
+    {
+      "schema_version": "role-projection-policy.v1",
+      "policy_id": "ROLE_PROJECTION_PARENT_DEMO_V09",
+      "policy_version": "1.0.0",
+      "policy_hash": "sha256:d562fd172a496674b77d5943502f9413345166c8c3e582a771735e7a5c9be912",
+      "audience_role": "PARENT_DEMO",
+      "purpose_of_use": "SYNTHETIC_PARENT_DEMO",
+      "allowed_modes": [
+        "SYNTHETIC_DEMO"
+      ],
+      "allowed_source_statuses": [
+        "MEASUREMENT_ONLY"
+      ],
+      "allowed_claim_codes": [],
+      "allowed_limitation_codes": [
+        "SYNTHETIC_ONLY",
+        "NOT_DIAGNOSTIC",
+        "NO_VALIDATED_CUTOFF",
+        "NO_CLINICAL_INFERENCE",
+        "NO_CRISIS_INFERENCE",
+        "NO_PERSONALIZED_DISCLOSURE"
+      ],
+      "public_field_allowlist": [
+        "status",
+        "claims",
+        "limitations",
+        "citations"
+      ],
+      "required_relation": "SYNTHETIC_DEMO",
+      "disclosure_requirement": "SYNTHETIC_DEMO_ONLY",
+      "synthetic_only": true,
+      "review_metadata": {
+        "review_status": "ENGINEERING_REVIEWED_SYNTHETIC_ONLY",
+        "review_decision_id": "D3R_POLICY_REVIEW_2026-09-16",
+        "evidence_refs": [
+          "D3-2_INTERPRETATION_RESULT_V1",
+          "D3-3_ROLE_PROJECTION_R1"
+        ]
+      },
+      "effective_version": "V0.9",
+      "status": "active"
+    }
+  ]
+}
