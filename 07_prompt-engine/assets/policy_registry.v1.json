@@ -1,0 +1,77 @@
+{
+  "schema_version": "prompt-policy-registry.v1",
+  "registry_version": "1.0.0",
+  "policies": [
+    {
+      "policy_id": "POLICY_synthetic_engineering_university_freshmen",
+      "policy_version": "1.0.0",
+      "status": "active",
+      "engineering_activation_scope": "synthetic_demo",
+      "intended_use": "synthetic_engineering_only",
+      "psychology_review_status": "HUMAN_PSYCHOLOGY_REVIEW_PENDING",
+      "score_meaning_status": "UNVERIFIED",
+      "threshold_status": "NO_CUTOFFS",
+      "score_interpretation_allowed": false,
+      "real_population_allowed": false,
+      "instrument_allowlist": [
+        {
+          "instrument_id": "CURRENT_SYNTHETIC_GRM",
+          "versions": ["synthetic_item_bank.v1 / demo.v1"]
+        }
+      ],
+      "assessment_population_allowlist": ["SYNTHETIC_STUDENT_DEMO"],
+      "content_population_allowlist": ["UNIVERSITY_FRESHMEN_SYNTHETIC_DEMO"],
+      "roles": ["student", "teacher", "parent"],
+      "template_ids": [
+        "PROMPT_student_synthetic_v1",
+        "PROMPT_teacher_synthetic_v1",
+        "PROMPT_parent_synthetic_demo_v1"
+      ],
+      "evidence_refs": [
+        "INSTRUMENT_REGISTRY_V1",
+        "D3_DESIGN_DECISIONS",
+        "D3_SLICE1_IMPLEMENTATION_SPEC"
+      ],
+      "evidence_citation_required": true,
+      "mapping": {
+        "mapping_id": "MAP_SYNTHETIC_DEMO_TO_UNIVERSITY_FRESHMEN_CONTENT_V1",
+        "mapping_version": "1.0.0",
+        "policy_version": "1.0.0",
+        "execution_mode": "synthetic_demo",
+        "assessment_population": "SYNTHETIC_STUDENT_DEMO",
+        "content_population": "UNIVERSITY_FRESHMEN_SYNTHETIC_DEMO",
+        "roles": ["student", "teacher", "parent"],
+        "risk_levels": ["normal", "attention"]
+      }
+    },
+    {
+      "policy_id": "FUTURE_DIRECTION_CANDIDATE",
+      "policy_version": "1.0.0",
+      "status": "inactive",
+      "engineering_activation_scope": "synthetic_demo",
+      "intended_use": "future_direction_candidate_only",
+      "psychology_review_status": "HUMAN_REVIEW_REQUIRED",
+      "score_meaning_status": "DIRECTION_ONLY_UNVERIFIED",
+      "threshold_status": "NO_CUTOFFS",
+      "score_interpretation_allowed": true,
+      "real_population_allowed": false,
+      "instrument_allowlist": [],
+      "assessment_population_allowlist": [],
+      "content_population_allowlist": [],
+      "roles": [],
+      "template_ids": [],
+      "evidence_refs": ["D1_DIRECTIONAL_REVIEW"],
+      "evidence_citation_required": true,
+      "mapping": {
+        "mapping_id": "MAP_FUTURE_DIRECTION_CANDIDATE",
+        "mapping_version": "1.0.0",
+        "policy_version": "1.0.0",
+        "execution_mode": "synthetic_demo",
+        "assessment_population": "SYNTHETIC_STUDENT_DEMO",
+        "content_population": "UNIVERSITY_FRESHMEN_SYNTHETIC_DEMO",
+        "roles": [],
+        "risk_levels": []
+      }
+    }
+  ]
+}

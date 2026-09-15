@@ -1,0 +1,105 @@
+{
+  "schema_version": "prompt-template-registry.v1",
+  "registry_version": "1.0.0",
+  "templates": [
+    {
+      "prompt_id": "PROMPT_student_synthetic_v1",
+      "prompt_version": "1.0.0",
+      "role": "student",
+      "purpose": "education_support",
+      "language": "zh-CN",
+      "status": "active",
+      "approval_status": "ENGINEERING_REVIEWED_SYNTHETIC_ONLY",
+      "engineering_activation_scope": "synthetic_demo",
+      "change_summary": "Initial student template for no-score synthetic engineering support.",
+      "template_path": "templates/student_1.0.0.txt",
+      "content_hash": "sha256:8f821afbcbe53b4741982ac9cac02961151ab1b2f15b2fdb2786e5707baa237e",
+      "required_placeholders": [
+        "target_role",
+        "language",
+        "execution_mode",
+        "input_safety_action",
+        "retrieval_safety_action",
+        "assessment_context_json",
+        "retrieval_context_json",
+        "allowed_source_chunk_ids_json"
+      ],
+      "allowed_placeholders": [
+        "target_role",
+        "language",
+        "execution_mode",
+        "input_safety_action",
+        "retrieval_safety_action",
+        "assessment_context_json",
+        "retrieval_context_json",
+        "allowed_source_chunk_ids_json"
+      ]
+    },
+    {
+      "prompt_id": "PROMPT_teacher_synthetic_v1",
+      "prompt_version": "1.0.0",
+      "role": "teacher",
+      "purpose": "education_support",
+      "language": "zh-CN",
+      "status": "active",
+      "approval_status": "ENGINEERING_REVIEWED_SYNTHETIC_ONLY",
+      "engineering_activation_scope": "synthetic_demo",
+      "change_summary": "Initial teacher template for bounded support behaviour suggestions.",
+      "template_path": "templates/teacher_1.0.0.txt",
+      "content_hash": "sha256:51eedb7fb436474eb5ee6b141df66db12cd3230254948b637ffff6639e0dacb0",
+      "required_placeholders": [
+        "target_role",
+        "language",
+        "execution_mode",
+        "input_safety_action",
+        "retrieval_safety_action",
+        "assessment_context_json",
+        "retrieval_context_json",
+        "allowed_source_chunk_ids_json"
+      ],
+      "allowed_placeholders": [
+        "target_role",
+        "language",
+        "execution_mode",
+        "input_safety_action",
+        "retrieval_safety_action",
+        "assessment_context_json",
+        "retrieval_context_json",
+        "allowed_source_chunk_ids_json"
+      ]
+    },
+    {
+      "prompt_id": "PROMPT_parent_synthetic_demo_v1",
+      "prompt_version": "1.0.0",
+      "role": "parent",
+      "purpose": "education_support",
+      "language": "zh-CN",
+      "status": "active",
+      "approval_status": "ENGINEERING_REVIEWED_SYNTHETIC_ONLY",
+      "engineering_activation_scope": "synthetic_demo",
+      "change_summary": "Initial parent demonstration template; current parent delivery remains paused.",
+      "template_path": "templates/parent_1.0.0.txt",
+      "content_hash": "sha256:6297d629b7e2f1a124dd5950e111177d2515999a15d755830aae4f20b5d0f528",
+      "required_placeholders": [
+        "target_role",
+        "language",
+        "execution_mode",
+        "input_safety_action",
+        "retrieval_safety_action",
+        "assessment_context_json",
+        "retrieval_context_json",
+        "allowed_source_chunk_ids_json"
+      ],
+      "allowed_placeholders": [
+        "target_role",
+        "language",
+        "execution_mode",
+        "input_safety_action",
+        "retrieval_safety_action",
+        "assessment_context_json",
+        "retrieval_context_json",
+        "allowed_source_chunk_ids_json"
+      ]
+    }
+  ]
+}

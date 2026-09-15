@@ -1,0 +1,56 @@
+{
+  "round": "D3_SLICE1_ACCEPTANCE_CLOSURE_R1",
+  "status": "READY_FOR_CONTROLLER_REVIEW",
+  "candidate": {
+    "worktree": "D:\\Projects\\StudentMentalHealthAI-v09-integration",
+    "branch": "fix/d3-slice1-acceptance-closure-v1",
+    "baseline": "7d0bebe37b9c6c2d20ad1bbc69ee5a111e76c333",
+    "final_commit": null
+  },
+  "trust_boundary": {
+    "raw_caller_can_elevate": false,
+    "trusted_context_required": true,
+    "mapping_privilege_escalation_probe": "PASS",
+    "hostile_same_process_security_claimed": false,
+    "public_api_refusal": "TRUSTED_CONTEXT_REQUIRED",
+    "trusted_state_precedence": "PASS"
+  },
+  "tests": {
+    "collected": 48,
+    "passed": 48,
+    "failed": 0,
+    "skipped": 0,
+    "warnings": 0
+  },
+  "ruff": "PASS_0_FINDINGS",
+  "pyright": {
+    "errors": 0,
+    "warnings": 0,
+    "informations": 0,
+    "config": "07_prompt-engine/pyrightconfig.json"
+  },
+  "compile_import": "PASS",
+  "citation_regression": "PASS",
+  "psychology_boundary": "PASS_NO_EXECUTABLE_INTERPRETATION",
+  "root_contract": "PASS_13_TESTS",
+  "openapi": "PASS",
+  "frozen_root": "UNCHANGED_8_OF_8",
+  "real_student_data": false,
+  "d2_unreviewed_intake_used": false,
+  "backend_modified": false,
+  "rag_modified": false,
+  "safety_modified": false,
+  "runtime_modified": false,
+  "stale_governance_overlay": "DEFERRED_TO_BASELINE_CONSOLIDATION",
+  "dedicated_fixture_dir": "CONTROLLER_APPROVED_OMISSION",
+  "readme": "PASS",
+  "merge": false,
+  "push": false,
+  "accepted_tag": false,
+  "remaining_p0": [],
+  "remaining_p1": [
+    "D3-2 requires a separate Controller authorization",
+    "stale governance overlay reconciliation deferred to baseline consolidation",
+    "hostile same-process Python bypass is outside the public-library guarantee"
+  ]
+}
