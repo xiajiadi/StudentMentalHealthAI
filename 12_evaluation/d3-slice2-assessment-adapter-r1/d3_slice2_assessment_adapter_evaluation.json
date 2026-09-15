@@ -13,7 +13,10 @@
     "decision_ids_materialized": 40,
     "semantic_deviations": 0,
     "governance_only_items_are_not_runtime_claims": true,
-    "fidelity_report": "14_docs/project-controller/D3_SLICE2_DECISION_FIDELITY_REPORT.md"
+    "fidelity_report": "14_docs/project-controller/D3_SLICE2_DECISION_FIDELITY_REPORT.md",
+    "final_status": "READY_FOR_CONTROLLER_REVIEW",
+    "initial_review_status": "PARTIAL",
+    "mission_deviations": 0
   },
   "architecture": {
     "deterministic": true,
@@ -34,7 +37,8 @@
     "real_user_enabled": false,
     "d2_new_intake_used": false,
     "current_psychology_review_status": "REVISIONS_REQUIRED",
-    "current_review_status_detail": "RECEIVED / REVISIONS_REQUIRED / SIGNATURE_BLANK"
+    "current_review_status_detail": "RECEIVED / REVISIONS_REQUIRED / SIGNATURE_BLANK",
+    "typed_policy_hash_recheck": true
   },
   "claims": {
     "severity_band_enabled": false,
@@ -59,9 +63,9 @@
     "safety_action_changed": false
   },
   "tests": {
-    "module_pytest": "35 passed",
+    "module_pytest": "41 passed",
     "module_failed": 0,
-    "d3i39_targeted": "2 passed, 32 deselected",
+    "d3i39_targeted": "3 passed, 38 deselected",
     "ruff": "PASS: All checks passed!",
     "pyright": "PASS: 0 errors, 0 warnings, 0 informations",
     "compile_import": "PASS",
@@ -69,7 +73,22 @@
     "d3_slice1_regression": "48 passed",
     "root_contract": "13 passed",
     "openapi": "PASS",
-    "frozen_root": "8/8 unchanged"
+    "frozen_root": "8/8 unchanged",
+    "passed": 41,
+    "failed": 0,
+    "skipped": 0,
+    "d3i39_targeted_command": "python -m pytest -q -p no:cacheprovider 03_assessment_adapter/tests/test_assessment_adapter.py -k \"synthetic_only or test_only_neutral_policy\"",
+    "d3i39_targeted_collected": 41,
+    "d3i39_targeted_selected": 3,
+    "d3i39_targeted_passed": 3,
+    "d3i39_targeted_failed": 0,
+    "d3i39_targeted_deselected": 38,
+    "d3i39_targeted_exit_code": 0,
+    "canonical_status_targeted": "8 passed, 33 deselected",
+    "canonical_status_targeted_collected": 41,
+    "canonical_status_targeted_selected": 8,
+    "canonical_status_targeted_passed": 8,
+    "canonical_status_targeted_deselected": 33
   },
   "security_negative_tests": {
     "forbidden_aliases": 12,
@@ -78,7 +97,8 @@
     "synthetic_only_false_fail_closed": "PASS",
     "plain_context_rejected": "PASS",
     "real_user_rejected": "PASS",
-    "three_safety_bypass_actions": "PASS"
+    "three_safety_bypass_actions": "PASS",
+    "typed_registry_hash_tamper": "PASS"
   },
   "scope": {
     "real_student_data_used": false,
@@ -97,5 +117,56 @@
     "Historical GPU_PARTIAL resource snapshot must remain distinguished from standalone GPU_FULL evidence.",
     "Already-exited PID cleanup non-zero behavior remains a D5 operations concern."
   ],
-  "recommendation": "READY_FOR_CONTROLLER_REVIEW; this is an Execution Lead recommendation, not Controller acceptance."
+  "recommendation": "READY_FOR_CONTROLLER_REVIEW; this is an Execution Lead recommendation, not Controller acceptance.",
+  "baseline_commit": "c6727af1e722134617952383b34db596ed26ca15",
+  "pre_closure_candidate_commit": "464728be6d335a275195cc7e2f6eb7d1f57f3f6d",
+  "final_closure_commit": "3539927939ff0340871bb01a329feddb830875e6",
+  "status_contract": {
+    "canonical_statuses": [
+      "READY_FOR_RENDERING",
+      "MEASUREMENT_ONLY",
+      "ABSTAIN_POLICY_MISSING",
+      "ABSTAIN_POLICY_NOT_APPROVED",
+      "ABSTAIN_INSTRUMENT_MISMATCH",
+      "ABSTAIN_POPULATION_MISMATCH",
+      "ABSTAIN_PRECISION_INSUFFICIENT",
+      "ABSTAIN_CONSTRUCT_UNAPPROVED",
+      "BYPASS_SAFETY"
+    ],
+    "extended_statuses": [
+      "ABSTAIN_POLICY_MISMATCH",
+      "ABSTAIN_POLICY_HASH_MISMATCH",
+      "ABSTAIN_VERSION_MISMATCH",
+      "ABSTAIN_REAL_USER_BLOCKED",
+      "ABSTAIN_MODE_NOT_ALLOWED",
+      "ABSTAIN_INPUT_INVALID"
+    ],
+    "canonical_statuses_present": true,
+    "safety_status": "BYPASS_SAFETY",
+    "precision_status_reserved": true,
+    "policy_not_approved_status_reserved": true,
+    "invented_se_cutoff": false,
+    "legacy_safety_status_emitted": false
+  },
+  "final_fidelity_worker": {
+    "worker_id": "/root/d3_slice2_final_fidelity",
+    "model": "gpt-5.6-luna",
+    "reasoning_effort": "max",
+    "fork_turns": "none",
+    "read_only": true,
+    "status": "PASS",
+    "materialized": "40/40",
+    "semantic_deviations": 0,
+    "mission_deviations": 0,
+    "evidence_inconsistencies_after_update": 0,
+    "typed_policy_hash_tamper": "PASS"
+  },
+  "evidence_binding": {
+    "baseline_commit": "c6727af1e722134617952383b34db596ed26ca15",
+    "pre_closure_candidate_commit": "464728be6d335a275195cc7e2f6eb7d1f57f3f6d",
+    "final_closure_commit": "3539927939ff0340871bb01a329feddb830875e6",
+    "branch": "exp/d3-assessment-interpretation-adapter-v1",
+    "worktree": "D:/Projects/StudentMentalHealthAI-d3-assessment-adapter",
+    "evidence_consistent": true
+  }
 }

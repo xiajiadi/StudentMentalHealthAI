@@ -1,6 +1,6 @@
 # D3 Slice 2 · D3I Decision Fidelity Report
 
-Status: `PARTIAL / ENGINEERING FIDELITY REVIEW COMPLETE — CONTROLLER REVIEW REQUIRED`
+Status: `READY_FOR_CONTROLLER_REVIEW`
 
 This report records the Execution Lead review of the frozen D3I-01 through D3I-40
 decision against the D3-2 implementation. It is not a psychology approval,
@@ -12,7 +12,11 @@ clinical validity decision, real-pilot authorization, or Controller acceptance.
 - Implementation specification: `14_docs/project-controller/D3_SLICE2_IMPLEMENTATION_SPEC.md`.
 - D3-1 accepted baseline: `c6727af1e722134617952383b34db596ed26ca15`.
 - Human reconciliation: `D:\Projects\StudentMentalHealthAI\14_docs\project-controller\HUMAN_REVIEW_RECONCILIATION.md`.
-- Fidelity worker: `/root/d3_review_static`, read-only review, no file changes.
+- Historical fidelity worker: `/root/d3_review_static`, reused-slot read-only
+  review; routing was not independently verified and it is not final acceptance
+  authority.
+- Final fidelity worker: `/root/d3_slice2_final_fidelity`, explicit
+  `gpt-5.6-luna / max / none`, read-only.
 - The decision section contains exactly 40 unique identifiers, D3I-01 through D3I-40.
 
 ## Fidelity result
@@ -21,14 +25,29 @@ clinical validity decision, real-pilot authorization, or Controller acceptance.
 |---|---:|---|
 | Decision items in frozen section | 40 | All required D3I identifiers are present exactly once. |
 | Decision items materially represented | 40 | The implementation/specification and boundary documentation preserve the frozen direction. |
-| Semantic deviations remaining | 0 | The one implementation gap found in review was repaired before closure evidence. |
+| Semantic deviations remaining | 0 | The implementation gaps found in review were repaired before closure evidence. |
 | Governance-only or downstream-boundary items | 6 | These are recorded obligations, not current runtime checks; they must not be presented as stronger evidence. |
 | Future validation/downstream conditions | 2 | D3I-14 and D3I-30 remain future policy/Prompt Engine conditions. |
 
-The initial review found two bounded issues. The implementation Worker repaired
+The initial review found two bounded D3I-39/security issues. The implementation Worker repaired
 the global forbidden-claim and invalid-identity boundaries before this report,
 and then added the D3I-39 `synthetic_only` runtime gate. The Lead reran the
 module suite after those repairs: `35 passed`.
+
+The verified closure review also found that the original implementation did not
+materialize the Controller's canonical status vocabulary. That is recorded as
+the historical initial finding `PARTIAL`; the status Worker then added the
+canonical statuses, replaced emitted `ABSTAIN_SAFETY_BYPASS` with
+`BYPASS_SAFETY`, added the two reserved statuses without a precision cutoff, and
+added schema/tests/README synchronization. The post-repair state is the status
+shown in this header.
+
+The final fidelity worker then found and verified one typed-policy hash defense
+gap. The adapter now recomputes the existing canonical hash for a selected typed
+policy; tampered content or a reused/fake hash returns
+`ABSTAIN_POLICY_HASH_MISMATCH / POLICY_HASH_MISMATCH`. The final module suite is
+`41 passed`, and the final worker reported `40/40`, zero semantic deviations,
+and zero mission deviations.
 
 ## Item-level reconciliation
 
@@ -50,8 +69,10 @@ could emit arbitrary claim codes and that invalid human-looking identity values
 were echoed. The implementation Worker added a global semantic deny-list plus a
 second typed-registry defense, and limits public identity projection to the
 frozen anonymous `ASSESS_...` / `SUBJ_...` forms. A second implementation Worker
-added and tested the runtime `synthetic_only=true` gate. These fixes do not add
-psychological semantics or change any root contract.
+added and tested the runtime `synthetic_only=true` gate. The status Worker added
+the canonical status vocabulary, and the final follow-up added a defensive
+recheck of the existing canonical hash for direct typed policy objects. These
+fixes do not add psychological semantics or change any root contract.
 
 The six governance-only items are intentionally not inflated into runtime
 coverage. D3I-08, D3I-10, D3I-25, D3I-35, D3I-36, and D3I-40 remain project

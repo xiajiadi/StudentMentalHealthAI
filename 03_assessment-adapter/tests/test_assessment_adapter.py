@@ -97,6 +97,57 @@ def test_shipped_policy_is_conservative_measurement_only() -> None:
     assert result.audit["safety_action"] == "PROCEED"
 
 
+def test_canonical_status_vocabulary_is_typed_and_schema_aligned() -> None:
+    canonical = {
+        "READY_FOR_RENDERING",
+        "MEASUREMENT_ONLY",
+        "ABSTAIN_POLICY_MISSING",
+        "ABSTAIN_POLICY_NOT_APPROVED",
+        "ABSTAIN_INSTRUMENT_MISMATCH",
+        "ABSTAIN_POPULATION_MISMATCH",
+        "ABSTAIN_PRECISION_INSUFFICIENT",
+        "ABSTAIN_CONSTRUCT_UNAPPROVED",
+        "BYPASS_SAFETY",
+    }
+    status_values = {status.value for status in adapter.InterpretationStatus}
+    schema = json.loads(
+        (ROOT / "schemas" / "interpretation_result.v1.schema.json").read_text(encoding="utf-8")
+    )
+    schema_values = set(schema["properties"]["status"]["enum"])
+
+    assert canonical <= status_values
+    assert canonical <= schema_values
+    assert "ABSTAIN_SAFETY_BYPASS" not in status_values
+    assert "ABSTAIN_SAFETY_BYPASS" not in schema_values
+
+
+@pytest.mark.parametrize("se", [0, 0.42, 100])
+def test_precision_status_is_reserved_without_an_se_cutoff(se: int | float) -> None:
+    assessment = _assessment()
+    assessment["dimensions"]["demo_trait"]["se"] = se
+
+    result = _result(assessment=assessment)
+
+    assert adapter.InterpretationStatus.ABSTAIN_PRECISION_INSUFFICIENT.value in {
+        status.value for status in adapter.InterpretationStatus
+    }
+    assert result.status is adapter.InterpretationStatus.MEASUREMENT_ONLY
+
+
+def test_policy_not_approved_status_is_reserved() -> None:
+    schema = json.loads(
+        (ROOT / "schemas" / "interpretation_result.v1.schema.json").read_text(encoding="utf-8")
+    )
+
+    assert adapter.InterpretationStatus.ABSTAIN_POLICY_NOT_APPROVED.value in {
+        status.value for status in adapter.InterpretationStatus
+    }
+    assert "ABSTAIN_POLICY_NOT_APPROVED" in schema["properties"]["status"]["enum"]
+    # The shipped policy remains the conservative measurement-only path until
+    # a separately approved interpretation policy is supplied.
+    assert _result().status is adapter.InterpretationStatus.MEASUREMENT_ONLY
+
+
 def test_repeated_run_is_deterministic_and_does_not_mutate_input() -> None:
     assessment = _assessment()
     before = copy.deepcopy(assessment)
@@ -252,8 +303,9 @@ def test_trusted_context_is_required_and_mode_is_fail_closed() -> None:
 @pytest.mark.parametrize("action", ["CRISIS_ROUTE", "REVIEW_REQUIRED", "BLOCK"])
 def test_each_trusted_safety_bypass_is_preserved_without_change(action: str) -> None:
     result = _result(context=_context(safety_action=action))
-    assert result.status is adapter.InterpretationStatus.ABSTAIN_SAFETY_BYPASS
-    assert result.reason_codes == ("SAFETY_BYPASS",)
+    assert result.status is adapter.InterpretationStatus.BYPASS_SAFETY
+    assert result.reason_codes == (action,)
+    assert adapter.ReasonCode(action).value == action
     assert result.audit["safety_action"] == action
 
 
@@ -399,9 +451,20 @@ def test_defensive_claim_deny_list_covers_direct_typed_registry_objects() -> Non
     registry = PolicyRegistry(policies=(malicious,))
 
     result = _result(registry=registry, policy=malicious.to_dict())
-    assert result.status is adapter.InterpretationStatus.ABSTAIN_POLICY_MISMATCH
-    assert result.reason_codes == ("POLICY_INVALID",)
+    assert result.status is adapter.InterpretationStatus.ABSTAIN_POLICY_HASH_MISMATCH
+    assert result.reason_codes == ("POLICY_HASH_MISMATCH",)
     assert result.claims == ()
+
+
+def test_direct_typed_policy_content_is_hash_checked_before_acceptance() -> None:
+    shipped = adapter.load_shipped_registry().policies[0]
+    tampered = replace(shipped, engineering_scope=f"{shipped.engineering_scope}_tampered")
+    registry = PolicyRegistry(policies=(tampered,))
+
+    result = _result(registry=registry, policy=tampered.to_dict())
+
+    assert result.status is adapter.InterpretationStatus.ABSTAIN_POLICY_HASH_MISMATCH
+    assert result.reason_codes == ("POLICY_HASH_MISMATCH",)
 
 
 def test_invalid_identity_projection_does_not_echo_names_or_phone_like_values() -> None:
