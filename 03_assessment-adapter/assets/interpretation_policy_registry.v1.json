@@ -1,0 +1,78 @@
+{
+  "schema_version": "interpretation-policy-registry.v1",
+  "registry_version": "1.0.0",
+  "policies": [
+    {
+      "schema_version": "interpretation-policy.v1",
+      "policy_id": "POLICY_assessment_synthetic_measurement_only",
+      "policy_version": "1.0.0",
+      "effective_version": "1.0.0",
+      "policy_hash": "sha256:7c61cf80dc68561c78618c2d6e3859295b0dc53a291a1805c9bb623c5b7714a4",
+      "instrument_id": "CURRENT_SYNTHETIC_GRM",
+      "instrument_version": "synthetic_item_bank.v1 / demo.v1",
+      "population_scope": "SYNTHETIC_STUDENT_DEMO",
+      "allowed_modes": [
+        "SYNTHETIC_DEMO"
+      ],
+      "synthetic_only": true,
+      "engineering_scope": "SYNTHETIC_ENGINEERING_ONLY",
+      "controller_scope": "D3-2_BOUNDED_IMPLEMENTATION",
+      "psychology_review_status": "REVISIONS_REQUIRED",
+      "review_status_detail": "RECEIVED / REVISIONS_REQUIRED / SIGNATURE_BLANK",
+      "review_decision_id": "D1_RECONCILIATION_2026-09-14",
+      "evidence_refs": [
+        "HUMAN_REVIEW_RECONCILIATION_2026-09-14",
+        "D1_PSYCHOLOGICAL_REVIEW_PACKAGE_V2_SHA256_cbcb292f6f4ab24359e5b35b442bae7b5200a6135b998fd622fc10ba0baa85f7",
+        "D3_ASSESSMENT_INTERPRETATION_TECHNICAL_DECISION_V1",
+        "D3_SLICE2_IMPLEMENTATION_SPEC"
+      ],
+      "construct_policies": {
+        "demo_trait": {
+          "construct_id": "demo_trait",
+          "status": "MEASUREMENT_ONLY",
+          "direction": null,
+          "high_score_meaning": null,
+          "low_score_meaning": null,
+          "allowed_claim_codes": [],
+          "forbidden_claim_codes": [
+            "DIAGNOSIS",
+            "DISORDER",
+            "CLINICAL_SEVERITY",
+            "SUICIDE_INFERENCE",
+            "SELF_HARM_INFERENCE",
+            "CRISIS_INFERENCE",
+            "TREATMENT",
+            "LEVEL_1_TO_5",
+            "VALIDATED_CUTOFF",
+            "SCORE_BAND",
+            "THETA_EXPOSURE",
+            "SE_EXPOSURE"
+          ]
+        }
+      },
+      "allowed_claims": [],
+      "forbidden_claims": [
+        "DIAGNOSIS",
+        "DISORDER",
+        "CLINICAL_SEVERITY",
+        "SUICIDE_INFERENCE",
+        "SELF_HARM_INFERENCE",
+        "CRISIS_INFERENCE",
+        "TREATMENT",
+        "LEVEL_1_TO_5",
+        "VALIDATED_CUTOFF",
+        "SCORE_BAND",
+        "THETA_EXPOSURE",
+        "SE_EXPOSURE"
+      ],
+      "policy_kind": "SHIPPED_CONSERVATIVE",
+      "limitations": [
+        "SYNTHETIC_ONLY",
+        "NOT_DIAGNOSTIC",
+        "NO_VALIDATED_CUTOFF",
+        "NO_CLINICAL_INFERENCE",
+        "NO_CRISIS_INFERENCE"
+      ]
+    }
+  ]
+}

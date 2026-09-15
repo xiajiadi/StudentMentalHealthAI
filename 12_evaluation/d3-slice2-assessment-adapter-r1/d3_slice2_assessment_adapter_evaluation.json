@@ -1,0 +1,101 @@
+{
+  "round": "D3_SLICE2_ASSESSMENT_INTERPRETATION_ADAPTER_R1",
+  "status": "READY_FOR_CONTROLLER_REVIEW",
+  "worktree": "D:/Projects/StudentMentalHealthAI-d3-assessment-adapter",
+  "branch": "exp/d3-assessment-interpretation-adapter-v1",
+  "baseline": {
+    "d3_slice1_accepted_commit": "c6727af1e722134617952383b34db596ed26ca15",
+    "root_contracts_unchanged": true,
+    "frozen_root_match": "8/8"
+  },
+  "decision_fidelity": {
+    "decision_ids_expected": 40,
+    "decision_ids_materialized": 40,
+    "semantic_deviations": 0,
+    "governance_only_items_are_not_runtime_claims": true,
+    "fidelity_report": "14_docs/project-controller/D3_SLICE2_DECISION_FIDELITY_REPORT.md"
+  },
+  "architecture": {
+    "deterministic": true,
+    "llm_calls": 0,
+    "rag_calls": 0,
+    "safety_service_calls": 0,
+    "database_calls": 0,
+    "theta_recalculation": false,
+    "se_recalculation": false,
+    "natural_language_generation": false
+  },
+  "policy": {
+    "exact_matching": true,
+    "hash_verified": true,
+    "generic_fallback": false,
+    "default_or_latest_fallback": false,
+    "synthetic_only_runtime_gate": true,
+    "real_user_enabled": false,
+    "d2_new_intake_used": false,
+    "current_psychology_review_status": "REVISIONS_REQUIRED",
+    "current_review_status_detail": "RECEIVED / REVISIONS_REQUIRED / SIGNATURE_BLANK"
+  },
+  "claims": {
+    "severity_band_enabled": false,
+    "clinical_risk_enabled": false,
+    "diagnosis_enabled": false,
+    "crisis_risk_enabled": false,
+    "treatment_recommendation_enabled": false,
+    "global_forbidden_claim_deny_list": true
+  },
+  "output_boundary": {
+    "raw_theta_exposed": false,
+    "raw_se_exposed": false,
+    "natural_language_generated": false,
+    "role_specific_projection": false,
+    "invalid_human_identity_echo": false
+  },
+  "safety": {
+    "crisis_route_bypass": "PASS",
+    "review_required_bypass": "PASS",
+    "block_bypass": "PASS",
+    "theta_to_safety": false,
+    "safety_action_changed": false
+  },
+  "tests": {
+    "module_pytest": "35 passed",
+    "module_failed": 0,
+    "d3i39_targeted": "2 passed, 32 deselected",
+    "ruff": "PASS: All checks passed!",
+    "pyright": "PASS: 0 errors, 0 warnings, 0 informations",
+    "compile_import": "PASS",
+    "cat_regression": "24 passed",
+    "d3_slice1_regression": "48 passed",
+    "root_contract": "13 passed",
+    "openapi": "PASS",
+    "frozen_root": "8/8 unchanged"
+  },
+  "security_negative_tests": {
+    "forbidden_aliases": 12,
+    "typed_registry_bypass": "PASS",
+    "invalid_identity_sanitization": "PASS",
+    "synthetic_only_false_fail_closed": "PASS",
+    "plain_context_rejected": "PASS",
+    "real_user_rejected": "PASS",
+    "three_safety_bypass_actions": "PASS"
+  },
+  "scope": {
+    "real_student_data_used": false,
+    "root_contract_changed": false,
+    "generation_v1_changed": false,
+    "rag_identity_changed": false,
+    "d2_new_intake_changed": false,
+    "forbidden_modules_changed": false,
+    "merge_performed": false,
+    "push_performed": false,
+    "accepted_tag_created": false
+  },
+  "remaining_p0": [],
+  "remaining_p1": [
+    "Fixed output budget 768 robustness remains a D4 evaluation concern.",
+    "Historical GPU_PARTIAL resource snapshot must remain distinguished from standalone GPU_FULL evidence.",
+    "Already-exited PID cleanup non-zero behavior remains a D5 operations concern."
+  ],
+  "recommendation": "READY_FOR_CONTROLLER_REVIEW; this is an Execution Lead recommendation, not Controller acceptance."
+}

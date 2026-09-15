@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://student-mental-health-ai.invalid/schemas/interpretation_result.v1.schema.json",
+  "title": "D3-2 Interpretation Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "status",
+    "reason_codes",
+    "assessment_id",
+    "subject_id",
+    "instrument",
+    "population_scope",
+    "policy",
+    "claims",
+    "limitations",
+    "audit"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "interpretation_result.v1"
+    },
+    "status": {
+      "enum": [
+        "READY_FOR_RENDERING",
+        "MEASUREMENT_ONLY",
+        "ABSTAIN_POLICY_MISSING",
+        "ABSTAIN_POLICY_MISMATCH",
+        "ABSTAIN_POLICY_HASH_MISMATCH",
+        "ABSTAIN_INSTRUMENT_MISMATCH",
+        "ABSTAIN_VERSION_MISMATCH",
+        "ABSTAIN_POPULATION_MISMATCH",
+        "ABSTAIN_CONSTRUCT_UNAPPROVED",
+        "ABSTAIN_REAL_USER_BLOCKED",
+        "ABSTAIN_SAFETY_BYPASS",
+        "ABSTAIN_MODE_NOT_ALLOWED",
+        "ABSTAIN_INPUT_INVALID"
+      ]
+    },
+    "reason_codes": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_.-]+$"
+      }
+    },
+    "assessment_id": {
+      "type": ["string", "null"]
+    },
+    "subject_id": {
+      "type": ["string", "null"]
+    },
+    "instrument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["instrument_id", "version"],
+      "properties": {
+        "instrument_id": {"type": ["string", "null"]},
+        "version": {"type": ["string", "null"]}
+      }
+    },
+    "population_scope": {
+      "type": ["string", "null"]
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy_id",
+        "policy_version",
+        "effective_version",
+        "policy_hash",
+        "policy_kind",
+        "psychology_review_status",
+        "review_decision_id"
+      ],
+      "properties": {
+        "policy_id": {"type": ["string", "null"]},
+        "policy_version": {"type": ["string", "null"]},
+        "effective_version": {"type": ["string", "null"]},
+        "policy_hash": {"type": ["string", "null"]},
+        "policy_kind": {"type": ["string", "null"]},
+        "psychology_review_status": {"type": ["string", "null"]},
+        "review_decision_id": {"type": ["string", "null"]}
+      }
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["claim_code", "construct_id", "value"],
+        "properties": {
+          "claim_code": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_.-]+$"
+          },
+          "construct_id": {"type": "string"},
+          "value": {"type": ["string", "boolean", "integer", "number"]}
+        }
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_.-]+$"
+      }
+    },
+    "audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "request_id",
+        "trace_id",
+        "context_id",
+        "context_version",
+        "execution_mode",
+        "safety_action"
+      ],
+      "properties": {
+        "request_id": {"type": ["string", "null"]},
+        "trace_id": {"type": ["string", "null"]},
+        "context_id": {"type": ["string", "null"]},
+        "context_version": {"type": ["string", "null"]},
+        "execution_mode": {"type": ["string", "null"]},
+        "safety_action": {"type": ["string", "null"]}
+      }
+    }
+  }
+}
