@@ -18,11 +18,25 @@ enablement.
 | Accepted D3-2 tested product closure | 3539927939ff0340871bb01a329feddb830875e6 |
 | Current product state | D3-3 implemented and freshly verified |
 | Evidence state | READY_FOR_CONTROLLER_REVIEW |
-| Final commit | One local D3-3 closure commit; SHA is supplied in the Lead handoff after commit |
+| Original product commit | 403acbe37da81e8fb2d5ebb58d6866b4926340b8 |
+| Final commit | One local evidence/governance closure commit; SHA is supplied in the Lead handoff |
 | Controller acceptance | PENDING_CONTROLLER_DECISION |
 
 The tested D3-2 commit and D3-1 evidence are historical inputs. They do not
 replace the fresh checks recorded here.
+
+The original product commit's Technical Decision document had 48 numbered
+headings whose contents followed execution-mission sections instead of the
+Controller's canonical D3R meanings. The original Fidelity Report repeated
+that mis-mapping. This closure corrects both documents and records the
+historical product commit above; product source, tests, schema, and policy
+asset remain byte-for-byte unchanged from that commit.
+
+The canonical decision-fidelity block is in
+D3_SLICE3_DECISION_FIDELITY_REPORT.md. It contains exactly 48 rows with
+Controller meaning, implementation evidence, test evidence, and status:
+expected=48, materialized=48, PASS=48, PARTIAL=0, MISSING=0, CONFLICT=0,
+semantic_deviations=0, mission_deviations=0.
 
 ## 2. Authorized scope
 
@@ -120,7 +134,7 @@ population, role, and risk scope is explicitly deferred to D3-4.
 - [x] Root Contract/OpenAPI wrapper: 13 tests passed, OpenAPI OK, exit 0
 - [x] Frozen Root unchanged: diff exit 0, recorded 8/8
 - [x] Forbidden modules unchanged
-- [x] One local commit only; no merge, push, or accepted tag
+- [x] One local evidence/governance closure commit after the original product commit; no amend, merge, push, or accepted tag
 - [x] Remaining P0: none
 
 ## 6. Worker and review ledger
@@ -141,6 +155,7 @@ independently reran the executable gates.
 | G | Privacy/security review | PARTIAL with bounded D3-4 P1: current source deny-list fix confirmed; citation snapshot binding remains deferred |
 | H | Tests/static review | Executable gates green; Lead reran final commands after the last source fix |
 | I | D3R fidelity review | No semantic deviation found; evidence and review boundary reconciled |
+| /root/d3_canonical_fidelity | Fresh read-only comparison of canonical Controller D3R-01..48 against documents, source, tests, and machine evidence; advisory result expected=48, passed=48, partial=0, missing=0, conflict=0, semantic deviations=0, mission deviations=0 |
 
 ## 7. Machine evidence and fresh commands
 
