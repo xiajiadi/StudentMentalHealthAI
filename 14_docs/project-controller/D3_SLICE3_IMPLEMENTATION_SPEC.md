@@ -7,6 +7,13 @@ D3_ROLE_PROJECTION_TECHNICAL_DECISION_V1.md. It is a module-owned internal
 boundary. It does not promote a Root Contract, change OpenAPI, approve a
 psychological interpretation, authorize real disclosure, or start D3-4.
 
+The numbered D3R identifiers are the Controller's canonical technical
+decisions in D3_ROLE_PROJECTION_TECHNICAL_DECISION_V1.md. Execution mission
+steps and acceptance gates are tracked separately in the fidelity report's
+EXECUTION_MISSION_COMPLIANCE section and must not be substituted for those
+identifiers. The canonical mapping was corrected during the D3-3 fidelity
+closure without changing product behavior.
+
 The current evidence boundary remains explicit: D3-1 and D3-2 are accepted
 engineering baselines supplied by the Controller mission; D1 is
 RECEIVED / REVISIONS_REQUIRED / SIGNATURE_BLANK; the D2 new intake is
