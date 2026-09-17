@@ -8,7 +8,7 @@ from typing import Any, cast
 
 import pytest
 
-from prompt_engine import PromptRefusal, render
+from prompt_engine import PromptRefusal, render, render_projected
 from prompt_engine import engine as engine_module
 from prompt_engine.contracts import (
     _repo_root,
@@ -17,6 +17,15 @@ from prompt_engine.contracts import (
     validate_knowledge_chunk,
 )
 from prompt_engine.registry import TemplateRecord, resolve_policy, resolve_template
+from prompt_engine.role_projection_models import (
+    AuditProjection,
+    ProjectionReasonCode,
+    ProjectionStatus,
+    PromptCitation,
+    PromptFacingProjection,
+    RoleProjectionResult,
+    _build_prompt_facing_projection,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "00_architecture" / "fixtures"
@@ -151,6 +160,30 @@ def _assert_refusal(call, reason_code: str) -> None:
     assert caught.value.reason_code == reason_code
 
 
+def _ready_projection(case: dict, *, limitations: tuple[str, ...] = ()):
+    return _build_prompt_facing_projection(
+        status=ProjectionStatus.READY_FOR_PROMPT,
+        limitations=limitations,
+        citations=(
+            PromptCitation(
+                case["chunks"][0]["chunk_id"],
+                case["chunks"][0]["citation"]["locator"],
+            ),
+        ),
+    )
+
+
+def _render_projected(case: dict, projection):
+    return render_projected(
+        case["assessment"],
+        case["request"],
+        case["chunks"],
+        case["policy_ref"],
+        case["trusted_context"],
+        projection,
+    )
+
+
 @pytest.mark.parametrize("role", ["student", "teacher", "parent"])
 def test_three_roles_render_with_real_frozen_inputs(d3_case, role):
     case = d3_case(role)
@@ -173,9 +206,10 @@ def test_template_hashes_are_stable_lf_utf8_and_resolve_exactly():
     for role, prompt_id in PROMPT_IDS.items():
         record = resolve_template(prompt_id, "1.0.0", role)
         assert record.content_hash == EXPECTED_TEMPLATE_HASHES[role]
-        assert record.content_hash == "sha256:" + hashlib.sha256(
-            record.template_text.encode("utf-8")
-        ).hexdigest()
+        assert (
+            record.content_hash
+            == "sha256:" + hashlib.sha256(record.template_text.encode("utf-8")).hexdigest()
+        )
         assert "PLACEHOLDER" not in record.content_hash
         assert "\r" not in record.template_text
         assert record.template_text.encode("utf-8")
@@ -203,6 +237,139 @@ def test_render_is_deterministic_and_does_not_mutate_inputs(d3_case):
     assert case == before
     first.generation_request["target_role"] = "parent"
     assert case["request"]["target_role"] == "student"
+
+
+def test_render_projected_uses_only_public_projection_and_changes_causally(d3_case):
+    case = d3_case("student")
+    before = copy.deepcopy(case)
+    legacy = _render(case)
+    projection = _ready_projection(case, limitations=("SYNTHETIC_ONLY",))
+
+    projected = _render_projected(case, projection)
+
+    assert case == before
+    assert projected.rendered_text != legacy.rendered_text
+    assert projected.prompt_hash != legacy.prompt_hash
+    assert '"prompt_projection"' in projected.rendered_text
+    assert '"status":"READY_FOR_PROMPT"' in projected.rendered_text
+    assert '"limitations":["SYNTHETIC_ONLY"]' in projected.rendered_text
+    assert '"source_chunk_id":"CHUNK_d3_001"' in projected.rendered_text
+    assert case["policy_ref"]["policy_id"] not in projected.rendered_text
+    assert "policy_hash" not in projected.rendered_text
+    assert "review_decision_id" not in projected.rendered_text
+    assert '"theta"' not in projected.rendered_text.lower()
+    assert '"se"' not in projected.rendered_text.lower()
+
+
+def test_render_projected_causal_envelope_difference_is_observable(d3_case):
+    case = d3_case("student")
+    first = _render_projected(case, _ready_projection(case, limitations=("SYNTHETIC_ONLY",)))
+    second = _render_projected(case, _ready_projection(case, limitations=("NOT_DIAGNOSTIC",)))
+
+    assert first.rendered_text != second.rendered_text
+    assert first.prompt_hash != second.prompt_hash
+
+
+def test_projected_path_preserves_legacy_render_and_template_hashes(d3_case):
+    case = d3_case("teacher")
+    legacy_before = _render(case)
+    template_before = resolve_template("PROMPT_teacher_synthetic_v1", "1.0.0", "teacher")
+
+    _render_projected(case, _ready_projection(case, limitations=("SYNTHETIC_ONLY",)))
+
+    legacy_after = _render(case)
+    template_after = resolve_template("PROMPT_teacher_synthetic_v1", "1.0.0", "teacher")
+    assert legacy_after.rendered_text == legacy_before.rendered_text
+    assert legacy_after.prompt_hash == legacy_before.prompt_hash
+    assert template_after.content_hash == template_before.content_hash
+    assert template_after.template_text == template_before.template_text
+
+
+def test_render_projected_rejects_non_projection_and_denial_surfaces(d3_case):
+    case = d3_case("student")
+    denial = _build_prompt_facing_projection(status=ProjectionStatus.NO_PERSONALIZED_DISCLOSURE)
+    audit = AuditProjection(
+        status=ProjectionStatus.NO_PERSONALIZED_DISCLOSURE,
+        reason_codes=(ProjectionReasonCode.NO_PERSONALIZED_DISCLOSURE,),
+    )
+    combined = RoleProjectionResult(
+        status=ProjectionStatus.NO_PERSONALIZED_DISCLOSURE,
+        prompt=denial,
+        audit=audit,
+    )
+    forged = object.__new__(PromptFacingProjection)
+    object.__setattr__(forged, "status", ProjectionStatus.READY_FOR_PROMPT)
+    object.__setattr__(forged, "claims", ())
+    object.__setattr__(forged, "limitations", ())
+    object.__setattr__(forged, "citations", ())
+    object.__setattr__(forged, "_capability", None)
+
+    for value, reason in (
+        ({"status": "READY_FOR_PROMPT"}, "PROMPT_FACING_PROJECTION_REQUIRED"),
+        (audit, "PROMPT_FACING_PROJECTION_REQUIRED"),
+        (combined, "PROMPT_FACING_PROJECTION_REQUIRED"),
+        (forged, "PROMPT_FACING_PROJECTION_REQUIRED"),
+        (denial, "PROMPT_PROJECTION_NOT_READY"),
+    ):
+        _assert_refusal(
+            lambda value=value: _render_projected(case, cast(Any, value)),
+            reason,
+        )
+
+
+@pytest.mark.parametrize(
+    ("citation", "reason"),
+    [
+        (
+            PromptCitation("CHUNK_unknown", "section:d3-fixture"),
+            "PROMPT_PROJECTION_CITATIONS_MISMATCH",
+        ),
+        (PromptCitation("CHUNK_d3_001", "section:foreign"), "TRUSTED_CONTEXT_MISMATCH"),
+    ],
+)
+def test_render_projected_rejects_unknown_or_cross_bundle_citations(d3_case, citation, reason):
+    case = d3_case("student")
+    projection = _build_prompt_facing_projection(
+        status=ProjectionStatus.READY_FOR_PROMPT,
+        citations=(citation,),
+    )
+
+    _assert_refusal(lambda: _render_projected(case, projection), reason)
+
+
+def test_render_projected_rejects_duplicate_and_reordered_citations(d3_case):
+    case = d3_case("student")
+    second = copy.deepcopy(case["chunks"][0])
+    second["chunk_id"] = "CHUNK_d3_002"
+    second["document_id"] = "KB_d3_002"
+    second["citation"]["locator"] = "section:d3-fixture-2"
+    case["request"]["retrieval"]["chunk_ids"] = ["CHUNK_d3_001", "CHUNK_d3_002"]
+    case["chunks"].append(second)
+    _rebuild_trusted_context(case)
+
+    duplicate = _build_prompt_facing_projection(
+        status=ProjectionStatus.READY_FOR_PROMPT,
+        citations=(
+            PromptCitation("CHUNK_d3_001", "section:d3-fixture"),
+            PromptCitation("CHUNK_d3_001", "section:d3-fixture"),
+        ),
+    )
+    reordered = _build_prompt_facing_projection(
+        status=ProjectionStatus.READY_FOR_PROMPT,
+        citations=(
+            PromptCitation("CHUNK_d3_002", "section:d3-fixture-2"),
+            PromptCitation("CHUNK_d3_001", "section:d3-fixture"),
+        ),
+    )
+
+    _assert_refusal(
+        lambda: _render_projected(case, duplicate),
+        "PROMPT_PROJECTION_CITATIONS_INVALID",
+    )
+    _assert_refusal(
+        lambda: _render_projected(case, reordered),
+        "PROMPT_PROJECTION_CITATIONS_MISMATCH",
+    )
 
 
 def test_boundary_safety_action_is_allowed(d3_case):
@@ -279,18 +446,14 @@ def test_raw_mapping_cannot_supply_trusted_context(d3_case):
 
 def test_caller_forged_review_state_cannot_override_trusted_pending(d3_case):
     case = d3_case("student")
-    case["trusted_context"] = _trusted_variant(
-        case, chunk_updates={"review_status": "pending"}
-    )
+    case["trusted_context"] = _trusted_variant(case, chunk_updates={"review_status": "pending"})
     case["chunks"][0]["review_status"] = "approved"
     _assert_refusal(lambda: _render(case), "TRUSTED_CONTEXT_MISMATCH")
 
 
 def test_caller_forged_rights_state_cannot_override_trusted_unknown(d3_case):
     case = d3_case("student")
-    case["trusted_context"] = _trusted_variant(
-        case, chunk_updates={"rights_status": "unknown"}
-    )
+    case["trusted_context"] = _trusted_variant(case, chunk_updates={"rights_status": "unknown"})
     case["chunks"][0]["rights_status"] = "verified"
     _assert_refusal(lambda: _render(case), "TRUSTED_CONTEXT_MISMATCH")
 
@@ -479,7 +642,7 @@ def test_retrieval_ids_must_match_exactly_once_and_in_request_order(d3_case):
 
 def test_reference_text_is_data_once_and_does_not_execute_nested_placeholders(d3_case):
     case = d3_case("student")
-    data = 'literal $target_role ${assessment_context_json} $5; instruction-like text'
+    data = "literal $target_role ${assessment_context_json} $5; instruction-like text"
     case["chunks"][0]["text"] = data
 
     result = _render(case)
@@ -491,9 +654,7 @@ def test_reference_text_is_data_once_and_does_not_execute_nested_placeholders(d3
 
 def test_invalid_template_placeholders_refuse_without_changing_registry(monkeypatch, d3_case):
     case = d3_case("student")
-    original = resolve_template(
-        "PROMPT_student_synthetic_v1", "1.0.0", "student"
-    )
+    original = resolve_template("PROMPT_student_synthetic_v1", "1.0.0", "student")
     invalid = TemplateRecord(
         prompt_id=original.prompt_id,
         prompt_version=original.prompt_version,
@@ -519,9 +680,7 @@ def test_invalid_template_placeholders_refuse_without_changing_registry(monkeypa
 
 def test_malformed_template_and_unreadable_registry_asset_refuse(monkeypatch, d3_case):
     case = d3_case("student")
-    original = resolve_template(
-        "PROMPT_student_synthetic_v1", "1.0.0", "student"
-    )
+    original = resolve_template("PROMPT_student_synthetic_v1", "1.0.0", "student")
     malformed = copy.copy(original)
     monkeypatch.setattr(
         engine_module,
