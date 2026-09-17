@@ -14,6 +14,12 @@ from typing import Any, NoReturn, cast
 from .contracts import validate_assessment, validate_generation_request, validate_knowledge_chunk
 from .errors import PromptRefusal, refusal, safe_identifier
 from .registry import PolicyRecord, TemplateRecord, resolve_policy_ref, resolve_template
+from .role_projection_models import (
+    ProjectionStatus,
+    PromptCitation,
+    PromptClaim,
+    PromptFacingProjection,
+)
 
 _ALLOWED_SAFETY_ACTIONS = {"PROCEED", "PROCEED_WITH_BOUNDARY"}
 _REQUIRED_CONTEXT_KEYS = {
@@ -34,6 +40,9 @@ _TRUSTED_ACTIONS = {
     "CRISIS_ROUTE",
     "REVIEW_REQUIRED",
 }
+_PROMPT_PROJECTION_FIELDS = frozenset({"status", "claims", "limitations", "citations"})
+_PROMPT_PROJECTION_CLAIM_FIELDS = frozenset({"claim_code", "value"})
+_PROMPT_PROJECTION_CITATION_FIELDS = frozenset({"source_chunk_id", "locator"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,9 +109,7 @@ def _build_trusted_prompt_context(
         context["request_id"]
     ):
         raise ValueError("trusted request_id is invalid")
-    if not isinstance(context["trace_id"], str) or not _IDENTIFIER.fullmatch(
-        context["trace_id"]
-    ):
+    if not isinstance(context["trace_id"], str) or not _IDENTIFIER.fullmatch(context["trace_id"]):
         raise ValueError("trusted trace_id is invalid")
     if not isinstance(context["content_population"], str) or not _IDENTIFIER.fullmatch(
         context["content_population"]
@@ -453,9 +460,133 @@ def _validate_chunks(
     return [by_id[chunk_id] for chunk_id in requested_chunk_ids]
 
 
-def _assessment_projection(assessment: Mapping[str, Any]) -> dict[str, Any]:
+def _validate_prompt_projection(
+    projection: object,
+    ordered_chunks: Sequence[Mapping[str, Any]],
+    generation_request: Mapping[str, Any],
+    trusted_context: TrustedPromptContext,
+) -> dict[str, Any]:
+    """Validate the D3-3 public envelope against this request's trusted bundle.
+
+    ``PromptFacingProjection`` is a capability-checked, public-only surface.
+    The prompt engine nevertheless rechecks its exact runtime type and the
+    citation binding here so that an audit/combined result, a mapping, a
+    denial envelope, or a projection from another trusted chunk set cannot
+    silently cross the D3-1 seam.
+    """
+
+    if type(projection) is not PromptFacingProjection:
+        _reject("PROMPT_FACING_PROJECTION_REQUIRED", trusted_context)
+    typed_projection = cast(PromptFacingProjection, projection)
+    if typed_projection.status is not ProjectionStatus.READY_FOR_PROMPT:
+        _reject("PROMPT_PROJECTION_NOT_READY", trusted_context)
+    if not isinstance(typed_projection.claims, tuple) or any(
+        not isinstance(item, PromptClaim) for item in typed_projection.claims
+    ):
+        _reject("PROMPT_PROJECTION_ENVELOPE_INVALID", trusted_context)
+    if not isinstance(typed_projection.limitations, tuple) or any(
+        not isinstance(item, str) for item in typed_projection.limitations
+    ):
+        _reject("PROMPT_PROJECTION_ENVELOPE_INVALID", trusted_context)
+    if not isinstance(typed_projection.citations, tuple) or any(
+        not isinstance(item, PromptCitation) for item in typed_projection.citations
+    ):
+        _reject("PROMPT_PROJECTION_ENVELOPE_INVALID", trusted_context)
+
+    try:
+        public = typed_projection.to_public_dict()
+    except Exception as exc:  # pragma: no cover - defensive forged-object path
+        raise refusal("PROMPT_FACING_PROJECTION_REQUIRED", trusted_context) from exc
+    if not isinstance(public, dict) or set(public) != _PROMPT_PROJECTION_FIELDS:
+        _reject("PROMPT_PROJECTION_ENVELOPE_INVALID", trusted_context)
+    if public.get("status") != ProjectionStatus.READY_FOR_PROMPT.value:
+        _reject("PROMPT_PROJECTION_NOT_READY", trusted_context)
+
+    claims = public.get("claims")
+    if not isinstance(claims, list) or any(
+        not isinstance(item, Mapping) or set(item) != _PROMPT_PROJECTION_CLAIM_FIELDS
+        for item in claims
+    ):
+        _reject("PROMPT_PROJECTION_ENVELOPE_INVALID", trusted_context)
+    limitations = public.get("limitations")
+    if not isinstance(limitations, list) or any(not isinstance(item, str) for item in limitations):
+        _reject("PROMPT_PROJECTION_ENVELOPE_INVALID", trusted_context)
+    citations = public.get("citations")
+    if not isinstance(citations, list) or any(
+        not isinstance(item, Mapping) or set(item) != _PROMPT_PROJECTION_CITATION_FIELDS
+        for item in citations
+    ):
+        _reject("PROMPT_PROJECTION_ENVELOPE_INVALID", trusted_context)
+
+    retrieval = generation_request.get("retrieval")
+    if not isinstance(retrieval, Mapping):
+        _reject("RETRIEVAL_REF_INVALID", trusted_context)
+    requested_ids = retrieval.get("chunk_ids")
+    if not isinstance(requested_ids, list) or not all(
+        isinstance(chunk_id, str) for chunk_id in requested_ids
+    ):
+        _reject("RETRIEVAL_REFERENCES_INVALID", trusted_context)
+    requested_chunk_ids = cast(list[str], requested_ids)
+    states = trusted_context.chunk_states
+    if len(states) != len(ordered_chunks) or len(states) != len(requested_chunk_ids):
+        _reject("TRUSTED_CONTEXT_MISMATCH", trusted_context)
+    if len(set(requested_chunk_ids)) != len(requested_chunk_ids):
+        _reject("RETRIEVAL_REFERENCES_INVALID", trusted_context)
+
+    # The trusted snapshot is ordered.  Requiring its order to match the
+    # request and the validated chunk list prevents a projection from being
+    # paired with a different bundle that happens to reuse one chunk ID.
+    for requested_id, chunk, state in zip(requested_chunk_ids, ordered_chunks, states, strict=True):
+        if not isinstance(state, TrustedChunkContext):
+            _reject("TRUSTED_CONTEXT_REQUIRED", trusted_context)
+        citation = chunk.get("citation")
+        if (
+            chunk.get("chunk_id") != requested_id
+            or state.chunk_id != requested_id
+            or state.document_id != chunk.get("document_id")
+            or state.content_hash != chunk.get("content_hash")
+            or state.review_status != chunk.get("review_status")
+            or state.rights_status != chunk.get("rights_status")
+            or state.population_scope != tuple(chunk.get("population_scope", ()))
+            or state.role_scope != tuple(chunk.get("role_scope", ()))
+            or state.risk_scope != tuple(chunk.get("risk_scope", ()))
+            or not isinstance(citation, Mapping)
+            or state.citation_locator != citation.get("locator")
+        ):
+            _reject("TRUSTED_CONTEXT_MISMATCH", trusted_context)
+
+    if len(typed_projection.citations) != len(requested_chunk_ids):
+        _reject("PROMPT_PROJECTION_CITATIONS_MISMATCH", trusted_context)
+    seen: set[str] = set()
+    for index, (prompt_citation, requested_id, state) in enumerate(
+        zip(typed_projection.citations, requested_chunk_ids, states, strict=True)
+    ):
+        if prompt_citation.source_chunk_id in seen:
+            _reject("PROMPT_PROJECTION_CITATIONS_INVALID", trusted_context)
+        seen.add(prompt_citation.source_chunk_id)
+        if prompt_citation.source_chunk_id != requested_id:
+            _reject("PROMPT_PROJECTION_CITATIONS_MISMATCH", trusted_context)
+        if prompt_citation.locator != state.citation_locator:
+            _reject("TRUSTED_CONTEXT_MISMATCH", trusted_context)
+        public_citation = citations[index]
+        if (
+            public_citation.get("source_chunk_id") != requested_id
+            or public_citation.get("locator") != state.citation_locator
+        ):
+            _reject("PROMPT_PROJECTION_CITATIONS_MISMATCH", trusted_context)
+
+    # ``to_public_dict`` is a detached allow-listed envelope.  Copy it once
+    # more before embedding it in the assessment context so downstream code
+    # cannot mutate the projection object through the rendered request.
+    return cast(dict[str, Any], copy.deepcopy(public))
+
+
+def _assessment_projection(
+    assessment: Mapping[str, Any],
+    prompt_projection: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     instrument = assessment["instrument"]
-    return {
+    result = {
         "assessment_id": assessment["assessment_id"],
         "subject_id": assessment["subject_id"],
         "instrument_id": instrument["instrument_id"],
@@ -464,6 +595,9 @@ def _assessment_projection(assessment: Mapping[str, Any]) -> dict[str, Any]:
         "data_nature": "synthetic_engineering_only",
         "interpretation": "not_provided",
     }
+    if prompt_projection is not None:
+        result["prompt_projection"] = copy.deepcopy(dict(prompt_projection))
+    return result
 
 
 def _retrieval_projection(chunks: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
@@ -491,12 +625,14 @@ def _render_text(
     return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
-def render(
+def _render_internal(
     assessment: Mapping[str, Any],
     generation_request: Mapping[str, Any],
     chunks: Sequence[Mapping[str, Any]],
     policy_ref: Mapping[str, Any],
     trusted_context: TrustedPromptContext,
+    *,
+    projection: PromptFacingProjection | None = None,
 ) -> RenderedPrompt:
     """Validate and render one request using controlled internal gate state."""
 
@@ -548,13 +684,20 @@ def render(
         context_values,
         ctx,
     )
+    prompt_projection = (
+        _validate_prompt_projection(projection, ordered_chunks, request_copy, ctx)
+        if projection is not None
+        else None
+    )
     values = {
         "target_role": str(request_copy["target_role"]),
         "language": str(request_copy["language"]),
         "execution_mode": ctx.execution_mode,
         "input_safety_action": ctx.input_safety_action,
         "retrieval_safety_action": ctx.retrieval_safety_action,
-        "assessment_context_json": _stable_json(_assessment_projection(assessment_copy)),
+        "assessment_context_json": _stable_json(
+            _assessment_projection(assessment_copy, prompt_projection)
+        ),
         "retrieval_context_json": _stable_json(_retrieval_projection(ordered_chunks)),
         "allowed_source_chunk_ids_json": _stable_json(
             [chunk["chunk_id"] for chunk in ordered_chunks]
@@ -600,6 +743,44 @@ def render(
         rendered_text=rendered_text,
         prompt_hash=prompt_hash,
         audit=audit,
+    )
+
+
+def render(
+    assessment: Mapping[str, Any],
+    generation_request: Mapping[str, Any],
+    chunks: Sequence[Mapping[str, Any]],
+    policy_ref: Mapping[str, Any],
+    trusted_context: TrustedPromptContext,
+) -> RenderedPrompt:
+    """Validate and render one request using controlled internal gate state."""
+
+    return _render_internal(
+        assessment,
+        generation_request,
+        chunks,
+        policy_ref,
+        trusted_context,
+    )
+
+
+def render_projected(
+    assessment: Mapping[str, Any],
+    generation_request: Mapping[str, Any],
+    chunks: Sequence[Mapping[str, Any]],
+    policy_ref: Mapping[str, Any],
+    trusted_context: TrustedPromptContext,
+    projection: PromptFacingProjection,
+) -> RenderedPrompt:
+    """Render a request with one ready, bundle-bound D3-3 public projection."""
+
+    return _render_internal(
+        assessment,
+        generation_request,
+        chunks,
+        policy_ref,
+        trusted_context,
+        projection=projection,
     )
 
 
