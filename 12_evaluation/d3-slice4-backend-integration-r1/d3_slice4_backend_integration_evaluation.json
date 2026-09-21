@@ -1,0 +1,991 @@
+{
+  "evaluation_id": "D3_SLICE4_BACKEND_INTEGRATION_R1",
+  "status": "READY_FOR_CONTROLLER_REVIEW",
+  "evaluation_date": "2026-09-21",
+  "controller_acceptance": false,
+  "baseline": {
+    "tag": "d3-slice3-r1-accepted",
+    "commit": "cb28fe38b2e1df1b06c96610419691dd2d7924db",
+    "worktree_head": "0dc5c7762baf3ba1292de6e6e9d540e4aeafc58d",
+    "working_tree": "DIRTY_WITH_D3_4_WORKER_CHANGES_AND_VALIDATION_EVIDENCE",
+    "accepted_commit": "cb28fe38b2e1df1b06c96610419691dd2d7924db"
+  },
+  "branch": "exp/d3-backend-integration-v1",
+  "worktree": "D:\\Projects\\StudentMentalHealthAI-d3-backend-integration",
+  "candidate_commit": null,
+  "scope": {
+    "product_write_root": "09_backend",
+    "evidence_roots": [
+      "14_docs/project-controller",
+      "12_evaluation/d3-slice4-backend-integration-r1"
+    ],
+    "forbidden_product_modules_changed": false,
+    "root_contract_changed": false,
+    "openapi_changed": false,
+    "database_schema_changed": false,
+    "new_framework": false,
+    "real_student_data": false,
+    "d4_started": false,
+    "product_write_roots": [
+      "07_prompt-engine",
+      "09_backend"
+    ],
+    "template_bytes_changed": false,
+    "template_hashes_changed": false,
+    "accepted_d3_modules_changed": false,
+    "product_source_unchanged_during_gpu_validation": true
+  },
+  "decision_fidelity": {
+    "expected": 60,
+    "passed": 60,
+    "partial": 0,
+    "missing": 0,
+    "conflict": 0,
+    "semantic_deviations": 0,
+    "mission_deviations": 0,
+    "partial_ids": [],
+    "semantic_deviation_ids": []
+  },
+  "trusted_context": {
+    "typed_context": true,
+    "principal_server_derived": true,
+    "caller_role_authority": false,
+    "caller_purpose_authority": false,
+    "caller_relation_authority": false,
+    "caller_mode_authority": false,
+    "caller_disclosure_authority": false,
+    "caller_safety_authority": false,
+    "caller_review_rights_authority": false,
+    "forge_tests": "PASS"
+  },
+  "assessment_binding": {
+    "completed_status_required": true,
+    "subject_scope_server_resolved": true,
+    "path_body_record_identity_checked": true,
+    "idor": "PASS",
+    "instrument_identity_checked": true,
+    "explicit_legacy_fixture_only": true,
+    "theta_se_recalculated": false
+  },
+  "orchestration": {
+    "canonical_entrypoint": "POST /api/v1/support/requests",
+    "generation_adapter": "POST /api/v1/generations -> canonical support orchestrator",
+    "retrieval_route": "POST /api/v1/retrievals (side-effect-free projection; not a generation citation authority)",
+    "bypass_paths": 0,
+    "fail_closed": true,
+    "state_machine": [
+      "REQUEST_AUTHENTICATED",
+      "REQUEST_AUTHORIZED",
+      "INPUT_SAFETY_EVALUATED",
+      "ASSESSMENT_BOUND",
+      "INTERPRETATION_READY",
+      "RETRIEVAL_BOUND",
+      "ROLE_PROJECTED",
+      "PROMPT_ASSEMBLED",
+      "GENERATION_BUFFERED",
+      "OUTPUT_SAFETY_EVALUATED",
+      "PERSISTED"
+    ],
+    "stage_order_test": "PASS",
+    "normal_call_order": [
+      "safety_input",
+      "d3_2",
+      "rag",
+      "safety_retrieval",
+      "d3_3",
+      "d3_1",
+      "llm",
+      "safety_output"
+    ],
+    "formal_backend_legacy_render_calls": 0,
+    "formal_backend_render_api": "render_projected",
+    "normal_projection_consumed": true
+  },
+  "rag_evidence": {
+    "accepted_client_only": true,
+    "actual_available_chunk_fields": [
+      "schema_version",
+      "chunk_id",
+      "document_id",
+      "text",
+      "content_type",
+      "location",
+      "citation",
+      "population_scope",
+      "role_scope",
+      "risk_scope",
+      "review_status",
+      "rights_status",
+      "content_hash",
+      "embedding"
+    ],
+    "actual_available_retrieval_trace_fields": [
+      "retrieval_id",
+      "label",
+      "trace",
+      "index_id",
+      "index_version",
+      "corpus_version",
+      "corpus_build_id",
+      "build_id",
+      "snapshot_id",
+      "run_id",
+      "query_id",
+      "trace_id",
+      "request_id"
+    ],
+    "bundle_type": "RetrievalEvidenceBundle",
+    "bundle_hash": "PASS",
+    "bundle_hash_algorithm": "SHA-256 over sorted compact UTF-8 JSON excluding bundle_hash",
+    "immutable_snapshot": true,
+    "caller_citation_authority": false,
+    "same_bundle_resolution": true,
+    "second_retrieval_for_citation": false,
+    "d2_new_intake_used": false,
+    "eligibility_fail_closed": true,
+    "observed_scope_rewritten": false,
+    "invented_snapshot_metadata": false,
+    "accepted_corpus_sha256": "2D5736AE741D675CA5856B8004665EA3043AECCEA34E2B007498FF04C2B501A2",
+    "accepted_corpus_rows": 14,
+    "accepted_corpus_target_population": "K12学生",
+    "d3_content_population_required": "UNIVERSITY_FRESHMEN_SYNTHETIC_DEMO",
+    "validation_corpus_sha256": "519efd711d49240f4515713d47a58a250cc84a70457f4997646d98d7ace1ade5",
+    "validation_corpus_version": "sha256:8c3b104f454398a3dcd6cac873fa6c60b8a02963c98d782e82b75733e0845bd7",
+    "validation_corpus_eligible_chunks": 2,
+    "k12_corpus_health": {
+      "status": "READY",
+      "eligible_chunk_count": 14,
+      "corpus_version": "sha256:4553317e36b1064880df01643a3171f7937e0ec420ead380c5d6702f2396aad2"
+    },
+    "real_http_no_eligible_raw_hits": 1,
+    "real_http_no_eligible_bundle_items": 0,
+    "real_http_no_eligible_d3_1_calls": 0,
+    "real_http_no_eligible_runtime_calls": 0,
+    "real_http_no_eligible_fallback_citations": 0
+  },
+  "d3_chain": {
+    "d3_2": {
+      "status": "PASS",
+      "policy_id": "POLICY_assessment_synthetic_measurement_only",
+      "policy_version": "1.0.0",
+      "policy_hash": "sha256:7c61cf80dc68561c78618c2d6e3859295b0dc53a291a1805c9bb623c5b7714a4"
+    },
+    "d3_3": {
+      "status": "PASS_FOR_STUDENT_AND_FAIL_CLOSED_FOR_TEACHER_PARENT_ADMIN",
+      "student_policy": "ROLE_PROJECTION_STUDENT_SELF_V09",
+      "teacher_policy": "ROLE_PROJECTION_TEACHER_SUPPORT_V09",
+      "parent_policy": "ROLE_PROJECTION_PARENT_DEMO_V09"
+    },
+    "d3_1": {
+      "status": "PASS",
+      "policy_id": "POLICY_synthetic_engineering_university_freshmen",
+      "policy_version": "1.0.0",
+      "mapping_id": "MAP_SYNTHETIC_DEMO_TO_UNIVERSITY_FRESHMEN_CONTENT_V1",
+      "mapping_version": "1.0.0",
+      "templates": [
+        "PROMPT_student_synthetic_v1",
+        "PROMPT_teacher_synthetic_v1",
+        "PROMPT_parent_synthetic_demo_v1"
+      ],
+      "blocker": null,
+      "api": "render_projected",
+      "projection_consumed": true
+    },
+    "raw_theta_se_in_prompt": false,
+    "new_psychology_claim_generation": false,
+    "role_monotonicity": "PASS"
+  },
+  "safety": {
+    "input_safety_first": true,
+    "crisis_normal_rag_calls": 0,
+    "crisis_normal_prompt_calls": 0,
+    "crisis_llm_calls": 0,
+    "review_required_normal_generation": "BYPASSED",
+    "block_normal_generation": "BYPASSED",
+    "retrieval_safety_stop": "ABORTED_WITHOUT_RAW_CITATIONS",
+    "output_safety_before_persistence": true,
+    "schema_valid_forbidden_claim": "BLOCKED_BEFORE_NORMAL_PERSISTENCE",
+    "safety_down_behavior": "REAL_HTTP 503 DEPENDENCY_UNAVAILABLE fail-closed before normal generation",
+    "real_http_output_unsafe": "PASS_OUTPUT_SAFETY_REVIEW_REQUIRED",
+    "real_http_output_unsafe_input": "safe synthetic input; Input Safety PROCEED",
+    "real_http_output_unsafe_candidate_buffered": true,
+    "real_http_output_unsafe_normal_persistence": false,
+    "real_http_k12_and_no_eligible": "PASS_FAIL_CLOSED_WITH_ZERO_ELIGIBLE_BUNDLE_ITEMS"
+  },
+  "disclosure": {
+    "student_self": "bounded synthetic self output",
+    "teacher": "zero personalized psychological claims; accepted role policy may stop before prompt",
+    "parent_real_user": "BLOCKED",
+    "parent_synthetic_demo": "coarse synthetic policy only; no real disclosure",
+    "admin": "coarse envelope with generation and citations removed",
+    "age_grants_parent_authority": false,
+    "admin_psychology_access": false,
+    "teacher_personalized_claims": 0
+  },
+  "audit": {
+    "transaction_stage_policy_bundle_evidence_ids": true,
+    "safe_principal_subject_scope": true,
+    "prompt_audit_separation": true,
+    "raw_session_or_credentials": false,
+    "raw_theta_se_unnecessary": false,
+    "hidden_teacher_parent_data_in_public_response": false,
+    "transaction_id_correlation": "present in in-process audit/tests; real HTTP error responses do not expose internals",
+    "projection_consumed": true
+  },
+  "tests": {
+    "prompt_engine_full": {
+      "status": "PASS",
+      "count": 154
+    },
+    "d3_2": {
+      "status": "PASS",
+      "count": 41
+    },
+    "cat": {
+      "status": "PASS",
+      "count": 24
+    },
+    "rag": {
+      "status": "PASS",
+      "result": "18 passed, 4 skipped, 2 warnings"
+    },
+    "safety": {
+      "status": "PASS",
+      "result": "20 passed, 1 skipped, 3 warnings"
+    },
+    "d3_focused": {
+      "status": "PASS",
+      "count": 47
+    },
+    "backend_contracts": {
+      "status": "PASS",
+      "count": 16
+    },
+    "backend_full": {
+      "status": "PASS",
+      "count": 65
+    },
+    "ruff_check_touched": {
+      "status": "PASS",
+      "errors": 0
+    },
+    "ruff_format_touched": {
+      "status": "PASS",
+      "files_already_formatted": 18
+    },
+    "targeted_pyright": {
+      "status": "PASS",
+      "errors": 0
+    },
+    "full_pyright": {
+      "status": "BASELINE_MATCH",
+      "candidate_errors": 2,
+      "baseline_errors": 2,
+      "new_d3_4_errors": 0,
+      "files": [
+        "09_backend/src/smhai_backend/adapters/database.py:103",
+        "09_backend/src/smhai_backend/adapters/database.py:104"
+      ]
+    },
+    "compile_import": {
+      "status": "PASS"
+    },
+    "git_diff_check": {
+      "status": "PASS",
+      "exit_code": 0
+    },
+    "root_contract": {
+      "status": "PASS",
+      "count": "13/13"
+    },
+    "openapi": {
+      "status": "PASS"
+    },
+    "frozen_root": {
+      "status": "PASS",
+      "count": "8/8"
+    }
+  },
+  "regressions": {
+    "prompt_engine_full": "154 passed",
+    "d3_2_assessment_adapter": "41 passed",
+    "cat": "24 passed",
+    "rag": {
+      "status": "PASS",
+      "result": "18 passed, 4 skipped, 2 warnings"
+    },
+    "safety": {
+      "status": "PASS",
+      "result": "20 passed, 1 skipped, 3 warnings"
+    },
+    "backend_focused": "47 passed",
+    "backend_contracts": "16 passed",
+    "backend_full": "65 passed",
+    "root_contract": "13/13",
+    "openapi": "PASS",
+    "frozen_root": "8/8 unchanged"
+  },
+  "real_http": {
+    "status": "PASS",
+    "topology": {
+      "backend": {
+        "port": 8080,
+        "health": "/health/ready 200 READY",
+        "config": "CAT/RAG/LLM/Safety HTTP, memory persistence"
+      },
+      "cat": {
+        "port": 8180,
+        "health": "/health/ready 200 READY",
+        "config": "adaptivetesting-1.2.1 / ITembank_demo_cat / demo.v1 / demo.cat.v1"
+      },
+      "rag": {
+        "port": 8170,
+        "health": "/health/ready 200 READY",
+        "config": "hybrid, rerank false, evaluation fixture and accepted publication negative cases"
+      },
+      "runtime": {
+        "port": 8160,
+        "health": "/health/ready 200 READY",
+        "config": "sealed accepted C RuntimeService; cloud_fallback=false; Ollama 0.33.3; qwen2.5:7b-instruct-q4_K_M"
+      },
+      "safety": {
+        "port": 8190,
+        "health": "/health/ready 200 READY",
+        "config": "OPA 1.20.2, Presidio 2.2.364, NeMo 0.24.0, Qwen3Guard accepted revision"
+      }
+    },
+    "accepted_runtime": {
+      "runtime_service": "D:\\Projects\\StudentMentalHealthAI-gpu-product-integration-closure\\12_evaluation\\gpu-product-integration-closure-r1\\runtime_acceptance_server.py",
+      "runtime_version": "0.1.0-gpi-r1",
+      "ollama_version": "0.33.3",
+      "provider_model": "qwen2.5:7b-instruct-q4_K_M",
+      "logical_model": "qwen2.5-0.5b-engineering",
+      "logical_model_alias_note": "Historical registry alias only; it resolves to the accepted qwen2.5:7b-instruct-q4_K_M provider and is not the lightweight 0.5B provider.",
+      "contract_model": "MODEL_local_gpu_acceptance",
+      "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+      "ollama_endpoint": "http://127.0.0.1:11435",
+      "cloud_fallback": false
+    },
+    "resource_observation": {
+      "ollama_endpoint": "http://127.0.0.1:11435",
+      "observed_hardware": "NVIDIA GeForce RTX 3060; accepted 7B resident on GPU",
+      "gpu_adapter": "NVIDIA GeForce RTX 3060",
+      "gpu_uuid": "GPU-37679be8-8a92-0d64-3d2a-323165a4db63",
+      "driver_version": "596.36",
+      "gpu_memory_total_mb": 12288,
+      "gpu_memory_used_mb_after_request": 5029,
+      "size_vram_bytes": 5133943438,
+      "gpu_attribution_claimed": true,
+      "historical_gpu_evidence_reused_as_current": false
+    },
+    "normal": {
+      "status": "PASS",
+      "http_status": 202,
+      "response_status": "generated",
+      "normal_generation": true,
+      "input_safety": "PROCEED",
+      "assessment_binding": "reached",
+      "d3_2": "reached",
+      "rag": "reached; 2 eligible synthetic validation chunks",
+      "evidence_bundle": "assembled; same bundle hash retained through persistence",
+      "d3_3": "reached",
+      "d3_1": "reached; render_projected",
+      "runtime": "success; accepted GPU Runtime returned candidate",
+      "output_safety": "reached; PROCEED",
+      "persistence": "report persisted after Output Safety",
+      "report_id": "REPORT_3b886aabfc204d6d8f1046b8541db7bb",
+      "generation_id": "GEN_fb8407d26b574438b65e1af17329565d",
+      "conversation_count": 0,
+      "report_count": 1,
+      "same_bundle_resolution": true,
+      "second_retrieval": false,
+      "prompt_projection_consumed": true,
+      "formal_backend_legacy_render_calls": 0,
+      "runtime_candidate_returned": true,
+      "runtime_latency_ms": 4208.0,
+      "normal_elapsed_seconds": 11.623,
+      "candidate_buffered": true,
+      "output_safety_reached": true,
+      "normal_persistence": true,
+      "raw_theta_se_in_prompt": false,
+      "new_psychology_claim_generation": false,
+      "teacher_parent_admin_boundaries_unchanged": true,
+      "fake_or_fallback_citations": 0,
+      "response_citations": 2,
+      "fallback": false,
+      "real_student_data": false,
+      "d2_new_intake_used": false,
+      "request_id": "REQ_ef2712c0255d7f6c0889c832c5c3a095",
+      "trace_id": "TRACE_ca48a4646305e90081af196ce46c39c8",
+      "transaction_id": "TX_ca48a4646305e90081af196ce46c39c8",
+      "context_id": "CTX_ca48a4646305e90081af196ce46c39c8",
+      "retrieval_id": "RETR_987f10c8f6f117d7b5e8",
+      "bundle_hash": "a1f7ca1223666731bb94d8cdfd0a65b3620cbfaf3d45ea55409eeeff6307914b",
+      "d3_2_policy_id": "POLICY_assessment_synthetic_measurement_only",
+      "d3_3_policy_id": "ROLE_PROJECTION_STUDENT_SELF_V09",
+      "d3_1_prompt_id": "PROMPT_student_synthetic_v1",
+      "d3_1_prompt_hash": "sha256:8f821afbcbe53b4741982ac9cac02961151ab1b2f15b2fdb2786e5707baa237e",
+      "stage_ledger": {
+        "transaction_id": "TX_ca48a4646305e90081af196ce46c39c8",
+        "context_id": "CTX_ca48a4646305e90081af196ce46c39c8",
+        "state": "COMPLETED",
+        "current": "PERSISTED",
+        "stages": [
+          "REQUEST_AUTHENTICATED",
+          "REQUEST_AUTHORIZED",
+          "INPUT_SAFETY_EVALUATED",
+          "ASSESSMENT_BOUND",
+          "INTERPRETATION_READY",
+          "RETRIEVAL_BOUND",
+          "ROLE_PROJECTED",
+          "PROMPT_ASSEMBLED",
+          "GENERATION_BUFFERED",
+          "OUTPUT_SAFETY_EVALUATED",
+          "PERSISTED"
+        ],
+        "records": [
+          {
+            "stage": "REQUEST_AUTHENTICATED",
+            "predecessor": null,
+            "transaction_id": "TX_ca48a4646305e90081af196ce46c39c8",
+            "context_id": "CTX_ca48a4646305e90081af196ce46c39c8",
+            "occurred_at": "2026-09-21T13:36:53.945Z",
+            "metadata": {
+              "principal_id": "USER_student_a"
+            },
+            "safety_action": null
+          },
+          {
+            "stage": "REQUEST_AUTHORIZED",
+            "predecessor": "REQUEST_AUTHENTICATED",
+            "transaction_id": "TX_ca48a4646305e90081af196ce46c39c8",
+            "context_id": "CTX_ca48a4646305e90081af196ce46c39c8",
+            "occurred_at": "2026-09-21T13:36:53.945Z",
+            "metadata": {
+              "product_role": "STUDENT",
+              "subject_id": "SUBJ_d3_2_demo_001",
+              "audience_role": "STUDENT_SELF"
+            },
+            "safety_action": null
+          },
+          {
+            "stage": "INPUT_SAFETY_EVALUATED",
+            "predecessor": "REQUEST_AUTHORIZED",
+            "transaction_id": "TX_ca48a4646305e90081af196ce46c39c8",
+            "context_id": "CTX_ca48a4646305e90081af196ce46c39c8",
+            "occurred_at": "2026-09-21T13:36:56.512Z",
+            "metadata": {
+              "reason_codes": [
+                "NO_BLOCKING_SIGNAL",
+                "ASSESSMENT_SIGNAL_RECEIVED",
+                "CONTENT_SAFE"
+              ]
+            },
+            "safety_action": "PROCEED"
+          },
+          {
+            "stage": "ASSESSMENT_BOUND",
+            "predecessor": "INPUT_SAFETY_EVALUATED",
+            "transaction_id": "TX_ca48a4646305e90081af196ce46c39c8",
+            "context_id": "CTX_ca48a4646305e90081af196ce46c39c8",
+            "occurred_at": "2026-09-21T13:36:56.512Z",
+            "metadata": {
+              "assessment_id": "ASSESS_d3_2_demo_001",
+              "assessment_hash": "sha256:02304476f02319a942e5ace64737781e501ddbf97a2a8561ef479a8635a9ece2",
+              "instrument_id": "CURRENT_SYNTHETIC_GRM",
+              "instrument_version": "synthetic_item_bank.v1 / demo.v1",
+              "compatibility_fixture_id": null,
+              "compatibility_fixture_version": null,
+              "compatibility_approval_reference": null
+            },
+            "safety_action": null
+          },
+          {
+            "stage": "INTERPRETATION_READY",
+            "predecessor": "ASSESSMENT_BOUND",
+            "transaction_id": "TX_ca48a4646305e90081af196ce46c39c8",
+            "context_id": "CTX_ca48a4646305e90081af196ce46c39c8",
+            "occurred_at": "2026-09-21T13:36:56.580Z",
+            "metadata": {
+              "d3_2_policy_id": "POLICY_assessment_synthetic_measurement_only",
+              "d3_2_policy_version": "1.0.0",
+              "d3_2_policy_hash": "sha256:7c61cf80dc68561c78618c2d6e3859295b0dc53a291a1805c9bb623c5b7714a4"
+            },
+            "safety_action": null
+          },
+          {
+            "stage": "RETRIEVAL_BOUND",
+            "predecessor": "INTERPRETATION_READY",
+            "transaction_id": "TX_ca48a4646305e90081af196ce46c39c8",
+            "context_id": "CTX_ca48a4646305e90081af196ce46c39c8",
+            "occurred_at": "2026-09-21T13:36:57.303Z",
+            "metadata": {
+              "retrieval_id": "RETR_987f10c8f6f117d7b5e8",
+              "bundle_hash": "a1f7ca1223666731bb94d8cdfd0a65b3620cbfaf3d45ea55409eeeff6307914b"
+            },
+            "safety_action": "PROCEED"
+          },
+          {
+            "stage": "ROLE_PROJECTED",
+            "predecessor": "RETRIEVAL_BOUND",
+            "transaction_id": "TX_ca48a4646305e90081af196ce46c39c8",
+            "context_id": "CTX_ca48a4646305e90081af196ce46c39c8",
+            "occurred_at": "2026-09-21T13:36:57.314Z",
+            "metadata": {
+              "d3_3_policy_id": "ROLE_PROJECTION_STUDENT_SELF_V09",
+              "d3_3_policy_version": "1.0.0",
+              "d3_3_policy_hash": "sha256:7396fa34f2e08d24cf415bd526d3647b254492f8ec715150e76e7c22515e40d4"
+            },
+            "safety_action": null
+          },
+          {
+            "stage": "PROMPT_ASSEMBLED",
+            "predecessor": "ROLE_PROJECTED",
+            "transaction_id": "TX_ca48a4646305e90081af196ce46c39c8",
+            "context_id": "CTX_ca48a4646305e90081af196ce46c39c8",
+            "occurred_at": "2026-09-21T13:36:57.395Z",
+            "metadata": {
+              "prompt_id": "PROMPT_student_synthetic_v1",
+              "prompt_version": "1.0.0",
+              "prompt_content_hash": "sha256:8f821afbcbe53b4741982ac9cac02961151ab1b2f15b2fdb2786e5707baa237e",
+              "content_population_mapping_id": "MAP_SYNTHETIC_DEMO_TO_UNIVERSITY_FRESHMEN_CONTENT_V1",
+              "content_population_mapping_version": "1.0.0",
+              "content_population": "UNIVERSITY_FRESHMEN_SYNTHETIC_DEMO"
+            },
+            "safety_action": null
+          },
+          {
+            "stage": "GENERATION_BUFFERED",
+            "predecessor": "PROMPT_ASSEMBLED",
+            "transaction_id": "TX_ca48a4646305e90081af196ce46c39c8",
+            "context_id": "CTX_ca48a4646305e90081af196ce46c39c8",
+            "occurred_at": "2026-09-21T13:37:01.603Z",
+            "metadata": {
+              "runtime_label": "REAL_HTTP",
+              "model_id": "MODEL_local_gpu_acceptance",
+              "model_version": "qwen2.5-7b-instruct-q4_K_M",
+              "runtime_version": "0.1.0-gpi-r1"
+            },
+            "safety_action": null
+          },
+          {
+            "stage": "OUTPUT_SAFETY_EVALUATED",
+            "predecessor": "GENERATION_BUFFERED",
+            "transaction_id": "TX_ca48a4646305e90081af196ce46c39c8",
+            "context_id": "CTX_ca48a4646305e90081af196ce46c39c8",
+            "occurred_at": "2026-09-21T13:37:05.422Z",
+            "metadata": {
+              "reason_codes": [
+                "NO_BLOCKING_SIGNAL",
+                "CONTENT_SAFE"
+              ]
+            },
+            "safety_action": "PROCEED"
+          },
+          {
+            "stage": "PERSISTED",
+            "predecessor": "OUTPUT_SAFETY_EVALUATED",
+            "transaction_id": "TX_ca48a4646305e90081af196ce46c39c8",
+            "context_id": "CTX_ca48a4646305e90081af196ce46c39c8",
+            "occurred_at": "2026-09-21T13:37:05.453Z",
+            "metadata": {
+              "report_id": "REPORT_3b886aabfc204d6d8f1046b8541db7bb",
+              "generation_id": "GEN_fb8407d26b574438b65e1af17329565d",
+              "bundle_hash": "a1f7ca1223666731bb94d8cdfd0a65b3620cbfaf3d45ea55409eeeff6307914b"
+            },
+            "safety_action": null
+          }
+        ],
+        "terminal_action": null,
+        "terminal_reason": null
+      },
+      "gpu_residency": {
+        "size_vram_bytes": 5133943438,
+        "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e"
+      },
+      "requested_model_id": "MODEL_local_primary",
+      "registry_logical_model_id": "qwen2.5-0.5b-engineering",
+      "resolved_provider_model": "qwen2.5:7b-instruct-q4_K_M",
+      "contract_model_id": "MODEL_local_gpu_acceptance",
+      "provider_digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e"
+    },
+    "k12_negative": {
+      "status": "PASS_FAIL_CLOSED",
+      "http_status": 502,
+      "rag_raw_hits": 5,
+      "eligible_bundle_items": 0,
+      "d3_3": 0,
+      "d3_1": 0,
+      "runtime_calls": 0,
+      "citations": 0,
+      "fallback": "none",
+      "reason": "accepted K12 publication returned through real RAG; fixed D3 University eligibility rejected the observed population without mapping"
+    },
+    "crisis": {
+      "status": "PASS",
+      "http_status": 202,
+      "safety_action": "CRISIS_ROUTE",
+      "generation_status": "NOT_RUN",
+      "normal_rag_calls": 0,
+      "normal_prompt_calls": 0,
+      "runtime_calls": 0,
+      "citations": 0
+    },
+    "output_unsafe": {
+      "status": "PASS_OUTPUT_SAFETY_REVIEW_REQUIRED",
+      "http_status": 202,
+      "input_safety": "PROCEED",
+      "runtime_type": "evaluation-only HTTP harness",
+      "candidate_buffered": true,
+      "output_safety_reached": true,
+      "safety_action": "REVIEW_REQUIRED",
+      "normal_persistence": false,
+      "normal_response_content": 0,
+      "report_persisted_for_review": true,
+      "runtime_model_version": "d3val-output-unsafe-1.0",
+      "candidate_identity": "exact accepted in-process Backend/Safety synthetic clinical-overreach candidate"
+    },
+    "safety_down": {
+      "status": "PASS_FAIL_CLOSED",
+      "http_status": 503,
+      "normal_generation": false,
+      "runtime_calls": 0,
+      "detail": "Safety dependency unavailable before normal generation"
+    },
+    "rag_no_evidence": {
+      "status": "PASS_FAIL_CLOSED",
+      "http_status": 502,
+      "rag_raw_hits": 1,
+      "eligible_bundle_items": 0,
+      "d3_1": 0,
+      "runtime_calls": 0,
+      "citations": 0,
+      "fallback": "none",
+      "detail": "teacher-only synthetic evidence returned by RAG; student trusted eligibility refused the bundle"
+    },
+    "synthetic_only": true,
+    "accepted_runtime_health_status": "READY",
+    "normal_rag_health_status": "READY",
+    "k12_rag_health_status": "READY",
+    "ineligible_rag_health_status": "READY"
+  },
+  "remaining_p0": [],
+  "remaining_p1": [
+    "Full Backend Pyright retains two baseline SQLAlchemy import-resolution errors; candidate adds zero.",
+    "Historical GPU resource snapshot and fixed output budget robustness remain deferred to D4/D5 as previously recorded.",
+    "Cleanup of already-exited PID remains a D5 operations follow-up as previously recorded."
+  ],
+  "publication": {
+    "merge": false,
+    "push": false,
+    "accepted_tag": "NOT_CREATED",
+    "integration_commit": null
+  },
+  "recommendation": "READY_FOR_CONTROLLER_REVIEW",
+  "controller_review_focus": [
+    "Review the fresh GPU-backed Normal HTTP evidence, including GPU residency and trace-correlated Runtime/output/persistence records.",
+    "Confirm D3SEAM 20/20, D3INT 60/60, D3VAL 16/16, semantic deviations 0, and mission deviations 0.",
+    "Do not merge, push, tag, or start D4 from this worktree."
+  ],
+  "seam_commit": "0dc5c7762baf3ba1292de6e6e9d540e4aeafc58d",
+  "integration_commit": null,
+  "current_head": "0dc5c7762baf3ba1292de6e6e9d540e4aeafc58d",
+  "seam_decision": "14_docs/project-controller/D3_PROMPT_PROJECTION_SEAM_TECHNICAL_DECISION_V1.md",
+  "d3_seam": {
+    "status": "PASS",
+    "decisions": "D3SEAM-01..20",
+    "passed": 20,
+    "expected": 20,
+    "projection_consumed": true,
+    "projection_type": "PromptFacingProjection",
+    "api": "render_projected",
+    "formal_backend_legacy_render_used": false,
+    "same_bundle_resolution": true,
+    "second_retrieval_for_citation": false,
+    "template_bytes_changed": false,
+    "template_hashes_changed": false,
+    "causal_test": "PASS",
+    "negative_tests": "PASS"
+  },
+  "validation_fixtures": {
+    "university_path": "D:\\Projects\\StudentMentalHealthAI-d3-backend-integration\\12_evaluation\\d3-slice4-backend-integration-r1\\fixtures\\university_freshmen_synthetic_validation_corpus.jsonl",
+    "university_sha256": "519efd711d49240f4515713d47a58a250cc84a70457f4997646d98d7ace1ade5",
+    "university_identity": "SYNTHETIC_VALIDATION_ONLY",
+    "university_target_population": "UNIVERSITY_FRESHMEN_SYNTHETIC_DEMO",
+    "university_record_count": 2,
+    "ineligible_path": "D:\\Projects\\StudentMentalHealthAI-d3-backend-integration\\12_evaluation\\d3-slice4-backend-integration-r1\\fixtures\\rag_ineligible_validation_corpus.jsonl",
+    "ineligible_sha256": "0998157f36c38a635fc146695f2fd8293f95cdd8c6a8143e07de16b2367452a2",
+    "ineligible_identity": "SYNTHETIC_VALIDATION_ONLY",
+    "accepted_k12_source_sha256": "2d5736ae741d675ca5856b8004665ea3043aeccea34e2b007498ff04c2b501a2",
+    "accepted_k12_copy_sha256": "2d5736ae741d675ca5856b8004665ea3043aeccea34e2b007498ff04c2b501a2",
+    "accepted_k12_copy_mutated": false,
+    "generated_indexes_committed": false,
+    "real_student_data": false
+  },
+  "accepted_runtime": {
+    "runtime_service": "D:\\Projects\\StudentMentalHealthAI-gpu-product-integration-closure\\12_evaluation\\gpu-product-integration-closure-r1\\runtime_acceptance_server.py",
+    "runtime_version": "0.1.0-gpi-r1",
+    "ollama_version": "0.33.3",
+    "provider_model": "qwen2.5:7b-instruct-q4_K_M",
+    "logical_model": "qwen2.5-0.5b-engineering",
+    "logical_model_alias_note": "Historical registry alias only; it resolves to the accepted qwen2.5:7b-instruct-q4_K_M provider and is not the lightweight 0.5B provider.",
+    "contract_model": "MODEL_local_gpu_acceptance",
+    "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+    "ollama_endpoint": "http://127.0.0.1:11435",
+    "cloud_fallback": false
+  },
+  "resource_observation": {
+    "ollama_endpoint": "http://127.0.0.1:11435",
+    "observed_hardware": "NVIDIA GeForce RTX 3060; accepted 7B resident on GPU",
+    "gpu_adapter": "NVIDIA GeForce RTX 3060",
+    "gpu_uuid": "GPU-37679be8-8a92-0d64-3d2a-323165a4db63",
+    "driver_version": "596.36",
+    "gpu_memory_total_mb": 12288,
+    "gpu_memory_used_mb_after_request": 5029,
+    "size_vram_bytes": 5133943438,
+    "gpu_attribution_claimed": true,
+    "historical_gpu_evidence_reused_as_current": false
+  },
+  "normal_gpu_final": {
+    "status": "PASS",
+    "accepted_runtime_health_status": "READY",
+    "normal": {
+      "status": "PASS",
+      "http_status": 202,
+      "response_status": "generated",
+      "normal_generation": true,
+      "input_safety": "PROCEED",
+      "assessment_binding": "reached",
+      "d3_2": "reached",
+      "rag": "reached; 2 eligible synthetic validation chunks",
+      "evidence_bundle": "assembled; same bundle hash retained through persistence",
+      "d3_3": "reached",
+      "d3_1": "reached; render_projected",
+      "runtime": "success; accepted GPU Runtime returned candidate",
+      "output_safety": "reached; PROCEED",
+      "persistence": "report persisted after Output Safety",
+      "report_id": "REPORT_3b886aabfc204d6d8f1046b8541db7bb",
+      "generation_id": "GEN_fb8407d26b574438b65e1af17329565d",
+      "conversation_count": 0,
+      "report_count": 1,
+      "same_bundle_resolution": true,
+      "second_retrieval": false,
+      "prompt_projection_consumed": true,
+      "formal_backend_legacy_render_calls": 0,
+      "runtime_candidate_returned": true,
+      "runtime_latency_ms": 4208.0,
+      "normal_elapsed_seconds": 11.623,
+      "candidate_buffered": true,
+      "output_safety_reached": true,
+      "normal_persistence": true,
+      "raw_theta_se_in_prompt": false,
+      "new_psychology_claim_generation": false,
+      "teacher_parent_admin_boundaries_unchanged": true,
+      "fake_or_fallback_citations": 0,
+      "response_citations": 2,
+      "fallback": false,
+      "real_student_data": false,
+      "d2_new_intake_used": false,
+      "request_id": "REQ_ef2712c0255d7f6c0889c832c5c3a095",
+      "trace_id": "TRACE_ca48a4646305e90081af196ce46c39c8",
+      "transaction_id": "TX_ca48a4646305e90081af196ce46c39c8",
+      "context_id": "CTX_ca48a4646305e90081af196ce46c39c8",
+      "retrieval_id": "RETR_987f10c8f6f117d7b5e8",
+      "bundle_hash": "a1f7ca1223666731bb94d8cdfd0a65b3620cbfaf3d45ea55409eeeff6307914b",
+      "d3_2_policy_id": "POLICY_assessment_synthetic_measurement_only",
+      "d3_3_policy_id": "ROLE_PROJECTION_STUDENT_SELF_V09",
+      "d3_1_prompt_id": "PROMPT_student_synthetic_v1",
+      "d3_1_prompt_hash": "sha256:8f821afbcbe53b4741982ac9cac02961151ab1b2f15b2fdb2786e5707baa237e",
+      "stage_ledger": {
+        "transaction_id": "TX_ca48a4646305e90081af196ce46c39c8",
+        "context_id": "CTX_ca48a4646305e90081af196ce46c39c8",
+        "state": "COMPLETED",
+        "current": "PERSISTED",
+        "stages": [
+          "REQUEST_AUTHENTICATED",
+          "REQUEST_AUTHORIZED",
+          "INPUT_SAFETY_EVALUATED",
+          "ASSESSMENT_BOUND",
+          "INTERPRETATION_READY",
+          "RETRIEVAL_BOUND",
+          "ROLE_PROJECTED",
+          "PROMPT_ASSEMBLED",
+          "GENERATION_BUFFERED",
+          "OUTPUT_SAFETY_EVALUATED",
+          "PERSISTED"
+        ],
+        "records": [
+          {
+            "stage": "REQUEST_AUTHENTICATED",
+            "predecessor": null,
+            "transaction_id": "TX_ca48a4646305e90081af196ce46c39c8",
+            "context_id": "CTX_ca48a4646305e90081af196ce46c39c8",
+            "occurred_at": "2026-09-21T13:36:53.945Z",
+            "metadata": {
+              "principal_id": "USER_student_a"
+            },
+            "safety_action": null
+          },
+          {
+            "stage": "REQUEST_AUTHORIZED",
+            "predecessor": "REQUEST_AUTHENTICATED",
+            "transaction_id": "TX_ca48a4646305e90081af196ce46c39c8",
+            "context_id": "CTX_ca48a4646305e90081af196ce46c39c8",
+            "occurred_at": "2026-09-21T13:36:53.945Z",
+            "metadata": {
+              "product_role": "STUDENT",
+              "subject_id": "SUBJ_d3_2_demo_001",
+              "audience_role": "STUDENT_SELF"
+            },
+            "safety_action": null
+          },
+          {
+            "stage": "INPUT_SAFETY_EVALUATED",
+            "predecessor": "REQUEST_AUTHORIZED",
+            "transaction_id": "TX_ca48a4646305e90081af196ce46c39c8",
+            "context_id": "CTX_ca48a4646305e90081af196ce46c39c8",
+            "occurred_at": "2026-09-21T13:36:56.512Z",
+            "metadata": {
+              "reason_codes": [
+                "NO_BLOCKING_SIGNAL",
+                "ASSESSMENT_SIGNAL_RECEIVED",
+                "CONTENT_SAFE"
+              ]
+            },
+            "safety_action": "PROCEED"
+          },
+          {
+            "stage": "ASSESSMENT_BOUND",
+            "predecessor": "INPUT_SAFETY_EVALUATED",
+            "transaction_id": "TX_ca48a4646305e90081af196ce46c39c8",
+            "context_id": "CTX_ca48a4646305e90081af196ce46c39c8",
+            "occurred_at": "2026-09-21T13:36:56.512Z",
+            "metadata": {
+              "assessment_id": "ASSESS_d3_2_demo_001",
+              "assessment_hash": "sha256:02304476f02319a942e5ace64737781e501ddbf97a2a8561ef479a8635a9ece2",
+              "instrument_id": "CURRENT_SYNTHETIC_GRM",
+              "instrument_version": "synthetic_item_bank.v1 / demo.v1",
+              "compatibility_fixture_id": null,
+              "compatibility_fixture_version": null,
+              "compatibility_approval_reference": null
+            },
+            "safety_action": null
+          },
+          {
+            "stage": "INTERPRETATION_READY",
+            "predecessor": "ASSESSMENT_BOUND",
+            "transaction_id": "TX_ca48a4646305e90081af196ce46c39c8",
+            "context_id": "CTX_ca48a4646305e90081af196ce46c39c8",
+            "occurred_at": "2026-09-21T13:36:56.580Z",
+            "metadata": {
+              "d3_2_policy_id": "POLICY_assessment_synthetic_measurement_only",
+              "d3_2_policy_version": "1.0.0",
+              "d3_2_policy_hash": "sha256:7c61cf80dc68561c78618c2d6e3859295b0dc53a291a1805c9bb623c5b7714a4"
+            },
+            "safety_action": null
+          },
+          {
+            "stage": "RETRIEVAL_BOUND",
+            "predecessor": "INTERPRETATION_READY",
+            "transaction_id": "TX_ca48a4646305e90081af196ce46c39c8",
+            "context_id": "CTX_ca48a4646305e90081af196ce46c39c8",
+            "occurred_at": "2026-09-21T13:36:57.303Z",
+            "metadata": {
+              "retrieval_id": "RETR_987f10c8f6f117d7b5e8",
+              "bundle_hash": "a1f7ca1223666731bb94d8cdfd0a65b3620cbfaf3d45ea55409eeeff6307914b"
+            },
+            "safety_action": "PROCEED"
+          },
+          {
+            "stage": "ROLE_PROJECTED",
+            "predecessor": "RETRIEVAL_BOUND",
+            "transaction_id": "TX_ca48a4646305e90081af196ce46c39c8",
+            "context_id": "CTX_ca48a4646305e90081af196ce46c39c8",
+            "occurred_at": "2026-09-21T13:36:57.314Z",
+            "metadata": {
+              "d3_3_policy_id": "ROLE_PROJECTION_STUDENT_SELF_V09",
+              "d3_3_policy_version": "1.0.0",
+              "d3_3_policy_hash": "sha256:7396fa34f2e08d24cf415bd526d3647b254492f8ec715150e76e7c22515e40d4"
+            },
+            "safety_action": null
+          },
+          {
+            "stage": "PROMPT_ASSEMBLED",
+            "predecessor": "ROLE_PROJECTED",
+            "transaction_id": "TX_ca48a4646305e90081af196ce46c39c8",
+            "context_id": "CTX_ca48a4646305e90081af196ce46c39c8",
+            "occurred_at": "2026-09-21T13:36:57.395Z",
+            "metadata": {
+              "prompt_id": "PROMPT_student_synthetic_v1",
+              "prompt_version": "1.0.0",
+              "prompt_content_hash": "sha256:8f821afbcbe53b4741982ac9cac02961151ab1b2f15b2fdb2786e5707baa237e",
+              "content_population_mapping_id": "MAP_SYNTHETIC_DEMO_TO_UNIVERSITY_FRESHMEN_CONTENT_V1",
+              "content_population_mapping_version": "1.0.0",
+              "content_population": "UNIVERSITY_FRESHMEN_SYNTHETIC_DEMO"
+            },
+            "safety_action": null
+          },
+          {
+            "stage": "GENERATION_BUFFERED",
+            "predecessor": "PROMPT_ASSEMBLED",
+            "transaction_id": "TX_ca48a4646305e90081af196ce46c39c8",
+            "context_id": "CTX_ca48a4646305e90081af196ce46c39c8",
+            "occurred_at": "2026-09-21T13:37:01.603Z",
+            "metadata": {
+              "runtime_label": "REAL_HTTP",
+              "model_id": "MODEL_local_gpu_acceptance",
+              "model_version": "qwen2.5-7b-instruct-q4_K_M",
+              "runtime_version": "0.1.0-gpi-r1"
+            },
+            "safety_action": null
+          },
+          {
+            "stage": "OUTPUT_SAFETY_EVALUATED",
+            "predecessor": "GENERATION_BUFFERED",
+            "transaction_id": "TX_ca48a4646305e90081af196ce46c39c8",
+            "context_id": "CTX_ca48a4646305e90081af196ce46c39c8",
+            "occurred_at": "2026-09-21T13:37:05.422Z",
+            "metadata": {
+              "reason_codes": [
+                "NO_BLOCKING_SIGNAL",
+                "CONTENT_SAFE"
+              ]
+            },
+            "safety_action": "PROCEED"
+          },
+          {
+            "stage": "PERSISTED",
+            "predecessor": "OUTPUT_SAFETY_EVALUATED",
+            "transaction_id": "TX_ca48a4646305e90081af196ce46c39c8",
+            "context_id": "CTX_ca48a4646305e90081af196ce46c39c8",
+            "occurred_at": "2026-09-21T13:37:05.453Z",
+            "metadata": {
+              "report_id": "REPORT_3b886aabfc204d6d8f1046b8541db7bb",
+              "generation_id": "GEN_fb8407d26b574438b65e1af17329565d",
+              "bundle_hash": "a1f7ca1223666731bb94d8cdfd0a65b3620cbfaf3d45ea55409eeeff6307914b"
+            },
+            "safety_action": null
+          }
+        ],
+        "terminal_action": null,
+        "terminal_reason": null
+      },
+      "gpu_residency": {
+        "size_vram_bytes": 5133943438,
+        "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e"
+      }
+    },
+    "gpu_residency": {
+      "size_vram_bytes": 5133943438,
+      "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e"
+    }
+  },
+  "gpu_product_tree_fingerprint": {
+    "pre_path": "D:\\Temp\\smhai-d3-closure\\gpu_normal_pre_product_fingerprint.json",
+    "post_path": "D:\\Temp\\smhai-d3-closure\\gpu_normal_post_product_fingerprint.json",
+    "pre_sha256": "079e78633997f3b3bad06578296170f7b93a8dd4387e6aa74455879e6a9024a4",
+    "post_sha256": "079e78633997f3b3bad06578296170f7b93a8dd4387e6aa74455879e6a9024a4",
+    "file_count": 79,
+    "unchanged": true
+  }
+}
