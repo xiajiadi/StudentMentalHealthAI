@@ -1,0 +1,70 @@
+{
+  "schema_version": "project-controller-state.v2",
+  "updated_at": "2026-09-21",
+  "authority": "Project Controller",
+  "phase": "D3_ENGINEERING_COMPLETE_SYNTHETIC_DEMO_SCOPE",
+  "d3_overall_status": "ENGINEERING_COMPLETE / SYNTHETIC_DEMO_SCOPE",
+  "d3_slices": [
+    {
+      "id": "D3-1",
+      "name": "Prompt Engine Core",
+      "status": "FULL PASS / CONTROLLER ACCEPTED",
+      "evidence": "12_evaluation/d3-slice1-acceptance-closure/d3_slice1_acceptance_closure.json",
+      "accepted_engineering_commit": "c6727af1e722134617952383b34db596ed26ca15"
+    },
+    {
+      "id": "D3-2",
+      "name": "Assessment Interpretation Adapter",
+      "status": "FULL PASS / CONTROLLER ACCEPTED",
+      "evidence": "12_evaluation/d3-slice2-assessment-adapter-r1/d3_slice2_assessment_adapter_evaluation.json",
+      "final_closure_commit": "3539927939ff0340871bb01a329feddb830875e6"
+    },
+    {
+      "id": "D3-3",
+      "name": "Role Projection & Minimum Disclosure",
+      "status": "FULL PASS / CONTROLLER ACCEPTED",
+      "tag": "d3-slice3-r1-accepted",
+      "tag_target": "cb28fe38b2e1df1b06c96610419691dd2d7924db"
+    },
+    {
+      "id": "D3-4",
+      "name": "Trusted Backend Orchestration & Evidence Binding",
+      "status": "FULL PASS / CONTROLLER ACCEPTED",
+      "tested_integration_commit": "b1a99326885be0fd93adbf8a46db8c14740bef63",
+      "evidence_closure_commit": "80140de6fbb63d3239ecc425f9c3daaaf34fb4d7",
+      "tag": "d3-slice4-r1-accepted",
+      "tag_target": "80140de6fbb63d3239ecc425f9c3daaaf34fb4d7"
+    }
+  ],
+  "acceptance_boundaries": {
+    "psychology_approval": false,
+    "psychometric_validity": false,
+    "legal_consent_approval": false,
+    "real_student_authorization": false,
+    "real_pilot_readiness": false,
+    "production_enablement": false,
+    "real_pilot_status": "BLOCKED",
+    "future_population_or_parent_expansion": "possible only after new research, review, and validation"
+  },
+  "preserved_p1": [
+    "baseline Backend Pyright SQLAlchemy import-resolution errors",
+    "historical GPU snapshot / fixed-output-budget robustness follow-up",
+    "D5 cleanup PID follow-up"
+  ],
+  "publication_scope": {
+    "tag_created": "d3-slice4-r1-accepted",
+    "tag_target": "80140de6fbb63d3239ecc425f9c3daaaf34fb4d7",
+    "product_source_changed": false,
+    "root_openapi_contracts_changed": false,
+    "merge": false,
+    "push": false,
+    "d4_started": false,
+    "d4_implementation_authorized": false
+  },
+  "authoritative_references": [
+    "12_evaluation/d3-slice4-backend-integration-r1/d3_slice4_backend_integration_evaluation.json",
+    "12_evaluation/d3-slice4-backend-integration-r1/D3VAL_REAL_HTTP_EVIDENCE.json",
+    "14_docs/project-controller/D3_SLICE4_BACKEND_INTEGRATION_EVIDENCE.md",
+    "14_docs/project-controller/D3_SLICE4_DECISION_FIDELITY_REPORT.md"
+  ]
+}
