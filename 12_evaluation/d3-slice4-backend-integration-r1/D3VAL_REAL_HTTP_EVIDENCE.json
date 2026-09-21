@@ -2949,7 +2949,11 @@
       "size_vram_bytes": 5133943438,
       "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e"
     },
-    "normal_elapsed_seconds": 11.623
+    "normal_elapsed_seconds": 11.623,
+    "tested_integration_commit": "b1a99326885be0fd93adbf8a46db8c14740bef63",
+    "current_product_commit": "b1a99326885be0fd93adbf8a46db8c14740bef63",
+    "working_tree_at_integration_commit": "CLEAN",
+    "evidence_binding_note": "Evidence Closure Commit is created after this record; its own SHA is intentionally not embedded."
   },
   "remaining_p0": [],
   "remaining_p1": [
@@ -2971,5 +2975,118 @@
     "post_sha256": "079e78633997f3b3bad06578296170f7b93a8dd4387e6aa74455879e6a9024a4",
     "file_count": 79,
     "unchanged": true
-  }
+  },
+  "tested_integration_commit": "b1a99326885be0fd93adbf8a46db8c14740bef63",
+  "current_product_commit": "b1a99326885be0fd93adbf8a46db8c14740bef63",
+  "working_tree_at_integration_commit": "CLEAN",
+  "authoritative_final_attempt_id": "GPU_FINAL",
+  "normal_attempts": [
+    {
+      "attempt_id": "CPU_RESOURCE_BLOCKED",
+      "status": "HISTORICAL_BLOCKED",
+      "authoritative_final": false,
+      "source": "D3-4 pre-GPU validation evidence; preserved for resource-dependent fail-closed history",
+      "hardware": "CPU-only",
+      "size_vram_bytes": 0,
+      "runtime_version": "0.1.0-gpi-r1",
+      "provider_model": "qwen2.5:7b-instruct-q4_K_M",
+      "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+      "http_status": 503,
+      "error": "dependency_unavailable",
+      "runtime_result": "REQUEST_TIMEOUT at unchanged 60-second product budget; no candidate returned",
+      "output_safety": "NOT_REACHED",
+      "persistence": false
+    },
+    {
+      "attempt_id": "GPU_FINAL",
+      "status": "PASS",
+      "authoritative_final": true,
+      "request_id": "REQ_ef2712c0255d7f6c0889c832c5c3a095",
+      "trace_id": "TRACE_ca48a4646305e90081af196ce46c39c8",
+      "transaction_id": "TX_ca48a4646305e90081af196ce46c39c8",
+      "context_id": "CTX_ca48a4646305e90081af196ce46c39c8",
+      "bundle_hash": "a1f7ca1223666731bb94d8cdfd0a65b3620cbfaf3d45ea55409eeeff6307914b",
+      "stages": [
+        "REQUEST_AUTHENTICATED",
+        "REQUEST_AUTHORIZED",
+        "INPUT_SAFETY_EVALUATED",
+        "ASSESSMENT_BOUND",
+        "INTERPRETATION_READY",
+        "RETRIEVAL_BOUND",
+        "ROLE_PROJECTED",
+        "PROMPT_ASSEMBLED",
+        "GENERATION_BUFFERED",
+        "OUTPUT_SAFETY_EVALUATED",
+        "PERSISTED"
+      ],
+      "http_status": 202,
+      "gpu": "NVIDIA GeForce RTX 3060",
+      "size_vram_bytes": 5133943438,
+      "runtime_version": "0.1.0-gpi-r1",
+      "provider_model": "qwen2.5:7b-instruct-q4_K_M",
+      "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+      "runtime_latency_ms": 4208,
+      "normal_elapsed_seconds": 11.623,
+      "candidate_buffered": true,
+      "output_safety": "PROCEED",
+      "normal_persistence": true
+    }
+  ],
+  "normal_attempt_history": [
+    {
+      "attempt_id": "CPU_RESOURCE_BLOCKED",
+      "status": "HISTORICAL_BLOCKED",
+      "authoritative_final": false,
+      "source": "D3-4 pre-GPU validation evidence; preserved for resource-dependent fail-closed history",
+      "hardware": "CPU-only",
+      "size_vram_bytes": 0,
+      "runtime_version": "0.1.0-gpi-r1",
+      "provider_model": "qwen2.5:7b-instruct-q4_K_M",
+      "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+      "http_status": 503,
+      "error": "dependency_unavailable",
+      "runtime_result": "REQUEST_TIMEOUT at unchanged 60-second product budget; no candidate returned",
+      "output_safety": "NOT_REACHED",
+      "persistence": false
+    },
+    {
+      "attempt_id": "GPU_FINAL",
+      "status": "PASS",
+      "authoritative_final": true,
+      "request_id": "REQ_ef2712c0255d7f6c0889c832c5c3a095",
+      "trace_id": "TRACE_ca48a4646305e90081af196ce46c39c8",
+      "transaction_id": "TX_ca48a4646305e90081af196ce46c39c8",
+      "context_id": "CTX_ca48a4646305e90081af196ce46c39c8",
+      "bundle_hash": "a1f7ca1223666731bb94d8cdfd0a65b3620cbfaf3d45ea55409eeeff6307914b",
+      "stages": [
+        "REQUEST_AUTHENTICATED",
+        "REQUEST_AUTHORIZED",
+        "INPUT_SAFETY_EVALUATED",
+        "ASSESSMENT_BOUND",
+        "INTERPRETATION_READY",
+        "RETRIEVAL_BOUND",
+        "ROLE_PROJECTED",
+        "PROMPT_ASSEMBLED",
+        "GENERATION_BUFFERED",
+        "OUTPUT_SAFETY_EVALUATED",
+        "PERSISTED"
+      ],
+      "http_status": 202,
+      "gpu": "NVIDIA GeForce RTX 3060",
+      "size_vram_bytes": 5133943438,
+      "runtime_version": "0.1.0-gpi-r1",
+      "provider_model": "qwen2.5:7b-instruct-q4_K_M",
+      "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+      "runtime_latency_ms": 4208,
+      "normal_elapsed_seconds": 11.623,
+      "candidate_buffered": true,
+      "output_safety": "PROCEED",
+      "normal_persistence": true
+    }
+  ],
+  "evidence_binding_note": "The later evidence-only closure commit binds this record; its own SHA is intentionally not embedded in the record.",
+  "controller_acceptance": false,
+  "candidate_commit": "b1a99326885be0fd93adbf8a46db8c14740bef63",
+  "integration_commit": "b1a99326885be0fd93adbf8a46db8c14740bef63",
+  "current_head": "b1a99326885be0fd93adbf8a46db8c14740bef63"
 }

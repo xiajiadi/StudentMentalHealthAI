@@ -5,6 +5,7 @@
 **Baseline:** d3-slice3-r1-accepted / cb28fe38b2e1df1b06c96610419691dd2d7924db
 **Branch:** exp/d3-backend-integration-v1
 **Worktree:** D:\Projects\StudentMentalHealthAI-d3-backend-integration
+**Integration Commit 2:** `b1a99326885be0fd93adbf8a46db8c14740bef63`
 
 This report compares the implementation and the fresh evidence with the
 Frozen Technical Decision D3_BACKEND_INTEGRATION_TECHNICAL_DECISION_V1.md.
@@ -100,7 +101,7 @@ also materially closed.
 | D3INT-57 | PASS | The current route inventory is complete; support and generation converge on the canonical orchestrator, retrieval is side-effect free, and no preview/regenerate/retry/raw Runtime/legacy route exists. Negative tests cover every route that is present. |
 | D3INT-58 | PASS | Fresh D3/backend tests cover trusted composition, bundle hash/tamper, unknown and cross-retrieval citations, eligibility, D2 exclusion, TOCTOU, same-bundle display, role boundaries, and idempotency. |
 | D3INT-59 | PASS | Fresh test, static, compile/import, accepted-module, CAT, RAG, Safety, Backend, Root, OpenAPI, frozen-root, and bounded real-HTTP results are recorded with their actual pass/fail outcomes and environment facts. |
-| D3INT-60 | PASS | The seam commit is local, the GPU Normal hard gate is green, and the reviewed tree is ready for the authorized local Integration Commit 2; merge, push, and accepted tag remain untouched. |
+| D3INT-60 | PASS | The seam commit is local, the GPU Normal hard gate is green, and Integration Commit 2 is already bound at `b1a99326885be0fd93adbf8a46db8c14740bef63`; this record proceeds to one evidence-only closure commit, with merge, push, and accepted tag untouched. |
 
 ### Decision precedence note
 
@@ -151,6 +152,7 @@ No product or policy change is authorized by this closure.
   passed`; D3 focused `47 passed`; Backend contracts `16 passed`; Root `13/13`;
   OpenAPI PASS; frozen-root `8/8`; Ruff, format, compile/import, and diff
   checks pass.
+- The historical CPU-only attempt remains preserved as non-authoritative: `size_vram=0`, HTTP 503 `dependency_unavailable`, Runtime `REQUEST_TIMEOUT`, no candidate, and no persistence. The authoritative final Normal attempt is the GPU-backed `GPU_FINAL` record.
 - GPU Normal is HTTP 202 with `data.status=generated`, eleven completed ledger
   stages, Runtime candidate buffering, Output Safety PROCEED, and persistence;
 - Real HTTP output-unsafe is `REVIEW_REQUIRED` after candidate buffering;
@@ -165,8 +167,9 @@ with zero semantic or mission deviations. D3VAL-01..16 are PASS and frozen.
 Root, OpenAPI, frozen-root, accepted module source, template bytes, and template
 hashes remain unchanged. The sealed accepted Runtime Normal hard gate is green
 with GPU residency, complete stage ledger, Output Safety PROCEED, and
-post-safety persistence. The reviewed tree is ready for the authorized local
-Integration Commit 2. The output-unsafe, population, evidence, crisis, and
-Safety-down gates have fresh real HTTP evidence.
+post-safety persistence. Integration Commit 2 is already bound at `b1a99326885be0fd93adbf8a46db8c14740bef63`;
+the remaining publication step is one evidence-only closure commit. The
+output-unsafe, population, evidence, crisis, and Safety-down gates have fresh
+real HTTP evidence.
 
 No merge, push, tag, or D4 work was performed.

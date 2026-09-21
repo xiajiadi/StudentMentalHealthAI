@@ -48,7 +48,7 @@ legacy renderer.
 
 The seam gates passed in the candidate worktree: Prompt Engine full suite,
 D3-3 focused checks, Ruff check, Ruff format check for touched files, targeted
-Pyright, compile/import, and `git diff --check`. The second integration commit
-is a separate local publication boundary after the final GPU Normal evidence
-review; this seam decision does not create it. The D3-4 evidence and evaluation
-records now contain the GPU-backed Normal closure.
+Pyright, compile/import, and `git diff --check`. Integration Commit 2 `b1a99326885be0fd93adbf8a46db8c14740bef63` is the separate
+local publication boundary after the final GPU Normal evidence review; this seam
+decision does not create it. The D3-4 evidence and evaluation records contain
+the GPU-backed Normal closure.
