@@ -183,6 +183,9 @@ class InMemoryReportRepository:
     def get(self, report_id: str) -> ReportRecord | None:
         return self._records.get(report_id)
 
+    def delete(self, report_id: str) -> None:
+        self._records.pop(report_id, None)
+
 
 class InMemoryReviewProjectionRepository:
     def __init__(self) -> None:
@@ -219,7 +222,23 @@ class InMemoryIdempotencyStore:
         return self._records.get((scope, key))
 
     def put(self, scope: str, key: str, record: IdempotencyRecord) -> None:
-        self._records.setdefault((scope, key), replace(record))
+        existing = self._records.get((scope, key))
+        if existing is None or existing.fingerprint == record.fingerprint:
+            self._records[(scope, key)] = replace(record)
+
+    def claim(self, scope: str, key: str, request_fingerprint: str) -> bool:
+        """Atomically reserve a key before a potentially slow workflow."""
+
+        identity = (scope, key)
+        if identity in self._records:
+            return False
+        self._records[identity] = IdempotencyRecord(
+            fingerprint=request_fingerprint,
+            status_code=0,
+            body={},
+            created_at=time.time(),
+        )
+        return True
 
 
 class InMemoryUnitOfWork:

@@ -228,6 +228,7 @@ async def create_generation(
         model_id=payload.model_policy.model_id,
         provider_class=payload.model_policy.provider_class,
         message_override="Synthetic structured generation request",
+        subject_id_assertion=payload.subject_id,
     )
     body = envelope(request, result.generation)
     await remember_result_async(
@@ -250,11 +251,7 @@ async def create_generation(
 )
 async def get_report(request: Request, report_id: str, actor: CurrentActor) -> JSONResponse:
     report = await request.app.state.container.support.report_for_actor(actor, report_id)
-    expose_generation = actor.role in {
-        BackendRole.STUDENT,
-        BackendRole.REVIEWER,
-        BackendRole.ADMIN,
-    }
+    expose_generation = actor.role in {BackendRole.STUDENT, BackendRole.REVIEWER}
     data = ReportDto(
         report_id=report.report_id,
         assessment_id=report.assessment_id,
@@ -265,7 +262,7 @@ async def get_report(request: Request, report_id: str, actor: CurrentActor) -> J
         generation=report.generation
         if expose_generation and report.status == "generated"
         else None,
-        citations=report.citations,
+        citations=report.citations if actor.role is not BackendRole.ADMIN else [],
     )
     return JSONResponse(envelope(request, data))
 
