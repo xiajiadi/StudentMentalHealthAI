@@ -6,7 +6,8 @@
 **Branch:** `exp/d3-backend-integration-v1`
 **Worktree:** `D:\Projects\StudentMentalHealthAI-d3-backend-integration`
 **Seam Commit 1:** `0dc5c7762baf3ba1292de6e6e9d540e4aeafc58d`
-**Integration Commit 2:** authorized local publication boundary after read-only review
+**Integration Commit 2:** `b1a99326885be0fd93adbf8a46db8c14740bef63`
+**Evidence closure:** this record is bound to Integration Commit 2; the subsequent evidence-only closure commit intentionally is not embedded here
 **Controller acceptance:** not granted
 
 This is engineering-only, synthetic/demo-bounded evidence. It does not grant
@@ -142,12 +143,29 @@ suggestion, and `synthetic fixture` disclaimer). The real HTTP result is
 | Frozen Root | 8/8 unchanged |
 | `git diff --check` | exit 0 |
 
+## Normal attempt history
+
+The Normal gate has two explicitly separated attempts. The first is retained as
+historical resource-blocked evidence and is not the authoritative result:
+
+- `CPU_RESOURCE_BLOCKED`: CPU-only, `size_vram=0`, HTTP 503
+  `dependency_unavailable`, Runtime `REQUEST_TIMEOUT` at the unchanged 60-second
+  product budget, no candidate, Output Safety not reached, and no persistence.
+  This attempt is `HISTORICAL_BLOCKED` and `authoritative_final=false`.
+- `GPU_FINAL`: authoritative final attempt on NVIDIA GeForce RTX 3060 with
+  accepted 7B residency (`size_vram=5133943438`), HTTP 202, complete eleven-stage
+  ledger through `PERSISTED`, candidate buffered, Output Safety `PROCEED`, and
+  persistence after Output Safety.
+
+The CPU timeout remains part of the historical record; it does not replace the
+GPU-backed Normal result.
+
 ## Commit and release boundary
 
-The product tree remained unchanged during GPU validation. The authorized local
-Integration Commit 2 may now be created from this reviewed worktree; merge,
-push, and tag remain forbidden. Real student data was not used. D4 was not
-started.
+The product tree remained unchanged during GPU validation. Integration Commit 2
+already exists at `b1a99326885be0fd93adbf8a46db8c14740bef63`; this evidence-only
+closure binds that commit. Merge, push, and tag remain forbidden. Real student
+data was not used. D4 was not started.
 
 Remaining P1 items are the documented two baseline Pyright errors, the historical
 GPU resource snapshot / fixed-output-budget robustness follow-up, and the D5
