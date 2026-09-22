@@ -27,7 +27,11 @@
     "split",
     "source_provenance",
     "version",
-    "hash"
+    "hash",
+    "forbidden_claims",
+    "privacy_expectations",
+    "deterministic_assertions",
+    "behavioral_rubric"
   ],
   "properties": {
     "schema_version": {
@@ -159,6 +163,7 @@
       "type": "string"
     },
     "hash": {
+      "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$"
     },
     "actor_role": {
@@ -194,6 +199,7 @@
             "type": "string"
           },
           "sha256": {
+            "type": "string",
             "pattern": "^[0-9a-f]{64}$"
           },
           "purpose": {

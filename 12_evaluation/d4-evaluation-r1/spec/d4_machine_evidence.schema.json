@@ -36,7 +36,8 @@
     "safety",
     "citation_support",
     "answerability",
-    "assessment_binding"
+    "assessment_binding",
+    "role_context"
   ],
   "properties": {
     "schema_version": {
@@ -81,6 +82,7 @@
       "type": "string"
     },
     "fixture_sha256": {
+      "type": "string",
       "pattern": "^[0-9a-f]{64}$"
     },
     "git_commit": {
@@ -283,9 +285,12 @@
     },
     "human_review": {
       "type": "object",
+      "additionalProperties": false,
       "required": [
         "required",
-        "status"
+        "status",
+        "disagreement_preserved",
+        "unresolved_decision"
       ],
       "properties": {
         "required": {
@@ -295,7 +300,8 @@
           "enum": [
             "NOT_REQUIRED",
             "PENDING",
-            "COMPLETE"
+            "COMPLETE",
+            "ESCALATED"
           ]
         },
         "packet_id": {
@@ -303,6 +309,12 @@
             "string",
             "null"
           ]
+        },
+        "disagreement_preserved": {
+          "type": "boolean"
+        },
+        "unresolved_decision": {
+          "type": "boolean"
         }
       }
     },
@@ -336,7 +348,11 @@
       "required": [
         "fixture_mode",
         "assessment_id_digest",
-        "fixture_identity"
+        "fixture_identity",
+        "fixture_version",
+        "source_identity",
+        "target_identity",
+        "compatibility_mapping"
       ],
       "properties": {
         "fixture_mode": {
@@ -353,8 +369,87 @@
         },
         "fixture_identity": {
           "type": "string"
+        },
+        "fixture_version": {
+          "type": "string"
+        },
+        "source_identity": {
+          "type": "string"
+        },
+        "target_identity": {
+          "type": "string"
+        },
+        "compatibility_mapping": {
+          "type": "string"
         }
       }
+    },
+    "role_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "actor_role",
+        "target_role",
+        "projection_mode",
+        "authorization_source",
+        "unavailable_actor_decision"
+      ],
+      "properties": {
+        "actor_role": {
+          "enum": [
+            "student",
+            "teacher",
+            "reviewer"
+          ]
+        },
+        "target_role": {
+          "enum": [
+            "student",
+            "teacher",
+            "parent",
+            "admin",
+            "reviewer"
+          ]
+        },
+        "projection_mode": {
+          "enum": [
+            "server_derived",
+            "approved_in_process_projection",
+            "forged_target_role_attempt"
+          ]
+        },
+        "authorization_source": {
+          "type": "string"
+        },
+        "unavailable_actor_decision": {
+          "enum": [
+            "NOT_APPLICABLE",
+            "CONTROLLER_DECISION_REQUIRED",
+            "REVIEWED_NEGATIVE_CASE"
+          ]
+        }
+      }
+    },
+    "false_refusal": {
+      "type": "object"
+    },
+    "chinese_behavior": {
+      "type": "object"
+    },
+    "behavioral": {
+      "type": "object"
+    },
+    "structured_output": {
+      "type": "object"
+    },
+    "availability": {
+      "type": "object"
+    },
+    "sealed_result": {
+      "type": "object"
+    },
+    "regression_fixture_promoted": {
+      "type": "boolean"
     }
   }
 }
