@@ -17,7 +17,7 @@
   "route": "/api/v1/support/requests",
   "request_id": "REQ_demo_001",
   "trace_id": "TRACE_demo_001",
-  "transaction_id": "TXN_demo_001",
+  "transaction_id": "TX_00000000000000000000000000000001",
   "stage": "precheck",
   "expected_invariant": "expected and observed response classes remain separate",
   "failure_type": null,

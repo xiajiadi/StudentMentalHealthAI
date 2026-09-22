@@ -127,10 +127,8 @@ def _evidence_record(
 ) -> dict[str, Any]:
     limitations = list(observation.limitations)
     transaction_id = observation.transaction_id
-    if transaction_id is not None and not re.fullmatch(
-        r"TXN_[A-Za-z0-9][A-Za-z0-9._-]*", transaction_id
-    ):
-        limitations.append("product_transaction_id_prefix_is_TX_not_TXN")
+    if transaction_id is not None and not re.fullmatch(r"TX_[0-9a-f]{32}", transaction_id):
+        limitations.append("product_transaction_id_did_not_match_TX_32_lower_hex")
         transaction_id = None
     fields: dict[str, Any] = {
         "case_id": observation.case_id,
@@ -258,7 +256,10 @@ async def _run() -> int:
             }
             for item in evidence
         ],
-        "product_source_changed": False,
+        # D4-2R is intentionally a repair run.  The product diff is checked by
+        # the Controller gates and is limited to the authorized 09_backend
+        # minimum-disclosure seam.
+        "product_source_changed": True,
         "real_student_data": False,
         "cloud_fallback": False,
         "d4_3_started": False,

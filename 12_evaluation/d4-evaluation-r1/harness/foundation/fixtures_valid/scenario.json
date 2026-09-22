@@ -16,7 +16,7 @@
     {
       "path": "03_assessment-adapter/fixtures/synthetic_assessment.v1.json",
       "fixture_version": "synthetic_assessment.v1",
-      "sha256": "174c27a4dccbb9e5656afa1d7d79db1920c610768c67ec0705bc58eff7c61398",
+      "sha256": "cb647c639188e0d1e752c8c842a649a0245a57849458f4cb26d9fc8b7a413abd",
       "purpose": "synthetic_only",
       "source_identity": "CURRENT_SYNTHETIC_GRM",
       "target_identity": "SYNTHETIC_STUDENT_DEMO",
@@ -37,7 +37,7 @@
   "split": "DEV",
   "source_provenance": "synthetic_case_authoring_v1",
   "version": "1.0.0",
-  "hash": "sha256:f55d1e8fc195868c7c7c71e8a16f23ffd391f5fbc108082668bdee4b49b7120a",
+  "hash": "sha256:ecbea6d1b2b8c635ff43048dba6afaa1131a636dd49cf03cbaeb568960b9a232",
   "forbidden_claims": [
     "diagnosis",
     "treatment",

@@ -100,8 +100,11 @@ def test_run_id_is_opaque_and_immutable() -> None:
 
 def test_split_tree_and_fixture_mode_are_isolated() -> None:
     summary = enforce_split_tree(DATASETS)
-    assert summary["case_count"] == 3
-    assert summary["split_counts"] == {"DEV": 1, "REGRESSION": 1, "SEALED_EVAL": 1}
+    # The regression partition contains the accepted foundation seed plus the
+    # 16-case D4-2 deterministic suite.  Keep the partition count explicit so
+    # an accidental fixture omission or addition fails closed.
+    assert summary["case_count"] == 19
+    assert summary["split_counts"] == {"DEV": 1, "REGRESSION": 17, "SEALED_EVAL": 1}
     assert summary["fixture_mode"] == "exact_d3_fixture"
     mixed = [deepcopy(_records()[0]), deepcopy(_records()[1])]
     mixed[1]["fixture_mode"] = "legacy_compatibility_fixture"

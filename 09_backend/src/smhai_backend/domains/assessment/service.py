@@ -5,7 +5,7 @@ from __future__ import annotations
 from uuid import uuid4
 
 from smhai_backend.core.async_utils import maybe_await
-from smhai_backend.core.errors import ErrorCode, error
+from smhai_backend.core.errors import BackendError, ErrorCode, error
 from smhai_backend.domains.audit import AuditService
 from smhai_backend.domains.authorization import NativeAuthorizationProvider
 from smhai_backend.domains.models import Actor, AssessmentRecord
@@ -122,11 +122,12 @@ class AssessmentService:
         request_id: str,
         trace_id: str,
     ) -> AssessmentRecord:
-        record = await self._get(assessment_id)
-        self.authorization.require(
+        record = await self._get_for_actor(
             actor,
-            "assessment:write",
-            resource={"subject_id": record.subject_id, "owner_user_id": actor.user_id},
+            assessment_id,
+            action="assessment:write",
+            request_id=request_id,
+            trace_id=trace_id,
         )
         if record.assessment["status"] not in {"created", "in_progress"}:
             raise error(ErrorCode.WORKFLOW_CONFLICT, detail="assessment is not accepting responses")
@@ -170,11 +171,12 @@ class AssessmentService:
         request_id: str,
         trace_id: str,
     ) -> AssessmentRecord:
-        record = await self._get(assessment_id)
-        self.authorization.require(
+        record = await self._get_for_actor(
             actor,
-            "assessment:complete",
-            resource={"subject_id": record.subject_id, "owner_user_id": actor.user_id},
+            assessment_id,
+            action="assessment:complete",
+            request_id=request_id,
+            trace_id=trace_id,
         )
         if record.assessment["status"] not in {"created", "in_progress"}:
             raise error(ErrorCode.WORKFLOW_CONFLICT, detail="assessment is already complete")
@@ -203,20 +205,32 @@ class AssessmentService:
         return record
 
     async def get_for_actor(
-        self, actor: Actor, assessment_id: str, *, action: str
+        self,
+        actor: Actor,
+        assessment_id: str,
+        *,
+        action: str,
+        request_id: str | None = None,
+        trace_id: str | None = None,
     ) -> AssessmentRecord:
-        record = await self._get(assessment_id)
-        self.authorization.require(
+        return await self._get_for_actor(
             actor,
+            assessment_id,
             action,
-            resource={"subject_id": record.subject_id, "owner_user_id": actor.user_id},
+            request_id=request_id,
+            trace_id=trace_id,
         )
-        return record
 
     async def state_for_actor(
         self, actor: Actor, assessment_id: str, *, action: str, request_id: str, trace_id: str
     ) -> AssessmentRecord:
-        record = await self.get_for_actor(actor, assessment_id, action=action)
+        record = await self.get_for_actor(
+            actor,
+            assessment_id,
+            action=action,
+            request_id=request_id,
+            trace_id=trace_id,
+        )
         if record.assessment.get("status") in {"created", "in_progress"}:
             session = await self._cat_session(record, request_id=request_id, trace_id=trace_id)
             self._apply_state(record, session)
@@ -227,6 +241,69 @@ class AssessmentService:
         if record is None:
             raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="assessment not found")
         return record
+
+    async def _get_for_actor(
+        self,
+        actor: Actor,
+        assessment_id: str,
+        action: str,
+        *,
+        request_id: str | None,
+        trace_id: str | None,
+    ) -> AssessmentRecord:
+        """Look up and authorize an assessment behind one public envelope.
+
+        The service keeps the internal reason in the audit stream while both
+        unknown and unauthorized identifiers use the same public 404 problem.
+        This seam is deliberately assessment-scoped; the global authorization
+        provider continues to expose its normal 403 behavior elsewhere.
+        """
+
+        record = await maybe_await(self.repository.get(assessment_id))
+        if record is None:
+            await self._record_lookup_denial(
+                actor,
+                request_id=request_id,
+                trace_id=trace_id,
+                reason_code="ASSESSMENT_NOT_FOUND",
+            )
+            raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="assessment not found")
+        try:
+            self.authorization.require(
+                actor,
+                action,
+                resource={"subject_id": record.subject_id, "owner_user_id": actor.user_id},
+            )
+        except BackendError as exc:
+            if exc.code is not ErrorCode.FORBIDDEN:
+                raise
+            await self._record_lookup_denial(
+                actor,
+                request_id=request_id,
+                trace_id=trace_id,
+                reason_code="ASSESSMENT_ACCESS_DENIED",
+            )
+            raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="assessment not found") from exc
+        return record
+
+    async def _record_lookup_denial(
+        self,
+        actor: Actor,
+        *,
+        request_id: str | None,
+        trace_id: str | None,
+        reason_code: str,
+    ) -> None:
+        await maybe_await(
+            self.audit.record(
+                event="ASSESSMENT_LOOKUP",
+                actor=actor,
+                request_id=request_id or "REQ_internal",
+                trace_id=trace_id or "TRACE_internal",
+                outcome="denied",
+                metadata={"reason_code": reason_code},
+            )
+        )
 
     async def _cat_session(
         self, record: AssessmentRecord, *, request_id: str, trace_id: str

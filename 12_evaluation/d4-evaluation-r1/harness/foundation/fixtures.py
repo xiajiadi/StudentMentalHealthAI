@@ -66,6 +66,21 @@ def _fixture_file_candidates(path_text: str) -> tuple[Path, ...]:
     return (eval_root / path_text, repo_root / path_text)
 
 
+def _fixture_bytes(path: Path) -> bytes:
+    """Read text fixtures using stable LF bytes across Windows checkouts.
+
+    D4 fixture identity is a content identity, not a checkout line-ending
+    identity.  The accepted JSON fixtures are therefore hashed after the
+    single canonical transformation CRLF -> LF; no JSON values or ordering
+    are changed.
+    """
+
+    data = path.read_bytes()
+    if path.suffix.lower() == ".json":
+        data = data.replace(b"\r\n", b"\n")
+    return data
+
+
 def validate_fixture_record(record: Mapping[str, Any]) -> str:
     """Validate mode/mapping agreement for one scenario or evidence record."""
 
@@ -91,7 +106,7 @@ def validate_fixture_record(record: Mapping[str, Any]) -> str:
             if existing is None:
                 raise FixtureModeError(f"fixture file does not exist: {normalized_path}")
             expected_hash = ref.get("sha256")
-            actual_hash = sha256_hex(existing.read_bytes())
+            actual_hash = sha256_hex(_fixture_bytes(existing))
             if expected_hash != actual_hash:
                 raise FixtureModeError(
                     f"fixture sha256 mismatch for {normalized_path}: "

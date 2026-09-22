@@ -233,7 +233,12 @@ async def get_assessment_state(
     summary="Read an authorized assessment",
 )
 async def get_assessment(request: Request, assessment_id: str, actor: CurrentActor) -> JSONResponse:
+    context = current_request_context(request)
     record = await request.app.state.container.assessments.get_for_actor(
-        actor, assessment_id, action="assessment:read"
+        actor,
+        assessment_id,
+        action="assessment:read",
+        request_id=context.request_id,
+        trace_id=context.trace_id,
     )
     return JSONResponse(envelope(request, AssessmentDto.model_validate(record.assessment)))
