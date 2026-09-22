@@ -2,7 +2,7 @@
 
 ## Controller status
 
-**D4_P0_FOUND / CONTROLLER_DECISION_REQUIRED**
+**READY_FOR_CONTROLLER_REVIEW / D4-2R REPAIR CLOSURE CANDIDATE**
 
 This run is a bounded synthetic C0/C1 regression run. It is not D4 overall
 acceptance, psychology approval, real-student authorization, pilot readiness,
@@ -14,16 +14,19 @@ or production enablement.
 - Branch: `exp/d4-deterministic-regression-v1`
 - Worktree: `D:\Projects\StudentMentalHealthAI-d4-deterministic-regression`
 - Accepted foundation tag: `d4-slice1-r1-accepted`
-- Fast run ID: `D4RUN-20260922T154300Z-d42p0`
-- Manifest: [`12_evaluation/d4-evaluation-r1/manifests/d4_slice2_fast_regression_p0.json`](../../12_evaluation/d4-evaluation-r1/manifests/d4_slice2_fast_regression_p0.json)
-- Manifest hash: `fcec57dfcc8802ca315dfd8ac0eea41058c8e1f93e259d84a9288a74ff8726d6`
+- Failure-preservation commit: `42c2fc8e39dc3f2c571c7760a91b6c16d0110ed2`
+- Repair implementation commit: `5400831a6df8ee46d1df421ddc596bbfe37366c0`
+- Fast run ID: `D4RUN-20260923T000500Z-d42r-final`
+- Manifest: [`12_evaluation/d4-evaluation-r1/manifests/d4_slice2_fast_regression_d4_2r_final.json`](../../12_evaluation/d4-evaluation-r1/manifests/d4_slice2_fast_regression_d4_2r_final.json)
+- Manifest hash: `6f669d6ac6f11de573b9ba9fd9b9836a0262a50786e5d3cb5c5b85396b50e79e`
 - Machine evidence: [`12_evaluation/d4-evaluation-r1/results/d4_slice2_machine_evidence.json`](../../12_evaluation/d4-evaluation-r1/results/d4_slice2_machine_evidence.json)
 - Run summary: [`12_evaluation/d4-evaluation-r1/d4_slice2_deterministic_evaluation.json`](../../12_evaluation/d4-evaluation-r1/d4_slice2_deterministic_evaluation.json)
 
-The deterministic dataset contains 16 `REGRESSION` records. The fixture is
-the exact synthetic assessment adapter fixture, bound by SHA-256
-`174c27a4dccbb9e5656afa1d7d79db1920c610768c67ec0705bc58eff7c61398`.
-There are no DEV or SEALED records changed by this slice.
+The deterministic dataset contains 16 `REGRESSION` records. The exact D3
+synthetic assessment adapter fixture is bound by canonical-content SHA-256
+`cb647c639188e0d1e752c8c842a649a0245a57849458f4cb26d9fc8b7a413abd`.
+The historical D4-1 snapshot and its line-ending variants are recorded in
+[`D4_FOUNDATION_POST_ACCEPTANCE_ERRATA_V1.md`](D4_FOUNDATION_POST_ACCEPTANCE_ERRATA_V1.md).
 
 ## Execution policy
 
@@ -32,20 +35,20 @@ There are no DEV or SEALED records changed by this slice.
 - `real_student_data=false`; `cloud_fallback=false`.
 - The only runtime dependency used for deterministic responses was the
   accepted `ContractFake` implementation.
-- Product directories were not edited.
+- The only product change is the authorized `09_backend` assessment lookup
+  minimum-disclosure seam; D3, Root, OpenAPI, RAG, Runtime, Safety policy, and
+  Database semantics remain unchanged.
 
 ## Result
 
-14 of 16 scheduled cases passed machine-evidence validation. One P0 failed and
-one evidence-binding case remains an error:
+All 16 scheduled cases passed machine-evidence validation. The focused pytest
+wrapper reports `16 passed, 0 failed`; the wrapper summary is
+`pass_count=16`, `fail_count=0`, `error_count=0`, `new_p0_count=0`, and
+`status=READY_FOR_CONTROLLER_REVIEW`.
 
-The focused pytest wrapper reports `14 passed, 2 failed`; the two failures are
-the intentional D4E-26 P0 and the D4E-55 evidence-binding error below. The
-remaining 14 cases pass when those two named cases are excluded.
+### D4E-26 · Hidden existence / assessment side channel — repaired P0 finding
 
-### D4E-26 · Hidden existence / assessment side channel — P0
-
-The same synthetic student-B request produced distinguishable denial envelopes:
+The pre-repair run produced distinguishable denial envelopes:
 
 | Probe | HTTP | Problem code |
 |---|---:|---|
@@ -58,21 +61,23 @@ assessment from a nonexistent one. The case is recorded as
 `observed_outcome=FAIL`, `failure_type=AUTHZ_FAILURE`, and
 `D4_P0_FOUND / CONTROLLER_DECISION_REQUIRED`.
 
-No product fix was attempted. The evidence preserves the route, expected
-minimum-disclosure invariant, observed statuses, and the clean coarse Admin
-projection check.
+The repair now returns the same normalized public envelope for both probes:
 
-### D4E-55 · Evidence binding — P1 evidence error, not a product PASS
+| Probe | HTTP | Problem code | Detail |
+|---|---:|---|---|
+| Existing assessment owned by student A | 404 | `resource_not_found` | `assessment not found` |
+| Unknown assessment identifier | 404 | `resource_not_found` | `assessment not found` |
 
-The canonical Backend ledger emits a transaction identifier with the product
-prefix `TX_...`, while the D4 machine-evidence schema requires the
-`TXN_...` pattern. The case still verifies that the generated response carries
-the required assessment, retrieval, prompt, model, trace, and persisted
-provenance, but the transaction field cannot be schema-bound without changing
-the accepted product contract or weakening the D4 foundation schema. It is
-therefore recorded as `observed_outcome=ERROR` and
-`failure_type=FORMAT_FAILURE`, with the raw product identifier omitted from
-the schema field and the limitation preserved. No product repair was made.
+The internal audit stream still records `ASSESSMENT_ACCESS_DENIED` for the
+foreign identifier and `ASSESSMENT_NOT_FOUND` for the unknown identifier. No
+normal RAG, D3, or Runtime calls occur on either denial.
+
+### D4E-55 · Evidence binding — schema erratum closed
+
+The accepted Backend ledger emits `TX_` plus 32 lowercase hexadecimal
+characters. The D4 schema and evidence validator now bind that exact format
+(`^TX_[0-9a-f]{32}$`) without changing product identity. D4E-55 is PASS with
+the real observed value retained in machine evidence.
 
 ## Passing deterministic coverage
 
@@ -85,29 +90,26 @@ ordering, Safety/RAG/Runtime dependency failures, and the non-transactional
 parts of evidence provenance. D4E-57 is promoted on the applicable historical
 replay cases. D4E-55 remains an evidence-binding error as described above.
 
-D4E-27 is limited to the routes that actually exist in the accepted Backend
-app. The run inventories and checks canonical generation, support, retrieval,
-and Safety routes and confirms no direct Runtime or legacy renderer route. It
-does not claim that nonexistent prompt, retry, preview, or regenerate routes
-were exercised.
+D4E-27 is bounded by an authoritative inventory. Runtime and OpenAPI agree
+after excluding FastAPI's generated documentation routes. Canonical support,
+generation, and retrieval are `PRESENT_AND_TESTED`; raw Runtime, legacy
+renderer, prompt, preview, retry, and regenerate families are
+`ABSENT_CONFIRMED` by runtime enumeration, OpenAPI, and static router search.
+No nonexistent endpoint was called.
 
 ## D4-1 foundation non-regression gate
 
-The accepted D4-1 foundation suite was rerun from this worktree and returned
-`29 passed, 8 failed`. The eight failures all stop while loading the accepted
-D4-1 fixture references: the foundation records require
-`datasets/fixtures/synthetic_assessment.v1.json` at SHA-256
-`7a18e4a995fe54f00f8d8e0cb5e34b30ae7f99e02f72793391152a3fff6dcc01`, while the
-file present in the accepted D4-1 tree hashes to
-`cea8c09796ee0c92ced891b6fc7e1d1114fd4a264262a0ca5bfe375f31e40d61`.
-This mismatch predates D4-2 and was not changed by this slice. D4-2 therefore
-does not claim the D4-1 foundation gate is green; the mismatch remains a
-separate Controller-owned P1/blocker and is not repaired here.
+The complete D4-1 foundation harness now returns `37 passed, 0 failed`.
+The 13 core foundation checks and schema/fixture checks use canonical JSON
+content identity. The accepted D4-1 tag and its historical snapshot remain
+immutable; the three competing hashes and their provenance are recorded in the
+post-acceptance errata.
 
 ## Decision boundary
 
-Because a scheduled P0 is reproducible and D4E-55 cannot be schema-bound, no
-D4-2 PASS candidate commit was created. Merge, push, and tag actions were not
-performed. D4-3, Promptfoo, and real-pilot work remain stopped pending
-Controller direction on the D4E-26 minimum-disclosure contract and the D4E-55
-transaction-binding evidence boundary.
+The initial failed run remains preserved in
+`D4_2R_INITIAL_FAILURE_PRESERVATION.md` and commit `42c2fc8...`. The repair
+commit is `5400831...`; regenerated machine evidence is bound to that commit.
+No merge, push, or tag action was performed. Promptfoo, external network,
+real-student data, and D4-3 remain stopped. This document is a
+Controller-review handoff, not a self-acceptance declaration.
