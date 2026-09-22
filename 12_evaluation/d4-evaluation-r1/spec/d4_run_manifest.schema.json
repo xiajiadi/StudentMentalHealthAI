@@ -26,7 +26,12 @@
     "hardware",
     "network_policy",
     "test_groups",
-    "result_paths"
+    "result_paths",
+    "network_observation",
+    "bootstrap_modes",
+    "real_student_data",
+    "cloud_fallback",
+    "retry_policy"
   ],
   "properties": {
     "schema_version": {
@@ -57,20 +62,45 @@
     },
     "dataset_versions": {
       "type": "object",
-      "additionalProperties": {
-        "type": [
-          "string",
-          "null"
-        ]
+      "additionalProperties": false,
+      "required": [
+        "dev",
+        "regression",
+        "sealed"
+      ],
+      "properties": {
+        "dev": {
+          "type": "string"
+        },
+        "regression": {
+          "type": "string"
+        },
+        "sealed": {
+          "type": "string"
+        }
       }
     },
     "dataset_hashes": {
       "type": "object",
-      "additionalProperties": {
-        "type": [
-          "string",
-          "null"
-        ]
+      "additionalProperties": false,
+      "required": [
+        "dev",
+        "regression",
+        "sealed"
+      ],
+      "properties": {
+        "dev": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "regression": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "sealed": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
       }
     },
     "sealed_hash": {
@@ -217,6 +247,80 @@
       "items": {
         "type": "string"
       }
+    },
+    "network_observation": {
+      "enum": [
+        "NOT_RUN",
+        "observed_loopback_only",
+        "non_loopback_detected",
+        "controller_exception"
+      ]
+    },
+    "bootstrap_modes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "enum": [
+          "exact_d3_fixture",
+          "legacy_compatibility_fixture"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "retry_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_retries",
+        "non_idempotent_post_retries"
+      ],
+      "properties": {
+        "max_retries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "non_idempotent_post_retries": {
+          "const": 0
+        }
+      }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "run_mode": {
+            "const": "SEALED_FINAL"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "sealed_hash",
+          "promptfoo_version",
+          "promptfoo_config_hash"
+        ],
+        "properties": {
+          "sealed_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "promptfoo_version": {
+            "type": "string",
+            "minLength": 1
+          },
+          "promptfoo_config_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "network_observation": {
+            "const": "observed_loopback_only"
+          },
+          "bootstrap_modes": {
+            "minItems": 1
+          }
+        }
+      }
+    }
+  ]
 }

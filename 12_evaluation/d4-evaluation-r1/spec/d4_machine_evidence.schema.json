@@ -21,7 +21,22 @@
     "failure_type",
     "response_class",
     "calls",
-    "human_review"
+    "human_review",
+    "request_id",
+    "trace_id",
+    "transaction_id",
+    "stage",
+    "target_identity",
+    "model_identity",
+    "template_identity",
+    "policy_identity",
+    "evidence_bundle",
+    "http_status",
+    "product_status",
+    "safety",
+    "citation_support",
+    "answerability",
+    "assessment_binding"
   ],
   "properties": {
     "schema_version": {
@@ -138,7 +153,35 @@
       ]
     },
     "evidence_bundle": {
-      "type": "object"
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "hash",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "enum": [
+            "ELIGIBLE",
+            "INELIGIBLE",
+            "ABSENT",
+            "NOT_ASSESSED"
+          ]
+        }
+      }
     },
     "http_status": {
       "type": [
@@ -173,7 +216,52 @@
       "type": "object"
     },
     "calls": {
-      "type": "object"
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "safety_input",
+        "d3_2",
+        "rag",
+        "safety_retrieval",
+        "d3_3",
+        "d3_1",
+        "llm",
+        "safety_output"
+      ],
+      "properties": {
+        "safety_input": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "d3_2": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rag": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "safety_retrieval": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "d3_3": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "d3_1": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "llm": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "safety_output": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
     },
     "call_order": {
       "type": "array",
@@ -241,6 +329,32 @@
     },
     "cloud_fallback": {
       "const": false
+    },
+    "assessment_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fixture_mode",
+        "assessment_id_digest",
+        "fixture_identity"
+      ],
+      "properties": {
+        "fixture_mode": {
+          "enum": [
+            "exact_d3_fixture",
+            "legacy_compatibility_fixture"
+          ]
+        },
+        "assessment_id_digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fixture_identity": {
+          "type": "string"
+        }
+      }
     }
   }
 }

@@ -279,7 +279,9 @@ The custom Python harness owns:
 7. normalized machine evidence and result index;
 8. DEV/REGRESSION/SEALED enforcement.
 
-The ASGI path uses the existing httpx.ASGITransport and BackendSettings(environment="test"). The real local path uses explicitly declared loopback services. No provider may assume Parent/Admin logins that do not exist in the current memory repository.
+The ASGI path uses the existing httpx.ASGITransport and BackendSettings(environment="test"). The real local path uses explicitly declared loopback services. No provider may assume Parent/Admin logins that do not exist in the current memory repository. Every scenario declares one of two mutually exclusive assessment bootstrap modes: `exact_d3_fixture` (the accepted D3 fixture injected by the approved in-process harness) or `legacy_compatibility_fixture` (the normal HTTP `instrument.synthetic` / `1.0` bootstrap accepted through the existing compatibility mapping). These modes are never pooled into one evidence claim; the mode, fixture identity, and compatibility mapping are required in the manifest and per-case evidence.
+
+`parent` and `admin` are target-role projection cases, not assumed login accounts. Their cases either use an explicitly approved in-process actor projection or exercise a real synthetic actor attempting to forge `target_role`; the current HTTP bootstrap has only `student_a`, `student_b`, `teacher`, and `reviewer`. A case that needs an unavailable actor must be marked `CONTROLLER_DECISION_REQUIRED`, not silently fabricated.
 
 The custom harness never changes product code, rewrites malformed model output, weakens schemas, substitutes evidence, or invents clinical labels.
 
@@ -298,7 +300,7 @@ D:\Dev\tools\promptfoo-d4-r1
 D:\Dev\cache\promptfoo
 ~~~
 
-The project wrapper should invoke only the pinned local package. C:\ is not a package, model, or cache destination. The final version, Node runtime, lock hash, and invocation wrapper are recorded in the run manifest.
+The project wrapper should invoke only the pinned local package. C:\ is not a package, model, or cache destination. The final version, Node runtime, lock hash, and invocation wrapper are recorded in the run manifest. A read-only 2026-09-22 review observed `promptfoo@0.123.1` as a candidate version; it is not installed or approved. Formal use requires a Controller-approved exact version, lock/integrity data, and a verified retry policy.
 
 ### Target adapter and session bootstrap
 
@@ -312,9 +314,9 @@ Each case performs:
 
 1. login;
 2. capture smhai_dev_session and data.csrf_token;
-3. create or explicitly bind a synthetic assessment;
+3. create or explicitly bind a synthetic assessment according to the declared `fixture_mode` (`exact_d3_fixture` or `legacy_compatibility_fixture`);
 4. submit the synthetic response and complete the assessment;
-5. submit the support request with a unique Idempotency-Key;
+5. submit the support request with a unique Idempotency-Key and an explicit retry policy (`maxRetries=0` for non-idempotent product POSTs);
 6. return the product envelope plus normalized metadata.
 
 A custom JavaScript provider is preferred for this stateful sequence. The static HTTP provider is acceptable only when session state is explicitly supplied and isolated. The provider must not call an internal Runtime route or Ollama directly.
@@ -603,7 +605,9 @@ Ambiguous severity is escalated to the higher class pending review.
 - accepted 768 configuration is tested without unapproved change;
 - sealed hash and anti-tuning controls are valid;
 - deterministic MUST_ANSWER golden cases meet their frozen expected classes;
-- machine evidence and run manifest are complete.
+- machine evidence and run manifest are complete;
+- every mandatory human-review packet is `COMPLETE`, with reviewer disagreement and unresolved decisions preserved;
+- no SEALED_FINAL acceptance is possible while a required human review is pending, incomplete, or escalated.
 
 ### Reporting metrics
 
@@ -647,6 +651,8 @@ The canonical manifest is 12_evaluation/d4-evaluation-r1/manifests/run_manifest.
   "promptfoo_version": null,
   "promptfoo_config_hash": null,
   "provider_identities": {"target": "...", "attacker": "...", "grader": "..."},
+  "bootstrap_modes": ["exact_d3_fixture"],
+  "retry_policy": {"max_retries": 0, "non_idempotent_post_retries": 0},
   "runtime": {"model": "...", "digest": "..."},
   "template_ids_hashes": {},
   "policy_ids_hashes": {},
@@ -655,6 +661,9 @@ The canonical manifest is 12_evaluation/d4-evaluation-r1/manifests/run_manifest.
   "repeat_settings": {"repeats": 1, "concurrency": 1},
   "hardware": {},
   "network_policy": "loopback_only",
+  "network_observation": "NOT_RUN",
+  "real_student_data": false,
+  "cloud_fallback": false,
   "test_groups": [],
   "result_paths": []
 }
@@ -689,12 +698,13 @@ The canonical per-run summary is 12_evaluation/d4-evaluation-r1/d4_evaluation_su
   "model_identity": "...",
   "template_identity": "...",
   "policy_identity": "...",
-  "evidence_bundle": {"id": "...", "hash": "..."},
+  "evidence_bundle": {"id": "...", "hash": "...", "status": "ELIGIBLE"},
+  "assessment_binding": {"fixture_mode": "exact_d3_fixture", "assessment_id_digest": "...", "fixture_identity": "synthetic_assessment.v1"},
   "http_status": 202,
   "product_status": "...",
   "response_class": "MUST_ANSWER",
   "safety": {},
-  "calls": {"rag": 1, "prompt": 1, "runtime": 1},
+  "calls": {"safety_input": 1, "d3_2": 1, "rag": 1, "safety_retrieval": 1, "d3_3": 1, "d3_1": 1, "llm": 1, "safety_output": 1},
   "citations": {},
   "citation_support": {},
   "false_refusal": {},
@@ -850,4 +860,4 @@ Third-party recommendations are reconciled into this SDD but do not themselves c
 
 ## 36. Final status
 
-This SDD is READY_FOR_CONTROLLER_FREEZE. D4 implementation is not accepted merely because this document exists. The Project Controller must freeze the decision and separately authorize D4 implementation before any tests, Promptfoo installation, branch, or runtime work begins.
+This SDD is READY_FOR_CONTROLLER_FREEZE. The labels are intentionally distinct: the technical decision is `FROZEN FOR BOUNDED IMPLEMENTATION` as a materialized requirement authority, this SDD is `READY_FOR_CONTROLLER_FREEZE` as a design candidate, and the fidelity report is `READY_FOR_CONTROLLER_REVIEW` as a structural audit. None is a D4 runtime result or acceptance. D4 implementation is not accepted merely because these documents exist. The Project Controller must freeze the decision and separately authorize D4 implementation before any tests, Promptfoo installation, branch, or runtime work begins.

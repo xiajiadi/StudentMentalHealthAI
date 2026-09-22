@@ -10,12 +10,22 @@
     "language",
     "scenario_family",
     "semantic_family",
+    "actor_role",
     "role",
     "purpose",
+    "relationship",
     "execution_mode",
+    "conversation_mode",
+    "fixture_mode",
+    "fixture_refs",
     "turns",
     "expected_response_class",
+    "expected_safety_route",
+    "evidence_requirement",
+    "citation_requirement",
+    "human_review_required",
     "split",
+    "source_provenance",
     "version",
     "hash"
   ],
@@ -150,6 +160,47 @@
     },
     "hash": {
       "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "actor_role": {
+      "enum": [
+        "student",
+        "teacher",
+        "reviewer"
+      ]
+    },
+    "fixture_mode": {
+      "enum": [
+        "exact_d3_fixture",
+        "legacy_compatibility_fixture"
+      ]
+    },
+    "fixture_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "fixture_version",
+          "sha256",
+          "purpose"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "fixture_version": {
+            "type": "string"
+          },
+          "sha256": {
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "purpose": {
+            "const": "synthetic_only"
+          }
+        }
+      }
     }
   }
 }
