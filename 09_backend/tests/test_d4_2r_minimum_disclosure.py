@@ -44,7 +44,7 @@ async def test_assessment_owner_access_remains_successful(client: httpx.AsyncCli
 async def test_assessment_existence_is_concealed_but_audit_reason_is_distinct(client, app) -> None:
     csrf_a = await login(client, "student_a")
     assessment_id = await completed_assessment(client, csrf_a)
-    csrf_b = await login(client, "student_b")
+    await login(client, "student_b")
 
     foreign = await client.get(f"/api/v1/assessments/{assessment_id}")
     unknown = await client.get("/api/v1/assessments/ASSESS_D4_2R_UNKNOWN")
@@ -63,7 +63,9 @@ async def test_assessment_existence_is_concealed_but_audit_reason_is_distinct(cl
 
 
 @pytest.mark.asyncio
-async def test_foreign_and_unknown_support_requests_fail_before_normal_pipeline(client, app) -> None:
+async def test_foreign_and_unknown_support_requests_fail_before_normal_pipeline(
+    client, app
+) -> None:
     csrf_a = await login(client, "student_a")
     assessment_id = await completed_assessment(client, csrf_a)
     csrf_b = await login(client, "student_b")
