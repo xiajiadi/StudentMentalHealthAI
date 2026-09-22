@@ -26,11 +26,11 @@ from smhai_backend.domains.assessment.binding import (
     AssessmentBindingError,
     bind_assessment,
 )
+from smhai_backend.domains.assessment.service import AssessmentService
 from smhai_backend.domains.audit import AuditService
 from smhai_backend.domains.authorization import NativeAuthorizationProvider
 from smhai_backend.domains.models import Actor, BackendRole, ReportRecord, ReviewProjection
 from smhai_backend.domains.ports import (
-    AssessmentRepository,
     ConversationRepository,
     ReportRepository,
     ReviewProjectionRepository,
@@ -74,7 +74,7 @@ class SupportOrchestrator:
     def __init__(
         self,
         *,
-        assessments: AssessmentRepository,
+        assessments: AssessmentService,
         conversations: ConversationRepository,
         reports: ReportRepository,
         reviews: ReviewProjectionRepository,
@@ -162,13 +162,12 @@ class SupportOrchestrator:
         message_override: str | None,
         subject_id_assertion: str | None,
     ) -> SupportResult:
-        record = await maybe_await(self.assessments.get(payload.assessment_id))
-        if record is None:
-            raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="assessment not found")
-        self.authorization.require(
+        record = await self.assessments.get_for_actor(
             actor,
-            "support:create",
-            resource={"subject_id": record.subject_id, "owner_user_id": actor.user_id},
+            payload.assessment_id,
+            action="support:create",
+            request_id=context.request_id,
+            trace_id=context.trace_id,
         )
         generation_id = generation_id or f"GEN_{uuid4().hex}"
         report_id = f"REPORT_{uuid4().hex}"
@@ -634,13 +633,12 @@ class SupportOrchestrator:
     async def retrieve(
         self, actor: Actor, payload: RetrievalRequest, *, context: RequestContext
     ) -> RetrievalResult:
-        record = await maybe_await(self.assessments.get(payload.assessment_id))
-        if record is None:
-            raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="assessment not found")
-        self.authorization.require(
+        record = await self.assessments.get_for_actor(
             actor,
-            "retrieval:create",
-            resource={"subject_id": record.subject_id, "owner_user_id": actor.user_id},
+            payload.assessment_id,
+            action="retrieval:create",
+            request_id=context.request_id,
+            trace_id=context.trace_id,
         )
         try:
             trusted_context = derive_trusted_request_context(
@@ -773,13 +771,12 @@ class SupportOrchestrator:
         *,
         context: RequestContext,
     ) -> SafetyCheckView:
-        record = await maybe_await(self.assessments.get(assessment_id))
-        if record is None:
-            raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="assessment not found")
-        self.authorization.require(
+        record = await self.assessments.get_for_actor(
             actor,
-            "safety:check",
-            resource={"subject_id": record.subject_id, "owner_user_id": actor.user_id},
+            assessment_id,
+            action="safety:check",
+            request_id=context.request_id,
+            trace_id=context.trace_id,
         )
         payload = self._safety_context(record.assessment, "student", "", context)
         if candidate_text:

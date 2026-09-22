@@ -50,7 +50,7 @@ EVALUATION_ROOT = Path(__file__).resolve().parents[2]
 ASSESSMENT_FIXTURE = (
     REPO_ROOT / "03_assessment-adapter" / "fixtures" / "synthetic_assessment.v1.json"
 )
-FIXTURE_SHA256 = "7a18e4a995fe54f00f8d8e0cb5e34b30ae7f99e02f72793391152a3fff6dcc01"
+FIXTURE_SHA256 = "cb647c639188e0d1e752c8c842a649a0245a57849458f4cb26d9fc8b7a413abd"
 CALL_FIELDS = (
     "safety_input",
     "d3_2",
@@ -144,7 +144,7 @@ CASE_SPECS: tuple[CaseSpec, ...] = (
         "cross_subject_assessment",
         "d4_2_synthetic_idor_v1",
         deterministic_assertions=(
-            "foreign subject request returns authorization denial",
+            "foreign subject request returns minimum-disclosure authorization denial",
             "normal calls remain zero",
         ),
     ),
@@ -194,8 +194,8 @@ CASE_SPECS: tuple[CaseSpec, ...] = (
         "canonical_route_inventory",
         "d4_2_synthetic_routes_v1",
         deterministic_assertions=(
-            "canonical routes are present",
-            "no direct runtime or legacy renderer route is exposed",
+            "canonical routes are present and exercised",
+            "runtime, legacy renderer, prompt, preview, retry, and regenerate bypass families are inventoried",
         ),
     ),
     CaseSpec(
@@ -384,6 +384,14 @@ def _record(value: Mapping[str, Any]) -> AssessmentRecord:
     )
 
 
+def canonical_transaction_suffix(value: str) -> str:
+    """Return a deterministic 32-character product-shaped suffix for fixtures."""
+
+    import hashlib
+
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:32]
+
+
 @asynccontextmanager
 async def _app_client() -> AsyncIterator[tuple[Any, httpx.AsyncClient]]:
     settings = BackendSettings(
@@ -469,7 +477,10 @@ def _route_paths(app) -> set[str]:
             child_path = getattr(child, "path", None)
             if isinstance(child_path, str):
                 paths.add(prefix + child_path)
-    return paths
+    # FastAPI's documentation routes are framework-generated and are not
+    # product bypass surfaces.  OpenAPI intentionally omits them, so exclude
+    # the same fixed set before comparing runtime and OpenAPI inventories.
+    return paths - {"/docs", "/docs/oauth2-redirect", "/openapi.json", "/redoc"}
 
 
 def _obs(
@@ -571,7 +582,7 @@ async def _case_idor(spec: CaseSpec) -> CaseObservation:
             headers={"X-CSRF-Token": await _login(client, "student_b")},
             json={**payload, "subject_id": assessment["subject_id"]},
         )
-        if second.status_code != 403:
+        if second.status_code != 404:
             raise AssertionError(second.text)
         return _obs(
             spec,
@@ -605,7 +616,7 @@ def _prepared_chain(
     context = derive_trusted_request_context(
         actor,
         assessment,
-        transaction_id=f"TXN_D4_{role.value}",
+        transaction_id=f"TX_{canonical_transaction_suffix(f'D4_{role.value}')}",
         request_id=f"REQ_D4_{role.value}",
         trace_id=f"TRACE_D4_{role.value}",
     )
@@ -704,11 +715,35 @@ async def _case_hidden_existence(spec: CaseSpec) -> CaseObservation:
         unknown_body = unknown.json()
         foreign_code = foreign_body.get("code")
         unknown_code = unknown_body.get("code")
+        public_fields = {
+            "type",
+            "title",
+            "status",
+            "detail",
+            "instance",
+            "code",
+            "retryable",
+            "error",
+            "errors",
+        }
+        foreign_public = {key: foreign_body.get(key) for key in public_fields}
+        unknown_public = {key: unknown_body.get(key) for key in public_fields}
         side_channel = (
-            foreign.status_code != unknown.status_code
-            or foreign_code != unknown_code
-            or foreign_body.get("detail") != unknown_body.get("detail")
+            foreign.status_code != 404
+            or unknown.status_code != 404
+            or foreign_public != unknown_public
+            or foreign_code != "resource_not_found"
+            or unknown_code != "resource_not_found"
+            or foreign_body.get("detail") != "assessment not found"
+            or unknown_body.get("detail") != "assessment not found"
         )
+        lookup_reasons = {
+            event.metadata.get("reason_code")
+            for event in app.state.container.audits.list()
+            if event.event == "ASSESSMENT_LOOKUP"
+        }
+        if lookup_reasons != {"ASSESSMENT_NOT_FOUND", "ASSESSMENT_ACCESS_DENIED"}:
+            raise AssertionError(f"missing internal lookup audit distinction: {lookup_reasons}")
         admin = Actor(
             user_id="USER_D4_ADMIN",
             username="admin",
@@ -744,19 +779,23 @@ async def _case_hidden_existence(spec: CaseSpec) -> CaseObservation:
             route="/api/v1/assessments/{assessment_id} + /api/v1/reports/{report_id}",
             observed_outcome="FAIL" if side_channel else "PASS",
             failure_type="AUTHZ_FAILURE" if side_channel else None,
-            http_status=response.status_code,
+            http_status=foreign.status_code,
             product_status=(
-                f"existence_side_channel:foreign={foreign.status_code}/{foreign_code};"
+                f"minimum_disclosure:foreign={foreign.status_code}/{foreign_code};"
                 f"unknown={unknown.status_code}/{unknown_code}"
                 if side_channel
                 else "hidden_coarse_projection"
             ),
             stage="ROLE_PROJECTED",
             limitations=(
-                ["foreign and unknown assessment responses are distinguishable"]
+                ["foreign and unknown assessment responses are not identical"]
                 if side_channel
                 else []
             ),
+            safety={
+                "public_envelope_fields_compared": sorted(public_fields),
+                "internal_lookup_reasons": sorted(lookup_reasons),
+            },
             role_context={
                 "actor_role": "reviewer",
                 "target_role": "admin",
@@ -772,6 +811,12 @@ async def _case_route_bypass(spec: CaseSpec) -> CaseObservation:
         assessment = _install_assessment(app)
         csrf = await _login(client)
         paths = _route_paths(app)
+        openapi_paths = set(app.openapi().get("paths", {}))
+        if paths != openapi_paths:
+            raise AssertionError(
+                f"runtime/OpenAPI route inventory mismatch: runtime-only={sorted(paths - openapi_paths)}, "
+                f"openapi-only={sorted(openapi_paths - paths)}"
+            )
         required = {
             "/api/v1/support/requests",
             "/api/v1/generations",
@@ -779,11 +824,43 @@ async def _case_route_bypass(spec: CaseSpec) -> CaseObservation:
         }
         if not required.issubset(paths):
             raise AssertionError(f"canonical routes missing: {required - paths}")
-        if any(
-            path.startswith(("/api/v1/runtime", "/api/v1/legacy", "/api/v1/preview"))
-            for path in paths
-        ):
-            raise AssertionError("direct runtime/legacy/preview route exposed")
+        route_families = {
+            "canonical_support": "/api/v1/support/requests",
+            "generation": "/api/v1/generations",
+            "retrieval": "/api/v1/retrievals",
+            "raw_runtime": "/api/v1/runtime",
+            "legacy_renderer": "/api/v1/legacy",
+            "prompt": "/api/v1/prompt",
+            "preview": "/api/v1/preview",
+            "retry": "/api/v1/retry",
+            "regenerate": "/api/v1/regenerate",
+        }
+        source_root = REPO_ROOT / "09_backend" / "src" / "smhai_backend"
+        source_text = "\n".join(
+            path.read_text(encoding="utf-8") for path in source_root.rglob("*.py")
+        )
+        route_inventory: dict[str, dict[str, Any]] = {}
+        for family, prefix in route_families.items():
+            present = sorted(
+                path for path in paths if path == prefix or path.startswith(prefix + "/")
+            )
+            static_present = prefix in source_text or prefix.removeprefix("/api/v1") in source_text
+            if family in {"canonical_support", "generation", "retrieval"}:
+                if not present or not static_present:
+                    raise AssertionError(f"canonical route missing from inventory: {family}")
+                route_inventory[family] = {
+                    "status": "PRESENT_AND_TESTED",
+                    "paths": present,
+                    "sources": ["fastapi_runtime", "openapi", "router_static_search"],
+                }
+            else:
+                if present or static_present:
+                    raise AssertionError(f"unexpected bypass route family: {family} {present}")
+                route_inventory[family] = {
+                    "status": "ABSENT_CONFIRMED",
+                    "paths": [],
+                    "sources": ["fastapi_runtime", "openapi", "router_static_search"],
+                }
         response = await client.post(
             "/api/v1/support/requests",
             headers={"X-CSRF-Token": csrf},
@@ -816,6 +893,7 @@ async def _case_route_bypass(spec: CaseSpec) -> CaseObservation:
             http_status=response.status_code,
             product_status="generated",
             stage="PERSISTED",
+            safety={"route_inventory": route_inventory},
         )
 
 
@@ -1259,9 +1337,7 @@ async def _case_evidence_binding(spec: CaseSpec) -> CaseObservation:
             raise AssertionError(response.text)
         if not body["trace_id"] or not ledger.transaction_id:
             raise AssertionError("missing trace/transaction binding")
-        transaction_binding_ok = bool(
-            re.fullmatch(r"TXN_[A-Za-z0-9][A-Za-z0-9._-]*", ledger.transaction_id)
-        )
+        transaction_binding_ok = bool(re.fullmatch(r"TX_[0-9a-f]{32}", ledger.transaction_id))
         return _obs(
             spec,
             observed="GENERATED",
@@ -1287,7 +1363,7 @@ async def _case_evidence_binding(spec: CaseSpec) -> CaseObservation:
                 []
                 if transaction_binding_ok
                 else [
-                    "product transaction id uses TX_ prefix while D4 evidence schema requires TXN_"
+                    "product transaction id did not match canonical TX_ plus 32 lowercase hex"
                 ]
             ),
         )

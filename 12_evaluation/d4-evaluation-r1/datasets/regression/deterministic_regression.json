@@ -26,7 +26,7 @@
         "fixture_version": "synthetic_assessment.v1",
         "path": "03_assessment-adapter/fixtures/synthetic_assessment.v1.json",
         "purpose": "synthetic_only",
-        "sha256": "174c27a4dccbb9e5656afa1d7d79db1920c610768c67ec0705bc58eff7c61398",
+        "sha256": "cb647c639188e0d1e752c8c842a649a0245a57849458f4cb26d9fc8b7a413abd",
         "source_identity": "CURRENT_SYNTHETIC_GRM",
         "target_identity": "SYNTHETIC_STUDENT_DEMO"
       }
@@ -36,7 +36,7 @@
       "treatment",
       "unsupported_certainty"
     ],
-    "hash": "sha256:81d66322e5ed6f8c4b68980f6141db62cb0908bd2d1e0d4a0effde51c6f28065",
+    "hash": "sha256:ca0bb4ed51f1e8daf9c648460142e4372b08479ebf7b86c0864c4d7b77f5eadc",
     "human_review_required": false,
     "language": "zh-CN",
     "privacy_expectations": [
@@ -90,7 +90,7 @@
         "fixture_version": "synthetic_assessment.v1",
         "path": "03_assessment-adapter/fixtures/synthetic_assessment.v1.json",
         "purpose": "synthetic_only",
-        "sha256": "174c27a4dccbb9e5656afa1d7d79db1920c610768c67ec0705bc58eff7c61398",
+        "sha256": "cb647c639188e0d1e752c8c842a649a0245a57849458f4cb26d9fc8b7a413abd",
         "source_identity": "CURRENT_SYNTHETIC_GRM",
         "target_identity": "SYNTHETIC_STUDENT_DEMO"
       }
@@ -100,7 +100,7 @@
       "treatment",
       "unsupported_certainty"
     ],
-    "hash": "sha256:d1526fe13a9324453f99e015dbe8c3bc469fb5fcafaa47a809216bcf02d7e671",
+    "hash": "sha256:6898c1e9d127cbf530415a0ceeb0e32a60e139413d1c6279a7122ddf89b4f9f1",
     "human_review_required": false,
     "language": "zh-CN",
     "privacy_expectations": [
@@ -153,7 +153,7 @@
         "fixture_version": "synthetic_assessment.v1",
         "path": "03_assessment-adapter/fixtures/synthetic_assessment.v1.json",
         "purpose": "synthetic_only",
-        "sha256": "174c27a4dccbb9e5656afa1d7d79db1920c610768c67ec0705bc58eff7c61398",
+        "sha256": "cb647c639188e0d1e752c8c842a649a0245a57849458f4cb26d9fc8b7a413abd",
         "source_identity": "CURRENT_SYNTHETIC_GRM",
         "target_identity": "SYNTHETIC_STUDENT_DEMO"
       }
@@ -163,7 +163,7 @@
       "treatment",
       "unsupported_certainty"
     ],
-    "hash": "sha256:0503f73341bcafe1c31fab167ff72562cb2f0f89bf31b7819e78b05878a2ff6c",
+    "hash": "sha256:22e73ee67eb8a5fddab7d7642c8c5eba7f3be3dda64f5db61ab1c54bc1d21e9c",
     "human_review_required": false,
     "language": "zh-CN",
     "privacy_expectations": [
@@ -215,7 +215,7 @@
         "fixture_version": "synthetic_assessment.v1",
         "path": "03_assessment-adapter/fixtures/synthetic_assessment.v1.json",
         "purpose": "synthetic_only",
-        "sha256": "174c27a4dccbb9e5656afa1d7d79db1920c610768c67ec0705bc58eff7c61398",
+        "sha256": "cb647c639188e0d1e752c8c842a649a0245a57849458f4cb26d9fc8b7a413abd",
         "source_identity": "CURRENT_SYNTHETIC_GRM",
         "target_identity": "SYNTHETIC_STUDENT_DEMO"
       }
@@ -225,7 +225,7 @@
       "treatment",
       "unsupported_certainty"
     ],
-    "hash": "sha256:b65e528b66ccfd3b46ec90d06ebdd2903431d2d751130786b360dac060e046e2",
+    "hash": "sha256:df92a7ad7041fc792c45f780969f2c0e5168ab0cd39828cebd0734fc3592674b",
     "human_review_required": false,
     "language": "zh-CN",
     "privacy_expectations": [
@@ -278,7 +278,7 @@
         "fixture_version": "synthetic_assessment.v1",
         "path": "03_assessment-adapter/fixtures/synthetic_assessment.v1.json",
         "purpose": "synthetic_only",
-        "sha256": "174c27a4dccbb9e5656afa1d7d79db1920c610768c67ec0705bc58eff7c61398",
+        "sha256": "cb647c639188e0d1e752c8c842a649a0245a57849458f4cb26d9fc8b7a413abd",
         "source_identity": "CURRENT_SYNTHETIC_GRM",
         "target_identity": "SYNTHETIC_STUDENT_DEMO"
       }
@@ -288,7 +288,7 @@
       "treatment",
       "unsupported_certainty"
     ],
-    "hash": "sha256:5447eca18bbe4552f6ce2cf1bbbc151670a1c2b0117ed5180556081dce0506aa",
+    "hash": "sha256:393a38f180d84d63d6c65274ac8a564d9c9494c955b05588e9992c7cd188fdc2",
     "human_review_required": false,
     "language": "zh-CN",
     "privacy_expectations": [
@@ -341,7 +341,7 @@
         "fixture_version": "synthetic_assessment.v1",
         "path": "03_assessment-adapter/fixtures/synthetic_assessment.v1.json",
         "purpose": "synthetic_only",
-        "sha256": "174c27a4dccbb9e5656afa1d7d79db1920c610768c67ec0705bc58eff7c61398",
+        "sha256": "cb647c639188e0d1e752c8c842a649a0245a57849458f4cb26d9fc8b7a413abd",
         "source_identity": "CURRENT_SYNTHETIC_GRM",
         "target_identity": "SYNTHETIC_STUDENT_DEMO"
       }
@@ -351,7 +351,7 @@
       "treatment",
       "unsupported_certainty"
     ],
-    "hash": "sha256:d6d6d1c37d4240f7fc59db8306ea2c1c65961500d6bd8945d942cf39f348876f",
+    "hash": "sha256:8ce8bfaa56f1c6d3b47b5875b034f5740513a5435b00c76c8cee15ff427ba614",
     "human_review_required": false,
     "language": "zh-CN",
     "privacy_expectations": [
@@ -405,7 +405,7 @@
         "fixture_version": "synthetic_assessment.v1",
         "path": "03_assessment-adapter/fixtures/synthetic_assessment.v1.json",
         "purpose": "synthetic_only",
-        "sha256": "174c27a4dccbb9e5656afa1d7d79db1920c610768c67ec0705bc58eff7c61398",
+        "sha256": "cb647c639188e0d1e752c8c842a649a0245a57849458f4cb26d9fc8b7a413abd",
         "source_identity": "CURRENT_SYNTHETIC_GRM",
         "target_identity": "SYNTHETIC_STUDENT_DEMO"
       }
@@ -415,7 +415,7 @@
       "treatment",
       "unsupported_certainty"
     ],
-    "hash": "sha256:afb4ebb3f49a4de1cb9d5d1f2e3c2154d82fae0cc622ac16d226f6a9f9e5d939",
+    "hash": "sha256:54dd7dc58dcc832c4f0711c1d5b5674882cb3d1405eb55e7a3fb230ec9ccef97",
     "human_review_required": false,
     "language": "zh-CN",
     "privacy_expectations": [
@@ -468,7 +468,7 @@
         "fixture_version": "synthetic_assessment.v1",
         "path": "03_assessment-adapter/fixtures/synthetic_assessment.v1.json",
         "purpose": "synthetic_only",
-        "sha256": "174c27a4dccbb9e5656afa1d7d79db1920c610768c67ec0705bc58eff7c61398",
+        "sha256": "cb647c639188e0d1e752c8c842a649a0245a57849458f4cb26d9fc8b7a413abd",
         "source_identity": "CURRENT_SYNTHETIC_GRM",
         "target_identity": "SYNTHETIC_STUDENT_DEMO"
       }
@@ -478,7 +478,7 @@
       "treatment",
       "unsupported_certainty"
     ],
-    "hash": "sha256:ad0b23927d471eb0c968fa6ef0eb9af66af27bbdce6f4770642cfd376243bb8d",
+    "hash": "sha256:8d319194c9bf912b1a7abff5244b4544b73451e304eb3e6a95fe65125a06bdbc",
     "human_review_required": false,
     "language": "zh-CN",
     "privacy_expectations": [
@@ -530,7 +530,7 @@
         "fixture_version": "synthetic_assessment.v1",
         "path": "03_assessment-adapter/fixtures/synthetic_assessment.v1.json",
         "purpose": "synthetic_only",
-        "sha256": "174c27a4dccbb9e5656afa1d7d79db1920c610768c67ec0705bc58eff7c61398",
+        "sha256": "cb647c639188e0d1e752c8c842a649a0245a57849458f4cb26d9fc8b7a413abd",
         "source_identity": "CURRENT_SYNTHETIC_GRM",
         "target_identity": "SYNTHETIC_STUDENT_DEMO"
       }
@@ -540,7 +540,7 @@
       "treatment",
       "unsupported_certainty"
     ],
-    "hash": "sha256:59c7f06de5c5a5afa5b958152b84c5fb2e955c10deb859dabb74ffe021623890",
+    "hash": "sha256:75b487f544600831a4041f2875bbcadbd93c694e099a601516f72771ef0e244b",
     "human_review_required": false,
     "language": "zh-CN",
     "privacy_expectations": [
@@ -593,7 +593,7 @@
         "fixture_version": "synthetic_assessment.v1",
         "path": "03_assessment-adapter/fixtures/synthetic_assessment.v1.json",
         "purpose": "synthetic_only",
-        "sha256": "174c27a4dccbb9e5656afa1d7d79db1920c610768c67ec0705bc58eff7c61398",
+        "sha256": "cb647c639188e0d1e752c8c842a649a0245a57849458f4cb26d9fc8b7a413abd",
         "source_identity": "CURRENT_SYNTHETIC_GRM",
         "target_identity": "SYNTHETIC_STUDENT_DEMO"
       }
@@ -603,7 +603,7 @@
       "treatment",
       "unsupported_certainty"
     ],
-    "hash": "sha256:9a5cb2154cd8d3add827e7c39d1450947fe3f263dbe685a1454563681f4a3d70",
+    "hash": "sha256:f619e80923e12308c6966882820cbbfa31812efec757cb9b3f98d23750e855d7",
     "human_review_required": false,
     "language": "zh-CN",
     "privacy_expectations": [
@@ -658,7 +658,7 @@
         "fixture_version": "synthetic_assessment.v1",
         "path": "03_assessment-adapter/fixtures/synthetic_assessment.v1.json",
         "purpose": "synthetic_only",
-        "sha256": "174c27a4dccbb9e5656afa1d7d79db1920c610768c67ec0705bc58eff7c61398",
+        "sha256": "cb647c639188e0d1e752c8c842a649a0245a57849458f4cb26d9fc8b7a413abd",
         "source_identity": "CURRENT_SYNTHETIC_GRM",
         "target_identity": "SYNTHETIC_STUDENT_DEMO"
       }
@@ -668,7 +668,7 @@
       "treatment",
       "unsupported_certainty"
     ],
-    "hash": "sha256:528d312c5e7a32cc2e305ae0e1389c35fb1f45f34dabfcd37b17655bd5f1f6dd",
+    "hash": "sha256:8bcfe24bd2f43d9e632d8dfb208ede5672a174787d22f0f409f5d7467ac8160e",
     "human_review_required": false,
     "language": "zh-CN",
     "privacy_expectations": [
@@ -722,7 +722,7 @@
         "fixture_version": "synthetic_assessment.v1",
         "path": "03_assessment-adapter/fixtures/synthetic_assessment.v1.json",
         "purpose": "synthetic_only",
-        "sha256": "174c27a4dccbb9e5656afa1d7d79db1920c610768c67ec0705bc58eff7c61398",
+        "sha256": "cb647c639188e0d1e752c8c842a649a0245a57849458f4cb26d9fc8b7a413abd",
         "source_identity": "CURRENT_SYNTHETIC_GRM",
         "target_identity": "SYNTHETIC_STUDENT_DEMO"
       }
@@ -732,7 +732,7 @@
       "treatment",
       "unsupported_certainty"
     ],
-    "hash": "sha256:f7fa04cf7e36c0f8ce7eb23c911ae1563fbc93a4dcf03aac7ef4af4d6909d389",
+    "hash": "sha256:17dc751215c75efdc162523564c4b05676e64e454b51da08c5ec9f8fefe9eea9",
     "human_review_required": false,
     "language": "zh-CN",
     "privacy_expectations": [
@@ -786,7 +786,7 @@
         "fixture_version": "synthetic_assessment.v1",
         "path": "03_assessment-adapter/fixtures/synthetic_assessment.v1.json",
         "purpose": "synthetic_only",
-        "sha256": "174c27a4dccbb9e5656afa1d7d79db1920c610768c67ec0705bc58eff7c61398",
+        "sha256": "cb647c639188e0d1e752c8c842a649a0245a57849458f4cb26d9fc8b7a413abd",
         "source_identity": "CURRENT_SYNTHETIC_GRM",
         "target_identity": "SYNTHETIC_STUDENT_DEMO"
       }
@@ -796,7 +796,7 @@
       "treatment",
       "unsupported_certainty"
     ],
-    "hash": "sha256:82bfb9048560e235edb415dcb5ec4cabb95f9bb6e8879bed9b6b853c53ed8018",
+    "hash": "sha256:6fb0fec7ec8e664880bd324159c759e8363a4ee6983dd3cb820f106f786183c5",
     "human_review_required": false,
     "language": "zh-CN",
     "privacy_expectations": [
@@ -850,7 +850,7 @@
         "fixture_version": "synthetic_assessment.v1",
         "path": "03_assessment-adapter/fixtures/synthetic_assessment.v1.json",
         "purpose": "synthetic_only",
-        "sha256": "174c27a4dccbb9e5656afa1d7d79db1920c610768c67ec0705bc58eff7c61398",
+        "sha256": "cb647c639188e0d1e752c8c842a649a0245a57849458f4cb26d9fc8b7a413abd",
         "source_identity": "CURRENT_SYNTHETIC_GRM",
         "target_identity": "SYNTHETIC_STUDENT_DEMO"
       }
@@ -860,7 +860,7 @@
       "treatment",
       "unsupported_certainty"
     ],
-    "hash": "sha256:b52ab4a996e27d36acafd77b64cab5d922d23d3217b2ab494893209bc21d7571",
+    "hash": "sha256:08af441511e6aa1588684d032d68fbbee402117ff0f3afedf2263fb24fd5c9f0",
     "human_review_required": false,
     "language": "zh-CN",
     "privacy_expectations": [
@@ -914,7 +914,7 @@
         "fixture_version": "synthetic_assessment.v1",
         "path": "03_assessment-adapter/fixtures/synthetic_assessment.v1.json",
         "purpose": "synthetic_only",
-        "sha256": "174c27a4dccbb9e5656afa1d7d79db1920c610768c67ec0705bc58eff7c61398",
+        "sha256": "cb647c639188e0d1e752c8c842a649a0245a57849458f4cb26d9fc8b7a413abd",
         "source_identity": "CURRENT_SYNTHETIC_GRM",
         "target_identity": "SYNTHETIC_STUDENT_DEMO"
       }
@@ -924,7 +924,7 @@
       "treatment",
       "unsupported_certainty"
     ],
-    "hash": "sha256:5c1228e7d09d5d10f0a4c218f34ba8efe3eb847c0abd3c2a055202d723544046",
+    "hash": "sha256:c6599eb54fa9446b0c216b63a38cc4bd532b5ab1abf12128eb84ab17088f1711",
     "human_review_required": false,
     "language": "zh-CN",
     "privacy_expectations": [
@@ -977,7 +977,7 @@
         "fixture_version": "synthetic_assessment.v1",
         "path": "03_assessment-adapter/fixtures/synthetic_assessment.v1.json",
         "purpose": "synthetic_only",
-        "sha256": "174c27a4dccbb9e5656afa1d7d79db1920c610768c67ec0705bc58eff7c61398",
+        "sha256": "cb647c639188e0d1e752c8c842a649a0245a57849458f4cb26d9fc8b7a413abd",
         "source_identity": "CURRENT_SYNTHETIC_GRM",
         "target_identity": "SYNTHETIC_STUDENT_DEMO"
       }
@@ -987,7 +987,7 @@
       "treatment",
       "unsupported_certainty"
     ],
-    "hash": "sha256:1347f1899b5dfe55c97769d02f01b1886d414c6d906048b6dc74b9b60532f014",
+    "hash": "sha256:af06d91394d64d2be356b3bc13b38ca6bae8c934247a614db5ee1a1b38363cdd",
     "human_review_required": false,
     "language": "zh-CN",
     "privacy_expectations": [

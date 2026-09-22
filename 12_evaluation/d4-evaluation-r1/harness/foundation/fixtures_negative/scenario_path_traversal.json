@@ -16,7 +16,7 @@
     {
       "path": "../outside.json",
       "fixture_version": "synthetic_assessment.v1",
-      "sha256": "174c27a4dccbb9e5656afa1d7d79db1920c610768c67ec0705bc58eff7c61398",
+      "sha256": "cb647c639188e0d1e752c8c842a649a0245a57849458f4cb26d9fc8b7a413abd",
       "purpose": "synthetic_only",
       "source_identity": "CURRENT_SYNTHETIC_GRM",
       "target_identity": "SYNTHETIC_STUDENT_DEMO",
@@ -37,7 +37,7 @@
   "split": "DEV",
   "source_provenance": "synthetic_case_authoring_v1",
   "version": "1.0.0",
-  "hash": "sha256:dfe2aa295f5fa7e02c0a21e9338b894ff536a7c0f470880e7b4214a1882b982d",
+  "hash": "sha256:54e65f14a3a7f98c6224433c75f822992b04fc1528dc38cb9ea3338b6a9a7397",
   "forbidden_claims": [
     "diagnosis",
     "treatment",

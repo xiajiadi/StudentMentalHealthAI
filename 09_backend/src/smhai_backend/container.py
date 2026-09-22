@@ -156,7 +156,7 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         audit=audit,
     )
     support = SupportOrchestrator(
-        assessments=assessments_repo,
+        assessments=assessments,
         conversations=conversations,
         reports=reports,
         reviews=reviews,
