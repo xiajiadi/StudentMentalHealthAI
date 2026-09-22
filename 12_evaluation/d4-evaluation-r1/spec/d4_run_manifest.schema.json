@@ -597,6 +597,72 @@
               "approval_ref": {
                 "type": "string",
                 "minLength": 1
+              },
+              "scenario_family_distribution": {
+                "type": "object",
+                "minProperties": 1
+              },
+              "creation_provenance": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "fixture_audit": {
+            "properties": {
+              "fixture_mode": {
+                "const": "exact_d3_fixture"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "bootstrap_modes": {
+            "items": {
+              "const": "exact_d3_fixture"
+            }
+          },
+          "fixture_audit": {
+            "properties": {
+              "compatibility_mapping": {
+                "const": "none"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "fixture_audit": {
+            "properties": {
+              "fixture_mode": {
+                "const": "legacy_compatibility_fixture"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "bootstrap_modes": {
+            "items": {
+              "const": "legacy_compatibility_fixture"
+            }
+          },
+          "fixture_audit": {
+            "properties": {
+              "compatibility_mapping": {
+                "const": "D3-4_BACKEND_SYNTHETIC_COMPATIBILITY_V1"
               }
             }
           }
