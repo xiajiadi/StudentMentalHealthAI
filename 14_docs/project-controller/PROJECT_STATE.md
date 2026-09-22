@@ -9,7 +9,7 @@ change product source.
 
 ## Current state
 
-- Phase: **D4-1 EVALUATION FOUNDATION / CONTROLLER REVIEW READY**.
+- Phase: **D4-1 ACCEPTED / D4-2 IMPLEMENTATION AUTHORIZED**.
 - D3-1 Prompt Engine Core: **FULL PASS / CONTROLLER ACCEPTED**.
 - D3-2 Assessment Interpretation Adapter: **FULL PASS / CONTROLLER ACCEPTED**.
 - D3-3 Role Projection & Minimum Disclosure: **FULL PASS / CONTROLLER ACCEPTED**.
@@ -17,7 +17,7 @@ change product source.
 - Real pilot: **BLOCKED**.
 - D4 Technical Decision: **FROZEN / CONTROLLER ACCEPTED**.
 - D4 SDD: **FROZEN / APPROVED FOR BOUNDED IMPLEMENTATION**.
-- D4-1 Evaluation Foundation / Schemas / Run Manifest: **READY FOR CONTROLLER REVIEW**.
+- D4-1 Evaluation Foundation / Schemas / Run Manifest: **FULL PASS / CONTROLLER ACCEPTED**.
 - D4 overall: **NOT_ACCEPTED / NOT_RUN**. D4-2 through D4-7 are not started.
 
 ## Accepted D3 evidence binding
@@ -48,18 +48,27 @@ execution. Future research may support a broader population or a parent-facing
 product, but that requires new research, review, and validation; this record
 creates no such authorization.
 
-## D4-1 boundary
+## D4-1 publication binding
 
 D4-1 is limited to evaluation schemas, authority registration, synthetic fixture
 governance, run manifests, normalized machine evidence, split controls, and
-sealed-set protection. It contains no Promptfoo installation, model call,
-network execution, behavioral grading, product integration, or D4 acceptance.
+sealed-set protection. It is accepted as bounded synthetic evaluation
+engineering only; it contains no Promptfoo installation, model call, network
+execution, behavioral grading, product integration, psychology approval, pilot
+authorization, or production enablement.
 
 The implementation branch is isolated at
 `D:\\Projects\\StudentMentalHealthAI-d4-evaluation` on
 `exp/d4-evaluation-foundation-v1`, based on
 `e052e18906dba0256814c1f26209d43f101e919e`. The D4-1 closure evidence is
 `14_docs/project-controller/D4_SLICE1_EVALUATION_FOUNDATION_EVIDENCE.md`.
+The accepted tag `d4-slice1-r1-accepted` targets
+`05ce1fe59796a4f079e74cc2f425943040dd706a`.
+
+The current Controller mission authorizes D4-2 deterministic trust and safety
+regression implementation in an evaluation-only worktree. Product repair,
+Promptfoo, model/network evaluation, and D4 overall acceptance remain
+unauthorized. D4-2 has not started in this fact-layer publication.
 
 ## Preserved P1
 
@@ -69,7 +78,8 @@ The implementation branch is isolated at
 
 ## Publication boundary
 
-The accepted tag points to the D3-4 evidence closure commit. The D4-1 branch
-contains evaluation-only work and remains subject to Controller review. No
-product source, Root, OpenAPI, Contract, merge, push, or D4-2 implementation is
-authorized by this publication.
+The accepted D3-4 tag continues to point to the D3-4 evidence closure commit.
+The accepted D4-1 tag points to the D4-1 evidence closure commit above. The
+D4-2 branch must remain evaluation-only and must not modify product source,
+Root, OpenAPI, Contract, database artifacts, or accepted D3 behavior. No merge
+or push is authorized by this publication.

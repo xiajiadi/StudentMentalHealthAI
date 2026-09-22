@@ -2,7 +2,7 @@
   "schema_version": "project-controller-state.v2",
   "updated_at": "2026-09-22",
   "authority": "Project Controller",
-  "phase": "D4_1_EVALUATION_FOUNDATION_REVIEW_READY",
+  "phase": "D4_1_ACCEPTED_D4_2_IMPLEMENTATION_AUTHORIZED",
   "d3_overall_status": "ENGINEERING_COMPLETE / SYNTHETIC_DEMO_SCOPE",
   "d3_slices": [
     {
@@ -60,7 +60,12 @@
     "push": false,
     "d4_started": true,
     "d4_implementation_authorized": true,
-    "d4_2_started": false
+    "d4_2_started": false,
+    "d4_slice1_tag": "d4-slice1-r1-accepted",
+    "d4_slice1_tag_target": "05ce1fe59796a4f079e74cc2f425943040dd706a",
+    "d4_slice1_accepted": true,
+    "d4_2_implementation_authorized": true,
+    "d4_2_product_repair_authorized": false
   },
   "authoritative_references": [
     "12_evaluation/d3-slice4-backend-integration-r1/d3_slice4_backend_integration_evaluation.json",
@@ -73,14 +78,28 @@
   "d4_current_slice": {
     "id": "D4-1",
     "name": "Evaluation Foundation / Schemas / Run Manifest R1",
-    "status": "READY_FOR_CONTROLLER_REVIEW",
+    "status": "FULL PASS / CONTROLLER ACCEPTED",
     "baseline_commit": "e052e18906dba0256814c1f26209d43f101e919e",
     "branch": "exp/d4-evaluation-foundation-v1",
     "worktree": "D:\\Projects\\StudentMentalHealthAI-d4-evaluation",
     "evidence": "14_docs/project-controller/D4_SLICE1_EVALUATION_FOUNDATION_EVIDENCE.md",
-    "summary": "12_evaluation/d4-evaluation-r1/d4_slice1_foundation_evaluation.json"
+    "summary": "12_evaluation/d4-evaluation-r1/d4_slice1_foundation_evaluation.json",
+    "tag": "d4-slice1-r1-accepted",
+    "tag_target": "05ce1fe59796a4f079e74cc2f425943040dd706a",
+    "closure_commit": "05ce1fe59796a4f079e74cc2f425943040dd706a",
+    "controller_marker": "D4_SLICE1_READY_FOR_CONTROLLER_ACCEPTANCE"
   },
   "d4_overall_status": "NOT_ACCEPTED / NOT_RUN",
   "d4_implementation_authorized": true,
-  "d4_later_slices_started": false
+  "d4_later_slices_started": false,
+  "d4_next_slice": {
+    "id": "D4-2",
+    "name": "Deterministic Trust & Safety Regression Layer R1",
+    "status": "IMPLEMENTATION_AUTHORIZED / NOT_STARTED",
+    "preferred_branch": "exp/d4-deterministic-regression-v1",
+    "baseline_commit": "05ce1fe59796a4f079e74cc2f425943040dd706a",
+    "product_repair_authorized": false,
+    "promptfoo_authorized": false,
+    "model_network_execution_authorized": false
+  }
 }

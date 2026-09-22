@@ -24,16 +24,18 @@ it is not a claim of clinical, legal, or production approval.
 | D3 overall engineering | ENGINEERING_COMPLETE / SYNTHETIC_DEMO_SCOPE | D3-1 through D3-4 rows above |
 | D4 Technical Decision | FROZEN / CONTROLLER ACCEPTED | `14_docs/project-controller/D4_EVALUATION_TECHNICAL_DECISION_V1.md` |
 | D4 SDD | FROZEN / APPROVED FOR BOUNDED IMPLEMENTATION | `14_docs/project-controller/D4_EVALUATION_SDD_V1.md` |
-| D4-1 Evaluation Foundation | READY_FOR_CONTROLLER_REVIEW | `14_docs/project-controller/D4_SLICE1_EVALUATION_FOUNDATION_EVIDENCE.md`; baseline `e052e18906dba0256814c1f26209d43f101e919e` |
+| D4-1 Evaluation Foundation | FULL PASS / CONTROLLER ACCEPTED | tag `d4-slice1-r1-accepted` → `05ce1fe59796a4f079e74cc2f425943040dd706a`; `14_docs/project-controller/D4_SLICE1_EVALUATION_FOUNDATION_EVIDENCE.md` |
 | D4 overall | NOT_ACCEPTED / NOT_RUN | D4-1 only; D4-2 through D4-7 not started |
 
 ## Boundary and next-stage status
 
-D3 acceptance does not imply psychology approval, psychometric validity,
+D3/D4-1 engineering acceptance does not imply psychology approval, psychometric validity,
 legal/consent approval, rights/licensing clearance, real-student disclosure
 authorization, real-pilot readiness, clinical approval, or production
-enablement. Real pilot is **BLOCKED**. D4-1 is an evaluation-only foundation
-under Controller review; later D4 implementation is not authorized.
+enablement. Real pilot is **BLOCKED**. D4-1 is an accepted evaluation-only
+foundation. D4-2 deterministic regression implementation is authorized in an
+isolated evaluation worktree, but is not yet started and does not authorize
+product repair, Promptfoo, model/network execution, or D4 acceptance.
 
 Preserved P1: baseline Backend Pyright SQLAlchemy import-resolution errors;
 historical GPU snapshot/fixed-output-budget robustness; D5 cleanup PID.
