@@ -1,7 +1,8 @@
 # Dependency Matrix
 
 Updated: 2026-09-22. Current state is the Controller-accepted engineering
-baseline for D3 plus the bounded D4-1 evaluation foundation under review.
+baseline for D3 and D4-1, with D4-2 deterministic regression implementation
+authorized but not started.
 
 | Stage | Depends on | Observable completion | Current state |
 |---|---|---|---|
@@ -14,7 +15,7 @@ baseline for D3 plus the bounded D4-1 evaluation foundation under review.
 | D3-4 Trusted Backend Orchestration & Evidence Binding | D3-1/D3-2/D3-3, accepted RAG/Safety/Runtime/Database ports | trusted orchestration, evidence binding, GPU Normal, safety and persistence evidence | FULL PASS / CONTROLLER ACCEPTED |
 | D3 overall | D3-1 through D3-4 | accepted engineering chain in synthetic/demo scope | ENGINEERING_COMPLETE / SYNTHETIC_DEMO_SCOPE |
 | B Frontend Tournament | approved UI candidates and role scope | selected candidate, rendered-flow evidence, relevant verification | Pending |
-| D4 Evaluation / Red Team | accepted D3 plus approved product scope | evaluation, red-team, budget and safety boundary evidence | D4-1 foundation READY_FOR_CONTROLLER_REVIEW; D4 overall NOT_ACCEPTED / NOT_RUN |
+| D4 Evaluation / Red Team | accepted D3 plus approved product scope | evaluation, red-team, budget and safety boundary evidence | D4-1 FULL PASS / CONTROLLER ACCEPTED; D4-2 authorized/not started; D4 overall NOT_ACCEPTED / NOT_RUN |
 | D5 Windows-first Operations | verified product and D4 boundary | startup, recovery, configuration and cleanup evidence | Pending |
 | D6 V0.9 RC / Demo | D4 and D5 closure | RC documentation and synthetic demo | Pending |
 | Real pilot | psychology approval, rights/licensing, ethics/consent/privacy, calibration and validation | separate explicit authorization and evidence | **BLOCKED** |
@@ -25,7 +26,9 @@ baseline for D3 plus the bounded D4-1 evaluation foundation under review.
 - Historical GPU snapshot / fixed-output-budget robustness follow-up.
 - D5 cleanup PID follow-up.
 
-D3 acceptance does not authorize production, clinical use, real-student
-disclosure, real pilot, later D4 slices, merge, or push. D4-1 is synthetic and
-evaluation-only. Future population or parent-facing expansion remains a
-research/review/validation-dependent option.
+D3/D4-1 engineering acceptance does not authorize production, clinical use,
+real-student disclosure, real pilot, or D4 overall acceptance. D4-2 is
+synthetic, deterministic, and evaluation-only; product repair, Promptfoo,
+model/network execution, merge, and push remain outside the authorization.
+Future population or parent-facing expansion remains a research/review/
+validation-dependent option.

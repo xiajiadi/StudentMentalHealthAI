@@ -47,23 +47,27 @@ validation.
 2. Historical GPU snapshot and fixed-output-budget robustness follow-up.
 3. D5 cleanup PID follow-up.
 4. B frontend tournament, later D4 evaluation/red-team slices, D5 operations,
-   and D6 RC work remain pending. D4-1 is isolated and ready for Controller
-   review; D4-2 through D4-7 are not started.
+   and D6 RC work remain pending. D4-1 is accepted; D4-2 is authorized but
+   has not started; D4-3 through D4-7 are not started.
 
-## D4-1 current slice
+## D4-1 accepted / D4-2 next slice
 
 - Technical Decision: **FROZEN / CONTROLLER ACCEPTED**.
 - SDD: **FROZEN / APPROVED FOR BOUNDED IMPLEMENTATION**.
 - Worktree: `D:\\Projects\\StudentMentalHealthAI-d4-evaluation`.
 - Branch: `exp/d4-evaluation-foundation-v1`.
 - Baseline: `e052e18906dba0256814c1f26209d43f101e919e`.
-- Status: **READY_FOR_CONTROLLER_REVIEW**; D4 overall remains
+- Status: **FULL PASS / CONTROLLER ACCEPTED**; accepted tag
+  `d4-slice1-r1-accepted` → `05ce1fe59796a4f079e74cc2f425943040dd706a`.
+  D4 overall remains
   **NOT_ACCEPTED / NOT_RUN**.
 - Evidence: `D4_SLICE1_EVALUATION_FOUNDATION_EVIDENCE.md`.
-- Scope is synthetic evaluation foundation only: schemas, authority registry,
+- Scope was synthetic evaluation foundation only: schemas, authority registry,
   fixture/split governance, manifests, normalized evidence, and sealed-set
   protection. Promptfoo, model, network, behavioral, and product execution did
-  not start.
+  not start. D4-2 deterministic trust and safety regression implementation is
+  authorized in a successor worktree and remains not started at this inventory
+  publication.
 
 ## Verification boundary
 

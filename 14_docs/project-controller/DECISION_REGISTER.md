@@ -17,9 +17,12 @@ psychology, ethics, legal, rights, or production authorization.
 | CTRL-27 | D4 implementation, D4 branch creation, product-source changes, merge, push, and Root/OpenAPI/Contract changes are not authorized by this publication. | CONFIRMED |
 | CTRL-28 | Future population expansion or parent-facing delivery remains possible only after new research, review, and validation. | CONFIRMED |
 | CTRL-29 | D4 Technical Decision is FROZEN / CONTROLLER ACCEPTED and the D4 SDD is FROZEN / APPROVED FOR BOUNDED IMPLEMENTATION. | CONFIRMED |
-| CTRL-30 | D4-1 Evaluation Foundation is authorized in the isolated `exp/d4-evaluation-foundation-v1` worktree only; its status is READY_FOR_CONTROLLER_REVIEW, not accepted. | CONFIRMED |
-| CTRL-31 | D4 overall remains NOT_ACCEPTED / NOT_RUN. D4-2 through D4-7, Promptfoo installation, model calls, network evaluation, and product changes remain outside this slice. | CONFIRMED |
+| CTRL-30 | At D4-1 implementation start, the Evaluation Foundation was authorized in the isolated `exp/d4-evaluation-foundation-v1` worktree only and was not yet accepted. | SUPERSEDED BY CTRL-33 |
+| CTRL-31 | At the D4-1 implementation publication, D4 overall remained NOT_ACCEPTED / NOT_RUN and D4-2 through D4-7 were outside that slice. | SUPERSEDED BY CTRL-34/35 |
 | CTRL-32 | The D4-1 foundation remains synthetic/evaluation-only. Real pilot remains BLOCKED and no psychology, clinical, legal, consent, rights, or production approval is implied. | CONFIRMED |
+| CTRL-33 | D4-1 Evaluation Foundation is FULL PASS / CONTROLLER ACCEPTED. Local tag `d4-slice1-r1-accepted` targets `05ce1fe59796a4f079e74cc2f425943040dd706a`. | CONFIRMED |
+| CTRL-34 | D4-2 Deterministic Trust & Safety Regression implementation is authorized in an isolated evaluation scope. Product repair, Promptfoo, model/network evaluation, and D4 overall acceptance are not authorized. | CONFIRMED |
+| CTRL-35 | D4-2 is authorized but not started; real pilot remains BLOCKED and D4 overall remains NOT_ACCEPTED / NOT_RUN. | CONFIRMED |
 
 ## D3 publication bindings
 
@@ -40,4 +43,14 @@ product behavior or any frozen contract.
 - Branch/worktree: `exp/d4-evaluation-foundation-v1` /
   `D:\\Projects\\StudentMentalHealthAI-d4-evaluation`.
 - Closure evidence: `14_docs/project-controller/D4_SLICE1_EVALUATION_FOUNDATION_EVIDENCE.md`.
-- Controller review marker: `D4_SLICE1_READY_FOR_CONTROLLER_REVIEW`.
+- Accepted tag: `d4-slice1-r1-accepted` → `05ce1fe59796a4f079e74cc2f425943040dd706a`.
+- Controller acceptance marker: `D4_SLICE1_READY_FOR_CONTROLLER_ACCEPTANCE`.
+
+## D4-2 authorization binding
+
+- Preferred branch: `exp/d4-deterministic-regression-v1`.
+- Baseline: D4-1 acceptance-publication commit `05ce1fe59796a4f079e74cc2f425943040dd706a`.
+- Scope: deterministic synthetic trust, safety, privacy, citation-integrity, and
+  fail-closed regression only.
+- Product source, Root/OpenAPI/Contract/DB, Promptfoo, model/network execution,
+  merge, push, and D4-3 remain outside this authorization.
