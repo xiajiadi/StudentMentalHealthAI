@@ -50,4 +50,4 @@ This report verifies that the Controller-frozen requirement meanings are materia
 
 `semantic deviations 0; mission deviations 0.`
 
-The SDD candidate is `READY_FOR_CONTROLLER_FREEZE`. D4 implementation remains unauthorized until a separate Controller freeze and implementation authorization.
+The SDD candidate is `READY_FOR_CONTROLLER_FREEZE`. The technical decision status `FROZEN FOR BOUNDED IMPLEMENTATION` means the requirement text is materialized, while the SDD/fidelity labels mean design/review readiness; none is a D4 runtime result or acceptance. D4 implementation remains unauthorized until a separate Controller freeze and implementation authorization.
