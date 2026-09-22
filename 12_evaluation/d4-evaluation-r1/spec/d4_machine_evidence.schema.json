@@ -451,5 +451,111 @@
     "regression_fixture_promoted": {
       "type": "boolean"
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "assessment_binding": {
+            "properties": {
+              "fixture_mode": {
+                "const": "exact_d3_fixture"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "assessment_binding": {
+            "properties": {
+              "compatibility_mapping": {
+                "const": "none"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "assessment_binding": {
+            "properties": {
+              "fixture_mode": {
+                "const": "legacy_compatibility_fixture"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "assessment_binding": {
+            "properties": {
+              "compatibility_mapping": {
+                "const": "D3-4_BACKEND_SYNTHETIC_COMPATIBILITY_V1"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "role_context": {
+            "properties": {
+              "target_role": {
+                "enum": [
+                  "parent",
+                  "admin"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "role_context": {
+            "properties": {
+              "projection_mode": {
+                "enum": [
+                  "approved_in_process_projection",
+                  "forged_target_role_attempt"
+                ]
+              },
+              "unavailable_actor_decision": {
+                "enum": [
+                  "CONTROLLER_DECISION_REQUIRED",
+                  "REVIEWED_NEGATIVE_CASE"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "run_mode": {
+            "const": "SEALED_FINAL"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "human_review": {
+            "properties": {
+              "status": {
+                "const": "COMPLETE"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

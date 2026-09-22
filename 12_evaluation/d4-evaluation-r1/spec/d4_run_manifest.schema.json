@@ -36,7 +36,9 @@
     "node_runtime",
     "lock_hash",
     "wrapper_identity",
-    "endpoint_inventory"
+    "endpoint_inventory",
+    "fixture_audit",
+    "sealed_evaluation"
   ],
   "properties": {
     "schema_version": {
@@ -353,11 +355,82 @@
             "type": "string"
           },
           "endpoint": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "approved": {
             "type": "boolean"
           }
+        }
+      }
+    },
+    "fixture_audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fixture_mode",
+        "source_identity",
+        "target_identity",
+        "compatibility_mapping",
+        "separation_rule"
+      ],
+      "properties": {
+        "fixture_mode": {
+          "enum": [
+            "exact_d3_fixture",
+            "legacy_compatibility_fixture"
+          ]
+        },
+        "source_identity": {
+          "type": "string"
+        },
+        "target_identity": {
+          "type": "string"
+        },
+        "compatibility_mapping": {
+          "type": "string"
+        },
+        "separation_rule": {
+          "const": "one_mode_per_run"
+        }
+      }
+    },
+    "sealed_evaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "case_count",
+        "scenario_family_distribution",
+        "creation_provenance",
+        "approval_ref"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "NOT_RUN",
+            "PENDING",
+            "COMPLETE"
+          ]
+        },
+        "case_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "scenario_family_distribution": {
+          "type": "object"
+        },
+        "creation_provenance": {
+          "type": "string"
+        },
+        "approval_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       }
     }
@@ -380,7 +453,9 @@
           "node_runtime",
           "lock_hash",
           "wrapper_identity",
-          "endpoint_inventory"
+          "endpoint_inventory",
+          "fixture_audit",
+          "sealed_evaluation"
         ],
         "properties": {
           "sealed_hash": {
@@ -389,7 +464,7 @@
           },
           "promptfoo_version": {
             "type": "string",
-            "minLength": 1
+            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
           },
           "promptfoo_config_hash": {
             "type": "string",
@@ -432,7 +507,27 @@
           },
           "endpoint_inventory": {
             "type": "array",
-            "minItems": 1
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "endpoint",
+                "approved"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "endpoint": {
+                  "type": "string",
+                  "pattern": "^(https?://)?(127\\.0\\.0\\.1|localhost|\\[?::1\\]?)(:[0-9]+)?(/.*)?$"
+                },
+                "approved": {
+                  "const": true
+                }
+              }
+            }
           },
           "provider_identities": {
             "type": "object",
@@ -475,6 +570,35 @@
           },
           "network_policy": {
             "const": "observed_loopback_only"
+          },
+          "fixture_audit": {
+            "type": "object",
+            "properties": {
+              "separation_rule": {
+                "const": "one_mode_per_run"
+              }
+            }
+          },
+          "sealed_evaluation": {
+            "type": "object",
+            "required": [
+              "status",
+              "case_count",
+              "approval_ref"
+            ],
+            "properties": {
+              "status": {
+                "const": "COMPLETE"
+              },
+              "case_count": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "approval_ref": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
           }
         }
       }
