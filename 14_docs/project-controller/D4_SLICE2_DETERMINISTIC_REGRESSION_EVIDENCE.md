@@ -88,7 +88,8 @@ tamper, pending D2 exclusion, no-evidence fail-closed behavior, raw theta/SE
 exclusion, crisis hard-stop with zero normal downstream calls, Output Safety
 ordering, Safety/RAG/Runtime dependency failures, and the non-transactional
 parts of evidence provenance. D4E-57 is promoted on the applicable historical
-replay cases. D4E-55 remains an evidence-binding error as described above.
+replay cases. D4E-55 is PASS after the evidence-schema erratum and is bound to
+the accepted product's exact transaction identity.
 
 D4E-27 is bounded by an authoritative inventory. Runtime and OpenAPI agree
 after excluding FastAPI's generated documentation routes. Canonical support,
