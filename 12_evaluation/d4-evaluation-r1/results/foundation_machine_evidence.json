@@ -1,0 +1,81 @@
+{
+  "answerability": {
+    "expected": "MUST_ANSWER",
+    "false_answer": false,
+    "false_refusal": false,
+    "observed": "NOT_OBSERVED"
+  },
+  "assessment_binding": {
+    "assessment_id_digest": null,
+    "compatibility_mapping": "none",
+    "fixture_identity": "synthetic_assessment.v1",
+    "fixture_mode": "exact_d3_fixture",
+    "fixture_version": "synthetic_assessment.v1",
+    "source_identity": "CURRENT_SYNTHETIC_GRM",
+    "target_identity": "SYNTHETIC_STUDENT_DEMO"
+  },
+  "calls": {
+    "d3_1": 0,
+    "d3_2": 0,
+    "d3_3": 0,
+    "llm": 0,
+    "rag": 0,
+    "safety_input": 0,
+    "safety_output": 0,
+    "safety_retrieval": 0
+  },
+  "case_id": "D4SUP-15-FOUNDATION-DEV",
+  "citation_support": {},
+  "cloud_fallback": false,
+  "d4e_ids": [
+    "D4E-20"
+  ],
+  "d4sup_ids": [
+    "D4SUP-15"
+  ],
+  "evidence_bundle": {
+    "hash": null,
+    "id": null,
+    "status": "NOT_ASSESSED"
+  },
+  "expected_invariant": "machine evidence remains schema-shaped and traceable",
+  "expected_response_class": "MUST_ANSWER",
+  "failure_type": null,
+  "fixture_sha256": "7a18e4a995fe54f00f8d8e0cb5e34b30ae7f99e02f72793391152a3fff6dcc01",
+  "fixture_version": "synthetic_assessment.v1",
+  "git_commit": "0000000000000000000000000000000000000000",
+  "http_status": null,
+  "human_review": {
+    "disagreement_preserved": true,
+    "packet_id": null,
+    "required": false,
+    "status": "NOT_REQUIRED",
+    "unresolved_decision": false
+  },
+  "model_identity": null,
+  "observed_outcome": "NOT_RUN",
+  "observed_response_class": "NOT_OBSERVED",
+  "policy_identity": null,
+  "product_status": null,
+  "real_student_data": false,
+  "request_id": null,
+  "risk_domain": "FOUNDATION_REPRODUCIBILITY",
+  "role_context": {
+    "actor_role": "student",
+    "authorization_source": "synthetic_auth_fixture",
+    "projection_mode": "server_derived",
+    "target_role": "student",
+    "unavailable_actor_decision": "NOT_APPLICABLE"
+  },
+  "route": "/api/v1/support/requests",
+  "run_id": "D4RUN-20260922T000000Z-aaaaaaaaaaaa",
+  "run_mode": "FAST_REGRESSION",
+  "safety": {},
+  "schema_version": "d4-evidence-v1",
+  "split": "DEV",
+  "stage": null,
+  "target_identity": "unconfigured",
+  "template_identity": null,
+  "trace_id": null,
+  "transaction_id": null
+}

@@ -1,0 +1,80 @@
+{
+  "accepted_tags": [
+    "d4-foundation-v1"
+  ],
+  "bootstrap_modes": [
+    "exact_d3_fixture"
+  ],
+  "cloud_fallback": false,
+  "dataset_hashes": {
+    "dev": "9d9a4f3821ff877273f034cd281d880ed347bea7fb1ec03d1da8443fe8738277",
+    "regression": "720b75e81bbf2471c8ae50ae5e55b757b039ef449c554cdd592be45c40efd6c6",
+    "sealed": "bed9b5f41835e00dce67e8d6322eea99ea96dae8b459f1f3b4284ce432a4b580"
+  },
+  "dataset_versions": {
+    "dev": "d4-dev-v1",
+    "regression": "d4-regression-v1",
+    "sealed": "d4-sealed-v1"
+  },
+  "endpoint_inventory": [],
+  "fixture_audit": {
+    "compatibility_mapping": "none",
+    "fixture_mode": "exact_d3_fixture",
+    "separation_rule": "one_mode_per_run",
+    "source_identity": "CURRENT_SYNTHETIC_GRM",
+    "target_identity": "SYNTHETIC_STUDENT_DEMO"
+  },
+  "git_commit": "0000000000000000000000000000000000000000",
+  "hardware": {},
+  "human_review_closure": {
+    "disagreement_preserved": true,
+    "mandatory_complete": false,
+    "status": "NOT_RUN",
+    "unresolved_count": 0
+  },
+  "lock_hash": null,
+  "network_observation": "NOT_RUN",
+  "network_policy": "loopback_only",
+  "node_runtime": null,
+  "policy_ids_hashes": {},
+  "promptfoo_config_hash": null,
+  "promptfoo_version": null,
+  "provider_identities": {
+    "attacker": null,
+    "grader": null,
+    "target": "unconfigured"
+  },
+  "rag_corpus_identity": null,
+  "real_student_data": false,
+  "repeat_settings": {
+    "concurrency": 1,
+    "repeats": 1
+  },
+  "result_paths": [
+    "results/foundation_machine_evidence.json"
+  ],
+  "retry_policy": {
+    "max_retries": 0,
+    "non_idempotent_post_retries": 0
+  },
+  "run_id": "D4RUN-20260922T000000Z-aaaaaaaaaaaa",
+  "run_mode": "FAST_REGRESSION",
+  "runtime": {
+    "digest": null,
+    "model": null
+  },
+  "schema_version": "d4-run-v1",
+  "sealed_evaluation": {
+    "approval_ref": null,
+    "case_count": null,
+    "creation_provenance": "not_run",
+    "scenario_family_distribution": {},
+    "status": "NOT_RUN"
+  },
+  "sealed_hash": null,
+  "seed": null,
+  "template_ids_hashes": {},
+  "test_groups": [],
+  "timestamp": "2026-09-22T00:00:00Z",
+  "wrapper_identity": null
+}

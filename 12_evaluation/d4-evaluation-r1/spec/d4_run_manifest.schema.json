@@ -4,6 +4,512 @@
   "title": "D4 machine run manifest",
   "type": "object",
   "additionalProperties": false,
+  "$defs": {
+    "hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "nullableHash": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "nonEmpty": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 8,
+      "pattern": "^D4RUN-[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "gitCommit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "tag": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "fixtureMode": {
+      "enum": [
+        "exact_d3_fixture",
+        "legacy_compatibility_fixture"
+      ]
+    },
+    "datasetVersions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dev",
+        "regression",
+        "sealed"
+      ],
+      "properties": {
+        "dev": {
+          "$ref": "#/$defs/identifier"
+        },
+        "regression": {
+          "$ref": "#/$defs/identifier"
+        },
+        "sealed": {
+          "$ref": "#/$defs/identifier"
+        }
+      }
+    },
+    "datasetHashes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dev",
+        "regression",
+        "sealed"
+      ],
+      "properties": {
+        "dev": {
+          "$ref": "#/$defs/hash"
+        },
+        "regression": {
+          "$ref": "#/$defs/hash"
+        },
+        "sealed": {
+          "$ref": "#/$defs/hash"
+        }
+      }
+    },
+    "providerIdentities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "attacker",
+        "grader"
+      ],
+      "properties": {
+        "target": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "attacker": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "grader": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model",
+        "digest"
+      ],
+      "properties": {
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "digest": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      }
+    },
+    "hashMap": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+      },
+      "patternProperties": {
+        "^[A-Za-z0-9][A-Za-z0-9._-]*$": {
+          "$ref": "#/$defs/hash"
+        }
+      },
+      "additionalProperties": false
+    },
+    "scalarMap": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+      },
+      "additionalProperties": {
+        "type": [
+          "string",
+          "number",
+          "boolean",
+          "null"
+        ]
+      }
+    },
+    "repeatSettings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repeats",
+        "concurrency"
+      ],
+      "properties": {
+        "repeats": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "concurrency": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "cache": {
+          "enum": [
+            "disabled",
+            "enabled"
+          ]
+        },
+        "retry_policy": {
+          "$ref": "#/$defs/nonEmpty"
+        }
+      }
+    },
+    "endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "endpoint",
+        "approved"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "endpoint": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S+$"
+        },
+        "approved": {
+          "type": "boolean"
+        }
+      }
+    },
+    "loopbackEndpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "endpoint",
+        "approved"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "endpoint": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?:https?://)?(?:127\\.0\\.0\\.1|localhost|\\[?::1\\]?)(?::[0-9]{1,5})?(?:/[^\\s]*)?$"
+        },
+        "approved": {
+          "const": true
+        }
+      }
+    },
+    "fixtureAudit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fixture_mode",
+        "source_identity",
+        "target_identity",
+        "compatibility_mapping",
+        "separation_rule"
+      ],
+      "properties": {
+        "fixture_mode": {
+          "$ref": "#/$defs/fixtureMode"
+        },
+        "source_identity": {
+          "$ref": "#/$defs/identifier"
+        },
+        "target_identity": {
+          "$ref": "#/$defs/identifier"
+        },
+        "compatibility_mapping": {
+          "$ref": "#/$defs/identifier"
+        },
+        "separation_rule": {
+          "const": "one_mode_per_run"
+        }
+      }
+    },
+    "humanReviewClosure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "mandatory_complete",
+        "unresolved_count",
+        "disagreement_preserved"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "NOT_REQUIRED",
+            "NOT_RUN",
+            "PENDING",
+            "COMPLETE",
+            "ESCALATED"
+          ]
+        },
+        "mandatory_complete": {
+          "type": "boolean"
+        },
+        "unresolved_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "disagreement_preserved": {
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "NOT_REQUIRED"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "mandatory_complete": {
+                "const": false
+              },
+              "unresolved_count": {
+                "const": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "NOT_RUN"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "mandatory_complete": {
+                "const": false
+              },
+              "unresolved_count": {
+                "const": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "COMPLETE"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "mandatory_complete": {
+                "const": true
+              },
+              "unresolved_count": {
+                "const": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "PENDING",
+                  "ESCALATED"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "mandatory_complete": {
+                "const": false
+              },
+              "unresolved_count": {
+                "minimum": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "distribution": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z0-9][a-z0-9._-]*$"
+      },
+      "patternProperties": {
+        "^[a-z0-9][a-z0-9._-]*$": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "sealedEvaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "case_count",
+        "scenario_family_distribution",
+        "creation_provenance",
+        "approval_ref"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "NOT_RUN",
+            "PENDING",
+            "COMPLETE"
+          ]
+        },
+        "case_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "scenario_family_distribution": {
+          "$ref": "#/$defs/distribution"
+        },
+        "creation_provenance": {
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "approval_ref": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "NOT_RUN"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "case_count": {
+                "type": "null"
+              },
+              "scenario_family_distribution": {
+                "const": {}
+              },
+              "creation_provenance": {
+                "const": "not_run"
+              },
+              "approval_ref": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "PENDING"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "approval_ref": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "COMPLETE"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "case_count": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "scenario_family_distribution": {
+                "minProperties": 1
+              },
+              "creation_provenance": {
+                "minLength": 1
+              },
+              "approval_ref": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
   "required": [
     "schema_version",
     "run_id",
@@ -45,7 +551,7 @@
       "const": "d4-run-v1"
     },
     "run_id": {
-      "type": "string"
+      "$ref": "#/$defs/runId"
     },
     "run_mode": {
       "enum": [
@@ -56,137 +562,58 @@
     },
     "timestamp": {
       "type": "string",
-      "format": "date-time"
+      "format": "date-time",
+      "minLength": 1
     },
     "git_commit": {
-      "pattern": "^[0-9a-f]{40}$"
+      "$ref": "#/$defs/gitCommit"
     },
     "accepted_tags": {
       "type": "array",
+      "uniqueItems": true,
       "items": {
-        "type": "string"
+        "$ref": "#/$defs/tag"
       }
     },
     "dataset_versions": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "dev",
-        "regression",
-        "sealed"
-      ],
-      "properties": {
-        "dev": {
-          "type": "string"
-        },
-        "regression": {
-          "type": "string"
-        },
-        "sealed": {
-          "type": "string"
-        }
-      }
+      "$ref": "#/$defs/datasetVersions"
     },
     "dataset_hashes": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "dev",
-        "regression",
-        "sealed"
-      ],
-      "properties": {
-        "dev": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{64}$"
-        },
-        "regression": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{64}$"
-        },
-        "sealed": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{64}$"
-        }
-      }
+      "$ref": "#/$defs/datasetHashes"
     },
     "sealed_hash": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "$ref": "#/$defs/nullableHash"
     },
     "promptfoo_version": {
       "type": [
         "string",
         "null"
-      ]
+      ],
+      "minLength": 1,
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"
     },
     "promptfoo_config_hash": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "$ref": "#/$defs/nullableHash"
     },
     "provider_identities": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "target",
-        "attacker",
-        "grader"
-      ],
-      "properties": {
-        "target": {
-          "type": "string"
-        },
-        "attacker": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "grader": {
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      }
+      "$ref": "#/$defs/providerIdentities"
     },
     "runtime": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "model",
-        "digest"
-      ],
-      "properties": {
-        "model": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "digest": {
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      }
+      "$ref": "#/$defs/runtime"
     },
     "template_ids_hashes": {
-      "type": "object"
+      "$ref": "#/$defs/hashMap"
     },
     "policy_ids_hashes": {
-      "type": "object"
+      "$ref": "#/$defs/hashMap"
     },
     "rag_corpus_identity": {
       "type": [
         "string",
         "null"
-      ]
+      ],
+      "minLength": 1,
+      "pattern": "\\S"
     },
     "seed": {
       "type": [
@@ -195,34 +622,10 @@
       ]
     },
     "repeat_settings": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "repeats",
-        "concurrency"
-      ],
-      "properties": {
-        "repeats": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "concurrency": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "cache": {
-          "enum": [
-            "disabled",
-            "enabled"
-          ]
-        },
-        "retry_policy": {
-          "type": "string"
-        }
-      }
+      "$ref": "#/$defs/repeatSettings"
     },
     "hardware": {
-      "type": "object"
+      "$ref": "#/$defs/scalarMap"
     },
     "network_policy": {
       "enum": [
@@ -233,26 +636,25 @@
     },
     "test_groups": {
       "type": "array",
+      "uniqueItems": true,
       "items": {
-        "type": "string"
+        "$ref": "#/$defs/identifier"
       }
     },
     "result_paths": {
       "type": "array",
+      "uniqueItems": true,
       "items": {
-        "type": "string"
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^(?![A-Za-z]:)(?![\\\\/])(?!.*://)(?!.*(?:^|[\\\\/])\\.\\.(?:[\\\\/]|$))(?!.*[\\\\/]{2})[^\\r\\n]+$"
       }
-    },
-    "real_student_data": {
-      "const": false
-    },
-    "cloud_fallback": {
-      "const": false
     },
     "limitations": {
       "type": "array",
+      "uniqueItems": true,
       "items": {
-        "type": "string"
+        "$ref": "#/$defs/nonEmpty"
       }
     },
     "network_observation": {
@@ -266,14 +668,17 @@
     "bootstrap_modes": {
       "type": "array",
       "minItems": 1,
-      "items": {
-        "enum": [
-          "exact_d3_fixture",
-          "legacy_compatibility_fixture"
-        ]
-      },
+      "maxItems": 1,
       "uniqueItems": true,
-      "maxItems": 1
+      "items": {
+        "$ref": "#/$defs/fixtureMode"
+      }
+    },
+    "real_student_data": {
+      "const": false
+    },
+    "cloud_fallback": {
+      "const": false
     },
     "retry_policy": {
       "type": "object",
@@ -293,151 +698,47 @@
       }
     },
     "human_review_closure": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "status",
-        "mandatory_complete",
-        "unresolved_count",
-        "disagreement_preserved"
-      ],
-      "properties": {
-        "status": {
-          "enum": [
-            "NOT_RUN",
-            "PENDING",
-            "COMPLETE",
-            "ESCALATED"
-          ]
-        },
-        "mandatory_complete": {
-          "type": "boolean"
-        },
-        "unresolved_count": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "disagreement_preserved": {
-          "type": "boolean"
-        }
-      }
+      "$ref": "#/$defs/humanReviewClosure"
     },
     "node_runtime": {
       "type": [
         "string",
         "null"
-      ]
+      ],
+      "minLength": 1,
+      "pattern": "\\S"
     },
     "lock_hash": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "$ref": "#/$defs/nullableHash"
     },
     "wrapper_identity": {
       "type": [
         "string",
         "null"
-      ]
+      ],
+      "minLength": 1,
+      "pattern": "\\S"
     },
     "endpoint_inventory": {
       "type": "array",
+      "uniqueItems": true,
       "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "name",
-          "endpoint",
-          "approved"
-        ],
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "endpoint": {
-            "type": "string",
-            "minLength": 1
-          },
-          "approved": {
-            "type": "boolean"
-          }
-        }
+        "$ref": "#/$defs/endpoint"
       }
     },
     "fixture_audit": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "fixture_mode",
-        "source_identity",
-        "target_identity",
-        "compatibility_mapping",
-        "separation_rule"
-      ],
-      "properties": {
-        "fixture_mode": {
-          "enum": [
-            "exact_d3_fixture",
-            "legacy_compatibility_fixture"
-          ]
-        },
-        "source_identity": {
-          "type": "string"
-        },
-        "target_identity": {
-          "type": "string"
-        },
-        "compatibility_mapping": {
-          "type": "string"
-        },
-        "separation_rule": {
-          "const": "one_mode_per_run"
-        }
-      }
+      "$ref": "#/$defs/fixtureAudit"
     },
     "sealed_evaluation": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "status",
-        "case_count",
-        "scenario_family_distribution",
-        "creation_provenance",
-        "approval_ref"
-      ],
-      "properties": {
-        "status": {
-          "enum": [
-            "NOT_RUN",
-            "PENDING",
-            "COMPLETE"
-          ]
-        },
-        "case_count": {
-          "type": [
-            "integer",
-            "null"
-          ],
-          "minimum": 0
-        },
-        "scenario_family_distribution": {
-          "type": "object"
-        },
-        "creation_provenance": {
-          "type": "string"
-        },
-        "approval_ref": {
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      }
+      "$ref": "#/$defs/sealedEvaluation"
     }
   },
   "allOf": [
     {
       "if": {
+        "required": [
+          "run_mode"
+        ],
         "properties": {
           "run_mode": {
             "const": "SEALED_FINAL"
@@ -445,174 +746,125 @@
         }
       },
       "then": {
-        "required": [
-          "sealed_hash",
-          "promptfoo_version",
-          "promptfoo_config_hash",
-          "human_review_closure",
-          "node_runtime",
-          "lock_hash",
-          "wrapper_identity",
-          "endpoint_inventory",
-          "fixture_audit",
-          "sealed_evaluation"
-        ],
         "properties": {
           "sealed_hash": {
-            "type": "string",
-            "pattern": "^[0-9a-f]{64}$"
+            "$ref": "#/$defs/hash"
           },
           "promptfoo_version": {
-            "type": "string",
-            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+            "$ref": "#/$defs/version"
           },
           "promptfoo_config_hash": {
-            "type": "string",
-            "pattern": "^[0-9a-f]{64}$"
+            "$ref": "#/$defs/hash"
           },
           "network_observation": {
+            "const": "observed_loopback_only"
+          },
+          "network_policy": {
             "const": "observed_loopback_only"
           },
           "bootstrap_modes": {
             "minItems": 1
           },
-          "human_review_closure": {
-            "type": "object",
-            "properties": {
-              "status": {
-                "const": "COMPLETE"
-              },
-              "mandatory_complete": {
-                "const": true
-              },
-              "unresolved_count": {
-                "const": 0
-              },
-              "disagreement_preserved": {
-                "const": true
-              }
-            }
+          "provider_identities": {
+            "$ref": "#/$defs/providerIdentities"
+          },
+          "runtime": {
+            "$ref": "#/$defs/runtime"
           },
           "node_runtime": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "pattern": "\\S"
           },
           "lock_hash": {
-            "type": "string",
-            "pattern": "^[0-9a-f]{64}$"
+            "$ref": "#/$defs/hash"
           },
           "wrapper_identity": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "pattern": "\\S"
           },
           "endpoint_inventory": {
             "type": "array",
             "minItems": 1,
             "items": {
-              "type": "object",
-              "required": [
-                "name",
-                "endpoint",
-                "approved"
-              ],
-              "properties": {
-                "name": {
-                  "type": "string"
-                },
-                "endpoint": {
-                  "type": "string",
-                  "pattern": "^(https?://)?(127\\.0\\.0\\.1|localhost|\\[?::1\\]?)(:[0-9]+)?(/.*)?$"
-                },
-                "approved": {
-                  "const": true
-                }
-              }
+              "$ref": "#/$defs/loopbackEndpoint"
             }
           },
-          "provider_identities": {
-            "type": "object",
-            "required": [
-              "target",
-              "attacker",
-              "grader"
-            ],
-            "properties": {
-              "target": {
-                "type": "string",
-                "minLength": 1
-              },
-              "attacker": {
-                "type": "string",
-                "minLength": 1
-              },
-              "grader": {
-                "type": "string",
-                "minLength": 1
+          "human_review_closure": {
+            "allOf": [
+              {
+                "oneOf": [
+                  {
+                    "properties": {
+                      "status": {
+                        "const": "COMPLETE"
+                      },
+                      "mandatory_complete": {
+                        "const": true
+                      },
+                      "unresolved_count": {
+                        "const": 0
+                      },
+                      "disagreement_preserved": {
+                        "const": true
+                      }
+                    }
+                  },
+                  {
+                    "properties": {
+                      "status": {
+                        "const": "NOT_REQUIRED"
+                      },
+                      "mandatory_complete": {
+                        "const": false
+                      },
+                      "unresolved_count": {
+                        "const": 0
+                      },
+                      "disagreement_preserved": {
+                        "const": true
+                      }
+                    }
+                  }
+                ]
               }
-            }
-          },
-          "runtime": {
-            "type": "object",
-            "required": [
-              "model",
-              "digest"
-            ],
-            "properties": {
-              "model": {
-                "type": "string",
-                "minLength": 1
-              },
-              "digest": {
-                "type": "string",
-                "minLength": 1
-              }
-            }
-          },
-          "network_policy": {
-            "const": "observed_loopback_only"
-          },
-          "fixture_audit": {
-            "type": "object",
-            "properties": {
-              "separation_rule": {
-                "const": "one_mode_per_run"
-              }
-            }
+            ]
           },
           "sealed_evaluation": {
-            "type": "object",
-            "required": [
-              "status",
-              "case_count",
-              "approval_ref"
-            ],
-            "properties": {
-              "status": {
-                "const": "COMPLETE"
-              },
-              "case_count": {
-                "type": "integer",
-                "minimum": 1
-              },
-              "approval_ref": {
-                "type": "string",
-                "minLength": 1
-              },
-              "scenario_family_distribution": {
-                "type": "object",
-                "minProperties": 1
-              },
-              "creation_provenance": {
-                "type": "string",
-                "minLength": 1
+            "allOf": [
+              {
+                "properties": {
+                  "status": {
+                    "const": "COMPLETE"
+                  },
+                  "case_count": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "scenario_family_distribution": {
+                    "minProperties": 1
+                  },
+                  "creation_provenance": {
+                    "minLength": 1
+                  },
+                  "approval_ref": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "\\S"
+                  }
+                }
               }
-            }
+            ]
           }
         }
       }
     },
     {
       "if": {
+        "required": [
+          "fixture_audit"
+        ],
         "properties": {
           "fixture_audit": {
             "properties": {
@@ -642,6 +894,9 @@
     },
     {
       "if": {
+        "required": [
+          "fixture_audit"
+        ],
         "properties": {
           "fixture_audit": {
             "properties": {

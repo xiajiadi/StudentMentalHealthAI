@@ -1,6 +1,6 @@
 # CURRENT STATE INVENTORY
 
-Updated: 2026-09-21. This is the current Controller fact-layer inventory for
+Updated: 2026-09-22. This is the current Controller fact-layer inventory for
 the D3 integration worktree. It records accepted evidence without rewriting
 historical machine results.
 
@@ -46,8 +46,24 @@ validation.
 1. Baseline Backend Pyright SQLAlchemy import-resolution errors.
 2. Historical GPU snapshot and fixed-output-budget robustness follow-up.
 3. D5 cleanup PID follow-up.
-4. B frontend tournament, D4 evaluation/red-team, D5 operations, and D6 RC
-   work remain pending. D4 implementation is not authorized or started.
+4. B frontend tournament, later D4 evaluation/red-team slices, D5 operations,
+   and D6 RC work remain pending. D4-1 is isolated and ready for Controller
+   review; D4-2 through D4-7 are not started.
+
+## D4-1 current slice
+
+- Technical Decision: **FROZEN / CONTROLLER ACCEPTED**.
+- SDD: **FROZEN / APPROVED FOR BOUNDED IMPLEMENTATION**.
+- Worktree: `D:\\Projects\\StudentMentalHealthAI-d4-evaluation`.
+- Branch: `exp/d4-evaluation-foundation-v1`.
+- Baseline: `e052e18906dba0256814c1f26209d43f101e919e`.
+- Status: **READY_FOR_CONTROLLER_REVIEW**; D4 overall remains
+  **NOT_ACCEPTED / NOT_RUN**.
+- Evidence: `D4_SLICE1_EVALUATION_FOUNDATION_EVIDENCE.md`.
+- Scope is synthetic evaluation foundation only: schemas, authority registry,
+  fixture/split governance, manifests, normalized evidence, and sealed-set
+  protection. Promptfoo, model, network, behavioral, and product execution did
+  not start.
 
 ## Verification boundary
 

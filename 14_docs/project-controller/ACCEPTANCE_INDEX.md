@@ -22,13 +22,18 @@ it is not a claim of clinical, legal, or production approval.
 | D3-3 Role Projection & Minimum Disclosure | FULL PASS / CONTROLLER ACCEPTED | tag `d3-slice3-r1-accepted` → `cb28fe38b2e1df1b06c96610419691dd2d7924db` |
 | D3-4 Trusted Backend Orchestration & Evidence Binding | FULL PASS / CONTROLLER ACCEPTED | tag `d3-slice4-r1-accepted` → `80140de6fbb63d3239ecc425f9c3daaaf34fb4d7`; tested integration `b1a99326885be0fd93adbf8a46db8c14740bef63` |
 | D3 overall engineering | ENGINEERING_COMPLETE / SYNTHETIC_DEMO_SCOPE | D3-1 through D3-4 rows above |
+| D4 Technical Decision | FROZEN / CONTROLLER ACCEPTED | `14_docs/project-controller/D4_EVALUATION_TECHNICAL_DECISION_V1.md` |
+| D4 SDD | FROZEN / APPROVED FOR BOUNDED IMPLEMENTATION | `14_docs/project-controller/D4_EVALUATION_SDD_V1.md` |
+| D4-1 Evaluation Foundation | READY_FOR_CONTROLLER_REVIEW | `14_docs/project-controller/D4_SLICE1_EVALUATION_FOUNDATION_EVIDENCE.md`; baseline `e052e18906dba0256814c1f26209d43f101e919e` |
+| D4 overall | NOT_ACCEPTED / NOT_RUN | D4-1 only; D4-2 through D4-7 not started |
 
 ## Boundary and next-stage status
 
 D3 acceptance does not imply psychology approval, psychometric validity,
 legal/consent approval, rights/licensing clearance, real-student disclosure
 authorization, real-pilot readiness, clinical approval, or production
-enablement. Real pilot is **BLOCKED**. D4 implementation is not authorized.
+enablement. Real pilot is **BLOCKED**. D4-1 is an evaluation-only foundation
+under Controller review; later D4 implementation is not authorized.
 
 Preserved P1: baseline Backend Pyright SQLAlchemy import-resolution errors;
 historical GPU snapshot/fixed-output-budget robustness; D5 cleanup PID.

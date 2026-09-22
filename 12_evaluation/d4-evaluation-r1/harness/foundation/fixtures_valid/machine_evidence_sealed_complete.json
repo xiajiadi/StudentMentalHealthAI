@@ -1,0 +1,81 @@
+{
+  "schema_version": "d4-evidence-v1",
+  "run_id": "D4RUN-20260922T000000Z-0123456789ab",
+  "run_mode": "SEALED_FINAL",
+  "case_id": "D4E-04-SEALED-COMPLETE",
+  "d4e_ids": [
+    "D4E-41"
+  ],
+  "d4sup_ids": [
+    "D4SUP-12"
+  ],
+  "risk_domain": "FOUNDATION_REPRODUCIBILITY",
+  "split": "DEV",
+  "fixture_version": "synthetic_assessment.v1",
+  "fixture_sha256": "174c27a4dccbb9e5656afa1d7d79db1920c610768c67ec0705bc58eff7c61398",
+  "git_commit": "0000000000000000000000000000000000000000",
+  "route": "/api/v1/support/requests",
+  "request_id": "REQ_demo_001",
+  "trace_id": "TRACE_demo_001",
+  "transaction_id": "TXN_demo_001",
+  "stage": "precheck",
+  "expected_invariant": "expected and observed response classes remain separate",
+  "failure_type": null,
+  "target_identity": "backend-test-target",
+  "model_identity": null,
+  "template_identity": null,
+  "policy_identity": null,
+  "evidence_bundle": {
+    "id": null,
+    "hash": null,
+    "status": "NOT_ASSESSED"
+  },
+  "http_status": null,
+  "product_status": "NOT_RUN",
+  "expected_response_class": "SHOULD_ANSWER",
+  "observed_response_class": "NOT_OBSERVED",
+  "observed_outcome": "NOT_RUN",
+  "safety": {},
+  "calls": {
+    "safety_input": 0,
+    "d3_2": 0,
+    "rag": 0,
+    "safety_retrieval": 0,
+    "d3_3": 0,
+    "d3_1": 0,
+    "llm": 0,
+    "safety_output": 0
+  },
+  "citation_support": {},
+  "answerability": {
+    "expected": "SHOULD_ANSWER",
+    "observed": "NOT_OBSERVED",
+    "false_refusal": false,
+    "false_answer": false
+  },
+  "human_review": {
+    "required": true,
+    "status": "COMPLETE",
+    "packet_id": "D4-PACKET-FOUNDATION-COMPLETE",
+    "disagreement_preserved": true,
+    "unresolved_decision": false
+  },
+  "assessment_binding": {
+    "fixture_mode": "exact_d3_fixture",
+    "assessment_id_digest": null,
+    "fixture_identity": "synthetic_assessment.v1",
+    "fixture_version": "synthetic_assessment.v1",
+    "source_identity": "CURRENT_SYNTHETIC_GRM",
+    "target_identity": "SYNTHETIC_STUDENT_DEMO",
+    "compatibility_mapping": "none"
+  },
+  "role_context": {
+    "actor_role": "student",
+    "target_role": "student",
+    "projection_mode": "server_derived",
+    "authorization_source": "synthetic_auth_fixture",
+    "unavailable_actor_decision": "NOT_APPLICABLE"
+  },
+  "real_student_data": false,
+  "cloud_fallback": false
+}

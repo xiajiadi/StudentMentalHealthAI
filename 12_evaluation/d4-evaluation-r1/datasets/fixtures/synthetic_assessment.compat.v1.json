@@ -1,0 +1,7 @@
+{
+  "assessment_id": "ASSESS_foundation_001",
+  "population_scope": "synthetic_foundation",
+  "subject_id": "SUBJ_foundation_001",
+  "synthetic_only": true,
+  "fixture_version": "synthetic_assessment.v1"
+}
