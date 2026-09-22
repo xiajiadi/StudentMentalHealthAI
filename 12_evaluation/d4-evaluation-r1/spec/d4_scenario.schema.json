@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studentmentalhealthai.local/schemas/d4-scenario-v1.json",
+  "title": "D4 synthetic evaluation scenario",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "case_id",
+    "language",
+    "scenario_family",
+    "semantic_family",
+    "role",
+    "purpose",
+    "execution_mode",
+    "turns",
+    "expected_response_class",
+    "split",
+    "version",
+    "hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "d4-scenario-v1"
+    },
+    "case_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "language": {
+      "const": "zh-CN"
+    },
+    "scenario_family": {
+      "type": "string"
+    },
+    "semantic_family": {
+      "type": "string"
+    },
+    "role": {
+      "enum": [
+        "student",
+        "teacher",
+        "parent",
+        "admin",
+        "reviewer"
+      ]
+    },
+    "purpose": {
+      "type": "string"
+    },
+    "relationship": {
+      "type": "string"
+    },
+    "execution_mode": {
+      "enum": [
+        "canonical_backend",
+        "in_process_harness"
+      ]
+    },
+    "conversation_mode": {
+      "enum": [
+        "single_turn",
+        "same_session_repeated_request",
+        "history_aware_dialogue_not_supported"
+      ]
+    },
+    "turns": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "turn_id",
+          "message"
+        ],
+        "properties": {
+          "turn_id": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "idempotency_key_digest": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "expected_response_class": {
+      "enum": [
+        "MUST_ANSWER",
+        "SHOULD_ANSWER",
+        "SHOULD_ABSTAIN",
+        "MUST_ROUTE",
+        "MUST_DENY"
+      ]
+    },
+    "expected_safety_route": {
+      "type": "string"
+    },
+    "evidence_requirement": {
+      "type": "string"
+    },
+    "citation_requirement": {
+      "type": "string"
+    },
+    "forbidden_claims": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "privacy_expectations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "deterministic_assertions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "behavioral_rubric": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "human_review_required": {
+      "type": "boolean"
+    },
+    "split": {
+      "enum": [
+        "DEV",
+        "REGRESSION",
+        "SEALED_EVAL"
+      ]
+    },
+    "source_provenance": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    },
+    "hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  }
+}

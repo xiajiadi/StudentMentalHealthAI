@@ -1,0 +1,222 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studentmentalhealthai.local/schemas/d4-run-v1.json",
+  "title": "D4 machine run manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "run_mode",
+    "timestamp",
+    "git_commit",
+    "accepted_tags",
+    "dataset_versions",
+    "dataset_hashes",
+    "sealed_hash",
+    "promptfoo_version",
+    "promptfoo_config_hash",
+    "provider_identities",
+    "runtime",
+    "template_ids_hashes",
+    "policy_ids_hashes",
+    "rag_corpus_identity",
+    "seed",
+    "repeat_settings",
+    "hardware",
+    "network_policy",
+    "test_groups",
+    "result_paths"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "d4-run-v1"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "run_mode": {
+      "enum": [
+        "FAST_REGRESSION",
+        "FULL_ENGINEERING",
+        "SEALED_FINAL"
+      ]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "git_commit": {
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "accepted_tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "dataset_versions": {
+      "type": "object",
+      "additionalProperties": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "dataset_hashes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "sealed_hash": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "promptfoo_version": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "promptfoo_config_hash": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "provider_identities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "attacker",
+        "grader"
+      ],
+      "properties": {
+        "target": {
+          "type": "string"
+        },
+        "attacker": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "grader": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model",
+        "digest"
+      ],
+      "properties": {
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "template_ids_hashes": {
+      "type": "object"
+    },
+    "policy_ids_hashes": {
+      "type": "object"
+    },
+    "rag_corpus_identity": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "seed": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "repeat_settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repeats",
+        "concurrency"
+      ],
+      "properties": {
+        "repeats": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "concurrency": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "cache": {
+          "enum": [
+            "disabled",
+            "enabled"
+          ]
+        },
+        "retry_policy": {
+          "type": "string"
+        }
+      }
+    },
+    "hardware": {
+      "type": "object"
+    },
+    "network_policy": {
+      "enum": [
+        "loopback_only",
+        "observed_loopback_only",
+        "controller_exception"
+      ]
+    },
+    "test_groups": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "result_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "real_student_data": {
+      "const": false
+    },
+    "cloud_fallback": {
+      "const": false
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

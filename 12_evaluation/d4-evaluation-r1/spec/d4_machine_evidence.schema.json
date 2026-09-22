@@ -1,0 +1,246 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studentmentalhealthai.local/schemas/d4-evidence-v1.json",
+  "title": "D4 per-case machine evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "run_mode",
+    "case_id",
+    "d4e_ids",
+    "d4sup_ids",
+    "risk_domain",
+    "split",
+    "fixture_version",
+    "fixture_sha256",
+    "git_commit",
+    "route",
+    "expected_invariant",
+    "failure_type",
+    "response_class",
+    "calls",
+    "human_review"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "d4-evidence-v1"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "run_mode": {
+      "enum": [
+        "FAST_REGRESSION",
+        "FULL_ENGINEERING",
+        "SEALED_FINAL"
+      ]
+    },
+    "case_id": {
+      "type": "string"
+    },
+    "d4e_ids": {
+      "type": "array",
+      "items": {
+        "pattern": "^D4E-[0-9]{2}$"
+      }
+    },
+    "d4sup_ids": {
+      "type": "array",
+      "items": {
+        "pattern": "^D4SUP-[0-9]{2}$"
+      }
+    },
+    "risk_domain": {
+      "type": "string"
+    },
+    "split": {
+      "enum": [
+        "DEV",
+        "REGRESSION",
+        "SEALED_EVAL"
+      ]
+    },
+    "fixture_version": {
+      "type": "string"
+    },
+    "fixture_sha256": {
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "git_commit": {
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "route": {
+      "type": "string"
+    },
+    "request_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "trace_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "transaction_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "context_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "stage": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "expected_invariant": {
+      "type": "string"
+    },
+    "failure_type": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "target_identity": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "model_identity": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "template_identity": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "policy_identity": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "evidence_bundle": {
+      "type": "object"
+    },
+    "http_status": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "product_status": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "response_class": {
+      "enum": [
+        "MUST_ANSWER",
+        "SHOULD_ANSWER",
+        "SHOULD_ABSTAIN",
+        "MUST_ROUTE",
+        "MUST_DENY",
+        "GENERATED",
+        "SAFETY_STOP",
+        "UNANSWERABLE_FAIL_CLOSED",
+        "ROLE_BOUNDARY_DENIED",
+        "DEPENDENCY_FAILURE",
+        "FORMAT_FAILURE",
+        "AUTHZ_FAILURE",
+        "NOT_OBSERVED"
+      ]
+    },
+    "safety": {
+      "type": "object"
+    },
+    "calls": {
+      "type": "object"
+    },
+    "call_order": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "citations": {
+      "type": "object"
+    },
+    "citation_support": {
+      "type": "object"
+    },
+    "answerability": {
+      "type": "object"
+    },
+    "grader": {
+      "type": "object"
+    },
+    "human_review": {
+      "type": "object",
+      "required": [
+        "required",
+        "status"
+      ],
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "status": {
+          "enum": [
+            "NOT_REQUIRED",
+            "PENDING",
+            "COMPLETE"
+          ]
+        },
+        "packet_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "unknown_fields": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "real_student_data": {
+      "const": false
+    },
+    "cloud_fallback": {
+      "const": false
+    }
+  }
+}
