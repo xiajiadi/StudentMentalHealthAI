@@ -1,6 +1,6 @@
 {
   "accepted_tags": [
-    "d4-foundation-v1"
+    "d3-slice4-r1-accepted"
   ],
   "bootstrap_modes": [
     "exact_d3_fixture"
@@ -24,7 +24,7 @@
     "source_identity": "CURRENT_SYNTHETIC_GRM",
     "target_identity": "SYNTHETIC_STUDENT_DEMO"
   },
-  "git_commit": "0000000000000000000000000000000000000000",
+  "git_commit": "5944f91a0a00a823bc7a3a97ae2069e28d01c3c3",
   "hardware": {},
   "human_review_closure": {
     "disagreement_preserved": true,

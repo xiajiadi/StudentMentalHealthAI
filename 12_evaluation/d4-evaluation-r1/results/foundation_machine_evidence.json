@@ -43,7 +43,7 @@
   "failure_type": null,
   "fixture_sha256": "7a18e4a995fe54f00f8d8e0cb5e34b30ae7f99e02f72793391152a3fff6dcc01",
   "fixture_version": "synthetic_assessment.v1",
-  "git_commit": "0000000000000000000000000000000000000000",
+  "git_commit": "5944f91a0a00a823bc7a3a97ae2069e28d01c3c3",
   "http_status": null,
   "human_review": {
     "disagreement_preserved": true,
