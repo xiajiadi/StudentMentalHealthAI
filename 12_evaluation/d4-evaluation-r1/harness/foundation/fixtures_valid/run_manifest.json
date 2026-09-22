@@ -1,0 +1,82 @@
+{
+  "schema_version": "d4-run-v1",
+  "run_id": "D4RUN-20260922T000000Z-0123456789ab",
+  "run_mode": "FAST_REGRESSION",
+  "timestamp": "2026-09-22T00:00:00Z",
+  "git_commit": "0000000000000000000000000000000000000000",
+  "accepted_tags": [
+    "d3-slice4-r1-accepted"
+  ],
+  "dataset_versions": {
+    "dev": "d4-dev-v1",
+    "regression": "d4-regression-v1",
+    "sealed": "d4-sealed-v1"
+  },
+  "dataset_hashes": {
+    "dev": "0000000000000000000000000000000000000000000000000000000000000000",
+    "regression": "0000000000000000000000000000000000000000000000000000000000000000",
+    "sealed": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "sealed_hash": null,
+  "promptfoo_version": null,
+  "promptfoo_config_hash": null,
+  "provider_identities": {
+    "target": "backend-test-target",
+    "attacker": null,
+    "grader": null
+  },
+  "runtime": {
+    "model": null,
+    "digest": null
+  },
+  "template_ids_hashes": {},
+  "policy_ids_hashes": {},
+  "rag_corpus_identity": null,
+  "seed": 20260922,
+  "repeat_settings": {
+    "repeats": 1,
+    "concurrency": 1
+  },
+  "hardware": {},
+  "network_policy": "loopback_only",
+  "test_groups": [
+    "foundation"
+  ],
+  "result_paths": [
+    "results/foundation.json"
+  ],
+  "network_observation": "NOT_RUN",
+  "bootstrap_modes": [
+    "exact_d3_fixture"
+  ],
+  "real_student_data": false,
+  "cloud_fallback": false,
+  "retry_policy": {
+    "max_retries": 0,
+    "non_idempotent_post_retries": 0
+  },
+  "human_review_closure": {
+    "status": "NOT_RUN",
+    "mandatory_complete": false,
+    "unresolved_count": 0,
+    "disagreement_preserved": true
+  },
+  "node_runtime": null,
+  "lock_hash": null,
+  "wrapper_identity": null,
+  "endpoint_inventory": [],
+  "fixture_audit": {
+    "fixture_mode": "exact_d3_fixture",
+    "source_identity": "CURRENT_SYNTHETIC_GRM",
+    "target_identity": "SYNTHETIC_STUDENT_DEMO",
+    "compatibility_mapping": "none",
+    "separation_rule": "one_mode_per_run"
+  },
+  "sealed_evaluation": {
+    "status": "NOT_RUN",
+    "case_count": null,
+    "scenario_family_distribution": {},
+    "creation_provenance": "not_run",
+    "approval_ref": null
+  }
+}

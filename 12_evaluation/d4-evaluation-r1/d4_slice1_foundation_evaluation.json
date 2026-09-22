@@ -1,0 +1,100 @@
+{
+  "schema_version": "d4-slice1-foundation-v1",
+  "status": "READY_FOR_CONTROLLER_REVIEW",
+  "baseline_commit": "e052e18906dba0256814c1f26209d43f101e919e",
+  "branch": "exp/d4-evaluation-foundation-v1",
+  "scope": "D4-1 Evaluation Foundation / Schemas / Run Manifest R1",
+  "d4_slice1_status": "READY_FOR_CONTROLLER_REVIEW",
+  "d4_overall_status": "NOT_RUN",
+  "authority_registry": {
+    "technical_decision": "FROZEN FOR BOUNDED IMPLEMENTATION",
+    "d4e_count": 60,
+    "d4sup_count": 20,
+    "formal_case_requires_d4e": true,
+    "d4sup_may_be_empty": true,
+    "status": "PASS"
+  },
+  "datasets": {
+    "formal_case_count": 3,
+    "split_counts": {
+      "DEV": 1,
+      "REGRESSION": 1,
+      "SEALED_EVAL": 1
+    },
+    "fixture_mode": "exact_d3_fixture",
+    "dataset_hashes": {
+      "dev": "9d9a4f3821ff877273f034cd281d880ed347bea7fb1ec03d1da8443fe8738277",
+      "regression": "720b75e81bbf2471c8ae50ae5e55b757b039ef449c554cdd592be45c40efd6c6",
+      "sealed": "bed9b5f41835e00dce67e8d6322eea99ea96dae8b459f1f3b4284ce432a4b580"
+    },
+    "semantic_family_cross_split": "PASS",
+    "sealed_snapshot_execution": "NOT_RUN"
+  },
+  "schemas": {
+    "scenario": "PASS",
+    "run_manifest": "PASS",
+    "machine_evidence": "PASS",
+    "expected_response_classes": [
+      "MUST_ANSWER",
+      "SHOULD_ANSWER",
+      "SHOULD_ABSTAIN",
+      "MUST_ROUTE",
+      "MUST_DENY"
+    ],
+    "observed_response_classes": [
+      "GENERATED",
+      "ABSTAINED",
+      "ROUTED_TO_HUMAN_REVIEW",
+      "DENIED",
+      "SAFETY_STOP",
+      "UNANSWERABLE_FAIL_CLOSED",
+      "ROLE_BOUNDARY_DENIED",
+      "DEPENDENCY_FAILURE",
+      "FORMAT_FAILURE",
+      "AUTHZ_FAILURE",
+      "NOT_OBSERVED"
+    ],
+    "observed_outcomes": [
+      "PASS",
+      "FAIL",
+      "BLOCKED",
+      "NOT_RUN",
+      "PENDING_REVIEW",
+      "ERROR"
+    ],
+    "expected_observed_separation": "PASS",
+    "strict_negative_validation": "PASS"
+  },
+  "foundation_gates": {
+    "focused_pytest": "37 passed",
+    "json_schema_check": "PASS",
+    "compileall": "PASS",
+    "git_diff_check": "PASS",
+    "root_contract": "13/13 PASS",
+    "openapi": "PASS",
+    "frozen_root": "8/8 unchanged",
+    "ruff": "NOT_RUN_UNAVAILABLE",
+    "pyright": "NOT_RUN_UNAVAILABLE"
+  },
+  "policy_checks": {
+    "promptfoo_installed": false,
+    "model_calls": false,
+    "network_used": false,
+    "real_student_data": false,
+    "cloud_fallback": false,
+    "product_source_changed": false,
+    "d3_changed": false,
+    "root_openapi_contract_changed": false,
+    "clinical_or_safety_score_reported": false
+  },
+  "worker_review": {
+    "worker_a": "schema_authority_completed",
+    "worker_b": "manifest_hash_split_completed",
+    "worker_c": "review_ready"
+  },
+  "limitations": [
+    "No Promptfoo, Runtime, backend, GPU, adversarial model, behavioral grader, or network execution was performed.",
+    "The three cases are minimal synthetic foundation fixtures and do not constitute D4 behavioral or safety coverage.",
+    "No real-student, psychology, clinical, legal, consent, pilot, or production conclusion is made."
+  ]
+}

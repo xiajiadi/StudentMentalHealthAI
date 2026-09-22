@@ -1,6 +1,6 @@
 # Project Controller State
 
-Updated: 2026-09-21.
+Updated: 2026-09-22.
 
 This record is a fact-layer publication made after explicit Project Controller
 acceptance of D3 Slice 4. Repository files and acceptance evidence remain the
@@ -9,13 +9,16 @@ change product source.
 
 ## Current state
 
-- Phase: **D3 ENGINEERING COMPLETE / SYNTHETIC-DEMO SCOPE**.
+- Phase: **D4-1 EVALUATION FOUNDATION / CONTROLLER REVIEW READY**.
 - D3-1 Prompt Engine Core: **FULL PASS / CONTROLLER ACCEPTED**.
 - D3-2 Assessment Interpretation Adapter: **FULL PASS / CONTROLLER ACCEPTED**.
 - D3-3 Role Projection & Minimum Disclosure: **FULL PASS / CONTROLLER ACCEPTED**.
 - D3-4 Trusted Backend Orchestration & Evidence Binding: **FULL PASS / CONTROLLER ACCEPTED**.
 - Real pilot: **BLOCKED**.
-- D4 implementation: not authorized and not started.
+- D4 Technical Decision: **FROZEN / CONTROLLER ACCEPTED**.
+- D4 SDD: **FROZEN / APPROVED FOR BOUNDED IMPLEMENTATION**.
+- D4-1 Evaluation Foundation / Schemas / Run Manifest: **READY FOR CONTROLLER REVIEW**.
+- D4 overall: **NOT_ACCEPTED / NOT_RUN**. D4-2 through D4-7 are not started.
 
 ## Accepted D3 evidence binding
 
@@ -45,6 +48,19 @@ execution. Future research may support a broader population or a parent-facing
 product, but that requires new research, review, and validation; this record
 creates no such authorization.
 
+## D4-1 boundary
+
+D4-1 is limited to evaluation schemas, authority registration, synthetic fixture
+governance, run manifests, normalized machine evidence, split controls, and
+sealed-set protection. It contains no Promptfoo installation, model call,
+network execution, behavioral grading, product integration, or D4 acceptance.
+
+The implementation branch is isolated at
+`D:\\Projects\\StudentMentalHealthAI-d4-evaluation` on
+`exp/d4-evaluation-foundation-v1`, based on
+`e052e18906dba0256814c1f26209d43f101e919e`. The D4-1 closure evidence is
+`14_docs/project-controller/D4_SLICE1_EVALUATION_FOUNDATION_EVIDENCE.md`.
+
 ## Preserved P1
 
 - Baseline Backend Pyright SQLAlchemy import-resolution errors.
@@ -53,7 +69,7 @@ creates no such authorization.
 
 ## Publication boundary
 
-The accepted tag points to the evidence closure commit. The fact-layer commit
-that contains this record is documentation-only. No product source, Root,
-OpenAPI, Contract, merge, push, or D4 implementation is authorized by this
-publication.
+The accepted tag points to the D3-4 evidence closure commit. The D4-1 branch
+contains evaluation-only work and remains subject to Controller review. No
+product source, Root, OpenAPI, Contract, merge, push, or D4-2 implementation is
+authorized by this publication.

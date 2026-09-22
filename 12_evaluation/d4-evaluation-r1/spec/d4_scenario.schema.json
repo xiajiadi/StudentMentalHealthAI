@@ -4,6 +4,189 @@
   "title": "D4 synthetic evaluation scenario",
   "type": "object",
   "additionalProperties": false,
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "caseId": {
+      "type": "string",
+      "minLength": 6,
+      "pattern": "^(?:D4E-(?:0[1-9]|[1-5][0-9]|60)|D4SUP-(?:0[1-9]|1[0-9]|20))(?:-[A-Z0-9][A-Z0-9_-]*)?$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"
+    },
+    "d4eId": {
+      "type": "string",
+      "enum": [
+        "D4E-01",
+        "D4E-02",
+        "D4E-03",
+        "D4E-04",
+        "D4E-05",
+        "D4E-06",
+        "D4E-07",
+        "D4E-08",
+        "D4E-09",
+        "D4E-10",
+        "D4E-11",
+        "D4E-12",
+        "D4E-13",
+        "D4E-14",
+        "D4E-15",
+        "D4E-16",
+        "D4E-17",
+        "D4E-18",
+        "D4E-19",
+        "D4E-20",
+        "D4E-21",
+        "D4E-22",
+        "D4E-23",
+        "D4E-24",
+        "D4E-25",
+        "D4E-26",
+        "D4E-27",
+        "D4E-28",
+        "D4E-29",
+        "D4E-30",
+        "D4E-31",
+        "D4E-32",
+        "D4E-33",
+        "D4E-34",
+        "D4E-35",
+        "D4E-36",
+        "D4E-37",
+        "D4E-38",
+        "D4E-39",
+        "D4E-40",
+        "D4E-41",
+        "D4E-42",
+        "D4E-43",
+        "D4E-44",
+        "D4E-45",
+        "D4E-46",
+        "D4E-47",
+        "D4E-48",
+        "D4E-49",
+        "D4E-50",
+        "D4E-51",
+        "D4E-52",
+        "D4E-53",
+        "D4E-54",
+        "D4E-55",
+        "D4E-56",
+        "D4E-57",
+        "D4E-58",
+        "D4E-59",
+        "D4E-60"
+      ]
+    },
+    "d4supId": {
+      "type": "string",
+      "enum": [
+        "D4SUP-01",
+        "D4SUP-02",
+        "D4SUP-03",
+        "D4SUP-04",
+        "D4SUP-05",
+        "D4SUP-06",
+        "D4SUP-07",
+        "D4SUP-08",
+        "D4SUP-09",
+        "D4SUP-10",
+        "D4SUP-11",
+        "D4SUP-12",
+        "D4SUP-13",
+        "D4SUP-14",
+        "D4SUP-15",
+        "D4SUP-16",
+        "D4SUP-17",
+        "D4SUP-18",
+        "D4SUP-19",
+        "D4SUP-20"
+      ]
+    },
+    "turn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "turn_id",
+        "message"
+      ],
+      "properties": {
+        "turn_id": {
+          "type": "string",
+          "minLength": 2,
+          "pattern": "^t[0-9]+$"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "idempotency_key_digest": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "fixtureRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "fixture_version",
+        "sha256",
+        "purpose",
+        "source_identity",
+        "target_identity",
+        "compatibility_mapping"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?![A-Za-z]:)(?![\\\\/])(?!.*://)(?!.*(?:^|[\\\\/])\\.\\.(?:[\\\\/]|$))(?!.*[\\\\/]{2})[^\\r\\n]+$"
+        },
+        "fixture_version": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "purpose": {
+          "const": "synthetic_only"
+        },
+        "source_identity": {
+          "$ref": "#/$defs/identifier"
+        },
+        "target_identity": {
+          "$ref": "#/$defs/identifier"
+        },
+        "compatibility_mapping": {
+          "$ref": "#/$defs/identifier"
+        }
+      }
+    }
+  },
   "required": [
     "schema_version",
     "case_id",
@@ -29,6 +212,8 @@
     "source_provenance",
     "version",
     "hash",
+    "d4e_ids",
+    "d4sup_ids",
     "forbidden_claims",
     "privacy_expectations",
     "deterministic_assertions",
@@ -39,17 +224,32 @@
       "const": "d4-scenario-v1"
     },
     "case_id": {
-      "type": "string",
-      "minLength": 1
+      "$ref": "#/$defs/caseId"
     },
     "language": {
       "const": "zh-CN"
     },
     "scenario_family": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
     },
     "semantic_family": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "source_family": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "actor_role": {
+      "enum": [
+        "student",
+        "teacher",
+        "reviewer"
+      ]
     },
     "role": {
       "enum": [
@@ -61,10 +261,14 @@
       ]
     },
     "purpose": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z][a-z0-9_./-]*$"
     },
     "relationship": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z][a-z0-9_./-]*$"
     },
     "execution_mode": {
       "enum": [
@@ -79,30 +283,26 @@
         "history_aware_dialogue_not_supported"
       ]
     },
+    "fixture_mode": {
+      "enum": [
+        "exact_d3_fixture",
+        "legacy_compatibility_fixture"
+      ]
+    },
+    "fixture_refs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/fixtureRef"
+      }
+    },
     "turns": {
       "type": "array",
       "minItems": 1,
+      "uniqueItems": true,
       "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "turn_id",
-          "message"
-        ],
-        "properties": {
-          "turn_id": {
-            "type": "string"
-          },
-          "message": {
-            "type": "string"
-          },
-          "idempotency_key_digest": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
+        "$ref": "#/$defs/turn"
       }
     },
     "expected_response_class": {
@@ -115,36 +315,40 @@
       ]
     },
     "expected_safety_route": {
-      "type": "string"
+      "$ref": "#/$defs/nonEmptyString"
     },
     "evidence_requirement": {
-      "type": "string"
+      "$ref": "#/$defs/nonEmptyString"
     },
     "citation_requirement": {
-      "type": "string"
+      "$ref": "#/$defs/nonEmptyString"
     },
     "forbidden_claims": {
       "type": "array",
+      "uniqueItems": true,
       "items": {
-        "type": "string"
+        "$ref": "#/$defs/nonEmptyString"
       }
     },
     "privacy_expectations": {
       "type": "array",
+      "uniqueItems": true,
       "items": {
-        "type": "string"
+        "$ref": "#/$defs/nonEmptyString"
       }
     },
     "deterministic_assertions": {
       "type": "array",
+      "uniqueItems": true,
       "items": {
-        "type": "string"
+        "$ref": "#/$defs/nonEmptyString"
       }
     },
     "behavioral_rubric": {
       "type": "array",
+      "uniqueItems": true,
       "items": {
-        "type": "string"
+        "$ref": "#/$defs/nonEmptyString"
       }
     },
     "human_review_required": {
@@ -158,76 +362,37 @@
       ]
     },
     "source_provenance": {
-      "type": "string"
+      "$ref": "#/$defs/nonEmptyString"
     },
     "version": {
-      "type": "string"
+      "$ref": "#/$defs/version"
     },
     "hash": {
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$"
     },
-    "actor_role": {
-      "enum": [
-        "student",
-        "teacher",
-        "reviewer"
-      ]
-    },
-    "fixture_mode": {
-      "enum": [
-        "exact_d3_fixture",
-        "legacy_compatibility_fixture"
-      ]
-    },
-    "fixture_refs": {
+    "d4e_ids": {
       "type": "array",
       "minItems": 1,
+      "uniqueItems": true,
       "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "path",
-          "fixture_version",
-          "sha256",
-          "purpose",
-          "source_identity",
-          "target_identity",
-          "compatibility_mapping"
-        ],
-        "properties": {
-          "path": {
-            "type": "string"
-          },
-          "fixture_version": {
-            "type": "string"
-          },
-          "sha256": {
-            "type": "string",
-            "pattern": "^[0-9a-f]{64}$"
-          },
-          "purpose": {
-            "const": "synthetic_only"
-          },
-          "source_identity": {
-            "type": "string"
-          },
-          "target_identity": {
-            "type": "string"
-          },
-          "compatibility_mapping": {
-            "type": "string"
-          }
-        }
+        "$ref": "#/$defs/d4eId"
       }
     },
-    "source_family": {
-      "type": "string"
+    "d4sup_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/d4supId"
+      }
     }
   },
   "allOf": [
     {
       "if": {
+        "required": [
+          "fixture_mode"
+        ],
         "properties": {
           "fixture_mode": {
             "const": "exact_d3_fixture"
@@ -250,6 +415,9 @@
     },
     {
       "if": {
+        "required": [
+          "fixture_mode"
+        ],
         "properties": {
           "fixture_mode": {
             "const": "legacy_compatibility_fixture"

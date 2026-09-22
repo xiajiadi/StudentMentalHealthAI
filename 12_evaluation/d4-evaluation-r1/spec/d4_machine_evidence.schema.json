@@ -4,157 +4,318 @@
   "title": "D4 per-case machine evidence",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "schema_version",
-    "run_id",
-    "run_mode",
-    "case_id",
-    "d4e_ids",
-    "d4sup_ids",
-    "risk_domain",
-    "split",
-    "fixture_version",
-    "fixture_sha256",
-    "git_commit",
-    "route",
-    "expected_invariant",
-    "failure_type",
-    "response_class",
-    "calls",
-    "human_review",
-    "request_id",
-    "trace_id",
-    "transaction_id",
-    "stage",
-    "target_identity",
-    "model_identity",
-    "template_identity",
-    "policy_identity",
-    "evidence_bundle",
-    "http_status",
-    "product_status",
-    "safety",
-    "citation_support",
-    "answerability",
-    "assessment_binding",
-    "role_context"
-  ],
-  "properties": {
-    "schema_version": {
-      "const": "d4-evidence-v1"
+  "$defs": {
+    "nonEmpty": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
     },
-    "run_id": {
-      "type": "string"
+    "nullableText": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "pattern": "\\S"
     },
-    "run_mode": {
-      "enum": [
-        "FAST_REGRESSION",
-        "FULL_ENGINEERING",
-        "SEALED_FINAL"
-      ]
-    },
-    "case_id": {
-      "type": "string"
-    },
-    "d4e_ids": {
-      "type": "array",
-      "items": {
-        "pattern": "^D4E-[0-9]{2}$"
-      }
-    },
-    "d4sup_ids": {
-      "type": "array",
-      "items": {
-        "pattern": "^D4SUP-[0-9]{2}$"
-      }
-    },
-    "risk_domain": {
-      "type": "string"
-    },
-    "split": {
-      "enum": [
-        "DEV",
-        "REGRESSION",
-        "SEALED_EVAL"
-      ]
-    },
-    "fixture_version": {
-      "type": "string"
-    },
-    "fixture_sha256": {
+    "sha256": {
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
     },
-    "git_commit": {
+    "nullableSha256": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 8,
+      "pattern": "^D4RUN-[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "caseId": {
+      "type": "string",
+      "minLength": 6,
+      "pattern": "^(?:D4E-(?:0[1-9]|[1-5][0-9]|60)|D4SUP-(?:0[1-9]|1[0-9]|20))(?:-[A-Z0-9][A-Z0-9_-]*)?$"
+    },
+    "gitCommit": {
+      "type": "string",
       "pattern": "^[0-9a-f]{40}$"
     },
-    "route": {
-      "type": "string"
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
     },
-    "request_id": {
+    "d4eId": {
+      "type": "string",
+      "enum": [
+        "D4E-01",
+        "D4E-02",
+        "D4E-03",
+        "D4E-04",
+        "D4E-05",
+        "D4E-06",
+        "D4E-07",
+        "D4E-08",
+        "D4E-09",
+        "D4E-10",
+        "D4E-11",
+        "D4E-12",
+        "D4E-13",
+        "D4E-14",
+        "D4E-15",
+        "D4E-16",
+        "D4E-17",
+        "D4E-18",
+        "D4E-19",
+        "D4E-20",
+        "D4E-21",
+        "D4E-22",
+        "D4E-23",
+        "D4E-24",
+        "D4E-25",
+        "D4E-26",
+        "D4E-27",
+        "D4E-28",
+        "D4E-29",
+        "D4E-30",
+        "D4E-31",
+        "D4E-32",
+        "D4E-33",
+        "D4E-34",
+        "D4E-35",
+        "D4E-36",
+        "D4E-37",
+        "D4E-38",
+        "D4E-39",
+        "D4E-40",
+        "D4E-41",
+        "D4E-42",
+        "D4E-43",
+        "D4E-44",
+        "D4E-45",
+        "D4E-46",
+        "D4E-47",
+        "D4E-48",
+        "D4E-49",
+        "D4E-50",
+        "D4E-51",
+        "D4E-52",
+        "D4E-53",
+        "D4E-54",
+        "D4E-55",
+        "D4E-56",
+        "D4E-57",
+        "D4E-58",
+        "D4E-59",
+        "D4E-60"
+      ]
+    },
+    "d4supId": {
+      "type": "string",
+      "enum": [
+        "D4SUP-01",
+        "D4SUP-02",
+        "D4SUP-03",
+        "D4SUP-04",
+        "D4SUP-05",
+        "D4SUP-06",
+        "D4SUP-07",
+        "D4SUP-08",
+        "D4SUP-09",
+        "D4SUP-10",
+        "D4SUP-11",
+        "D4SUP-12",
+        "D4SUP-13",
+        "D4SUP-14",
+        "D4SUP-15",
+        "D4SUP-16",
+        "D4SUP-17",
+        "D4SUP-18",
+        "D4SUP-19",
+        "D4SUP-20"
+      ]
+    },
+    "expectedResponseClass": {
+      "enum": [
+        "MUST_ANSWER",
+        "SHOULD_ANSWER",
+        "SHOULD_ABSTAIN",
+        "MUST_ROUTE",
+        "MUST_DENY"
+      ]
+    },
+    "observedResponseClass": {
+      "enum": [
+        "GENERATED",
+        "ABSTAINED",
+        "ROUTED_TO_HUMAN_REVIEW",
+        "DENIED",
+        "SAFETY_STOP",
+        "UNANSWERABLE_FAIL_CLOSED",
+        "ROLE_BOUNDARY_DENIED",
+        "DEPENDENCY_FAILURE",
+        "FORMAT_FAILURE",
+        "AUTHZ_FAILURE",
+        "NOT_OBSERVED"
+      ]
+    },
+    "observedOutcome": {
+      "enum": [
+        "PASS",
+        "FAIL",
+        "BLOCKED",
+        "NOT_RUN",
+        "PENDING_REVIEW",
+        "ERROR"
+      ]
+    },
+    "requestId": {
       "type": [
         "string",
         "null"
-      ]
+      ],
+      "minLength": 1,
+      "pattern": "^REQ_[A-Za-z0-9][A-Za-z0-9._-]*$"
     },
-    "trace_id": {
+    "traceId": {
       "type": [
         "string",
         "null"
-      ]
+      ],
+      "minLength": 1,
+      "pattern": "^TRACE_[A-Za-z0-9][A-Za-z0-9._-]*$"
     },
-    "transaction_id": {
+    "transactionId": {
       "type": [
         "string",
         "null"
-      ]
+      ],
+      "minLength": 1,
+      "pattern": "^TXN_[A-Za-z0-9][A-Za-z0-9._-]*$"
     },
-    "context_id": {
+    "contextId": {
       "type": [
         "string",
         "null"
+      ],
+      "minLength": 1,
+      "pattern": "^CTX_[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "humanReview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required",
+        "status",
+        "disagreement_preserved",
+        "unresolved_decision"
+      ],
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "status": {
+          "enum": [
+            "NOT_REQUIRED",
+            "PENDING",
+            "COMPLETE",
+            "ESCALATED"
+          ]
+        },
+        "packet_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "pattern": "^D4-PACKET-[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "disagreement_preserved": {
+          "type": "boolean"
+        },
+        "unresolved_decision": {
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "NOT_REQUIRED"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "required": {
+                "const": false
+              },
+              "packet_id": {
+                "type": "null"
+              },
+              "unresolved_decision": {
+                "const": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "COMPLETE"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "required": {
+                "const": true
+              },
+              "packet_id": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^D4-PACKET-[A-Za-z0-9][A-Za-z0-9._-]*$"
+              },
+              "unresolved_decision": {
+                "const": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "PENDING",
+                  "ESCALATED"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "required": {
+                "const": true
+              },
+              "unresolved_decision": {
+                "const": true
+              }
+            }
+          }
+        }
       ]
     },
-    "stage": {
-      "type": [
-        "string",
-        "null"
-      ]
-    },
-    "expected_invariant": {
-      "type": "string"
-    },
-    "failure_type": {
-      "type": [
-        "string",
-        "null"
-      ]
-    },
-    "target_identity": {
-      "type": [
-        "string",
-        "null"
-      ]
-    },
-    "model_identity": {
-      "type": [
-        "string",
-        "null"
-      ]
-    },
-    "template_identity": {
-      "type": [
-        "string",
-        "null"
-      ]
-    },
-    "policy_identity": {
-      "type": [
-        "string",
-        "null"
-      ]
-    },
-    "evidence_bundle": {
+    "evidenceBundle": {
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -167,13 +328,16 @@
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "minLength": 1,
+          "pattern": "^EVIDENCE_[A-Za-z0-9][A-Za-z0-9._-]*$"
         },
         "hash": {
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "pattern": "^[0-9a-f]{64}$"
         },
         "status": {
           "enum": [
@@ -184,38 +348,6 @@
           ]
         }
       }
-    },
-    "http_status": {
-      "type": [
-        "integer",
-        "null"
-      ]
-    },
-    "product_status": {
-      "type": [
-        "string",
-        "null"
-      ]
-    },
-    "response_class": {
-      "enum": [
-        "MUST_ANSWER",
-        "SHOULD_ANSWER",
-        "SHOULD_ABSTAIN",
-        "MUST_ROUTE",
-        "MUST_DENY",
-        "GENERATED",
-        "SAFETY_STOP",
-        "UNANSWERABLE_FAIL_CLOSED",
-        "ROLE_BOUNDARY_DENIED",
-        "DEPENDENCY_FAILURE",
-        "FORMAT_FAILURE",
-        "AUTHZ_FAILURE",
-        "NOT_OBSERVED"
-      ]
-    },
-    "safety": {
-      "type": "object"
     },
     "calls": {
       "type": "object",
@@ -265,84 +397,7 @@
         }
       }
     },
-    "call_order": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "citations": {
-      "type": "object"
-    },
-    "citation_support": {
-      "type": "object"
-    },
-    "answerability": {
-      "type": "object"
-    },
-    "grader": {
-      "type": "object"
-    },
-    "human_review": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "required",
-        "status",
-        "disagreement_preserved",
-        "unresolved_decision"
-      ],
-      "properties": {
-        "required": {
-          "type": "boolean"
-        },
-        "status": {
-          "enum": [
-            "NOT_REQUIRED",
-            "PENDING",
-            "COMPLETE",
-            "ESCALATED"
-          ]
-        },
-        "packet_id": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "disagreement_preserved": {
-          "type": "boolean"
-        },
-        "unresolved_decision": {
-          "type": "boolean"
-        }
-      }
-    },
-    "artifacts": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "limitations": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "unknown_fields": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "real_student_data": {
-      "const": false
-    },
-    "cloud_fallback": {
-      "const": false
-    },
-    "assessment_binding": {
+    "assessmentBinding": {
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -365,26 +420,27 @@
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "pattern": "^[0-9a-f]{64}$"
         },
         "fixture_identity": {
-          "type": "string"
+          "$ref": "#/$defs/identifier"
         },
         "fixture_version": {
-          "type": "string"
+          "$ref": "#/$defs/identifier"
         },
         "source_identity": {
-          "type": "string"
+          "$ref": "#/$defs/identifier"
         },
         "target_identity": {
-          "type": "string"
+          "$ref": "#/$defs/identifier"
         },
         "compatibility_mapping": {
-          "type": "string"
+          "$ref": "#/$defs/identifier"
         }
       }
     },
-    "role_context": {
+    "roleContext": {
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -419,7 +475,7 @@
           ]
         },
         "authorization_source": {
-          "type": "string"
+          "$ref": "#/$defs/nonEmpty"
         },
         "unavailable_actor_decision": {
           "enum": [
@@ -430,23 +486,264 @@
         }
       }
     },
+    "failureType": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        null,
+        "NONE",
+        "MODEL_FAILURE",
+        "APPLICATION_FAILURE",
+        "SAFETY_FAILURE",
+        "RETRIEVAL_FAILURE",
+        "POLICY_FAILURE",
+        "AUTHZ_FAILURE",
+        "FORMAT_FAILURE",
+        "DEPENDENCY_FAILURE"
+      ]
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?![A-Za-z]:)(?![\\\\/])(?!.*://)(?!.*(?:^|[\\\\/])\\.\\.(?:[\\\\/]|$))(?!.*[\\\\/]{2})[^\\r\\n]+$"
+    }
+  },
+  "required": [
+    "schema_version",
+    "run_id",
+    "run_mode",
+    "case_id",
+    "d4e_ids",
+    "d4sup_ids",
+    "risk_domain",
+    "split",
+    "fixture_version",
+    "fixture_sha256",
+    "git_commit",
+    "route",
+    "expected_invariant",
+    "failure_type",
+    "expected_response_class",
+    "observed_response_class",
+    "observed_outcome",
+    "calls",
+    "human_review",
+    "request_id",
+    "trace_id",
+    "transaction_id",
+    "stage",
+    "target_identity",
+    "model_identity",
+    "template_identity",
+    "policy_identity",
+    "evidence_bundle",
+    "http_status",
+    "product_status",
+    "safety",
+    "citation_support",
+    "answerability",
+    "assessment_binding",
+    "role_context",
+    "real_student_data",
+    "cloud_fallback"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "d4-evidence-v1"
+    },
+    "run_id": {
+      "$ref": "#/$defs/runId"
+    },
+    "run_mode": {
+      "enum": [
+        "FAST_REGRESSION",
+        "FULL_ENGINEERING",
+        "SEALED_FINAL"
+      ]
+    },
+    "case_id": {
+      "$ref": "#/$defs/caseId"
+    },
+    "d4e_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/d4eId"
+      }
+    },
+    "d4sup_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/d4supId"
+      }
+    },
+    "risk_domain": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$"
+    },
+    "split": {
+      "enum": [
+        "DEV",
+        "REGRESSION",
+        "SEALED_EVAL"
+      ]
+    },
+    "fixture_version": {
+      "$ref": "#/$defs/identifier"
+    },
+    "fixture_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "git_commit": {
+      "$ref": "#/$defs/gitCommit"
+    },
+    "route": {
+      "$ref": "#/$defs/nonEmpty"
+    },
+    "request_id": {
+      "$ref": "#/$defs/requestId"
+    },
+    "trace_id": {
+      "$ref": "#/$defs/traceId"
+    },
+    "transaction_id": {
+      "$ref": "#/$defs/transactionId"
+    },
+    "context_id": {
+      "$ref": "#/$defs/contextId"
+    },
+    "stage": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "expected_invariant": {
+      "$ref": "#/$defs/nonEmpty"
+    },
+    "failure_type": {
+      "$ref": "#/$defs/failureType"
+    },
+    "target_identity": {
+      "$ref": "#/$defs/nullableText"
+    },
+    "model_identity": {
+      "$ref": "#/$defs/nullableText"
+    },
+    "template_identity": {
+      "$ref": "#/$defs/nullableText"
+    },
+    "policy_identity": {
+      "$ref": "#/$defs/nullableText"
+    },
+    "evidence_bundle": {
+      "$ref": "#/$defs/evidenceBundle"
+    },
+    "http_status": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 100,
+      "maximum": 599
+    },
+    "product_status": {
+      "$ref": "#/$defs/nullableText"
+    },
+    "expected_response_class": {
+      "$ref": "#/$defs/expectedResponseClass"
+    },
+    "observed_response_class": {
+      "$ref": "#/$defs/observedResponseClass"
+    },
+    "observed_outcome": {
+      "$ref": "#/$defs/observedOutcome"
+    },
+    "safety": {
+      "$ref": "#/$defs/payload"
+    },
+    "calls": {
+      "$ref": "#/$defs/calls"
+    },
+    "call_order": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/nonEmpty"
+      }
+    },
+    "citations": {
+      "$ref": "#/$defs/payload"
+    },
+    "citation_support": {
+      "$ref": "#/$defs/payload"
+    },
+    "answerability": {
+      "$ref": "#/$defs/payload"
+    },
+    "grader": {
+      "$ref": "#/$defs/payload"
+    },
+    "human_review": {
+      "$ref": "#/$defs/humanReview"
+    },
+    "artifacts": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/relativePath"
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/nonEmpty"
+      }
+    },
+    "unknown_fields": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/nonEmpty"
+      }
+    },
+    "real_student_data": {
+      "const": false
+    },
+    "cloud_fallback": {
+      "const": false
+    },
+    "assessment_binding": {
+      "$ref": "#/$defs/assessmentBinding"
+    },
+    "role_context": {
+      "$ref": "#/$defs/roleContext"
+    },
     "false_refusal": {
-      "type": "object"
+      "$ref": "#/$defs/payload"
     },
     "chinese_behavior": {
-      "type": "object"
+      "$ref": "#/$defs/payload"
     },
     "behavioral": {
-      "type": "object"
+      "$ref": "#/$defs/payload"
     },
     "structured_output": {
-      "type": "object"
+      "$ref": "#/$defs/payload"
     },
     "availability": {
-      "type": "object"
+      "$ref": "#/$defs/payload"
     },
     "sealed_result": {
-      "type": "object"
+      "$ref": "#/$defs/payload"
     },
     "regression_fixture_promoted": {
       "type": "boolean"
@@ -455,6 +752,9 @@
   "allOf": [
     {
       "if": {
+        "required": [
+          "assessment_binding"
+        ],
         "properties": {
           "assessment_binding": {
             "properties": {
@@ -479,6 +779,9 @@
     },
     {
       "if": {
+        "required": [
+          "assessment_binding"
+        ],
         "properties": {
           "assessment_binding": {
             "properties": {
@@ -503,6 +806,9 @@
     },
     {
       "if": {
+        "required": [
+          "role_context"
+        ],
         "properties": {
           "role_context": {
             "properties": {
@@ -539,9 +845,53 @@
     },
     {
       "if": {
+        "required": [
+          "evidence_bundle"
+        ],
+        "properties": {
+          "evidence_bundle": {
+            "properties": {
+              "status": {
+                "const": "ELIGIBLE"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "evidence_bundle": {
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^EVIDENCE_[A-Za-z0-9][A-Za-z0-9._-]*$"
+              },
+              "hash": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "run_mode",
+          "human_review"
+        ],
         "properties": {
           "run_mode": {
             "const": "SEALED_FINAL"
+          },
+          "human_review": {
+            "properties": {
+              "required": {
+                "const": true
+              }
+            }
           }
         }
       },
@@ -551,6 +901,43 @@
             "properties": {
               "status": {
                 "const": "COMPLETE"
+              },
+              "unresolved_decision": {
+                "const": false
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "run_mode",
+          "human_review"
+        ],
+        "properties": {
+          "run_mode": {
+            "const": "SEALED_FINAL"
+          },
+          "human_review": {
+            "properties": {
+              "required": {
+                "const": false
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "human_review": {
+            "properties": {
+              "status": {
+                "const": "NOT_REQUIRED"
+              },
+              "unresolved_decision": {
+                "const": false
               }
             }
           }

@@ -1,8 +1,8 @@
 {
   "schema_version": "project-controller-state.v2",
-  "updated_at": "2026-09-21",
+  "updated_at": "2026-09-22",
   "authority": "Project Controller",
-  "phase": "D3_ENGINEERING_COMPLETE_SYNTHETIC_DEMO_SCOPE",
+  "phase": "D4_1_EVALUATION_FOUNDATION_REVIEW_READY",
   "d3_overall_status": "ENGINEERING_COMPLETE / SYNTHETIC_DEMO_SCOPE",
   "d3_slices": [
     {
@@ -58,13 +58,29 @@
     "root_openapi_contracts_changed": false,
     "merge": false,
     "push": false,
-    "d4_started": false,
-    "d4_implementation_authorized": false
+    "d4_started": true,
+    "d4_implementation_authorized": true,
+    "d4_2_started": false
   },
   "authoritative_references": [
     "12_evaluation/d3-slice4-backend-integration-r1/d3_slice4_backend_integration_evaluation.json",
     "12_evaluation/d3-slice4-backend-integration-r1/D3VAL_REAL_HTTP_EVIDENCE.json",
     "14_docs/project-controller/D3_SLICE4_BACKEND_INTEGRATION_EVIDENCE.md",
     "14_docs/project-controller/D3_SLICE4_DECISION_FIDELITY_REPORT.md"
-  ]
+  ],
+  "d4_technical_decision_status": "FROZEN / CONTROLLER ACCEPTED",
+  "d4_sdd_status": "FROZEN / APPROVED FOR BOUNDED IMPLEMENTATION",
+  "d4_current_slice": {
+    "id": "D4-1",
+    "name": "Evaluation Foundation / Schemas / Run Manifest R1",
+    "status": "READY_FOR_CONTROLLER_REVIEW",
+    "baseline_commit": "e052e18906dba0256814c1f26209d43f101e919e",
+    "branch": "exp/d4-evaluation-foundation-v1",
+    "worktree": "D:\\Projects\\StudentMentalHealthAI-d4-evaluation",
+    "evidence": "14_docs/project-controller/D4_SLICE1_EVALUATION_FOUNDATION_EVIDENCE.md",
+    "summary": "12_evaluation/d4-evaluation-r1/d4_slice1_foundation_evaluation.json"
+  },
+  "d4_overall_status": "NOT_ACCEPTED / NOT_RUN",
+  "d4_implementation_authorized": true,
+  "d4_later_slices_started": false
 }

@@ -1,6 +1,6 @@
 # Decision Register
 
-Updated: 2026-09-21. Decisions below are Controller decisions recorded for
+Updated: 2026-09-22. Decisions below are Controller decisions recorded for
 fact-layer continuity. An engineering acceptance does not substitute for
 psychology, ethics, legal, rights, or production authorization.
 
@@ -16,6 +16,10 @@ psychology, ethics, legal, rights, or production authorization.
 | CTRL-26 | Preserve the three D3 P1 items: baseline Backend Pyright errors, GPU snapshot/fixed-output-budget robustness, and D5 cleanup PID. | CONFIRMED |
 | CTRL-27 | D4 implementation, D4 branch creation, product-source changes, merge, push, and Root/OpenAPI/Contract changes are not authorized by this publication. | CONFIRMED |
 | CTRL-28 | Future population expansion or parent-facing delivery remains possible only after new research, review, and validation. | CONFIRMED |
+| CTRL-29 | D4 Technical Decision is FROZEN / CONTROLLER ACCEPTED and the D4 SDD is FROZEN / APPROVED FOR BOUNDED IMPLEMENTATION. | CONFIRMED |
+| CTRL-30 | D4-1 Evaluation Foundation is authorized in the isolated `exp/d4-evaluation-foundation-v1` worktree only; its status is READY_FOR_CONTROLLER_REVIEW, not accepted. | CONFIRMED |
+| CTRL-31 | D4 overall remains NOT_ACCEPTED / NOT_RUN. D4-2 through D4-7, Promptfoo installation, model calls, network evaluation, and product changes remain outside this slice. | CONFIRMED |
+| CTRL-32 | The D4-1 foundation remains synthetic/evaluation-only. Real pilot remains BLOCKED and no psychology, clinical, legal, consent, rights, or production approval is implied. | CONFIRMED |
 
 ## D3 publication bindings
 
@@ -29,3 +33,11 @@ psychology, ethics, legal, rights, or production authorization.
 
 These decisions update only the Controller fact layer. They do not alter
 product behavior or any frozen contract.
+
+## D4-1 implementation binding
+
+- Baseline commit: `e052e18906dba0256814c1f26209d43f101e919e`.
+- Branch/worktree: `exp/d4-evaluation-foundation-v1` /
+  `D:\\Projects\\StudentMentalHealthAI-d4-evaluation`.
+- Closure evidence: `14_docs/project-controller/D4_SLICE1_EVALUATION_FOUNDATION_EVIDENCE.md`.
+- Controller review marker: `D4_SLICE1_READY_FOR_CONTROLLER_REVIEW`.
