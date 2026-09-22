@@ -53,7 +53,7 @@ def test_authority_registry_has_exact_canonical_ranges() -> None:
 
 def test_valid_foundation_records_validate() -> None:
     validate_scenario(_load(VALID / "scenario.json"))
-    validate_run_manifest(_load(VALID / "run_manifest.json"))
+    validate_run_manifest(_load(VALID / "run_manifest_SAMPLE_ONLY.json"))
     validate_machine_evidence(_load(VALID / "machine_evidence.json"))
 
 
@@ -121,7 +121,7 @@ def test_sealed_human_review_condition_is_explicit() -> None:
 
 
 def test_sealed_manifest_accepts_complete_or_not_required_closure() -> None:
-    manifest = _load(VALID / "run_manifest.json")
+    manifest = _load(VALID / "run_manifest_SAMPLE_ONLY.json")
     manifest.update(
         {
             "run_mode": "SEALED_FINAL",
@@ -242,7 +242,7 @@ def test_duplicate_turn_and_case_ids_are_rejected() -> None:
     with pytest.raises(FoundationValidationError):
         validate_machine_evidence(duplicate_authority)
 
-    duplicate_result_path = _load(VALID / "run_manifest.json")
+    duplicate_result_path = _load(VALID / "run_manifest_SAMPLE_ONLY.json")
     duplicate_result_path["result_paths"] = ["results/a.json", "results/a.json"]
     with pytest.raises(FoundationValidationError):
         validate_run_manifest(duplicate_result_path)
@@ -254,7 +254,7 @@ def test_relative_fixture_and_artifact_paths_reject_escape_syntax() -> None:
     with pytest.raises(FoundationValidationError):
         validate_scenario(scenario)
 
-    manifest = _load(VALID / "run_manifest.json")
+    manifest = _load(VALID / "run_manifest_SAMPLE_ONLY.json")
     manifest["result_paths"] = ["https://example.invalid/result.json"]
     with pytest.raises(FoundationValidationError):
         validate_run_manifest(manifest)
@@ -272,7 +272,7 @@ def test_secret_shaped_nested_fields_are_rejected() -> None:
     with pytest.raises(FoundationValidationError):
         validate_machine_evidence(evidence)
 
-    manifest = _load(VALID / "run_manifest.json")
+    manifest = _load(VALID / "run_manifest_SAMPLE_ONLY.json")
     manifest["hardware"] = {"env_dump": "forbidden"}
     with pytest.raises(FoundationValidationError):
         validate_run_manifest(manifest)

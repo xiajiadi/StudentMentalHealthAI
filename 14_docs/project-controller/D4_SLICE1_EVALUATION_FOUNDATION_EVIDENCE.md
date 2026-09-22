@@ -1,6 +1,6 @@
 # D4 Slice 1 · Evaluation Foundation Evidence
 
-Status: **READY_FOR_CONTROLLER_REVIEW**
+Status: **READY_FOR_CONTROLLER_ACCEPTANCE**
 
 This document records the bounded D4-1 foundation implementation. It is an
 engineering evidence record only. It is not D4 acceptance, psychology approval,
@@ -10,10 +10,16 @@ authorization, or production enablement.
 ## Binding
 
 - Baseline: `e052e18906dba0256814c1f26209d43f101e919e`
+- Tested D4-1 implementation commit: `5944f91a0a00a823bc7a3a97ae2069e28d01c3c3`
+- Evidence closure commit: this evidence-only closure commit.
 - Branch: `exp/d4-evaluation-foundation-v1`
 - Worktree: `D:\Projects\StudentMentalHealthAI-d4-evaluation`
 - Accepted D3 baseline remains `d3-slice4-r1-accepted` → `80140de6fbb63d3239ecc425f9c3daaaf34fb4d7`.
-- No merge, push, tag, D4-2 start, or product-source change was performed.
+- Formal manifest: `12_evaluation/d4-evaluation-r1/manifests/run_manifest.json` binds
+  `git_commit` to `5944f91a0a00a823bc7a3a97ae2069e28d01c3c3` and accepted tag
+  `d3-slice4-r1-accepted`. The fictitious `d4-foundation-v1` tag is not present.
+- Schema-only zero-commit sample: `harness/foundation/fixtures_valid/run_manifest_SAMPLE_ONLY.json`.
+- No merge, push, D4-1 tag, D4-2 start, or product-source change was performed.
 
 ## Delivered foundation
 
@@ -56,7 +62,9 @@ authorization, or production enablement.
 | Root Contract | **13/13 PASS** |
 | OpenAPI | **PASS** using the local Backend test extra |
 | Frozen Root | **8/8 unchanged** |
-| Ruff / Pyright | **NOT RUN**; executables are unavailable in the current environment |
+| Ruff check | **NOT_RUN_UNAVAILABLE**; direct `ruff check 12_evaluation/d4-evaluation-r1/harness` attempt exited 1 because `ruff` is unavailable |
+| Ruff format | **NOT_RUN_UNAVAILABLE**; direct `ruff format --check 12_evaluation/d4-evaluation-r1/harness` attempt exited 1 because `ruff` is unavailable |
+| Pyright | **NOT_APPLICABLE_NO_CONFIGURED_SCOPE**; no Pyright configuration exists under `12_evaluation/d4-evaluation-r1` |
 
 ## Boundary checks
 
@@ -66,6 +74,9 @@ authorization, or production enablement.
 - No real-student data, secret, cloud fallback, or clinical threshold was used.
 - Product directories, D3, Root, OpenAPI, contracts, and database artifacts are
   unchanged from the baseline.
+- Remaining D4-1 P0 items: **NONE**.
+- Preserved P1 items: baseline Backend Pyright SQLAlchemy import-resolution
+  errors; historical GPU/fixed-output-budget robustness; D5 cleanup PID.
 - D4 overall status remains **NOT_RUN / NOT_ACCEPTED**. D4-2 through D4-7 remain
   outside this slice.
 
@@ -78,7 +89,7 @@ authorization, or production enablement.
 
 ## Recommendation
 
-`D4_SLICE1_READY_FOR_CONTROLLER_REVIEW`.
+`D4_SLICE1_READY_FOR_CONTROLLER_ACCEPTANCE`.
 
 Controller review should focus on the authority registry binding, exact versus
 legacy fixture separation, explicit human-review state transitions, sealed-set

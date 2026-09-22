@@ -1,10 +1,10 @@
 {
   "schema_version": "d4-slice1-foundation-v1",
-  "status": "READY_FOR_CONTROLLER_REVIEW",
+  "status": "READY_FOR_CONTROLLER_ACCEPTANCE",
   "baseline_commit": "e052e18906dba0256814c1f26209d43f101e919e",
   "branch": "exp/d4-evaluation-foundation-v1",
   "scope": "D4-1 Evaluation Foundation / Schemas / Run Manifest R1",
-  "d4_slice1_status": "READY_FOR_CONTROLLER_REVIEW",
+  "d4_slice1_status": "READY_FOR_CONTROLLER_ACCEPTANCE",
   "d4_overall_status": "NOT_RUN",
   "authority_registry": {
     "technical_decision": "FROZEN FOR BOUNDED IMPLEMENTATION",
@@ -74,7 +74,8 @@
     "openapi": "PASS",
     "frozen_root": "8/8 unchanged",
     "ruff": "NOT_RUN_UNAVAILABLE",
-    "pyright": "NOT_RUN_UNAVAILABLE"
+    "pyright": "NOT_APPLICABLE_NO_CONFIGURED_SCOPE",
+    "ruff_format": "NOT_RUN_UNAVAILABLE"
   },
   "policy_checks": {
     "promptfoo_installed": false,
@@ -96,5 +97,41 @@
     "No Promptfoo, Runtime, backend, GPU, adversarial model, behavioral grader, or network execution was performed.",
     "The three cases are minimal synthetic foundation fixtures and do not constitute D4 behavioral or safety coverage.",
     "No real-student, psychology, clinical, legal, consent, pilot, or production conclusion is made."
-  ]
+  ],
+  "tested_implementation_commit": "5944f91a0a00a823bc7a3a97ae2069e28d01c3c3",
+  "formal_manifest_git_commit": "5944f91a0a00a823bc7a3a97ae2069e28d01c3c3",
+  "accepted_tags": [
+    "d3-slice4-r1-accepted"
+  ],
+  "fictitious_d4_foundation_tag": false,
+  "sample_manifest": "harness/foundation/fixtures_valid/run_manifest_SAMPLE_ONLY.json",
+  "static_tooling": {
+    "ruff_check": {
+      "command": "ruff check 12_evaluation/d4-evaluation-r1/harness",
+      "result": "NOT_RUN_UNAVAILABLE",
+      "exit_code": 1
+    },
+    "ruff_format_check": {
+      "command": "ruff format --check 12_evaluation/d4-evaluation-r1/harness",
+      "result": "NOT_RUN_UNAVAILABLE",
+      "exit_code": 1
+    },
+    "pyright": {
+      "result": "NOT_APPLICABLE_NO_CONFIGURED_SCOPE",
+      "configuration_evidence": "No pyrightconfig.json, pyproject.toml, ruff.toml, or .ruff.toml under 12_evaluation/d4-evaluation-r1; product configs are outside the D4 evaluation scope."
+    }
+  },
+  "remaining_p0": "NONE",
+  "remaining_p1": [
+    "baseline Backend Pyright SQLAlchemy import-resolution errors",
+    "historical GPU snapshot / fixed-output-budget robustness follow-up",
+    "D5 cleanup PID follow-up"
+  ],
+  "publication_controls": {
+    "merge": false,
+    "push": false,
+    "d4_slice1_tag": false,
+    "d4_2_started": false,
+    "product_source_changed": false
+  }
 }
