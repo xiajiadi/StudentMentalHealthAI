@@ -10,6 +10,7 @@
     "language",
     "scenario_family",
     "semantic_family",
+    "source_family",
     "actor_role",
     "role",
     "purpose",
@@ -189,7 +190,10 @@
           "path",
           "fixture_version",
           "sha256",
-          "purpose"
+          "purpose",
+          "source_identity",
+          "target_identity",
+          "compatibility_mapping"
         ],
         "properties": {
           "path": {
@@ -204,9 +208,67 @@
           },
           "purpose": {
             "const": "synthetic_only"
+          },
+          "source_identity": {
+            "type": "string"
+          },
+          "target_identity": {
+            "type": "string"
+          },
+          "compatibility_mapping": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "source_family": {
+      "type": "string"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "fixture_mode": {
+            "const": "exact_d3_fixture"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "fixture_refs": {
+            "items": {
+              "properties": {
+                "compatibility_mapping": {
+                  "const": "none"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "fixture_mode": {
+            "const": "legacy_compatibility_fixture"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "fixture_refs": {
+            "items": {
+              "properties": {
+                "compatibility_mapping": {
+                  "const": "D3-4_BACKEND_SYNTHETIC_COMPATIBILITY_V1"
+                }
+              }
+            }
           }
         }
       }
     }
-  }
+  ]
 }
