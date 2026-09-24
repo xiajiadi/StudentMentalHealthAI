@@ -1,8 +1,8 @@
 {
   "schema_version": "project-controller-state.v2",
-  "updated_at": "2026-09-22",
+  "updated_at": "2026-09-24",
   "authority": "Project Controller",
-  "phase": "D4_1_ACCEPTED_D4_2_IMPLEMENTATION_AUTHORIZED",
+  "phase": "D4_2_ACCEPTED_D4_3A_AUTHORIZED",
   "d3_overall_status": "ENGINEERING_COMPLETE / SYNTHETIC_DEMO_SCOPE",
   "d3_slices": [
     {
@@ -65,41 +65,75 @@
     "d4_slice1_tag_target": "05ce1fe59796a4f079e74cc2f425943040dd706a",
     "d4_slice1_accepted": true,
     "d4_2_implementation_authorized": true,
-    "d4_2_product_repair_authorized": false
+    "d4_2_product_repair_authorized": false,
+    "record_scope": "Historical D3 Slice 4 publication snapshot; current D4 status is recorded in d4_slices and d4_current_slice."
   },
   "authoritative_references": [
     "12_evaluation/d3-slice4-backend-integration-r1/d3_slice4_backend_integration_evaluation.json",
     "12_evaluation/d3-slice4-backend-integration-r1/D3VAL_REAL_HTTP_EVIDENCE.json",
     "14_docs/project-controller/D3_SLICE4_BACKEND_INTEGRATION_EVIDENCE.md",
-    "14_docs/project-controller/D3_SLICE4_DECISION_FIDELITY_REPORT.md"
+    "14_docs/project-controller/D3_SLICE4_DECISION_FIDELITY_REPORT.md",
+    "14_docs/project-controller/D4_SLICE2_ACCEPTANCE_PUBLICATION.md",
+    "14_docs/project-controller/D4_SLICE2_DETERMINISTIC_REGRESSION_EVIDENCE.md",
+    "14_docs/project-controller/D4_FOUNDATION_POST_ACCEPTANCE_ERRATA_V1.md"
   ],
   "d4_technical_decision_status": "FROZEN / CONTROLLER ACCEPTED",
   "d4_sdd_status": "FROZEN / APPROVED FOR BOUNDED IMPLEMENTATION",
   "d4_current_slice": {
-    "id": "D4-1",
-    "name": "Evaluation Foundation / Schemas / Run Manifest R1",
-    "status": "FULL PASS / CONTROLLER ACCEPTED",
-    "baseline_commit": "e052e18906dba0256814c1f26209d43f101e919e",
-    "branch": "exp/d4-evaluation-foundation-v1",
-    "worktree": "D:\\Projects\\StudentMentalHealthAI-d4-evaluation",
-    "evidence": "14_docs/project-controller/D4_SLICE1_EVALUATION_FOUNDATION_EVIDENCE.md",
-    "summary": "12_evaluation/d4-evaluation-r1/d4_slice1_foundation_evaluation.json",
-    "tag": "d4-slice1-r1-accepted",
-    "tag_target": "05ce1fe59796a4f079e74cc2f425943040dd706a",
-    "closure_commit": "05ce1fe59796a4f079e74cc2f425943040dd706a",
-    "controller_marker": "D4_SLICE1_READY_FOR_CONTROLLER_ACCEPTANCE"
+    "id": "D4-3A",
+    "name": "Citation Support & Safe Utility Evaluation Foundation R1",
+    "status": "IMPLEMENTATION_AUTHORIZED / NOT_STARTED",
+    "baseline_tag": "d4-slice2-r1-accepted",
+    "baseline_tag_target": "2ead2fd6a131f34c2cc7cb71274aed04ce935053",
+    "scope": "evaluation-only harness, synthetic fixtures, and human-review packets",
+    "human_gold_status": "DRAFT / HUMAN_REVIEW_REQUIRED",
+    "product_generation_started": false
   },
-  "d4_overall_status": "NOT_ACCEPTED / NOT_RUN",
+  "d4_overall_status": "IN_PROGRESS / NOT_ACCEPTED",
   "d4_implementation_authorized": true,
   "d4_later_slices_started": false,
   "d4_next_slice": {
-    "id": "D4-2",
-    "name": "Deterministic Trust & Safety Regression Layer R1",
-    "status": "IMPLEMENTATION_AUTHORIZED / NOT_STARTED",
-    "preferred_branch": "exp/d4-deterministic-regression-v1",
-    "baseline_commit": "05ce1fe59796a4f079e74cc2f425943040dd706a",
-    "product_repair_authorized": false,
-    "promptfoo_authorized": false,
-    "model_network_execution_authorized": false
-  }
+    "id": "D4-3B",
+    "name": "Controlled Product Generation",
+    "status": "NOT_AUTHORIZED / HUMAN_REVIEW_GATE",
+    "entry_condition": "D4-3A human-review packet decision and separate Controller authorization",
+    "product_generation_authorized": false
+  },
+  "d4_slices": [
+    {
+      "id": "D4-1",
+      "name": "Evaluation Foundation / Schemas / Run Manifest R1",
+      "status": "FULL PASS / CONTROLLER ACCEPTED",
+      "tag": "d4-slice1-r1-accepted",
+      "tag_target": "05ce1fe59796a4f079e74cc2f425943040dd706a",
+      "evidence": "14_docs/project-controller/D4_SLICE1_EVALUATION_FOUNDATION_EVIDENCE.md"
+    },
+    {
+      "id": "D4-2",
+      "name": "Deterministic Trust & Safety Regression R1",
+      "status": "FULL PASS / CONTROLLER ACCEPTED",
+      "tag": "d4-slice2-r1-accepted",
+      "tag_target": "2ead2fd6a131f34c2cc7cb71274aed04ce935053",
+      "initial_p0_evidence_commit": "42c2fc8e39dc3f2c571c7760a91b6c16d0110ed2",
+      "repair_implementation_commit": "5400831a6df8ee46d1df421ddc596bbfe37366c0",
+      "evidence_closure_commit": "a63d636482e5a787f5ab5c4bf8598356f79bc1d9",
+      "final_documentation_closure_commit": "2ead2fd6a131f34c2cc7cb71274aed04ce935053",
+      "acceptance_publication": "14_docs/project-controller/D4_SLICE2_ACCEPTANCE_PUBLICATION.md",
+      "preserved_finding": "D4E-26 sensitive assessment-existence disclosure discovered and minimally repaired",
+      "scope": "synthetic engineering evaluation only"
+    }
+  ],
+  "d4_3a_started": false,
+  "d4_slice2_acceptance_publication": {
+    "tag": "d4-slice2-r1-accepted",
+    "tag_target": "2ead2fd6a131f34c2cc7cb71274aed04ce935053",
+    "fact_layer_commit": "This JSON is part of the fact-layer publication commit; identify that commit through Git HEAD.",
+    "d4e_26_initial_p0_preserved": true,
+    "product_source_changed_by_this_publication": false,
+    "main_dirty_repo_touched": false,
+    "merge": false,
+    "push": false
+  },
+  "d4_3a_human_gold_status": "DRAFT / HUMAN_REVIEW_REQUIRED",
+  "real_pilot": "BLOCKED"
 }
