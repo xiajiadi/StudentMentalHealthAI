@@ -9,7 +9,7 @@ change product source.
 
 ## Current state
 
-- Phase: **D4-2 ACCEPTED / D4-3A NEXT**.
+- Phase: **D4-3A ACCEPTED / D4-3B CURRENT**.
 - D3-1 Prompt Engine Core: **FULL PASS / CONTROLLER ACCEPTED**.
 - D3-2 Assessment Interpretation Adapter: **FULL PASS / CONTROLLER ACCEPTED**.
 - D3-3 Role Projection & Minimum Disclosure: **FULL PASS / CONTROLLER ACCEPTED**.
@@ -19,7 +19,8 @@ change product source.
 - D4 SDD: **FROZEN / APPROVED FOR BOUNDED IMPLEMENTATION**.
 - D4-1 Evaluation Foundation / Schemas / Run Manifest: **FULL PASS / CONTROLLER ACCEPTED**.
 - D4-2 Deterministic Trust & Safety Regression: **FULL PASS / CONTROLLER ACCEPTED**.
-- D4 current slice: **D4-3A Citation Support & Safe Utility Evaluation Foundation**.
+- D4-3A Citation Support & Safe Utility Evaluation Foundation: **FULL PASS / CONTROLLER ACCEPTED**.
+- D4 current slice: **D4-3B Controlled Product Citation Support & Safe Utility Evaluation R1**.
 - D4 overall: **IN_PROGRESS / NOT_ACCEPTED**.
 
 ## Accepted D3 evidence binding
@@ -80,10 +81,25 @@ sensitive-assessment existence disclosure finding, then closed it with the
 minimum-disclosure repair. See `D4_SLICE2_ACCEPTANCE_PUBLICATION.md` and
 `D4_SLICE2_DETERMINISTIC_REGRESSION_EVIDENCE.md`.
 
-D4-3A Citation Support & Safe Utility Evaluation Foundation is the current
-bounded evaluation-only slice. Human semantic labels remain drafts until
-Controller/designated reviewer review. D4-3A does not start formal product
-generation or imply D4 overall acceptance.
+D4-3A Citation Support & Safe Utility Evaluation Foundation R1 is FULL PASS /
+CONTROLLER ACCEPTED. The local annotated tag `d4-slice3a-r1-accepted` targets
+`dd083d7a9d50e554408571e8b6d8040700d7a88b`. The approved Human Gold packet is
+`D4-PACKET-SLICE3A-CITATION-UTILITY-R1`; its pre-publication hash was
+`sha256:8b2e83469888fc195dbf9baea1389f97ab5dcaa0c48e83c9c5ae1efcf25cbe67` and
+its approved hash is
+`sha256:cfbe640300c2cbfbfe9616bb20b10b6ed80e7ee1e15169aadf2052ac8de107c6`.
+The approval record is `D4_SLICE3A_HUMAN_GOLD_APPROVAL.md` (7 citation-support
+and 12 answerability decisions approved as drafted). The documented Ruff
+network deviation is accepted as a process deviation; the historical record
+still reports it and does not claim a network-free execution.
+
+D4-3B Controlled Product Citation Support & Safe Utility Evaluation R1 is
+authorized and is the current slice. It must use a new isolated worktree from
+this fact-layer publication commit. Product evaluation has not started in this
+publication. It is limited to the approved synthetic cases and the canonical
+local product path; no product changes, Promptfoo, real-student data, or D4-4
+work are authorized. D4 overall remains **IN_PROGRESS / NOT_ACCEPTED** and real
+pilot remains **BLOCKED**.
 
 ## Preserved P1
 
@@ -93,10 +109,10 @@ generation or imply D4 overall acceptance.
 
 ## Publication boundary
 
-The accepted D3-4 and D4-1 tags continue to point to their evidence closure
-commits. D4-2 remains synthetic and evaluation-only. D4-3A may change only its
-evaluation harness, evaluation-only synthetic fixtures, and Controller
-fact-layer records. Neither acceptance authorizes psychology validity,
-real-student use, pilot, clinical, or production approval. D4 overall remains
+The accepted D3-4 and D4-1 through D4-3A tags remain bound to their recorded
+evidence commits. D4-3B is authorized for a controlled synthetic local product
+evaluation with a loopback-only data plane. This does not authorize product
+source changes, Promptfoo, D4-4, external endpoints, psychology validity,
+real-student use, clinical or production approval. D4 overall remains
 **IN_PROGRESS / NOT_ACCEPTED** and real pilot remains **BLOCKED**. No merge or
 push is authorized by this publication.

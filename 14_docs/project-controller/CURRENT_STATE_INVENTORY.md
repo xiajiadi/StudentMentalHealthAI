@@ -1,21 +1,22 @@
 # CURRENT STATE INVENTORY
 
 Updated: 2026-09-24. This is the current Controller fact-layer inventory for
-the accepted D4-2 publication baseline. It records accepted evidence without
-rewriting historical machine results.
+the D4-3A Human Gold publication baseline and authorized D4-3B next slice. It
+records accepted evidence without rewriting historical machine results.
 
 ## Repository and publication truth
 
-- Worktree: `D:\Projects\StudentMentalHealthAI-d4-deterministic-regression`.
-- Branch: `exp/d4-deterministic-regression-v1`.
-- D4-2 accepted commit: `2ead2fd6a131f34c2cc7cb71274aed04ce935053`.
-- Local annotated tag: `d4-slice2-r1-accepted` targets that exact commit.
-- Fact-layer publication is documentation-only and is distinct from the
-  accepted deterministic implementation/evidence closure.
-- Product source was changed only within the D4-2R authorization in
-  `09_backend` to close the D4E-26 assessment-existence disclosure. This
-  acceptance publication changes no product source, Root, OpenAPI, Contract,
-  database schema, D3 behavior, or Runtime configuration.
+- D4-3A implementation worktree/branch: `D:\Projects\StudentMentalHealthAI-d4-citation-utility` /
+  `exp/d4-citation-utility-foundation-v1`.
+- D4-3A Human Gold closure commit: `dd083d7a9d50e554408571e8b6d8040700d7a88b`.
+- Local annotated tag: `d4-slice3a-r1-accepted` targets that exact commit.
+- This documentation-only fact-layer publication commit is the D4-3B baseline;
+  resolve its exact commit from Git HEAD.
+- Authorized D4-3B branch/worktree: `exp/d4-controlled-product-evaluation-v1` /
+  `D:\Projects\StudentMentalHealthAI-d4-controlled-product-eval`, to be
+  created from this fact-layer publication commit.
+- Product source, Root/OpenAPI/Contract, database schema, D3 behavior, and
+  Runtime configuration are unchanged by the D4-3A publication.
 
 ## Controller acceptance state
 
@@ -28,8 +29,9 @@ rewriting historical machine results.
 | D3 overall | ENGINEERING_COMPLETE / SYNTHETIC_DEMO_SCOPE | D3-1 through D3-4 |
 | D4-1 Evaluation Foundation | FULL PASS / CONTROLLER ACCEPTED | `d4-slice1-r1-accepted` → `05ce1fe59796a4f079e74cc2f425943040dd706a` |
 | D4-2 Deterministic Trust & Safety Regression | FULL PASS / CONTROLLER ACCEPTED | `d4-slice2-r1-accepted` → `2ead2fd6a131f34c2cc7cb71274aed04ce935053` |
-| D4 current slice | D4-3A Citation Support & Safe Utility Evaluation Foundation | Evaluation-only work; semantic gold awaits human review |
-| D4 overall | IN_PROGRESS / NOT_ACCEPTED | D4-1 and D4-2 accepted; D4-3A not yet accepted |
+| D4-3A Citation Support & Safe Utility Evaluation Foundation | FULL PASS / CONTROLLER ACCEPTED | `d4-slice3a-r1-accepted` → `dd083d7a9d50e554408571e8b6d8040700d7a88b`; Human Gold packet hash `sha256:cfbe640300c2cbfbfe9616bb20b10b6ed80e7ee1e15169aadf2052ac8de107c6` |
+| D4 current slice | D4-3B Controlled Product Citation Support & Safe Utility Evaluation R1 | Authorized; not started; isolated worktree will use this fact-layer commit |
+| D4 overall | IN_PROGRESS / NOT_ACCEPTED | D4-1, D4-2, and D4-3A accepted; D4-3B remains in progress/not accepted |
 
 D3-4 evidence records D3SEAM 20/20, D3INT 60/60, D3VAL 16/16, zero semantic
 and mission deviations, GPU Normal PASS, trace/persistence evidence, and the
@@ -51,10 +53,11 @@ validation.
 2. Historical GPU snapshot and fixed-output-budget robustness follow-up.
 3. D5 cleanup PID follow-up.
 4. B frontend tournament, remaining D4 evaluation slices, D5 operations, and
-   D6 RC work remain pending. D4-1 and D4-2 are accepted. D4-3A is the current
-   authorized evaluation-only slice; D4 overall remains not accepted.
+   D6 RC work remain pending. D4-1, D4-2, and D4-3A are accepted. D4-3B is the
+   current authorized controlled product-evaluation slice; D4 overall remains
+   not accepted.
 
-## D4-1 and D4-2 accepted / D4-3A current slice
+## D4-1 through D4-3A accepted / D4-3B current slice
 
 - Technical Decision: **FROZEN / CONTROLLER ACCEPTED**.
 - SDD: **FROZEN / APPROVED FOR BOUNDED IMPLEMENTATION**.
@@ -63,7 +66,8 @@ validation.
 - Baseline: `e052e18906dba0256814c1f26209d43f101e919e`.
 - Status: **FULL PASS / CONTROLLER ACCEPTED**; accepted tag
   `d4-slice1-r1-accepted` → `05ce1fe59796a4f079e74cc2f425943040dd706a`.
-  D4 overall now remains **IN_PROGRESS / NOT_ACCEPTED** after D4-2 acceptance.
+  D4-2 was accepted within its bounded deterministic scope; the current D4
+  progression through D4-3A and D4-3B is recorded below.
 - Evidence: `D4_SLICE1_EVALUATION_FOUNDATION_EVIDENCE.md`.
 - Scope was synthetic evaluation foundation only: schemas, authority registry,
   fixture/split governance, manifests, normalized evidence, and sealed-set
@@ -77,12 +81,20 @@ validation.
   schema, resolved exact D3 fixture provenance, and closed the bounded route
   inventory. The original evidence remains historical and retains its
   candidate status.
-- Current slice: **D4-3A Citation Support & Safe Utility Evaluation
-  Foundation**. Draft semantic labels and MUST_ANSWER cases require Controller
-  or designated human review before they can be counted as human gold.
+- D4-3A is **FULL PASS / CONTROLLER ACCEPTED**. The owner-approved packet
+  contains 7 citation-support and 12 answerability Human Gold decisions; its
+  accepted hash is `sha256:cfbe640300c2cbfbfe9616bb20b10b6ed80e7ee1e15169aadf2052ac8de107c6`.
+- Current slice: **D4-3B Controlled Product Citation Support & Safe Utility
+  Evaluation R1**. Its only approved inputs are synthetic evaluation fixtures;
+  formal data-plane endpoints must be verified as loopback-only before calls.
+  The documented D4-3A Ruff download is retained and accepted as a documented
+  process deviation; it is not rewritten as network-free evidence.
 
 ## Verification boundary
 
-This publication did not rerun the product suite. It verified the D4-2 local
-accepted tag target, governance-only diff scope, product-source immutability,
-and fact-layer consistency. No merge or push was performed.
+D4-3A closure reran the citation/utility suite (56), D4-1 foundation (37),
+D4-2 deterministic regression (16), Ruff/format, compile, Root (13/13), and
+both OpenAPI validators. No product/model calls occurred. The D4-3A accepted
+tag target, governance-only publication diff, product-source immutability, and
+fact-layer consistency were verified. D4-3B product execution had not started
+at this publication. No merge or push was performed.

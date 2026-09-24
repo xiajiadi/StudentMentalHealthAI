@@ -1,7 +1,7 @@
 # Dependency Matrix
 
-Updated: 2026-09-24. Current state records accepted D4-1 and D4-2 engineering
-baselines and the authorized D4-3A evaluation foundation slice.
+Updated: 2026-09-24. Current state records accepted D4-1, D4-2, and D4-3A
+baselines, with D4-3B authorized as the current controlled evaluation slice.
 
 | Stage | Depends on | Observable completion | Current state |
 |---|---|---|---|
@@ -16,9 +16,9 @@ baselines and the authorized D4-3A evaluation foundation slice.
 | B Frontend Tournament | approved UI candidates and role scope | selected candidate, rendered-flow evidence, relevant verification | Pending |
 | D4-1 Evaluation Foundation | accepted D3 and frozen D4 SDD | evaluation schemas, fixture/run governance, normalized evidence | FULL PASS / CONTROLLER ACCEPTED; `d4-slice1-r1-accepted` |
 | D4-2 Deterministic Trust & Safety Regression | accepted D4-1 and bounded D4-2 authorization | deterministic synthetic trust/safety regression, including D4E-26 repair evidence | FULL PASS / CONTROLLER ACCEPTED; `d4-slice2-r1-accepted` → `2ead2fd6a131f34c2cc7cb71274aed04ce935053` |
-| D4-3A Citation Support & Safe Utility Evaluation Foundation | accepted D4-1/D4-2; synthetic-only and evaluation-only boundaries | claim-support and applicability records, answerability fixtures, reviewer packet and denominator-explicit metrics | Current authorized slice; not yet accepted; human gold review pending |
+| D4-3A Citation Support & Safe Utility Evaluation Foundation | accepted D4-1/D4-2; synthetic-only and evaluation-only boundaries | claim-support and applicability records, answerability fixtures, reviewer packet and denominator-explicit metrics | FULL PASS / CONTROLLER ACCEPTED; `d4-slice3a-r1-accepted` → `dd083d7a9d50e554408571e8b6d8040700d7a88b` |
+| D4-3B Controlled Product Citation Support & Safe Utility Evaluation | accepted D4-3A Human Gold packet and this fact-layer baseline | one 12-case controlled synthetic product run, machine answerability evidence, citation output packet pending separate semantic review | Authorized / not started; isolated worktree required |
 | D4 overall | all D4 slices and applicable human review | complete D4 evidence with each slice independently accepted | **IN_PROGRESS / NOT_ACCEPTED** |
-| D4-3B Controlled Product Generation | D4-3A human-review packet decision and separate authorization | controlled product generation against frozen reviewed gold | Not started; not authorized by the D4-3A foundation scope |
 | D5 Windows-first Operations | verified product and D4 boundary | startup, recovery, configuration and cleanup evidence | Pending |
 | D6 V0.9 RC / Demo | D4 and D5 closure | RC documentation and synthetic demo | Pending |
 | Real pilot | psychology approval, rights/licensing, ethics/consent/privacy, calibration and validation | separate explicit authorization and evidence | **BLOCKED** |
@@ -29,9 +29,9 @@ baselines and the authorized D4-3A evaluation foundation slice.
 - Historical GPU snapshot / fixed-output-budget robustness follow-up.
 - D5 cleanup PID follow-up.
 
-D3/D4-1 engineering acceptance does not authorize production, clinical use,
-real-student disclosure, real pilot, or D4 overall acceptance. D4-2 is
-synthetic, deterministic, and evaluation-only; product repair, Promptfoo,
-model/network execution, merge, and push remain outside the authorization.
-Future population or parent-facing expansion remains a research/review/
-validation-dependent option.
+D3/D4 engineering acceptance does not authorize psychology validity, clinical
+use, real-student disclosure, real pilot, or D4 overall acceptance. D4-3B is
+authorized for a controlled synthetic local product run with loopback-only
+data-plane endpoints; Promptfoo, product repair, D4-4, merge, and push remain
+outside this authorization. Future population or parent-facing expansion
+remains dependent on new research, review, and validation.

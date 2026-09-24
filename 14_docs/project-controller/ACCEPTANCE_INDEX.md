@@ -1,8 +1,8 @@
 # Acceptance Index
 
-Base worktree: `D:\Projects\StudentMentalHealthAI-d4-deterministic-regression`.
-Status below records Controller acceptance and points to repository evidence;
-it is not a claim of clinical, legal, or production approval.
+Controller acceptance index for StudentMentalHealthAI. Status below points to
+repository evidence; it is not a claim of clinical, legal, or production
+approval.
 
 | Line | Controller status | Repository evidence / binding |
 |---|---|---|
@@ -26,19 +26,20 @@ it is not a claim of clinical, legal, or production approval.
 | D4 SDD | FROZEN / APPROVED FOR BOUNDED IMPLEMENTATION | `14_docs/project-controller/D4_EVALUATION_SDD_V1.md` |
 | D4-1 Evaluation Foundation | FULL PASS / CONTROLLER ACCEPTED | tag `d4-slice1-r1-accepted` → `05ce1fe59796a4f079e74cc2f425943040dd706a`; `14_docs/project-controller/D4_SLICE1_EVALUATION_FOUNDATION_EVIDENCE.md` |
 | D4-2 Deterministic Trust & Safety Regression | FULL PASS / CONTROLLER ACCEPTED | tag `d4-slice2-r1-accepted` → `2ead2fd6a131f34c2cc7cb71274aed04ce935053`; `D4_SLICE2_ACCEPTANCE_PUBLICATION.md` |
-| D4 current slice | D4-3A Citation Support & Safe Utility Evaluation Foundation | Authorized bounded evaluation-only work; semantic gold awaits human review |
-| D4 overall | IN_PROGRESS / NOT_ACCEPTED | D4-1 and D4-2 accepted; D4-3A not yet accepted |
+| D4-3A Citation Support & Safe Utility Evaluation Foundation | FULL PASS / CONTROLLER ACCEPTED | tag `d4-slice3a-r1-accepted` → `dd083d7a9d50e554408571e8b6d8040700d7a88b`; approved packet `D4-PACKET-SLICE3A-CITATION-UTILITY-R1`, hash `sha256:cfbe640300c2cbfbfe9616bb20b10b6ed80e7ee1e15169aadf2052ac8de107c6` |
+| D4 current slice | D4-3B Controlled Product Citation Support & Safe Utility Evaluation R1 | Authorized, not started; baseline is this fact-layer publication commit |
+| D4 overall | IN_PROGRESS / NOT_ACCEPTED | D4-1, D4-2, D4-3A accepted; D4-3B not accepted |
 
 ## Boundary and next-stage status
 
-D3/D4-1 engineering acceptance does not imply psychology approval, psychometric validity,
-legal/consent approval, rights/licensing clearance, real-student disclosure
-authorization, real-pilot readiness, clinical approval, or production
-enablement. Real pilot is **BLOCKED**. D4-1 and D4-2 are accepted within their
-synthetic engineering scopes. D4-2 recorded and repaired the D4E-26 sensitive
-assessment-existence disclosure finding. D4-3A is the current evaluation-only
-slice; its draft labels do not count as human gold until reviewed. D4 overall
-remains **IN_PROGRESS / NOT_ACCEPTED**.
+D3/D4 engineering acceptance does not imply psychology approval, psychometric
+validity, legal/consent approval, rights/licensing clearance, real-student
+disclosure authorization, real-pilot readiness, clinical approval, or
+production enablement. Real pilot is **BLOCKED**. D4-1 and D4-2 remain accepted
+within their synthetic engineering scopes; D4-2 recorded and repaired the
+D4E-26 sensitive assessment-existence disclosure finding. D4-3A is accepted as
+synthetic Human Gold calibration only. D4-3B is the current controlled
+local-product evaluation slice. D4 overall remains **IN_PROGRESS / NOT_ACCEPTED**.
 
 Preserved P1: baseline Backend Pyright SQLAlchemy import-resolution errors;
 historical GPU snapshot/fixed-output-budget robustness; D5 cleanup PID.

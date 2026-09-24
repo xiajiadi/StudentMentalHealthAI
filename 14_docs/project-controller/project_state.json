@@ -2,7 +2,7 @@
   "schema_version": "project-controller-state.v2",
   "updated_at": "2026-09-24",
   "authority": "Project Controller",
-  "phase": "D4_2_ACCEPTED_D4_3A_AUTHORIZED",
+  "phase": "D4_3A_ACCEPTED_D4_3B_AUTHORIZED",
   "d3_overall_status": "ENGINEERING_COMPLETE / SYNTHETIC_DEMO_SCOPE",
   "d3_slices": [
     {
@@ -75,28 +75,43 @@
     "14_docs/project-controller/D3_SLICE4_DECISION_FIDELITY_REPORT.md",
     "14_docs/project-controller/D4_SLICE2_ACCEPTANCE_PUBLICATION.md",
     "14_docs/project-controller/D4_SLICE2_DETERMINISTIC_REGRESSION_EVIDENCE.md",
-    "14_docs/project-controller/D4_FOUNDATION_POST_ACCEPTANCE_ERRATA_V1.md"
+    "14_docs/project-controller/D4_FOUNDATION_POST_ACCEPTANCE_ERRATA_V1.md",
+    "14_docs/project-controller/D4_SLICE3A_HUMAN_GOLD_APPROVAL.md",
+    "14_docs/project-controller/D4_SLICE3A_CITATION_UTILITY_FOUNDATION_EVIDENCE.md",
+    "12_evaluation/d4-evaluation-r1/D4_3A_HUMAN_GOLD_REVIEW_PACKET.json"
   ],
   "d4_technical_decision_status": "FROZEN / CONTROLLER ACCEPTED",
   "d4_sdd_status": "FROZEN / APPROVED FOR BOUNDED IMPLEMENTATION",
   "d4_current_slice": {
-    "id": "D4-3A",
-    "name": "Citation Support & Safe Utility Evaluation Foundation R1",
-    "status": "IMPLEMENTATION_AUTHORIZED / NOT_STARTED",
-    "baseline_tag": "d4-slice2-r1-accepted",
-    "baseline_tag_target": "2ead2fd6a131f34c2cc7cb71274aed04ce935053",
-    "scope": "evaluation-only harness, synthetic fixtures, and human-review packets",
-    "human_gold_status": "DRAFT / HUMAN_REVIEW_REQUIRED",
-    "product_generation_started": false
+    "id": "D4-3B",
+    "name": "Controlled Product Citation Support & Safe Utility Evaluation R1",
+    "status": "AUTHORIZED / NOT_STARTED",
+    "baseline_commit": "This fact-layer publication commit; resolve exact SHA from Git HEAD.",
+    "baseline_branch": "exp/d4-controlled-product-evaluation-v1",
+    "baseline_worktree": "D:\\Projects\\StudentMentalHealthAI-d4-controlled-product-eval",
+    "d4_3a_accepted_tag": "d4-slice3a-r1-accepted",
+    "d4_3a_accepted_tag_target": "dd083d7a9d50e554408571e8b6d8040700d7a88b",
+    "human_gold_packet_id": "D4-PACKET-SLICE3A-CITATION-UTILITY-R1",
+    "human_gold_packet_hash": "sha256:cfbe640300c2cbfbfe9616bb20b10b6ed80e7ee1e15169aadf2052ac8de107c6",
+    "approved_units": {
+      "citation_support": 7,
+      "answerability": 12
+    },
+    "scope": "controlled product evaluation over approved synthetic fixtures through the canonical local Backend/Runtime path",
+    "network_policy": "LOOPBACK_ONLY",
+    "product_generation_authorized": true,
+    "product_generation_started": false,
+    "real_student_data_used": false,
+    "pending_d2_intake_used": false
   },
   "d4_overall_status": "IN_PROGRESS / NOT_ACCEPTED",
   "d4_implementation_authorized": true,
   "d4_later_slices_started": false,
   "d4_next_slice": {
-    "id": "D4-3B",
-    "name": "Controlled Product Generation",
-    "status": "NOT_AUTHORIZED / HUMAN_REVIEW_GATE",
-    "entry_condition": "D4-3A human-review packet decision and separate Controller authorization",
+    "id": "D4-4",
+    "name": "Subsequent D4 evaluation slice",
+    "status": "NOT_AUTHORIZED",
+    "entry_condition": "D4-3B Controller review and separate authorization",
     "product_generation_authorized": false
   },
   "d4_slices": [
@@ -121,9 +136,39 @@
       "acceptance_publication": "14_docs/project-controller/D4_SLICE2_ACCEPTANCE_PUBLICATION.md",
       "preserved_finding": "D4E-26 sensitive assessment-existence disclosure discovered and minimally repaired",
       "scope": "synthetic engineering evaluation only"
+    },
+    {
+      "id": "D4-3A",
+      "name": "Citation Support & Safe Utility Evaluation Foundation R1",
+      "status": "FULL PASS / CONTROLLER ACCEPTED",
+      "closure_commit": "dd083d7a9d50e554408571e8b6d8040700d7a88b",
+      "tag": "d4-slice3a-r1-accepted",
+      "tag_target": "dd083d7a9d50e554408571e8b6d8040700d7a88b",
+      "human_gold_packet_id": "D4-PACKET-SLICE3A-CITATION-UTILITY-R1",
+      "prepublication_packet_hash": "sha256:8b2e83469888fc195dbf9baea1389f97ab5dcaa0c48e83c9c5ae1efcf25cbe67",
+      "human_gold_packet_hash": "sha256:cfbe640300c2cbfbfe9616bb20b10b6ed80e7ee1e15169aadf2052ac8de107c6",
+      "citation_units_approved": 7,
+      "answerability_units_approved": 12,
+      "approval_record": "14_docs/project-controller/D4_SLICE3A_HUMAN_GOLD_APPROVAL.md",
+      "documented_network_deviation": "ACCEPTED_AS_DOCUMENTED_PROCESS_DEVIATION",
+      "scope": "synthetic engineering/evaluation Human Gold only"
+    },
+    {
+      "id": "D4-3B",
+      "name": "Controlled Product Citation Support & Safe Utility Evaluation R1",
+      "status": "AUTHORIZED / NOT_STARTED",
+      "baseline_commit": "This fact-layer publication commit; resolve exact SHA from Git HEAD.",
+      "branch": "exp/d4-controlled-product-evaluation-v1",
+      "worktree": "D:\\Projects\\StudentMentalHealthAI-d4-controlled-product-eval",
+      "human_gold_packet_hash": "sha256:cfbe640300c2cbfbfe9616bb20b10b6ed80e7ee1e15169aadf2052ac8de107c6",
+      "case_count": 12,
+      "network_policy": "LOOPBACK_ONLY",
+      "product_source_changes_authorized": false,
+      "real_student_data_authorized": false,
+      "scope": "single controlled synthetic product evaluation; no D4-4, Promptfoo, merge, or push"
     }
   ],
-  "d4_3a_started": false,
+  "d4_3a_started": true,
   "d4_slice2_acceptance_publication": {
     "tag": "d4-slice2-r1-accepted",
     "tag_target": "2ead2fd6a131f34c2cc7cb71274aed04ce935053",
@@ -134,6 +179,19 @@
     "merge": false,
     "push": false
   },
-  "d4_3a_human_gold_status": "DRAFT / HUMAN_REVIEW_REQUIRED",
-  "real_pilot": "BLOCKED"
+  "d4_3a_human_gold_status": "HUMAN_APPROVED / FULL PASS / CONTROLLER ACCEPTED",
+  "real_pilot": "BLOCKED",
+  "d4_3b_started": false,
+  "d4_3a_acceptance_publication": {
+    "tag": "d4-slice3a-r1-accepted",
+    "tag_target": "dd083d7a9d50e554408571e8b6d8040700d7a88b",
+    "fact_layer_commit": "This JSON is part of the D4-3A fact-layer publication commit; resolve exact SHA from Git HEAD.",
+    "human_gold_packet_id": "D4-PACKET-SLICE3A-CITATION-UTILITY-R1",
+    "prepublication_packet_hash": "sha256:8b2e83469888fc195dbf9baea1389f97ab5dcaa0c48e83c9c5ae1efcf25cbe67",
+    "human_gold_packet_hash": "sha256:cfbe640300c2cbfbfe9616bb20b10b6ed80e7ee1e15169aadf2052ac8de107c6",
+    "citation_units_approved": 7,
+    "answerability_units_approved": 12,
+    "network_deviation": "ACCEPTED_AS_DOCUMENTED_PROCESS_DEVIATION"
+  },
+  "d4_3b_fact_layer_baseline_commit": "This JSON is part of the D4-3A fact-layer publication commit; resolve exact SHA from Git HEAD."
 }

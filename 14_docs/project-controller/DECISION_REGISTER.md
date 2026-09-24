@@ -24,7 +24,9 @@ psychology, ethics, legal, rights, or production authorization.
 | CTRL-34 | D4-2 Deterministic Trust & Safety Regression implementation was authorized in an isolated evaluation scope. | SUPERSEDED BY CTRL-36 |
 | CTRL-35 | At the prior D4-2 authorization publication, D4-2 had not started; real pilot was BLOCKED and D4 overall was NOT_ACCEPTED / NOT_RUN. | SUPERSEDED BY CTRL-36 |
 | CTRL-36 | D4-2 Deterministic Trust & Safety Regression is FULL PASS / CONTROLLER ACCEPTED. Local tag `d4-slice2-r1-accepted` targets `2ead2fd6a131f34c2cc7cb71274aed04ce935053`. Its initial D4E-26 sensitive assessment-existence disclosure P0 remains preserved as discovered and repaired evidence. | CONFIRMED |
-| CTRL-37 | D4-3A Citation Support & Safe Utility Evaluation Foundation is the current bounded evaluation-only slice. Draft semantic labels are not human gold until Controller/designated reviewer approval; D4 overall remains IN_PROGRESS / NOT_ACCEPTED and real pilot remains BLOCKED. | CONFIRMED |
+| CTRL-37 | D4-3A Citation Support & Safe Utility Evaluation Foundation is the current bounded evaluation-only slice. Draft semantic labels are not human gold until Controller/designated reviewer approval; D4 overall remains IN_PROGRESS / NOT_ACCEPTED and real pilot remains BLOCKED. | SUPERSEDED BY CTRL-38 |
+| CTRL-38 | D4-3A Citation Support & Safe Utility Evaluation Foundation R1 is FULL PASS / CONTROLLER ACCEPTED. The project owner approved all 7 citation-support and 12 answerability units as drafted; `d4-slice3a-r1-accepted` targets `dd083d7a9d50e554408571e8b6d8040700d7a88b`. The documented Ruff download deviation is accepted as a documented process deviation and remains recorded. | CONFIRMED |
+| CTRL-39 | D4-3B Controlled Product Citation Support & Safe Utility Evaluation R1 is authorized from the D4-3A fact-layer publication baseline for the approved synthetic cases on the canonical local product path. No product changes, Promptfoo, D4-4, or real-student data are authorized; D4 overall remains IN_PROGRESS / NOT_ACCEPTED and real pilot remains BLOCKED. | CONFIRMED |
 
 ## D3 publication bindings
 
@@ -62,11 +64,31 @@ product behavior or any frozen contract.
 - D4-2 is bounded synthetic engineering. It does not imply psychology,
   clinical, legal/consent, real-student, pilot, or production approval.
 
-## D4-3A current slice binding
+## D4-3A acceptance binding
 
-- Scope: evaluation-only citation support, claim-level evidence mapping,
-  applicability dimensions, answerability/false-refusal evaluation, and
-  synthetic human-review packets.
-- Product source, D2 publication, clinical thresholds, Promptfoo, and D4-3B
-  product generation remain outside this slice.
-- Human semantic gold requires Controller/designated human review.
+- Human Gold closure commit: `dd083d7a9d50e554408571e8b6d8040700d7a88b`.
+- Accepted tag: `d4-slice3a-r1-accepted` →
+  `dd083d7a9d50e554408571e8b6d8040700d7a88b`.
+- Approved packet: `D4-PACKET-SLICE3A-CITATION-UTILITY-R1`.
+- Pre-publication hash: `sha256:8b2e83469888fc195dbf9baea1389f97ab5dcaa0c48e83c9c5ae1efcf25cbe67`.
+- Approved Human Gold hash: `sha256:cfbe640300c2cbfbfe9616bb20b10b6ed80e7ee1e15169aadf2052ac8de107c6`.
+- Approval record: `D4_SLICE3A_HUMAN_GOLD_APPROVAL.md`; 7 citation-support
+  and 12 answerability decisions approved as drafted.
+- No case/claim/evidence text, support labels, response classes, applicability
+  decisions, pairings, or rubric meanings changed during closure.
+- The D4-3A network deviation remains disclosed and is accepted as a documented
+  process deviation. It is not described as network-free evidence.
+- Acceptance is synthetic engineering/evaluation Human Gold only; it implies
+  no psychology, clinical, D2 publication, production, real-student, or pilot
+  approval.
+
+## D4-3B current slice binding
+
+- Baseline: this fact-layer publication commit; D4-3B must start at its exact
+  Git commit in a new isolated worktree.
+- Branch/worktree: `exp/d4-controlled-product-evaluation-v1` /
+  `D:\Projects\StudentMentalHealthAI-d4-controlled-product-eval`.
+- Scope: one controlled run of the 12 approved synthetic answerability cases,
+  using the canonical Backend and accepted local Runtime, loopback-only.
+- No product source changes, Promptfoo, real-student data, D4-4, merge, or push.
+- Real pilot remains BLOCKED; D4 overall remains IN_PROGRESS / NOT_ACCEPTED.
