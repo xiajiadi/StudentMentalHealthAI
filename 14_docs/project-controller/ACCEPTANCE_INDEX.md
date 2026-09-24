@@ -1,6 +1,6 @@
 # Acceptance Index
 
-Base worktree: `D:\Projects\StudentMentalHealthAI-d3-backend-integration`.
+Base worktree: `D:\Projects\StudentMentalHealthAI-d4-deterministic-regression`.
 Status below records Controller acceptance and points to repository evidence;
 it is not a claim of clinical, legal, or production approval.
 
@@ -25,17 +25,20 @@ it is not a claim of clinical, legal, or production approval.
 | D4 Technical Decision | FROZEN / CONTROLLER ACCEPTED | `14_docs/project-controller/D4_EVALUATION_TECHNICAL_DECISION_V1.md` |
 | D4 SDD | FROZEN / APPROVED FOR BOUNDED IMPLEMENTATION | `14_docs/project-controller/D4_EVALUATION_SDD_V1.md` |
 | D4-1 Evaluation Foundation | FULL PASS / CONTROLLER ACCEPTED | tag `d4-slice1-r1-accepted` → `05ce1fe59796a4f079e74cc2f425943040dd706a`; `14_docs/project-controller/D4_SLICE1_EVALUATION_FOUNDATION_EVIDENCE.md` |
-| D4 overall | NOT_ACCEPTED / NOT_RUN | D4-1 only; D4-2 through D4-7 not started |
+| D4-2 Deterministic Trust & Safety Regression | FULL PASS / CONTROLLER ACCEPTED | tag `d4-slice2-r1-accepted` → `2ead2fd6a131f34c2cc7cb71274aed04ce935053`; `D4_SLICE2_ACCEPTANCE_PUBLICATION.md` |
+| D4 current slice | D4-3A Citation Support & Safe Utility Evaluation Foundation | Authorized bounded evaluation-only work; semantic gold awaits human review |
+| D4 overall | IN_PROGRESS / NOT_ACCEPTED | D4-1 and D4-2 accepted; D4-3A not yet accepted |
 
 ## Boundary and next-stage status
 
 D3/D4-1 engineering acceptance does not imply psychology approval, psychometric validity,
 legal/consent approval, rights/licensing clearance, real-student disclosure
 authorization, real-pilot readiness, clinical approval, or production
-enablement. Real pilot is **BLOCKED**. D4-1 is an accepted evaluation-only
-foundation. D4-2 deterministic regression implementation is authorized in an
-isolated evaluation worktree, but is not yet started and does not authorize
-product repair, Promptfoo, model/network execution, or D4 acceptance.
+enablement. Real pilot is **BLOCKED**. D4-1 and D4-2 are accepted within their
+synthetic engineering scopes. D4-2 recorded and repaired the D4E-26 sensitive
+assessment-existence disclosure finding. D4-3A is the current evaluation-only
+slice; its draft labels do not count as human gold until reviewed. D4 overall
+remains **IN_PROGRESS / NOT_ACCEPTED**.
 
 Preserved P1: baseline Backend Pyright SQLAlchemy import-resolution errors;
 historical GPU snapshot/fixed-output-budget robustness; D5 cleanup PID.

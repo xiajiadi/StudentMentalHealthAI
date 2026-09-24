@@ -1,6 +1,6 @@
 # Project Controller State
 
-Updated: 2026-09-22.
+Updated: 2026-09-24.
 
 This record is a fact-layer publication made after explicit Project Controller
 acceptance of D3 Slice 4. Repository files and acceptance evidence remain the
@@ -9,7 +9,7 @@ change product source.
 
 ## Current state
 
-- Phase: **D4-1 ACCEPTED / D4-2 IMPLEMENTATION AUTHORIZED**.
+- Phase: **D4-2 ACCEPTED / D4-3A NEXT**.
 - D3-1 Prompt Engine Core: **FULL PASS / CONTROLLER ACCEPTED**.
 - D3-2 Assessment Interpretation Adapter: **FULL PASS / CONTROLLER ACCEPTED**.
 - D3-3 Role Projection & Minimum Disclosure: **FULL PASS / CONTROLLER ACCEPTED**.
@@ -18,7 +18,9 @@ change product source.
 - D4 Technical Decision: **FROZEN / CONTROLLER ACCEPTED**.
 - D4 SDD: **FROZEN / APPROVED FOR BOUNDED IMPLEMENTATION**.
 - D4-1 Evaluation Foundation / Schemas / Run Manifest: **FULL PASS / CONTROLLER ACCEPTED**.
-- D4 overall: **NOT_ACCEPTED / NOT_RUN**. D4-2 through D4-7 are not started.
+- D4-2 Deterministic Trust & Safety Regression: **FULL PASS / CONTROLLER ACCEPTED**.
+- D4 current slice: **D4-3A Citation Support & Safe Utility Evaluation Foundation**.
+- D4 overall: **IN_PROGRESS / NOT_ACCEPTED**.
 
 ## Accepted D3 evidence binding
 
@@ -65,10 +67,23 @@ The implementation branch is isolated at
 The accepted tag `d4-slice1-r1-accepted` targets
 `05ce1fe59796a4f079e74cc2f425943040dd706a`.
 
-The current Controller mission authorizes D4-2 deterministic trust and safety
-regression implementation in an evaluation-only worktree. Product repair,
-Promptfoo, model/network evaluation, and D4 overall acceptance remain
-unauthorized. D4-2 has not started in this fact-layer publication.
+## D4-2 acceptance publication
+
+D4-2 is accepted as bounded synthetic deterministic engineering. Local
+annotated tag `d4-slice2-r1-accepted` resolves to accepted commit
+`2ead2fd6a131f34c2cc7cb71274aed04ce935053`. The preserved initial P0 record is
+`42c2fc8e39dc3f2c571c7760a91b6c16d0110ed2`; the narrowly authorized repair
+implementation is `5400831a6df8ee46d1df421ddc596bbfe37366c0`; machine evidence
+closure is `a63d636482e5a787f5ab5c4bf8598356f79bc1d9`; final documentation
+closure is the accepted commit above. D4E-26 recorded and preserved the
+sensitive-assessment existence disclosure finding, then closed it with the
+minimum-disclosure repair. See `D4_SLICE2_ACCEPTANCE_PUBLICATION.md` and
+`D4_SLICE2_DETERMINISTIC_REGRESSION_EVIDENCE.md`.
+
+D4-3A Citation Support & Safe Utility Evaluation Foundation is the current
+bounded evaluation-only slice. Human semantic labels remain drafts until
+Controller/designated reviewer review. D4-3A does not start formal product
+generation or imply D4 overall acceptance.
 
 ## Preserved P1
 
@@ -78,8 +93,10 @@ unauthorized. D4-2 has not started in this fact-layer publication.
 
 ## Publication boundary
 
-The accepted D3-4 tag continues to point to the D3-4 evidence closure commit.
-The accepted D4-1 tag points to the D4-1 evidence closure commit above. The
-D4-2 branch must remain evaluation-only and must not modify product source,
-Root, OpenAPI, Contract, database artifacts, or accepted D3 behavior. No merge
-or push is authorized by this publication.
+The accepted D3-4 and D4-1 tags continue to point to their evidence closure
+commits. D4-2 remains synthetic and evaluation-only. D4-3A may change only its
+evaluation harness, evaluation-only synthetic fixtures, and Controller
+fact-layer records. Neither acceptance authorizes psychology validity,
+real-student use, pilot, clinical, or production approval. D4 overall remains
+**IN_PROGRESS / NOT_ACCEPTED** and real pilot remains **BLOCKED**. No merge or
+push is authorized by this publication.
