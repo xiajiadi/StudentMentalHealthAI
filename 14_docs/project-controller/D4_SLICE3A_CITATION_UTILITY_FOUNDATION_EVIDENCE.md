@@ -1,8 +1,10 @@
 # D4 Slice 3A Citation / Utility Foundation Evidence
 
-**Disposition: PARTIAL**
+**Current disposition: FULL PASS / CONTROLLER ACCEPTED**
 
-The evaluation foundation and draft human-review packet are technically ready for Controller / designated human review. Human Gold is not approved. The strict no-network execution condition was violated by a Worker tool download, so this handoff does not claim full compliance with the frozen HANDOFF.
+Original execution disposition at handoff: `PARTIAL`; see the documented process deviation below. The project-owner authorization and mechanical Human Gold publication closure are recorded in `D4_SLICE3A_HUMAN_GOLD_APPROVAL.md`.
+
+The D4-3A evaluation foundation is technically complete. The 19-unit Human Gold packet is approved as drafted by the project owner and mechanically materialized below. A documented network deviation remains in the historical evidence; it was accepted as a documented process deviation and is not represented as a network-free run.
 
 ## Baseline and scope
 
@@ -33,7 +35,7 @@ All evaluation content carries the fixed boundaries: `SYNTHETIC_EVALUATION_ONLY`
 
 Claim segmentation is deterministic sentence-boundary splitting with preserved original text, half-open Python-codepoint offsets, stable hashes, and ORIGIN/SPLIT/MERGE/EDIT/EXCLUDE trace support. Segmentation does not infer support. Citation identity is derived separately from textual entailment; a valid source ID can accompany an UNSUPPORTED claim. Population, role, and purpose applicability remain separate fields. Source-dependent scope limitations require an explicit citation-policy override.
 
-Review states are DRAFT, HUMAN_REVIEW_REQUIRED, HUMAN_APPROVED, HUMAN_REJECTED, and DISPUTED. A real approval requires reviewer identity, time, and review evidence reference. A simulated approval must carry `TEST_FIXTURE_SIMULATED_APPROVAL` and is not Human Gold. The packet has no approved items; 19 cases/claims await human review.
+Review states are DRAFT, HUMAN_REVIEW_REQUIRED, HUMAN_APPROVED, HUMAN_REJECTED, and DISPUTED. A real approval requires reviewer identity, time, and review evidence reference. A simulated approval must carry `TEST_FIXTURE_SIMULATED_APPROVAL` and is not Human Gold. The pre-publication packet contained 19 pending review units. Project-owner approval now covers 7 citation-support decisions and 12 answerability decisions; post-approval packet hash and file hashes are recorded in `d4_slice3a_citation_utility_foundation.json`.
 
 Metric formula version is `d4-citation-utility-formulas.v1`. Reports retain formulas, numerators, denominators, included/excluded case IDs, pending-review counts, limitations, and null reasons. Full support and partial-or-better support are reported separately. Unsupported and contradicted claims remain separate; contradiction uses textual entailment even when the final label is OUT_OF_SCOPE. Population, role, and purpose are separately represented. False refusal is limited to complete HUMAN_APPROVED MUST_ANSWER records; MUST_ANSWER routing/safety-stop/abstention/denial is treated as refusal, while SHOULD_ANSWER human-safe routing is not. Rejected annotations are excluded. No product-output utility metrics were computed because D4-3A makes no model or product calls.
 
@@ -59,7 +61,7 @@ Worker A completed Claim/Citation/Applicability implementation and focused tests
 
 ## Execution deviation
 
-Worker A installed Ruff 0.16.6 with `python -m pip install --target D:\Dev\tools\ruff-0.16.6 ruff==0.16.6`, downloading a 10.6 MB wheel and making an external network request. No project source, synthetic evaluation data, credentials, or student data were sent. The download violates the HANDOFF's explicit no-external-network condition. The Ruff installation is outside the repository. Subsequent direct test and validator commands used existing local tools and environments; the Root wrapper's package source was not independently audited. Because the no-network condition cannot be restored retroactively, the overall disposition remains PARTIAL even though the technical gates are green.
+Worker A installed Ruff 0.16.6 with `python -m pip install --target D:\Dev\tools\ruff-0.16.6 ruff==0.16.6`, downloading a 10.6 MB wheel and making an external network request. No project source, synthetic evaluation data, credentials, or student data were sent. The download violates the HANDOFF's explicit no-external-network condition. The Ruff installation is outside the repository. Subsequent direct test and validator commands used existing local tools and environments; the Root wrapper's package source was not independently audited. At handoff this deviation left the candidate PARTIAL. The project owner has explicitly accepted it as `ACCEPTED_AS_DOCUMENTED_PROCESS_DEVIATION`. The network activity remains recorded and is not erased or described as compliant; the evaluation data plane itself had no model or product calls during D4-3A.
 
 No Promptfoo, Ragas, or ARES was installed or used. No model calls, real-student data, D2 pending intake, merge, push, tag, or D4-3B work occurred.
 
