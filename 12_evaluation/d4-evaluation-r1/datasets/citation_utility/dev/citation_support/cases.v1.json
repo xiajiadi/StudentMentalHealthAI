@@ -1,0 +1,1420 @@
+{
+  "schema_version": "citation-support.v1",
+  "record_type": "citation_support_dataset",
+  "dataset_id": "D4SUP_DEV_SYNTHETIC_V1",
+  "split": "DEV",
+  "language": "zh-CN",
+  "data_classification": [
+    "SYNTHETIC_EVALUATION_ONLY",
+    "NOT_D2_PUBLICATION",
+    "NOT_PRODUCTION_KNOWLEDGE",
+    "NOT_REAL_STUDENT_DATA",
+    "NOT_PSYCHOLOGY_VALIDATION"
+  ],
+  "review": {
+    "state": "HUMAN_REVIEW_REQUIRED",
+    "decision_source": "NONE",
+    "reviewer_id": null,
+    "reviewed_at": null,
+    "evidence_ref": null,
+    "simulated_outcome": null,
+    "human_gold": false,
+    "test_only": false
+  },
+  "cases": [
+    {
+      "schema_version": "citation-support.v1",
+      "record_type": "case",
+      "case_id": "D4SUP-DEV-DIRECT",
+      "original_answer": "保持相对规律的作息有助于大学新生安排日常学习。",
+      "target_scope": {
+        "population": "university_freshman",
+        "role": "student",
+        "purpose": "education_support"
+      },
+      "split": "DEV",
+      "evidence": [
+        {
+          "schema_version": "citation-support.v1",
+          "record_type": "synthetic_evidence_card",
+          "chunk_id": "CHUNK_SYNTH_STUDY_PLANNING_001",
+          "document_id": "DOC_SYNTH_STUDY_PLANNING_001",
+          "citation_id": "CIT_SYNTH_STUDY_PLANNING_001",
+          "source_title": "合成教育支持证据卡：学习安排",
+          "source_organization": "D4 Synthetic Evaluation Fixture",
+          "locator": "synthetic://d4/citation-support/CIT_SYNTH_STUDY_PLANNING_001",
+          "text": "保持相对规律的作息有助于大学新生安排日常学习。",
+          "population_scope": [
+            "university_freshman"
+          ],
+          "role_scope": [
+            "student"
+          ],
+          "purpose_scope": [
+            "education_support"
+          ],
+          "data_classification": [
+            "SYNTHETIC_EVALUATION_ONLY",
+            "NOT_D2_PUBLICATION",
+            "NOT_PRODUCTION_KNOWLEDGE",
+            "NOT_REAL_STUDENT_DATA",
+            "NOT_PSYCHOLOGY_VALIDATION"
+          ],
+          "review_state": "HUMAN_REVIEW_REQUIRED",
+          "content_hash": "sha256:54fa7165f4acd17a3c3d90921ce39371fa87abfb24987fcbbe8fdb4314abe8ff"
+        }
+      ],
+      "claims": [
+        {
+          "schema_version": "citation-support.v1",
+          "record_type": "claim",
+          "claim_id": "CLM_D4SUP_DEV_DIRECT",
+          "case_id": "D4SUP-DEV-DIRECT",
+          "original_answer": "保持相对规律的作息有助于大学新生安排日常学习。",
+          "answer_span": {
+            "start": 0,
+            "end": 23,
+            "end_inclusive": false,
+            "unit": "python_codepoint"
+          },
+          "text": "保持相对规律的作息有助于大学新生安排日常学习。",
+          "claim_type": "FACTUAL_VERIFIABLE",
+          "citation_required": true,
+          "citation_reason": "Externally checkable factual, causal, risk, or population content requires a source.",
+          "citation_policy_id": "FACTUAL_CLAIM_REQUIRES_SOURCE",
+          "citation_requirement": {
+            "required": true,
+            "reason": "Externally checkable factual, causal, risk, or population content requires a source.",
+            "policy_id": "FACTUAL_CLAIM_REQUIRES_SOURCE"
+          },
+          "cited_chunk_ids": [
+            "CHUNK_SYNTH_STUDY_PLANNING_001"
+          ],
+          "textual_entailment": "SUPPORTS",
+          "population_applicability": {
+            "status": "APPLICABLE",
+            "reason": "证据与大学新生范围一致。",
+            "expected_scope": "university_freshman",
+            "evidence_scope": [
+              "university_freshman"
+            ]
+          },
+          "role_applicability": {
+            "status": "APPLICABLE",
+            "reason": "证据与学生角色一致。",
+            "expected_scope": "student",
+            "evidence_scope": [
+              "student"
+            ]
+          },
+          "purpose_applicability": {
+            "status": "APPLICABLE",
+            "reason": "证据与教育支持用途一致。",
+            "expected_scope": "education_support",
+            "evidence_scope": [
+              "education_support"
+            ]
+          },
+          "applicability": {
+            "population": {
+              "status": "APPLICABLE",
+              "reason": "证据与大学新生范围一致。",
+              "expected_scope": "university_freshman",
+              "evidence_scope": [
+                "university_freshman"
+              ]
+            },
+            "role": {
+              "status": "APPLICABLE",
+              "reason": "证据与学生角色一致。",
+              "expected_scope": "student",
+              "evidence_scope": [
+                "student"
+              ]
+            },
+            "purpose": {
+              "status": "APPLICABLE",
+              "reason": "证据与教育支持用途一致。",
+              "expected_scope": "education_support",
+              "evidence_scope": [
+                "education_support"
+              ]
+            }
+          },
+          "support_label": "SUPPORTS",
+          "contradiction": {
+            "flag": false,
+            "reason": null
+          },
+          "review": {
+            "state": "HUMAN_REVIEW_REQUIRED",
+            "decision_source": "NONE",
+            "reviewer_id": null,
+            "reviewed_at": null,
+            "evidence_ref": null,
+            "simulated_outcome": null,
+            "human_gold": false,
+            "test_only": false
+          },
+          "traceability": [
+            {
+              "operation": "ORIGIN",
+              "source_claim_ids": [],
+              "source_spans": [
+                {
+                  "start": 0,
+                  "end": 23,
+                  "end_inclusive": false,
+                  "unit": "python_codepoint"
+                }
+              ],
+              "result_span": {
+                "start": 0,
+                "end": 23,
+                "end_inclusive": false,
+                "unit": "python_codepoint"
+              },
+              "reason": "Claim originates from the preserved answer span."
+            }
+          ],
+          "excluded": false,
+          "data_classification": [
+            "SYNTHETIC_EVALUATION_ONLY",
+            "NOT_D2_PUBLICATION",
+            "NOT_PRODUCTION_KNOWLEDGE",
+            "NOT_REAL_STUDENT_DATA",
+            "NOT_PSYCHOLOGY_VALIDATION"
+          ],
+          "content_hash": "sha256:d8bcd6fa7cb3ee0cb21e7f268a3f0a69d4f5201bf110612bbac8f08f123d34b6"
+        }
+      ],
+      "citation_identity": [
+        {
+          "claim_id": "CLM_D4SUP_DEV_DIRECT",
+          "status": "VALID",
+          "cited_chunk_ids": [
+            "CHUNK_SYNTH_STUDY_PLANNING_001"
+          ],
+          "valid_chunk_ids": [
+            "CHUNK_SYNTH_STUDY_PLANNING_001"
+          ],
+          "unknown_chunk_ids": [],
+          "provenance_complete": true
+        }
+      ],
+      "review": {
+        "state": "HUMAN_REVIEW_REQUIRED",
+        "decision_source": "NONE",
+        "reviewer_id": null,
+        "reviewed_at": null,
+        "evidence_ref": null,
+        "simulated_outcome": null,
+        "human_gold": false,
+        "test_only": false
+      },
+      "data_classification": [
+        "SYNTHETIC_EVALUATION_ONLY",
+        "NOT_D2_PUBLICATION",
+        "NOT_PRODUCTION_KNOWLEDGE",
+        "NOT_REAL_STUDENT_DATA",
+        "NOT_PSYCHOLOGY_VALIDATION"
+      ],
+      "content_hash": "sha256:20896e136d814407c10661c661c71cb673d61e4d0fad63cf01d603fcd361e66c"
+    },
+    {
+      "schema_version": "citation-support.v1",
+      "record_type": "case",
+      "case_id": "D4SUP-DEV-PARTIAL",
+      "original_answer": "规律作息有助于安排学习，并能保证每位学生在一周内成绩提高20%。",
+      "target_scope": {
+        "population": "university_freshman",
+        "role": "student",
+        "purpose": "education_support"
+      },
+      "split": "DEV",
+      "evidence": [
+        {
+          "schema_version": "citation-support.v1",
+          "record_type": "synthetic_evidence_card",
+          "chunk_id": "CHUNK_SYNTH_STUDY_PLANNING_001",
+          "document_id": "DOC_SYNTH_STUDY_PLANNING_001",
+          "citation_id": "CIT_SYNTH_STUDY_PLANNING_001",
+          "source_title": "合成教育支持证据卡：学习安排",
+          "source_organization": "D4 Synthetic Evaluation Fixture",
+          "locator": "synthetic://d4/citation-support/CIT_SYNTH_STUDY_PLANNING_001",
+          "text": "规律作息有助于安排学习，但个体结果会因情况不同而变化。",
+          "population_scope": [
+            "university_freshman"
+          ],
+          "role_scope": [
+            "student"
+          ],
+          "purpose_scope": [
+            "education_support"
+          ],
+          "data_classification": [
+            "SYNTHETIC_EVALUATION_ONLY",
+            "NOT_D2_PUBLICATION",
+            "NOT_PRODUCTION_KNOWLEDGE",
+            "NOT_REAL_STUDENT_DATA",
+            "NOT_PSYCHOLOGY_VALIDATION"
+          ],
+          "review_state": "HUMAN_REVIEW_REQUIRED",
+          "content_hash": "sha256:07afbe8e835d99c0a9c756fc75d7d7a7f74db6719b2c200d110dd886ff97e0ac"
+        }
+      ],
+      "claims": [
+        {
+          "schema_version": "citation-support.v1",
+          "record_type": "claim",
+          "claim_id": "CLM_D4SUP_DEV_PARTIAL",
+          "case_id": "D4SUP-DEV-PARTIAL",
+          "original_answer": "规律作息有助于安排学习，并能保证每位学生在一周内成绩提高20%。",
+          "answer_span": {
+            "start": 0,
+            "end": 32,
+            "end_inclusive": false,
+            "unit": "python_codepoint"
+          },
+          "text": "规律作息有助于安排学习，并能保证每位学生在一周内成绩提高20%。",
+          "claim_type": "FACTUAL_VERIFIABLE",
+          "citation_required": true,
+          "citation_reason": "Externally checkable factual, causal, risk, or population content requires a source.",
+          "citation_policy_id": "FACTUAL_CLAIM_REQUIRES_SOURCE",
+          "citation_requirement": {
+            "required": true,
+            "reason": "Externally checkable factual, causal, risk, or population content requires a source.",
+            "policy_id": "FACTUAL_CLAIM_REQUIRES_SOURCE"
+          },
+          "cited_chunk_ids": [
+            "CHUNK_SYNTH_STUDY_PLANNING_001"
+          ],
+          "textual_entailment": "PARTIALLY_SUPPORTS",
+          "population_applicability": {
+            "status": "APPLICABLE",
+            "reason": "证据与大学新生范围一致。",
+            "expected_scope": "university_freshman",
+            "evidence_scope": [
+              "university_freshman"
+            ]
+          },
+          "role_applicability": {
+            "status": "APPLICABLE",
+            "reason": "证据与学生角色一致。",
+            "expected_scope": "student",
+            "evidence_scope": [
+              "student"
+            ]
+          },
+          "purpose_applicability": {
+            "status": "APPLICABLE",
+            "reason": "证据与教育支持用途一致。",
+            "expected_scope": "education_support",
+            "evidence_scope": [
+              "education_support"
+            ]
+          },
+          "applicability": {
+            "population": {
+              "status": "APPLICABLE",
+              "reason": "证据与大学新生范围一致。",
+              "expected_scope": "university_freshman",
+              "evidence_scope": [
+                "university_freshman"
+              ]
+            },
+            "role": {
+              "status": "APPLICABLE",
+              "reason": "证据与学生角色一致。",
+              "expected_scope": "student",
+              "evidence_scope": [
+                "student"
+              ]
+            },
+            "purpose": {
+              "status": "APPLICABLE",
+              "reason": "证据与教育支持用途一致。",
+              "expected_scope": "education_support",
+              "evidence_scope": [
+                "education_support"
+              ]
+            }
+          },
+          "support_label": "PARTIALLY_SUPPORTS",
+          "contradiction": {
+            "flag": false,
+            "reason": null
+          },
+          "review": {
+            "state": "HUMAN_REVIEW_REQUIRED",
+            "decision_source": "NONE",
+            "reviewer_id": null,
+            "reviewed_at": null,
+            "evidence_ref": null,
+            "simulated_outcome": null,
+            "human_gold": false,
+            "test_only": false
+          },
+          "traceability": [
+            {
+              "operation": "ORIGIN",
+              "source_claim_ids": [],
+              "source_spans": [
+                {
+                  "start": 0,
+                  "end": 32,
+                  "end_inclusive": false,
+                  "unit": "python_codepoint"
+                }
+              ],
+              "result_span": {
+                "start": 0,
+                "end": 32,
+                "end_inclusive": false,
+                "unit": "python_codepoint"
+              },
+              "reason": "Claim originates from the preserved answer span."
+            }
+          ],
+          "excluded": false,
+          "data_classification": [
+            "SYNTHETIC_EVALUATION_ONLY",
+            "NOT_D2_PUBLICATION",
+            "NOT_PRODUCTION_KNOWLEDGE",
+            "NOT_REAL_STUDENT_DATA",
+            "NOT_PSYCHOLOGY_VALIDATION"
+          ],
+          "content_hash": "sha256:71546551f9706d0786ce2a98a1b861f15f2d909b475ee9108fa90e74c7231814"
+        }
+      ],
+      "citation_identity": [
+        {
+          "claim_id": "CLM_D4SUP_DEV_PARTIAL",
+          "status": "VALID",
+          "cited_chunk_ids": [
+            "CHUNK_SYNTH_STUDY_PLANNING_001"
+          ],
+          "valid_chunk_ids": [
+            "CHUNK_SYNTH_STUDY_PLANNING_001"
+          ],
+          "unknown_chunk_ids": [],
+          "provenance_complete": true
+        }
+      ],
+      "review": {
+        "state": "HUMAN_REVIEW_REQUIRED",
+        "decision_source": "NONE",
+        "reviewer_id": null,
+        "reviewed_at": null,
+        "evidence_ref": null,
+        "simulated_outcome": null,
+        "human_gold": false,
+        "test_only": false
+      },
+      "data_classification": [
+        "SYNTHETIC_EVALUATION_ONLY",
+        "NOT_D2_PUBLICATION",
+        "NOT_PRODUCTION_KNOWLEDGE",
+        "NOT_REAL_STUDENT_DATA",
+        "NOT_PSYCHOLOGY_VALIDATION"
+      ],
+      "content_hash": "sha256:7cdf3080896e4d8d45437ce5464d5594611b79ae1334532f09461e847def6a3d"
+    },
+    {
+      "schema_version": "citation-support.v1",
+      "record_type": "case",
+      "case_id": "D4SUP-DEV-UNSUPPORTED-EXTENSION",
+      "original_answer": "只要保持规律作息，所有大学新生都能在三天内完成课程规划。",
+      "target_scope": {
+        "population": "university_freshman",
+        "role": "student",
+        "purpose": "education_support"
+      },
+      "split": "DEV",
+      "evidence": [
+        {
+          "schema_version": "citation-support.v1",
+          "record_type": "synthetic_evidence_card",
+          "chunk_id": "CHUNK_SYNTH_STUDY_PLANNING_001",
+          "document_id": "DOC_SYNTH_STUDY_PLANNING_001",
+          "citation_id": "CIT_SYNTH_STUDY_PLANNING_001",
+          "source_title": "合成教育支持证据卡：学习安排",
+          "source_organization": "D4 Synthetic Evaluation Fixture",
+          "locator": "synthetic://d4/citation-support/CIT_SYNTH_STUDY_PLANNING_001",
+          "text": "规律作息是学习安排中可以讨论的一个一般性因素。",
+          "population_scope": [
+            "university_freshman"
+          ],
+          "role_scope": [
+            "student"
+          ],
+          "purpose_scope": [
+            "education_support"
+          ],
+          "data_classification": [
+            "SYNTHETIC_EVALUATION_ONLY",
+            "NOT_D2_PUBLICATION",
+            "NOT_PRODUCTION_KNOWLEDGE",
+            "NOT_REAL_STUDENT_DATA",
+            "NOT_PSYCHOLOGY_VALIDATION"
+          ],
+          "review_state": "HUMAN_REVIEW_REQUIRED",
+          "content_hash": "sha256:025a0ab32d2606aaea0d7e454b385583680f39fd55ba08acc48fdb07826f1baa"
+        }
+      ],
+      "claims": [
+        {
+          "schema_version": "citation-support.v1",
+          "record_type": "claim",
+          "claim_id": "CLM_D4SUP_DEV_UNSUPPORTED_EXTENSION",
+          "case_id": "D4SUP-DEV-UNSUPPORTED-EXTENSION",
+          "original_answer": "只要保持规律作息，所有大学新生都能在三天内完成课程规划。",
+          "answer_span": {
+            "start": 0,
+            "end": 28,
+            "end_inclusive": false,
+            "unit": "python_codepoint"
+          },
+          "text": "只要保持规律作息，所有大学新生都能在三天内完成课程规划。",
+          "claim_type": "FACTUAL_VERIFIABLE",
+          "citation_required": true,
+          "citation_reason": "Externally checkable factual, causal, risk, or population content requires a source.",
+          "citation_policy_id": "FACTUAL_CLAIM_REQUIRES_SOURCE",
+          "citation_requirement": {
+            "required": true,
+            "reason": "Externally checkable factual, causal, risk, or population content requires a source.",
+            "policy_id": "FACTUAL_CLAIM_REQUIRES_SOURCE"
+          },
+          "cited_chunk_ids": [
+            "CHUNK_SYNTH_STUDY_PLANNING_001"
+          ],
+          "textual_entailment": "UNSUPPORTED",
+          "population_applicability": {
+            "status": "APPLICABLE",
+            "reason": "证据与大学新生范围一致。",
+            "expected_scope": "university_freshman",
+            "evidence_scope": [
+              "university_freshman"
+            ]
+          },
+          "role_applicability": {
+            "status": "APPLICABLE",
+            "reason": "证据与学生角色一致。",
+            "expected_scope": "student",
+            "evidence_scope": [
+              "student"
+            ]
+          },
+          "purpose_applicability": {
+            "status": "APPLICABLE",
+            "reason": "证据与教育支持用途一致。",
+            "expected_scope": "education_support",
+            "evidence_scope": [
+              "education_support"
+            ]
+          },
+          "applicability": {
+            "population": {
+              "status": "APPLICABLE",
+              "reason": "证据与大学新生范围一致。",
+              "expected_scope": "university_freshman",
+              "evidence_scope": [
+                "university_freshman"
+              ]
+            },
+            "role": {
+              "status": "APPLICABLE",
+              "reason": "证据与学生角色一致。",
+              "expected_scope": "student",
+              "evidence_scope": [
+                "student"
+              ]
+            },
+            "purpose": {
+              "status": "APPLICABLE",
+              "reason": "证据与教育支持用途一致。",
+              "expected_scope": "education_support",
+              "evidence_scope": [
+                "education_support"
+              ]
+            }
+          },
+          "support_label": "UNSUPPORTED",
+          "contradiction": {
+            "flag": false,
+            "reason": null
+          },
+          "review": {
+            "state": "HUMAN_REVIEW_REQUIRED",
+            "decision_source": "NONE",
+            "reviewer_id": null,
+            "reviewed_at": null,
+            "evidence_ref": null,
+            "simulated_outcome": null,
+            "human_gold": false,
+            "test_only": false
+          },
+          "traceability": [
+            {
+              "operation": "ORIGIN",
+              "source_claim_ids": [],
+              "source_spans": [
+                {
+                  "start": 0,
+                  "end": 28,
+                  "end_inclusive": false,
+                  "unit": "python_codepoint"
+                }
+              ],
+              "result_span": {
+                "start": 0,
+                "end": 28,
+                "end_inclusive": false,
+                "unit": "python_codepoint"
+              },
+              "reason": "Claim originates from the preserved answer span."
+            }
+          ],
+          "excluded": false,
+          "data_classification": [
+            "SYNTHETIC_EVALUATION_ONLY",
+            "NOT_D2_PUBLICATION",
+            "NOT_PRODUCTION_KNOWLEDGE",
+            "NOT_REAL_STUDENT_DATA",
+            "NOT_PSYCHOLOGY_VALIDATION"
+          ],
+          "content_hash": "sha256:79652285a0d03448578993bbd8ec47e20f8dacc16b958de30909d375106df02d"
+        }
+      ],
+      "citation_identity": [
+        {
+          "claim_id": "CLM_D4SUP_DEV_UNSUPPORTED_EXTENSION",
+          "status": "VALID",
+          "cited_chunk_ids": [
+            "CHUNK_SYNTH_STUDY_PLANNING_001"
+          ],
+          "valid_chunk_ids": [
+            "CHUNK_SYNTH_STUDY_PLANNING_001"
+          ],
+          "unknown_chunk_ids": [],
+          "provenance_complete": true
+        }
+      ],
+      "review": {
+        "state": "HUMAN_REVIEW_REQUIRED",
+        "decision_source": "NONE",
+        "reviewer_id": null,
+        "reviewed_at": null,
+        "evidence_ref": null,
+        "simulated_outcome": null,
+        "human_gold": false,
+        "test_only": false
+      },
+      "data_classification": [
+        "SYNTHETIC_EVALUATION_ONLY",
+        "NOT_D2_PUBLICATION",
+        "NOT_PRODUCTION_KNOWLEDGE",
+        "NOT_REAL_STUDENT_DATA",
+        "NOT_PSYCHOLOGY_VALIDATION"
+      ],
+      "content_hash": "sha256:8a0031d992771f02757b5dc98cec1ec78b3338553208e6f3be2ed7918c40a9f5"
+    },
+    {
+      "schema_version": "citation-support.v1",
+      "record_type": "case",
+      "case_id": "D4SUP-DEV-CONTRADICTION",
+      "original_answer": "短期熬夜一定能让大学新生更高效地完成学习安排。",
+      "target_scope": {
+        "population": "university_freshman",
+        "role": "student",
+        "purpose": "education_support"
+      },
+      "split": "DEV",
+      "evidence": [
+        {
+          "schema_version": "citation-support.v1",
+          "record_type": "synthetic_evidence_card",
+          "chunk_id": "CHUNK_SYNTH_STUDY_PLANNING_001",
+          "document_id": "DOC_SYNTH_STUDY_PLANNING_001",
+          "citation_id": "CIT_SYNTH_STUDY_PLANNING_001",
+          "source_title": "合成教育支持证据卡：学习安排",
+          "source_organization": "D4 Synthetic Evaluation Fixture",
+          "locator": "synthetic://d4/citation-support/CIT_SYNTH_STUDY_PLANNING_001",
+          "text": "作息不规律可能增加学习安排困难，不能据此保证更高效。",
+          "population_scope": [
+            "university_freshman"
+          ],
+          "role_scope": [
+            "student"
+          ],
+          "purpose_scope": [
+            "education_support"
+          ],
+          "data_classification": [
+            "SYNTHETIC_EVALUATION_ONLY",
+            "NOT_D2_PUBLICATION",
+            "NOT_PRODUCTION_KNOWLEDGE",
+            "NOT_REAL_STUDENT_DATA",
+            "NOT_PSYCHOLOGY_VALIDATION"
+          ],
+          "review_state": "HUMAN_REVIEW_REQUIRED",
+          "content_hash": "sha256:287b9c59260401220cd2f29596d79a6f99c624d6223549907d4059d0aa13de00"
+        }
+      ],
+      "claims": [
+        {
+          "schema_version": "citation-support.v1",
+          "record_type": "claim",
+          "claim_id": "CLM_D4SUP_DEV_CONTRADICTION",
+          "case_id": "D4SUP-DEV-CONTRADICTION",
+          "original_answer": "短期熬夜一定能让大学新生更高效地完成学习安排。",
+          "answer_span": {
+            "start": 0,
+            "end": 23,
+            "end_inclusive": false,
+            "unit": "python_codepoint"
+          },
+          "text": "短期熬夜一定能让大学新生更高效地完成学习安排。",
+          "claim_type": "FACTUAL_VERIFIABLE",
+          "citation_required": true,
+          "citation_reason": "Externally checkable factual, causal, risk, or population content requires a source.",
+          "citation_policy_id": "FACTUAL_CLAIM_REQUIRES_SOURCE",
+          "citation_requirement": {
+            "required": true,
+            "reason": "Externally checkable factual, causal, risk, or population content requires a source.",
+            "policy_id": "FACTUAL_CLAIM_REQUIRES_SOURCE"
+          },
+          "cited_chunk_ids": [
+            "CHUNK_SYNTH_STUDY_PLANNING_001"
+          ],
+          "textual_entailment": "CONTRADICTS",
+          "population_applicability": {
+            "status": "APPLICABLE",
+            "reason": "证据与大学新生范围一致。",
+            "expected_scope": "university_freshman",
+            "evidence_scope": [
+              "university_freshman"
+            ]
+          },
+          "role_applicability": {
+            "status": "APPLICABLE",
+            "reason": "证据与学生角色一致。",
+            "expected_scope": "student",
+            "evidence_scope": [
+              "student"
+            ]
+          },
+          "purpose_applicability": {
+            "status": "APPLICABLE",
+            "reason": "证据与教育支持用途一致。",
+            "expected_scope": "education_support",
+            "evidence_scope": [
+              "education_support"
+            ]
+          },
+          "applicability": {
+            "population": {
+              "status": "APPLICABLE",
+              "reason": "证据与大学新生范围一致。",
+              "expected_scope": "university_freshman",
+              "evidence_scope": [
+                "university_freshman"
+              ]
+            },
+            "role": {
+              "status": "APPLICABLE",
+              "reason": "证据与学生角色一致。",
+              "expected_scope": "student",
+              "evidence_scope": [
+                "student"
+              ]
+            },
+            "purpose": {
+              "status": "APPLICABLE",
+              "reason": "证据与教育支持用途一致。",
+              "expected_scope": "education_support",
+              "evidence_scope": [
+                "education_support"
+              ]
+            }
+          },
+          "support_label": "CONTRADICTS",
+          "contradiction": {
+            "flag": true,
+            "reason": "证据指出作息不规律可能增加学习安排困难。"
+          },
+          "review": {
+            "state": "HUMAN_REVIEW_REQUIRED",
+            "decision_source": "NONE",
+            "reviewer_id": null,
+            "reviewed_at": null,
+            "evidence_ref": null,
+            "simulated_outcome": null,
+            "human_gold": false,
+            "test_only": false
+          },
+          "traceability": [
+            {
+              "operation": "ORIGIN",
+              "source_claim_ids": [],
+              "source_spans": [
+                {
+                  "start": 0,
+                  "end": 23,
+                  "end_inclusive": false,
+                  "unit": "python_codepoint"
+                }
+              ],
+              "result_span": {
+                "start": 0,
+                "end": 23,
+                "end_inclusive": false,
+                "unit": "python_codepoint"
+              },
+              "reason": "Claim originates from the preserved answer span."
+            }
+          ],
+          "excluded": false,
+          "data_classification": [
+            "SYNTHETIC_EVALUATION_ONLY",
+            "NOT_D2_PUBLICATION",
+            "NOT_PRODUCTION_KNOWLEDGE",
+            "NOT_REAL_STUDENT_DATA",
+            "NOT_PSYCHOLOGY_VALIDATION"
+          ],
+          "content_hash": "sha256:88962491d178df8a094eca237d8d4169e75dec7b3bb2ab23b45421515fadbe65"
+        }
+      ],
+      "citation_identity": [
+        {
+          "claim_id": "CLM_D4SUP_DEV_CONTRADICTION",
+          "status": "VALID",
+          "cited_chunk_ids": [
+            "CHUNK_SYNTH_STUDY_PLANNING_001"
+          ],
+          "valid_chunk_ids": [
+            "CHUNK_SYNTH_STUDY_PLANNING_001"
+          ],
+          "unknown_chunk_ids": [],
+          "provenance_complete": true
+        }
+      ],
+      "review": {
+        "state": "HUMAN_REVIEW_REQUIRED",
+        "decision_source": "NONE",
+        "reviewer_id": null,
+        "reviewed_at": null,
+        "evidence_ref": null,
+        "simulated_outcome": null,
+        "human_gold": false,
+        "test_only": false
+      },
+      "data_classification": [
+        "SYNTHETIC_EVALUATION_ONLY",
+        "NOT_D2_PUBLICATION",
+        "NOT_PRODUCTION_KNOWLEDGE",
+        "NOT_REAL_STUDENT_DATA",
+        "NOT_PSYCHOLOGY_VALIDATION"
+      ],
+      "content_hash": "sha256:98c215d2050d6e68e27fac776dba90eda88fd6dc2f3b99b8d63e2622b6392939"
+    },
+    {
+      "schema_version": "citation-support.v1",
+      "record_type": "case",
+      "case_id": "D4SUP-DEV-POPULATION-MISMATCH",
+      "original_answer": "对大学新生而言，规律作息有助于安排学习。",
+      "target_scope": {
+        "population": "university_freshman",
+        "role": "student",
+        "purpose": "education_support"
+      },
+      "split": "DEV",
+      "evidence": [
+        {
+          "schema_version": "citation-support.v1",
+          "record_type": "synthetic_evidence_card",
+          "chunk_id": "CHUNK_SYNTH_K12_STUDY_PLANNING_001",
+          "document_id": "DOC_SYNTH_K12_STUDY_PLANNING_001",
+          "citation_id": "CIT_SYNTH_K12_STUDY_PLANNING_001",
+          "source_title": "合成教育支持证据卡：K12学习安排",
+          "source_organization": "D4 Synthetic Evaluation Fixture",
+          "locator": "synthetic://d4/citation-support/CIT_SYNTH_K12_STUDY_PLANNING_001",
+          "text": "对中小学生而言，规律作息有助于安排学习。",
+          "population_scope": [
+            "k12"
+          ],
+          "role_scope": [
+            "student"
+          ],
+          "purpose_scope": [
+            "education_support"
+          ],
+          "data_classification": [
+            "SYNTHETIC_EVALUATION_ONLY",
+            "NOT_D2_PUBLICATION",
+            "NOT_PRODUCTION_KNOWLEDGE",
+            "NOT_REAL_STUDENT_DATA",
+            "NOT_PSYCHOLOGY_VALIDATION"
+          ],
+          "review_state": "HUMAN_REVIEW_REQUIRED",
+          "content_hash": "sha256:8ee8dab15af6d9620f934e8e06be1f50889e8a3bbb208b0bb2451414a5b39e8d"
+        }
+      ],
+      "claims": [
+        {
+          "schema_version": "citation-support.v1",
+          "record_type": "claim",
+          "claim_id": "CLM_D4SUP_DEV_POPULATION_MISMATCH",
+          "case_id": "D4SUP-DEV-POPULATION-MISMATCH",
+          "original_answer": "对大学新生而言，规律作息有助于安排学习。",
+          "answer_span": {
+            "start": 0,
+            "end": 20,
+            "end_inclusive": false,
+            "unit": "python_codepoint"
+          },
+          "text": "对大学新生而言，规律作息有助于安排学习。",
+          "claim_type": "FACTUAL_VERIFIABLE",
+          "citation_required": true,
+          "citation_reason": "Externally checkable factual, causal, risk, or population content requires a source.",
+          "citation_policy_id": "FACTUAL_CLAIM_REQUIRES_SOURCE",
+          "citation_requirement": {
+            "required": true,
+            "reason": "Externally checkable factual, causal, risk, or population content requires a source.",
+            "policy_id": "FACTUAL_CLAIM_REQUIRES_SOURCE"
+          },
+          "cited_chunk_ids": [
+            "CHUNK_SYNTH_K12_STUDY_PLANNING_001"
+          ],
+          "textual_entailment": "SUPPORTS",
+          "population_applicability": {
+            "status": "MISMATCH",
+            "reason": "证据覆盖中小学生，目标案例是大学新生。",
+            "expected_scope": "university_freshman",
+            "evidence_scope": [
+              "k12"
+            ]
+          },
+          "role_applicability": {
+            "status": "APPLICABLE",
+            "reason": "证据与学生角色一致。",
+            "expected_scope": "student",
+            "evidence_scope": [
+              "student"
+            ]
+          },
+          "purpose_applicability": {
+            "status": "APPLICABLE",
+            "reason": "证据与教育支持用途一致。",
+            "expected_scope": "education_support",
+            "evidence_scope": [
+              "education_support"
+            ]
+          },
+          "applicability": {
+            "population": {
+              "status": "MISMATCH",
+              "reason": "证据覆盖中小学生，目标案例是大学新生。",
+              "expected_scope": "university_freshman",
+              "evidence_scope": [
+                "k12"
+              ]
+            },
+            "role": {
+              "status": "APPLICABLE",
+              "reason": "证据与学生角色一致。",
+              "expected_scope": "student",
+              "evidence_scope": [
+                "student"
+              ]
+            },
+            "purpose": {
+              "status": "APPLICABLE",
+              "reason": "证据与教育支持用途一致。",
+              "expected_scope": "education_support",
+              "evidence_scope": [
+                "education_support"
+              ]
+            }
+          },
+          "support_label": "OUT_OF_SCOPE",
+          "contradiction": {
+            "flag": false,
+            "reason": null
+          },
+          "review": {
+            "state": "HUMAN_REVIEW_REQUIRED",
+            "decision_source": "NONE",
+            "reviewer_id": null,
+            "reviewed_at": null,
+            "evidence_ref": null,
+            "simulated_outcome": null,
+            "human_gold": false,
+            "test_only": false
+          },
+          "traceability": [
+            {
+              "operation": "ORIGIN",
+              "source_claim_ids": [],
+              "source_spans": [
+                {
+                  "start": 0,
+                  "end": 20,
+                  "end_inclusive": false,
+                  "unit": "python_codepoint"
+                }
+              ],
+              "result_span": {
+                "start": 0,
+                "end": 20,
+                "end_inclusive": false,
+                "unit": "python_codepoint"
+              },
+              "reason": "Claim originates from the preserved answer span."
+            }
+          ],
+          "excluded": false,
+          "data_classification": [
+            "SYNTHETIC_EVALUATION_ONLY",
+            "NOT_D2_PUBLICATION",
+            "NOT_PRODUCTION_KNOWLEDGE",
+            "NOT_REAL_STUDENT_DATA",
+            "NOT_PSYCHOLOGY_VALIDATION"
+          ],
+          "content_hash": "sha256:9d7458c170b9802098c14b90b531145dc989da072d44972da646de1da2c8bca5"
+        }
+      ],
+      "citation_identity": [
+        {
+          "claim_id": "CLM_D4SUP_DEV_POPULATION_MISMATCH",
+          "status": "VALID",
+          "cited_chunk_ids": [
+            "CHUNK_SYNTH_K12_STUDY_PLANNING_001"
+          ],
+          "valid_chunk_ids": [
+            "CHUNK_SYNTH_K12_STUDY_PLANNING_001"
+          ],
+          "unknown_chunk_ids": [],
+          "provenance_complete": true
+        }
+      ],
+      "review": {
+        "state": "HUMAN_REVIEW_REQUIRED",
+        "decision_source": "NONE",
+        "reviewer_id": null,
+        "reviewed_at": null,
+        "evidence_ref": null,
+        "simulated_outcome": null,
+        "human_gold": false,
+        "test_only": false
+      },
+      "data_classification": [
+        "SYNTHETIC_EVALUATION_ONLY",
+        "NOT_D2_PUBLICATION",
+        "NOT_PRODUCTION_KNOWLEDGE",
+        "NOT_REAL_STUDENT_DATA",
+        "NOT_PSYCHOLOGY_VALIDATION"
+      ],
+      "content_hash": "sha256:1630a0b3363096f3fb62b7cf5b39ef3e21061bc88cd467c612e54c55f5477f81"
+    },
+    {
+      "schema_version": "citation-support.v1",
+      "record_type": "case",
+      "case_id": "D4SUP-DEV-ROLE-MISMATCH",
+      "original_answer": "学生可以记录自己的学习作息并与教师讨论。",
+      "target_scope": {
+        "population": "university_freshman",
+        "role": "teacher",
+        "purpose": "education_support"
+      },
+      "split": "DEV",
+      "evidence": [
+        {
+          "schema_version": "citation-support.v1",
+          "record_type": "synthetic_evidence_card",
+          "chunk_id": "CHUNK_SYNTH_COURSE_SUPPORT_001",
+          "document_id": "DOC_SYNTH_COURSE_SUPPORT_001",
+          "citation_id": "CIT_SYNTH_COURSE_SUPPORT_001",
+          "source_title": "合成课程支持证据卡：学习安排讨论",
+          "source_organization": "D4 Synthetic Evaluation Fixture",
+          "locator": "synthetic://d4/citation-support/CIT_SYNTH_COURSE_SUPPORT_001",
+          "text": "学生可以记录自己的学习作息，并与教师讨论学习安排。",
+          "population_scope": [
+            "university_freshman"
+          ],
+          "role_scope": [
+            "student"
+          ],
+          "purpose_scope": [
+            "education_support"
+          ],
+          "data_classification": [
+            "SYNTHETIC_EVALUATION_ONLY",
+            "NOT_D2_PUBLICATION",
+            "NOT_PRODUCTION_KNOWLEDGE",
+            "NOT_REAL_STUDENT_DATA",
+            "NOT_PSYCHOLOGY_VALIDATION"
+          ],
+          "review_state": "HUMAN_REVIEW_REQUIRED",
+          "content_hash": "sha256:15b2e7ecb820b877654e56cbb0083dbd23503393e593e94e63474a0f77ad6af3"
+        }
+      ],
+      "claims": [
+        {
+          "schema_version": "citation-support.v1",
+          "record_type": "claim",
+          "claim_id": "CLM_D4SUP_DEV_ROLE_MISMATCH",
+          "case_id": "D4SUP-DEV-ROLE-MISMATCH",
+          "original_answer": "学生可以记录自己的学习作息并与教师讨论。",
+          "answer_span": {
+            "start": 0,
+            "end": 20,
+            "end_inclusive": false,
+            "unit": "python_codepoint"
+          },
+          "text": "学生可以记录自己的学习作息并与教师讨论。",
+          "claim_type": "FACTUAL_VERIFIABLE",
+          "citation_required": true,
+          "citation_reason": "Externally checkable factual, causal, risk, or population content requires a source.",
+          "citation_policy_id": "FACTUAL_CLAIM_REQUIRES_SOURCE",
+          "citation_requirement": {
+            "required": true,
+            "reason": "Externally checkable factual, causal, risk, or population content requires a source.",
+            "policy_id": "FACTUAL_CLAIM_REQUIRES_SOURCE"
+          },
+          "cited_chunk_ids": [
+            "CHUNK_SYNTH_COURSE_SUPPORT_001"
+          ],
+          "textual_entailment": "SUPPORTS",
+          "population_applicability": {
+            "status": "APPLICABLE",
+            "reason": "证据与大学新生范围一致。",
+            "expected_scope": "university_freshman",
+            "evidence_scope": [
+              "university_freshman"
+            ]
+          },
+          "role_applicability": {
+            "status": "MISMATCH",
+            "reason": "证据是学生自助语境，当前请求的目标角色是教师。",
+            "expected_scope": "teacher",
+            "evidence_scope": [
+              "student"
+            ]
+          },
+          "purpose_applicability": {
+            "status": "APPLICABLE",
+            "reason": "证据与教育支持用途一致。",
+            "expected_scope": "education_support",
+            "evidence_scope": [
+              "education_support"
+            ]
+          },
+          "applicability": {
+            "population": {
+              "status": "APPLICABLE",
+              "reason": "证据与大学新生范围一致。",
+              "expected_scope": "university_freshman",
+              "evidence_scope": [
+                "university_freshman"
+              ]
+            },
+            "role": {
+              "status": "MISMATCH",
+              "reason": "证据是学生自助语境，当前请求的目标角色是教师。",
+              "expected_scope": "teacher",
+              "evidence_scope": [
+                "student"
+              ]
+            },
+            "purpose": {
+              "status": "APPLICABLE",
+              "reason": "证据与教育支持用途一致。",
+              "expected_scope": "education_support",
+              "evidence_scope": [
+                "education_support"
+              ]
+            }
+          },
+          "support_label": "OUT_OF_SCOPE",
+          "contradiction": {
+            "flag": false,
+            "reason": null
+          },
+          "review": {
+            "state": "HUMAN_REVIEW_REQUIRED",
+            "decision_source": "NONE",
+            "reviewer_id": null,
+            "reviewed_at": null,
+            "evidence_ref": null,
+            "simulated_outcome": null,
+            "human_gold": false,
+            "test_only": false
+          },
+          "traceability": [
+            {
+              "operation": "ORIGIN",
+              "source_claim_ids": [],
+              "source_spans": [
+                {
+                  "start": 0,
+                  "end": 20,
+                  "end_inclusive": false,
+                  "unit": "python_codepoint"
+                }
+              ],
+              "result_span": {
+                "start": 0,
+                "end": 20,
+                "end_inclusive": false,
+                "unit": "python_codepoint"
+              },
+              "reason": "Claim originates from the preserved answer span."
+            }
+          ],
+          "excluded": false,
+          "data_classification": [
+            "SYNTHETIC_EVALUATION_ONLY",
+            "NOT_D2_PUBLICATION",
+            "NOT_PRODUCTION_KNOWLEDGE",
+            "NOT_REAL_STUDENT_DATA",
+            "NOT_PSYCHOLOGY_VALIDATION"
+          ],
+          "content_hash": "sha256:cc00654cb2596540e485464f462da9af71f378d1625ee9cccbbeecc907df8c7e"
+        }
+      ],
+      "citation_identity": [
+        {
+          "claim_id": "CLM_D4SUP_DEV_ROLE_MISMATCH",
+          "status": "VALID",
+          "cited_chunk_ids": [
+            "CHUNK_SYNTH_COURSE_SUPPORT_001"
+          ],
+          "valid_chunk_ids": [
+            "CHUNK_SYNTH_COURSE_SUPPORT_001"
+          ],
+          "unknown_chunk_ids": [],
+          "provenance_complete": true
+        }
+      ],
+      "review": {
+        "state": "HUMAN_REVIEW_REQUIRED",
+        "decision_source": "NONE",
+        "reviewer_id": null,
+        "reviewed_at": null,
+        "evidence_ref": null,
+        "simulated_outcome": null,
+        "human_gold": false,
+        "test_only": false
+      },
+      "data_classification": [
+        "SYNTHETIC_EVALUATION_ONLY",
+        "NOT_D2_PUBLICATION",
+        "NOT_PRODUCTION_KNOWLEDGE",
+        "NOT_REAL_STUDENT_DATA",
+        "NOT_PSYCHOLOGY_VALIDATION"
+      ],
+      "content_hash": "sha256:4bf36a39a20b91b5303fd549fccd5362af7a326c5e4db4705970cf86d6818a1d"
+    },
+    {
+      "schema_version": "citation-support.v1",
+      "record_type": "case",
+      "case_id": "D4SUP-DEV-PURPOSE-MISMATCH",
+      "original_answer": "这条建议可用于教育支持中的学习安排讨论。",
+      "target_scope": {
+        "population": "university_freshman",
+        "role": "student",
+        "purpose": "assessment_scoring"
+      },
+      "split": "DEV",
+      "evidence": [
+        {
+          "schema_version": "citation-support.v1",
+          "record_type": "synthetic_evidence_card",
+          "chunk_id": "CHUNK_SYNTH_COURSE_SUPPORT_001",
+          "document_id": "DOC_SYNTH_COURSE_SUPPORT_001",
+          "citation_id": "CIT_SYNTH_COURSE_SUPPORT_001",
+          "source_title": "合成课程支持证据卡：学习安排讨论",
+          "source_organization": "D4 Synthetic Evaluation Fixture",
+          "locator": "synthetic://d4/citation-support/CIT_SYNTH_COURSE_SUPPORT_001",
+          "text": "该建议可用于教育支持中的学习安排讨论。",
+          "population_scope": [
+            "university_freshman"
+          ],
+          "role_scope": [
+            "student"
+          ],
+          "purpose_scope": [
+            "education_support"
+          ],
+          "data_classification": [
+            "SYNTHETIC_EVALUATION_ONLY",
+            "NOT_D2_PUBLICATION",
+            "NOT_PRODUCTION_KNOWLEDGE",
+            "NOT_REAL_STUDENT_DATA",
+            "NOT_PSYCHOLOGY_VALIDATION"
+          ],
+          "review_state": "HUMAN_REVIEW_REQUIRED",
+          "content_hash": "sha256:ac9775e2404565e3777a19d8191b2afbc5969a6fd89c23bd13cf685bc345a450"
+        }
+      ],
+      "claims": [
+        {
+          "schema_version": "citation-support.v1",
+          "record_type": "claim",
+          "claim_id": "CLM_D4SUP_DEV_PURPOSE_MISMATCH",
+          "case_id": "D4SUP-DEV-PURPOSE-MISMATCH",
+          "original_answer": "这条建议可用于教育支持中的学习安排讨论。",
+          "answer_span": {
+            "start": 0,
+            "end": 20,
+            "end_inclusive": false,
+            "unit": "python_codepoint"
+          },
+          "text": "这条建议可用于教育支持中的学习安排讨论。",
+          "claim_type": "EVIDENCE_GROUNDED_ACTION",
+          "citation_required": true,
+          "citation_reason": "The action is presented as grounded in educational evidence and must be traceable to a source.",
+          "citation_policy_id": "EVIDENCE_GROUNDED_ACTION_REQUIRES_SOURCE",
+          "citation_requirement": {
+            "required": true,
+            "reason": "The action is presented as grounded in educational evidence and must be traceable to a source.",
+            "policy_id": "EVIDENCE_GROUNDED_ACTION_REQUIRES_SOURCE"
+          },
+          "cited_chunk_ids": [
+            "CHUNK_SYNTH_COURSE_SUPPORT_001"
+          ],
+          "textual_entailment": "SUPPORTS",
+          "population_applicability": {
+            "status": "APPLICABLE",
+            "reason": "证据与大学新生范围一致。",
+            "expected_scope": "university_freshman",
+            "evidence_scope": [
+              "university_freshman"
+            ]
+          },
+          "role_applicability": {
+            "status": "APPLICABLE",
+            "reason": "证据与学生角色一致。",
+            "expected_scope": "student",
+            "evidence_scope": [
+              "student"
+            ]
+          },
+          "purpose_applicability": {
+            "status": "MISMATCH",
+            "reason": "证据用于教育支持，当前请求要求测评分数用途。",
+            "expected_scope": "assessment_scoring",
+            "evidence_scope": [
+              "education_support"
+            ]
+          },
+          "applicability": {
+            "population": {
+              "status": "APPLICABLE",
+              "reason": "证据与大学新生范围一致。",
+              "expected_scope": "university_freshman",
+              "evidence_scope": [
+                "university_freshman"
+              ]
+            },
+            "role": {
+              "status": "APPLICABLE",
+              "reason": "证据与学生角色一致。",
+              "expected_scope": "student",
+              "evidence_scope": [
+                "student"
+              ]
+            },
+            "purpose": {
+              "status": "MISMATCH",
+              "reason": "证据用于教育支持，当前请求要求测评分数用途。",
+              "expected_scope": "assessment_scoring",
+              "evidence_scope": [
+                "education_support"
+              ]
+            }
+          },
+          "support_label": "OUT_OF_SCOPE",
+          "contradiction": {
+            "flag": false,
+            "reason": null
+          },
+          "review": {
+            "state": "HUMAN_REVIEW_REQUIRED",
+            "decision_source": "NONE",
+            "reviewer_id": null,
+            "reviewed_at": null,
+            "evidence_ref": null,
+            "simulated_outcome": null,
+            "human_gold": false,
+            "test_only": false
+          },
+          "traceability": [
+            {
+              "operation": "ORIGIN",
+              "source_claim_ids": [],
+              "source_spans": [
+                {
+                  "start": 0,
+                  "end": 20,
+                  "end_inclusive": false,
+                  "unit": "python_codepoint"
+                }
+              ],
+              "result_span": {
+                "start": 0,
+                "end": 20,
+                "end_inclusive": false,
+                "unit": "python_codepoint"
+              },
+              "reason": "Claim originates from the preserved answer span."
+            }
+          ],
+          "excluded": false,
+          "data_classification": [
+            "SYNTHETIC_EVALUATION_ONLY",
+            "NOT_D2_PUBLICATION",
+            "NOT_PRODUCTION_KNOWLEDGE",
+            "NOT_REAL_STUDENT_DATA",
+            "NOT_PSYCHOLOGY_VALIDATION"
+          ],
+          "content_hash": "sha256:3891bbaeb7cf4f2b13d1112c65ec64d9ca3ef1f0c73c48b5d9d4d3aaaa8df88e"
+        }
+      ],
+      "citation_identity": [
+        {
+          "claim_id": "CLM_D4SUP_DEV_PURPOSE_MISMATCH",
+          "status": "VALID",
+          "cited_chunk_ids": [
+            "CHUNK_SYNTH_COURSE_SUPPORT_001"
+          ],
+          "valid_chunk_ids": [
+            "CHUNK_SYNTH_COURSE_SUPPORT_001"
+          ],
+          "unknown_chunk_ids": [],
+          "provenance_complete": true
+        }
+      ],
+      "review": {
+        "state": "HUMAN_REVIEW_REQUIRED",
+        "decision_source": "NONE",
+        "reviewer_id": null,
+        "reviewed_at": null,
+        "evidence_ref": null,
+        "simulated_outcome": null,
+        "human_gold": false,
+        "test_only": false
+      },
+      "data_classification": [
+        "SYNTHETIC_EVALUATION_ONLY",
+        "NOT_D2_PUBLICATION",
+        "NOT_PRODUCTION_KNOWLEDGE",
+        "NOT_REAL_STUDENT_DATA",
+        "NOT_PSYCHOLOGY_VALIDATION"
+      ],
+      "content_hash": "sha256:d38b8c1b9652de74377e9e0806496eb4e85296287c326c01f9154e97788bbaf2"
+    }
+  ],
+  "dataset_hash": "sha256:4ff97838c8ea641651898b2d8ed01616bbcc1a37064511cd1caad9d624771d42"
+}

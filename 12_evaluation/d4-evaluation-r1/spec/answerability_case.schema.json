@@ -1,0 +1,424 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studentmentalhealthai.local/schemas/d4-answerability-case-v1.json",
+  "title": "D4-3A deterministic answerability cases",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "dataset_id",
+    "dataset_version",
+    "scope",
+    "cases"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "answerability_case.v1"
+    },
+    "dataset_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "dataset_version": {
+      "type": "string",
+      "pattern": "^v[0-9]+$"
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "data_class",
+        "content_domain",
+        "human_gold_status",
+        "model_calls_allowed",
+        "external_network_allowed"
+      ],
+      "properties": {
+        "data_class": {
+          "const": "SYNTHETIC"
+        },
+        "content_domain": {
+          "const": "NEUTRAL_EDUCATIONAL_SUPPORT"
+        },
+        "human_gold_status": {
+          "enum": [
+            "DRAFT",
+            "HUMAN_REVIEW_REQUIRED",
+            "DISPUTED"
+          ]
+        },
+        "model_calls_allowed": {
+          "const": false
+        },
+        "external_network_allowed": {
+          "const": false
+        }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 6,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/case"
+      }
+    }
+  },
+  "$defs": {
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_id",
+        "pair_id",
+        "paired_case_id",
+        "language",
+        "scenario_kind",
+        "mismatch_dimension",
+        "target_scope",
+        "evidence_bindings",
+        "request",
+        "required_evidence_ids",
+        "minimum_useful_behavior",
+        "minimum_useful_content_expectation",
+        "prohibited_refusal_outcomes",
+        "boundary_markers",
+        "authorized",
+        "in_scope",
+        "safe_to_answer",
+        "hard_stop",
+        "eligible_evidence_exists",
+        "applicability",
+        "qualifier_required",
+        "expected_response_class",
+        "expected_rationale",
+        "class_label_provenance",
+        "human_gold"
+      ],
+      "properties": {
+        "case_id": {
+          "type": "string",
+          "pattern": "^AW-[A-Z0-9][A-Z0-9_-]*$"
+        },
+        "pair_id": {
+          "type": "string",
+          "pattern": "^PAIR-[A-Z0-9][A-Z0-9_-]*$"
+        },
+        "paired_case_id": {
+          "type": "string",
+          "pattern": "^AW-[A-Z0-9][A-Z0-9_-]*$"
+        },
+        "language": {
+          "const": "zh-CN"
+        },
+        "scenario_kind": {
+          "enum": [
+            "EVIDENCE_AVAILABLE",
+            "NO_ELIGIBLE_EVIDENCE",
+            "APPLICABILITY_MISMATCH",
+            "ROLE_APPLICABILITY_MISMATCH",
+            "PURPOSE_APPLICABILITY_MISMATCH",
+            "SAFE_QUALIFIER",
+            "HARD_STOP_ROUTE",
+            "UNAUTHORIZED_DISCLOSURE"
+          ]
+        },
+        "mismatch_dimension": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            null,
+            "population",
+            "role",
+            "purpose"
+          ]
+        },
+        "target_scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "evidence_bindings": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/evidenceBinding"
+          }
+        },
+        "request": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "required_evidence_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^CHUNK_[A-Z0-9][A-Z0-9._-]*$"
+          }
+        },
+        "available_but_inapplicable_evidence_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^CHUNK_[A-Z0-9][A-Z0-9._-]*$"
+          }
+        },
+        "minimum_useful_behavior": {
+          "enum": [
+            "ANSWER_WITH_BOUNDED_EDUCATIONAL_GUIDANCE",
+            "ANSWER_WITH_SCOPE_QUALIFIER",
+            "STATE_NO_ELIGIBLE_EVIDENCE_AND_ABSTAIN",
+            "STATE_APPLICABILITY_MISMATCH_AND_ABSTAIN",
+            "ROUTE_TO_HUMAN_REVIEW",
+            "DENY_WITH_MINIMUM_DISCLOSURE"
+          ]
+        },
+        "minimum_useful_content_expectation": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "prohibited_refusal_outcomes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "HARD_REFUSAL",
+              "IRRELEVANT_ABSTENTION",
+              "FABRICATED_CITATION",
+              "UNSUPPORTED_ANSWER",
+              "NORMAL_GENERATION",
+              "UNAUTHORIZED_DISCLOSURE"
+            ]
+          }
+        },
+        "boundary_markers": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "SYNTHETIC_EVALUATION_ONLY",
+              "NOT_D2_PUBLICATION",
+              "NOT_PRODUCTION_KNOWLEDGE",
+              "NOT_REAL_STUDENT_DATA",
+              "NOT_PSYCHOLOGY_VALIDATION"
+            ]
+          },
+          "allOf": [
+            {
+              "contains": {
+                "const": "SYNTHETIC_EVALUATION_ONLY"
+              }
+            },
+            {
+              "contains": {
+                "const": "NOT_D2_PUBLICATION"
+              }
+            },
+            {
+              "contains": {
+                "const": "NOT_PRODUCTION_KNOWLEDGE"
+              }
+            },
+            {
+              "contains": {
+                "const": "NOT_REAL_STUDENT_DATA"
+              }
+            },
+            {
+              "contains": {
+                "const": "NOT_PSYCHOLOGY_VALIDATION"
+              }
+            }
+          ]
+        },
+        "authorized": {
+          "type": "boolean"
+        },
+        "in_scope": {
+          "type": "boolean"
+        },
+        "safe_to_answer": {
+          "type": "boolean"
+        },
+        "hard_stop": {
+          "type": "boolean"
+        },
+        "eligible_evidence_exists": {
+          "type": "boolean"
+        },
+        "applicability": {
+          "enum": [
+            "MATCH",
+            "MISMATCH",
+            "UNRESOLVED"
+          ]
+        },
+        "qualifier_required": {
+          "type": "boolean"
+        },
+        "expected_response_class": {
+          "enum": [
+            "MUST_ANSWER",
+            "SHOULD_ANSWER",
+            "SHOULD_ABSTAIN",
+            "MUST_ROUTE",
+            "MUST_DENY"
+          ]
+        },
+        "expected_rationale": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "class_label_provenance": {
+          "const": "DETERMINISTIC_RULES_V1"
+        },
+        "human_gold": {
+          "$ref": "#/$defs/draftGold"
+        },
+        "expected_observed_behavior": {
+          "enum": [
+            "ANSWERED",
+            "ABSTAINED",
+            "ROUTED",
+            "DENIED"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "expected_response_class": {
+                "const": "MUST_ANSWER"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "required_evidence_ids": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "expected_response_class": {
+                "const": "SHOULD_ABSTAIN"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "required_evidence_ids": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "draftGold": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "provenance"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "DRAFT",
+            "HUMAN_REVIEW_REQUIRED",
+            "DISPUTED"
+          ]
+        },
+        "provenance": {
+          "enum": [
+            "SYNTHETIC_DRAFT_NO_HUMAN_REVIEW",
+            "SYNTHETIC_REVIEW_PENDING",
+            "SYNTHETIC_DISPUTE_PENDING"
+          ]
+        }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "population",
+        "role",
+        "purpose"
+      ],
+      "properties": {
+        "population": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "purpose": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      }
+    },
+    "evidenceBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_id",
+        "population_scope",
+        "role_scope",
+        "purpose_scope"
+      ],
+      "properties": {
+        "evidence_id": {
+          "type": "string",
+          "pattern": "^CHUNK_[A-Z0-9][A-Z0-9._-]*$"
+        },
+        "population_scope": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "role_scope": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "purpose_scope": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}
