@@ -1,0 +1,184 @@
+{
+  "schema_version": "d4-slice3a-citation-utility-foundation.v1",
+  "overall_disposition": "PARTIAL",
+  "technical_foundation": "READY_FOR_CONTROLLER_AND_HUMAN_REVIEW",
+  "human_gold_status": "DRAFT_NOT_APPROVED",
+  "controller_acceptance": false,
+  "baseline": {
+    "implementation_base_commit": "cac95b9a4012d8aa13bd648d278dea92c1034c95",
+    "d4_slice2_accepted_tag": "d4-slice2-r1-accepted",
+    "d4_slice2_accepted_tag_target": "2ead2fd6a131f34c2cc7cb71274aed04ce935053",
+    "branch": "exp/d4-citation-utility-foundation-v1",
+    "worktree": "D:\\Projects\\StudentMentalHealthAI-d4-citation-utility"
+  },
+  "datasets": {
+    "citation_support": {
+      "path": "12_evaluation/d4-evaluation-r1/datasets/citation_utility/dev/citation_support/cases.v1.json",
+      "dataset_id": "D4SUP_DEV_SYNTHETIC_V1",
+      "dataset_hash": "sha256:4ff97838c8ea641651898b2d8ed01616bbcc1a37064511cd1caad9d624771d42",
+      "file_sha256": "d1832a87dd88c9b07baf51d37e2216279289b415f300649ebd3a5373722e9723",
+      "split": "DEV",
+      "case_count": 7,
+      "claim_count": 7,
+      "draft_label_distribution": {
+        "SUPPORTS": 1,
+        "PARTIALLY_SUPPORTS": 1,
+        "UNSUPPORTED": 1,
+        "CONTRADICTS": 1,
+        "OUT_OF_SCOPE": 3
+      },
+      "human_review_pending_cases": 7,
+      "human_approved_claims": 0
+    },
+    "answerability": {
+      "path": "12_evaluation/d4-evaluation-r1/datasets/citation_utility/dev/answerability/cases.v1.json",
+      "dataset_id": "d4-answerability-neutral-educational",
+      "dataset_version": "v1",
+      "file_sha256": "c522f016646ff420a8973c652d610e505e8215b69560a1a5827c0a8a03c3af27",
+      "case_count": 12,
+      "expected_response_class_distribution": {
+        "MUST_ANSWER": 5,
+        "SHOULD_ABSTAIN": 4,
+        "SHOULD_ANSWER": 1,
+        "MUST_ROUTE": 1,
+        "MUST_DENY": 1
+      },
+      "pair_count": 6,
+      "dimension_mismatch_pairs": [
+        "population",
+        "purpose",
+        "role"
+      ],
+      "human_review_pending_cases": 12
+    },
+    "data_classification": [
+      "SYNTHETIC_EVALUATION_ONLY",
+      "NOT_D2_PUBLICATION",
+      "NOT_PRODUCTION_KNOWLEDGE",
+      "NOT_REAL_STUDENT_DATA",
+      "NOT_PSYCHOLOGY_VALIDATION"
+    ],
+    "d2_pending_intake_used": false,
+    "real_student_data_used": false
+  },
+  "review_packet": {
+    "json_path": "12_evaluation/d4-evaluation-r1/D4_3A_HUMAN_GOLD_REVIEW_PACKET.json",
+    "json_file_sha256": "0de36c618091fcc6cceada585ed023c379da5f67b071a4b85004bea3702826a8",
+    "markdown_path": "12_evaluation/d4-evaluation-r1/D4_3A_HUMAN_GOLD_REVIEW_PACKET.md",
+    "markdown_file_sha256": "bead4e6648da1a25d8250bb4a02df57aebde29011752960129c554983c3d6ec3",
+    "packet_id": "D4-PACKET-SLICE3A-CITATION-UTILITY-R1",
+    "packet_hash": "sha256:8b2e83469888fc195dbf9baea1389f97ab5dcaa0c48e83c9c5ae1efcf25cbe67",
+    "review_status": "HUMAN_REVIEW_REQUIRED",
+    "annotation_status": "DRAFT",
+    "human_gold": false,
+    "citation_case_count": 7,
+    "answerability_case_count": 12,
+    "contains_human_approved_gold": false,
+    "citation_source_hash": "sha256:4ff97838c8ea641651898b2d8ed01616bbcc1a37064511cd1caad9d624771d42",
+    "answerability_source_hash": "sha256:c522f016646ff420a8973c652d610e505e8215b69560a1a5827c0a8a03c3af27"
+  },
+  "metric_governance": {
+    "formula_version": "d4-citation-utility-formulas.v1",
+    "defined_metrics": [
+      "answerable_case_success_rate",
+      "citation_fabrication_rate",
+      "claim_support_rate",
+      "contradicted_claim_rate",
+      "correct_abstention_rate",
+      "correct_abstention_without_evidence_rate",
+      "dangerous_compliance_rate",
+      "false_refusal_rate",
+      "full_support_rate",
+      "necessary_citation_coverage",
+      "partial_or_better_support_rate",
+      "population_applicability_error_rate",
+      "unsupported_claim_rate"
+    ],
+    "product_output_metrics_computed": false,
+    "human_gold_metrics_computed": false,
+    "reason": "D4-3A defines and tests evaluators only; no product/model run and no approved Human Gold exist.",
+    "zero_denominator_policy": "value=null with explicit null_reason",
+    "single_aggregate_safety_utility_or_clinical_score": false,
+    "invented_thresholds": false
+  },
+  "verification": {
+    "citation_utility_tests": {
+      "status": "PASS",
+      "passed": 56,
+      "failed": 0
+    },
+    "d4_1_foundation_tests": {
+      "status": "PASS",
+      "passed": 37,
+      "failed": 0
+    },
+    "d4_2_deterministic_regression": {
+      "status": "PASS",
+      "passed": 16,
+      "failed": 0
+    },
+    "ruff_check": "PASS",
+    "ruff_format_check": "PASS",
+    "compile_import": "PASS",
+    "root_contract_tests": {
+      "status": "PASS",
+      "passed": 13,
+      "failed": 0
+    },
+    "root_contract_wrapper_execution": {
+      "status": "PARTIAL",
+      "exit_code": 1,
+      "contract_tests": "13/13 passed",
+      "wrapper_failure": "The generated 09_backend/.venv did not contain the optional openapi_spec_validator test dependency.",
+      "openapi_validator_rerun": "PASS in the existing local Backend regression environment",
+      "generated_environment": "09_backend/.venv (ignored local environment; not part of the candidate diff)"
+    },
+    "openapi_validator": {
+      "status": "PASS",
+      "environment": "existing local D4 Backend regression environment"
+    },
+    "frozen_root": {
+      "status": "PASS",
+      "artifacts_unchanged": 8,
+      "comparison": "00_architecture has no candidate diff against implementation base"
+    },
+    "pyright": {
+      "status": "NOT_APPLICABLE",
+      "reason": "No D4 evaluation Pyright configuration is present."
+    },
+    "product_source_diff": "EMPTY",
+    "worker_c_independent_review": "NO_REMAINING_FINDINGS",
+    "execution_lead_review": "PASS_WITH_DOCUMENTED_PROCESS_DEVIATION"
+  },
+  "scope": {
+    "promptfoo_installed_or_used": false,
+    "ragas_or_ares_installed_or_used": false,
+    "model_calls": 0,
+    "external_network_free": false,
+    "real_student_data": false,
+    "d2_pending_intake_used": false,
+    "product_source_changed": false,
+    "d3_changed": false,
+    "root_openapi_contract_changed": false,
+    "d4_3b_started": false,
+    "merge": false,
+    "push": false,
+    "tag": false,
+    "real_pilot": "BLOCKED",
+    "main_dirty_repository_touched": false,
+    "c2c_used": false
+  },
+  "execution_deviations": [
+    {
+      "id": "D4-3A-NETWORK-DEVIATION-01",
+      "requirement": "No external network",
+      "observed": "Worker A ran pip install --target D:\\Dev\\tools\\ruff-0.16.6 ruff==0.16.6; pip downloaded a 10.6 MB wheel and made an external request.",
+      "project_data_sent": false,
+      "subsequent_explicit_downloads": false,
+      "additional_uv_environment_source_audit": "Not captured; Root wrapper created a local backend .venv and installed 34 packages before the OpenAPI module was found missing.",
+      "effect": "This immutable process deviation prevents full HANDOFF compliance; technical gates remain reviewable."
+    }
+  ],
+  "candidate_commit_binding": "This evidence file is carried by the candidate commit; its SHA is reported in the HANDOFF instead of self-embedded.",
+  "recommendation": "Controller review of the technical foundation and draft packet; decide separately whether the no-network deviation is acceptable. Do not treat this as Human Gold approval or D4 acceptance."
+}

@@ -1,0 +1,297 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studentmentalhealthai.local/schemas/d4-metric-report-v1.json",
+  "title": "D4-3A denominator-explicit metric report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "formula_version",
+    "dataset_id",
+    "dataset_version",
+    "metrics",
+    "pending_review_count",
+    "pending_review_case_ids",
+    "limitations"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "metric_report.v1"
+    },
+    "formula_version": {
+      "const": "d4-citation-utility-formulas.v1"
+    },
+    "dataset_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "dataset_version": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "claim_support_rate",
+        "full_support_rate",
+        "partial_or_better_support_rate",
+        "unsupported_claim_rate",
+        "contradicted_claim_rate",
+        "necessary_citation_coverage",
+        "population_applicability_error_rate",
+        "citation_fabrication_rate",
+        "correct_abstention_without_evidence_rate",
+        "answerable_case_success_rate",
+        "false_refusal_rate",
+        "correct_abstention_rate",
+        "dangerous_compliance_rate"
+      ],
+      "properties": {
+        "claim_support_rate": {
+          "$ref": "#/$defs/metric"
+        },
+        "full_support_rate": {
+          "$ref": "#/$defs/metric"
+        },
+        "partial_or_better_support_rate": {
+          "$ref": "#/$defs/metric"
+        },
+        "unsupported_claim_rate": {
+          "$ref": "#/$defs/metric"
+        },
+        "contradicted_claim_rate": {
+          "$ref": "#/$defs/metric"
+        },
+        "necessary_citation_coverage": {
+          "$ref": "#/$defs/metric"
+        },
+        "population_applicability_error_rate": {
+          "$ref": "#/$defs/metric"
+        },
+        "citation_fabrication_rate": {
+          "$ref": "#/$defs/metric"
+        },
+        "correct_abstention_without_evidence_rate": {
+          "$ref": "#/$defs/metric"
+        },
+        "answerable_case_success_rate": {
+          "$ref": "#/$defs/metric"
+        },
+        "false_refusal_rate": {
+          "$ref": "#/$defs/metric"
+        },
+        "correct_abstention_rate": {
+          "$ref": "#/$defs/metric"
+        },
+        "dangerous_compliance_rate": {
+          "$ref": "#/$defs/metric"
+        }
+      }
+    },
+    "pending_review_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "pending_review_case_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "\\S"
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "\\S"
+      }
+    }
+  },
+  "$defs": {
+    "metric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formula_version",
+        "formula",
+        "value",
+        "numerator",
+        "denominator",
+        "included_case_ids",
+        "excluded_case_ids",
+        "pending_review_count",
+        "pending_review_case_ids",
+        "null_reason",
+        "limitations"
+      ],
+      "properties": {
+        "formula_version": {
+          "const": "d4-citation-utility-formulas.v1"
+        },
+        "formula": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "value": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "numerator": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "denominator": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "included_case_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          }
+        },
+        "excluded_case_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          }
+        },
+        "pending_review_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pending_review_case_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          }
+        },
+        "null_reason": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "limitations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          }
+        },
+        "dimension_breakdown": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {
+            "$ref": "#/$defs/dimensionValue"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "denominator": {
+                "const": 0
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "const": null
+              },
+              "null_reason": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "denominator": {
+                "exclusiveMinimum": 0
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "number"
+              },
+              "null_reason": {
+                "const": null
+              }
+            }
+          }
+        }
+      ]
+    },
+    "dimensionValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "numerator",
+        "denominator",
+        "value",
+        "null_reason"
+      ],
+      "properties": {
+        "numerator": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "denominator": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "value": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "null_reason": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      }
+    }
+  }
+}
