@@ -1,9 +1,9 @@
 {
   "schema_version": "d4-slice3a-citation-utility-foundation.v1",
-  "overall_disposition": "PARTIAL",
-  "technical_foundation": "READY_FOR_CONTROLLER_AND_HUMAN_REVIEW",
-  "human_gold_status": "DRAFT_NOT_APPROVED",
-  "controller_acceptance": false,
+  "overall_disposition": "FULL PASS / CONTROLLER ACCEPTED",
+  "technical_foundation": "FULL_PASS",
+  "human_gold_status": "HUMAN_APPROVED",
+  "controller_acceptance": true,
   "baseline": {
     "implementation_base_commit": "cac95b9a4012d8aa13bd648d278dea92c1034c95",
     "d4_slice2_accepted_tag": "d4-slice2-r1-accepted",
@@ -63,19 +63,24 @@
   },
   "review_packet": {
     "json_path": "12_evaluation/d4-evaluation-r1/D4_3A_HUMAN_GOLD_REVIEW_PACKET.json",
-    "json_file_sha256": "0de36c618091fcc6cceada585ed023c379da5f67b071a4b85004bea3702826a8",
+    "json_file_sha256": "883312e3355bb71b82b334743e10d13e9892399c9293924b250b3ff8dd69a800",
     "markdown_path": "12_evaluation/d4-evaluation-r1/D4_3A_HUMAN_GOLD_REVIEW_PACKET.md",
-    "markdown_file_sha256": "bead4e6648da1a25d8250bb4a02df57aebde29011752960129c554983c3d6ec3",
+    "markdown_file_sha256": "40a6a0ade8ded4af42fcaae524d753c88eaf4782804d5ac5f7f45d3be1b693d6",
     "packet_id": "D4-PACKET-SLICE3A-CITATION-UTILITY-R1",
-    "packet_hash": "sha256:8b2e83469888fc195dbf9baea1389f97ab5dcaa0c48e83c9c5ae1efcf25cbe67",
-    "review_status": "HUMAN_REVIEW_REQUIRED",
-    "annotation_status": "DRAFT",
-    "human_gold": false,
+    "packet_hash": "sha256:cfbe640300c2cbfbfe9616bb20b10b6ed80e7ee1e15169aadf2052ac8de107c6",
+    "review_status": "HUMAN_APPROVED",
+    "annotation_status": "HUMAN_APPROVED",
+    "human_gold": true,
     "citation_case_count": 7,
     "answerability_case_count": 12,
-    "contains_human_approved_gold": false,
+    "contains_human_approved_gold": true,
     "citation_source_hash": "sha256:4ff97838c8ea641651898b2d8ed01616bbcc1a37064511cd1caad9d624771d42",
-    "answerability_source_hash": "sha256:c522f016646ff420a8973c652d610e505e8215b69560a1a5827c0a8a03c3af27"
+    "answerability_source_hash": "sha256:c522f016646ff420a8973c652d610e505e8215b69560a1a5827c0a8a03c3af27",
+    "prepublication_packet_hash": "sha256:8b2e83469888fc195dbf9baea1389f97ab5dcaa0c48e83c9c5ae1efcf25cbe67",
+    "approved_citation_unit_count": 7,
+    "approved_answerability_unit_count": 12,
+    "approval_record": "14_docs/project-controller/D4_SLICE3A_HUMAN_GOLD_APPROVAL.md",
+    "approved_at": "2026-09-24T19:46:59+08:00"
   },
   "metric_governance": {
     "formula_version": "d4-citation-utility-formulas.v1",
@@ -96,7 +101,7 @@
     ],
     "product_output_metrics_computed": false,
     "human_gold_metrics_computed": false,
-    "reason": "D4-3A defines and tests evaluators only; no product/model run and no approved Human Gold exist.",
+    "reason": "D4-3A validates evaluation-only evaluators; no product/model run occurred. Human Gold is published after the documented project-owner approval.",
     "zero_denominator_policy": "value=null with explicit null_reason",
     "single_aggregate_safety_utility_or_clinical_score": false,
     "invented_thresholds": false
@@ -166,7 +171,8 @@
     "tag": false,
     "real_pilot": "BLOCKED",
     "main_dirty_repository_touched": false,
-    "c2c_used": false
+    "c2c_used": false,
+    "human_gold_approved": true
   },
   "execution_deviations": [
     {
@@ -176,9 +182,10 @@
       "project_data_sent": false,
       "subsequent_explicit_downloads": false,
       "additional_uv_environment_source_audit": "Not captured; Root wrapper created a local backend .venv and installed 34 packages before the OpenAPI module was found missing.",
-      "effect": "This immutable process deviation prevents full HANDOFF compliance; technical gates remain reviewable."
+      "effect": "This immutable process deviation prevents full HANDOFF compliance; technical gates remain reviewable.",
+      "controller_disposition": "ACCEPTED_AS_DOCUMENTED_PROCESS_DEVIATION"
     }
   ],
   "candidate_commit_binding": "This evidence file is carried by the candidate commit; its SHA is reported in the HANDOFF instead of self-embedded.",
-  "recommendation": "Controller review of the technical foundation and draft packet; decide separately whether the no-network deviation is acceptable. Do not treat this as Human Gold approval or D4 acceptance."
+  "recommendation": "D4-3A FULL PASS / CONTROLLER ACCEPTED; proceed to D4-3B from the fact-layer publication baseline."
 }
