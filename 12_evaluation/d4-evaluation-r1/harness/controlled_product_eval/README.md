@@ -1,0 +1,52 @@
+# D4-3B evaluation harness
+
+This directory contains the evaluation-only consumer, manifests, schemas, result evaluator, observer, isolated RAG loader, and one-shot runner for the 12 approved answerability cases.
+
+The approved packet remains byte-for-byte unchanged. Its packet hash is `sha256:cfbe640300c2cbfbfe9616bb20b10b6ed80e7ee1e15169aadf2052ac8de107c6`. The consumer rejects duplicate JSON keys, checks the approval record and canonical hash, and records both the raw file hash and bound source hashes.
+
+## Prepare deterministic inputs
+
+Run from the project root. Keep generated manifests and run outputs outside the checkout.
+
+```powershell
+$repoRoot = (Get-Location).Path
+$evalPath = Join-Path $repoRoot '12_evaluation\d4-evaluation-r1'
+$env:PYTHONPATH = "$evalPath;$repoRoot\09_backend\src"
+& 'D:\Projects\StudentMentalHealthAI\09_backend\.venv\Scripts\python.exe' `
+  -m harness.controlled_product_eval.cli prepare-assets `
+  --manifest-dir 'D:\Dev\cache\d4-3b-input-manifests'
+```
+
+The command verifies the packet and writes an immutable 12-case manifest and a temporary corpus manifest. Case IDs come from the packet. Citation cards that reuse a source chunk ID receive deterministic evaluation-only RAG IDs; each record retains the original ID, content hash, citation case ID, and source annotations. The mapping does not rewrite or normalize Human Gold.
+
+## Run only after C and Controller authorize the formal run
+
+The managed runner validates the supplied Runtime preflight before it starts local services. It starts a fresh isolated RAG service, RAG and LLM observers, and a Backend on loopback. The Backend is forced to MySQL persistence and `REAL_HTTP` CAT, RAG, LLM Runtime, and Safety clients. CAT, Safety, Runtime, Ollama, and MySQL remain externally managed; each must already be healthy and loopback-only. MySQL must use the isolated evaluation instance on a loopback port other than 3306. The runner routes the 12 requests through `POST /api/v1/support/requests`, then stops only processes it started and verifies their readiness endpoints are down. Runtime remains externally owned and is never started or stopped here.
+
+Set `SMHAI_D4_STUDENT_A_PASSWORD` and `SMHAI_D4_STUDENT_B_PASSWORD` in the current shell to the credentials for the two synthetic accounts. Do not put them in files or command arguments. Supply Python environments that contain the accepted Backend and RAG dependencies:
+
+```powershell
+$repoRoot = (Get-Location).Path
+$evalPath = Join-Path $repoRoot '12_evaluation\d4-evaluation-r1'
+$env:PYTHONPATH = "$evalPath;$repoRoot\09_backend\src"
+$backendPython = 'D:\Projects\StudentMentalHealthAI\09_backend\.venv\Scripts\python.exe'
+$ragPython = 'D:\Projects\StudentMentalHealthAI\05_rag-engine\.venv\Scripts\python.exe'
+& $backendPython -m harness.controlled_product_eval.cli run `
+  --repo-root $repoRoot `
+  --runtime-preflight 'D:\Dev\cache\d4-runtime-preflight.json' `
+  --output-root 'D:\Dev\cache\d4-3b-formal-output' `
+  --backend-python $backendPython `
+  --rag-python $ragPython
+```
+
+The Backend process inherits the current shell's `DATABASE_URL`, or `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME` variables. Supply credentials from the local evaluation secret source. The runner rejects a non-loopback MySQL host and port 3306 before starting the Backend. Its Backend Python environment must include the locked Database module dependencies, and the repository's `11_database` package is added to `PYTHONPATH`.
+
+The run writes its canonical run manifest before the first support request, one result per case, a summary, observer events, and a service-lifecycle record. It does not retry a support request after a timeout. Any P0 stops later cases. Every Backend dependency must report `REAL_HTTP`; any other mode blocks formal manifest validation before a support request.
+
+The isolated RAG index uses the accepted BGE-M3 embedding model in offline mode. If the pinned model is absent from the configured local cache, startup stops without downloading it. The run manifest records all four Backend dependency identities, and formal manifest validation rejects any dependency that is not `REAL_HTTP`.
+
+`--use-existing-services` is available for diagnostics when services were started elsewhere. That mode leaves process cleanup to its caller and must not be reported as cleanup-verified by this harness.
+
+## Harness-only validation
+
+`run_mock_validation()` exercises all 12 case/result paths without opening a socket or starting a product service. Every returned case and summary is marked `NOT_FORMAL_PRODUCT_EVIDENCE`. Textual support and population, role, and purpose applicability remain `PENDING_HUMAN_REVIEW`; the harness does not produce an overall utility score.

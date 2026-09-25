@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studentmentalhealthai.local/schemas/d4-slice3b-rag-inputs-v1.json",
+  "title": "D4-3B temporary isolated RAG input provenance",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "corpus_id", "corpus_hash", "source_packet_id", "source_packet_hash", "evidence_ids", "evidence_count", "input_file_hashes", "source_annotations_preserved", "temporary_eligibility_scope", "d2_publication", "production_knowledge", "real_student_data", "input_manifest_hash"],
+  "properties": {
+    "schema_version": { "const": "d4-slice3b-rag-inputs.v1" },
+    "corpus_id": { "type": "string" },
+    "corpus_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "source_packet_id": { "const": "D4-PACKET-SLICE3A-CITATION-UTILITY-R1" },
+    "source_packet_hash": { "const": "sha256:cfbe640300c2cbfbfe9616bb20b10b6ed80e7ee1e15169aadf2052ac8de107c6" },
+    "evidence_ids": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string" } },
+    "evidence_count": { "type": "integer", "minimum": 1 },
+    "input_file_hashes": { "type": "object", "required": ["embedding_ready_sha256", "documents_sha256", "review_queue_sha256"], "additionalProperties": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" } },
+    "source_annotations_preserved": { "const": true },
+    "temporary_eligibility_scope": { "const": "D4_3B_TEMPORARY_EVALUATION_INDEX_ONLY" },
+    "d2_publication": { "const": false },
+    "production_knowledge": { "const": false },
+    "real_student_data": { "const": false },
+    "input_manifest_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+  }
+}

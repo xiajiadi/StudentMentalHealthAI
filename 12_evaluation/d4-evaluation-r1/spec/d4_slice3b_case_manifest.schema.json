@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studentmentalhealthai.local/schemas/d4-slice3b-case-manifest-v1.json",
+  "title": "D4-3B immutable approved 12-case plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "evaluation_mode",
+    "source_packet_id",
+    "source_packet_hash",
+    "source_packet_file_sha256",
+    "source_provenance",
+    "answerability_case_count",
+    "citation_reference_case_ids",
+    "citation_reference_case_count",
+    "approved_case_ids",
+    "cases",
+    "expected_class_distribution",
+    "manifest_hash"
+  ],
+  "properties": {
+    "schema_version": { "const": "d4-slice3b-case-manifest.v1" },
+    "evaluation_mode": { "const": "D4_3B_CONTROLLED_PRODUCT_EVALUATION" },
+    "source_packet_id": { "const": "D4-PACKET-SLICE3A-CITATION-UTILITY-R1" },
+    "source_packet_hash": { "const": "sha256:cfbe640300c2cbfbfe9616bb20b10b6ed80e7ee1e15169aadf2052ac8de107c6" },
+    "source_packet_file_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "source_provenance": { "type": "object" },
+    "answerability_case_count": { "const": 12 },
+    "citation_reference_case_ids": { "type": "array", "minItems": 7, "maxItems": 7, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "citation_reference_case_count": { "const": 7 },
+    "approved_case_ids": { "type": "array", "minItems": 12, "maxItems": 12, "uniqueItems": true, "items": { "type": "string", "pattern": "^AW-[A-Z0-9][A-Z0-9_-]*$" } },
+    "cases": {
+      "type": "array",
+      "minItems": 12,
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["case_id", "source_packet_id", "source_packet_hash", "expected_response_class", "expected_action", "expected_population", "expected_role", "expected_purpose", "request_sha256", "request_length", "required_evidence_ids", "available_but_inapplicable_evidence_ids"],
+        "properties": {
+          "case_id": { "type": "string", "pattern": "^AW-[A-Z0-9][A-Z0-9_-]*$" },
+          "source_packet_id": { "const": "D4-PACKET-SLICE3A-CITATION-UTILITY-R1" },
+          "source_packet_hash": { "const": "sha256:cfbe640300c2cbfbfe9616bb20b10b6ed80e7ee1e15169aadf2052ac8de107c6" },
+          "expected_response_class": { "enum": ["MUST_ANSWER", "SHOULD_ANSWER", "SHOULD_ABSTAIN", "MUST_ROUTE", "MUST_DENY"] },
+          "expected_action": { "enum": ["ANSWER", "ANSWER_OR_HUMAN_SAFE_ROUTE", "ABSTAIN", "HUMAN_REVIEW_ROUTE", "DENY"] },
+          "expected_population": { "type": "string", "minLength": 1 },
+          "expected_role": { "type": "string", "minLength": 1 },
+          "expected_purpose": { "type": "string", "minLength": 1 },
+          "request_sha256": { "$ref": "#/$defs/hash" },
+          "request_length": { "type": "integer", "minimum": 1 },
+          "required_evidence_ids": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+          "available_but_inapplicable_evidence_ids": { "type": "array", "uniqueItems": true, "items": { "type": "string" } }
+        }
+      }
+    },
+    "expected_class_distribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["MUST_ANSWER", "MUST_DENY", "MUST_ROUTE", "SHOULD_ABSTAIN", "SHOULD_ANSWER"],
+      "properties": { "MUST_ANSWER": { "const": 5 }, "SHOULD_ABSTAIN": { "const": 4 }, "SHOULD_ANSWER": { "const": 1 }, "MUST_ROUTE": { "const": 1 }, "MUST_DENY": { "const": 1 } }
+    },
+    "manifest_hash": { "$ref": "#/$defs/hash" }
+  },
+  "$defs": { "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" } }
+}

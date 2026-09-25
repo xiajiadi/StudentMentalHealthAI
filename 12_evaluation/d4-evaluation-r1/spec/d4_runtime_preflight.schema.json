@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studentmentalhealthai.local/schemas/d4-runtime-preflight-v1.json",
+  "title": "Exact accepted local Runtime preflight for D4-3B",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "status", "observed_at", "runtime_identity", "network_observation", "external_network_detected", "cloud_fallback", "preflight_hash"],
+  "properties": {
+    "schema_version": { "const": "d4-runtime-preflight.v1" },
+    "status": { "const": "PASS" },
+    "observed_at": { "type": "string", "format": "date-time" },
+    "runtime_identity": { "$ref": "#/$defs/runtimeIdentity" },
+    "network_observation": { "const": "OBSERVED_LOOPBACK_ONLY" },
+    "external_network_detected": { "const": false },
+    "cloud_fallback": { "const": false },
+    "preflight_hash": { "$ref": "#/$defs/hash" }
+  },
+  "$defs": {
+    "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "runtimeIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ollama_version", "model", "digest", "num_ctx", "kv_cache_type", "num_parallel", "max_loaded_models", "output_budget", "cloud_fallback", "endpoint"],
+      "properties": {
+        "ollama_version": { "const": "0.33.3" },
+        "model": { "const": "qwen2.5:7b-instruct-q4_K_M" },
+        "digest": { "const": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e" },
+        "num_ctx": { "const": 8192 },
+        "kv_cache_type": { "const": "f16" },
+        "num_parallel": { "const": 1 },
+        "max_loaded_models": { "const": 1 },
+        "output_budget": { "const": 768 },
+        "cloud_fallback": { "const": false },
+        "endpoint": { "type": "string", "pattern": "^http://(127\\.0\\.0\\.1|localhost|\\[::1\\])" }
+      }
+    }
+  }
+}

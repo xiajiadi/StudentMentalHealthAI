@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studentmentalhealthai.local/schemas/d4-slice3b-approved-corpus-v1.json",
+  "title": "D4-3B synthetic temporary RAG corpus",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "corpus_id", "source_packet_id", "source_packet_hash",
+    "source_provenance", "data_classification", "evidence_ids", "source_evidence_ids",
+    "evidence_aliases", "evidence_count", "evidence", "rag_embedding_records",
+    "temporary_index_policy", "corpus_hash"
+  ],
+  "properties": {
+    "schema_version": { "const": "d4-slice3b-approved-corpus.v1" },
+    "corpus_id": { "const": "D4_3B_APPROVED_HUMAN_GOLD_SYNTHETIC_EVIDENCE_R1" },
+    "source_packet_id": { "const": "D4-PACKET-SLICE3A-CITATION-UTILITY-R1" },
+    "source_packet_hash": { "const": "sha256:cfbe640300c2cbfbfe9616bb20b10b6ed80e7ee1e15169aadf2052ac8de107c6" },
+    "source_provenance": { "type": "object" },
+    "data_classification": {
+      "type": "array", "minItems": 5, "maxItems": 5, "uniqueItems": true,
+      "items": { "type": "string" }
+    },
+    "evidence_ids": {
+      "type": "array", "minItems": 1, "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^CHUNK_D4_3B_[A-Za-z0-9._-]+$" }
+    },
+    "source_evidence_ids": {
+      "type": "array", "minItems": 1, "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^CHUNK_[A-Za-z0-9][A-Za-z0-9._-]*$" }
+    },
+    "evidence_aliases": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["source_chunk_id", "evaluation_chunk_ids"],
+        "properties": {
+          "source_chunk_id": { "type": "string", "pattern": "^CHUNK_[A-Za-z0-9][A-Za-z0-9._-]*$" },
+          "evaluation_chunk_ids": {
+            "type": "array", "minItems": 1, "uniqueItems": true,
+            "items": { "type": "string", "pattern": "^CHUNK_D4_3B_[A-Za-z0-9._-]+$" }
+          }
+        }
+      }
+    },
+    "evidence_count": { "type": "integer", "minimum": 1 },
+    "evidence": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["chunk_id", "source_chunk_id", "source_content_hash", "source_case_ids", "evidence"],
+        "properties": {
+          "chunk_id": { "type": "string", "pattern": "^CHUNK_D4_3B_[A-Za-z0-9._-]+$" },
+          "source_chunk_id": { "type": "string", "pattern": "^CHUNK_[A-Za-z0-9][A-Za-z0-9._-]*$" },
+          "source_content_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+          "source_case_ids": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string" } },
+          "evidence": { "type": "object" }
+        }
+      }
+    },
+    "rag_embedding_records": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["chunk_id", "document_id", "text", "context_text", "metadata"],
+        "properties": {
+          "chunk_id": { "type": "string", "pattern": "^CHUNK_D4_3B_[A-Za-z0-9._-]+$" },
+          "document_id": { "type": "string", "pattern": "^KB_" },
+          "text": { "type": "string", "minLength": 1 },
+          "context_text": { "type": "string", "minLength": 1 },
+          "metadata": {
+            "type": "object", "additionalProperties": true,
+            "required": ["evaluation_only", "source_annotation", "source_chunk_id", "source_content_hash", "source_packet_hash", "source_packet_id"],
+            "properties": {
+              "evaluation_only": { "const": true },
+              "source_annotation": { "type": "object" },
+              "source_chunk_id": { "type": "string", "pattern": "^CHUNK_[A-Za-z0-9][A-Za-z0-9._-]*$" },
+              "source_content_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+              "source_packet_id": { "const": "D4-PACKET-SLICE3A-CITATION-UTILITY-R1" },
+              "source_packet_hash": { "const": "sha256:cfbe640300c2cbfbfe9616bb20b10b6ed80e7ee1e15169aadf2052ac8de107c6" }
+            }
+          }
+        }
+      }
+    },
+    "temporary_index_policy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["fresh_index_per_run", "persistent_product_index", "d2_publication", "source_review_annotations_preserved", "temporary_rag_gate_projection"],
+      "properties": {
+        "fresh_index_per_run": { "const": true },
+        "persistent_product_index": { "const": false },
+        "d2_publication": { "const": false },
+        "source_review_annotations_preserved": { "const": true },
+        "temporary_rag_gate_projection": { "const": "D4_3B_TEMPORARY_EVALUATION_INDEX_ONLY" }
+      }
+    },
+    "corpus_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+  }
+}
