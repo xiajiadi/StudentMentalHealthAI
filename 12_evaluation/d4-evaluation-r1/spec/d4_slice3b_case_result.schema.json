@@ -4,7 +4,7 @@
   "title": "D4-3B per-case product or harness evidence",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "evidence_status", "run_id", "case_id", "source_packet_id", "source_packet_hash", "expected", "actual", "retrieval_evidence", "citations", "claims", "utility", "fallback", "runtime_identity", "governance", "findings", "result_hash"],
+  "required": ["schema_version", "evidence_status", "run_id", "case_id", "source_packet_id", "source_packet_hash", "expected", "actual", "retrieval_evidence", "citations", "claims", "utility", "fallback", "runtime_identity", "governance", "findings", "execution_integrity", "result_hash"],
   "properties": {
     "schema_version": { "const": "d4-slice3b-case-result.v1" },
     "evidence_status": { "enum": ["FORMAL_PRODUCT_EVIDENCE", "NOT_FORMAL_PRODUCT_EVIDENCE"] },
@@ -22,6 +22,7 @@
     "runtime_identity": { "type": "object", "required": ["expected", "preflight_observed", "per_generation_observed", "identity_mismatch"], "properties": { "expected": { "type": "object" }, "preflight_observed": { "type": "object" }, "per_generation_observed": { "type": "array", "items": { "type": "object" } }, "identity_mismatch": { "type": "boolean" } }, "additionalProperties": false },
     "governance": { "type": "object", "required": ["product_source_changed", "human_gold_changed", "contract_changed", "external_network_detected", "real_student_data", "cloud_fallback", "d4_4_started"], "properties": { "product_source_changed": { "type": "boolean" }, "human_gold_changed": { "type": "boolean" }, "contract_changed": { "type": "boolean" }, "external_network_detected": { "type": "boolean" }, "real_student_data": { "type": "boolean" }, "cloud_fallback": { "type": "boolean" }, "d4_4_started": { "const": false } }, "additionalProperties": false },
     "findings": { "type": "array", "items": { "type": "object", "required": ["code", "severity", "evidence"], "properties": { "code": { "type": "string" }, "severity": { "enum": ["P0", "P1"] }, "evidence": { "type": "string" } }, "additionalProperties": false } },
+    "execution_integrity": { "type": "object", "required": ["status", "abort_reason", "violations"], "properties": { "status": { "enum": ["PASS", "FAIL", "NOT_EVALUATED"] }, "abort_reason": { "type": ["string", "null"] }, "violations": { "type": "array", "items": { "type": "string" } } }, "additionalProperties": false },
     "result_hash": { "$ref": "#/$defs/hash" }
   },
   "$defs": { "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" } }

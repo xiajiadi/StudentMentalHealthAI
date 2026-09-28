@@ -7,7 +7,7 @@ import json
 import os
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -29,6 +29,7 @@ from .manifest import (
     build_case_manifest,
     build_formal_manifest,
     corpus_projection_source_map,
+    git_snapshot,
     is_loopback_url,
     verify_case_manifest,
     verify_corpus_manifest,
@@ -41,6 +42,7 @@ from .results import (
     build_case_result,
     classify_p0_p1,
 )
+from .network_integrity import LoopbackNetworkMonitor
 
 
 CORRELATION_SAFE = re.compile(r"^D4RUN-[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -58,6 +60,7 @@ class TransportObservation:
     rag_events: tuple[Mapping[str, Any], ...] = ()
     llm_events: tuple[Mapping[str, Any], ...] = ()
     external_network_detected: bool = False
+    integrity_observation: Mapping[str, Any] = field(default_factory=dict)
 
 
 class ProductTransport(Protocol):
@@ -77,7 +80,113 @@ class ProductTransport(Protocol):
         ordinal: int,
     ) -> TransportObservation: ...
 
+    async def check_execution_integrity(self, baseline: Mapping[str, Any]) -> Mapping[str, Any]: ...
+
     async def close(self) -> None: ...
+
+
+def classify_execution_integrity(
+    *,
+    observation: TransportObservation | None = None,
+    result: Mapping[str, Any] | None = None,
+    input_issues: Sequence[str] = (),
+    postflight: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Classify whether formal execution evidence remains trustworthy.
+
+    Product P0/P1 counts are intentionally not inspected here. They describe
+    observed behavior; only explicit integrity evidence can stop the case loop.
+    """
+
+    violations = [str(issue) for issue in input_issues]
+    if observation is not None:
+        if observation.external_network_detected:
+            violations.append("EXTERNAL_NETWORK_EGRESS")
+        network = observation.integrity_observation
+        for issue in network.get("issues", ()) if isinstance(network, Mapping) else ():
+            if isinstance(issue, Mapping):
+                code = issue.get("code")
+                if isinstance(code, str):
+                    violations.append(code)
+            elif isinstance(issue, str):
+                violations.append(issue)
+
+    if isinstance(postflight, Mapping):
+        for issue in postflight.get("violations", ()):
+            if isinstance(issue, Mapping):
+                code = issue.get("code")
+                if isinstance(code, str):
+                    violations.append(code)
+            elif isinstance(issue, str):
+                violations.append(issue)
+        if postflight.get("status") == "FAIL" and not postflight.get("violations"):
+            violations.append("POST_CASE_INTEGRITY_CHECK_FAILED")
+
+    if isinstance(result, Mapping):
+        governance = result.get("governance")
+        governance = governance if isinstance(governance, Mapping) else {}
+        for field_name, reason in (
+            ("external_network_detected", "EXTERNAL_NETWORK_EGRESS"),
+            ("cloud_fallback", "RUNTIME_FALLBACK"),
+            ("product_source_changed", "PRODUCT_SOURCE_CHANGED"),
+            ("human_gold_changed", "HUMAN_GOLD_CHANGED"),
+            ("contract_changed", "FROZEN_CONTRACT_CHANGED"),
+            ("real_student_data", "REAL_STUDENT_DATA_DETECTED"),
+        ):
+            if governance.get(field_name) is True:
+                violations.append(reason)
+
+        fallback = result.get("fallback")
+        if isinstance(fallback, Mapping) and fallback.get("used") is True:
+            violations.append("RUNTIME_FALLBACK")
+        runtime = result.get("runtime_identity")
+        if isinstance(runtime, Mapping):
+            if runtime.get("identity_mismatch") is True:
+                violations.append("RUNTIME_IDENTITY_DRIFT")
+            observations = runtime.get("per_generation_observed")
+            if isinstance(observations, Sequence) and not isinstance(observations, (str, bytes)):
+                for identity in observations:
+                    if not isinstance(identity, Mapping):
+                        violations.append("RUNTIME_OBSERVER_EVIDENCE_INVALID")
+                        continue
+                    if (
+                        identity.get("digest") != EXPECTED_RUNTIME_IDENTITY["digest"]
+                        or (identity.get("provider_model") or identity.get("model_id"))
+                        != EXPECTED_RUNTIME_IDENTITY["model"]
+                    ):
+                        violations.append("RUNTIME_IDENTITY_DRIFT")
+                    for field_name, expected_name in (
+                        ("context_length", "num_ctx"),
+                        ("output_budget", "output_budget"),
+                        ("kv_cache_type", "kv_cache_type"),
+                        ("num_parallel", "num_parallel"),
+                        ("max_loaded_models", "max_loaded_models"),
+                    ):
+                        observed_value = identity.get(field_name)
+                        expected_value = EXPECTED_RUNTIME_IDENTITY.get(expected_name)
+                        if observed_value is not None and observed_value != expected_value:
+                            violations.append("RUNTIME_IDENTITY_DRIFT")
+
+        actual = result.get("actual")
+        actual = actual if isinstance(actual, Mapping) else {}
+        runtime_reached = (
+            actual.get("normal_generation") is True
+            or actual.get("generation_id") is not None
+            or actual.get("generation_status") in {"generated", "approved"}
+        )
+        if runtime_reached and isinstance(runtime, Mapping):
+            observed = runtime.get("per_generation_observed")
+            if not isinstance(observed, Sequence) or isinstance(observed, (str, bytes)) or not observed:
+                violations.append("RUNTIME_OBSERVER_EVIDENCE_MISSING")
+            if not isinstance(fallback, Mapping) or not isinstance(fallback.get("used"), bool):
+                violations.append("RUNTIME_FALLBACK_EVIDENCE_MISSING")
+
+    unique = list(dict.fromkeys(violations))
+    return {
+        "status": "FAIL" if unique else "PASS",
+        "abort_reason": unique[0] if unique else None,
+        "violations": unique,
+    }
 
 
 def _load_jsonl(path: str | Path, *, trace_id: str) -> tuple[Mapping[str, Any], ...]:
@@ -124,6 +233,7 @@ class CanonicalHttpTransport:
         llm_observer_events: str | Path,
         passwords: Mapping[str, str] | None = None,
         timeout_seconds: float = 150.0,
+        network_monitor: LoopbackNetworkMonitor | None = None,
     ) -> None:
         if not is_loopback_url(backend_base_url):
             raise RunnerError("formal Backend URL must be HTTP loopback")
@@ -137,6 +247,7 @@ class CanonicalHttpTransport:
         self.llm_observer_events = Path(llm_observer_events)
         self.passwords = dict(passwords or {})
         self.timeout_seconds = timeout_seconds
+        self.network_monitor = network_monitor or LoopbackNetworkMonitor()
         self._clients: dict[str, httpx.AsyncClient] = {}
         self._csrf: dict[str, str] = {}
         self._subjects: dict[str, str] = {}
@@ -169,6 +280,15 @@ class CanonicalHttpTransport:
     async def preflight(self) -> Mapping[str, Any]:
         if not self.passwords or not all(self.passwords.get(name) for name in ("student_a", "student_b")):
             raise RunnerError("both synthetic test account credentials must be configured")
+        try:
+            network_observation = self.network_monitor.start()
+        except Exception as exc:
+            network_observation = {
+                "status": "FAIL",
+                "listeners": [],
+                "external_established_connections": [],
+                "issues": [{"code": "NETWORK_OBSERVER_FAILURE", "error_type": type(exc).__name__}],
+            }
         backend = await httpx.AsyncClient(
             base_url=self.backend_base_url,
             timeout=httpx.Timeout(5.0),
@@ -203,6 +323,12 @@ class CanonicalHttpTransport:
             dependency_identity[dependency] = {"status": status, "integration": integration}
             if integration.upper() != "REAL_HTTP":
                 unexpected_configuration.append(f"backend_dependency.{dependency}.integration={integration}")
+
+        for issue in network_observation.get("issues", ()):
+            if isinstance(issue, Mapping):
+                code = issue.get("code")
+                if isinstance(code, str):
+                    unexpected_configuration.append(f"network_integrity.{code}")
 
         observer_status: dict[str, Any] = {}
         rag_service_identity: Mapping[str, Any] | None = None
@@ -243,6 +369,7 @@ class CanonicalHttpTransport:
             "runtime_endpoint_health_identity": runtime_endpoint_identity,
             "backend_dependency_identity": dependency_identity,
             "unexpected_configuration": unexpected_configuration,
+            "network_observation": network_observation,
             "network_policy": "LOOPBACK_ONLY",
             "trust_env": False,
             "retry_policy": {"max_retries": 0, "non_idempotent_post_retries": 0},
@@ -362,18 +489,109 @@ class CanonicalHttpTransport:
             body = {"response_body_invalid_json": True}
         if not isinstance(body, Mapping):
             body = {"response_body_not_object": True}
+        try:
+            network_observation = self.network_monitor.sample()
+        except Exception as exc:
+            network_observation = {
+                "status": "FAIL",
+                "issues": [{"code": "NETWORK_OBSERVER_FAILURE", "error_type": type(exc).__name__}],
+            }
+        network_issues = network_observation.get("issues", ())
+        external_network_detected = any(
+            isinstance(issue, Mapping)
+            and issue.get("code") == "EXTERNAL_ESTABLISHED_CONNECTION"
+            for issue in network_issues
+        )
         return TransportObservation(
             http_status=response.status_code,
             response_body=body,
             rag_events=_load_jsonl(self.rag_observer_events, trace_id=trace_id),
             llm_events=_load_jsonl(self.llm_observer_events, trace_id=trace_id),
-            external_network_detected=False,
+            external_network_detected=external_network_detected,
+            integrity_observation=network_observation,
         )
+
+    async def check_execution_integrity(self, baseline: Mapping[str, Any]) -> Mapping[str, Any]:
+        violations: list[dict[str, Any]] = []
+        try:
+            current = await self.preflight()
+        except Exception as exc:
+            return {
+                "status": "FAIL",
+                "violations": [{"code": "DATA_PLANE_UNAVAILABLE", "error_type": type(exc).__name__}],
+            }
+
+        current_network = current.get("network_observation")
+        current_network = current_network if isinstance(current_network, Mapping) else {}
+        if current_network.get("status") == "FAIL":
+            issues = current_network.get("issues", ())
+            if issues:
+                violations.extend(issue for issue in issues if isinstance(issue, Mapping))
+            else:
+                violations.append({"code": "NETWORK_INTEGRITY_UNVERIFIED"})
+        for item in current.get("unexpected_configuration", ()):
+            violations.append({"code": "UNEXPECTED_CONFIGURATION", "detail": str(item)})
+
+        baseline_rag = baseline.get("rag_service_identity")
+        current_rag = current.get("rag_service_identity")
+        rag_fields = (
+            "index_id", "index_manifest_hash", "corpus_manifest_hash", "source_packet_id",
+            "source_packet_hash", "input_manifest_hash", "config_hash", "eligible_chunk_ids",
+        )
+        if isinstance(baseline_rag, Mapping) and isinstance(current_rag, Mapping):
+            if any(baseline_rag.get(key) != current_rag.get(key) for key in rag_fields if key in baseline_rag):
+                violations.append({"code": "RAG_CORPUS_OR_INDEX_IDENTITY_DRIFT"})
+        else:
+            violations.append({"code": "RAG_IDENTITY_UNAVAILABLE"})
+
+        baseline_runtime = baseline.get("runtime_endpoint_health_identity")
+        current_runtime = current.get("runtime_endpoint_health_identity")
+        if isinstance(baseline_runtime, Mapping) and isinstance(current_runtime, Mapping):
+            def stable_runtime(value: Mapping[str, Any]) -> dict[str, Any]:
+                models = value.get("models")
+                stable_models = {}
+                if isinstance(models, Mapping):
+                    for logical_id, model in models.items():
+                        if isinstance(model, Mapping):
+                            stable_models[str(logical_id)] = {
+                                key: child for key, child in model.items() if key != "loaded"
+                            }
+                return {
+                    "state": value.get("state"),
+                    "readiness": value.get("readiness"),
+                    "runtime_version": value.get("runtime_version"),
+                    "cloud_fallback": value.get("cloud_fallback"),
+                    "provider_ids": value.get("provider_ids"),
+                    "models": stable_models,
+                }
+
+            if stable_runtime(baseline_runtime) != stable_runtime(current_runtime):
+                violations.append({"code": "RUNTIME_IDENTITY_DRIFT"})
+        else:
+            violations.append({"code": "RUNTIME_IDENTITY_UNAVAILABLE"})
+
+        if current.get("backend_dependency_identity") != baseline.get("backend_dependency_identity"):
+            violations.append({"code": "BACKEND_DEPENDENCY_IDENTITY_DRIFT"})
+        baseline_network = baseline.get("network_observation")
+        baseline_network = baseline_network if isinstance(baseline_network, Mapping) else {}
+        def listener_identity(value: Mapping[str, Any]) -> list[tuple[Any, Any, Any]]:
+            listeners = value.get("listeners", ())
+            if not isinstance(listeners, Sequence) or isinstance(listeners, (str, bytes)):
+                return []
+            return sorted(
+                (item.get("address"), item.get("port"), item.get("pid"))
+                for item in listeners if isinstance(item, Mapping)
+            )
+        if listener_identity(baseline_network) != listener_identity(current_network):
+            violations.append({"code": "DATA_PLANE_LISTENER_IDENTITY_CHANGED"})
+
+        return {"status": "FAIL" if violations else "PASS", "violations": violations}
 
     async def close(self) -> None:
         for client in self._clients.values():
             await client.aclose()
         self._clients.clear()
+        self.network_monitor.close()
 
 
 def _write_case_result(run_dir: Path, result: Mapping[str, Any]) -> Path:
@@ -382,6 +600,48 @@ def _write_case_result(run_dir: Path, result: Mapping[str, Any]) -> Path:
         raise RunnerError("result case ID cannot be used as a file name")
     path = run_dir / "cases" / f"{case_id}.json"
     return write_json_once(path, result)
+
+
+def _sha256_file(path: str | Path) -> str:
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def _frozen_input_issues(
+    *,
+    packet: ApprovedPacket,
+    case_manifest: Mapping[str, Any],
+    corpus_manifest: Mapping[str, Any],
+    repo_root: str | Path,
+    baseline_git_snapshot: Mapping[str, Any],
+    case_manifest_path: str | Path | None,
+    corpus_manifest_path: str | Path | None,
+    baseline_case_file_hash: str | None,
+    baseline_corpus_file_hash: str | None,
+) -> list[str]:
+    issues: list[str] = []
+    try:
+        packet.verify_unchanged()
+        verify_case_manifest(case_manifest, packet=packet)
+        verify_corpus_manifest(corpus_manifest, packet=packet)
+    except Exception as exc:
+        issues.append(f"FROZEN_INPUT_VERIFICATION_FAILED:{type(exc).__name__}")
+    for path, expected, changed, unreadable in (
+        (case_manifest_path, baseline_case_file_hash, "CASE_MANIFEST_FILE_CHANGED", "CASE_MANIFEST_FILE_UNREADABLE"),
+        (corpus_manifest_path, baseline_corpus_file_hash, "APPROVED_CORPUS_MANIFEST_FILE_CHANGED", "APPROVED_CORPUS_MANIFEST_FILE_UNREADABLE"),
+    ):
+        if path is None:
+            continue
+        try:
+            if _sha256_file(path) != expected:
+                issues.append(changed)
+        except OSError:
+            issues.append(unreadable)
+    try:
+        if git_snapshot(repo_root) != baseline_git_snapshot:
+            issues.append("CHECKOUT_OR_EVALUATION_SOURCE_CHANGED")
+    except Exception as exc:
+        issues.append(f"CHECKOUT_INTEGRITY_UNAVAILABLE:{type(exc).__name__}")
+    return issues
 
 
 async def run_evaluation(
@@ -397,6 +657,8 @@ async def run_evaluation(
     llm_observer_events: str | Path,
     repo_root: str | Path,
     output_root: str | Path,
+    case_manifest_path: str | Path | None = None,
+    corpus_manifest_path: str | Path | None = None,
     managed_service_identity: Mapping[str, Any] | None = None,
     timestamp: Any = None,
     run_id: str | None = None,
@@ -433,6 +695,9 @@ async def run_evaluation(
     if not isinstance(observed_unexpected, Sequence) or isinstance(observed_unexpected, (str, bytes)):
         raise RunnerError("Backend configuration audit is malformed")
     all_unexpected_configuration = tuple(sorted(set(unexpected_configuration) | {str(item) for item in observed_unexpected}))
+    baseline_git_snapshot = git_snapshot(repo_root)
+    baseline_case_file_hash = _sha256_file(case_manifest_path) if case_manifest_path else None
+    baseline_corpus_file_hash = _sha256_file(corpus_manifest_path) if corpus_manifest_path else None
 
     manifest = build_formal_manifest(
         packet=packet,
@@ -468,6 +733,10 @@ async def run_evaluation(
             "model_calls": 0,
             "formal_case_count": 0,
             "expected_case_count": len(packet.answerability_cases),
+            "product_p0_count": 0,
+            "product_p1_count": 0,
+            "execution_integrity_status": "FAIL",
+            "execution_abort_reason": "PRE_CASE_CONFIGURATION_OR_INTEGRITY_FAILURE",
         }
         stop_path = write_json_once(run_dir / "preflight-stop.json", stop)
         await transport.close()
@@ -485,12 +754,46 @@ async def run_evaluation(
     results: list[dict[str, Any]] = []
     abort: dict[str, Any] | None = None
     try:
-        await transport.prepare()
+        try:
+            await transport.prepare()
+        except Exception as exc:
+            abort = {
+                "error_type": type(exc).__name__,
+                "retry_performed": False,
+                "request_sent": False,
+                "reason_code": "PRE_CASE_TRANSPORT_SETUP_FAILED",
+                "disposition": "STOPPED_FOR_EXECUTION_INTEGRITY",
+            }
         for ordinal, case in enumerate(packet.answerability_cases):
-            packet.verify_unchanged()
+            if abort is not None:
+                break
             case_id = str(case["case_id"])
             request_id = _stable_correlation("REQ", actual_run_id, case_id)
             trace_id = _stable_correlation("TRACE", actual_run_id, case_id)
+            input_issues = _frozen_input_issues(
+                packet=packet,
+                case_manifest=case_manifest,
+                corpus_manifest=corpus_manifest,
+                repo_root=repo_root,
+                baseline_git_snapshot=baseline_git_snapshot,
+                case_manifest_path=case_manifest_path,
+                corpus_manifest_path=corpus_manifest_path,
+                baseline_case_file_hash=baseline_case_file_hash,
+                baseline_corpus_file_hash=baseline_corpus_file_hash,
+            )
+            if input_issues:
+                integrity = classify_execution_integrity(input_issues=input_issues)
+                abort = {
+                    "case_id": case_id,
+                    "request_id": request_id,
+                    "trace_id": trace_id,
+                    "retry_performed": False,
+                    "request_sent": False,
+                    "reason_code": integrity["abort_reason"],
+                    "integrity_violations": integrity["violations"],
+                    "disposition": "STOPPED_FOR_EXECUTION_INTEGRITY",
+                }
+                break
             try:
                 observation = await transport.submit(
                     case,
@@ -508,41 +811,102 @@ async def run_evaluation(
                     "trace_id": trace_id,
                     "error_type": type(exc).__name__,
                     "retry_performed": False,
+                    "request_sent": "UNKNOWN",
+                    "reason_code": "REQUEST_OUTCOME_UNCERTAIN",
                     "disposition": "STOPPED_WITH_REQUEST_OUTCOME_UNCERTAIN",
                 }
                 break
-            result = build_case_result(
-                packet=packet,
-                case=case,
-                run_id=actual_run_id,
-                http_status=observation.http_status,
-                response_body=observation.response_body,
-                request_id=request_id,
-                trace_id=trace_id,
-                rag_events=observation.rag_events,
-                llm_events=observation.llm_events,
-                runtime_preflight_identity=runtime_preflight.identity,
-                allowed_evidence_ids=corpus_manifest["evidence_ids"],
-                evaluation_to_source_evidence=corpus_projection_source_map(corpus_manifest),
-                evidence_status=FORMAL_EVIDENCE,
-                external_network_detected=observation.external_network_detected,
-            )
-            result["retrieval_evidence"]["corpus_identity"] = {
-                "corpus_id": corpus_manifest["corpus_id"],
-                "corpus_hash": corpus_manifest["corpus_hash"],
-            }
-            result.pop("result_hash", None)
-            result["result_hash"] = canonical_sha256_tag(result, self_field="result_hash")
-            _write_case_result(run_dir, result)
-            results.append(result)
-            if classify_p0_p1(result)["p0_count"]:
+            try:
+                result = build_case_result(
+                    packet=packet,
+                    case=case,
+                    run_id=actual_run_id,
+                    http_status=observation.http_status,
+                    response_body=observation.response_body,
+                    request_id=request_id,
+                    trace_id=trace_id,
+                    rag_events=observation.rag_events,
+                    llm_events=observation.llm_events,
+                    runtime_preflight_identity=runtime_preflight.identity,
+                    allowed_evidence_ids=corpus_manifest["evidence_ids"],
+                    evaluation_to_source_evidence=corpus_projection_source_map(corpus_manifest),
+                    evidence_status=FORMAL_EVIDENCE,
+                    external_network_detected=observation.external_network_detected,
+                )
+            except Exception as exc:
                 abort = {
                     "case_id": case_id,
                     "request_id": request_id,
                     "trace_id": trace_id,
-                    "error_type": "P0_OBSERVED",
+                    "error_type": type(exc).__name__,
                     "retry_performed": False,
-                    "disposition": "STOPPED_FOR_CONTROLLER_REVIEW",
+                    "request_sent": True,
+                    "response_received": True,
+                    "evidence_recorded": False,
+                    "reason_code": "CASE_EVIDENCE_BUILD_FAILED",
+                    "disposition": "STOPPED_FOR_EXECUTION_INTEGRITY",
+                }
+                break
+            result["retrieval_evidence"]["corpus_identity"] = {
+                "corpus_id": corpus_manifest["corpus_id"],
+                "corpus_hash": corpus_manifest["corpus_hash"],
+            }
+            try:
+                postflight = await transport.check_execution_integrity(preflight_observation)
+            except Exception as exc:
+                postflight = {
+                    "status": "FAIL",
+                    "violations": [{"code": "POST_CASE_INTEGRITY_CHECK_FAILED", "error_type": type(exc).__name__}],
+                }
+            post_input_issues = _frozen_input_issues(
+                packet=packet,
+                case_manifest=case_manifest,
+                corpus_manifest=corpus_manifest,
+                repo_root=repo_root,
+                baseline_git_snapshot=baseline_git_snapshot,
+                case_manifest_path=case_manifest_path,
+                corpus_manifest_path=corpus_manifest_path,
+                baseline_case_file_hash=baseline_case_file_hash,
+                baseline_corpus_file_hash=baseline_corpus_file_hash,
+            )
+            integrity = classify_execution_integrity(
+                observation=observation,
+                result=result,
+                input_issues=post_input_issues,
+                postflight=postflight,
+            )
+            result["execution_integrity"] = integrity
+            result.pop("result_hash", None)
+            result["result_hash"] = canonical_sha256_tag(result, self_field="result_hash")
+            try:
+                _write_case_result(run_dir, result)
+            except Exception as exc:
+                abort = {
+                    "case_id": case_id,
+                    "request_id": request_id,
+                    "trace_id": trace_id,
+                    "error_type": type(exc).__name__,
+                    "retry_performed": False,
+                    "request_sent": True,
+                    "response_received": True,
+                    "evidence_recorded": False,
+                    "reason_code": "CASE_EVIDENCE_RECORDER_FAILED",
+                    "disposition": "STOPPED_FOR_EXECUTION_INTEGRITY",
+                }
+                break
+            results.append(result)
+            if integrity["status"] == "FAIL":
+                abort = {
+                    "case_id": case_id,
+                    "request_id": request_id,
+                    "trace_id": trace_id,
+                    "retry_performed": False,
+                    "request_sent": True,
+                    "response_received": True,
+                    "evidence_recorded": True,
+                    "reason_code": integrity["abort_reason"],
+                    "integrity_violations": integrity["violations"],
+                    "disposition": "STOPPED_FOR_EXECUTION_INTEGRITY",
                 }
                 break
     finally:
@@ -565,6 +929,11 @@ async def run_evaluation(
             "overall_utility_score": None,
             "d4_4_started": False,
         }
+    p0_p1_reports = [classify_p0_p1(result) for result in results]
+    summary["product_p0_count"] = sum(item["p0_count"] for item in p0_p1_reports)
+    summary["product_p1_count"] = sum(item["p1_count"] for item in p0_p1_reports)
+    summary["execution_integrity_status"] = "FAIL" if abort else "PASS"
+    summary["execution_abort_reason"] = abort.get("reason_code") if abort else None
     if abort:
         summary["run_status"] = abort["disposition"]
         summary["abort"] = abort

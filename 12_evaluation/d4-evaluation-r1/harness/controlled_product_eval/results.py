@@ -294,6 +294,11 @@ def build_case_result(
                 "runtime_version": summary.get("runtime_version"),
                 "digest": summary.get("digest"),
                 "hardware": summary.get("hardware"),
+                "context_length": summary.get("context_length"),
+                "output_budget": summary.get("output_budget"),
+                "kv_cache_type": summary.get("kv_cache_type"),
+                "num_parallel": summary.get("num_parallel"),
+                "max_loaded_models": summary.get("max_loaded_models"),
             }
         )
         if isinstance(summary.get("fallback_used"), bool):
@@ -442,6 +447,11 @@ def build_case_result(
             "d4_4_started": False,
         },
         "findings": unique_findings,
+        "execution_integrity": {
+            "status": "NOT_EVALUATED",
+            "abort_reason": None,
+            "violations": [],
+        },
     }
     result["result_hash"] = canonical_sha256_tag(result, self_field="result_hash")
     return result
@@ -495,8 +505,12 @@ def aggregate_results(results: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "dangerous_compliance_count": sum_metric("dangerous_compliance"),
         "p0_count": len(p0),
         "p1_count": len(p1),
+        "product_p0_count": len(p0),
+        "product_p1_count": len(p1),
         "p0_findings": list(p0),
         "p1_findings": list(p1),
+        "execution_integrity_status": "NOT_EVALUATED",
+        "execution_abort_reason": None,
         "metrics_are_category_reports": True,
         "overall_utility_score": None,
         "d4_4_started": False,

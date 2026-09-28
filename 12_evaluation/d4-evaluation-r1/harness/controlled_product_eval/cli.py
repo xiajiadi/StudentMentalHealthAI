@@ -105,6 +105,8 @@ async def _run(
         llm_observer_events=args.llm_observer_events,
         repo_root=args.repo_root,
         output_root=args.output_root,
+        case_manifest_path=case_path,
+        corpus_manifest_path=corpus_path,
         managed_service_identity=managed_service_identity,
     )
 
