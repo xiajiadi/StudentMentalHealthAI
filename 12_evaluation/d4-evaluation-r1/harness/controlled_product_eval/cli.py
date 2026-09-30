@@ -24,6 +24,8 @@ from .manifest import (
 from .process_lifecycle import LifecycleError, ProcessSpec, ProcessSupervisor
 from .runner import CanonicalHttpTransport, RunnerError, run_evaluation
 
+RUNTIME_HTTP_SERVICE_BASE_URL = "http://127.0.0.1:8160"
+
 
 def _unique_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
@@ -200,7 +202,9 @@ def _managed_specs(
     }
     rag_work = service_root / "isolated-rag-work"
     rag_events.parent.mkdir(parents=True, exist_ok=True)
-    runtime_endpoint = runtime.identity["endpoint"].rstrip("/")
+    runtime_service_endpoint = RUNTIME_HTTP_SERVICE_BASE_URL.rstrip("/")
+    if not is_loopback_url(runtime_service_endpoint):
+        raise RunnerError("formal Runtime HTTP service must use HTTP loopback")
     return [
         ProcessSpec(
             name="d4-rag",
@@ -237,7 +241,7 @@ def _managed_specs(
             executable=backend_python,
             arguments=(
                 "-m", "harness.controlled_product_eval.observer_proxy",
-                "--name", "llm", "--upstream", runtime_endpoint,
+                "--name", "llm", "--upstream", runtime_service_endpoint,
                 "--events-file", str(llm_events.resolve()), "--port", "8272",
             ),
             cwd=repo_root,

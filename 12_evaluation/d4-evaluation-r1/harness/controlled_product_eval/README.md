@@ -8,6 +8,8 @@ The approved packet remains byte-for-byte unchanged. Its packet hash is `sha256:
 
 D4-3B formal preflight requires the exact Runtime identity in `manifest.py`, including `http://127.0.0.1:11437`, Ollama `0.33.3`, and the approved Qwen model digest. Every identity field is checked by strict equality; alternate ports, including `11434`, are rejected. There is no environment override or endpoint allow-list.
 
+The preflight `endpoint` is the Ollama provider endpoint and remains `http://127.0.0.1:11437`. The Runtime HTTP service is a separate loopback service at `http://127.0.0.1:8160`; the LLM observer must target that Runtime service for readiness and observation. Do not route the observer to the provider endpoint.
+
 The separate Runtime Reconstruction R1 evidence records a historical Ollama `0.21.1` integration at `http://127.0.0.1:11434`. That evidence remains historical and is not the D4-3B formal Runtime target.
 
 ## Prepare deterministic inputs

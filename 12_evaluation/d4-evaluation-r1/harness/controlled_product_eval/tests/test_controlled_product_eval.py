@@ -377,7 +377,10 @@ def test_managed_stack_specs_own_only_loopback_evaluation_services(tmp_path, mon
     assert [spec.name for spec in specs] == ["d4-rag", "d4-rag-observer", "d4-llm-observer", "d4-backend"]
     assert all(spec.readiness_url.startswith("http://127.0.0.1:") for spec in specs)
     llm_observer = next(spec for spec in specs if spec.name == "d4-llm-observer")
-    assert runtime.identity["endpoint"] in llm_observer.arguments
+    upstream = llm_observer.arguments[llm_observer.arguments.index("--upstream") + 1]
+    assert upstream == "http://127.0.0.1:8160"
+    assert runtime.identity["endpoint"] == "http://127.0.0.1:11437"
+    assert upstream != runtime.identity["endpoint"]
     assert all("ollama" not in spec.name.lower() and "llm_runtime" not in spec.name.lower() for spec in specs)
     backend = specs[-1]
     assert backend.environment["SMHAI_CAT__MODE"] == "http"
