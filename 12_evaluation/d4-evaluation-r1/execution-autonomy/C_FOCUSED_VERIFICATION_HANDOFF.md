@@ -10,6 +10,8 @@ The next C review of `6508c8154fb0b62d3660addb0af0110a995a3c98` confirmed the im
 
 The current follow-up also adds an explicit test that accepts only the pinned Backend/RAG paths and rejects a caller-selected executable through the managed CLI before DB or service access. Verify this guard and its lock-identity checks in the complete diff.
 
+The final C review of `7d66cfdaf3c8e57f824668db3fdf4e895807c338` returned `READY_FOR_D4_3B_AUTONOMOUS_EXECUTION_AFTER_EXECUTOR_HARDENING` and confirmed both findings were cleared. A post-review R5 premanifest attempt then stopped before login because required credentials were absent; its small root-state record is outside the repository. No source code changed after that C review.
+
 ## Required review focus
 
 1. No security-policy bypass, command obfuscation, encoded PowerShell, nested-shell escape, or change to managed/host policy.
