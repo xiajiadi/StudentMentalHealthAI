@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 import socket
 import sys
+from argparse import Namespace
 from pathlib import Path
 
 import pytest
@@ -14,6 +16,7 @@ from harness.controlled_product_eval.process_lifecycle import (
     ProcessSupervisor,
     build_child_environment,
 )
+from harness.controlled_product_eval.cli import _run_managed
 from harness.controlled_product_eval.supervisor import (
     DEFAULT_TOOLS_ROOT,
     JsonlSupervisor,
@@ -201,3 +204,22 @@ def test_supervisor_rejects_caller_selected_tools_root(tmp_path):
     assert DEFAULT_TOOLS_ROOT.is_absolute()
     with pytest.raises(RunnerError, match="pinned"):
         build_service_profiles(config)
+
+
+def test_managed_cli_rejects_caller_selected_python_executables(tmp_path):
+    args = Namespace(
+        repo_root=str(tmp_path / "project"),
+        output_root=str(tmp_path / "output"),
+        backend_python=str(tmp_path / "caller" / "python.exe"),
+        rag_python=str(tmp_path / "caller" / "python.exe"),
+    )
+    with pytest.raises(RunnerError, match="pinned task-local environment"):
+        asyncio.run(_run_managed(args))
+
+
+def test_managed_cli_accepts_only_the_pinned_task_local_interpreters():
+    from harness.controlled_product_eval.environment_profiles import BACKEND_PYTHON, RAG_PYTHON
+    from harness.controlled_product_eval.cli import _require_pinned_interpreter
+
+    assert _require_pinned_interpreter(str(BACKEND_PYTHON), BACKEND_PYTHON, "Backend") == BACKEND_PYTHON.resolve()
+    assert _require_pinned_interpreter(str(RAG_PYTHON), RAG_PYTHON, "RAG") == RAG_PYTHON.resolve()

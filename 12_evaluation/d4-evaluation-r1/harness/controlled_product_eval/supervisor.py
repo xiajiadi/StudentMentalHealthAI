@@ -19,12 +19,13 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from .cli import _evaluation_database_endpoint, _managed_specs
+from .environment_profiles import BACKEND_PYTHON, D4_TASK_TOOLS_ROOT, RAG_PYTHON
 from .network_integrity import FORMAL_DATA_PLANE_PORTS, capture_data_plane_network
 from .process_lifecycle import LifecycleError, ProcessSpec, ProcessSupervisor
 from .runner import RunnerError
 
 
-DEFAULT_TOOLS_ROOT = Path(r"D:\Dev\tools\StudentMentalHealthAI\d4-3b-formal-run")
+DEFAULT_TOOLS_ROOT = D4_TASK_TOOLS_ROOT
 OWNED_GROUPS = {
     "rag": ("d4-rag",),
     "observers": ("d4-rag-observer", "d4-llm-observer"),
@@ -93,12 +94,8 @@ def build_service_profiles(config: SupervisorConfig) -> dict[str, ProcessSpec]:
     if not _within(corpus_manifest, tools_root) or not corpus_manifest.is_file():
         raise RunnerError("supervisor requires an existing approved corpus manifest under the D4 task tools root")
 
-    expected_backend = (
-        tools_root / "venvs" / "backend-formal-r2" / "Scripts" / "python.exe"
-    ).resolve()
-    expected_rag = (
-        tools_root / "venvs" / "rag-env-lock-r1" / "Scripts" / "python.exe"
-    ).resolve()
+    expected_backend = BACKEND_PYTHON.resolve()
+    expected_rag = RAG_PYTHON.resolve()
     if config.backend_python.resolve() != expected_backend:
         raise RunnerError("supervisor Backend interpreter must use the pinned task-local Python 3.12 environment")
     if config.rag_python.resolve() != expected_rag:
@@ -333,8 +330,8 @@ def _parse_args(argv: list[str] | None = None) -> SupervisorConfig:
         tools_root=tools_root,
         service_root=args.service_root,
         corpus_manifest=args.corpus_manifest,
-        backend_python=tools_root / "venvs" / "backend-formal-r2" / "Scripts" / "python.exe",
-        rag_python=tools_root / "venvs" / "rag-env-lock-r1" / "Scripts" / "python.exe",
+        backend_python=BACKEND_PYTHON,
+        rag_python=RAG_PYTHON,
         startup_timeout_seconds=args.startup_timeout_seconds,
     )
 

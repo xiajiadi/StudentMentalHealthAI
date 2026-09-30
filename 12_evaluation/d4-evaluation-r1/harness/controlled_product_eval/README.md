@@ -37,8 +37,8 @@ Set `SMHAI_D4_STUDENT_A_PASSWORD` and `SMHAI_D4_STUDENT_B_PASSWORD` in the curre
 $repoRoot = (Get-Location).Path
 $evalPath = Join-Path $repoRoot '12_evaluation\d4-evaluation-r1'
 $env:PYTHONPATH = "$evalPath;$repoRoot\09_backend\src"
-$backendPython = 'D:\Projects\StudentMentalHealthAI\09_backend\.venv\Scripts\python.exe'
-$ragPython = 'D:\Projects\StudentMentalHealthAI\05_rag-engine\.venv\Scripts\python.exe'
+$backendPython = 'D:\Dev\tools\StudentMentalHealthAI\d4-3b-formal-run\venvs\backend-formal-r2\Scripts\python.exe'
+$ragPython = 'D:\Dev\tools\StudentMentalHealthAI\d4-3b-formal-run\venvs\rag-env-lock-r1\Scripts\python.exe'
 & $backendPython -m harness.controlled_product_eval.cli run `
   --repo-root $repoRoot `
   --runtime-preflight 'D:\Dev\cache\d4-runtime-preflight.json' `
@@ -59,7 +59,7 @@ The isolated RAG index uses the accepted BGE-M3 embedding model in offline mode.
 
 `supervisor.py` provides a long-lived JSONL process interface over stdin/stdout. It starts children with absolute executable paths and argument arrays, `shell=False`, and per-profile environment allowlists. The request protocol accepts only `health`, `services`, `network_inventory`, `start`, `stop`, `start_stack`, `stop_stack`, and `cleanup`; it has no shell or arbitrary-command operation.
 
-The supervisor can own only the D4 RAG service, the two evaluation observers, and the Backend process it starts. It never adopts a listener that already exists. MySQL, CAT, OPA, Safety, Runtime, and Ollama remain external dependencies in this version; their listener presence is inventoried, and start/stop requests are rejected. This preserves the existing Runtime/Ollama identity and the operator ownership boundary for Safety/OPA.
+The supervisor can own only the D4 RAG service, the two evaluation observers, and the Backend process it starts. The managed CLI and supervisor both require the exact Backend and RAG task-local Python executables in `D:\Dev\tools\StudentMentalHealthAI\d4-3b-formal-run\venvs`; caller-selected Python paths are rejected. It never adopts a listener that already exists. MySQL, CAT, OPA, Safety, Runtime, and Ollama remain external dependencies in this version; their listener presence is inventoried, and start/stop requests are rejected. This preserves the existing Runtime/Ollama identity and the operator ownership boundary for Safety/OPA.
 
 Start the supervisor once with the task-local Python 3.12 executable, from the evaluation root. Supply a new service directory under `D:\Dev\tools\StudentMentalHealthAI\d4-3b-formal-run\supervisor-runs` and the approved corpus manifest under the D4 task tools root. Keep the process session open and send one JSON object per line, for example `{"op":"health"}`, `{"op":"start","service":"rag"}`, `{"op":"start","service":"observers"}`, `{"op":"start","service":"backend"}`, `{"op":"services"}`, and `{"op":"cleanup"}`. Responses and lifecycle evidence omit environment values; the append-only event file is written under the selected service directory. The supervisor does not run formal cases.
 

@@ -58,4 +58,4 @@ The supervisor deliberately has no formal-run operation. It cannot freeze a mani
 
 ## Verification limits
 
-The unit lifecycle fixture verifies direct spawn, process ownership, redaction, separate streams, readiness, listener closure, and cleanup. The 62-test D4-3B harness suite passed. Production RAG and observer services were not started during this hardening pass. Active MySQL, CAT, OPA, Safety, Runtime, and Ollama listeners were not adopted or stopped. Database and synthetic-account environment variables were absent, so Backend service startup and formal execution remain unavailable in the current state.
+The unit lifecycle fixture verifies direct spawn, process ownership, redaction, separate streams, readiness, listener closure, and cleanup. The 64-test D4-3B harness suite passed. Production RAG and observer services were not started during this hardening pass. Active MySQL, CAT, OPA, Safety, Runtime, and Ollama listeners were not adopted or stopped. Database and synthetic-account environment variables were absent, so Backend service startup and formal execution remain unavailable in the current state.

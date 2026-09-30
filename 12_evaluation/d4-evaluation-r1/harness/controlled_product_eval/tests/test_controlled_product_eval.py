@@ -24,6 +24,7 @@ from harness.controlled_product_eval.approved_packet import (
     thaw_json,
 )
 from harness.controlled_product_eval.cli import _evaluation_database_endpoint, _managed_specs
+from harness.controlled_product_eval.environment_profiles import BACKEND_PYTHON, RAG_PYTHON
 from harness.controlled_product_eval.manifest import (
     EXPECTED_RUNTIME_IDENTITY,
     ManifestError,
@@ -369,7 +370,7 @@ def test_managed_stack_specs_own_only_loopback_evaluation_services(tmp_path, mon
     runtime = RuntimePreflight.from_mapping(build_runtime_preflight(observed_at="2026-09-25T00:00:00Z"))
     events = tmp_path / "events"
     specs = _managed_specs(
-        args=Namespace(backend_python=sys.executable, rag_python=sys.executable),
+        args=Namespace(backend_python=str(BACKEND_PYTHON), rag_python=str(RAG_PYTHON)),
         repo_root=ROOT,
         service_root=tmp_path / "stack",
         corpus_manifest_path=tmp_path / "corpus.json",

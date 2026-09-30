@@ -24,6 +24,7 @@ from .manifest import (
     is_loopback_url,
     write_json_once,
 )
+from .environment_profiles import BACKEND_PYTHON, D4_TASK_TOOLS_ROOT, RAG_PYTHON
 from .process_lifecycle import (
     LifecycleError,
     ProcessSpec,
@@ -151,15 +152,24 @@ def _python_version(executable: Path) -> str:
     return match.group(1)
 
 
+def _require_pinned_interpreter(value: str, expected: Path, role: str) -> Path:
+    candidate = Path(value)
+    if not candidate.is_absolute():
+        raise RunnerError(f"managed {role} interpreter must be supplied as an absolute path")
+    resolved = candidate.resolve()
+    if resolved != expected.resolve() or resolved.name.lower() != "python.exe":
+        raise RunnerError(f"managed {role} interpreter must use its pinned task-local environment")
+    return resolved
+
+
 def _environment_lock_identity(executable: Path, role: str) -> dict[str, str]:
     """Read only the approved task-local lock identity associated with a venv."""
 
-    if len(executable.parents) < 4 or executable.parent.name.lower() != "scripts":
-        return {}
-    tools_root = executable.parents[3]
     if role == "backend":
+        if executable.resolve() != BACKEND_PYTHON.resolve():
+            return {}
         identity_path = (
-            tools_root
+            D4_TASK_TOOLS_ROOT
             / "pre-manifest-remediation-r2"
             / "environment"
             / "backend-formal-r2-identity.json"
@@ -168,12 +178,14 @@ def _environment_lock_identity(executable: Path, role: str) -> dict[str, str]:
             identity = json.loads(identity_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return {}
-        expected_venv = tools_root / "venvs" / "backend-formal-r2" / "Scripts" / "python.exe"
-        if Path(str(identity.get("python_executable", ""))).resolve() != expected_venv.resolve():
+        if identity.get("status") != "PASS":
+            return {}
+        if Path(str(identity.get("python_executable", ""))).resolve() != BACKEND_PYTHON.resolve():
             return {}
         return {
             key: str(identity[key])
             for key in (
+                "python_version",
                 "backend_lock_sha256",
                 "database_lock_sha256",
                 "installed_freeze_sha256",
@@ -181,8 +193,10 @@ def _environment_lock_identity(executable: Path, role: str) -> dict[str, str]:
             if identity.get(key)
         }
     if role == "rag":
-        lock_path = tools_root / "rag-env-lock-r1" / "accepted-uv.lock"
-        expected_path = tools_root / "rag-env-lock-r1" / "accepted-uv.lock.sha256"
+        if executable.resolve() != RAG_PYTHON.resolve():
+            return {}
+        lock_path = D4_TASK_TOOLS_ROOT / "rag-env-lock-r1" / "accepted-uv.lock"
+        expected_path = D4_TASK_TOOLS_ROOT / "rag-env-lock-r1" / "accepted-uv.lock.sha256"
         try:
             digest = hashlib.sha256(lock_path.read_bytes()).hexdigest()
             expected = expected_path.read_text(encoding="ascii").split()[0].lower()
@@ -235,14 +249,8 @@ def _managed_specs(
     rag_events: Path,
     llm_events: Path,
 ) -> list[ProcessSpec]:
-    backend_candidate = Path(args.backend_python)
-    rag_candidate = Path(args.rag_python)
-    if not backend_candidate.is_absolute() or not rag_candidate.is_absolute():
-        raise RunnerError("managed service interpreters must be supplied as absolute paths")
-    backend_python = backend_candidate.resolve()
-    rag_python = rag_candidate.resolve()
-    if backend_python.name.lower() != "python.exe" or rag_python.name.lower() != "python.exe":
-        raise RunnerError("managed service executables must be Python interpreters")
+    backend_python = _require_pinned_interpreter(args.backend_python, BACKEND_PYTHON, "Backend")
+    rag_python = _require_pinned_interpreter(args.rag_python, RAG_PYTHON, "RAG")
     evaluation_root = repo_root / "12_evaluation" / "d4-evaluation-r1"
     backend_src = repo_root / "09_backend" / "src"
     database_src = repo_root / "11_database"
@@ -287,6 +295,22 @@ def _managed_specs(
                 backend_env[name] = os.environ[name]
     backend_version = _python_version(backend_python)
     rag_version = _python_version(rag_python)
+    if not backend_version.startswith("3.12."):
+        raise RunnerError("managed Backend must use its dedicated Python 3.12 environment")
+    backend_lock_identity = _environment_lock_identity(backend_python, "backend")
+    required_backend_identity = {
+        "python_version",
+        "backend_lock_sha256",
+        "database_lock_sha256",
+        "installed_freeze_sha256",
+    }
+    if not required_backend_identity <= set(backend_lock_identity):
+        raise RunnerError("managed Backend lock identity is missing or mismatched for the pinned environment")
+    if backend_lock_identity["python_version"] != backend_version:
+        raise RunnerError("managed Backend interpreter version does not match its environment identity")
+    rag_lock_identity = _environment_lock_identity(rag_python, "rag")
+    if not rag_lock_identity.get("accepted_uv_lock_sha256"):
+        raise RunnerError("managed RAG lock identity is missing or mismatched for the pinned environment")
     rag_work = service_root / "isolated-rag-work"
     rag_events.parent.mkdir(parents=True, exist_ok=True)
     runtime_service_endpoint = RUNTIME_HTTP_SERVICE_BASE_URL.rstrip("/")
@@ -309,7 +333,7 @@ def _managed_specs(
             readiness_kind="service",
             log_path=service_root / "d4-rag.log",
             interpreter_version=rag_version,
-            package_lock_identity=_environment_lock_identity(rag_python, "rag"),
+            package_lock_identity=rag_lock_identity,
             environment_allowlist=frozenset(rag_env),
         ),
         ProcessSpec(
@@ -326,7 +350,7 @@ def _managed_specs(
             readiness_kind="service",
             log_path=service_root / "d4-rag-observer.log",
             interpreter_version=backend_version,
-            package_lock_identity=_environment_lock_identity(backend_python, "backend"),
+            package_lock_identity=backend_lock_identity,
             environment_allowlist=frozenset(observer_env),
         ),
         ProcessSpec(
@@ -343,7 +367,7 @@ def _managed_specs(
             readiness_kind="service",
             log_path=service_root / "d4-llm-observer.log",
             interpreter_version=backend_version,
-            package_lock_identity=_environment_lock_identity(backend_python, "backend"),
+            package_lock_identity=backend_lock_identity,
             environment_allowlist=frozenset(observer_env),
         ),
         ProcessSpec(
@@ -356,7 +380,7 @@ def _managed_specs(
             readiness_kind="backend",
             log_path=service_root / "d4-backend.log",
             interpreter_version=backend_version,
-            package_lock_identity=_environment_lock_identity(backend_python, "backend"),
+            package_lock_identity=backend_lock_identity,
             environment_allowlist=frozenset(backend_env),
         ),
     ]
@@ -371,15 +395,27 @@ async def _run_managed(args: argparse.Namespace) -> dict[str, Any]:
         pass
     else:
         raise RunnerError("managed run output and temporary indexes must be outside the project checkout")
-    _evaluation_database_endpoint()
-    backend_candidate = Path(args.backend_python)
-    rag_candidate = Path(args.rag_python)
-    if not backend_candidate.is_absolute() or not rag_candidate.is_absolute():
-        raise RunnerError("managed service interpreters must be supplied as absolute paths")
-    backend_version = _python_version(backend_candidate.resolve())
+    backend_python = _require_pinned_interpreter(args.backend_python, BACKEND_PYTHON, "Backend")
+    rag_python = _require_pinned_interpreter(args.rag_python, RAG_PYTHON, "RAG")
+    backend_version = _python_version(backend_python)
     if not backend_version.startswith("3.12."):
         raise RunnerError("managed Backend must use its dedicated Python 3.12 environment")
-    _python_version(rag_candidate.resolve())
+    backend_lock_identity = _environment_lock_identity(backend_python, "backend")
+    required_backend_identity = {
+        "python_version",
+        "backend_lock_sha256",
+        "database_lock_sha256",
+        "installed_freeze_sha256",
+    }
+    if not required_backend_identity <= set(backend_lock_identity):
+        raise RunnerError("managed Backend lock identity is missing or mismatched for the pinned environment")
+    if backend_lock_identity["python_version"] != backend_version:
+        raise RunnerError("managed Backend interpreter version does not match its environment identity")
+    _python_version(rag_python)
+    rag_lock_identity = _environment_lock_identity(rag_python, "rag")
+    if not rag_lock_identity.get("accepted_uv_lock_sha256"):
+        raise RunnerError("managed RAG lock identity is missing or mismatched for the pinned environment")
+    _evaluation_database_endpoint()
     packet = load_approved_packet(args.packet)
     runtime_mapping = _read_json(args.runtime_preflight)
     runtime = RuntimePreflight.from_mapping(runtime_mapping)

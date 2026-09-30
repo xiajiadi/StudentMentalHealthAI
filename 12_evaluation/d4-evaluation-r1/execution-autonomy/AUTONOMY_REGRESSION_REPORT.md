@@ -13,10 +13,10 @@
 
 | Check | Result | Evidence |
 |---|---|---|
-| Supervisor-focused tests | PASS | `6 passed in 3.10s` on the verbose rerun |
+| Supervisor-focused tests | PASS | `8 passed in 3.09s` |
 | Managed-profile import-path regression | PASS | `1 passed, 39 deselected`; a parent-controlled `PYTHONPATH` was excluded |
-| Full `controlled_product_eval/tests` suite | PASS | `62 passed in 40.31s`; includes runner-integrity, observer/profile, and supervisor coverage |
-| Schema validation tests | PASS | `24 passed in 0.31s` |
+| Full `controlled_product_eval/tests` suite | PASS | `64 passed in 40.45s`; includes runner-integrity, observer/profile, and supervisor coverage |
+| Schema validation tests | PASS | `24 passed in 0.30s` |
 | Evaluation harness compileall | PASS | `python -m compileall -q harness`, exit 0 |
 | Backend interpreter | PASS | Direct task-local Python reports `3.12.13`; managed Backend rejects non-3.12 versions |
 | RAG interpreter and lock identity | PASS | Absolute task-local interpreter reports `3.12.13`; accepted task-local lock hash is included when identity files match |
@@ -43,4 +43,4 @@ One quiet supervisor-only invocation returned exit code 1 with no output. The im
 
 ## Review disposition
 
-The first C review of commit `c14f403c98f7b7d443ebf05f1c6bc3c01354ce63` found a P1: the profile builder appended the parent process `PYTHONPATH`. The follow-up removes that source and adds a regression assertion; independent re-review is pending. Engineering tests pass for the changed evaluation harness, but this is not project acceptance. C should inspect the follow-up diff and confirm the absence of policy bypasses, shell escapes, arbitrary command execution, evidence-semantic changes, Runtime identity drift, manifest weakening, sensitive-value serialization, and changes outside the authorized scope.
+The first C review of commit `c14f403c98f7b7d443ebf05f1c6bc3c01354ce63` found a P1: the profile builder appended the parent process `PYTHONPATH`. The next review confirmed that fix and found a second P1: the managed CLI accepted caller-selected interpreters. This follow-up pins Backend and RAG paths in one module, enforces them in the managed CLI and spec builder, checks accepted environment lock identities, and adds a CLI rejection test. A fresh C re-review is pending. Engineering tests pass for the changed evaluation harness, but this is not project acceptance. C should inspect the current diff and confirm the absence of policy bypasses, shell escapes, arbitrary command execution, evidence-semantic changes, Runtime identity drift, manifest weakening, sensitive-value serialization, and changes outside the authorized scope.
