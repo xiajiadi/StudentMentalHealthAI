@@ -117,23 +117,29 @@ def capture_data_plane_network(
 ) -> dict[str, Any]:
     """Capture the live Windows TCP table without relying on a third-party package."""
 
-    binary = shutil.which("netstat.exe") or shutil.which("netstat")
     system_root = os.environ.get("SystemRoot")
-    if binary is None and system_root:
+    binary = None
+    if system_root:
         candidate = Path(system_root) / "System32" / "netstat.exe"
         if candidate.is_file():
             binary = str(candidate)
     if binary is None:
+        binary = shutil.which("netstat.exe") or shutil.which("netstat")
+    if binary is None:
         raise NetworkIntegrityError("netstat executable is unavailable")
+    binary_path = Path(binary).resolve()
+    if not binary_path.is_absolute() or not binary_path.is_file():
+        raise NetworkIntegrityError("netstat did not resolve to an absolute executable")
     try:
         result = subprocess.run(
-            [binary, "-ano", "-p", "tcp"],
+            [str(binary_path), "-ano", "-p", "tcp"],
             check=True,
             capture_output=True,
             text=True,
             encoding="utf-8",
             errors="replace",
             timeout=10,
+            shell=False,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         raise NetworkIntegrityError(f"TCP table capture failed: {type(exc).__name__}") from exc

@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import ipaddress
 import json
 import os
+import re
+import subprocess
 import uuid
 from pathlib import Path
 from typing import Any
@@ -21,7 +24,12 @@ from .manifest import (
     is_loopback_url,
     write_json_once,
 )
-from .process_lifecycle import LifecycleError, ProcessSpec, ProcessSupervisor
+from .process_lifecycle import (
+    LifecycleError,
+    ProcessSpec,
+    ProcessSupervisor,
+    build_child_environment,
+)
 from .runner import CanonicalHttpTransport, RunnerError, run_evaluation
 
 RUNTIME_HTTP_SERVICE_BASE_URL = "http://127.0.0.1:8160"
@@ -120,6 +128,73 @@ def _managed_pythonpath(base: str | None, *paths: Path) -> str:
     return os.pathsep.join(ordered)
 
 
+def _python_version(executable: Path) -> str:
+    if not executable.is_absolute() or not executable.is_file():
+        raise RunnerError("managed service interpreter must be an existing absolute executable")
+    try:
+        result = subprocess.run(
+            [str(executable), "--version"],
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=8,
+            env=build_child_environment({}),
+            shell=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise RunnerError(f"cannot verify managed Python interpreter: {type(exc).__name__}") from exc
+    version_text = (result.stdout + result.stderr).strip()
+    match = re.fullmatch(r"Python\s+(\d+\.\d+\.\d+)(?:\s+.*)?", version_text)
+    if not match:
+        raise RunnerError("managed interpreter did not report a valid Python version")
+    return match.group(1)
+
+
+def _environment_lock_identity(executable: Path, role: str) -> dict[str, str]:
+    """Read only the approved task-local lock identity associated with a venv."""
+
+    if len(executable.parents) < 4 or executable.parent.name.lower() != "scripts":
+        return {}
+    tools_root = executable.parents[3]
+    if role == "backend":
+        identity_path = (
+            tools_root
+            / "pre-manifest-remediation-r2"
+            / "environment"
+            / "backend-formal-r2-identity.json"
+        )
+        try:
+            identity = json.loads(identity_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        expected_venv = tools_root / "venvs" / "backend-formal-r2" / "Scripts" / "python.exe"
+        if Path(str(identity.get("python_executable", ""))).resolve() != expected_venv.resolve():
+            return {}
+        return {
+            key: str(identity[key])
+            for key in (
+                "backend_lock_sha256",
+                "database_lock_sha256",
+                "installed_freeze_sha256",
+            )
+            if identity.get(key)
+        }
+    if role == "rag":
+        lock_path = tools_root / "rag-env-lock-r1" / "accepted-uv.lock"
+        expected_path = tools_root / "rag-env-lock-r1" / "accepted-uv.lock.sha256"
+        try:
+            digest = hashlib.sha256(lock_path.read_bytes()).hexdigest()
+            expected = expected_path.read_text(encoding="ascii").split()[0].lower()
+        except (OSError, ValueError, IndexError):
+            return {}
+        if digest != expected:
+            return {}
+        return {"accepted_uv_lock_sha256": digest}
+    return {}
+
+
 def _evaluation_database_endpoint() -> tuple[str, int]:
     database_url = os.environ.get("DATABASE_URL")
     if database_url:
@@ -161,15 +236,20 @@ def _managed_specs(
     rag_events: Path,
     llm_events: Path,
 ) -> list[ProcessSpec]:
-    backend_python = Path(args.backend_python).resolve()
-    rag_python = Path(args.rag_python).resolve()
+    backend_candidate = Path(args.backend_python)
+    rag_candidate = Path(args.rag_python)
+    if not backend_candidate.is_absolute() or not rag_candidate.is_absolute():
+        raise RunnerError("managed service interpreters must be supplied as absolute paths")
+    backend_python = backend_candidate.resolve()
+    rag_python = rag_candidate.resolve()
+    if backend_python.name.lower() != "python.exe" or rag_python.name.lower() != "python.exe":
+        raise RunnerError("managed service executables must be Python interpreters")
     evaluation_root = repo_root / "12_evaluation" / "d4-evaluation-r1"
     backend_src = repo_root / "09_backend" / "src"
     database_src = repo_root / "11_database"
     if not evaluation_root.is_dir() or not backend_src.is_dir() or not database_src.is_dir():
         raise RunnerError("managed service startup requires the accepted evaluation and Backend source roots")
 
-    _evaluation_database_endpoint()
     cat_url = os.environ.get("SMHAI_CAT__BASE_URL", "http://127.0.0.1:8180")
     safety_url = os.environ.get("SMHAI_SAFETY__BASE_URL", "http://127.0.0.1:8190")
     if not is_loopback_url(cat_url) or not is_loopback_url(safety_url):
@@ -200,6 +280,14 @@ def _managed_specs(
         "SMHAI_SAFETY__MODE": "http",
         "SMHAI_SAFETY__BASE_URL": safety_url,
     }
+    if os.environ.get("DATABASE_URL"):
+        backend_env["DATABASE_URL"] = os.environ["DATABASE_URL"]
+    else:
+        for name in ("DB_HOST", "DB_PORT", "DB_USER", "DB_PASSWORD", "DB_NAME"):
+            if name in os.environ:
+                backend_env[name] = os.environ[name]
+    backend_version = _python_version(backend_python)
+    rag_version = _python_version(rag_python)
     rag_work = service_root / "isolated-rag-work"
     rag_events.parent.mkdir(parents=True, exist_ok=True)
     runtime_service_endpoint = RUNTIME_HTTP_SERVICE_BASE_URL.rstrip("/")
@@ -221,6 +309,9 @@ def _managed_specs(
             readiness_url="http://127.0.0.1:8170/health",
             readiness_kind="service",
             log_path=service_root / "d4-rag.log",
+            interpreter_version=rag_version,
+            package_lock_identity=_environment_lock_identity(rag_python, "rag"),
+            environment_allowlist=frozenset(rag_env),
         ),
         ProcessSpec(
             name="d4-rag-observer",
@@ -235,6 +326,9 @@ def _managed_specs(
             readiness_url="http://127.0.0.1:8271/health",
             readiness_kind="service",
             log_path=service_root / "d4-rag-observer.log",
+            interpreter_version=backend_version,
+            package_lock_identity=_environment_lock_identity(backend_python, "backend"),
+            environment_allowlist=frozenset(observer_env),
         ),
         ProcessSpec(
             name="d4-llm-observer",
@@ -249,6 +343,9 @@ def _managed_specs(
             readiness_url="http://127.0.0.1:8272/health",
             readiness_kind="service",
             log_path=service_root / "d4-llm-observer.log",
+            interpreter_version=backend_version,
+            package_lock_identity=_environment_lock_identity(backend_python, "backend"),
+            environment_allowlist=frozenset(observer_env),
         ),
         ProcessSpec(
             name="d4-backend",
@@ -259,6 +356,9 @@ def _managed_specs(
             readiness_url="http://127.0.0.1:8080/health/ready",
             readiness_kind="backend",
             log_path=service_root / "d4-backend.log",
+            interpreter_version=backend_version,
+            package_lock_identity=_environment_lock_identity(backend_python, "backend"),
+            environment_allowlist=frozenset(backend_env),
         ),
     ]
 
@@ -272,6 +372,15 @@ async def _run_managed(args: argparse.Namespace) -> dict[str, Any]:
         pass
     else:
         raise RunnerError("managed run output and temporary indexes must be outside the project checkout")
+    _evaluation_database_endpoint()
+    backend_candidate = Path(args.backend_python)
+    rag_candidate = Path(args.rag_python)
+    if not backend_candidate.is_absolute() or not rag_candidate.is_absolute():
+        raise RunnerError("managed service interpreters must be supplied as absolute paths")
+    backend_version = _python_version(backend_candidate.resolve())
+    if not backend_version.startswith("3.12."):
+        raise RunnerError("managed Backend must use its dedicated Python 3.12 environment")
+    _python_version(rag_candidate.resolve())
     packet = load_approved_packet(args.packet)
     runtime_mapping = _read_json(args.runtime_preflight)
     runtime = RuntimePreflight.from_mapping(runtime_mapping)

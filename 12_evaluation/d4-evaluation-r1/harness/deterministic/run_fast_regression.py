@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import re
+import shutil
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -38,10 +39,17 @@ MANIFEST_PATH = "manifests/d4_slice2_fast_regression.json"
 
 
 def _git_commit() -> str:
+    git_executable = shutil.which("git.exe") or shutil.which("git")
+    if not git_executable:
+        raise RuntimeError("Git executable is unavailable")
+    git_path = Path(git_executable).resolve()
+    if not git_path.is_absolute() or not git_path.is_file():
+        raise RuntimeError("Git executable did not resolve to an absolute file")
     return subprocess.check_output(
-        ["git", "rev-parse", "HEAD"],
+        [str(git_path), "rev-parse", "HEAD"],
         cwd=EVALUATION_ROOT.parents[1],
         text=True,
+        shell=False,
     ).strip()
 
 

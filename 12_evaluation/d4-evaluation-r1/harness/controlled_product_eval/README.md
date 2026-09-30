@@ -55,6 +55,14 @@ The isolated RAG index uses the accepted BGE-M3 embedding model in offline mode.
 
 `--use-existing-services` is available for diagnostics when services were started elsewhere. That mode leaves process cleanup to its caller and must not be reported as cleanup-verified by this harness.
 
+## Persistent local supervisor
+
+`supervisor.py` provides a long-lived JSONL process interface over stdin/stdout. It starts children with absolute executable paths and argument arrays, `shell=False`, and per-profile environment allowlists. The request protocol accepts only `health`, `services`, `network_inventory`, `start`, `stop`, `start_stack`, `stop_stack`, and `cleanup`; it has no shell or arbitrary-command operation.
+
+The supervisor can own only the D4 RAG service, the two evaluation observers, and the Backend process it starts. It never adopts a listener that already exists. MySQL, CAT, OPA, Safety, Runtime, and Ollama remain external dependencies in this version; their listener presence is inventoried, and start/stop requests are rejected. This preserves the existing Runtime/Ollama identity and the operator ownership boundary for Safety/OPA.
+
+Start the supervisor once with the task-local Python 3.12 executable, from the evaluation root. Supply a new service directory under `D:\Dev\tools\StudentMentalHealthAI\d4-3b-formal-run\supervisor-runs` and the approved corpus manifest under the D4 task tools root. Keep the process session open and send one JSON object per line, for example `{"op":"health"}`, `{"op":"start","service":"rag"}`, `{"op":"start","service":"observers"}`, `{"op":"start","service":"backend"}`, `{"op":"services"}`, and `{"op":"cleanup"}`. Responses and lifecycle evidence omit environment values; the append-only event file is written under the selected service directory. The supervisor does not run formal cases.
+
 ## Harness-only validation
 
 `run_mock_validation()` exercises all 12 case/result paths without opening a socket or starting a product service. Every returned case and summary is marked `NOT_FORMAL_PRODUCT_EVIDENCE`. Textual support and population, role, and purpose applicability remain `PENDING_HUMAN_REVIEW`; the harness does not produce an overall utility score.

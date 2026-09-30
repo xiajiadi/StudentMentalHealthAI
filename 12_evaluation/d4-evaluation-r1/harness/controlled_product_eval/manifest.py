@@ -6,6 +6,7 @@ import hashlib
 import ipaddress
 import json
 import re
+import shutil
 import subprocess
 from collections.abc import Iterable, Mapping
 from copy import deepcopy
@@ -391,12 +392,19 @@ def build_runtime_preflight(
 
 
 def _git(root: Path, *args: str) -> str:
+    git_executable = shutil.which("git.exe") or shutil.which("git")
+    if not git_executable:
+        raise ManifestError("Git executable is unavailable")
+    git_path = Path(git_executable).resolve()
+    if not git_path.is_absolute() or not git_path.is_file():
+        raise ManifestError("Git executable did not resolve to an absolute file")
     result = subprocess.run(
-        ["git", "-C", str(root), *args],
+        [str(git_path), "-C", str(root), *args],
         check=True,
         capture_output=True,
         text=True,
         encoding="utf-8",
+        shell=False,
     )
     return result.stdout.strip()
 
@@ -433,11 +441,7 @@ def verify_accepted_baseline(root: str | Path) -> None:
     try:
         resolved = _git(repo, "rev-parse", f"{ACCEPTED_D4_3A_TAG}^{{commit}}")
         current = _git(repo, "rev-parse", "HEAD")
-        subprocess.run(
-            ["git", "-C", str(repo), "merge-base", "--is-ancestor", resolved, current],
-            check=True,
-            capture_output=True,
-        )
+        _git(repo, "merge-base", "--is-ancestor", resolved, current)
     except (subprocess.CalledProcessError, OSError) as exc:
         raise ManifestError("D4-3A accepted tag is missing or not an ancestor of this worktree") from exc
     if resolved != ACCEPTED_D4_3A_COMMIT:

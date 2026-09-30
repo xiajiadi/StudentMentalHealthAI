@@ -1,0 +1,173 @@
+{
+  "schema_version": "d4-execution-policy-diagnosis.v1",
+  "assessed_at": "2026-09-30",
+  "workspace": {
+    "project": "StudentMentalHealthAI",
+    "formal_worktree": "D:\\Projects\\StudentMentalHealthAI-d4-formal-run",
+    "branch": "work/d4-3b-formal-run-integration",
+    "starting_head": "35f1ac86fe941aa015cd85163fda50ccddf6a1d7"
+  },
+  "finding": {
+    "historical_message": "rejected: blocked by policy",
+    "observed_at_boundary": "Codex execution tool",
+    "historical_child_creation_confirmed": false,
+    "historical_os_error_code": null,
+    "historical_process_id": null,
+    "historical_rule_id": null,
+    "historical_broker_trace": null,
+    "reproduced_on_2026_09_30": false,
+    "conclusion": "Historical tool-level rejection is confirmed; internal policy source is unknown."
+  },
+  "classification": {
+    "primary": ["CLASS_C", "CLASS_H"],
+    "classes": {
+      "CLASS_A": {
+        "status": "context_risk_not_demonstrated_cause",
+        "evidence": "Formal worktree lacks a project config and matching trust entry; historical rejection was reported from the trusted main project."
+      },
+      "CLASS_B": {
+        "status": "local_absent_cloud_unknown",
+        "evidence": "Checked local managed requirement files were absent; cloud-delivered requirements could not be inspected."
+      },
+      "CLASS_C": {
+        "status": "tool_boundary_observed_subcomponent_unknown",
+        "evidence": "Historical execution-tool output returned the policy rejection without a Windows exit code, child PID, or broker identifier."
+      },
+      "CLASS_D": {
+        "status": "not_demonstrated_not_fully_excluded",
+        "evidence": "No relevant AppLocker or Code Integrity block event was observed; kernel Code Integrity reports enforced status."
+      },
+      "CLASS_E": {
+        "status": "not_supported_as_proximate_cause",
+        "evidence": "Execution policy was RemoteSigned and a harmless PowerShell child completed successfully."
+      },
+      "CLASS_F": {
+        "status": "unproven",
+        "evidence": "Both wrapper and direct-executable probes passed; historical output lacks enough process detail to test the original command form."
+      },
+      "CLASS_G": {
+        "status": "unproven",
+        "evidence": "No reproducible failure isolates a Codex regression from a policy decision."
+      },
+      "CLASS_H": {
+        "status": "confirmed_internal_source_unknown",
+        "evidence": "No internal rule ID, broker trace, or OS diagnostic was available."
+      }
+    }
+  },
+  "configuration": {
+    "desktop_package": "OpenAI.Codex 26.924.2738.0",
+    "bundled_cli": "codex-cli 0.158.0-alpha.2.1",
+    "execution_mode": "local Codex Desktop",
+    "active_context": {
+      "sandbox_mode": "danger-full-access",
+      "approval_policy": "never",
+      "windows_sandbox": "elevated"
+    },
+    "user_defaults": {
+      "sandbox_mode": "workspace-write",
+      "approval_policy": "never"
+    },
+    "formal_worktree_project_config": "absent",
+    "formal_worktree_trust_entry": "not_found",
+    "local_managed_requirements": "not_found",
+    "cloud_managed_requirements": "not_inspectable_from_this_context",
+    "local_matching_d4_rule": "none_found",
+    "execpolicy_representative_checks": "matchedRules=[]"
+  },
+  "host_policy": {
+    "powershell_execution_policy_local_machine": "RemoteSigned",
+    "applocker_effective_rule_collections": 0,
+    "applocker_relevant_events": 0,
+    "code_integrity_kernel_status": 2,
+    "code_integrity_user_status": 0,
+    "code_integrity_block_events": 0,
+    "smart_app_control_state": 0,
+    "defender_mode": "Passive",
+    "defender_realtime_protection": false,
+    "third_party_endpoint_security_present": "Lenovo/Huorong",
+    "domain_joined": false,
+    "relevant_applied_group_policy_found": false
+  },
+  "controlled_probes": [
+    {
+      "class": "absolute_python",
+      "command": "C:\\Python314\\python.exe -c <harmless print and PID>",
+      "spawn_attempted": true,
+      "process_created": true,
+      "pid": 27328,
+      "exit_code": 0,
+      "policy_rejected": false
+    },
+    {
+      "class": "powershell_wrapper",
+      "command": "powershell.exe -NoProfile -Command <harmless output>",
+      "spawn_attempted": true,
+      "process_created": true,
+      "pid": 3524,
+      "exit_code": 0,
+      "policy_rejected": false
+    },
+    {
+      "class": "cmd_wrapper",
+      "command": "cmd.exe /d /c echo probe-ok",
+      "spawn_attempted": true,
+      "process_created": true,
+      "pid": null,
+      "exit_code": 0,
+      "policy_rejected": false
+    },
+    {
+      "class": "uv_direct",
+      "version": "uv 0.12.3",
+      "spawn_attempted": true,
+      "process_created": true,
+      "pid": null,
+      "exit_code": 0,
+      "policy_rejected": false
+    },
+    {
+      "class": "git_direct",
+      "version": "git version 2.49.0.windows.1",
+      "spawn_attempted": true,
+      "process_created": true,
+      "pid": null,
+      "exit_code": 0,
+      "policy_rejected": false
+    },
+    {
+      "class": "codex_cli",
+      "version": "codex-cli 0.158.0-alpha.2.1",
+      "spawn_attempted": true,
+      "process_created": true,
+      "pid": null,
+      "exit_code": 0,
+      "policy_rejected": false
+    }
+  ],
+  "credential_presence_check": {
+    "checked_process_user_machine_presence_only": true,
+    "database_url": false,
+    "db_host": false,
+    "db_port": false,
+    "db_user": false,
+    "db_password": false,
+    "db_name": false,
+    "student_a_password": false,
+    "student_b_password": false,
+    "secret_values_read_or_emitted": false
+  },
+  "decision": {
+    "changed_policy_or_security_settings": false,
+    "used_policy_bypass": false,
+    "alternative_executor_started": false,
+    "formal_services_started_by_probes": false,
+    "formal_support_posts_sent": false
+  },
+  "official_sources": [
+    "https://learn.chatgpt.com/docs/config-file/config-basic",
+    "https://learn.chatgpt.com/docs/enterprise/managed-configuration",
+    "https://learn.chatgpt.com/docs/agent-configuration/rules",
+    "https://developers.openai.com/api/docs/guides/agents-api/environments/self-hosted"
+  ]
+}
