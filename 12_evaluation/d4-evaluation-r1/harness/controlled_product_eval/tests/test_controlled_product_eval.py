@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import socket
 import sys
 from argparse import Namespace
@@ -357,6 +358,8 @@ def test_evaluation_database_must_be_isolated_loopback(monkeypatch):
 
 
 def test_managed_stack_specs_own_only_loopback_evaluation_services(tmp_path, monkeypatch):
+    inherited_pythonpath = str(tmp_path / "parent-controlled-pythonpath")
+    monkeypatch.setenv("PYTHONPATH", inherited_pythonpath)
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.setenv("DB_HOST", "127.0.0.1")
     monkeypatch.setenv("DB_PORT", "3307")
@@ -383,12 +386,18 @@ def test_managed_stack_specs_own_only_loopback_evaluation_services(tmp_path, mon
     assert upstream != runtime.identity["endpoint"]
     assert all("ollama" not in spec.name.lower() and "llm_runtime" not in spec.name.lower() for spec in specs)
     backend = specs[-1]
+    evaluation_root = ROOT / "12_evaluation" / "d4-evaluation-r1"
     assert backend.environment["SMHAI_CAT__MODE"] == "http"
     assert backend.environment["SMHAI_RAG__MODE"] == "http"
     assert backend.environment["SMHAI_LLM__MODE"] == "http"
     assert backend.environment["SMHAI_SAFETY__MODE"] == "http"
     assert backend.environment["SMHAI_PERSISTENCE_MODE"] == "mysql"
-    assert str(ROOT / "11_database") in backend.environment["PYTHONPATH"]
+    assert str(evaluation_root.resolve()) in backend.environment["PYTHONPATH"].split(os.pathsep)
+    assert str((ROOT / "09_backend" / "src").resolve()) in backend.environment["PYTHONPATH"].split(os.pathsep)
+    assert str((ROOT / "11_database").resolve()) in backend.environment["PYTHONPATH"].split(os.pathsep)
+    assert inherited_pythonpath not in backend.environment["PYTHONPATH"]
+    for spec in specs[:-1]:
+        assert inherited_pythonpath not in spec.environment.get("PYTHONPATH", "")
 
 
 def test_formal_manifest_records_dirty_checkout_configuration_runtime_and_hash(packet, tmp_path):

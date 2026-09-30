@@ -12,7 +12,7 @@ The supervisor owns only processes it starts from these fixed evaluation profile
 - `observers` → `d4-rag-observer` and `d4-llm-observer`
 - `backend` → `d4-backend`
 
-Backend uses the pinned task-local Python 3.12 venv. RAG uses the pinned task-local RAG venv. Observer processes use the Backend interpreter. The profiles fix absolute executables, argv, working directory, loopback listeners, readiness endpoint, stdout/stderr paths, environment allowlist, interpreter version, and lock identity. The supervisor rejects caller-supplied commands, paths, environment values, URLs, or ports.
+Backend uses the pinned task-local Python 3.12 venv. RAG uses the pinned task-local RAG venv. Observer processes use the Backend interpreter. The profiles fix absolute executables, argv, working directory, loopback listeners, readiness endpoint, stdout/stderr paths, environment allowlist, interpreter version, and lock identity. Python import paths contain only resolved evaluation-owned source roots; the parent process `PYTHONPATH` is not forwarded. The supervisor rejects caller-supplied commands, paths, environment values, URLs, or ports.
 
 MySQL, CAT, OPA, Safety, Runtime, and Ollama are reported as external dependencies. The supervisor inventories their configured loopback listener ports but does not adopt, start, or stop them. Safety/OPA ownership remains with the operator. Runtime and Ollama remain at the accepted `8160` and `11437` service/provider endpoints; the profile does not use `11434`. The inventory uses the formal port set and does not connect to MySQL port `3306`.
 

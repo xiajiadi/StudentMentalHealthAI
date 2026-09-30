@@ -13,13 +13,15 @@
 
 | Check | Result | Evidence |
 |---|---|---|
-| Supervisor-focused tests | PASS | `6 passed in 3.14s` |
-| Full `controlled_product_eval/tests` suite | PASS | `62 passed in 39.38s`; includes runner-integrity, observer/profile, and supervisor coverage |
-| Schema validation tests | PASS | `24 passed in 0.32s` |
+| Supervisor-focused tests | PASS | `6 passed in 3.10s` on the verbose rerun |
+| Managed-profile import-path regression | PASS | `1 passed, 39 deselected`; a parent-controlled `PYTHONPATH` was excluded |
+| Full `controlled_product_eval/tests` suite | PASS | `62 passed in 40.31s`; includes runner-integrity, observer/profile, and supervisor coverage |
+| Schema validation tests | PASS | `24 passed in 0.31s` |
 | Evaluation harness compileall | PASS | `python -m compileall -q harness`, exit 0 |
 | Backend interpreter | PASS | Direct task-local Python reports `3.12.13`; managed Backend rejects non-3.12 versions |
 | RAG interpreter and lock identity | PASS | Absolute task-local interpreter reports `3.12.13`; accepted task-local lock hash is included when identity files match |
 | Process environment allowlist | PASS | Parent-only test variable is excluded; unapproved profile variable is rejected |
+| Import path isolation | PASS | A parent-controlled `PYTHONPATH` is set in the profile test and does not appear in RAG, observer, or Backend child paths |
 | Secret redaction and stream separation | PASS | Test-only sentinel is absent from both log files; `<redacted>` appears in stdout and stderr logs |
 | PID ownership and cleanup | PASS | Harmless loopback fixture starts through absolute Python, records PID/parent PID, then verifies process exit and listener closure |
 | Static shell-launcher scan | PASS | No `shell=True`, `powershell.exe`, `pwsh.exe`, `Start-Process`, or `cmd.exe /c` service launch in D4-3B Python source |
@@ -28,6 +30,8 @@
 | Scope scan | PASS | Changed paths remain under `12_evaluation/**` |
 
 The source tests validate the process manager with an isolated harmless HTTP fixture. They do not claim that a live MySQL, Ollama, CAT, Runtime, RAG index, observer, or Backend service was restarted. Live external services were left untouched, and Backend startup is blocked by missing DB environment values.
+
+One quiet supervisor-only invocation returned exit code 1 with no output. The immediate verbose rerun passed all six tests, and the full 62-test suite passed. The transient empty result was not reproduced; its cause is unknown.
 
 ## Network and formal-run boundaries
 
@@ -39,4 +43,4 @@ The source tests validate the process manager with an isolated harmless HTTP fix
 
 ## Review disposition
 
-Engineering tests pass for the changed evaluation harness. This is a handoff for focused C review, not project acceptance. C should inspect the actual diff and confirm the absence of policy bypasses, shell escapes, arbitrary command execution, evidence-semantic changes, Runtime identity drift, manifest weakening, sensitive-value serialization, and changes outside the authorized scope.
+The first C review of commit `c14f403c98f7b7d443ebf05f1c6bc3c01354ce63` found a P1: the profile builder appended the parent process `PYTHONPATH`. The follow-up removes that source and adds a regression assertion; independent re-review is pending. Engineering tests pass for the changed evaluation harness, but this is not project acceptance. C should inspect the follow-up diff and confirm the absence of policy bypasses, shell escapes, arbitrary command execution, evidence-semantic changes, Runtime identity drift, manifest weakening, sensitive-value serialization, and changes outside the authorized scope.

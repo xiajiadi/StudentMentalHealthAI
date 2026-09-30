@@ -4,6 +4,8 @@
 
 Independently review the current HEAD of branch `work/d4-3b-formal-run-integration` in `D:\Projects\StudentMentalHealthAI-d4-formal-run`. The change is evaluation-only and limited to `12_evaluation/d4-evaluation-r1/**`. Starting commit before these edits: `35f1ac86fe941aa015cd85163fda50ccddf6a1d7`. Resolve the submitted commit with `git rev-parse HEAD` at review time and inspect the actual diff; this file is not a substitute for source review.
 
+The first C review of commit `c14f403c98f7b7d443ebf05f1c6bc3c01354ce63` returned `CONTROLLER_DECISION_REQUIRED`: `_managed_pythonpath` appended the parent process path. The follow-up removes that input and adds a regression assertion that sets an untrusted parent path and proves it is absent from every child service profile. Verify this correction and the complete current diff independently.
+
 ## Required review focus
 
 1. No security-policy bypass, command obfuscation, encoded PowerShell, nested-shell escape, or change to managed/host policy.
@@ -19,7 +21,8 @@ Independently review the current HEAD of branch `work/d4-3b-formal-run-integrati
 - `pytest -q harness\controlled_product_eval\tests`: 62 passed.
 - `pytest -q harness\foundation\test_schema_validation.py`: 24 passed.
 - `python -m compileall -q harness`: exit 0.
-- Focused supervisor test file: 6 passed.
+- Focused supervisor test file: 6 passed on verbose rerun.
+- Managed-profile import-path regression (`-k managed_stack_specs`): 1 passed, 39 deselected; parent `PYTHONPATH` absent from all service profiles.
 - Harmless process probes: direct Python, PowerShell, `cmd.exe`, `uv`, Git, and Codex CLI all exited 0; historical `blocked by policy` was not reproduced.
 - Current external services were not started, adopted, or stopped. No formal manifest was frozen and no support POST was sent.
 - Safe environment-presence checks found DB and synthetic-account variables absent in Process/User/Machine scopes. No secret values were read or emitted.

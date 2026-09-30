@@ -121,11 +121,10 @@ async def _run(
     )
 
 
-def _managed_pythonpath(base: str | None, *paths: Path) -> str:
-    ordered = [str(path.resolve()) for path in paths]
-    if base:
-        ordered.append(base)
-    return os.pathsep.join(ordered)
+def _managed_pythonpath(*paths: Path) -> str:
+    """Build an import path only from evaluation-owned, resolved source roots."""
+
+    return os.pathsep.join(str(path.resolve()) for path in paths)
 
 
 def _python_version(executable: Path) -> str:
@@ -256,16 +255,16 @@ def _managed_specs(
         raise RunnerError("formal CAT and Safety endpoints must use HTTP loopback")
     service_root.mkdir(parents=True, exist_ok=True)
     rag_env = {
-        "PYTHONPATH": _managed_pythonpath(os.environ.get("PYTHONPATH"), evaluation_root),
+        "PYTHONPATH": _managed_pythonpath(evaluation_root),
         "HF_HUB_OFFLINE": "1",
         "TRANSFORMERS_OFFLINE": "1",
     }
     observer_env = {
-        "PYTHONPATH": _managed_pythonpath(os.environ.get("PYTHONPATH"), evaluation_root),
+        "PYTHONPATH": _managed_pythonpath(evaluation_root),
     }
     backend_env = {
         "PYTHONPATH": _managed_pythonpath(
-            os.environ.get("PYTHONPATH"), evaluation_root, backend_src, database_src
+            evaluation_root, backend_src, database_src
         ),
         "SMHAI_ENVIRONMENT": "local",
         "SMHAI_HOST": "127.0.0.1",

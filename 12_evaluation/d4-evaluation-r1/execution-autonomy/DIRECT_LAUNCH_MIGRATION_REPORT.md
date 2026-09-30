@@ -5,13 +5,14 @@
 - `process_lifecycle.py` now requires absolute executable and working-directory paths, starts with argument arrays and `shell=False`, uses a per-profile child-environment allowlist, captures stdout and stderr separately, and redacts sensitive environment values from captured log lines.
 - Lifecycle identities now retain executable, redacted arguments, cwd, PID, parent PID, start/stop timestamps, return code, listener/readiness state, ownership, interpreter version, package-lock identity, log paths, and shutdown method. Stop verification checks that the TCP listener closed; an HTTP 404 is no longer treated as proof that a service stopped.
 - Managed profiles verify the supplied interpreter directly. Backend must be an absolute `python.exe` reporting Python 3.12; RAG uses its explicit task-local interpreter. The profile records the installed Backend/Database lock hashes or accepted RAG lock hash when the task-local identity files are present.
+- Managed `PYTHONPATH` values contain only resolved evaluation-owned source roots. A caller's parent `PYTHONPATH` is not copied into any service profile.
 - The Backend child receives only its declared `SMHAI_*` configuration and present `DATABASE_URL` or `DB_*` values. Those values stay in process memory and are excluded from lifecycle records; exact sensitive values are redacted from child stdout/stderr logs.
 - Git identity collection and the deterministic harness resolve Git to an absolute executable. Network inventory resolves Windows `netstat.exe` under `SystemRoot\System32` first and invokes it directly.
 - Added a persistent D4 JSONL supervisor. It owns only the RAG process, the two observers, and the Backend process it starts. Requests cannot change a service executable, arguments, environment, port, or path.
 
 ## Launch and service verification
 
-The controlled launch probes completed successfully: absolute Python 3.14.6, Backend Python 3.12.13, RAG Python 3.12.13, CAT Python 3.14.6, and Runtime Python 3.12.13 reported their versions. The direct generic lifecycle fixture started and stopped a local Python service, verified its listener closed, captured separate streams, and confirmed test-only sensitive text was redacted.
+The controlled launch probes completed successfully: absolute Python 3.14.6, Backend Python 3.12.13, RAG Python 3.12.13, CAT Python 3.14.6, and Runtime Python 3.12.13 reported their versions. The direct generic lifecycle fixture started and stopped a local Python service, verified its listener closed, captured separate streams, and confirmed test-only sensitive text was redacted. A profile regression test sets a caller-controlled `PYTHONPATH` and verifies it is absent from the RAG, observer, and Backend child configurations.
 
 Actual production service starts/stops were deliberately not attempted where an operator-owned listener was already active. The policy is not to adopt or stop those processes. The persistent supervisor’s profiles and current evidence therefore separate code-path verification from live-service lifecycle proof:
 
