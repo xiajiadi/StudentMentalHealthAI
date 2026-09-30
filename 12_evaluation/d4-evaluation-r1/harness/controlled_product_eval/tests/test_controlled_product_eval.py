@@ -58,6 +58,18 @@ ROOT = Path(__file__).resolve().parents[5]
 EVAL_ROOT = Path(__file__).resolve().parents[3]
 PACKET_PATH = EVAL_ROOT / "D4_3A_HUMAN_GOLD_REVIEW_PACKET.json"
 SCHEMA_ROOT = ROOT / "12_evaluation" / "d4-evaluation-r1" / "spec"
+FORMAL_RUNTIME_IDENTITY = {
+    "ollama_version": "0.33.3",
+    "model": "qwen2.5:7b-instruct-q4_K_M",
+    "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+    "num_ctx": 8192,
+    "kv_cache_type": "f16",
+    "num_parallel": 1,
+    "max_loaded_models": 1,
+    "output_budget": 768,
+    "cloud_fallback": False,
+    "endpoint": "http://127.0.0.1:11437",
+}
 
 
 @pytest.fixture()
@@ -176,9 +188,10 @@ def test_temporary_rag_materialization_refuses_checkout_writes(tmp_path, packet)
 
 
 def test_runtime_preflight_requires_exact_identity_hash_and_loopback():
+    assert EXPECTED_RUNTIME_IDENTITY == FORMAL_RUNTIME_IDENTITY
     preflight = build_runtime_preflight(observed_at=datetime(2026, 9, 25, tzinfo=timezone.utc))
     verified = RuntimePreflight.from_mapping(preflight)
-    assert verified.identity == EXPECTED_RUNTIME_IDENTITY
+    assert verified.identity == FORMAL_RUNTIME_IDENTITY
     schema = json.loads((SCHEMA_ROOT / "d4_runtime_preflight.schema.json").read_text(encoding="utf-8"))
     jsonschema.Draft202012Validator(schema).validate(preflight)
     wrong_digest = deepcopy(preflight)
@@ -196,6 +209,42 @@ def test_runtime_preflight_requires_exact_identity_hash_and_loopback():
     egress["preflight_hash"] = canonical_sha256_tag(egress, self_field="preflight_hash")
     with pytest.raises(ManifestError, match="loopback"):
         RuntimePreflight.from_mapping(egress)
+
+
+@pytest.mark.parametrize("endpoint", [
+    "http://127.0.0.1:11434",
+    "http://127.0.0.1:11438",
+    "http://192.0.2.10:11437",
+])
+def test_runtime_preflight_rejects_nonformal_endpoint(endpoint):
+    identity = {**FORMAL_RUNTIME_IDENTITY, "endpoint": endpoint}
+    preflight = build_runtime_preflight(
+        observed_at="2026-09-25T00:00:00Z",
+        identity=identity,
+    )
+    with pytest.raises(ManifestError, match="identity mismatch: endpoint"):
+        RuntimePreflight.from_mapping(preflight)
+
+
+@pytest.mark.parametrize(("field", "value"), [
+    ("ollama_version", "0.33.2"),
+    ("model", "qwen2.5:7b-instruct-q4_K_M-other"),
+    ("digest", "0" * 64),
+    ("num_ctx", 4096),
+    ("kv_cache_type", "q8_0"),
+    ("num_parallel", 2),
+    ("max_loaded_models", 2),
+    ("output_budget", 769),
+    ("cloud_fallback", True),
+])
+def test_runtime_preflight_rejects_drift_in_every_non_endpoint_identity_field(field, value):
+    identity = {**FORMAL_RUNTIME_IDENTITY, field: value}
+    preflight = build_runtime_preflight(
+        observed_at="2026-09-25T00:00:00Z",
+        identity=identity,
+    )
+    with pytest.raises(ManifestError, match=f"identity mismatch: {field}"):
+        RuntimePreflight.from_mapping(preflight)
 
 
 def _rag_identity(corpus):
@@ -382,6 +431,9 @@ def test_formal_manifest_records_dirty_checkout_configuration_runtime_and_hash(p
     assert manifest["retry_policy"]["non_idempotent_post_retries"] == 0
     assert manifest["backend_identity"]["route"] == "/api/v1/support/requests"
     assert manifest["rag_corpus_identity"]["rag_service"]["index_reused"] is False
+    assert manifest["runtime_expected_identity"] == FORMAL_RUNTIME_IDENTITY
+    assert manifest["runtime_expected_identity"]["endpoint"] == "http://127.0.0.1:11437"
+    assert manifest["runtime_observed_identity"] == FORMAL_RUNTIME_IDENTITY
     schema = json.loads((SCHEMA_ROOT / "d4_slice3b_run_manifest.schema.json").read_text(encoding="utf-8"))
     jsonschema.Draft202012Validator(schema).validate(manifest)
 

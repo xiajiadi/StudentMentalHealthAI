@@ -49,7 +49,7 @@ EXPECTED_RUNTIME_IDENTITY: dict[str, Any] = {
     "max_loaded_models": 1,
     "output_budget": 768,
     "cloud_fallback": False,
-    "endpoint": "http://127.0.0.1:11434",
+    "endpoint": "http://127.0.0.1:11437",
 }
 
 _EXPECTED_ACTION = {

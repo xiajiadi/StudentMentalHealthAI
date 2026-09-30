@@ -4,6 +4,12 @@ This directory contains the evaluation-only consumer, manifests, schemas, result
 
 The approved packet remains byte-for-byte unchanged. Its packet hash is `sha256:cfbe640300c2cbfbfe9616bb20b10b6ed80e7ee1e15169aadf2052ac8de107c6`. The consumer rejects duplicate JSON keys, checks the approval record and canonical hash, and records both the raw file hash and bound source hashes.
 
+## Formal Runtime identity
+
+D4-3B formal preflight requires the exact Runtime identity in `manifest.py`, including `http://127.0.0.1:11437`, Ollama `0.33.3`, and the approved Qwen model digest. Every identity field is checked by strict equality; alternate ports, including `11434`, are rejected. There is no environment override or endpoint allow-list.
+
+The separate Runtime Reconstruction R1 evidence records a historical Ollama `0.21.1` integration at `http://127.0.0.1:11434`. That evidence remains historical and is not the D4-3B formal Runtime target.
+
 ## Prepare deterministic inputs
 
 Run from the project root. Keep generated manifests and run outputs outside the checkout.
