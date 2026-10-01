@@ -13,7 +13,7 @@ import socket
 import subprocess
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dataclass_field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
@@ -32,12 +32,19 @@ class LifecycleError(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
+class ManagedCommandResult:
+    return_code: int
+    stdout: bytes = dataclass_field(repr=False)
+    stderr: bytes = dataclass_field(repr=False)
+
+
+@dataclass(frozen=True, slots=True)
 class ProcessSpec:
     name: str
     executable: Path
     arguments: tuple[str, ...]
     cwd: Path
-    environment: Mapping[str, str]
+    environment: Mapping[str, str] = dataclass_field(repr=False)
     readiness_url: str
     readiness_kind: str
     log_path: Path
@@ -46,6 +53,7 @@ class ProcessSpec:
     package_lock_identity: Mapping[str, str] | None = None
     ownership_type: str = "D4_EVALUATION_SUPERVISOR_OWNED"
     environment_allowlist: frozenset[str] | None = None
+    redaction_values: tuple[str, ...] = dataclass_field(default=(), repr=False)
 
 
 @dataclass(slots=True)
@@ -131,6 +139,15 @@ def _secret_bytes(environment: Mapping[str, str]) -> tuple[bytes, ...]:
     return tuple(sorted(values, key=len, reverse=True))
 
 
+def _redaction_bytes(values: tuple[str, ...]) -> tuple[bytes, ...]:
+    encoded = {
+        value.encode("utf-8", errors="surrogatepass")
+        for value in values
+        if isinstance(value, str) and value
+    }
+    return tuple(sorted(encoded, key=len, reverse=True))
+
+
 def _copy_redacted_log(source: Any, target: Any, secret_values: tuple[bytes, ...]) -> None:
     try:
         while True:
@@ -143,6 +160,106 @@ def _copy_redacted_log(source: Any, target: Any, secret_values: tuple[bytes, ...
             target.flush()
     finally:
         source.close()
+
+
+def run_managed_command(
+    *,
+    name: str,
+    executable: Path,
+    arguments: tuple[str, ...],
+    cwd: Path,
+    environment: Mapping[str, str],
+    environment_allowlist: frozenset[str],
+    stdout_path: Path,
+    stderr_path: Path,
+    timeout_seconds: float = 120.0,
+    check: bool = True,
+    redaction_values: tuple[str, ...] = (),
+) -> ManagedCommandResult:
+    """Run one fixed evaluation bootstrap command with redacted child output."""
+
+    if not executable.is_absolute() or not cwd.is_absolute():
+        raise LifecycleError(f"managed command {name} requires absolute executable and cwd paths")
+    executable = executable.resolve()
+    cwd = cwd.resolve()
+    if not executable.is_file() or not cwd.is_dir():
+        raise LifecycleError(f"managed command {name} has an unavailable executable or working directory")
+    if timeout_seconds <= 0:
+        raise LifecycleError(f"managed command {name} has an invalid timeout")
+
+    secret_values = tuple(
+        sorted(set(_secret_bytes(environment) + _redaction_bytes(redaction_values)), key=len, reverse=True)
+    )
+    secret_text_values = tuple(
+        value.decode("utf-8", errors="surrogatepass") for value in secret_values
+    )
+    if any(secret in argument for secret in secret_text_values for argument in arguments):
+        raise LifecycleError(f"managed command {name} must receive secrets through its process environment")
+    child_environment = build_child_environment(
+        environment,
+        allowed_names=environment_allowlist,
+    )
+
+    def redact(value: bytes | None) -> bytes:
+        output = value or b""
+        for secret in secret_values:
+            output = output.replace(secret, b"<redacted>")
+        return output
+
+    stdout = b""
+    stderr = b""
+    try:
+        result = subprocess.run(
+            [str(executable), *arguments],
+            cwd=cwd,
+            env=child_environment,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            shell=False,
+            close_fds=True,
+            creationflags=(
+                getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                | getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            ),
+            timeout=timeout_seconds,
+            check=False,
+        )
+        stdout = redact(result.stdout)
+        stderr = redact(result.stderr)
+        return_code = result.returncode
+    except subprocess.TimeoutExpired as exc:
+        stdout = redact(exc.stdout)
+        stderr = redact(exc.stderr)
+        _write_command_logs(name, stdout_path, stderr_path, stdout, stderr)
+        raise LifecycleError(f"managed command {name} timed out") from None
+    except OSError as exc:
+        raise LifecycleError(
+            f"managed command {name} could not start ({type(exc).__name__})"
+        ) from None
+
+    _write_command_logs(name, stdout_path, stderr_path, stdout, stderr)
+    if check and return_code != 0:
+        raise LifecycleError(f"managed command {name} failed with exit code {return_code}")
+    return ManagedCommandResult(return_code=return_code, stdout=stdout, stderr=stderr)
+
+
+def _write_command_logs(
+    name: str,
+    stdout_path: Path,
+    stderr_path: Path,
+    stdout: bytes,
+    stderr: bytes,
+) -> None:
+    try:
+        stdout_path.parent.mkdir(parents=True, exist_ok=True)
+        stderr_path.parent.mkdir(parents=True, exist_ok=True)
+        stdout_path.write_bytes(stdout)
+        stderr_path.write_bytes(stderr)
+    except OSError as exc:
+        raise LifecycleError(
+            f"managed command {name} could not save redacted output ({type(exc).__name__})"
+        ) from None
 
 
 def _loopback_parts(url: str) -> tuple[str, int]:
@@ -247,7 +364,13 @@ class ProcessSupervisor:
         )
         stderr_path.parent.mkdir(parents=True, exist_ok=True)
         command = [str(executable), *spec.arguments]
-        secret_values = _secret_bytes(spec.environment)
+        secret_values = tuple(
+            sorted(
+                set(_secret_bytes(spec.environment) + _redaction_bytes(spec.redaction_values)),
+                key=len,
+                reverse=True,
+            )
+        )
         secret_text_values = [value.decode("utf-8", errors="surrogatepass") for value in secret_values]
         if any(secret in argument for secret in secret_text_values for argument in spec.arguments):
             raise LifecycleError(f"managed service {spec.name} must receive secrets through its process environment")

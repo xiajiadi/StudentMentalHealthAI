@@ -5,6 +5,7 @@ import json
 import os
 import socket
 import sys
+import uuid
 from argparse import Namespace
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -23,7 +24,11 @@ from harness.controlled_product_eval.approved_packet import (
     load_approved_packet,
     thaw_json,
 )
-from harness.controlled_product_eval.cli import _evaluation_database_endpoint, _managed_specs
+from harness.controlled_product_eval.cli import _managed_specs
+from harness.controlled_product_eval.cli import _verify_external_services
+from harness.controlled_product_eval.credential_provider import (
+    EvaluationCredentialProvider,
+)
 from harness.controlled_product_eval.environment_profiles import BACKEND_PYTHON, RAG_PYTHON
 from harness.controlled_product_eval.manifest import (
     EXPECTED_RUNTIME_IDENTITY,
@@ -339,34 +344,14 @@ async def test_process_supervisor_starts_and_stops_only_its_owned_local_process(
     assert cleanup["services"][0]["stopped"] is True
 
 
-def test_evaluation_database_must_be_isolated_loopback(monkeypatch):
-    monkeypatch.delenv("DATABASE_URL", raising=False)
-    monkeypatch.setenv("DB_HOST", "127.0.0.1")
-    monkeypatch.setenv("DB_PORT", "3307")
-    monkeypatch.setenv("DB_USER", "synthetic_evaluation")
-    monkeypatch.setenv("DB_PASSWORD", "test-only-placeholder")
-    monkeypatch.setenv("DB_NAME", "smhai_d4_evaluation")
-    assert _evaluation_database_endpoint() == ("127.0.0.1", 3307)
-
-    monkeypatch.setenv("DB_HOST", "10.0.0.5")
-    with pytest.raises(RunnerError, match="loopback"):
-        _evaluation_database_endpoint()
-
-    monkeypatch.setenv("DB_HOST", "127.0.0.1")
-    monkeypatch.setenv("DB_PORT", "3306")
-    with pytest.raises(RunnerError, match="isolated MySQL port"):
-        _evaluation_database_endpoint()
-
-
 def test_managed_stack_specs_own_only_loopback_evaluation_services(tmp_path, monkeypatch):
     inherited_pythonpath = str(tmp_path / "parent-controlled-pythonpath")
     monkeypatch.setenv("PYTHONPATH", inherited_pythonpath)
-    monkeypatch.delenv("DATABASE_URL", raising=False)
-    monkeypatch.setenv("DB_HOST", "127.0.0.1")
-    monkeypatch.setenv("DB_PORT", "3307")
-    monkeypatch.setenv("DB_USER", "synthetic_evaluation")
-    monkeypatch.setenv("DB_PASSWORD", "test-only-placeholder")
-    monkeypatch.setenv("DB_NAME", "smhai_d4_evaluation")
+    ambient_password = "ambient-" + uuid.uuid4().hex
+    monkeypatch.setenv("DB_PASSWORD", ambient_password)
+    provider = EvaluationCredentialProvider()
+    database_credential = provider.generate_database_credential()
+    login_credentials = provider.resolve_frozen_synthetic_credentials(ROOT)
     runtime = RuntimePreflight.from_mapping(build_runtime_preflight(observed_at="2026-09-25T00:00:00Z"))
     events = tmp_path / "events"
     specs = _managed_specs(
@@ -377,8 +362,10 @@ def test_managed_stack_specs_own_only_loopback_evaluation_services(tmp_path, mon
         runtime=runtime,
         rag_events=events / "rag.jsonl",
         llm_events=events / "llm.jsonl",
+        database_credential=database_credential,
+        credential_redactions=login_credentials.secret_values(),
     )
-    assert [spec.name for spec in specs] == ["d4-rag", "d4-rag-observer", "d4-llm-observer", "d4-backend"]
+    assert [spec.name for spec in specs] == ["d4-backend", "d4-rag", "d4-rag-observer", "d4-llm-observer"]
     assert all(spec.readiness_url.startswith("http://127.0.0.1:") for spec in specs)
     llm_observer = next(spec for spec in specs if spec.name == "d4-llm-observer")
     upstream = llm_observer.arguments[llm_observer.arguments.index("--upstream") + 1]
@@ -386,7 +373,7 @@ def test_managed_stack_specs_own_only_loopback_evaluation_services(tmp_path, mon
     assert runtime.identity["endpoint"] == "http://127.0.0.1:11437"
     assert upstream != runtime.identity["endpoint"]
     assert all("ollama" not in spec.name.lower() and "llm_runtime" not in spec.name.lower() for spec in specs)
-    backend = specs[-1]
+    backend = specs[0]
     evaluation_root = ROOT / "12_evaluation" / "d4-evaluation-r1"
     assert backend.environment["SMHAI_CAT__MODE"] == "http"
     assert backend.environment["SMHAI_RAG__MODE"] == "http"
@@ -397,8 +384,211 @@ def test_managed_stack_specs_own_only_loopback_evaluation_services(tmp_path, mon
     assert str((ROOT / "09_backend" / "src").resolve()) in backend.environment["PYTHONPATH"].split(os.pathsep)
     assert str((ROOT / "11_database").resolve()) in backend.environment["PYTHONPATH"].split(os.pathsep)
     assert inherited_pythonpath not in backend.environment["PYTHONPATH"]
-    for spec in specs[:-1]:
+    child_credential_matches = backend.environment["DB_PASSWORD"] == database_credential.password
+    assert child_credential_matches, "Backend must receive only the new run-local database credential"
+    ambient_credential_excluded = backend.environment["DB_PASSWORD"] != ambient_password
+    assert ambient_credential_excluded, "ambient database credentials must not be inherited"
+    argv_secret_free = all(
+        database_credential.password not in argument
+        for spec in specs
+        for argument in spec.arguments
+    )
+    assert argv_secret_free, "database credentials must not enter service argv"
+    redaction_profile_matches = backend.redaction_values == login_credentials.secret_values()
+    assert redaction_profile_matches, "synthetic login credentials must be available only to the log redactor"
+    repr_is_redacted = all(
+        value not in repr(backend)
+        for value in (database_credential.password, *login_credentials.secret_values())
+    )
+    assert repr_is_redacted, "service profile repr must not expose credentials"
+    for spec in specs[1:]:
         assert inherited_pythonpath not in spec.environment.get("PYTHONPATH", "")
+
+
+def test_external_preflight_checks_loopback_safety_opa_runtime_and_ollama(monkeypatch):
+    calls = []
+
+    class Response:
+        def __init__(self, status_code, payload):
+            self.status_code = status_code
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    class Client:
+        def __init__(self, **kwargs):
+            assert kwargs.get("trust_env") is False
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, url):
+            calls.append(url)
+            if url.endswith("/api/version"):
+                return Response(200, {"version": EXPECTED_RUNTIME_IDENTITY["ollama_version"]})
+            if url.endswith("/api/tags"):
+                return Response(
+                    200,
+                    {
+                        "models": [
+                            {
+                                "name": EXPECTED_RUNTIME_IDENTITY["model"],
+                                "digest": EXPECTED_RUNTIME_IDENTITY["digest"],
+                            }
+                        ]
+                    },
+                )
+            if url == "http://127.0.0.1:8160/health/ready":
+                return Response(
+                    200,
+                    {
+                        "status": "READY",
+                        "health": {
+                            "readiness": "pass",
+                            "cloud_fallback": False,
+                            "models": {
+                                "student.support.local": {
+                                    "provider_model_id": EXPECTED_RUNTIME_IDENTITY["model"]
+                                }
+                            },
+                        },
+                    },
+                )
+            return Response(200, {"status": "READY"})
+
+    monkeypatch.setattr("harness.controlled_product_eval.cli.httpx.AsyncClient", Client)
+    evidence = asyncio.run(_verify_external_services())
+    assert evidence["network_policy"] == "LOOPBACK_ONLY"
+    assert set(evidence["services"]) == {"cat", "runtime", "safety", "opa", "ollama"}
+    assert all(url.startswith("http://127.0.0.1:") for url in calls)
+    assert calls == [
+        "http://127.0.0.1:8190/health/ready",
+        "http://127.0.0.1:8181/health",
+        "http://127.0.0.1:11437/api/version",
+        "http://127.0.0.1:11437/api/tags",
+        "http://127.0.0.1:8160/health/ready",
+        "http://127.0.0.1:8180/health/ready",
+    ]
+    assert "http://127.0.0.1:8181/health" in calls
+    assert "http://127.0.0.1:8190/health/ready" in calls
+
+
+def test_external_preflight_rejects_ollama_digest_drift(monkeypatch):
+    class Response:
+        def __init__(self, status_code, payload):
+            self.status_code = status_code
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    class Client:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, url):
+            if url.endswith("/api/version"):
+                return Response(200, {"version": EXPECTED_RUNTIME_IDENTITY["ollama_version"]})
+            if url.endswith("/api/tags"):
+                return Response(
+                    200,
+                    {
+                        "models": [
+                            {
+                                "name": EXPECTED_RUNTIME_IDENTITY["model"],
+                                "digest": "0" * 64,
+                            }
+                        ]
+                    },
+                )
+            if url == "http://127.0.0.1:8160/health/ready":
+                return Response(
+                    200,
+                    {
+                        "status": "READY",
+                        "health": {
+                            "readiness": "pass",
+                            "cloud_fallback": False,
+                            "models": {
+                                "student.support.local": {
+                                    "provider_model_id": EXPECTED_RUNTIME_IDENTITY["model"]
+                                }
+                            },
+                        },
+                    },
+                )
+            return Response(200, {})
+
+    monkeypatch.setattr("harness.controlled_product_eval.cli.httpx.AsyncClient", Client)
+    with pytest.raises(RunnerError, match="digest"):
+        asyncio.run(_verify_external_services())
+
+
+def test_external_preflight_rejects_runtime_model_drift(monkeypatch):
+    class Response:
+        def __init__(self, status_code, payload):
+            self.status_code = status_code
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    class Client:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, url):
+            if url.endswith("/api/version"):
+                return Response(200, {"version": EXPECTED_RUNTIME_IDENTITY["ollama_version"]})
+            if url.endswith("/api/tags"):
+                return Response(
+                    200,
+                    {
+                        "models": [
+                            {
+                                "name": EXPECTED_RUNTIME_IDENTITY["model"],
+                                "digest": EXPECTED_RUNTIME_IDENTITY["digest"],
+                            }
+                        ]
+                    },
+                )
+            if url == "http://127.0.0.1:8160/health/ready":
+                return Response(
+                    200,
+                    {
+                        "status": "READY",
+                        "health": {
+                            "readiness": "pass",
+                            "cloud_fallback": False,
+                            "models": {
+                                "student.support.local": {
+                                    "provider_model_id": "qwen2.5:0.5b"
+                                }
+                            },
+                        },
+                    },
+                )
+            return Response(200, {})
+
+    monkeypatch.setattr("harness.controlled_product_eval.cli.httpx.AsyncClient", Client)
+    with pytest.raises(RunnerError, match="Runtime readiness identity"):
+        asyncio.run(_verify_external_services())
 
 
 def test_formal_manifest_records_dirty_checkout_configuration_runtime_and_hash(packet, tmp_path):
@@ -530,6 +720,7 @@ def test_invalid_runtime_fails_before_transport_preflight_or_product_calls(packe
         observer_urls={"rag": "http://127.0.0.1:8271", "llm": "http://127.0.0.1:8272"},
         rag_observer_events=tmp_path / "rag.jsonl",
         llm_observer_events=tmp_path / "llm.jsonl",
+        passwords=EvaluationCredentialProvider().resolve_frozen_synthetic_credentials(ROOT).password_mapping(),
     )
     calls: list[str] = []
 
@@ -559,6 +750,52 @@ def test_invalid_runtime_fails_before_transport_preflight_or_product_calls(packe
         )
     assert calls == []
     assert not (tmp_path / "runs").exists()
+
+
+def test_unexpected_configuration_stops_before_formal_manifest_freeze(packet, tmp_path):
+    corpus = build_approved_corpus_manifest(packet)
+    credentials = EvaluationCredentialProvider().resolve_frozen_synthetic_credentials(ROOT)
+    transport = CanonicalHttpTransport(
+        backend_base_url="http://127.0.0.1:8080",
+        observer_urls={"rag": "http://127.0.0.1:8271", "llm": "http://127.0.0.1:8272"},
+        rag_observer_events=tmp_path / "rag.jsonl",
+        llm_observer_events=tmp_path / "llm.jsonl",
+        passwords=credentials.password_mapping(),
+    )
+
+    async def preflight_with_unexpected_configuration():
+        return {
+            "rag_service_identity": _rag_identity(corpus),
+            "runtime_endpoint_health_identity": {
+                "readiness": "pass",
+                "cloud_fallback": False,
+                "runtime_version": "0.1.0",
+            },
+            "backend_dependency_identity": _backend_dependencies(),
+            "unexpected_configuration": ["test-only unexpected setting"],
+        }
+
+    transport.preflight = preflight_with_unexpected_configuration
+    output_root = tmp_path / "premanifest-stop"
+    result = asyncio.run(
+        run_evaluation(
+            packet=packet,
+            case_manifest=build_case_manifest(packet),
+            corpus_manifest=corpus,
+            runtime_preflight=build_runtime_preflight(observed_at="2026-09-25T00:00:00Z"),
+            transport=transport,
+            backend_base_url="http://127.0.0.1:8080",
+            observer_endpoints={"rag": "http://127.0.0.1:8271", "llm": "http://127.0.0.1:8272"},
+            rag_observer_events=tmp_path / "rag.jsonl",
+            llm_observer_events=tmp_path / "llm.jsonl",
+            repo_root=ROOT,
+            output_root=output_root,
+        )
+    )
+    assert result["summary"]["status"] == "CONTROLLER_DECISION_REQUIRED"
+    assert result["manifest_path"] is None
+    assert not list(output_root.rglob("manifest.json"))
+    assert (output_root / "preflight-stop.json").is_file()
 
 
 def test_case_result_serializes_required_evidence_fields_and_schema(packet):

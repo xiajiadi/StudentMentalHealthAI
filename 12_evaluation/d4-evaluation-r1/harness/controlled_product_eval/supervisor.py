@@ -1,8 +1,8 @@
 """Persistent, allow-listed JSONL supervisor for D4 evaluation-owned services.
 
-The supervisor owns only the RAG service, two observers, and Backend started by
-this process. MySQL, CAT, Runtime/Ollama, Safety, and OPA remain external
-dependencies and are never adopted or stopped here.
+The parent bootstrap owns a new isolated MySQL instance; JSONL manages only the
+allow-listed Backend, fresh RAG service, and observers. CAT, Runtime/Ollama,
+Safety, and OPA remain external dependencies and are never adopted or stopped.
 """
 
 from __future__ import annotations
@@ -18,11 +18,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TextIO
 
-from .cli import _evaluation_database_endpoint, _managed_specs
+from .cli import _managed_specs
+from .credential_provider import (
+    CredentialProviderError,
+    DatabaseCredential,
+    EvaluationCredentialProvider,
+    credential_evidence_metadata,
+)
 from .environment_profiles import BACKEND_PYTHON, D4_TASK_TOOLS_ROOT, RAG_PYTHON
-from .network_integrity import FORMAL_DATA_PLANE_PORTS, capture_data_plane_network
+from .mysql_bootstrap import IsolatedMySqlBootstrap, MySqlBootstrapError
+from .manifest import write_json_once
+from .network_integrity import capture_data_plane_network
 from .process_lifecycle import LifecycleError, ProcessSpec, ProcessSupervisor
-from .runner import RunnerError
+from .runner import CanonicalHttpTransport, RunnerError
 
 
 DEFAULT_TOOLS_ROOT = D4_TASK_TOOLS_ROOT
@@ -31,9 +39,8 @@ OWNED_GROUPS = {
     "observers": ("d4-rag-observer", "d4-llm-observer"),
     "backend": ("d4-backend",),
 }
-START_ORDER = ("d4-rag", "d4-rag-observer", "d4-llm-observer", "d4-backend")
+START_ORDER = ("d4-backend", "d4-rag", "d4-rag-observer", "d4-llm-observer")
 EXTERNAL_DEPENDENCIES = {
-    "mysql": (3307, "EXTERNALLY_OPERATOR_MANAGED"),
     "cat": (8180, "EXTERNALLY_OPERATOR_MANAGED"),
     "opa": (8181, "EXTERNALLY_OPERATOR_MANAGED"),
     "safety": (8190, "EXTERNALLY_OPERATOR_MANAGED"),
@@ -75,7 +82,12 @@ class SupervisorConfig:
     startup_timeout_seconds: float = 180.0
 
 
-def build_service_profiles(config: SupervisorConfig) -> dict[str, ProcessSpec]:
+def build_service_profiles(
+    config: SupervisorConfig,
+    *,
+    database_credential: DatabaseCredential,
+    credential_redactions: tuple[str, ...] = (),
+) -> dict[str, ProcessSpec]:
     repo_root = config.repo_root.resolve()
     tools_root = config.tools_root.resolve()
     service_root = config.service_root.resolve()
@@ -89,8 +101,12 @@ def build_service_profiles(config: SupervisorConfig) -> dict[str, ProcessSpec]:
         raise RunnerError("supervisor output must use a new run directory under the pinned supervisor-runs root")
     if _within(service_root, repo_root):
         raise RunnerError("supervisor output must stay outside the project checkout")
-    if service_root.exists() and any(service_root.iterdir()):
-        raise RunnerError("supervisor output directory must be new or empty")
+    if service_root.exists():
+        entries = {entry.name for entry in service_root.iterdir()}
+        if entries and entries != {"mysql"}:
+            raise RunnerError("supervisor output directory must be new or contain only this run's MySQL bootstrap")
+        if "mysql" in entries and not (service_root / "mysql" / "data").is_dir():
+            raise RunnerError("supervisor MySQL bootstrap directory is incomplete")
     if not _within(corpus_manifest, tools_root) or not corpus_manifest.is_file():
         raise RunnerError("supervisor requires an existing approved corpus manifest under the D4 task tools root")
 
@@ -115,6 +131,8 @@ def build_service_profiles(config: SupervisorConfig) -> dict[str, ProcessSpec]:
         runtime=None,
         rag_events=rag_events,
         llm_events=llm_events,
+        database_credential=database_credential,
+        credential_redactions=credential_redactions,
     )
     return {spec.name: spec for spec in specs}
 
@@ -128,12 +146,17 @@ class JsonlSupervisor:
         profiles: dict[str, ProcessSpec],
         supervisor: ProcessSupervisor,
         event_log: Path,
+        login_transport: CanonicalHttpTransport | None = None,
     ) -> None:
         if set(profiles) != set(START_ORDER):
             raise ValueError("supervisor profiles do not match the fixed D4 service allowlist")
         self.profiles = profiles
         self.supervisor = supervisor
         self.event_log = event_log
+        self.login_transport = login_transport
+        self.login_gate_passed = False
+        self.login_gate_failed = False
+        self.login_gate_result: dict[str, dict[str, str]] | None = None
         self.stopping = False
 
     def serve(self, input_stream: TextIO = sys.stdin, output_stream: TextIO = sys.stdout) -> None:
@@ -182,6 +205,12 @@ class JsonlSupervisor:
         }
         if op not in allowed_keys or set(request) != allowed_keys[op]:
             return {"ok": False, "error_type": "RequestError", "error": "operation is not allow-listed"}
+        if self.login_gate_failed and op in {"start", "start_stack"}:
+            return {
+                "ok": False,
+                "error_type": "CredentialGateError",
+                "error": "synthetic login gate failed; cleanup and controller review are required",
+            }
         if op == "health":
             return {
                 "ok": True,
@@ -205,8 +234,26 @@ class JsonlSupervisor:
                 return self._external_operation_denied(service)
             return self._stop_group(service)
         if op == "start_stack":
-            _evaluation_database_endpoint()
-            return self._start_names(START_ORDER)
+            try:
+                backend = self._start_group("backend")
+                if not backend.get("ok"):
+                    return backend
+                rag = self._start_group("rag")
+                if not rag.get("ok"):
+                    self._stop_names(("d4-backend",))
+                    self.login_gate_passed = False
+                    return rag
+                observers = self._start_group("observers")
+                if not observers.get("ok"):
+                    self._stop_names(("d4-rag", "d4-backend"))
+                    self.login_gate_passed = False
+                    return observers
+                return {"ok": True, "services": self.supervisor.identities()}
+            except Exception:
+                self._stop_names(tuple(reversed(START_ORDER)))
+                self.login_gate_passed = False
+                self.login_gate_result = None
+                raise
         if op == "stop_stack":
             return self._stop_names(tuple(reversed(START_ORDER)))
         if op == "cleanup":
@@ -220,9 +267,47 @@ class JsonlSupervisor:
         return {"ok": False, "error_type": "RequestError", "error": "operation is not allow-listed"}
 
     def _start_group(self, service: str) -> dict[str, Any]:
+        if service == "rag" and not self.login_gate_passed:
+            return {"ok": False, "error_type": "PreconditionError", "error": "synthetic login gate must pass before RAG"}
+        if service == "observers" and not self._is_owned("d4-rag"):
+            return {"ok": False, "error_type": "PreconditionError", "error": "RAG must be ready before observers"}
+        outcome = self._start_names(OWNED_GROUPS[service])
         if service == "backend":
-            _evaluation_database_endpoint()
-        return self._start_names(OWNED_GROUPS[service])
+            try:
+                self._run_login_gate()
+                outcome["login_gate"] = self.login_gate_result
+            except Exception:
+                self._stop_names(("d4-backend",))
+                self.login_gate_passed = False
+                self.login_gate_result = None
+                return {
+                    "ok": False,
+                    "error_type": "CredentialGateError",
+                    "error": "synthetic login gate failed; fresh accounts were not modified",
+                }
+        return outcome
+
+    def _run_login_gate(self) -> None:
+        if self.login_gate_passed:
+            return
+        if self.login_transport is None:
+            self.login_gate_failed = True
+            raise RunnerError("supervisor has no fixed synthetic login credentials")
+
+        async def verify_and_close() -> dict[str, dict[str, str]]:
+            try:
+                result = await self.login_transport.login_gate()
+                return {username: dict(identity) for username, identity in result.items()}
+            finally:
+                await self.login_transport.close()
+
+        try:
+            result = asyncio.run(verify_and_close())
+        except Exception:
+            self.login_gate_failed = True
+            raise RunnerError("synthetic login gate failed; fresh accounts were not modified") from None
+        self.login_gate_result = result
+        self.login_gate_passed = True
 
     def _start_names(self, names: tuple[str, ...]) -> dict[str, Any]:
         started: list[str] = []
@@ -243,8 +328,17 @@ class JsonlSupervisor:
         return {"ok": True, "services": results}
 
     def _stop_group(self, service: str) -> dict[str, Any]:
-        names = tuple(reversed(OWNED_GROUPS[service]))
-        return self._stop_names(names)
+        if service == "backend":
+            outcomes = self._stop_names(("d4-llm-observer", "d4-rag-observer", "d4-rag", "d4-backend"))
+            self.login_gate_passed = False
+            self.login_gate_result = None
+            return outcomes
+        if service == "rag":
+            return self._stop_names(("d4-llm-observer", "d4-rag-observer", "d4-rag"))
+        return self._stop_names(tuple(reversed(OWNED_GROUPS[service])))
+
+    def _is_owned(self, name: str) -> bool:
+        return any(item["name"] == name for item in self.supervisor.identities())
 
     def _stop_names(self, names: tuple[str, ...]) -> dict[str, Any]:
         outcomes: list[dict[str, Any]] = []
@@ -257,6 +351,11 @@ class JsonlSupervisor:
                 outcomes.append(asyncio.run(self.supervisor.stop_service(name)))
             except Exception as exc:
                 errors.append(type(exc).__name__)
+        if "d4-backend" in names and "d4-backend" not in {
+            item["name"] for item in self.supervisor.identities()
+        }:
+            self.login_gate_passed = False
+            self.login_gate_result = None
         return {"ok": not errors, "services": outcomes, "errors": errors}
 
     def _service_inventory(self) -> dict[str, Any]:
@@ -338,17 +437,55 @@ def _parse_args(argv: list[str] | None = None) -> SupervisorConfig:
 
 def main(argv: list[str] | None = None) -> int:
     config = _parse_args(argv)
+    process_supervisor = ProcessSupervisor(startup_timeout_seconds=config.startup_timeout_seconds)
+    login_transport: CanonicalHttpTransport | None = None
+    database_credential: DatabaseCredential | None = None
     try:
-        profiles = build_service_profiles(config)
+        provider = EvaluationCredentialProvider()
+        synthetic_credentials = provider.resolve_frozen_synthetic_credentials(config.repo_root)
+        mysql_bootstrap = IsolatedMySqlBootstrap(
+            repo_root=config.repo_root,
+            run_root=config.service_root,
+            backend_python=config.backend_python,
+        )
+        server_evidence = asyncio.run(mysql_bootstrap.start_server(process_supervisor))
+        database_credential = provider.generate_database_credential()
+        profiles = build_service_profiles(
+            config,
+            database_credential=database_credential,
+            credential_redactions=synthetic_credentials.secret_values(),
+        )
         config.service_root.resolve().mkdir(parents=True, exist_ok=True)
-    except (LifecycleError, RunnerError, OSError, ValueError) as exc:
+        bootstrap_evidence = mysql_bootstrap.provision_database(database_credential)
+        login_transport = CanonicalHttpTransport(
+            backend_base_url="http://127.0.0.1:8080",
+            observer_urls={"rag": "http://127.0.0.1:8271", "llm": "http://127.0.0.1:8272"},
+            rag_observer_events=config.service_root / "events" / "rag.jsonl",
+            llm_observer_events=config.service_root / "events" / "llm.jsonl",
+            passwords=synthetic_credentials.password_mapping(),
+        )
+        write_json_once(
+            config.service_root / "credential-bootstrap.json",
+            {
+                "schema_version": "d4-3b-credential-bootstrap.v1",
+                "database_credential": credential_evidence_metadata(),
+                "fixture_source_verified": synthetic_credentials.source_verified,
+                "ignored_credential_manager_target": "IGNORED_UNCLASSIFIED_CREDENTIAL_TARGET",
+                "mysql_server": server_evidence,
+                "mysql_bootstrap": bootstrap_evidence.as_dict(),
+            },
+        )
+    except (CredentialProviderError, LifecycleError, MySqlBootstrapError, RunnerError, OSError, ValueError) as exc:
         sys.stderr.write(f"D4 supervisor startup failed: {type(exc).__name__}\n")
+        asyncio.run(process_supervisor.close())
+        if login_transport is not None:
+            asyncio.run(login_transport.close())
         return 2
-    supervisor = ProcessSupervisor(startup_timeout_seconds=config.startup_timeout_seconds)
     service = JsonlSupervisor(
         profiles=profiles,
-        supervisor=supervisor,
+        supervisor=process_supervisor,
         event_log=config.service_root.resolve() / "supervisor-events.jsonl",
+        login_transport=login_transport,
     )
     try:
         service.serve()
@@ -356,7 +493,9 @@ def main(argv: list[str] | None = None) -> int:
         pass
     finally:
         if not service.stopping:
-            asyncio.run(supervisor.close())
+            asyncio.run(process_supervisor.close())
+        if login_transport is not None:
+            asyncio.run(login_transport.close())
     return 0
 
 

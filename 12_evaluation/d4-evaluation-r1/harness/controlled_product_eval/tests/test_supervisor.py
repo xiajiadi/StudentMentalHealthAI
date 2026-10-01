@@ -5,6 +5,7 @@ import io
 import json
 import socket
 import sys
+import uuid
 from argparse import Namespace
 from pathlib import Path
 
@@ -15,8 +16,10 @@ from harness.controlled_product_eval.process_lifecycle import (
     ProcessSpec,
     ProcessSupervisor,
     build_child_environment,
+    run_managed_command,
 )
 from harness.controlled_product_eval.cli import _run_managed
+from harness.controlled_product_eval.credential_provider import EvaluationCredentialProvider
 from harness.controlled_product_eval.supervisor import (
     DEFAULT_TOOLS_ROOT,
     JsonlSupervisor,
@@ -55,32 +58,33 @@ async def test_direct_child_capture_redacts_secrets_and_records_process_identity
     port = _free_loopback_port()
     script = (
         "import os; from http.server import BaseHTTPRequestHandler,HTTPServer; "
-        "print(os.environ['TEST_SECRET'], flush=True); "
-        "import sys; print(os.environ['TEST_SECRET'], file=sys.stderr, flush=True); "
+        "print(os.environ['DB_PASSWORD'], flush=True); "
+        "import sys; print(os.environ['DB_PASSWORD'], file=sys.stderr, flush=True); "
         "H=type('H',(BaseHTTPRequestHandler,),{'do_GET':lambda self:(self.send_response(200),"
         "self.send_header('Content-Type','application/json'),self.end_headers(),"
         "self.wfile.write(b'{\\\"status\\\":\\\"READY\\\"}')),'log_message':lambda *a:None}); "
         f"HTTPServer(('127.0.0.1',{port}),H).serve_forever()"
     )
-    sentinel = "unit-redaction-sentinel-never-a-real-credential"
+    sentinel = "unit-redaction-" + uuid.uuid4().hex
     supervisor = ProcessSupervisor(startup_timeout_seconds=5, shutdown_timeout_seconds=2)
     spec = ProcessSpec(
         name="test-service",
         executable=Path(sys.executable).resolve(),
         arguments=("-c", script),
         cwd=tmp_path.resolve(),
-        environment={"TEST_SECRET": sentinel},
+        environment={"DB_PASSWORD": sentinel},
         readiness_url=f"http://127.0.0.1:{port}/health",
         readiness_kind="service",
         log_path=tmp_path / "service.stdout.log",
         stderr_log_path=tmp_path / "service.stderr.log",
         interpreter_version="3.12.test",
         package_lock_identity={"test_lock_sha256": "0" * 64},
-        environment_allowlist=frozenset({"TEST_SECRET"}),
+        environment_allowlist=frozenset({"DB_PASSWORD"}),
     )
     try:
         identities = await supervisor.start([spec])
         identity = identities[0]
+        assert sentinel not in json.dumps(identity)
         assert identity["executable"] == str(Path(sys.executable).resolve())
         assert identity["pid"] > 0
         assert identity["parent_pid"] > 0
@@ -101,9 +105,65 @@ async def test_direct_child_capture_redacts_secrets_and_records_process_identity
         assert sentinel not in stdout + stderr
         assert "<redacted>" in stdout
         assert "<redacted>" in stderr
+        assert sentinel not in json.dumps(supervisor.lifecycle_snapshot())
     finally:
         if not supervisor._closed:
             await supervisor.close()
+
+
+def test_one_shot_bootstrap_redacts_secret_output_and_rejects_secret_argv(tmp_path):
+    sentinel = "bootstrap-" + uuid.uuid4().hex
+    script = (
+        "import os,sys; value=os.environ['DB_PASSWORD']; "
+        "print(value); print(value,file=sys.stderr); "
+        "raise RuntimeError(value)"
+    )
+    result = run_managed_command(
+        name="credential-redaction-test",
+        executable=Path(sys.executable).resolve(),
+        arguments=("-c", script),
+        cwd=tmp_path.resolve(),
+        environment={"DB_PASSWORD": sentinel},
+        environment_allowlist=frozenset({"DB_PASSWORD"}),
+        stdout_path=tmp_path / "stdout.log",
+        stderr_path=tmp_path / "stderr.log",
+        check=False,
+    )
+    assert result.return_code != 0
+    assert sentinel not in result.stdout.decode("utf-8", errors="replace")
+    assert sentinel not in result.stderr.decode("utf-8", errors="replace")
+    assert b"<redacted>" in result.stdout
+    assert b"<redacted>" in result.stderr
+    assert sentinel not in (tmp_path / "stdout.log").read_text(encoding="utf-8")
+    assert sentinel not in (tmp_path / "stderr.log").read_text(encoding="utf-8")
+
+    with pytest.raises(LifecycleError) as exc_info:
+        run_managed_command(
+            name="credential-argv-test",
+            executable=Path(sys.executable).resolve(),
+            arguments=("-c", sentinel),
+            cwd=tmp_path.resolve(),
+            environment={"DB_PASSWORD": sentinel},
+            environment_allowlist=frozenset({"DB_PASSWORD"}),
+            stdout_path=tmp_path / "blocked.stdout.log",
+            stderr_path=tmp_path / "blocked.stderr.log",
+        )
+    assert sentinel not in str(exc_info.value)
+
+    with pytest.raises(LifecycleError) as command_error:
+        run_managed_command(
+            name="credential-exception-redaction-test",
+            executable=Path(sys.executable).resolve(),
+            arguments=("-c", script),
+            cwd=tmp_path.resolve(),
+            environment={"DB_PASSWORD": sentinel},
+            environment_allowlist=frozenset({"DB_PASSWORD"}),
+            stdout_path=tmp_path / "exception.stdout.log",
+            stderr_path=tmp_path / "exception.stderr.log",
+            check=True,
+        )
+    exception_is_safe = sentinel not in str(command_error.value)
+    assert exception_is_safe, "bootstrap exception summaries must not expose credential values"
 
 
 class _FakeProcessSupervisor:
@@ -169,16 +229,47 @@ def test_supervisor_protocol_rejects_arbitrary_commands_and_external_ownership(t
 
 def test_supervisor_jsonl_audit_omits_unrecognized_request_values(tmp_path):
     service, _manager = _protocol(tmp_path)
-    marker = "never-write-this-request-value"
-    source = io.StringIO(json.dumps({"op": "start", "service": "rag", "extra": marker}) + "\n")
+    marker = "protocol-" + uuid.uuid4().hex
+    source = io.StringIO(
+        json.dumps(
+            {
+                "op": "start",
+                "service": "backend",
+                "password": marker,
+                "DB_PASSWORD": marker,
+                "DATABASE_URL": "mysql+aiomysql://user:" + marker + "@127.0.0.1/db",
+            }
+        )
+        + "\n"
+    )
     output = io.StringIO()
     service.serve(source, output)
 
     response = json.loads(output.getvalue())
     audit = (tmp_path / "events.jsonl").read_text(encoding="utf-8")
     assert response["ok"] is False
+    assert marker not in output.getvalue()
     assert marker not in audit
     assert '"operation":"start"' in audit
+
+
+def test_supervisor_enforces_login_before_rag_index_start(tmp_path):
+    service, manager = _protocol(tmp_path)
+    result = service.dispatch({"op": "start", "service": "rag"})
+    assert result["ok"] is False
+    assert result["error_type"] == "PreconditionError"
+    assert manager.started == []
+
+
+def test_supervisor_stops_after_missing_login_gate_and_does_not_retry(tmp_path):
+    service, manager = _protocol(tmp_path)
+    first = service.dispatch({"op": "start", "service": "backend"})
+    second = service.dispatch({"op": "start", "service": "backend"})
+    assert first["ok"] is False
+    assert second["ok"] is False
+    assert service.login_gate_failed is True
+    assert manager.started == ["d4-backend"]
+    assert manager.stopped == ["d4-backend"]
 
 
 def test_supervisor_group_allowlist_is_fixed_and_excludes_external_services():
@@ -187,6 +278,7 @@ def test_supervisor_group_allowlist_is_fixed_and_excludes_external_services():
         "observers": ("d4-rag-observer", "d4-llm-observer"),
         "backend": ("d4-backend",),
     }
+    assert START_ORDER.index("d4-backend") < START_ORDER.index("d4-rag")
     assert "mysql" not in OWNED_GROUPS
     assert "runtime" not in OWNED_GROUPS
     assert "safety" not in OWNED_GROUPS
@@ -203,7 +295,10 @@ def test_supervisor_rejects_caller_selected_tools_root(tmp_path):
     )
     assert DEFAULT_TOOLS_ROOT.is_absolute()
     with pytest.raises(RunnerError, match="pinned"):
-        build_service_profiles(config)
+        build_service_profiles(
+            config,
+            database_credential=EvaluationCredentialProvider().generate_database_credential(),
+        )
 
 
 def test_managed_cli_rejects_caller_selected_python_executables(tmp_path):

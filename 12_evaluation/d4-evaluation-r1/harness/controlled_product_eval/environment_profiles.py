@@ -10,3 +10,6 @@ BACKEND_PYTHON = (
 RAG_PYTHON = (
     D4_TASK_TOOLS_ROOT / "venvs" / "rag-env-lock-r1" / "Scripts" / "python.exe"
 )
+MYSQL_BASEDIR = Path(r"D:\Software\MySQLServer8.4")
+MYSQLD_EXECUTABLE = MYSQL_BASEDIR / "bin" / "mysqld.exe"
+MYSQL_VERSION = "8.4.8"

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -19,6 +18,7 @@ except ModuleNotFoundError:  # pragma: no cover - package-relative import mode
     from ..foundation.hashing import canonical_json, canonical_sha256_tag
 
 from .approved_packet import ApprovedPacket, ApprovedPacketError, load_approved_packet
+from .credential_provider import EXPECTED_SYNTHETIC_SUBJECTS
 from .manifest import (
     ACCEPTED_D4_3A_TAG,
     EXPECTED_RUNTIME_IDENTITY,
@@ -43,6 +43,9 @@ from .results import (
     classify_p0_p1,
 )
 from .network_integrity import LoopbackNetworkMonitor
+
+EXPECTED_RUNTIME_HTTP_ENDPOINT = "http://127.0.0.1:8160"
+EXPECTED_RUNTIME_LOGICAL_MODEL_ID = "student.support.local"
 
 
 CORRELATION_SAFE = re.compile(r"^D4RUN-[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -231,7 +234,7 @@ class CanonicalHttpTransport:
         observer_urls: Mapping[str, str],
         rag_observer_events: str | Path,
         llm_observer_events: str | Path,
-        passwords: Mapping[str, str] | None = None,
+        passwords: Mapping[str, str],
         timeout_seconds: float = 150.0,
         network_monitor: LoopbackNetworkMonitor | None = None,
     ) -> None:
@@ -245,24 +248,18 @@ class CanonicalHttpTransport:
             raise RunnerError("observer endpoints must be HTTP loopback")
         self.rag_observer_events = Path(rag_observer_events)
         self.llm_observer_events = Path(llm_observer_events)
-        self.passwords = dict(passwords or {})
+        if set(passwords) != set(EXPECTED_SYNTHETIC_SUBJECTS) or not all(passwords.values()):
+            raise RunnerError("frozen synthetic login credentials are incomplete")
+        self.passwords = dict(passwords)
         self.timeout_seconds = timeout_seconds
         self.network_monitor = network_monitor or LoopbackNetworkMonitor()
         self._clients: dict[str, httpx.AsyncClient] = {}
         self._csrf: dict[str, str] = {}
         self._subjects: dict[str, str] = {}
         self._foreign_assessment_id: str | None = None
+        self._login_gate_passed = False
+        self._login_gate_result: dict[str, dict[str, str]] | None = None
         self._prepared = False
-
-    @classmethod
-    def from_environment(cls, **kwargs: Any) -> "CanonicalHttpTransport":
-        passwords = {
-            "student_a": os.environ.get("SMHAI_D4_STUDENT_A_PASSWORD", ""),
-            "student_b": os.environ.get("SMHAI_D4_STUDENT_B_PASSWORD", ""),
-        }
-        if not all(passwords.values()):
-            raise RunnerError("synthetic student credentials are missing from the environment")
-        return cls(passwords=passwords, **kwargs)
 
     async def _client(self, username: str) -> httpx.AsyncClient:
         client = self._clients.get(username)
@@ -361,6 +358,20 @@ class CanonicalHttpTransport:
                     raise RunnerError("LLM observer did not expose live Runtime readiness identity")
                 if service_identity.get("readiness") != "pass" or service_identity.get("cloud_fallback") is not False:
                     raise RunnerError("upstream Runtime is not ready or reports cloud fallback")
+                if upstream.rstrip("/") != EXPECTED_RUNTIME_HTTP_ENDPOINT:
+                    raise RunnerError("LLM observer is not bound to the exact Runtime service endpoint")
+                models = service_identity.get("models")
+                expected_model = (
+                    models.get(EXPECTED_RUNTIME_LOGICAL_MODEL_ID)
+                    if isinstance(models, Mapping)
+                    else None
+                )
+                if (
+                    not isinstance(expected_model, Mapping)
+                    or expected_model.get("provider_model_id")
+                    != EXPECTED_RUNTIME_IDENTITY["model"]
+                ):
+                    raise RunnerError("live Runtime model identity does not match the frozen model")
                 runtime_endpoint_identity = dict(service_identity)
         return {
             "backend": {"status": "READY", "url": self.backend_base_url},
@@ -378,6 +389,17 @@ class CanonicalHttpTransport:
     async def prepare(self) -> None:
         if self._prepared:
             return
+        await self.login_gate()
+        self._foreign_assessment_id = await self._create_assessment("student_b", "D4B_FOREIGN")
+        self._prepared = True
+
+    async def login_gate(self) -> Mapping[str, Mapping[str, str]]:
+        """Authenticate only the frozen synthetic identities, exactly once."""
+
+        if self._login_gate_passed:
+            assert self._login_gate_result is not None
+            return self._login_gate_result
+        result: dict[str, dict[str, str]] = {}
         for username in ("student_a", "student_b"):
             client = await self._client(username)
             response = await client.post(
@@ -390,12 +412,15 @@ class CanonicalHttpTransport:
             csrf = data.get("csrf_token")
             actor = data.get("actor")
             subject_id = actor.get("subject_id") if isinstance(actor, Mapping) else None
-            if not isinstance(csrf, str) or not csrf or not isinstance(subject_id, str) or not subject_id.startswith("SUBJ_"):
-                raise RunnerError(f"synthetic fixture login returned an invalid actor for {username}")
+            expected_subject_id = EXPECTED_SYNTHETIC_SUBJECTS[username]
+            if not isinstance(csrf, str) or not csrf or subject_id != expected_subject_id:
+                raise RunnerError("synthetic fixture login returned an unexpected subject identity")
             self._csrf[username] = csrf
             self._subjects[username] = subject_id
-        self._foreign_assessment_id = await self._create_assessment("student_b", "D4B_FOREIGN")
-        self._prepared = True
+            result[username] = {"status": "PASS", "subject_id": expected_subject_id}
+        self._login_gate_result = result
+        self._login_gate_passed = True
+        return result
 
     async def _create_assessment(self, username: str, nonce: str) -> str:
         client = await self._client(username)
@@ -695,6 +720,37 @@ async def run_evaluation(
     if not isinstance(observed_unexpected, Sequence) or isinstance(observed_unexpected, (str, bytes)):
         raise RunnerError("Backend configuration audit is malformed")
     all_unexpected_configuration = tuple(sorted(set(unexpected_configuration) | {str(item) for item in observed_unexpected}))
+    if all_unexpected_configuration:
+        stop = {
+            "schema_version": "d4-slice3b-preflight-stop.v1",
+            "status": "CONTROLLER_DECISION_REQUIRED",
+            "reason": "unexpected non-secret configuration failed the premanifest gate",
+            "unexpected_configuration": list(all_unexpected_configuration),
+            "formal_manifest_created": False,
+            "product_requests": 0,
+            "runtime_calls": 0,
+            "model_calls": 0,
+            "formal_case_count": 0,
+            "expected_case_count": len(packet.answerability_cases),
+            "execution_integrity_status": "FAIL",
+            "execution_abort_reason": "PREMANIFEST_CONFIGURATION_OR_INTEGRITY_FAILURE",
+        }
+        stop_path = write_json_once(Path(output_root) / "preflight-stop.json", stop)
+        await transport.close()
+        return {
+            "run_id": None,
+            "manifest_path": None,
+            "preflight_stop_path": str(stop_path),
+            "manifest_hash": None,
+            "results": [],
+            "summary": stop,
+            "abort": stop,
+            "evidence_status": FORMAL_EVIDENCE,
+        }
+
+    # Complete every setup call before freezing the immutable formal manifest.
+    # login_gate() is cached, so this does not send a second login request.
+    await transport.prepare()
     baseline_git_snapshot = git_snapshot(repo_root)
     baseline_case_file_hash = _sha256_file(case_manifest_path) if case_manifest_path else None
     baseline_corpus_file_hash = _sha256_file(corpus_manifest_path) if corpus_manifest_path else None
@@ -719,51 +775,9 @@ async def run_evaluation(
     actual_run_id = str(manifest["run_id"])
     run_dir = Path(output_root) / actual_run_id
     manifest_path = write_json_once(run_dir / "manifest.json", manifest)
-
-    if all_unexpected_configuration:
-        stop = {
-            "schema_version": "d4-slice3b-preflight-stop.v1",
-            "run_id": actual_run_id,
-            "status": "CONTROLLER_DECISION_REQUIRED",
-            "reason": "unexpected non-secret product configuration was recorded before any support request",
-            "unexpected_configuration": list(all_unexpected_configuration),
-            "manifest_hash": manifest["manifest_hash"],
-            "product_requests": 0,
-            "runtime_calls": 0,
-            "model_calls": 0,
-            "formal_case_count": 0,
-            "expected_case_count": len(packet.answerability_cases),
-            "product_p0_count": 0,
-            "product_p1_count": 0,
-            "execution_integrity_status": "FAIL",
-            "execution_abort_reason": "PRE_CASE_CONFIGURATION_OR_INTEGRITY_FAILURE",
-        }
-        stop_path = write_json_once(run_dir / "preflight-stop.json", stop)
-        await transport.close()
-        return {
-            "run_id": actual_run_id,
-            "manifest_path": str(manifest_path),
-            "preflight_stop_path": str(stop_path),
-            "manifest_hash": manifest["manifest_hash"],
-            "results": [],
-            "summary": stop,
-            "abort": stop,
-            "evidence_status": FORMAL_EVIDENCE,
-        }
-
     results: list[dict[str, Any]] = []
     abort: dict[str, Any] | None = None
     try:
-        try:
-            await transport.prepare()
-        except Exception as exc:
-            abort = {
-                "error_type": type(exc).__name__,
-                "retry_performed": False,
-                "request_sent": False,
-                "reason_code": "PRE_CASE_TRANSPORT_SETUP_FAILED",
-                "disposition": "STOPPED_FOR_EXECUTION_INTEGRITY",
-            }
         for ordinal, case in enumerate(packet.answerability_cases):
             if abort is not None:
                 break
