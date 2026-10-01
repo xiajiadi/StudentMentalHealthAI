@@ -84,8 +84,8 @@ def test_fixture_blob_drift_fails_closed_without_revealing_fixture_values(tmp_pa
     )
     monkeypatch.setattr(
         provider_module,
-        "_git_blob_for_file",
-        lambda _root, _path: "0" * 40,
+        "_git_blob_for_bytes",
+        lambda _root, _path, _source: "0" * 40,
     )
     with pytest.raises(CredentialProviderError) as exc_info:
         EvaluationCredentialProvider().resolve_frozen_synthetic_credentials(tmp_path)
@@ -103,13 +103,46 @@ def test_unexpected_fixture_subject_fails_closed(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(
         provider_module,
-        "_git_blob_for_file",
-        lambda _root, _path: ACCEPTED_FIXTURE_BLOB,
+        "_git_blob_for_bytes",
+        lambda _root, _path, _source: ACCEPTED_FIXTURE_BLOB,
     )
     with pytest.raises(CredentialProviderError) as exc_info:
         EvaluationCredentialProvider().resolve_frozen_synthetic_credentials(tmp_path)
     error_text = str(exc_info.value)
     assert all(password not in error_text for password in passwords), "identity errors must not reveal fixture values"
+
+
+def test_fixture_hash_and_parser_use_the_same_byte_snapshot(tmp_path, monkeypatch):
+    source, passwords = _fixture_source()
+    replacement, _ = _fixture_source(student_a_subject="SUBJ_demo_unexpected")
+    target = _write_fixture_source(tmp_path, source)
+    monkeypatch.setattr(
+        provider_module,
+        "_git_blob_for_revision",
+        lambda _root, _revision: ACCEPTED_FIXTURE_BLOB,
+    )
+
+    def replace_file_after_snapshot(_root, _relative_path, _source_bytes):
+        target.write_text(replacement, encoding="utf-8")
+        return ACCEPTED_FIXTURE_BLOB
+
+    monkeypatch.setattr(
+        provider_module, "_git_blob_for_bytes", replace_file_after_snapshot
+    )
+    credentials = EvaluationCredentialProvider().resolve_frozen_synthetic_credentials(
+        tmp_path
+    )
+    snapshot_matches = (
+        credentials.student_a.password == passwords[0]
+        and credentials.student_b.password == passwords[1]
+    )
+    assert snapshot_matches is True
+
+
+def test_git_executable_is_fixed_and_absolute():
+    executable = provider_module._git_executable()
+    assert executable == provider_module.GIT_EXECUTABLE.resolve()
+    assert executable.is_absolute()
 
 
 def test_fixed_provider_has_no_generic_secret_or_credential_manager_lookup():

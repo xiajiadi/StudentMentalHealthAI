@@ -4,6 +4,7 @@ from pathlib import Path
 
 
 D4_TASK_TOOLS_ROOT = Path(r"D:\Dev\tools\StudentMentalHealthAI\d4-3b-formal-run")
+GIT_EXECUTABLE = Path(r"D:\Software\Git\cmd\git.exe")
 BACKEND_PYTHON = (
     D4_TASK_TOOLS_ROOT / "venvs" / "backend-formal-r2" / "Scripts" / "python.exe"
 )

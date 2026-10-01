@@ -8,12 +8,12 @@ from __future__ import annotations
 
 import ast
 import secrets
-import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping
 
+from .environment_profiles import GIT_EXECUTABLE
 from .process_lifecycle import build_child_environment
 
 
@@ -113,11 +113,17 @@ class EvaluationCredentialProvider:
         if not source_path.is_file():
             raise CredentialProviderError("FIXTURE_SOURCE_UNAVAILABLE")
 
+        try:
+            source = source_path.read_bytes()
+        except OSError:
+            raise CredentialProviderError("FIXTURE_SOURCE_UNREADABLE") from None
         baseline_blob = _git_blob_for_revision(
             root,
             f"{ACCEPTED_PRODUCT_BASELINE}:{FIXTURE_SOURCE_RELATIVE.as_posix()}",
         )
-        current_blob = _git_blob_for_file(root, source_path)
+        current_blob = _git_blob_for_bytes(
+            root, FIXTURE_SOURCE_RELATIVE, source
+        )
         if (
             baseline_blob != ACCEPTED_FIXTURE_BLOB
             or current_blob != ACCEPTED_FIXTURE_BLOB
@@ -125,8 +131,9 @@ class EvaluationCredentialProvider:
             raise CredentialProviderError("FIXTURE_SOURCE_DRIFT")
 
         try:
-            source = source_path.read_bytes().decode("utf-8")
-            tree = ast.parse(source, filename=str(FIXTURE_SOURCE_RELATIVE))
+            tree = ast.parse(
+                source.decode("utf-8"), filename=str(FIXTURE_SOURCE_RELATIVE)
+            )
         except (OSError, UnicodeDecodeError, SyntaxError):
             raise CredentialProviderError("FIXTURE_SOURCE_UNREADABLE") from None
         rows = _fixture_rows(tree)
@@ -145,10 +152,7 @@ class EvaluationCredentialProvider:
 
 
 def _git_executable() -> Path:
-    candidate = shutil.which("git")
-    if not candidate:
-        raise CredentialProviderError("FIXTURE_SOURCE_VERIFICATION_UNAVAILABLE")
-    path = Path(candidate)
+    path = GIT_EXECUTABLE
     if not path.is_absolute() or not path.is_file():
         raise CredentialProviderError("FIXTURE_SOURCE_VERIFICATION_UNAVAILABLE")
     return path.resolve()
@@ -178,9 +182,10 @@ def _git_blob_for_revision(repo_root: Path, revision_path: str) -> str:
     return result.stdout.decode("ascii", errors="ignore").strip().lower()
 
 
-def _git_blob_for_file(repo_root: Path, source_path: Path) -> str:
+def _git_blob_for_bytes(
+    repo_root: Path, source_relative_path: Path, source_bytes: bytes
+) -> str:
     try:
-        source_path.relative_to(repo_root)
         result = subprocess.run(
             [
                 str(_git_executable()),
@@ -189,10 +194,10 @@ def _git_blob_for_file(repo_root: Path, source_path: Path) -> str:
                 "-C",
                 str(repo_root),
                 "hash-object",
-                f"--path={FIXTURE_SOURCE_RELATIVE.as_posix()}",
-                str(source_path),
+                f"--path={source_relative_path.as_posix()}",
+                "--stdin",
             ],
-            stdin=subprocess.DEVNULL,
+            input=source_bytes,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             shell=False,
@@ -200,7 +205,7 @@ def _git_blob_for_file(repo_root: Path, source_path: Path) -> str:
             timeout=10,
             env=build_child_environment({}),
         )
-    except (ValueError, OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError):
         raise CredentialProviderError("FIXTURE_SOURCE_VERIFICATION_UNAVAILABLE") from None
     return result.stdout.decode("ascii", errors="ignore").strip().lower()
 
