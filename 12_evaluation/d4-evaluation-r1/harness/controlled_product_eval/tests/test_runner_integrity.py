@@ -22,6 +22,7 @@ from harness.controlled_product_eval.manifest import (
     write_json_once,
 )
 from harness.controlled_product_eval.network_integrity import parse_netstat_output
+from harness.controlled_product_eval.results import build_case_result
 from harness.controlled_product_eval.runner import (
     CanonicalHttpTransport,
     EXPECTED_RUNTIME_HTTP_ENDPOINT,
@@ -33,6 +34,7 @@ from harness.controlled_product_eval.runner import (
     assert_post_prepare_integrity,
     classify_execution_integrity,
     run_evaluation,
+    runtime_observer_requirement,
 )
 from harness.controlled_product_eval import runner as runner_module
 
@@ -736,6 +738,195 @@ def test_twelve_product_p0_cases_complete_with_integrity_pass(tmp_path, packet):
     assert output["summary"]["run_status"] == "RUN_COMPLETE_FOR_CONTROLLER_REVIEW"
     summary_schema = json.loads((SCHEMA_ROOT / "d4_slice3b_summary.schema.json").read_text(encoding="utf-8"))
     jsonschema.Draft202012Validator(summary_schema).validate(output["summary"])
+
+
+def test_case_one_not_run_with_correlation_id_does_not_stop_or_retry(tmp_path, packet):
+    corpus = build_approved_corpus_manifest(packet)
+    case_one = packet.answerability_cases[0]
+    assert case_one["case_id"] == "AW-APPLICABILITY-MISMATCH-SHOULD-ABSTAIN-001"
+    case_one_observation = TransportObservation(
+        http_status=202,
+        response_body={
+            "data": {
+                "status": "needs_review",
+                "safety_action": "CRISIS_ROUTE",
+                "normal_generation": False,
+                "generation": {
+                    "generation_id": "GEN_CASE1_CORRELATION_ONLY",
+                    "status": "needs_review",
+                    "provenance": {"generation_status": "NOT_RUN"},
+                },
+                "content": None,
+            }
+        },
+    )
+    transport = _FormalFakeTransport(
+        corpus=corpus,
+        response_factory=lambda ordinal, case, trace: case_one_observation
+        if ordinal == 0
+        else _gold_respecting_observation(ordinal, case, trace),
+    )
+
+    output = _run(tmp_path, packet, transport, suffix="CASE1-NOT-RUN-CORRELATION")
+
+    assert output["results"][0]["actual"]["generation_id"] == "GEN_CASE1_CORRELATION_ONLY"
+    assert output["results"][0]["actual"]["generation_status"] == "NOT_RUN"
+    assert output["results"][0]["execution_integrity"]["status"] == "PASS"
+    assert transport.submitted == [case["case_id"] for case in packet.answerability_cases]
+    assert transport.submitted.count(case_one["case_id"]) == 1
+    assert output["summary"]["execution_integrity_status"] == "PASS"
+    assert output["summary"]["case_count"] == 12
+
+
+@pytest.mark.parametrize("generation_id", ["GEN_CORRELATION_ONLY", ""])
+def test_not_run_observer_decision_is_independent_of_generation_id(generation_id):
+    result = {
+        "actual": {
+            "generation_status": "NOT_RUN",
+            "normal_generation": False,
+            "generation_id": generation_id,
+            "response_class": "ROUTED",
+            "safety_route": "CRISIS_ROUTE",
+        },
+        "runtime_identity": {"per_generation_observed": []},
+    }
+
+    assert runtime_observer_requirement(result) == "NOT_REQUIRED"
+
+
+def test_not_run_without_negative_generation_flag_does_not_waive_observer_gate():
+    result = {
+        "actual": {
+            "generation_status": "NOT_RUN",
+            "normal_generation": None,
+            "generation_id": "GEN_CORRELATION_ONLY",
+            "response_class": "UNKNOWN",
+            "safety_route": None,
+        },
+        "runtime_identity": {"per_generation_observed": []},
+        "fallback": {"used": False},
+    }
+
+    classified = classify_execution_integrity(result=result)
+
+    assert runtime_observer_requirement(result) == "REQUIRED"
+    assert "RUNTIME_OBSERVER_EVIDENCE_MISSING" in classified["violations"]
+
+
+@pytest.mark.parametrize("generation_id", [None, ""])
+def test_explicit_runtime_execution_requires_observer_even_without_id(generation_id):
+    result = {
+        "actual": {
+            "generation_status": "EXECUTED",
+            "normal_generation": False,
+            "generation_id": generation_id,
+            "response_class": "ROUTED",
+            "safety_route": "CRISIS_ROUTE",
+        },
+        "runtime_identity": {"per_generation_observed": []},
+        "fallback": {"used": False},
+    }
+
+    classified = classify_execution_integrity(result=result)
+
+    assert runtime_observer_requirement(result) == "REQUIRED"
+    assert "RUNTIME_OBSERVER_EVIDENCE_MISSING" in classified["violations"]
+    assert classified["status"] == "FAIL"
+
+
+def test_not_run_with_runtime_observer_event_fails_as_inconsistent(packet):
+    case = packet.answerability_cases[0]
+    response_body = {
+        "data": {
+            "status": "needs_review",
+            "safety_action": "CRISIS_ROUTE",
+            "normal_generation": False,
+            "generation": {
+                "generation_id": "GEN_CASE1_CORRELATION_ONLY",
+                "status": "needs_review",
+                "provenance": {"generation_status": "NOT_RUN"},
+            },
+            "content": None,
+        }
+    }
+    result = build_case_result(
+        packet=packet,
+        case=case,
+        run_id="D4RUN-OBSERVER-CONFLICT",
+        http_status=202,
+        response_body=response_body,
+        request_id="REQ_OBSERVER_CONFLICT",
+        trace_id="TRACE_OBSERVER_CONFLICT",
+        llm_events=(_exact_llm_event(),),
+        fallback_used=False,
+    )
+
+    classified = classify_execution_integrity(
+        observation=TransportObservation(202, response_body, llm_events=(_exact_llm_event(),)),
+        result=result,
+    )
+
+    assert runtime_observer_requirement(result) == "INCONSISTENT"
+    assert "GENERATION_OBSERVER_EVIDENCE_INCONSISTENCY" in classified["violations"]
+    assert classified["status"] == "FAIL"
+
+
+def test_not_run_conflicting_with_positive_generation_flag_is_inconsistent():
+    result = {
+        "actual": {
+            "generation_status": "NOT_RUN",
+            "normal_generation": True,
+            "generation_id": "GEN_CONTRADICTORY_STATE",
+            "response_class": "ANSWERED",
+        },
+        "runtime_identity": {"per_generation_observed": []},
+    }
+
+    classified = classify_execution_integrity(result=result)
+
+    assert runtime_observer_requirement(result) == "INCONSISTENT"
+    assert classified["abort_reason"] == "GENERATION_OBSERVER_EVIDENCE_INCONSISTENCY"
+    assert classified["status"] == "FAIL"
+
+
+def test_conflicting_generation_status_fields_fail_closed(packet):
+    case = packet.answerability_cases[0]
+    response_body = {
+        "data": {
+            "status": "generated",
+            "normal_generation": False,
+            "generation": {
+                "generation_id": "GEN_STATUS_CONFLICT",
+                "status": "generated",
+                "provenance": {"generation_status": "NOT_RUN"},
+            },
+            "content": None,
+        }
+    }
+    result = build_case_result(
+        packet=packet,
+        case=case,
+        run_id="D4RUN-STATUS-CONFLICT",
+        http_status=202,
+        response_body={
+            "data": {
+                **response_body["data"],
+                "status": "needs_review",
+            }
+        },
+        request_id="REQ_STATUS_CONFLICT",
+        trace_id="TRACE_STATUS_CONFLICT",
+        fallback_used=False,
+    )
+
+    classified = classify_execution_integrity(
+        observation=TransportObservation(202, response_body),
+        result=result,
+    )
+
+    assert runtime_observer_requirement(result, response_body=response_body) == "INCONSISTENT"
+    assert "GENERATION_OBSERVER_EVIDENCE_INCONSISTENCY" in classified["violations"]
+    assert classified["status"] == "FAIL"
 
 
 def test_integrity_classifier_does_not_use_product_p0_count_as_abort_signal():

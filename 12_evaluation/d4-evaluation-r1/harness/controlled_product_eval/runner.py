@@ -8,7 +8,7 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 import httpx
 
@@ -200,6 +200,13 @@ def classify_execution_integrity(
             violations.append("POST_CASE_INTEGRITY_CHECK_FAILED")
 
     if isinstance(result, Mapping):
+        runtime_requirement = runtime_observer_requirement(
+            result,
+            response_body=observation.response_body if observation is not None else None,
+        )
+        if runtime_requirement == "INCONSISTENT":
+            violations.append("GENERATION_OBSERVER_EVIDENCE_INCONSISTENCY")
+
         governance = result.get("governance")
         governance = governance if isinstance(governance, Mapping) else {}
         for field_name, reason in (
@@ -244,15 +251,12 @@ def classify_execution_integrity(
                         if observed_value is not None and observed_value != expected_value:
                             violations.append("RUNTIME_IDENTITY_DRIFT")
 
-        actual = result.get("actual")
-        actual = actual if isinstance(actual, Mapping) else {}
-        runtime_reached = (
-            actual.get("normal_generation") is True
-            or actual.get("generation_id") is not None
-            or actual.get("generation_status") in {"generated", "approved"}
-        )
-        if runtime_reached and isinstance(runtime, Mapping):
-            observed = runtime.get("per_generation_observed")
+        if runtime_requirement == "REQUIRED":
+            observed = (
+                runtime.get("per_generation_observed")
+                if isinstance(runtime, Mapping)
+                else None
+            )
             if not isinstance(observed, Sequence) or isinstance(observed, (str, bytes)) or not observed:
                 violations.append("RUNTIME_OBSERVER_EVIDENCE_MISSING")
             if not isinstance(fallback, Mapping) or not isinstance(fallback.get("used"), bool):
@@ -264,6 +268,94 @@ def classify_execution_integrity(
         "abort_reason": unique[0] if unique else None,
         "violations": unique,
     }
+
+
+def runtime_observer_requirement(
+    result: Mapping[str, Any],
+    *,
+    response_body: Mapping[str, Any] | None = None,
+) -> Literal["REQUIRED", "NOT_REQUIRED", "INCONSISTENT"]:
+    """Decide observer need from execution state and observer evidence, never IDs.
+
+    The normalized case result preserves the selected status; the source
+    response is also inspected so conflicting explicit generation fields are
+    not hidden by that projection.
+    """
+
+    actual = result.get("actual")
+    actual = actual if isinstance(actual, Mapping) else {}
+    runtime = result.get("runtime_identity")
+    runtime = runtime if isinstance(runtime, Mapping) else {}
+    observed = runtime.get("per_generation_observed")
+    has_observer_event = (
+        isinstance(observed, Sequence)
+        and not isinstance(observed, (str, bytes))
+        and bool(observed)
+    )
+
+    data: Mapping[str, Any] = {}
+    if isinstance(response_body, Mapping):
+        value = response_body.get("data")
+        data = value if isinstance(value, Mapping) else response_body
+    generation = data.get("generation")
+    generation = generation if isinstance(generation, Mapping) else {}
+    provenance = generation.get("provenance")
+    provenance = provenance if isinstance(provenance, Mapping) else {}
+
+    status_values = (
+        actual.get("generation_status"),
+        data.get("generation_status"),
+        generation.get("status"),
+        provenance.get("generation_status"),
+        data.get("status"),
+    )
+    statuses = {
+        value.strip().upper()
+        for value in status_values
+        if isinstance(value, str) and value.strip()
+    }
+    explicitly_not_run = "NOT_RUN" in statuses
+    explicitly_executed = bool(
+        statuses
+        & {"EXECUTED", "GENERATING", "GENERATED", "APPROVED"}
+    )
+
+    normal_generation_values = {
+        value
+        for value in (actual.get("normal_generation"), data.get("normal_generation"))
+        if isinstance(value, bool)
+    }
+    if len(normal_generation_values) > 1:
+        return "INCONSISTENT"
+    normal_generation = next(iter(normal_generation_values), None)
+    response_class = actual.get("response_class")
+    safety_route = actual.get("safety_route")
+
+    if explicitly_not_run and (
+        explicitly_executed
+        or normal_generation is True
+        or has_observer_event
+        or response_class == "ANSWERED"
+    ):
+        return "INCONSISTENT"
+    if explicitly_not_run:
+        # NOT_RUN without the paired negative execution flag is incomplete
+        # evidence, so retain the observer requirement and fail closed.
+        return "NOT_REQUIRED" if normal_generation is False else "REQUIRED"
+    if explicitly_executed or normal_generation is True or has_observer_event:
+        return "REQUIRED"
+
+    # These outcomes explicitly bypass ordinary Runtime generation in the
+    # current product flow. Unknown states remain fail-closed below.
+    if normal_generation is False and (
+        response_class in {"ABSTAINED", "DENIED"}
+        or (response_class == "ROUTED" and safety_route == "CRISIS_ROUTE")
+    ):
+        return "NOT_REQUIRED"
+    # A response that contains no generation execution state does not prove
+    # Runtime was invoked. Do not turn absent metadata (or a correlation ID)
+    # into a positive invocation claim. Unknown explicit states remain closed.
+    return "REQUIRED" if statuses else "NOT_REQUIRED"
 
 
 def _load_jsonl(path: str | Path, *, trace_id: str) -> tuple[Mapping[str, Any], ...]:
