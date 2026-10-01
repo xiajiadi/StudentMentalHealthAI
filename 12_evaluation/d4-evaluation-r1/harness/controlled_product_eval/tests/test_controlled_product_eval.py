@@ -14,6 +14,7 @@ from typing import Any, Mapping
 
 import jsonschema
 import pytest
+from sqlalchemy.engine import make_url
 
 from harness.citation_utility.review_packet import packet_from_json, packet_hash
 from harness.foundation.hashing import canonical_sha256_tag
@@ -24,12 +25,12 @@ from harness.controlled_product_eval.approved_packet import (
     load_approved_packet,
     thaw_json,
 )
-from harness.controlled_product_eval.cli import _managed_specs
-from harness.controlled_product_eval.cli import _verify_external_services
+from harness.controlled_product_eval.cli import _managed_specs, _safe_startup_failure_detail
 from harness.controlled_product_eval.credential_provider import (
     EvaluationCredentialProvider,
 )
 from harness.controlled_product_eval.environment_profiles import BACKEND_PYTHON, RAG_PYTHON
+from harness.controlled_product_eval.service_profiles import ServiceProfileError
 from harness.controlled_product_eval.manifest import (
     EXPECTED_RUNTIME_IDENTITY,
     ManifestError,
@@ -46,6 +47,13 @@ from harness.controlled_product_eval.manifest import (
 from harness.controlled_product_eval.rag_runtime import IsolatedRagError, materialize_rag_inputs
 from harness.controlled_product_eval.observer_proxy import _safe_runtime_health
 from harness.controlled_product_eval.process_lifecycle import ProcessSpec, ProcessSupervisor
+from harness.controlled_product_eval.service_profiles import (
+    ServiceProfileError,
+    _validate_cat_health,
+    _validate_ollama_identity,
+    _validate_runtime_identity,
+    _validate_safety_health,
+)
 from harness.controlled_product_eval.results import (
     FORMAL_EVIDENCE,
     NONFORMAL_EVIDENCE,
@@ -218,6 +226,91 @@ def test_runtime_preflight_requires_exact_identity_hash_and_loopback():
         RuntimePreflight.from_mapping(egress)
 
 
+def test_live_runtime_attestation_binds_attempt_processes_and_listener_owners():
+    stamp = "2026-10-01T00:00:00Z"
+    runtime_pid = 1234
+    runtime_launcher_pid = 4321
+    ollama_pid = 5678
+    binding = {
+        "schema_version": "d4-runtime-live-attestation.v1",
+        "attempt_id": "attempt-test-001",
+        "observed_at": stamp,
+        "runtime_pid": runtime_pid,
+        "runtime_process_tree_pids": [runtime_pid, runtime_launcher_pid],
+        "runtime_started_at": stamp,
+        "runtime_executable": str(Path(sys.executable).resolve()),
+        "runtime_executable_sha256": "a" * 64,
+        "runtime_launcher_pid": runtime_launcher_pid,
+        "runtime_launcher_started_at": stamp,
+        "runtime_launcher_executable": str(Path(sys.executable).resolve()),
+        "runtime_launcher_executable_sha256": "e" * 64,
+        "runtime_source_tree_sha256": "b" * 64,
+        "runtime_endpoint": "http://127.0.0.1:8160",
+        "ollama_pid": ollama_pid,
+        "ollama_process_tree_pids": [ollama_pid],
+        "ollama_started_at": stamp,
+        "ollama_executable": str(Path(sys.executable).resolve()),
+        "ollama_executable_sha256": "c" * 64,
+        "provider_endpoint": "http://127.0.0.1:11437",
+        "ollama_version": "0.33.3",
+        "model": FORMAL_RUNTIME_IDENTITY["model"],
+        "model_digest": FORMAL_RUNTIME_IDENTITY["digest"],
+        "num_ctx": 8192,
+        "kv_cache_type": "f16",
+        "num_parallel": 1,
+        "max_loaded_models": 1,
+        "output_budget": 768,
+        "cloud_fallback": False,
+        "network_status": "PASS",
+        "network_observation": "OBSERVED_LOOPBACK_ONLY",
+        "external_established_connection_count": 0,
+        "forbidden_endpoint_connection_count": 0,
+        "verified_listener_pids": {
+            "3307": 20,
+            "8160": runtime_pid,
+            "8180": 40,
+            "8181": 50,
+            "8190": 60,
+            "11437": ollama_pid,
+        },
+        "network_observation_sha256": "d" * 64,
+    }
+    preflight = build_runtime_preflight(observed_at=stamp, execution_binding=binding)
+    verified = RuntimePreflight.from_mapping(preflight, require_live_binding=True)
+    assert verified.execution_binding["attempt_id"] == "attempt-test-001"
+    schema = json.loads((SCHEMA_ROOT / "d4_runtime_preflight.schema.json").read_text(encoding="utf-8"))
+    jsonschema.Draft202012Validator(schema).validate(preflight)
+
+    preflight["execution_binding"]["verified_listener_pids"]["8160"] = runtime_pid + 1
+    preflight["preflight_hash"] = canonical_sha256_tag(preflight, self_field="preflight_hash")
+    with pytest.raises(ManifestError, match="listener PIDs"):
+        RuntimePreflight.from_mapping(preflight, require_live_binding=True)
+
+    invalid_launcher = build_runtime_preflight(
+        observed_at=stamp,
+        execution_binding={**binding, "runtime_launcher_pid": runtime_launcher_pid + 1},
+    )
+    with pytest.raises(ManifestError, match="launcher PID"):
+        RuntimePreflight.from_mapping(invalid_launcher, require_live_binding=True)
+
+
+def test_startup_failure_detail_is_limited_to_fixed_profile_errors():
+    profile_error = ServiceProfileError("Runtime listener is not the exact Supervisor-owned R1 Python child")
+    assert _safe_startup_failure_detail(profile_error) == str(profile_error)
+    assert _safe_startup_failure_detail(ValueError("untrusted exception text")) is None
+    assert _safe_startup_failure_detail(ServiceProfileError("x" * 300)) == "x" * 240
+    preflight_error = RunnerError("RAG observer is not ready")
+    assert _safe_startup_failure_detail(preflight_error) is None
+    assert (
+        _safe_startup_failure_detail(preflight_error, stage="FULL_REAL_HTTP_PREFLIGHT")
+        == str(preflight_error)
+    )
+    network_error = RunnerError(
+        "cold-start full-stack smoke detected network integrity violations: EXTERNAL_ESTABLISHED_CONNECTION"
+    )
+    assert _safe_startup_failure_detail(network_error, stage="COLD_START_SMOKE") == str(network_error)
+
+
 @pytest.mark.parametrize("endpoint", [
     "http://127.0.0.1:11434",
     "http://127.0.0.1:11438",
@@ -384,9 +477,11 @@ def test_managed_stack_specs_own_only_loopback_evaluation_services(tmp_path, mon
     assert str((ROOT / "09_backend" / "src").resolve()) in backend.environment["PYTHONPATH"].split(os.pathsep)
     assert str((ROOT / "11_database").resolve()) in backend.environment["PYTHONPATH"].split(os.pathsep)
     assert inherited_pythonpath not in backend.environment["PYTHONPATH"]
-    child_credential_matches = backend.environment["DB_PASSWORD"] == database_credential.password
+    assert "DB_PASSWORD" not in backend.environment
+    configured_database = make_url(backend.environment["DATABASE_URL"])
+    child_credential_matches = configured_database.password == database_credential.password
     assert child_credential_matches, "Backend must receive only the new run-local database credential"
-    ambient_credential_excluded = backend.environment["DB_PASSWORD"] != ambient_password
+    ambient_credential_excluded = ambient_password not in backend.environment["DATABASE_URL"]
     assert ambient_credential_excluded, "ambient database credentials must not be inherited"
     argv_secret_free = all(
         database_credential.password not in argument
@@ -405,190 +500,70 @@ def test_managed_stack_specs_own_only_loopback_evaluation_services(tmp_path, mon
         assert inherited_pythonpath not in spec.environment.get("PYTHONPATH", "")
 
 
-def test_external_preflight_checks_loopback_safety_opa_runtime_and_ollama(monkeypatch):
-    calls = []
-
-    class Response:
-        def __init__(self, status_code, payload):
-            self.status_code = status_code
-            self._payload = payload
-
-        def json(self):
-            return self._payload
-
-    class Client:
-        def __init__(self, **kwargs):
-            assert kwargs.get("trust_env") is False
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *_args):
-            return None
-
-        async def get(self, url):
-            calls.append(url)
-            if url.endswith("/api/version"):
-                return Response(200, {"version": EXPECTED_RUNTIME_IDENTITY["ollama_version"]})
-            if url.endswith("/api/tags"):
-                return Response(
-                    200,
-                    {
-                        "models": [
-                            {
-                                "name": EXPECTED_RUNTIME_IDENTITY["model"],
-                                "digest": EXPECTED_RUNTIME_IDENTITY["digest"],
-                            }
-                        ]
-                    },
-                )
-            if url == "http://127.0.0.1:8160/health/ready":
-                return Response(
-                    200,
-                    {
-                        "status": "READY",
-                        "health": {
-                            "readiness": "pass",
-                            "cloud_fallback": False,
-                            "models": {
-                                "student.support.local": {
-                                    "provider_model_id": EXPECTED_RUNTIME_IDENTITY["model"]
-                                }
-                            },
-                        },
-                    },
-                )
-            return Response(200, {"status": "READY"})
-
-    monkeypatch.setattr("harness.controlled_product_eval.cli.httpx.AsyncClient", Client)
-    evidence = asyncio.run(_verify_external_services())
-    assert evidence["network_policy"] == "LOOPBACK_ONLY"
-    assert set(evidence["services"]) == {"cat", "runtime", "safety", "opa", "ollama"}
-    assert all(url.startswith("http://127.0.0.1:") for url in calls)
-    assert calls == [
-        "http://127.0.0.1:8190/health/ready",
-        "http://127.0.0.1:8181/health",
-        "http://127.0.0.1:11437/api/version",
-        "http://127.0.0.1:11437/api/tags",
-        "http://127.0.0.1:8160/health/ready",
-        "http://127.0.0.1:8180/health/ready",
-    ]
-    assert "http://127.0.0.1:8181/health" in calls
-    assert "http://127.0.0.1:8190/health/ready" in calls
+def test_fixed_service_health_validators_require_exact_safety_cat_ollama_and_runtime_identity():
+    _validate_safety_health({
+        "status": "READY",
+        "components": {"opa": {"available": True, "ready": True, "version": "1.20.2"}},
+    })
+    _validate_cat_health(
+        {
+            "status": "READY", "service": "cat", "provider": "adaptivetesting",
+            "provider_version": "adaptivetesting-1.2.1", "item_bank_id": "bank",
+            "item_bank_version": "demo.v1", "config_version": "demo.cat.v1",
+            "synthetic_fixture_only": True,
+        },
+        {"item_bank_id": "bank", "item_bank_version": "demo.v1", "config_version": "demo.cat.v1"},
+    )
+    exact_model = {
+        "name": EXPECTED_RUNTIME_IDENTITY["model"],
+        "digest": EXPECTED_RUNTIME_IDENTITY["digest"],
+    }
+    assert _validate_ollama_identity(
+        {"version": EXPECTED_RUNTIME_IDENTITY["ollama_version"]},
+        {"models": [exact_model]},
+    ) == exact_model
+    _validate_runtime_identity(
+        {
+            "status": "READY",
+            "health": {
+                "state": "READY", "readiness": "pass", "cloud_fallback": False,
+                "providers": {"ollama": {"endpoint": "http://127.0.0.1:11437", "readiness": "pass", "version": "0.33.3"}},
+                "models": {"qwen2.5-7b-instruct-gpu-acceptance": {
+                    "provider_model_id": EXPECTED_RUNTIME_IDENTITY["model"],
+                    "availability": "available", "inference_readiness": "ready",
+                }},
+            },
+        },
+        {"cloud_fallback": False, "models": [{
+            "provider_model_id": EXPECTED_RUNTIME_IDENTITY["model"],
+            "expected_digest": EXPECTED_RUNTIME_IDENTITY["digest"],
+            "context_limit": 8192, "provider_version": "0.33.3", "fallback_eligible": False,
+        }]},
+    )
 
 
-def test_external_preflight_rejects_ollama_digest_drift(monkeypatch):
-    class Response:
-        def __init__(self, status_code, payload):
-            self.status_code = status_code
-            self._payload = payload
-
-        def json(self):
-            return self._payload
-
-    class Client:
-        def __init__(self, **_kwargs):
-            pass
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *_args):
-            return None
-
-        async def get(self, url):
-            if url.endswith("/api/version"):
-                return Response(200, {"version": EXPECTED_RUNTIME_IDENTITY["ollama_version"]})
-            if url.endswith("/api/tags"):
-                return Response(
-                    200,
-                    {
-                        "models": [
-                            {
-                                "name": EXPECTED_RUNTIME_IDENTITY["model"],
-                                "digest": "0" * 64,
-                            }
-                        ]
-                    },
-                )
-            if url == "http://127.0.0.1:8160/health/ready":
-                return Response(
-                    200,
-                    {
-                        "status": "READY",
-                        "health": {
-                            "readiness": "pass",
-                            "cloud_fallback": False,
-                            "models": {
-                                "student.support.local": {
-                                    "provider_model_id": EXPECTED_RUNTIME_IDENTITY["model"]
-                                }
-                            },
-                        },
-                    },
-                )
-            return Response(200, {})
-
-    monkeypatch.setattr("harness.controlled_product_eval.cli.httpx.AsyncClient", Client)
-    with pytest.raises(RunnerError, match="digest"):
-        asyncio.run(_verify_external_services())
-
-
-def test_external_preflight_rejects_runtime_model_drift(monkeypatch):
-    class Response:
-        def __init__(self, status_code, payload):
-            self.status_code = status_code
-            self._payload = payload
-
-        def json(self):
-            return self._payload
-
-    class Client:
-        def __init__(self, **_kwargs):
-            pass
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *_args):
-            return None
-
-        async def get(self, url):
-            if url.endswith("/api/version"):
-                return Response(200, {"version": EXPECTED_RUNTIME_IDENTITY["ollama_version"]})
-            if url.endswith("/api/tags"):
-                return Response(
-                    200,
-                    {
-                        "models": [
-                            {
-                                "name": EXPECTED_RUNTIME_IDENTITY["model"],
-                                "digest": EXPECTED_RUNTIME_IDENTITY["digest"],
-                            }
-                        ]
-                    },
-                )
-            if url == "http://127.0.0.1:8160/health/ready":
-                return Response(
-                    200,
-                    {
-                        "status": "READY",
-                        "health": {
-                            "readiness": "pass",
-                            "cloud_fallback": False,
-                            "models": {
-                                "student.support.local": {
-                                    "provider_model_id": "qwen2.5:0.5b"
-                                }
-                            },
-                        },
-                    },
-                )
-            return Response(200, {})
-
-    monkeypatch.setattr("harness.controlled_product_eval.cli.httpx.AsyncClient", Client)
-    with pytest.raises(RunnerError, match="Runtime readiness identity"):
-        asyncio.run(_verify_external_services())
+def test_fixed_service_health_validators_reject_opa_version_model_digest_and_runtime_drift():
+    with pytest.raises(ServiceProfileError, match="OPA"):
+        _validate_safety_health({"status": "READY", "components": {"opa": {"available": True, "ready": True, "version": "1.20.1"}}})
+    with pytest.raises(ServiceProfileError, match="digest"):
+        _validate_ollama_identity(
+            {"version": EXPECTED_RUNTIME_IDENTITY["ollama_version"]},
+            {"models": [{"name": EXPECTED_RUNTIME_IDENTITY["model"], "digest": "0" * 64}]},
+        )
+    with pytest.raises(ServiceProfileError, match="Runtime model health"):
+        _validate_runtime_identity(
+            {
+                "status": "READY",
+                "health": {
+                    "state": "READY", "readiness": "pass", "cloud_fallback": False,
+                    "providers": {"ollama": {"endpoint": "http://127.0.0.1:11437", "readiness": "pass", "version": "0.33.3"}},
+                    "models": {"qwen2.5-7b-instruct-gpu-acceptance": {
+                        "provider_model_id": "qwen2.5:0.5b", "availability": "available", "inference_readiness": "ready",
+                    }},
+                },
+            },
+            {"cloud_fallback": False, "models": []},
+        )
 
 
 def test_formal_manifest_records_dirty_checkout_configuration_runtime_and_hash(packet, tmp_path):

@@ -23,10 +23,15 @@ from harness.controlled_product_eval.manifest import (
 from harness.controlled_product_eval.network_integrity import parse_netstat_output
 from harness.controlled_product_eval.runner import (
     CanonicalHttpTransport,
+    EXPECTED_RUNTIME_HTTP_ENDPOINT,
+    EXPECTED_RUNTIME_LOGICAL_MODEL_ID,
+    SYNTHETIC_CAT_INSTRUMENT_ID,
+    SYNTHETIC_CAT_INSTRUMENT_VERSION,
     TransportObservation,
     classify_execution_integrity,
     run_evaluation,
 )
+from harness.controlled_product_eval import runner as runner_module
 
 SCHEMA_ROOT = Path(__file__).resolve().parents[3] / "spec"
 
@@ -113,6 +118,195 @@ def _product_p0_observation(*, fallback: bool = False, drift: bool = False) -> T
         },
         llm_events=(_exact_llm_event(fallback=fallback, drift=drift),),
     )
+
+
+def test_canonical_http_preflight_constructs_async_clients_synchronously(monkeypatch):
+    backend_url = "http://127.0.0.1:8080"
+    observer_urls = {
+        "rag": "http://127.0.0.1:8271",
+        "llm": "http://127.0.0.1:8272",
+    }
+
+    class Response:
+        status_code = 200
+
+        def __init__(self, body: Mapping[str, Any]) -> None:
+            self._body = body
+
+        def json(self) -> Mapping[str, Any]:
+            return self._body
+
+    class FakeClient:
+        def __init__(self, *, base_url: str, **_kwargs: Any) -> None:
+            self.base_url = base_url
+
+        async def get(self, path: str) -> Response:
+            if self.base_url == backend_url and path == "/health/ready":
+                return Response({"data": {"status": "ready"}})
+            if self.base_url == backend_url and path == "/health/dependencies":
+                return Response({
+                    "data": {
+                        name: {"status": "READY", "integration": "REAL_HTTP"}
+                        for name in ("cat", "rag", "llm_runtime", "safety")
+                    }
+                })
+            if path == "/health" and self.base_url == observer_urls["rag"]:
+                return Response({
+                    "status": "READY",
+                    "observer": "rag",
+                    "upstream": "http://127.0.0.1:8170",
+                    "service_identity": {"status": "READY", "index_reused": False},
+                })
+            if path == "/health" and self.base_url == observer_urls["llm"]:
+                return Response({
+                    "status": "READY",
+                    "observer": "llm",
+                    "upstream": EXPECTED_RUNTIME_HTTP_ENDPOINT,
+                    "service_identity": {
+                        "readiness": "pass",
+                        "cloud_fallback": False,
+                        "models": {
+                            EXPECTED_RUNTIME_LOGICAL_MODEL_ID: {
+                                "provider_model_id": EXPECTED_RUNTIME_IDENTITY["model"],
+                            }
+                        },
+                    },
+                })
+            pytest.fail(f"unexpected preflight request: {self.base_url}{path}")
+
+        async def aclose(self) -> None:
+            return None
+
+        async def __aenter__(self) -> "FakeClient":
+            return self
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+    class FakeNetworkMonitor:
+        def start(self) -> Mapping[str, Any]:
+            return {
+                "status": "PASS",
+                "issues": [],
+                "external_established_connections": [],
+            }
+
+    monkeypatch.setattr(runner_module.httpx, "AsyncClient", FakeClient)
+    transport = CanonicalHttpTransport(
+        backend_base_url=backend_url,
+        observer_urls=observer_urls,
+        rag_observer_events="unused-rag-events.jsonl",
+        llm_observer_events="unused-llm-events.jsonl",
+        passwords={"student_a": "synthetic-a", "student_b": "synthetic-b"},
+        network_monitor=FakeNetworkMonitor(),
+    )
+
+    result = asyncio.run(transport.preflight())
+
+    assert result["backend"]["status"] == "READY"
+    assert result["backend_dependency_identity"] == {
+        name: {"status": "READY", "integration": "REAL_HTTP"}
+        for name in ("cat", "rag", "llm_runtime", "safety")
+    }
+    assert result["observers"]["rag"]["status"] == "READY"
+    assert result["observers"]["llm"]["upstream"] == EXPECTED_RUNTIME_HTTP_ENDPOINT
+    assert result["unexpected_configuration"] == []
+
+
+def test_synthetic_assessment_uses_fixed_cat_instrument_and_server_offered_options(monkeypatch):
+    class Response:
+        def __init__(self, status_code: int, body: Mapping[str, Any]) -> None:
+            self.status_code = status_code
+            self._body = body
+
+        def json(self) -> Mapping[str, Any]:
+            return self._body
+
+    def state(*, answered: int, next_index: int | None, can_complete: bool) -> dict[str, Any]:
+        if next_index is None:
+            return {
+                "assessment_id": "ASSESS_fixture",
+                "status": "in_progress",
+                "answered_count": answered,
+                "can_complete": can_complete,
+                "max_items": 3,
+                "selected_item_id": None,
+                "current_item": None,
+            }
+        return {
+            "assessment_id": "ASSESS_fixture",
+            "status": "in_progress",
+            "answered_count": answered,
+            "can_complete": can_complete,
+            "max_items": 3,
+            "selected_item_id": f"ITEM_demo_00{next_index}",
+            "current_item": {
+                "item_id": f"ITEM_demo_00{next_index}",
+                "options": [{"value": f"fixture-option-{next_index}", "label": "synthetic"}],
+            },
+        }
+
+    class FakeClient:
+        def __init__(self) -> None:
+            self.created_payload: Mapping[str, Any] | None = None
+            self.responses: list[tuple[str, Any]] = []
+            self.response_index = 0
+            self.completed = False
+
+        async def post(self, path: str, *, headers: Mapping[str, str], json: Mapping[str, Any]) -> Response:
+            if path == "/api/v1/assessments":
+                self.created_payload = json
+                return Response(201, {"data": {"assessment_id": "ASSESS_fixture"}})
+            if path == "/api/v1/assessments/ASSESS_fixture/responses":
+                self.responses.append((str(json["item_id"]), json["response"]))
+                self.response_index += 1
+                return Response(
+                    200,
+                    {"data": state(
+                        answered=self.response_index,
+                        next_index=self.response_index + 1 if self.response_index < 3 else None,
+                        can_complete=self.response_index == 3,
+                    )},
+                )
+            if path == "/api/v1/assessments/ASSESS_fixture/complete":
+                self.completed = True
+                return Response(200, {"data": {"status": "completed"}})
+            pytest.fail(f"unexpected assessment bootstrap request: {path}")
+
+        async def get(self, path: str, *, headers: Mapping[str, str]) -> Response:
+            if path == "/api/v1/assessments/ASSESS_fixture/state":
+                return Response(200, {"data": state(answered=0, next_index=1, can_complete=False)})
+            pytest.fail(f"unexpected assessment bootstrap request: {path}")
+
+    transport = CanonicalHttpTransport(
+        backend_base_url="http://127.0.0.1:8080",
+        observer_urls={"rag": "http://127.0.0.1:8271", "llm": "http://127.0.0.1:8272"},
+        rag_observer_events="unused-rag-events.jsonl",
+        llm_observer_events="unused-llm-events.jsonl",
+        passwords={"student_a": "synthetic-a", "student_b": "synthetic-b"},
+    )
+    transport._csrf["student_b"] = "synthetic-csrf"
+    transport._subjects["student_b"] = "SUBJ_synthetic_b"
+    client = FakeClient()
+
+    async def use_fake_client(_username: str) -> FakeClient:
+        return client
+
+    monkeypatch.setattr(transport, "_client", use_fake_client)
+    result = asyncio.run(transport._create_assessment("student_b", "D4B_FOREIGN"))
+
+    assert result == "ASSESS_fixture"
+    assert client.created_payload == {
+        "subject_id": "SUBJ_synthetic_b",
+        "instrument_id": SYNTHETIC_CAT_INSTRUMENT_ID,
+        "instrument_version": SYNTHETIC_CAT_INSTRUMENT_VERSION,
+    }
+    assert client.responses == [
+        ("ITEM_demo_001", "fixture-option-1"),
+        ("ITEM_demo_002", "fixture-option-2"),
+        ("ITEM_demo_003", "fixture-option-3"),
+    ]
+    assert client.completed is True
 
 
 class _FormalFakeTransport(CanonicalHttpTransport):
@@ -416,3 +610,24 @@ def test_netstat_integrity_parser_detects_remote_data_plane_egress():
     observation = parse_netstat_output(output, required_ports=frozenset({8080}), observer_pid=900)
     assert observation["status"] == "FAIL"
     assert any(issue["code"] == "EXTERNAL_ESTABLISHED_CONNECTION" for issue in observation["issues"])
+
+
+def test_netstat_integrity_parser_monitors_supervisor_tree_listeners_and_forbidden_destinations():
+    output = """
+      Proto Local Address          Foreign Address        State           PID
+      TCP   0.0.0.0:8181            0.0.0.0:0              LISTENING       410
+      TCP   127.0.0.1:50000         127.0.0.1:3306         ESTABLISHED     410
+      TCP   127.0.0.1:50001         198.51.100.4:443       ESTABLISHED     410
+    """
+    observation = parse_netstat_output(
+        output,
+        required_ports=frozenset({8080}),
+        observer_pid=900,
+        owned_pids={410},
+    )
+    codes = {issue["code"] for issue in observation["issues"]}
+    assert observation["status"] == "FAIL"
+    assert "OWNED_NON_LOOPBACK_LISTENER" in codes
+    assert "FORBIDDEN_FORMAL_ENDPOINT_CONNECTION" in codes
+    assert "EXTERNAL_ESTABLISHED_CONNECTION" in codes
+    assert observation["monitored_process_pids"] == [410, 900]

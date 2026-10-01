@@ -29,7 +29,48 @@
     "runtime_observed_identity": { "$ref": "#/$defs/runtimeIdentity" },
     "runtime_endpoint_health_identity": { "type": "object", "required": ["readiness", "cloud_fallback"], "properties": { "readiness": { "const": "pass" }, "cloud_fallback": { "const": false }, "state": { "type": ["string", "null"] }, "runtime_version": { "type": ["string", "null"] }, "models": { "type": "object" }, "provider_ids": { "type": "array", "items": { "type": "string" } } }, "additionalProperties": false },
     "backend_dependency_identity": { "type": "object", "required": ["cat", "rag", "llm_runtime", "safety"], "properties": { "cat": { "$ref": "#/$defs/dependency" }, "rag": { "$ref": "#/$defs/dependency" }, "llm_runtime": { "$ref": "#/$defs/dependency" }, "safety": { "$ref": "#/$defs/dependency" } }, "additionalProperties": false },
-    "managed_service_identity": { "type": "object", "required": ["owner", "runtime_process_owned", "services"], "properties": { "owner": { "type": "string" }, "runtime_process_owned": { "const": false }, "cleanup_policy": { "type": "string" }, "services": { "type": "array", "items": { "type": "object", "required": ["name", "pid", "command_sha256", "readiness_url", "log_path"], "properties": { "name": { "type": "string" }, "pid": { "type": "integer", "minimum": 1 }, "command_sha256": { "$ref": "#/$defs/hash" }, "readiness_url": { "type": "string" }, "log_path": { "type": "string" } }, "additionalProperties": false } } }, "additionalProperties": false },
+    "managed_service_identity": {
+      "type": "object",
+      "required": ["owner", "runtime_process_owned", "services"],
+      "properties": {
+        "owner": { "type": "string" },
+        "runtime_process_owned": { "type": "boolean" },
+        "cleanup_policy": { "type": "string" },
+        "services": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "pid", "parent_pid", "process_tree_pids", "executable", "executable_sha256", "argv_redacted", "cwd", "command_sha256", "readiness_url", "log_path", "started_at", "health", "ownership", "interpreter_version", "package_lock_identity"],
+            "properties": {
+              "name": { "type": "string" },
+              "pid": { "type": "integer", "minimum": 1 },
+              "parent_pid": { "type": "integer", "minimum": 1 },
+              "process_tree_pids": { "type": "array", "minItems": 1, "items": { "type": "integer", "minimum": 1 } },
+              "executable": { "type": "string" },
+              "executable_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+              "argv_redacted": { "type": "array", "items": { "type": "string" } },
+              "cwd": { "type": "string" },
+              "command_sha256": { "$ref": "#/$defs/hash" },
+              "readiness_url": { "type": "string" },
+              "log_path": { "type": "string" },
+              "started_at": { "type": "string", "format": "date-time" },
+              "health": { "type": "object" },
+              "ownership": { "type": "string" },
+              "interpreter_version": { "type": ["string", "null"] },
+              "package_lock_identity": { "type": "object", "additionalProperties": { "type": "string" } }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "owner": { "const": "D4_EVALUATION_HARNESS" } }, "required": ["owner"] },
+          "then": { "properties": { "runtime_process_owned": { "const": true }, "services": { "minItems": 10 } } }
+        }
+      ],
+      "additionalProperties": false
+    },
     "backend_identity": { "type": "object", "required": ["base_url", "method", "route", "transport", "module_endpoints_loopback_only"], "properties": { "base_url": { "type": "string", "pattern": "^http://(127\\.0\\.0\\.1|localhost|\\[::1\\])" }, "method": { "const": "POST" }, "route": { "const": "/api/v1/support/requests" }, "transport": { "const": "CANONICAL_HTTP" }, "module_endpoints_loopback_only": { "const": true } }, "additionalProperties": false },
     "observer_endpoints": { "type": "object", "required": ["rag", "llm"], "properties": { "rag": { "type": "string" }, "llm": { "type": "string" } }, "additionalProperties": false },
     "rag_corpus_identity": { "type": "object", "required": ["corpus_id", "corpus_hash", "evidence_ids", "rag_service", "source_packet_id", "source_packet_hash"], "properties": { "corpus_id": { "type": "string" }, "corpus_hash": { "$ref": "#/$defs/hash" }, "evidence_ids": { "type": "array", "uniqueItems": true, "items": { "type": "string" } }, "rag_service": { "type": "object" }, "source_packet_id": { "type": "string" }, "source_packet_hash": { "$ref": "#/$defs/hash" } }, "additionalProperties": false },

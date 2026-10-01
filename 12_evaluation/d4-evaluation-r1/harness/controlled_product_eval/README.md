@@ -1,68 +1,53 @@
 # D4-3B evaluation harness
 
-This directory contains the evaluation-only consumer, manifests, schemas, result evaluator, observer, isolated RAG loader, and one-shot runner for the 12 approved answerability cases.
+This directory contains the evaluation-only consumer, manifests, schemas, observer, isolated RAG loader, and fixed local-service supervisor for the 12 approved synthetic answerability cases.
 
-The approved packet remains byte-for-byte unchanged. Its packet hash is `sha256:cfbe640300c2cbfbfe9616bb20b10b6ed80e7ee1e15169aadf2052ac8de107c6`. The consumer rejects duplicate JSON keys, checks the approval record and canonical hash, and records both the raw file hash and bound source hashes.
+The approved Human Gold packet remains byte-for-byte unchanged. Its packet hash is `sha256:cfbe640300c2cbfbfe9616bb20b10b6ed80e7ee1e15169aadf2052ac8de107c6`.
 
-## Formal Runtime identity
+## Fixed Runtime identity
 
-D4-3B formal preflight requires the exact Runtime identity in `manifest.py`, including `http://127.0.0.1:11437`, Ollama `0.33.3`, and the approved Qwen model digest. Every identity field is checked by strict equality; alternate ports, including `11434`, are rejected. There is no environment override or endpoint allow-list.
+The provider endpoint is `http://127.0.0.1:11437`; the Runtime HTTP service is `http://127.0.0.1:8160`. The accepted identity is Ollama `0.33.3`, model `qwen2.5:7b-instruct-q4_K_M`, digest `845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e`, context 8192, KV cache `f16`, parallel 1, maximum loaded models 1, output budget 768, and cloud fallback disabled. Port `11434` is never used.
 
-The preflight `endpoint` is the Ollama provider endpoint and remains `http://127.0.0.1:11437`. The Runtime HTTP service is a separate loopback service at `http://127.0.0.1:8160`; the LLM observer must target that Runtime service for readiness and observation. Do not route the observer to the provider endpoint.
-
-The separate Runtime Reconstruction R1 evidence records a historical Ollama `0.21.1` integration at `http://127.0.0.1:11434`. That evidence remains historical and is not the D4-3B formal Runtime target.
+The preflight and current pointer are generated from live supervisor-owned process identities and health checks. The pointer is atomically published only after exact checks pass and invalidated when that attempt's services stop.
 
 ## Prepare deterministic inputs
 
-Run from the project root. Keep generated manifests and run outputs outside the checkout.
+Run the fixed Python executable from the evaluation root. Store generated manifests outside the checkout.
 
-```powershell
-$repoRoot = (Get-Location).Path
-$evalPath = Join-Path $repoRoot '12_evaluation\d4-evaluation-r1'
-$env:PYTHONPATH = "$evalPath;$repoRoot\09_backend\src"
-& 'D:\Projects\StudentMentalHealthAI\09_backend\.venv\Scripts\python.exe' `
-  -m harness.controlled_product_eval.cli prepare-assets `
-  --manifest-dir 'D:\Dev\cache\d4-3b-input-manifests'
+```text
+D:\Dev\tools\StudentMentalHealthAI\d4-3b-formal-run\venvs\backend-formal-r2\Scripts\python.exe -m harness.controlled_product_eval.cli prepare-assets --manifest-dir D:\Dev\tools\StudentMentalHealthAI\d4-3b-formal-run\input-manifests
 ```
 
-The command verifies the packet and writes an immutable 12-case manifest and a temporary corpus manifest. Case IDs come from the packet. Citation cards that reuse a source chunk ID receive deterministic evaluation-only RAG IDs; each record retains the original ID, content hash, citation case ID, and source annotations. The mapping does not rewrite or normalize Human Gold.
+The command verifies the packet and writes the immutable 12-case and approved-corpus manifests. The RAG mapping is evaluation-only and does not rewrite Human Gold.
 
-## Managed formal run
+## Cold-start smoke
 
-The managed runner starts a fresh isolated MySQL instance, provisions a run-local database credential, migrates and checks the accepted schema, starts Backend, then verifies the frozen synthetic A/B identities before building the fresh RAG index. It verifies CAT, Safety, OPA, Runtime, Ollama, observers, network integrity, and credential-artifact integrity before freezing the formal manifest. After C returns `READY_FOR_FORMAL_D4_3B_RUN_AFTER_CREDENTIAL_BOOTSTRAP`, the authorized run continues without another Controller wait. Formal requests go through `POST /api/v1/support/requests` exactly once in the frozen order; the runner stops only processes it owns.
+Run this after each lifecycle code change. It starts the full fixed stack, verifies the synthetic login, Backend dependency and observer gates, prepares the fresh RAG index, then cleans up. It does not create a formal manifest or send a formal support request.
 
-The credential provider resolves Student A/B only from the exact accepted Backend fixture blob and never reads environment variables or Credential Manager entries. The managed launch uses the pinned Backend and RAG task-local Python environments:
-
-```powershell
-$repoRoot = (Get-Location).Path
-$evalPath = Join-Path $repoRoot '12_evaluation\d4-evaluation-r1'
-$env:PYTHONPATH = "$evalPath;$repoRoot\09_backend\src"
-$backendPython = 'D:\Dev\tools\StudentMentalHealthAI\d4-3b-formal-run\venvs\backend-formal-r2\Scripts\python.exe'
-$ragPython = 'D:\Dev\tools\StudentMentalHealthAI\d4-3b-formal-run\venvs\rag-env-lock-r1\Scripts\python.exe'
-& $backendPython -m harness.controlled_product_eval.cli run `
-  --repo-root $repoRoot `
-  --runtime-preflight 'D:\Dev\tools\StudentMentalHealthAI\d4-3b-formal-run\runtime-preflight-current.json' `
-  --output-root 'D:\Dev\tools\StudentMentalHealthAI\d4-3b-formal-run\formal-run-r6-<new-id>' `
-  --backend-python $backendPython `
-  --rag-python $ragPython
+```text
+D:\Dev\tools\StudentMentalHealthAI\d4-3b-formal-run\venvs\backend-formal-r2\Scripts\python.exe -m harness.controlled_product_eval.cli smoke-lifecycle --output-root D:\Dev\tools\StudentMentalHealthAI\d4-3b-formal-run\service-lifecycle-smoke-<unique-id>
 ```
 
-Each managed attempt creates a fresh MySQL 8.4.8 data directory on `127.0.0.1:3307`, generates a run-local application password in memory, creates only the D4 evaluation schema/account, migrates and checks Alembic revision `20260906_0002`, then starts Backend with process-local `DB_*` settings. The credential provider does not read ambient database variables, `.env`, or Credential Manager. Student A/B credentials are resolved only after exact Git blob verification of the frozen Backend fixture source; only the two approved accounts are returned.
+Run the command twice with separate fresh output roots. Each result must report all ten managed profiles ready, loopback-only network integrity, zero connections to `3306` and `11434`, zero formal support requests, and verified cleanup.
 
-The fixed startup order is source gate → Safety/OPA → exact Ollama → Runtime → CAT → fresh MySQL server → ephemeral database credential → schema/user, migration, drift and readiness → Backend and synthetic fixture bootstrap → Student A/B login and exact subject checks → fresh RAG index → observers → full REAL_HTTP/network/evidence gates → immutable formal manifest → the frozen 12 cases exactly once. A failed login stops before RAG or manifest creation and never resets an account. Product P0/P1 findings are recorded and do not stop the frozen cases. The summary reports product P0/P1 counts separately from `execution_integrity_status` and `execution_abort_reason`.
+## Formal run
 
-The isolated RAG index uses the accepted BGE-M3 embedding model in offline mode. If the pinned model is absent from the configured local cache, startup stops without downloading it. The run manifest records all four Backend dependency identities, and formal manifest validation rejects any dependency that is not `REAL_HTTP`.
+The runner owns isolated MySQL, OPA, Safety, Ollama, Runtime, CAT, Backend, RAG, and both observers. The startup order is MySQL → OPA → Safety → Ollama → Runtime → CAT → Backend → synthetic A/B login → fresh RAG index → observers → full premanifest gates. It uses fixed executable paths, arguments, working directories, endpoints, and process-local environment allowlists; there is no shell, PowerShell, or caller-supplied command operation.
 
-`--use-existing-services` is rejected for a formal attempt because it cannot prove a fresh isolated database and fixture bootstrap.
+After independent C review returns exactly `READY_FOR_D4_3B_AUTONOMOUS_EXECUTION_AFTER_FULL_LIFECYCLE_MIGRATION`, start one fresh formal attempt under the D4 task-tools root:
 
-## Persistent local supervisor
+```text
+D:\Dev\tools\StudentMentalHealthAI\d4-3b-formal-run\venvs\backend-formal-r2\Scripts\python.exe -m harness.controlled_product_eval.cli run --output-root D:\Dev\tools\StudentMentalHealthAI\d4-3b-formal-run\formal-run-<unique-id>
+```
 
-`supervisor.py` provides a long-lived JSONL process interface over stdin/stdout. It starts children with absolute executable paths and argument arrays, `shell=False`, and per-profile environment allowlists. The request protocol accepts only `health`, `services`, `network_inventory`, `start`, `stop`, `start_stack`, `stop_stack`, and `cleanup`; it has no shell or arbitrary-command operation.
+The runner creates a new MySQL data directory and in-memory application credential, migrates and checks Alembic revision `20260906_0002`, resolves the frozen synthetic account credentials, then builds the fresh RAG index. It freezes the manifest only after the live Runtime attestation, source, login, REAL_HTTP, network, and evidence gates pass. The 12 approved cases run once each, in frozen order, with no retries. Product P0/P1 findings are recorded while the case loop continues; execution-integrity failures stop it.
 
-The supervisor parent creates and owns its fresh isolated MySQL server and credential. JSONL can only manage Backend, RAG, and observers; it cannot provide credential values. Backend start runs the in-memory A/B login gate; RAG start is rejected until that gate passes; observers follow RAG. The exact Backend and RAG task-local Python executables remain pinned, and existing listeners are never adopted. CAT, OPA, Safety, Runtime, and Ollama remain external dependencies.
+## Persistent JSONL supervisor
 
-Start the supervisor once with the task-local Python 3.12 executable, from the evaluation root. Supply a new service directory under `D:\Dev\tools\StudentMentalHealthAI\d4-3b-formal-run\supervisor-runs` and the approved corpus manifest under the D4 task tools root. Keep the process session open and send one JSON object per line, for example `{"op":"health"}`, `{"op":"start","service":"backend"}`, `{"op":"start","service":"rag"}`, `{"op":"start","service":"observers"}`, `{"op":"services"}`, and `{"op":"cleanup"}`. Responses and lifecycle evidence omit environment values; the append-only event file is written under the selected service directory. The supervisor does not run formal cases.
+`supervisor.py` exposes only fixed operations: `health`, `services`, `network_inventory`, per-service `start` / `stop`, `start_external_stack`, `stop_external_stack`, `start_stack`, `stop_stack`, and `cleanup`. It has no `exec`, shell, PowerShell, arbitrary URL, path, environment, port, or executable operation. Each owned child is launched directly with `shell=False` inside its own Windows Job Object; cleanup verifies the full child process tree and listener closure.
+
+The supervisor creates the fresh isolated MySQL instance and keeps its application credential in memory. Its database user has privileges only on the evaluation schema and is limited to `127.0.0.1`. The Backend receives its connection URL through the allowlisted process environment; the password is not placed in argv or lifecycle logs. RAG receives the fixed D-drive Hugging Face cache and an attempt-local user profile with hub and Transformers offline flags set. `start_external_stack` starts OPA, Safety, Ollama, Runtime, and CAT in order. Safety uses the unchanged frozen service source and preloads its exact local Qwen3Guard model before binding; its readiness gate still requires OPA and every mandatory component. Runtime attestation records the Supervisor-owned venv launcher and the exact CPython child that owns port 8160. It checks the child's fixed `argv[0]` interpreter path separately from its process-image path and hash; the launcher may report the inherited absolute `TEMP` or `TMP` directory as its CWD after spawning, while the listener must keep the attempt-local Runtime source CWD. `start_stack` then starts Backend, checks the frozen A/B login, starts RAG, and starts observers. The append-only JSONL event record and lifecycle evidence omit environment values and passwords.
 
 ## Harness-only validation
 
-`run_mock_validation()` exercises all 12 case/result paths without opening a socket or starting a product service. Every returned case and summary is marked `NOT_FORMAL_PRODUCT_EVIDENCE`. Textual support and population, role, and purpose applicability remain `PENDING_HUMAN_REVIEW`; the harness does not produce an overall utility score.
+`run_mock_validation()` exercises all 12 case/result paths without opening a socket or starting a product service. Its results are marked `NOT_FORMAL_PRODUCT_EVIDENCE`; the harness does not assign human or psychology judgments.

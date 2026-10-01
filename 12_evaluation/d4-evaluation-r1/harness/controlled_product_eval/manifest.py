@@ -333,9 +333,15 @@ class RuntimePreflight:
     identity: Mapping[str, Any]
     preflight_hash: str
     network_observation: str
+    execution_binding: Mapping[str, Any] | None = None
 
     @classmethod
-    def from_mapping(cls, value: Mapping[str, Any]) -> "RuntimePreflight":
+    def from_mapping(
+        cls,
+        value: Mapping[str, Any],
+        *,
+        require_live_binding: bool = False,
+    ) -> "RuntimePreflight":
         if value.get("schema_version") != "d4-runtime-preflight.v1":
             raise ManifestError("Runtime preflight schema_version mismatch")
         if value.get("status") != "PASS":
@@ -365,16 +371,127 @@ class RuntimePreflight:
             raise ManifestError("Runtime preflight reports external network activity or unknown status")
         if value.get("cloud_fallback") is not False:
             raise ManifestError("Runtime preflight reports cloud fallback or an unknown fallback state")
+        binding_value = value.get("execution_binding")
+        if binding_value is not None:
+            _validate_runtime_execution_binding(binding_value, observed_at)
+        if require_live_binding and binding_value is None:
+            raise ManifestError("managed Runtime preflight requires a live supervisor attestation")
         return cls(
             observed_at=_iso_timestamp(observed_at),
             identity=dict(identity),
             preflight_hash=supplied_hash,
             network_observation=observation,
+            execution_binding=dict(binding_value) if isinstance(binding_value, Mapping) else None,
         )
 
 
+def _validate_runtime_execution_binding(binding: Any, observed_at: str) -> None:
+    if not isinstance(binding, Mapping):
+        raise ManifestError("Runtime execution binding must be an object")
+    if binding.get("schema_version") != "d4-runtime-live-attestation.v1":
+        raise ManifestError("Runtime execution binding schema_version mismatch")
+    attempt_id = binding.get("attempt_id")
+    if not isinstance(attempt_id, str) or not attempt_id.strip():
+        raise ManifestError("Runtime execution binding attempt_id is missing")
+    binding_at = binding.get("observed_at")
+    if not isinstance(binding_at, str) or _iso_timestamp(binding_at) != _iso_timestamp(observed_at):
+        raise ManifestError("Runtime execution binding timestamp does not match its preflight")
+    for field in ("runtime_pid", "ollama_pid"):
+        value = binding.get(field)
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise ManifestError(f"Runtime execution binding {field} is invalid")
+    for prefix in ("runtime", "ollama"):
+        pids = binding.get(f"{prefix}_process_tree_pids")
+        if (
+            not isinstance(pids, list)
+            or not pids
+            or any(isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0 for pid in pids)
+            or binding[f"{prefix}_pid"] not in pids
+        ):
+            raise ManifestError(f"Runtime execution binding {prefix} process tree is invalid")
+        started_at = binding.get(f"{prefix}_started_at")
+        if not isinstance(started_at, str):
+            raise ManifestError(f"Runtime execution binding {prefix} start time is missing")
+        _iso_timestamp(started_at)
+        executable = binding.get(f"{prefix}_executable")
+        if not isinstance(executable, str) or not Path(executable).is_absolute():
+            raise ManifestError(f"Runtime execution binding {prefix} executable is not absolute")
+        executable_hash = binding.get(f"{prefix}_executable_sha256")
+        if not isinstance(executable_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", executable_hash):
+            raise ManifestError(f"Runtime execution binding {prefix} executable hash is invalid")
+    runtime_pids = binding["runtime_process_tree_pids"]
+    launcher_pid = binding.get("runtime_launcher_pid")
+    if (
+        isinstance(launcher_pid, bool)
+        or not isinstance(launcher_pid, int)
+        or launcher_pid <= 0
+        or launcher_pid not in runtime_pids
+    ):
+        raise ManifestError("Runtime execution binding launcher PID is invalid")
+    launcher_started_at = binding.get("runtime_launcher_started_at")
+    if not isinstance(launcher_started_at, str):
+        raise ManifestError("Runtime execution binding launcher start time is missing")
+    _iso_timestamp(launcher_started_at)
+    launcher_executable = binding.get("runtime_launcher_executable")
+    if not isinstance(launcher_executable, str) or not Path(launcher_executable).is_absolute():
+        raise ManifestError("Runtime execution binding launcher executable is not absolute")
+    launcher_hash = binding.get("runtime_launcher_executable_sha256")
+    if not isinstance(launcher_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", launcher_hash):
+        raise ManifestError("Runtime execution binding launcher executable hash is invalid")
+    source_hash = binding.get("runtime_source_tree_sha256")
+    if not isinstance(source_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", source_hash):
+        raise ManifestError("Runtime execution binding source tree hash is invalid")
+    if (
+        binding.get("runtime_endpoint") != "http://127.0.0.1:8160"
+        or binding.get("provider_endpoint") != "http://127.0.0.1:11437"
+        or binding.get("ollama_version") != EXPECTED_RUNTIME_IDENTITY["ollama_version"]
+        or binding.get("model") != EXPECTED_RUNTIME_IDENTITY["model"]
+        or binding.get("model_digest") != EXPECTED_RUNTIME_IDENTITY["digest"]
+        or binding.get("num_ctx") != EXPECTED_RUNTIME_IDENTITY["num_ctx"]
+        or binding.get("kv_cache_type") != EXPECTED_RUNTIME_IDENTITY["kv_cache_type"]
+        or binding.get("num_parallel") != EXPECTED_RUNTIME_IDENTITY["num_parallel"]
+        or binding.get("max_loaded_models") != EXPECTED_RUNTIME_IDENTITY["max_loaded_models"]
+        or binding.get("output_budget") != EXPECTED_RUNTIME_IDENTITY["output_budget"]
+        or binding.get("cloud_fallback") is not False
+    ):
+        raise ManifestError("Runtime execution binding differs from the accepted identity")
+    if (
+        binding.get("network_status") != "PASS"
+        or binding.get("network_observation") != "OBSERVED_LOOPBACK_ONLY"
+        or binding.get("external_established_connection_count") != 0
+        or binding.get("forbidden_endpoint_connection_count") != 0
+    ):
+        raise ManifestError("Runtime execution binding does not prove loopback-only traffic")
+    listener_pids = binding.get("verified_listener_pids")
+    if not isinstance(listener_pids, Mapping):
+        raise ManifestError("Runtime execution binding listener ownership is missing")
+    required_listener_pids = {"3307", "8160", "8180", "8181", "8190", "11437"}
+    if not required_listener_pids <= set(listener_pids):
+        raise ManifestError("Runtime execution binding omits required service listeners")
+    if (
+        listener_pids.get("8160") != binding.get("runtime_pid")
+        or listener_pids.get("11437") != binding.get("ollama_pid")
+    ):
+        raise ManifestError("Runtime execution binding listener PIDs do not match service processes")
+    if any(
+        not isinstance(port, str)
+        or not port.isdecimal()
+        or isinstance(pid, bool)
+        or not isinstance(pid, int)
+        or pid <= 0
+        for port, pid in listener_pids.items()
+    ):
+        raise ManifestError("Runtime execution binding contains an invalid listener PID")
+    network_hash = binding.get("network_observation_sha256")
+    if not isinstance(network_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", network_hash):
+        raise ManifestError("Runtime execution binding network snapshot hash is invalid")
+
+
 def build_runtime_preflight(
-    *, observed_at: datetime | str, identity: Mapping[str, Any] | None = None
+    *,
+    observed_at: datetime | str,
+    identity: Mapping[str, Any] | None = None,
+    execution_binding: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Test/helper constructor. It does not probe or start a Runtime."""
 
@@ -387,6 +504,8 @@ def build_runtime_preflight(
         "external_network_detected": False,
         "cloud_fallback": False,
     }
+    if execution_binding is not None:
+        preflight["execution_binding"] = deepcopy(dict(execution_binding))
     preflight["preflight_hash"] = _canonical_hash(preflight, self_field="preflight_hash")
     return preflight
 
@@ -708,8 +827,22 @@ def verify_formal_manifest(
         if str(item.get("integration", "")).upper() != "REAL_HTTP":
             raise ManifestError(f"formal manifest Backend dependency is not REAL_HTTP: {name}")
     lifecycle = manifest.get("managed_service_identity")
-    if not isinstance(lifecycle, Mapping) or lifecycle.get("runtime_process_owned") is not False or not isinstance(lifecycle.get("services"), list):
+    if not isinstance(lifecycle, Mapping) or not isinstance(lifecycle.get("runtime_process_owned"), bool) or not isinstance(lifecycle.get("services"), list):
         raise ManifestError("formal manifest has invalid managed service ownership")
+    if lifecycle.get("owner") == "D4_EVALUATION_HARNESS":
+        if lifecycle.get("runtime_process_owned") is not True:
+            raise ManifestError("managed formal manifest must bind Runtime to the evaluation supervisor")
+        service_names = {
+            str(item.get("name"))
+            for item in lifecycle.get("services", ())
+            if isinstance(item, Mapping)
+        }
+        required_services = {
+            "d4-mysql", "d4-opa", "d4-safety", "d4-ollama", "d4-runtime", "d4-cat",
+            "d4-backend", "d4-rag", "d4-rag-observer", "d4-llm-observer",
+        }
+        if not required_services <= service_names:
+            raise ManifestError("managed formal manifest omits one or more supervisor-owned services")
     if manifest.get("backend_identity", {}).get("route") != FORMAL_ROUTE:
         raise ManifestError("formal manifest route is not the canonical Backend endpoint")
     if manifest.get("retry_policy") != {"max_retries": 0, "non_idempotent_post_retries": 0}:

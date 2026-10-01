@@ -45,7 +45,11 @@ from .results import (
 from .network_integrity import LoopbackNetworkMonitor
 
 EXPECTED_RUNTIME_HTTP_ENDPOINT = "http://127.0.0.1:8160"
-EXPECTED_RUNTIME_LOGICAL_MODEL_ID = "student.support.local"
+# Logical key published by the immutable R1 Runtime profile; provider identity
+# is independently checked against EXPECTED_RUNTIME_IDENTITY below.
+EXPECTED_RUNTIME_LOGICAL_MODEL_ID = "qwen2.5-7b-instruct-gpu-acceptance"
+SYNTHETIC_CAT_INSTRUMENT_ID = "instrument_demo_cat_v0_1"
+SYNTHETIC_CAT_INSTRUMENT_VERSION = "demo.v1"
 
 
 CORRELATION_SAFE = re.compile(r"^D4RUN-[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -235,6 +239,8 @@ class CanonicalHttpTransport:
         rag_observer_events: str | Path,
         llm_observer_events: str | Path,
         passwords: Mapping[str, str],
+        cat_instrument_id: str = SYNTHETIC_CAT_INSTRUMENT_ID,
+        cat_instrument_version: str = SYNTHETIC_CAT_INSTRUMENT_VERSION,
         timeout_seconds: float = 150.0,
         network_monitor: LoopbackNetworkMonitor | None = None,
     ) -> None:
@@ -250,7 +256,11 @@ class CanonicalHttpTransport:
         self.llm_observer_events = Path(llm_observer_events)
         if set(passwords) != set(EXPECTED_SYNTHETIC_SUBJECTS) or not all(passwords.values()):
             raise RunnerError("frozen synthetic login credentials are incomplete")
+        if not cat_instrument_id or not cat_instrument_version:
+            raise RunnerError("fixed synthetic CAT instrument identity is incomplete")
         self.passwords = dict(passwords)
+        self.cat_instrument_id = cat_instrument_id
+        self.cat_instrument_version = cat_instrument_version
         self.timeout_seconds = timeout_seconds
         self.network_monitor = network_monitor or LoopbackNetworkMonitor()
         self._clients: dict[str, httpx.AsyncClient] = {}
@@ -286,7 +296,7 @@ class CanonicalHttpTransport:
                 "external_established_connections": [],
                 "issues": [{"code": "NETWORK_OBSERVER_FAILURE", "error_type": type(exc).__name__}],
             }
-        backend = await httpx.AsyncClient(
+        backend = httpx.AsyncClient(
             base_url=self.backend_base_url,
             timeout=httpx.Timeout(5.0),
             follow_redirects=False,
@@ -430,8 +440,8 @@ class CanonicalHttpTransport:
             headers=headers,
             json={
                 "subject_id": self._subjects[username],
-                "instrument_id": "instrument.synthetic",
-                "instrument_version": "1.0",
+                "instrument_id": self.cat_instrument_id,
+                "instrument_version": self.cat_instrument_version,
             },
         )
         if response.status_code != 201:
@@ -446,13 +456,57 @@ class CanonicalHttpTransport:
     async def _complete_assessment(self, username: str, assessment_id: str) -> str:
         client = await self._client(username)
         headers = {"X-CSRF-Token": self._csrf[username]}
-        response = await client.post(
-            f"/api/v1/assessments/{assessment_id}/responses",
+        state_response = await client.get(
+            f"/api/v1/assessments/{assessment_id}/state",
             headers=headers,
-            json={"item_id": "ITEM_synthetic_1", "response": 1.0},
         )
-        if response.status_code != 200:
-            raise RunnerError("synthetic assessment response bootstrap failed")
+        if state_response.status_code != 200:
+            raise RunnerError("synthetic assessment state bootstrap failed")
+        state = _api_data(state_response.json())
+        maximum = state.get("max_items")
+        step_limit = maximum if isinstance(maximum, int) and 1 <= maximum <= 64 else 12
+        answered = state.get("answered_count", 0)
+        if not isinstance(answered, int) or answered < 0:
+            raise RunnerError("synthetic assessment answer state is invalid")
+        for _ in range(step_limit):
+            if state.get("can_complete") is True:
+                break
+            item_id = state.get("selected_item_id")
+            current_item = state.get("current_item")
+            if (
+                not isinstance(item_id, str)
+                or not item_id.startswith("ITEM_")
+                or not isinstance(current_item, Mapping)
+                or current_item.get("item_id") != item_id
+            ):
+                raise RunnerError("synthetic CAT did not expose the selected fixture item")
+            options = current_item.get("options")
+            response_value = next(
+                (
+                    option.get("value")
+                    for option in options
+                    if isinstance(option, Mapping)
+                    and isinstance(option.get("value"), (str, int, float, bool))
+                ),
+                None,
+            ) if isinstance(options, list) else None
+            if response_value is None:
+                raise RunnerError("synthetic CAT item exposed no fixture response option")
+            response = await client.post(
+                f"/api/v1/assessments/{assessment_id}/responses",
+                headers=headers,
+                json={"item_id": item_id, "response": response_value},
+            )
+            if response.status_code != 200:
+                raise RunnerError("synthetic assessment response bootstrap failed")
+            next_state = _api_data(response.json())
+            next_answered = next_state.get("answered_count")
+            if not isinstance(next_answered, int) or next_answered <= answered:
+                raise RunnerError("synthetic CAT did not advance after its fixture response")
+            state = next_state
+            answered = next_answered
+        if state.get("can_complete") is not True:
+            raise RunnerError("synthetic CAT fixture did not reach its completion boundary")
         complete = await client.post(
             f"/api/v1/assessments/{assessment_id}/complete",
             headers=headers,

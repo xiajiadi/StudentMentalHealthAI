@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import socket
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -15,8 +16,10 @@ from .credential_provider import (
 )
 from .environment_profiles import (
     D4_TASK_TOOLS_ROOT,
+    EVALUATION_PROCESS_USERNAME,
     MYSQL_BASEDIR,
     MYSQLD_EXECUTABLE,
+    MYSQLD_SHA256,
     MYSQL_VERSION,
 )
 from .process_lifecycle import (
@@ -28,6 +31,10 @@ from .process_lifecycle import (
 
 
 EXPECTED_REVISION = "20260906_0002"
+APP_HOST = "127.0.0.1"
+APP_PORT = 3307
+APP_USERNAME = "smhai_eval_app"
+APP_DATABASE = "smhai_d4_evaluation"
 APP_PRIVILEGES = (
     "ALTER",
     "CREATE",
@@ -40,6 +47,31 @@ APP_PRIVILEGES = (
 )
 _BOOTSTRAP_PASSWORD_ENV = "D4_EVAL_APP_PASSWORD"
 _EXPECTED_DATA_DIR_ENV = "D4_EVAL_EXPECTED_DATADIR"
+
+
+def database_url_for_credential(credential: DatabaseCredential) -> str:
+    """Render the fixed MySQL URL with its password for process-local use only."""
+
+    if (
+        credential.host != APP_HOST
+        or credential.port != APP_PORT
+        or credential.username != APP_USERNAME
+        or credential.database != APP_DATABASE
+    ):
+        raise MySqlBootstrapError("MYSQL_APPLICATION_PROFILE_MISMATCH")
+    from sqlalchemy import URL
+
+    return URL.create(
+        "mysql+aiomysql",
+        username=credential.username,
+        password=credential.password,
+        host=credential.host,
+        port=credential.port,
+        database=credential.database,
+        query={"charset": "utf8mb4"},
+    ).render_as_string(hide_password=False)
+
+
 _MYSQL_BOOTSTRAP_SCRIPT = r'''
 import os
 import sys
@@ -50,6 +82,7 @@ APP_HOST = "127.0.0.1"
 APP_DATABASE = "smhai_d4_evaluation"
 APP_PASSWORD = os.environ["D4_EVAL_APP_PASSWORD"]
 EXPECTED_DATADIR = os.environ["D4_EVAL_EXPECTED_DATADIR"]
+APP_PRIVILEGES = "ALTER, CREATE, DELETE, INDEX, INSERT, REFERENCES, SELECT, UPDATE"
 
 def normalize_path(value):
     return os.path.normcase(os.path.normpath(os.path.abspath(value))).rstrip("\\/")
@@ -96,19 +129,15 @@ try:
             "CREATE DATABASE `smhai_d4_evaluation` "
             "CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci"
         )
+        account = f"`{APP_USER}`@`{APP_HOST}`"
         cursor.execute(
-            "CREATE USER `smhai_eval_app`@`127.0.0.1` "
-            "IDENTIFIED WITH caching_sha2_password BY %s",
+            f"CREATE USER {account} IDENTIFIED WITH caching_sha2_password BY %s",
             (APP_PASSWORD,),
         )
         cursor.execute(
-            "GRANT ALTER, CREATE, DELETE, INDEX, INSERT, REFERENCES, "
-            "SELECT, UPDATE ON `smhai_d4_evaluation`.* "
-            "TO `smhai_eval_app`@`127.0.0.1`"
+            f"GRANT {APP_PRIVILEGES} ON `{APP_DATABASE}`.* TO {account}"
         )
-        cursor.execute(
-            "SHOW GRANTS FOR `smhai_eval_app`@`127.0.0.1`"
-        )
+        cursor.execute(f"SHOW GRANTS FOR {account}")
         grants = [str(row[0]).upper() for row in cursor.fetchall()]
         schema_grants = [
             grant for grant in grants
@@ -130,7 +159,8 @@ try:
     with app.cursor() as cursor:
         cursor.execute("SELECT CURRENT_USER(), DATABASE(), @@datadir")
         current_user, database, datadir = cursor.fetchone()
-        if not str(current_user).lower().startswith("smhai_eval_app@"):
+        auth_user, separator, auth_host = str(current_user).lower().partition("@")
+        if not separator or auth_user != APP_USER or auth_host != APP_HOST:
             raise RuntimeError("app-user")
         if database != APP_DATABASE:
             raise RuntimeError("app-database")
@@ -145,6 +175,108 @@ finally:
         app.close()
     if root is not None:
         root.close()
+'''
+
+_ASYNC_MYSQL_READINESS_SCRIPT = r'''
+import asyncio
+import os
+import sys
+
+import aiomysql
+from sqlalchemy.engine import make_url
+from database_layer.config import DatabaseSettings, create_engine
+
+failure_stage = "database-settings-profile"
+
+async def verify_connection(connection):
+    async with connection.cursor() as cursor:
+        await cursor.execute(
+            "SELECT CURRENT_USER(), DATABASE(), @@datadir, version_num "
+            "FROM database_alembic_version"
+        )
+        current_user, database, datadir, revision = await cursor.fetchone()
+    auth_user, separator, auth_host = str(current_user).lower().partition("@")
+    allowed_hosts = {"127.0.0.1"}
+    expected_datadir = os.environ["D4_EVAL_EXPECTED_DATADIR"]
+    normalized = lambda value: os.path.normcase(os.path.normpath(os.path.abspath(value))).rstrip("\\/")
+    mismatches = []
+    if not separator or auth_user != os.environ["DB_USER"].lower():
+        mismatches.append("user")
+    if auth_host not in allowed_hosts:
+        mismatches.append("auth_host")
+    if database != os.environ["DB_NAME"]:
+        mismatches.append("database")
+    if normalized(datadir) != normalized(expected_datadir):
+        mismatches.append("datadir")
+    if revision != "20260906_0002":
+        mismatches.append("revision")
+    if mismatches:
+        raise RuntimeError("database-identity:" + ",".join(mismatches))
+
+async def main():
+    global failure_stage
+    settings = DatabaseSettings.from_env()
+    url = make_url(settings.url)
+    profile_mismatches = []
+    if url.host != os.environ["DB_HOST"]:
+        profile_mismatches.append("host")
+    if url.port != int(os.environ["DB_PORT"]):
+        profile_mismatches.append("port")
+    if url.username != os.environ["DB_USER"]:
+        profile_mismatches.append("user")
+    if url.database != os.environ["DB_NAME"]:
+        profile_mismatches.append("database")
+    if url.password is None:
+        profile_mismatches.append("password_missing")
+    if profile_mismatches:
+        raise RuntimeError("database-profile:" + ",".join(profile_mismatches))
+
+    failure_stage = "direct-aiomysql-connect"
+    connection = await aiomysql.connect(
+        host=os.environ["DB_HOST"],
+        port=int(os.environ["DB_PORT"]),
+        user=os.environ["DB_USER"],
+        password=url.password,
+        db=os.environ["DB_NAME"],
+        connect_timeout=5,
+        charset="utf8mb4",
+    )
+    try:
+        failure_stage = "direct-aiomysql-identity"
+        await verify_connection(connection)
+    finally:
+        failure_stage = "direct-aiomysql-close"
+        await connection.ensure_closed()
+
+    failure_stage = "sqlalchemy-engine"
+    engine = create_engine(settings)
+    try:
+        async with engine.connect() as connection:
+            result = await connection.exec_driver_sql("SELECT 1")
+            if result.scalar_one() != 1:
+                raise RuntimeError("database-engine")
+    finally:
+        await engine.dispose()
+
+try:
+    asyncio.run(main())
+    print("D4_MYSQL_ASYNC_READINESS=PASS")
+except Exception as exc:
+    original = getattr(exc, "orig", exc)
+    args = getattr(original, "args", ())
+    code = next((item for item in args if isinstance(item, int)), "unknown")
+    if (
+        isinstance(exc, RuntimeError)
+        and args
+        and isinstance(args[0], str)
+        and args[0].startswith(("database-profile:", "database-identity:", "database-engine"))
+    ):
+        code = args[0]
+    print(
+        f"D4_MYSQL_ASYNC_READINESS=FAIL:{failure_stage}:{type(exc).__name__}:{code}",
+        file=sys.stderr,
+    )
+    sys.exit(31)
 '''
 
 
@@ -243,6 +375,7 @@ class IsolatedMySqlBootstrap:
         if "No new upgrade operations detected" not in drift_text:
             raise MySqlBootstrapError("MYSQL_ALEMBIC_DRIFT_CHECK_FAILED")
         self._verify_app_readiness()
+        self._verify_async_app_readiness()
         return MySqlBootstrapEvidence(
             host=self.credential.host,
             port=self.credential.port,
@@ -282,7 +415,10 @@ class IsolatedMySqlBootstrap:
             readiness_kind="tcp",
             log_path=self.logs / "server.stdout.log",
             stderr_log_path=self.logs / "server.stderr.log",
-            package_lock_identity={"mysql_server_version": MYSQL_VERSION},
+            package_lock_identity={
+                "mysql_server_version": MYSQL_VERSION,
+                "mysql_executable_sha256": MYSQLD_SHA256,
+            },
             environment_allowlist=frozenset(),
         )
 
@@ -291,6 +427,12 @@ class IsolatedMySqlBootstrap:
             raise MySqlBootstrapError("BACKEND_PYTHON_UNAVAILABLE")
         if not MYSQLD_EXECUTABLE.is_absolute() or not MYSQLD_EXECUTABLE.is_file():
             raise MySqlBootstrapError("MYSQL_SERVER_UNAVAILABLE")
+        digest = hashlib.sha256()
+        with MYSQLD_EXECUTABLE.open("rb") as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(block)
+        if digest.hexdigest() != MYSQLD_SHA256:
+            raise MySqlBootstrapError("MYSQL_SERVER_BINARY_IDENTITY_MISMATCH")
         if not MYSQL_BASEDIR.is_absolute() or not MYSQL_BASEDIR.is_dir():
             raise MySqlBootstrapError("MYSQL_BASEDIR_UNAVAILABLE")
         try:
@@ -470,6 +612,7 @@ finally:
             "PYTHONPATH": str(database_path.resolve()),
             "DATABASE_URL": database_url,
             "DB_PASSWORD": self.credential.password,
+            "USERNAME": EVALUATION_PROCESS_USERNAME,
         }
         log_stem = "alembic-" + "-".join(arguments)
         try:
@@ -477,7 +620,7 @@ finally:
                 name="mysql-" + log_stem,
                 executable=self.backend_python,
                 arguments=("-m", "alembic", "-c", str(config_path.resolve()), *arguments),
-                cwd=self.repo_root,
+                cwd=database_path.resolve(),
                 environment=environment,
                 environment_allowlist=frozenset(environment),
                 stdout_path=self.logs / f"{log_stem}.stdout.log",
@@ -529,3 +672,37 @@ except Exception:
             raise MySqlBootstrapError("MYSQL_READINESS_CHECK_FAILED") from None
         if result.return_code != 0 or b"D4_MYSQL_READINESS=PASS" not in result.stdout:
             raise MySqlBootstrapError("MYSQL_READINESS_CHECK_FAILED")
+
+    def _verify_async_app_readiness(self) -> None:
+        if self.credential is None:
+            raise MySqlBootstrapError("MYSQL_APPLICATION_CREDENTIAL_MISSING")
+        database_path = self.repo_root / "11_database"
+        environment = {
+            "PYTHONPATH": str(database_path.resolve()),
+            "DATABASE_URL": database_url_for_credential(self.credential),
+            "DB_HOST": self.credential.host,
+            "DB_PORT": str(self.credential.port),
+            "DB_USER": self.credential.username,
+            "DB_NAME": self.credential.database,
+            "D4_EVAL_EXPECTED_DATADIR": str(self.datadir.resolve()),
+            "USERNAME": EVALUATION_PROCESS_USERNAME,
+        }
+        try:
+            result = run_managed_command(
+                name="mysql-async-readiness-check",
+                executable=self.backend_python,
+                arguments=("-c", _ASYNC_MYSQL_READINESS_SCRIPT),
+                cwd=self.repo_root,
+                environment=environment,
+                environment_allowlist=frozenset(environment),
+                stdout_path=self.logs / "async-readiness.stdout.log",
+                stderr_path=self.logs / "async-readiness.stderr.log",
+                timeout_seconds=60,
+            )
+        except LifecycleError:
+            raise MySqlBootstrapError("MYSQL_ASYNC_READINESS_CHECK_FAILED") from None
+        if (
+            result.return_code != 0
+            or b"D4_MYSQL_ASYNC_READINESS=PASS" not in result.stdout
+        ):
+            raise MySqlBootstrapError("MYSQL_ASYNC_READINESS_CHECK_FAILED")

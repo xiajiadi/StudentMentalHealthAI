@@ -28,6 +28,7 @@ from harness.controlled_product_eval.supervisor import (
     SupervisorConfig,
     build_service_profiles,
 )
+import harness.controlled_product_eval.supervisor as supervisor_module
 from harness.controlled_product_eval.runner import RunnerError
 
 
@@ -167,8 +168,8 @@ def test_one_shot_bootstrap_redacts_secret_output_and_rejects_secret_argv(tmp_pa
 
 
 class _FakeProcessSupervisor:
-    def __init__(self):
-        self.started: list[str] = []
+    def __init__(self, started: tuple[str, ...] = ()):
+        self.started: list[str] = list(started)
         self.stopped: list[str] = []
 
     def identities(self):
@@ -212,9 +213,14 @@ def _protocol(tmp_path):
 
 def test_supervisor_protocol_rejects_arbitrary_commands_and_external_ownership(tmp_path, monkeypatch):
     service, manager = _protocol(tmp_path)
-    denied = service.dispatch({"op": "start", "service": "mysql"})
+    denied = service.dispatch({"op": "start", "service": "powershell"})
     assert denied["ok"] is False
     assert denied["error_type"] == "OwnershipError"
+    assert manager.started == []
+
+    no_mysql = service.dispatch({"op": "start_external_stack"})
+    assert no_mysql["ok"] is False
+    assert no_mysql["error_type"] == "PreconditionError"
     assert manager.started == []
 
     malformed = service.dispatch({"op": "start", "service": "rag", "command": "whoami"})
@@ -261,27 +267,61 @@ def test_supervisor_enforces_login_before_rag_index_start(tmp_path):
     assert manager.started == []
 
 
-def test_supervisor_stops_after_missing_login_gate_and_does_not_retry(tmp_path):
+def test_supervisor_external_stack_starts_in_fixed_order_and_publishes_live_attestation(tmp_path, monkeypatch):
     service, manager = _protocol(tmp_path)
+    manager.started.append("d4-mysql")
+    service.profile_source_evidence = {name: {"status": "PASS"} for name in ("opa", "safety", "ollama", "runtime", "cat")}
+    service.attempt_id = "D4SUP_TEST_001"
+    service.service_root = tmp_path.resolve()
+    service.current_runtime_pointer = (tmp_path / "runtime-preflight-current.json").resolve()
+
+    async def fake_verify(**_kwargs):
+        return {
+            "preflight": {"preflight_hash": "sha256:" + "a" * 64},
+            "run_preflight_path": str(tmp_path / "preflight" / "runtime-preflight.json"),
+        }
+
+    monkeypatch.setattr(supervisor_module, "verify_external_service_readiness", fake_verify)
+    result = service.dispatch({"op": "start_external_stack"})
+    assert result["ok"] is True
+    assert manager.started == [
+        "d4-mysql", "d4-opa", "d4-safety", "d4-ollama", "d4-runtime", "d4-cat",
+    ]
+    assert result["runtime_preflight_hash"] == "sha256:" + "a" * 64
+    assert service.runtime_preflight["preflight_hash"] == "sha256:" + "a" * 64
+
+
+def test_supervisor_stops_after_missing_login_gate_and_does_not_retry(tmp_path, monkeypatch):
+    service, manager = _protocol(tmp_path)
+    manager.started.extend(("d4-mysql", "d4-opa", "d4-safety", "d4-ollama", "d4-runtime", "d4-cat"))
+    service.runtime_preflight = {"preflight_hash": "sha256:" + "a" * 64}
+    monkeypatch.setattr(supervisor_module, "verify_runtime_attestation_still_live", lambda *_args, **_kwargs: {"status": "PASS"})
     first = service.dispatch({"op": "start", "service": "backend"})
     second = service.dispatch({"op": "start", "service": "backend"})
     assert first["ok"] is False
     assert second["ok"] is False
     assert service.login_gate_failed is True
-    assert manager.started == ["d4-backend"]
+    assert manager.started[-1] == "d4-backend"
     assert manager.stopped == ["d4-backend"]
 
 
 def test_supervisor_group_allowlist_is_fixed_and_excludes_external_services():
     assert OWNED_GROUPS == {
+        "mysql": ("d4-mysql",),
+        "opa": ("d4-opa",),
+        "safety": ("d4-safety",),
+        "ollama": ("d4-ollama",),
+        "runtime": ("d4-runtime",),
+        "cat": ("d4-cat",),
+        "external": ("d4-opa", "d4-safety", "d4-ollama", "d4-runtime", "d4-cat"),
         "rag": ("d4-rag",),
         "observers": ("d4-rag-observer", "d4-llm-observer"),
         "backend": ("d4-backend",),
     }
+    assert START_ORDER[:6] == ("d4-mysql", "d4-opa", "d4-safety", "d4-ollama", "d4-runtime", "d4-cat")
     assert START_ORDER.index("d4-backend") < START_ORDER.index("d4-rag")
-    assert "mysql" not in OWNED_GROUPS
-    assert "runtime" not in OWNED_GROUPS
-    assert "safety" not in OWNED_GROUPS
+    assert "d4-runtime" in START_ORDER
+    assert "d4-safety" in START_ORDER
 
 
 def test_supervisor_rejects_caller_selected_tools_root(tmp_path):
@@ -301,14 +341,12 @@ def test_supervisor_rejects_caller_selected_tools_root(tmp_path):
         )
 
 
-def test_managed_cli_rejects_caller_selected_python_executables(tmp_path):
+def test_managed_cli_rejects_output_outside_pinned_task_tools_root(tmp_path):
     args = Namespace(
-        repo_root=str(tmp_path / "project"),
         output_root=str(tmp_path / "output"),
-        backend_python=str(tmp_path / "caller" / "python.exe"),
-        rag_python=str(tmp_path / "caller" / "python.exe"),
+        packet=str(Path(__file__).resolve().parents[5] / "12_evaluation" / "d4-evaluation-r1" / "D4_3A_HUMAN_GOLD_REVIEW_PACKET.json"),
     )
-    with pytest.raises(RunnerError, match="pinned task-local environment"):
+    with pytest.raises(RunnerError, match="pinned D4 task-tools root"):
         asyncio.run(_run_managed(args))
 
 

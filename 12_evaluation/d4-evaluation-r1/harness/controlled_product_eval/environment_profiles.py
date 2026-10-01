@@ -4,6 +4,7 @@ from pathlib import Path
 
 
 D4_TASK_TOOLS_ROOT = Path(r"D:\Dev\tools\StudentMentalHealthAI\d4-3b-formal-run")
+EVALUATION_PROCESS_USERNAME = "d4-evaluation"
 GIT_EXECUTABLE = Path(r"D:\Software\Git\cmd\git.exe")
 BACKEND_PYTHON = (
     D4_TASK_TOOLS_ROOT / "venvs" / "backend-formal-r2" / "Scripts" / "python.exe"
@@ -14,3 +15,4 @@ RAG_PYTHON = (
 MYSQL_BASEDIR = Path(r"D:\Software\MySQLServer8.4")
 MYSQLD_EXECUTABLE = MYSQL_BASEDIR / "bin" / "mysqld.exe"
 MYSQL_VERSION = "8.4.8"
+MYSQLD_SHA256 = "7f4b367a2360ea4a4098eb48e1b7693795b91c919bd813b48ea9f086978dc99b"

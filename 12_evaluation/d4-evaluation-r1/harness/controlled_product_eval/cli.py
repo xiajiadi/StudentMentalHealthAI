@@ -13,19 +13,22 @@ import uuid
 from pathlib import Path
 from typing import Any, Mapping
 
-import httpx
-
 from .approved_packet import ApprovedPacketError, load_approved_packet
 from .manifest import (
-    EXPECTED_RUNTIME_IDENTITY,
     ManifestError,
     RuntimePreflight,
+    create_run_id,
     build_approved_corpus_manifest,
     build_case_manifest,
     is_loopback_url,
     write_json_once,
 )
-from .environment_profiles import BACKEND_PYTHON, D4_TASK_TOOLS_ROOT, RAG_PYTHON
+from .environment_profiles import (
+    BACKEND_PYTHON,
+    D4_TASK_TOOLS_ROOT,
+    EVALUATION_PROCESS_USERNAME,
+    RAG_PYTHON,
+)
 from .credential_provider import (
     ACCEPTED_PRODUCT_BASELINE,
     EXPECTED_SYNTHETIC_SUBJECTS,
@@ -35,17 +38,41 @@ from .credential_provider import (
     CredentialProviderError,
     credential_evidence_metadata,
 )
-from .mysql_bootstrap import IsolatedMySqlBootstrap
+from .mysql_bootstrap import IsolatedMySqlBootstrap, database_url_for_credential
 from .process_lifecycle import (
     LifecycleError,
     ProcessSpec,
     ProcessSupervisor,
     build_child_environment,
 )
+from .network_integrity import LoopbackNetworkMonitor
 from .secret_scan import scan_secret_artifacts
+from .service_profiles import (
+    HF_CACHE,
+    ServiceProfileError,
+    build_external_service_profiles,
+    invalidate_current_runtime_pointer,
+    preflight_formal_port_owners,
+    verify_external_service_readiness,
+    verify_runtime_attestation_still_live,
+)
 from .runner import CanonicalHttpTransport, RunnerError, run_evaluation
 
 RUNTIME_HTTP_SERVICE_BASE_URL = "http://127.0.0.1:8160"
+
+
+def _safe_startup_failure_detail(
+    error: Exception, *, stage: str | None = None
+) -> str | None:
+    """Expose bounded diagnostics for fixed profiles and local smoke preflights."""
+
+    allowed = isinstance(error, (ManifestError, ServiceProfileError)) or (
+        stage in {"FULL_REAL_HTTP_PREFLIGHT", "COLD_START_SMOKE"}
+        and isinstance(error, RunnerError)
+    )
+    if not allowed:
+        return None
+    return " ".join(str(error).split())[:240]
 
 
 def _unique_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -111,6 +138,9 @@ async def _run(
         corpus_manifest = build_approved_corpus_manifest(packet)
         write_json_once(corpus_path, corpus_manifest)
     runtime_preflight = _read_json(args.runtime_preflight)
+    live_runtime = RuntimePreflight.from_mapping(runtime_preflight, require_live_binding=True)
+    if live_runtime.execution_binding is None or live_runtime.execution_binding.get("attempt_id") != getattr(args, "run_id", None):
+        raise RunnerError("live Runtime preflight is not bound to this formal run ID")
     if transport is None:
         if synthetic_passwords is None:
             raise RunnerError("frozen synthetic credentials must be provided in memory")
@@ -137,6 +167,7 @@ async def _run(
         case_manifest_path=case_path,
         corpus_manifest_path=corpus_path,
         managed_service_identity=managed_service_identity,
+        run_id=getattr(args, "run_id", None),
     )
 
 
@@ -251,8 +282,13 @@ def _managed_specs(
     if not is_loopback_url(cat_url) or not is_loopback_url(safety_url):
         raise RunnerError("formal CAT and Safety endpoints must use HTTP loopback")
     service_root.mkdir(parents=True, exist_ok=True)
+    rag_home = (service_root / "isolated-rag-user-profile").resolve()
+    rag_home.mkdir(parents=True, exist_ok=True)
     rag_env = {
         "PYTHONPATH": _managed_pythonpath(evaluation_root),
+        "USERPROFILE": str(rag_home),
+        "HOME": str(rag_home),
+        "HF_HOME": str(HF_CACHE.resolve()),
         "HF_HUB_OFFLINE": "1",
         "TRANSFORMERS_OFFLINE": "1",
     }
@@ -263,6 +299,7 @@ def _managed_specs(
         "PYTHONPATH": _managed_pythonpath(
             evaluation_root, backend_src, database_src
         ),
+        "USERNAME": EVALUATION_PROCESS_USERNAME,
         "SMHAI_ENVIRONMENT": "local",
         "SMHAI_HOST": "127.0.0.1",
         "SMHAI_PORT": "8080",
@@ -275,10 +312,10 @@ def _managed_specs(
         "SMHAI_LLM__BASE_URL": "http://127.0.0.1:8272",
         "SMHAI_SAFETY__MODE": "http",
         "SMHAI_SAFETY__BASE_URL": safety_url,
+        "DATABASE_URL": database_url_for_credential(database_credential),
         "DB_HOST": database_credential.host,
         "DB_PORT": str(database_credential.port),
         "DB_USER": database_credential.username,
-        "DB_PASSWORD": database_credential.password,
         "DB_NAME": database_credential.database,
     }
     backend_version = _python_version(backend_python)
@@ -375,101 +412,11 @@ def _managed_specs(
     ]
 
 
-async def _verify_external_services() -> dict[str, Any]:
-    """Readiness-check fixed local dependencies without starting or adopting them."""
-
-    evidence: dict[str, Any] = {}
-    async with httpx.AsyncClient(
-        timeout=httpx.Timeout(5.0),
-        follow_redirects=False,
-        trust_env=False,
-    ) as client:
-        for name, endpoint in (
-            ("safety", "http://127.0.0.1:8190/health/ready"),
-            ("opa", "http://127.0.0.1:8181/health"),
-        ):
-            try:
-                response = await client.get(endpoint)
-            except httpx.HTTPError:
-                raise RunnerError(f"{name} loopback readiness request failed") from None
-            if response.status_code != 200:
-                raise RunnerError(f"{name} loopback readiness returned HTTP {response.status_code}")
-            evidence[name] = {"status": "READY", "endpoint": endpoint}
-
-        try:
-            version_response = await client.get("http://127.0.0.1:11437/api/version")
-            tags_response = await client.get("http://127.0.0.1:11437/api/tags")
-        except httpx.HTTPError:
-            raise RunnerError("Ollama loopback readiness request failed") from None
-        if version_response.status_code != 200 or tags_response.status_code != 200:
-            raise RunnerError("Ollama loopback readiness failed")
-        try:
-            ollama_version = version_response.json().get("version")
-            models = tags_response.json().get("models")
-        except (ValueError, AttributeError):
-            raise RunnerError("Ollama readiness response is malformed") from None
-        if ollama_version != EXPECTED_RUNTIME_IDENTITY["ollama_version"]:
-            raise RunnerError("Ollama version does not match the frozen runtime identity")
-        if not isinstance(models, list) or not any(
-            isinstance(item, Mapping)
-            and item.get("name") == EXPECTED_RUNTIME_IDENTITY["model"]
-            and item.get("digest") == EXPECTED_RUNTIME_IDENTITY["digest"]
-            for item in models
-        ):
-            raise RunnerError("Ollama model digest does not match the frozen runtime identity")
-        evidence["ollama"] = {
-            "status": "READY",
-            "endpoint": "http://127.0.0.1:11437",
-            "version": ollama_version,
-            "model": EXPECTED_RUNTIME_IDENTITY["model"],
-            "digest": EXPECTED_RUNTIME_IDENTITY["digest"],
-        }
-        for name, endpoint in (
-            ("runtime", "http://127.0.0.1:8160/health/ready"),
-            ("cat", "http://127.0.0.1:8180/health/ready"),
-        ):
-            try:
-                response = await client.get(endpoint)
-            except httpx.HTTPError:
-                raise RunnerError(f"{name} loopback readiness request failed") from None
-            if response.status_code != 200:
-                raise RunnerError(f"{name} loopback readiness returned HTTP {response.status_code}")
-            if name == "runtime":
-                try:
-                    runtime_payload = response.json()
-                    health = runtime_payload.get("health")
-                    models = health.get("models") if isinstance(health, Mapping) else None
-                    model = models.get("student.support.local") if isinstance(models, Mapping) else None
-                except (ValueError, AttributeError):
-                    raise RunnerError("Runtime readiness identity is malformed") from None
-                if (
-                    not isinstance(health, Mapping)
-                    or health.get("readiness") != "pass"
-                    or health.get("cloud_fallback") is not False
-                    or not isinstance(model, Mapping)
-                    or model.get("provider_model_id") != EXPECTED_RUNTIME_IDENTITY["model"]
-                ):
-                    raise RunnerError("Runtime readiness identity does not match the frozen model")
-                evidence[name] = {
-                    "status": "READY",
-                    "endpoint": endpoint,
-                    "provider_model_id": EXPECTED_RUNTIME_IDENTITY["model"],
-                    "cloud_fallback": False,
-                }
-            else:
-                evidence[name] = {"status": "READY", "endpoint": endpoint}
-    return {
-        "schema_version": "d4-3b-external-service-preflight.v1",
-        "services": evidence,
-        "network_policy": "LOOPBACK_ONLY",
-    }
-
-
 async def _run_managed(args: argparse.Namespace) -> dict[str, Any]:
-    repo_root = Path(args.repo_root).resolve()
+    repo_root = Path(__file__).resolve().parents[4]
     output_root = Path(args.output_root).resolve()
-    backend_python = _require_pinned_interpreter(args.backend_python, BACKEND_PYTHON, "Backend")
-    rag_python = _require_pinned_interpreter(args.rag_python, RAG_PYTHON, "RAG")
+    backend_python = BACKEND_PYTHON.resolve()
+    rag_python = RAG_PYTHON.resolve()
     backend_version = _python_version(backend_python)
     if not backend_version.startswith("3.12."):
         raise RunnerError("managed Backend must use its dedicated Python 3.12 environment")
@@ -489,11 +436,7 @@ async def _run_managed(args: argparse.Namespace) -> dict[str, Any]:
     if not rag_lock_identity.get("accepted_uv_lock_sha256"):
         raise RunnerError("managed RAG lock identity is missing or mismatched for the pinned environment")
 
-    try:
-        output_root.relative_to(repo_root)
-    except ValueError:
-        pass
-    else:
+    if output_root.is_relative_to(repo_root):
         raise RunnerError("managed run output and temporary indexes must be outside the project checkout")
     try:
         output_root.relative_to(D4_TASK_TOOLS_ROOT.resolve())
@@ -506,12 +449,13 @@ async def _run_managed(args: argparse.Namespace) -> dict[str, Any]:
     output_root.mkdir(parents=True, exist_ok=True)
 
     packet = load_approved_packet(args.packet)
-    runtime_mapping = _read_json(args.runtime_preflight)
-    runtime = RuntimePreflight.from_mapping(runtime_mapping)
     manifest_dir = output_root / "input-manifests"
     prepared = prepare_assets(args.packet, manifest_dir)
-    args.case_manifest = args.case_manifest or prepared["case_manifest_path"]
-    args.corpus_manifest = args.corpus_manifest or prepared["corpus_manifest_path"]
+    args.case_manifest = prepared["case_manifest_path"]
+    args.corpus_manifest = prepared["corpus_manifest_path"]
+    args.repo_root = str(repo_root)
+    args.backend_python = str(backend_python)
+    args.rag_python = str(rag_python)
     service_root = output_root / "managed-services" / uuid.uuid4().hex
     rag_events = service_root / "events" / "rag.jsonl"
     llm_events = service_root / "events" / "llm.jsonl"
@@ -520,6 +464,10 @@ async def _run_managed(args: argparse.Namespace) -> dict[str, Any]:
     args.llm_observer_url = "http://127.0.0.1:8272"
     args.rag_observer_events = str(rag_events)
     args.llm_observer_events = str(llm_events)
+    attempt_id = create_run_id() if args.command == "run" else f"D4SMOKE-{uuid.uuid4().hex}"
+    if args.command == "run":
+        args.run_id = attempt_id
+    current_runtime_pointer = D4_TASK_TOOLS_ROOT / "runtime-preflight-current.json"
 
     provider = EvaluationCredentialProvider()
     preflight_root = output_root / "preflight"
@@ -541,24 +489,6 @@ async def _run_managed(args: argparse.Namespace) -> dict[str, Any]:
         )
         raise RunnerError("evaluation credential provider failed its fixed source gate") from None
 
-    try:
-        external_services = await _verify_external_services()
-    except Exception as exc:
-        write_json_once(
-            output_root / "premanifest-stop.json",
-            {
-                "status": "CONTROLLER_DECISION_REQUIRED",
-                "stage": "EXTERNAL_SERVICE_PREFLIGHT",
-                "error_type": type(exc).__name__,
-                "formal_manifest_count": 0,
-                "formal_support_posts": 0,
-                "formal_case_count": 0,
-                "credential_values_recorded": False,
-            },
-        )
-        raise RunnerError("fixed loopback service preflight failed before database bootstrap") from None
-    write_json_once(preflight_root / "external-services.json", external_services)
-
     supervisor = ProcessSupervisor(startup_timeout_seconds=args.service_startup_timeout_seconds)
     mysql_bootstrap = IsolatedMySqlBootstrap(
         repo_root=repo_root,
@@ -569,9 +499,32 @@ async def _run_managed(args: argparse.Namespace) -> dict[str, Any]:
     transport: CanonicalHttpTransport | None = None
     result: dict[str, Any] | None = None
     startup_error: Exception | None = None
-    current_stage = "FRESH_MYSQL_BOOTSTRAP"
+    current_stage = "FIXED_PROFILE_AND_PORT_PREFLIGHT"
     login_gate_result: Mapping[str, Mapping[str, str]] | None = None
+    external_profiles = None
+    profiles_by_name: dict[str, ProcessSpec] = {}
+    runtime_preflight: dict[str, Any] | None = None
+    pointer_published = False
     try:
+        external_profiles = build_external_service_profiles(repo_root, service_root)
+        mysql_spec = mysql_bootstrap.server_spec()
+        port_preflight = preflight_formal_port_owners(
+            profiles={**external_profiles.profiles, mysql_spec.name: mysql_spec},
+            stale_profiles=external_profiles.stale_profiles,
+            evidence_path=preflight_root / "formal-port-inventory.json",
+        )
+        write_json_once(
+            preflight_root / "profile-source-identities.json",
+            {
+                "schema_version": "d4-service-profile-identities.v1",
+                "attempt_id": attempt_id,
+                "accepted_source_commit": "f11f72795f2a7f2b01a62f57187e26c38628c4a0",
+                "formal_port_preflight_status": port_preflight["status"],
+                "services": {key: dict(value) for key, value in external_profiles.source_evidence.items()},
+            },
+        )
+
+        current_stage = "FRESH_MYSQL_BOOTSTRAP"
         mysql_server_evidence = await mysql_bootstrap.start_server(supervisor)
         write_json_once(preflight_root / "mysql-server.json", mysql_server_evidence)
 
@@ -601,26 +554,66 @@ async def _run_managed(args: argparse.Namespace) -> dict[str, Any]:
             repo_root=repo_root,
             service_root=service_root,
             corpus_manifest_path=Path(args.corpus_manifest),
-            runtime=runtime,
+            runtime=None,
             rag_events=rag_events,
             llm_events=llm_events,
             database_credential=database_credential,
             credential_redactions=synthetic_credentials.secret_values(),
         )
-        specs_by_name = {spec.name: spec for spec in specs}
+        profiles_by_name = {
+            "d4-mysql": mysql_spec,
+            **external_profiles.profiles,
+            **{spec.name: spec for spec in specs},
+        }
         transport = CanonicalHttpTransport(
             backend_base_url=args.backend_url,
             observer_urls={"rag": args.rag_observer_url, "llm": args.llm_observer_url},
             rag_observer_events=args.rag_observer_events,
             llm_observer_events=args.llm_observer_events,
             passwords=synthetic_credentials.password_mapping(),
+            cat_instrument_id=str(external_profiles.source_evidence["cat"]["instrument_id"]),
+            cat_instrument_version=str(external_profiles.source_evidence["cat"]["instrument_version"]),
             timeout_seconds=args.timeout_seconds,
+            network_monitor=LoopbackNetworkMonitor(owned_pids=supervisor.process_tree_pids),
         )
 
-        current_stage = "BACKEND_STARTUP"
-        await supervisor.start_service(specs_by_name["d4-backend"])
+        current_stage = "EXTERNAL_SERVICE_COLD_START"
+        for service_name in ("d4-opa", "d4-safety", "d4-ollama", "d4-runtime", "d4-cat"):
+            await supervisor.start_service(profiles_by_name[service_name])
+        runtime_attestation = await verify_external_service_readiness(
+            supervisor=supervisor,
+            profiles=profiles_by_name,
+            source_evidence=external_profiles.source_evidence,
+            attempt_id=attempt_id,
+            run_root=output_root,
+            current_pointer=current_runtime_pointer,
+        )
+        pointer_published = True
+        runtime_preflight = dict(runtime_attestation["preflight"])
+        RuntimePreflight.from_mapping(runtime_preflight, require_live_binding=True)
+        args.runtime_preflight = runtime_attestation["run_preflight_path"]
+        write_json_once(
+            preflight_root / "external-service-readiness.json",
+            {
+                "schema_version": "d4-external-service-readiness.v1",
+                "attempt_id": attempt_id,
+                "status": "PASS",
+                "profile_source_evidence": runtime_attestation["profile_source_evidence"],
+                "opa_live_http_status": 200,
+                "safety_health": runtime_attestation["safety_health"],
+                "ollama_version": runtime_attestation["ollama_version"],
+                "ollama_model": runtime_attestation["ollama_model"],
+                "runtime_health": runtime_attestation["runtime_health"],
+                "cat_health": runtime_attestation["cat_health"],
+                "network": runtime_attestation["network"],
+                "runtime_preflight_path": runtime_attestation["run_preflight_path"],
+                "runtime_preflight_hash": runtime_preflight["preflight_hash"],
+                "current_pointer_path": str(current_runtime_pointer.resolve()),
+            },
+        )
 
-        current_stage = "SYNTHETIC_LOGIN_GATE"
+        current_stage = "BACKEND_STARTUP_AND_SYNTHETIC_LOGIN_GATE"
+        await supervisor.start_service(profiles_by_name["d4-backend"])
         try:
             login_gate_result = await transport.login_gate()
         except Exception:
@@ -644,11 +637,43 @@ async def _run_managed(args: argparse.Namespace) -> dict[str, Any]:
             },
         )
 
-        current_stage = "FRESH_RAG_INDEX"
-        await supervisor.start_service(specs_by_name["d4-rag"])
-        current_stage = "OBSERVER_STARTUP"
-        await supervisor.start_service(specs_by_name["d4-rag-observer"])
-        await supervisor.start_service(specs_by_name["d4-llm-observer"])
+        current_stage = "FRESH_RAG_INDEX_AND_OBSERVERS"
+        await supervisor.start_service(profiles_by_name["d4-rag"])
+        await supervisor.start_service(profiles_by_name["d4-rag-observer"])
+        await supervisor.start_service(profiles_by_name["d4-llm-observer"])
+
+        full_stack_network = verify_runtime_attestation_still_live(
+            runtime_preflight,
+            supervisor=supervisor,
+            profiles=profiles_by_name,
+        )
+        write_json_once(preflight_root / "full-stack-network-gate.json", full_stack_network)
+
+        current_stage = "FULL_REAL_HTTP_PREFLIGHT"
+        real_http_gate = await transport.preflight()
+        write_json_once(
+            preflight_root / "full-real-http-gate.json",
+            {
+                "status": "PASS" if not real_http_gate.get("unexpected_configuration") else "FAIL",
+                "attempt_id": attempt_id,
+                "backend": real_http_gate.get("backend"),
+                "observers": real_http_gate.get("observers"),
+                "rag_service_identity": real_http_gate.get("rag_service_identity"),
+                "runtime_endpoint_health_identity": real_http_gate.get("runtime_endpoint_health_identity"),
+                "backend_dependency_identity": real_http_gate.get("backend_dependency_identity"),
+                "unexpected_configuration": list(real_http_gate.get("unexpected_configuration", ())),
+                "network_observation": real_http_gate.get("network_observation"),
+                "formal_support_posts": 0,
+                "formal_cases_consumed": 0,
+            },
+        )
+        if real_http_gate.get("unexpected_configuration"):
+            raise RunnerError("full REAL_HTTP preflight found unexpected configuration or network integrity failures")
+        verify_runtime_attestation_still_live(
+            runtime_preflight,
+            supervisor=supervisor,
+            profiles=profiles_by_name,
+        )
 
         current_stage = "PREMANIFEST_SECRET_SCAN"
         secret_values = (
@@ -663,15 +688,81 @@ async def _run_managed(args: argparse.Namespace) -> dict[str, Any]:
         managed_identity = {
             "owner": "D4_EVALUATION_HARNESS",
             "cleanup_policy": "TERMINATE_ONLY_HARNESS_OWNED_LOOPBACK_PROCESSES",
-            "runtime_process_owned": False,
-            "services": supervisor.identities(),
+            "runtime_process_owned": True,
+            "services": [
+                {
+                    "name": row["name"],
+                    "pid": int(row["pid"]),
+                    "parent_pid": int(row["parent_pid"]),
+                    "process_tree_pids": list(row["process_tree_pids"]),
+                    "executable": row["executable"],
+                    "executable_sha256": row["executable_sha256"],
+                    "argv_redacted": list(row["argv_redacted"]),
+                    "cwd": row["cwd"],
+                    "command_sha256": row["command_sha256"],
+                    "readiness_url": row["readiness_url"],
+                    "log_path": row["log_path"],
+                    "started_at": row["started_at"],
+                    "health": dict(row["health"]),
+                    "ownership": row["ownership"],
+                    "interpreter_version": row["interpreter_version"],
+                    "package_lock_identity": dict(row["package_lock_identity"]),
+                }
+                for row in supervisor.identities()
+            ],
         }
-        current_stage = "FORMAL_EVALUATION"
-        result = await _run(
-            args,
-            managed_service_identity=managed_identity,
-            transport=transport,
-        )
+        current_stage = "COLD_START_SMOKE" if args.command == "smoke-lifecycle" else "FORMAL_EVALUATION"
+        if args.command == "smoke-lifecycle":
+            await transport.prepare()
+            network_after_prepare = transport.network_monitor.sample()
+            if network_after_prepare.get("status") != "PASS":
+                issue_codes = sorted({
+                    str(issue["code"])
+                    for issue in network_after_prepare.get("issues", ())
+                    if isinstance(issue, Mapping) and isinstance(issue.get("code"), str)
+                })
+                detail = ",".join(issue_codes) if issue_codes else "UNKNOWN_NETWORK_INTEGRITY_FAILURE"
+                raise RunnerError(
+                    "cold-start full-stack smoke detected network integrity violations: "
+                    + detail
+                )
+            smoke = {
+                "schema_version": "d4-full-stack-cold-start-smoke.v1",
+                "status": "PASS",
+                "attempt_id": attempt_id,
+                "profile_count": len(managed_identity["services"]),
+                "formal_manifest_count": 0,
+                "formal_support_post_count": 0,
+                "formal_case_count": 0,
+                "formal_case_retries": 0,
+                "runtime_preflight_hash": runtime_preflight["preflight_hash"],
+                "synthetic_login_gate": "PASS",
+                "full_real_http_gate": "PASS",
+                "network_after_prepare": network_after_prepare,
+                "service_processes": managed_identity["services"],
+            }
+            write_json_once(output_root / "cold-start-smoke.json", smoke)
+            result = {
+                "run_id": None,
+                "manifest_path": None,
+                "manifest_hash": None,
+                "results": [],
+                "summary": {
+                    "run_status": "COLD_START_SMOKE_PASS",
+                    "execution_integrity_status": "PASS",
+                    "formal_manifest_count": 0,
+                    "formal_support_post_count": 0,
+                    "formal_case_count": 0,
+                    "formal_case_retries": 0,
+                    "cleanup_verified": False,
+                },
+            }
+        else:
+            result = await _run(
+                args,
+                managed_service_identity=managed_identity,
+                transport=transport,
+            )
     except Exception as exc:
         startup_error = exc
     finally:
@@ -683,12 +774,23 @@ async def _run_managed(args: argparse.Namespace) -> dict[str, Any]:
                     startup_error = RunnerError("managed transport cleanup failed")
                     current_stage = "TRANSPORT_CLEANUP"
         cleanup = await supervisor.close()
+        pointer_invalidated = (
+            invalidate_current_runtime_pointer(
+                current_runtime_pointer,
+                attempt_id=attempt_id,
+                reason="supervisor_cleanup_verified" if cleanup.get("cleanup_verified") else "supervisor_cleanup_unverified",
+            )
+            if pointer_published
+            else False
+        )
 
     lifecycle = {
         "schema_version": "d4-slice3b-service-lifecycle.v1",
         "run_id": result.get("run_id") if result else None,
         "manifest_hash": result.get("manifest_hash") if result else None,
-        "runtime_process_owned": False,
+        "runtime_process_owned": True,
+        "attempt_id": attempt_id,
+        "runtime_preflight_pointer_invalidated_after_cleanup": pointer_invalidated,
         **cleanup,
     }
     lifecycle_target = (
@@ -717,18 +819,21 @@ async def _run_managed(args: argparse.Namespace) -> dict[str, Any]:
             if not formal_manifests
             else output_root / "post-manifest-execution-stop.json"
         )
-        write_json_once(
-            stop_path,
-            {
-                "status": "CONTROLLER_DECISION_REQUIRED",
-                "stage": current_stage,
-                "error_type": type(startup_error).__name__,
-                "formal_manifest_count": len(formal_manifests),
-                "formal_support_post_count": 0 if not formal_manifests else "UNKNOWN",
-                "formal_case_result_file_count": len(case_result_files),
-                "credential_values_recorded": False,
-            },
-        )
+        unknown_port = "UNKNOWN_PROCESS_OCCUPIES_REQUIRED_FORMAL_PORT" in str(startup_error)
+        stop_record = {
+            "status": "CONTROLLER_DECISION_REQUIRED" if unknown_port else "PREMANIFEST_LIFECYCLE_FAILURE",
+            "reason_code": "UNKNOWN_PROCESS_OCCUPIES_REQUIRED_FORMAL_PORT" if unknown_port else type(startup_error).__name__,
+            "stage": current_stage,
+            "error_type": type(startup_error).__name__,
+            "formal_manifest_count": len(formal_manifests),
+            "formal_support_post_count": 0 if not formal_manifests else "UNKNOWN",
+            "formal_case_result_file_count": len(case_result_files),
+            "credential_values_recorded": False,
+        }
+        failure_detail = _safe_startup_failure_detail(startup_error, stage=current_stage)
+        if failure_detail:
+            stop_record["failure_detail"] = failure_detail
+        write_json_once(stop_path, stop_record)
 
     final_scan = scan_secret_artifacts(output_root, secret_values)
     write_json_once(output_root / "final-secret-scan.json", final_scan)
@@ -748,14 +853,18 @@ async def _run_managed(args: argparse.Namespace) -> dict[str, Any]:
             result.setdefault("summary", {})["run_status"] = "CONTROLLER_DECISION_REQUIRED"
             result["summary"]["execution_integrity_status"] = "FAIL"
     if startup_error is not None:
+        failure_detail = _safe_startup_failure_detail(startup_error, stage=current_stage)
+        failure_suffix = f"; failure_detail={failure_detail}" if failure_detail else ""
         raise RunnerError(
             f"managed D4-3B run stopped at {current_stage}; "
             f"error_type={type(startup_error).__name__}; "
-            f"cleanup_verified={cleanup['cleanup_verified']}"
+            f"cleanup_verified={cleanup['cleanup_verified']}{failure_suffix}"
         ) from None
     assert result is not None
     result["service_lifecycle_path"] = str(lifecycle_path)
     result["cleanup_verified"] = cleanup["cleanup_verified"]
+    if args.command == "smoke-lifecycle" and isinstance(result.get("summary"), dict):
+        result["summary"]["cleanup_verified"] = cleanup["cleanup_verified"]
     if not cleanup["cleanup_verified"]:
         result["summary"]["run_status"] = "CONTROLLER_DECISION_REQUIRED"
         result["summary"]["cleanup_verified"] = False
@@ -772,42 +881,27 @@ def main() -> int:
     prepare.add_argument("--packet", default=str(_default_packet()))
     prepare.add_argument("--manifest-dir", required=True)
 
-    run = subparsers.add_parser("run", help="run the 12 approved cases through canonical Backend HTTP")
-    run.add_argument("--packet", default=str(_default_packet()))
-    run.add_argument("--case-manifest")
-    run.add_argument("--corpus-manifest")
-    run.add_argument("--runtime-preflight", required=True)
-    run.add_argument("--repo-root", required=True)
-    run.add_argument("--backend-url", default="http://127.0.0.1:8080")
-    run.add_argument("--rag-observer-url", default="http://127.0.0.1:8271")
-    run.add_argument("--llm-observer-url", default="http://127.0.0.1:8272")
-    run.add_argument("--rag-observer-events")
-    run.add_argument("--llm-observer-events")
-    run.add_argument("--output-root", required=True)
-    run.add_argument("--timeout-seconds", type=float, default=150.0)
-    run.add_argument("--backend-python")
-    run.add_argument("--rag-python")
-    run.add_argument("--service-startup-timeout-seconds", type=float, default=180.0)
-    lifecycle = run.add_mutually_exclusive_group()
-    lifecycle.add_argument("--manage-local-services", dest="manage_local_services", action="store_true")
-    lifecycle.add_argument("--use-existing-services", dest="manage_local_services", action="store_false")
-    run.set_defaults(manage_local_services=True)
+    for command, help_text in (
+        ("run", "cold-start the fixed local stack and run the frozen 12-case evaluation"),
+        ("smoke-lifecycle", "cold-start and clean the fixed local stack without formal support requests"),
+    ):
+        attempt = subparsers.add_parser(command, help=help_text)
+        attempt.add_argument("--packet", default=str(_default_packet()))
+        attempt.add_argument("--output-root", required=True)
+        attempt.add_argument("--timeout-seconds", type=float, default=150.0)
+        attempt.add_argument("--service-startup-timeout-seconds", type=float, default=180.0)
 
     args = parser.parse_args()
     try:
         if args.command == "prepare-assets":
             result = prepare_assets(args.packet, args.manifest_dir)
         else:
-            if args.manage_local_services:
-                if not args.backend_python or not args.rag_python:
-                    raise RunnerError("managed mode requires --backend-python and --rag-python")
-                result = asyncio.run(_run_managed(args))
-            else:
-                raise RunnerError("formal D4-3B requires a fresh isolated MySQL and managed local services")
+            result = asyncio.run(_run_managed(args))
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
         return 0
     except (ApprovedPacketError, LifecycleError, ManifestError, RunnerError, OSError, ValueError) as exc:
-        print(json.dumps({"status": "CONTROLLER_DECISION_REQUIRED", "error_type": type(exc).__name__, "detail": str(exc)}, ensure_ascii=False, indent=2))
+        decision_required = "UNKNOWN_PROCESS_OCCUPIES_REQUIRED_FORMAL_PORT" in str(exc)
+        print(json.dumps({"status": "CONTROLLER_DECISION_REQUIRED" if decision_required else "PREMANIFEST_LIFECYCLE_FAILURE", "error_type": type(exc).__name__, "detail": str(exc)}, ensure_ascii=False, indent=2))
         return 2
 
 
