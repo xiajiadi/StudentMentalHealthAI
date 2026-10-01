@@ -56,7 +56,13 @@ from .service_profiles import (
     verify_external_service_readiness,
     verify_runtime_attestation_still_live,
 )
-from .runner import CanonicalHttpTransport, RunnerError, run_evaluation
+from .runner import (
+    CanonicalHttpTransport,
+    PostPrepareIntegrityError,
+    RunnerError,
+    assert_post_prepare_integrity,
+    run_evaluation,
+)
 
 RUNTIME_HTTP_SERVICE_BASE_URL = "http://127.0.0.1:8160"
 
@@ -67,7 +73,7 @@ def _safe_startup_failure_detail(
     """Expose bounded diagnostics for fixed profiles and local smoke preflights."""
 
     allowed = isinstance(error, (ManifestError, ServiceProfileError)) or (
-        stage in {"FULL_REAL_HTTP_PREFLIGHT", "COLD_START_SMOKE"}
+        stage in {"FULL_REAL_HTTP_PREFLIGHT", "COLD_START_SMOKE", "POST_PREPARE_INTEGRITY_GATE"}
         and isinstance(error, RunnerError)
     )
     if not allowed:
@@ -714,18 +720,9 @@ async def _run_managed(args: argparse.Namespace) -> dict[str, Any]:
         current_stage = "COLD_START_SMOKE" if args.command == "smoke-lifecycle" else "FORMAL_EVALUATION"
         if args.command == "smoke-lifecycle":
             await transport.prepare()
-            network_after_prepare = transport.network_monitor.sample()
-            if network_after_prepare.get("status") != "PASS":
-                issue_codes = sorted({
-                    str(issue["code"])
-                    for issue in network_after_prepare.get("issues", ())
-                    if isinstance(issue, Mapping) and isinstance(issue.get("code"), str)
-                })
-                detail = ",".join(issue_codes) if issue_codes else "UNKNOWN_NETWORK_INTEGRITY_FAILURE"
-                raise RunnerError(
-                    "cold-start full-stack smoke detected network integrity violations: "
-                    + detail
-                )
+            current_stage = "POST_PREPARE_INTEGRITY_GATE"
+            post_prepare_integrity = await assert_post_prepare_integrity(transport, real_http_gate)
+            network_after_prepare = post_prepare_integrity["network_observation"]
             smoke = {
                 "schema_version": "d4-full-stack-cold-start-smoke.v1",
                 "status": "PASS",
@@ -820,14 +817,29 @@ async def _run_managed(args: argparse.Namespace) -> dict[str, Any]:
             else output_root / "post-manifest-execution-stop.json"
         )
         unknown_port = "UNKNOWN_PROCESS_OCCUPIES_REQUIRED_FORMAL_PORT" in str(startup_error)
+        post_prepare_integrity_failure = isinstance(startup_error, PostPrepareIntegrityError)
         stop_record = {
-            "status": "CONTROLLER_DECISION_REQUIRED" if unknown_port else "PREMANIFEST_LIFECYCLE_FAILURE",
-            "reason_code": "UNKNOWN_PROCESS_OCCUPIES_REQUIRED_FORMAL_PORT" if unknown_port else type(startup_error).__name__,
+            "status": "CONTROLLER_DECISION_REQUIRED" if unknown_port or post_prepare_integrity_failure else "PREMANIFEST_LIFECYCLE_FAILURE",
+            "reason_code": (
+                "UNKNOWN_PROCESS_OCCUPIES_REQUIRED_FORMAL_PORT"
+                if unknown_port
+                else "PREMANIFEST_POST_PREPARE_INTEGRITY_FAILURE"
+                if post_prepare_integrity_failure
+                else type(startup_error).__name__
+            ),
             "stage": current_stage,
             "error_type": type(startup_error).__name__,
+            "prepare_completed": post_prepare_integrity_failure,
+            "integrity_status": "FAIL" if post_prepare_integrity_failure else None,
+            "integrity_violation_codes": list(startup_error.violation_codes) if post_prepare_integrity_failure else [],
+            "integrity_error_type": startup_error.error_type if post_prepare_integrity_failure else None,
+            "formal_manifest_created": bool(formal_manifests),
             "formal_manifest_count": len(formal_manifests),
             "formal_support_post_count": 0 if not formal_manifests else "UNKNOWN",
             "formal_case_result_file_count": len(case_result_files),
+            "formal_case_count": len(case_result_files),
+            "formal_case_retries": 0 if not formal_manifests else "UNKNOWN",
+            "retry_count": 0 if not formal_manifests else "UNKNOWN",
             "credential_values_recorded": False,
         }
         failure_detail = _safe_startup_failure_detail(startup_error, stage=current_stage)

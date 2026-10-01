@@ -60,6 +60,16 @@ class RunnerError(RuntimeError):
     """A fail-closed runner preflight or one-shot execution error."""
 
 
+class PostPrepareIntegrityError(RunnerError):
+    """The authoritative post-prepare integrity gate did not pass."""
+
+    def __init__(self, violation_codes: Sequence[str], *, error_type: str | None = None) -> None:
+        codes = {code for code in violation_codes if isinstance(code, str) and code}
+        self.violation_codes = tuple(sorted(codes or {"POST_PREPARE_INTEGRITY_NOT_PASS"}))
+        self.error_type = error_type
+        super().__init__("post-prepare integrity gate did not pass")
+
+
 @dataclass(frozen=True, slots=True)
 class TransportObservation:
     http_status: int
@@ -90,6 +100,66 @@ class ProductTransport(Protocol):
     async def check_execution_integrity(self, baseline: Mapping[str, Any]) -> Mapping[str, Any]: ...
 
     async def close(self) -> None: ...
+
+
+def assert_post_prepare_integrity_state(state: Any) -> Mapping[str, Any]:
+    """Require the canonical integrity result and its captured network state to pass."""
+
+    codes: set[str] = set()
+    if not isinstance(state, Mapping):
+        raise PostPrepareIntegrityError(("POST_PREPARE_INTEGRITY_STATE_UNAVAILABLE",))
+
+    violations = state.get("violations")
+    if not isinstance(violations, Sequence) or isinstance(violations, (str, bytes)):
+        codes.add("POST_PREPARE_INTEGRITY_VIOLATIONS_UNAVAILABLE")
+    else:
+        for violation in violations:
+            code = violation.get("code") if isinstance(violation, Mapping) else violation
+            if isinstance(code, str) and code.isascii() and code.replace("_", "").isalnum():
+                codes.add(code)
+            elif violation:
+                codes.add("POST_PREPARE_INTEGRITY_VIOLATION")
+
+    if state.get("status") != "PASS":
+        if not codes:
+            codes.add("POST_PREPARE_INTEGRITY_NOT_PASS")
+
+    network = state.get("network_observation")
+    if not isinstance(network, Mapping):
+        codes.add("POST_PREPARE_NETWORK_OBSERVATION_UNAVAILABLE")
+    else:
+        if network.get("status") != "PASS":
+            codes.add("POST_PREPARE_NETWORK_INTEGRITY_NOT_PASS")
+        issues = network.get("issues")
+        if not isinstance(issues, Sequence) or isinstance(issues, (str, bytes)):
+            codes.add("POST_PREPARE_NETWORK_ISSUES_UNAVAILABLE")
+        else:
+            for issue in issues:
+                code = issue.get("code") if isinstance(issue, Mapping) else issue
+                if isinstance(code, str) and code.isascii() and code.replace("_", "").isalnum():
+                    codes.add(code)
+                elif issue:
+                    codes.add("POST_PREPARE_NETWORK_INTEGRITY_ISSUE")
+
+    if codes:
+        raise PostPrepareIntegrityError(tuple(codes))
+    return state
+
+
+async def assert_post_prepare_integrity(
+    transport: ProductTransport,
+    baseline: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    """Run the same authoritative integrity comparison for smoke and formal paths."""
+
+    try:
+        state = await transport.check_execution_integrity(baseline)
+    except Exception as exc:
+        raise PostPrepareIntegrityError(
+            ("POST_PREPARE_INTEGRITY_CHECK_FAILED",),
+            error_type=type(exc).__name__,
+        ) from None
+    return assert_post_prepare_integrity_state(state)
 
 
 def classify_execution_integrity(
@@ -598,6 +668,10 @@ class CanonicalHttpTransport:
             return {
                 "status": "FAIL",
                 "violations": [{"code": "DATA_PLANE_UNAVAILABLE", "error_type": type(exc).__name__}],
+                "network_observation": {
+                    "status": "FAIL",
+                    "issues": [{"code": "DATA_PLANE_UNAVAILABLE", "error_type": type(exc).__name__}],
+                },
             }
 
         current_network = current.get("network_observation")
@@ -664,7 +738,11 @@ class CanonicalHttpTransport:
         if listener_identity(baseline_network) != listener_identity(current_network):
             violations.append({"code": "DATA_PLANE_LISTENER_IDENTITY_CHANGED"})
 
-        return {"status": "FAIL" if violations else "PASS", "violations": violations}
+        return {
+            "status": "FAIL" if violations else "PASS",
+            "violations": violations,
+            "network_observation": dict(current_network),
+        }
 
     async def close(self) -> None:
         for client in self._clients.values():
@@ -805,6 +883,42 @@ async def run_evaluation(
     # Complete every setup call before freezing the immutable formal manifest.
     # login_gate() is cached, so this does not send a second login request.
     await transport.prepare()
+    try:
+        await assert_post_prepare_integrity(transport, preflight_observation)
+    except PostPrepareIntegrityError as exc:
+        stop = {
+            "schema_version": "d4-slice3b-preflight-stop.v1",
+            "status": "CONTROLLER_DECISION_REQUIRED",
+            "reason": "post-prepare integrity gate did not pass",
+            "reason_code": "PREMANIFEST_POST_PREPARE_INTEGRITY_FAILURE",
+            "prepare_completed": True,
+            "integrity_status": "FAIL",
+            "integrity_violation_codes": list(exc.violation_codes),
+            "integrity_error_type": exc.error_type,
+            "formal_manifest_created": False,
+            "formal_manifest_count": 0,
+            "formal_support_post_count": 0,
+            "support_post_count": 0,
+            "formal_case_count": 0,
+            "formal_case_retries": 0,
+            "retry_count": 0,
+            "execution_integrity_status": "FAIL",
+            "execution_abort_reason": "PREMANIFEST_POST_PREPARE_INTEGRITY_FAILURE",
+            "expected_case_count": len(packet.answerability_cases),
+        }
+        stop_path = write_json_once(Path(output_root) / "preflight-stop.json", stop)
+        await transport.close()
+        return {
+            "run_id": None,
+            "manifest_path": None,
+            "preflight_stop_path": str(stop_path),
+            "manifest_hash": None,
+            "results": [],
+            "summary": stop,
+            "abort": stop,
+            "evidence_status": FORMAL_EVIDENCE,
+        }
+
     baseline_git_snapshot = git_snapshot(repo_root)
     baseline_case_file_hash = _sha256_file(case_manifest_path) if case_manifest_path else None
     baseline_corpus_file_hash = _sha256_file(corpus_manifest_path) if corpus_manifest_path else None

@@ -8,6 +8,7 @@ from pathlib import Path
 import jsonschema
 import pytest
 
+from harness.controlled_product_eval import cli as cli_module
 from harness.controlled_product_eval.approved_packet import (
     APPROVED_PACKET_HASH,
     APPROVED_PACKET_ID,
@@ -25,9 +26,11 @@ from harness.controlled_product_eval.runner import (
     CanonicalHttpTransport,
     EXPECTED_RUNTIME_HTTP_ENDPOINT,
     EXPECTED_RUNTIME_LOGICAL_MODEL_ID,
+    PostPrepareIntegrityError,
     SYNTHETIC_CAT_INSTRUMENT_ID,
     SYNTHETIC_CAT_INSTRUMENT_VERSION,
     TransportObservation,
+    assert_post_prepare_integrity,
     classify_execution_integrity,
     run_evaluation,
 )
@@ -317,6 +320,7 @@ class _FormalFakeTransport(CanonicalHttpTransport):
         response_factory,
         fail_ordinal: int | None = None,
         integrity_failure: Mapping[str, Any] | None = None,
+        prepare_integrity_failure: Mapping[str, Any] | None = None,
     ) -> None:
         super().__init__(
             backend_base_url="http://127.0.0.1:8080",
@@ -329,8 +333,12 @@ class _FormalFakeTransport(CanonicalHttpTransport):
         self.response_factory = response_factory
         self.fail_ordinal = fail_ordinal
         self.integrity_failure = integrity_failure
+        self.prepare_integrity_failure = prepare_integrity_failure
         self.submitted: list[str] = []
         self.closed = False
+        self.prepared = False
+        self.integrity_check_count = 0
+        self.events: list[str] = []
 
     async def preflight(self) -> Mapping[str, Any]:
         return {
@@ -353,7 +361,8 @@ class _FormalFakeTransport(CanonicalHttpTransport):
         }
 
     async def prepare(self) -> None:
-        return None
+        self.prepared = True
+        self.events.append("prepare")
 
     async def submit(
         self,
@@ -364,12 +373,21 @@ class _FormalFakeTransport(CanonicalHttpTransport):
         trace_id: str,
         ordinal: int,
     ) -> TransportObservation:
+        self.events.append("submit")
         self.submitted.append(str(case["case_id"]))
         if ordinal == self.fail_ordinal:
             raise TimeoutError("support outcome may be uncertain")
         return self.response_factory(ordinal, case, trace_id)
 
     async def check_execution_integrity(self, baseline: Mapping[str, Any]) -> Mapping[str, Any]:
+        self.integrity_check_count += 1
+        if self.integrity_check_count == 1:
+            self.events.append("post-prepare-integrity")
+            return dict(self.prepare_integrity_failure or {
+                "status": "PASS",
+                "violations": [],
+                "network_observation": {"status": "PASS", "listeners": [], "issues": []},
+            })
         return dict(self.integrity_failure or {"status": "PASS", "violations": []})
 
     async def close(self) -> None:
@@ -439,6 +457,133 @@ def _run(tmp_path, packet, transport, *, suffix: str, case_manifest_path: Path |
             timestamp="2026-09-28T00:00:00Z",
         )
     )
+
+
+def test_smoke_and_formal_paths_import_the_same_post_prepare_gate():
+    assert cli_module.assert_post_prepare_integrity is runner_module.assert_post_prepare_integrity
+
+
+def test_prepare_integrity_pass_precedes_manifest_and_allows_formal_path(tmp_path, packet, monkeypatch):
+    corpus = build_approved_corpus_manifest(packet)
+    transport = _FormalFakeTransport(corpus=corpus, response_factory=lambda *_args: _normal_observation())
+    original_builder = runner_module.build_formal_manifest
+
+    def record_manifest_boundary(*args, **kwargs):
+        transport.events.append("manifest")
+        return original_builder(*args, **kwargs)
+
+    monkeypatch.setattr(runner_module, "build_formal_manifest", record_manifest_boundary)
+    output = _run(tmp_path, packet, transport, suffix="POST-PREPARE-PASS")
+
+    assert output["manifest_path"] is not None
+    assert Path(output["manifest_path"]).is_file()
+    assert transport.events.index("prepare") < transport.events.index("post-prepare-integrity")
+    assert transport.events.index("post-prepare-integrity") < transport.events.index("manifest")
+    assert transport.events.index("manifest") < transport.events.index("submit")
+
+
+@pytest.mark.parametrize(
+    ("integrity_state", "expected_code"),
+    [
+        (
+            {
+                "status": "FAIL",
+                "violations": [{"code": "EXTERNAL_ESTABLISHED_CONNECTION"}],
+                "network_observation": {
+                    "status": "FAIL",
+                    "listeners": [],
+                    "issues": [{"code": "EXTERNAL_ESTABLISHED_CONNECTION"}],
+                },
+            },
+            "EXTERNAL_ESTABLISHED_CONNECTION",
+        ),
+        (
+            {
+                "status": "FAIL",
+                "violations": [{"code": "DATA_PLANE_LISTENER_IDENTITY_CHANGED"}],
+                "network_observation": {"status": "PASS", "listeners": [], "issues": []},
+            },
+            "DATA_PLANE_LISTENER_IDENTITY_CHANGED",
+        ),
+        (
+            {
+                "status": "FAIL",
+                "violations": [{"code": "RUNTIME_IDENTITY_DRIFT"}],
+                "network_observation": {"status": "PASS", "listeners": [], "issues": []},
+            },
+            "RUNTIME_IDENTITY_DRIFT",
+        ),
+    ],
+)
+def test_prepare_integrity_failure_stops_before_manifest_support_or_case(
+    tmp_path, packet, monkeypatch, integrity_state, expected_code
+):
+    corpus = build_approved_corpus_manifest(packet)
+    transport = _FormalFakeTransport(
+        corpus=corpus,
+        response_factory=lambda *_args: _normal_observation(),
+        prepare_integrity_failure=integrity_state,
+    )
+    manifest_builder_calls: list[bool] = []
+
+    def manifest_writer_must_not_run(*_args, **_kwargs):
+        manifest_builder_calls.append(True)
+        raise AssertionError("formal manifest construction crossed a failed post-prepare gate")
+
+    monkeypatch.setattr(runner_module, "build_formal_manifest", manifest_writer_must_not_run)
+    suffix = f"POST-PREPARE-FAIL-{expected_code}"
+    output = _run(tmp_path, packet, transport, suffix=suffix)
+    stop = output["summary"]
+    output_root = tmp_path / f"runs-{suffix}"
+
+    assert output["manifest_path"] is None
+    assert output["run_id"] is None
+    assert manifest_builder_calls == []
+    assert not list(output_root.rglob("manifest.json"))
+    assert output["preflight_stop_path"] is not None
+    assert transport.prepared is True
+    assert transport.closed is True
+    assert transport.submitted == []
+    assert "submit" not in transport.events
+    assert stop["status"] == "CONTROLLER_DECISION_REQUIRED"
+    assert stop["reason_code"] == "PREMANIFEST_POST_PREPARE_INTEGRITY_FAILURE"
+    assert stop["prepare_completed"] is True
+    assert stop["integrity_status"] == "FAIL"
+    assert expected_code in stop["integrity_violation_codes"]
+    assert stop["formal_manifest_created"] is False
+    assert stop["formal_manifest_count"] == 0
+    assert stop["formal_support_post_count"] == 0
+    assert stop["support_post_count"] == 0
+    assert stop["formal_case_count"] == 0
+    assert stop["formal_case_retries"] == 0
+    assert stop["retry_count"] == 0
+
+
+def test_smoke_and_formal_gate_apply_same_status_to_same_integrity_state():
+    state = {
+        "status": "FAIL",
+        "violations": [{"code": "DATA_PLANE_LISTENER_IDENTITY_CHANGED"}],
+        "network_observation": {"status": "PASS", "listeners": [], "issues": []},
+    }
+
+    class StateTransport:
+        async def check_execution_integrity(self, _baseline):
+            return state
+
+    transport = StateTransport()
+    outcomes = []
+    for gate in (cli_module.assert_post_prepare_integrity, runner_module.assert_post_prepare_integrity):
+        try:
+            asyncio.run(gate(transport, {}))
+        except PostPrepareIntegrityError as exc:
+            outcomes.append(("FAIL", exc.violation_codes))
+        else:
+            outcomes.append(("PASS", ()))
+
+    assert outcomes == [
+        ("FAIL", ("DATA_PLANE_LISTENER_IDENTITY_CHANGED",)),
+        ("FAIL", ("DATA_PLANE_LISTENER_IDENTITY_CHANGED",)),
+    ]
 
 
 def test_case_one_product_p0_is_recorded_and_case_two_continues(tmp_path, packet):
