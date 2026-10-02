@@ -23,6 +23,7 @@ from .manifest import ACCEPTED_D4_3A_COMMIT, write_json_once
 from .mysql_bootstrap import IsolatedMySqlBootstrap
 from .network_integrity import LoopbackNetworkMonitor
 from .process_lifecycle import ProcessSpec, ProcessSupervisor
+from .r1_source_manifest import resolve_r1_product_source_binding
 from .runner import (
     CanonicalHttpTransport,
     RunnerError,
@@ -46,7 +47,6 @@ _LLM_OBSERVER_URL = "http://127.0.0.1:8272"
 _SAFETY_OBSERVER_URL = "http://127.0.0.1:8273"
 _SMOKE_CASE_PREFIX = "D4SMOKECASE-"
 _EVIDENCE_CLASS = "NOT_FORMAL_PRODUCT_EVIDENCE"
-_D4_3B_R1_PRODUCT_COMMIT = "466fef4bf59d10b7d115bf522e9f53b2730adb91"
 
 
 def _digest(value: Any) -> str:
@@ -526,38 +526,15 @@ async def run_smoke_product(args: argparse.Namespace) -> dict[str, Any]:
 
     head = service_profiles._git(repo_root, "rev-parse", "HEAD")
     changed_paths = _safe_changed_paths(repo_root)
-    if any(not path.startswith("12_evaluation/") for path in changed_paths):
-        raise RunnerError("D4SMOKE found a worktree change outside 12_evaluation")
-    diff_result = subprocess.run(
-        [
-            str(service_profiles.GIT_EXECUTABLE),
-            "diff",
-            "--quiet",
-            _D4_3B_R1_PRODUCT_COMMIT,
-            "HEAD",
-            "--",
-            "01_cat-engine",
-            "03_assessment-adapter",
-            "04_knowledge-pipeline",
-            "05_rag-engine",
-            "06_llm-runtime",
-            "08_safety-engine",
-            "09_backend",
-            "11_database",
-            "CONTRACTS.md",
-            "openapi.json",
-            "openapi.hardened.candidate.json",
-        ],
-        cwd=repo_root,
-        check=False,
-        capture_output=True,
-        timeout=10.0,
-        shell=False,
+    if changed_paths:
+        raise RunnerError("D4SMOKE requires a clean worktree")
+    product_source_binding = resolve_r1_product_source_binding(
+        repo_root,
+        head_commit=head,
+        dirty_paths=changed_paths,
     )
-    if diff_result.returncode != 0:
-        raise RunnerError("D4SMOKE product, Contract, or OpenAPI NO_DIFF check failed")
-
-    service_profiles.PROFILE_SOURCE_COPY_COMMIT = _D4_3B_R1_PRODUCT_COMMIT
+    service_profiles.PROFILE_SOURCE_COPY_COMMIT = str(product_source_binding["product_source_commit"])
+    write_json_once(preflight_root / "product-source-binding.json", product_source_binding)
     provider = EvaluationCredentialProvider()
     synthetic = provider.resolve_frozen_synthetic_credentials(repo_root)
     database_credential = provider.generate_database_credential()
