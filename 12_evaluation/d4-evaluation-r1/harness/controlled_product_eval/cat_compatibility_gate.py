@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import jsonschema
 import re
 import subprocess
 from collections.abc import Iterable, Mapping
@@ -24,6 +25,8 @@ from .evaluation_compatibility import (
 )
 
 GATE_SCHEMA_VERSION = "d4-cat-d3-compatibility-gate.v1"
+SMOKE_GATE_SCHEMA_VERSION = "d4-smoke-cat-d3-compatibility-gate.v1"
+SMOKE_EVIDENCE_CLASS = "NOT_FORMAL_PRODUCT_EVIDENCE"
 ITEM_BANK_RELATIVE_PATH = "01_cat-engine/fixtures/synthetic_item_bank.v1.json"
 MAPPER_RELATIVE_PATH = "01_cat-engine/src/cat_engine/service/assessment_mapper.py"
 EXPECTED_ITEM_BANK_GIT_BLOB = "429b0944ba73f811b0bdde580d1266e42c82b524"
@@ -37,6 +40,7 @@ EXPECTED_ADAPTER = {
 }
 EXPECTED_CAT_PROVIDER_VERSION = "adaptivetesting-1.2.1"
 _RUN_ID_RE = re.compile(r"^D4RUN-[A-Za-z0-9][A-Za-z0-9._-]*$")
+_SMOKE_CONTEXT_ID_RE = re.compile(r"^D4SMOKE-[A-Za-z0-9][A-Za-z0-9._-]*$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _GIT_BLOB_RE = re.compile(r"^[0-9a-f]{40}$")
 
@@ -93,7 +97,7 @@ def _read_activation(path: Path) -> tuple[Mapping[str, Any] | None, str | None]:
     return value, _sha256_bytes(raw)
 
 
-def build_cat_d3_compatibility_gate(
+def _build_cat_d3_compatibility_gate(
     *,
     run_id: str,
     completed_assessment: Mapping[str, Any] | None,
@@ -105,6 +109,9 @@ def build_cat_d3_compatibility_gate(
     repo_root: str | Path,
     accepted_baseline_commit: str,
     synthetic_subject_ids: Iterable[str],
+    gate_schema_version: str,
+    run_id_pattern: re.Pattern[str],
+    evidence_class: str | None,
 ) -> dict[str, Any]:
     """Create a bounded gate record from the completed assessment and live setup."""
 
@@ -112,7 +119,7 @@ def build_cat_d3_compatibility_gate(
     attempt = Path(attempt_root).resolve()
     activation_path = Path(fixture_activation_path).resolve()
     issue_codes: set[str] = set()
-    if not _RUN_ID_RE.fullmatch(run_id):
+    if not run_id_pattern.fullmatch(run_id):
         issue_codes.add("RUN_ID_INVALID")
     try:
         activation_path.relative_to(attempt)
@@ -157,6 +164,7 @@ def build_cat_d3_compatibility_gate(
         and activation.get("fixture_instance_count") == 1
         and activation.get("runtime_only") is True
         and activation.get("canonical_product_default_changed") is False
+        and (evidence_class is None or activation.get("evidence_class") == evidence_class)
         and isinstance(process_pid, int)
         and not isinstance(process_pid, bool)
         and process_pid in backend_pids
@@ -269,7 +277,7 @@ def build_cat_d3_compatibility_gate(
     except ValueError:
         pass
     gate = {
-        "schema_version": GATE_SCHEMA_VERSION,
+        "schema_version": gate_schema_version,
         "run_id": run_id,
         "status": "PASS" if not issue_codes else "FAIL",
         "captured_at": _now(),
@@ -313,22 +321,161 @@ def build_cat_d3_compatibility_gate(
         },
         "issues": sorted(issue_codes),
     }
+    if evidence_class is not None:
+        gate["context_id"] = run_id
+        gate["evidence_class"] = evidence_class
     return gate
 
 
-def validate_cat_d3_compatibility_gate(
-    value: Mapping[str, Any], *, run_id: str
+def build_cat_d3_compatibility_gate(
+    *,
+    run_id: str,
+    completed_assessment: Mapping[str, Any] | None,
+    fixture_activation_path: str | Path,
+    attempt_root: str | Path,
+    backend_process_pids: Iterable[int],
+    cat_profile_evidence: Mapping[str, Any] | None,
+    cat_health: Mapping[str, Any] | None,
+    repo_root: str | Path,
+    accepted_baseline_commit: str,
+    synthetic_subject_ids: Iterable[str],
+) -> dict[str, Any]:
+    """Create the unchanged formal D4RUN compatibility gate."""
+
+    return _build_cat_d3_compatibility_gate(
+        run_id=run_id,
+        completed_assessment=completed_assessment,
+        fixture_activation_path=fixture_activation_path,
+        attempt_root=attempt_root,
+        backend_process_pids=backend_process_pids,
+        cat_profile_evidence=cat_profile_evidence,
+        cat_health=cat_health,
+        repo_root=repo_root,
+        accepted_baseline_commit=accepted_baseline_commit,
+        synthetic_subject_ids=synthetic_subject_ids,
+        gate_schema_version=GATE_SCHEMA_VERSION,
+        run_id_pattern=_RUN_ID_RE,
+        evidence_class=None,
+    )
+
+
+def build_smoke_cat_d3_compatibility_gate(
+    *,
+    context_id: str,
+    completed_assessment: Mapping[str, Any] | None,
+    fixture_activation_path: str | Path,
+    attempt_root: str | Path,
+    backend_process_pids: Iterable[int],
+    cat_profile_evidence: Mapping[str, Any] | None,
+    cat_health: Mapping[str, Any] | None,
+    repo_root: str | Path,
+    accepted_baseline_commit: str,
+    synthetic_subject_ids: Iterable[str],
+) -> dict[str, Any]:
+    """Create a separate non-formal gate using the exact formal provenance checks."""
+
+    return _build_cat_d3_compatibility_gate(
+        run_id=context_id,
+        completed_assessment=completed_assessment,
+        fixture_activation_path=fixture_activation_path,
+        attempt_root=attempt_root,
+        backend_process_pids=backend_process_pids,
+        cat_profile_evidence=cat_profile_evidence,
+        cat_health=cat_health,
+        repo_root=repo_root,
+        accepted_baseline_commit=accepted_baseline_commit,
+        synthetic_subject_ids=synthetic_subject_ids,
+        gate_schema_version=SMOKE_GATE_SCHEMA_VERSION,
+        run_id_pattern=_SMOKE_CONTEXT_ID_RE,
+        evidence_class=SMOKE_EVIDENCE_CLASS,
+    )
+
+
+def write_smoke_cat_d3_compatibility_gate(
+    *,
+    gate_path: str | Path,
+    context_id: str,
+    completed_assessment: Mapping[str, Any] | None,
+    fixture_activation_path: str | Path,
+    attempt_root: str | Path,
+    backend_process_pids: Iterable[int],
+    cat_profile_evidence: Mapping[str, Any] | None,
+    cat_health: Mapping[str, Any] | None,
+    repo_root: str | Path,
+    accepted_baseline_commit: str,
+    synthetic_subject_ids: Iterable[str],
+) -> dict[str, Any]:
+    """Write and schema-check the immutable D4SMOKE attestation before requests."""
+
+    destination = Path(gate_path).resolve()
+    if destination.name != "smoke-cat-d3-compatibility-gate.json":
+        raise CatCompatibilityGateError(("SMOKE_GATE_FILENAME_INVALID",))
+    attempt = Path(attempt_root).resolve()
+    repo = Path(repo_root).resolve()
+    try:
+        destination.relative_to(attempt)
+    except ValueError:
+        raise CatCompatibilityGateError(("SMOKE_GATE_PATH_OUTSIDE_ATTEMPT",)) from None
+    try:
+        destination.relative_to(repo)
+    except ValueError:
+        pass
+    else:
+        raise CatCompatibilityGateError(("SMOKE_GATE_PATH_INSIDE_REPOSITORY",))
+    gate = build_smoke_cat_d3_compatibility_gate(
+        context_id=context_id,
+        completed_assessment=completed_assessment,
+        fixture_activation_path=fixture_activation_path,
+        attempt_root=attempt_root,
+        backend_process_pids=backend_process_pids,
+        cat_profile_evidence=cat_profile_evidence,
+        cat_health=cat_health,
+        repo_root=repo_root,
+        accepted_baseline_commit=accepted_baseline_commit,
+        synthetic_subject_ids=synthetic_subject_ids,
+    )
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps(gate, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+    try:
+        with destination.open("x", encoding="utf-8", newline="\n") as handle:
+            handle.write(payload)
+    except FileExistsError:
+        raise CatCompatibilityGateError(("SMOKE_GATE_EVIDENCE_ALREADY_EXISTS",)) from None
+
+    schema_path = Path(__file__).resolve().parents[2] / "spec" / "d4_smoke_cat_d3_compatibility_gate.schema.json"
+    try:
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        jsonschema.Draft202012Validator(
+            schema,
+            format_checker=jsonschema.Draft202012Validator.FORMAT_CHECKER,
+        ).validate(gate)
+    except (OSError, json.JSONDecodeError, jsonschema.ValidationError) as exc:
+        raise CatCompatibilityGateError(("SMOKE_GATE_SCHEMA_VALIDATION_FAILED",)) from exc
+    if gate["status"] == "PASS":
+        validate_smoke_cat_d3_compatibility_gate(gate, context_id=context_id)
+    return gate
+
+
+def _validate_cat_d3_compatibility_gate(
+    value: Mapping[str, Any],
+    *,
+    run_id: str,
+    gate_schema_version: str,
+    run_id_pattern: re.Pattern[str],
+    evidence_class: str | None,
 ) -> None:
-    """Reject every missing, stale, or non-approved gate before manifest freeze."""
+    """Apply the common exact fixture and CAT provenance checks."""
 
     fixture = _mapping(value.get("fixture")) or {}
     activation = _mapping(value.get("activation")) or {}
     provenance = _mapping(value.get("source_provenance")) or {}
     expected_fixture_sha256 = _sha256_bytes(canonical_json_bytes(FIXTURE_DOCUMENT))
     if (
-        value.get("schema_version") != GATE_SCHEMA_VERSION
+        value.get("schema_version") != gate_schema_version
         or value.get("run_id") != run_id
-        or not _RUN_ID_RE.fullmatch(run_id)
+        or not run_id_pattern.fullmatch(run_id)
+        or (evidence_class is not None and value.get("context_id") != run_id)
+        or (evidence_class is not None and value.get("evidence_class") != evidence_class)
         or value.get("status") != "PASS"
         or value.get("issues") != []
         or fixture.get("fixture_id") != FIXTURE_ID
@@ -362,3 +509,40 @@ def validate_cat_d3_compatibility_gate(
         or provenance.get("cat_provider_version") != EXPECTED_CAT_PROVIDER_VERSION
     ):
         raise CatCompatibilityGateError(value.get("issues", ()))
+
+
+def validate_cat_d3_compatibility_gate(
+    value: Mapping[str, Any], *, run_id: str
+) -> None:
+    """Reject every missing, stale, or non-approved formal gate."""
+
+    _validate_cat_d3_compatibility_gate(
+        value,
+        run_id=run_id,
+        gate_schema_version=GATE_SCHEMA_VERSION,
+        run_id_pattern=_RUN_ID_RE,
+        evidence_class=None,
+    )
+
+
+def validate_smoke_cat_d3_compatibility_gate(
+    value: Mapping[str, Any], *, context_id: str
+) -> None:
+    """Reject a smoke gate unless it binds the exact D4SMOKE context and provenance."""
+
+    _validate_cat_d3_compatibility_gate(
+        value,
+        run_id=context_id,
+        gate_schema_version=SMOKE_GATE_SCHEMA_VERSION,
+        run_id_pattern=_SMOKE_CONTEXT_ID_RE,
+        evidence_class=SMOKE_EVIDENCE_CLASS,
+    )
+    schema_path = Path(__file__).resolve().parents[2] / "spec" / "d4_smoke_cat_d3_compatibility_gate.schema.json"
+    try:
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        jsonschema.Draft202012Validator(
+            schema,
+            format_checker=jsonschema.Draft202012Validator.FORMAT_CHECKER,
+        ).validate(value)
+    except (OSError, json.JSONDecodeError, jsonschema.ValidationError, jsonschema.SchemaError) as exc:
+        raise CatCompatibilityGateError(("SMOKE_GATE_SCHEMA_VALIDATION_FAILED",)) from exc

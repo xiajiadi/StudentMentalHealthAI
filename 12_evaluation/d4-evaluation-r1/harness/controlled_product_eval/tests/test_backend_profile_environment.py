@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 
 from sqlalchemy.engine import make_url
+import pytest
 
 from harness.controlled_product_eval import cli
 from harness.controlled_product_eval.credential_provider import DatabaseCredential
@@ -32,13 +33,14 @@ def test_backend_profile_uses_fixed_python_and_neutral_process_username(tmp_path
         return {"accepted_uv_lock_sha256": "d" * 64}
 
     monkeypatch.setattr(cli, "_environment_lock_identity", lock_identity)
-    specs = cli._managed_specs(
-        args=argparse.Namespace(
-            command="run",
-            run_id="D4RUN-TEST00000001",
-            backend_python=str(cli.BACKEND_PYTHON),
-            rag_python=str(cli.RAG_PYTHON),
-        ),
+    credential = DatabaseCredential(
+        host="127.0.0.1",
+        port=3307,
+        database="smhai_d4_evaluation",
+        username="smhai_eval_app",
+        password="pw",
+    )
+    shared = dict(
         repo_root=repo_root,
         service_root=tmp_path / "services",
         corpus_manifest_path=tmp_path / "corpus.json",
@@ -46,19 +48,23 @@ def test_backend_profile_uses_fixed_python_and_neutral_process_username(tmp_path
         rag_events=tmp_path / "events/rag.jsonl",
         llm_events=tmp_path / "events/llm.jsonl",
         safety_events=tmp_path / "events/safety.jsonl",
-        safety_observer_run_id="D4RUN-TEST00000001",
-        database_credential=DatabaseCredential(
-            host="127.0.0.1",
-            port=3307,
-            database="smhai_d4_evaluation",
-            username="smhai_eval_app",
-            password="pw",
+        database_credential=credential,
+    )
+    specs = cli._managed_specs(
+        args=argparse.Namespace(
+            command="run",
+            run_id="D4RUN-TEST00000001",
+            backend_python=str(cli.BACKEND_PYTHON),
+            rag_python=str(cli.RAG_PYTHON),
         ),
+        safety_observer_run_id="D4RUN-TEST00000001",
+        **shared,
     )
 
     backend = next(spec for spec in specs if spec.name == "d4-backend")
     assert backend.executable == cli.BACKEND_PYTHON.resolve()
     assert backend.arguments[:2] == ("-m", "harness.controlled_product_eval.evaluation_compatibility")
+    assert "--harness-command" in backend.arguments and "run" in backend.arguments
     assert "--fixture-json" not in backend.arguments
     assert "--run-id" in backend.arguments and "D4RUN-TEST00000001" in backend.arguments
     assert backend.environment["USERNAME"] == "d4-evaluation"
@@ -85,3 +91,59 @@ def test_backend_profile_uses_fixed_python_and_neutral_process_username(tmp_path
     assert Path(rag.environment["HF_HOME"]) == HF_CACHE.resolve()
     assert rag.environment["HF_HUB_OFFLINE"] == "1"
     assert rag.environment["TRANSFORMERS_OFFLINE"] == "1"
+
+    smoke_specs = cli._managed_specs(
+        args=argparse.Namespace(
+            command="smoke-product",
+            run_id="D4SMOKE-TEST00000001",
+            backend_python=str(cli.BACKEND_PYTHON),
+            rag_python=str(cli.RAG_PYTHON),
+        ),
+        service_root=tmp_path / "smoke-services",
+        safety_observer_run_id="D4SMOKE-TEST00000001",
+        **{key: value for key, value in shared.items() if key != "service_root"},
+    )
+    smoke_backend = next(spec for spec in smoke_specs if spec.name == "d4-backend")
+    assert smoke_backend.arguments[:2] == ("-m", "harness.controlled_product_eval.evaluation_compatibility")
+    assert "D4SMOKE-TEST00000001" in smoke_backend.arguments
+    assert "--harness-command" in smoke_backend.arguments and "smoke-product" in smoke_backend.arguments
+
+    ordinary_specs = cli._managed_specs(
+        args=argparse.Namespace(
+            command="smoke-lifecycle",
+            run_id="D4SMOKE-TEST00000001",
+            backend_python=str(cli.BACKEND_PYTHON),
+            rag_python=str(cli.RAG_PYTHON),
+        ),
+        service_root=tmp_path / "ordinary-services",
+        safety_observer_run_id="D4SMOKE-TEST00000001",
+        **{key: value for key, value in shared.items() if key != "service_root"},
+    )
+    ordinary_backend = next(spec for spec in ordinary_specs if spec.name == "d4-backend")
+    assert ordinary_backend.arguments == ("-m", "smhai_backend.main")
+
+    default_specs = cli._managed_specs(
+        args=argparse.Namespace(
+            run_id="D4SMOKE-TEST00000001",
+            backend_python=str(cli.BACKEND_PYTHON),
+            rag_python=str(cli.RAG_PYTHON),
+        ),
+        service_root=tmp_path / "default-services",
+        safety_observer_run_id="D4SMOKE-TEST00000001",
+        **{key: value for key, value in shared.items() if key != "service_root"},
+    )
+    default_backend = next(spec for spec in default_specs if spec.name == "d4-backend")
+    assert default_backend.arguments == ("-m", "smhai_backend.main")
+
+    with pytest.raises(cli.RunnerError, match="approved D4SMOKE context ID"):
+        cli._managed_specs(
+            args=argparse.Namespace(
+                command="smoke-product",
+                run_id="D4RUN-TEST00000001",
+                backend_python=str(cli.BACKEND_PYTHON),
+                rag_python=str(cli.RAG_PYTHON),
+            ),
+            service_root=tmp_path / "rejected-services",
+            safety_observer_run_id="D4SMOKE-TEST00000001",
+            **{key: value for key, value in shared.items() if key != "service_root"},
+        )

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import inspect
+from types import SimpleNamespace
 import sys
 from pathlib import Path
 
@@ -26,9 +27,12 @@ from harness.controlled_product_eval.evaluation_compatibility import (
     FIXTURE_DOCUMENT,
     _build_fixture_activation_record,
     build_d3_2_observation,
+    build_d3_smoke_chain_observation,
+    validate_d3_smoke_chain_observation,
     canonical_json_bytes,
     create_injected_backend_app,
     parse_fixture_bytes,
+    validate_harness_activation_context,
     _correlated_evidence_path,
 )
 
@@ -88,6 +92,105 @@ def test_activation_record_binds_exact_fixture_identity_to_formal_run():
     assert record["fixture_instantiated"] is True
     assert record["fixture_injected"] is True
     assert record["fixture_canonical_json"] == _approved_document()
+
+
+def test_activation_record_marks_smoke_context_as_nonformal():
+    fixture_bytes = canonical_json_bytes(FIXTURE_DOCUMENT)
+    record = _build_fixture_activation_record(
+        run_id="D4SMOKE-CONTEXT000001",
+        fixture_path=Path("approved-cat-d3-compatibility-fixture.json"),
+        document=FIXTURE_DOCUMENT,
+        fixture_bytes=fixture_bytes,
+        activated_at="2026-10-02T00:00:00Z",
+        process_pid=1234,
+        fixture_instance_count=1,
+        d3_policy_version="1.0.0",
+        d3_policy_hash="sha256:" + "a" * 64,
+        evidence_class="NOT_FORMAL_PRODUCT_EVIDENCE",
+    )
+
+    assert record["run_id"] == "D4SMOKE-CONTEXT000001"
+    assert record["evidence_class"] == "NOT_FORMAL_PRODUCT_EVIDENCE"
+
+
+def test_d4smoke_chain_audit_proves_bundle_d3_3_and_d3_1_without_content():
+    bundle = SimpleNamespace(
+        verify=lambda: None,
+        eligible=True,
+        items=(object(),),
+        bundle_hash="a" * 64,
+    )
+    result = SimpleNamespace(
+        role_policy=SimpleNamespace(
+            policy_id="ROLE_POLICY_TEST",
+            policy_version="1.0.0",
+            policy_hash="b" * 64,
+        ),
+        template=SimpleNamespace(
+            prompt_id="PROMPT_TEST",
+            prompt_version="1.0.0",
+            content_hash="c" * 64,
+        ),
+        content_population_mapping=SimpleNamespace(
+            mapping_id="POPULATION_MAP_TEST",
+            mapping_version="1.0.0",
+            target_population="university_freshman",
+        ),
+    )
+    audit = build_d3_smoke_chain_observation(
+        result,
+        bundle,
+        run_id="D4SMOKE-CONTEXT000001",
+        request_id="REQ_D4SMOKE_000001",
+        trace_id="TRACE_D4SMOKE_000001",
+    )
+
+    assert audit["status"] == "PASS"
+    assert audit["evidence_bundle_status"] == "PASS"
+    assert audit["d3_3_reached"] is True
+    assert audit["d3_1_reached"] is True
+    assert audit["content_population"] == "university_freshman"
+    assert not {"content", "text", "message", "evidence_text"} & set(audit)
+    schema_path = Path(__file__).resolve().parents[3] / "spec" / "d4_smoke_d3_chain_audit.schema.json"
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    import jsonschema
+
+    jsonschema.Draft202012Validator.check_schema(schema)
+    jsonschema.Draft202012Validator(schema).validate(audit)
+    validate_d3_smoke_chain_observation(audit)
+
+    failed = build_d3_smoke_chain_observation(
+        None,
+        SimpleNamespace(verify=lambda: None, eligible=False, items=(), bundle_hash="d" * 64),
+        run_id="D4SMOKE-CONTEXT000001",
+        request_id="REQ_D4SMOKE_000002",
+        trace_id="TRACE_D4SMOKE_000002",
+        error_type="D3ChainError",
+    )
+    assert failed["status"] == "FAIL"
+    jsonschema.Draft202012Validator(schema).validate(failed)
+    validate_d3_smoke_chain_observation(failed)
+
+
+@pytest.mark.parametrize("run_id", ["ordinary-run", "D4SMOKE-", "D4RUN-invalid!", "AW-FORMAL-CASE-001"])
+def test_fixture_injection_rejects_unapproved_context_ids_before_writing(tmp_path, run_id):
+    with pytest.raises(CompatibilityFixtureError, match="approved D4RUN or D4SMOKE"):
+        create_injected_backend_app(evidence_dir=tmp_path, run_id=run_id)
+
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_harness_activation_context_pairs_only_the_fixed_formal_and_smoke_commands():
+    validate_harness_activation_context(harness_command="run", run_id="D4RUN-CONTEXT000001")
+    validate_harness_activation_context(harness_command="smoke-product", run_id="D4SMOKE-CONTEXT000001")
+    for command, run_id in (
+        ("run", "D4SMOKE-CONTEXT000001"),
+        ("smoke-product", "D4RUN-CONTEXT000001"),
+        ("smoke-lifecycle", "D4SMOKE-CONTEXT000001"),
+        ("run", "ordinary-run-id"),
+    ):
+        with pytest.raises(CompatibilityFixtureError, match="context ID|command and fixture activation context"):
+            validate_harness_activation_context(harness_command=command, run_id=run_id)
 
 
 def test_fixture_rejects_noncanonical_json_and_duplicate_keys():

@@ -1,0 +1,316 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "status",
+    "captured_at",
+    "fixture",
+    "activation",
+    "source_provenance",
+    "issues",
+    "context_id",
+    "evidence_class"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "d4-smoke-cat-d3-compatibility-gate.v1"
+    },
+    "run_id": {
+      "type": "string",
+      "pattern": "^D4SMOKE-[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "status": {
+      "enum": [
+        "PASS",
+        "FAIL"
+      ]
+    },
+    "captured_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "fixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fixture_id",
+        "fixture_version",
+        "fixture_instantiated",
+        "fixture_injected",
+        "fixture_approved",
+        "source_identity",
+        "target_identity",
+        "policy_id",
+        "approval_reference",
+        "dimension_map",
+        "fixture_sha256"
+      ],
+      "properties": {
+        "fixture_id": {
+          "const": "d4-3b-cat-v0_1-to-d3-synthetic"
+        },
+        "fixture_version": {
+          "const": "1.0.0"
+        },
+        "fixture_instantiated": {
+          "type": "boolean"
+        },
+        "fixture_injected": {
+          "type": "boolean"
+        },
+        "fixture_approved": {
+          "type": "boolean"
+        },
+        "source_identity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "instrument_id",
+            "instrument_version",
+            "population_scope"
+          ],
+          "properties": {
+            "instrument_id": {
+              "const": "instrument_demo_cat_v0_1"
+            },
+            "instrument_version": {
+              "const": "demo.v1"
+            },
+            "population_scope": {
+              "const": "pending_confirmation"
+            }
+          }
+        },
+        "target_identity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "instrument_id",
+            "instrument_version",
+            "population_scope"
+          ],
+          "properties": {
+            "instrument_id": {
+              "const": "CURRENT_SYNTHETIC_GRM"
+            },
+            "instrument_version": {
+              "const": "synthetic_item_bank.v1 / demo.v1"
+            },
+            "population_scope": {
+              "const": "SYNTHETIC_STUDENT_DEMO"
+            }
+          }
+        },
+        "policy_id": {
+          "const": "POLICY_assessment_synthetic_measurement_only"
+        },
+        "approval_reference": {
+          "const": "D4-3B_CONTROLLER_CAT_COMPATIBILITY_R1"
+        },
+        "dimension_map": {
+          "const": {}
+        },
+        "fixture_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "activation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256",
+        "run_id",
+        "backend_pid",
+        "backend_process_tree_match"
+      ],
+      "properties": {
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "run_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "backend_pid": {
+          "minimum": 1,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "backend_process_tree_match": {
+          "type": "boolean"
+        }
+      }
+    },
+    "source_provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assessment_id_sha256",
+        "source_identity",
+        "source_adapter",
+        "adapter_version",
+        "cat_engine_version",
+        "item_bank_version",
+        "dimensions",
+        "assessment_status",
+        "item_bank_git_blob",
+        "mapper_git_blob",
+        "item_bank_file_sha256",
+        "mapper_file_sha256",
+        "cat_profile_sha256",
+        "cat_provider_version",
+        "synthetic_demo_only"
+      ],
+      "properties": {
+        "assessment_id_sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "source_identity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "instrument_id",
+            "instrument_version",
+            "population_scope"
+          ],
+          "properties": {
+            "instrument_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "instrument_version": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "population_scope": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "source_adapter": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "adapter_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cat_engine_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "item_bank_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dimensions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "assessment_status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "item_bank_git_blob": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "mapper_git_blob": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "item_bank_file_sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "mapper_file_sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "cat_profile_sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "synthetic_demo_only": {
+          "const": true
+        },
+        "cat_provider_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "context_id": {
+      "type": "string",
+      "pattern": "^D4SMOKE-[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "evidence_class": {
+      "const": "NOT_FORMAL_PRODUCT_EVIDENCE"
+    }
+  }
+}

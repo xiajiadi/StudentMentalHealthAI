@@ -41,6 +41,7 @@ from harness.controlled_product_eval.runner import (
     EXPECTED_RUNTIME_HTTP_ENDPOINT,
     EXPECTED_RUNTIME_LOGICAL_MODEL_ID,
     PostPrepareIntegrityError,
+    RunnerError,
     SYNTHETIC_CAT_INSTRUMENT_ID,
     SYNTHETIC_CAT_INSTRUMENT_VERSION,
     TransportObservation,
@@ -50,10 +51,67 @@ from harness.controlled_product_eval.runner import (
     runtime_invocation_evidence_sources,
     runtime_observer_requirement,
 )
+from harness.controlled_product_eval.cat_compatibility_gate import CatCompatibilityGateError
 from harness.controlled_product_eval.runtime_audit import RUNTIME_AUDIT_SCHEMA
 from harness.controlled_product_eval import runner as runner_module
 
 SCHEMA_ROOT = Path(__file__).resolve().parents[3] / "spec"
+
+
+def test_d4smoke_transport_rejects_missing_or_failed_gate_before_http(tmp_path, monkeypatch):
+    transport = object.__new__(CanonicalHttpTransport)
+    transport._prepared = True
+
+    async def unexpected_http_client(_username):
+        pytest.fail("a failed D4SMOKE compatibility gate must stop before HTTP")
+
+    monkeypatch.setattr(transport, "_client", unexpected_http_client)
+    request = {
+        "case_id": "D4SMOKECASE-A-NORMAL",
+        "expected_response_class": "NONFORMAL_SMOKE",
+        "request": "synthetic smoke request",
+    }
+
+    with pytest.raises(RunnerError, match="require a written PASS compatibility gate"):
+        asyncio.run(
+            transport.submit(
+                request,
+                run_id="D4SMOKE-CONTEXT000001",
+                request_id="REQ_D4SMOKE_000001",
+                trace_id="TRACE_D4SMOKE_000001",
+                ordinal=0,
+            )
+        )
+
+    gate_path = tmp_path / "smoke-cat-d3-compatibility-gate.json"
+    gate_path.write_text(
+        json.dumps({"status": "FAIL", "issues": ["TEST_GATE_FAILURE"]}),
+        encoding="utf-8",
+    )
+    with pytest.raises(CatCompatibilityGateError):
+        asyncio.run(
+            transport.submit(
+                request,
+                run_id="D4SMOKE-CONTEXT000001",
+                request_id="REQ_D4SMOKE_000001",
+                trace_id="TRACE_D4SMOKE_000001",
+                ordinal=0,
+                compatibility_gate_path=gate_path,
+            )
+        )
+
+    request["case_id"] = "AW-FORMAL-CASE-001"
+    with pytest.raises(RunnerError, match="non-formal smoke case ID"):
+        asyncio.run(
+            transport.submit(
+                request,
+                run_id="D4SMOKE-CONTEXT000001",
+                request_id="REQ_D4SMOKE_000001",
+                trace_id="TRACE_D4SMOKE_000001",
+                ordinal=0,
+                compatibility_gate_path=gate_path,
+            )
+        )
 
 
 @pytest.fixture()

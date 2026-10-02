@@ -26,6 +26,7 @@ from .cat_compatibility_gate import (
     CatCompatibilityGateError,
     build_cat_d3_compatibility_gate,
     validate_cat_d3_compatibility_gate,
+    validate_smoke_cat_d3_compatibility_gate,
 )
 from .credential_provider import EXPECTED_SYNTHETIC_SUBJECTS
 from .manifest import (
@@ -75,6 +76,8 @@ SYNTHETIC_CAT_INSTRUMENT_VERSION = "demo.v1"
 
 CORRELATION_SAFE = re.compile(r"^D4RUN-[A-Za-z0-9][A-Za-z0-9._-]*$")
 _CASE_ID_SAFE = re.compile(r"^AW-[A-Z0-9][A-Z0-9_-]*$")
+_SMOKE_CONTEXT_ID_SAFE = re.compile(r"^D4SMOKE-[A-Za-z0-9][A-Za-z0-9._-]*$")
+_SMOKE_CASE_ID_SAFE = re.compile(r"^D4SMOKECASE-[A-Z0-9][A-Z0-9_-]*$")
 _ERROR_AUDIT_SCHEMA_PATH = Path(__file__).resolve().parents[2] / "spec" / "d4_slice3b_error_audit.schema.json"
 
 
@@ -505,6 +508,7 @@ class CanonicalHttpTransport:
         self._prepared = False
         self._last_completed_assessment: dict[str, Any] | None = None
         self._prepared_assessment: dict[str, Any] | None = None
+        self._smoke_assessment_ids: list[str] = []
 
     @property
     def prepared_assessment(self) -> Mapping[str, Any] | None:
@@ -651,6 +655,24 @@ class CanonicalHttpTransport:
             if self._last_completed_assessment is not None
             else None
         )
+        self._prepared = True
+
+    async def prepare_nonformal_smoke(self) -> None:
+        """Prepare exactly three synthetic CAT assessments before the smoke gate."""
+
+        if self._prepared:
+            raise RunnerError("D4SMOKE preparation must run exactly once")
+        await self.login_gate()
+        prepared_assessments: list[dict[str, Any]] = []
+        for ordinal in range(3):
+            assessment_id = await self._create_assessment("student_b", f"D4SMOKE_{ordinal + 1:02d}")
+            self._smoke_assessment_ids.append(assessment_id)
+            if self._last_completed_assessment is None:
+                raise RunnerError("D4SMOKE CAT preparation did not capture completed provenance")
+            prepared_assessments.append(dict(self._last_completed_assessment))
+        if len(self._smoke_assessment_ids) != 3:
+            raise RunnerError("D4SMOKE must prepare exactly three completed synthetic assessments")
+        self._prepared_assessment = prepared_assessments[0]
         self._prepared = True
 
     async def login_gate(self) -> Mapping[str, Mapping[str, str]]:
@@ -804,15 +826,40 @@ class CanonicalHttpTransport:
         request_id: str,
         trace_id: str,
         ordinal: int,
+        compatibility_gate_path: str | Path | None = None,
     ) -> TransportObservation:
         if not self._prepared:
             raise RunnerError("transport.prepare() must complete before product cases run")
         case_id = case.get("case_id")
-        if not isinstance(case_id, str) or not _CASE_ID_SAFE.fullmatch(case_id):
-            raise RunnerError("case ID is unsafe for a formal request")
         gold_case = case
         expected = gold_case.get("expected_response_class")
-        if expected == "MUST_DENY":
+        if _SMOKE_CONTEXT_ID_SAFE.fullmatch(run_id):
+            if (
+                not isinstance(case_id, str)
+                or not _SMOKE_CASE_ID_SAFE.fullmatch(case_id)
+                or expected != "NONFORMAL_SMOKE"
+            ):
+                raise RunnerError("D4SMOKE requests require a non-formal smoke case ID and classification")
+            if compatibility_gate_path is None:
+                raise RunnerError("D4SMOKE support requests require a written PASS compatibility gate")
+            gate_path = Path(compatibility_gate_path).resolve()
+            if gate_path.name != "smoke-cat-d3-compatibility-gate.json":
+                raise RunnerError("D4SMOKE support requests require the canonical smoke gate filename")
+            try:
+                compatibility_gate = json.loads(gate_path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                raise RunnerError("D4SMOKE compatibility gate evidence is missing or invalid") from None
+            if not isinstance(compatibility_gate, Mapping):
+                raise RunnerError("D4SMOKE compatibility gate evidence must be a JSON object")
+            validate_smoke_cat_d3_compatibility_gate(compatibility_gate, context_id=run_id)
+        elif not isinstance(case_id, str) or not _CASE_ID_SAFE.fullmatch(case_id):
+            raise RunnerError("case ID is unsafe for a formal request")
+        if _SMOKE_CONTEXT_ID_SAFE.fullmatch(run_id):
+            if not isinstance(ordinal, int) or not 0 <= ordinal < len(self._smoke_assessment_ids):
+                raise RunnerError("D4SMOKE support request has no pre-gated synthetic assessment")
+            username = "student_b"
+            assessment_id = self._smoke_assessment_ids[ordinal]
+        elif expected == "MUST_DENY":
             username = "student_a"
             assessment_id = self._foreign_assessment_id
         else:

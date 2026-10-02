@@ -55,11 +55,32 @@ _FIXTURE_KEYS = {
     "dimension_map",
 }
 _IDENTITY_KEYS = {"instrument_id", "instrument_version", "population_scope"}
-_RUN_ID_RE = re.compile(r"^D4RUN-[A-Za-z0-9][A-Za-z0-9._-]*$")
+_FORMAL_RUN_ID_RE = re.compile(r"^D4RUN-[A-Za-z0-9][A-Za-z0-9._-]*$")
+_SMOKE_RUN_ID_RE = re.compile(r"^D4SMOKE-[A-Za-z0-9][A-Za-z0-9._-]*$")
+NONFORMAL_EVIDENCE_CLASS = "NOT_FORMAL_PRODUCT_EVIDENCE"
 
 
 class CompatibilityFixtureError(ValueError):
     """The external fixture does not match the Controller-approved artifact."""
+
+
+def _evidence_class_for_run_id(run_id: str) -> str | None:
+    if _FORMAL_RUN_ID_RE.fullmatch(run_id):
+        return None
+    if _SMOKE_RUN_ID_RE.fullmatch(run_id):
+        return NONFORMAL_EVIDENCE_CLASS
+    raise CompatibilityFixtureError("fixture injection requires an approved D4RUN or D4SMOKE context ID")
+
+
+def validate_harness_activation_context(*, harness_command: str, run_id: str) -> None:
+    """Bind the internal Backend bootstrap to the fixed evaluation command."""
+
+    evidence_class = _evidence_class_for_run_id(run_id)
+    if harness_command == "run" and evidence_class is None:
+        return
+    if harness_command == "smoke-product" and evidence_class == NONFORMAL_EVIDENCE_CLASS:
+        return
+    raise CompatibilityFixtureError("harness command and fixture activation context do not match")
 
 
 def canonical_json_bytes(value: Mapping[str, Any]) -> bytes:
@@ -136,8 +157,9 @@ def _build_fixture_activation_record(
     fixture_instance_count: int,
     d3_policy_version: str,
     d3_policy_hash: str,
+    evidence_class: str | None = None,
 ) -> dict[str, Any]:
-    return {
+    record = {
         "schema_version": "d4-3b-runtime-fixture-activation.v1",
         "run_id": run_id,
         "fixture_id": FIXTURE_ID,
@@ -165,6 +187,9 @@ def _build_fixture_activation_record(
         "d3_policy_version": d3_policy_version,
         "d3_policy_hash": d3_policy_hash,
     }
+    if evidence_class is not None:
+        record["evidence_class"] = evidence_class
+    return record
 
 
 def _value(value: Any) -> Any:
@@ -336,12 +361,113 @@ def build_d3_2_observation(
     }
 
 
+def build_d3_smoke_chain_observation(
+    result: Any,
+    bundle: Any,
+    *,
+    run_id: str,
+    request_id: str,
+    trace_id: str,
+    error_type: str | None = None,
+) -> dict[str, Any]:
+    """Project only bounded bundle and D3-3/D3-1 identities for D4SMOKE."""
+
+    try:
+        verify = getattr(bundle, "verify", None)
+        if callable(verify):
+            verify()
+        eligible = getattr(bundle, "eligible", False) is True
+        items = getattr(bundle, "items", ())
+        chunk_count = len(items) if isinstance(items, Sequence) else 0
+        bundle_hash = getattr(bundle, "bundle_hash", None)
+        evidence_bundle_status = (
+            "PASS"
+            if eligible and chunk_count > 0 and isinstance(bundle_hash, str) and bundle_hash
+            else "FAIL"
+        )
+    except Exception as exc:
+        eligible = False
+        chunk_count = 0
+        bundle_hash = None
+        evidence_bundle_status = "FAIL"
+        error_type = error_type or type(exc).__name__
+
+    role_policy = getattr(result, "role_policy", None)
+    template = getattr(result, "template", None)
+    content_mapping = getattr(result, "content_population_mapping", None)
+
+    def exposed(value: Any, name: str) -> str | None:
+        candidate = getattr(value, name, None)
+        return candidate if isinstance(candidate, str) and candidate else None
+
+    d3_3_identity = {
+        "policy_id": exposed(role_policy, "policy_id"),
+        "policy_version": exposed(role_policy, "policy_version"),
+        "policy_hash": exposed(role_policy, "policy_hash"),
+    }
+    d3_1_identity = {
+        "prompt_id": exposed(template, "prompt_id"),
+        "prompt_version": exposed(template, "prompt_version"),
+        "prompt_hash": exposed(template, "content_hash"),
+    }
+    d3_3_reached = all(d3_3_identity.values())
+    d3_1_reached = all(d3_1_identity.values())
+    chain_status = "PASS" if error_type is None else "FAIL"
+    status = (
+        "PASS"
+        if chain_status == "PASS"
+        and evidence_bundle_status == "PASS"
+        and d3_3_reached
+        and d3_1_reached
+        else "FAIL"
+    )
+    return {
+        "schema_version": "d4-smoke-d3-chain-audit.v1",
+        "run_id": run_id,
+        "evidence_class": NONFORMAL_EVIDENCE_CLASS,
+        "status": status,
+        "evidence_bundle_status": evidence_bundle_status,
+        "bundle_eligible": eligible,
+        "bundle_chunk_count": chunk_count,
+        "bundle_hash": bundle_hash,
+        "d3_3_reached": d3_3_reached,
+        "d3_3_policy_id": d3_3_identity["policy_id"],
+        "d3_3_policy_version": d3_3_identity["policy_version"],
+        "d3_3_policy_hash": d3_3_identity["policy_hash"],
+        "d3_1_reached": d3_1_reached,
+        "d3_1_prompt_id": d3_1_identity["prompt_id"],
+        "d3_1_prompt_version": d3_1_identity["prompt_version"],
+        "d3_1_prompt_hash": d3_1_identity["prompt_hash"],
+        "content_population_mapping_id": exposed(content_mapping, "mapping_id"),
+        "content_population_mapping_version": exposed(content_mapping, "mapping_version"),
+        "content_population": exposed(content_mapping, "target_population"),
+        "request_id": request_id,
+        "trace_id": trace_id,
+        "error_type": error_type,
+    }
+
+
+def validate_d3_smoke_chain_observation(value: Mapping[str, Any]) -> None:
+    """Validate the bounded D4SMOKE D3-chain audit without product imports."""
+
+    import jsonschema
+
+    schema_path = Path(__file__).resolve().parents[2] / "spec" / "d4_smoke_d3_chain_audit.schema.json"
+    try:
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        jsonschema.Draft202012Validator(
+            schema,
+            format_checker=jsonschema.Draft202012Validator.FORMAT_CHECKER,
+        ).validate(value)
+    except (OSError, json.JSONDecodeError, jsonschema.ValidationError) as exc:
+        raise CompatibilityFixtureError("D4SMOKE D3-chain audit failed schema validation") from exc
+
+
 def create_injected_backend_app(*, evidence_dir: Path, run_id: str) -> Any:
     """Inject the fixture and safe observers before constructing the app."""
 
     evidence_dir = evidence_dir.resolve(strict=True)
-    if not _RUN_ID_RE.fullmatch(run_id):
-        raise CompatibilityFixtureError("fixture injection requires the formal attempt run ID")
+    evidence_class = _evidence_class_for_run_id(run_id)
     fixture_bytes = canonical_json_bytes(FIXTURE_DOCUMENT)
     fixture_path = evidence_dir / "approved-cat-d3-compatibility-fixture.json"
     activation_path = evidence_dir / "fixture-activation.json"
@@ -351,6 +477,7 @@ def create_injected_backend_app(*, evidence_dir: Path, run_id: str) -> Any:
     document, fixture_hash = parse_fixture_bytes(fixture_bytes)
     binding_directory = evidence_dir / "binding-audits"
     interpretation_directory = evidence_dir / "d3-2-audits"
+    d3_chain_directory = evidence_dir / "d3-chain-audits"
 
     from dataclasses import replace
 
@@ -504,6 +631,60 @@ def create_injected_backend_app(*, evidence_dir: Path, run_id: str) -> Any:
 
     support_service.interpret_d3_chain = audited_interpret
 
+    if evidence_class is not None:
+        original_compose = support_service.compose_d3_chain
+
+        def audited_compose(*args: Any, **kwargs: Any) -> Any:
+            context = args[0] if args else kwargs.get("context")
+            bundle = args[3] if len(args) > 3 else kwargs.get("bundle")
+            request_id = getattr(context, "request_id", None)
+            trace_id = getattr(context, "trace_id", None)
+            try:
+                result = original_compose(*args, **kwargs)
+            except Exception as exc:
+                audit = build_d3_smoke_chain_observation(
+                    None,
+                    bundle,
+                    run_id=run_id,
+                    request_id=request_id,
+                    trace_id=trace_id,
+                    error_type=type(exc).__name__,
+                )
+                validate_d3_smoke_chain_observation(audit)
+                _write_once(
+                    _correlated_evidence_path(
+                        d3_chain_directory,
+                        "d3-chain-audit",
+                        request_id,
+                        trace_id,
+                    ),
+                    audit,
+                )
+                raise
+
+            audit = build_d3_smoke_chain_observation(
+                result,
+                bundle,
+                run_id=run_id,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+            validate_d3_smoke_chain_observation(audit)
+            _write_once(
+                _correlated_evidence_path(
+                    d3_chain_directory,
+                    "d3-chain-audit",
+                    request_id,
+                    trace_id,
+                ),
+                audit,
+            )
+            if audit["status"] != "PASS":
+                raise D3ChainError("D4_SMOKE_D3_CHAIN_OBSERVER_GATE")
+            return result
+
+        support_service.compose_d3_chain = audited_compose
+
     from smhai_backend.app_factory import create_app
 
     app = create_app()
@@ -522,6 +703,7 @@ def create_injected_backend_app(*, evidence_dir: Path, run_id: str) -> Any:
         fixture_instance_count=len(installed),
         d3_policy_version=D3_POLICY_VERSION,
         d3_policy_hash=D3_POLICY_HASH,
+        evidence_class=evidence_class,
     )
     _write_once(activation_path, activation)
     app.state.d4_evaluation_fixture_activation = activation
@@ -530,6 +712,7 @@ def create_injected_backend_app(*, evidence_dir: Path, run_id: str) -> Any:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Start Backend with the explicit D4-3B evaluation-only compatibility fixture")
+    parser.add_argument("--harness-command", choices=("run", "smoke-product"), required=True)
     parser.add_argument("--evidence-dir", type=Path, required=True)
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--host", default="127.0.0.1")
@@ -537,6 +720,7 @@ def main() -> None:
     args = parser.parse_args()
     if args.host != "127.0.0.1":
         raise SystemExit("evaluation Backend must bind only to 127.0.0.1")
+    validate_harness_activation_context(harness_command=args.harness_command, run_id=args.run_id)
     import uvicorn
 
     app = create_injected_backend_app(evidence_dir=args.evidence_dir, run_id=args.run_id)

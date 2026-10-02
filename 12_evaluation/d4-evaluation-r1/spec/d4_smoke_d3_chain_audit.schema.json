@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "evidence_class",
+    "status",
+    "evidence_bundle_status",
+    "bundle_eligible",
+    "bundle_chunk_count",
+    "bundle_hash",
+    "d3_3_reached",
+    "d3_3_policy_id",
+    "d3_3_policy_version",
+    "d3_3_policy_hash",
+    "d3_1_reached",
+    "d3_1_prompt_id",
+    "d3_1_prompt_version",
+    "d3_1_prompt_hash",
+    "content_population_mapping_id",
+    "content_population_mapping_version",
+    "content_population",
+    "request_id",
+    "trace_id",
+    "error_type"
+  ],
+  "properties": {
+    "schema_version": { "const": "d4-smoke-d3-chain-audit.v1" },
+    "run_id": {
+      "type": "string",
+      "pattern": "^D4SMOKE-[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "evidence_class": { "const": "NOT_FORMAL_PRODUCT_EVIDENCE" },
+    "status": { "enum": ["PASS", "FAIL"] },
+    "evidence_bundle_status": { "enum": ["PASS", "FAIL"] },
+    "bundle_eligible": { "type": "boolean" },
+    "bundle_chunk_count": { "type": "integer", "minimum": 0 },
+    "bundle_hash": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "d3_3_reached": { "type": "boolean" },
+    "d3_3_policy_id": { "type": ["string", "null"] },
+    "d3_3_policy_version": { "type": ["string", "null"] },
+    "d3_3_policy_hash": { "type": ["string", "null"] },
+    "d3_1_reached": { "type": "boolean" },
+    "d3_1_prompt_id": { "type": ["string", "null"] },
+    "d3_1_prompt_version": { "type": ["string", "null"] },
+    "d3_1_prompt_hash": { "type": ["string", "null"] },
+    "content_population_mapping_id": { "type": ["string", "null"] },
+    "content_population_mapping_version": { "type": ["string", "null"] },
+    "content_population": { "type": ["string", "null"] },
+    "request_id": { "type": "string", "minLength": 1 },
+    "trace_id": { "type": "string", "minLength": 1 },
+    "error_type": { "type": ["string", "null"] }
+  }
+}

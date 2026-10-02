@@ -67,6 +67,8 @@ from .runner import (
 )
 
 RUNTIME_HTTP_SERVICE_BASE_URL = "http://127.0.0.1:8160"
+_FORMAL_CONTEXT_ID_RE = re.compile(r"^D4RUN-[A-Za-z0-9][A-Za-z0-9._-]*$")
+_SMOKE_CONTEXT_ID_RE = re.compile(r"^D4SMOKE-[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 def _safe_startup_failure_detail(
@@ -364,19 +366,26 @@ def _managed_specs(
     runtime_service_endpoint = RUNTIME_HTTP_SERVICE_BASE_URL.rstrip("/")
     if not is_loopback_url(runtime_service_endpoint):
         raise RunnerError("formal Runtime HTTP service must use HTTP loopback")
-    if getattr(args, "command", "run") == "run":
-        formal_run_id = getattr(args, "run_id", None)
-        if not isinstance(formal_run_id, str) or not formal_run_id.startswith("D4RUN-"):
-            raise RunnerError("formal Backend compatibility bootstrap requires the current run ID")
+    command = getattr(args, "command", "ordinary")
+    if command in {"run", "smoke-product"}:
+        expected_pattern = _FORMAL_CONTEXT_ID_RE if command == "run" else _SMOKE_CONTEXT_ID_RE
+        context_id = getattr(args, "run_id", None)
+        if not isinstance(context_id, str) or not expected_pattern.fullmatch(context_id):
+            required_context = "D4RUN" if command == "run" else "D4SMOKE"
+            raise RunnerError(
+                f"{command} Backend compatibility bootstrap requires an approved {required_context} context ID"
+            )
         cat_evidence_dir = (service_root / "cat-compatibility").resolve()
         cat_evidence_dir.mkdir(parents=True, exist_ok=True)
         backend_arguments = (
             "-m",
             "harness.controlled_product_eval.evaluation_compatibility",
+            "--harness-command",
+            command,
             "--evidence-dir",
             str(cat_evidence_dir),
             "--run-id",
-            formal_run_id,
+            context_id,
         )
     else:
         backend_arguments = ("-m", "smhai_backend.main")
@@ -977,15 +986,38 @@ def main() -> int:
         attempt.add_argument("--timeout-seconds", type=float, default=150.0)
         attempt.add_argument("--service-startup-timeout-seconds", type=float, default=180.0)
 
+    smoke_product = subparsers.add_parser(
+        "smoke-product",
+        help="run exactly three synthetic, non-Human-Gold D4SMOKE support paths",
+    )
+    smoke_product.add_argument("--output-root", required=True)
+    smoke_product.add_argument("--timeout-seconds", type=float, default=300.0)
+    smoke_product.add_argument("--service-startup-timeout-seconds", type=float, default=240.0)
+
     args = parser.parse_args()
     try:
         if args.command == "prepare-assets":
             result = prepare_assets(args.packet, args.manifest_dir)
+        elif args.command == "smoke-product":
+            from .smoke_product import run_smoke_product
+
+            result = asyncio.run(run_smoke_product(args))
         else:
             result = asyncio.run(_run_managed(args))
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+        if args.command == "smoke-product" and result.get("execution_status") != "PASS":
+            return 2
         return 0
-    except (ApprovedPacketError, LifecycleError, ManifestError, RunnerError, OSError, ValueError) as exc:
+    except (
+        ApprovedPacketError,
+        CredentialProviderError,
+        LifecycleError,
+        ManifestError,
+        RunnerError,
+        ServiceProfileError,
+        OSError,
+        ValueError,
+    ) as exc:
         decision_required = "UNKNOWN_PROCESS_OCCUPIES_REQUIRED_FORMAL_PORT" in str(exc)
         print(json.dumps({"status": "CONTROLLER_DECISION_REQUIRED" if decision_required else "PREMANIFEST_LIFECYCLE_FAILURE", "error_type": type(exc).__name__, "detail": str(exc)}, ensure_ascii=False, indent=2))
         return 2
