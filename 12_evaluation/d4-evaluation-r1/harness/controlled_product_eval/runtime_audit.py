@@ -7,6 +7,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 from collections.abc import Callable, Mapping, Sequence
@@ -21,7 +22,13 @@ from .manifest import EXPECTED_RUNTIME_IDENTITY, RuntimePreflight
 
 OLLAMA_ENDPOINT = "http://127.0.0.1:11437"
 RUNTIME_AUDIT_SCHEMA = "d4-runtime-audit-evidence.v1"
-_PHASES = {"BEFORE_CASES", "AFTER_CASES"}
+_PHASES = {"BEFORE_CASES", "AFTER_INVOCATION", "AFTER_CASES"}
+_INVOCATION_BINDING_KEYS = {"case_id", "request_id", "trace_id", "evidence_sources", "observed_at"}
+_INVOCATION_EVIDENCE_SOURCES = {
+    "CORRELATED_LLM_OBSERVER_EVENT",
+    "NORMAL_GENERATION_TRUE",
+    "POSITIVE_GENERATION_STATUS",
+}
 _RUNTIME_AUDIT_SCHEMA_PATH = Path(__file__).resolve().parents[2] / "spec" / "d4_runtime_audit_evidence.schema.json"
 
 
@@ -45,6 +52,49 @@ def _get_json(url: str) -> Mapping[str, Any]:
 
 def _positive_pid(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
+def _parse_timestamp(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else None
+
+
+def _validate_invocation_binding(value: Mapping[str, Any]) -> dict[str, Any]:
+    if set(value) != _INVOCATION_BINDING_KEYS:
+        raise RuntimeAuditError("Runtime invocation binding has unexpected or missing fields")
+    case_id = value.get("case_id")
+    request_id = value.get("request_id")
+    trace_id = value.get("trace_id")
+    if not isinstance(case_id, str) or not re.fullmatch(r"AW-[A-Z0-9][A-Z0-9_-]*", case_id):
+        raise RuntimeAuditError("Runtime invocation case binding is invalid")
+    if not isinstance(request_id, str) or not re.fullmatch(r"REQ_[A-Za-z0-9][A-Za-z0-9_.-]*", request_id):
+        raise RuntimeAuditError("Runtime invocation request binding is invalid")
+    if not isinstance(trace_id, str) or not re.fullmatch(r"TRACE_[A-Za-z0-9][A-Za-z0-9_.-]*", trace_id):
+        raise RuntimeAuditError("Runtime invocation trace binding is invalid")
+    sources = value.get("evidence_sources")
+    if (
+        not isinstance(sources, Sequence)
+        or isinstance(sources, (str, bytes))
+        or not sources
+        or any(not isinstance(source, str) or source not in _INVOCATION_EVIDENCE_SOURCES for source in sources)
+        or len(set(sources)) != len(sources)
+    ):
+        raise RuntimeAuditError("Runtime invocation evidence sources are invalid")
+    observed_at = value.get("observed_at")
+    if _parse_timestamp(observed_at) is None:
+        raise RuntimeAuditError("Runtime invocation observation timestamp is invalid")
+    return {
+        "case_id": case_id,
+        "request_id": request_id,
+        "trace_id": trace_id,
+        "evidence_sources": list(sources),
+        "observed_at": observed_at,
+    }
 
 
 def _run_command(arguments: list[str], *, timeout: float) -> subprocess.CompletedProcess[str]:
@@ -232,6 +282,7 @@ def capture_runtime_audit_snapshot(
     runtime_preflight: Mapping[str, Any] | RuntimePreflight,
     managed_service_identity: Mapping[str, Any],
     evidence_root: str | Path,
+    invocation_binding: Mapping[str, Any] | None = None,
     captured_at: str | None = None,
     get_json: Callable[[str], Mapping[str, Any]] = _get_json,
     command_runner: Callable[..., subprocess.CompletedProcess[str]] = _run_command,
@@ -241,6 +292,12 @@ def capture_runtime_audit_snapshot(
 
     if phase not in _PHASES:
         raise RuntimeAuditError("Runtime audit phase is not allow-listed")
+    if phase == "AFTER_INVOCATION":
+        if not isinstance(invocation_binding, Mapping):
+            raise RuntimeAuditError("Runtime invocation binding is required after model invocation")
+        invocation_binding = _validate_invocation_binding(invocation_binding)
+    elif invocation_binding is not None:
+        raise RuntimeAuditError("Runtime invocation binding is only valid after model invocation")
     runtime = (
         runtime_preflight
         if isinstance(runtime_preflight, RuntimePreflight)
@@ -290,8 +347,15 @@ def capture_runtime_audit_snapshot(
         version = version_response.get("version")
         catalog = _project_model_rows(tags_response, model_name=model_name)
         running = _project_model_rows(running_response, model_name=model_name)
-        running_model_count = len(running_response["models"])
-        digest = next((item.get("digest") for item in catalog if item.get("digest") == expected_digest), None)
+        raw_running_models = running_response.get("models")
+        if not isinstance(raw_running_models, Sequence) or isinstance(raw_running_models, (str, bytes)):
+            raise ValueError("Ollama running model collection is missing")
+        running_model_count = len(raw_running_models)
+        digest = (
+            catalog[0].get("digest")
+            if len(catalog) == 1 and catalog[0].get("digest") == expected_digest
+            else None
+        )
         api_status = (
             "PASS"
             if version == runtime.identity.get("ollama_version") and digest == expected_digest
@@ -307,7 +371,7 @@ def capture_runtime_audit_snapshot(
             running_status = "LOADED"
         else:
             running_status = "IDENTITY_MISMATCH"
-    except (OSError, ValueError, httpx.HTTPError):
+    except (KeyError, OSError, TypeError, ValueError, httpx.HTTPError):
         version = None
         catalog = []
         running = []
@@ -325,8 +389,21 @@ def capture_runtime_audit_snapshot(
         command_runner=command_runner,
         which=which,
     )
+    if phase == "BEFORE_CASES" and running_status == "NOT_LOADED":
+        if (
+            gpu.get("status") == "CAPTURED"
+            and gpu.get("compute_process_status") == "CAPTURED"
+            and gpu.get("ollama_process_visible") is False
+        ):
+            gpu["cold_state_status"] = "EXPECTED_COLD_STATE"
+        elif gpu.get("status") == "CAPTURED" and gpu.get("compute_process_status") == "CAPTURED":
+            gpu["cold_state_status"] = "NOT_COLD"
+        else:
+            gpu["cold_state_status"] = "UNKNOWN"
+    else:
+        gpu["cold_state_status"] = "NOT_APPLICABLE"
 
-    return {
+    snapshot = {
         "schema_version": RUNTIME_AUDIT_SCHEMA,
         "run_id": run_id,
         "phase": phase,
@@ -362,6 +439,9 @@ def capture_runtime_audit_snapshot(
         },
         "gpu": gpu,
     }
+    if phase == "AFTER_INVOCATION":
+        snapshot["invocation_binding"] = dict(invocation_binding or {})
+    return snapshot
 
 
 def runtime_audit_pre_case_issues(snapshot: Mapping[str, Any], *, run_id: str) -> tuple[str, ...]:
@@ -400,18 +480,145 @@ def runtime_audit_pre_case_issues(snapshot: Mapping[str, Any], *, run_id: str) -
     ):
         issues.append("OLLAMA_API_OR_MODEL_IDENTITY_NOT_PASS")
     running_models = ollama.get("running_models")
-    if (
-        ollama.get("running_model_status") != "LOADED"
-        or ollama.get("running_model_count") != 1
-        or not isinstance(running_models, list)
-        or len(running_models) != 1
-        or running_models[0].get("name") != EXPECTED_RUNTIME_IDENTITY["model"]
-        or running_models[0].get("digest") != EXPECTED_RUNTIME_IDENTITY["digest"]
-    ):
+    running_model_count = ollama.get("running_model_count")
+    cold_unloaded = (
+        ollama.get("running_model_status") == "NOT_LOADED"
+        and isinstance(running_model_count, int)
+        and not isinstance(running_model_count, bool)
+        and running_model_count == 0
+        and running_models == []
+    )
+    exact_loaded = (
+        ollama.get("running_model_status") == "LOADED"
+        and running_model_count == 1
+        and not isinstance(running_model_count, bool)
+        and isinstance(running_models, list)
+        and len(running_models) == 1
+        and isinstance(running_models[0], Mapping)
+        and running_models[0].get("name") == EXPECTED_RUNTIME_IDENTITY["model"]
+        and running_models[0].get("digest") == EXPECTED_RUNTIME_IDENTITY["digest"]
+    )
+    if not (cold_unloaded or exact_loaded):
         issues.append("OLLAMA_RUNNING_MODEL_IDENTITY_NOT_PASS")
     if ollama.get("endpoint") != OLLAMA_ENDPOINT:
         issues.append("OLLAMA_ACCEPTED_ENDPOINT_MISMATCH")
     return tuple(issues)
+
+
+def runtime_audit_after_invocation_issues(
+    snapshot: Mapping[str, Any],
+    *,
+    run_id: str,
+    invocation_binding: Mapping[str, Any],
+    runtime_preflight_hash: str,
+    expected_execution_binding: Mapping[str, Any] | None = None,
+) -> tuple[str, ...]:
+    """Require exact same-window identity and process/GPU evidence after invocation."""
+
+    issues: list[str] = []
+    if snapshot.get("schema_version") != RUNTIME_AUDIT_SCHEMA or snapshot.get("run_id") != run_id:
+        issues.append("RUNTIME_AUDIT_RUN_BINDING_INVALID")
+    if snapshot.get("phase") != "AFTER_INVOCATION":
+        issues.append("RUNTIME_AUDIT_PHASE_INVALID")
+    if snapshot.get("runtime_preflight_hash") != runtime_preflight_hash:
+        issues.append("RUNTIME_AUDIT_PREFLIGHT_HASH_MISMATCH")
+    try:
+        expected_invocation = _validate_invocation_binding(invocation_binding)
+    except RuntimeAuditError:
+        expected_invocation = None
+    if expected_invocation is None or snapshot.get("invocation_binding") != expected_invocation:
+        issues.append("RUNTIME_INVOCATION_BINDING_MISMATCH")
+    captured_at = _parse_timestamp(snapshot.get("captured_at"))
+    observed_at = _parse_timestamp(invocation_binding.get("observed_at"))
+    if captured_at is None or observed_at is None or captured_at < observed_at:
+        issues.append("RUNTIME_AUDIT_CAPTURE_PRECEDES_INVOCATION")
+
+    runtime = snapshot.get("runtime")
+    runtime = runtime if isinstance(runtime, Mapping) else {}
+    ollama = snapshot.get("ollama")
+    ollama = ollama if isinstance(ollama, Mapping) else {}
+    if not _positive_pid(runtime.get("pid")) or not _positive_pid(runtime.get("launcher_pid")):
+        issues.append("RUNTIME_PROCESS_IDENTITY_MISSING")
+    if not _positive_pid(ollama.get("pid")):
+        issues.append("OLLAMA_PROCESS_IDENTITY_MISSING")
+    for service_name, service in (("RUNTIME", runtime), ("OLLAMA", ollama)):
+        for field in ("stdout_log", "stderr_log"):
+            item = service.get(field)
+            if not isinstance(item, Mapping) or item.get("status") != "CAPTURED":
+                issues.append(f"{service_name}_PROCESS_LOGS_NOT_CAPTURED")
+                break
+    if expected_execution_binding is not None:
+        expected_pids = {
+            "runtime_pid": (runtime.get("pid"), expected_execution_binding.get("runtime_pid")),
+            "runtime_launcher_pid": (runtime.get("launcher_pid"), expected_execution_binding.get("runtime_launcher_pid")),
+            "ollama_pid": (ollama.get("pid"), expected_execution_binding.get("ollama_pid")),
+        }
+        if any(observed != expected for observed, expected in expected_pids.values()):
+            issues.append("RUNTIME_PROCESS_IDENTITY_MISMATCH")
+        for field, observed in (
+            ("runtime_process_tree_pids", runtime.get("process_tree_pids")),
+            ("ollama_process_tree_pids", ollama.get("process_tree_pids")),
+        ):
+            expected = expected_execution_binding.get(field)
+            if not isinstance(observed, list) or not isinstance(expected, Sequence) or isinstance(expected, (str, bytes)):
+                issues.append("RUNTIME_PROCESS_TREE_IDENTITY_MISMATCH")
+                break
+            if sorted(observed) != sorted(item for item in expected if _positive_pid(item)):
+                issues.append("RUNTIME_PROCESS_TREE_IDENTITY_MISMATCH")
+                break
+        for field, observed in (
+            ("runtime_executable_sha256", runtime.get("executable_sha256")),
+            ("runtime_source_tree_sha256", runtime.get("source_tree_sha256")),
+            ("ollama_executable_sha256", ollama.get("executable_sha256")),
+        ):
+            expected = expected_execution_binding.get(field)
+            if observed != expected:
+                issues.append("RUNTIME_EXECUTABLE_IDENTITY_MISMATCH")
+                break
+
+    if (
+        ollama.get("api_status") != "PASS"
+        or ollama.get("catalog_status") != "PASS"
+        or ollama.get("version") != EXPECTED_RUNTIME_IDENTITY["ollama_version"]
+        or ollama.get("model") != EXPECTED_RUNTIME_IDENTITY["model"]
+        or ollama.get("expected_digest") != EXPECTED_RUNTIME_IDENTITY["digest"]
+        or ollama.get("observed_digest") != EXPECTED_RUNTIME_IDENTITY["digest"]
+        or ollama.get("endpoint") != OLLAMA_ENDPOINT
+    ):
+        issues.append("OLLAMA_API_OR_MODEL_IDENTITY_NOT_PASS")
+    running_models = ollama.get("running_models")
+    running_model_count = ollama.get("running_model_count")
+    if not (
+        ollama.get("running_model_status") == "LOADED"
+        and isinstance(running_model_count, int)
+        and not isinstance(running_model_count, bool)
+        and running_model_count == 1
+        and isinstance(running_models, list)
+        and len(running_models) == 1
+        and isinstance(running_models[0], Mapping)
+        and running_models[0].get("name") == EXPECTED_RUNTIME_IDENTITY["model"]
+        and running_models[0].get("digest") == EXPECTED_RUNTIME_IDENTITY["digest"]
+    ):
+        issues.append("OLLAMA_RUNNING_MODEL_IDENTITY_NOT_PASS")
+
+    gpu = snapshot.get("gpu")
+    gpu = gpu if isinstance(gpu, Mapping) else {}
+    processes = gpu.get("ollama_compute_processes")
+    ollama_tree = ollama.get("process_tree_pids")
+    if (
+        gpu.get("status") != "CAPTURED"
+        or gpu.get("compute_process_status") != "CAPTURED"
+        or not isinstance(gpu.get("devices"), list)
+        or not isinstance(processes, list)
+        or not isinstance(gpu.get("ollama_process_visible"), bool)
+        or gpu.get("ollama_process_visible") != bool(processes)
+    ):
+        issues.append("RUNTIME_GPU_EXECUTION_EVIDENCE_UNAVAILABLE_OR_INCONSISTENT")
+    elif isinstance(ollama_tree, list) and any(
+        not isinstance(item, Mapping) or item.get("pid") not in ollama_tree for item in processes
+    ):
+        issues.append("RUNTIME_GPU_PROCESS_IDENTITY_MISMATCH")
+    return tuple(dict.fromkeys(issues))
 
 
 def validate_runtime_audit_snapshot(snapshot: Mapping[str, Any]) -> None:

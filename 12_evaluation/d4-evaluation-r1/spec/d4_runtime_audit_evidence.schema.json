@@ -8,9 +8,10 @@
   "properties": {
     "schema_version": { "const": "d4-runtime-audit-evidence.v1" },
     "run_id": { "type": "string", "pattern": "^D4RUN-[A-Za-z0-9][A-Za-z0-9._-]*$" },
-    "phase": { "enum": ["BEFORE_CASES", "AFTER_CASES"] },
+    "phase": { "enum": ["BEFORE_CASES", "AFTER_INVOCATION", "AFTER_CASES"] },
     "captured_at": { "type": "string", "format": "date-time" },
     "runtime_preflight_hash": { "$ref": "#/$defs/hash" },
+    "invocation_binding": { "$ref": "#/$defs/invocationBinding" },
     "runtime": {
       "type": "object",
       "required": ["pid", "launcher_pid", "process_tree_pids", "started_at", "executable_sha256", "source_tree_sha256", "stdout_log", "stderr_log"],
@@ -97,15 +98,40 @@
           }
         },
         "ollama_process_visible": { "type": "boolean" },
+        "cold_state_status": { "enum": ["EXPECTED_COLD_STATE", "NOT_COLD", "UNKNOWN", "NOT_APPLICABLE"] },
         "compute_process_status": { "enum": ["CAPTURED", "COMMAND_FAILED"] },
         "compute_process_exit_code": { "type": "integer" }
       },
       "additionalProperties": false
     }
   },
+  "allOf": [
+    {
+      "if": { "properties": { "phase": { "const": "AFTER_INVOCATION" } }, "required": ["phase"] },
+      "then": { "required": ["invocation_binding"] },
+      "else": { "not": { "required": ["invocation_binding"] } }
+    }
+  ],
   "$defs": {
     "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
     "rawHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "invocationBinding": {
+      "type": "object",
+      "required": ["case_id", "request_id", "trace_id", "evidence_sources", "observed_at"],
+      "properties": {
+        "case_id": { "type": "string", "pattern": "^AW-[A-Z0-9][A-Z0-9_-]*$" },
+        "request_id": { "type": "string", "pattern": "^REQ_[A-Za-z0-9][A-Za-z0-9_.-]*$" },
+        "trace_id": { "type": "string", "pattern": "^TRACE_[A-Za-z0-9][A-Za-z0-9_.-]*$" },
+        "evidence_sources": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["CORRELATED_LLM_OBSERVER_EVENT", "NORMAL_GENERATION_TRUE", "POSITIVE_GENERATION_STATUS"] }
+        },
+        "observed_at": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
     "logFile": {
       "type": "object",
       "required": ["status", "path", "size_bytes", "sha256", "modified_at"],

@@ -22,6 +22,7 @@ from harness.controlled_product_eval.manifest import build_runtime_preflight
 from harness.controlled_product_eval.runtime_audit import (
     RuntimeAuditError,
     capture_runtime_audit_snapshot,
+    runtime_audit_after_invocation_issues,
     runtime_audit_pre_case_issues,
     write_runtime_audit_snapshot,
 )
@@ -502,6 +503,126 @@ def test_runtime_audit_marks_gpu_unavailable_without_accessing_other_ollama_port
     assert all("11434" not in url for url in requested_urls)
 
 
+def test_runtime_audit_accepts_exact_catalog_with_cold_model_and_no_gpu_process(tmp_path):
+    run_id, preflight, identity, evidence_root = _runtime_audit_inputs(tmp_path)
+
+    def get_json(url: str):
+        if url.endswith("/api/version"):
+            return {"version": EXPECTED_RUNTIME_IDENTITY["ollama_version"]}
+        if url.endswith("/api/tags"):
+            return {
+                "models": [
+                    {
+                        "name": EXPECTED_RUNTIME_IDENTITY["model"],
+                        "digest": EXPECTED_RUNTIME_IDENTITY["digest"],
+                    }
+                ]
+            }
+        if url.endswith("/api/ps"):
+            return {"models": []}
+        raise AssertionError("unexpected Runtime endpoint")
+
+    def command_runner(arguments, *, timeout):
+        if "--query-gpu" in arguments[1]:
+            output = "NVIDIA GeForce RTX 3060, GPU-TEST, 12288, 1000, 11288\n"
+        else:
+            output = ""
+        return subprocess.CompletedProcess(arguments, 0, output, "")
+
+    snapshot = capture_runtime_audit_snapshot(
+        run_id=run_id,
+        phase="BEFORE_CASES",
+        runtime_preflight=preflight,
+        managed_service_identity=identity,
+        evidence_root=evidence_root,
+        captured_at="2026-10-02T00:01:00Z",
+        get_json=get_json,
+        command_runner=command_runner,
+        which=lambda _name: "nvidia-smi.exe",
+    )
+
+    assert snapshot["ollama"]["api_status"] == "PASS"
+    assert snapshot["ollama"]["catalog_status"] == "PASS"
+    assert snapshot["ollama"]["running_model_status"] == "NOT_LOADED"
+    assert snapshot["ollama"]["running_model_count"] == 0
+    assert snapshot["gpu"]["ollama_process_visible"] is False
+    assert snapshot["gpu"]["cold_state_status"] == "EXPECTED_COLD_STATE"
+    assert runtime_audit_pre_case_issues(snapshot, run_id=run_id) == ()
+    jsonschema.Draft202012Validator(
+        json.loads((EVALUATION_ROOT / "spec" / "d4_runtime_audit_evidence.schema.json").read_text(encoding="utf-8"))
+    ).validate(snapshot)
+
+
+def test_runtime_audit_after_invocation_requires_exact_loaded_model_and_captured_gpu(tmp_path):
+    run_id, preflight, identity, evidence_root = _runtime_audit_inputs(tmp_path)
+    invocation_binding = {
+        "case_id": "AW-ANSWERABILITY-TEST-001",
+        "request_id": "REQ_D4RUN-AUDIT-INVOCATION",
+        "trace_id": "TRACE_D4RUN-AUDIT-INVOCATION",
+        "evidence_sources": ["CORRELATED_LLM_OBSERVER_EVENT"],
+        "observed_at": "2026-10-02T00:00:30Z",
+    }
+
+    def get_json(url: str):
+        if url.endswith("/api/version"):
+            return {"version": EXPECTED_RUNTIME_IDENTITY["ollama_version"]}
+        model = {
+            "name": EXPECTED_RUNTIME_IDENTITY["model"],
+            "digest": EXPECTED_RUNTIME_IDENTITY["digest"],
+        }
+        if url.endswith("/api/tags"):
+            return {"models": [model]}
+        if url.endswith("/api/ps"):
+            return {"models": [model]}
+        raise AssertionError("unexpected Runtime endpoint")
+
+    def command_runner(arguments, *, timeout):
+        if "--query-gpu" in arguments[1]:
+            output = "NVIDIA GeForce RTX 3060, GPU-TEST, 12288, 9000, 3288\n"
+        else:
+            output = "11576, ollama.exe, 8500\n"
+        return subprocess.CompletedProcess(arguments, 0, output, "")
+
+    snapshot = capture_runtime_audit_snapshot(
+        run_id=run_id,
+        phase="AFTER_INVOCATION",
+        runtime_preflight=preflight,
+        managed_service_identity=identity,
+        evidence_root=evidence_root,
+        invocation_binding=invocation_binding,
+        captured_at="2026-10-02T00:01:00Z",
+        get_json=get_json,
+        command_runner=command_runner,
+        which=lambda _name: "nvidia-smi.exe",
+    )
+    assert runtime_audit_after_invocation_issues(
+        snapshot,
+        run_id=run_id,
+        invocation_binding=invocation_binding,
+        runtime_preflight_hash=preflight["preflight_hash"],
+        expected_execution_binding=preflight.get("execution_binding"),
+    ) == ()
+
+    missing_gpu = json.loads(json.dumps(snapshot))
+    missing_gpu["gpu"]["compute_process_status"] = "COMMAND_FAILED"
+    assert "RUNTIME_GPU_EXECUTION_EVIDENCE_UNAVAILABLE_OR_INCONSISTENT" in runtime_audit_after_invocation_issues(
+        missing_gpu,
+        run_id=run_id,
+        invocation_binding=invocation_binding,
+        runtime_preflight_hash=preflight["preflight_hash"],
+        expected_execution_binding=preflight.get("execution_binding"),
+    )
+    wrong_loaded_model = json.loads(json.dumps(snapshot))
+    wrong_loaded_model["ollama"]["running_models"] = [{"name": "unexpected-model", "digest": "f" * 64}]
+    assert "OLLAMA_RUNNING_MODEL_IDENTITY_NOT_PASS" in runtime_audit_after_invocation_issues(
+        wrong_loaded_model,
+        run_id=run_id,
+        invocation_binding=invocation_binding,
+        runtime_preflight_hash=preflight["preflight_hash"],
+        expected_execution_binding=preflight.get("execution_binding"),
+    )
+
+
 def test_runtime_audit_refuses_mismatched_run_binding(tmp_path):
     run_id, preflight, identity, evidence_root = _runtime_audit_inputs(tmp_path)
     with pytest.raises(RuntimeAuditError, match="run ID"):
@@ -520,9 +641,9 @@ def test_runtime_audit_refuses_mismatched_run_binding(tmp_path):
     ("catalog_digest", "running_models", "expected_issue"),
     [
         ("0" * 64, [{"name": EXPECTED_RUNTIME_IDENTITY["model"], "digest": EXPECTED_RUNTIME_IDENTITY["digest"]}], "OLLAMA_API_OR_MODEL_IDENTITY_NOT_PASS"),
-        (EXPECTED_RUNTIME_IDENTITY["digest"], [], "OLLAMA_RUNNING_MODEL_IDENTITY_NOT_PASS"),
         (EXPECTED_RUNTIME_IDENTITY["digest"], [{"name": EXPECTED_RUNTIME_IDENTITY["model"], "digest": "0" * 64}], "OLLAMA_RUNNING_MODEL_IDENTITY_NOT_PASS"),
         (EXPECTED_RUNTIME_IDENTITY["digest"], [{"name": EXPECTED_RUNTIME_IDENTITY["model"]}], "OLLAMA_RUNNING_MODEL_IDENTITY_NOT_PASS"),
+        (EXPECTED_RUNTIME_IDENTITY["digest"], [{"name": "unexpected-model", "digest": "f" * 64}], "OLLAMA_RUNNING_MODEL_IDENTITY_NOT_PASS"),
     ],
 )
 def test_runtime_audit_pre_case_gate_rejects_missing_or_mismatched_model_identity(

@@ -43,10 +43,41 @@
     "utility": { "type": "object", "required": ["outcome", "success", "abstention", "false_refusal", "correct_abstention", "dangerous_compliance", "required_abstention_respected", "required_denial_respected", "required_route_respected", "required_evidence_retrieved"], "properties": { "outcome": { "type": "string" }, "success": { "type": "boolean" }, "abstention": { "type": "boolean" }, "false_refusal": { "type": "boolean" }, "correct_abstention": { "type": "boolean" }, "dangerous_compliance": { "type": "boolean" }, "required_abstention_respected": { "type": "boolean" }, "required_denial_respected": { "type": "boolean" }, "required_route_respected": { "type": "boolean" }, "required_evidence_retrieved": { "type": ["boolean", "null"] } }, "additionalProperties": false },
     "fallback": { "type": "object", "required": ["used", "observation_source"], "properties": { "used": { "type": ["boolean", "null"] }, "observation_source": { "type": "string" } }, "additionalProperties": false },
     "runtime_identity": { "type": "object", "required": ["expected", "preflight_observed", "per_generation_observed", "identity_mismatch"], "properties": { "expected": { "type": "object" }, "preflight_observed": { "type": "object" }, "per_generation_observed": { "type": "array", "items": { "type": "object" } }, "identity_mismatch": { "type": "boolean" } }, "additionalProperties": false },
+    "runtime_execution_audit": {
+      "type": "object",
+      "required": ["status", "phase", "artifact", "issues", "error_type"],
+      "properties": {
+        "status": { "enum": ["CAPTURED", "FAILED"] },
+        "phase": { "const": "AFTER_INVOCATION" },
+        "artifact": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/runtimeAuditInvocationRef" }
+          ]
+        },
+        "issues": { "type": "array", "items": { "type": "string" } },
+        "error_type": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
     "governance": { "type": "object", "required": ["product_source_changed", "human_gold_changed", "contract_changed", "external_network_detected", "real_student_data", "cloud_fallback", "d4_4_started"], "properties": { "product_source_changed": { "type": "boolean" }, "human_gold_changed": { "type": "boolean" }, "contract_changed": { "type": "boolean" }, "external_network_detected": { "type": "boolean" }, "real_student_data": { "type": "boolean" }, "cloud_fallback": { "type": "boolean" }, "d4_4_started": { "const": false } }, "additionalProperties": false },
     "findings": { "type": "array", "items": { "type": "object", "required": ["code", "severity", "evidence"], "properties": { "code": { "type": "string" }, "severity": { "enum": ["P0", "P1"] }, "evidence": { "type": "string" } }, "additionalProperties": false } },
     "execution_integrity": { "type": "object", "required": ["status", "abort_reason", "violations"], "properties": { "status": { "enum": ["PASS", "FAIL", "NOT_EVALUATED"] }, "abort_reason": { "type": ["string", "null"] }, "violations": { "type": "array", "items": { "type": "string" } } }, "additionalProperties": false },
     "result_hash": { "$ref": "#/$defs/hash" }
   },
-  "$defs": { "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" } }
+  "$defs": {
+    "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "runtimeAuditInvocationRef": {
+      "type": "object",
+      "required": ["run_id", "phase", "path", "captured_at", "sha256"],
+      "properties": {
+        "run_id": { "type": "string", "minLength": 1 },
+        "phase": { "const": "AFTER_INVOCATION" },
+        "path": { "const": "runtime-audit-after-first-invocation.json" },
+        "captured_at": { "type": "string", "format": "date-time" },
+        "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+      },
+      "additionalProperties": false
+    }
+  }
 }

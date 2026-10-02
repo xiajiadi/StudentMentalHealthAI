@@ -9,6 +9,7 @@ import os
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
@@ -49,6 +50,7 @@ from .results import (
 from .runtime_audit import (
     RUNTIME_AUDIT_SCHEMA,
     capture_runtime_audit_snapshot,
+    runtime_audit_after_invocation_issues,
     runtime_audit_pre_case_issues,
     validate_runtime_audit_snapshot,
     write_runtime_audit_snapshot,
@@ -369,6 +371,46 @@ def runtime_observer_requirement(
     # Runtime was invoked. Do not turn absent metadata (or a correlation ID)
     # into a positive invocation claim. Unknown explicit states remain closed.
     return "REQUIRED" if statuses else "NOT_REQUIRED"
+
+
+def runtime_invocation_evidence_sources(
+    *,
+    response_body: Mapping[str, Any] | None,
+    llm_events: Sequence[Mapping[str, Any]],
+    trace_id: str,
+) -> tuple[str, ...]:
+    """Return only positive, trace-correlated evidence that a model call occurred."""
+
+    sources: list[str] = []
+    data: Mapping[str, Any] = {}
+    if isinstance(response_body, Mapping):
+        value = response_body.get("data")
+        data = value if isinstance(value, Mapping) else response_body
+    generation = data.get("generation")
+    generation = generation if isinstance(generation, Mapping) else {}
+    provenance = generation.get("provenance")
+    provenance = provenance if isinstance(provenance, Mapping) else {}
+
+    if data.get("normal_generation") is True:
+        sources.append("NORMAL_GENERATION_TRUE")
+
+    positive_statuses = {"EXECUTED", "GENERATING", "GENERATED", "APPROVED"}
+    status_values = (
+        data.get("generation_status"),
+        generation.get("status"),
+        provenance.get("generation_status"),
+        data.get("status"),
+    )
+    if any(isinstance(value, str) and value.strip().upper() in positive_statuses for value in status_values):
+        sources.append("POSITIVE_GENERATION_STATUS")
+
+    if any(isinstance(event, Mapping) and event.get("trace_id") == trace_id for event in llm_events):
+        sources.append("CORRELATED_LLM_OBSERVER_EVENT")
+    return tuple(sources)
+
+
+def _runtime_invocation_observed_at() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def _load_jsonl(path: str | Path, *, trace_id: str) -> tuple[Mapping[str, Any], ...]:
@@ -1208,6 +1250,10 @@ async def run_evaluation(
     results: list[dict[str, Any]] = []
     abort: dict[str, Any] | None = None
     error_audit_created = False
+    first_invocation_seen = False
+    first_invocation_ref: dict[str, Any] | None = None
+    first_invocation_capture_status = "NOT_REQUIRED"
+    first_invocation_error_type: str | None = None
     try:
         for ordinal, case in enumerate(packet.answerability_cases):
             if abort is not None:
@@ -1261,6 +1307,86 @@ async def run_evaluation(
                     "disposition": "STOPPED_WITH_REQUEST_OUTCOME_UNCERTAIN",
                 }
                 break
+            case_runtime_audit: dict[str, Any] | None = None
+            case_invocation_issues: tuple[str, ...] = ()
+            if not first_invocation_seen:
+                evidence_sources = runtime_invocation_evidence_sources(
+                    response_body=observation.response_body,
+                    llm_events=observation.llm_events,
+                    trace_id=trace_id,
+                )
+                if evidence_sources:
+                    first_invocation_seen = True
+                    invocation_binding = {
+                        "case_id": case_id,
+                        "request_id": request_id,
+                        "trace_id": trace_id,
+                        "evidence_sources": list(evidence_sources),
+                        "observed_at": _runtime_invocation_observed_at(),
+                    }
+                    invocation_snapshot: Mapping[str, Any] | None = None
+                    invocation_artifact_ref: dict[str, Any] | None = None
+                    invocation_error_type: str | None = None
+                    invocation_issue_list: list[str] = []
+                    try:
+                        captured_invocation = await asyncio.to_thread(
+                            audit_capture,
+                            run_id=actual_run_id,
+                            phase="AFTER_INVOCATION",
+                            runtime_preflight=runtime_preflight,
+                            managed_service_identity=managed_service_identity or {},
+                            evidence_root=output_root,
+                            invocation_binding=invocation_binding,
+                        )
+                        if not isinstance(captured_invocation, Mapping):
+                            raise RunnerError("Runtime invocation audit returned a non-object")
+                        invocation_snapshot = dict(captured_invocation)
+                        try:
+                            validate_runtime_audit_snapshot(invocation_snapshot)
+                        except Exception as exc:
+                            invocation_error_type = type(exc).__name__
+                            invocation_issue_list.append("RUNTIME_INVOCATION_AUDIT_SCHEMA_INVALID")
+                        else:
+                            invocation_issue_list.extend(
+                                runtime_audit_after_invocation_issues(
+                                    invocation_snapshot,
+                                    run_id=actual_run_id,
+                                    invocation_binding=invocation_binding,
+                                    runtime_preflight_hash=runtime_preflight.preflight_hash,
+                                    expected_execution_binding=runtime_preflight.execution_binding,
+                                )
+                            )
+                            try:
+                                invocation_path, invocation_hash = write_runtime_audit_snapshot(
+                                    run_dir / "runtime-audit-after-first-invocation.json",
+                                    invocation_snapshot,
+                                )
+                                invocation_artifact_ref = {
+                                    "run_id": actual_run_id,
+                                    "phase": "AFTER_INVOCATION",
+                                    "path": invocation_path.name,
+                                    "captured_at": invocation_snapshot.get("captured_at"),
+                                    "sha256": invocation_hash,
+                                }
+                            except Exception as exc:
+                                invocation_error_type = type(exc).__name__
+                                invocation_issue_list.append("RUNTIME_INVOCATION_AUDIT_ARTIFACT_WRITE_FAILED")
+                    except Exception as exc:
+                        invocation_error_type = type(exc).__name__
+                        invocation_issue_list.append("RUNTIME_INVOCATION_AUDIT_CAPTURE_FAILED")
+                    if invocation_artifact_ref is None and "RUNTIME_INVOCATION_AUDIT_ARTIFACT_WRITE_FAILED" not in invocation_issue_list:
+                        invocation_issue_list.append("RUNTIME_INVOCATION_AUDIT_ARTIFACT_MISSING")
+                    case_invocation_issues = tuple(dict.fromkeys(invocation_issue_list))
+                    first_invocation_ref = invocation_artifact_ref
+                    first_invocation_error_type = invocation_error_type
+                    first_invocation_capture_status = "FAILED" if case_invocation_issues else "CAPTURED"
+                    case_runtime_audit = {
+                        "status": first_invocation_capture_status,
+                        "phase": "AFTER_INVOCATION",
+                        "artifact": invocation_artifact_ref,
+                        "issues": list(case_invocation_issues),
+                        "error_type": invocation_error_type,
+                    }
             try:
                 result = build_case_result(
                     packet=packet,
@@ -1292,6 +1418,8 @@ async def run_evaluation(
                     "disposition": "STOPPED_FOR_EXECUTION_INTEGRITY",
                 }
                 break
+            if case_runtime_audit is not None:
+                result["runtime_execution_audit"] = case_runtime_audit
             result["retrieval_evidence"]["corpus_identity"] = {
                 "corpus_id": corpus_manifest["corpus_id"],
                 "corpus_hash": corpus_manifest["corpus_hash"],
@@ -1317,7 +1445,7 @@ async def run_evaluation(
             integrity = classify_execution_integrity(
                 observation=observation,
                 result=result,
-                input_issues=post_input_issues,
+                input_issues=(*case_invocation_issues, *post_input_issues),
                 postflight=postflight,
             )
             result["execution_integrity"] = integrity
@@ -1433,7 +1561,20 @@ async def run_evaluation(
         "after_cases": after_ref,
         "after_capture_status": after_capture_status,
         "after_capture_error_type": after_error_type,
+        "first_invocation": first_invocation_ref,
+        "first_invocation_capture_status": first_invocation_capture_status,
+        "first_invocation_error_type": first_invocation_error_type,
     }
+    if first_invocation_seen:
+        summary["runtime_execution_status"] = (
+            "MODEL_INVOCATION_AUDIT_FAILED"
+            if first_invocation_capture_status == "FAILED"
+            else "MODEL_INVOCATION_AUDITED"
+        )
+    elif len(results) == len(packet.answerability_cases):
+        summary["runtime_execution_status"] = "NO_MODEL_INVOCATION_OBSERVED"
+    else:
+        summary["runtime_execution_status"] = "INCOMPLETE_NO_MODEL_INVOCATION_OBSERVED"
     summary["run_summary_hash"] = canonical_summary_hash(summary)
     summary_path = write_json_once(run_dir / "summary.json", summary)
     return {

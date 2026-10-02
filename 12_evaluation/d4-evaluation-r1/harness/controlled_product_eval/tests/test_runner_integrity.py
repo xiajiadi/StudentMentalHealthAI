@@ -34,6 +34,7 @@ from harness.controlled_product_eval.runner import (
     assert_post_prepare_integrity,
     classify_execution_integrity,
     run_evaluation,
+    runtime_invocation_evidence_sources,
     runtime_observer_requirement,
 )
 from harness.controlled_product_eval.runtime_audit import RUNTIME_AUDIT_SCHEMA
@@ -437,7 +438,7 @@ def _gold_respecting_observation(_ordinal, case, _trace) -> TransportObservation
     )
 
 
-def _fake_runtime_audit_capture(*, run_id, phase, runtime_preflight, **_kwargs):
+def _fake_runtime_audit_capture(*, run_id, phase, runtime_preflight, invocation_binding=None, **_kwargs):
     digest = EXPECTED_RUNTIME_IDENTITY["digest"]
     log_file = {
         "status": "CAPTURED",
@@ -446,11 +447,31 @@ def _fake_runtime_audit_capture(*, run_id, phase, runtime_preflight, **_kwargs):
         "sha256": "0" * 64,
         "modified_at": "2026-09-28T00:00:00Z",
     }
-    return {
+    gpu = {
+        "status": "COMMAND_UNAVAILABLE",
+        "devices": [],
+        "ollama_compute_processes": [],
+        "ollama_process_visible": False,
+    }
+    if phase == "AFTER_INVOCATION":
+        gpu = {
+            "status": "CAPTURED",
+            "devices": [],
+            "ollama_compute_processes": [
+                {"pid": 11576, "process_name": "ollama.exe", "used_memory_mib": 8000}
+            ],
+            "ollama_process_visible": True,
+            "compute_process_status": "CAPTURED",
+        }
+    snapshot = {
         "schema_version": RUNTIME_AUDIT_SCHEMA,
         "run_id": run_id,
         "phase": phase,
-        "captured_at": "2026-09-28T00:01:00Z",
+        "captured_at": (
+            invocation_binding["observed_at"]
+            if phase == "AFTER_INVOCATION" and isinstance(invocation_binding, Mapping)
+            else "2026-09-28T00:01:00Z"
+        ),
         "runtime_preflight_hash": runtime_preflight.preflight_hash,
         "runtime": {
             "pid": 20832,
@@ -480,13 +501,11 @@ def _fake_runtime_audit_capture(*, run_id, phase, runtime_preflight, **_kwargs):
             "stdout_log": dict(log_file),
             "stderr_log": dict(log_file),
         },
-        "gpu": {
-            "status": "COMMAND_UNAVAILABLE",
-            "devices": [],
-            "ollama_compute_processes": [],
-            "ollama_process_visible": False,
-        },
+        "gpu": gpu,
     }
+    if phase == "AFTER_INVOCATION":
+        snapshot["invocation_binding"] = invocation_binding
+    return snapshot
 
 
 def _run(
@@ -554,7 +573,7 @@ def test_prepare_integrity_pass_precedes_manifest_and_allows_formal_path(tmp_pat
     assert output["summary"]["runtime_audit_evidence"]["after_cases"]["phase"] == "AFTER_CASES"
 
 
-def test_runtime_audit_missing_running_model_stops_before_manifest_and_support_post(tmp_path, packet):
+def test_runtime_audit_empty_running_model_allows_manifest_and_support_posts(tmp_path, packet):
     corpus = build_approved_corpus_manifest(packet)
     transport = _FormalFakeTransport(corpus=corpus, response_factory=lambda *_args: _normal_observation())
 
@@ -563,24 +582,141 @@ def test_runtime_audit_missing_running_model_stops_before_manifest_and_support_p
         snapshot["ollama"]["running_model_count"] = 0
         snapshot["ollama"]["running_model_status"] = "NOT_LOADED"
         snapshot["ollama"]["running_models"] = []
+        snapshot["gpu"] = {
+            "status": "CAPTURED",
+            "devices": [],
+            "ollama_compute_processes": [],
+            "ollama_process_visible": False,
+            "compute_process_status": "CAPTURED",
+            "cold_state_status": "EXPECTED_COLD_STATE",
+        }
         return snapshot
 
     output = _run(
         tmp_path,
         packet,
         transport,
-        suffix="RUNTIME-AUDIT-STOP",
+        suffix="RUNTIME-AUDIT-COLD",
         runtime_audit_capture=missing_running_model,
     )
 
-    assert output["manifest_path"] is None
-    assert output["run_id"] is None
-    assert output["attempted_run_id"] == "D4RUN-RUNTIME-AUDIT-STOP"
-    assert output["summary"]["reason_code"] == "PREMANIFEST_RUNTIME_AUDIT_FAILURE"
-    assert output["summary"]["runtime_audit_issues"] == ["OLLAMA_RUNNING_MODEL_IDENTITY_NOT_PASS"]
-    assert output["summary"]["formal_product_requests"] == 0
-    assert transport.submitted == []
-    assert Path(output["preflight_stop_path"]).is_file()
+    assert output["manifest_path"] is not None
+    assert output["summary"]["execution_integrity_status"] == "PASS"
+    assert output["summary"]["runtime_execution_status"] == "NO_MODEL_INVOCATION_OBSERVED"
+    assert transport.submitted == [case["case_id"] for case in packet.answerability_cases]
+    before_snapshot = json.loads(
+        (Path(output["manifest_path"]).parent / "runtime-audit-before-cases.json").read_text(encoding="utf-8")
+    )
+    assert before_snapshot["ollama"]["running_model_status"] == "NOT_LOADED"
+    assert before_snapshot["gpu"]["cold_state_status"] == "EXPECTED_COLD_STATE"
+
+
+def test_first_positive_runtime_invocation_is_audited_and_bound_once(tmp_path, packet):
+    corpus = build_approved_corpus_manifest(packet)
+    phases: list[str] = []
+
+    def response_factory(ordinal, *_args):
+        return _product_p0_observation() if ordinal == 0 else _normal_observation()
+
+    def audit_capture(**kwargs):
+        phases.append(kwargs["phase"])
+        return _fake_runtime_audit_capture(**kwargs)
+
+    transport = _FormalFakeTransport(corpus=corpus, response_factory=response_factory)
+    output = _run(
+        tmp_path,
+        packet,
+        transport,
+        suffix="FIRST-INVOCATION-AUDIT",
+        runtime_audit_capture=audit_capture,
+    )
+
+    assert phases == ["BEFORE_CASES", "AFTER_INVOCATION", "AFTER_CASES"]
+    assert output["summary"]["runtime_execution_status"] == "MODEL_INVOCATION_AUDITED"
+    assert output["summary"]["runtime_audit_evidence"]["first_invocation_capture_status"] == "CAPTURED"
+    first_result = output["results"][0]
+    audit = first_result["runtime_execution_audit"]
+    assert audit["status"] == "CAPTURED"
+    assert audit["artifact"]["phase"] == "AFTER_INVOCATION"
+    assert audit["artifact"]["path"] == "runtime-audit-after-first-invocation.json"
+    snapshot_path = Path(output["manifest_path"]).parent / audit["artifact"]["path"]
+    snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    assert snapshot["invocation_binding"]["case_id"] == first_result["case_id"]
+    assert snapshot["invocation_binding"]["request_id"] == first_result["actual"]["request_id"]
+    assert snapshot["invocation_binding"]["trace_id"] == first_result["actual"]["trace_id"]
+    case_schema = json.loads((SCHEMA_ROOT / "d4_slice3b_case_result.schema.json").read_text(encoding="utf-8"))
+    summary_schema = json.loads((SCHEMA_ROOT / "d4_slice3b_summary.schema.json").read_text(encoding="utf-8"))
+    jsonschema.Draft202012Validator(case_schema).validate(first_result)
+    jsonschema.Draft202012Validator(summary_schema).validate(output["summary"])
+
+
+def test_positive_runtime_invocation_with_missing_audit_fails_closed(tmp_path, packet):
+    corpus = build_approved_corpus_manifest(packet)
+    transport = _FormalFakeTransport(
+        corpus=corpus,
+        response_factory=lambda ordinal, *_args: _product_p0_observation() if ordinal == 0 else _normal_observation(),
+    )
+
+    def missing_invocation_audit(**kwargs):
+        if kwargs["phase"] == "AFTER_INVOCATION":
+            raise TimeoutError("synthetic private capture detail")
+        return _fake_runtime_audit_capture(**kwargs)
+
+    output = _run(
+        tmp_path,
+        packet,
+        transport,
+        suffix="MISSING-INVOCATION-AUDIT",
+        runtime_audit_capture=missing_invocation_audit,
+    )
+
+    assert len(output["results"]) == 1
+    assert output["results"][0]["runtime_execution_audit"]["status"] == "FAILED"
+    assert output["results"][0]["execution_integrity"]["status"] == "FAIL"
+    assert "RUNTIME_INVOCATION_AUDIT_CAPTURE_FAILED" in output["results"][0]["execution_integrity"]["violations"]
+    assert output["summary"]["runtime_execution_status"] == "MODEL_INVOCATION_AUDIT_FAILED"
+    assert output["summary"]["execution_integrity_status"] == "FAIL"
+    assert output["summary"]["execution_abort_reason"] == "RUNTIME_INVOCATION_AUDIT_CAPTURE_FAILED"
+    assert output["summary"]["runtime_audit_evidence"]["first_invocation_capture_status"] == "FAILED"
+    assert "synthetic private capture detail" not in json.dumps(output["summary"])
+    case_schema = json.loads((SCHEMA_ROOT / "d4_slice3b_case_result.schema.json").read_text(encoding="utf-8"))
+    jsonschema.Draft202012Validator(case_schema).validate(output["results"][0])
+
+
+def test_no_invocation_run_records_explicit_status_and_allows_cold_post_state(tmp_path, packet):
+    corpus = build_approved_corpus_manifest(packet)
+    transport = _FormalFakeTransport(corpus=corpus, response_factory=lambda *_args: _normal_observation())
+
+    def cold_audit_capture(**kwargs):
+        snapshot = _fake_runtime_audit_capture(**kwargs)
+        if kwargs["phase"] in {"BEFORE_CASES", "AFTER_CASES"}:
+            snapshot["ollama"]["running_model_count"] = 0
+            snapshot["ollama"]["running_model_status"] = "NOT_LOADED"
+            snapshot["ollama"]["running_models"] = []
+            snapshot["gpu"] = {
+                "status": "CAPTURED",
+                "devices": [],
+                "ollama_compute_processes": [],
+                "ollama_process_visible": False,
+                "compute_process_status": "CAPTURED",
+                "cold_state_status": "EXPECTED_COLD_STATE",
+            }
+        return snapshot
+
+    output = _run(
+        tmp_path,
+        packet,
+        transport,
+        suffix="NO-INVOCATION-COLD",
+        runtime_audit_capture=cold_audit_capture,
+    )
+
+    assert output["summary"]["case_count"] == 12
+    assert output["summary"]["execution_integrity_status"] == "PASS"
+    assert output["summary"]["runtime_execution_status"] == "NO_MODEL_INVOCATION_OBSERVED"
+    assert output["summary"]["runtime_audit_evidence"]["first_invocation_capture_status"] == "NOT_REQUIRED"
+    assert output["summary"]["runtime_audit_evidence"]["after_capture_status"] == "CAPTURED"
+    assert output["summary"]["runtime_audit_evidence"]["first_invocation"] is None
 
 
 def test_runtime_audit_preflight_hash_must_match_the_live_preflight(tmp_path, packet):
@@ -939,6 +1075,41 @@ def test_not_run_observer_decision_is_independent_of_generation_id(generation_id
     }
 
     assert runtime_observer_requirement(result) == "NOT_REQUIRED"
+
+
+def test_runtime_invocation_detector_uses_only_positive_or_exact_trace_evidence():
+    trace_id = "TRACE_D4RUN-DETECTOR"
+    not_run = {
+        "data": {
+            "status": "needs_review",
+            "normal_generation": False,
+            "generation": {
+                "generation_id": "GEN_CORRELATION_ONLY",
+                "status": "needs_review",
+                "provenance": {"generation_status": "NOT_RUN"},
+            },
+        }
+    }
+    assert runtime_invocation_evidence_sources(
+        response_body=not_run,
+        llm_events=(),
+        trace_id=trace_id,
+    ) == ()
+    assert runtime_invocation_evidence_sources(
+        response_body={"data": {"normal_generation": False}},
+        llm_events=({"trace_id": "TRACE_OTHER"},),
+        trace_id=trace_id,
+    ) == ()
+    assert runtime_invocation_evidence_sources(
+        response_body={"data": {"normal_generation": False}},
+        llm_events=({"trace_id": trace_id},),
+        trace_id=trace_id,
+    ) == ("CORRELATED_LLM_OBSERVER_EVENT",)
+    assert runtime_invocation_evidence_sources(
+        response_body={"data": {"status": "generated", "normal_generation": True}},
+        llm_events=(),
+        trace_id=trace_id,
+    ) == ("NORMAL_GENERATION_TRUE", "POSITIVE_GENERATION_STATUS")
 
 
 def test_not_run_without_negative_generation_flag_does_not_waive_observer_gate():

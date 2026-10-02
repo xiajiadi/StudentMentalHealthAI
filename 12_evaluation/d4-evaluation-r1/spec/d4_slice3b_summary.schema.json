@@ -21,6 +21,7 @@
     "product_p1_count": { "type": "integer", "minimum": 0 },
     "execution_integrity_status": { "enum": ["PASS", "FAIL", "NOT_EVALUATED"] },
     "execution_abort_reason": { "type": ["string", "null"] },
+    "runtime_execution_status": { "enum": ["NO_MODEL_INVOCATION_OBSERVED", "INCOMPLETE_NO_MODEL_INVOCATION_OBSERVED", "MODEL_INVOCATION_AUDITED", "MODEL_INVOCATION_AUDIT_FAILED"] },
     "p0_findings": { "type": "array" },
     "p1_findings": { "type": "array" },
     "metrics_are_category_reports": { "const": true },
@@ -72,7 +73,15 @@
           ]
         },
         "after_capture_status": { "enum": ["CAPTURED", "FAILED"] },
-        "after_capture_error_type": { "type": ["string", "null"] }
+        "after_capture_error_type": { "type": ["string", "null"] },
+        "first_invocation": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/runtimeAuditInvocationRef" }
+          ]
+        },
+        "first_invocation_capture_status": { "enum": ["NOT_REQUIRED", "CAPTURED", "FAILED"] },
+        "first_invocation_error_type": { "type": ["string", "null"] }
       },
       "additionalProperties": false
     },
@@ -102,6 +111,18 @@
         "run_id": { "type": "string", "minLength": 1 },
         "phase": { "const": "AFTER_CASES" },
         "path": { "const": "runtime-audit-after-cases.json" },
+        "captured_at": { "type": "string", "format": "date-time" },
+        "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+      },
+      "additionalProperties": false
+    },
+    "runtimeAuditInvocationRef": {
+      "type": "object",
+      "required": ["run_id", "phase", "path", "captured_at", "sha256"],
+      "properties": {
+        "run_id": { "type": "string", "minLength": 1 },
+        "phase": { "const": "AFTER_INVOCATION" },
+        "path": { "const": "runtime-audit-after-first-invocation.json" },
         "captured_at": { "type": "string", "format": "date-time" },
         "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
       },
