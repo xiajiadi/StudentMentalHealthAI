@@ -35,6 +35,7 @@ from .approved_packet import (
 
 ACCEPTED_D4_3A_TAG = "d4-slice3a-r1-accepted"
 ACCEPTED_D4_3A_COMMIT = "dd083d7a9d50e554408571e8b6d8040700d7a88b"
+PROFILE_SOURCE_COPY_COMMIT = "f11f72795f2a7f2b01a62f57187e26c38628c4a0"
 FORMAL_ROUTE = "/api/v1/support/requests"
 RUN_SCHEMA_VERSION = "d4-slice3b-run-manifest.v1"
 CASE_SCHEMA_VERSION = "d4-slice3b-case-manifest.v1"
@@ -662,8 +663,11 @@ def build_formal_manifest(
         "run_id": actual_run_id,
         "run_timestamp": actual_timestamp,
         **git,
+        "evaluation_source_commit": git["git_commit"],
         "accepted_tags": [ACCEPTED_D4_3A_TAG],
         "accepted_d4_3a_commit": ACCEPTED_D4_3A_COMMIT,
+        "accepted_product_baseline_commit": ACCEPTED_D4_3A_COMMIT,
+        "profile_source_copy_commit": PROFILE_SOURCE_COPY_COMMIT,
         "human_gold_packet_id": packet.packet_id,
         "human_gold_packet_hash": packet.packet_hash,
         "human_gold_packet_file_sha256": packet.raw_file_sha256,
@@ -853,6 +857,33 @@ def verify_formal_manifest(
         raise ManifestError("formal manifest git_commit is malformed")
     if manifest.get("accepted_tags") != [ACCEPTED_D4_3A_TAG] or manifest.get("accepted_d4_3a_commit") != ACCEPTED_D4_3A_COMMIT:
         raise ManifestError("formal manifest accepted baseline is invalid")
+    provenance_fields = {
+        "evaluation_source_commit",
+        "accepted_product_baseline_commit",
+        "profile_source_copy_commit",
+    }
+    present_provenance_fields = provenance_fields & set(manifest)
+    if present_provenance_fields and present_provenance_fields != provenance_fields:
+        raise ManifestError("formal manifest provenance fields are incomplete")
+    if present_provenance_fields:
+        if manifest.get("evaluation_source_commit") != manifest.get("git_commit"):
+            raise ManifestError("evaluation_source_commit must match the harness git_commit")
+        if manifest.get("accepted_product_baseline_commit") != ACCEPTED_D4_3A_COMMIT:
+            raise ManifestError("accepted_product_baseline_commit does not match the accepted D4-3A tag")
+        if manifest.get("profile_source_copy_commit") != PROFILE_SOURCE_COPY_COMMIT:
+            raise ManifestError("profile_source_copy_commit does not match the fixed profile source copy")
+    runtime_audit = manifest.get("runtime_audit_evidence")
+    if runtime_audit is not None:
+        before = runtime_audit.get("before_cases") if isinstance(runtime_audit, Mapping) else None
+        if (
+            not isinstance(before, Mapping)
+            or before.get("run_id") != manifest.get("run_id")
+            or before.get("phase") != "BEFORE_CASES"
+            or before.get("path") != "runtime-audit-before-cases.json"
+            or not isinstance(before.get("sha256"), str)
+            or not _SHA256_RE.fullmatch(before.get("sha256", ""))
+        ):
+            raise ManifestError("formal manifest Runtime audit evidence is not correctly bound to this run")
     if packet is not None:
         packet.verify_unchanged()
         if manifest.get("human_gold_packet_file_sha256") != packet.raw_file_sha256:

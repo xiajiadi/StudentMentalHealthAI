@@ -18,12 +18,19 @@ from urllib.parse import urlparse
 import httpx
 
 from .environment_profiles import D4_TASK_TOOLS_ROOT, EVALUATION_PROCESS_USERNAME, GIT_EXECUTABLE
-from .manifest import EXPECTED_RUNTIME_IDENTITY, RuntimePreflight, build_runtime_preflight, canonical_json, write_json_once
+from .manifest import (
+    ACCEPTED_D4_3A_COMMIT,
+    EXPECTED_RUNTIME_IDENTITY,
+    PROFILE_SOURCE_COPY_COMMIT,
+    RuntimePreflight,
+    build_runtime_preflight,
+    canonical_json,
+    write_json_once,
+)
 from .network_integrity import FORMAL_DATA_PLANE_PORTS, NetworkIntegrityError, capture_data_plane_network
 from .process_lifecycle import LifecycleError, ProcessSpec, ProcessSupervisor, build_child_environment, redact_argv
 
 
-ACCEPTED_SOURCE_COMMIT = "f11f72795f2a7f2b01a62f57187e26c38628c4a0"
 CAT_PYTHON = D4_TASK_TOOLS_ROOT / "venvs" / "cat-engine-r1-reconciled" / "Scripts" / "python.exe"
 CAT_LOCK = D4_TASK_TOOLS_ROOT / "cat-env-lock-r1" / "uv.lock"
 CAT_LOCK_SHA256 = "82170ccd6fd6ee6e408288b36445268edc157f73e37d1658552ee06ea9fbf96b"
@@ -757,11 +764,32 @@ def _git(repo_root: Path, *arguments: str) -> str:
     return result.stdout.strip()
 
 
+def build_profile_source_identity_record(
+    *,
+    repo_root: str | Path,
+    attempt_id: str,
+    formal_port_preflight_status: str,
+    services: Mapping[str, Mapping[str, Any]],
+) -> dict[str, Any]:
+    evaluation_commit = _git(Path(repo_root).resolve(), "rev-parse", "HEAD")
+    if not re.fullmatch(r"[0-9a-f]{40}", evaluation_commit):
+        raise ServiceProfileError("evaluation source commit is malformed")
+    return {
+        "schema_version": "d4-service-profile-identities.v1",
+        "attempt_id": attempt_id,
+        "evaluation_source_commit": evaluation_commit,
+        "accepted_product_baseline_commit": ACCEPTED_D4_3A_COMMIT,
+        "profile_source_copy_commit": PROFILE_SOURCE_COPY_COMMIT,
+        "formal_port_preflight_status": formal_port_preflight_status,
+        "services": {key: dict(value) for key, value in services.items()},
+    }
+
+
 def _verify_product_source_boundary(repo_root: Path) -> None:
     if repo_root.resolve() != Path(__file__).resolve().parents[4]:
         raise ServiceProfileError("D4 service profiles require the checked-out evaluation worktree")
-    base = _git(repo_root, "rev-parse", f"{ACCEPTED_SOURCE_COMMIT}^{{commit}}")
-    if base != ACCEPTED_SOURCE_COMMIT:
+    base = _git(repo_root, "rev-parse", f"{PROFILE_SOURCE_COPY_COMMIT}^{{commit}}")
+    if base != PROFILE_SOURCE_COPY_COMMIT:
         raise ServiceProfileError("accepted service-source baseline is unavailable")
     paths = ("01_cat-engine", "06_llm-runtime", "08_safety-engine", "09_backend", "11_database")
     for revision in ("HEAD",):

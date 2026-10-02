@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studentmentalhealthai.local/schemas/d4-slice3b-error-audit-v1.json",
+  "title": "Allowlisted D4-3B non-2xx error audit line",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "case_id",
+    "http_status",
+    "request_id",
+    "trace_id",
+    "normalized_error_evidence"
+  ],
+  "properties": {
+    "schema_version": { "const": "d4-slice3b-error-audit.v1" },
+    "run_id": { "type": "string", "pattern": "^D4RUN-[A-Za-z0-9][A-Za-z0-9._-]*$" },
+    "case_id": { "type": "string", "pattern": "^AW-[A-Z0-9][A-Z0-9_-]*$" },
+    "http_status": { "type": "integer", "minimum": 100, "maximum": 599 },
+    "request_id": { "type": "string", "minLength": 1 },
+    "trace_id": { "type": "string", "minLength": 1 },
+    "normalized_error_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "http_status",
+        "error_code_present",
+        "error_code_projected",
+        "error_code",
+        "error_category",
+        "retryable",
+        "request_id",
+        "trace_id",
+        "response_request_id_match",
+        "response_trace_id_match",
+        "response_stage"
+      ],
+      "properties": {
+        "http_status": { "type": "integer", "minimum": 100, "maximum": 599 },
+        "error_code_present": { "type": "boolean" },
+        "error_code_projected": { "type": "boolean" },
+        "error_code": {
+          "type": ["string", "null"],
+          "enum": [
+            null,
+            "AUTH_INVALID_CREDENTIALS",
+            "AUTH_SESSION_EXPIRED",
+            "AUTH_SESSION_REVOKED",
+            "CSRF_FAILED",
+            "FORBIDDEN",
+            "RESOURCE_NOT_FOUND",
+            "VALIDATION_FAILED",
+            "WORKFLOW_CONFLICT",
+            "RATE_LIMITED",
+            "DEPENDENCY_TIMEOUT",
+            "DEPENDENCY_UNAVAILABLE",
+            "DEPENDENCY_INVALID_RESPONSE",
+            "INTERNAL_ERROR"
+          ]
+        },
+        "error_category": {
+          "enum": [
+            "AUTHENTICATION",
+            "AUTHORIZATION",
+            "RESOURCE_NOT_FOUND",
+            "VALIDATION",
+            "WORKFLOW_CONFLICT",
+            "RATE_LIMIT",
+            "DEPENDENCY",
+            "INTERNAL",
+            "UNKNOWN_ALLOWED_PROJECTION"
+          ]
+        },
+        "retryable": { "type": ["boolean", "null"] },
+        "request_id": { "type": "string", "minLength": 1 },
+        "trace_id": { "type": "string", "minLength": 1 },
+        "response_request_id_match": { "type": ["boolean", "null"] },
+        "response_trace_id_match": { "type": ["boolean", "null"] },
+        "response_stage": { "enum": ["UNKNOWN", "AFTER_SAFETY", "AFTER_RAG", "AFTER_RUNTIME"] }
+      }
+    }
+  }
+}

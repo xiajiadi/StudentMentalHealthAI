@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
+import os
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
 import httpx
+import jsonschema
 
 try:
     from harness.foundation.hashing import canonical_json, canonical_sha256_tag
@@ -34,6 +37,7 @@ from .manifest import (
     verify_case_manifest,
     verify_corpus_manifest,
     write_json_once,
+    verify_formal_manifest,
 )
 from .results import (
     FORMAL_EVIDENCE,
@@ -42,6 +46,14 @@ from .results import (
     build_case_result,
     classify_p0_p1,
 )
+from .runtime_audit import (
+    RUNTIME_AUDIT_SCHEMA,
+    capture_runtime_audit_snapshot,
+    runtime_audit_pre_case_issues,
+    validate_runtime_audit_snapshot,
+    write_runtime_audit_snapshot,
+)
+from .summary_hash import canonical_summary_hash
 from .network_integrity import LoopbackNetworkMonitor
 
 EXPECTED_RUNTIME_HTTP_ENDPOINT = "http://127.0.0.1:8160"
@@ -54,6 +66,7 @@ SYNTHETIC_CAT_INSTRUMENT_VERSION = "demo.v1"
 
 CORRELATION_SAFE = re.compile(r"^D4RUN-[A-Za-z0-9][A-Za-z0-9._-]*$")
 _CASE_ID_SAFE = re.compile(r"^AW-[A-Z0-9][A-Z0-9_-]*$")
+_ERROR_AUDIT_SCHEMA_PATH = Path(__file__).resolve().parents[2] / "spec" / "d4_slice3b_error_audit.schema.json"
 
 
 class RunnerError(RuntimeError):
@@ -851,6 +864,75 @@ def _write_case_result(run_dir: Path, result: Mapping[str, Any]) -> Path:
     return write_json_once(path, result)
 
 
+def _write_error_audit_record(
+    run_dir: Path,
+    result: Mapping[str, Any],
+    *,
+    create: bool,
+) -> bool:
+    evidence = result.get("normalized_error_evidence")
+    if not isinstance(evidence, Mapping):
+        return False
+    actual = result.get("actual")
+    actual = actual if isinstance(actual, Mapping) else {}
+    record = {
+        "schema_version": "d4-slice3b-error-audit.v1",
+        "run_id": result.get("run_id"),
+        "case_id": result.get("case_id"),
+        "http_status": actual.get("http_status"),
+        "request_id": actual.get("request_id"),
+        "trace_id": actual.get("trace_id"),
+        "normalized_error_evidence": dict(evidence),
+    }
+    _validate_error_audit_record(record)
+    encoded = (
+        json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        + "\n"
+    ).encode("utf-8")
+    path = run_dir / "error-audit.jsonl"
+    mode = "xb" if create else "ab"
+    with path.open(mode) as handle:
+        handle.write(encoded)
+        handle.flush()
+        os.fsync(handle.fileno())
+    return True
+
+
+def _error_audit_artifact_ref(run_dir: Path) -> dict[str, Any]:
+    path = run_dir / "error-audit.jsonl"
+    if not path.is_file():
+        return {
+            "status": "NO_NON_2XX",
+            "path": None,
+            "line_count": 0,
+            "sha256": None,
+        }
+    payload = path.read_bytes()
+    lines = payload.splitlines()
+    if not payload.endswith(b"\n") or not lines:
+        raise RunnerError("error audit JSONL is incomplete")
+    for line in lines:
+        value = json.loads(line)
+        if not isinstance(value, Mapping) or value.get("run_id") != run_dir.name:
+            raise RunnerError("error audit JSONL is not bound to the formal run")
+        _validate_error_audit_record(value)
+    return {
+        "status": "PRESENT",
+        "path": path.name,
+        "line_count": len(lines),
+        "sha256": "sha256:" + hashlib.sha256(payload).hexdigest(),
+    }
+
+
+def _validate_error_audit_record(record: Mapping[str, Any]) -> None:
+    schema = json.loads(_ERROR_AUDIT_SCHEMA_PATH.read_text(encoding="utf-8"))
+    validator = jsonschema.Draft202012Validator(
+        schema,
+        format_checker=jsonschema.Draft202012Validator.FORMAT_CHECKER,
+    )
+    validator.validate(dict(record))
+
+
 def _sha256_file(path: str | Path) -> str:
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
@@ -913,6 +995,7 @@ async def run_evaluation(
     run_id: str | None = None,
     entropy: str | bytes | None = None,
     unexpected_configuration: Sequence[str] = (),
+    runtime_audit_capture: Callable[..., Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Run exactly one immutable 12-case plan without automatic retries."""
 
@@ -1034,9 +1117,97 @@ async def run_evaluation(
     )
     actual_run_id = str(manifest["run_id"])
     run_dir = Path(output_root) / actual_run_id
+    audit_capture = runtime_audit_capture or capture_runtime_audit_snapshot
+    before_snapshot: Mapping[str, Any] | None = None
+    before_issues: tuple[str, ...] = ()
+    before_error_type: str | None = None
+    try:
+        captured = await asyncio.to_thread(
+            audit_capture,
+            run_id=actual_run_id,
+            phase="BEFORE_CASES",
+            runtime_preflight=runtime_preflight,
+            managed_service_identity=managed_service_identity or {},
+            evidence_root=output_root,
+        )
+        if not isinstance(captured, Mapping):
+            raise RunnerError("Runtime audit capture returned a non-object")
+        before_snapshot = dict(captured)
+        validate_runtime_audit_snapshot(before_snapshot)
+        before_issues = runtime_audit_pre_case_issues(before_snapshot, run_id=actual_run_id)
+        if before_snapshot.get("runtime_preflight_hash") != runtime_preflight.preflight_hash:
+            before_issues = (*before_issues, "RUNTIME_AUDIT_PREFLIGHT_HASH_MISMATCH")
+    except Exception as exc:
+        before_error_type = type(exc).__name__
+        before_issues = ("RUNTIME_AUDIT_CAPTURE_FAILED",)
+
+    if before_issues:
+        stop_root = Path(output_root) / "preflight-stops" / actual_run_id
+        audit_path: Path | None = None
+        audit_hash: str | None = None
+        artifact_error_type: str | None = None
+        if before_snapshot is not None:
+            try:
+                audit_path, audit_hash = write_runtime_audit_snapshot(
+                    stop_root / "runtime-audit-before-cases.json", before_snapshot
+                )
+            except Exception as exc:
+                artifact_error_type = type(exc).__name__
+        stop = {
+            "schema_version": "d4-slice3b-preflight-stop.v1",
+            "status": "CONTROLLER_DECISION_REQUIRED",
+            "reason": "run-bound Runtime audit evidence did not pass before formal requests",
+            "reason_code": "PREMANIFEST_RUNTIME_AUDIT_FAILURE",
+            "attempted_run_id": actual_run_id,
+            "runtime_audit_schema_version": RUNTIME_AUDIT_SCHEMA,
+            "runtime_audit_issues": list(before_issues),
+            "runtime_audit_error_type": before_error_type,
+            "runtime_audit_artifact_error_type": artifact_error_type,
+            "runtime_audit_artifact_path": (
+                audit_path.relative_to(Path(output_root)).as_posix() if audit_path else None
+            ),
+            "runtime_audit_artifact_sha256": audit_hash,
+            "formal_manifest_created": False,
+            "formal_product_requests": 0,
+            "runtime_inference_calls": 0,
+            "model_calls": 0,
+            "formal_case_count": 0,
+            "expected_case_count": len(packet.answerability_cases),
+            "execution_integrity_status": "FAIL",
+            "execution_abort_reason": "PREMANIFEST_RUNTIME_AUDIT_FAILURE",
+        }
+        stop_path = write_json_once(stop_root / "preflight-stop.json", stop)
+        await transport.close()
+        return {
+            "run_id": None,
+            "attempted_run_id": actual_run_id,
+            "manifest_path": None,
+            "preflight_stop_path": str(stop_path),
+            "manifest_hash": None,
+            "results": [],
+            "summary": stop,
+            "abort": stop,
+            "evidence_status": FORMAL_EVIDENCE,
+        }
+
+    assert before_snapshot is not None
+    before_path, before_hash = write_runtime_audit_snapshot(
+        run_dir / "runtime-audit-before-cases.json", before_snapshot
+    )
+    before_ref = {
+        "run_id": actual_run_id,
+        "phase": "BEFORE_CASES",
+        "path": before_path.name,
+        "captured_at": before_snapshot.get("captured_at"),
+        "sha256": before_hash,
+    }
+    manifest["runtime_audit_evidence"] = {"before_cases": before_ref}
+    manifest["manifest_hash"] = canonical_sha256_tag(manifest, self_field="manifest_hash")
+    verify_formal_manifest(manifest, packet=packet, case_manifest=case_manifest)
     manifest_path = write_json_once(run_dir / "manifest.json", manifest)
     results: list[dict[str, Any]] = []
     abort: dict[str, Any] | None = None
+    error_audit_created = False
     try:
         for ordinal, case in enumerate(packet.answerability_cases):
             if abort is not None:
@@ -1154,6 +1325,8 @@ async def run_evaluation(
             result["result_hash"] = canonical_sha256_tag(result, self_field="result_hash")
             try:
                 _write_case_result(run_dir, result)
+                if _write_error_audit_record(run_dir, result, create=not error_audit_created):
+                    error_audit_created = True
             except Exception as exc:
                 abort = {
                     "case_id": case_id,
@@ -1185,6 +1358,42 @@ async def run_evaluation(
                 break
     finally:
         await transport.close()
+
+    after_ref: dict[str, Any] | None = None
+    after_capture_status = "CAPTURED"
+    after_error_type: str | None = None
+    try:
+        after_snapshot = await asyncio.to_thread(
+            audit_capture,
+            run_id=actual_run_id,
+            phase="AFTER_CASES",
+            runtime_preflight=runtime_preflight,
+            managed_service_identity=managed_service_identity or {},
+            evidence_root=output_root,
+        )
+        if (
+            not isinstance(after_snapshot, Mapping)
+            or after_snapshot.get("schema_version") != RUNTIME_AUDIT_SCHEMA
+            or after_snapshot.get("run_id") != actual_run_id
+            or after_snapshot.get("phase") != "AFTER_CASES"
+        ):
+            raise RunnerError("post-run Runtime audit binding is invalid")
+        validate_runtime_audit_snapshot(after_snapshot)
+        if after_snapshot.get("runtime_preflight_hash") != runtime_preflight.preflight_hash:
+            raise RunnerError("post-run Runtime audit preflight hash is invalid")
+        after_path, after_hash = write_runtime_audit_snapshot(
+            run_dir / "runtime-audit-after-cases.json", after_snapshot
+        )
+        after_ref = {
+            "run_id": actual_run_id,
+            "phase": "AFTER_CASES",
+            "path": after_path.name,
+            "captured_at": after_snapshot.get("captured_at"),
+            "sha256": after_hash,
+        }
+    except Exception as exc:
+        after_capture_status = "FAILED"
+        after_error_type = type(exc).__name__
 
     if results:
         summary = aggregate_results(results)
@@ -1218,7 +1427,14 @@ async def run_evaluation(
     summary["expected_case_count"] = len(packet.answerability_cases)
     summary["product_preflight"] = dict(preflight_observation)
     summary["manifest_hash"] = manifest["manifest_hash"]
-    summary["run_summary_hash"] = canonical_sha256_tag(summary, self_field="run_summary_hash")
+    summary["error_evidence_audit"] = _error_audit_artifact_ref(run_dir)
+    summary["runtime_audit_evidence"] = {
+        "before_cases": before_ref,
+        "after_cases": after_ref,
+        "after_capture_status": after_capture_status,
+        "after_capture_error_type": after_error_type,
+    }
+    summary["run_summary_hash"] = canonical_summary_hash(summary)
     summary_path = write_json_once(run_dir / "summary.json", summary)
     return {
         "run_id": actual_run_id,
@@ -1368,7 +1584,7 @@ async def run_mock_validation(packet: ApprovedPacket) -> dict[str, Any]:
     summary["evidence_status"] = NONFORMAL_EVIDENCE
     summary["case_manifest_hash"] = case_manifest["manifest_hash"]
     summary["corpus_manifest_hash"] = corpus_manifest["corpus_hash"]
-    summary["run_summary_hash"] = canonical_sha256_tag(summary, self_field="run_summary_hash")
+    summary["run_summary_hash"] = canonical_summary_hash(summary)
     return {
         "run_id": mock_id,
         "results": results,

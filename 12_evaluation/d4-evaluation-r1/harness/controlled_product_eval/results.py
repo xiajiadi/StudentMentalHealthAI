@@ -28,6 +28,7 @@ except ModuleNotFoundError:  # pragma: no cover - package-relative import mode
     from ..foundation.hashing import canonical_sha256_tag
 
 from .approved_packet import ApprovedPacket
+from .error_projection import project_error_evidence
 from .manifest import EXPECTED_RUNTIME_IDENTITY, FORMAL_ROUTE, ManifestError
 
 
@@ -260,6 +261,15 @@ def build_case_result(
     safety_route = data.get("safety_action")
     support_run_id = data.get("report_id")
     generation_id = generation.get("generation_id")
+    normalized_error_evidence = project_error_evidence(
+        http_status=http_status,
+        response_body=response_body,
+        request_id=request_id,
+        trace_id=trace_id,
+        safety_action=safety_route,
+        rag_events=rag,
+        llm_events=llm,
+    )
 
     claims, uncited_claim_ids = _claims(data, case_id)
     outcome = normalized_behavior.value
@@ -398,6 +408,7 @@ def build_case_result(
             "normal_generation": data.get("normal_generation"),
             "content": dict(content) if isinstance(content, Mapping) else None,
         },
+        "normalized_error_evidence": normalized_error_evidence,
         "retrieval_evidence": {
             "query_sha256": "sha256:" + hashlib.sha256(str(case.get("request", "")).encode("utf-8")).hexdigest(),
             "expected_target_population": request_population,
@@ -491,6 +502,24 @@ def aggregate_results(results: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         cls = result.get("actual", {}).get("response_class")
         if cls in observed:
             observed[cls] += 1
+    error_evidence = [
+        item
+        for result in results
+        if isinstance((item := result.get("normalized_error_evidence")), Mapping)
+    ]
+    error_codes: dict[str, int] = {}
+    error_categories: dict[str, int] = {}
+    response_stages: dict[str, int] = {}
+    for item in error_evidence:
+        code = item.get("error_code")
+        if isinstance(code, str):
+            error_codes[code] = error_codes.get(code, 0) + 1
+        category = item.get("error_category")
+        if isinstance(category, str):
+            error_categories[category] = error_categories.get(category, 0) + 1
+        stage = item.get("response_stage")
+        if isinstance(stage, str):
+            response_stages[stage] = response_stages.get(stage, 0) + 1
     sum_metric = lambda name: sum(bool(result.get("utility", {}).get(name)) for result in results)
     return {
         "schema_version": "d4-slice3b-summary.v1",
@@ -509,6 +538,18 @@ def aggregate_results(results: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "product_p1_count": len(p1),
         "p0_findings": list(p0),
         "p1_findings": list(p1),
+        "error_evidence_summary": {
+            "non_2xx_case_count": len(error_evidence),
+            "error_code_present_count": sum(item.get("error_code_present") is True for item in error_evidence),
+            "error_code_projected_count": sum(item.get("error_code_projected") is True for item in error_evidence),
+            "error_code_not_projected_count": sum(
+                item.get("error_code_present") is True and item.get("error_code_projected") is not True
+                for item in error_evidence
+            ),
+            "error_code_counts": error_codes,
+            "error_category_counts": error_categories,
+            "response_stage_counts": response_stages,
+        },
         "execution_integrity_status": "NOT_EVALUATED",
         "execution_abort_reason": None,
         "metrics_are_category_reports": True,

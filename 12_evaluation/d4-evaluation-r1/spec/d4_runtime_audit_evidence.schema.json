@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studentmentalhealthai.local/schemas/d4-runtime-audit-evidence-v1.json",
+  "title": "Run-bound Runtime, Ollama, and GPU audit evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "phase", "captured_at", "runtime_preflight_hash", "runtime", "ollama", "gpu"],
+  "properties": {
+    "schema_version": { "const": "d4-runtime-audit-evidence.v1" },
+    "run_id": { "type": "string", "pattern": "^D4RUN-[A-Za-z0-9][A-Za-z0-9._-]*$" },
+    "phase": { "enum": ["BEFORE_CASES", "AFTER_CASES"] },
+    "captured_at": { "type": "string", "format": "date-time" },
+    "runtime_preflight_hash": { "$ref": "#/$defs/hash" },
+    "runtime": {
+      "type": "object",
+      "required": ["pid", "launcher_pid", "process_tree_pids", "started_at", "executable_sha256", "source_tree_sha256", "stdout_log", "stderr_log"],
+      "properties": {
+        "pid": { "type": "integer", "minimum": 1 },
+        "launcher_pid": { "type": "integer", "minimum": 1 },
+        "process_tree_pids": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "integer", "minimum": 1 } },
+        "started_at": { "type": "string", "format": "date-time" },
+        "executable_sha256": { "$ref": "#/$defs/rawHash" },
+        "source_tree_sha256": { "$ref": "#/$defs/rawHash" },
+        "stdout_log": { "$ref": "#/$defs/logFile" },
+        "stderr_log": { "$ref": "#/$defs/logFile" }
+      },
+      "additionalProperties": false
+    },
+    "ollama": {
+      "type": "object",
+      "required": ["pid", "process_tree_pids", "started_at", "executable_sha256", "endpoint", "api_status", "version", "model", "expected_digest", "observed_digest", "catalog_status", "running_model_status", "running_models", "stdout_log", "stderr_log"],
+      "properties": {
+        "pid": { "type": "integer", "minimum": 1 },
+        "process_tree_pids": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "integer", "minimum": 1 } },
+        "started_at": { "type": "string", "format": "date-time" },
+        "executable_sha256": { "$ref": "#/$defs/rawHash" },
+        "endpoint": { "const": "http://127.0.0.1:11437" },
+        "api_status": { "enum": ["PASS", "IDENTITY_MISMATCH", "UNAVAILABLE"] },
+        "version": { "type": ["string", "null"] },
+        "model": { "type": "string" },
+        "expected_digest": { "$ref": "#/$defs/rawHash" },
+        "observed_digest": { "type": ["string", "null"] },
+        "catalog_status": { "enum": ["PASS", "MISMATCH_OR_MISSING"] },
+        "running_model_status": { "enum": ["LOADED", "NOT_LOADED", "UNKNOWN"] },
+        "running_models": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string" },
+              "digest": { "$ref": "#/$defs/rawHash" },
+              "size": { "type": "integer", "minimum": 0 },
+              "size_vram_bytes": { "type": "integer", "minimum": 0 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "stdout_log": { "$ref": "#/$defs/logFile" },
+        "stderr_log": { "$ref": "#/$defs/logFile" }
+      },
+      "additionalProperties": false
+    },
+    "gpu": {
+      "type": "object",
+      "required": ["status", "devices", "ollama_compute_processes", "ollama_process_visible"],
+      "properties": {
+        "status": { "enum": ["CAPTURED", "COMMAND_UNAVAILABLE", "COMMAND_FAILED"] },
+        "exit_code": { "type": "integer" },
+        "devices": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "uuid", "memory_total_mib", "memory_used_mib", "memory_free_mib"],
+            "properties": {
+              "name": { "type": "string" },
+              "uuid": { "type": "string" },
+              "memory_total_mib": { "type": ["integer", "null"], "minimum": 0 },
+              "memory_used_mib": { "type": ["integer", "null"], "minimum": 0 },
+              "memory_free_mib": { "type": ["integer", "null"], "minimum": 0 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "ollama_compute_processes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["pid", "process_name", "used_memory_mib"],
+            "properties": {
+              "pid": { "type": "integer", "minimum": 1 },
+              "process_name": { "type": "string" },
+              "used_memory_mib": { "type": ["integer", "null"], "minimum": 0 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "ollama_process_visible": { "type": "boolean" },
+        "compute_process_status": { "enum": ["CAPTURED", "COMMAND_FAILED"] },
+        "compute_process_exit_code": { "type": "integer" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "rawHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "logFile": {
+      "type": "object",
+      "required": ["status", "path", "size_bytes", "sha256", "modified_at"],
+      "properties": {
+        "status": { "enum": ["CAPTURED", "NOT_RECORDED", "UNAVAILABLE"] },
+        "path": { "type": ["string", "null"] },
+        "size_bytes": { "type": ["integer", "null"], "minimum": 0 },
+        "sha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+        "modified_at": { "type": ["string", "null"], "format": "date-time" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

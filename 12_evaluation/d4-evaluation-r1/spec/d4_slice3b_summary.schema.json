@@ -30,10 +30,82 @@
     "expected_case_count": { "const": 12 },
     "manifest_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
     "run_summary_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "error_evidence_summary": {
+      "type": "object",
+      "required": ["non_2xx_case_count", "error_code_present_count", "error_code_projected_count", "error_code_not_projected_count", "error_code_counts", "error_category_counts", "response_stage_counts"],
+      "properties": {
+        "non_2xx_case_count": { "type": "integer", "minimum": 0 },
+        "error_code_present_count": { "type": "integer", "minimum": 0 },
+        "error_code_projected_count": { "type": "integer", "minimum": 0 },
+        "error_code_not_projected_count": { "type": "integer", "minimum": 0 },
+        "error_code_counts": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+        "error_category_counts": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+        "response_stage_counts": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } }
+      },
+      "additionalProperties": false
+    },
+    "error_evidence_audit": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["status", "path", "line_count", "sha256"],
+          "properties": {
+            "status": { "enum": ["PRESENT", "NO_NON_2XX"] },
+            "path": { "type": ["string", "null"] },
+            "line_count": { "type": "integer", "minimum": 0 },
+            "sha256": { "type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "runtime_audit_evidence": {
+      "type": "object",
+      "required": ["before_cases", "after_cases", "after_capture_status", "after_capture_error_type"],
+      "properties": {
+        "before_cases": { "$ref": "#/$defs/runtimeAuditRef" },
+        "after_cases": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/runtimeAuditAfterRef" }
+          ]
+        },
+        "after_capture_status": { "enum": ["CAPTURED", "FAILED"] },
+        "after_capture_error_type": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
     "case_manifest_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
     "corpus_manifest_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
     "abort": { "type": "object" },
     "product_preflight": { "type": "object" }
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "$defs": {
+    "runtimeAuditRef": {
+      "type": "object",
+      "required": ["run_id", "phase", "path", "captured_at", "sha256"],
+      "properties": {
+        "run_id": { "type": "string", "minLength": 1 },
+        "phase": { "const": "BEFORE_CASES" },
+        "path": { "const": "runtime-audit-before-cases.json" },
+        "captured_at": { "type": "string", "format": "date-time" },
+        "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+      },
+      "additionalProperties": false
+    },
+    "runtimeAuditAfterRef": {
+      "type": "object",
+      "required": ["run_id", "phase", "path", "captured_at", "sha256"],
+      "properties": {
+        "run_id": { "type": "string", "minLength": 1 },
+        "phase": { "const": "AFTER_CASES" },
+        "path": { "const": "runtime-audit-after-cases.json" },
+        "captured_at": { "type": "string", "format": "date-time" },
+        "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+      },
+      "additionalProperties": false
+    }
+  }
 }

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studentmentalhealthai.local/schemas/d4-service-profile-identities-v1.json",
+  "title": "D4 service profile source identities",
+  "type": "object",
+  "required": ["schema_version", "attempt_id", "formal_port_preflight_status", "services"],
+  "properties": {
+    "schema_version": { "const": "d4-service-profile-identities.v1" },
+    "attempt_id": { "type": "string", "pattern": "^D4SUP-[A-Za-z0-9-]+$" },
+    "evaluation_source_commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "accepted_product_baseline_commit": { "const": "dd083d7a9d50e554408571e8b6d8040700d7a88b" },
+    "profile_source_copy_commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "formal_port_preflight_status": { "type": "string" },
+    "services": { "type": "object", "additionalProperties": { "type": "object" } }
+  },
+  "additionalProperties": true
+}

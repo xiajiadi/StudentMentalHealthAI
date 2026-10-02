@@ -32,8 +32,10 @@ from harness.controlled_product_eval.credential_provider import (
 from harness.controlled_product_eval.environment_profiles import BACKEND_PYTHON, RAG_PYTHON
 from harness.controlled_product_eval.service_profiles import ServiceProfileError
 from harness.controlled_product_eval.manifest import (
+    ACCEPTED_D4_3A_COMMIT,
     EXPECTED_RUNTIME_IDENTITY,
     ManifestError,
+    PROFILE_SOURCE_COPY_COMMIT,
     RuntimePreflight,
     build_approved_corpus_manifest,
     build_case_manifest,
@@ -612,8 +614,31 @@ def test_formal_manifest_records_dirty_checkout_configuration_runtime_and_hash(p
     assert manifest["runtime_expected_identity"] == FORMAL_RUNTIME_IDENTITY
     assert manifest["runtime_expected_identity"]["endpoint"] == "http://127.0.0.1:11437"
     assert manifest["runtime_observed_identity"] == FORMAL_RUNTIME_IDENTITY
+    assert manifest["evaluation_source_commit"] == manifest["git_commit"]
+    assert manifest["accepted_product_baseline_commit"] == ACCEPTED_D4_3A_COMMIT
+    assert manifest["profile_source_copy_commit"] == PROFILE_SOURCE_COPY_COMMIT
+    assert manifest["evaluation_source_commit"] != manifest["accepted_product_baseline_commit"]
     schema = json.loads((SCHEMA_ROOT / "d4_slice3b_run_manifest.schema.json").read_text(encoding="utf-8"))
     jsonschema.Draft202012Validator(schema).validate(manifest)
+
+    legacy_manifest = deepcopy(manifest)
+    for field in (
+        "evaluation_source_commit",
+        "accepted_product_baseline_commit",
+        "profile_source_copy_commit",
+    ):
+        legacy_manifest.pop(field)
+    legacy_manifest["manifest_hash"] = canonical_sha256_tag(legacy_manifest, self_field="manifest_hash")
+    assert verify_formal_manifest(legacy_manifest, packet=packet, case_manifest=case_manifest)
+    jsonschema.Draft202012Validator(schema).validate(legacy_manifest)
+
+    ambiguous_provenance = deepcopy(manifest)
+    ambiguous_provenance["accepted_product_baseline_commit"] = ambiguous_provenance["evaluation_source_commit"]
+    ambiguous_provenance["manifest_hash"] = canonical_sha256_tag(
+        ambiguous_provenance, self_field="manifest_hash"
+    )
+    with pytest.raises(ManifestError, match="accepted_product_baseline_commit"):
+        verify_formal_manifest(ambiguous_provenance, packet=packet, case_manifest=case_manifest)
 
     fake_dependency_manifest = deepcopy(manifest)
     fake_dependency_manifest["backend_dependency_identity"]["cat"]["integration"] = "CONTRACT_FAKE"
@@ -798,8 +823,12 @@ def test_case_result_serializes_required_evidence_fields_and_schema(packet):
     "d4_slice3b_case_manifest.schema.json",
     "d4_slice3b_approved_corpus.schema.json",
     "d4_slice3b_run_manifest.schema.json",
+    "d4_service_profile_identities.schema.json",
     "d4_runtime_preflight.schema.json",
+    "d4_slice3b_case_result.schema.json",
     "d4_slice3b_summary.schema.json",
+    "d4_slice3b_error_audit.schema.json",
+    "d4_runtime_audit_evidence.schema.json",
 ])
 def test_d4_slice3b_json_schemas_are_well_formed(schema_name):
     schema = json.loads((SCHEMA_ROOT / schema_name).read_text(encoding="utf-8"))

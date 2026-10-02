@@ -29,6 +29,7 @@ from .runner import CanonicalHttpTransport, RunnerError
 from .service_profiles import (
     ExternalProfileSet,
     ServiceProfileError,
+    build_profile_source_identity_record,
     build_external_service_profiles,
     invalidate_current_runtime_pointer,
     preflight_formal_port_owners,
@@ -643,13 +644,12 @@ def main(argv: list[str] | None = None) -> int:
         )
         write_json_once(
             config.service_root / "preflight" / "profile-source-identities.json",
-            {
-                "schema_version": "d4-service-profile-identities.v1",
-                "attempt_id": attempt_id,
-                "accepted_source_commit": "f11f72795f2a7f2b01a62f57187e26c38628c4a0",
-                "formal_port_preflight_status": port_preflight["status"],
-                "services": {key: dict(value) for key, value in external_profiles.source_evidence.items()},
-            },
+            build_profile_source_identity_record(
+                repo_root=config.repo_root,
+                attempt_id=attempt_id,
+                formal_port_preflight_status=str(port_preflight["status"]),
+                services=external_profiles.source_evidence,
+            ),
         )
         server_evidence = asyncio.run(mysql_bootstrap.start_server(process_supervisor))
         database_credential = provider.generate_database_credential()

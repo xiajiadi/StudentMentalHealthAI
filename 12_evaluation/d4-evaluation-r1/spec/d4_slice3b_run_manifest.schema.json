@@ -11,12 +11,15 @@
     "run_timestamp": { "type": "string", "format": "date-time" },
     "git_branch": { "type": "string", "minLength": 1 },
     "git_commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "evaluation_source_commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
     "git_dirty": { "type": "boolean" },
     "git_status_sha256": { "$ref": "#/$defs/hash" },
     "git_diff_sha256": { "$ref": "#/$defs/hash" },
     "evaluation_source_tree_sha256": { "$ref": "#/$defs/hash" },
     "accepted_tags": { "const": ["d4-slice3a-r1-accepted"] },
     "accepted_d4_3a_commit": { "const": "dd083d7a9d50e554408571e8b6d8040700d7a88b" },
+    "accepted_product_baseline_commit": { "const": "dd083d7a9d50e554408571e8b6d8040700d7a88b" },
+    "profile_source_copy_commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
     "human_gold_packet_id": { "const": "D4-PACKET-SLICE3A-CITATION-UTILITY-R1" },
     "human_gold_packet_hash": { "const": "sha256:cfbe640300c2cbfbfe9616bb20b10b6ed80e7ee1e15169aadf2052ac8de107c6" },
     "human_gold_packet_file_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
@@ -53,6 +56,7 @@
               "command_sha256": { "$ref": "#/$defs/hash" },
               "readiness_url": { "type": "string" },
               "log_path": { "type": "string" },
+              "stderr_log_path": { "type": ["string", "null"] },
               "started_at": { "type": "string", "format": "date-time" },
               "health": { "type": "object" },
               "ownership": { "type": "string" },
@@ -85,10 +89,30 @@
     "cloud_fallback": { "const": false },
     "formal_product_requests_allowed": { "const": true },
     "d4_4_started": { "const": false },
+    "runtime_audit_evidence": {
+      "type": "object",
+      "required": ["before_cases"],
+      "properties": {
+        "before_cases": { "$ref": "#/$defs/runtimeAuditRef" }
+      },
+      "additionalProperties": false
+    },
     "manifest_hash": { "$ref": "#/$defs/hash" }
   },
   "$defs": {
     "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "runtimeAuditRef": {
+      "type": "object",
+      "required": ["run_id", "phase", "path", "captured_at", "sha256"],
+      "properties": {
+        "run_id": { "type": "string", "pattern": "^D4RUN-[A-Za-z0-9][A-Za-z0-9._-]*$" },
+        "phase": { "const": "BEFORE_CASES" },
+        "path": { "const": "runtime-audit-before-cases.json" },
+        "captured_at": { "type": "string", "format": "date-time" },
+        "sha256": { "$ref": "#/$defs/hash" }
+      },
+      "additionalProperties": false
+    },
     "dependency": { "type": "object", "required": ["status", "integration"], "properties": { "status": { "const": "READY" }, "integration": { "const": "REAL_HTTP" } }, "additionalProperties": true },
     "runtimeIdentity": {
       "type": "object",

@@ -36,6 +36,7 @@ from harness.controlled_product_eval.runner import (
     run_evaluation,
     runtime_observer_requirement,
 )
+from harness.controlled_product_eval.runtime_audit import RUNTIME_AUDIT_SCHEMA
 from harness.controlled_product_eval import runner as runner_module
 
 SCHEMA_ROOT = Path(__file__).resolve().parents[3] / "spec"
@@ -436,7 +437,66 @@ def _gold_respecting_observation(_ordinal, case, _trace) -> TransportObservation
     )
 
 
-def _run(tmp_path, packet, transport, *, suffix: str, case_manifest_path: Path | None = None):
+def _fake_runtime_audit_capture(*, run_id, phase, runtime_preflight, **_kwargs):
+    digest = EXPECTED_RUNTIME_IDENTITY["digest"]
+    log_file = {
+        "status": "CAPTURED",
+        "path": "managed-services/test/logs/process.log",
+        "size_bytes": 0,
+        "sha256": "0" * 64,
+        "modified_at": "2026-09-28T00:00:00Z",
+    }
+    return {
+        "schema_version": RUNTIME_AUDIT_SCHEMA,
+        "run_id": run_id,
+        "phase": phase,
+        "captured_at": "2026-09-28T00:01:00Z",
+        "runtime_preflight_hash": runtime_preflight.preflight_hash,
+        "runtime": {
+            "pid": 20832,
+            "launcher_pid": 10976,
+            "process_tree_pids": [10976, 20832],
+            "started_at": "2026-09-28T00:00:00Z",
+            "executable_sha256": "a" * 64,
+            "source_tree_sha256": "b" * 64,
+            "stdout_log": dict(log_file),
+            "stderr_log": dict(log_file),
+        },
+        "ollama": {
+            "pid": 11576,
+            "process_tree_pids": [11576],
+            "started_at": "2026-09-28T00:00:00Z",
+            "executable_sha256": "c" * 64,
+            "endpoint": EXPECTED_RUNTIME_IDENTITY["endpoint"],
+            "api_status": "PASS",
+            "version": EXPECTED_RUNTIME_IDENTITY["ollama_version"],
+            "model": EXPECTED_RUNTIME_IDENTITY["model"],
+            "expected_digest": digest,
+            "observed_digest": digest,
+            "catalog_status": "PASS",
+            "running_model_status": "LOADED",
+            "running_models": [{"name": EXPECTED_RUNTIME_IDENTITY["model"], "digest": digest}],
+            "stdout_log": dict(log_file),
+            "stderr_log": dict(log_file),
+        },
+        "gpu": {
+            "status": "COMMAND_UNAVAILABLE",
+            "devices": [],
+            "ollama_compute_processes": [],
+            "ollama_process_visible": False,
+        },
+    }
+
+
+def _run(
+    tmp_path,
+    packet,
+    transport,
+    *,
+    suffix: str,
+    case_manifest_path: Path | None = None,
+    runtime_audit_capture=None,
+):
     case_manifest = build_case_manifest(packet)
     corpus_manifest = build_approved_corpus_manifest(packet)
     if case_manifest_path is not None:
@@ -457,6 +517,7 @@ def _run(tmp_path, packet, transport, *, suffix: str, case_manifest_path: Path |
             case_manifest_path=case_manifest_path,
             run_id=f"D4RUN-{suffix}",
             timestamp="2026-09-28T00:00:00Z",
+            runtime_audit_capture=runtime_audit_capture or _fake_runtime_audit_capture,
         )
     )
 
@@ -482,6 +543,88 @@ def test_prepare_integrity_pass_precedes_manifest_and_allows_formal_path(tmp_pat
     assert transport.events.index("prepare") < transport.events.index("post-prepare-integrity")
     assert transport.events.index("post-prepare-integrity") < transport.events.index("manifest")
     assert transport.events.index("manifest") < transport.events.index("submit")
+    manifest = json.loads(Path(output["manifest_path"]).read_text(encoding="utf-8"))
+    before_ref = manifest["runtime_audit_evidence"]["before_cases"]
+    assert before_ref["run_id"] == output["run_id"]
+    assert before_ref["phase"] == "BEFORE_CASES"
+    assert before_ref["sha256"].startswith("sha256:")
+    assert (Path(output["manifest_path"]).parent / before_ref["path"]).is_file()
+    assert output["summary"]["runtime_audit_evidence"]["after_capture_status"] == "CAPTURED"
+    assert output["summary"]["runtime_audit_evidence"]["after_cases"]["phase"] == "AFTER_CASES"
+
+
+def test_runtime_audit_failure_stops_before_manifest_and_support_post(tmp_path, packet):
+    corpus = build_approved_corpus_manifest(packet)
+    transport = _FormalFakeTransport(corpus=corpus, response_factory=lambda *_args: _normal_observation())
+
+    def mismatched_audit(**kwargs):
+        snapshot = _fake_runtime_audit_capture(**kwargs)
+        snapshot["ollama"]["api_status"] = "IDENTITY_MISMATCH"
+        return snapshot
+
+    output = _run(
+        tmp_path,
+        packet,
+        transport,
+        suffix="RUNTIME-AUDIT-STOP",
+        runtime_audit_capture=mismatched_audit,
+    )
+
+    assert output["manifest_path"] is None
+    assert output["run_id"] is None
+    assert output["attempted_run_id"] == "D4RUN-RUNTIME-AUDIT-STOP"
+    assert output["summary"]["reason_code"] == "PREMANIFEST_RUNTIME_AUDIT_FAILURE"
+    assert output["summary"]["formal_product_requests"] == 0
+    assert transport.submitted == []
+    assert Path(output["preflight_stop_path"]).is_file()
+
+
+def test_runtime_audit_preflight_hash_must_match_the_live_preflight(tmp_path, packet):
+    corpus = build_approved_corpus_manifest(packet)
+    transport = _FormalFakeTransport(corpus=corpus, response_factory=lambda *_args: _normal_observation())
+
+    def mismatched_preflight_hash(**kwargs):
+        snapshot = _fake_runtime_audit_capture(**kwargs)
+        snapshot["runtime_preflight_hash"] = "sha256:" + "f" * 64
+        return snapshot
+
+    output = _run(
+        tmp_path,
+        packet,
+        transport,
+        suffix="RUNTIME-AUDIT-PREFLIGHT-HASH",
+        runtime_audit_capture=mismatched_preflight_hash,
+    )
+
+    assert output["manifest_path"] is None
+    assert output["summary"]["runtime_audit_issues"] == ["RUNTIME_AUDIT_PREFLIGHT_HASH_MISMATCH"]
+    assert transport.submitted == []
+
+
+def test_after_cases_runtime_audit_failure_is_recorded_without_discarding_cases(tmp_path, packet):
+    corpus = build_approved_corpus_manifest(packet)
+    transport = _FormalFakeTransport(corpus=corpus, response_factory=lambda *_args: _normal_observation())
+
+    def fail_after_cases(**kwargs):
+        if kwargs["phase"] == "AFTER_CASES":
+            raise TimeoutError("synthetic private failure details")
+        return _fake_runtime_audit_capture(**kwargs)
+
+    output = _run(
+        tmp_path,
+        packet,
+        transport,
+        suffix="RUNTIME-AUDIT-POST-FAIL",
+        runtime_audit_capture=fail_after_cases,
+    )
+
+    assert output["summary"]["case_count"] == 12
+    evidence = output["summary"]["runtime_audit_evidence"]
+    assert evidence["after_capture_status"] == "FAILED"
+    assert evidence["after_capture_error_type"] == "TimeoutError"
+    assert "synthetic private failure details" not in json.dumps(output["summary"])
+    summary_schema = json.loads((SCHEMA_ROOT / "d4_slice3b_summary.schema.json").read_text(encoding="utf-8"))
+    jsonschema.Draft202012Validator(summary_schema).validate(output["summary"])
 
 
 @pytest.mark.parametrize(
