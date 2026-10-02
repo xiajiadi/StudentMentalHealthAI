@@ -7,7 +7,7 @@ import hashlib
 import json
 import os
 import re
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1033,6 +1033,7 @@ async def run_evaluation(
     case_manifest_path: str | Path | None = None,
     corpus_manifest_path: str | Path | None = None,
     managed_service_identity: Mapping[str, Any] | None = None,
+    live_service_process_tree_pids: Callable[[str], Iterable[int]] | None = None,
     timestamp: Any = None,
     run_id: str | None = None,
     entropy: str | bytes | None = None,
@@ -1171,6 +1172,7 @@ async def run_evaluation(
             runtime_preflight=runtime_preflight,
             managed_service_identity=managed_service_identity or {},
             evidence_root=output_root,
+            live_service_process_tree_pids=live_service_process_tree_pids,
         )
         if not isinstance(captured, Mapping):
             raise RunnerError("Runtime audit capture returned a non-object")
@@ -1337,6 +1339,7 @@ async def run_evaluation(
                             managed_service_identity=managed_service_identity or {},
                             evidence_root=output_root,
                             invocation_binding=invocation_binding,
+                            live_service_process_tree_pids=live_service_process_tree_pids,
                         )
                         if not isinstance(captured_invocation, Mapping):
                             raise RunnerError("Runtime invocation audit returned a non-object")
@@ -1498,6 +1501,7 @@ async def run_evaluation(
             runtime_preflight=runtime_preflight,
             managed_service_identity=managed_service_identity or {},
             evidence_root=output_root,
+            live_service_process_tree_pids=live_service_process_tree_pids,
         )
         if (
             not isinstance(after_snapshot, Mapping)

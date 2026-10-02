@@ -451,6 +451,7 @@ def _fake_runtime_audit_capture(*, run_id, phase, runtime_preflight, invocation_
         "status": "COMMAND_UNAVAILABLE",
         "devices": [],
         "ollama_compute_processes": [],
+        "unbound_ollama_compute_processes": [],
         "ollama_process_visible": False,
     }
     if phase == "AFTER_INVOCATION":
@@ -460,6 +461,7 @@ def _fake_runtime_audit_capture(*, run_id, phase, runtime_preflight, invocation_
             "ollama_compute_processes": [
                 {"pid": 11576, "process_name": "ollama.exe", "used_memory_mib": 8000}
             ],
+            "unbound_ollama_compute_processes": [],
             "ollama_process_visible": True,
             "compute_process_status": "CAPTURED",
         }
@@ -477,6 +479,8 @@ def _fake_runtime_audit_capture(*, run_id, phase, runtime_preflight, invocation_
             "pid": 20832,
             "launcher_pid": 10976,
             "process_tree_pids": [10976, 20832],
+            "observed_process_tree_pids": [10976, 20832],
+            "process_tree_observation_status": "CAPTURED",
             "started_at": "2026-09-28T00:00:00Z",
             "executable_sha256": "a" * 64,
             "source_tree_sha256": "b" * 64,
@@ -486,6 +490,8 @@ def _fake_runtime_audit_capture(*, run_id, phase, runtime_preflight, invocation_
         "ollama": {
             "pid": 11576,
             "process_tree_pids": [11576],
+            "observed_process_tree_pids": [11576],
+            "process_tree_observation_status": "CAPTURED",
             "started_at": "2026-09-28T00:00:00Z",
             "executable_sha256": "c" * 64,
             "endpoint": EXPECTED_RUNTIME_IDENTITY["endpoint"],

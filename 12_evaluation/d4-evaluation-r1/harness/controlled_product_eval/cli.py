@@ -11,7 +11,7 @@ import re
 import subprocess
 import uuid
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Iterable, Mapping
 
 from .approved_packet import ApprovedPacketError, load_approved_packet
 from .manifest import (
@@ -127,6 +127,7 @@ async def _run(
     args: argparse.Namespace,
     *,
     managed_service_identity: dict[str, Any] | None = None,
+    live_service_process_tree_pids: Callable[[str], Iterable[int]] | None = None,
     transport: CanonicalHttpTransport | None = None,
     synthetic_passwords: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
@@ -174,6 +175,7 @@ async def _run(
         case_manifest_path=case_path,
         corpus_manifest_path=corpus_path,
         managed_service_identity=managed_service_identity,
+        live_service_process_tree_pids=live_service_process_tree_pids,
         run_id=getattr(args, "run_id", None),
     )
 
@@ -759,6 +761,7 @@ async def _run_managed(args: argparse.Namespace) -> dict[str, Any]:
             result = await _run(
                 args,
                 managed_service_identity=managed_identity,
+                live_service_process_tree_pids=supervisor.service_process_tree_pids,
                 transport=transport,
             )
     except Exception as exc:

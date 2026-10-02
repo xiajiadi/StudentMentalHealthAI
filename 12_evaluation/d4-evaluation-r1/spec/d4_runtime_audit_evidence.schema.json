@@ -19,6 +19,8 @@
         "pid": { "type": "integer", "minimum": 1 },
         "launcher_pid": { "type": "integer", "minimum": 1 },
         "process_tree_pids": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "integer", "minimum": 1 } },
+        "observed_process_tree_pids": { "type": "array", "uniqueItems": true, "items": { "type": "integer", "minimum": 1 } },
+        "process_tree_observation_status": { "enum": ["CAPTURED", "NOT_CONFIGURED", "UNAVAILABLE", "IDENTITY_MISMATCH"] },
         "started_at": { "type": "string", "format": "date-time" },
         "executable_sha256": { "$ref": "#/$defs/rawHash" },
         "source_tree_sha256": { "$ref": "#/$defs/rawHash" },
@@ -33,6 +35,8 @@
       "properties": {
         "pid": { "type": "integer", "minimum": 1 },
         "process_tree_pids": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "integer", "minimum": 1 } },
+        "observed_process_tree_pids": { "type": "array", "uniqueItems": true, "items": { "type": "integer", "minimum": 1 } },
+        "process_tree_observation_status": { "enum": ["CAPTURED", "NOT_CONFIGURED", "UNAVAILABLE", "IDENTITY_MISMATCH"] },
         "started_at": { "type": "string", "format": "date-time" },
         "executable_sha256": { "$ref": "#/$defs/rawHash" },
         "endpoint": { "const": "http://127.0.0.1:11437" },
@@ -97,6 +101,19 @@
             "additionalProperties": false
           }
         },
+        "unbound_ollama_compute_processes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["pid", "process_name", "used_memory_mib"],
+            "properties": {
+              "pid": { "type": "integer", "minimum": 1 },
+              "process_name": { "type": "string" },
+              "used_memory_mib": { "type": ["integer", "null"], "minimum": 0 }
+            },
+            "additionalProperties": false
+          }
+        },
         "ollama_process_visible": { "type": "boolean" },
         "cold_state_status": { "enum": ["EXPECTED_COLD_STATE", "NOT_COLD", "UNKNOWN", "NOT_APPLICABLE"] },
         "compute_process_status": { "enum": ["CAPTURED", "COMMAND_FAILED"] },
@@ -108,7 +125,14 @@
   "allOf": [
     {
       "if": { "properties": { "phase": { "const": "AFTER_INVOCATION" } }, "required": ["phase"] },
-      "then": { "required": ["invocation_binding"] },
+      "then": {
+        "required": ["invocation_binding"],
+        "properties": {
+          "runtime": { "required": ["observed_process_tree_pids", "process_tree_observation_status"] },
+          "ollama": { "required": ["observed_process_tree_pids", "process_tree_observation_status"] },
+          "gpu": { "required": ["unbound_ollama_compute_processes", "compute_process_status"] }
+        }
+      },
       "else": { "not": { "required": ["invocation_binding"] } }
     }
   ],

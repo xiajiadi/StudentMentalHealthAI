@@ -553,6 +553,55 @@ def test_runtime_audit_accepts_exact_catalog_with_cold_model_and_no_gpu_process(
     ).validate(snapshot)
 
 
+def test_runtime_audit_records_unbound_ollama_gpu_process_instead_of_calling_it_cold(tmp_path):
+    run_id, preflight, identity, evidence_root = _runtime_audit_inputs(tmp_path)
+
+    def get_json(url: str):
+        if url.endswith("/api/version"):
+            return {"version": EXPECTED_RUNTIME_IDENTITY["ollama_version"]}
+        model = {
+            "name": EXPECTED_RUNTIME_IDENTITY["model"],
+            "digest": EXPECTED_RUNTIME_IDENTITY["digest"],
+        }
+        if url.endswith("/api/tags"):
+            return {"models": [model]}
+        if url.endswith("/api/ps"):
+            return {"models": []}
+        raise AssertionError("unexpected Runtime endpoint")
+
+    def command_runner(arguments, *, timeout):
+        if "--query-gpu" in arguments[1]:
+            output = "NVIDIA GeForce RTX 3060, GPU-TEST, 12288, 1000, 11288\n"
+        else:
+            output = "11888, ollama_llama_server.exe, 8000\n"
+        return subprocess.CompletedProcess(arguments, 0, output, "")
+
+    def live_process_tree(service_name: str):
+        return [10976, 20832] if service_name == "d4-runtime" else [11576]
+
+    snapshot = capture_runtime_audit_snapshot(
+        run_id=run_id,
+        phase="BEFORE_CASES",
+        runtime_preflight=preflight,
+        managed_service_identity=identity,
+        evidence_root=evidence_root,
+        live_service_process_tree_pids=live_process_tree,
+        captured_at="2026-10-02T00:01:00Z",
+        get_json=get_json,
+        command_runner=command_runner,
+        which=lambda _name: "nvidia-smi.exe",
+    )
+
+    assert snapshot["ollama"]["running_model_status"] == "NOT_LOADED"
+    assert snapshot["gpu"]["cold_state_status"] == "NOT_COLD"
+    assert snapshot["gpu"]["unbound_ollama_compute_processes"] == [
+        {"pid": 11888, "process_name": "ollama_llama_server.exe", "used_memory_mib": 8000}
+    ]
+    assert "OLLAMA_GPU_PROCESS_PRESENT_WHILE_API_NOT_LOADED" in runtime_audit_pre_case_issues(
+        snapshot, run_id=run_id
+    )
+
+
 def test_runtime_audit_after_invocation_requires_exact_loaded_model_and_captured_gpu(tmp_path):
     run_id, preflight, identity, evidence_root = _runtime_audit_inputs(tmp_path)
     invocation_binding = {
@@ -580,8 +629,11 @@ def test_runtime_audit_after_invocation_requires_exact_loaded_model_and_captured
         if "--query-gpu" in arguments[1]:
             output = "NVIDIA GeForce RTX 3060, GPU-TEST, 12288, 9000, 3288\n"
         else:
-            output = "11576, ollama.exe, 8500\n"
+            output = "11602, ollama_llama_server.exe, 8500\n"
         return subprocess.CompletedProcess(arguments, 0, output, "")
+
+    def live_process_tree(service_name: str):
+        return [10976, 20832] if service_name == "d4-runtime" else [11576, 11602]
 
     snapshot = capture_runtime_audit_snapshot(
         run_id=run_id,
@@ -590,6 +642,7 @@ def test_runtime_audit_after_invocation_requires_exact_loaded_model_and_captured
         managed_service_identity=identity,
         evidence_root=evidence_root,
         invocation_binding=invocation_binding,
+        live_service_process_tree_pids=live_process_tree,
         captured_at="2026-10-02T00:01:00Z",
         get_json=get_json,
         command_runner=command_runner,
@@ -602,6 +655,10 @@ def test_runtime_audit_after_invocation_requires_exact_loaded_model_and_captured
         runtime_preflight_hash=preflight["preflight_hash"],
         expected_execution_binding=preflight.get("execution_binding"),
     ) == ()
+    assert snapshot["ollama"]["observed_process_tree_pids"] == [11576, 11602]
+    assert snapshot["gpu"]["ollama_compute_processes"] == [
+        {"pid": 11602, "process_name": "ollama_llama_server.exe", "used_memory_mib": 8500}
+    ]
 
     missing_gpu = json.loads(json.dumps(snapshot))
     missing_gpu["gpu"]["compute_process_status"] = "COMMAND_FAILED"
@@ -616,6 +673,18 @@ def test_runtime_audit_after_invocation_requires_exact_loaded_model_and_captured
     wrong_loaded_model["ollama"]["running_models"] = [{"name": "unexpected-model", "digest": "f" * 64}]
     assert "OLLAMA_RUNNING_MODEL_IDENTITY_NOT_PASS" in runtime_audit_after_invocation_issues(
         wrong_loaded_model,
+        run_id=run_id,
+        invocation_binding=invocation_binding,
+        runtime_preflight_hash=preflight["preflight_hash"],
+        expected_execution_binding=preflight.get("execution_binding"),
+    )
+    unbound_process = json.loads(json.dumps(snapshot))
+    unbound_process["gpu"]["unbound_ollama_compute_processes"] = [
+        {"pid": 11888, "process_name": "ollama_runner.exe", "used_memory_mib": 8000}
+    ]
+    unbound_process["gpu"]["ollama_process_visible"] = True
+    assert "RUNTIME_GPU_PROCESS_IDENTITY_MISMATCH" in runtime_audit_after_invocation_issues(
+        unbound_process,
         run_id=run_id,
         invocation_binding=invocation_binding,
         runtime_preflight_hash=preflight["preflight_hash"],

@@ -10,7 +10,7 @@ import os
 import re
 import shutil
 import subprocess
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -155,6 +155,30 @@ def _service_rows(value: Mapping[str, Any]) -> dict[str, Mapping[str, Any]]:
     }
 
 
+def _observe_service_process_tree(
+    capture: Callable[[str], Iterable[int]] | None,
+    *,
+    service_name: str,
+    baseline_pids: Sequence[int],
+    required_root_pid: int,
+) -> tuple[list[int], str]:
+    if capture is None:
+        return list(baseline_pids), "NOT_CONFIGURED"
+    try:
+        values = capture(service_name)
+        if not isinstance(values, Iterable) or isinstance(values, (str, bytes, Mapping)):
+            return [], "IDENTITY_MISMATCH"
+        observed = tuple(values)
+    except Exception:
+        return list(baseline_pids), "UNAVAILABLE"
+    if any(not _positive_pid(pid) for pid in observed):
+        return [], "IDENTITY_MISMATCH"
+    pids = sorted(set(observed))
+    if not pids or required_root_pid not in pids:
+        return pids, "IDENTITY_MISMATCH"
+    return pids, "CAPTURED"
+
+
 def _project_model_rows(value: Mapping[str, Any], *, model_name: str) -> list[dict[str, Any]]:
     models = value.get("models")
     if not isinstance(models, Sequence) or isinstance(models, (str, bytes)):
@@ -205,6 +229,7 @@ def _gpu_snapshot(
             "status": "COMMAND_UNAVAILABLE",
             "devices": [],
             "ollama_compute_processes": [],
+            "unbound_ollama_compute_processes": [],
             "ollama_process_visible": False,
         }
 
@@ -231,6 +256,7 @@ def _gpu_snapshot(
             "status": "COMMAND_FAILED",
             "devices": [],
             "ollama_compute_processes": [],
+            "unbound_ollama_compute_processes": [],
             "ollama_process_visible": False,
             "exit_code": int(device_result.returncode),
         }
@@ -250,26 +276,30 @@ def _gpu_snapshot(
         )
 
     processes: list[dict[str, Any]] = []
+    unbound_ollama_processes: list[dict[str, Any]] = []
     if process_result.returncode == 0:
         for row in _parse_csv_rows(process_result.stdout):
             if len(row) < 3:
                 continue
             pid = _integer(row[0])
-            if pid is None or pid not in ollama_process_tree_pids:
+            if pid is None:
                 continue
             process_name = Path(row[1]).name[:120]
-            processes.append(
-                {
-                    "pid": pid,
-                    "process_name": process_name,
-                    "used_memory_mib": _integer(row[2]),
-                }
-            )
+            projected = {
+                "pid": pid,
+                "process_name": process_name,
+                "used_memory_mib": _integer(row[2]),
+            }
+            if pid in ollama_process_tree_pids:
+                processes.append(projected)
+            elif "ollama" in process_name.casefold():
+                unbound_ollama_processes.append(projected)
     return {
         "status": "CAPTURED",
         "devices": devices,
         "ollama_compute_processes": processes,
-        "ollama_process_visible": bool(processes),
+        "unbound_ollama_compute_processes": unbound_ollama_processes,
+        "ollama_process_visible": bool(processes or unbound_ollama_processes),
         "compute_process_status": "CAPTURED" if process_result.returncode == 0 else "COMMAND_FAILED",
         **({"compute_process_exit_code": int(process_result.returncode)} if process_result.returncode != 0 else {}),
     }
@@ -283,6 +313,7 @@ def capture_runtime_audit_snapshot(
     managed_service_identity: Mapping[str, Any],
     evidence_root: str | Path,
     invocation_binding: Mapping[str, Any] | None = None,
+    live_service_process_tree_pids: Callable[[str], Iterable[int]] | None = None,
     captured_at: str | None = None,
     get_json: Callable[[str], Mapping[str, Any]] = _get_json,
     command_runner: Callable[..., subprocess.CompletedProcess[str]] = _run_command,
@@ -384,8 +415,22 @@ def capture_runtime_audit_snapshot(
     runtime_stderr = _log_file_evidence(runtime_service.get("stderr_log_path"), root)
     ollama_log = _log_file_evidence(ollama_service.get("log_path"), root)
     ollama_stderr = _log_file_evidence(ollama_service.get("stderr_log_path"), root)
+    runtime_observed_tree_pids, runtime_tree_status = _observe_service_process_tree(
+        live_service_process_tree_pids,
+        service_name="d4-runtime",
+        baseline_pids=runtime_tree_pids,
+        required_root_pid=int(runtime_pid),
+    )
+    if int(runtime_launcher_pid) not in runtime_observed_tree_pids:
+        runtime_tree_status = "IDENTITY_MISMATCH"
+    ollama_observed_tree_pids, ollama_tree_status = _observe_service_process_tree(
+        live_service_process_tree_pids,
+        service_name="d4-ollama",
+        baseline_pids=ollama_tree_pids,
+        required_root_pid=int(ollama_pid),
+    )
     gpu = _gpu_snapshot(
-        ollama_process_tree_pids=set(ollama_tree_pids),
+        ollama_process_tree_pids=set(ollama_observed_tree_pids),
         command_runner=command_runner,
         which=which,
     )
@@ -413,6 +458,8 @@ def capture_runtime_audit_snapshot(
             "pid": int(runtime_pid),
             "launcher_pid": int(runtime_launcher_pid),
             "process_tree_pids": runtime_tree_pids,
+            "observed_process_tree_pids": runtime_observed_tree_pids,
+            "process_tree_observation_status": runtime_tree_status,
             "started_at": binding.get("runtime_started_at"),
             "executable_sha256": binding.get("runtime_executable_sha256"),
             "source_tree_sha256": binding.get("runtime_source_tree_sha256"),
@@ -422,6 +469,8 @@ def capture_runtime_audit_snapshot(
         "ollama": {
             "pid": int(ollama_pid),
             "process_tree_pids": ollama_tree_pids,
+            "observed_process_tree_pids": ollama_observed_tree_pids,
+            "process_tree_observation_status": ollama_tree_status,
             "started_at": binding.get("ollama_started_at"),
             "executable_sha256": binding.get("ollama_executable_sha256"),
             "endpoint": OLLAMA_ENDPOINT,
@@ -500,6 +549,10 @@ def runtime_audit_pre_case_issues(snapshot: Mapping[str, Any], *, run_id: str) -
     )
     if not (cold_unloaded or exact_loaded):
         issues.append("OLLAMA_RUNNING_MODEL_IDENTITY_NOT_PASS")
+    gpu = snapshot.get("gpu")
+    gpu = gpu if isinstance(gpu, Mapping) else {}
+    if cold_unloaded and gpu.get("cold_state_status") == "NOT_COLD":
+        issues.append("OLLAMA_GPU_PROCESS_PRESENT_WHILE_API_NOT_LOADED")
     if ollama.get("endpoint") != OLLAMA_ENDPOINT:
         issues.append("OLLAMA_ACCEPTED_ENDPOINT_MISMATCH")
     return tuple(issues)
@@ -542,6 +595,15 @@ def runtime_audit_after_invocation_issues(
     if not _positive_pid(ollama.get("pid")):
         issues.append("OLLAMA_PROCESS_IDENTITY_MISSING")
     for service_name, service in (("RUNTIME", runtime), ("OLLAMA", ollama)):
+        observed_tree = service.get("observed_process_tree_pids")
+        if (
+            service.get("process_tree_observation_status") != "CAPTURED"
+            or not isinstance(observed_tree, list)
+            or not observed_tree
+            or service.get("pid") not in observed_tree
+        ):
+            issues.append(f"{service_name}_LIVE_PROCESS_TREE_NOT_CAPTURED")
+    for service_name, service in (("RUNTIME", runtime), ("OLLAMA", ollama)):
         for field in ("stdout_log", "stderr_log"):
             item = service.get(field)
             if not isinstance(item, Mapping) or item.get("status") != "CAPTURED":
@@ -560,10 +622,19 @@ def runtime_audit_after_invocation_issues(
             ("ollama_process_tree_pids", ollama.get("process_tree_pids")),
         ):
             expected = expected_execution_binding.get(field)
-            if not isinstance(observed, list) or not isinstance(expected, Sequence) or isinstance(expected, (str, bytes)):
+            service = runtime if field.startswith("runtime_") else ollama
+            observed_live = service.get("observed_process_tree_pids")
+            if (
+                not isinstance(observed, list)
+                or not isinstance(observed_live, list)
+                or service.get("process_tree_observation_status") != "CAPTURED"
+                or not isinstance(expected, Sequence)
+                or isinstance(expected, (str, bytes))
+            ):
                 issues.append("RUNTIME_PROCESS_TREE_IDENTITY_MISMATCH")
                 break
-            if sorted(observed) != sorted(item for item in expected if _positive_pid(item)):
+            expected_pids = {item for item in expected if _positive_pid(item)}
+            if sorted(observed) != sorted(expected_pids) or not expected_pids.issubset(observed_live):
                 issues.append("RUNTIME_PROCESS_TREE_IDENTITY_MISMATCH")
                 break
         for field, observed in (
@@ -604,17 +675,19 @@ def runtime_audit_after_invocation_issues(
     gpu = snapshot.get("gpu")
     gpu = gpu if isinstance(gpu, Mapping) else {}
     processes = gpu.get("ollama_compute_processes")
-    ollama_tree = ollama.get("process_tree_pids")
+    unbound_processes = gpu.get("unbound_ollama_compute_processes")
+    ollama_tree = ollama.get("observed_process_tree_pids")
     if (
         gpu.get("status") != "CAPTURED"
         or gpu.get("compute_process_status") != "CAPTURED"
         or not isinstance(gpu.get("devices"), list)
         or not isinstance(processes, list)
+        or not isinstance(unbound_processes, list)
         or not isinstance(gpu.get("ollama_process_visible"), bool)
-        or gpu.get("ollama_process_visible") != bool(processes)
+        or gpu.get("ollama_process_visible") != bool(processes or unbound_processes)
     ):
         issues.append("RUNTIME_GPU_EXECUTION_EVIDENCE_UNAVAILABLE_OR_INCONSISTENT")
-    elif isinstance(ollama_tree, list) and any(
+    elif unbound_processes or not isinstance(ollama_tree, list) or any(
         not isinstance(item, Mapping) or item.get("pid") not in ollama_tree for item in processes
     ):
         issues.append("RUNTIME_GPU_PROCESS_IDENTITY_MISMATCH")
