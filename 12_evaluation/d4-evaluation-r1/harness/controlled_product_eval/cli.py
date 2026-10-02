@@ -15,6 +15,7 @@ from typing import Any, Callable, Iterable, Mapping
 
 from .approved_packet import ApprovedPacketError, load_approved_packet
 from .manifest import (
+    ACCEPTED_D4_3A_COMMIT,
     ManifestError,
     RuntimePreflight,
     create_run_id,
@@ -130,6 +131,7 @@ async def _run(
     live_service_process_tree_pids: Callable[[str], Iterable[int]] | None = None,
     transport: CanonicalHttpTransport | None = None,
     synthetic_passwords: Mapping[str, str] | None = None,
+    cat_compatibility_context: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     packet = load_approved_packet(args.packet)
     manifest_dir = Path(args.output_root) / "input-manifests"
@@ -175,6 +177,7 @@ async def _run(
         case_manifest_path=case_path,
         corpus_manifest_path=corpus_path,
         managed_service_identity=managed_service_identity,
+        cat_compatibility_context=cat_compatibility_context,
         live_service_process_tree_pids=live_service_process_tree_pids,
         run_id=getattr(args, "run_id", None),
     )
@@ -350,11 +353,28 @@ def _managed_specs(
     runtime_service_endpoint = RUNTIME_HTTP_SERVICE_BASE_URL.rstrip("/")
     if not is_loopback_url(runtime_service_endpoint):
         raise RunnerError("formal Runtime HTTP service must use HTTP loopback")
+    if getattr(args, "command", "run") == "run":
+        formal_run_id = getattr(args, "run_id", None)
+        if not isinstance(formal_run_id, str) or not formal_run_id.startswith("D4RUN-"):
+            raise RunnerError("formal Backend compatibility bootstrap requires the current run ID")
+        cat_evidence_dir = (service_root / "cat-compatibility").resolve()
+        cat_evidence_dir.mkdir(parents=True, exist_ok=True)
+        backend_arguments = (
+            "-m",
+            "harness.controlled_product_eval.evaluation_compatibility",
+            "--evidence-dir",
+            str(cat_evidence_dir),
+            "--run-id",
+            formal_run_id,
+        )
+    else:
+        backend_arguments = ("-m", "smhai_backend.main")
+
     return [
         ProcessSpec(
             name="d4-backend",
             executable=backend_python,
-            arguments=("-m", "smhai_backend.main"),
+            arguments=backend_arguments,
             cwd=repo_root,
             environment=backend_env,
             readiness_url="http://127.0.0.1:8080/health/ready",
@@ -763,6 +783,16 @@ async def _run_managed(args: argparse.Namespace) -> dict[str, Any]:
                 managed_service_identity=managed_identity,
                 live_service_process_tree_pids=supervisor.service_process_tree_pids,
                 transport=transport,
+                cat_compatibility_context={
+                    "fixture_activation_path": service_root / "cat-compatibility" / "fixture-activation.json",
+                    "attempt_root": output_root,
+                    "backend_process_pids": supervisor.service_process_tree_pids("d4-backend"),
+                    "cat_profile_evidence": runtime_attestation["profile_source_evidence"].get("cat"),
+                    "cat_health": runtime_attestation["cat_health"],
+                    "repo_root": repo_root,
+                    "accepted_baseline_commit": ACCEPTED_D4_3A_COMMIT,
+                    "synthetic_subject_ids": tuple(EXPECTED_SYNTHETIC_SUBJECTS.values()),
+                },
             )
     except Exception as exc:
         startup_error = exc

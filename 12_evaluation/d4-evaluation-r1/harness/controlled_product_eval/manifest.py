@@ -31,13 +31,15 @@ from .approved_packet import (
     ApprovedPacketError,
     thaw_json,
 )
+from .cat_compatibility_gate import CatCompatibilityGateError, validate_cat_d3_compatibility_gate
 
 
 ACCEPTED_D4_3A_TAG = "d4-slice3a-r1-accepted"
 ACCEPTED_D4_3A_COMMIT = "dd083d7a9d50e554408571e8b6d8040700d7a88b"
 PROFILE_SOURCE_COPY_COMMIT = "f11f72795f2a7f2b01a62f57187e26c38628c4a0"
 FORMAL_ROUTE = "/api/v1/support/requests"
-RUN_SCHEMA_VERSION = "d4-slice3b-run-manifest.v1"
+RUN_SCHEMA_VERSION_V1 = "d4-slice3b-run-manifest.v1"
+RUN_SCHEMA_VERSION = "d4-slice3b-run-manifest.v2"
 CASE_SCHEMA_VERSION = "d4-slice3b-case-manifest.v1"
 CORPUS_SCHEMA_VERSION = "d4-slice3b-approved-corpus.v1"
 
@@ -598,6 +600,8 @@ def build_formal_manifest(
     rag_service_identity: Mapping[str, Any],
     runtime_endpoint_identity: Mapping[str, Any],
     backend_dependency_identity: Mapping[str, Any],
+    cat_d3_compatibility_gate: Mapping[str, Any],
+    cat_d3_compatibility_gate_evidence: Mapping[str, Any],
     managed_service_identity: Mapping[str, Any] | None,
     repo_root: str | Path,
     timestamp: datetime | str | None = None,
@@ -655,6 +659,18 @@ def build_formal_manifest(
         validate_run_id(actual_run_id)
     except Exception as exc:
         raise ManifestError(f"run_id is invalid: {exc}") from exc
+    try:
+        validate_cat_d3_compatibility_gate(cat_d3_compatibility_gate, run_id=actual_run_id)
+    except (CatCompatibilityGateError, AttributeError, TypeError) as exc:
+        raise ManifestError("formal manifest CAT D3 compatibility gate is missing or invalid") from exc
+    gate_evidence = dict(cat_d3_compatibility_gate_evidence)
+    if (
+        set(gate_evidence) != {"path", "sha256"}
+        or gate_evidence.get("path") != "preflight/cat-d3-compatibility-gate.json"
+        or not isinstance(gate_evidence.get("sha256"), str)
+        or not re.fullmatch(r"[0-9a-f]{64}", gate_evidence["sha256"])
+    ):
+        raise ManifestError("formal manifest CAT D3 compatibility gate evidence reference is invalid")
     root = Path(repo_root).resolve()
     verify_accepted_baseline(root)
     git = git_snapshot(root)
@@ -707,6 +723,8 @@ def build_formal_manifest(
             "integration": dependencies["safety"]["integration"],
             "status": dependencies["safety"]["status"],
         },
+        "cat_d3_compatibility_gate": deepcopy(dict(cat_d3_compatibility_gate)),
+        "cat_d3_compatibility_gate_evidence": gate_evidence,
         "evaluation_mode": "FORMAL_PRODUCT_EVALUATION",
         "retry_policy": {"max_retries": 0, "non_idempotent_post_retries": 0},
         "network_policy": "LOOPBACK_ONLY",
@@ -808,7 +826,8 @@ def verify_formal_manifest(
     packet: ApprovedPacket | None = None,
     case_manifest: Mapping[str, Any] | None = None,
 ) -> bool:
-    if manifest.get("schema_version") != RUN_SCHEMA_VERSION:
+    schema_version = manifest.get("schema_version")
+    if schema_version not in {RUN_SCHEMA_VERSION_V1, RUN_SCHEMA_VERSION}:
         raise ManifestError("formal manifest schema_version mismatch")
     if manifest.get("manifest_hash") != _canonical_hash(manifest, self_field="manifest_hash"):
         raise ManifestError("formal manifest canonical hash mismatch")
@@ -816,6 +835,23 @@ def verify_formal_manifest(
         validate_run_id(str(manifest.get("run_id", "")))
     except Exception as exc:
         raise ManifestError(f"formal manifest run_id invalid: {exc}") from exc
+    if schema_version == RUN_SCHEMA_VERSION:
+        gate = manifest.get("cat_d3_compatibility_gate")
+        if not isinstance(gate, Mapping):
+            raise ManifestError("formal manifest CAT D3 compatibility gate is missing")
+        try:
+            validate_cat_d3_compatibility_gate(gate, run_id=str(manifest.get("run_id", "")))
+        except (CatCompatibilityGateError, AttributeError, TypeError) as exc:
+            raise ManifestError("formal manifest CAT D3 compatibility gate is invalid") from exc
+        gate_evidence = manifest.get("cat_d3_compatibility_gate_evidence")
+        if (
+            not isinstance(gate_evidence, Mapping)
+            or set(gate_evidence) != {"path", "sha256"}
+            or gate_evidence.get("path") != "preflight/cat-d3-compatibility-gate.json"
+            or not isinstance(gate_evidence.get("sha256"), str)
+            or not re.fullmatch(r"[0-9a-f]{64}", gate_evidence["sha256"])
+        ):
+            raise ManifestError("formal manifest CAT D3 compatibility gate evidence reference is invalid")
     if manifest.get("human_gold_packet_id") != APPROVED_PACKET_ID or manifest.get("human_gold_packet_hash") != APPROVED_PACKET_HASH:
         raise ManifestError("formal manifest Human Gold identity mismatch")
     runtime_health = manifest.get("runtime_endpoint_health_identity")

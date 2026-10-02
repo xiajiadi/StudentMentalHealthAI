@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import inspect
 import sys
 from pathlib import Path
 
@@ -22,9 +23,12 @@ from harness.controlled_product_eval.evaluation_compatibility import (
     SOURCE_IDENTITY,
     TARGET_IDENTITY,
     CompatibilityFixtureError,
+    FIXTURE_DOCUMENT,
     build_d3_2_observation,
     canonical_json_bytes,
+    create_injected_backend_app,
     parse_fixture_bytes,
+    _correlated_evidence_path,
 )
 
 
@@ -50,6 +54,17 @@ def test_controller_fixture_requires_exact_identity_and_empty_dimension_map():
     document["dimension_map"] = {"demo_trait": "demo_trait"}
     with pytest.raises(CompatibilityFixtureError, match="must remain empty"):
         parse_fixture_bytes(canonical_json_bytes(document))
+
+
+def test_runtime_fixture_is_harness_fixed_and_evidence_is_request_correlated(tmp_path):
+    parsed, _ = parse_fixture_bytes(canonical_json_bytes(FIXTURE_DOCUMENT))
+    assert parsed == _approved_document()
+    assert "fixture_path" not in inspect.signature(create_injected_backend_app).parameters
+    first = _correlated_evidence_path(tmp_path, "binding-audit", "REQ_1", "TRACE_1")
+    second = _correlated_evidence_path(tmp_path, "binding-audit", "REQ_2", "TRACE_2")
+    assert first != second
+    with pytest.raises(CompatibilityFixtureError, match="request and trace"):
+        _correlated_evidence_path(tmp_path, "binding-audit", "", "TRACE_1")
 
 
 def test_fixture_rejects_noncanonical_json_and_duplicate_keys():

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import socket
@@ -29,6 +30,21 @@ from harness.controlled_product_eval.approved_packet import (
 from harness.controlled_product_eval.cli import _managed_specs, _safe_startup_failure_detail
 from harness.controlled_product_eval.credential_provider import (
     EvaluationCredentialProvider,
+)
+from harness.controlled_product_eval.cat_compatibility_gate import (
+    EXPECTED_ITEM_BANK_GIT_BLOB,
+    EXPECTED_MAPPER_GIT_BLOB,
+    GATE_SCHEMA_VERSION,
+)
+from harness.controlled_product_eval.evaluation_compatibility import (
+    APPROVAL_REFERENCE as CAT_APPROVAL_REFERENCE,
+    FIXTURE_ID as CAT_FIXTURE_ID,
+    FIXTURE_VERSION as CAT_FIXTURE_VERSION,
+    POLICY_ID as CAT_POLICY_ID,
+    SOURCE_IDENTITY as CAT_SOURCE_IDENTITY,
+    TARGET_IDENTITY as CAT_TARGET_IDENTITY,
+    FIXTURE_DOCUMENT,
+    canonical_json_bytes,
 )
 from harness.controlled_product_eval.environment_profiles import BACKEND_PYTHON, RAG_PYTHON
 from harness.controlled_product_eval.service_profiles import ServiceProfileError
@@ -76,6 +92,53 @@ ROOT = Path(__file__).resolve().parents[5]
 EVAL_ROOT = Path(__file__).resolve().parents[3]
 PACKET_PATH = EVAL_ROOT / "D4_3A_HUMAN_GOLD_REVIEW_PACKET.json"
 SCHEMA_ROOT = ROOT / "12_evaluation" / "d4-evaluation-r1" / "spec"
+
+
+def _passing_cat_gate(run_id: str) -> dict[str, Any]:
+    return {
+        "schema_version": GATE_SCHEMA_VERSION,
+        "run_id": run_id,
+        "status": "PASS",
+        "captured_at": "2026-09-25T00:00:00Z",
+        "fixture": {
+            "fixture_id": CAT_FIXTURE_ID,
+            "fixture_version": CAT_FIXTURE_VERSION,
+            "fixture_instantiated": True,
+            "fixture_injected": True,
+            "fixture_approved": True,
+            "source_identity": CAT_SOURCE_IDENTITY,
+            "target_identity": CAT_TARGET_IDENTITY,
+            "policy_id": CAT_POLICY_ID,
+            "approval_reference": CAT_APPROVAL_REFERENCE,
+            "dimension_map": {},
+            "fixture_sha256": hashlib.sha256(canonical_json_bytes(FIXTURE_DOCUMENT)).hexdigest(),
+        },
+        "activation": {
+            "path": "managed-services/cat/fixture-activation.json",
+            "sha256": "b" * 64,
+            "run_id": run_id,
+            "backend_pid": 1001,
+            "backend_process_tree_match": True,
+        },
+        "source_provenance": {
+            "assessment_id_sha256": "c" * 64,
+            "source_identity": CAT_SOURCE_IDENTITY,
+            "source_adapter": "cat_engine",
+            "adapter_version": "0.1.0",
+            "cat_engine_version": "0.1.0",
+            "item_bank_version": "demo.v1",
+            "dimensions": ["demo_trait"],
+            "assessment_status": "completed",
+            "item_bank_git_blob": EXPECTED_ITEM_BANK_GIT_BLOB,
+            "mapper_git_blob": EXPECTED_MAPPER_GIT_BLOB,
+            "item_bank_file_sha256": "d" * 64,
+            "mapper_file_sha256": "e" * 64,
+            "cat_profile_sha256": "f" * 64,
+            "cat_provider_version": "adaptivetesting-1.2.1",
+            "synthetic_demo_only": True,
+        },
+        "issues": [],
+    }
 FORMAL_RUNTIME_IDENTITY = {
     "ollama_version": "0.33.3",
     "model": "qwen2.5:7b-instruct-q4_K_M",
@@ -451,7 +514,12 @@ def test_managed_stack_specs_own_only_loopback_evaluation_services(tmp_path, mon
     runtime = RuntimePreflight.from_mapping(build_runtime_preflight(observed_at="2026-09-25T00:00:00Z"))
     events = tmp_path / "events"
     specs = _managed_specs(
-        args=Namespace(backend_python=str(BACKEND_PYTHON), rag_python=str(RAG_PYTHON)),
+        args=Namespace(
+            command="run",
+            run_id="D4RUN-MANAGEDSTACK000001",
+            backend_python=str(BACKEND_PYTHON),
+            rag_python=str(RAG_PYTHON),
+        ),
         repo_root=ROOT,
         service_root=tmp_path / "stack",
         corpus_manifest_path=tmp_path / "corpus.json",
@@ -591,6 +659,8 @@ def test_formal_manifest_records_dirty_checkout_configuration_runtime_and_hash(p
         rag_service_identity=_rag_identity(corpus),
         runtime_endpoint_identity={"readiness": "pass", "cloud_fallback": False, "runtime_version": "0.1.0"},
         backend_dependency_identity=_backend_dependencies(),
+        cat_d3_compatibility_gate=_passing_cat_gate("D4RUN-20260925T000000Z-TEST000000001"),
+        cat_d3_compatibility_gate_evidence={"path": "preflight/cat-d3-compatibility-gate.json", "sha256": "1" * 64},
         managed_service_identity={"owner": "TEST", "runtime_process_owned": False, "services": []},
         repo_root=ROOT,
         timestamp="2026-09-25T00:00:00Z",
@@ -607,6 +677,8 @@ def test_formal_manifest_records_dirty_checkout_configuration_runtime_and_hash(p
         rag_service_identity=_rag_identity(corpus),
         runtime_endpoint_identity={"readiness": "pass", "cloud_fallback": False, "runtime_version": "0.1.0"},
         backend_dependency_identity=_backend_dependencies(),
+        cat_d3_compatibility_gate=_passing_cat_gate("D4RUN-20260925T000000Z-TEST000000001"),
+        cat_d3_compatibility_gate_evidence={"path": "preflight/cat-d3-compatibility-gate.json", "sha256": "1" * 64},
         managed_service_identity={"owner": "TEST", "runtime_process_owned": False, "services": []},
         repo_root=ROOT,
         timestamp="2026-09-25T00:00:00Z",
@@ -627,7 +699,7 @@ def test_formal_manifest_records_dirty_checkout_configuration_runtime_and_hash(p
     assert manifest["accepted_product_baseline_commit"] == ACCEPTED_D4_3A_COMMIT
     assert manifest["profile_source_copy_commit"] == PROFILE_SOURCE_COPY_COMMIT
     assert manifest["evaluation_source_commit"] != manifest["accepted_product_baseline_commit"]
-    schema = json.loads((SCHEMA_ROOT / "d4_slice3b_run_manifest.schema.json").read_text(encoding="utf-8"))
+    schema = json.loads((SCHEMA_ROOT / "d4_slice3b_run_manifest_v2.schema.json").read_text(encoding="utf-8"))
     jsonschema.Draft202012Validator(schema).validate(manifest)
 
     legacy_manifest = deepcopy(manifest)
@@ -640,6 +712,24 @@ def test_formal_manifest_records_dirty_checkout_configuration_runtime_and_hash(p
     legacy_manifest["manifest_hash"] = canonical_sha256_tag(legacy_manifest, self_field="manifest_hash")
     assert verify_formal_manifest(legacy_manifest, packet=packet, case_manifest=case_manifest)
     jsonschema.Draft202012Validator(schema).validate(legacy_manifest)
+
+    missing_cat_gate = deepcopy(manifest)
+    missing_cat_gate.pop("cat_d3_compatibility_gate")
+    missing_cat_gate.pop("cat_d3_compatibility_gate_evidence")
+    missing_cat_gate["manifest_hash"] = canonical_sha256_tag(
+        missing_cat_gate, self_field="manifest_hash"
+    )
+    with pytest.raises(ManifestError, match="CAT D3 compatibility gate is missing"):
+        verify_formal_manifest(missing_cat_gate, packet=packet, case_manifest=case_manifest)
+
+    historical_v1 = deepcopy(manifest)
+    historical_v1.pop("cat_d3_compatibility_gate")
+    historical_v1.pop("cat_d3_compatibility_gate_evidence")
+    historical_v1["schema_version"] = "d4-slice3b-run-manifest.v1"
+    historical_v1["manifest_hash"] = canonical_sha256_tag(historical_v1, self_field="manifest_hash")
+    assert verify_formal_manifest(historical_v1, packet=packet, case_manifest=case_manifest)
+    historical_schema = json.loads((SCHEMA_ROOT / "d4_slice3b_run_manifest.schema.json").read_text(encoding="utf-8"))
+    jsonschema.Draft202012Validator(historical_schema).validate(historical_v1)
 
     ambiguous_provenance = deepcopy(manifest)
     ambiguous_provenance["accepted_product_baseline_commit"] = ambiguous_provenance["evaluation_source_commit"]
@@ -832,6 +922,8 @@ def test_case_result_serializes_required_evidence_fields_and_schema(packet):
     "d4_slice3b_case_manifest.schema.json",
     "d4_slice3b_approved_corpus.schema.json",
     "d4_slice3b_run_manifest.schema.json",
+    "d4_slice3b_run_manifest_v2.schema.json",
+    "d4_cat_d3_compatibility_gate.schema.json",
     "d4_service_profile_identities.schema.json",
     "d4_runtime_preflight.schema.json",
     "d4_slice3b_case_result.schema.json",

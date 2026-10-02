@@ -34,6 +34,8 @@ def test_backend_profile_uses_fixed_python_and_neutral_process_username(tmp_path
     monkeypatch.setattr(cli, "_environment_lock_identity", lock_identity)
     specs = cli._managed_specs(
         args=argparse.Namespace(
+            command="run",
+            run_id="D4RUN-TEST00000001",
             backend_python=str(cli.BACKEND_PYTHON),
             rag_python=str(cli.RAG_PYTHON),
         ),
@@ -54,6 +56,9 @@ def test_backend_profile_uses_fixed_python_and_neutral_process_username(tmp_path
 
     backend = next(spec for spec in specs if spec.name == "d4-backend")
     assert backend.executable == cli.BACKEND_PYTHON.resolve()
+    assert backend.arguments[:2] == ("-m", "harness.controlled_product_eval.evaluation_compatibility")
+    assert "--fixture-json" not in backend.arguments
+    assert "--run-id" in backend.arguments and "D4RUN-TEST00000001" in backend.arguments
     assert backend.environment["USERNAME"] == "d4-evaluation"
     assert "USERNAME" in backend.environment_allowlist
     assert "DB_PASSWORD" not in backend.environment

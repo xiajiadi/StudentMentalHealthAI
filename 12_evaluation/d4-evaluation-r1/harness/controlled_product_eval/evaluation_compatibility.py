@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -33,6 +34,16 @@ TARGET_IDENTITY = {
     "instrument_version": "synthetic_item_bank.v1 / demo.v1",
     "population_scope": "SYNTHETIC_STUDENT_DEMO",
 }
+FIXTURE_DOCUMENT = {
+    "fixture_id": FIXTURE_ID,
+    "fixture_version": FIXTURE_VERSION,
+    "source": SOURCE_IDENTITY,
+    "target": TARGET_IDENTITY,
+    "policy_id": POLICY_ID,
+    "approved": True,
+    "approval_reference": APPROVAL_REFERENCE,
+    "dimension_map": {},
+}
 _FIXTURE_KEYS = {
     "fixture_id",
     "fixture_version",
@@ -44,6 +55,7 @@ _FIXTURE_KEYS = {
     "dimension_map",
 }
 _IDENTITY_KEYS = {"instrument_id", "instrument_version", "population_scope"}
+_RUN_ID_RE = re.compile(r"^D4RUN-[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 class CompatibilityFixtureError(ValueError):
@@ -98,6 +110,19 @@ def _write_once(path: Path, value: Mapping[str, Any]) -> None:
     ) + "\n"
     with path.open("x", encoding="utf-8", newline="\n") as handle:
         handle.write(payload)
+
+
+def _write_bytes_once(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("xb") as handle:
+        handle.write(payload)
+
+
+def _correlated_evidence_path(directory: Path, prefix: str, request_id: Any, trace_id: Any) -> Path:
+    if not isinstance(request_id, str) or not request_id or not isinstance(trace_id, str) or not trace_id:
+        raise CompatibilityFixtureError("observer evidence requires request and trace correlation")
+    digest = hashlib.sha256(f"{request_id}\x00{trace_id}".encode("utf-8")).hexdigest()
+    return directory / f"{prefix}-{digest}.json"
 
 
 def _value(value: Any) -> Any:
@@ -269,20 +294,21 @@ def build_d3_2_observation(
     }
 
 
-def create_injected_backend_app(
-    *, fixture_path: Path, evidence_dir: Path
-) -> Any:
+def create_injected_backend_app(*, evidence_dir: Path, run_id: str) -> Any:
     """Inject the fixture and safe observers before constructing the app."""
 
-    fixture_path = fixture_path.resolve(strict=True)
     evidence_dir = evidence_dir.resolve(strict=True)
-    document, fixture_hash = parse_fixture_bytes(fixture_path.read_bytes())
+    if not _RUN_ID_RE.fullmatch(run_id):
+        raise CompatibilityFixtureError("fixture injection requires the formal attempt run ID")
+    fixture_bytes = canonical_json_bytes(FIXTURE_DOCUMENT)
+    fixture_path = evidence_dir / "approved-cat-d3-compatibility-fixture.json"
     activation_path = evidence_dir / "fixture-activation.json"
-    binding_path = evidence_dir / "binding-audit.json"
-    interpretation_path = evidence_dir / "d3-2-audit.json"
-    for path in (activation_path, binding_path, interpretation_path):
-        if path.exists():
-            raise CompatibilityFixtureError(f"refusing to overwrite evidence: {path.name}")
+    if fixture_path.exists() or activation_path.exists():
+        raise CompatibilityFixtureError("refusing to reuse existing fixture or activation evidence")
+    _write_bytes_once(fixture_path, fixture_bytes)
+    document, fixture_hash = parse_fixture_bytes(fixture_bytes)
+    binding_directory = evidence_dir / "binding-audits"
+    interpretation_directory = evidence_dir / "d3-2-audits"
 
     from dataclasses import replace
 
@@ -364,7 +390,15 @@ def create_injected_backend_app(
                 "stored_source_unchanged_in_binding": True,
             }
         )
-        _write_once(binding_path, audit)
+        _write_once(
+            _correlated_evidence_path(
+                binding_directory,
+                "binding-audit",
+                kwargs.get("request_id"),
+                kwargs.get("trace_id"),
+            ),
+            audit,
+        )
         return binding
 
     support_service.bind_assessment = audited_bind
@@ -376,7 +410,12 @@ def create_injected_backend_app(
             result = original_interpret(context, binding, ledger)
         except Exception as exc:
             _write_once(
-                interpretation_path,
+                _correlated_evidence_path(
+                    interpretation_directory,
+                    "d3-2-audit",
+                    getattr(context, "request_id", None),
+                    getattr(context, "trace_id", None),
+                ),
                 {
                     "status": "ERROR",
                     "request_id": context.request_id,
@@ -401,7 +440,15 @@ def create_injected_backend_app(
             trace_id=context.trace_id,
             fixture_id=binding.compatibility_fixture_id,
         )
-        _write_once(interpretation_path, observed)
+        _write_once(
+            _correlated_evidence_path(
+                interpretation_directory,
+                "d3-2-audit",
+                context.request_id,
+                context.trace_id,
+            ),
+            observed,
+        )
 
         if (
             observed["status"] != "MEASUREMENT_ONLY"
@@ -425,16 +472,19 @@ def create_injected_backend_app(
     activated_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     activation = {
         "schema_version": "d4-3b-runtime-fixture-activation.v1",
+        "run_id": run_id,
         "injection_location": "smhai_backend.domains.support.service.default_fixture_config before BackendContainer/SupportOrchestrator construction",
         "binding_audit_observer": "smhai_backend.domains.support.service.bind_assessment",
         "d3_2_policy_observer": "smhai_backend.domains.support.service.interpret_d3_chain",
         "fixture_file": str(fixture_path),
         "fixture_canonical_json": document,
-        "fixture_sha256": fixture_hash,
+        "fixture_sha256": hashlib.sha256(fixture_bytes).hexdigest(),
         "source_identity": SOURCE_IDENTITY,
         "target_identity": TARGET_IDENTITY,
         "policy_id": POLICY_ID,
         "approved": True,
+        "fixture_instantiated": True,
+        "fixture_injected": True,
         "approval_reference": APPROVAL_REFERENCE,
         "dimension_map": {},
         "activated_at": activated_at,
@@ -453,8 +503,8 @@ def create_injected_backend_app(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Start Backend with the explicit D4-3B evaluation-only compatibility fixture")
-    parser.add_argument("--fixture-json", type=Path, required=True)
     parser.add_argument("--evidence-dir", type=Path, required=True)
+    parser.add_argument("--run-id", required=True)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8080)
     args = parser.parse_args()
@@ -462,7 +512,7 @@ def main() -> None:
         raise SystemExit("evaluation Backend must bind only to 127.0.0.1")
     import uvicorn
 
-    app = create_injected_backend_app(fixture_path=args.fixture_json, evidence_dir=args.evidence_dir)
+    app = create_injected_backend_app(evidence_dir=args.evidence_dir, run_id=args.run_id)
     uvicorn.run(app, host=args.host, port=args.port, workers=1, reload=False, log_level="info")
 
 

@@ -1,0 +1,243 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "status",
+    "captured_at",
+    "fixture",
+    "activation",
+    "source_provenance",
+    "issues"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "d4-cat-d3-compatibility-gate.v1"
+    },
+    "run_id": {
+      "type": "string",
+      "pattern": "^D4RUN-[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "status": {
+      "const": "PASS"
+    },
+    "captured_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "issues": {
+      "const": []
+    },
+    "fixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fixture_id",
+        "fixture_version",
+        "fixture_instantiated",
+        "fixture_injected",
+        "fixture_approved",
+        "source_identity",
+        "target_identity",
+        "policy_id",
+        "approval_reference",
+        "dimension_map",
+        "fixture_sha256"
+      ],
+      "properties": {
+        "fixture_id": {
+          "const": "d4-3b-cat-v0_1-to-d3-synthetic"
+        },
+        "fixture_version": {
+          "const": "1.0.0"
+        },
+        "fixture_instantiated": {
+          "const": true
+        },
+        "fixture_injected": {
+          "const": true
+        },
+        "fixture_approved": {
+          "const": true
+        },
+        "source_identity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "instrument_id",
+            "instrument_version",
+            "population_scope"
+          ],
+          "properties": {
+            "instrument_id": {
+              "const": "instrument_demo_cat_v0_1"
+            },
+            "instrument_version": {
+              "const": "demo.v1"
+            },
+            "population_scope": {
+              "const": "pending_confirmation"
+            }
+          }
+        },
+        "target_identity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "instrument_id",
+            "instrument_version",
+            "population_scope"
+          ],
+          "properties": {
+            "instrument_id": {
+              "const": "CURRENT_SYNTHETIC_GRM"
+            },
+            "instrument_version": {
+              "const": "synthetic_item_bank.v1 / demo.v1"
+            },
+            "population_scope": {
+              "const": "SYNTHETIC_STUDENT_DEMO"
+            }
+          }
+        },
+        "policy_id": {
+          "const": "POLICY_assessment_synthetic_measurement_only"
+        },
+        "approval_reference": {
+          "const": "D4-3B_CONTROLLER_CAT_COMPATIBILITY_R1"
+        },
+        "dimension_map": {
+          "const": {}
+        },
+        "fixture_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "activation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256",
+        "run_id",
+        "backend_pid",
+        "backend_process_tree_match"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "run_id": {
+          "type": "string",
+          "pattern": "^D4RUN-[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "backend_pid": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "backend_process_tree_match": {
+          "const": true
+        }
+      }
+    },
+    "source_provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assessment_id_sha256",
+        "source_identity",
+        "source_adapter",
+        "adapter_version",
+        "cat_engine_version",
+        "item_bank_version",
+        "dimensions",
+        "assessment_status",
+        "item_bank_git_blob",
+        "mapper_git_blob",
+        "item_bank_file_sha256",
+        "mapper_file_sha256",
+        "cat_profile_sha256",
+        "cat_provider_version",
+        "synthetic_demo_only"
+      ],
+      "properties": {
+        "assessment_id_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "source_identity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "instrument_id",
+            "instrument_version",
+            "population_scope"
+          ],
+          "properties": {
+            "instrument_id": {
+              "const": "instrument_demo_cat_v0_1"
+            },
+            "instrument_version": {
+              "const": "demo.v1"
+            },
+            "population_scope": {
+              "const": "pending_confirmation"
+            }
+          }
+        },
+        "source_adapter": {
+          "const": "cat_engine"
+        },
+        "adapter_version": {
+          "const": "0.1.0"
+        },
+        "cat_engine_version": {
+          "const": "0.1.0"
+        },
+        "item_bank_version": {
+          "const": "demo.v1"
+        },
+        "dimensions": {
+          "const": [
+            "demo_trait"
+          ]
+        },
+        "assessment_status": {
+          "const": "completed"
+        },
+        "item_bank_git_blob": {
+          "const": "429b0944ba73f811b0bdde580d1266e42c82b524"
+        },
+        "mapper_git_blob": {
+          "const": "a0beaefdfbb569cf984453b16d07ee432d241fdc"
+        },
+        "item_bank_file_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "mapper_file_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "cat_profile_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "synthetic_demo_only": {
+          "const": true
+        },
+        "cat_provider_version": {
+          "const": "adaptivetesting-1.2.1"
+        }
+      }
+    }
+  }
+}

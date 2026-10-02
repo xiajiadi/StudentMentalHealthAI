@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from typing import Any, Mapping
 from pathlib import Path
@@ -15,12 +16,24 @@ from harness.controlled_product_eval.approved_packet import (
     load_approved_packet,
 )
 from harness.controlled_product_eval.manifest import (
+    ACCEPTED_D4_3A_COMMIT,
     EXPECTED_RUNTIME_IDENTITY,
     build_approved_corpus_manifest,
     build_case_manifest,
     build_runtime_preflight,
     write_json_once,
 )
+from harness.controlled_product_eval.evaluation_compatibility import (
+    APPROVAL_REFERENCE,
+    FIXTURE_DOCUMENT,
+    FIXTURE_ID,
+    FIXTURE_VERSION,
+    POLICY_ID,
+    SOURCE_IDENTITY,
+    TARGET_IDENTITY,
+    canonical_json_bytes,
+)
+from harness.controlled_product_eval.credential_provider import EXPECTED_SYNTHETIC_SUBJECTS
 from harness.controlled_product_eval.network_integrity import parse_netstat_output
 from harness.controlled_product_eval.results import build_case_result
 from harness.controlled_product_eval.runner import (
@@ -277,7 +290,20 @@ def test_synthetic_assessment_uses_fixed_cat_instrument_and_server_offered_optio
                 )
             if path == "/api/v1/assessments/ASSESS_fixture/complete":
                 self.completed = True
-                return Response(200, {"data": {"status": "completed"}})
+                return Response(200, {"data": {
+                    "assessment_id": "ASSESS_fixture",
+                    "subject_id": EXPECTED_SYNTHETIC_SUBJECTS["student_b"],
+                    "instrument": {"instrument_id": SYNTHETIC_CAT_INSTRUMENT_ID, "version": SYNTHETIC_CAT_INSTRUMENT_VERSION},
+                    "population_scope": "pending_confirmation",
+                    "status": "completed",
+                    "dimensions": {"demo_trait": {}},
+                    "provenance": {
+                        "source_adapter": "cat_engine",
+                        "adapter_version": "0.1.0",
+                        "cat_engine_version": "0.1.0",
+                        "item_bank_version": "demo.v1",
+                    },
+                }})
             pytest.fail(f"unexpected assessment bootstrap request: {path}")
 
         async def get(self, path: str, *, headers: Mapping[str, str]) -> Response:
@@ -293,7 +319,7 @@ def test_synthetic_assessment_uses_fixed_cat_instrument_and_server_offered_optio
         passwords={"student_a": "synthetic-a", "student_b": "synthetic-b"},
     )
     transport._csrf["student_b"] = "synthetic-csrf"
-    transport._subjects["student_b"] = "SUBJ_synthetic_b"
+    transport._subjects["student_b"] = EXPECTED_SYNTHETIC_SUBJECTS["student_b"]
     client = FakeClient()
 
     async def use_fake_client(_username: str) -> FakeClient:
@@ -304,7 +330,7 @@ def test_synthetic_assessment_uses_fixed_cat_instrument_and_server_offered_optio
 
     assert result == "ASSESS_fixture"
     assert client.created_payload == {
-        "subject_id": "SUBJ_synthetic_b",
+        "subject_id": EXPECTED_SYNTHETIC_SUBJECTS["student_b"],
         "instrument_id": SYNTHETIC_CAT_INSTRUMENT_ID,
         "instrument_version": SYNTHETIC_CAT_INSTRUMENT_VERSION,
     }
@@ -314,6 +340,9 @@ def test_synthetic_assessment_uses_fixed_cat_instrument_and_server_offered_optio
         ("ITEM_demo_003", "fixture-option-3"),
     ]
     assert client.completed is True
+    assert transport._last_completed_assessment["population_scope"] == "pending_confirmation"
+    assert list(transport._last_completed_assessment["dimensions"]) == ["demo_trait"]
+    assert transport._last_completed_assessment["provenance"]["source_adapter"] == "cat_engine"
 
 
 class _FormalFakeTransport(CanonicalHttpTransport):
@@ -527,6 +556,76 @@ def _run(
     corpus_manifest = build_approved_corpus_manifest(packet)
     if case_manifest_path is not None:
         write_json_once(case_manifest_path, case_manifest)
+    run_id = f"D4RUN-{suffix}"
+    output_root = tmp_path / f"runs-{suffix}"
+    cat_evidence_dir = output_root / "managed-services" / "test-backend" / "cat-compatibility"
+    cat_evidence_dir.mkdir(parents=True)
+    fixture_bytes = canonical_json_bytes(FIXTURE_DOCUMENT)
+    (cat_evidence_dir / "approved-cat-d3-compatibility-fixture.json").write_bytes(fixture_bytes)
+    (cat_evidence_dir / "fixture-activation.json").write_text(
+        json.dumps({
+            "schema_version": "d4-3b-runtime-fixture-activation.v1",
+            "run_id": run_id,
+            "fixture_id": FIXTURE_ID,
+            "fixture_version": FIXTURE_VERSION,
+            "fixture_instantiated": True,
+            "fixture_injected": True,
+            "approved": True,
+            "approval_reference": APPROVAL_REFERENCE,
+            "source_identity": SOURCE_IDENTITY,
+            "target_identity": TARGET_IDENTITY,
+            "policy_id": POLICY_ID,
+            "dimension_map": {},
+            "fixture_sha256": hashlib.sha256(fixture_bytes).hexdigest(),
+            "fixture_canonical_json": FIXTURE_DOCUMENT,
+            "fixture_instance_count": 1,
+            "runtime_only": True,
+            "canonical_product_default_changed": False,
+            "process_pid": 123456,
+        }),
+        encoding="utf-8",
+    )
+    item_bank_path = Path(__file__).resolve().parents[5] / "01_cat-engine" / "fixtures" / "synthetic_item_bank.v1.json"
+    item_bank_raw = item_bank_path.read_bytes()
+    item_bank = json.loads(item_bank_raw)
+    transport._prepared_assessment = {
+        "assessment_id": "ASSESS_test_gate",
+        "subject_id": EXPECTED_SYNTHETIC_SUBJECTS["student_b"],
+        "instrument": {"instrument_id": SOURCE_IDENTITY["instrument_id"], "version": SOURCE_IDENTITY["instrument_version"]},
+        "population_scope": SOURCE_IDENTITY["population_scope"],
+        "status": "completed",
+        "dimensions": {"demo_trait": {}},
+        "provenance": {
+            "source_adapter": "cat_engine",
+            "adapter_version": "0.1.0",
+            "cat_engine_version": "0.1.0",
+            "item_bank_version": "demo.v1",
+        },
+    }
+    cat_context = {
+        "fixture_activation_path": cat_evidence_dir / "fixture-activation.json",
+        "attempt_root": output_root,
+        "backend_process_pids": {123456},
+        "cat_profile_evidence": {
+            "instrument_id": item_bank["instrument_id"],
+            "instrument_version": item_bank["version"],
+            "item_bank_id": item_bank["item_bank_id"],
+            "item_bank_version": item_bank["version"],
+            "item_bank_sha256": hashlib.sha256(item_bank_raw).hexdigest(),
+        },
+        "cat_health": {
+            "status": "READY",
+            "service": "cat",
+            "provider": "adaptivetesting",
+            "provider_version": "adaptivetesting-1.2.1",
+            "item_bank_id": item_bank["item_bank_id"],
+            "item_bank_version": "demo.v1",
+            "synthetic_fixture_only": True,
+        },
+        "repo_root": Path(__file__).resolve().parents[5],
+        "accepted_baseline_commit": ACCEPTED_D4_3A_COMMIT,
+        "synthetic_subject_ids": tuple(EXPECTED_SYNTHETIC_SUBJECTS.values()),
+    }
     return asyncio.run(
         run_evaluation(
             packet=packet,
@@ -539,9 +638,10 @@ def _run(
             rag_observer_events=tmp_path / f"rag-{suffix}.jsonl",
             llm_observer_events=tmp_path / f"llm-{suffix}.jsonl",
             repo_root=Path(__file__).resolve().parents[5],
-            output_root=tmp_path / f"runs-{suffix}",
+            output_root=output_root,
             case_manifest_path=case_manifest_path,
-            run_id=f"D4RUN-{suffix}",
+            run_id=run_id,
+            cat_compatibility_context=cat_context,
             timestamp="2026-09-28T00:00:00Z",
             runtime_audit_capture=runtime_audit_capture or _fake_runtime_audit_capture,
         )
@@ -577,6 +677,46 @@ def test_prepare_integrity_pass_precedes_manifest_and_allows_formal_path(tmp_pat
     assert (Path(output["manifest_path"]).parent / before_ref["path"]).is_file()
     assert output["summary"]["runtime_audit_evidence"]["after_capture_status"] == "CAPTURED"
     assert output["summary"]["runtime_audit_evidence"]["after_cases"]["phase"] == "AFTER_CASES"
+
+
+def test_missing_cat_compatibility_evidence_stops_before_manifest_or_support_post(tmp_path, packet):
+    corpus = build_approved_corpus_manifest(packet)
+    transport = _FormalFakeTransport(corpus=corpus, response_factory=lambda *_args: _normal_observation())
+    output_root = tmp_path / "missing-cat-gate"
+
+    output = asyncio.run(
+        run_evaluation(
+            packet=packet,
+            case_manifest=build_case_manifest(packet),
+            corpus_manifest=corpus,
+            runtime_preflight=build_runtime_preflight(observed_at="2026-09-28T00:00:00Z"),
+            transport=transport,
+            backend_base_url="http://127.0.0.1:8080",
+            observer_endpoints={"rag": "http://127.0.0.1:8271", "llm": "http://127.0.0.1:8272"},
+            rag_observer_events=tmp_path / "rag.jsonl",
+            llm_observer_events=tmp_path / "llm.jsonl",
+            repo_root=Path(__file__).resolve().parents[5],
+            output_root=output_root,
+            run_id="D4RUN-MISSINGCATGATE000001",
+        )
+    )
+
+    assert output["summary"]["reason_code"] == "CAT_D3_COMPATIBILITY_GATE_FAILED"
+    assert output["manifest_path"] is None
+    assert transport.submitted == []
+    assert transport.closed is True
+    gate = json.loads(
+        (
+            output_root
+            / "D4RUN-MISSINGCATGATE000001"
+            / "preflight"
+            / "cat-d3-compatibility-gate.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert gate["status"] == "FAIL"
+    stop = json.loads(Path(output["preflight_stop_path"]).read_text(encoding="utf-8"))
+    assert stop["formal_manifest_created"] is False
+    assert stop["formal_support_post_count"] == 0
 
 
 def test_runtime_audit_empty_running_model_allows_manifest_and_support_posts(tmp_path, packet):

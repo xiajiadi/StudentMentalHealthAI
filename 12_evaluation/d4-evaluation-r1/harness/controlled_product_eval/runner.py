@@ -22,8 +22,14 @@ except ModuleNotFoundError:  # pragma: no cover - package-relative import mode
     from ..foundation.hashing import canonical_json, canonical_sha256_tag
 
 from .approved_packet import ApprovedPacket, ApprovedPacketError, load_approved_packet
+from .cat_compatibility_gate import (
+    CatCompatibilityGateError,
+    build_cat_d3_compatibility_gate,
+    validate_cat_d3_compatibility_gate,
+)
 from .credential_provider import EXPECTED_SYNTHETIC_SUBJECTS
 from .manifest import (
+    ACCEPTED_D4_3A_COMMIT,
     ACCEPTED_D4_3A_TAG,
     EXPECTED_RUNTIME_IDENTITY,
     FORMAL_ROUTE,
@@ -33,6 +39,7 @@ from .manifest import (
     build_case_manifest,
     build_formal_manifest,
     corpus_projection_source_map,
+    create_run_id,
     git_snapshot,
     is_loopback_url,
     verify_case_manifest,
@@ -487,6 +494,14 @@ class CanonicalHttpTransport:
         self._login_gate_passed = False
         self._login_gate_result: dict[str, dict[str, str]] | None = None
         self._prepared = False
+        self._last_completed_assessment: dict[str, Any] | None = None
+        self._prepared_assessment: dict[str, Any] | None = None
+
+    @property
+    def prepared_assessment(self) -> Mapping[str, Any] | None:
+        """Bounded identity/provenance fields from the setup CAT completion."""
+
+        return dict(self._prepared_assessment) if self._prepared_assessment is not None else None
 
     async def _client(self, username: str) -> httpx.AsyncClient:
         client = self._clients.get(username)
@@ -618,6 +633,11 @@ class CanonicalHttpTransport:
             return
         await self.login_gate()
         self._foreign_assessment_id = await self._create_assessment("student_b", "D4B_FOREIGN")
+        self._prepared_assessment = (
+            dict(self._last_completed_assessment)
+            if self._last_completed_assessment is not None
+            else None
+        )
         self._prepared = True
 
     async def login_gate(self) -> Mapping[str, Mapping[str, str]]:
@@ -729,8 +749,38 @@ class CanonicalHttpTransport:
             headers=headers,
             json={},
         )
-        if complete.status_code != 200 or _api_data(complete.json()).get("status") != "completed":
+        completed_payload = _api_data(complete.json()) if complete.status_code == 200 else {}
+        if (
+            complete.status_code != 200
+            or completed_payload.get("status") != "completed"
+            or completed_payload.get("assessment_id") != assessment_id
+            or completed_payload.get("subject_id") != EXPECTED_SYNTHETIC_SUBJECTS[username]
+        ):
             raise RunnerError("synthetic assessment did not complete")
+        instrument = completed_payload.get("instrument")
+        provenance = completed_payload.get("provenance")
+        dimensions = completed_payload.get("dimensions")
+        self._last_completed_assessment = {
+            "assessment_id": completed_payload.get("assessment_id"),
+            "subject_id": completed_payload.get("subject_id"),
+            "instrument": {
+                key: instrument.get(key)
+                for key in ("instrument_id", "version")
+            } if isinstance(instrument, Mapping) else {},
+            "population_scope": completed_payload.get("population_scope"),
+            "status": completed_payload.get("status"),
+            "dimensions": {str(key): {} for key in dimensions}
+            if isinstance(dimensions, Mapping) else None,
+            "provenance": {
+                key: provenance.get(key)
+                for key in (
+                    "source_adapter",
+                    "adapter_version",
+                    "cat_engine_version",
+                    "item_bank_version",
+                )
+            } if isinstance(provenance, Mapping) else {},
+        }
         return assessment_id
 
     async def submit(
@@ -990,6 +1040,8 @@ def _frozen_input_issues(
     corpus_manifest_path: str | Path | None,
     baseline_case_file_hash: str | None,
     baseline_corpus_file_hash: str | None,
+    cat_gate_path: str | Path,
+    baseline_cat_gate_hash: str,
 ) -> list[str]:
     issues: list[str] = []
     try:
@@ -1001,6 +1053,7 @@ def _frozen_input_issues(
     for path, expected, changed, unreadable in (
         (case_manifest_path, baseline_case_file_hash, "CASE_MANIFEST_FILE_CHANGED", "CASE_MANIFEST_FILE_UNREADABLE"),
         (corpus_manifest_path, baseline_corpus_file_hash, "APPROVED_CORPUS_MANIFEST_FILE_CHANGED", "APPROVED_CORPUS_MANIFEST_FILE_UNREADABLE"),
+        (cat_gate_path, baseline_cat_gate_hash, "CAT_D3_COMPATIBILITY_GATE_FILE_CHANGED", "CAT_D3_COMPATIBILITY_GATE_FILE_UNREADABLE"),
     ):
         if path is None:
             continue
@@ -1033,6 +1086,7 @@ async def run_evaluation(
     case_manifest_path: str | Path | None = None,
     corpus_manifest_path: str | Path | None = None,
     managed_service_identity: Mapping[str, Any] | None = None,
+    cat_compatibility_context: Mapping[str, Any] | None = None,
     live_service_process_tree_pids: Callable[[str], Iterable[int]] | None = None,
     timestamp: Any = None,
     run_id: str | None = None,
@@ -1137,9 +1191,71 @@ async def run_evaluation(
             "evidence_status": FORMAL_EVIDENCE,
         }
 
+    actual_run_id = run_id or create_run_id(
+        timestamp=timestamp if isinstance(timestamp, datetime) else None,
+        entropy=entropy,
+    )
+    gate_context = dict(cat_compatibility_context or {})
+    gate = build_cat_d3_compatibility_gate(
+        run_id=actual_run_id,
+        completed_assessment=getattr(transport, "prepared_assessment", None),
+        fixture_activation_path=gate_context.get(
+            "fixture_activation_path",
+            Path(output_root) / "managed-services" / "missing" / "fixture-activation.json",
+        ),
+        attempt_root=gate_context.get("attempt_root", output_root),
+        backend_process_pids=gate_context.get("backend_process_pids", ()),
+        cat_profile_evidence=gate_context.get("cat_profile_evidence"),
+        cat_health=gate_context.get("cat_health"),
+        repo_root=gate_context.get("repo_root", repo_root),
+        accepted_baseline_commit=gate_context.get(
+            "accepted_baseline_commit", ACCEPTED_D4_3A_COMMIT
+        ),
+        synthetic_subject_ids=gate_context.get(
+            "synthetic_subject_ids", EXPECTED_SYNTHETIC_SUBJECTS.values()
+        ),
+    )
+    formal_run_root = Path(output_root) / actual_run_id
+    gate_path = formal_run_root / "preflight" / "cat-d3-compatibility-gate.json"
+    gate_path = write_json_once(gate_path, gate)
+    try:
+        validate_cat_d3_compatibility_gate(gate, run_id=actual_run_id)
+    except CatCompatibilityGateError as exc:
+        stop = {
+            "schema_version": "d4-slice3b-preflight-stop.v1",
+            "status": "CONTROLLER_DECISION_REQUIRED",
+            "reason_code": "CAT_D3_COMPATIBILITY_GATE_FAILED",
+            "attempted_run_id": actual_run_id,
+            "cat_d3_compatibility_gate_status": "FAIL",
+            "cat_d3_compatibility_gate_issues": list(exc.issue_codes),
+            "cat_d3_compatibility_gate_path": gate_path.relative_to(Path(output_root)).as_posix(),
+            "cat_d3_compatibility_gate_sha256": _sha256_file(gate_path),
+            "formal_manifest_created": False,
+            "formal_manifest_count": 0,
+            "formal_support_post_count": 0,
+            "formal_case_count": 0,
+            "formal_case_retries": 0,
+            "execution_integrity_status": "FAIL",
+            "execution_abort_reason": "CAT_D3_COMPATIBILITY_GATE_FAILED",
+        }
+        stop_path = write_json_once(Path(output_root) / "preflight-stop.json", stop)
+        await transport.close()
+        return {
+            "run_id": None,
+            "attempted_run_id": actual_run_id,
+            "manifest_path": None,
+            "preflight_stop_path": str(stop_path),
+            "manifest_hash": None,
+            "results": [],
+            "summary": stop,
+            "abort": stop,
+            "evidence_status": FORMAL_EVIDENCE,
+        }
+
     baseline_git_snapshot = git_snapshot(repo_root)
     baseline_case_file_hash = _sha256_file(case_manifest_path) if case_manifest_path else None
     baseline_corpus_file_hash = _sha256_file(corpus_manifest_path) if corpus_manifest_path else None
+    baseline_cat_gate_hash = _sha256_file(gate_path)
 
     manifest = build_formal_manifest(
         packet=packet,
@@ -1151,6 +1267,11 @@ async def run_evaluation(
         rag_service_identity=rag_service_identity,
         runtime_endpoint_identity=runtime_endpoint_identity,
         backend_dependency_identity=backend_dependency_identity,
+        cat_d3_compatibility_gate=gate,
+        cat_d3_compatibility_gate_evidence={
+            "path": gate_path.relative_to(formal_run_root).as_posix(),
+            "sha256": _sha256_file(gate_path),
+        },
         managed_service_identity=managed_service_identity,
         repo_root=repo_root,
         timestamp=timestamp,
@@ -1273,6 +1394,8 @@ async def run_evaluation(
                 corpus_manifest_path=corpus_manifest_path,
                 baseline_case_file_hash=baseline_case_file_hash,
                 baseline_corpus_file_hash=baseline_corpus_file_hash,
+                cat_gate_path=gate_path,
+                baseline_cat_gate_hash=baseline_cat_gate_hash,
             )
             if input_issues:
                 integrity = classify_execution_integrity(input_issues=input_issues)
@@ -1444,6 +1567,8 @@ async def run_evaluation(
                 corpus_manifest_path=corpus_manifest_path,
                 baseline_case_file_hash=baseline_case_file_hash,
                 baseline_corpus_file_hash=baseline_corpus_file_hash,
+                cat_gate_path=gate_path,
+                baseline_cat_gate_hash=baseline_cat_gate_hash,
             )
             integrity = classify_execution_integrity(
                 observation=observation,
