@@ -474,6 +474,7 @@ def _fake_runtime_audit_capture(*, run_id, phase, runtime_preflight, **_kwargs):
             "expected_digest": digest,
             "observed_digest": digest,
             "catalog_status": "PASS",
+            "running_model_count": 1,
             "running_model_status": "LOADED",
             "running_models": [{"name": EXPECTED_RUNTIME_IDENTITY["model"], "digest": digest}],
             "stdout_log": dict(log_file),
@@ -553,13 +554,15 @@ def test_prepare_integrity_pass_precedes_manifest_and_allows_formal_path(tmp_pat
     assert output["summary"]["runtime_audit_evidence"]["after_cases"]["phase"] == "AFTER_CASES"
 
 
-def test_runtime_audit_failure_stops_before_manifest_and_support_post(tmp_path, packet):
+def test_runtime_audit_missing_running_model_stops_before_manifest_and_support_post(tmp_path, packet):
     corpus = build_approved_corpus_manifest(packet)
     transport = _FormalFakeTransport(corpus=corpus, response_factory=lambda *_args: _normal_observation())
 
-    def mismatched_audit(**kwargs):
+    def missing_running_model(**kwargs):
         snapshot = _fake_runtime_audit_capture(**kwargs)
-        snapshot["ollama"]["api_status"] = "IDENTITY_MISMATCH"
+        snapshot["ollama"]["running_model_count"] = 0
+        snapshot["ollama"]["running_model_status"] = "NOT_LOADED"
+        snapshot["ollama"]["running_models"] = []
         return snapshot
 
     output = _run(
@@ -567,13 +570,14 @@ def test_runtime_audit_failure_stops_before_manifest_and_support_post(tmp_path, 
         packet,
         transport,
         suffix="RUNTIME-AUDIT-STOP",
-        runtime_audit_capture=mismatched_audit,
+        runtime_audit_capture=missing_running_model,
     )
 
     assert output["manifest_path"] is None
     assert output["run_id"] is None
     assert output["attempted_run_id"] == "D4RUN-RUNTIME-AUDIT-STOP"
     assert output["summary"]["reason_code"] == "PREMANIFEST_RUNTIME_AUDIT_FAILURE"
+    assert output["summary"]["runtime_audit_issues"] == ["OLLAMA_RUNNING_MODEL_IDENTITY_NOT_PASS"]
     assert output["summary"]["formal_product_requests"] == 0
     assert transport.submitted == []
     assert Path(output["preflight_stop_path"]).is_file()

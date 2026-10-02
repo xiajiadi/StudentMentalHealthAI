@@ -18,6 +18,7 @@ from sqlalchemy.engine import make_url
 
 from harness.citation_utility.review_packet import packet_from_json, packet_hash
 from harness.foundation.hashing import canonical_sha256_tag
+from harness.controlled_product_eval import manifest as manifest_module
 from harness.controlled_product_eval.approved_packet import (
     APPROVED_PACKET_HASH,
     APPROVED_PACKET_ID,
@@ -568,7 +569,15 @@ def test_fixed_service_health_validators_reject_opa_version_model_digest_and_run
         )
 
 
-def test_formal_manifest_records_dirty_checkout_configuration_runtime_and_hash(packet, tmp_path):
+def test_formal_manifest_records_dirty_checkout_configuration_runtime_and_hash(packet, tmp_path, monkeypatch):
+    real_git_snapshot = manifest_module.git_snapshot
+
+    def dirty_checkout_snapshot(repo_root):
+        snapshot = real_git_snapshot(repo_root)
+        snapshot["git_dirty"] = True
+        return snapshot
+
+    monkeypatch.setattr(manifest_module, "git_snapshot", dirty_checkout_snapshot)
     case_manifest = build_case_manifest(packet)
     corpus = build_approved_corpus_manifest(packet)
     preflight = build_runtime_preflight(observed_at="2026-09-25T00:00:00Z")

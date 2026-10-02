@@ -13,6 +13,7 @@ from harness.controlled_product_eval.approved_packet import load_approved_packet
 from harness.controlled_product_eval.error_projection import response_stage
 from harness.controlled_product_eval.manifest import (
     ACCEPTED_D4_3A_COMMIT,
+    EXPECTED_RUNTIME_IDENTITY,
     PROFILE_SOURCE_COPY_COMMIT,
     git_snapshot,
 )
@@ -442,6 +443,7 @@ def test_runtime_audit_binds_run_processes_accepted_api_model_logs_and_gpu(tmp_p
     assert snapshot["ollama"]["api_status"] == "PASS"
     assert snapshot["ollama"]["catalog_status"] == "PASS"
     assert snapshot["ollama"]["running_model_status"] == "LOADED"
+    assert snapshot["ollama"]["running_model_count"] == 1
     assert snapshot["ollama"]["running_models"] == [
         {"name": model_name, "digest": digest, "size_vram_bytes": 9_000_000_000}
     ]
@@ -514,15 +516,26 @@ def test_runtime_audit_refuses_mismatched_run_binding(tmp_path):
         )
 
 
-def test_runtime_audit_pre_case_gate_rejects_missing_model_identity(tmp_path):
+@pytest.mark.parametrize(
+    ("catalog_digest", "running_models", "expected_issue"),
+    [
+        ("0" * 64, [{"name": EXPECTED_RUNTIME_IDENTITY["model"], "digest": EXPECTED_RUNTIME_IDENTITY["digest"]}], "OLLAMA_API_OR_MODEL_IDENTITY_NOT_PASS"),
+        (EXPECTED_RUNTIME_IDENTITY["digest"], [], "OLLAMA_RUNNING_MODEL_IDENTITY_NOT_PASS"),
+        (EXPECTED_RUNTIME_IDENTITY["digest"], [{"name": EXPECTED_RUNTIME_IDENTITY["model"], "digest": "0" * 64}], "OLLAMA_RUNNING_MODEL_IDENTITY_NOT_PASS"),
+        (EXPECTED_RUNTIME_IDENTITY["digest"], [{"name": EXPECTED_RUNTIME_IDENTITY["model"]}], "OLLAMA_RUNNING_MODEL_IDENTITY_NOT_PASS"),
+    ],
+)
+def test_runtime_audit_pre_case_gate_rejects_missing_or_mismatched_model_identity(
+    tmp_path, catalog_digest, running_models, expected_issue
+):
     run_id, preflight, identity, evidence_root = _runtime_audit_inputs(tmp_path)
 
     def get_json(url: str):
         if url.endswith("/api/version"):
             return {"version": "0.33.3"}
         if url.endswith("/api/tags"):
-            return {"models": [{"name": "qwen2.5:7b-instruct-q4_K_M", "digest": "0" * 64}]}
-        return {"models": []}
+            return {"models": [{"name": "qwen2.5:7b-instruct-q4_K_M", "digest": catalog_digest}]}
+        return {"models": running_models}
 
     snapshot = capture_runtime_audit_snapshot(
         run_id=run_id,
@@ -533,6 +546,4 @@ def test_runtime_audit_pre_case_gate_rejects_missing_model_identity(tmp_path):
         get_json=get_json,
         which=lambda _name: None,
     )
-    assert "OLLAMA_API_OR_MODEL_IDENTITY_NOT_PASS" in runtime_audit_pre_case_issues(
-        snapshot, run_id=run_id
-    )
+    assert expected_issue in runtime_audit_pre_case_issues(snapshot, run_id=run_id)

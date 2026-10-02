@@ -28,7 +28,7 @@
     },
     "ollama": {
       "type": "object",
-      "required": ["pid", "process_tree_pids", "started_at", "executable_sha256", "endpoint", "api_status", "version", "model", "expected_digest", "observed_digest", "catalog_status", "running_model_status", "running_models", "stdout_log", "stderr_log"],
+      "required": ["pid", "process_tree_pids", "started_at", "executable_sha256", "endpoint", "api_status", "version", "model", "expected_digest", "observed_digest", "catalog_status", "running_model_count", "running_model_status", "running_models", "stdout_log", "stderr_log"],
       "properties": {
         "pid": { "type": "integer", "minimum": 1 },
         "process_tree_pids": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "integer", "minimum": 1 } },
@@ -41,7 +41,8 @@
         "expected_digest": { "$ref": "#/$defs/rawHash" },
         "observed_digest": { "type": ["string", "null"] },
         "catalog_status": { "enum": ["PASS", "MISMATCH_OR_MISSING"] },
-        "running_model_status": { "enum": ["LOADED", "NOT_LOADED", "UNKNOWN"] },
+        "running_model_count": { "type": "integer", "minimum": 0 },
+        "running_model_status": { "enum": ["LOADED", "NOT_LOADED", "IDENTITY_MISMATCH", "UNKNOWN"] },
         "running_models": {
           "type": "array",
           "items": {

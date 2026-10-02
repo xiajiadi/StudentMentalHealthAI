@@ -290,17 +290,28 @@ def capture_runtime_audit_snapshot(
         version = version_response.get("version")
         catalog = _project_model_rows(tags_response, model_name=model_name)
         running = _project_model_rows(running_response, model_name=model_name)
+        running_model_count = len(running_response["models"])
         digest = next((item.get("digest") for item in catalog if item.get("digest") == expected_digest), None)
         api_status = (
             "PASS"
             if version == runtime.identity.get("ollama_version") and digest == expected_digest
             else "IDENTITY_MISMATCH"
         )
-        running_status = "LOADED" if running else "NOT_LOADED"
+        if not running_model_count:
+            running_status = "NOT_LOADED"
+        elif (
+            running_model_count == 1
+            and len(running) == 1
+            and running[0].get("digest") == expected_digest
+        ):
+            running_status = "LOADED"
+        else:
+            running_status = "IDENTITY_MISMATCH"
     except (OSError, ValueError, httpx.HTTPError):
         version = None
         catalog = []
         running = []
+        running_model_count = 0
         digest = None
         api_status = "UNAVAILABLE"
         running_status = "UNKNOWN"
@@ -343,6 +354,7 @@ def capture_runtime_audit_snapshot(
             "expected_digest": expected_digest,
             "observed_digest": digest,
             "catalog_status": "PASS" if digest == expected_digest else "MISMATCH_OR_MISSING",
+            "running_model_count": running_model_count,
             "running_model_status": running_status,
             "running_models": running,
             "stdout_log": ollama_log,
@@ -387,6 +399,16 @@ def runtime_audit_pre_case_issues(snapshot: Mapping[str, Any], *, run_id: str) -
         or ollama.get("observed_digest") != EXPECTED_RUNTIME_IDENTITY["digest"]
     ):
         issues.append("OLLAMA_API_OR_MODEL_IDENTITY_NOT_PASS")
+    running_models = ollama.get("running_models")
+    if (
+        ollama.get("running_model_status") != "LOADED"
+        or ollama.get("running_model_count") != 1
+        or not isinstance(running_models, list)
+        or len(running_models) != 1
+        or running_models[0].get("name") != EXPECTED_RUNTIME_IDENTITY["model"]
+        or running_models[0].get("digest") != EXPECTED_RUNTIME_IDENTITY["digest"]
+    ):
+        issues.append("OLLAMA_RUNNING_MODEL_IDENTITY_NOT_PASS")
     if ollama.get("endpoint") != OLLAMA_ENDPOINT:
         issues.append("OLLAMA_ACCEPTED_ENDPOINT_MISMATCH")
     return tuple(issues)
