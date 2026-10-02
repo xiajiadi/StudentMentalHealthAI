@@ -125,6 +125,48 @@ def _correlated_evidence_path(directory: Path, prefix: str, request_id: Any, tra
     return directory / f"{prefix}-{digest}.json"
 
 
+def _build_fixture_activation_record(
+    *,
+    run_id: str,
+    fixture_path: Path,
+    document: Mapping[str, Any],
+    fixture_bytes: bytes,
+    activated_at: str,
+    process_pid: int,
+    fixture_instance_count: int,
+    d3_policy_version: str,
+    d3_policy_hash: str,
+) -> dict[str, Any]:
+    return {
+        "schema_version": "d4-3b-runtime-fixture-activation.v1",
+        "run_id": run_id,
+        "fixture_id": FIXTURE_ID,
+        "fixture_version": FIXTURE_VERSION,
+        "injection_location": "smhai_backend.domains.support.service.default_fixture_config before BackendContainer/SupportOrchestrator construction",
+        "binding_audit_observer": "smhai_backend.domains.support.service.bind_assessment",
+        "d3_2_policy_observer": "smhai_backend.domains.support.service.interpret_d3_chain",
+        "fixture_file": str(fixture_path),
+        "fixture_canonical_json": dict(document),
+        "fixture_sha256": hashlib.sha256(fixture_bytes).hexdigest(),
+        "source_identity": SOURCE_IDENTITY,
+        "target_identity": TARGET_IDENTITY,
+        "policy_id": POLICY_ID,
+        "approved": True,
+        "fixture_instantiated": fixture_instance_count == 1,
+        "fixture_injected": fixture_instance_count == 1,
+        "approval_reference": APPROVAL_REFERENCE,
+        "dimension_map": {},
+        "activated_at": activated_at,
+        "process_pid": process_pid,
+        "runtime_only": True,
+        "canonical_product_default_changed": False,
+        "other_d3_fixture_config_preserved": True,
+        "fixture_instance_count": fixture_instance_count,
+        "d3_policy_version": d3_policy_version,
+        "d3_policy_hash": d3_policy_hash,
+    }
+
+
 def _value(value: Any) -> Any:
     return getattr(value, "value", value)
 
@@ -470,32 +512,17 @@ def create_injected_backend_app(*, evidence_dir: Path, run_id: str) -> Any:
         raise CompatibilityFixtureError("evaluation fixture was not installed in the SupportOrchestrator")
 
     activated_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-    activation = {
-        "schema_version": "d4-3b-runtime-fixture-activation.v1",
-        "run_id": run_id,
-        "injection_location": "smhai_backend.domains.support.service.default_fixture_config before BackendContainer/SupportOrchestrator construction",
-        "binding_audit_observer": "smhai_backend.domains.support.service.bind_assessment",
-        "d3_2_policy_observer": "smhai_backend.domains.support.service.interpret_d3_chain",
-        "fixture_file": str(fixture_path),
-        "fixture_canonical_json": document,
-        "fixture_sha256": hashlib.sha256(fixture_bytes).hexdigest(),
-        "source_identity": SOURCE_IDENTITY,
-        "target_identity": TARGET_IDENTITY,
-        "policy_id": POLICY_ID,
-        "approved": True,
-        "fixture_instantiated": True,
-        "fixture_injected": True,
-        "approval_reference": APPROVAL_REFERENCE,
-        "dimension_map": {},
-        "activated_at": activated_at,
-        "process_pid": os.getpid(),
-        "runtime_only": True,
-        "canonical_product_default_changed": False,
-        "other_d3_fixture_config_preserved": True,
-        "fixture_instance_count": len(installed),
-        "d3_policy_version": D3_POLICY_VERSION,
-        "d3_policy_hash": D3_POLICY_HASH,
-    }
+    activation = _build_fixture_activation_record(
+        run_id=run_id,
+        fixture_path=fixture_path,
+        document=document,
+        fixture_bytes=fixture_bytes,
+        activated_at=activated_at,
+        process_pid=os.getpid(),
+        fixture_instance_count=len(installed),
+        d3_policy_version=D3_POLICY_VERSION,
+        d3_policy_hash=D3_POLICY_HASH,
+    )
     _write_once(activation_path, activation)
     app.state.d4_evaluation_fixture_activation = activation
     return app

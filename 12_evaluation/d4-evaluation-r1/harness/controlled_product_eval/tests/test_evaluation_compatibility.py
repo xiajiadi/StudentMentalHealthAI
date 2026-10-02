@@ -24,6 +24,7 @@ from harness.controlled_product_eval.evaluation_compatibility import (
     TARGET_IDENTITY,
     CompatibilityFixtureError,
     FIXTURE_DOCUMENT,
+    _build_fixture_activation_record,
     build_d3_2_observation,
     canonical_json_bytes,
     create_injected_backend_app,
@@ -65,6 +66,28 @@ def test_runtime_fixture_is_harness_fixed_and_evidence_is_request_correlated(tmp
     assert first != second
     with pytest.raises(CompatibilityFixtureError, match="request and trace"):
         _correlated_evidence_path(tmp_path, "binding-audit", "", "TRACE_1")
+
+
+def test_activation_record_binds_exact_fixture_identity_to_formal_run():
+    fixture_bytes = canonical_json_bytes(FIXTURE_DOCUMENT)
+    record = _build_fixture_activation_record(
+        run_id="D4RUN-ACTIVATION000001",
+        fixture_path=Path("approved-cat-d3-compatibility-fixture.json"),
+        document=FIXTURE_DOCUMENT,
+        fixture_bytes=fixture_bytes,
+        activated_at="2026-10-02T00:00:00Z",
+        process_pid=1234,
+        fixture_instance_count=1,
+        d3_policy_version="1.0.0",
+        d3_policy_hash="sha256:" + "a" * 64,
+    )
+
+    assert record["run_id"] == "D4RUN-ACTIVATION000001"
+    assert record["fixture_id"] == FIXTURE_ID
+    assert record["fixture_version"] == FIXTURE_VERSION
+    assert record["fixture_instantiated"] is True
+    assert record["fixture_injected"] is True
+    assert record["fixture_canonical_json"] == _approved_document()
 
 
 def test_fixture_rejects_noncanonical_json_and_duplicate_keys():
