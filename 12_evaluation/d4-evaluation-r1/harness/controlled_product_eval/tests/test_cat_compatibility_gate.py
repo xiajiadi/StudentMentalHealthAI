@@ -17,13 +17,9 @@ from harness.controlled_product_eval.cat_compatibility_gate import (
 )
 from harness.controlled_product_eval.credential_provider import EXPECTED_SYNTHETIC_SUBJECTS
 from harness.controlled_product_eval.evaluation_compatibility import (
-    APPROVAL_REFERENCE,
     FIXTURE_DOCUMENT,
-    FIXTURE_ID,
-    FIXTURE_VERSION,
-    POLICY_ID,
     SOURCE_IDENTITY,
-    TARGET_IDENTITY,
+    _build_fixture_activation_record,
     canonical_json_bytes,
 )
 from harness.controlled_product_eval.manifest import ACCEPTED_D4_3A_COMMIT
@@ -39,27 +35,18 @@ def _inputs(tmp_path: Path, run_id: str = "D4RUN-20261002T000000Z-GATE000001"):
     fixture_bytes = canonical_json_bytes(FIXTURE_DOCUMENT)
     (evidence_dir / "approved-cat-d3-compatibility-fixture.json").write_bytes(fixture_bytes)
     pid = 63124
-    activation = {
-        "schema_version": "d4-3b-runtime-fixture-activation.v1",
-        "run_id": run_id,
-        "fixture_id": FIXTURE_ID,
-        "fixture_version": FIXTURE_VERSION,
-        "fixture_instantiated": True,
-        "fixture_injected": True,
-        "approved": True,
-        "approval_reference": APPROVAL_REFERENCE,
-        "source_identity": SOURCE_IDENTITY,
-        "target_identity": TARGET_IDENTITY,
-        "policy_id": POLICY_ID,
-        "dimension_map": {},
-        "fixture_sha256": hashlib.sha256(fixture_bytes).hexdigest(),
-        "fixture_canonical_json": FIXTURE_DOCUMENT,
-        "fixture_instance_count": 1,
-        "runtime_only": True,
-        "canonical_product_default_changed": False,
-        "process_pid": pid,
-    }
     activation_path = evidence_dir / "fixture-activation.json"
+    activation = _build_fixture_activation_record(
+        run_id=run_id,
+        fixture_path=evidence_dir / "approved-cat-d3-compatibility-fixture.json",
+        document=FIXTURE_DOCUMENT,
+        fixture_bytes=fixture_bytes,
+        activated_at="2026-10-02T00:00:00Z",
+        process_pid=pid,
+        fixture_instance_count=1,
+        d3_policy_version="1.0.0",
+        d3_policy_hash="sha256:" + "a" * 64,
+    )
     activation_path.write_text(json.dumps(activation), encoding="utf-8")
 
     item_bank_path = ROOT / "01_cat-engine" / "fixtures" / "synthetic_item_bank.v1.json"
