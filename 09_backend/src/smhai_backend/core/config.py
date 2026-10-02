@@ -100,7 +100,7 @@ class BackendSettings(BaseSettings):
     allowed_hosts: list[str] = Field(
         default_factory=lambda: ["localhost", "127.0.0.1", "testserver", "test"]
     )
-    support_deadline_seconds: float = Field(default=20.0, gt=0, le=120)
+    support_deadline_seconds: float = Field(default=80.0, gt=0, le=120)
     auth: AuthSettings = Field(default_factory=AuthSettings)
     rate_limit: RateLimitSettings = Field(default_factory=RateLimitSettings)
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
@@ -116,7 +116,9 @@ class BackendSettings(BaseSettings):
     )
     llm: ModuleClientSettings = Field(
         default_factory=lambda: ModuleClientSettings(
-            mode="contract_fake", base_url="http://127.0.0.1:8160"
+            mode="contract_fake",
+            base_url="http://127.0.0.1:8160",
+            timeout=TimeoutSettings(read=65.0),
         )
     )
     safety: ModuleClientSettings = Field(default_factory=ModuleClientSettings)

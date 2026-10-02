@@ -8,6 +8,7 @@ from smhai_backend.core.config import BackendSettings, RateLimitSettings
 from smhai_backend.core.errors import ErrorCode
 from smhai_backend.core.request_context import RequestContext
 from smhai_backend.integrations.common_http import LongLivedHttpClient, UpstreamError
+from smhai_backend.integrations.llm import HttpLLMRuntimeClient
 from smhai_backend.integrations.safety import ContractFakeSafetyClient, HttpSafetyClient
 
 from .conftest import completed_assessment, login
@@ -349,15 +350,57 @@ async def test_safety_down_fails_closed(client, app):
 @pytest.mark.asyncio
 async def test_long_lived_httpx_local_policy_and_explicit_timeouts():
     settings = BackendSettings()
-    client = LongLivedHttpClient(settings.safety)
+    llm_client = HttpLLMRuntimeClient(settings.llm)
+    rag_client = LongLivedHttpClient(settings.rag)
+    safety_client = LongLivedHttpClient(settings.safety)
     try:
-        assert client.client._trust_env is False
-        assert client.client.timeout.connect == 1.0
-        assert client.client.timeout.read == 8.0
-        assert client.client.timeout.write == 8.0
-        assert client.client.timeout.pool == 1.0
+        assert llm_client.client._trust_env is False
+        assert llm_client.client.timeout.connect == 1.0
+        assert llm_client.client.timeout.read == 65.0
+        assert llm_client.client.timeout.write == 8.0
+        assert llm_client.client.timeout.pool == 1.0
+        for client in (rag_client, safety_client):
+            assert client.client._trust_env is False
+            assert client.client.timeout.connect == 1.0
+            assert client.client.timeout.read == 8.0
+            assert client.client.timeout.write == 8.0
+            assert client.client.timeout.pool == 1.0
+
+        assert settings.support_deadline_seconds == 80.0
+
+        captured_payload = {}
+
+        async def capture_post_json(path, payload, *, context, headers=None):
+            captured_payload.update(payload)
+            return {
+                "data": {
+                    "text": "{}",
+                    "model_id": "MODEL_test",
+                    "model_version": "1.0",
+                    "runtime_version": "runtime-test",
+                }
+            }
+
+        llm_client.post_json = capture_post_json
+        await llm_client.generate(
+            prompt="Synthetic timeout-budget regression.",
+            model_id="MODEL_test",
+            provider_class="local",
+            trace_id="TRACE_timeout_budget",
+        )
+        runtime_request_budget_seconds = float(
+            captured_payload["config"]["timeout_seconds"]
+        )
+        llm_read_timeout_seconds = llm_client.client.timeout.read
+        support_deadline_seconds = settings.support_deadline_seconds
+
+        assert runtime_request_budget_seconds == 60.0
+        assert llm_read_timeout_seconds >= runtime_request_budget_seconds
+        assert support_deadline_seconds > llm_read_timeout_seconds
     finally:
-        await client.close()
+        await llm_client.close()
+        await rag_client.close()
+        await safety_client.close()
 
 
 @pytest.mark.asyncio
