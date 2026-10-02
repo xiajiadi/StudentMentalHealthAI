@@ -356,8 +356,10 @@ class SupportOrchestrator:
 
         risk = record.assessment.get("risk")
         risk_level = risk.get("level") if isinstance(risk, Mapping) else None
-        retrieval_population = retrieval_eligibility_population(retrieval, config=self._d3_fixtures)
         try:
+            retrieval_population = retrieval_eligibility_population(
+                retrieval, config=self._d3_fixtures
+            )
             bundle = build_retrieval_evidence_bundle(
                 retrieval,
                 transaction_id=trusted_context.transaction_id,
@@ -368,7 +370,48 @@ class SupportOrchestrator:
                     target_role=payload.target_role,
                     risk_level=str(risk_level) if isinstance(risk_level, str) else None,
                 ),
+                # Empty success responses must be retained long enough to
+                # classify them as deterministic abstentions. Non-empty
+                # evidence continues to use the strict generation gate.
+                strict_eligibility=bool(retrieval.chunks),
             )
+            if not bundle.items:
+                ledger.advance(
+                    OrchestrationStage.RETRIEVAL_BOUND,
+                    metadata={
+                        "retrieval_id": bundle.retrieval_id,
+                        "bundle_hash": bundle.bundle_hash,
+                        "eligibility_reason_codes": ["NO_ELIGIBLE_EVIDENCE"],
+                    },
+                    safety_action=retrieval_check.decision.action,
+                )
+                result = await self._abstained_result(
+                    record=record,
+                    payload=payload,
+                    generation_id=generation_id,
+                    report_id=report_id,
+                    retrieval=retrieval,
+                    input_check=input_check,
+                    retrieval_check=retrieval_check,
+                )
+                await self._store_result(
+                    result,
+                    record.subject_id,
+                    context,
+                    actor,
+                    message,
+                    audit_metadata={
+                        "actor_scope": "subject_bound",
+                        "synthetic_fixture_only": True,
+                        "abstention_reason_code": "NO_ELIGIBLE_EVIDENCE",
+                        "input_safety_action": input_check.decision.action,
+                        "retrieval_safety_action": retrieval_check.decision.action,
+                    },
+                )
+                ledger.abstain(reason_code="NO_ELIGIBLE_EVIDENCE")
+                return result
+
+            bundle.require_eligible()
             d3_result = compose_d3_chain(
                 trusted_context,
                 binding,
@@ -978,6 +1021,79 @@ class SupportOrchestrator:
             integration_labels=dict(self.integration_labels),
         )
 
+    async def _abstained_result(
+        self,
+        *,
+        record,
+        payload: SupportRequest,
+        generation_id: str,
+        report_id: str,
+        retrieval: RetrievalResult,
+        input_check: SafetyCheckView,
+        retrieval_check: SafetyCheckView,
+    ) -> SupportResult:
+        """Persist a valid zero-evidence transaction without model execution."""
+
+        generation = {
+            "schema_version": "generation.v1",
+            "generation_id": generation_id,
+            "status": "requested",
+            "target_role": payload.target_role,
+            "content": None,
+            "safety": {
+                "precheck": _safety_status(input_check.decision.action),
+                "postcheck": _safety_status(retrieval_check.decision.action),
+                "reason_codes": ["NO_ELIGIBLE_EVIDENCE"],
+                "human_review_required": False,
+            },
+            "provenance": {
+                "assessment_id": payload.assessment_id,
+                "retrieval_id": retrieval.retrieval_id,
+                "prompt_id": "PROMPT_not_run",
+                "prompt_version": "not_run",
+                "model_id": None,
+                "model_version": None,
+                "runtime_version": None,
+            },
+            "review": {
+                "status": "not_required",
+                "reviewer_id": None,
+                "reviewed_at": None,
+            },
+            "created_at": _timestamp(),
+        }
+        generation_projection = _candidate_generation(
+            generation,
+            generation_status="NOT_RUN",
+            candidate_source="NOT_RUN",
+        )
+        report = ReportRecord(
+            report_id=report_id,
+            assessment_id=payload.assessment_id,
+            subject_id=record.subject_id,
+            generation_id=generation_id,
+            status="abstained",
+            generation=generation_projection.model_dump(mode="json"),
+            review_status="not_required",
+            safety_action=retrieval_check.decision.action,
+            citations=[],
+            candidate_source="NOT_RUN",
+        )
+        await maybe_await(self.reports.save(report))
+        return SupportResult(
+            status="abstained",
+            safety_action=retrieval_check.decision.action,
+            normal_generation=False,
+            generation=generation_projection,
+            report_id=report_id,
+            content=None,
+            citations=[],
+            review_reference=None,
+            crisis_response=None,
+            trace_id=input_check.trace_id,
+            integration_labels=dict(self.integration_labels),
+        )
+
     async def _store_result(
         self,
         result: SupportResult,
@@ -1001,6 +1117,7 @@ class SupportOrchestrator:
                     "report_id": result.report_id,
                     "safety_action": result.safety_action,
                     "normal_generation": result.normal_generation,
+                    "support_status": result.status,
                     "actor_scope": "subject_bound",
                     "synthetic_fixture_only": True,
                     **dict(audit_metadata or {}),
@@ -1018,6 +1135,7 @@ class SupportOrchestrator:
                 "generation_id": generation["generation_id"],
                 "report_id": result.report_id,
                 "review_reference": result.review_reference,
+                "support_status": result.status,
                 "actor_scope": "subject_bound",
                 "synthetic_fixture_only": True,
                 **dict(audit_metadata or {}),

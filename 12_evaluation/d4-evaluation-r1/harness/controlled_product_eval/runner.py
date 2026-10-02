@@ -98,6 +98,7 @@ class TransportObservation:
     response_body: Mapping[str, Any]
     rag_events: tuple[Mapping[str, Any], ...] = ()
     llm_events: tuple[Mapping[str, Any], ...] = ()
+    safety_events: tuple[Mapping[str, Any], ...] = ()
     external_network_detected: bool = False
     integrity_observation: Mapping[str, Any] = field(default_factory=dict)
 
@@ -462,6 +463,7 @@ class CanonicalHttpTransport:
         observer_urls: Mapping[str, str],
         rag_observer_events: str | Path,
         llm_observer_events: str | Path,
+        safety_observer_events: str | Path | None = None,
         passwords: Mapping[str, str],
         cat_instrument_id: str = SYNTHETIC_CAT_INSTRUMENT_ID,
         cat_instrument_version: str = SYNTHETIC_CAT_INSTRUMENT_VERSION,
@@ -472,12 +474,19 @@ class CanonicalHttpTransport:
             raise RunnerError("formal Backend URL must be HTTP loopback")
         self.backend_base_url = backend_base_url.rstrip("/")
         self.observer_urls = dict(observer_urls)
-        if set(self.observer_urls) != {"rag", "llm"}:
-            raise RunnerError("RAG and LLM observer endpoints are both required")
+        if not {"rag", "llm"} <= set(self.observer_urls) or set(self.observer_urls) - {
+            "rag", "llm", "safety"
+        }:
+            raise RunnerError("RAG and LLM observer endpoints are required; only Safety is optional")
         if any(not is_loopback_url(url) for url in self.observer_urls.values()):
             raise RunnerError("observer endpoints must be HTTP loopback")
         self.rag_observer_events = Path(rag_observer_events)
         self.llm_observer_events = Path(llm_observer_events)
+        if "safety" in self.observer_urls and safety_observer_events is None:
+            raise RunnerError("Safety observer event path is required when its endpoint is configured")
+        self.safety_observer_events = (
+            Path(safety_observer_events) if safety_observer_events is not None else None
+        )
         if set(passwords) != set(EXPECTED_SYNTHETIC_SUBJECTS) or not all(passwords.values()):
             raise RunnerError("frozen synthetic login credentials are incomplete")
         if not cat_instrument_id or not cat_instrument_version:
@@ -594,7 +603,7 @@ class CanonicalHttpTransport:
                 if not isinstance(service_identity, Mapping):
                     raise RunnerError("RAG observer did not expose the isolated service identity")
                 rag_service_identity = {"status": "READY", **dict(service_identity)}
-            else:
+            elif name == "llm":
                 service_identity = observed.get("service_identity")
                 if not isinstance(service_identity, Mapping):
                     raise RunnerError("LLM observer did not expose live Runtime readiness identity")
@@ -615,6 +624,10 @@ class CanonicalHttpTransport:
                 ):
                     raise RunnerError("live Runtime model identity does not match the frozen model")
                 runtime_endpoint_identity = dict(service_identity)
+            else:
+                service_identity = observed.get("service_identity")
+                if not isinstance(service_identity, Mapping) or service_identity.get("service") != "safety_control_plane":
+                    raise RunnerError("Safety observer did not expose its loopback Safety service identity")
         return {
             "backend": {"status": "READY", "url": self.backend_base_url},
             "observers": observer_status,
@@ -853,6 +866,11 @@ class CanonicalHttpTransport:
             response_body=body,
             rag_events=_load_jsonl(self.rag_observer_events, trace_id=trace_id),
             llm_events=_load_jsonl(self.llm_observer_events, trace_id=trace_id),
+            safety_events=(
+                _load_jsonl(self.safety_observer_events, trace_id=trace_id)
+                if self.safety_observer_events is not None
+                else ()
+            ),
             external_network_detected=external_network_detected,
             integrity_observation=network_observation,
         )
@@ -1524,6 +1542,7 @@ async def run_evaluation(
                     trace_id=trace_id,
                     rag_events=observation.rag_events,
                     llm_events=observation.llm_events,
+                    safety_events=observation.safety_events,
                     runtime_preflight_identity=runtime_preflight.identity,
                     allowed_evidence_ids=corpus_manifest["evidence_ids"],
                     evaluation_to_source_evidence=corpus_projection_source_map(corpus_manifest),

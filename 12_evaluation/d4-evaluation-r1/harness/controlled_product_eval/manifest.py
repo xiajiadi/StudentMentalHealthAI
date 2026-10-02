@@ -647,7 +647,8 @@ def build_formal_manifest(
             raise ManifestError(f"formal Backend dependency must use REAL_HTTP: {name}")
 
     checked_observers: dict[str, str] = {}
-    for name in ("rag", "llm"):
+    observer_names = ("rag", "llm", "safety") if "safety" in observer_endpoints else ("rag", "llm")
+    for name in observer_names:
         endpoint = observer_endpoints.get(name)
         if not isinstance(endpoint, str) or not is_loopback_url(endpoint):
             raise ManifestError(f"{name} observer endpoint must be HTTP loopback")
@@ -881,6 +882,9 @@ def verify_formal_manifest(
             "d4-mysql", "d4-opa", "d4-safety", "d4-ollama", "d4-runtime", "d4-cat",
             "d4-backend", "d4-rag", "d4-rag-observer", "d4-llm-observer",
         }
+        observer_endpoints = manifest.get("observer_endpoints")
+        if isinstance(observer_endpoints, Mapping) and "safety" in observer_endpoints:
+            required_services.add("d4-safety-observer")
         if not required_services <= service_names:
             raise ManifestError("managed formal manifest omits one or more supervisor-owned services")
     if manifest.get("backend_identity", {}).get("route") != FORMAL_ROUTE:

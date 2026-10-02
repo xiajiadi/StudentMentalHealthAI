@@ -13,7 +13,7 @@ from typing import Any, Callable, Iterable
 
 
 FORMAL_DATA_PLANE_PORTS = frozenset({
-    8080, 8160, 8170, 8180, 8181, 8190, 11437, 3307, 8271, 8272,
+    8080, 8160, 8170, 8180, 8181, 8190, 11437, 3307, 8271, 8272, 8273,
 })
 FORBIDDEN_REMOTE_PORTS = frozenset({3306, 11434})
 

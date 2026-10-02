@@ -14,6 +14,31 @@
     "source_packet_hash": { "const": "sha256:cfbe640300c2cbfbfe9616bb20b10b6ed80e7ee1e15169aadf2052ac8de107c6" },
     "expected": { "type": "object", "required": ["response_class", "expected_route", "population", "role", "purpose", "required_evidence_ids"], "properties": { "response_class": { "enum": ["MUST_ANSWER", "SHOULD_ANSWER", "SHOULD_ABSTAIN", "MUST_ROUTE", "MUST_DENY"] }, "expected_route": { "type": "string" }, "population": { "type": "string" }, "role": { "type": "string" }, "purpose": { "type": "string" }, "required_evidence_ids": { "type": "array", "items": { "type": "string" } } }, "additionalProperties": true },
     "actual": { "type": "object", "required": ["http_status", "request_id", "trace_id", "safety_route", "generation_status", "response_class", "normal_generation", "content"], "properties": { "http_status": { "type": "integer", "minimum": 100, "maximum": 599 }, "support_run_id": { "type": ["string", "null"] }, "generation_id": { "type": ["string", "null"] }, "request_id": { "type": "string" }, "trace_id": { "type": "string" }, "safety_route": { "type": ["string", "null"] }, "generation_status": { "type": ["string", "null"] }, "response_class": { "enum": ["ANSWERED", "ABSTAINED", "ROUTED", "DENIED", "UNKNOWN"] }, "normal_generation": { "type": ["boolean", "null"] }, "content": { "type": ["object", "null"] } }, "additionalProperties": true },
+    "safety_observation": {
+      "type": "object",
+      "required": ["source", "run_id", "request_id", "trace_id", "events"],
+      "properties": {
+        "source": { "enum": ["D4_LOOPBACK_SAFETY_OBSERVER", "NOT_OBSERVED"] },
+        "run_id": { "type": "string", "minLength": 1 },
+        "request_id": { "type": "string", "minLength": 1 },
+        "trace_id": { "type": "string", "minLength": 1 },
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["stage", "action", "reason_codes", "status_code"],
+            "properties": {
+              "stage": { "enum": ["INPUT", "RETRIEVAL"] },
+              "action": { "type": ["string", "null"], "enum": ["PROCEED", "PROCEED_WITH_BOUNDARY", "BLOCK", "REVIEW_REQUIRED", "CRISIS_ROUTE", null] },
+              "reason_codes": { "type": "array", "items": { "enum": ["NO_BLOCKING_SIGNAL", "EXPLICIT_CRISIS_SIGNAL", "CONTENT_UNSAFE", "PROMPT_INJECTION", "JAILBREAK", "CLINICAL_OVERREACH", "CONTENT_CONTROVERSIAL", "PII_DETECTED", "DISCLOSURE_RESTRICTED", "ASSESSMENT_SIGNAL_RECEIVED", "RETRIEVAL_SOURCE_INELIGIBLE", "COMPONENT_UNAVAILABLE", "SAFETY_SERVICE_UNAVAILABLE", "POLICY_ENGINE_UNAVAILABLE", "POLICY_EVALUATION_FAILED", "GUARD_MODEL_UNAVAILABLE", "PRIVACY_ENGINE_UNAVAILABLE", "GUARDRAIL_CHECK_FAILED", "INVALID_SAFETY_CONTEXT", "REVIEW_QUEUE_FAILED", "CRISIS_TEMPLATE_UNAVAILABLE", "RETRIEVAL_SAFETY_CHECK_FAILED"] } },
+              "status_code": { "type": ["integer", "null"], "minimum": 100, "maximum": 599 }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "normalized_error_evidence": {
       "oneOf": [
         { "type": "null" },

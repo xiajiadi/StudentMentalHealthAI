@@ -157,6 +157,81 @@ def test_unmatched_response_safety_action_does_not_advance_stage():
     assert result["normalized_error_evidence"]["response_trace_id_match"] is False
 
 
+def test_safety_observation_is_run_bound_allowlisted_and_does_not_change_scoring():
+    request_id = "REQ_D4RUN-AUDIT-CASE"
+    trace_id = "TRACE_D4RUN-AUDIT-CASE"
+    case = next(
+        item for item in PACKET.answerability_cases
+        if item["expected_response_class"] == "MUST_ANSWER"
+    )
+    body = {
+        "request_id": request_id,
+        "trace_id": trace_id,
+        "error": {"code": "WORKFLOW_CONFLICT", "retryable": False},
+    }
+    baseline = build_case_result(
+        packet=PACKET,
+        case=case,
+        run_id="D4RUN-AUDIT-CASE",
+        http_status=409,
+        response_body=body,
+        request_id=request_id,
+        trace_id=trace_id,
+    )
+    observed = build_case_result(
+        packet=PACKET,
+        case=case,
+        run_id="D4RUN-AUDIT-CASE",
+        http_status=409,
+        response_body=body,
+        request_id=request_id,
+        trace_id=trace_id,
+        safety_events=(
+            {
+                "observer": "safety",
+                "run_id": "D4RUN-AUDIT-CASE",
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "stage": "INPUT",
+                "action": "REVIEW_REQUIRED",
+                "reason_codes": ["EXPLICIT_CRISIS_SIGNAL", "RAW_REASON_SENTINEL"],
+                "status_code": 200,
+                "request_body": "FREE_TEXT_SENTINEL",
+            },
+            {
+                "observer": "safety",
+                "run_id": "D4RUN-OTHER-CASE",
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "stage": "RETRIEVAL",
+                "action": "PROCEED",
+                "reason_codes": ["NO_BLOCKING_SIGNAL"],
+                "status_code": 200,
+            },
+        ),
+    )
+
+    assert observed["safety_observation"] == {
+        "source": "D4_LOOPBACK_SAFETY_OBSERVER",
+        "run_id": "D4RUN-AUDIT-CASE",
+        "request_id": request_id,
+        "trace_id": trace_id,
+        "events": [
+            {
+                "stage": "INPUT",
+                "action": "REVIEW_REQUIRED",
+                "reason_codes": ["EXPLICIT_CRISIS_SIGNAL"],
+                "status_code": 200,
+            }
+        ],
+    }
+    assert observed["utility"] == baseline["utility"]
+    assert observed["findings"] == baseline["findings"]
+    assert "RAW_REASON_SENTINEL" not in json.dumps(observed)
+    assert "FREE_TEXT_SENTINEL" not in json.dumps(observed)
+    jsonschema.Draft202012Validator(CASE_SCHEMA).validate(observed)
+
+
 def test_plaintext_error_sentinels_do_not_reach_artifacts_summary_logs_or_jsonl(tmp_path):
     markers = {
         "password": "PASSWORD_SENTINEL",

@@ -231,7 +231,7 @@ class ContractFakeSafetyClient:
         if "SYNTHETIC_CRISIS_SIGNAL" in message:
             return self._decision(
                 "CRISIS_ROUTE",
-                ["CRISIS_SIGNAL"],
+                ["EXPLICIT_CRISIS_SIGNAL"],
                 request_context,
                 crisis_response=(
                     "这是合成演示中的安全提示，当前内容需要人工复核。请使用已确认的本地支持流程。"

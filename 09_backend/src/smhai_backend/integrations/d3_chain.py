@@ -31,6 +31,7 @@ from smhai_backend.domains.assessment.binding import (
     AssessmentBinding,
 )
 from smhai_backend.integrations.evidence import RetrievalEvidenceBundle
+from smhai_backend.integrations.population_mapping import resolve_population_mapping
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$")
 _GENERATION_ID = re.compile(r"^GEN_[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$")
@@ -398,6 +399,20 @@ def _content_population_mapping(
             source_document=None,
             source_population=target_population,
             target_population=target_population,
+        )
+
+    if bundle.provenance.get("label") == "REAL_HTTP":
+        population_mapping = resolve_population_mapping(target_population)
+        for item in bundle.items:
+            if population_mapping.rag_query_taxonomy not in (item.population_scope or ()):
+                raise D3ChainError("D3_CONTENT_POPULATION_MAPPING_INVALID")
+        return D3ContentPopulationMapping(
+            mapping_id=population_mapping.mapping_id,
+            mapping_version=population_mapping.mapping_version,
+            source_label="REAL_HTTP",
+            source_document=None,
+            source_population=population_mapping.rag_query_taxonomy,
+            target_population=population_mapping.d3_content_population,
         )
 
     if bundle.provenance.get("label") != _D3_1_SOURCE_LABEL:

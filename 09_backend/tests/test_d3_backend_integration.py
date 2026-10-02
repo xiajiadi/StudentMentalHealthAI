@@ -14,7 +14,7 @@ from smhai_backend.domains.support import service as support_service_module
 from smhai_backend.domains.support.schemas import SupportRequest
 from smhai_backend.integrations.d3 import adapt_legacy_retrieval, default_fixture_config
 from smhai_backend.integrations.llm import CandidateResponse
-from smhai_backend.integrations.rag import ContractFakeRagClient
+from smhai_backend.integrations.rag import ContractFakeRagClient, RetrievalResult
 
 _ASSESSMENT_FIXTURE = (
     Path(__file__).resolve().parents[2]
@@ -138,6 +138,62 @@ async def test_support_route_runs_bound_d3_chain_once_and_persists_after_output_
 
 
 @pytest.mark.asyncio
+async def test_real_http_freshman_taxonomy_passes_evidence_and_d3_seams(client, app, monkeypatch):
+    assessment = _install_exact_assessment(app)
+    login_response = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "student_a", "password": "synthetic-student-a"},
+    )
+    csrf = login_response.json()["data"]["csrf_token"]
+    rag = app.state.container.rag
+    fake_retrieval = await rag.retrieve(
+        assessment=assessment,
+        target_role="student",
+        query="seed",
+        top_k=2,
+        trace_id="TRACE_real_http_seed",
+    )
+    mapped_retrieval = RetrievalResult(
+        "RETR_university_freshman",
+        tuple(
+            chunk.model_copy(update={"population_scope": ["university_freshman"]})
+            for chunk in fake_retrieval.chunks
+        ),
+        "REAL_HTTP",
+    )
+
+    async def mapped_retrieve(self, **_kwargs):
+        self.calls += 1
+        self.call_order.append("rag")
+        return mapped_retrieval
+
+    monkeypatch.setattr(type(rag), "retrieve", mapped_retrieve)
+    response = await client.post(
+        "/api/v1/support/requests",
+        headers={"X-CSRF-Token": csrf},
+        json=_support_payload(assessment["assessment_id"], "synthetic mapped normal request"),
+    )
+
+    assert response.status_code == 202, response.text
+    body = response.json()["data"]
+    assert body["status"] == "generated"
+    assert app.state.container.llm.calls == 1
+    assert app.state.container.support.d3_call_order == ["d3_2", "d3_3", "d3_1"]
+    support_events = [
+        event
+        for event in app.state.container.audits.list()
+        if event.event == "SUPPORT_REQUESTED" and event.trace_id == body["trace_id"]
+    ]
+    metadata = support_events[-1].metadata
+    assert (
+        metadata["content_population_mapping_id"]
+        == "MAP_UNIVERSITY_FRESHMAN_SUPPORT_TO_RAG_D3_V1"
+    )
+    assert metadata["content_population_mapping_version"] == "1.0.0"
+    assert metadata["content_population"] == "UNIVERSITY_FRESHMEN_SYNTHETIC_DEMO"
+
+
+@pytest.mark.asyncio
 async def test_support_normal_side_effect_order_runs_d3_2_before_rag_once(client, app, monkeypatch):
     assessment = _install_exact_assessment(app)
     login_response = await client.post(
@@ -229,6 +285,9 @@ async def test_input_safety_stop_has_zero_normal_downstream_calls(
     body = response.json()["data"]
     assert body["safety_action"] == action
     assert body["generation"]["provenance"]["generation_status"] == "NOT_RUN"
+    if action == "CRISIS_ROUTE":
+        assert "EXPLICIT_CRISIS_SIGNAL" in body["generation"]["safety"]["reason_codes"]
+        assert body["normal_generation"] is False
     assert app.state.container.rag.calls == 0
     assert app.state.container.llm.calls == 0
     ledger = app.state.container.support.stage_ledgers[body["trace_id"]]
@@ -239,6 +298,103 @@ async def test_input_safety_stop_has_zero_normal_downstream_calls(
         "REQUEST_AUTHORIZED",
         "INPUT_SAFETY_EVALUATED",
     ]
+
+
+@pytest.mark.asyncio
+async def test_zero_evidence_success_is_persisted_as_deterministic_abstention(
+    client, app, monkeypatch
+) -> None:
+    assessment = _install_exact_assessment(app)
+    login_response = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "student_a", "password": "synthetic-student-a"},
+    )
+    csrf = login_response.json()["data"]["csrf_token"]
+    rag = app.state.container.rag
+
+    async def empty_retrieval(self, **_kwargs):
+        self.calls += 1
+        self.call_order.append("rag")
+        return RetrievalResult("RETR_no_evidence", (), "REAL_HTTP")
+
+    monkeypatch.setattr(type(rag), "retrieve", empty_retrieval)
+    response = await client.post(
+        "/api/v1/support/requests",
+        headers={"X-CSRF-Token": csrf},
+        json=_support_payload(assessment["assessment_id"], "synthetic no evidence case"),
+    )
+
+    assert response.status_code == 202, response.text
+    body = response.json()["data"]
+    assert body["status"] == "abstained"
+    assert body["safety_action"] == "PROCEED"
+    assert body["normal_generation"] is False
+    assert body["content"] is None
+    assert body["citations"] == []
+    assert body["generation"]["status"] == "requested"
+    assert body["generation"]["safety"]["reason_codes"] == ["NO_ELIGIBLE_EVIDENCE"]
+    assert body["generation"]["provenance"]["generation_status"] == "NOT_RUN"
+    assert body["generation"]["provenance"]["candidate_source"] == "NOT_RUN"
+    assert app.state.container.rag.calls == 1
+    assert app.state.container.llm.calls == 0
+    assert "safety_output" not in app.state.container.support.call_order
+    assert app.state.container.support.d3_call_order == ["d3_2"]
+
+    ledger = app.state.container.support.stage_ledgers[body["trace_id"]]
+    snapshot = ledger.snapshot()
+    assert snapshot.state.value == "ABSTAINED"
+    assert snapshot.terminal_action == "ABSTAINED"
+    assert snapshot.terminal_reason == "NO_ELIGIBLE_EVIDENCE"
+    assert [stage.value for stage in snapshot.stages][-1] == "RETRIEVAL_BOUND"
+    report = app.state.container.reports.get(body["report_id"])
+    assert report is not None
+    assert report.status == "abstained"
+    assert report.candidate_source == "NOT_RUN"
+    assert report.citations == []
+
+    audit = [
+        event
+        for event in app.state.container.audits.list()
+        if event.event == "SUPPORT_REQUESTED" and event.trace_id == body["trace_id"]
+    ]
+    assert audit[-1].metadata["abstention_reason_code"] == "NO_ELIGIBLE_EVIDENCE"
+    assert audit[-1].metadata["support_status"] == "abstained"
+
+
+@pytest.mark.asyncio
+async def test_nonempty_k12_evidence_remains_fail_closed(client, app, monkeypatch) -> None:
+    assessment = _install_exact_assessment(app)
+    login_response = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "student_a", "password": "synthetic-student-a"},
+    )
+    csrf = login_response.json()["data"]["csrf_token"]
+    rag = app.state.container.rag
+    valid_fake = await rag.retrieve(
+        assessment=assessment,
+        target_role="student",
+        query="seed",
+        top_k=1,
+        trace_id="TRACE_k12_seed",
+    )
+    k12_chunk = valid_fake.chunks[0].model_copy(update={"population_scope": ["k12"]})
+
+    async def k12_retrieval(self, **_kwargs):
+        self.calls += 1
+        self.call_order.append("rag")
+        return RetrievalResult("RETR_k12_ineligible", (k12_chunk,), "REAL_HTTP")
+
+    monkeypatch.setattr(type(rag), "retrieve", k12_retrieval)
+    response = await client.post(
+        "/api/v1/support/requests",
+        headers={"X-CSRF-Token": csrf},
+        json=_support_payload(assessment["assessment_id"], "synthetic K12 mismatch case"),
+    )
+
+    assert response.status_code == 502, response.text
+    assert response.json()["error"]["code"] == "DEPENDENCY_INVALID_RESPONSE"
+    assert app.state.container.llm.calls == 0
+    assert app.state.container.support.d3_call_order == ["d3_2"]
 
 
 @pytest.mark.asyncio

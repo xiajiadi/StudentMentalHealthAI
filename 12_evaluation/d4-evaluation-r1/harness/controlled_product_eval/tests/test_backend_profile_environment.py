@@ -45,6 +45,8 @@ def test_backend_profile_uses_fixed_python_and_neutral_process_username(tmp_path
         runtime=None,
         rag_events=tmp_path / "events/rag.jsonl",
         llm_events=tmp_path / "events/llm.jsonl",
+        safety_events=tmp_path / "events/safety.jsonl",
+        safety_observer_run_id="D4RUN-TEST00000001",
         database_credential=DatabaseCredential(
             host="127.0.0.1",
             port=3307,
@@ -60,6 +62,7 @@ def test_backend_profile_uses_fixed_python_and_neutral_process_username(tmp_path
     assert "--fixture-json" not in backend.arguments
     assert "--run-id" in backend.arguments and "D4RUN-TEST00000001" in backend.arguments
     assert backend.environment["USERNAME"] == "d4-evaluation"
+    assert backend.environment["SMHAI_SAFETY__BASE_URL"] == "http://127.0.0.1:8273"
     assert "USERNAME" in backend.environment_allowlist
     assert "DB_PASSWORD" not in backend.environment
     database_url = make_url(backend.environment["DATABASE_URL"])
@@ -68,6 +71,11 @@ def test_backend_profile_uses_fixed_python_and_neutral_process_username(tmp_path
     assert database_url.username == "smhai_eval_app"
     assert database_url.database == "smhai_d4_evaluation"
     assert database_url.password == "pw"
+
+    safety_observer = next(spec for spec in specs if spec.name == "d4-safety-observer")
+    assert "--run-id" in safety_observer.arguments
+    assert "D4RUN-TEST00000001" in safety_observer.arguments
+    assert safety_observer.readiness_url == "http://127.0.0.1:8273/health"
 
     rag = next(spec for spec in specs if spec.name == "d4-rag")
     rag_home = (tmp_path / "services" / "isolated-rag-user-profile").resolve()

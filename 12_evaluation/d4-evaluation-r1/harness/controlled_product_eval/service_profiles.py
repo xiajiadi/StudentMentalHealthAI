@@ -378,7 +378,13 @@ def _verify_network_ownership(
         8180: "d4-cat",
     }
     if include_application_stack:
-        expected.update({8080: "d4-backend", 8170: "d4-rag", 8271: "d4-rag-observer", 8272: "d4-llm-observer"})
+        expected.update({
+            8080: "d4-backend",
+            8170: "d4-rag",
+            8271: "d4-rag-observer",
+            8272: "d4-llm-observer",
+            8273: "d4-safety-observer",
+        })
     listeners_by_port: dict[int, list[dict[str, Any]]] = {}
     for listener in observation["listeners"]:
         listeners_by_port.setdefault(int(listener["port"]), []).append(listener)

@@ -526,10 +526,14 @@ def test_managed_stack_specs_own_only_loopback_evaluation_services(tmp_path, mon
         runtime=runtime,
         rag_events=events / "rag.jsonl",
         llm_events=events / "llm.jsonl",
+        safety_events=events / "safety.jsonl",
+        safety_observer_run_id="D4RUN-MANAGEDSTACK000001",
         database_credential=database_credential,
         credential_redactions=login_credentials.secret_values(),
     )
-    assert [spec.name for spec in specs] == ["d4-backend", "d4-rag", "d4-rag-observer", "d4-llm-observer"]
+    assert [spec.name for spec in specs] == [
+        "d4-backend", "d4-rag", "d4-rag-observer", "d4-llm-observer", "d4-safety-observer"
+    ]
     assert all(spec.readiness_url.startswith("http://127.0.0.1:") for spec in specs)
     llm_observer = next(spec for spec in specs if spec.name == "d4-llm-observer")
     upstream = llm_observer.arguments[llm_observer.arguments.index("--upstream") + 1]

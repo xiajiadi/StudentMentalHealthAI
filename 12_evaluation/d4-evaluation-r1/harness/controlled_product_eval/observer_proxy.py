@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
@@ -22,6 +23,41 @@ from fastapi import FastAPI, Request
 from fastapi.responses import Response
 
 from .manifest import is_loopback_url
+
+_SAFETY_ACTIONS = frozenset(
+    {"PROCEED", "PROCEED_WITH_BOUNDARY", "BLOCK", "REVIEW_REQUIRED", "CRISIS_ROUTE"}
+)
+_SAFETY_REASON_CODES = frozenset(
+    {
+        "NO_BLOCKING_SIGNAL",
+        "EXPLICIT_CRISIS_SIGNAL",
+        "CONTENT_UNSAFE",
+        "PROMPT_INJECTION",
+        "JAILBREAK",
+        "CLINICAL_OVERREACH",
+        "CONTENT_CONTROVERSIAL",
+        "PII_DETECTED",
+        "DISCLOSURE_RESTRICTED",
+        "ASSESSMENT_SIGNAL_RECEIVED",
+        "RETRIEVAL_SOURCE_INELIGIBLE",
+        "COMPONENT_UNAVAILABLE",
+        "SAFETY_SERVICE_UNAVAILABLE",
+        "POLICY_ENGINE_UNAVAILABLE",
+        "POLICY_EVALUATION_FAILED",
+        "GUARD_MODEL_UNAVAILABLE",
+        "PRIVACY_ENGINE_UNAVAILABLE",
+        "GUARDRAIL_CHECK_FAILED",
+        "INVALID_SAFETY_CONTEXT",
+        "REVIEW_QUEUE_FAILED",
+        "CRISIS_TEMPLATE_UNAVAILABLE",
+        "RETRIEVAL_SAFETY_CHECK_FAILED",
+    }
+)
+_SAFETY_STAGES = {
+    "/internal/safety/check-input": "INPUT",
+    "/internal/safety/check-retrieval": "RETRIEVAL",
+}
+_RUN_ID = re.compile(r"^(?:D4RUN|D4SMOKE)-[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 def _timestamp() -> str:
@@ -146,9 +182,13 @@ def _safe_runtime_health(value: Any) -> dict[str, Any] | None:
     }
 
 
-def create_observer_app(*, name: str, upstream: str, events_file: str | Path) -> FastAPI:
-    if name not in {"rag", "llm"}:
-        raise ValueError("observer name must be 'rag' or 'llm'")
+def create_observer_app(
+    *, name: str, upstream: str, events_file: str | Path, run_id: str | None = None
+) -> FastAPI:
+    if name not in {"rag", "llm", "safety"}:
+        raise ValueError("observer name must be 'rag', 'llm', or 'safety'")
+    if name == "safety" and (not isinstance(run_id, str) or not _RUN_ID.fullmatch(run_id)):
+        raise ValueError("Safety observer requires a valid run ID")
     if not is_loopback_url(upstream):
         raise ValueError("observer upstream must be HTTP loopback")
     parsed = urlparse(upstream)
@@ -172,6 +212,20 @@ def create_observer_app(*, name: str, upstream: str, events_file: str | Path) ->
 
     @app.get("/health")
     async def health() -> dict[str, Any]:
+        if name == "safety":
+            try:
+                upstream_response = await client.get("/health/ready")
+                upstream_payload = upstream_response.json() if upstream_response.status_code == 200 else {}
+            except (httpx.HTTPError, ValueError):
+                return {"status": "NOT_READY", "observer": name, "upstream": upstream.rstrip("/")}
+            if not isinstance(upstream_payload, dict) or upstream_payload.get("status") != "READY":
+                return {"status": "NOT_READY", "observer": name, "upstream": upstream.rstrip("/")}
+            return {
+                "status": "READY",
+                "observer": name,
+                "upstream": upstream.rstrip("/"),
+                "service_identity": {"service": "safety_control_plane"},
+            }
         if name == "rag":
             try:
                 upstream_response = await client.get("/health")
@@ -222,7 +276,8 @@ def create_observer_app(*, name: str, upstream: str, events_file: str | Path) ->
     @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
     async def forward(request: Request, path: str) -> Response:
         body = await request.body()
-        url = "/" + path
+        request_path = "/" + path
+        url = request_path
         if request.url.query:
             url += "?" + request.url.query
         headers = {
@@ -231,27 +286,50 @@ def create_observer_app(*, name: str, upstream: str, events_file: str | Path) ->
             if key.lower() not in {"host", "content-length", "connection", "transfer-encoding"}
         }
         payload: Any = None
-        if body and request.headers.get("content-type", "").startswith("application/json"):
+        if (
+            name != "safety"
+            and body
+            and request.headers.get("content-type", "").startswith("application/json")
+        ):
             try:
                 payload = json.loads(body.decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError):
                 payload = None
-        request_summary = _safe_request_summary(name, payload)
-        event: dict[str, Any] = {
-            "timestamp": _timestamp(),
-            "observer": name,
-            "method": request.method,
-            "path": "/" + path,
-            "request_id": request.headers.get("x-request-id"),
-            "trace_id": request.headers.get("x-trace-id"),
-            "request_body_sha256": hashlib.sha256(body).hexdigest() if body else None,
-            "request_body_length": len(body),
-            "request_summary": request_summary,
-        }
+        request_id = request.headers.get("x-request-id")
+        trace_id = request.headers.get("x-trace-id")
+        safety_stage = _SAFETY_STAGES.get(request_path) if name == "safety" else None
+        if name == "safety":
+            event = {
+                "timestamp": _timestamp(),
+                "observer": name,
+                "run_id": run_id,
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "stage": safety_stage,
+            }
+        else:
+            request_summary = _safe_request_summary(name, payload)
+            event = {
+                "timestamp": _timestamp(),
+                "observer": name,
+                "method": request.method,
+                "path": request_path,
+                "request_id": request_id,
+                "trace_id": trace_id,
+                "request_body_sha256": hashlib.sha256(body).hexdigest() if body else None,
+                "request_body_length": len(body),
+                "request_summary": request_summary,
+            }
         try:
             upstream_response = await client.request(request.method, url, headers=headers, content=body)
         except httpx.HTTPError as exc:
-            record({**event, "status_code": 503, "upstream_error": type(exc).__name__})
+            if name != "safety" or safety_stage is not None:
+                error_event = {**event, "status_code": 503}
+                if name != "safety":
+                    error_event["upstream_error"] = type(exc).__name__
+                else:
+                    error_event.update({"action": None, "reason_codes": []})
+                record(error_event)
             return Response(
                 content=b'{"error":{"code":"UPSTREAM_UNAVAILABLE"}}',
                 status_code=503,
@@ -263,8 +341,28 @@ def create_observer_app(*, name: str, upstream: str, events_file: str | Path) ->
                 response_payload = upstream_response.json()
             except ValueError:
                 response_payload = None
-        response_summary = _safe_response_summary(name, response_payload, request_summary)
-        record({**event, "status_code": upstream_response.status_code, "response_summary": response_summary})
+        if name == "safety":
+            if safety_stage is not None:
+                data = response_payload if isinstance(response_payload, dict) else {}
+                decision = data.get("decision") if isinstance(data.get("decision"), dict) else {}
+                action = decision.get("action")
+                codes = decision.get("reason_codes")
+                safe_codes = (
+                    [code for code in codes if isinstance(code, str) and code in _SAFETY_REASON_CODES]
+                    if isinstance(codes, list)
+                    else []
+                )
+                record(
+                    {
+                        **event,
+                        "status_code": upstream_response.status_code,
+                        "action": action if action in _SAFETY_ACTIONS else None,
+                        "reason_codes": safe_codes,
+                    }
+                )
+        else:
+            response_summary = _safe_response_summary(name, response_payload, request_summary)
+            record({**event, "status_code": upstream_response.status_code, "response_summary": response_summary})
         response_headers = {
             key: value
             for key, value in upstream_response.headers.items()
@@ -286,12 +384,18 @@ def create_observer_app(*, name: str, upstream: str, events_file: str | Path) ->
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run one D4-3B loopback observer proxy")
-    parser.add_argument("--name", choices=("rag", "llm"), required=True)
+    parser.add_argument("--name", choices=("rag", "llm", "safety"), required=True)
     parser.add_argument("--upstream", required=True)
     parser.add_argument("--events-file", required=True)
     parser.add_argument("--port", type=int, required=True)
+    parser.add_argument("--run-id")
     args = parser.parse_args()
-    app = create_observer_app(name=args.name, upstream=args.upstream, events_file=args.events_file)
+    app = create_observer_app(
+        name=args.name,
+        upstream=args.upstream,
+        events_file=args.events_file,
+        run_id=args.run_id,
+    )
     uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
 
 

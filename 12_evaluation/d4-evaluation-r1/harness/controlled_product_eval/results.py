@@ -36,6 +36,23 @@ FORMAL_EVIDENCE = "FORMAL_PRODUCT_EVIDENCE"
 NONFORMAL_EVIDENCE = "NOT_FORMAL_PRODUCT_EVIDENCE"
 SUPPORT_LABELS = {"SUPPORTS", "PARTIALLY_SUPPORTS", "UNSUPPORTED", "CONTRADICTS", "OUT_OF_SCOPE"}
 APPLICABILITY = {"MATCH", "MISMATCH", "UNRESOLVED", "PENDING_HUMAN_REVIEW"}
+_SAFETY_ACTIONS = frozenset(
+    {"PROCEED", "PROCEED_WITH_BOUNDARY", "BLOCK", "REVIEW_REQUIRED", "CRISIS_ROUTE"}
+)
+_SAFETY_REASON_CODES = frozenset(
+    {
+        "NO_BLOCKING_SIGNAL", "EXPLICIT_CRISIS_SIGNAL", "CONTENT_UNSAFE",
+        "PROMPT_INJECTION", "JAILBREAK", "CLINICAL_OVERREACH",
+        "CONTENT_CONTROVERSIAL", "PII_DETECTED", "DISCLOSURE_RESTRICTED",
+        "ASSESSMENT_SIGNAL_RECEIVED", "RETRIEVAL_SOURCE_INELIGIBLE",
+        "COMPONENT_UNAVAILABLE", "SAFETY_SERVICE_UNAVAILABLE",
+        "POLICY_ENGINE_UNAVAILABLE", "POLICY_EVALUATION_FAILED",
+        "GUARD_MODEL_UNAVAILABLE", "PRIVACY_ENGINE_UNAVAILABLE",
+        "GUARDRAIL_CHECK_FAILED", "INVALID_SAFETY_CONTEXT",
+        "REVIEW_QUEUE_FAILED", "CRISIS_TEMPLATE_UNAVAILABLE",
+        "RETRIEVAL_SAFETY_CHECK_FAILED",
+    }
+)
 
 P0_SIGNAL_CODES = {
     "UNAUTHORIZED_DISCLOSURE",
@@ -189,6 +206,7 @@ def build_case_result(
     trace_id: str,
     rag_events: Any = (),
     llm_events: Any = (),
+    safety_events: Any = (),
     runtime_preflight_identity: Mapping[str, Any] | None = None,
     allowed_evidence_ids: Sequence[str] = (),
     evaluation_to_source_evidence: Mapping[str, str] | None = None,
@@ -216,6 +234,12 @@ def build_case_result(
 
     rag = _observer_events(rag_events)
     llm = _observer_events(llm_events)
+    safety_observation = _project_safety_observation(
+        safety_events,
+        run_id=run_id,
+        request_id=request_id,
+        trace_id=trace_id,
+    )
     rag_request_summaries = [event.get("request_summary") for event in rag if isinstance(event.get("request_summary"), Mapping)]
     rag_response_summaries = [event.get("response_summary") for event in rag if isinstance(event.get("response_summary"), Mapping)]
     observed_populations = [summary.get("target_population") for summary in rag_request_summaries if isinstance(summary.get("target_population"), str)]
@@ -408,6 +432,7 @@ def build_case_result(
             "normal_generation": data.get("normal_generation"),
             "content": dict(content) if isinstance(content, Mapping) else None,
         },
+        "safety_observation": safety_observation,
         "normalized_error_evidence": normalized_error_evidence,
         "retrieval_evidence": {
             "query_sha256": "sha256:" + hashlib.sha256(str(case.get("request", "")).encode("utf-8")).hexdigest(),
@@ -466,6 +491,57 @@ def build_case_result(
     }
     result["result_hash"] = canonical_sha256_tag(result, self_field="result_hash")
     return result
+
+
+def _project_safety_observation(
+    value: Any,
+    *,
+    run_id: str,
+    request_id: str,
+    trace_id: str,
+) -> dict[str, Any]:
+    """Attach only run/request/trace-correlated allowlisted Safety decisions."""
+
+    projected: list[dict[str, Any]] = []
+    for event in _observer_events(value):
+        if (
+            event.get("observer") != "safety"
+            or event.get("run_id") != run_id
+            or event.get("request_id") != request_id
+            or event.get("trace_id") != trace_id
+            or event.get("stage") not in {"INPUT", "RETRIEVAL"}
+        ):
+            continue
+        raw_codes = event.get("reason_codes")
+        codes = (
+            list(dict.fromkeys(
+                code for code in raw_codes
+                if isinstance(code, str) and code in _SAFETY_REASON_CODES
+            ))
+            if isinstance(raw_codes, Sequence) and not isinstance(raw_codes, (str, bytes))
+            else []
+        )
+        action = event.get("action")
+        status_code = event.get("status_code")
+        projected.append(
+            {
+                "stage": event["stage"],
+                "action": action if action in _SAFETY_ACTIONS else None,
+                "reason_codes": codes,
+                "status_code": (
+                    status_code
+                    if isinstance(status_code, int) and not isinstance(status_code, bool)
+                    else None
+                ),
+            }
+        )
+    return {
+        "source": "D4_LOOPBACK_SAFETY_OBSERVER" if projected else "NOT_OBSERVED",
+        "run_id": run_id,
+        "request_id": request_id,
+        "trace_id": trace_id,
+        "events": projected,
+    }
 
 
 def _expected_route(expected: str) -> str:

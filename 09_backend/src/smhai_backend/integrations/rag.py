@@ -11,9 +11,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from smhai_backend.core.errors import ErrorCode, error
 from smhai_backend.core.request_context import RequestContext
+from smhai_backend.domains.assessment.binding import D3_RAG_POPULATION
 from smhai_backend.integrations.contracts import validate_frozen
 
 from .common_http import LongLivedHttpClient, UpstreamError, translate_upstream_error
+from .population_mapping import resolve_population_mapping
 
 
 class Citation(BaseModel):
@@ -155,6 +157,7 @@ class HttpRagClient(LongLivedHttpClient):
     ) -> RetrievalResult:
         context = RequestContext(request_id or "REQ_rag", trace_id)
         try:
+            population_mapping = resolve_population_mapping(D3_RAG_POPULATION)
             response = await self.post_json(
                 "/internal/rag/retrievals",
                 {
@@ -163,10 +166,10 @@ class HttpRagClient(LongLivedHttpClient):
                     "query": query,
                     "top_k": top_k,
                     "retrieval_id": retrieval_id_hint,
-                    # The CAT engineering fixture deliberately uses a
-                    # pending population label.  This explicit integration
-                    # fixture mapping selects the published K-12 corpus.
-                    "target_population": "K12学生",
+                    # Caller population and CAT pending_confirmation are not
+                    # routing inputs. The server-owned product policy selects
+                    # the approved RAG taxonomy through a versioned mapping.
+                    "target_population": population_mapping.rag_query_taxonomy,
                 },
                 context=context,
             )

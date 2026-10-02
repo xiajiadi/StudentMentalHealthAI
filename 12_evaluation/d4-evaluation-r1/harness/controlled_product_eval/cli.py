@@ -156,9 +156,14 @@ async def _run(
             raise RunnerError("frozen synthetic credentials must be provided in memory")
         transport = CanonicalHttpTransport(
             backend_base_url=args.backend_url,
-            observer_urls={"rag": args.rag_observer_url, "llm": args.llm_observer_url},
+            observer_urls={
+                "rag": args.rag_observer_url,
+                "llm": args.llm_observer_url,
+                **({"safety": args.safety_observer_url} if hasattr(args, "safety_observer_url") else {}),
+            },
             rag_observer_events=args.rag_observer_events,
             llm_observer_events=args.llm_observer_events,
+            safety_observer_events=getattr(args, "safety_observer_events", None),
             passwords=synthetic_passwords,
             timeout_seconds=args.timeout_seconds,
         )
@@ -169,7 +174,11 @@ async def _run(
         runtime_preflight=runtime_preflight,
         transport=transport,
         backend_base_url=args.backend_url,
-        observer_endpoints={"rag": args.rag_observer_url, "llm": args.llm_observer_url},
+        observer_endpoints={
+            "rag": args.rag_observer_url,
+            "llm": args.llm_observer_url,
+            **({"safety": args.safety_observer_url} if hasattr(args, "safety_observer_url") else {}),
+        },
         rag_observer_events=args.rag_observer_events,
         llm_observer_events=args.llm_observer_events,
         repo_root=args.repo_root,
@@ -278,6 +287,8 @@ def _managed_specs(
     runtime: RuntimePreflight,
     rag_events: Path,
     llm_events: Path,
+    safety_events: Path,
+    safety_observer_run_id: str,
     database_credential: DatabaseCredential,
     credential_redactions: tuple[str, ...] = (),
 ) -> list[ProcessSpec]:
@@ -323,7 +334,7 @@ def _managed_specs(
         "SMHAI_LLM__MODE": "http",
         "SMHAI_LLM__BASE_URL": "http://127.0.0.1:8272",
         "SMHAI_SAFETY__MODE": "http",
-        "SMHAI_SAFETY__BASE_URL": safety_url,
+        "SMHAI_SAFETY__BASE_URL": "http://127.0.0.1:8273",
         "DATABASE_URL": database_url_for_credential(database_credential),
         "DB_HOST": database_credential.host,
         "DB_PORT": str(database_credential.port),
@@ -438,6 +449,24 @@ def _managed_specs(
             package_lock_identity=backend_lock_identity,
             environment_allowlist=frozenset(observer_env),
         ),
+        ProcessSpec(
+            name="d4-safety-observer",
+            executable=backend_python,
+            arguments=(
+                "-m", "harness.controlled_product_eval.observer_proxy",
+                "--name", "safety", "--upstream", safety_url,
+                "--events-file", str(safety_events.resolve()), "--port", "8273",
+                "--run-id", safety_observer_run_id,
+            ),
+            cwd=repo_root,
+            environment=observer_env,
+            readiness_url="http://127.0.0.1:8273/health",
+            readiness_kind="service",
+            log_path=service_root / "d4-safety-observer.log",
+            interpreter_version=backend_version,
+            package_lock_identity=backend_lock_identity,
+            environment_allowlist=frozenset(observer_env),
+        ),
     ]
 
 
@@ -488,11 +517,14 @@ async def _run_managed(args: argparse.Namespace) -> dict[str, Any]:
     service_root = output_root / "managed-services" / uuid.uuid4().hex
     rag_events = service_root / "events" / "rag.jsonl"
     llm_events = service_root / "events" / "llm.jsonl"
+    safety_events = service_root / "events" / "safety.jsonl"
     args.backend_url = "http://127.0.0.1:8080"
     args.rag_observer_url = "http://127.0.0.1:8271"
     args.llm_observer_url = "http://127.0.0.1:8272"
+    args.safety_observer_url = "http://127.0.0.1:8273"
     args.rag_observer_events = str(rag_events)
     args.llm_observer_events = str(llm_events)
+    args.safety_observer_events = str(safety_events)
     attempt_id = create_run_id() if args.command == "run" else f"D4SMOKE-{uuid.uuid4().hex}"
     if args.command == "run":
         args.run_id = attempt_id
@@ -585,6 +617,8 @@ async def _run_managed(args: argparse.Namespace) -> dict[str, Any]:
             runtime=None,
             rag_events=rag_events,
             llm_events=llm_events,
+            safety_events=safety_events,
+            safety_observer_run_id=attempt_id,
             database_credential=database_credential,
             credential_redactions=synthetic_credentials.secret_values(),
         )
@@ -595,9 +629,14 @@ async def _run_managed(args: argparse.Namespace) -> dict[str, Any]:
         }
         transport = CanonicalHttpTransport(
             backend_base_url=args.backend_url,
-            observer_urls={"rag": args.rag_observer_url, "llm": args.llm_observer_url},
+            observer_urls={
+                "rag": args.rag_observer_url,
+                "llm": args.llm_observer_url,
+                "safety": args.safety_observer_url,
+            },
             rag_observer_events=args.rag_observer_events,
             llm_observer_events=args.llm_observer_events,
+            safety_observer_events=args.safety_observer_events,
             passwords=synthetic_credentials.password_mapping(),
             cat_instrument_id=str(external_profiles.source_evidence["cat"]["instrument_id"]),
             cat_instrument_version=str(external_profiles.source_evidence["cat"]["instrument_version"]),
@@ -608,6 +647,7 @@ async def _run_managed(args: argparse.Namespace) -> dict[str, Any]:
         current_stage = "EXTERNAL_SERVICE_COLD_START"
         for service_name in ("d4-opa", "d4-safety", "d4-ollama", "d4-runtime", "d4-cat"):
             await supervisor.start_service(profiles_by_name[service_name])
+        await supervisor.start_service(profiles_by_name["d4-safety-observer"])
         runtime_attestation = await verify_external_service_readiness(
             supervisor=supervisor,
             profiles=profiles_by_name,

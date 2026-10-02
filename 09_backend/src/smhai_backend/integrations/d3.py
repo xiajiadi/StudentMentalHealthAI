@@ -25,6 +25,7 @@ from smhai_backend.domains.assessment.binding import (
     AssessmentCompatibilityFixture,
 )
 from smhai_backend.integrations.evidence import RetrievalEvidenceBundle
+from smhai_backend.integrations.population_mapping import resolve_population_mapping
 from smhai_backend.integrations.rag import RetrievalResult
 from smhai_backend.integrations.safety import SafetyAction
 
@@ -186,7 +187,9 @@ def retrieval_eligibility_population(
 
     if retrieval.label == config.retrieval_source_label:
         return config.retrieval_source_population
-    return config.retrieval_target_population
+    if retrieval.label == "REAL_HTTP":
+        return resolve_population_mapping(D3_RAG_POPULATION).evidence_eligibility_population
+    raise D3CompositionError("RAG_POPULATION_MAPPING_REQUIRED")
 
 
 def bind_assessment_for_d3(

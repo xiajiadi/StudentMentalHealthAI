@@ -38,6 +38,7 @@ class OrchestrationState(StrEnum):
     ACTIVE = "ACTIVE"
     ABORTED = "ABORTED"
     COMPLETED = "COMPLETED"
+    ABSTAINED = "ABSTAINED"
 
 
 class StageLedgerError(RuntimeError):
@@ -223,6 +224,30 @@ class StageLedger:
         self.state = OrchestrationState.ABORTED
         self.terminal_action = normalized
         self.terminal_reason = reason
+
+    def abstain(
+        self,
+        *,
+        reason_code: str,
+        context: TrustedRequestContext | None = None,
+    ) -> None:
+        """Finish a valid retrieval transaction without crossing generation gates."""
+
+        self._check_context(context or self.context)
+        if self.state is not OrchestrationState.ACTIVE:
+            raise StageLedgerError("STAGE_TERMINAL", "orchestration is already terminal")
+        if self.current is not OrchestrationStage.RETRIEVAL_BOUND:
+            raise StageLedgerError(
+                "ABSTENTION_STAGE_INVALID",
+                "no-evidence abstention is only valid after retrieval is bound",
+            )
+        if not isinstance(reason_code, str) or not reason_code:
+            raise StageLedgerError(
+                "ABSTENTION_REASON_INVALID", "abstention reason code is required"
+            )
+        self.state = OrchestrationState.ABSTAINED
+        self.terminal_action = "ABSTAINED"
+        self.terminal_reason = reason_code
 
     def require(self, stage: OrchestrationStage | str) -> StageRecord:
         """Return a recorded stage or fail closed."""
