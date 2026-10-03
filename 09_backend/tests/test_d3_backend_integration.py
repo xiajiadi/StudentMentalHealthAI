@@ -692,6 +692,116 @@ async def test_schema_valid_measurement_claim_is_not_published_when_safety_proce
 
 
 @pytest.mark.asyncio
+async def test_repeated_suggestion_evidence_is_aggregated_once_in_first_seen_order(
+    client, app, monkeypatch
+) -> None:
+    assessment = _install_exact_assessment(app)
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "student_a", "password": "synthetic-student-a"},
+    )
+    csrf = response.json()["data"]["csrf_token"]
+    source_ids = [
+        ["CHUNK_backend_0", "CHUNK_backend_1"],
+        ["CHUNK_backend_1", "CHUNK_backend_0"],
+    ]
+    candidate_text = json.dumps(
+        {
+            "summary": "这是合成教育支持摘要。",
+            "observations": [],
+            "suggestions": [
+                {"text": "合成建议一。", "source_chunk_ids": source_ids[0]},
+                {"text": "合成建议二。", "source_chunk_ids": source_ids[1]},
+            ],
+            "disclaimer": "这不是诊断或治疗建议。",
+        },
+        ensure_ascii=False,
+    )
+    llm_type = type(app.state.container.llm)
+
+    async def repeated_evidence_candidate(self, **kwargs):
+        return CandidateResponse(
+            text=candidate_text,
+            model_id=kwargs["model_id"],
+            model_version="1.0",
+            runtime_version="test-repeated-evidence",
+            label="CONTRACT_FAKE",
+        )
+
+    monkeypatch.setattr(llm_type, "generate", repeated_evidence_candidate)
+    response = await client.post(
+        "/api/v1/support/requests",
+        headers={"X-CSRF-Token": csrf},
+        json=_support_payload(assessment["assessment_id"], "normal synthetic support"),
+    )
+
+    assert response.status_code == 202, response.text
+    body = response.json()["data"]
+    assert body["status"] == "generated"
+    assert [item["chunk_id"] for item in body["citations"]] == [
+        "CHUNK_backend_0",
+        "CHUNK_backend_1",
+    ]
+    assert [item["rank"] for item in body["citations"]] == [1, 2]
+    assert [
+        item["source_chunk_ids"] for item in body["generation"]["content"]["suggestions"]
+    ] == source_ids
+    assert [item["source_chunk_ids"] for item in body["content"]["suggestions"]] == source_ids
+    report = app.state.container.reports.get(body["report_id"])
+    assert report is not None
+    assert [
+        item["source_chunk_ids"] for item in report.generation["content"]["suggestions"]
+    ] == source_ids
+
+
+@pytest.mark.asyncio
+async def test_repeated_valid_citation_with_unknown_chunk_still_fails_closed(
+    client, app, monkeypatch
+) -> None:
+    assessment = _install_exact_assessment(app)
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "student_a", "password": "synthetic-student-a"},
+    )
+    csrf = response.json()["data"]["csrf_token"]
+    llm_type = type(app.state.container.llm)
+    source_ids = ["CHUNK_backend_0", "CHUNK_not_in_bound_bundle"]
+    candidate_text = json.dumps(
+        {
+            "summary": "这是合成教育支持摘要。",
+            "observations": [],
+            "suggestions": [
+                {"text": "合成建议一。", "source_chunk_ids": [source_ids[0]]},
+                {"text": "合成建议二。", "source_chunk_ids": [source_ids[0], source_ids[1]]},
+            ],
+            "disclaimer": "这不是诊断或治疗建议。",
+        },
+        ensure_ascii=False,
+    )
+
+    async def unknown_evidence_candidate(self, **kwargs):
+        return CandidateResponse(
+            text=candidate_text,
+            model_id=kwargs["model_id"],
+            model_version="1.0",
+            runtime_version="test-unknown-evidence",
+            label="CONTRACT_FAKE",
+        )
+
+    monkeypatch.setattr(llm_type, "generate", unknown_evidence_candidate)
+    response = await client.post(
+        "/api/v1/support/requests",
+        headers={"X-CSRF-Token": csrf},
+        json=_support_payload(assessment["assessment_id"], "normal synthetic support"),
+    )
+
+    assert response.status_code == 502, response.text
+    assert response.json()["error"]["code"] == "DEPENDENCY_INVALID_RESPONSE"
+    assert app.state.container.reports._records == {}
+    assert app.state.container.llm.calls == 0
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("failure_point", ["metadata", "audit", "workflow"])
 async def test_normal_generation_side_effect_failure_leaves_no_report_record(
     app, monkeypatch, failure_point: str

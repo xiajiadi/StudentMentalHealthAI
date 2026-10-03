@@ -1210,11 +1210,13 @@ class SupportOrchestrator:
     ) -> list[SupportCitation]:
         """Validate and resolve candidate citations from the same bundle."""
 
-        source_ids = [
-            source_id
-            for suggestion in content.suggestions
-            for source_id in suggestion.source_chunk_ids
-        ]
+        source_ids = list(
+            dict.fromkeys(
+                source_id
+                for suggestion in content.suggestions
+                for source_id in suggestion.source_chunk_ids
+            )
+        )
         references = [bundle.reference_for(source_id) for source_id in source_ids]
         evidence = bundle.validate_citations(references)
         return [
