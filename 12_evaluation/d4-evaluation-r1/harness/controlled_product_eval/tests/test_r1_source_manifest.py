@@ -8,11 +8,11 @@ from harness.controlled_product_eval import r1_source_manifest as source_manifes
 from harness.controlled_product_eval.runner import RunnerError
 from harness.controlled_product_eval.service_profiles import ServiceProfileError
 
-_PARENT_COMMIT = "0ae7b401ef2d81cffe544a00781df8934c7d70e4"
-_HEAD_COMMIT = "cb8ba89807e913844d966b696c61540b021a937d"
+_PARENT_COMMIT = "2b11d94242a296555cbb26ec6f6da77d747d3f0e"
+_TEST_HEAD_COMMIT = "f" * 40
 _FILE_BLOBS = {
-    "09_backend/src/smhai_backend/core/config.py": "81e0c5eeefc0750b19aab6249798eb940188a157",
-    "09_backend/tests/test_backend_round1.py": "e6514690341ba57663c3e994a865886f74e88091",
+    "09_backend/src/smhai_backend/core/config.py": "452c3be1efb12662b41f9c0a2e0b605cef560d23",
+    "09_backend/tests/test_backend_round1.py": "2c28aaf9d0d6846856a44c965dfcbd3708ca8395",
 }
 
 
@@ -54,12 +54,12 @@ def _install_git_stub(
             revision = arguments[1]
             if revision == f"{source_manifest.R1_TIMEOUT_REMEDIATION_COMMIT}^":
                 return _PARENT_COMMIT
-            if revision == f"{_HEAD_COMMIT}:{source_manifest.R1_REMEDIATION_SOURCE_MANIFEST_PATH}":
+            if revision == f"{_TEST_HEAD_COMMIT}:{source_manifest.R1_REMEDIATION_SOURCE_MANIFEST_PATH}":
                 return "a" * 40
             for path, blob in _FILE_BLOBS.items():
                 if revision == f"{source_manifest.R1_TIMEOUT_REMEDIATION_COMMIT}:{path}":
                     return blob
-                if revision == f"{_HEAD_COMMIT}:{path}":
+                if revision == f"{_TEST_HEAD_COMMIT}:{path}":
                     return head_blob_overrides.get(path, blob)
         if arguments[0] == "merge-base":
             if fail_ancestor_for and arguments[-1] == fail_ancestor_for:
@@ -75,7 +75,7 @@ def test_r1_source_manifest_binds_exact_committed_timeout_blobs(monkeypatch, tmp
 
     binding = source_manifest.resolve_r1_product_source_binding(
         tmp_path,
-        head_commit=_HEAD_COMMIT,
+        head_commit=_TEST_HEAD_COMMIT,
         dirty_paths=[],
     )
 
@@ -94,7 +94,7 @@ def test_r1_source_manifest_rejects_any_dirty_worktree_path(monkeypatch, tmp_pat
     with pytest.raises(RunnerError, match="requires a clean worktree"):
         source_manifest.resolve_r1_product_source_binding(
             tmp_path,
-            head_commit=_HEAD_COMMIT,
+            head_commit=_TEST_HEAD_COMMIT,
             dirty_paths=["12_evaluation/changed.py"],
         )
 
@@ -146,7 +146,7 @@ def test_r1_source_manifest_fails_closed_for_commit_hash_semantic_or_scope_drift
     with pytest.raises(RunnerError):
         source_manifest.resolve_r1_product_source_binding(
             tmp_path,
-            head_commit=_HEAD_COMMIT,
+            head_commit=_TEST_HEAD_COMMIT,
             dirty_paths=[],
         )
 
@@ -155,13 +155,13 @@ def test_r1_source_manifest_rejects_unrelated_evaluation_head(monkeypatch, tmp_p
     _install_git_stub(
         monkeypatch,
         _manifest(),
-        fail_ancestor_for=_HEAD_COMMIT,
+        fail_ancestor_for=_TEST_HEAD_COMMIT,
     )
 
     with pytest.raises(RunnerError):
         source_manifest.resolve_r1_product_source_binding(
             tmp_path,
-            head_commit=_HEAD_COMMIT,
+            head_commit=_TEST_HEAD_COMMIT,
             dirty_paths=[],
         )
 
@@ -174,7 +174,7 @@ def test_r1_source_binding_keeps_original_baseline_when_product_sources_are_unch
 
     binding = source_manifest.resolve_r1_product_source_binding(
         tmp_path,
-        head_commit=_HEAD_COMMIT,
+        head_commit=_TEST_HEAD_COMMIT,
         dirty_paths=[],
     )
 

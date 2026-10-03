@@ -1,16 +1,16 @@
 {
   "schema_version": "d4-r1-remediation-source-manifest.v1",
   "baseline_commit": "466fef4bf59d10b7d115bf522e9f53b2730adb91",
-  "parent_commit": "0ae7b401ef2d81cffe544a00781df8934c7d70e4",
-  "product_commit": "1ff7b55c6577eaf49158a1daaaae079f9e3c55f8",
+  "parent_commit": "2b11d94242a296555cbb26ec6f6da77d747d3f0e",
+  "product_commit": "7ba60b58206ef3854a60ea2a362c62efa99d3cb0",
   "files": [
     {
       "path": "09_backend/src/smhai_backend/core/config.py",
-      "git_blob_oid": "81e0c5eeefc0750b19aab6249798eb940188a157"
+      "git_blob_oid": "452c3be1efb12662b41f9c0a2e0b605cef560d23"
     },
     {
       "path": "09_backend/tests/test_backend_round1.py",
-      "git_blob_oid": "e6514690341ba57663c3e994a865886f74e88091"
+      "git_blob_oid": "2c28aaf9d0d6846856a44c965dfcbd3708ca8395"
     }
   ],
   "authorized_semantic_delta": {
@@ -20,6 +20,7 @@
     "retry_policy_changed": false,
     "warmup_added": false,
     "unbounded_timeout_added": false,
-    "rag_safety_timeouts_changed": false
+    "rag_safety_timeouts_changed": false,
+    "partial_launcher_env_preserves_llm_timeout": true
   }
 }

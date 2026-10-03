@@ -1,4 +1,4 @@
-"""Fail-closed binding for the one Controller-authorized R1 Backend commit."""
+"""Fail-closed binding for the Controller-authorized R1 Backend timeout commit."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from . import service_profiles
 from .runner import RunnerError
 
 R1_PRODUCT_BASELINE_COMMIT = "466fef4bf59d10b7d115bf522e9f53b2730adb91"
-R1_TIMEOUT_REMEDIATION_COMMIT = "1ff7b55c6577eaf49158a1daaaae079f9e3c55f8"
+R1_TIMEOUT_REMEDIATION_COMMIT = "7ba60b58206ef3854a60ea2a362c62efa99d3cb0"
 R1_REMEDIATION_SOURCE_MANIFEST_PATH = (
     "12_evaluation/d4-evaluation-r1/spec/r1_remediation_source_manifest.json"
 )
@@ -39,6 +39,7 @@ _EXPECTED_SEMANTIC_DELTA: dict[str, Any] = {
     "warmup_added": False,
     "unbounded_timeout_added": False,
     "rag_safety_timeouts_changed": False,
+    "partial_launcher_env_preserves_llm_timeout": True,
 }
 _COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 _BLOB_RE = re.compile(r"^[0-9a-f]{40}$")
