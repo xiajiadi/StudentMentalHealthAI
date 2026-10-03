@@ -348,8 +348,21 @@ async def test_safety_down_fails_closed(client, app):
 
 
 @pytest.mark.asyncio
-async def test_long_lived_httpx_local_policy_and_explicit_timeouts():
-    settings = BackendSettings()
+async def test_long_lived_httpx_local_policy_and_explicit_timeouts(monkeypatch):
+    # Match the launcher's partial nested LLM override: mode and base URL only.
+    for key in (
+        "SMHAI_LLM",
+        "SMHAI_LLM__TIMEOUT",
+        "SMHAI_LLM__TIMEOUT__READ",
+        "SMHAI_SUPPORT_DEADLINE_SECONDS",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("SMHAI_LLM__MODE", "http")
+    monkeypatch.setenv("SMHAI_LLM__BASE_URL", "http://127.0.0.1:8272")
+
+    settings = BackendSettings(_env_file=None)
+    assert settings.llm.mode == "http"
+    assert settings.llm.base_url == "http://127.0.0.1:8272"
     llm_client = HttpLLMRuntimeClient(settings.llm)
     rag_client = LongLivedHttpClient(settings.rag)
     safety_client = LongLivedHttpClient(settings.safety)

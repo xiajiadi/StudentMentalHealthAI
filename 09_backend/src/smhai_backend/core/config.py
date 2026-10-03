@@ -42,6 +42,12 @@ class ModuleClientSettings(BaseModel):
         return value.rstrip("/")
 
 
+class LLMModuleClientSettings(ModuleClientSettings):
+    """Keep the Runtime request window when launcher env overrides other LLM fields."""
+
+    timeout: TimeoutSettings = Field(default_factory=lambda: TimeoutSettings(read=65.0))
+
+
 class AuthSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -114,11 +120,10 @@ class BackendSettings(BaseSettings):
             mode="contract_fake", base_url="http://127.0.0.1:8170"
         )
     )
-    llm: ModuleClientSettings = Field(
-        default_factory=lambda: ModuleClientSettings(
+    llm: LLMModuleClientSettings = Field(
+        default_factory=lambda: LLMModuleClientSettings(
             mode="contract_fake",
             base_url="http://127.0.0.1:8160",
-            timeout=TimeoutSettings(read=65.0),
         )
     )
     safety: ModuleClientSettings = Field(default_factory=ModuleClientSettings)
