@@ -675,6 +675,21 @@ class CanonicalHttpTransport:
         self._prepared_assessment = prepared_assessments[0]
         self._prepared = True
 
+    async def prepare_nonformal_diagnostic(self) -> None:
+        """Prepare one synthetic CAT assessment for the A-only diagnostic gate."""
+
+        if self._prepared:
+            raise RunnerError("D4SMOKE diagnostic preparation must run exactly once")
+        await self.login_gate()
+        assessment_id = await self._create_assessment("student_b", "D4SMOKE_DIAGNOSTIC_A")
+        if self._last_completed_assessment is None:
+            raise RunnerError("D4SMOKE diagnostic CAT preparation did not capture completed provenance")
+        self._smoke_assessment_ids.append(assessment_id)
+        self._prepared_assessment = dict(self._last_completed_assessment)
+        if len(self._smoke_assessment_ids) != 1:
+            raise RunnerError("D4SMOKE diagnostic must prepare exactly one completed synthetic assessment")
+        self._prepared = True
+
     async def login_gate(self) -> Mapping[str, Mapping[str, str]]:
         """Authenticate only the frozen synthetic identities, exactly once."""
 

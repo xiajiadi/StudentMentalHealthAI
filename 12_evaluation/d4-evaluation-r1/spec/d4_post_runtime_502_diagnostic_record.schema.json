@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studentmentalhealthai.local/schemas/d4-post-runtime-502-diagnostic-record-v1.json",
+  "title": "Bounded D4-3B post-Runtime 502 diagnostic projection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "request_id",
+    "trace_id",
+    "http_status",
+    "runtime_http_status",
+    "output_safety_request_issued",
+    "output_safety_http_status",
+    "output_safety_action",
+    "output_safety_reason_codes",
+    "candidate_text_length_chars",
+    "candidate_text_sha256",
+    "candidate_parse_status",
+    "source_chunk_ids",
+    "detail_projection_code",
+    "primary_classification"
+  ],
+  "properties": {
+    "schema_version": { "const": "d4-post-runtime-502-diagnostic-record.v1" },
+    "request_id": { "type": "string", "pattern": "^REQ_D4SMOKE_[0-9a-f]{32}$" },
+    "trace_id": { "type": "string", "pattern": "^TRACE_D4SMOKE_[0-9a-f]{32}$" },
+    "http_status": { "type": "integer", "minimum": 100, "maximum": 599 },
+    "runtime_http_status": { "type": ["integer", "null"], "minimum": 100, "maximum": 599 },
+    "output_safety_request_issued": { "type": ["boolean", "null"] },
+    "output_safety_http_status": { "type": ["integer", "null"], "minimum": 100, "maximum": 599 },
+    "output_safety_action": {
+      "type": ["string", "null"],
+      "enum": [null, "PROCEED", "PROCEED_WITH_BOUNDARY", "BLOCK", "REVIEW_REQUIRED", "CRISIS_ROUTE"]
+    },
+    "output_safety_reason_codes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "NO_BLOCKING_SIGNAL",
+          "EXPLICIT_CRISIS_SIGNAL",
+          "CONTENT_UNSAFE",
+          "PROMPT_INJECTION",
+          "JAILBREAK",
+          "CLINICAL_OVERREACH",
+          "CONTENT_CONTROVERSIAL",
+          "PII_DETECTED",
+          "DISCLOSURE_RESTRICTED",
+          "ASSESSMENT_SIGNAL_RECEIVED",
+          "RETRIEVAL_SOURCE_INELIGIBLE",
+          "COMPONENT_UNAVAILABLE",
+          "SAFETY_SERVICE_UNAVAILABLE",
+          "POLICY_ENGINE_UNAVAILABLE",
+          "POLICY_EVALUATION_FAILED",
+          "GUARD_MODEL_UNAVAILABLE",
+          "PRIVACY_ENGINE_UNAVAILABLE",
+          "GUARDRAIL_CHECK_FAILED",
+          "INVALID_SAFETY_CONTEXT",
+          "REVIEW_QUEUE_FAILED",
+          "CRISIS_TEMPLATE_UNAVAILABLE",
+          "RETRIEVAL_SAFETY_CHECK_FAILED"
+        ]
+      }
+    },
+    "candidate_text_length_chars": { "type": ["integer", "null"], "minimum": 0 },
+    "candidate_text_sha256": { "type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$" },
+    "candidate_parse_status": {
+      "enum": [
+        "NOT_OBSERVED",
+        "RUNTIME_RESPONSE_INVALID",
+        "TEXT_NOT_PRESENT",
+        "INVALID_UNICODE",
+        "CANDIDATE_TOO_LARGE",
+        "INVALID_JSON",
+        "INVALID_GENERATION_CONTENT_SHAPE",
+        "VALID_GENERATION_CONTENT"
+      ]
+    },
+    "source_chunk_ids": {
+      "type": "array",
+      "maxItems": 100,
+      "items": { "type": "string", "pattern": "^CHUNK_[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" }
+    },
+    "detail_projection_code": {
+      "type": ["string", "null"],
+      "enum": [
+        null,
+        "LLM_RUNTIME_PROJECTION_INVALID",
+        "OUTPUT_SAFETY_DECISION_INVALID",
+        "GENERATION_CONTENT_INVALID",
+        "GENERATED_CLAIM_BOUNDARY_VIOLATION",
+        "CITATION_BINDING_FAILED",
+        "UNMAPPED_SAFE_DETAIL"
+      ]
+    },
+    "primary_classification": {
+      "enum": [
+        "LLM_RUNTIME_PROJECTION_INVALID",
+        "OUTPUT_SAFETY_DECISION_INVALID",
+        "GENERATION_CONTENT_INVALID",
+        "GENERATED_CLAIM_BOUNDARY_VIOLATION",
+        "CITATION_BINDING_FAILED",
+        "OTHER_CONFIRMED_POST_RUNTIME_PRODUCT_DEFECT",
+        "INDETERMINATE"
+      ]
+    }
+  }
+}

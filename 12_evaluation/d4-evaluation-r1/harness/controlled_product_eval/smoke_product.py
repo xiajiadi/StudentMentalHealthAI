@@ -1,4 +1,4 @@
-"""Run one bounded D4SMOKE A/B/C attempt without loading Human Gold."""
+"""Run bounded non-formal D4SMOKE product and diagnostic attempts."""
 
 from __future__ import annotations
 
@@ -22,6 +22,11 @@ from .environment_profiles import BACKEND_PYTHON, D4_TASK_TOOLS_ROOT, RAG_PYTHON
 from .manifest import ACCEPTED_D4_3A_COMMIT, write_json_once
 from .mysql_bootstrap import IsolatedMySqlBootstrap
 from .network_integrity import LoopbackNetworkMonitor
+from .post_runtime_diagnostic import (
+    INDETERMINATE,
+    REPORTABLE_CLASSIFICATIONS,
+    project_post_runtime_diagnostic,
+)
 from .process_lifecycle import ProcessSpec, ProcessSupervisor
 from .r1_source_manifest import resolve_r1_product_source_binding
 from .runner import (
@@ -247,6 +252,7 @@ def _project_case(
     observation: Any,
     compatibility_gate: Mapping[str, Any],
     compatibility_directory: Path,
+    include_post_runtime_diagnostic: bool = False,
 ) -> dict[str, Any]:
     body = _mapping(observation.response_body)
     data = _mapping(body.get("data")) or body
@@ -289,7 +295,7 @@ def _project_case(
         trace_id=trace_id,
     )
     citations = data.get("citations")
-    return {
+    row = {
         "case_id": case_id,
         "scenario": scenario,
         "evidence_class": _EVIDENCE_CLASS,
@@ -326,6 +332,16 @@ def _project_case(
         "external_network_detected": bool(observation.external_network_detected),
         "request_or_response_body_recorded": False,
     }
+    if include_post_runtime_diagnostic:
+        row["post_runtime_diagnostic"] = project_post_runtime_diagnostic(
+            http_status=observation.http_status,
+            response_body=body,
+            request_id=request_id,
+            trace_id=trace_id,
+            runtime_events=llm_events,
+            safety_events=safety_events,
+        )
+    return row
 
 
 def _binding_audit_pass(value: Mapping[str, Any] | None) -> bool:
@@ -435,6 +451,24 @@ def _check_hard_stop(row: Mapping[str, Any]) -> dict[str, bool]:
     }
 
 
+def _smoke_scenario_plan(
+    *,
+    normal_corpus: Mapping[str, Any],
+    zero_corpus: Mapping[str, Any] | None,
+    diagnostic_only: bool,
+) -> tuple[tuple[str, str, str, Mapping[str, Any] | None, int], ...]:
+    normal = ("normal", "NORMAL_EVIDENCE_PATH", _NORMAL_TEXT, normal_corpus, 0)
+    if diagnostic_only:
+        return (normal,)
+    if zero_corpus is None:
+        raise RunnerError("D4SMOKE zero-evidence corpus is required for the three-case smoke")
+    return (
+        normal,
+        ("zero", "ZERO_EVIDENCE_PATH", _NORMAL_TEXT, zero_corpus, 1),
+        ("hard_stop", "HARD_STOP_PATH", _CRISIS_MARKER, None, 2),
+    )
+
+
 def _safe_changed_paths(repo_root: Path) -> list[str]:
     output = subprocess.run(
         [str(service_profiles.GIT_EXECUTABLE), "status", "--porcelain=v1", "--untracked-files=all"],
@@ -454,8 +488,12 @@ def _safe_changed_paths(repo_root: Path) -> list[str]:
     return paths
 
 
-async def run_smoke_product(args: argparse.Namespace) -> dict[str, Any]:
-    """Run exactly one attempt with exactly A/B/C and no Human Gold loading."""
+async def run_smoke_product(
+    args: argparse.Namespace,
+    *,
+    diagnostic_only: bool = False,
+) -> dict[str, Any]:
+    """Run one non-formal smoke attempt without loading Human Gold."""
 
     repo_root = Path(__file__).resolve().parents[4]
     output_root = Path(args.output_root).resolve()
@@ -471,11 +509,14 @@ async def run_smoke_product(args: argparse.Namespace) -> dict[str, Any]:
 
     attempt_id = f"D4SMOKE-{uuid.uuid4().hex}"
     suffix = uuid.uuid4().hex[:12].upper()
-    case_ids = {
-        "normal": f"{_SMOKE_CASE_PREFIX}A-NORMAL-{suffix}",
-        "zero": f"{_SMOKE_CASE_PREFIX}B-ZERO-{suffix}",
-        "hard_stop": f"{_SMOKE_CASE_PREFIX}C-HARD-STOP-{suffix}",
-    }
+    case_ids = {"normal": f"{_SMOKE_CASE_PREFIX}A-NORMAL-{suffix}"}
+    if not diagnostic_only:
+        case_ids.update(
+            {
+                "zero": f"{_SMOKE_CASE_PREFIX}B-ZERO-{suffix}",
+                "hard_stop": f"{_SMOKE_CASE_PREFIX}C-HARD-STOP-{suffix}",
+            }
+        )
     if any(case_id.startswith("AW-") for case_id in case_ids.values()):
         raise RunnerError("D4SMOKE cannot use formal AW case IDs")
 
@@ -491,11 +532,25 @@ async def run_smoke_product(args: argparse.Namespace) -> dict[str, Any]:
         case_id=case_ids["normal"],
         population="university_freshman",
     )
-    zero_corpus = _make_smoke_corpus(
-        root=output_root,
-        case_id=case_ids["zero"],
-        population="k12",
+    zero_corpus = (
+        _make_smoke_corpus(
+            root=output_root,
+            case_id=case_ids["zero"],
+            population="k12",
+        )
+        if not diagnostic_only
+        else None
     )
+    smoke_cases = [
+        {"case_id": case_ids["normal"], "scenario": "NORMAL_EVIDENCE_PATH", "request_text": _NORMAL_TEXT}
+    ]
+    if not diagnostic_only:
+        smoke_cases.extend(
+            [
+                {"case_id": case_ids["zero"], "scenario": "ZERO_EVIDENCE_PATH", "request_text": _NORMAL_TEXT},
+                {"case_id": case_ids["hard_stop"], "scenario": "HARD_STOP_PATH", "request_text": _CRISIS_MARKER},
+            ]
+        )
     definitions = {
         "schema_version": "d4-smoke-request-definitions.v1",
         "attempt_id": attempt_id,
@@ -503,11 +558,8 @@ async def run_smoke_product(args: argparse.Namespace) -> dict[str, Any]:
         "non_human_gold": True,
         "synthetic_only": True,
         "human_gold_case_ids_used": [],
-        "cases": [
-            {"case_id": case_ids["normal"], "scenario": "NORMAL_EVIDENCE_PATH", "request_text": _NORMAL_TEXT},
-            {"case_id": case_ids["zero"], "scenario": "ZERO_EVIDENCE_PATH", "request_text": _NORMAL_TEXT},
-            {"case_id": case_ids["hard_stop"], "scenario": "HARD_STOP_PATH", "request_text": _CRISIS_MARKER},
-        ],
+        "diagnostic_mode": "A_ONLY_POST_RUNTIME_502" if diagnostic_only else None,
+        "cases": smoke_cases,
     }
     write_json_once(evidence_root / "smoke-request-definitions.json", definitions)
 
@@ -576,12 +628,16 @@ async def run_smoke_product(args: argparse.Namespace) -> dict[str, Any]:
         work_dir=service_root / "rag-work-normal",
         rag_python=rag_python,
     )
-    zero_rag_spec = _smoke_rag_spec(
-        repo_root=repo_root,
-        output_root=output_root,
-        corpus=zero_corpus,
-        work_dir=service_root / "rag-work-zero",
-        rag_python=rag_python,
+    zero_rag_spec = (
+        _smoke_rag_spec(
+            repo_root=repo_root,
+            output_root=output_root,
+            corpus=zero_corpus,
+            work_dir=service_root / "rag-work-zero",
+            rag_python=rag_python,
+        )
+        if zero_corpus is not None
+        else None
     )
     service_specs["d4-rag"] = normal_rag_spec
     mysql_spec = mysql.server_spec()
@@ -618,7 +674,10 @@ async def run_smoke_product(args: argparse.Namespace) -> dict[str, Any]:
     error_detail: str | None = None
     gate: dict[str, Any] | None = None
     start_time_status = {
-        "schema_version": "d4-nonformal-product-smoke.v1",
+        "schema_version": (
+            "d4-post-runtime-502-diagnostic.v1" if diagnostic_only else "d4-nonformal-product-smoke.v1"
+        ),
+        "diagnostic_mode": "A_ONLY_POST_RUNTIME_502" if diagnostic_only else None,
         "attempt_id": attempt_id,
         "head_commit": head,
         "changed_paths": changed_paths,
@@ -706,7 +765,10 @@ async def run_smoke_product(args: argparse.Namespace) -> dict[str, Any]:
         write_json_once(preflight_root / "real-http-preflight-summary.json", preflight_summary)
         if preflight_summary["unexpected_configuration"]:
             raise RunnerError("D4SMOKE preflight found unexpected dependency configuration")
-        await transport.prepare_nonformal_smoke()
+        if diagnostic_only:
+            await transport.prepare_nonformal_diagnostic()
+        else:
+            await transport.prepare_nonformal_smoke()
 
         stage = "WRITE_AND_VALIDATE_SMOKE_COMPATIBILITY_GATE"
         compatibility_directory = service_root / "cat-compatibility"
@@ -727,10 +789,10 @@ async def run_smoke_product(args: argparse.Namespace) -> dict[str, Any]:
         if gate.get("status") != "PASS":
             raise RunnerError("D4SMOKE CAT-to-D3 compatibility gate did not pass")
 
-        scenarios = (
-            ("normal", "NORMAL_EVIDENCE_PATH", _NORMAL_TEXT, normal_corpus, 0),
-            ("zero", "ZERO_EVIDENCE_PATH", _NORMAL_TEXT, zero_corpus, 1),
-            ("hard_stop", "HARD_STOP_PATH", _CRISIS_MARKER, None, 2),
+        scenarios = _smoke_scenario_plan(
+            normal_corpus=normal_corpus,
+            zero_corpus=zero_corpus,
+            diagnostic_only=diagnostic_only,
         )
         for ordinal, (key, scenario, message, corpus, _ordinal) in enumerate(scenarios):
             if key == "zero":
@@ -739,9 +801,11 @@ async def run_smoke_product(args: argparse.Namespace) -> dict[str, Any]:
                 write_json_once(service_root / "rag-normal-cleanup.json", normal_rag_cleanup)
                 if normal_rag_cleanup.get("cleanup_verified") is not True:
                     raise RunnerError("D4SMOKE normal RAG cleanup was not verified")
+                if zero_rag_spec is None:
+                    raise RunnerError("D4SMOKE zero-evidence RAG profile was not prepared")
                 await supervisor.start_service(zero_rag_spec)
             else:
-                stage = f"SMOKE_{key.upper()}"
+                stage = "SMOKE_A_ONLY_DIAGNOSTIC" if diagnostic_only else f"SMOKE_{key.upper()}"
 
             case_id = case_ids[key]
             request_id = f"REQ_D4SMOKE_{uuid.uuid4().hex}"
@@ -768,6 +832,7 @@ async def run_smoke_product(args: argparse.Namespace) -> dict[str, Any]:
                     observation=observation,
                     compatibility_gate=gate,
                     compatibility_directory=compatibility_directory,
+                    include_post_runtime_diagnostic=diagnostic_only,
                 )
                 if key == "normal":
                     checks = _check_normal(row, normal_corpus["chunk_id"])
@@ -838,13 +903,9 @@ async def run_smoke_product(args: argparse.Namespace) -> dict[str, Any]:
         and gate is not None
         and gate.get("status") == "PASS"
     )
-    result = {
-        **start_time_status,
-        "case_results": case_results,
-        "all_three_smokes_pass": all_three_pass,
+    lifecycle_result = {
         "cleanup_verified": cleanup.get("cleanup_verified") is True,
         "managed_service_cleanup": dict(cleanup),
-        "normal_rag_cleanup": dict(normal_rag_cleanup) if normal_rag_cleanup is not None else None,
         "runtime_pointer_invalidated_after_cleanup": pointer_invalidated,
         "port_preflight_status": port_preflight.get("status"),
         "profile_source_identity": profile_identity,
@@ -857,9 +918,6 @@ async def run_smoke_product(args: argparse.Namespace) -> dict[str, Any]:
         "compatibility_gate_path": str((evidence_root / "smoke-cat-d3-compatibility-gate.json").relative_to(output_root)) if gate else None,
         "compatibility_gate_status": gate.get("status") if gate else None,
         "secret_scan": secret_scan,
-        "execution_status": "PASS" if ready else "CONTROLLER_DECISION_REQUIRED",
-        "handoff_status": "READY_FOR_C_SMOKE_REVERIFICATION" if ready else "CONTROLLER_DECISION_REQUIRED",
-        "next_authorized_action": "C_SMOKE_REVERIFICATION_ONLY" if ready else "CONTROLLER_REVIEW",
         "no_formal_manifest_or_human_gold_packet": True,
         "human_gold_case_ids_used": [],
         "no_product_code_changes": True,
@@ -868,9 +926,56 @@ async def run_smoke_product(args: argparse.Namespace) -> dict[str, Any]:
         "d4_4_status": "NOT_AUTHORIZED",
         "real_pilot_status": "BLOCKED",
     }
+    if diagnostic_only:
+        case_row = case_results[0] if len(case_results) == 1 else {}
+        diagnostic = _mapping(case_row.get("post_runtime_diagnostic"))
+        classification = diagnostic.get("primary_classification")
+        if classification not in REPORTABLE_CLASSIFICATIONS:
+            classification = INDETERMINATE
+        diagnostic_complete = (
+            len(case_results) == 1
+            and request_attempt_count == 1
+            and type(case_row.get("http_status")) is int
+            and cleanup.get("cleanup_verified") is True
+            and secret_scan.get("status") == "PASS"
+            and pointer_invalidated
+            and gate is not None
+            and gate.get("status") == "PASS"
+            and error_type is None
+        )
+        result = {
+            **start_time_status,
+            **lifecycle_result,
+            "diagnostic_scope": "A_ONLY_POST_RUNTIME_502",
+            "support_post_count": request_attempt_count,
+            "retry_count": 0,
+            "primary_classification": classification,
+            "diagnostic": dict(diagnostic) if diagnostic else None,
+            "case_results": case_results,
+            "execution_status": "DIAGNOSTIC_COMPLETE" if diagnostic_complete else "CONTROLLER_DECISION_REQUIRED",
+            "handoff_status": (
+                "READY_FOR_CONTROLLER_D4_3B_R1_POST_RUNTIME_REMEDIATION_DECISION"
+                if diagnostic_complete
+                else "CONTROLLER_DECISION_REQUIRED"
+            ),
+            "next_authorized_action": "CONTROLLER_REVIEW" if diagnostic_complete else "NO_FURTHER_REQUESTS",
+        }
+        result_path = output_root / "evidence" / "r1-post-runtime-502-diagnostic.json"
+    else:
+        result = {
+            **start_time_status,
+            **lifecycle_result,
+            "case_results": case_results,
+            "all_three_smokes_pass": all_three_pass,
+            "normal_rag_cleanup": dict(normal_rag_cleanup) if normal_rag_cleanup is not None else None,
+            "execution_status": "PASS" if ready else "CONTROLLER_DECISION_REQUIRED",
+            "handoff_status": "READY_FOR_C_SMOKE_REVERIFICATION" if ready else "CONTROLLER_DECISION_REQUIRED",
+            "next_authorized_action": "C_SMOKE_REVERIFICATION_ONLY" if ready else "CONTROLLER_REVIEW",
+        }
+        result_path = output_root / "evidence" / "r1-nonformal-product-smoke-results.json"
     if error_type is not None:
         result["error_type"] = error_type
-    if error_detail is not None:
+    if error_detail is not None and not diagnostic_only:
         result["error_detail"] = error_detail
-    _write_json(output_root / "evidence" / "r1-nonformal-product-smoke-results.json", result)
+    _write_json(result_path, result)
     return result

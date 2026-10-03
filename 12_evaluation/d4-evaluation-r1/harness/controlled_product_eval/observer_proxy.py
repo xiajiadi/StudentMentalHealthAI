@@ -23,6 +23,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import Response
 
 from .manifest import is_loopback_url
+from .post_runtime_diagnostic import project_runtime_candidate
 
 _SAFETY_ACTIONS = frozenset(
     {"PROCEED", "PROCEED_WITH_BOUNDARY", "BLOCK", "REVIEW_REQUIRED", "CRISIS_ROUTE"}
@@ -56,6 +57,7 @@ _SAFETY_REASON_CODES = frozenset(
 _SAFETY_STAGES = {
     "/internal/safety/check-input": "INPUT",
     "/internal/safety/check-retrieval": "RETRIEVAL",
+    "/internal/safety/check-output": "OUTPUT",
 }
 _RUN_ID = re.compile(r"^(?:D4RUN|D4SMOKE)-[A-Za-z0-9][A-Za-z0-9._-]*$")
 
@@ -123,7 +125,7 @@ def _safe_trace(value: Any) -> dict[str, Any]:
 
 def _safe_response_summary(name: str, value: Any, request_summary: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(value, dict):
-        return {}
+        return project_runtime_candidate(value) if name == "llm" else {}
     data = value.get("data") if isinstance(value.get("data"), dict) else value
     summary: dict[str, Any] = {}
     if name == "rag":
@@ -148,7 +150,8 @@ def _safe_response_summary(name: str, value: Any, request_summary: dict[str, Any
                 summary.setdefault(key, data[key])
         if "fallback_used" not in summary and isinstance(data.get("fallback_used"), bool):
             summary["fallback_used"] = data["fallback_used"]
-        # Never log response text, prompt text, token values, or raw trace data.
+        summary.update(project_runtime_candidate(data))
+        # Candidate text, prompt text, token values, and raw trace data are never logged.
     return summary
 
 

@@ -994,18 +994,30 @@ def main() -> int:
     smoke_product.add_argument("--timeout-seconds", type=float, default=300.0)
     smoke_product.add_argument("--service-startup-timeout-seconds", type=float, default=240.0)
 
+    smoke_diagnostic = subparsers.add_parser(
+        "smoke-diagnostic",
+        help="run one synthetic A-only post-Runtime 502 diagnostic request",
+    )
+    smoke_diagnostic.add_argument("--output-root", required=True)
+    smoke_diagnostic.add_argument("--timeout-seconds", type=float, default=300.0)
+    smoke_diagnostic.add_argument("--service-startup-timeout-seconds", type=float, default=240.0)
+
     args = parser.parse_args()
     try:
         if args.command == "prepare-assets":
             result = prepare_assets(args.packet, args.manifest_dir)
-        elif args.command == "smoke-product":
+        elif args.command in {"smoke-product", "smoke-diagnostic"}:
             from .smoke_product import run_smoke_product
 
-            result = asyncio.run(run_smoke_product(args))
+            result = asyncio.run(
+                run_smoke_product(args, diagnostic_only=args.command == "smoke-diagnostic")
+            )
         else:
             result = asyncio.run(_run_managed(args))
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
         if args.command == "smoke-product" and result.get("execution_status") != "PASS":
+            return 2
+        if args.command == "smoke-diagnostic" and result.get("execution_status") != "DIAGNOSTIC_COMPLETE":
             return 2
         return 0
     except (
