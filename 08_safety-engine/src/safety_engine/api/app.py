@@ -62,12 +62,18 @@ class ReviewCreateRequest(BaseModel):
 def create_app(
     *, service: SafetyService | None = None, bundle: RuntimeBundle | None = None
 ) -> FastAPI:
-    bundle = bundle or (None if service else build_default_bundle())
-    service = service or bundle.service  # type: ignore[union-attr]
+    service_is_injected = service is not None
+    use_default_bundle = bundle is None and not service_is_injected
+    if use_default_bundle:
+        bundle = build_default_bundle()
+    if service is None:
+        service = bundle.service  # type: ignore[union-attr]
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         manager = bundle.opa_manager if bundle else None
+        if use_default_bundle and bundle:
+            bundle.service.qwen.load()
         if manager:
             try:
                 manager.start()
