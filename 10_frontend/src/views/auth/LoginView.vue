@@ -9,7 +9,7 @@ import { ShieldCheck } from '@lucide/vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppInput from '@/components/app/AppInput.vue'
 import AppLogo from '@/components/app/AppLogo.vue'
-import { frontendApi, MockApiError } from '@/services/mock-api'
+import { frontendApi } from '@/services/mock-api'
 import { useSessionStore } from '@/stores/session'
 import type { Role } from '@/types/contracts'
 
@@ -17,8 +17,8 @@ const router = useRouter()
 const route = useRoute()
 const session = useSessionStore()
 
-const account = ref('demo')
-const password = ref('demo')
+const account = ref('student_a')
+const password = ref('synthetic-student-a')
 const role = ref<Role>('student')
 const showPassword = ref(false)
 const isLoading = ref(false)
@@ -52,7 +52,7 @@ const submit = async () => {
     const fallback = role.value === 'student' ? '/student/home' : role.value === 'teacher' ? '/teacher/overview' : '/reviewer/queue'
     await router.push(redirect && redirect.startsWith('/') ? redirect : fallback)
   } catch (error) {
-    errorMessage.value = error instanceof MockApiError ? error.message : '登录没有完成，请稍后重试。'
+    errorMessage.value = error instanceof Error ? error.message : '登录没有完成，请稍后重试。'
   } finally {
     isLoading.value = false
   }

@@ -3,7 +3,7 @@ import path from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
 
 const viewports = [375, 768, 1024, 1440]
-const artifactRoot = path.resolve('reports/artifacts/visual')
+const artifactRoot = path.resolve('test-results/visual')
 
 async function loginAs(page: Page, role: 'student' | 'teacher' | 'reviewer') {
   await page.goto('/login')
@@ -23,6 +23,13 @@ async function expectNoHorizontalOverflow(page: Page) {
   expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1)
 }
 
+async function answerFirstOptionWithKeyboard(page: Page) {
+  const option = page.getByRole('radio').first()
+  await option.focus()
+  if (await option.getAttribute('aria-checked') !== 'true') await page.keyboard.press('Space')
+  await expect(option).toHaveAttribute('aria-checked', 'true')
+}
+
 test('保存四档代表性页面视口证据', async ({ browser }) => {
   test.setTimeout(120_000)
   await Promise.all(viewports.map((width) => mkdir(path.join(artifactRoot, String(width)), { recursive: true })))
@@ -35,21 +42,30 @@ test('保存四档代表性页面视口证据', async ({ browser }) => {
     await expectNoHorizontalOverflow(page)
     await page.screenshot({ path: path.join(artifactRoot, String(width), 'login.png'), fullPage: true })
     await loginAs(page, 'student')
-    await expect(page.getByRole('heading', { name: '先看见现在，再决定下一步' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '合成演示工作区' })).toBeVisible()
     await expectNoHorizontalOverflow(page)
     await page.screenshot({ path: path.join(artifactRoot, String(width), 'student-home.png'), fullPage: true })
-    await page.getByRole('button', { name: /开始一次测评/ }).click()
+    await page.getByRole('button', { name: '开始测评' }).click()
     await expect(page.getByText('第 1 题 · 测评进行中')).toBeVisible()
     await expectNoHorizontalOverflow(page)
     await page.screenshot({ path: path.join(artifactRoot, String(width), 'cat-focus.png'), fullPage: true })
-    await page.getByRole('button', { name: /暂停并离开/ }).click()
-    await expect(page.getByRole('dialog')).toBeVisible()
-    await page.getByRole('button', { name: '离开测评' }).click()
-    await expect(page.getByRole('heading', { name: '先看见现在，再决定下一步' })).toBeVisible()
-    await page.getByRole('button', { name: /查看详情/ }).click()
-    await expect(page.getByRole('heading', { name: '你的支持参考' })).toBeVisible()
+    const completeButton = page.getByRole('button', { name: /完成并查看结构/ })
+    for (let index = 0; index < 8; index += 1) {
+      if (await completeButton.isVisible()) break
+      await answerFirstOptionWithKeyboard(page)
+      await page.getByRole('button', { name: /保存并继续/ }).click()
+    }
+    await expect(completeButton).toBeEnabled()
+    await completeButton.click()
+    await expect(page.getByRole('heading', { name: '本次合成测评已完成' })).toBeVisible()
     await expectNoHorizontalOverflow(page)
     await page.screenshot({ path: path.join(artifactRoot, String(width), 'student-result.png'), fullPage: true })
+    await page.getByRole('button', { name: /进入 AI 支持对话/ }).click()
+    await page.getByLabel('你的问题').fill('请整理一个可以开始的小步骤。')
+    await page.getByRole('button', { name: '发送' }).click()
+    await expect(page.getByText('服务端回答')).toBeVisible()
+    await expectNoHorizontalOverflow(page)
+    await page.screenshot({ path: path.join(artifactRoot, String(width), 'student-support.png'), fullPage: true })
     await context.close()
 
     const teacherContext = await browser.newContext({ viewport: { width, height: 900 }, reducedMotion: 'reduce' })

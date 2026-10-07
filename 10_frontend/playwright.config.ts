@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
+const apiMode = process.env.VITE_API_MODE === 'real' ? 'real' : 'test'
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
@@ -14,7 +16,7 @@ export default defineConfig({
     ...devices['Desktop Chrome'],
   },
   webServer: {
-    command: 'npm run dev -- --host 127.0.0.1 --port 4173',
+    command: `npm run dev -- --mode ${apiMode} --host 127.0.0.1 --port 4173`,
     url: 'http://127.0.0.1:4173',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

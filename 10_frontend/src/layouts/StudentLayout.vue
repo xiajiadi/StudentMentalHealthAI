@@ -21,7 +21,7 @@ const logout = () => {
         <RouterLink to="/student/home" class="student-header__brand" aria-label="心桥学生首页"><AppLogo /></RouterLink>
         <nav class="student-header__nav" aria-label="学生导航">
           <RouterLink to="/student/home" exact-active-class="student-header__link--active">我的支持</RouterLink>
-          <RouterLink to="/student/result/REPORT_demo_student_001" exact-active-class="student-header__link--active">最近结果</RouterLink>
+          <RouterLink to="/student/history" exact-active-class="student-header__link--active">历史记录</RouterLink>
         </nav>
         <div class="student-header__account">
           <AppBadge tone="blue" dot>演示环境</AppBadge>

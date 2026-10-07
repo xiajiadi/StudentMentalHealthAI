@@ -9,11 +9,12 @@ import AppButton from '@/components/app/AppButton.vue'
 import AppDialog from '@/components/app/AppDialog.vue'
 import AppProgress from '@/components/app/AppProgress.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
-import { frontendApi, MockApiError } from '@/services/mock-api'
+import { frontendApi } from '@/services/mock-api'
 import { useAssessmentStore } from '@/stores/assessment'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 const router = useRouter()
+const route = useRoute()
 const assessment = useAssessmentStore()
 const selectedResponse = ref('')
 const pageState = ref<'loading' | 'ready' | 'error'>('loading')
@@ -31,7 +32,11 @@ const load = async () => {
   pageState.value = 'loading'
   errorMessage.value = ''
   try {
-    const response = await frontendApi.startAssessment()
+    const routeAssessmentId = typeof route.params.id === 'string' ? route.params.id : undefined
+    const existing = routeAssessmentId
+      ? undefined
+      : (await frontendApi.listAssessments()).data.find((item) => item.status === 'in_progress')
+    const response = await frontendApi.startAssessment(routeAssessmentId || existing?.assessment_id)
     assessment.start({
       assessmentId: response.data.assessment_id,
       subjectId: response.data.subject_id,
@@ -44,7 +49,7 @@ const load = async () => {
     pageState.value = 'ready'
   } catch (error) {
     pageState.value = 'error'
-    errorMessage.value = error instanceof MockApiError ? error.message : '测评会话没有准备好，请重试。'
+    errorMessage.value = error instanceof Error ? error.message : '测评会话没有准备好，请重试。'
   }
 }
 
@@ -62,7 +67,7 @@ const submitResponse = async () => {
     })
     selectedResponse.value = ''
   } catch (error) {
-    errorMessage.value = error instanceof MockApiError ? error.message : '答案暂时没有保存，请重试。'
+    errorMessage.value = error instanceof Error ? error.message : '答案暂时没有保存，请重试。'
   } finally {
     isSubmitting.value = false
   }
@@ -74,14 +79,10 @@ const complete = async () => {
   errorMessage.value = ''
   try {
     const response = await frontendApi.completeAssessment(assessment.assessmentId)
-    const support = await frontendApi.createSupport(
-      response.data.assessment_id,
-      '请基于本次合成测评，提供一个今天可以开始的教育支持小步骤。',
-    )
     assessment.reset()
-    await router.push(`/student/result/${encodeURIComponent(support.data.report_id)}?assessment=${encodeURIComponent(response.data.assessment_id)}`)
+    await router.push(`/student/assessment/${encodeURIComponent(response.data.assessment_id)}/result`)
   } catch (error) {
-    errorMessage.value = error instanceof MockApiError ? error.message : '测评完成状态没有保存，请稍后重试。'
+    errorMessage.value = error instanceof Error ? error.message : '测评完成状态没有保存，请稍后重试。'
   } finally {
     isCompleting.value = false
   }

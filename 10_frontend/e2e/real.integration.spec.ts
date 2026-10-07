@@ -55,9 +55,9 @@ async function createBrowserCrisisSupport(page: Page) {
       method: 'POST',
       headers: jsonHeaders(`${keyPrefix}-create`),
       body: JSON.stringify({
-        subject_id: 'SUBJ_demo_a',
-        instrument_id: 'instrument_demo_cat_v0_1',
-        instrument_version: 'demo.v1',
+        subject_id: 'SYNTHETIC_STUDENT_DEMO',
+        instrument_id: 'CURRENT_SYNTHETIC_GRM',
+        instrument_version: 'synthetic_item_bank.v1 / demo.v1',
       }),
     })
     const assessmentId = created.body.data.assessment_id
@@ -100,12 +100,12 @@ async function createBrowserCrisisSupport(page: Page) {
   }, { backendUrl: 'http://127.0.0.1:8080' })
 }
 
-test('真实接口：登录 → CAT → 支持请求 → 报告', async ({ page }) => {
+test('真实接口：登录 → CAT → 结果 → 支持报告 → 刷新后历史可见', async ({ page }) => {
   test.setTimeout(180_000)
   await loginAsSyntheticStudent(page)
-  await expect(page.getByText('还没有可查看的记录')).toBeVisible()
+  await expect(page.getByText('还没有测评记录。开始后，记录会由服务端保存。')).toBeVisible()
 
-  await page.getByRole('button', { name: /开始一次测评/ }).click()
+  await page.getByRole('button', { name: '开始测评' }).click()
   await expect(page.getByText('第 1 题 · 测评进行中')).toBeVisible()
 
   const completeButton = page.getByRole('button', { name: /完成并查看结构/ })
@@ -119,10 +119,18 @@ test('真实接口：登录 → CAT → 支持请求 → 报告', async ({ page 
 
   await expect(completeButton).toBeEnabled({ timeout: 10_000 })
   await completeButton.click()
-  await expect(page).toHaveURL(/\/student\/result\/REPORT_/, { timeout: 120_000 })
-  await expect(page.getByRole('heading', { name: '你的支持参考' })).toBeVisible({ timeout: 120_000 })
-  await expect(page.getByRole('heading', { name: '为什么会看到这些建议' })).toBeVisible()
+  await expect(page).toHaveURL(/\/student\/assessment\/ASSESS_.*\/result/, { timeout: 120_000 })
+  await expect(page.getByRole('heading', { name: '本次合成测评已完成' })).toBeVisible({ timeout: 120_000 })
   await expect(page.locator('body')).not.toContainText('theta')
+  await page.getByRole('button', { name: /进入 AI 支持对话/ }).click()
+  await page.getByLabel('你的问题').fill('请给我一个今天可以开始的教育支持小步骤。')
+  await page.getByRole('button', { name: '发送' }).click()
+  await expect(page.getByText('服务端回答')).toBeVisible({ timeout: 120_000 })
+  await expect(page.locator('.support-turn__citations a').first()).toBeVisible()
+  await expect(page.locator('.support-turn__saved')).toContainText('记录已返回')
+  await page.reload()
+  await expect(page.getByText('报告与对话历史')).toBeVisible()
+  await expect(page.getByText(/REPORT_/).first()).toBeVisible()
 })
 
 test('真实接口：浏览器上下文危机路由保留 CSRF 与安全边界', async ({ page }) => {
@@ -147,7 +155,7 @@ test('真实接口：Safety 不可用时页面保留可恢复的错误状态', a
   test.skip(process.env.VITE_RUN_SAFETY_DOWN !== '1', '仅在 Safety-down 专项环境运行')
   test.setTimeout(60_000)
   await loginAsSyntheticStudent(page)
-  await page.getByRole('button', { name: /开始一次测评/ }).click()
+  await page.getByRole('button', { name: '开始测评' }).click()
   await expect(page.getByText('第 1 题 · 测评进行中')).toBeVisible()
 
   const completeButton = page.getByRole('button', { name: /完成并查看结构/ })
@@ -161,7 +169,9 @@ test('真实接口：Safety 不可用时页面保留可恢复的错误状态', a
 
   await expect(completeButton).toBeEnabled({ timeout: 10_000 })
   await completeButton.click()
-  await expect(page).toHaveURL(/\/student\/assessment$/)
-  await expect(page.getByText('这一步没有完成')).toBeVisible({ timeout: 10_000 })
-  await expect(page.getByRole('button', { name: '重试' })).toBeVisible()
+  await expect(page).toHaveURL(/\/student\/assessment\/ASSESS_.*\/result/, { timeout: 120_000 })
+  await page.getByRole('button', { name: /进入 AI 支持对话/ }).click()
+  await page.getByLabel('你的问题').fill('请提供一个演示支持建议。')
+  await page.getByRole('button', { name: '发送' }).click()
+  await expect(page.getByText('请求或历史记录未能加载')).toBeVisible({ timeout: 10_000 })
 })

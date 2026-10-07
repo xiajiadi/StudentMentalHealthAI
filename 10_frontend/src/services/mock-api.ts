@@ -22,6 +22,7 @@ import type {
   FrontendApi,
   LoginInput,
   LoginResult,
+  ReportSummary,
   ReviewSubmission,
   SupportResult,
 } from '@/api/client'
@@ -55,6 +56,7 @@ const currentDemoState = () => {
 
 let assessmentIndex = 0
 let answeredCount = 0
+let mockAssessmentId = 'ASSESS_demo_session_001'
 let reviewCaseState: ReviewCase = clone(reviewCaseFixture)
 
 export class MockApiProvider implements FrontendApi {
@@ -80,6 +82,11 @@ export class MockApiProvider implements FrontendApi {
     return { ...requestIds(`login_${input.role}`), data: result } as ApiEnvelope<LoginResult>
   }
 
+  async getCurrentUser(): Promise<ApiEnvelope<LoginResult | null>> {
+    await sleep(80)
+    return { ...requestIds('current_user'), data: null } as ApiEnvelope<LoginResult | null>
+  }
+
   async getStudentHome(): Promise<ApiEnvelope<StudentHomeViewModel | null>> {
     await sleep()
     const state = currentDemoState()
@@ -90,14 +97,54 @@ export class MockApiProvider implements FrontendApi {
     } as ApiEnvelope<StudentHomeViewModel | null>
   }
 
-  async startAssessment(): Promise<ApiEnvelope<AssessmentState>> {
+  async listAssessments(): Promise<ApiEnvelope<Assessment[]>> {
+    await sleep()
+    const rows = answeredCount > 0
+      ? [{ ...clone(syntheticAssessment), assessment_id: mockAssessmentId, status: assessmentIndex >= 3 ? 'completed' as const : 'in_progress' as const }]
+      : []
+    return { ...requestIds('assessment_list'), data: rows } as ApiEnvelope<Assessment[]>
+  }
+
+  async getAssessmentState(assessmentId: string): Promise<ApiEnvelope<AssessmentState>> {
+    await sleep()
+    if (assessmentId !== mockAssessmentId) throw new MockApiError('ASSESSMENT_NOT_FOUND', '没有找到这次测评。')
+    const question = catQuestions[assessmentIndex] ? clone(catQuestions[assessmentIndex]) : null
+    return { ...requestIds('assessment_state'), data: {
+      assessment_id: mockAssessmentId,
+      subject_id: 'SUBJ_demo_student_001',
+      status: 'in_progress',
+      current_index: assessmentIndex,
+      answered_count: answeredCount,
+      can_complete: answeredCount >= 3,
+      max_items: 8,
+      question,
+    } } as ApiEnvelope<AssessmentState>
+  }
+
+  async getAssessmentResult(assessmentId: string): Promise<ApiEnvelope<Assessment>> {
+    await sleep()
+    if (assessmentId !== mockAssessmentId || answeredCount < 3) throw new MockApiError('ASSESSMENT_NOT_FOUND', '没有找到已完成的测评结果。')
+    return { ...requestIds('assessment_result'), data: clone({ ...syntheticAssessment, assessment_id: assessmentId }) } as ApiEnvelope<Assessment>
+  }
+
+  async listReports(assessmentId?: string): Promise<ApiEnvelope<{ items: ReportSummary[]; next_cursor: string | null }>> {
+    await sleep()
+    const items = answeredCount >= 3 && (!assessmentId || assessmentId === mockAssessmentId)
+      ? [{ report_id: studentReportFixture.report.reportId, assessment_id: mockAssessmentId, status: 'generated', safety_action: 'PROCEED_WITH_BOUNDARY', created_at: syntheticAssessment.timestamps.completed_at || '', citation_count: studentReportFixture.evidence.length }]
+      : []
+    return { ...requestIds('report_list'), data: { items, next_cursor: null } } as ApiEnvelope<{ items: ReportSummary[]; next_cursor: null }>
+  }
+
+  async startAssessment(assessmentId?: string): Promise<ApiEnvelope<AssessmentState>> {
+    if (assessmentId) return this.getAssessmentState(assessmentId)
     await sleep()
     assessmentIndex = 0
     answeredCount = 0
+    mockAssessmentId = `ASSESS_demo_session_${Date.now()}`
     return {
       ...requestIds('assessment_start'),
       data: {
-        assessment_id: 'ASSESS_demo_session_001',
+        assessment_id: mockAssessmentId,
         subject_id: 'SUBJ_demo_student_001',
         status: 'in_progress',
         current_index: assessmentIndex,
@@ -265,8 +312,8 @@ export class MockApiProvider implements FrontendApi {
   }
 }
 
-export const frontendApi: FrontendApi = import.meta.env.VITE_API_MODE === 'real'
-  ? new RealApiProvider()
-  : new MockApiProvider()
+export const frontendApi: FrontendApi = import.meta.env.MODE === 'test' || import.meta.env.VITE_API_MODE === 'mock'
+  ? new MockApiProvider()
+  : new RealApiProvider()
 
 export type FrontendReport = Report

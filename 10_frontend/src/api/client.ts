@@ -51,6 +51,15 @@ export interface SupportResult {
   integration_labels: Record<string, string>
 }
 
+export interface ReportSummary {
+  report_id: string
+  assessment_id: string
+  status: string
+  safety_action: string | null
+  created_at: string
+  citation_count: number
+}
+
 export interface ReviewSubmission {
   decision: 'approved' | 'rejected'
   note: string
@@ -58,8 +67,13 @@ export interface ReviewSubmission {
 
 export interface FrontendApi {
   login(input: LoginInput): Promise<ApiEnvelope<LoginResult>>
+  getCurrentUser(): Promise<ApiEnvelope<LoginResult | null>>
   getStudentHome(): Promise<ApiEnvelope<StudentHomeViewModel | null>>
-  startAssessment(): Promise<ApiEnvelope<AssessmentState>>
+  listAssessments(): Promise<ApiEnvelope<Assessment[]>>
+  getAssessmentState(assessmentId: string): Promise<ApiEnvelope<AssessmentState>>
+  getAssessmentResult(assessmentId: string): Promise<ApiEnvelope<Assessment>>
+  listReports(assessmentId?: string): Promise<ApiEnvelope<{ items: ReportSummary[]; next_cursor: string | null }>>
+  startAssessment(assessmentId?: string): Promise<ApiEnvelope<AssessmentState>>
   submitAssessmentResponse(assessmentId: string, itemId: string, response: string): Promise<ApiEnvelope<AssessmentState>>
   completeAssessment(assessmentId: string): Promise<ApiEnvelope<Assessment>>
   createSupport(assessmentId: string, message: string): Promise<ApiEnvelope<SupportResult>>

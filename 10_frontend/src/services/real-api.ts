@@ -9,6 +9,7 @@ import {
   listReviews,
   authLogin,
   authMe,
+  authCsrf,
   recordAssessmentResponse,
   reviewReport,
 } from '@/api/generated/sdk.gen'
@@ -28,6 +29,7 @@ import type {
   FrontendApi,
   LoginInput,
   LoginResult,
+  ReportSummary,
   ReviewSubmission,
   SupportResult,
 } from '@/api/client'
@@ -161,10 +163,10 @@ const mapAssessment = (value: unknown, assessmentId: string, subjectId: string):
     assessment_id: valueAsString(source.assessment_id, assessmentId),
     subject_id: valueAsString(source.subject_id, subjectId),
     instrument: {
-      instrument_id: valueAsString(instrument.instrument_id, 'instrument_demo_cat_v0_1'),
-      version: valueAsString(instrument.version, 'demo.v1'),
+      instrument_id: valueAsString(instrument.instrument_id, 'CURRENT_SYNTHETIC_GRM'),
+      version: valueAsString(instrument.version, 'synthetic_item_bank.v1 / demo.v1'),
     },
-    population_scope: valueAsString(source.population_scope, 'K12学生 · 合成范围'),
+    population_scope: valueAsString(source.population_scope, '大学新生合成演示范围'),
     status: valueAsString(source.status, 'completed') as Assessment['status'],
     dimensions,
     risk: {
@@ -180,7 +182,7 @@ const mapAssessment = (value: unknown, assessmentId: string, subjectId: string):
     provenance: {
       source_adapter: valueAsString(provenance.source_adapter, 'cat_http_adapter'),
       adapter_version: valueAsString(provenance.adapter_version, 'unknown'),
-      cat_engine_version: valueAsString(provenance.cat_engine_version, 'adaptivetesting-1.2.1'),
+      cat_engine_version: valueAsString(provenance.cat_engine_version, 'not_exposed'),
       item_bank_version: valueAsString(provenance.item_bank_version, 'demo.v1'),
     },
     timestamps: {
@@ -345,6 +347,13 @@ export class RealApiProvider implements FrontendApi {
   private csrfToken = ''
   private readonly reviewCases = new Map<string, ReviewCase>()
 
+  private async ensureCsrfToken(): Promise<string> {
+    if (this.csrfToken) return this.csrfToken
+    const response = await unwrap<{ csrf_token: string }>(() => authCsrf({ client: apiClient }))
+    this.csrfToken = response.data.csrf_token
+    return this.csrfToken
+  }
+
   async login(input: LoginInput): Promise<ApiEnvelope<LoginResult>> {
     const response = await unwrap<UnknownRecord>(() => authLogin({
       client: apiClient,
@@ -363,32 +372,102 @@ export class RealApiProvider implements FrontendApi {
     }
   }
 
+  async getCurrentUser(): Promise<ApiEnvelope<LoginResult | null>> {
+    const response = await unwrap<UnknownRecord>(() => authMe({ client: apiClient }))
+    const actor = isRecord(response.data.actor) ? response.data.actor : response.data
+    const userId = valueAsString(actor.user_id)
+    if (!userId) return { ...response, data: null }
+    const username = valueAsString(actor.username, '演示同学')
+    return {
+      ...response,
+      data: {
+        userId,
+        role: mapRole(actor.role, 'student'),
+        displayName: username,
+        initials: username.slice(0, 1).toUpperCase(),
+      },
+    }
+  }
+
   async getStudentHome(): Promise<ApiEnvelope<StudentHomeViewModel | null>> {
     const response = await unwrap<UnknownRecord>(() => authMe({ client: apiClient }))
     return { ...response, data: null }
   }
 
-  async startAssessment(): Promise<ApiEnvelope<AssessmentState>> {
+  async listAssessments(): Promise<ApiEnvelope<Assessment[]>> {
+    const response = await unwrap<unknown>(() => apiClient.request({
+      method: 'GET',
+      url: '/api/v1/assessments',
+      parseAs: 'json',
+    }))
+    const rows = Array.isArray(response.data) ? response.data : []
+    return { ...response, data: rows.map((row) => {
+      const source = isRecord(row) ? row : {}
+      const subjectId = valueAsString(source.subject_id, 'SYNTHETIC_STUDENT_DEMO')
+      return mapAssessment(source, valueAsString(source.assessment_id), subjectId)
+    }) }
+  }
+
+  async getAssessmentState(assessmentId: string): Promise<ApiEnvelope<AssessmentState>> {
+    const response = await unwrap<unknown>(() => getAssessmentState({
+      client: apiClient,
+      path: { assessment_id: assessmentId },
+    }))
+    return { ...response, data: mapAssessmentState(response.data) }
+  }
+
+  async getAssessmentResult(assessmentId: string): Promise<ApiEnvelope<Assessment>> {
+    const response = await unwrap<unknown>(() => getAssessment({ client: apiClient, path: { assessment_id: assessmentId } }))
+    const source = isRecord(response.data) ? response.data : {}
+    return {
+      ...response,
+      data: mapAssessment(source, assessmentId, valueAsString(source.subject_id, 'SYNTHETIC_STUDENT_DEMO')),
+    }
+  }
+
+  async listReports(assessmentId?: string): Promise<ApiEnvelope<{ items: ReportSummary[]; next_cursor: string | null }>> {
+    const response = await unwrap<unknown>(() => apiClient.request({
+      method: 'GET',
+      url: '/api/v1/reports',
+      query: { assessment_id: assessmentId, limit: 100 },
+      parseAs: 'json',
+    }))
+    const data = isRecord(response.data) ? response.data : {}
+    const items = Array.isArray(data.items) ? data.items.filter(isRecord).map((item) => ({
+      report_id: valueAsString(item.report_id),
+      assessment_id: valueAsString(item.assessment_id),
+      status: valueAsString(item.status, 'unknown'),
+      safety_action: nullableString(item.safety_action),
+      created_at: valueAsString(item.created_at),
+      citation_count: typeof item.citation_count === 'number' ? item.citation_count : 0,
+    })) : []
+    return { ...response, data: { items, next_cursor: nullableString(data.next_cursor) } }
+  }
+
+  async startAssessment(assessmentId?: string): Promise<ApiEnvelope<AssessmentState>> {
+    if (assessmentId) return this.getAssessmentState(assessmentId)
+    await this.ensureCsrfToken()
     const created = await unwrap<unknown>(() => createAssessment({
       client: apiClient,
       body: {
-        subject_id: 'SUBJ_demo_a',
-        instrument_id: 'instrument_demo_cat_v0_1',
-        instrument_version: 'demo.v1',
+        subject_id: 'SYNTHETIC_STUDENT_DEMO',
+        instrument_id: 'CURRENT_SYNTHETIC_GRM',
+        instrument_version: 'synthetic_item_bank.v1 / demo.v1',
       },
       headers: mutationHeaders(this.csrfToken, nowToken('frontend-assessment-create')),
     }))
     const createdAssessment = isRecord(created.data) ? created.data : {}
-    const assessmentId = valueAsString(createdAssessment.assessment_id)
-    if (!assessmentId) throw new RealApiError('API_INVALID_RESPONSE', '接口没有返回测评会话标识。')
+    const createdAssessmentId = valueAsString(createdAssessment.assessment_id)
+    if (!createdAssessmentId) throw new RealApiError('API_INVALID_RESPONSE', '接口没有返回测评会话标识。')
     const state = await unwrap<unknown>(() => getAssessmentState({
       client: apiClient,
-      path: { assessment_id: assessmentId },
+      path: { assessment_id: createdAssessmentId },
     }))
     return { ...state, data: mapAssessmentState(state.data) }
   }
 
   async submitAssessmentResponse(assessmentId: string, itemId: string, response: string): Promise<ApiEnvelope<AssessmentState>> {
+    await this.ensureCsrfToken()
     const result = await unwrap<unknown>(() => recordAssessmentResponse({
       client: apiClient,
       path: { assessment_id: assessmentId },
@@ -399,16 +478,18 @@ export class RealApiProvider implements FrontendApi {
   }
 
   async completeAssessment(assessmentId: string): Promise<ApiEnvelope<Assessment>> {
+    await this.ensureCsrfToken()
     const response = await unwrap<unknown>(() => completeAssessment({
       client: apiClient,
       path: { assessment_id: assessmentId },
       body: {},
       headers: mutationHeaders(this.csrfToken, nowToken(`frontend-assessment-complete-${assessmentId}`)),
     }))
-    return { ...response, data: mapAssessment(response.data, assessmentId, 'SUBJ_demo_a') }
+    return { ...response, data: mapAssessment(response.data, assessmentId, 'SYNTHETIC_STUDENT_DEMO') }
   }
 
   async createSupport(assessmentId: string, message: string): Promise<ApiEnvelope<SupportResult>> {
+    await this.ensureCsrfToken()
     return unwrap<SupportResult>(() => createSupport({
       client: apiClient,
       body: {
@@ -486,6 +567,7 @@ export class RealApiProvider implements FrontendApi {
   }
 
   async submitReview(reportId: string, input: ReviewSubmission): Promise<ApiEnvelope<ReviewCase>> {
+    await this.ensureCsrfToken()
     const response = await unwrap<UnknownRecord>(() => reviewReport({
       client: apiClient,
       path: { report_id: reportId },

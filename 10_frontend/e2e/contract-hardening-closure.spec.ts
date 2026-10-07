@@ -65,7 +65,7 @@ async function assertSessionBoundary(page: Page) {
 }
 
 async function completeStudentAssessment(page: Page) {
-  await page.getByRole('button', { name: /开始一次测评/ }).click()
+  await page.getByRole('button', { name: '开始测评' }).click()
   await expect(page.getByText('第 1 题 · 测评进行中')).toBeVisible()
 
   const completeButton = page.getByRole('button', { name: /完成并查看结构/ })
@@ -115,9 +115,9 @@ async function createBrowserCrisisSupport(page: Page): Promise<BrowserCrisisResu
       method: 'POST',
       headers: jsonHeaders(`${keyPrefix}-create`),
       body: JSON.stringify({
-        subject_id: 'SUBJ_demo_a',
-        instrument_id: 'instrument_demo_cat_v0_1',
-        instrument_version: 'demo.v1',
+        subject_id: 'SYNTHETIC_STUDENT_DEMO',
+        instrument_id: 'CURRENT_SYNTHETIC_GRM',
+        instrument_version: 'synthetic_item_bank.v1 / demo.v1',
       }),
     })
     const assessmentId = created.body.data.assessment_id
@@ -172,7 +172,7 @@ test('闭环登录：服务端会话保持 HttpOnly，前端不持有会话令�
   const errors = collectBrowserDiagnostics(page)
   await loginAsSynthetic(page, 'student')
   await assertSessionBoundary(page)
-  await expect(page.getByRole('heading', { name: '从今天的一个小步骤开始' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '合成演示工作区' })).toBeVisible()
   await assertBrowserDiagnostics(errors)
 })
 
@@ -187,6 +187,9 @@ test('闭环正常支持：真实接口返回执行来源、引用并在页面�
     { timeout: 150_000 },
   )
   await completeStudentAssessment(page)
+  await page.getByRole('button', { name: /进入 AI 支持对话/ }).click()
+  await page.getByLabel('你的问题').fill('请给我一个今天可以开始的教育支持小步骤。')
+  await page.getByRole('button', { name: '发送' }).click()
   const supportResponse = await supportResponsePromise
   expect(supportResponse.status()).toBe(202)
   const supportEnvelope = (await supportResponse.json()) as { data: SupportResult }
@@ -203,10 +206,9 @@ test('闭环正常支持：真实接口返回执行来源、引用并在页面�
   expect(support.generation.provenance.retrieval_id).toMatch(/^RETR_/)
   expect(support.generation.provenance.model_id).toMatch(/^MODEL_/)
 
-  await expect(page).toHaveURL(/\/student\/result\/REPORT_/, { timeout: 120_000 })
-  await expect(page.getByRole('heading', { name: '你的支持参考' })).toBeVisible({ timeout: 120_000 })
-  await expect(page.getByRole('heading', { name: '为什么会看到这些建议' })).toBeVisible()
-  await expect(page.locator('.evidence-item')).toHaveCount(support.citations.length)
+  await expect(page).toHaveURL(/\/student\/support\?assessment=ASSESS_/, { timeout: 120_000 })
+  await expect(page.getByText('服务端回答')).toBeVisible({ timeout: 120_000 })
+  await expect(page.locator('.support-turn__citations a')).toHaveCount(support.citations.length)
   await expect(page.locator('body')).not.toContainText('theta')
 
   const report = await readReport(page, support.report_id)

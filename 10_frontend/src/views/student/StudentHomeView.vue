@@ -1,132 +1,130 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { ArrowRight } from '@lucide/vue'
-import { BookOpen } from '@lucide/vue'
-import { CheckCircle2 } from '@lucide/vue'
-import { Compass } from '@lucide/vue'
-import { MessageCircle } from '@lucide/vue'
-import { RotateCcw } from '@lucide/vue'
+import { ArrowRight, CheckCircle2, ClipboardList, RotateCcw } from '@lucide/vue'
 import AppBadge from '@/components/app/AppBadge.vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
 import AppPageHeader from '@/components/app/AppPageHeader.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
-import { frontendApi, MockApiError } from '@/services/mock-api'
-import type { StudentHomeViewModel } from '@/types/view-models'
-import { useRouter } from 'vue-router'
+import { frontendApi } from '@/services/mock-api'
+import type { Assessment } from '@/types/contracts'
+import type { ReportSummary } from '@/api/client'
+import { useRoute, useRouter } from 'vue-router'
 
 const router = useRouter()
-const state = ref<'loading' | 'ready' | 'empty' | 'error'>('loading')
-const data = ref<StudentHomeViewModel | null>(null)
+const route = useRoute()
+const state = ref<'loading' | 'ready' | 'error'>('loading')
+const assessments = ref<Assessment[]>([])
+const reports = ref<ReportSummary[]>([])
 const errorMessage = ref('')
-
-const iconFor = (icon: 'book' | 'message' | 'compass') => ({ book: BookOpen, message: MessageCircle, compass: Compass }[icon])
+const historyError = ref('')
+const resetCopyState = ref<'idle' | 'copied' | 'error'>('idle')
 
 const load = async () => {
   state.value = 'loading'
   errorMessage.value = ''
   try {
-    const response = await frontendApi.getStudentHome()
-    data.value = response.data
-    state.value = response.data ? 'ready' : 'empty'
+    const assessmentResponse = await frontendApi.listAssessments()
+    assessments.value = assessmentResponse.data
+    try {
+      reports.value = (await frontendApi.listReports()).data.items
+      historyError.value = ''
+    } catch (error) {
+      reports.value = []
+      historyError.value = error instanceof Error ? error.message : '报告历史暂时无法加载。'
+    }
+    state.value = 'ready'
   } catch (error) {
     state.value = 'error'
-    errorMessage.value = error instanceof MockApiError ? error.message : '页面暂时没有准备好，请稍后重试。'
+    errorMessage.value = error instanceof Error ? error.message : '页面暂时无法加载，请稍后重试。'
   }
 }
 
-const startAssessment = () => void router.push('/student/assessment')
-const viewReport = () => void router.push(`/student/result/${data.value?.recent.reportId || 'REPORT_demo_student_001'}`)
+const continueOrStart = (assessment?: Assessment) => {
+  void router.push(assessment ? `/student/assessment/${encodeURIComponent(assessment.assessment_id)}` : '/student/assessment')
+}
+const openResult = (assessmentId: string) => void router.push(`/student/assessment/${encodeURIComponent(assessmentId)}/result`)
+const openSupportHistory = (reportId: string) => void router.push(`/student/reports/${encodeURIComponent(reportId)}`)
+const copyResetCommand = async () => {
+  try {
+    await window.navigator.clipboard.writeText('.\\reset-demo.ps1')
+    resetCopyState.value = 'copied'
+  } catch {
+    resetCopyState.value = 'error'
+  }
+}
 
 onMounted(load)
 </script>
 
 <template>
   <div class="content-wrap content-wrap--student student-home">
-    <div v-if="state === 'loading'" class="student-loading" aria-busy="true" aria-label="正在加载学生首页">
-      <div class="skeleton skeleton--short"></div>
-      <div class="skeleton skeleton--title"></div>
-      <div class="skeleton skeleton--body"></div>
-      <div class="student-loading__grid"><div class="skeleton skeleton--panel"></div><div class="skeleton skeleton--panel"></div></div>
-    </div>
+    <div v-if="state === 'loading'" class="student-loading" aria-busy="true" aria-label="正在加载学生首页"><div class="skeleton skeleton--short"></div><div class="skeleton skeleton--title"></div><div class="skeleton skeleton--body"></div></div>
+    <AppStatusCallout v-else-if="state === 'error'" tone="critical" title="学生空间暂时无法加载" :body="errorMessage"><AppButton variant="secondary" size="sm" @click="load"><RotateCcw :size="15" aria-hidden="true" />重新加载</AppButton></AppStatusCallout>
+    <template v-else>
+      <AppPageHeader eyebrow="学生空间" :title="route.path === '/student/history' ? '历史记录' : '合成演示工作区'" intro="从测评、结果到教育支持对话，当前流程仅使用演示数据。" fixture-label="SYNTHETIC · DEMO · 非诊断" />
+      <AppStatusCallout tone="info" title="使用范围" body="这里展示工程演示流程，不提供心理诊断或治疗建议。页面中的记录由当前登录账号权限控制。" />
 
-    <template v-else-if="state === 'error'">
-      <AppStatusCallout tone="critical" title="学生首页暂时无法加载" :body="errorMessage">
-        <AppButton variant="secondary" size="sm" @click="load"><RotateCcw :size="15" aria-hidden="true" />重新加载</AppButton>
-      </AppStatusCallout>
-    </template>
-
-    <template v-else-if="state === 'empty'">
-      <AppPageHeader eyebrow="学生空间" title="从今天的一个小步骤开始" intro="这里会放置你已授权查看的支持参考。完成一次合成测评后，可以回到这里查看下一步。" fixture-label="合成演示案例" />
-      <AppCard class="student-empty" raised>
-        <div class="student-empty__mark" aria-hidden="true"><Compass :size="23" /></div>
-        <h2>还没有可查看的记录</h2>
-        <p>先完成一次测评流程，页面会在完成后展示结构化的支持参考。</p>
-        <AppButton @click="startAssessment">开始一次测评 <ArrowRight :size="17" aria-hidden="true" /></AppButton>
-      </AppCard>
-    </template>
-
-    <template v-else-if="data">
-      <AppPageHeader eyebrow="学生空间" :title="data.greeting" intro="把最近的状态整理成一个可行动的下一步。" :fixture-label="data.fixtureLabel">
-        <template #actions><AppBadge tone="teal" dot>支持参考已准备</AppBadge></template>
-      </AppPageHeader>
-
-      <section class="student-home__lead" aria-labelledby="student-state-title">
-        <AppCard class="student-home__state" raised>
-          <div class="student-home__state-top">
-            <div>
-              <span class="section-label">最近状态</span>
-              <h2 id="student-state-title">{{ data.stateTitle }}</h2>
-            </div>
-            <span class="student-home__state-icon" aria-hidden="true"><CheckCircle2 :size="23" /></span>
-          </div>
-          <p>{{ data.stateBody }}</p>
-          <div class="student-home__state-meta">
-            <span><strong>已完成</strong> {{ data.recent.date }}</span>
-            <RouterLink :to="`/student/result/${data.recent.reportId}`">查看最近结果 <ArrowRight :size="14" aria-hidden="true" /></RouterLink>
-          </div>
+      <section class="student-section" aria-labelledby="assessment-list-title">
+        <div class="student-section__heading"><div><span class="section-label">测评</span><h2 id="assessment-list-title">大学新生适应测评</h2></div><AppBadge tone="blue" dot>合成项目</AppBadge></div>
+        <p class="student-section__copy">每次显示一道项目。提交后由服务端保存回答并返回下一步状态。</p>
+        <AppCard v-if="assessments.some((item) => item.status === 'in_progress')" class="student-list-card">
+          <div><strong>有一项测评尚未完成</strong><span>可以从已保存的当前项目继续。</span></div>
+          <AppButton @click="continueOrStart(assessments.find((item) => item.status === 'in_progress'))">继续测评 <ArrowRight :size="16" aria-hidden="true" /></AppButton>
         </AppCard>
-
-        <AppCard class="student-home__next">
-          <div class="student-home__next-label"><span>下一步</span><span class="student-home__index">01</span></div>
-          <h2>{{ data.nextAction.title }}</h2>
-          <p>{{ data.nextAction.body }}</p>
-          <AppButton block @click="startAssessment">{{ data.nextAction.cta }} <ArrowRight :size="17" aria-hidden="true" /></AppButton>
+        <AppCard v-else class="student-list-card">
+          <div><strong>开始一项合成测评</strong><span>教育用途的演示流程，不代表已验证的心理量表。</span></div>
+          <AppButton @click="continueOrStart()">开始测评 <ArrowRight :size="16" aria-hidden="true" /></AppButton>
         </AppCard>
       </section>
 
-      <section class="student-home__support" aria-labelledby="support-title">
-        <div class="section-heading">
-          <div><span class="section-label">支持工具</span><h2 id="support-title" class="section-title">现在可以做什么</h2></div>
-          <span class="section-heading__rule" aria-hidden="true"></span>
-        </div>
-        <div class="support-grid">
-          <AppCard v-for="item in data.supportLinks" :key="item.title" class="support-item">
-            <span class="support-item__icon" aria-hidden="true"><component :is="iconFor(item.icon)" :size="18" /></span>
-            <div><h3>{{ item.title }}</h3><p>{{ item.body }}</p></div>
-            <ArrowRight class="support-item__arrow" :size="16" aria-hidden="true" />
-          </AppCard>
-        </div>
+      <section class="student-section" aria-labelledby="assessment-history-title">
+        <div class="student-section__heading"><div><span class="section-label">历史</span><h2 id="assessment-history-title">测评记录</h2></div></div>
+        <p v-if="assessments.length === 0" class="student-empty-copy">还没有测评记录。开始后，记录会由服务端保存。</p>
+        <AppCard v-for="item in assessments" :key="item.assessment_id" class="student-history-row">
+          <CheckCircle2 :size="18" aria-hidden="true" />
+          <div><strong>{{ item.status === 'completed' ? '已完成的合成测评' : '进行中的合成测评' }}</strong><span>{{ item.assessment_id }} · {{ item.response_summary.items_answered }} 项已记录</span></div>
+          <AppButton v-if="item.status === 'completed'" variant="secondary" size="sm" @click="openResult(item.assessment_id)">查看结果</AppButton>
+          <AppButton v-else variant="secondary" size="sm" @click="continueOrStart(item)">继续</AppButton>
+        </AppCard>
       </section>
 
-      <AppStatusCallout tone="info" title="页面边界" body="本轮页面只使用合成数据。真实部署时，显示内容由后端权限和安全披露策略共同决定。" />
-
-      <section class="student-home__recent" aria-labelledby="recent-title">
-        <div class="section-heading">
-          <div><span class="section-label">最近记录</span><h2 id="recent-title" class="section-title">{{ data.recent.label }}</h2></div>
-          <button class="text-link" type="button" @click="viewReport">查看详情 <ArrowRight :size="14" aria-hidden="true" /></button>
-        </div>
-        <AppCard class="recent-row">
-          <span class="recent-row__icon" aria-hidden="true"><CheckCircle2 :size="18" /></span>
-          <div class="recent-row__copy"><strong>{{ data.recent.status }}</strong><span>{{ data.recent.date }} · {{ data.recent.reportId }}</span></div>
-          <AppBadge tone="teal" dot>可查看</AppBadge>
+      <section class="student-section" aria-labelledby="report-history-title">
+        <div class="student-section__heading"><div><span class="section-label">支持</span><h2 id="report-history-title">对话与报告</h2></div></div>
+        <AppStatusCallout v-if="historyError" tone="info" title="报告历史暂时无法加载" :body="historyError" />
+        <p v-if="reports.length === 0" class="student-empty-copy">还没有支持对话或报告。完成测评后可以从结果页进入支持对话。</p>
+        <AppCard v-for="report in reports" :key="report.report_id" class="student-history-row">
+          <ClipboardList :size="18" aria-hidden="true" />
+          <div><strong>教育支持记录</strong><span>{{ report.created_at || '时间未提供' }} · {{ report.citation_count }} 条来源</span></div>
+          <AppButton variant="secondary" size="sm" @click="openSupportHistory(report.report_id)">查看记录</AppButton>
         </AppCard>
+      </section>
+
+      <section class="student-section student-reset" aria-labelledby="demo-reset-title">
+        <div><span class="section-label">演示维护</span><h2 id="demo-reset-title">重置演示数据</h2><p>为避免浏览器端越权清理数据，重置由本地演示运行器执行。</p></div>
+        <div class="student-reset__command"><code>.\reset-demo.ps1</code><AppButton variant="secondary" size="sm" @click="copyResetCommand">{{ resetCopyState === 'copied' ? '已复制' : '复制命令' }}</AppButton></div>
+        <p class="student-reset__hint">请在项目根目录的 PowerShell 中运行此命令。前端不会显示清理成功，直到服务端确认完成。</p>
+        <p v-if="resetCopyState === 'error'" class="student-reset__hint" role="status">复制失败，请手动选择上面的命令。</p>
       </section>
     </template>
   </div>
 </template>
 
 <style scoped>
+.student-section { margin-top: 34px; }
+.student-section__heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 8px; }
+.student-section__heading h2, .student-reset h2 { margin: 6px 0 0; color: var(--color-text-primary); font-family: var(--font-display); font-size: 21px; }
+.student-section__copy, .student-empty-copy { color: var(--color-text-secondary); font-size: 13px; line-height: 1.65; }
+.student-list-card, .student-history-row { display: flex; align-items: center; gap: 14px; padding: 17px; }
+.student-list-card > div, .student-history-row > div { display: grid; flex: 1; gap: 4px; min-width: 0; }
+.student-list-card strong, .student-history-row strong { color: var(--color-text-primary); font-size: 14px; }
+.student-list-card span, .student-history-row span { color: var(--color-text-secondary); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.student-history-row > svg { color: var(--color-support); flex: 0 0 auto; }
+.student-reset { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 3px 18px; padding: 18px; border: 1px solid var(--color-border); border-radius: var(--radius-card); background: var(--color-surface); }
+.student-reset p { margin: 7px 0 0; color: var(--color-text-secondary); font-size: 12px; }
+.student-reset code { padding: 9px 12px; border-radius: 6px; color: var(--color-text-primary); background: var(--color-surface-raised); font-size: 13px; }
+.student-reset__command { display: flex; align-items: center; gap: 10px; }
+.student-reset .student-reset__hint { grid-column: 1 / -1; color: var(--color-text-muted); }
 .student-home { animation: page-in 260ms ease both; }
 .section-label { color: var(--color-text-muted); font-size: 11px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
 .student-home__lead { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr); gap: 16px; }
@@ -182,6 +180,9 @@ onMounted(load)
 @keyframes shimmer { to { transform: translateX(100%); } }
 
 @media (max-width: 760px) {
+  .student-list-card, .student-history-row { align-items: flex-start; flex-wrap: wrap; }
+  .student-reset { grid-template-columns: 1fr; }
+  .student-reset .student-reset__hint { grid-column: auto; }
   .student-home__lead, .student-loading__grid { grid-template-columns: 1fr; }
   .support-grid { grid-template-columns: 1fr; }
   .student-home__state, .student-home__next { padding: 20px; }
