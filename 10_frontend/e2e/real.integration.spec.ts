@@ -19,6 +19,7 @@ async function createBrowserCrisisSupport(page: Page) {
       can_complete: boolean
       current_item: { item_id: string; options?: Array<{ value: string }> } | null
     }
+    type CurrentActor = { subject_id: string | null }
     type SupportResult = {
       status: string
       safety_action: string
@@ -45,6 +46,9 @@ async function createBrowserCrisisSupport(page: Page) {
 
     const csrfResponse = await request<{ csrf_token: string }>('/api/v1/auth/csrf')
     const csrf = csrfResponse.body.data.csrf_token
+    const actorResponse = await request<CurrentActor>('/api/v1/auth/me')
+    const subjectId = actorResponse.body.data.subject_id
+    if (!subjectId) throw new Error('Authenticated student has no bound subject')
     const keyPrefix = `browser-crisis-${crypto.randomUUID()}`
     const jsonHeaders = (idempotencyKey: string) => ({
       'Content-Type': 'application/json',
@@ -55,7 +59,7 @@ async function createBrowserCrisisSupport(page: Page) {
       method: 'POST',
       headers: jsonHeaders(`${keyPrefix}-create`),
       body: JSON.stringify({
-        subject_id: 'SYNTHETIC_STUDENT_DEMO',
+        subject_id: subjectId,
         instrument_id: 'CURRENT_SYNTHETIC_GRM',
         instrument_version: 'synthetic_item_bank.v1 / demo.v1',
       }),
