@@ -4,7 +4,7 @@
 
 ## 前置准备
 
-- Windows PowerShell、`uv`、Node.js/npm、MySQL 8.x 和 Ollama CLI。
+- PowerShell 7.4+、`uv`、Node.js/npm、MySQL 8.x 和 Ollama CLI。动态 RAG 配置以 UTF-8 无 BOM 写出，并在 RAG readiness 前由模块配置解析器加载。
 - CAT、Backend、Database、Safety 使用 Python 3.12/3.14 项目本地环境；RAG、Runtime 和 Knowledge Pipeline 使用各自 `pyproject.toml` 支持的 Python 版本。环境分别创建在每个模块的 `.venv` 中，不安装到全局 Python。
 - 在仓库根目录执行以下项目本地依赖准备命令。Safety 的 `runtime` extra 含 NeMo/Presidio、PyTorch 和 Transformers，下载量较大；启动器不自动安装这些依赖，也不会下载模型。
 
@@ -20,6 +20,7 @@
   ```
 - 本机 Ollama 应含项目注册的本地工程模型 `qwen2.5:0.5b`。启动器会在 Ollama 未运行时尝试以 `127.0.0.1:11434` 启动本机 `ollama serve`；不会下载模型。缺模型时需先按本机 Ollama 使用流程安装，再重试。
 - MySQL 必须运行于 loopback 且 listener 只能绑定 `127.0.0.1` 或 `::1`；wildcard/all-interface listener 会被拒绝。只允许专用数据库名 `smhai_m0_demo`。在用户级环境中配置 `DB_USER`、`DB_PASSWORD`、`DB_HOST=127.0.0.1`、`DB_PORT` 和 `DB_NAME=smhai_m0_demo`，或使用等价的 loopback `DATABASE_URL`。该账号必须能创建该 schema 和运行模块迁移；重置还需能删除/重建此专用 schema。连接值不写入仓库、不由脚本回显。数据库迁移还需要外部 `DATABASE_KEY_FILE`；未设置时使用数据库模块约定的外部默认路径。密钥文件必须已存在且位于仓库之外。
+- DB 连接变量只传给 Backend、数据库创建/重置助手和迁移过程。Backend 只保留选定连接方式所需变量及 `DATABASE_KEY_FILE`；迁移进程只接收 `DATABASE_URL`；其他服务和前端移除 `DB_USER`、`DB_PASSWORD`、`DATABASE_URL` 与 `DATABASE_KEY_FILE`。launcher 返回前会恢复 PowerShell 进程环境。
 - 如需更换运行数据位置，可将 `SMHAI_M0_DATA_ROOT` 指向仓库外本机目录。默认位置是 worktree 同级的隐藏运行目录，避免与其他 worktree 共用。
 - A/B/C/D 的集成改动须先进入同一工作树。启动器要求 CAT fixture、B 的 M0 BM25S profile 与 M0 knowledge fixture；若当前工作树尚未包含它们，检查会停止且不执行迁移。
 
@@ -36,6 +37,8 @@
 ```powershell
 .\start-demo.ps1 -PreflightOnly
 ```
+
+入口脚本退出码：`0` 表示命令完成（preflight 通过或服务 ready）；非零表示前置条件阻止或启动/停止/重置失败。内部区分前置阻塞（2）与操作失败/取消（1）；调用宿主若将非零码归一化，仍必须保持非零。
 
 启动前检查项目本地依赖、RAG 是否显式使用 BM25S 和 M0 corpus 路径、专用 loopback 数据库目标、外部数据库密钥文件、Ollama/模型状态及应用端口。通过后按顺序执行数据库迁移、仅从 `04_knowledge-pipeline/fixtures/m0_demo/freshman_study_routine.md` 构建独立知识导出、启动 CAT/RAG/本地 Runtime/Safety/Backend/Frontend，并检查每个服务的 `/health/ready`。Backend 以 MySQL persistence 和 HTTP 模块客户端启动，缺少任一依赖时停止，不回退到内存或 fake 模式。
 

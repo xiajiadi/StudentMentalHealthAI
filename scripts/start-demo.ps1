@@ -35,14 +35,18 @@ $dependencyImports = @{
 }
 foreach ($entry in $dependencyImports.GetEnumerator()) {
     if ($pythonByProject.ContainsKey($entry.Key)) {
-        & $pythonByProject[$entry.Key] -c $entry.Value *> $null
+        Invoke-WithDemoDatabaseEnvironment -Access none -Action {
+            & $pythonByProject[$entry.Key] -c $entry.Value *> $null
+        }
         if ($LASTEXITCODE -ne 0) { $blockers.Add("Required project-local dependencies are missing for $($entry.Key); use the exact setup command in 13_deployment\LOCAL_DEMO.md.") }
     }
 }
 $expectedPythonMinor = @{ cat = 14; database = 12; backend = 12; knowledge = 12; rag = 12; llm = 12; safety = 12 }
 foreach ($entry in $expectedPythonMinor.GetEnumerator()) {
     if ($pythonByProject.ContainsKey($entry.Key)) {
-        & $pythonByProject[$entry.Key] -c "import sys; raise SystemExit(0 if sys.version_info[:2] == (3, $($entry.Value)) else 1)" *> $null
+        Invoke-WithDemoDatabaseEnvironment -Access none -Action {
+            & $pythonByProject[$entry.Key] -c "import sys; raise SystemExit(0 if sys.version_info[:2] == (3, $($entry.Value)) else 1)" *> $null
+        }
         if ($LASTEXITCODE -ne 0) { $blockers.Add("Project-local Python version is incompatible for $($entry.Key); expected Python 3.$($entry.Value).") }
     }
 }
@@ -118,10 +122,11 @@ if ($dataFullPath.StartsWith($DemoRoot, [StringComparison]::OrdinalIgnoreCase)) 
 if ($blockers.Count -gt 0) {
     Write-Host 'M0 local launch preflight: BLOCKED'
     foreach ($blocker in $blockers) { Write-Host "- $blocker" }
-    exit 2
+    Set-DemoExitCode -Code 2
+    return
 }
 Write-Host 'M0 local launch preflight: PASS (loopback-only prerequisites are present).'
-if ($PreflightOnly) { exit 0 }
+if ($PreflightOnly) { Set-DemoExitCode -Code 0; return }
 
 $started = [System.Collections.Generic.List[object]]::new()
 try {
@@ -133,7 +138,9 @@ try {
     if (-not (Test-LocalModel)) { throw 'Required local model qwen2.5:0.5b is unavailable; install it locally before launch.' }
 
     $migration = Join-Path $DemoRoot '11_database\scripts\run_migrations.ps1'
-    & $pythonByProject['database'] (Join-Path $PSScriptRoot 'ensure_m0_database.py')
+    Invoke-WithDemoDatabaseEnvironment -Access bootstrap -Action {
+        & $pythonByProject['database'] (Join-Path $PSScriptRoot 'ensure_m0_database.py')
+    }
     if ($LASTEXITCODE -ne 0) { throw 'Dedicated local demo database bootstrap failed.' }
     Invoke-DemoMigrations -MigrationScript $migration
 
@@ -141,14 +148,16 @@ try {
     $published = Join-Path $dataRoot 'knowledge'
     $pipelinePython = $pythonByProject['knowledge']
     $pipelineRoot = $projectRoots['knowledge']
-    & $pipelinePython -m knowledge_pipeline.cli --input (Join-Path $pipelineRoot 'fixtures\m0_demo\freshman_study_routine.md') --output $published --schema-root $DemoRoot
+    Invoke-WithDemoDatabaseEnvironment -Access none -Action {
+        & $pipelinePython -m knowledge_pipeline.cli --input (Join-Path $pipelineRoot 'fixtures\m0_demo\freshman_study_routine.md') --output $published --schema-root $DemoRoot
+    }
     if ($LASTEXITCODE -ne 0) { throw 'M0 synthetic knowledge corpus bootstrap failed.' }
 
     $profile = Get-Content -LiteralPath $ragProfilePath -Raw | ConvertFrom-Json
     $profile.stores.bm25_path = Join-Path $dataRoot 'indexes\bm25'
     $runtimeProfile = Join-Path $dataRoot 'rag.m0-demo-bm25.v1.json'
     New-Item -ItemType Directory -Path (Split-Path -Parent $runtimeProfile) -Force | Out-Null
-    $profile | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $runtimeProfile -Encoding utf8
+    Write-Utf8JsonNoBom -Path $runtimeProfile -Json ($profile | ConvertTo-Json -Depth 20)
 
     $pipelineArtifacts = @{
         'SMHAI_RAG_CONFIG' = $runtimeProfile
@@ -176,7 +185,7 @@ try {
         SMHAI_SAFETY__MODE='http'; SMHAI_SAFETY__BASE_URL='http://127.0.0.1:8190'
         PYTHONPATH=(Join-Path $DemoRoot '11_database') + ';' + (Join-Path $projectRoots.backend 'src') + ';' + (Join-Path $DemoRoot '11_database\.venv\Lib\site-packages')
     }
-    Start-ManagedDemoProcess -Name 'Backend' -Executable $pythonByProject['backend'] -WorkingDirectory $projectRoots.backend -Arguments @('-m', 'smhai_backend.main') -Environment $backendEnv -StopOrder 50 -Started $started
+    Start-ManagedDemoProcess -Name 'Backend' -Executable $pythonByProject['backend'] -WorkingDirectory $projectRoots.backend -Arguments @('-m', 'smhai_backend.main') -Environment $backendEnv -DatabaseAccess backend -StopOrder 50 -Started $started
     Wait-LocalReady -Name 'Backend' -Url 'http://127.0.0.1:8080/health/ready' -TimeoutSeconds 60
 
     $node = (Get-Command node -ErrorAction Stop).Source
@@ -184,8 +193,10 @@ try {
     Start-ManagedDemoProcess -Name 'Frontend' -Executable $node -WorkingDirectory $frontendRoot -Arguments $viteArguments -Environment @{ VITE_API_MODE='real'; VITE_API_BASE_URL='http://127.0.0.1:8080' } -StopOrder 60 -Started $started
     Wait-LocalReady -Name 'Frontend' -Url 'http://127.0.0.1:4173/'
     Write-Host 'M0 local services are ready on loopback: frontend 4173, backend 8080, CAT 8180, RAG 8170, Runtime 8160, Safety 8190.'
+    Set-DemoExitCode -Code 0
 } catch {
     try { Stop-ManagedDemoProcesses } catch { Write-Host "Cleanup needs attention: $($_.Exception.Message)" }
     Write-Host "M0 startup failed: $($_.Exception.Message)"
-    exit 1
+    Set-DemoExitCode -Code 1
+    return
 }

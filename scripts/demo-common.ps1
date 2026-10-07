@@ -7,6 +7,7 @@ $script:DemoRunRoot = if ($env:SMHAI_M0_DATA_ROOT) {
     throw 'Set SMHAI_M0_DATA_ROOT to a local runtime-data directory.'
 }
 $script:ManifestPath = Join-Path $script:DemoRunRoot 'processes.json'
+$script:DatabaseEnvironmentNames = @('DB_USER', 'DB_PASSWORD', 'DB_HOST', 'DB_PORT', 'DB_NAME', 'DATABASE_URL', 'DATABASE_KEY_FILE')
 
 function Get-DemoDatabaseTarget {
     $databaseUrl = $env:DATABASE_URL
@@ -36,6 +37,11 @@ function Get-DemoDatabaseTarget {
     return [pscustomobject]@{ Host = $hostName; Port = $port; Name = $databaseName }
 }
 
+function Set-DemoExitCode {
+    param([Parameter(Mandatory)][ValidateRange(0, 255)][int]$Code)
+    $global:SMHAI_M0_DEMO_EXIT_CODE = $Code
+}
+
 function New-DemoDatabaseUrlFromEnvironment {
     if ($env:DATABASE_URL) { return $env:DATABASE_URL }
     $user = [Uri]::EscapeDataString($env:DB_USER)
@@ -46,17 +52,71 @@ function New-DemoDatabaseUrlFromEnvironment {
     return "mysql+aiomysql://${user}:${password}@${hostName}:${port}/${database}?charset=utf8mb4"
 }
 
+function Get-DemoDatabaseEnvironmentNames {
+    param([ValidateSet('none', 'backend', 'bootstrap', 'migration')][string]$Access)
+    $useUrl = -not [string]::IsNullOrEmpty($env:DATABASE_URL) -or $Access -eq 'migration'
+    if ($useUrl) {
+        if ($Access -eq 'backend') { return @('DATABASE_URL', 'DATABASE_KEY_FILE') }
+        if ($Access -in @('bootstrap', 'migration')) { return @('DATABASE_URL') }
+        return @()
+    }
+    if ($Access -eq 'backend') { return @('DB_USER', 'DB_PASSWORD', 'DB_HOST', 'DB_PORT', 'DB_NAME', 'DATABASE_KEY_FILE') }
+    if ($Access -eq 'bootstrap') { return @('DB_USER', 'DB_PASSWORD', 'DB_HOST', 'DB_PORT', 'DB_NAME') }
+    return @()
+}
+
+function Invoke-WithDemoDatabaseEnvironment {
+    param(
+        [Parameter(Mandatory)][ValidateSet('none', 'backend', 'bootstrap', 'migration')][string]$Access,
+        [Parameter(Mandatory)][scriptblock]$Action,
+        [hashtable]$Overrides = @{}
+    )
+    $original = @{}
+    foreach ($name in $script:DatabaseEnvironmentNames) {
+        $original[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+    }
+    $scopedNames = @($script:DatabaseEnvironmentNames + @($Overrides.Keys) | Select-Object -Unique)
+    foreach ($name in $Overrides.Keys) {
+        if (-not $original.ContainsKey($name)) { $original[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
+    }
+    $migrationUrl = if ($Access -eq 'migration' -and [string]::IsNullOrEmpty($original['DATABASE_URL'])) {
+        New-DemoDatabaseUrlFromEnvironment
+    } else { $null }
+    $allowedNames = @(Get-DemoDatabaseEnvironmentNames -Access $Access)
+    try {
+        foreach ($name in $scopedNames) { Remove-Item "Env:$name" -ErrorAction SilentlyContinue }
+        foreach ($name in $allowedNames) {
+            if ($null -ne $original[$name]) { [Environment]::SetEnvironmentVariable($name, $original[$name], 'Process') }
+        }
+        if ($migrationUrl) { $env:DATABASE_URL = $migrationUrl }
+        foreach ($key in $Overrides.Keys) { [Environment]::SetEnvironmentVariable($key, [string]$Overrides[$key], 'Process') }
+        & $Action
+    } finally {
+        foreach ($name in $scopedNames) {
+            if ($null -eq $original[$name]) { Remove-Item "Env:$name" -ErrorAction SilentlyContinue }
+            else { [Environment]::SetEnvironmentVariable($name, $original[$name], 'Process') }
+        }
+    }
+}
+
 function Invoke-DemoMigrations {
     param([Parameter(Mandatory)][string]$MigrationScript)
-    $previousUrl = [Environment]::GetEnvironmentVariable('DATABASE_URL', 'Process')
-    try {
-        if (-not $previousUrl) { $env:DATABASE_URL = New-DemoDatabaseUrlFromEnvironment }
+    Invoke-WithDemoDatabaseEnvironment -Access migration -Action {
         & $MigrationScript -Action upgrade -Revision head
         if ($LASTEXITCODE -ne 0) { throw 'Database migration command failed.' }
-    } finally {
-        if ($null -eq $previousUrl) { Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue }
-        else { $env:DATABASE_URL = $previousUrl }
     }
+}
+
+function ConvertTo-Utf8JsonNoBomBytes {
+    param([Parameter(Mandatory)][string]$Json)
+    $encoding = [System.Text.UTF8Encoding]::new($false)
+    return ,$encoding.GetBytes($Json + [Environment]::NewLine)
+}
+
+function Write-Utf8JsonNoBom {
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Json)
+    $bytes = ConvertTo-Utf8JsonNoBomBytes -Json $Json
+    [System.IO.File]::WriteAllBytes($Path, $bytes)
 }
 
 function Get-ProjectPython {
@@ -130,20 +190,13 @@ function Start-ManagedDemoProcess {
         [Parameter(Mandatory)][string]$WorkingDirectory,
         [Parameter(Mandatory)][string[]]$Arguments,
         [Parameter(Mandatory)][hashtable]$Environment,
+        [ValidateSet('none', 'backend', 'bootstrap', 'migration')][string]$DatabaseAccess = 'none',
         [Parameter(Mandatory)][int]$StopOrder,
         [Parameter(Mandatory)][System.Collections.Generic.List[object]]$Started
     )
-    $previous = @{}
-    foreach ($key in $Environment.Keys) {
-        $previous[$key] = [Environment]::GetEnvironmentVariable($key, 'Process')
-        [Environment]::SetEnvironmentVariable($key, [string]$Environment[$key], 'Process')
-    }
-    try {
+    $process = Invoke-WithDemoDatabaseEnvironment -Access $DatabaseAccess -Overrides $Environment -Action {
         $process = Start-Process -FilePath $Executable -ArgumentList $Arguments -WorkingDirectory $WorkingDirectory -WindowStyle Hidden -PassThru
-    } finally {
-        foreach ($key in $Environment.Keys) {
-            [Environment]::SetEnvironmentVariable($key, $previous[$key], 'Process')
-        }
+        $process
     }
     Start-Sleep -Milliseconds 300
     if ($process.HasExited) { throw "$Name exited during startup (exit code $($process.ExitCode))." }
