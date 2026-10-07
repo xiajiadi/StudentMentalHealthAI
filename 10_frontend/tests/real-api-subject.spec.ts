@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+const ResponseConstructor = globalThis.Response
+const URLConstructor = globalThis.URL
+type TestRequest = InstanceType<typeof globalThis.Request>
+
 const actorSubjectId = 'SUBJ_authenticated_actor_001'
 
 function envelope(data: unknown) {
@@ -7,9 +11,9 @@ function envelope(data: unknown) {
 }
 
 function createBackendFetch(subjectId: string | null) {
-  return vi.fn(async (request: Request) => {
-    const url = new URL(request.url)
-    const response = (data: unknown) => new Response(JSON.stringify(envelope(data)), {
+  return vi.fn(async (request: TestRequest) => {
+    const url = new URLConstructor(request.url)
+    const response = (data: unknown) => new ResponseConstructor(JSON.stringify(envelope(data)), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     })
@@ -35,7 +39,7 @@ function createBackendFetch(subjectId: string | null) {
         current_item: { item_id: 'ITEM_test_001', prompt: '合成项目', options: [{ value: 'A', label: '选项 A' }] },
       })
     }
-    return new Response(JSON.stringify({ detail: 'Unexpected test route' }), {
+    return new ResponseConstructor(JSON.stringify({ detail: 'Unexpected test route' }), {
       status: 404,
       headers: { 'Content-Type': 'application/json' },
     })
@@ -67,7 +71,7 @@ describe('RealApiProvider assessment subject binding', () => {
 
     const createRequest = fetchMock.mock.calls
       .map(([request]) => request)
-      .find((request) => new URL(request.url).pathname === '/api/v1/assessments' && request.method === 'POST')
+      .find((request) => new URLConstructor(request.url).pathname === '/api/v1/assessments' && request.method === 'POST')
     expect(createRequest).toBeDefined()
     await expect(createRequest?.clone().json()).resolves.toMatchObject({ subject_id: actorSubjectId })
   })
@@ -78,7 +82,7 @@ describe('RealApiProvider assessment subject binding', () => {
 
     await expect(provider.startAssessment()).rejects.toMatchObject({ code: 'AUTH_SUBJECT_MISSING' })
     expect(fetchMock.mock.calls.some(([request]) => (
-      new URL(request.url).pathname === '/api/v1/assessments' && request.method === 'POST'
+      new URLConstructor(request.url).pathname === '/api/v1/assessments' && request.method === 'POST'
     ))).toBe(false)
   })
 })
