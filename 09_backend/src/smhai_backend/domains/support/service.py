@@ -854,6 +854,39 @@ class SupportOrchestrator:
             )
         return report
 
+    async def reports_for_actor(
+        self,
+        actor: Actor,
+        *,
+        assessment_id: str | None = None,
+        limit: int = 100,
+    ) -> list[ReportRecord]:
+        """Return only reports whose subjects are already in the actor's scope."""
+
+        subject_ids = (
+            {actor.subject_id}
+            if actor.role is BackendRole.STUDENT and actor.subject_id is not None
+            else set(actor.accessible_subject_ids)
+        )
+        authorized_subject_ids = {
+            subject_id
+            for subject_id in subject_ids
+            if self.authorization.can(
+                actor,
+                "report:read",
+                resource={"subject_id": subject_id, "owner_user_id": actor.user_id},
+            )
+        }
+        if not authorized_subject_ids:
+            return []
+        return await maybe_await(
+            self.reports.list_for_subjects(
+                authorized_subject_ids,
+                assessment_id=assessment_id,
+                limit=limit,
+            )
+        )
+
     async def review(
         self,
         actor: Actor,

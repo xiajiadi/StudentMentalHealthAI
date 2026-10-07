@@ -28,6 +28,13 @@ is set; on this machine it is configured under `D:\Dev\caches\huggingface`.
 If BGE-M3 or the reranker cannot load, the module reports that integration as
 pending/blocked and keeps deterministic mocks only for unit tests.
 
+For an explicit local sparse-only demo, set `SMHAI_RAG_CONFIG` to
+`config/rag.m0-demo-bm25.v1.json` and set `SMHAI_RAG_CORPUS`,
+`SMHAI_RAG_DOCUMENTS`, and `SMHAI_RAG_REVIEW_QUEUE` to the matching export from
+the M0 demo fixture. This profile builds and serves BM25S directly; it does not
+load embeddings or fall back to a mock provider. Keep its corpus isolated to
+the synthetic M0 demo export.
+
 ## Run tests and benchmark
 
 ```powershell

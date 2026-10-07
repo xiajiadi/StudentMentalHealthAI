@@ -1,0 +1,40 @@
+{
+  "schema_version": "rag-config.v1",
+  "environment": "demo",
+  "retrieval_mode": "bm25",
+  "dense_candidate_k": 20,
+  "sparse_candidate_k": 20,
+  "fusion_candidate_k": 20,
+  "rerank_candidate_k": 10,
+  "final_k": 5,
+  "context_max_chars": 12000,
+  "rrf_k": 60,
+  "distance": "cosine",
+  "embedding": {
+    "provider": "bge-m3",
+    "contract_model_id": "MODEL_bge_m3",
+    "model_name": "BAAI/bge-m3",
+    "model_version": "1.4.2",
+    "model_revision": "5617a9f61b028005a4858fdac845db406aefb181",
+    "device": "auto",
+    "precision": "auto",
+    "cache_dir_env": "HF_HOME"
+  },
+  "reranker": {
+    "provider": "bge-reranker-v2-m3",
+    "contract_model_id": "MODEL_bge_reranker_v2_m3",
+    "model_name": "BAAI/bge-reranker-v2-m3",
+    "model_version": "1.4.2",
+    "model_revision": "953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e",
+    "device": "auto",
+    "precision": "auto",
+    "cache_dir_env": "HF_HOME"
+  },
+  "stores": {
+    "chroma_collection": "rag_round1_dense",
+    "chroma_path": "data/indexes/chroma",
+    "qdrant_collection": "rag_round1_hybrid",
+    "qdrant_path": "data/indexes/qdrant",
+    "bm25_path": "data/indexes/m0-demo/bm25"
+  }
+}

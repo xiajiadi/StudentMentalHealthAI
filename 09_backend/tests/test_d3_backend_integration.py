@@ -138,6 +138,67 @@ async def test_support_route_runs_bound_d3_chain_once_and_persists_after_output_
 
 
 @pytest.mark.asyncio
+async def test_report_list_is_subject_scoped_and_returns_summary_only(client, app, monkeypatch):
+    assert app.openapi()["paths"]["/api/v1/reports"]["get"]["operationId"] == "listReports"
+    assessment = _install_exact_assessment(app)
+    login_response = await client.post(
+        "/api/v1/auth/login",
+        json={"username": "student_a", "password": "synthetic-student-a"},
+    )
+    assert login_response.status_code == 200
+    report = ReportRecord(
+        report_id="REPORT_history_demo",
+        assessment_id=assessment["assessment_id"],
+        subject_id=assessment["subject_id"],
+        generation_id="GEN_history_demo",
+        status="generated",
+        generation={
+            "created_at": "2026-10-07T00:00:00Z",
+            "content": {"summary": "must not appear in a history row"},
+        },
+        safety_action="PROCEED",
+        citations=[{"citation_id": "CITE_history_demo"}],
+    )
+    app.state.container.reports.save(report)
+    observed: dict[str, Any] = {}
+
+    async def list_for_subjects(subject_ids, *, assessment_id=None, limit=100):
+        observed.update(
+            subject_ids=set(subject_ids), assessment_id=assessment_id, limit=limit
+        )
+        return [report] if report.subject_id in subject_ids else []
+
+    monkeypatch.setattr(
+        app.state.container.reports, "list_for_subjects", list_for_subjects, raising=False
+    )
+    response = await client.get(
+        f"/api/v1/reports?assessment_id={assessment['assessment_id']}&limit=25"
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    assert observed == {
+        "subject_ids": {assessment["subject_id"]},
+        "assessment_id": assessment["assessment_id"],
+        "limit": 25,
+    }
+    assert data == {
+        "items": [
+            {
+                "report_id": report.report_id,
+                "assessment_id": report.assessment_id,
+                "status": "generated",
+                "safety_action": "PROCEED",
+                "created_at": "2026-10-07T00:00:00Z",
+                "citation_count": 1,
+            }
+        ],
+        "next_cursor": None,
+    }
+    assert "content" not in json.dumps(data, ensure_ascii=False)
+
+
+@pytest.mark.asyncio
 async def test_real_http_freshman_taxonomy_passes_evidence_and_d3_seams(client, app, monkeypatch):
     assessment = _install_exact_assessment(app)
     login_response = await client.post(

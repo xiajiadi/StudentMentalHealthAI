@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -31,6 +31,7 @@ from .schemas import (
     GenerationProjection,
     GenerationRequest,
     ReportDto,
+    ReportListDto,
     RetrievalRequest,
     ReviewProjectionDto,
     ReviewRequest,
@@ -240,6 +241,41 @@ async def create_generation(
         body=body,
     )
     return JSONResponse(body, status_code=202)
+
+
+@router.get(
+    "/reports",
+    operation_id="listReports",
+    response_model=ApiEnvelope[ReportListDto],
+    responses=problem_responses(ErrorCode.AUTH_SESSION_EXPIRED),
+    summary="List authorized support report summaries",
+)
+async def list_reports(
+    request: Request,
+    actor: CurrentActor,
+    assessment_id: str | None = Query(default=None, pattern=r"^ASSESS_[A-Za-z0-9][A-Za-z0-9_.-]*$"),
+    limit: int = Query(default=100, ge=1, le=100),
+) -> JSONResponse:
+    reports = await request.app.state.container.support.reports_for_actor(
+        actor,
+        assessment_id=assessment_id,
+        limit=limit,
+    )
+    data = ReportListDto(
+        items=[
+            {
+                "report_id": report.report_id,
+                "assessment_id": report.assessment_id,
+                "status": report.status,
+                "safety_action": report.safety_action,
+                "created_at": report.generation.get("created_at"),
+                "citation_count": len(report.citations),
+            }
+            for report in reports
+        ],
+        next_cursor=None,
+    )
+    return JSONResponse(envelope(request, data))
 
 
 @router.get(

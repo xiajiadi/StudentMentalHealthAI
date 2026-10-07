@@ -189,6 +189,26 @@ class ReportDto(BaseModel):
     citations: list[SupportCitation] = Field(default_factory=list)
 
 
+class ReportSummaryDto(BaseModel):
+    """Minimal, subject-scoped row for support history lists."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    report_id: str
+    assessment_id: str
+    status: str
+    safety_action: str
+    created_at: str | None = None
+    citation_count: int = Field(ge=0)
+
+
+class ReportListDto(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ReportSummaryDto]
+    next_cursor: str | None = None
+
+
 class ReviewProjectionDto(BaseModel):
     model_config = ConfigDict(extra="ignore")
 

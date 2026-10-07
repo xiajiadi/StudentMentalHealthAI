@@ -17,6 +17,7 @@ from rag_engine.config import RAGConfig
 from rag_engine.domain import stable_digest
 from rag_engine.indexing import KnowledgeCorpusLoader
 from rag_engine.query import DeterministicQueryBuilder
+from rag_engine.retrieval import RetrievalService
 
 
 class RetrieveRequest(BaseModel):
@@ -36,6 +37,14 @@ class RagRuntime:
         self.paths = _default_input_paths()
         config_path = Path(os.environ.get("SMHAI_RAG_CONFIG", self.paths["config"])).resolve()
         self.config_path = config_path
+        for path_key, environment_key in (
+            ("corpus", "SMHAI_RAG_CORPUS"),
+            ("documents", "SMHAI_RAG_DOCUMENTS"),
+            ("review_queue", "SMHAI_RAG_REVIEW_QUEUE"),
+        ):
+            configured_path = os.environ.get(environment_key)
+            if configured_path:
+                self.paths[path_key] = Path(configured_path).resolve()
         self.config = RAGConfig.load(config_path)
         self.corpus = None
         self.stack: dict[str, Any] = {}
@@ -51,7 +60,26 @@ class RagRuntime:
                 documents_path=self.paths["documents"],
                 review_queue_path=self.paths["review_queue"],
             )
-            bm25, _, _ = _prepare_bm25(self.corpus, self.config, persist=True)
+            bm25, bm25_manifest, _ = _prepare_bm25(self.corpus, self.config, persist=True)
+            if self.config.retrieval_mode == "bm25":
+                self.provider_report = {
+                    "bm25s": {
+                        **bm25.health_check(),
+                        "index_id": bm25_manifest.get("index_id"),
+                    }
+                }
+                self.stack = {
+                    "status": "ready",
+                    "bm25_service": RetrievalService(
+                        embedding_provider=None,
+                        dense_store=None,
+                        sparse_retriever=bm25,
+                        index_manifest=bm25_manifest,
+                        rrf_k=self.config.rrf_k,
+                    ),
+                    "manifest": bm25_manifest,
+                }
+                return
             stack, provider_report = _prepare_real_dense(
                 self.corpus,
                 self.config,
@@ -69,13 +97,17 @@ class RagRuntime:
 
     @property
     def ready(self) -> bool:
-        return bool(self.stack.get("hybrid_service") or self.stack.get("dense_service"))
+        return bool(
+            self.stack.get("bm25_service")
+            or self.stack.get("hybrid_service")
+            or self.stack.get("dense_service")
+        )
 
     def health(self) -> dict[str, Any]:
         return {
             "status": "READY" if self.ready else "NOT_READY",
             "service": "rag",
-            "retrieval_mode": "hybrid" if self.stack.get("hybrid_service") else "dense",
+            "retrieval_mode": self.config.retrieval_mode,
             "rerank_enabled": False,
             "corpus_version": self.corpus.corpus_version if self.corpus else None,
             "eligible_chunk_count": len(self.corpus.records) if self.corpus else 0,
@@ -100,11 +132,18 @@ class RagRuntime:
         )
         plan = replace(
             plan,
-            retrieval_mode="hybrid" if self.stack.get("hybrid_service") else "dense",
+            retrieval_mode=self.config.retrieval_mode,
             final_k=request.top_k,
             rerank_enabled=False,
         )
-        service = self.stack.get("hybrid_service") or self.stack.get("dense_service")
+        service_key = {
+            "bm25": "bm25_service",
+            "hybrid": "hybrid_service",
+            "dense": "dense_service",
+        }[self.config.retrieval_mode]
+        service = self.stack.get(service_key)
+        if service is None:
+            raise HTTPException(status_code=503, detail="configured RAG provider is not ready")
         retrieval_id = request.retrieval_id or f"RETR_{stable_digest({'trace_id': trace_id, 'query': request.query})[:20]}"
         result = service.retrieve(
             plan,
@@ -162,9 +201,9 @@ def create_app(*, runtime: RagRuntime | None = None) -> FastAPI:
         return {
             "service": "rag",
             "transport": "http",
-            "retrieval_mode": "hybrid",
+            "retrieval_mode": runtime.config.retrieval_mode,
             "rerank_enabled": False,
-            "publication_boundary": "04_knowledge-pipeline/data/published/round1/embedding_ready.jsonl",
+            "publication_boundary": "configured Knowledge embedding-ready export",
             "synthetic_fixture_only": True,
         }
 
