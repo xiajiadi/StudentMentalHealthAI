@@ -45,6 +45,26 @@ def test_batch_exports_approved_chunks_and_isolates_invalid_document(tmp_path: P
     assert all("context_text" not in record for record in contract_chunks)
 
 
+def test_m0_demo_population_scope_survives_embedding_ready_export(tmp_path: Path) -> None:
+    fixture = MODULE_ROOT / "fixtures/m0_demo/freshman_study_routine.md"
+    output = tmp_path / "m0_demo"
+    run = KnowledgePipeline(schema_root=PROJECT_ROOT).run(
+        [SourceRequest(fixture, input_mode="raw")],
+        output_dir=output,
+        timestamp="2026-10-08T00:00:00Z",
+        run_id="RUN_m0_population_scope",
+    )
+
+    rows = [
+        json.loads(line)
+        for line in (output / "embedding_ready.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+
+    assert run.export is not None
+    assert rows
+    assert all(row["metadata"]["target_population"] == ["university_freshman"] for row in rows)
+
+
 def test_repeat_run_has_stable_ids_and_hashes(tmp_path: Path) -> None:
     config = PipelineConfig(chunk=ChunkConfig(min_tokens=4, target_tokens=40, max_tokens=160))
     requests = [SourceRequest(MODULE_ROOT / "fixtures/policy/policy.md", input_mode="curated")]

@@ -7,7 +7,7 @@ source_type: other
 source_url: synthetic://StudentMentalHealthAI/M0/freshman-study-routine
 language: zh-CN
 population_scope:
-  - UNIVERSITY_FRESHMEN_SYNTHETIC_DEMO
+  - university_freshman
 category: practice_guidance
 rights_status: verified
 review_status: approved
