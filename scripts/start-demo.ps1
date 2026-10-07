@@ -195,6 +195,7 @@ try {
 
     $backendEnv = @{
         SMHAI_ENVIRONMENT='demo'; SMHAI_HOST='127.0.0.1'; SMHAI_PORT='8080'; SMHAI_PERSISTENCE_MODE='mysql'
+        SMHAI_ALLOWED_ORIGINS='["http://127.0.0.1:4173"]'
         SMHAI_CAT__MODE='http'; SMHAI_CAT__BASE_URL='http://127.0.0.1:8180'
         SMHAI_RAG__MODE='http'; SMHAI_RAG__BASE_URL='http://127.0.0.1:8170'
         SMHAI_LLM__MODE='http'; SMHAI_LLM__BASE_URL='http://127.0.0.1:8160'
