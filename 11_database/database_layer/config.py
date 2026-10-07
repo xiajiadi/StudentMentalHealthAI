@@ -43,17 +43,15 @@ class DatabaseSettings:
                 raise ConfigurationError(
                     "DATABASE_URL or DB_USER/DB_PASSWORD/DB_NAME must be configured"
                 )
-            url = str(
-                URL.create(
-                    "mysql+aiomysql",
-                    username=user,
-                    password=password,
-                    host=host,
-                    port=port,
-                    database=database,
-                    query={"charset": "utf8mb4"},
-                )
-            )
+            url = URL.create(
+                "mysql+aiomysql",
+                username=user,
+                password=password,
+                host=host,
+                port=port,
+                database=database,
+                query={"charset": "utf8mb4"},
+            ).render_as_string(hide_password=False)
 
         parsed = make_url(url)
         if parsed.drivername.startswith("sqlite"):
