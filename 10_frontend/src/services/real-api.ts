@@ -154,10 +154,17 @@ const mapAssessment = (value: unknown, assessmentId: string): Assessment => {
       items_answered: typeof dimension.items_answered === 'number' ? dimension.items_answered : 0,
     }
   }
-  const riskSource = isRecord(source.risk) ? source.risk : {}
-  const level = riskSource.level === 'crisis' || riskSource.level === 'high' || riskSource.level === 'attention'
-    ? riskSource.level
-    : 'normal'
+  if (!isRecord(source.risk)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '测评响应缺少有效风险信息，已停止展示该记录。')
+  }
+  const riskSource = source.risk
+  const allowedRiskLevels = new Set(['normal', 'attention', 'high', 'crisis'])
+  if (typeof riskSource.level !== 'string' || !allowedRiskLevels.has(riskSource.level)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '测评响应包含无效风险等级，已停止展示该记录。')
+  }
+  if (typeof riskSource.need_human_review !== 'boolean') {
+    throw new RealApiError('API_INVALID_RESPONSE', '测评响应缺少有效人工复核状态，已停止展示该记录。')
+  }
   const timestamps = isRecord(source.timestamps) ? source.timestamps : {}
   const instrument = isRecord(source.instrument) ? source.instrument : {}
   const provenance = isRecord(source.provenance) ? source.provenance : {}
@@ -174,8 +181,8 @@ const mapAssessment = (value: unknown, assessmentId: string): Assessment => {
     status: valueAsString(source.status, 'completed') as Assessment['status'],
     dimensions,
     risk: {
-      level,
-      need_human_review: Boolean(riskSource.need_human_review),
+      level: riskSource.level as Assessment['risk']['level'],
+      need_human_review: riskSource.need_human_review,
       reason_codes: Array.isArray(riskSource.reason_codes) ? riskSource.reason_codes.filter((item): item is string => typeof item === 'string') : [],
       ruleset_id: valueAsString(riskSource.ruleset_id, 'RULESET_not_exposed'),
     },
