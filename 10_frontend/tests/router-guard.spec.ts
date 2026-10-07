@@ -17,13 +17,13 @@ describe('角色路由守卫', () => {
   })
 
   it('角色不能跨越自己的工作区', async () => {
-    useSessionStore().signIn({ userId: 'USER_demo_teacher', role: 'teacher', displayName: '演示教师', initials: '师' })
+    useSessionStore().signIn({ userId: 'USER_demo_teacher', role: 'teacher', subjectId: null, displayName: '演示教师', initials: '师' })
     await router.push('/reviewer/queue')
     expect(router.currentRoute.value.name).toBe('teacher-overview')
   })
 
   it('允许复核员进入安全复核队列', async () => {
-    useSessionStore().signIn({ userId: 'USER_demo_reviewer', role: 'reviewer', displayName: '演示复核员', initials: '复' })
+    useSessionStore().signIn({ userId: 'USER_demo_reviewer', role: 'reviewer', subjectId: null, displayName: '演示复核员', initials: '复' })
     await router.push('/reviewer/queue')
     expect(router.currentRoute.value.name).toBe('reviewer-queue')
   })

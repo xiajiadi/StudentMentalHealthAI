@@ -61,6 +61,7 @@ const makeRouter = async (path: string) => {
     routes: [
       { path: '/student/assessment/:id/result', component: AssessmentResultView },
       { path: '/student/support', component: SupportChatView },
+      { path: '/student/home', component: { template: '<main>学生空间</main>' } },
     ],
   })
   await router.push(path)

@@ -9,7 +9,7 @@ export const useSessionStore = defineStore('session', () => {
   const isAuthenticated = computed(() => user.value !== null)
   const role = computed<Role | null>(() => user.value?.role ?? null)
 
-  const signIn = (input: { userId: string; role: Role; displayName: string; initials: string }) => {
+  const signIn = (input: { userId: string; role: Role; subjectId: string | null; displayName: string; initials: string }) => {
     user.value = {
       ...input,
       disclosure: input.role,

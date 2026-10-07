@@ -9,6 +9,7 @@ import type {
 export interface SessionUser {
   userId: string
   role: Role
+  subjectId: string | null
   displayName: string
   initials: string
   disclosure: 'student' | 'teacher' | 'reviewer'

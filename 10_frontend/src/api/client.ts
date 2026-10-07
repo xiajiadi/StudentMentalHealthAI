@@ -21,6 +21,7 @@ export interface LoginInput {
 export interface LoginResult {
   userId: string
   role: LoginInput['role']
+  subjectId: string | null
   displayName: string
   initials: string
 }

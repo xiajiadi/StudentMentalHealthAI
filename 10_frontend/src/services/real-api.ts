@@ -130,8 +130,12 @@ const mapRole = (value: unknown, fallback: LoginInput['role']): LoginInput['role
   return role === 'teacher' || role === 'reviewer' || role === 'student' ? role : fallback
 }
 
-const mapAssessment = (value: unknown, assessmentId: string, subjectId: string): Assessment => {
+const mapAssessment = (value: unknown, assessmentId: string): Assessment => {
   const source = isRecord(value) ? value : {}
+  const subjectId = valueAsString(source.subject_id)
+  if (!subjectId) {
+    throw new RealApiError('API_INVALID_RESPONSE', '测评响应缺少主体标识，已停止展示该记录。')
+  }
   const rawDimensions = isRecord(source.dimensions) ? source.dimensions : {}
   const dimensions: Assessment['dimensions'] = {}
   for (const [key, rawValue] of Object.entries(rawDimensions)) {
@@ -161,7 +165,7 @@ const mapAssessment = (value: unknown, assessmentId: string, subjectId: string):
   return {
     schema_version: 'assessment.v1',
     assessment_id: valueAsString(source.assessment_id, assessmentId),
-    subject_id: valueAsString(source.subject_id, subjectId),
+    subject_id: subjectId,
     instrument: {
       instrument_id: valueAsString(instrument.instrument_id, 'CURRENT_SYNTHETIC_GRM'),
       version: valueAsString(instrument.version, 'synthetic_item_bank.v1 / demo.v1'),
@@ -275,7 +279,7 @@ const citationsFromApi = (value: unknown): Citation[] => {
 const mapReport = (rawReport: unknown, rawAssessment: unknown): StudentReportViewModel => {
   const report = isRecord(rawReport) ? rawReport : {}
   const assessmentId = valueAsString(report.assessment_id)
-  const assessment = mapAssessment(rawAssessment, assessmentId, 'SUBJ_REDACTED')
+  const assessment = mapAssessment(rawAssessment, assessmentId)
   const generation = mapGeneration(report.generation, report, assessmentId)
   const actions = generation.content?.suggestions.map((suggestion, index) => ({
     number: String(index + 1).padStart(2, '0'),
@@ -345,6 +349,7 @@ const mapReviewCase = (value: unknown): ReviewCase => {
 
 export class RealApiProvider implements FrontendApi {
   private csrfToken = ''
+  private actorSubjectId: string | null = null
   private readonly reviewCases = new Map<string, ReviewCase>()
 
   private async ensureCsrfToken(): Promise<string> {
@@ -361,11 +366,13 @@ export class RealApiProvider implements FrontendApi {
     }))
     const actor = isRecord(response.data.actor) ? response.data.actor : {}
     this.csrfToken = valueAsString(response.data.csrf_token)
+    this.actorSubjectId = nullableString(actor.subject_id)
     return {
       ...response,
       data: {
         userId: valueAsString(actor.user_id),
         role: mapRole(actor.role, input.role),
+        subjectId: this.actorSubjectId,
         displayName: valueAsString(actor.username, input.account),
         initials: valueAsString(actor.username, input.account).slice(0, 1).toUpperCase(),
       },
@@ -378,11 +385,13 @@ export class RealApiProvider implements FrontendApi {
     const userId = valueAsString(actor.user_id)
     if (!userId) return { ...response, data: null }
     const username = valueAsString(actor.username, '演示同学')
+    this.actorSubjectId = nullableString(actor.subject_id)
     return {
       ...response,
       data: {
         userId,
         role: mapRole(actor.role, 'student'),
+        subjectId: this.actorSubjectId,
         displayName: username,
         initials: username.slice(0, 1).toUpperCase(),
       },
@@ -403,8 +412,7 @@ export class RealApiProvider implements FrontendApi {
     const rows = Array.isArray(response.data) ? response.data : []
     return { ...response, data: rows.map((row) => {
       const source = isRecord(row) ? row : {}
-      const subjectId = valueAsString(source.subject_id, 'SYNTHETIC_STUDENT_DEMO')
-      return mapAssessment(source, valueAsString(source.assessment_id), subjectId)
+      return mapAssessment(source, valueAsString(source.assessment_id))
     }) }
   }
 
@@ -421,7 +429,7 @@ export class RealApiProvider implements FrontendApi {
     const source = isRecord(response.data) ? response.data : {}
     return {
       ...response,
-      data: mapAssessment(source, assessmentId, valueAsString(source.subject_id, 'SYNTHETIC_STUDENT_DEMO')),
+      data: mapAssessment(source, assessmentId),
     }
   }
 
@@ -446,11 +454,14 @@ export class RealApiProvider implements FrontendApi {
 
   async startAssessment(assessmentId?: string): Promise<ApiEnvelope<AssessmentState>> {
     if (assessmentId) return this.getAssessmentState(assessmentId)
+    if (!this.actorSubjectId) {
+      throw new RealApiError('AUTH_SUBJECT_MISSING', '当前登录账号缺少授权的合成主体标识，无法创建测评。')
+    }
     await this.ensureCsrfToken()
     const created = await unwrap<unknown>(() => createAssessment({
       client: apiClient,
       body: {
-        subject_id: 'SYNTHETIC_STUDENT_DEMO',
+        subject_id: this.actorSubjectId,
         instrument_id: 'CURRENT_SYNTHETIC_GRM',
         instrument_version: 'synthetic_item_bank.v1 / demo.v1',
       },
@@ -485,7 +496,7 @@ export class RealApiProvider implements FrontendApi {
       body: {},
       headers: mutationHeaders(this.csrfToken, nowToken(`frontend-assessment-complete-${assessmentId}`)),
     }))
-    return { ...response, data: mapAssessment(response.data, assessmentId, 'SYNTHETIC_STUDENT_DEMO') }
+    return { ...response, data: mapAssessment(response.data, assessmentId) }
   }
 
   async createSupport(assessmentId: string, message: string): Promise<ApiEnvelope<SupportResult>> {

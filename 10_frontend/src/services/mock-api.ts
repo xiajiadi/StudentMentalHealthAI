@@ -76,6 +76,7 @@ export class MockApiProvider implements FrontendApi {
     const result: LoginResult = {
       userId: `USER_demo_${input.role}`,
       role: input.role,
+      subjectId: input.role === 'student' ? 'SUBJ_demo_student_001' : null,
       displayName: input.role === 'student' ? '演示同学' : input.role === 'teacher' ? '演示教师' : '演示复核员',
       initials: input.role === 'student' ? '学' : input.role === 'teacher' ? '师' : '复',
     }
