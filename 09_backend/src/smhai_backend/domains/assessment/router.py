@@ -41,6 +41,26 @@ def envelope(request: Request, data: object) -> dict[str, object]:
     }
 
 
+@router.get(
+    "",
+    operation_id="listAssessments",
+    response_model=ApiEnvelope[list[AssessmentDto]],
+    responses=problem_responses(ErrorCode.AUTH_SESSION_EXPIRED),
+    summary="List assessments in the authenticated subject scope",
+)
+async def list_assessments(request: Request, actor: CurrentActor) -> JSONResponse:
+    records = await request.app.state.container.assessments.list_for_actor(actor)
+    return JSONResponse(
+        envelope(
+            request,
+            [
+                AssessmentDto.model_validate(record.assessment).model_dump(mode="json")
+                for record in records
+            ],
+        )
+    )
+
+
 @router.post(
     "",
     status_code=201,

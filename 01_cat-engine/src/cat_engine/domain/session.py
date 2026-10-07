@@ -194,7 +194,9 @@ class Session:
             assessment_id=self.assessment_id,
             subject_id=self.subject_id,
             instrument_id=self.item_bank.instrument_id,
-            instrument_version=self.item_bank.version,
+            instrument_version=str(
+                self.item_bank.metadata.get("instrument_version", self.item_bank.version)
+            ),
             population_scope=self.item_bank.target_population,
             dimension=self.dimension,
             estimate=AbilityEstimate(snapshot.theta, snapshot.se, snapshot.items_answered),

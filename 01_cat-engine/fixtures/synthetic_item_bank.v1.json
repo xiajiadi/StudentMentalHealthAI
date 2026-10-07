@@ -1,12 +1,13 @@
 {
   "item_bank_id": "ITEMBANK_demo_cat",
   "version": "demo.v1",
-  "instrument_id": "instrument_demo_cat_v0_1",
-  "target_population": "pending_confirmation",
+  "instrument_id": "CURRENT_SYNTHETIC_GRM",
+  "target_population": "SYNTHETIC_STUDENT_DEMO",
   "measurement_model": "GRM",
   "dimensions": ["demo_trait"],
   "status": "published",
   "metadata": {
+    "instrument_version": "synthetic_item_bank.v1 / demo.v1",
     "synthetic": true,
     "intended_use": "engineering_test_only",
     "psychological_interpretation_allowed": false,

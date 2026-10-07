@@ -28,6 +28,11 @@ def test_completed_cat_result_maps_to_assessment_v1(service, item_bank, cat_conf
     )
     validate_assessment_v1(assessment)
     assert assessment["schema_version"] == "assessment.v1"
+    assert assessment["instrument"] == {
+        "instrument_id": "CURRENT_SYNTHETIC_GRM",
+        "version": "synthetic_item_bank.v1 / demo.v1",
+    }
+    assert assessment["population_scope"] == "SYNTHETIC_STUDENT_DEMO"
     assert assessment["dimensions"]["demo_trait"]["band"] == "unknown"
     assert assessment["dimensions"]["demo_trait"]["score"] is None
     assert "traces" not in assessment

@@ -79,7 +79,13 @@ class CatRuntime:
         }
 
     def start(self, request: StartRequest) -> dict[str, Any]:
-        if request.instrument_id != self.item_bank.instrument_id or request.instrument_version != self.item_bank.version:
+        instrument_version = str(
+            self.item_bank.metadata.get("instrument_version", self.item_bank.version)
+        )
+        if (
+            request.instrument_id != self.item_bank.instrument_id
+            or request.instrument_version != instrument_version
+        ):
             raise HTTPException(
                 status_code=422,
                 detail="instrument does not match the published CAT fixture",
@@ -106,6 +112,11 @@ class CatRuntime:
 
     def submit(self, assessment_id: str, request: ResponseRequest) -> dict[str, Any]:
         session = self._session(assessment_id)
+        if session.selected_item_id != request.item_id:
+            raise HTTPException(
+                status_code=409,
+                detail="response item does not match the currently presented item",
+            )
         try:
             self.service.submit_response(session, request.response)
             if session.status.value == "IN_PROGRESS" and session.selected_item_id is None:

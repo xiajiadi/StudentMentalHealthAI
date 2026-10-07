@@ -571,6 +571,30 @@ class MySqlBackendAdapter:
                 administered_count=len(responses),
             )
 
+    async def list_assessments_for_subjects(
+        self, subject_ids: set[str]
+    ) -> list[AssessmentRecord]:
+        if not subject_ids:
+            return []
+        m = self._db_models
+        async with self._uow() as uow:
+            refs = list(
+                (
+                    await uow.session.scalars(
+                        self._select(m.AssessmentSession.assessment_ref)
+                        .join(m.Subject, m.Subject.id == m.AssessmentSession.subject_id)
+                        .where(m.Subject.subject_ref.in_(subject_ids))
+                        .order_by(m.AssessmentSession.created_at.desc())
+                    )
+                ).all()
+            )
+        records: list[AssessmentRecord] = []
+        for assessment_id in refs:
+            record = await self.get_assessment(assessment_id)
+            if record is not None:
+                records.append(record)
+        return records
+
     def _decrypt_result(self, row) -> dict[str, Any] | None:
         if row is None or row.payload_ciphertext is None:
             return None
@@ -970,6 +994,58 @@ class MySqlBackendAdapter:
                     )
                 ),
             )
+
+    async def list_for_subjects(
+        self,
+        subject_ids: set[str],
+        assessment_id: str | None = None,
+        limit: int = 100,
+    ) -> list[ReportRecord]:
+        if not subject_ids:
+            return []
+        m = self._db_models
+        limit = max(1, min(limit, 100))
+        async with self._uow() as uow:
+            statement = (
+                self._select(
+                    m.SupportRun.run_ref,
+                    m.SupportRun.completed_at,
+                    m.SupportRun.created_at,
+                )
+                .join(
+                    m.AssessmentSession,
+                    m.AssessmentSession.id == m.SupportRun.assessment_session_id,
+                )
+                .join(m.Subject, m.Subject.id == m.AssessmentSession.subject_id)
+                .where(m.Subject.subject_ref.in_(subject_ids))
+            )
+            if assessment_id is not None:
+                statement = statement.where(
+                    m.AssessmentSession.assessment_ref == assessment_id
+                )
+            rows = list(
+                (
+                    await uow.session.execute(
+                        statement.order_by(m.SupportRun.created_at.desc()).limit(limit)
+                    )
+                ).all()
+            )
+
+        records: list[ReportRecord] = []
+        for report_id, completed_at, created_at in rows:
+            record = await self._get_report(report_id)
+            if record is None:
+                continue
+            timestamp = completed_at or created_at
+            if isinstance(timestamp, datetime):
+                if timestamp.tzinfo:
+                    timestamp = timestamp.astimezone(UTC)
+                else:
+                    timestamp = timestamp.replace(tzinfo=UTC)
+                timestamp = timestamp.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+            record.generation["created_at"] = str(timestamp)
+            records.append(record)
+        return records
 
     async def _subject_ref(self, uow, subject_id: int) -> str:
         subject = await uow.session.get(self._db_models.Subject, subject_id)

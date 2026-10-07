@@ -299,6 +299,12 @@ class HttpCatClient(LongLivedHttpClient):
                 instrument_version=session.instrument_version,
             )
         except UpstreamError as exc:
+            if exc.status_code == 404:
+                raise error(
+                    ErrorCode.RESOURCE_NOT_FOUND,
+                    status_code=404,
+                    detail="CAT session not found",
+                ) from exc
             raise translate_upstream_error(exc) from exc
         except (TypeError, ValueError) as exc:
             raise error(

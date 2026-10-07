@@ -33,6 +33,7 @@ class SessionStore(Protocol):
 class AssessmentRepository(Protocol):
     def save(self, record: AssessmentRecord) -> None: ...
     def get(self, assessment_id: str) -> AssessmentRecord | None: ...
+    def list_assessments_for_subjects(self, subject_ids: set[str]) -> list[AssessmentRecord]: ...
 
 
 class ConversationRepository(Protocol):
@@ -61,6 +62,12 @@ class ConversationRepository(Protocol):
 class ReportRepository(Protocol):
     def save(self, record: ReportRecord) -> None: ...
     def get(self, report_id: str) -> ReportRecord | None: ...
+    def list_for_subjects(
+        self,
+        subject_ids: set[str],
+        assessment_id: str | None = None,
+        limit: int = 100,
+    ) -> list[ReportRecord]: ...
 
 
 class ReviewProjectionRepository(Protocol):

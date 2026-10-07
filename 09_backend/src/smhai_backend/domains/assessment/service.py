@@ -181,6 +181,11 @@ class AssessmentService:
         if record.assessment["status"] not in {"created", "in_progress"}:
             raise error(ErrorCode.WORKFLOW_CONFLICT, detail="assessment is already complete")
         session = await self._cat_session(record, request_id=request_id, trace_id=trace_id)
+        if getattr(self.cat, "label", "") == "REAL_HTTP" and not session.can_complete:
+            raise error(
+                ErrorCode.WORKFLOW_CONFLICT,
+                detail="assessment has not reached its configured stopping condition",
+            )
         result = await self.cat.complete(
             session,
             responses=record.responses,
@@ -219,6 +224,23 @@ class AssessmentService:
             action,
             request_id=request_id,
             trace_id=trace_id,
+        )
+
+    async def list_for_actor(self, actor: Actor) -> list[AssessmentRecord]:
+        """List assessments only for subjects the authenticated actor can read."""
+
+        subject_ids = set(actor.accessible_subject_ids)
+        if actor.subject_id:
+            subject_ids.add(actor.subject_id)
+        allowed_subject_ids = {
+            subject_id
+            for subject_id in subject_ids
+            if self.authorization.can(
+                actor, "assessment:read", resource={"subject_id": subject_id}
+            )
+        }
+        return await maybe_await(
+            self.repository.list_assessments_for_subjects(allowed_subject_ids)
         )
 
     async def state_for_actor(
@@ -308,10 +330,7 @@ class AssessmentService:
     async def _cat_session(
         self, record: AssessmentRecord, *, request_id: str, trace_id: str
     ) -> CatStart:
-        session = self._sessions.get(record.assessment_id)
-        if session is not None:
-            return session
-        session = CatStart(
+        session = self._sessions.get(record.assessment_id) or CatStart(
             assessment_id=record.assessment_id,
             subject_id=record.subject_id,
             instrument_id=str(
@@ -331,8 +350,38 @@ class AssessmentService:
         )
         try:
             session = await self.cat.state(session, request_id=request_id, trace_id=trace_id)
-        except AttributeError:
-            pass
+        except BackendError as exc:
+            if exc.code is not ErrorCode.RESOURCE_NOT_FOUND:
+                raise
+            # CAT owns process-local provider state. Recreate it from the
+            # encrypted response history persisted by the Backend repository.
+            session = await self.cat.start(
+                assessment_id=record.assessment_id,
+                subject_id=record.subject_id,
+                instrument_id=session.instrument_id,
+                instrument_version=session.instrument_version,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+            for item_id, response in record.responses.items():
+                if (session.current_item or {}).get("item_id") != item_id:
+                    raise error(
+                        ErrorCode.WORKFLOW_CONFLICT,
+                        detail=(
+                            "persisted CAT response history does not match "
+                            "the published item sequence"
+                        ),
+                    ) from exc
+                await self.cat.submit_response(
+                    session,
+                    item_id=item_id,
+                    response=response,
+                    request_id=request_id,
+                    trace_id=trace_id,
+                )
+                session = await self.cat.state(
+                    session, request_id=request_id, trace_id=trace_id
+                )
         self._sessions[record.assessment_id] = session
         return session
 

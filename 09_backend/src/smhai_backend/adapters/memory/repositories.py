@@ -140,6 +140,13 @@ class InMemoryAssessmentRepository:
     def get(self, assessment_id: str) -> AssessmentRecord | None:
         return self._records.get(assessment_id)
 
+    def list_assessments_for_subjects(self, subject_ids: set[str]) -> list[AssessmentRecord]:
+        return sorted(
+            (record for record in self._records.values() if record.subject_id in subject_ids),
+            key=lambda record: str(record.assessment.get("timestamps", {}).get("started_at", "")),
+            reverse=True,
+        )
+
 
 class InMemoryConversationRepository:
     def __init__(self) -> None:
@@ -182,6 +189,25 @@ class InMemoryReportRepository:
 
     def get(self, report_id: str) -> ReportRecord | None:
         return self._records.get(report_id)
+
+    def list_for_subjects(
+        self,
+        subject_ids: set[str],
+        assessment_id: str | None = None,
+        limit: int = 100,
+    ) -> list[ReportRecord]:
+        limit = max(1, min(limit, 100))
+        records = (
+            record
+            for record in self._records.values()
+            if record.subject_id in subject_ids
+            and (assessment_id is None or record.assessment_id == assessment_id)
+        )
+        return sorted(
+            records,
+            key=lambda record: str(record.generation.get("created_at", "")),
+            reverse=True,
+        )[:limit]
 
     def delete(self, report_id: str) -> None:
         self._records.pop(report_id, None)
