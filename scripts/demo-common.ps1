@@ -159,6 +159,37 @@ function Save-DemoManifest {
     $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $script:ManifestPath -Encoding utf8
 }
 
+function Test-ManagedDemoProcessStartTime {
+    param(
+        [Parameter(Mandatory)][object]$Expected,
+        [AllowNull()][DateTime]$Actual
+    )
+
+    try {
+        if ($Expected -is [DateTimeOffset]) {
+            $expectedUtcTicks = $Expected.UtcDateTime.Ticks
+        } elseif ($Expected -is [DateTime]) {
+            if ($Expected.Kind -eq [DateTimeKind]::Unspecified) { return $false }
+            $expectedUtcTicks = $Expected.ToUniversalTime().Ticks
+        } else {
+            $parsedExpected = [DateTimeOffset]::MinValue
+            $parsed = [DateTimeOffset]::TryParseExact(
+                [string]$Expected,
+                'o',
+                [Globalization.CultureInfo]::InvariantCulture,
+                [Globalization.DateTimeStyles]::RoundtripKind,
+                [ref]$parsedExpected
+            )
+            if (-not $parsed) { return $false }
+            $expectedUtcTicks = $parsedExpected.UtcDateTime.Ticks
+        }
+        if ($null -eq $Actual -or $Actual.Kind -eq [DateTimeKind]::Unspecified) { return $false }
+        return $Actual.ToUniversalTime().Ticks -eq $expectedUtcTicks
+    } catch {
+        return $false
+    }
+}
+
 function Stop-ManagedDemoProcesses {
     if (-not (Test-Path -LiteralPath $script:ManifestPath)) { return }
     $manifest = Get-Content -LiteralPath $script:ManifestPath -Raw | ConvertFrom-Json
@@ -169,12 +200,12 @@ function Stop-ManagedDemoProcesses {
         $process = Get-Process -Id ([int]$entry.pid) -ErrorAction SilentlyContinue
         if ($null -eq $process) { continue }
         $actualPath = try { (Resolve-Path -LiteralPath $process.Path).Path } catch { '' }
-        $actualStart = try { $process.StartTime.ToUniversalTime().ToString('o') } catch { '' }
+        $actualStart = try { $process.StartTime } catch { $null }
         $nativeProcess = Get-CimInstance Win32_Process -Filter "ProcessId = $($entry.pid)" -ErrorAction SilentlyContinue
         $expectedArgv = @($entry.expected_argv)
         $commandLine = if ($nativeProcess) { [string]$nativeProcess.CommandLine } else { '' }
         $argumentsMatch = -not [string]::IsNullOrWhiteSpace($commandLine) -and $expectedArgv.Count -gt 0 -and @($expectedArgv | Where-Object { -not $commandLine.Contains([string]$_) }).Count -eq 0
-        if ($actualPath -ne $entry.executable -or $actualStart -ne $entry.started_at -or -not $argumentsMatch) {
+        if ($actualPath -ne $entry.executable -or -not (Test-ManagedDemoProcessStartTime -Expected $entry.started_at -Actual $actualStart) -or -not $argumentsMatch) {
             throw "PID $($entry.pid) no longer matches the recorded demo process; refusing to stop it."
         }
         Stop-Process -Id $process.Id -ErrorAction Stop
