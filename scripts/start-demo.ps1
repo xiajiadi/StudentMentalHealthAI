@@ -18,6 +18,20 @@ $projectRoots = @{
     llm = Join-Path $DemoRoot '06_llm-runtime'
     safety = Join-Path $DemoRoot '08_safety-engine'
 }
+$opaBinary = if ([string]::IsNullOrWhiteSpace($env:SMHAI_OPA_BINARY)) {
+    'D:\Dev\tools\opa\v1.20.2\opa.exe'
+} else {
+    try { [IO.Path]::GetFullPath($env:SMHAI_OPA_BINARY) }
+    catch { $blockers.Add('SMHAI_OPA_BINARY must resolve to a valid local OPA executable path.'); $null }
+}
+$opaPolicyDir = Join-Path $projectRoots.safety 'policies'
+if (-not $opaBinary -or -not (Test-Path -LiteralPath $opaBinary -PathType Leaf)) {
+    $blockers.Add('OPA executable is unavailable; install it locally or set SMHAI_OPA_BINARY to an existing executable.')
+}
+if (-not (Test-Path -LiteralPath $opaPolicyDir -PathType Container) -or
+    @(Get-ChildItem -LiteralPath $opaPolicyDir -Filter '*.rego' -File -ErrorAction SilentlyContinue).Count -eq 0) {
+    $blockers.Add('Safety OPA policy directory is unavailable or contains no .rego policy files.')
+}
 $pythonByProject = @{}
 foreach ($entry in $projectRoots.GetEnumerator()) {
     try { $pythonByProject[$entry.Key] = Get-ProjectPython -RelativePath (Split-Path $entry.Value -Leaf) }
@@ -96,7 +110,7 @@ if (-not (Test-Path -LiteralPath $nodeModules -PathType Container) -or -not (Tes
     $blockers.Add('Frontend dependencies are unavailable; run the documented project-local npm setup first.')
 }
 
-foreach ($service in @(@('CAT', 8180), @('RAG', 8170), @('LLM Runtime', 8160), @('Safety', 8190), @('Backend', 8080), @('Frontend', 4173))) {
+foreach ($service in @(@('CAT', 8180), @('RAG', 8170), @('LLM Runtime', 8160), @('OPA', 8181), @('Safety', 8190), @('Backend', 8080), @('Frontend', 4173))) {
     $listener = Get-NetTCPConnection -State Listen -LocalPort $service[1] -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($listener) { $blockers.Add("Port $($service[1]) for $($service[0]) is already occupied; no process was started.") }
 }
@@ -169,8 +183,10 @@ try {
         @{ name='CAT'; project='cat'; module='cat_engine.api.app'; port=8180; order=10; env=@{ SMHAI_CAT_PORT='8180' } },
         @{ name='RAG'; project='rag'; module='rag_engine.api.app'; port=8170; order=20; env=$pipelineArtifacts + @{ SMHAI_RAG_PORT='8170' } },
         @{ name='LLM Runtime'; project='llm'; module='llm_runtime.api.app'; port=8160; order=30; env=@{ SMHAI_LLM_PORT='8160' } },
-        @{ name='Safety'; project='safety'; module='safety_engine.api.app'; port=8190; order=40; env=@{} }
+        @{ name='Safety'; project='safety'; module='safety_engine.api.app'; port=8190; order=40; env=@{ SMHAI_OPA_URL='http://127.0.0.1:8181'; SMHAI_MANAGE_OPA='0' } }
     )
+    Start-ManagedDemoProcess -Name 'OPA' -Executable $opaBinary -WorkingDirectory $projectRoots.safety -Arguments @('run', '--server', '--addr=127.0.0.1:8181', '--skip-version-check', $opaPolicyDir) -Environment @{} -StopOrder 35 -Started $started
+    Wait-LocalReady -Name 'OPA' -Url 'http://127.0.0.1:8181/health' -TimeoutSeconds 15
     foreach ($service in $modulePlan) {
         $python = $pythonByProject[$service.project]
         Start-ManagedDemoProcess -Name $service.name -Executable $python -WorkingDirectory $projectRoots[$service.project] -Arguments @('-m', $service.module) -Environment $service.env -StopOrder $service.order -Started $started
