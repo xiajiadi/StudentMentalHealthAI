@@ -19,6 +19,10 @@ def test_db_environment_password_round_trips_and_stays_sanitized(monkeypatch) ->
     if password in settings.sanitized_url:
         pytest.fail("sanitized_url exposed the configured password")
     assert "***" in settings.sanitized_url
+    if settings.url in repr(settings):
+        pytest.fail("DatabaseSettings repr exposed the raw database URL")
+    if password in repr(settings):
+        pytest.fail("DatabaseSettings repr exposed the configured password")
 
 
 def test_database_url_takes_precedence_over_db_environment(monkeypatch) -> None:

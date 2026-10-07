@@ -7,7 +7,7 @@ intentionally rejected by the production/integration configuration path.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from sqlalchemy import URL, make_url
 from sqlalchemy.ext.asyncio import (
@@ -22,7 +22,7 @@ from .errors import ConfigurationError
 
 @dataclass(frozen=True, slots=True)
 class DatabaseSettings:
-    url: str
+    url: str = field(repr=False)
     pool_size: int = 5
     max_overflow: int = 5
     pool_timeout: int = 30
