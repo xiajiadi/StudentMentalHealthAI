@@ -192,7 +192,7 @@ function Start-ManagedDemoProcess {
         [Parameter(Mandatory)][hashtable]$Environment,
         [ValidateSet('none', 'backend', 'bootstrap', 'migration')][string]$DatabaseAccess = 'none',
         [Parameter(Mandatory)][int]$StopOrder,
-        [Parameter(Mandatory)][System.Collections.Generic.List[object]]$Started
+        [Parameter(Mandatory)][AllowEmptyCollection()][System.Collections.Generic.List[object]]$Started
     )
     $process = Invoke-WithDemoDatabaseEnvironment -Access $DatabaseAccess -Overrides $Environment -Action {
         $process = Start-Process -FilePath $Executable -ArgumentList $Arguments -WorkingDirectory $WorkingDirectory -WindowStyle Hidden -PassThru
