@@ -89,7 +89,7 @@ onMounted(loadHistory)
               <ShieldAlert :size="19" aria-hidden="true" /><div><strong>内容暂未开放</strong><p>服务端返回了需要确认的状态。页面不会展示待审核内容。</p></div>
             </div>
             <div v-else-if="isAbstain(entry.result)" class="support-turn__state">
-              <ShieldAlert :size="19" aria-hidden="true" /><div><strong>目前没有足够的已审核来源</strong><p>服务端没有返回可展示的回答。你可以换一种问法，或查看已有支持记录。</p></div>
+              <ShieldAlert :size="19" aria-hidden="true" /><div><strong>目前没有可用的演示资料</strong><p>服务端没有返回可展示的回答。你可以换一种问法，或查看已有支持记录。</p></div>
             </div>
             <template v-else-if="entry.result.content">
               <span class="support-turn__label">服务端回答</span>
@@ -102,7 +102,7 @@ onMounted(loadHistory)
             <div v-if="citations(entry.result).length" class="support-turn__citations" aria-label="回答引用">
               <strong>来源</strong>
               <a v-for="citation in citations(entry.result)" :key="String(citation.citation_id || citation.chunk_id)" :href="typeof citation.locator === 'string' && citation.locator.startsWith('https://') ? citation.locator : undefined" :target="typeof citation.locator === 'string' && citation.locator.startsWith('https://') ? '_blank' : undefined" :rel="typeof citation.locator === 'string' && citation.locator.startsWith('https://') ? 'noreferrer' : undefined">
-                {{ citation.title || citation.document_id || citation.chunk_id || '已审核来源' }}<span v-if="citation.locator"> · {{ citation.locator }}</span>
+                {{ citation.title || citation.document_id || citation.chunk_id || '演示资料来源' }}<span v-if="citation.locator"> · {{ citation.locator }}</span>
               </a>
             </div>
             <footer class="support-turn__saved"><span>记录已返回</span><button type="button" @click="openReport(entry.result.report_id)">查看保存的报告</button></footer>

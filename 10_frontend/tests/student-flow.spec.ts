@@ -102,4 +102,23 @@ describe('学生演示闭环页面', () => {
     expect(wrapper.text()).not.toContain('模型回答')
     expect(wrapper.text()).toContain(report.report_id)
   })
+
+  it('来源标签只说明演示资料，不声称经过人工审核', async () => {
+    api.createSupport.mockResolvedValue(envelope(support({
+      status: 'generated',
+      safety_action: 'PROCEED_WITH_BOUNDARY',
+      normal_generation: true,
+      content: { summary: '演示回答', observations: [], suggestions: [], disclaimer: '合成演示内容。' },
+      citations: [{}],
+    })))
+    const router = await makeRouter(`/student/support?assessment=${assessment.assessment_id}`)
+    const wrapper = mount(SupportChatView, { global: { plugins: [router] } })
+    await flushPromises()
+    await wrapper.get('textarea').setValue('演示请求')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('演示资料来源')
+    expect(wrapper.text()).not.toContain('已审核来源')
+  })
 })
