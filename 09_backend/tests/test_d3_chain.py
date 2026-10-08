@@ -150,7 +150,7 @@ def test_student_composes_real_d3_chain_and_excludes_measurements() -> None:
         D3_POLICY_HASH,
     )
     assert result.template.prompt_id == "PROMPT_student_synthetic_v1"
-    assert result.template.prompt_version == "1.0.0"
+    assert result.template.prompt_version == "1.1.0"
     assert result.template.content_hash.startswith("sha256:")
     assert re.search(r"(?i)\b(?:theta|se)\b", result.rendered_prompt.rendered_text) is None
     assert "theta" not in json.dumps(result.prompt_input, ensure_ascii=False).lower()

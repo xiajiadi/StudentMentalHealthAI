@@ -202,6 +202,25 @@ def test_three_roles_render_with_real_frozen_inputs(d3_case, role):
     assert all(term not in result.audit for term in ("theta", "se", "band"))
 
 
+def test_m0_student_template_v110_places_content_by_generation_field(d3_case):
+    case = d3_case("student")
+    case["request"]["prompt_ref"]["prompt_version"] = "1.1.0"
+
+    result = _render(case)
+
+    assert result.generation_request["prompt_ref"]["prompt_version"] == "1.1.0"
+    assert "summary: provide an education-support summary only" in result.rendered_text
+    assert "observations: state only observations supported" in result.rendered_text
+    assert "suggestions[].text: provide actionable education-support advice" in result.rendered_text
+    assert "disclaimer: put the non-diagnostic boundary here" in result.rendered_text
+    assert (
+        "Do not put disclaimer text in summary, observations, or suggestions[].text"
+        in result.rendered_text
+    )
+    assert "$allowed_source_chunk_ids_json" not in result.rendered_text
+    assert "CHUNK_d3_001" in result.rendered_text
+
+
 def test_template_hashes_are_stable_lf_utf8_and_resolve_exactly():
     for role, prompt_id in PROMPT_IDS.items():
         record = resolve_template(prompt_id, "1.0.0", role)

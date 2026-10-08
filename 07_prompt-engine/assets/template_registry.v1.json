@@ -36,6 +36,39 @@
       ]
     },
     {
+      "prompt_id": "PROMPT_student_synthetic_v1",
+      "prompt_version": "1.1.0",
+      "role": "student",
+      "purpose": "education_support",
+      "language": "zh-CN",
+      "status": "active",
+      "approval_status": "ENGINEERING_REVIEWED_SYNTHETIC_ONLY",
+      "engineering_activation_scope": "synthetic_demo",
+      "change_summary": "M0-only explicit GenerationContent field placement and evidence boundaries; preserves v1.0.0 unchanged.",
+      "template_path": "templates/student_1.1.0.txt",
+      "content_hash": "sha256:8a4ff84416e9477c749e21591a086a79ff020773c7edb41ba0ec55b15f74a7cb",
+      "required_placeholders": [
+        "target_role",
+        "language",
+        "execution_mode",
+        "input_safety_action",
+        "retrieval_safety_action",
+        "assessment_context_json",
+        "retrieval_context_json",
+        "allowed_source_chunk_ids_json"
+      ],
+      "allowed_placeholders": [
+        "target_role",
+        "language",
+        "execution_mode",
+        "input_safety_action",
+        "retrieval_safety_action",
+        "assessment_context_json",
+        "retrieval_context_json",
+        "allowed_source_chunk_ids_json"
+      ]
+    },
+    {
       "prompt_id": "PROMPT_teacher_synthetic_v1",
       "prompt_version": "1.0.0",
       "role": "teacher",

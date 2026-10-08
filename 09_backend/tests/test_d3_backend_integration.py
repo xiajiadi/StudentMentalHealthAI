@@ -15,7 +15,7 @@ from smhai_backend.core.errors import BackendError
 from smhai_backend.core.request_context import RequestContext
 from smhai_backend.domains.models import Actor, AssessmentRecord, BackendRole, ReportRecord
 from smhai_backend.domains.support import service as support_service_module
-from smhai_backend.domains.support.schemas import SupportRequest
+from smhai_backend.domains.support.schemas import GenerationContent, SupportRequest
 from smhai_backend.integrations.d3 import adapt_legacy_retrieval, default_fixture_config
 from smhai_backend.integrations.llm import CandidateResponse
 from smhai_backend.integrations.rag import ContractFakeRagClient, RetrievalResult
@@ -88,9 +88,19 @@ async def test_legacy_retrieval_compatibility_preserves_observed_chunk_and_trace
 
 @pytest.mark.asyncio
 async def test_support_route_runs_bound_d3_chain_once_and_persists_after_output_safety(
-    client, app
+    client, app, monkeypatch
 ) -> None:
     assessment = _install_exact_assessment(app)
+    runtime_prompts: list[str] = []
+    llm = app.state.container.llm
+    llm_type = type(llm)
+    original_generate = llm_type.generate
+
+    async def capture_prompt(self, **kwargs):
+        runtime_prompts.append(kwargs["prompt"])
+        return await original_generate(self, **kwargs)
+
+    monkeypatch.setattr(llm_type, "generate", capture_prompt)
     response = await client.post(
         "/api/v1/auth/login",
         json={"username": "student_a", "password": "synthetic-student-a"},
@@ -107,6 +117,10 @@ async def test_support_route_runs_bound_d3_chain_once_and_persists_after_output_
     body = response.json()["data"]
     assert body["status"] == "generated"
     assert body["generation"]["provenance"]["prompt_id"] == "PROMPT_student_synthetic_v1"
+    assert body["generation"]["provenance"]["prompt_version"] == "1.1.0"
+    assert len(runtime_prompts) == 1
+    assert "summary: provide an education-support summary only" in runtime_prompts[0]
+    assert "disclaimer: put the non-diagnostic boundary here" in runtime_prompts[0]
     assert app.state.container.rag.calls == 1
     assert app.state.container.llm.calls == 1
     assert app.state.container.support.call_order[-3:] == [
@@ -754,6 +768,32 @@ async def test_schema_valid_measurement_claim_is_not_published_when_safety_proce
     snapshot = app.state.container.support.stage_ledgers[trace_id].snapshot()
     assert snapshot.state.value == "ABORTED"
     assert snapshot.current.value == "OUTPUT_SAFETY_EVALUATED"
+
+
+def test_boundary_gate_keeps_lexical_behavior_for_negated_substantive_text() -> None:
+    affirmative = GenerationContent(
+        summary="Synthetic clinical diagnosis claim.",
+        observations=[],
+        suggestions=[],
+        disclaimer="Synthetic fixture.",
+    )
+    negated_disclaimer = GenerationContent(
+        summary="Synthetic education-support summary.",
+        observations=["Synthetic observed study routine."],
+        suggestions=[],
+        disclaimer="This is not a diagnosis or clinical assessment.",
+    )
+    negated_observation = GenerationContent(
+        summary="Synthetic education-support summary.",
+        observations=["This is not a diagnosis or clinical assessment."],
+        suggestions=[],
+        disclaimer="Synthetic fixture.",
+    )
+
+    assert support_service_module._contains_forbidden_generated_claim(affirmative)
+    assert not support_service_module._contains_forbidden_generated_claim(negated_disclaimer)
+    # The gate remains a lexical guard: negation in a substantive field still matches.
+    assert support_service_module._contains_forbidden_generated_claim(negated_observation)
 
 
 @pytest.mark.asyncio

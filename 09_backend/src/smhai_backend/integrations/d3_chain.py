@@ -69,8 +69,8 @@ _ROLE_POLICY_REFS: dict[str, tuple[str, str, str]] = {
 _TEMPLATE_REFS: dict[str, tuple[str, str, str]] = {
     "student": (
         "PROMPT_student_synthetic_v1",
-        "1.0.0",
-        "sha256:8f821afbcbe53b4741982ac9cac02961151ab1b2f15b2fdb2786e5707baa237e",
+        "1.1.0",
+        "sha256:8a4ff84416e9477c749e21591a086a79ff020773c7edb41ba0ec55b15f74a7cb",
     ),
     "teacher": (
         "PROMPT_teacher_synthetic_v1",
