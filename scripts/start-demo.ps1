@@ -67,7 +67,14 @@ foreach ($entry in $expectedPythonMinor.GetEnumerator()) {
 
 $keyFile = if ($env:DATABASE_KEY_FILE) { [IO.Path]::GetFullPath($env:DATABASE_KEY_FILE) } else { 'D:\Dev\secrets\studentmentalhealthai\database-keys.json' }
 if (-not (Test-Path -LiteralPath $keyFile -PathType Leaf)) { $blockers.Add('Database encryption key file is unavailable; configure DATABASE_KEY_FILE to an existing file outside the repository.') }
-elseif ($keyFile.StartsWith($DemoRoot, [StringComparison]::OrdinalIgnoreCase)) { $blockers.Add('Database encryption key file must be outside this repository.') }
+else {
+    $repositoryRoot = [IO.Path]::GetFullPath($DemoRoot).TrimEnd([char[]]@('\', '/'))
+    $repositoryPrefix = $repositoryRoot + [IO.Path]::DirectorySeparatorChar
+    if ($keyFile.Equals($repositoryRoot, [StringComparison]::OrdinalIgnoreCase) -or
+        $keyFile.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        $blockers.Add('Database encryption key file must be outside this repository.')
+    }
+}
 
 try { $dbTarget = Get-DemoDatabaseTarget }
 catch { $blockers.Add($_.Exception.Message) }

@@ -209,7 +209,15 @@ function Stop-ManagedDemoProcesses {
             throw "PID $($entry.pid) no longer matches the recorded demo process; refusing to stop it."
         }
         Stop-Process -Id $process.Id -ErrorAction Stop
-        try { $process.WaitForExit(10000) | Out-Null } catch { }
+        try {
+            $exited = $process.WaitForExit(10000)
+        } catch {
+            throw "Could not verify shutdown for recorded demo PID $($entry.pid); process manifest was retained."
+        }
+        $process.Refresh()
+        if (-not $exited -or -not $process.HasExited) {
+            throw "Recorded demo PID $($entry.pid) is still running; process manifest was retained."
+        }
     }
     Remove-Item -LiteralPath $script:ManifestPath -Force
 }
