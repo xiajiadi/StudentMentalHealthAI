@@ -1,92 +1,99 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { ArrowRight } from '@lucide/vue'
-import { ClipboardCheck } from '@lucide/vue'
-import { FileCheck2 } from '@lucide/vue'
-import { RotateCcw } from '@lucide/vue'
-import { UsersRound } from '@lucide/vue'
-import CompletionTrend from '@/components/charts/CompletionTrend.vue'
+import { ArrowRight, ClipboardCheck, RotateCcw, UsersRound } from '@lucide/vue'
 import AppBadge from '@/components/app/AppBadge.vue'
 import AppCard from '@/components/app/AppCard.vue'
 import AppPageHeader from '@/components/app/AppPageHeader.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
-import { frontendApi, MockApiError } from '@/services/mock-api'
-import type { TeacherOverviewViewModel } from '@/types/view-models'
+import { isTeacherForbidden, teacherApi, type TeacherOverview } from './teacher-api'
 
-const state = ref<'loading' | 'ready' | 'error'>('loading')
-const data = ref<TeacherOverviewViewModel | null>(null)
+const state = ref<'loading' | 'ready' | 'error' | 'forbidden'>('loading')
+const data = ref<TeacherOverview | null>(null)
 const errorMessage = ref('')
+const recentStudents = computed(() => data.value?.students.slice(0, 8) ?? [])
 
-const toneFor = (tone: 'blue' | 'teal' | 'amber') => tone
-const summaryIcon = (tone: 'blue' | 'teal' | 'amber') => ({ blue: ClipboardCheck, teal: UsersRound, amber: FileCheck2 }[tone])
-const maxCaseRows = computed(() => data.value?.attentionCases.slice(0, 3) || [])
+const metrics = computed(() => {
+  if (!data.value) return []
+  return [
+    { label: '授权范围内的合成主体', value: data.value.subjects_count, helper: '仅统计存在合成测评记录的主体', icon: UsersRound, tone: 'blue' },
+    { label: '测评记录', value: data.value.assessments_count, helper: `${data.value.completed_count} 条已完成`, icon: ClipboardCheck, tone: 'teal' },
+    { label: '进行中的测评', value: data.value.in_progress_count, helper: '按当前记录状态统计', icon: ClipboardCheck, tone: 'amber' },
+  ]
+})
 
 const load = async () => {
   state.value = 'loading'
   errorMessage.value = ''
   try {
-    const response = await frontendApi.getTeacherOverview()
-    data.value = response.data
+    data.value = (await teacherApi.getTeacherOverview()).data
     state.value = 'ready'
   } catch (error) {
-    state.value = 'error'
-    errorMessage.value = error instanceof MockApiError ? error.message : '教师工作区暂时无法加载。'
+    state.value = isTeacherForbidden(error) ? 'forbidden' : 'error'
+    errorMessage.value = state.value === 'forbidden' ? '当前账号没有查看此授权范围的权限。' : '教师工作区暂时无法加载，请稍后重试。'
   }
 }
+
+const formatTime = (value: string | null) => value ? new Date(value).toLocaleString('zh-CN') : '暂无记录'
+const reportStatusLabel = (value: string) => ({
+  requested: '已请求', safety_blocked: '流程已阻断', generating: '处理中', generated: '已生成',
+  needs_review: '待人工复核', approved: '已审核', rejected: '未通过', abstained: '已停止', unknown: '状态未知',
+}[value] ?? '状态未知')
+const reviewStatusLabel = (value: string) => ({
+  pending: '待处理', in_review: '复核中', approved: '已通过', rejected: '未通过', not_required: '无需复核', unknown: '状态未知',
+}[value] ?? '状态未知')
 
 onMounted(load)
 </script>
 
 <template>
   <div class="content-wrap teacher-overview">
-    <div v-if="state === 'loading'" class="teacher-loading" aria-busy="true" aria-label="正在加载教师工作区">
-      <div class="skeleton skeleton--small"></div><div class="skeleton skeleton--title"></div>
-      <div class="summary-skeleton"><div class="skeleton skeleton--metric"></div><div class="skeleton skeleton--metric"></div><div class="skeleton skeleton--metric"></div></div>
-      <div class="skeleton skeleton--chart"></div>
-    </div>
+    <div v-if="state === 'loading'" class="loading-state" aria-busy="true">正在读取授权范围内的合成记录…</div>
 
+    <AppStatusCallout v-else-if="state === 'forbidden'" tone="critical" title="没有查看权限" :body="errorMessage" />
     <AppStatusCallout v-else-if="state === 'error'" tone="critical" title="教师工作区暂时无法加载" :body="errorMessage">
       <button class="inline-retry" type="button" @click="load"><RotateCcw :size="15" aria-hidden="true" />重新加载</button>
     </AppStatusCallout>
 
     <template v-else-if="data">
-      <AppPageHeader eyebrow="教师工作区" title="工作概览" intro="从完成情况、支持流程和人工复核入口开始了解当前工作。" :fixture-label="data.fixtureLabel" />
+      <AppPageHeader eyebrow="教师工作区" title="工作概览" intro="这里汇总当前账号授权范围内真实保存的合成测评记录。" />
 
-      <section class="summary-grid" aria-label="工作概览摘要">
-        <AppCard v-for="item in data.summary" :key="item.label" class="summary-card">
-          <div class="summary-card__head"><span>{{ item.label }}</span><component :is="summaryIcon(item.tone)" :class="`summary-card__icon summary-card__icon--${toneFor(item.tone)}`" :size="17" aria-hidden="true" /></div>
+      <AppStatusCallout tone="info" title="数据范围" body="只显示匿名主体、测评状态、记录数量和时间摘要；不展示作答内容、支持对话、心理测量参数或个体风险判断。" />
+
+      <section class="summary-grid" aria-label="授权范围内的记录摘要">
+        <AppCard v-for="item in metrics" :key="item.label" class="summary-card">
+          <div class="summary-card__head"><span>{{ item.label }}</span><component :is="item.icon" :class="`summary-card__icon summary-card__icon--${item.tone}`" :size="18" aria-hidden="true" /></div>
           <strong>{{ item.value }}</strong>
           <p>{{ item.helper }}</p>
         </AppCard>
       </section>
 
-      <section class="overview-grid">
-        <AppCard class="chart-card" raised>
-          <div class="card-heading"><div><span class="section-label">近 7 日</span><h2 class="section-title">完成与支持流程</h2></div><AppBadge tone="blue">合成趋势</AppBadge></div>
-          <CompletionTrend :data="data.trend" />
-        </AppCard>
-
-        <AppCard class="workflow-card">
-          <div class="card-heading"><div><span class="section-label">流程入口</span><h2 class="section-title">需要先看什么</h2></div></div>
-          <div class="workflow-list">
-            <RouterLink to="/teacher/students" class="workflow-link"><span class="workflow-link__num">01</span><span><strong>学生支持记录</strong><small>查看受控摘要与后续动作</small></span><ArrowRight :size="16" aria-hidden="true" /></RouterLink>
-            <div class="workflow-link workflow-link--static"><span class="workflow-link__num">02</span><span><strong>安全流程</strong><small>需要人工复核的记录会在复核队列停止</small></span><AppBadge tone="amber" dot>1 条</AppBadge></div>
+      <section class="report-summary" aria-labelledby="report-summary-title">
+        <AppCard class="report-summary__card">
+          <div class="section-heading"><div><span class="section-label">记录状态</span><h2 id="report-summary-title" class="section-title">报告与复核状态计数</h2></div><AppBadge tone="blue">{{ data.reports_count }} 条关联记录</AppBadge></div>
+          <div v-if="data.reports_count" class="status-counts">
+            <div><h3>报告状态</h3><ul><li v-for="(count, status) in data.report_status_counts" :key="`report-${status}`"><span>{{ reportStatusLabel(String(status)) }}</span><strong>{{ count }}</strong></li></ul></div>
+            <div><h3>复核状态</h3><ul><li v-for="(count, status) in data.review_status_counts" :key="`review-${status}`"><span>{{ reviewStatusLabel(String(status)) }}</span><strong>{{ count }}</strong></li></ul></div>
           </div>
-          <AppStatusCallout tone="info" title="查看范围" body="当前页面只包含合成案例和授权摘要，不显示姓名、学号或原始回答。" />
+          <p v-else class="empty-note">当前授权合成测评没有关联的报告记录。</p>
         </AppCard>
       </section>
 
-      <section class="case-section" aria-labelledby="case-title">
-        <div class="section-heading"><div><span class="section-label">支持流程</span><h2 id="case-title" class="section-title">最近需要行动的记录</h2></div><RouterLink class="text-link" to="/teacher/students">查看全部 <ArrowRight :size="14" aria-hidden="true" /></RouterLink></div>
-        <AppCard class="case-table" flush>
-          <div class="case-table__header"><span>案例标识</span><span>当前状态</span><span>更新时间</span><span>优先级</span><span class="sr-only">操作</span></div>
-          <RouterLink v-for="item in maxCaseRows" :key="item.caseId" :to="`/teacher/students/${item.caseId}`" class="case-row">
-            <span class="case-row__id">{{ item.subjectId }}<small>{{ item.caseId }}</small></span>
-            <span><AppBadge :tone="item.priority === 'high' ? 'amber' : 'teal'" dot>{{ item.state }}</AppBadge></span>
-            <span class="case-row__time">{{ item.updatedAt }}</span>
-            <span class="case-row__priority" :class="{ 'case-row__priority--high': item.priority === 'high' }">{{ item.priority === 'high' ? '需要确认' : '常规' }}</span>
-            <ArrowRight class="case-row__arrow" :size="16" aria-hidden="true" />
+      <section class="history-section" aria-labelledby="history-title">
+        <div class="section-heading"><div><span class="section-label">测评历史</span><h2 id="history-title" class="section-title">最近有记录的匿名主体</h2></div><RouterLink class="text-link" to="/teacher/students">查看全部 <ArrowRight :size="14" aria-hidden="true" /></RouterLink></div>
+        <AppCard v-if="recentStudents.length" class="student-table" flush>
+          <div class="student-table__header"><span>匿名主体</span><span>测评记录</span><span>已完成</span><span>进行中</span><span>最近记录</span></div>
+          <RouterLink v-for="student in recentStudents" :key="student.subject_id" :to="`/teacher/students/${encodeURIComponent(student.subject_id)}`" class="student-row">
+            <strong>{{ student.subject_id }}</strong>
+            <span>{{ student.assessment_count }}</span>
+            <span>{{ student.completed_count }}</span>
+            <span>{{ student.in_progress_count }}</span>
+            <time v-if="student.last_activity_at" :datetime="student.last_activity_at">{{ formatTime(student.last_activity_at) }}</time>
+            <span v-else>暂无记录</span>
           </RouterLink>
+        </AppCard>
+        <AppCard v-else class="empty-state">
+          <strong>当前授权范围内没有合成测评记录</strong>
+          <p>有新记录后会显示真实保存的状态和时间摘要。</p>
         </AppCard>
       </section>
     </template>
@@ -94,65 +101,39 @@ onMounted(load)
 </template>
 
 <style scoped>
-.teacher-overview { animation: page-in 260ms ease both; }
-.summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-.summary-card { position: relative; min-height: 142px; padding: 18px; overflow: hidden; }
-.summary-card::after { position: absolute; right: 0; bottom: 0; width: 62px; height: 3px; content: ""; background: var(--color-primary); opacity: 0.55; }
-.summary-card:nth-child(2)::after { background: var(--color-support); }
-.summary-card:nth-child(3)::after { background: var(--color-attention); }
-.summary-card__head { display: flex; align-items: center; justify-content: space-between; color: var(--color-text-secondary); font-size: 12px; font-weight: 700; }
-.summary-card__icon { display: inline-flex; padding: 7px; width: 31px; height: 31px; border-radius: 7px; }
+.teacher-overview { animation: page-in 240ms ease both; }
+.summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
+.summary-card { min-height: 132px; padding: 18px; }
+.summary-card__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--color-text-secondary); font-size: 12px; font-weight: 700; }
+.summary-card__icon { padding: 7px; width: 32px; height: 32px; border-radius: 8px; }
 .summary-card__icon--blue { color: var(--color-primary); background: var(--color-info-wash); }
 .summary-card__icon--teal { color: var(--color-support); background: var(--color-support-wash); }
 .summary-card__icon--amber { color: var(--color-attention); background: var(--color-attention-wash); }
-.summary-card > strong { display: block; margin-top: 20px; color: var(--color-text-primary); font-family: var(--font-mono); font-size: 27px; line-height: 1; }
-.summary-card > p { margin: 8px 0 0; color: var(--color-text-muted); font-size: 11px; }
-.overview-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.65fr); gap: 16px; margin-top: 18px; }
-.chart-card, .workflow-card { padding: 20px; }
-.card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; margin-bottom: 11px; }
-.card-heading .section-title { margin-top: 6px; }
-.workflow-card { display: flex; flex-direction: column; }
-.workflow-list { display: grid; gap: 7px; margin-top: 5px; }
-.workflow-link { display: flex; align-items: center; gap: 10px; min-height: 60px; padding: 9px 10px; border: 1px solid var(--color-border); border-radius: 7px; color: var(--color-text-primary); background: var(--color-surface); transition: border-color var(--motion-fast) ease, background-color var(--motion-fast) ease; }
-.workflow-link:not(.workflow-link--static):hover { border-color: rgb(37 99 235 / 30%); background: var(--color-info-wash); }
-.workflow-link__num { align-self: flex-start; color: var(--color-primary); font-family: var(--font-mono); font-size: 11px; font-weight: 700; }
-.workflow-link > span:nth-child(2) { display: grid; flex: 1; gap: 3px; }
-.workflow-link strong { font-size: 12px; }
-.workflow-link small { color: var(--color-text-secondary); font-size: 10px; line-height: 1.5; }
-.workflow-link > svg { color: var(--color-text-muted); }
-.workflow-card .status-callout { margin-top: auto; }
-.case-section { margin-top: 40px; }
-.section-heading { display: flex; align-items: end; justify-content: space-between; gap: 15px; margin-bottom: 13px; }
+.summary-card > strong { display: block; margin-top: 17px; color: var(--color-text-primary); font-family: var(--font-mono); font-size: 27px; }
+.summary-card > p, .empty-note { margin: 4px 0 0; color: var(--color-text-muted); font-size: 11px; }
+.report-summary, .history-section { margin-top: 26px; }
+.report-summary__card { padding: 19px; }
+.section-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
+.section-title { margin-top: 5px; }
+.status-counts { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.status-counts h3 { margin: 0 0 8px; color: var(--color-text-secondary); font-size: 12px; }
+.status-counts ul { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.status-counts li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 10px; border-radius: 6px; background: var(--color-surface-muted); color: var(--color-text-secondary); font-size: 12px; }
+.status-counts li strong { color: var(--color-text-primary); font-family: var(--font-mono); }
+.student-table { overflow: hidden; }
+.student-table__header, .student-row { display: grid; grid-template-columns: minmax(140px, 1.2fr) repeat(3, minmax(66px, .6fr)) minmax(190px, 1.2fr); align-items: center; gap: 14px; padding: 12px 16px; }
+.student-table__header { background: var(--color-surface-muted); color: var(--color-text-muted); font-size: 11px; font-weight: 700; }
+.student-row { border-top: 1px solid var(--color-border); color: var(--color-text-secondary); font-size: 12px; }
+.student-row:hover { background: var(--color-surface-soft); }
+.student-row strong { overflow: hidden; color: var(--color-text-primary); font-family: var(--font-mono); font-size: 11px; text-overflow: ellipsis; }
+.student-row time { color: var(--color-text-secondary); font-size: 11px; }
 .text-link { display: inline-flex; align-items: center; gap: 5px; color: var(--color-primary); font-size: 12px; font-weight: 700; }
-.text-link:hover { text-decoration: underline; text-underline-offset: 3px; }
-.case-table__header, .case-row { display: grid; grid-template-columns: minmax(175px, 1.2fr) minmax(150px, 1fr) minmax(108px, 0.7fr) minmax(80px, 0.6fr) 24px; align-items: center; gap: 15px; padding: 12px 17px; }
-.case-table__header { color: var(--color-text-muted); background: var(--color-surface-muted); font-size: 11px; font-weight: 800; }
-.case-row { min-height: 66px; border-top: 1px solid var(--color-border); color: var(--color-text-primary); transition: background-color var(--motion-fast) ease; }
-.case-row:hover { background: var(--color-surface-soft); }
-.case-row__id { display: grid; gap: 4px; font-family: var(--font-mono); font-size: 11px; font-weight: 700; }
-.case-row__id small { color: var(--color-text-muted); font-size: 9px; font-weight: 500; }
-.case-row__time { color: var(--color-text-secondary); font-size: 12px; }
-.case-row__priority { color: var(--color-text-secondary); font-size: 12px; font-weight: 700; }
-.case-row__priority--high { color: var(--color-attention); }
-.case-row__arrow { color: var(--color-text-muted); }
+.empty-state { display: grid; justify-items: center; padding: 35px 20px; text-align: center; }
+.empty-state strong { color: var(--color-text-primary); font-size: 14px; }
+.empty-state p { margin: 7px 0 0; color: var(--color-text-muted); font-size: 12px; }
+.loading-state { padding: 22px 0; color: var(--color-text-secondary); font-size: 13px; }
 .inline-retry { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 0 12px; border: 1px solid var(--color-border-strong); border-radius: 7px; color: var(--color-text-primary); background: var(--color-surface); cursor: pointer; font-size: 12px; font-weight: 700; }
-.inline-retry:hover { border-color: var(--color-primary); color: var(--color-primary); }
-.teacher-loading { padding-top: 12px; }
-.skeleton { position: relative; overflow: hidden; border-radius: 7px; background: var(--color-surface-skeleton); }
-.skeleton::after { position: absolute; inset: 0; content: ""; background: linear-gradient(90deg, transparent, rgb(255 255 255 / 58%), transparent); animation: shimmer 1.4s infinite; transform: translateX(-100%); }
-.skeleton--small { width: 140px; height: 14px; }.skeleton--title { width: 280px; height: 34px; margin-top: 17px; }.summary-skeleton { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 30px; }.skeleton--metric { height: 142px; }.skeleton--chart { height: 300px; margin-top: 18px; }
-@keyframes page-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes shimmer { to { transform: translateX(100%); } }
-
-@media (max-width: 860px) {
-  .overview-grid { grid-template-columns: 1fr; }
-  .case-table { overflow-x: auto; }
-  .case-table__header, .case-row { min-width: 660px; }
-}
-@media (max-width: 560px) {
-  .summary-grid, .summary-skeleton { grid-template-columns: 1fr; }
-  .summary-card { min-height: 120px; }
-  .summary-card > strong { margin-top: 14px; }
-  .chart-card, .workflow-card { padding: 16px; }
-}
+@keyframes page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 740px) { .student-table { overflow-x: auto; }.student-table__header, .student-row { min-width: 680px; } }
+@media (max-width: 560px) { .summary-grid, .status-counts { grid-template-columns: 1fr; }.summary-card { min-height: 112px; }.summary-card > strong { margin-top: 11px; } }
 </style>
