@@ -21,6 +21,13 @@ from smhai_backend.core.errors import ErrorCode, error
 from smhai_backend.core.logging import logger
 from smhai_backend.core.orchestration import OrchestrationStage, StageLedger
 from smhai_backend.core.request_context import RequestContext
+from smhai_backend.core.support_diagnostics import (
+    SupportDiagnosticComponent,
+    SupportDiagnosticFailureCode,
+    SupportDiagnosticStage,
+    SupportWorkflowDiagnostics,
+    failure_code_for_exception,
+)
 from smhai_backend.core.trusted_context import (
     TrustedContextError,
     derive_trusted_request_context,
@@ -104,6 +111,7 @@ class SupportOrchestrator:
         self.d3_call_order: list[str] = []
         self.stage_ledgers: dict[str, Any] = {}
         self._active_workflows: dict[str, str] = {}
+        self._workflow_diagnostics: dict[str, SupportWorkflowDiagnostics] = {}
         self._d3_fixtures = default_fixture_config()
 
     async def create(
@@ -137,7 +145,11 @@ class SupportOrchestrator:
                     subject_id_assertion=subject_id_assertion,
                 )
         except TimeoutError as exc:
-            await self._fail_active_workflow(context, reason_code="DEPENDENCY_TIMEOUT")
+            await self._fail_active_workflow(
+                context,
+                reason_code="DEPENDENCY_TIMEOUT",
+                failure_code=SupportDiagnosticFailureCode.DEPENDENCY_TIMEOUT,
+            )
             raise error(
                 ErrorCode.DEPENDENCY_TIMEOUT,
                 status_code=504,
@@ -145,10 +157,15 @@ class SupportOrchestrator:
                 retryable=True,
             ) from exc
         except Exception as exc:
-            await self._fail_active_workflow(context, reason_code=type(exc).__name__.upper()[:64])
+            await self._fail_active_workflow(
+                context,
+                reason_code=type(exc).__name__.upper()[:64],
+                failure=exc,
+            )
             raise
         finally:
             self._active_workflows.pop(context.trace_id, None)
+            self._workflow_diagnostics.pop(context.trace_id, None)
 
     async def _create(
         self,
@@ -188,10 +205,18 @@ class SupportOrchestrator:
             )
         )
         self._active_workflows[context.trace_id] = report_id
+        diagnostics = SupportWorkflowDiagnostics(
+            last_confirmed_stage=SupportDiagnosticStage.WORKFLOW_REQUESTED
+        )
+        self._workflow_diagnostics[context.trace_id] = diagnostics
 
         # The verified session Actor and persisted assessment are authoritative.
         # Request fields are intent/assertions and cannot select D3 policy,
         # retrieval, model, role, relationship, or disclosure authority.
+        diagnostics.begin(
+            SupportDiagnosticStage.REQUEST_AUTHORIZATION,
+            SupportDiagnosticComponent.BACKEND,
+        )
         try:
             trusted_context = derive_trusted_request_context(
                 actor,
@@ -204,6 +229,7 @@ class SupportOrchestrator:
             )
         except TrustedContextError as exc:
             raise error(ErrorCode.FORBIDDEN, detail="request authorization failed") from exc
+        diagnostics.confirm()
 
         ledger = StageLedger(trusted_context)
         self.stage_ledgers[context.trace_id] = ledger
@@ -225,6 +251,10 @@ class SupportOrchestrator:
         )
 
         self.call_order.append("safety_input")
+        diagnostics.begin(
+            SupportDiagnosticStage.INPUT_SAFETY,
+            SupportDiagnosticComponent.INPUT_SAFETY,
+        )
         input_check = await self.safety.check_input(safety_context, context)
         pre_action = input_check.decision.action
         ledger.advance(
@@ -232,7 +262,12 @@ class SupportOrchestrator:
             metadata={"reason_codes": tuple(input_check.decision.reason_codes)},
             safety_action=pre_action,
         )
+        diagnostics.confirm()
         if pre_action not in {"PROCEED", "PROCEED_WITH_BOUNDARY"}:
+            diagnostics.begin(
+                SupportDiagnosticStage.BLOCKED_RESULT_PROJECTION,
+                SupportDiagnosticComponent.BACKEND,
+            )
             result = await self._blocked_result(
                 record=record,
                 payload=payload,
@@ -246,6 +281,11 @@ class SupportOrchestrator:
                 prompt_version="not_run",
                 model_id=None,
             )
+            diagnostics.confirm()
+            diagnostics.begin(
+                SupportDiagnosticStage.REPORT_PERSISTENCE,
+                SupportDiagnosticComponent.DATABASE,
+            )
             await self._store_result(
                 result,
                 record.subject_id,
@@ -254,9 +294,14 @@ class SupportOrchestrator:
                 message,
                 audit_metadata={"actor_scope": "subject_bound", "synthetic_fixture_only": True},
             )
+            diagnostics.confirm()
             return result
 
         try:
+            diagnostics.begin(
+                SupportDiagnosticStage.ASSESSMENT_BINDING,
+                SupportDiagnosticComponent.ASSESSMENT,
+            )
             binding = bind_assessment(
                 actor,
                 record,
@@ -290,14 +335,20 @@ class SupportOrchestrator:
                 "compatibility_approval_reference": binding.compatibility_approval_reference,
             },
         )
+        diagnostics.confirm()
 
         try:
             # D3-2 is intentionally completed before any RAG side effect.  The
             # typed result is carried through the same transaction and reused
             # by the later D3-3/D3-1 composition phase.
+            diagnostics.begin(
+                SupportDiagnosticStage.ASSESSMENT_INTERPRETATION,
+                SupportDiagnosticComponent.D3,
+            )
             interpretation = interpret_d3_chain(trusted_context, binding, ledger)
             self.d3_call_order.append("d3_2")
             self.call_order.append("d3_2")
+            diagnostics.confirm()
         except (D3ChainError, D3CompositionError, ValueError) as exc:
             raise error(
                 ErrorCode.DEPENDENCY_INVALID_RESPONSE,
@@ -306,6 +357,10 @@ class SupportOrchestrator:
             ) from exc
 
         self.call_order.append("rag")
+        diagnostics.begin(
+            SupportDiagnosticStage.RAG_RETRIEVAL,
+            SupportDiagnosticComponent.RAG,
+        )
         retrieval = await self.rag.retrieve(
             assessment=record.assessment,
             target_role=payload.target_role,
@@ -317,7 +372,12 @@ class SupportOrchestrator:
             retrieval_id_hint=None,
             request_id=context.request_id,
         )
+        diagnostics.confirm()
         self.call_order.append("safety_retrieval")
+        diagnostics.begin(
+            SupportDiagnosticStage.RETRIEVAL_SAFETY,
+            SupportDiagnosticComponent.RETRIEVAL_SAFETY,
+        )
         retrieval_check = await self.safety.check_retrieval(
             {
                 **safety_context,
@@ -329,10 +389,15 @@ class SupportOrchestrator:
             [chunk.model_dump(mode="json") for chunk in retrieval.chunks],
             context,
         )
+        diagnostics.confirm()
         if retrieval_check.decision.action not in {"PROCEED", "PROCEED_WITH_BOUNDARY"}:
             ledger.abort(
                 retrieval_check.decision.action,
                 reason="retrieval Safety stopped the generation path",
+            )
+            diagnostics.begin(
+                SupportDiagnosticStage.BLOCKED_RESULT_PROJECTION,
+                SupportDiagnosticComponent.BACKEND,
             )
             result = await self._blocked_result(
                 record=record,
@@ -347,6 +412,11 @@ class SupportOrchestrator:
                 prompt_version="not_run",
                 model_id=None,
             )
+            diagnostics.confirm()
+            diagnostics.begin(
+                SupportDiagnosticStage.REPORT_PERSISTENCE,
+                SupportDiagnosticComponent.DATABASE,
+            )
             await self._store_result(
                 result,
                 record.subject_id,
@@ -355,11 +425,16 @@ class SupportOrchestrator:
                 message,
                 audit_metadata={"actor_scope": "subject_bound", "synthetic_fixture_only": True},
             )
+            diagnostics.confirm()
             return result
 
         risk = record.assessment.get("risk")
         risk_level = risk.get("level") if isinstance(risk, Mapping) else None
         try:
+            diagnostics.begin(
+                SupportDiagnosticStage.EVIDENCE_BUNDLE,
+                SupportDiagnosticComponent.EVIDENCE,
+            )
             retrieval_population = retrieval_eligibility_population(
                 retrieval, config=self._d3_fixtures
             )
@@ -378,6 +453,7 @@ class SupportOrchestrator:
                 # evidence continues to use the strict generation gate.
                 strict_eligibility=bool(retrieval.chunks),
             )
+            diagnostics.confirm()
             if not bundle.items:
                 ledger.advance(
                     OrchestrationStage.RETRIEVAL_BOUND,
@@ -388,6 +464,10 @@ class SupportOrchestrator:
                     },
                     safety_action=retrieval_check.decision.action,
                 )
+                diagnostics.begin(
+                    SupportDiagnosticStage.ABSTENTION_RESULT_PROJECTION,
+                    SupportDiagnosticComponent.BACKEND,
+                )
                 result = await self._abstained_result(
                     record=record,
                     payload=payload,
@@ -396,6 +476,11 @@ class SupportOrchestrator:
                     retrieval=retrieval,
                     input_check=input_check,
                     retrieval_check=retrieval_check,
+                )
+                diagnostics.confirm()
+                diagnostics.begin(
+                    SupportDiagnosticStage.REPORT_PERSISTENCE,
+                    SupportDiagnosticComponent.DATABASE,
                 )
                 await self._store_result(
                     result,
@@ -411,10 +496,20 @@ class SupportOrchestrator:
                         "retrieval_safety_action": retrieval_check.decision.action,
                     },
                 )
+                diagnostics.confirm()
                 ledger.abstain(reason_code="NO_ELIGIBLE_EVIDENCE")
                 return result
 
+            diagnostics.begin(
+                SupportDiagnosticStage.EVIDENCE_BUNDLE,
+                SupportDiagnosticComponent.EVIDENCE,
+            )
             bundle.require_eligible()
+            diagnostics.confirm()
+            diagnostics.begin(
+                SupportDiagnosticStage.D3_COMPOSITION,
+                SupportDiagnosticComponent.D3,
+            )
             d3_result = compose_d3_chain(
                 trusted_context,
                 binding,
@@ -427,6 +522,7 @@ class SupportOrchestrator:
             # Keep integration observability in the Backend-owned orchestrator;
             # the accepted D3 chain remains a stable typed API.
             self.d3_call_order.extend(("d3_3", "d3_1"))
+            diagnostics.confirm()
         except (D3ChainError, D3CompositionError, ValueError) as exc:
             # Never fall back to the legacy raw prompt or Runtime path when a
             # trusted D3 seam or evidence policy refuses the request.
@@ -436,6 +532,10 @@ class SupportOrchestrator:
                 detail="accepted generation policy could not compose this request",
             ) from exc
 
+        diagnostics.begin(
+            SupportDiagnosticStage.PROMPT_VALIDATION,
+            SupportDiagnosticComponent.BACKEND,
+        )
         rendered_text = getattr(d3_result.rendered_prompt, "rendered_text", None)
         if not isinstance(rendered_text, str) or not rendered_text:
             raise error(
@@ -443,7 +543,12 @@ class SupportOrchestrator:
                 status_code=502,
                 detail="accepted prompt engine returned an invalid prompt",
             )
+        diagnostics.confirm()
         try:
+            diagnostics.begin(
+                SupportDiagnosticStage.MODEL_POLICY,
+                SupportDiagnosticComponent.BACKEND,
+            )
             server_model_id, server_provider_class = server_model_reference(
                 str(getattr(self.llm, "label", "CONTRACT_FAKE"))
             )
@@ -453,7 +558,12 @@ class SupportOrchestrator:
                 status_code=502,
                 detail="model policy is unavailable",
             ) from exc
+        diagnostics.confirm()
 
+        diagnostics.begin(
+            SupportDiagnosticStage.LLM_RUNTIME,
+            SupportDiagnosticComponent.LLM_RUNTIME,
+        )
         candidate = await self.llm.generate(
             prompt=rendered_text,
             model_id=server_model_id,
@@ -472,6 +582,7 @@ class SupportOrchestrator:
             prompt_version=d3_result.template.prompt_version,
             metadata={"synthetic_fixture": True, "bundle_hash": bundle.bundle_hash},
         )
+        diagnostics.confirm()
         if not self.call_order or self.call_order[-1] != "llm":
             self.call_order.append("llm")
         self.call_order.append("safety_output")
@@ -486,6 +597,10 @@ class SupportOrchestrator:
                 "model_version": candidate.model_version,
                 "runtime_version": candidate.runtime_version,
             },
+        )
+        diagnostics.begin(
+            SupportDiagnosticStage.OUTPUT_SAFETY,
+            SupportDiagnosticComponent.OUTPUT_SAFETY,
         )
         output_check = await self.safety.check_output(
             {
@@ -504,7 +619,12 @@ class SupportOrchestrator:
             metadata={"reason_codes": tuple(output_check.decision.reason_codes)},
             safety_action=output_check.decision.action,
         )
+        diagnostics.confirm()
         if output_check.decision.action not in {"PROCEED", "PROCEED_WITH_BOUNDARY"}:
+            diagnostics.begin(
+                SupportDiagnosticStage.BLOCKED_RESULT_PROJECTION,
+                SupportDiagnosticComponent.BACKEND,
+            )
             result = await self._blocked_result(
                 record=record,
                 payload=payload,
@@ -519,6 +639,11 @@ class SupportOrchestrator:
                 model_id=candidate.model_id,
                 candidate=candidate,
             )
+            diagnostics.confirm()
+            diagnostics.begin(
+                SupportDiagnosticStage.REPORT_PERSISTENCE,
+                SupportDiagnosticComponent.DATABASE,
+            )
             await self._store_result(
                 result,
                 record.subject_id,
@@ -532,8 +657,13 @@ class SupportOrchestrator:
                     "evidence_ids": [item.evidence_id for item in bundle.items],
                 },
             )
+            diagnostics.confirm()
             return result
 
+        diagnostics.begin(
+            SupportDiagnosticStage.CONTENT_VALIDATION,
+            SupportDiagnosticComponent.BACKEND,
+        )
         try:
             content = GenerationContent.model_validate(json.loads(candidate.text))
         except (json.JSONDecodeError, TypeError, ValueError) as exc:
@@ -542,6 +672,11 @@ class SupportOrchestrator:
                 status_code=502,
                 detail="LLM Runtime returned invalid structured content",
             ) from exc
+        diagnostics.confirm()
+        diagnostics.begin(
+            SupportDiagnosticStage.CLAIM_BOUNDARY,
+            SupportDiagnosticComponent.BACKEND,
+        )
         if _contains_forbidden_generated_claim(content):
             ledger.abort(
                 "BLOCK",
@@ -565,6 +700,11 @@ class SupportOrchestrator:
                 status_code=502,
                 detail="LLM Runtime returned content outside the approved generation boundary",
             )
+        diagnostics.confirm()
+        diagnostics.begin(
+            SupportDiagnosticStage.CITATION_BINDING,
+            SupportDiagnosticComponent.EVIDENCE,
+        )
         try:
             citations = self._citations_from_bundle(bundle, content)
         except CitationBindingError as exc:
@@ -573,6 +713,7 @@ class SupportOrchestrator:
                 status_code=502,
                 detail="LLM Runtime returned an unbound citation",
             ) from exc
+        diagnostics.confirm()
         generation = self._generated_result(
             assessment_id=payload.assessment_id,
             generation_id=generation_id,
@@ -603,6 +744,10 @@ class SupportOrchestrator:
             safety_action=output_check.decision.action,
             citations=[item.model_dump(mode="json") for item in citations],
             candidate_source=candidate_source,
+        )
+        diagnostics.begin(
+            SupportDiagnosticStage.REPORT_PERSISTENCE,
+            SupportDiagnosticComponent.DATABASE,
         )
         await maybe_await(
             self.conversations.save_metadata(
@@ -687,6 +832,7 @@ class SupportOrchestrator:
                 "bundle_hash": bundle.bundle_hash,
             },
         )
+        diagnostics.confirm()
         return result
 
     async def retrieve(
@@ -807,7 +953,14 @@ class SupportOrchestrator:
             # inserting.
             return
 
-    async def _fail_active_workflow(self, context: RequestContext, *, reason_code: str) -> None:
+    async def _fail_active_workflow(
+        self,
+        context: RequestContext,
+        *,
+        reason_code: str,
+        failure: BaseException | None = None,
+        failure_code: SupportDiagnosticFailureCode | None = None,
+    ) -> None:
         report_id = self._active_workflows.get(context.trace_id)
         if not report_id:
             return
@@ -815,7 +968,24 @@ class SupportOrchestrator:
         if fail is None:
             return
         try:
-            await maybe_await(fail(report_id, reason_code=reason_code, trace_id=context.trace_id))
+            diagnostics = self._workflow_diagnostics.get(context.trace_id)
+            safe_diagnostics = (
+                diagnostics.failure_metadata(
+                    failure_code or failure_code_for_exception(failure)
+                )
+                if diagnostics is not None
+                else SupportWorkflowDiagnostics().failure_metadata(
+                    failure_code or failure_code_for_exception(failure)
+                )
+            )
+            await maybe_await(
+                fail(
+                    report_id,
+                    reason_code=reason_code,
+                    trace_id=context.trace_id,
+                    stage_diagnostics=safe_diagnostics,
+                )
+            )
         except Exception:
             # Preserve the original dependency/application error.  The
             # database adapter records this transition independently when it

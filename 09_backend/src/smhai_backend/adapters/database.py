@@ -24,6 +24,7 @@ from typing import Any
 from pwdlib import PasswordHash
 
 from smhai_backend.core.errors import ErrorCode, error
+from smhai_backend.core.support_diagnostics import sanitize_support_stage_diagnostics
 from smhai_backend.domains.models import (
     AssessmentRecord,
     AuditEvent,
@@ -847,7 +848,14 @@ class MySqlBackendAdapter:
                         retention_due_at=None,
                     )
 
-    async def fail_workflow(self, report_id: str, *, reason_code: str, trace_id: str) -> None:
+    async def fail_workflow(
+        self,
+        report_id: str,
+        *,
+        reason_code: str,
+        trace_id: str,
+        stage_diagnostics: dict[str, str] | None = None,
+    ) -> None:
         async with self._uow() as uow:
             run = await uow.session.scalar(
                 self._select(self._db_models.SupportRun).where(
@@ -861,6 +869,7 @@ class MySqlBackendAdapter:
                     "persistence": "MYSQL",
                     "reason_code": reason_code,
                     "candidate_persisted": False,
+                    **sanitize_support_stage_diagnostics(stage_diagnostics),
                 }
                 run.trace_id = trace_id
                 run.completed_at = self._utc_now()

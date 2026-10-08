@@ -12,6 +12,7 @@ from typing import Any
 
 from pwdlib import PasswordHash
 
+from smhai_backend.core.support_diagnostics import sanitize_support_stage_diagnostics
 from smhai_backend.domains.models import (
     AssessmentRecord,
     AuditEvent,
@@ -169,13 +170,21 @@ class InMemoryConversationRepository:
             {"workflow": "COMPLETED", "report_id": getattr(result, "report_id", None)}
         )
 
-    def fail_workflow(self, report_id: str, *, reason_code: str, trace_id: str) -> None:
+    def fail_workflow(
+        self,
+        report_id: str,
+        *,
+        reason_code: str,
+        trace_id: str,
+        stage_diagnostics: dict[str, str] | None = None,
+    ) -> None:
         self.records.append(
             {
                 "workflow": "FAILED",
                 "report_id": report_id,
                 "reason_code": reason_code,
                 "trace_id": trace_id,
+                "stage_diagnostics": sanitize_support_stage_diagnostics(stage_diagnostics),
             }
         )
 

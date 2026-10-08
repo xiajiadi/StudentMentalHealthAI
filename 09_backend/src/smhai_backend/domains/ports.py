@@ -56,7 +56,14 @@ class ConversationRepository(Protocol):
 
     def complete_workflow(self, result: Any) -> None: ...
 
-    def fail_workflow(self, report_id: str, *, reason_code: str, trace_id: str) -> None: ...
+    def fail_workflow(
+        self,
+        report_id: str,
+        *,
+        reason_code: str,
+        trace_id: str,
+        stage_diagnostics: dict[str, str] | None = None,
+    ) -> None: ...
 
 
 class ReportRepository(Protocol):
