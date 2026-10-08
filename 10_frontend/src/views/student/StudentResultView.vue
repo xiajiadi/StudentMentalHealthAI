@@ -14,7 +14,7 @@ import AppCard from '@/components/app/AppCard.vue'
 import AppPageHeader from '@/components/app/AppPageHeader.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import EvidenceItem from '@/components/evidence/EvidenceItem.vue'
-import { frontendApi, MockApiError } from '@/services/mock-api'
+import { frontendApi } from '@/services/mock-api'
 import type { StudentReportViewModel } from '@/types/view-models'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -28,13 +28,14 @@ const load = async () => {
   state.value = 'loading'
   errorMessage.value = ''
   try {
-    const reportId = typeof route.params.id === 'string' ? route.params.id : 'REPORT_demo_student_001'
+    const reportId = typeof route.params.id === 'string' ? route.params.id : ''
+    if (!reportId) throw new Error('报告标识不可用，请从学生空间的历史记录重新打开。')
     const response = await frontendApi.getStudentReport(reportId)
     data.value = response.data
     state.value = 'ready'
   } catch (error) {
     state.value = 'error'
-    errorMessage.value = error instanceof MockApiError ? error.message : '结果页面暂时无法打开，请稍后重试。'
+    errorMessage.value = error instanceof Error ? error.message : '结果页面暂时无法打开，请稍后重试。'
   }
 }
 

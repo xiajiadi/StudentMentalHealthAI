@@ -24,13 +24,16 @@ const reports = ref<ReportSummary[]>([])
 const busy = ref(false)
 const loadingHistory = ref(true)
 const errorMessage = ref('')
+const historyError = ref('')
 
 const loadHistory = async () => {
   loadingHistory.value = true
+  historyError.value = ''
   try {
     reports.value = (await frontendApi.listReports(assessmentId.value || undefined)).data.items
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '历史记录暂时无法加载。'
+    reports.value = []
+    historyError.value = error instanceof Error ? error.message : '历史记录暂时无法加载。'
   } finally {
     loadingHistory.value = false
   }
@@ -115,11 +118,14 @@ onMounted(loadHistory)
         <textarea id="support-message" v-model="draft" rows="3" :disabled="busy" maxlength="2000" placeholder="写下你想整理的具体问题"></textarea>
         <div class="support-chat__composer-footer"><span>提交后会由后端安全检查并保存报告。</span><AppButton type="submit" :disabled="!draft.trim() || busy || !assessmentId" :loading="busy">发送 <ArrowUp :size="16" aria-hidden="true" /></AppButton></div>
       </form>
-      <AppStatusCallout v-if="errorMessage" tone="critical" title="请求或历史记录未能加载" :body="errorMessage" />
+      <AppStatusCallout v-if="errorMessage" tone="critical" title="支持请求未完成" :body="errorMessage" />
 
       <section class="support-chat__history" aria-labelledby="support-history-title">
         <div class="support-chat__history-head"><div><span class="section-label">已保存</span><h2 id="support-history-title">报告与对话历史</h2></div><span v-if="loadingHistory" role="status">正在加载…</span></div>
-        <p v-if="!loadingHistory && reports.length === 0" class="support-chat__empty">当前测评还没有已保存的支持报告。</p>
+        <AppStatusCallout v-if="historyError" tone="critical" title="历史记录暂时无法加载" :body="historyError">
+          <AppButton variant="secondary" size="sm" :loading="loadingHistory" @click="loadHistory">重试历史记录</AppButton>
+        </AppStatusCallout>
+        <p v-if="!loadingHistory && !historyError && reports.length === 0" class="support-chat__empty">当前测评还没有已保存的支持报告。</p>
         <AppCard v-for="report in reports" :key="report.report_id" class="support-chat__history-row">
           <div><strong>{{ report.safety_action === 'CRISIS_ROUTE' ? '安全流程记录' : '教育支持报告' }}</strong><span>{{ report.report_id }} · {{ report.created_at || '时间未提供' }} · {{ report.citation_count }} 条来源</span></div>
           <AppButton variant="secondary" size="sm" @click="openReport(report.report_id)">打开记录</AppButton>

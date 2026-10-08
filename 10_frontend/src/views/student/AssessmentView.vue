@@ -88,7 +88,11 @@ const complete = async () => {
   }
 }
 
-const primaryAction = () => canComplete.value ? complete() : submitResponse()
+const primaryAction = () => selectedResponse.value && question.value
+  ? submitResponse()
+  : canComplete.value
+    ? complete()
+    : submitResponse()
 const leave = () => {
   isPauseDialogOpen.value = false
   assessment.reset()
@@ -146,7 +150,7 @@ onMounted(load)
 
         <div v-if="canComplete" class="completion-note" role="status">
           <span class="completion-note__line" aria-hidden="true"></span>
-          <p>系统已返回可以结束流程的状态。你也可以继续回答，完成按钮会保留在这里。</p>
+          <p>系统已返回可以结束流程的状态。你可以保存当前作答并继续，也可以直接完成。</p>
         </div>
 
         <div class="question-card__footer">
@@ -154,8 +158,21 @@ onMounted(load)
             <Pause :size="16" aria-hidden="true" />暂停并离开
           </button>
           <div class="question-card__actions">
-            <AppButton :disabled="!canComplete && !selectedResponse" :loading="isSubmitting || isCompleting" @click="primaryAction">
-              {{ actionLabel }} <ArrowRight :size="16" aria-hidden="true" />
+            <AppButton
+              v-if="canComplete"
+              variant="secondary"
+              :disabled="!selectedResponse || isSubmitting || isCompleting"
+              :loading="isSubmitting"
+              @click="submitResponse"
+            >
+              保存并继续回答
+            </AppButton>
+            <AppButton
+              :disabled="!canComplete && !selectedResponse"
+              :loading="isSubmitting || isCompleting"
+              @click="canComplete ? complete() : submitResponse()"
+            >
+              {{ canComplete ? '完成并查看结构' : actionLabel }} <ArrowRight :size="16" aria-hidden="true" />
             </AppButton>
           </div>
         </div>
@@ -193,7 +210,7 @@ onMounted(load)
       </section>
     </template>
 
-    <AppDialog v-model:open="isPauseDialogOpen" title="要离开这次测评吗？" description="已保存的合成流程会被清除；真实部署时，保存与恢复规则由后端提供。">
+    <AppDialog v-model:open="isPauseDialogOpen" title="要离开这次测评吗？" description="当前已保存的进度会保留。之后可以从学生空间继续这次测评。">
       <div class="pause-dialog__actions">
         <AppButton variant="secondary" @click="isPauseDialogOpen = false">继续测评</AppButton>
         <AppButton variant="danger" @click="leave">离开测评</AppButton>

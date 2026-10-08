@@ -95,7 +95,7 @@ onMounted(load)
         <p v-if="reports.length === 0" class="student-empty-copy">还没有支持对话或报告。完成测评后可以从结果页进入支持对话。</p>
         <AppCard v-for="report in reports" :key="report.report_id" class="student-history-row">
           <ClipboardList :size="18" aria-hidden="true" />
-          <div><strong>教育支持记录</strong><span>{{ report.created_at || '时间未提供' }} · {{ report.citation_count }} 条来源</span></div>
+          <div><strong>教育支持记录</strong><span>{{ report.report_id }} · {{ report.created_at || '时间未提供' }} · {{ report.citation_count }} 条来源</span></div>
           <AppButton variant="secondary" size="sm" @click="openSupportHistory(report.report_id)">查看记录</AppButton>
         </AppCard>
       </section>
