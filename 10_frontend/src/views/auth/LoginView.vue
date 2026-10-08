@@ -113,7 +113,7 @@ const submit = async () => {
             </button>
           </span>
           <span v-if="passwordError" id="password-error" class="password-field__error" role="alert">{{ passwordError }}</span>
-          <span v-else id="password-hint" class="password-field__hint">演示密码可填写 demo；填写 wrong 或 network 可查看失败状态。</span>
+          <span v-else id="password-hint" class="password-field__hint">这是本地合成演示；保留预填账号信息即可登录。</span>
         </label>
 
         <fieldset class="role-picker">
