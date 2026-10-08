@@ -561,6 +561,7 @@ class MySqlBackendAdapter:
                 assessment_id=assessment_id,
                 subject_id=subject.subject_ref,
                 assessment=assessment,
+                data_origin=str(getattr(subject.data_origin, "value", subject.data_origin)),
                 responses=responses,
                 cat_provider_version=str(provenance.get("cat_engine_version") or "") or None,
                 cat_item_bank_version=str(

@@ -167,6 +167,9 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         llm=llm,
         deadline_seconds=settings.support_deadline_seconds,
         integration_labels=labels,
+        m0_claim_boundary_observer_enabled=settings.m0_claim_boundary_observer_enabled,
+        environment=settings.environment,
+        host=settings.host,
     )
     rate_limiter = InMemoryRateLimiter(
         limits={

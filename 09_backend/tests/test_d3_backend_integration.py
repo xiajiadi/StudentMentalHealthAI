@@ -11,6 +11,7 @@ import pytest
 from structlog.contextvars import bind_contextvars, clear_contextvars, get_contextvars
 from structlog.testing import capture_logs
 
+from smhai_backend.core.config import BackendSettings
 from smhai_backend.core.errors import BackendError
 from smhai_backend.core.request_context import RequestContext
 from smhai_backend.domains.models import Actor, AssessmentRecord, BackendRole, ReportRecord
@@ -64,6 +65,28 @@ def _support_payload(assessment_id: str, message: str) -> dict[str, str]:
         "message": message,
         "language": "zh-CN",
     }
+
+
+def _install_m0_observer_assessment(app) -> AssessmentRecord:
+    assessment = _exact_assessment()
+    assessment["assessment_id"] = "ASSESS_m0_semantic_observer"
+    assessment["subject_id"] = "SUBJ_demo_a"
+    assessment["instrument"] = {
+        "instrument_id": "CURRENT_SYNTHETIC_GRM",
+        "version": "synthetic_item_bank.v1 / demo.v1",
+    }
+    assessment["status"] = "completed"
+    assessment["provenance"]["item_bank_version"] = "demo.v1"
+    record = AssessmentRecord(
+        assessment_id=assessment["assessment_id"],
+        subject_id=assessment["subject_id"],
+        assessment=copy.deepcopy(assessment),
+        cat_item_bank_version="demo.v1",
+        data_origin="SYNTHETIC",
+    )
+    app.state.container.assessments_repo.save(record)
+    app.state.container.users.get_by_username("student_a").subject_id = "SUBJ_demo_a"
+    return record
 
 
 @pytest.mark.asyncio
@@ -794,6 +817,293 @@ def test_boundary_gate_keeps_lexical_behavior_for_negated_substantive_text() -> 
     assert not support_service_module._contains_forbidden_generated_claim(negated_disclaimer)
     # The gate remains a lexical guard: negation in a substantive field still matches.
     assert support_service_module._contains_forbidden_generated_claim(negated_observation)
+
+
+@pytest.mark.parametrize(
+    ("field", "text"),
+    [
+        ("summary", "The synthetic assessment confirms a diagnosis."),
+        ("observations", "The synthetic assessment confirms a diagnosis."),
+        ("suggestions", "The synthetic score proves the diagnosis."),
+        ("disclaimer", "This is not a diagnosis or clinical assessment."),
+        ("summary", "This is not a diagnosis or clinical assessment."),
+        ("observations", "This is not a diagnosis or clinical assessment."),
+        ("suggestions", "This is not a diagnosis; the score proves severity."),
+        ("disclaimer", "This is not a diagnosis; the score proves severity."),
+    ],
+)
+def test_boundary_gate_field_semantics_remain_lexical(field: str, text: str) -> None:
+    values: dict[str, Any] = {
+        "summary": "Synthetic education-support summary.",
+        "observations": ["Synthetic observed study routine."],
+        "suggestions": [
+            {
+                "text": "Synthetic actionable study suggestion.",
+                "source_chunk_ids": ["CHUNK_synthetic_0"],
+            }
+        ],
+        "disclaimer": "Synthetic demo scope.",
+    }
+    if field == "summary" or field == "disclaimer":
+        values[field] = text
+    elif field == "observations":
+        values[field] = [text]
+    else:
+        values[field] = [{"text": text, "source_chunk_ids": ["CHUNK_synthetic_0"]}]
+    content = GenerationContent.model_validate(values)
+
+    assert support_service_module._contains_forbidden_generated_claim(content) is (
+        field != "disclaimer"
+    )
+
+
+def test_m0_observer_scope_requires_default_off_and_server_owned_synthetic_provenance(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("SMHAI_M0_CLAIM_BOUNDARY_OBSERVER_ENABLED", raising=False)
+    assert BackendSettings(_env_file=None).m0_claim_boundary_observer_enabled is False
+    assessment = {
+        "status": "completed",
+        "instrument": {
+            "instrument_id": "CURRENT_SYNTHETIC_GRM",
+            "version": "synthetic_item_bank.v1 / demo.v1",
+        },
+        "provenance": {"item_bank_version": "demo.v1"},
+    }
+    record = AssessmentRecord(
+        assessment_id="ASSESS_m0_scope_test",
+        subject_id="SUBJ_demo_a",
+        assessment=assessment,
+        cat_item_bank_version="demo.v1",
+        data_origin="SYNTHETIC",
+    )
+    actor = Actor(
+        user_id="USER_m0_scope_test",
+        username="student_a",
+        role=BackendRole.STUDENT,
+        subject_id="SUBJ_demo_a",
+    )
+    assert support_service_module._m0_semantic_observer_scope_allows(
+        actor=actor,
+        record=record,
+        message=support_service_module._M0_SEMANTIC_OBSERVER_MESSAGE,
+        environment="demo",
+        host="127.0.0.1",
+    )
+
+    disallowed_contexts = [
+        {"environment": "local", "host": "127.0.0.1"},
+        {"environment": "demo", "host": "0.0.0.0"},
+    ]
+    for context in disallowed_contexts:
+        assert not support_service_module._m0_semantic_observer_scope_allows(
+            actor=actor,
+            record=record,
+            message=support_service_module._M0_SEMANTIC_OBSERVER_MESSAGE,
+            **context,
+        )
+
+    assert not support_service_module._m0_semantic_observer_scope_allows(
+        actor=Actor(
+            user_id=actor.user_id,
+            username="other_user",
+            role=actor.role,
+            subject_id=actor.subject_id,
+        ),
+        record=record,
+        message=support_service_module._M0_SEMANTIC_OBSERVER_MESSAGE,
+        environment="demo",
+        host="127.0.0.1",
+    )
+    unsafe_record = copy.copy(record)
+    unsafe_record.data_origin = "REAL"
+    assert not support_service_module._m0_semantic_observer_scope_allows(
+        actor=actor,
+        record=unsafe_record,
+        message=support_service_module._M0_SEMANTIC_OBSERVER_MESSAGE,
+        environment="demo",
+        host="127.0.0.1",
+    )
+    unsafe_record = copy.copy(record)
+    unsafe_record.assessment = {**assessment, "status": "in_progress"}
+    assert not support_service_module._m0_semantic_observer_scope_allows(
+        actor=actor,
+        record=unsafe_record,
+        message=support_service_module._M0_SEMANTIC_OBSERVER_MESSAGE,
+        environment="demo",
+        host="127.0.0.1",
+    )
+    unsafe_record = copy.copy(record)
+    unsafe_record.assessment = {
+        **assessment,
+        "instrument": {**assessment["instrument"], "version": "unapproved"},
+    }
+    assert not support_service_module._m0_semantic_observer_scope_allows(
+        actor=actor,
+        record=unsafe_record,
+        message=support_service_module._M0_SEMANTIC_OBSERVER_MESSAGE,
+        environment="demo",
+        host="127.0.0.1",
+    )
+    unsafe_record = copy.copy(record)
+    unsafe_record.cat_item_bank_version = "unapproved"
+    assert not support_service_module._m0_semantic_observer_scope_allows(
+        actor=actor,
+        record=unsafe_record,
+        message=support_service_module._M0_SEMANTIC_OBSERVER_MESSAGE,
+        environment="demo",
+        host="127.0.0.1",
+    )
+    assert not support_service_module._m0_semantic_observer_scope_allows(
+        actor=actor,
+        record=record,
+        message="different synthetic request",
+        environment="demo",
+        host="127.0.0.1",
+    )
+
+
+@pytest.mark.asyncio
+async def test_m0_semantic_observer_is_one_shot_and_keeps_gate_fail_closed(
+    app, monkeypatch
+) -> None:
+    record = _install_m0_observer_assessment(app)
+    support = app.state.container.support
+    support._m0_claim_boundary_observer_enabled = True
+    support._environment = "demo"
+    support._host = "127.0.0.1"
+    actor = app.state.container.users.get_by_username("student_a").actor()
+    message = support_service_module._M0_SEMANTIC_OBSERVER_MESSAGE
+    payload = SupportRequest.model_validate(_support_payload(record.assessment_id, message))
+    context = RequestContext("REQ_m0_semantic_observer", "TRACE_m0_semantic_observer")
+    candidate_text = json.dumps(
+        {
+            "summary": "This synthetic result is not a diagnosis; SENTINEL_CANDIDATE_TEXT.",
+            "observations": [],
+            "suggestions": [
+                {
+                    "text": "Use the cited synthetic study-planning guidance.",
+                    "source_chunk_ids": ["CHUNK_backend_0"],
+                }
+            ],
+            "disclaimer": "Synthetic demo scope.",
+        }
+    )
+    generation_calls = 0
+
+    async def forbidden_candidate(self, **kwargs):
+        nonlocal generation_calls
+        generation_calls += 1
+        return CandidateResponse(
+            text=candidate_text,
+            model_id=kwargs["model_id"],
+            model_version="diagnostic-test",
+            runtime_version="diagnostic-test",
+            label="CONTRACT_FAKE",
+        )
+
+    monkeypatch.setattr(type(app.state.container.llm), "generate", forbidden_candidate)
+    with capture_logs() as captured:
+        with pytest.raises(BackendError) as caught:
+            await support.create(actor, payload, context=context)
+        support._observe_m0_claim_boundary_rejection(
+            actor=actor,
+            record=record,
+            message=message,
+            request_id="REQ_m0_semantic_observer_second_call",
+            trace_id="TRACE_m0_semantic_observer_second_call",
+            generation_id="GEN_m0_semantic_observer_second_call",
+            candidate_text=candidate_text,
+            content=GenerationContent.model_validate_json(candidate_text),
+        )
+
+    assert caught.value.status_code == 502
+    assert caught.value.code.value == "dependency_invalid_response"
+    assert generation_calls == 1
+    assert app.state.container.reports._records == {}
+    events = [
+        event
+        for event in captured
+        if event.get("event") == "support_generation_semantic_observation"
+    ]
+    assert len(events) == 1
+    event = events[0]
+    assert event["request_id"] == context.request_id
+    assert event["trace_id"] == context.trace_id
+    assert event["candidate_hash"] == hashlib.sha256(candidate_text.encode("utf-8")).hexdigest()
+    assert event["matched_field"] == "SUMMARY"
+    assert event["field_index"] == 0
+    assert event["matched_category"] == "DIAGNOSIS"
+    assert event["match_count"] == 1
+    assert event["classification_method"] == "HEURISTIC_ONLY"
+    assert event["semantic_classification"] == "INDETERMINATE"
+    assert event["reviewer_acknowledgement"] == "NOT_REVIEWED"
+    assert set(event).issubset(
+        {
+            "event",
+            "log_level",
+            "request_id",
+            "trace_id",
+            "generation_id",
+            "candidate_hash",
+            "matched_field",
+            "field_index",
+            "matched_category",
+            "match_count",
+            "classification_method",
+            "semantic_classification",
+            "reviewer_acknowledgement",
+        }
+    )
+    assert "SENTINEL_CANDIDATE_TEXT" not in json.dumps(captured, ensure_ascii=False)
+    assert candidate_text not in json.dumps(captured, ensure_ascii=False)
+
+
+@pytest.mark.asyncio
+async def test_m0_semantic_observer_failure_does_not_skip_claim_gate(app, monkeypatch) -> None:
+    record = _install_m0_observer_assessment(app)
+    support = app.state.container.support
+    support._m0_claim_boundary_observer_enabled = True
+    support._environment = "demo"
+    support._host = "127.0.0.1"
+    actor = app.state.container.users.get_by_username("student_a").actor()
+    message = support_service_module._M0_SEMANTIC_OBSERVER_MESSAGE
+    payload = SupportRequest.model_validate(_support_payload(record.assessment_id, message))
+    context = RequestContext("REQ_m0_observer_failure", "TRACE_m0_observer_failure")
+
+    async def forbidden_candidate(self, **kwargs):
+        return CandidateResponse(
+            text=json.dumps(
+                {
+                    "summary": "Synthetic diagnosis claim.",
+                    "observations": [],
+                    "suggestions": [],
+                    "disclaimer": "Synthetic demo scope.",
+                }
+            ),
+            model_id=kwargs["model_id"],
+            model_version="diagnostic-test",
+            runtime_version="diagnostic-test",
+            label="CONTRACT_FAKE",
+        )
+
+    def observer_failure(**_kwargs):
+        raise RuntimeError("synthetic observer diagnostic failure")
+
+    monkeypatch.setattr(type(app.state.container.llm), "generate", forbidden_candidate)
+    monkeypatch.setattr(
+        support_service_module,
+        "_log_m0_semantic_observation",
+        observer_failure,
+    )
+    with pytest.raises(BackendError) as caught:
+        await support.create(actor, payload, context=context)
+
+    assert caught.value.status_code == 502
+    assert caught.value.code.value == "dependency_invalid_response"
+    assert "synthetic observer diagnostic failure" not in str(caught.value)
+    assert app.state.container.reports._records == {}
+    assert support.stage_ledgers[context.trace_id].snapshot().state.value == "ABORTED"
 
 
 @pytest.mark.asyncio

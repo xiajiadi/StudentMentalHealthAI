@@ -74,6 +74,7 @@ class AssessmentRecord:
     cat_provider_version: str | None = None
     cat_item_bank_version: str | None = None
     cat_config_version: str | None = None
+    data_origin: str | None = None
 
 
 @dataclass(slots=True)

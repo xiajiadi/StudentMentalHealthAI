@@ -110,6 +110,7 @@ class BackendSettings(BaseSettings):
     auth: AuthSettings = Field(default_factory=AuthSettings)
     rate_limit: RateLimitSettings = Field(default_factory=RateLimitSettings)
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
+    m0_claim_boundary_observer_enabled: bool = False
     cat: ModuleClientSettings = Field(
         default_factory=lambda: ModuleClientSettings(
             mode="contract_fake", base_url="http://127.0.0.1:8180"

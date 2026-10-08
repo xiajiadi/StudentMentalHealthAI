@@ -4,6 +4,7 @@ import httpx
 import pytest
 
 from smhai_backend.adapters.memory.repositories import InMemorySessionStore
+from smhai_backend.container import build_container
 from smhai_backend.core.config import BackendSettings, RateLimitSettings
 from smhai_backend.core.errors import ErrorCode
 from smhai_backend.core.request_context import RequestContext
@@ -12,6 +13,22 @@ from smhai_backend.integrations.llm import HttpLLMRuntimeClient
 from smhai_backend.integrations.safety import ContractFakeSafetyClient, HttpSafetyClient
 
 from .conftest import completed_assessment, login
+
+
+def test_m0_claim_observer_configuration_is_default_off_and_server_wired() -> None:
+    default_settings = BackendSettings(_env_file=None)
+    assert default_settings.m0_claim_boundary_observer_enabled is False
+
+    configured = BackendSettings(
+        _env_file=None,
+        environment="demo",
+        host="127.0.0.1",
+        m0_claim_boundary_observer_enabled=True,
+    )
+    container = build_container(configured)
+    assert container.support._m0_claim_boundary_observer_enabled is True
+    assert container.support._environment == "demo"
+    assert container.support._host == "127.0.0.1"
 
 
 @pytest.mark.asyncio

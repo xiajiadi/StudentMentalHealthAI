@@ -11,6 +11,7 @@ import json
 import re
 from collections.abc import Mapping
 from datetime import UTC, datetime
+from threading import Lock
 from typing import Any
 from uuid import uuid4
 
@@ -78,6 +79,12 @@ from .schemas import (
 _FORBIDDEN_GENERATED_CLAIMS = re.compile(
     r"(?i)(?<![A-Za-z])(?:theta|se|score|band|severity|clinical|diagnos(?:is|tic)?)(?![A-Za-z])|诊断"
 )
+_M0_SEMANTIC_OBSERVER_ALLOWED_USERNAME = "student_a"
+_M0_SEMANTIC_OBSERVER_SUBJECT_ID = "SUBJ_demo_a"
+_M0_SEMANTIC_OBSERVER_INSTRUMENT_ID = "CURRENT_SYNTHETIC_GRM"
+_M0_SEMANTIC_OBSERVER_INSTRUMENT_VERSION = "synthetic_item_bank.v1 / demo.v1"
+_M0_SEMANTIC_OBSERVER_ITEM_BANK_VERSION = "demo.v1"
+_M0_SEMANTIC_OBSERVER_MESSAGE = "请给我一些关于建立稳定学习作息的教育支持建议。"
 
 
 class SupportOrchestrator:
@@ -95,6 +102,9 @@ class SupportOrchestrator:
         llm: LLMRuntimeClient,
         deadline_seconds: float,
         integration_labels: dict[str, str],
+        m0_claim_boundary_observer_enabled: bool = False,
+        environment: str = "local",
+        host: str = "127.0.0.1",
     ) -> None:
         self.assessments = assessments
         self.conversations = conversations
@@ -107,6 +117,11 @@ class SupportOrchestrator:
         self.llm = llm
         self.deadline_seconds = deadline_seconds
         self.integration_labels = dict(integration_labels)
+        self._m0_claim_boundary_observer_enabled = m0_claim_boundary_observer_enabled
+        self._environment = environment
+        self._host = host
+        self._m0_claim_boundary_observer_consumed = False
+        self._m0_claim_boundary_observer_lock = Lock()
         self.call_order: list[str] = []
         self.d3_call_order: list[str] = []
         self.stage_ledgers: dict[str, Any] = {}
@@ -695,6 +710,21 @@ class SupportOrchestrator:
                 # Diagnostic failure must never turn a rejected candidate into
                 # a published result or replace the established 502 response.
                 pass
+            try:
+                self._observe_m0_claim_boundary_rejection(
+                    actor=actor,
+                    record=record,
+                    message=message,
+                    request_id=context.request_id,
+                    trace_id=context.trace_id,
+                    generation_id=generation_id,
+                    candidate_text=candidate.text,
+                    content=content,
+                )
+            except Exception:
+                # The observer is diagnostic only; the Backend gate remains
+                # fail-closed even if its temporary observation fails.
+                pass
             raise error(
                 ErrorCode.DEPENDENCY_INVALID_RESPONSE,
                 status_code=502,
@@ -834,6 +864,40 @@ class SupportOrchestrator:
         )
         diagnostics.confirm()
         return result
+
+    def _observe_m0_claim_boundary_rejection(
+        self,
+        *,
+        actor: Actor,
+        record: Any,
+        message: str,
+        request_id: str,
+        trace_id: str,
+        generation_id: str,
+        candidate_text: str,
+        content: GenerationContent,
+    ) -> None:
+        if not self._m0_claim_boundary_observer_enabled:
+            return
+        if not _m0_semantic_observer_scope_allows(
+            actor=actor,
+            record=record,
+            message=message,
+            environment=self._environment,
+            host=self._host,
+        ):
+            return
+        with self._m0_claim_boundary_observer_lock:
+            if self._m0_claim_boundary_observer_consumed:
+                return
+            self._m0_claim_boundary_observer_consumed = True
+        _log_m0_semantic_observation(
+            request_id=request_id,
+            trace_id=trace_id,
+            generation_id=generation_id,
+            candidate_text=candidate_text,
+            content=content,
+        )
 
     async def retrieve(
         self, actor: Actor, payload: RetrievalRequest, *, context: RequestContext
@@ -1655,6 +1719,70 @@ def _log_generation_boundary_rejection(
             matched_category=category,
             match_count=match_count,
             workflow_disposition="FAILED_CLOSED_NO_REPORT",
+        )
+    finally:
+        clear_contextvars()
+        bind_contextvars(**request_context)
+
+
+def _m0_semantic_observer_scope_allows(
+    *,
+    actor: Actor,
+    record: Any,
+    message: str,
+    environment: str,
+    host: str,
+) -> bool:
+    assessment = record.assessment
+    if not isinstance(assessment, Mapping):
+        return False
+    instrument = assessment.get("instrument")
+    provenance = assessment.get("provenance")
+    if not isinstance(instrument, Mapping) or not isinstance(provenance, Mapping):
+        return False
+    return (
+        environment == "demo"
+        and host == "127.0.0.1"
+        and actor.role == BackendRole.STUDENT
+        and actor.username == _M0_SEMANTIC_OBSERVER_ALLOWED_USERNAME
+        and actor.subject_id == _M0_SEMANTIC_OBSERVER_SUBJECT_ID
+        and record.subject_id == _M0_SEMANTIC_OBSERVER_SUBJECT_ID
+        and str(record.data_origin).upper() == "SYNTHETIC"
+        and str(assessment.get("status", "")).casefold() == "completed"
+        and instrument.get("instrument_id") == _M0_SEMANTIC_OBSERVER_INSTRUMENT_ID
+        and instrument.get("version") == _M0_SEMANTIC_OBSERVER_INSTRUMENT_VERSION
+        and provenance.get("item_bank_version")
+        == _M0_SEMANTIC_OBSERVER_ITEM_BANK_VERSION
+        and record.cat_item_bank_version == _M0_SEMANTIC_OBSERVER_ITEM_BANK_VERSION
+        and message == _M0_SEMANTIC_OBSERVER_MESSAGE
+    )
+
+
+def _log_m0_semantic_observation(
+    *,
+    request_id: str,
+    trace_id: str,
+    generation_id: str,
+    candidate_text: str,
+    content: GenerationContent,
+) -> None:
+    field_kind, field_index, category, match_count = _first_boundary_match(content)
+    request_context = get_contextvars()
+    clear_contextvars()
+    try:
+        logger().warning(
+            "support_generation_semantic_observation",
+            request_id=request_id,
+            trace_id=trace_id,
+            generation_id=generation_id,
+            candidate_hash=_digest(candidate_text),
+            matched_field=field_kind,
+            field_index=field_index,
+            matched_category=category,
+            match_count=match_count,
+            classification_method="HEURISTIC_ONLY",
+            semantic_classification="INDETERMINATE",
+            reviewer_acknowledgement="NOT_REVIEWED",
         )
     finally:
         clear_contextvars()
