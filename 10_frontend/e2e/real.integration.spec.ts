@@ -107,7 +107,8 @@ async function createBrowserCrisisSupport(page: Page) {
 test('真实接口：登录 → CAT → 结果 → 支持报告 → 刷新后历史可见', async ({ page }) => {
   test.setTimeout(180_000)
   await loginAsSyntheticStudent(page)
-  await expect(page.getByText('还没有测评记录。开始后，记录会由服务端保存。')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '大学新生适应测评' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '开始测评' })).toBeEnabled()
 
   await page.getByRole('button', { name: '开始测评' }).click()
   await expect(page.getByText('第 1 题 · 测评进行中')).toBeVisible()
