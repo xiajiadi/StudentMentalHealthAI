@@ -68,6 +68,7 @@ export interface ReviewSubmission {
 
 export interface FrontendApi {
   login(input: LoginInput): Promise<ApiEnvelope<LoginResult>>
+  logout(): Promise<ApiEnvelope<{ logged_out: boolean }>>
   getCurrentUser(): Promise<ApiEnvelope<LoginResult | null>>
   getStudentHome(): Promise<ApiEnvelope<StudentHomeViewModel | null>>
   listAssessments(): Promise<ApiEnvelope<Assessment[]>>

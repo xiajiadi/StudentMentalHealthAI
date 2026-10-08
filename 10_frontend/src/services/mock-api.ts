@@ -83,6 +83,11 @@ export class MockApiProvider implements FrontendApi {
     return { ...requestIds(`login_${input.role}`), data: result } as ApiEnvelope<LoginResult>
   }
 
+  async logout(): Promise<ApiEnvelope<{ logged_out: boolean }>> {
+    await sleep(80)
+    return { ...requestIds('logout'), data: { logged_out: true } } as ApiEnvelope<{ logged_out: boolean }>
+  }
+
   async getCurrentUser(): Promise<ApiEnvelope<LoginResult | null>> {
     await sleep(80)
     return { ...requestIds('current_user'), data: null } as ApiEnvelope<LoginResult | null>

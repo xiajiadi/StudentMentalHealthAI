@@ -8,6 +8,7 @@ import {
   getReview,
   listReviews,
   authLogin,
+  authLogout,
   authMe,
   authCsrf,
   recordAssessmentResponse,
@@ -384,6 +385,17 @@ export class RealApiProvider implements FrontendApi {
         initials: valueAsString(actor.username, input.account).slice(0, 1).toUpperCase(),
       },
     }
+  }
+
+  async logout(): Promise<ApiEnvelope<{ logged_out: boolean }>> {
+    await this.ensureCsrfToken()
+    const response = await unwrap<{ logged_out: boolean }>(() => authLogout({
+      client: apiClient,
+      headers: mutationHeaders(this.csrfToken, nowToken('frontend-auth-logout')),
+    }))
+    this.csrfToken = ''
+    this.actorSubjectId = null
+    return response
   }
 
   async getCurrentUser(): Promise<ApiEnvelope<LoginResult | null>> {
