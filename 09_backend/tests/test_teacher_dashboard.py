@@ -97,6 +97,7 @@ async def test_overview_returns_only_authorized_synthetic_aggregate_and_history_
             generation_id="GEN_real",
             status="approved",
             review_status="approved",
+            generation={},
         )
     )
 
