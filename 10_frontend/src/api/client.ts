@@ -9,7 +9,6 @@ import type {
   ReviewQueueViewModel,
   StudentHomeViewModel,
   StudentReportViewModel,
-  TeacherOverviewViewModel,
 } from '@/types/view-models'
 
 export interface LoginInput {
@@ -80,7 +79,8 @@ export interface FrontendApi {
   completeAssessment(assessmentId: string): Promise<ApiEnvelope<Assessment>>
   createSupport(assessmentId: string, message: string): Promise<ApiEnvelope<SupportResult>>
   getStudentReport(reportId: string): Promise<ApiEnvelope<StudentReportViewModel>>
-  getTeacherOverview(): Promise<ApiEnvelope<TeacherOverviewViewModel>>
+  getTeacherOverview(): Promise<ApiEnvelope<unknown>>
+  getTeacherStudent(subjectId: string): Promise<ApiEnvelope<unknown>>
   getReviewQueue(): Promise<ApiEnvelope<ReviewQueueViewModel>>
   getReviewDetail(reviewCaseId: string): Promise<ApiEnvelope<ReviewDetailViewModel>>
   submitReview(reportId: string, input: ReviewSubmission): Promise<ApiEnvelope<ReviewCase>>

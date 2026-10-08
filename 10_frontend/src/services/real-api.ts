@@ -23,7 +23,6 @@ import type {
   ReviewQueueViewModel,
   StudentHomeViewModel,
   StudentReportViewModel,
-  TeacherOverviewViewModel,
 } from '@/types/view-models'
 import type {
   AssessmentState,
@@ -547,12 +546,20 @@ export class RealApiProvider implements FrontendApi {
     return { ...reportResponse, data: mapReport(rawReport, assessmentResponse.data) }
   }
 
-  async getTeacherOverview(): Promise<ApiEnvelope<TeacherOverviewViewModel>> {
-    const response = await unwrap<UnknownRecord>(() => authMe({ client: apiClient }))
-    return {
-      ...response,
-      data: { fixtureLabel: SYNTHETIC_FIXTURE_LABEL, summary: [], trend: [], attentionCases: [] },
-    }
+  async getTeacherOverview(): Promise<ApiEnvelope<unknown>> {
+    return unwrap<unknown>(() => apiClient.request({
+      method: 'GET',
+      url: '/api/v1/teacher/overview',
+      parseAs: 'json',
+    }))
+  }
+
+  async getTeacherStudent(subjectId: string): Promise<ApiEnvelope<unknown>> {
+    return unwrap<unknown>(() => apiClient.request({
+      method: 'GET',
+      url: `/api/v1/teacher/students/${encodeURIComponent(subjectId)}`,
+      parseAs: 'json',
+    }))
   }
 
   async getReviewQueue(): Promise<ApiEnvelope<ReviewQueueViewModel>> {

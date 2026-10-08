@@ -5,7 +5,6 @@ import {
   studentHomeFixture,
   studentReportFixture,
   syntheticAssessment,
-  teacherOverviewFixture,
   SYNTHETIC_FIXTURE_LABEL,
 } from '@/mocks/fixtures'
 import type { ApiEnvelope, Assessment, Report } from '@/types/contracts'
@@ -15,7 +14,6 @@ import type {
   ReviewQueueViewModel,
   StudentHomeViewModel,
   StudentReportViewModel,
-  TeacherOverviewViewModel,
 } from '@/types/view-models'
 import type {
   AssessmentState,
@@ -235,12 +233,12 @@ export class MockApiProvider implements FrontendApi {
     } as ApiEnvelope<StudentReportViewModel>
   }
 
-  async getTeacherOverview(): Promise<ApiEnvelope<TeacherOverviewViewModel>> {
-    await sleep()
-    return {
-      ...requestIds('teacher_overview'),
-      data: clone(teacherOverviewFixture),
-    } as ApiEnvelope<TeacherOverviewViewModel>
+  async getTeacherOverview(): Promise<ApiEnvelope<unknown>> {
+    throw new MockApiError('API_UNAVAILABLE', '教师汇总需要已授权的真实本地服务。')
+  }
+
+  async getTeacherStudent(_subjectId: string): Promise<ApiEnvelope<unknown>> {
+    throw new MockApiError('API_UNAVAILABLE', '教师历史需要已授权的真实本地服务。')
   }
 
   async getReviewQueue(): Promise<ApiEnvelope<ReviewQueueViewModel>> {
