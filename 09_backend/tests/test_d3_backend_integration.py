@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
 
 import pytest
+from structlog.contextvars import bind_contextvars, clear_contextvars, get_contextvars
+from structlog.testing import capture_logs
 
+from smhai_backend.core.errors import BackendError
 from smhai_backend.core.request_context import RequestContext
 from smhai_backend.domains.models import Actor, AssessmentRecord, BackendRole, ReportRecord
 from smhai_backend.domains.support import service as support_service_module
@@ -750,6 +754,237 @@ async def test_schema_valid_measurement_claim_is_not_published_when_safety_proce
     snapshot = app.state.container.support.stage_ledgers[trace_id].snapshot()
     assert snapshot.state.value == "ABORTED"
     assert snapshot.current.value == "OUTPUT_SAFETY_EVALUATED"
+
+
+@pytest.mark.asyncio
+async def test_boundary_rejection_emits_only_allowlisted_diagnostic_metadata(
+    app, monkeypatch
+) -> None:
+    assessment = _install_exact_assessment(app)
+    actor = app.state.container.users.get_by_username("student_a").actor()
+    payload = SupportRequest.model_validate(
+        _support_payload(assessment["assessment_id"], "USER_INPUT_SENTINEL")
+    )
+    context = RequestContext("REQ_boundary_diagnostic", "TRACE_boundary_diagnostic")
+    candidate_text = json.dumps(
+        {
+            "summary": "Synthetic summary.",
+            "observations": ["Synthetic observation.", "severity SENTINEL severity"],
+            "suggestions": [
+                {"text": "Synthetic suggestion.", "source_chunk_ids": ["CHUNK_backend_0"]}
+            ],
+            "disclaimer": "Synthetic fixture.",
+        }
+    )
+    runtime_prompts: list[str] = []
+    llm_type = type(app.state.container.llm)
+
+    async def forbidden_candidate(self, **kwargs):
+        runtime_prompts.append(kwargs["prompt"])
+        return CandidateResponse(
+            text=candidate_text,
+            model_id=kwargs["model_id"],
+            model_version="diagnostic-test",
+            runtime_version="diagnostic-test",
+            label="CONTRACT_FAKE",
+        )
+
+    monkeypatch.setattr(llm_type, "generate", forbidden_candidate)
+    clear_contextvars()
+    bind_contextvars(route="ROUTE_CONTEXT_SENTINEL", private_context="PRIVATE_CONTEXT_SENTINEL")
+    try:
+        with capture_logs() as captured:
+            with pytest.raises(BackendError) as caught:
+                await app.state.container.support.create(actor, payload, context=context)
+        restored_context = get_contextvars()
+    finally:
+        clear_contextvars()
+
+    assert caught.value.status_code == 502
+    assert caught.value.code.value == "dependency_invalid_response"
+    assert (
+        caught.value.detail
+        == "LLM Runtime returned content outside the approved generation boundary"
+    )
+    assert restored_context == {
+        "route": "ROUTE_CONTEXT_SENTINEL",
+        "private_context": "PRIVATE_CONTEXT_SENTINEL",
+    }
+    assert app.state.container.reports._records == {}
+    assert (
+        app.state.container.support.stage_ledgers[context.trace_id].snapshot().state.value
+        == "ABORTED"
+    )
+    assert len(captured) == 1
+    event = captured[0]
+    assert event["event"] == "support_generation_boundary_rejected"
+    assert event["request_id"] == context.request_id
+    assert event["trace_id"] == context.trace_id
+    assert event["generation_id"].startswith("GEN_")
+    assert event["candidate_sha256"] == hashlib.sha256(candidate_text.encode("utf-8")).hexdigest()
+    assert event["parse_status"] == "PARSED"
+    assert event["output_safety_action"] == "PROCEED"
+    assert event["boundary_check_code"] == "FORBIDDEN_GENERATED_CLAIM"
+    assert event["field_kind"] == "OBSERVATION"
+    assert event["field_index"] == 1
+    assert event["matched_category"] == "SEVERITY"
+    assert event["match_count"] == 2
+    assert event["workflow_disposition"] == "FAILED_CLOSED_NO_REPORT"
+    assert set(event).issubset(
+        {
+            "event",
+            "log_level",
+            "request_id",
+            "trace_id",
+            "generation_id",
+            "candidate_sha256",
+            "parse_status",
+            "output_safety_action",
+            "boundary_check_code",
+            "field_kind",
+            "field_index",
+            "matched_category",
+            "match_count",
+            "workflow_disposition",
+        }
+    )
+    serialized = json.dumps([event, str(caught.value)], ensure_ascii=False)
+    for sentinel in (
+        candidate_text,
+        runtime_prompts[0],
+        "USER_INPUT_SENTINEL",
+        "ROUTE_CONTEXT_SENTINEL",
+        "PRIVATE_CONTEXT_SENTINEL",
+        "severity",
+    ):
+        assert sentinel not in serialized
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure_point", ["calculation", "logging"])
+async def test_boundary_diagnostic_failure_still_aborts_and_returns_502(
+    app, monkeypatch, failure_point: str
+) -> None:
+    assessment = _install_exact_assessment(app)
+    actor = app.state.container.users.get_by_username("student_a").actor()
+    payload = SupportRequest.model_validate(
+        _support_payload(assessment["assessment_id"], "safe synthetic input")
+    )
+    context = RequestContext("REQ_boundary_log_failure", "TRACE_boundary_log_failure")
+    llm_type = type(app.state.container.llm)
+
+    async def forbidden_candidate(self, **kwargs):
+        return CandidateResponse(
+            text=json.dumps(
+                {
+                    "summary": "clinical synthetic marker",
+                    "observations": [],
+                    "suggestions": [
+                        {"text": "Synthetic suggestion.", "source_chunk_ids": ["CHUNK_backend_0"]}
+                    ],
+                    "disclaimer": "Synthetic fixture.",
+                }
+            ),
+            model_id=kwargs["model_id"],
+            model_version="diagnostic-test",
+            runtime_version="diagnostic-test",
+            label="CONTRACT_FAKE",
+        )
+
+    monkeypatch.setattr(llm_type, "generate", forbidden_candidate)
+    if failure_point == "calculation":
+        def fail_diagnostic_calculation(_content):
+            raise RuntimeError("PRIVATE_DIAGNOSTIC_EXCEPTION_SENTINEL")
+
+        monkeypatch.setattr(
+            support_service_module,
+            "_first_boundary_match",
+            fail_diagnostic_calculation,
+        )
+    else:
+        class BrokenLogger:
+            def warning(self, *_args, **_kwargs):
+                raise RuntimeError("PRIVATE_LOGGER_EXCEPTION_SENTINEL")
+
+        monkeypatch.setattr(support_service_module, "logger", lambda: BrokenLogger())
+
+    with pytest.raises(BackendError) as caught:
+        await app.state.container.support.create(actor, payload, context=context)
+
+    assert caught.value.status_code == 502
+    assert caught.value.code.value == "dependency_invalid_response"
+    assert (
+        caught.value.detail
+        == "LLM Runtime returned content outside the approved generation boundary"
+    )
+    assert app.state.container.reports._records == {}
+    assert (
+        app.state.container.support.stage_ledgers[context.trace_id].snapshot().state.value
+        == "ABORTED"
+    )
+    assert "PRIVATE_DIAGNOSTIC_EXCEPTION_SENTINEL" not in str(caught.value)
+    assert "PRIVATE_LOGGER_EXCEPTION_SENTINEL" not in str(caught.value)
+
+
+@pytest.mark.asyncio
+async def test_normal_and_crisis_direct_paths_do_not_emit_boundary_rejection(
+    app, monkeypatch
+) -> None:
+    assessment = _install_exact_assessment(app)
+    actor = app.state.container.users.get_by_username("student_a").actor()
+    llm_type = type(app.state.container.llm)
+    normal_payload = SupportRequest.model_validate(
+        _support_payload(assessment["assessment_id"], "normal synthetic path")
+    )
+    normal_context = RequestContext("REQ_boundary_normal", "TRACE_boundary_normal")
+    candidate = json.dumps(
+        {
+            "summary": "Synthetic educational support summary.",
+            "observations": ["Synthetic observation."],
+            "suggestions": [
+                {"text": "Synthetic suggestion.", "source_chunk_ids": ["CHUNK_backend_0"]}
+            ],
+            "disclaimer": "Synthetic fixture.",
+        }
+    )
+
+    async def normal_candidate(self, **kwargs):
+        return CandidateResponse(
+            text=candidate,
+            model_id=kwargs["model_id"],
+            model_version="diagnostic-test",
+            runtime_version="diagnostic-test",
+            label="CONTRACT_FAKE",
+        )
+
+    monkeypatch.setattr(llm_type, "generate", normal_candidate)
+    with capture_logs() as normal_logs:
+        normal_result = await app.state.container.support.create(
+            actor, normal_payload, context=normal_context
+        )
+    assert normal_result.status == "generated"
+    assert app.state.container.reports.get(normal_result.report_id) is not None
+    assert not any(
+        log.get("event") == "support_generation_boundary_rejected" for log in normal_logs
+    )
+
+    async def runtime_must_not_run(self, **_kwargs):
+        raise AssertionError("crisis path must not call Runtime")
+
+    monkeypatch.setattr(llm_type, "generate", runtime_must_not_run)
+    crisis_payload = SupportRequest.model_validate(
+        _support_payload(assessment["assessment_id"], "SYNTHETIC_CRISIS_SIGNAL")
+    )
+    crisis_context = RequestContext("REQ_boundary_crisis", "TRACE_boundary_crisis")
+    with capture_logs() as crisis_logs:
+        crisis_result = await app.state.container.support.create(
+            actor, crisis_payload, context=crisis_context
+        )
+    assert crisis_result.safety_action == "CRISIS_ROUTE"
+    assert crisis_result.normal_generation is False
+    assert not any(
+        log.get("event") == "support_generation_boundary_rejected" for log in crisis_logs
+    )
 
 
 @pytest.mark.asyncio

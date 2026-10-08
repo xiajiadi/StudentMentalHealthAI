@@ -14,8 +14,11 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
+from structlog.contextvars import bind_contextvars, clear_contextvars, get_contextvars
+
 from smhai_backend.core.async_utils import maybe_await
 from smhai_backend.core.errors import ErrorCode, error
+from smhai_backend.core.logging import logger
 from smhai_backend.core.orchestration import OrchestrationStage, StageLedger
 from smhai_backend.core.request_context import RequestContext
 from smhai_backend.core.trusted_context import (
@@ -544,6 +547,19 @@ class SupportOrchestrator:
                 "BLOCK",
                 reason="generated content crossed the Backend psychological-claim boundary",
             )
+            try:
+                _log_generation_boundary_rejection(
+                    request_id=context.request_id,
+                    trace_id=context.trace_id,
+                    generation_id=generation_id,
+                    candidate_text=candidate.text,
+                    output_safety_action=output_check.decision.action,
+                    content=content,
+                )
+            except Exception:
+                # Diagnostic failure must never turn a rejected candidate into
+                # a published result or replace the established 502 response.
+                pass
             raise error(
                 ErrorCode.DEPENDENCY_INVALID_RESPONSE,
                 status_code=502,
@@ -1433,6 +1449,82 @@ def _contains_forbidden_generated_claim(content: GenerationContent) -> bool:
     values = [content.summary, *content.observations]
     values.extend(suggestion.text for suggestion in content.suggestions)
     return any(_FORBIDDEN_GENERATED_CLAIMS.search(value) for value in values)
+
+
+def _log_generation_boundary_rejection(
+    *,
+    request_id: str,
+    trace_id: str,
+    generation_id: str,
+    candidate_text: str,
+    output_safety_action: str,
+    content: GenerationContent,
+) -> None:
+    """Emit only fixed, non-content metadata for a rejected candidate.
+
+    The selected field is the first match in schema order (summary, then
+    observations, then suggestions); ``field_index`` is zero-based, including
+    summary's single index 0. ``match_count`` counts matches in that field.
+    """
+
+    field_kind, field_index, category, match_count = _first_boundary_match(content)
+    request_context = get_contextvars()
+    clear_contextvars()
+    try:
+        logger().warning(
+            "support_generation_boundary_rejected",
+            request_id=request_id,
+            trace_id=trace_id,
+            generation_id=generation_id,
+            candidate_sha256=_digest(candidate_text),
+            parse_status="PARSED",
+            output_safety_action=str(output_safety_action),
+            boundary_check_code="FORBIDDEN_GENERATED_CLAIM",
+            field_kind=field_kind,
+            field_index=field_index,
+            matched_category=category,
+            match_count=match_count,
+            workflow_disposition="FAILED_CLOSED_NO_REPORT",
+        )
+    finally:
+        clear_contextvars()
+        bind_contextvars(**request_context)
+
+
+def _first_boundary_match(
+    content: GenerationContent,
+) -> tuple[str, int, str, int]:
+    fields = [
+        ("SUMMARY", 0, content.summary),
+        *(('OBSERVATION', index, value) for index, value in enumerate(content.observations)),
+        *(
+            ("SUGGESTION", index, suggestion.text)
+            for index, suggestion in enumerate(content.suggestions)
+        ),
+    ]
+    for field_kind, field_index, value in fields:
+        matches = list(_FORBIDDEN_GENERATED_CLAIMS.finditer(value))
+        if matches:
+            return (
+                field_kind,
+                field_index,
+                _boundary_match_category(matches[0].group(0)),
+                len(matches),
+            )
+    raise ValueError("rejected generation has no boundary match")
+
+
+def _boundary_match_category(match: str) -> str:
+    normalized = match.casefold()
+    if normalized == "诊断" or normalized.startswith("diagnos"):
+        return "DIAGNOSIS"
+    if normalized == "clinical":
+        return "CLINICAL"
+    if normalized == "severity":
+        return "SEVERITY"
+    if normalized in {"theta", "se", "score", "band"}:
+        return "PSYCHOMETRIC_SCORE"
+    return "OTHER_ALLOWLISTED"
 
 
 def _timestamp() -> str:
