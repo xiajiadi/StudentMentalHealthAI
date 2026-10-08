@@ -17,6 +17,7 @@ def _assessment(
     subject_id: str,
     *,
     origin: str = "SYNTHETIC",
+    population_scope: str = "synthetic_demo",
     status: str = "completed",
     started_at: str = "2026-10-01T10:00:00Z",
     completed_at: str | None = "2026-10-01T10:05:00Z",
@@ -29,7 +30,7 @@ def _assessment(
             "schema_version": "assessment.v1",
             "assessment_id": assessment_id,
             "subject_id": subject_id,
-            "population_scope": "synthetic_demo",
+            "population_scope": population_scope,
             "status": status,
             "timestamps": {"started_at": started_at, "completed_at": completed_at},
             "response_summary": {"items_answered": 3},
@@ -159,3 +160,35 @@ async def test_non_teacher_role_is_forbidden_even_with_accessible_subject_claims
     with pytest.raises(BackendError) as caught:
         await service.overview(reviewer)
     assert caught.value.code is ErrorCode.FORBIDDEN
+
+
+@pytest.mark.asyncio
+async def test_overview_includes_exact_cat_synthetic_scope_and_rejects_unrelated_scope():
+    service, assessments, _ = _service()
+    teacher = Actor(
+        user_id="USER_teacher",
+        username="teacher",
+        role=BackendRole.TEACHER,
+        subject_id=None,
+        accessible_subject_ids=frozenset({"SUBJ_allowed"}),
+    )
+    assessments.save(
+        _assessment(
+            "ASSESS_cat_completed",
+            "SUBJ_allowed",
+            population_scope="SYNTHETIC_STUDENT_DEMO",
+        )
+    )
+    assessments.save(
+        _assessment(
+            "ASSESS_unrelated_scope",
+            "SUBJ_allowed",
+            population_scope="UNRELATED_DEMO",
+        )
+    )
+
+    overview = await service.overview(teacher)
+
+    assert overview.assessments_count == 1
+    assert overview.completed_count == 1
+    assert overview.students[0].assessment_count == 1

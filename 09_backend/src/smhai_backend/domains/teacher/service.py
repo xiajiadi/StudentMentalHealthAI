@@ -132,7 +132,8 @@ def _is_synthetic(record: Any) -> bool:
     return (
         str(record.data_origin or "").upper() == "SYNTHETIC"
         and isinstance(assessment, dict)
-        and assessment.get("population_scope") == "synthetic_demo"
+        and assessment.get("population_scope")
+        in {"synthetic_demo", "SYNTHETIC_STUDENT_DEMO"}
     )
 
 
