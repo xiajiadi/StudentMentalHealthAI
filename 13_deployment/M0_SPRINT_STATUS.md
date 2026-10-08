@@ -56,7 +56,7 @@ CAT 分支来自当前合成规则选择器，能观察到回答影响后续题�
 1. **P0 Reset：** `reset-demo.ps1` 当前返回 2，不连接数据库、不停止服务、不改数据。`audit_events` 和 `idempotency_records` 缺少足以证明每条记录属于 M0 的关联标记，现有 `SYNTHETIC` 来源不足以安全清理。
 2. **P1 Support：** Prompt 改进后的一次真实支持请求仍在 Backend `CLAIM_BOUNDARY` 失败；没有已批准回答、citation 或报告。候选原文未持久化，本次安全元数据不足以确定语义分类。
 3. **Runtime trace：** `HttpLLMRuntimeClient` 未将 Runtime 的 attempt/retry metadata 保留到 allowlisted diagnostics，provider-level retry 数不能现场核实。
-4. **Demo account handoff：** 本轮未在文档或聊天记录密码；教师真实浏览器流用的是本地 synthetic seed account。
+4. **Demo account：** 已创建本地 `m0_teacher_demo` synthetic teacher，仅获得原 teacher seed 对两个 active synthetic subject 的相同授权范围。Windows User 环境保存 `SMHAI_M0_TEACHER_USERNAME` 与 `SMHAI_M0_TEACHER_PASSWORD`；密码未写入仓库或聊天。新账号 API 登录、Teacher overview（200）、logout 和 logout 后 `/auth/me`（401）已验证；浏览器 Teacher 场景使用原 synthetic seed account。
 
 ## 操作入口
 

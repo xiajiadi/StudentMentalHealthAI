@@ -36,7 +36,14 @@
 
 启动器可能在 Ollama 尚未运行时启动本机 `ollama serve`，但不会下载模型。其后会创建专用 schema（仅当不存在）、运行迁移、构建仅供 M0 使用的本地知识导出和 BM25 索引，并按顺序启动 OPA、CAT、RAG、Runtime、Safety、Backend、Frontend。缺依赖或 readiness 失败时不会切到 fake/云 fallback。
 
-所有服务 ready 后，在浏览器打开 `http://127.0.0.1:4173/`。只使用页面提供的合成演示账号和合成信息；不要输入真实姓名、学号、联系方式、测评回答或其他真实学生数据。可按页面当前开放能力体验学生测评、结果/支持页面，以及教师和 reviewer 可访问的页面。需要验证某个具体业务闭环时，以其专项测试和 Live Stack Owner 的实测记录为准，不能仅凭页面能打开就认定端到端链路通过。
+所有服务 ready 后，在浏览器打开 `http://127.0.0.1:4173/`。只使用合成账号和合成信息；不要输入真实姓名、学号、联系方式、测评回答或其他真实学生数据。
+
+- **Student：** 登录页预填 `student_a`；保留预填信息即可进入学生工作区。
+- **Teacher：** 选择“教师”身份，账号为 `m0_teacher_demo`。密码保存在 Windows 用户环境变量 `SMHAI_M0_TEACHER_PASSWORD`，用户名也保存在 `SMHAI_M0_TEACHER_USERNAME`。在新开的本机 PowerShell 窗口中可读取这两个变量并手动填入登录表单；不要把密码复制进仓库、日志或聊天。该账号仅复制现有教师对两名合成主体的授权范围。
+- **Reviewer：** 使用本机 synthetic seed account；本轮未现场复核 reviewer 登录流程。
+- **AI 支持：** 当前真实合成请求被 Backend `CLAIM_BOUNDARY` 安全门拒绝，没有回答、引用或报告。不要为获取回答而重复提交相同问题。
+
+本轮浏览器已验证 Student 测评、结果、历史、退出重登，以及 Teacher 概览、授权主体详情和越权拒绝。需要验证具体业务闭环时，以 [M0_SPRINT_STATUS.md](M0_SPRINT_STATUS.md) 和专项测试证据为准；不能仅凭页面能打开就认定端到端通过。
 
 服务端口和依赖准备命令见 [LOCAL_DEMO.md](LOCAL_DEMO.md)。启动后检查终端中的 readiness 结果；浏览器地址能打开不等于每个依赖均可用。
 
