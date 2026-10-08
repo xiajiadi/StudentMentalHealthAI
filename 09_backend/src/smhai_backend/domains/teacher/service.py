@@ -163,7 +163,12 @@ def _student_summary(subject_id: str, records: list[Any]) -> TeacherStudentSumma
             (
                 timestamp
                 for record in records
-                if (timestamp := (_timestamp(record, "completed_at") or _timestamp(record, "started_at")))
+                if (
+                    timestamp := (
+                        _timestamp(record, "completed_at")
+                        or _timestamp(record, "started_at")
+                    )
+                )
             ),
             default=None,
         ),
