@@ -222,7 +222,11 @@ class HttpCatClient(LongLivedHttpClient):
                 context=context,
             )
             return _state_to_start(
-                value, instrument_id=instrument_id, instrument_version=instrument_version
+                value,
+                assessment_id=assessment_id,
+                subject_id=subject_id,
+                instrument_id=instrument_id,
+                instrument_version=instrument_version,
             )
         except UpstreamError as exc:
             raise translate_upstream_error(exc) from exc
@@ -271,6 +275,12 @@ class HttpCatClient(LongLivedHttpClient):
             assessment = value.get("assessment")
             if not isinstance(assessment, dict):
                 raise ValueError("CAT response has no assessment")
+            validate_frozen("assessment.v1.schema.json", assessment)
+            if (
+                assessment.get("assessment_id") != session.assessment_id
+                or assessment.get("subject_id") != session.subject_id
+            ):
+                raise ValueError("CAT assessment identity does not match the session")
             return assessment
         except UpstreamError as exc:
             raise translate_upstream_error(exc) from exc
@@ -295,6 +305,8 @@ class HttpCatClient(LongLivedHttpClient):
             )
             return _state_to_start(
                 value,
+                assessment_id=session.assessment_id,
+                subject_id=session.subject_id,
                 instrument_id=session.instrument_id,
                 instrument_version=session.instrument_version,
             )
@@ -328,11 +340,21 @@ def _context(request_id: str | None, trace_id: str | None, suffix: str) -> Reque
 
 
 def _state_to_start(
-    value: Mapping[str, Any], *, instrument_id: str, instrument_version: str
+    value: Mapping[str, Any],
+    *,
+    assessment_id: str,
+    subject_id: str,
+    instrument_id: str,
+    instrument_version: str,
 ) -> CatStart:
+    if (
+        value.get("assessment_id") != assessment_id
+        or value.get("subject_id") != subject_id
+    ):
+        raise ValueError("CAT session identity does not match the request")
     return CatStart(
-        assessment_id=str(value["assessment_id"]),
-        subject_id=str(value["subject_id"]),
+        assessment_id=assessment_id,
+        subject_id=subject_id,
         instrument_id=instrument_id,
         instrument_version=instrument_version,
         started_at=str(value.get("started_at") or _timestamp()),

@@ -145,6 +145,7 @@ class CatRuntime:
             "assessment": assessment,
             "state": self.state(session),
             "trace": [trace.to_dict() for trace in result.traces],
+            "stopping_reason": result.stopping_reason.value,
             "provider": {
                 "name": "adaptivetesting",
                 "version": result.provider_version,
