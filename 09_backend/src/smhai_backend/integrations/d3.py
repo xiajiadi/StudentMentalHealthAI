@@ -112,7 +112,7 @@ def server_prompt_reference(target_role: str) -> tuple[str, str]:
     """Return the exact server-owned D3-1 template identity for a role."""
 
     refs = {
-        "student": ("PROMPT_student_synthetic_v1", "1.0.0"),
+        "student": ("PROMPT_student_synthetic_v1", "1.1.0"),
         "teacher": ("PROMPT_teacher_synthetic_v1", "1.0.0"),
         "parent": ("PROMPT_parent_synthetic_demo_v1", "1.0.0"),
     }
