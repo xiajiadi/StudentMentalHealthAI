@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import AuthLayout from '@/layouts/AuthLayout.vue'
 import FocusLayout from '@/layouts/FocusLayout.vue'
-import ReviewerLayout from '@/layouts/ReviewerLayout.vue'
-import StudentLayout from '@/layouts/StudentLayout.vue'
-import TeacherLayout from '@/layouts/TeacherLayout.vue'
+import WorkspaceLayout from '@/layouts/WorkspaceLayout.vue'
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 
@@ -13,9 +11,10 @@ const layout = computed(() => {
   switch (route.meta.layout) {
     case 'auth': return AuthLayout
     case 'focus': return FocusLayout
-    case 'teacher': return TeacherLayout
-    case 'reviewer': return ReviewerLayout
-    case 'student': return StudentLayout
+    case 'teacher':
+    case 'reviewer':
+    case 'student':
+    case 'workspace': return WorkspaceLayout
     default: return undefined
   }
 })

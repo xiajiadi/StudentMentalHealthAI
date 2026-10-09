@@ -22,9 +22,7 @@ body {
   min-width: 320px;
   min-height: 100vh;
   margin: 0;
-  background:
-    linear-gradient(90deg, rgb(37 99 235 / 2%) 1px, transparent 1px) 0 0 / 32px 32px,
-    var(--color-canvas);
+  background: var(--color-canvas);
 }
 
 button,

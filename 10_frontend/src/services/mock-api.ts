@@ -62,23 +62,9 @@ export class MockApiProvider implements FrontendApi {
     await sleep(480)
 
     if (!input.account.trim() || !input.password.trim()) {
-      throw new MockApiError('AUTH_INVALID_INPUT', '请输入演示账号和密码。')
+      throw new MockApiError('AUTH_INVALID_INPUT', '请输入账号和密码。')
     }
-    if (input.password.toLowerCase() === 'network') {
-      throw new MockApiError('NETWORK_UNAVAILABLE', '当前无法连接到演示服务，请稍后重试。', true)
-    }
-    if (input.password.toLowerCase() === 'wrong') {
-      throw new MockApiError('AUTH_UNAUTHORIZED', '账号或密码不正确，请检查后再试。')
-    }
-
-    const result: LoginResult = {
-      userId: `USER_demo_${input.role}`,
-      role: input.role,
-      subjectId: input.role === 'student' ? 'SUBJ_demo_student_001' : null,
-      displayName: input.role === 'student' ? '演示同学' : input.role === 'teacher' ? '演示教师' : '演示复核员',
-      initials: input.role === 'student' ? '学' : input.role === 'teacher' ? '师' : '复',
-    }
-    return { ...requestIds(`login_${input.role}`), data: result } as ApiEnvelope<LoginResult>
+    throw new MockApiError('MOCK_AUTH_UNAVAILABLE', '演示 API 不提供账号认证，请连接 Backend 后再登录。')
   }
 
   async logout(): Promise<ApiEnvelope<{ logged_out: boolean }>> {

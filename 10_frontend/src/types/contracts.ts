@@ -1,4 +1,4 @@
-export type Role = 'student' | 'teacher' | 'reviewer'
+export type Role = 'student' | 'teacher' | 'psychological_specialist' | 'school_admin' | 'reviewer'
 
 export type RiskLevel = 'normal' | 'attention' | 'high' | 'crisis'
 

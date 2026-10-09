@@ -15,7 +15,7 @@ import {
   reviewReport,
 } from '@/api/generated/sdk.gen'
 import { createClient, createConfig } from '@/api/generated/client'
-import type { ApiEnvelope, Assessment, Citation, GenerationResult } from '@/types/contracts'
+import type { ApiEnvelope, Assessment, Citation, GenerationResult, Role } from '@/types/contracts'
 import type {
   CatQuestion,
   ReviewCase,
@@ -125,9 +125,22 @@ const mutationHeaders = (csrfToken: string, key: string) => ({
   'Idempotency-Key': key,
 })
 
-const mapRole = (value: unknown, fallback: LoginInput['role']): LoginInput['role'] => {
-  const role = valueAsString(value).toLowerCase()
-  return role === 'teacher' || role === 'reviewer' || role === 'student' ? role : fallback
+const mapRole = (value: unknown): Role => {
+  const role = valueAsString(value).toUpperCase()
+  if (role === 'STUDENT') return 'student'
+  if (role === 'TEACHER') return 'teacher'
+  if (role === 'PSYCHOLOGICAL_SPECIALIST') return 'psychological_specialist'
+  if (role === 'ADMIN') return 'school_admin'
+  if (role === 'REVIEWER') return 'reviewer'
+  throw new RealApiError('AUTH_ROLE_UNSUPPORTED', '服务端返回了当前界面不支持的账号角色。')
+}
+
+const mapAuthorizedRoles = (value: unknown): Role[] | undefined => {
+  if (!Array.isArray(value)) return undefined
+  const roles = value.flatMap((item) => {
+    try { return [mapRole(item)] } catch { return [] }
+  })
+  return [...new Set(roles)]
 }
 
 const mapAssessment = (value: unknown, assessmentId: string): Assessment => {
@@ -378,7 +391,8 @@ export class RealApiProvider implements FrontendApi {
       ...response,
       data: {
         userId: valueAsString(actor.user_id),
-        role: mapRole(actor.role, input.role),
+        role: mapRole(actor.role),
+        authorizedRoles: mapAuthorizedRoles(actor.authorized_roles),
         subjectId: this.actorSubjectId,
         displayName: valueAsString(actor.username, input.account),
         initials: valueAsString(actor.username, input.account).slice(0, 1).toUpperCase(),
@@ -408,7 +422,8 @@ export class RealApiProvider implements FrontendApi {
       ...response,
       data: {
         userId,
-        role: mapRole(actor.role, 'student'),
+        role: mapRole(actor.role),
+        authorizedRoles: mapAuthorizedRoles(actor.authorized_roles),
         subjectId: this.actorSubjectId,
         displayName: username,
         initials: username.slice(0, 1).toUpperCase(),

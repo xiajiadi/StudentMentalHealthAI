@@ -9,10 +9,11 @@ import type {
 export interface SessionUser {
   userId: string
   role: Role
+  authorizedRoles?: Role[]
   subjectId: string | null
   displayName: string
   initials: string
-  disclosure: 'student' | 'teacher' | 'reviewer'
+  disclosure: Role
 }
 
 export interface StudentHomeViewModel {

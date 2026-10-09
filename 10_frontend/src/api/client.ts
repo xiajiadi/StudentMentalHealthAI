@@ -14,12 +14,12 @@ import type {
 export interface LoginInput {
   account: string
   password: string
-  role: 'student' | 'teacher' | 'reviewer'
 }
 
 export interface LoginResult {
   userId: string
-  role: LoginInput['role']
+  role: import('@/types/contracts').Role
+  authorizedRoles?: import('@/types/contracts').Role[]
   subjectId: string | null
   displayName: string
   initials: string
