@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 from .domain.models import GenerationConfig, GenerationRequest
@@ -15,11 +16,42 @@ from .providers.ollama import OllamaProvider
 from .runtime.service import RuntimeService
 
 MODULE_ROOT = Path(__file__).resolve().parents[2]
+_RUNTIME_PROFILE_FILES = {
+    "default": None,
+    "m0-p1-support": "runtime.m0-p1-support.v1.json",
+}
 
 
-def build_service() -> RuntimeService:
+def build_service(profile_name: str | None = None) -> RuntimeService:
     registry = ModelRegistry.from_file(MODULE_ROOT / "config" / "models.v1.json")
     runtime = json.loads((MODULE_ROOT / "config" / "runtime.v1.json").read_text(encoding="utf-8"))
+    selected_profile = profile_name or os.environ.get("SMHAI_LLM_RUNTIME_PROFILE", "default")
+    if selected_profile not in _RUNTIME_PROFILE_FILES:
+        raise ValueError("unknown LLM Runtime profile")
+    profile_file = _RUNTIME_PROFILE_FILES[selected_profile]
+    if profile_file is not None:
+        profile = json.loads((MODULE_ROOT / "config" / profile_file).read_text(encoding="utf-8"))
+        if (
+            profile.get("schema_version") != "llm-runtime.m0-profile.v1"
+            or profile.get("profile_id") != selected_profile
+        ):
+            raise ValueError("LLM Runtime profile identity mismatch")
+        if profile.get("cloud_fallback") is not False or registry.cloud_fallback:
+            raise ValueError("M0 LLM Runtime profile must disable cloud fallback")
+        primary = registry.resolve(str(profile.get("default_model_id", "")))
+        if primary.logical_model_id != "qwen2.5-0.5b-engineering":
+            raise ValueError("M0 LLM Runtime profile model is not authorized")
+        if registry.fallback_chain(primary.logical_model_id):
+            raise ValueError("M0 LLM Runtime profile cannot route to a fallback model")
+        retry = profile.get("retry")
+        if (
+            not isinstance(retry, dict)
+            or retry.get("max_attempts") != 1
+            or retry.get("backoff_seconds") != []
+        ):
+            raise ValueError("M0 LLM Runtime profile must allow exactly one provider attempt")
+        runtime["retry"] = retry
+        runtime["default_model_id"] = primary.logical_model_id
     ollama_config = runtime["ollama"]
     llama_config = runtime["llama_cpp"]
     llama_timeout = llama_config.get("timeout_seconds", 60)

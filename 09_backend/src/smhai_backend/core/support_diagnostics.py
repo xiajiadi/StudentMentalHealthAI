@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Any
 
 from .errors import BackendError, ErrorCode
 
@@ -70,6 +72,17 @@ _DIAGNOSTIC_FIELDS = (
     "failure_code",
     "failure_component",
 )
+_RUNTIME_MODEL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+_RUNTIME_DIAGNOSTIC_FIELDS = (
+    "runtime_attempt_count",
+    "runtime_retry_count",
+    "runtime_requested_model_id",
+    "runtime_model_id",
+    "runtime_hardware_profile",
+    "runtime_fallback_attempted",
+    "runtime_fallback_count",
+)
+_RUNTIME_HARDWARE_PROFILES = {"CPU_ONLY", "CONSUMER_GPU", "SERVER_GPU", "UNKNOWN"}
 
 
 @dataclass(slots=True)
@@ -125,8 +138,8 @@ def failure_code_for_exception(
         return SupportDiagnosticFailureCode.UNKNOWN
 
 
-def sanitize_support_stage_diagnostics(values: Mapping[str, object] | None) -> dict[str, str]:
-    """Return exactly the four fixed-enum fields, fail-closed on unknown values."""
+def sanitize_support_stage_diagnostics(values: Mapping[str, object] | None) -> dict[str, Any]:
+    """Return fixed stage enums and a complete, validated Runtime attempt projection."""
 
     values = values or {}
     defaults = {
@@ -148,7 +161,42 @@ def sanitize_support_stage_diagnostics(values: Mapping[str, object] | None) -> d
             result[field] = enums[field](value).value
         except (TypeError, ValueError):
             result[field] = defaults[field]
+    runtime_metadata = _sanitize_runtime_attempt_metadata(values)
+    result.update(runtime_metadata)
     return result
+
+
+def _sanitize_runtime_attempt_metadata(values: Mapping[str, object]) -> dict[str, Any]:
+    if not any(field in values for field in _RUNTIME_DIAGNOSTIC_FIELDS):
+        return {}
+    attempt_count = values.get("runtime_attempt_count")
+    retry_count = values.get("runtime_retry_count")
+    requested_model = values.get("runtime_requested_model_id")
+    actual_model = values.get("runtime_model_id")
+    profile = values.get("runtime_hardware_profile")
+    fallback_attempted = values.get("runtime_fallback_attempted")
+    fallback_count = values.get("runtime_fallback_count")
+    if (
+        not isinstance(attempt_count, int)
+        or isinstance(attempt_count, bool)
+        or not 1 <= attempt_count <= 16
+        or not isinstance(retry_count, int)
+        or isinstance(retry_count, bool)
+        or not 0 <= retry_count < attempt_count
+        or not isinstance(requested_model, str)
+        or not _RUNTIME_MODEL_ID.fullmatch(requested_model)
+        or not isinstance(actual_model, str)
+        or not _RUNTIME_MODEL_ID.fullmatch(actual_model)
+        or not isinstance(profile, str)
+        or profile not in _RUNTIME_HARDWARE_PROFILES
+        or not isinstance(fallback_attempted, bool)
+        or not isinstance(fallback_count, int)
+        or isinstance(fallback_count, bool)
+        or not 0 <= fallback_count < attempt_count
+        or fallback_attempted != (fallback_count > 0)
+    ):
+        return {}
+    return {field: values[field] for field in _RUNTIME_DIAGNOSTIC_FIELDS}
 
 
 __all__ = [

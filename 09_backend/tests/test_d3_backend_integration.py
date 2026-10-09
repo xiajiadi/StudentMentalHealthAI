@@ -204,9 +204,7 @@ async def test_report_list_is_subject_scoped_and_returns_summary_only(client, ap
     observed: dict[str, Any] = {}
 
     async def list_for_subjects(subject_ids, *, assessment_id=None, limit=100):
-        observed.update(
-            subject_ids=set(subject_ids), assessment_id=assessment_id, limit=limit
-        )
+        observed.update(subject_ids=set(subject_ids), assessment_id=assessment_id, limit=limit)
         return [report] if report.subject_id in subject_ids else []
 
     monkeypatch.setattr(
@@ -288,8 +286,7 @@ async def test_real_http_freshman_taxonomy_passes_evidence_and_d3_seams(client, 
     ]
     metadata = support_events[-1].metadata
     assert (
-        metadata["content_population_mapping_id"]
-        == "MAP_UNIVERSITY_FRESHMAN_SUPPORT_TO_RAG_D3_V1"
+        metadata["content_population_mapping_id"] == "MAP_UNIVERSITY_FRESHMAN_SUPPORT_TO_RAG_D3_V1"
     )
     assert metadata["content_population_mapping_version"] == "1.0.0"
     assert metadata["content_population"] == "UNIVERSITY_FRESHMEN_SYNTHETIC_DEMO"
@@ -1128,6 +1125,19 @@ async def test_boundary_rejection_emits_only_allowlisted_diagnostic_metadata(
     )
     runtime_prompts: list[str] = []
     llm_type = type(app.state.container.llm)
+    runtime_attempt_trace = {
+        "trace_id": context.trace_id,
+        "request_id": context.request_id,
+        "requested_model": "qwen2.5-0.5b-engineering",
+        "actual_model": "qwen2.5-0.5b-engineering",
+        "hardware_profile": "CONSUMER_GPU",
+        "attempt_count": 1,
+        "retry_count": 0,
+        "fallback_attempted": False,
+        "fallback_count": 0,
+        "prompt": "PRIVATE_PROMPT_SENTINEL",
+        "candidate": "PRIVATE_CANDIDATE_SENTINEL",
+    }
 
     async def forbidden_candidate(self, **kwargs):
         runtime_prompts.append(kwargs["prompt"])
@@ -1137,6 +1147,7 @@ async def test_boundary_rejection_emits_only_allowlisted_diagnostic_metadata(
             model_version="diagnostic-test",
             runtime_version="diagnostic-test",
             label="CONTRACT_FAKE",
+            runtime_trace=runtime_attempt_trace,
         )
 
     monkeypatch.setattr(llm_type, "generate", forbidden_candidate)
@@ -1165,6 +1176,17 @@ async def test_boundary_rejection_emits_only_allowlisted_diagnostic_metadata(
         app.state.container.support.stage_ledgers[context.trace_id].snapshot().state.value
         == "ABORTED"
     )
+    failed_runs = [
+        item
+        for item in app.state.container.conversations.records
+        if item.get("workflow") == "FAILED" and item.get("trace_id") == context.trace_id
+    ]
+    assert len(failed_runs) == 1
+    assert failed_runs[0]["stage_diagnostics"]["runtime_attempt_count"] == 1
+    assert failed_runs[0]["stage_diagnostics"]["runtime_retry_count"] == 0
+    assert failed_runs[0]["stage_diagnostics"]["runtime_model_id"] == ("qwen2.5-0.5b-engineering")
+    assert "PRIVATE_CANDIDATE_SENTINEL" not in json.dumps(failed_runs, ensure_ascii=False)
+    assert "PRIVATE_PROMPT_SENTINEL" not in json.dumps(failed_runs, ensure_ascii=False)
     assert len(captured) == 1
     event = captured[0]
     assert event["event"] == "support_generation_boundary_rejected"
@@ -1180,6 +1202,13 @@ async def test_boundary_rejection_emits_only_allowlisted_diagnostic_metadata(
     assert event["matched_category"] == "SEVERITY"
     assert event["match_count"] == 2
     assert event["workflow_disposition"] == "FAILED_CLOSED_NO_REPORT"
+    assert event["runtime_attempt_count"] == 1
+    assert event["runtime_retry_count"] == 0
+    assert event["runtime_requested_model_id"] == "qwen2.5-0.5b-engineering"
+    assert event["runtime_model_id"] == "qwen2.5-0.5b-engineering"
+    assert event["runtime_hardware_profile"] == "CONSUMER_GPU"
+    assert event["runtime_fallback_attempted"] is False
+    assert event["runtime_fallback_count"] == 0
     assert set(event).issubset(
         {
             "event",
@@ -1196,6 +1225,13 @@ async def test_boundary_rejection_emits_only_allowlisted_diagnostic_metadata(
             "matched_category",
             "match_count",
             "workflow_disposition",
+            "runtime_attempt_count",
+            "runtime_retry_count",
+            "runtime_requested_model_id",
+            "runtime_model_id",
+            "runtime_hardware_profile",
+            "runtime_fallback_attempted",
+            "runtime_fallback_count",
         }
     )
     serialized = json.dumps([event, str(caught.value)], ensure_ascii=False)
@@ -1205,6 +1241,8 @@ async def test_boundary_rejection_emits_only_allowlisted_diagnostic_metadata(
         "USER_INPUT_SENTINEL",
         "ROUTE_CONTEXT_SENTINEL",
         "PRIVATE_CONTEXT_SENTINEL",
+        "PRIVATE_PROMPT_SENTINEL",
+        "PRIVATE_CANDIDATE_SENTINEL",
         "severity",
     ):
         assert sentinel not in serialized
@@ -1243,6 +1281,7 @@ async def test_boundary_diagnostic_failure_still_aborts_and_returns_502(
 
     monkeypatch.setattr(llm_type, "generate", forbidden_candidate)
     if failure_point == "calculation":
+
         def fail_diagnostic_calculation(_content):
             raise RuntimeError("PRIVATE_DIAGNOSTIC_EXCEPTION_SENTINEL")
 
@@ -1252,6 +1291,7 @@ async def test_boundary_diagnostic_failure_still_aborts_and_returns_502(
             fail_diagnostic_calculation,
         )
     else:
+
         class BrokenLogger:
             def warning(self, *_args, **_kwargs):
                 raise RuntimeError("PRIVATE_LOGGER_EXCEPTION_SENTINEL")

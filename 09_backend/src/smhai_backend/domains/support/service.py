@@ -79,6 +79,7 @@ from .schemas import (
 _FORBIDDEN_GENERATED_CLAIMS = re.compile(
     r"(?i)(?<![A-Za-z])(?:theta|se|score|band|severity|clinical|diagnos(?:is|tic)?)(?![A-Za-z])|诊断"
 )
+_SAFE_RUNTIME_MODEL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _M0_SEMANTIC_OBSERVER_ALLOWED_USERNAME = "student_a"
 _M0_SEMANTIC_OBSERVER_SUBJECT_ID = "SUBJ_demo_a"
 _M0_SEMANTIC_OBSERVER_INSTRUMENT_ID = "CURRENT_SYNTHETIC_GRM"
@@ -127,6 +128,7 @@ class SupportOrchestrator:
         self.stage_ledgers: dict[str, Any] = {}
         self._active_workflows: dict[str, str] = {}
         self._workflow_diagnostics: dict[str, SupportWorkflowDiagnostics] = {}
+        self._workflow_runtime_attempt_metadata: dict[str, dict[str, object]] = {}
         self._d3_fixtures = default_fixture_config()
 
     async def create(
@@ -181,6 +183,7 @@ class SupportOrchestrator:
         finally:
             self._active_workflows.pop(context.trace_id, None)
             self._workflow_diagnostics.pop(context.trace_id, None)
+            self._workflow_runtime_attempt_metadata.pop(context.trace_id, None)
 
     async def _create(
         self,
@@ -597,6 +600,13 @@ class SupportOrchestrator:
             prompt_version=d3_result.template.prompt_version,
             metadata={"synthetic_fixture": True, "bundle_hash": bundle.bundle_hash},
         )
+        runtime_attempt_metadata = _safe_runtime_attempt_metadata(
+            candidate.runtime_trace,
+            expected_request_id=context.request_id,
+            expected_trace_id=context.trace_id,
+        )
+        if runtime_attempt_metadata:
+            self._workflow_runtime_attempt_metadata[context.trace_id] = runtime_attempt_metadata
         diagnostics.confirm()
         if not self.call_order or self.call_order[-1] != "llm":
             self.call_order.append("llm")
@@ -705,6 +715,7 @@ class SupportOrchestrator:
                     candidate_text=candidate.text,
                     output_safety_action=output_check.decision.action,
                     content=content,
+                    runtime_attempt_metadata=runtime_attempt_metadata,
                 )
             except Exception:
                 # Diagnostic failure must never turn a rejected candidate into
@@ -1033,14 +1044,15 @@ class SupportOrchestrator:
             return
         try:
             diagnostics = self._workflow_diagnostics.get(context.trace_id)
-            safe_diagnostics = (
-                diagnostics.failure_metadata(
-                    failure_code or failure_code_for_exception(failure)
-                )
+            safe_diagnostics: dict[str, object] = (
+                diagnostics.failure_metadata(failure_code or failure_code_for_exception(failure))
                 if diagnostics is not None
                 else SupportWorkflowDiagnostics().failure_metadata(
                     failure_code or failure_code_for_exception(failure)
                 )
+            )
+            safe_diagnostics.update(
+                self._workflow_runtime_attempt_metadata.get(context.trace_id, {})
             )
             await maybe_await(
                 fail(
@@ -1693,6 +1705,7 @@ def _log_generation_boundary_rejection(
     candidate_text: str,
     output_safety_action: str,
     content: GenerationContent,
+    runtime_attempt_metadata: Mapping[str, object] | None = None,
 ) -> None:
     """Emit only fixed, non-content metadata for a rejected candidate.
 
@@ -1719,10 +1732,63 @@ def _log_generation_boundary_rejection(
             matched_category=category,
             match_count=match_count,
             workflow_disposition="FAILED_CLOSED_NO_REPORT",
+            **dict(runtime_attempt_metadata or {}),
         )
     finally:
         clear_contextvars()
         bind_contextvars(**request_context)
+
+
+def _safe_runtime_attempt_metadata(
+    value: object,
+    *,
+    expected_request_id: str,
+    expected_trace_id: str,
+) -> dict[str, object]:
+    """Return the validated allowlist needed to inspect M0 provider attempts."""
+
+    if not isinstance(value, Mapping):
+        return {}
+    if value.get("trace_id") != expected_trace_id:
+        return {}
+    if value.get("request_id") != expected_request_id:
+        return {}
+    attempt_count = value.get("attempt_count")
+    retry_count = value.get("retry_count")
+    fallback_count = value.get("fallback_count")
+    fallback_attempted = value.get("fallback_attempted")
+    model_id = value.get("actual_model")
+    requested_model_id = value.get("requested_model")
+    hardware_profile = value.get("hardware_profile")
+    if (
+        not isinstance(attempt_count, int)
+        or isinstance(attempt_count, bool)
+        or not 1 <= attempt_count <= 16
+        or not isinstance(retry_count, int)
+        or isinstance(retry_count, bool)
+        or not 0 <= retry_count < attempt_count
+        or not isinstance(fallback_count, int)
+        or isinstance(fallback_count, bool)
+        or not 0 <= fallback_count < attempt_count
+        or not isinstance(fallback_attempted, bool)
+        or fallback_attempted != (fallback_count > 0)
+        or not isinstance(model_id, str)
+        or not _SAFE_RUNTIME_MODEL_ID.fullmatch(model_id)
+        or not isinstance(requested_model_id, str)
+        or not _SAFE_RUNTIME_MODEL_ID.fullmatch(requested_model_id)
+        or not isinstance(hardware_profile, str)
+        or hardware_profile not in {"CPU_ONLY", "CONSUMER_GPU", "SERVER_GPU", "UNKNOWN"}
+    ):
+        return {}
+    return {
+        "runtime_attempt_count": attempt_count,
+        "runtime_retry_count": retry_count,
+        "runtime_requested_model_id": requested_model_id,
+        "runtime_model_id": model_id,
+        "runtime_hardware_profile": hardware_profile,
+        "runtime_fallback_attempted": fallback_attempted,
+        "runtime_fallback_count": fallback_count,
+    }
 
 
 def _m0_semantic_observer_scope_allows(
@@ -1751,8 +1817,7 @@ def _m0_semantic_observer_scope_allows(
         and str(assessment.get("status", "")).casefold() == "completed"
         and instrument.get("instrument_id") == _M0_SEMANTIC_OBSERVER_INSTRUMENT_ID
         and instrument.get("version") == _M0_SEMANTIC_OBSERVER_INSTRUMENT_VERSION
-        and provenance.get("item_bank_version")
-        == _M0_SEMANTIC_OBSERVER_ITEM_BANK_VERSION
+        and provenance.get("item_bank_version") == _M0_SEMANTIC_OBSERVER_ITEM_BANK_VERSION
         and record.cat_item_bank_version == _M0_SEMANTIC_OBSERVER_ITEM_BANK_VERSION
         and message == _M0_SEMANTIC_OBSERVER_MESSAGE
     )
@@ -1794,7 +1859,7 @@ def _first_boundary_match(
 ) -> tuple[str, int, str, int]:
     fields = [
         ("SUMMARY", 0, content.summary),
-        *(('OBSERVATION', index, value) for index, value in enumerate(content.observations)),
+        *(("OBSERVATION", index, value) for index, value in enumerate(content.observations)),
         *(
             ("SUGGESTION", index, suggestion.text)
             for index, suggestion in enumerate(content.suggestions)

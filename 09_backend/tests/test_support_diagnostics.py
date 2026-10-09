@@ -76,6 +76,62 @@ def test_missing_stage_observation_is_explicit() -> None:
     }
 
 
+def test_runtime_attempt_projection_is_bounded_and_drops_unknown_content() -> None:
+    sanitized = sanitize_support_stage_diagnostics(
+        {
+            "last_confirmed_stage": "LLM_RUNTIME",
+            "failure_stage": "CLAIM_BOUNDARY",
+            "failure_code": "dependency_invalid_response",
+            "failure_component": "BACKEND",
+            "runtime_attempt_count": 1,
+            "runtime_retry_count": 0,
+            "runtime_requested_model_id": "qwen2.5-0.5b-engineering",
+            "runtime_model_id": "qwen2.5-0.5b-engineering",
+            "runtime_hardware_profile": "CONSUMER_GPU",
+            "runtime_fallback_attempted": False,
+            "runtime_fallback_count": 0,
+            "trace": {"candidate": "PRIVATE_CANDIDATE_SENTINEL"},
+            "prompt": "PRIVATE_PROMPT_SENTINEL",
+            "unrecognized": "PRIVATE_TRACE_SENTINEL",
+        }
+    )
+    assert sanitized == {
+        "last_confirmed_stage": "LLM_RUNTIME",
+        "failure_stage": "CLAIM_BOUNDARY",
+        "failure_code": "dependency_invalid_response",
+        "failure_component": "BACKEND",
+        "runtime_attempt_count": 1,
+        "runtime_retry_count": 0,
+        "runtime_requested_model_id": "qwen2.5-0.5b-engineering",
+        "runtime_model_id": "qwen2.5-0.5b-engineering",
+        "runtime_hardware_profile": "CONSUMER_GPU",
+        "runtime_fallback_attempted": False,
+        "runtime_fallback_count": 0,
+    }
+
+
+def test_invalid_runtime_attempt_projection_drops_all_runtime_fields() -> None:
+    sanitized = sanitize_support_stage_diagnostics(
+        {
+            "failure_stage": "CLAIM_BOUNDARY",
+            "runtime_attempt_count": 1,
+            "runtime_retry_count": 1,
+            "runtime_requested_model_id": "qwen2.5-0.5b-engineering",
+            "runtime_model_id": "qwen2.5-0.5b-engineering",
+            "runtime_hardware_profile": "CONSUMER_GPU",
+            "runtime_fallback_attempted": False,
+            "runtime_fallback_count": 0,
+            "runtime_trace_id": "TRACE_unexpected",
+        }
+    )
+    assert sanitized == {
+        "last_confirmed_stage": "UNKNOWN",
+        "failure_stage": "CLAIM_BOUNDARY",
+        "failure_code": "UNKNOWN",
+        "failure_component": "UNKNOWN",
+    }
+
+
 def test_memory_failure_record_has_safe_stage_projection_only() -> None:
     repository = InMemoryConversationRepository()
     repository.fail_workflow(

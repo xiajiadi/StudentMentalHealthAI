@@ -1,0 +1,10 @@
+{
+  "schema_version": "llm-runtime.m0-profile.v1",
+  "profile_id": "m0-p1-support",
+  "default_model_id": "qwen2.5-0.5b-engineering",
+  "cloud_fallback": false,
+  "retry": {
+    "max_attempts": 1,
+    "backoff_seconds": []
+  }
+}
