@@ -19,6 +19,7 @@ class CandidateResponse:
     model_version: str
     runtime_version: str
     label: str
+    runtime_trace: dict[str, Any] | None = None
 
 
 class LLMRuntimeClient(Protocol):
@@ -185,6 +186,7 @@ class HttpLLMRuntimeClient(LongLivedHttpClient):
                 model_version=_contract_version(data.get("model_version"), "unknown"),
                 runtime_version=_contract_version(data.get("runtime_version"), "unknown"),
                 label=self.label,
+                runtime_trace=_safe_runtime_trace(data.get("trace"), trace_id=trace_id),
             )
         except UpstreamError as exc:
             raise translate_upstream_error(exc) from exc
@@ -239,3 +241,37 @@ def _contract_version(value: Any, fallback: str) -> str:
     text = str(value or fallback)
     normalized = re.sub(r"[^A-Za-z0-9._-]+", "-", text).strip("-._")
     return normalized[:64] or fallback
+
+
+def _safe_runtime_trace(value: Any, *, trace_id: str) -> dict[str, Any] | None:
+    """Project only attempt and identity metadata; never retain trace content."""
+
+    if not isinstance(value, dict):
+        return None
+    attempts = value.get("attempts")
+    if not isinstance(attempts, list):
+        return None
+    hardware = value.get("hardware")
+    hardware_profile = hardware.get("profile") if isinstance(hardware, dict) else None
+    profile = str(hardware_profile or "UNKNOWN")
+    if profile not in {"CPU_ONLY", "CONSUMER_GPU", "SERVER_GPU", "UNKNOWN"}:
+        profile = "UNKNOWN"
+    retry_count = value.get("retry_count")
+    if not isinstance(retry_count, int) or isinstance(retry_count, bool) or retry_count < 0:
+        retry_count = 0
+    requested_model = value.get("requested_model")
+    actual_model = value.get("actual_model")
+    return {
+        "trace_id": trace_id,
+        "request_id": _contract_version(value.get("request_id"), "unknown"),
+        "requested_model": _contract_version(requested_model, "unknown"),
+        "actual_model": _contract_version(actual_model, "unknown"),
+        "hardware_profile": profile,
+        "attempt_count": len(attempts),
+        "retry_count": retry_count,
+        "fallback_attempted": value.get("fallback_attempted") is True,
+        "fallback_count": max(0, value.get("fallback_count", 0))
+        if isinstance(value.get("fallback_count"), int)
+        and not isinstance(value.get("fallback_count"), bool)
+        else 0,
+    }

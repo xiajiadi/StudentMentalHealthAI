@@ -59,6 +59,19 @@ class SyntheticBudgetProvider(HttpLLMRuntimeClient):
                 "model_id": "MODEL_local_gpu_acceptance",
                 "model_version": "synthetic",
                 "runtime_version": "synthetic",
+                "trace": {
+                    "trace_id": "TRACE_STRUCTURED_OUTPUT_COMPAT_TEST",
+                    "request_id": "REQ_STRUCTURED_OUTPUT_COMPAT_TEST",
+                    "requested_model": "qwen2.5-0.5b-engineering",
+                    "actual_model": "qwen2.5-0.5b-engineering",
+                    "hardware": {"profile": "CPU_ONLY"},
+                    "attempts": [{"attempt_index": 1, "outcome": "success"}],
+                    "retry_count": 0,
+                    "fallback_attempted": False,
+                    "fallback_count": 0,
+                    "prompt": "PRIVATE_CANDIDATE_SENTINEL",
+                    "candidate": "PRIVATE_CANDIDATE_SENTINEL",
+                },
             }
         }
 
@@ -102,5 +115,17 @@ async def test_exact_provenance_budget_returns_valid_structured_object() -> None
         assert content.suggestions
         assert content.disclaimer
         assert content.suggestions[0].source_chunk_ids == EXACT_CHUNK_IDS
+        assert candidate.runtime_trace == {
+            "trace_id": "TRACE_STRUCTURED_OUTPUT_COMPAT_TEST",
+            "request_id": "REQ_STRUCTURED_OUTPUT_COMPAT_TEST",
+            "requested_model": "qwen2.5-0.5b-engineering",
+            "actual_model": "qwen2.5-0.5b-engineering",
+            "hardware_profile": "CPU_ONLY",
+            "attempt_count": 1,
+            "retry_count": 0,
+            "fallback_attempted": False,
+            "fallback_count": 0,
+        }
+        assert "PRIVATE_CANDIDATE_SENTINEL" not in json.dumps(candidate.runtime_trace)
     finally:
         await provider.close()
