@@ -27,4 +27,22 @@ describe('角色路由守卫', () => {
     await router.push('/reviewer/queue')
     expect(router.currentRoute.value.name).toBe('reviewer-queue')
   })
+
+  it('心理专业人员只能进入专业工作区，安全复核员角色保持独立', async () => {
+    useSessionStore().signIn({ userId: 'USER_demo_specialist', role: 'psychological_specialist', subjectId: null, displayName: '演示心理专业人员', initials: '专' })
+    await router.push('/specialist/tasks')
+    expect(router.currentRoute.value.name).toBe('specialist-workspace')
+    expect(router.currentRoute.value.meta.roles).toEqual(['psychological_specialist'])
+    await router.push('/reviewer/queue')
+    expect(router.currentRoute.value.name).toBe('specialist-workspace')
+  })
+
+  it('学校管理员进入管理工作区且不能进入安全复核队列', async () => {
+    useSessionStore().signIn({ userId: 'USER_demo_admin', role: 'school_admin', subjectId: null, displayName: '演示学校管理员', initials: '管' })
+    await router.push('/admin/users')
+    expect(router.currentRoute.value.name).toBe('admin-workspace')
+    expect(router.currentRoute.value.meta.roles).toEqual(['school_admin'])
+    await router.push('/reviewer/queue')
+    expect(router.currentRoute.value.name).toBe('admin-workspace')
+  })
 })
