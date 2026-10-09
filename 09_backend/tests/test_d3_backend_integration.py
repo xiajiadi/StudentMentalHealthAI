@@ -1187,8 +1187,16 @@ async def test_boundary_rejection_emits_only_allowlisted_diagnostic_metadata(
     assert failed_runs[0]["stage_diagnostics"]["runtime_model_id"] == ("qwen2.5-0.5b-engineering")
     assert "PRIVATE_CANDIDATE_SENTINEL" not in json.dumps(failed_runs, ensure_ascii=False)
     assert "PRIVATE_PROMPT_SENTINEL" not in json.dumps(failed_runs, ensure_ascii=False)
-    assert len(captured) == 1
-    event = captured[0]
+    assert len(captured) == 2
+    rejection_events = [
+        event for event in captured if event["event"] == "support_generation_boundary_rejected"
+    ]
+    attempt_events = [
+        event for event in captured if event["event"] == "support_runtime_attempt_metadata"
+    ]
+    assert len(rejection_events) == 1
+    assert len(attempt_events) == 1
+    event = rejection_events[0]
     assert event["event"] == "support_generation_boundary_rejected"
     assert event["request_id"] == context.request_id
     assert event["trace_id"] == context.trace_id
@@ -1202,13 +1210,6 @@ async def test_boundary_rejection_emits_only_allowlisted_diagnostic_metadata(
     assert event["matched_category"] == "SEVERITY"
     assert event["match_count"] == 2
     assert event["workflow_disposition"] == "FAILED_CLOSED_NO_REPORT"
-    assert event["runtime_attempt_count"] == 1
-    assert event["runtime_retry_count"] == 0
-    assert event["runtime_requested_model_id"] == "qwen2.5-0.5b-engineering"
-    assert event["runtime_model_id"] == "qwen2.5-0.5b-engineering"
-    assert event["runtime_hardware_profile"] == "CONSUMER_GPU"
-    assert event["runtime_fallback_attempted"] is False
-    assert event["runtime_fallback_count"] == 0
     assert set(event).issubset(
         {
             "event",
@@ -1225,16 +1226,34 @@ async def test_boundary_rejection_emits_only_allowlisted_diagnostic_metadata(
             "matched_category",
             "match_count",
             "workflow_disposition",
-            "runtime_attempt_count",
-            "runtime_retry_count",
-            "runtime_requested_model_id",
-            "runtime_model_id",
-            "runtime_hardware_profile",
-            "runtime_fallback_attempted",
-            "runtime_fallback_count",
         }
     )
-    serialized = json.dumps([event, str(caught.value)], ensure_ascii=False)
+    attempt_event = attempt_events[0]
+    assert attempt_event["request_id"] == context.request_id
+    assert attempt_event["trace_id"] == context.trace_id
+    assert attempt_event["generation_id"] == event["generation_id"]
+    assert attempt_event["runtime_attempt_count"] == 1
+    assert attempt_event["runtime_retry_count"] == 0
+    assert attempt_event["runtime_requested_model_id"] == "qwen2.5-0.5b-engineering"
+    assert attempt_event["runtime_model_id"] == "qwen2.5-0.5b-engineering"
+    assert attempt_event["runtime_hardware_profile"] == "CONSUMER_GPU"
+    assert attempt_event["runtime_fallback_attempted"] is False
+    assert attempt_event["runtime_fallback_count"] == 0
+    assert set(attempt_event) == {
+        "event",
+        "log_level",
+        "request_id",
+        "trace_id",
+        "generation_id",
+        "runtime_attempt_count",
+        "runtime_retry_count",
+        "runtime_requested_model_id",
+        "runtime_model_id",
+        "runtime_hardware_profile",
+        "runtime_fallback_attempted",
+        "runtime_fallback_count",
+    }
+    serialized = json.dumps([captured, str(caught.value)], ensure_ascii=False)
     for sentinel in (
         candidate_text,
         runtime_prompts[0],
@@ -1345,6 +1364,19 @@ async def test_normal_and_crisis_direct_paths_do_not_emit_boundary_rejection(
             model_version="diagnostic-test",
             runtime_version="diagnostic-test",
             label="CONTRACT_FAKE",
+            runtime_trace={
+                "trace_id": normal_context.trace_id,
+                "request_id": normal_context.request_id,
+                "requested_model": "qwen2.5-0.5b-engineering",
+                "actual_model": "qwen2.5-0.5b-engineering",
+                "hardware_profile": "CPU_ONLY",
+                "attempt_count": 1,
+                "retry_count": 0,
+                "fallback_attempted": False,
+                "fallback_count": 0,
+                "prompt": "PRIVATE_PROMPT_SENTINEL",
+                "candidate": "PRIVATE_CANDIDATE_SENTINEL",
+            },
         )
 
     monkeypatch.setattr(llm_type, "generate", normal_candidate)
@@ -1357,6 +1389,15 @@ async def test_normal_and_crisis_direct_paths_do_not_emit_boundary_rejection(
     assert not any(
         log.get("event") == "support_generation_boundary_rejected" for log in normal_logs
     )
+    attempt_events = [
+        log for log in normal_logs if log.get("event") == "support_runtime_attempt_metadata"
+    ]
+    assert len(attempt_events) == 1
+    assert attempt_events[0]["runtime_attempt_count"] == 1
+    assert attempt_events[0]["runtime_retry_count"] == 0
+    assert attempt_events[0]["runtime_model_id"] == "qwen2.5-0.5b-engineering"
+    assert "PRIVATE_PROMPT_SENTINEL" not in json.dumps(attempt_events, ensure_ascii=False)
+    assert "PRIVATE_CANDIDATE_SENTINEL" not in json.dumps(attempt_events, ensure_ascii=False)
 
     async def runtime_must_not_run(self, **_kwargs):
         raise AssertionError("crisis path must not call Runtime")

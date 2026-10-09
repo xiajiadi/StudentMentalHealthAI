@@ -131,6 +131,19 @@ def test_invalid_runtime_attempt_projection_drops_all_runtime_fields() -> None:
         "failure_component": "UNKNOWN",
     }
 
+    unknown_model = sanitize_support_stage_diagnostics(
+        {
+            "runtime_attempt_count": 1,
+            "runtime_retry_count": 0,
+            "runtime_requested_model_id": "unknown",
+            "runtime_model_id": "qwen2.5-0.5b-engineering",
+            "runtime_hardware_profile": "CPU_ONLY",
+            "runtime_fallback_attempted": False,
+            "runtime_fallback_count": 0,
+        }
+    )
+    assert "runtime_attempt_count" not in unknown_model
+
 
 def test_memory_failure_record_has_safe_stage_projection_only() -> None:
     repository = InMemoryConversationRepository()

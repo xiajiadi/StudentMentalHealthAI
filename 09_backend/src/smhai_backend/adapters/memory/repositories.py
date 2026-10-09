@@ -176,7 +176,7 @@ class InMemoryConversationRepository:
         *,
         reason_code: str,
         trace_id: str,
-        stage_diagnostics: dict[str, str] | None = None,
+        stage_diagnostics: dict[str, Any] | None = None,
     ) -> None:
         self.records.append(
             {

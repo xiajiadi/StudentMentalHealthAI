@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -19,7 +20,7 @@ class CandidateResponse:
     model_version: str
     runtime_version: str
     label: str
-    runtime_trace: dict[str, Any] | None = None
+    runtime_trace: Mapping[str, Any] | None = None
 
 
 class LLMRuntimeClient(Protocol):
@@ -186,7 +187,9 @@ class HttpLLMRuntimeClient(LongLivedHttpClient):
                 model_version=_contract_version(data.get("model_version"), "unknown"),
                 runtime_version=_contract_version(data.get("runtime_version"), "unknown"),
                 label=self.label,
-                runtime_trace=_safe_runtime_trace(data.get("trace"), trace_id=trace_id),
+                runtime_trace=_safe_runtime_trace(
+                    data.get("trace"), request_id=request_id, trace_id=trace_id
+                ),
             )
         except UpstreamError as exc:
             raise translate_upstream_error(exc) from exc
@@ -243,35 +246,58 @@ def _contract_version(value: Any, fallback: str) -> str:
     return normalized[:64] or fallback
 
 
-def _safe_runtime_trace(value: Any, *, trace_id: str) -> dict[str, Any] | None:
+def _safe_runtime_trace(value: Any, *, request_id: str, trace_id: str) -> dict[str, Any] | None:
     """Project only attempt and identity metadata; never retain trace content."""
 
-    if not isinstance(value, dict):
+    if not isinstance(value, Mapping):
+        return None
+    if value.get("request_id") != request_id or value.get("trace_id") != trace_id:
         return None
     attempts = value.get("attempts")
-    if not isinstance(attempts, list):
+    if (
+        not isinstance(attempts, list)
+        or not 1 <= len(attempts) <= 16
+        or not all(isinstance(attempt, Mapping) for attempt in attempts)
+    ):
         return None
     hardware = value.get("hardware")
-    hardware_profile = hardware.get("profile") if isinstance(hardware, dict) else None
-    profile = str(hardware_profile or "UNKNOWN")
-    if profile not in {"CPU_ONLY", "CONSUMER_GPU", "SERVER_GPU", "UNKNOWN"}:
-        profile = "UNKNOWN"
+    profile = hardware.get("profile") if isinstance(hardware, Mapping) else None
     retry_count = value.get("retry_count")
-    if not isinstance(retry_count, int) or isinstance(retry_count, bool) or retry_count < 0:
-        retry_count = 0
+    fallback_count = value.get("fallback_count")
+    fallback_attempted = value.get("fallback_attempted")
     requested_model = value.get("requested_model")
     actual_model = value.get("actual_model")
+    if (
+        not isinstance(retry_count, int)
+        or isinstance(retry_count, bool)
+        or not 0 <= retry_count < len(attempts)
+        or not isinstance(fallback_count, int)
+        or isinstance(fallback_count, bool)
+        or not 0 <= fallback_count < len(attempts)
+        or not isinstance(fallback_attempted, bool)
+        or fallback_attempted != (fallback_count > 0)
+        or not isinstance(requested_model, str)
+        or not _safe_model_id(requested_model)
+        or not isinstance(actual_model, str)
+        or not _safe_model_id(actual_model)
+        or not isinstance(profile, str)
+        or profile not in {"CPU_ONLY", "CONSUMER_GPU", "SERVER_GPU", "UNKNOWN"}
+    ):
+        return None
     return {
         "trace_id": trace_id,
-        "request_id": _contract_version(value.get("request_id"), "unknown"),
-        "requested_model": _contract_version(requested_model, "unknown"),
-        "actual_model": _contract_version(actual_model, "unknown"),
+        "request_id": request_id,
+        "requested_model": requested_model,
+        "actual_model": actual_model,
         "hardware_profile": profile,
         "attempt_count": len(attempts),
         "retry_count": retry_count,
-        "fallback_attempted": value.get("fallback_attempted") is True,
-        "fallback_count": max(0, value.get("fallback_count", 0))
-        if isinstance(value.get("fallback_count"), int)
-        and not isinstance(value.get("fallback_count"), bool)
-        else 0,
+        "fallback_attempted": fallback_attempted,
+        "fallback_count": fallback_count,
     }
+
+
+def _safe_model_id(value: str) -> bool:
+    return value.casefold() != "unknown" and bool(
+        re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", value)
+    )

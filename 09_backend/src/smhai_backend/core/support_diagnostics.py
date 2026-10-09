@@ -185,8 +185,10 @@ def _sanitize_runtime_attempt_metadata(values: Mapping[str, object]) -> dict[str
         or not 0 <= retry_count < attempt_count
         or not isinstance(requested_model, str)
         or not _RUNTIME_MODEL_ID.fullmatch(requested_model)
+        or requested_model.casefold() == "unknown"
         or not isinstance(actual_model, str)
         or not _RUNTIME_MODEL_ID.fullmatch(actual_model)
+        or actual_model.casefold() == "unknown"
         or not isinstance(profile, str)
         or profile not in _RUNTIME_HARDWARE_PROFILES
         or not isinstance(fallback_attempted, bool)

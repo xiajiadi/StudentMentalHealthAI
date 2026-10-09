@@ -607,6 +607,16 @@ class SupportOrchestrator:
         )
         if runtime_attempt_metadata:
             self._workflow_runtime_attempt_metadata[context.trace_id] = runtime_attempt_metadata
+            try:
+                _log_runtime_attempt_metadata(
+                    request_id=context.request_id,
+                    trace_id=context.trace_id,
+                    generation_id=generation_id,
+                    metadata=runtime_attempt_metadata,
+                )
+            except Exception:
+                # Diagnostic logging must never alter support or Safety behavior.
+                pass
         diagnostics.confirm()
         if not self.call_order or self.call_order[-1] != "llm":
             self.call_order.append("llm")
@@ -715,7 +725,6 @@ class SupportOrchestrator:
                     candidate_text=candidate.text,
                     output_safety_action=output_check.decision.action,
                     content=content,
-                    runtime_attempt_metadata=runtime_attempt_metadata,
                 )
             except Exception:
                 # Diagnostic failure must never turn a rejected candidate into
@@ -1044,7 +1053,7 @@ class SupportOrchestrator:
             return
         try:
             diagnostics = self._workflow_diagnostics.get(context.trace_id)
-            safe_diagnostics: dict[str, object] = (
+            safe_diagnostics: dict[str, Any] = (
                 diagnostics.failure_metadata(failure_code or failure_code_for_exception(failure))
                 if diagnostics is not None
                 else SupportWorkflowDiagnostics().failure_metadata(
@@ -1705,7 +1714,6 @@ def _log_generation_boundary_rejection(
     candidate_text: str,
     output_safety_action: str,
     content: GenerationContent,
-    runtime_attempt_metadata: Mapping[str, object] | None = None,
 ) -> None:
     """Emit only fixed, non-content metadata for a rejected candidate.
 
@@ -1732,7 +1740,28 @@ def _log_generation_boundary_rejection(
             matched_category=category,
             match_count=match_count,
             workflow_disposition="FAILED_CLOSED_NO_REPORT",
-            **dict(runtime_attempt_metadata or {}),
+        )
+    finally:
+        clear_contextvars()
+        bind_contextvars(**request_context)
+
+
+def _log_runtime_attempt_metadata(
+    *,
+    request_id: str,
+    trace_id: str,
+    generation_id: str,
+    metadata: Mapping[str, object],
+) -> None:
+    request_context = get_contextvars()
+    clear_contextvars()
+    try:
+        logger().info(
+            "support_runtime_attempt_metadata",
+            request_id=request_id,
+            trace_id=trace_id,
+            generation_id=generation_id,
+            **dict(metadata),
         )
     finally:
         clear_contextvars()
@@ -1774,8 +1803,10 @@ def _safe_runtime_attempt_metadata(
         or fallback_attempted != (fallback_count > 0)
         or not isinstance(model_id, str)
         or not _SAFE_RUNTIME_MODEL_ID.fullmatch(model_id)
+        or model_id.casefold() == "unknown"
         or not isinstance(requested_model_id, str)
         or not _SAFE_RUNTIME_MODEL_ID.fullmatch(requested_model_id)
+        or requested_model_id.casefold() == "unknown"
         or not isinstance(hardware_profile, str)
         or hardware_profile not in {"CPU_ONLY", "CONSUMER_GPU", "SERVER_GPU", "UNKNOWN"}
     ):

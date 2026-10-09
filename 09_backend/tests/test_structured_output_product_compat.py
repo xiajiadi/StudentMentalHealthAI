@@ -9,7 +9,7 @@ from pydantic import ValidationError
 from smhai_backend.core.config import ModuleClientSettings
 from smhai_backend.core.request_context import RequestContext
 from smhai_backend.domains.support.schemas import GenerationContent
-from smhai_backend.integrations.llm import HttpLLMRuntimeClient
+from smhai_backend.integrations.llm import HttpLLMRuntimeClient, _safe_runtime_trace
 
 EXACT_CHUNK_IDS = [
     "CHUNK_67b56abe21fe9860a26d",
@@ -82,6 +82,67 @@ async def test_truncated_structured_json_is_rejected() -> None:
     with pytest.raises(ValidationError):
         GenerationContent.model_validate_json(provider.structured_text(384))
     await provider.close()
+
+
+@pytest.mark.parametrize(
+    "updates",
+    [
+        {"retry_count": None},
+        {"retry_count": True},
+        {"retry_count": -1},
+        {"fallback_count": None},
+        {"fallback_count": True},
+        {"fallback_count": -1},
+        {"fallback_attempted": None},
+        {"fallback_attempted": True},
+        {"requested_model": "unknown"},
+        {"actual_model": None},
+        {"request_id": "REQ_other"},
+        {"trace_id": "TRACE_other"},
+    ],
+)
+def test_runtime_trace_projection_fails_closed_on_missing_or_invalid_metadata(
+    updates: dict[str, object],
+) -> None:
+    trace = {
+        "request_id": "REQ_safe_trace",
+        "trace_id": "TRACE_safe_trace",
+        "requested_model": "qwen2.5-0.5b-engineering",
+        "actual_model": "qwen2.5-0.5b-engineering",
+        "hardware": {"profile": "CPU_ONLY"},
+        "attempts": [{"attempt_index": 1, "outcome": "success"}],
+        "retry_count": 0,
+        "fallback_attempted": False,
+        "fallback_count": 0,
+    }
+    assert (
+        _safe_runtime_trace(
+            {**trace, **updates}, request_id="REQ_safe_trace", trace_id="TRACE_safe_trace"
+        )
+        is None
+    )
+
+
+def test_runtime_trace_projection_requires_complete_correlated_attempt_identity():
+    trace = {
+        "request_id": "REQ_safe_trace",
+        "trace_id": "TRACE_safe_trace",
+        "requested_model": "qwen2.5-0.5b-engineering",
+        "actual_model": "qwen2.5-0.5b-engineering",
+        "hardware": {"profile": "CPU_ONLY"},
+        "attempts": [{"attempt_index": 1, "outcome": "success"}],
+        "retry_count": 0,
+        "fallback_attempted": False,
+        "fallback_count": 0,
+    }
+    assert (
+        _safe_runtime_trace(
+            {key: value for key, value in trace.items() if key != "retry_count"},
+            request_id="REQ_safe_trace",
+            trace_id="TRACE_safe_trace",
+        )
+        is None
+    )
 
 
 @pytest.mark.asyncio
