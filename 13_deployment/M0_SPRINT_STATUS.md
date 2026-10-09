@@ -2,7 +2,7 @@
 
 更新时间：2026-10-09
 
-状态：**P0 主业务链路已通过真实浏览器操作；P0 验收仍受安全重置阻塞。P1 正常支持链仍被 Backend CLAIM_BOUNDARY 拦截。**
+状态：**`P0_HANDS_ON_USABLE_WITH_RESET_LIMITATION`。这表示可按既有工作区进行有限的合成演示操作，不是正式 P0 PASS；Reset 被阻断，旧工作区不会被清空。当前凭据有全局 `CREATE`，但完整权限只覆盖旧 `smhai_m0_demo`，未观察到 `GRANT OPTION`；虽可能创建新 schema，现有授权不足以迁移、播种和运行 M0，本轮没有创建新 schema。P1 为 `M0_FULL_E2E_NOT_READY`：正常支持链仍被 Backend `CLAIM_BOUNDARY` 拦截，回答、引用、报告和支持历史尚未通过。**
 
 ## 当前集成快照
 
@@ -11,6 +11,8 @@
 - 本轮真实浏览器与整栈验证代码快照：`27ca23a00901bb36fe04decb58e1ccf4b592b846`
 - 冲刺基线：`3c1bd71c85a4ef618cb11adcaa87d4858fda628a`
 - 本地修改和提交仅用于该 M0 分支；未 push、未 merge 默认分支、未打 tag。
+
+本状态记录区分 Lead 提供的既有现场证据、既有模块测试记录和本次文档/源码检查。本 Worker 未在本工作树重跑浏览器、服务、数据库或测试；文中既有结果不是本次复现，也不能视为 F QA PASS。
 
 ## 能力矩阵
 
@@ -24,9 +26,11 @@
 | AI 支持 | 真实 Backend → RAG → Runtime → Safety → Backend gate | 1 次真实合成 UI 提交 | 新建运行记录为 `FAILED`；candidate 未保存，无报告 | 阻塞于 `CLAIM_BOUNDARY` |
 | Citation / 报告 / 支持历史 | 有路径 | 本轮请求未到发布阶段 | 无新报告、0 条引用 | 未通过；没有伪造答案 |
 | 一键启动 / 停止 | 本机脚本 | 启动后可用浏览器访问 | MySQL demo schema | 启动、readiness、停止和重启已验证 |
-| Demo Reset | 脚本 fail-closed | 页面明确显示不可用 | 未清理任何数据 | 阻塞；没有逐条 M0 marker，禁止手工 SQL 或 DROP DATABASE |
+| Demo Reset | 脚本 fail-closed | 页面提供本机命令指引 | 未清理任何数据；旧 schema 和数据保留 | 阻塞；全局 `CREATE` 不提供安全逐条清理能力；没有新工作区被创建 |
 
-## 真实浏览器证据
+## Lead 提供的既有真实浏览器证据
+
+以下描述来自 Lead 对此前集成快照的验证记录，并非本 Worker 在本工作树的复跑结果。
 
 - 学生以合成账号登录，完成两次 8 项测评。`never` 路径题目序列为 `008, 003, 002, 001, 004, 006, 009, 005`；`always` 路径为 `008, 003, 005, 007, 002, 009, 001, 004`。路径在第 3 题分叉；服务端按配置达到 8 项停止条件并保存结果。
 - 测评中途刷新后恢复同一测评和已保存作答；完成后进入学生历史。服务栈停止并重新启动后，两次完成结果仍可从 UI 打开。
@@ -39,9 +43,16 @@
 
 CAT 分支来自当前合成规则选择器，能观察到回答影响后续题目及配置停止条件。结果页明确标识 `SYNTHETIC / DEMO / 非诊断`，不提供心理学解释。教师端只显示授权范围内的合成测评状态与聚合计数，不返回作答、量表参数或对话正文。
 
+## 验证来源与审查状态
+
+- **Lead 现场证据：** 上述浏览器 Student/Teacher 流程、整栈重启后历史可读、Reset 被阻断、一次合成支持请求在 `CLAIM_BOUNDARY` 失败，以及当前 DB 用户权限范围，来自 Lead 提供的既有集成记录；本 Worker 未独立复现。授权证据显示全局 `CREATE`，`ALL PRIVILEGES` 仅覆盖旧 `smhai_m0_demo`，未观察到 `GRANT OPTION`；schema 列表仅有旧库，本轮未创建新 schema。
+- **既有模块测试记录：** 下一节所列测试数量来自集成记录中的模块执行，不是本 Worker 本次运行；不同命令的测试集合有重叠。
+- **本次源码/文档检查：** 只读检查登录、测评、结果、历史、教师权限提示和 Reset 用户指引，并更新本文件与操作手册；未改前端、Backend、数据库或部署实现。
+- **F 复核：** 既有记录表示此前检查了退出实现源码，但当时发现文档仍落后。本文档刷新后仍需 F 只读复核；当前不报告 F QA PASS。
+
 ## 验证记录
 
-测试结果来自本轮集成中各模块 fresh 执行；不同命令的测试集合有重叠，不应相加：
+下列测试结果是 Lead 记录的集成阶段 fresh 执行结果，不是本 Worker 本次执行；不同命令的测试集合有重叠，不应相加：
 
 - Frontend：`vitest run` **33 passed / 10 files**；typecheck、build、lint 均通过。
 - Backend：集成后的全量 pytest **118 passed**；教师服务/路由 **6 passed**，Ruff 通过。
@@ -56,7 +67,7 @@ CAT 分支来自当前合成规则选择器，能观察到回答影响后续题�
 1. **P0 Reset：** `reset-demo.ps1` 当前返回 2，不连接数据库、不停止服务、不改数据。`audit_events` 和 `idempotency_records` 缺少足以证明每条记录属于 M0 的关联标记，现有 `SYNTHETIC` 来源不足以安全清理。
 2. **P1 Support：** Prompt 改进后的一次真实支持请求仍在 Backend `CLAIM_BOUNDARY` 失败；没有已批准回答、citation 或报告。候选原文未持久化，本次安全元数据不足以确定语义分类。
 3. **Runtime trace：** `HttpLLMRuntimeClient` 未将 Runtime 的 attempt/retry metadata 保留到 allowlisted diagnostics，provider-level retry 数不能现场核实。
-4. **Demo account：** 已创建本地 `m0_teacher_demo` synthetic teacher，仅获得原 teacher seed 对两个 active synthetic subject 的相同授权范围。Windows User 环境保存 `SMHAI_M0_TEACHER_USERNAME` 与 `SMHAI_M0_TEACHER_PASSWORD`；密码未写入仓库或聊天。新账号 API 登录、Teacher overview（200）、logout 和 logout 后 `/auth/me`（401）已验证；浏览器 Teacher 场景使用原 synthetic seed account。
+4. **Demo account：** 已创建本地 `m0_teacher_demo` synthetic teacher，仅获得原 teacher seed 对两个 active synthetic subject 的相同授权范围。Windows User 环境保存账号凭据变量；本记录不包含凭据值。新账号 API 登录、Teacher overview（200）、logout 和 logout 后 `/auth/me`（401）已由 Lead 验证；浏览器 Teacher 场景使用原 synthetic seed account。
 
 ## 操作入口
 
