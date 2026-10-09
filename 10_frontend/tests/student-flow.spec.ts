@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import type { Assessment, ApiEnvelope } from '@/types/contracts'
-import type { AssessmentState, ReportSummary, SupportResult } from '@/api/client'
+import type { AssessmentState, ReportSummary } from '@/api/client'
 import AssessmentResultView from '@/views/student/AssessmentResultView.vue'
 import AssessmentView from '@/views/student/AssessmentView.vue'
 import StudentHomeView from '@/views/student/StudentHomeView.vue'
@@ -48,22 +48,6 @@ const report: ReportSummary = {
   citation_count: 0,
 }
 
-const support = (overrides: Partial<SupportResult> = {}): SupportResult => ({
-  status: 'needs_review',
-  safety_action: 'CRISIS_ROUTE',
-  normal_generation: false,
-  generation: {},
-  report_id: report.report_id,
-  content: null,
-  citations: [],
-  review_reference: 'REVIEW_SYNTHETIC_001',
-  crisis_response: null,
-  trace_id: 'TRACE_support',
-  synthetic_fixture_only: true,
-  integration_labels: { SAFETY: 'REAL_HTTP' },
-  ...overrides,
-})
-
 const question = { item_id: 'ITEM_demo_002', prompt: '你最近是否容易开始一项学习任务？', options: [{ value: '1', label: '不太容易' }, { value: '2', label: '比较容易' }] }
 const assessmentState = (overrides: Partial<AssessmentState> = {}): AssessmentState => ({
   assessment_id: assessment.assessment_id,
@@ -85,6 +69,7 @@ const makeRouter = async (path: string) => {
       { path: '/student/assessment/:id', component: AssessmentView },
       { path: '/student/assessment', component: AssessmentView },
       { path: '/student/home', component: StudentHomeView },
+      { path: '/student/history', component: StudentHomeView },
       { path: '/student/reports', component: StudentResultView },
       { path: '/student/reports/:id', component: StudentResultView },
       { path: '/student/support', component: SupportChatView },
@@ -104,35 +89,43 @@ describe('学生演示闭环页面', () => {
     api.startAssessment.mockResolvedValue(envelope(assessmentState({ current_index: 0, answered_count: 0, question: { ...question, item_id: 'ITEM_demo_001' } })))
     api.submitAssessmentResponse.mockResolvedValue(envelope(assessmentState({ can_complete: true, answered_count: 2, question: { ...question, item_id: 'ITEM_demo_003' } })))
     api.completeAssessment.mockResolvedValue(envelope(assessment))
-    api.createSupport.mockResolvedValue(envelope(support()))
     api.getStudentReport.mockRejectedValue(new Error('synthetic report unavailable'))
   })
 
-  it('学生空间从服务端记录中提供继续入口并分开展示测评历史和报告历史', async () => {
+  it('首页使用服务端记录提供测评入口、教育支持入口和历史导航', async () => {
     api.listAssessments.mockResolvedValue(envelope([{ ...assessment, status: 'in_progress' }]))
     api.listReports.mockResolvedValue(envelope({ items: [report], next_cursor: null }))
     const router = await makeRouter('/student/home')
     const wrapper = mount(StudentHomeView, { global: { plugins: [router, createPinia()] } })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('有一项测评尚未完成')
+    expect(wrapper.text()).toContain('给自己一点时间')
     expect(wrapper.text()).toContain('继续测评')
-    expect(wrapper.text()).toContain('测评记录')
-    expect(wrapper.text()).toContain('对话与报告')
-    expect(wrapper.text()).toContain(report.report_id)
+    expect(wrapper.text()).toContain('教育支持')
+    await wrapper.get('.student-hero__actions .app-button').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe(`/student/assessment/${assessment.assessment_id}`)
+    wrapper.unmount()
+
+    const historyRouter = await makeRouter('/student/history')
+    const history = mount(StudentHomeView, { global: { plugins: [historyRouter, createPinia()] } })
+    await flushPromises()
+    expect(history.text()).toContain('测评与支持记录')
+    expect(history.text()).toContain('安全流程记录')
+    await history.get('.history-section:last-child .app-button').trigger('click')
+    await flushPromises()
+    expect(historyRouter.currentRoute.value.fullPath).toBe(`/student/reports/${report.report_id}`)
   })
 
-  it('学生空间明确显示演示数据重置受阻且不会删除已有记录', async () => {
-    const router = await makeRouter('/student/home')
+  it('历史页面为进行中和已完成记录提供真实的继续或结果导航', async () => {
+    api.listAssessments.mockResolvedValue(envelope([{ ...assessment, status: 'in_progress' }]))
+    const router = await makeRouter('/student/history')
     const wrapper = mount(StudentHomeView, { global: { plugins: [router, createPinia()] } })
     await flushPromises()
 
-    const resetStatus = wrapper.get('.student-reset__status')
-    expect(resetStatus.attributes('role')).toBe('status')
-    expect(resetStatus.text()).toContain('BLOCKED · 暂不可用')
-    expect(resetStatus.text()).toContain('返回退出码 2')
-    expect(resetStatus.text()).toContain('不会停止服务、连接数据库或删除数据')
-    expect(resetStatus.text()).toContain('旧演示工作区和记录会保留')
+    await wrapper.get('.history-row .app-button').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe(`/student/assessment/${assessment.assessment_id}`)
   })
 
   it('继续已保存测评，保存回答后同时提供继续和完成选项', async () => {
@@ -185,58 +178,37 @@ describe('学生演示闭环页面', () => {
     expect(wrapper.text()).toContain('非诊断')
     expect(wrapper.text()).toContain('已记录 4 项回答')
     expect(wrapper.text()).not.toContain('theta')
+    expect(wrapper.text()).toContain('CLAIM_BOUNDARY')
+    await wrapper.get('.assessment-result__actions .app-button').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe('/student/support')
   })
 
-  it('危机路由显示阻断状态，不显示普通生成内容', async () => {
+  it('教育支持页面说明 CLAIM_BOUNDARY 阻断且不提交消息或显示占位回答', async () => {
     api.listReports.mockResolvedValue(envelope({ items: [report], next_cursor: null }))
     const router = await makeRouter(`/student/support?assessment=${assessment.assessment_id}`)
     const wrapper = mount(SupportChatView, { global: { plugins: [router] } })
     await flushPromises()
-    await wrapper.get('textarea').setValue('演示请求')
-    await wrapper.get('form').trigger('submit')
-    await flushPromises()
 
-    expect(wrapper.text()).toContain('已进入安全流程')
-    expect(wrapper.text()).toContain('CRISIS_ROUTE')
-    expect(wrapper.text()).not.toContain('模型回答')
-    expect(wrapper.text()).toContain(report.report_id)
+    expect(wrapper.text()).toContain('独立支持生成暂不可用')
+    expect(wrapper.text()).toContain('CLAIM_BOUNDARY')
+    expect(wrapper.find('textarea').exists()).toBe(false)
+    expect(api.createSupport).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('安全流程记录')
+    expect(api.listReports).toHaveBeenCalledWith()
+    await wrapper.get('.support-record-row .app-button').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe(`/student/reports/${report.report_id}`)
   })
 
-  it('支持历史失败显示不可用和重试，支持请求失败保留草稿', async () => {
+  it('支持历史失败显示不可用和重试', async () => {
     api.listReports.mockRejectedValueOnce(new Error('synthetic history unavailable'))
-    api.createSupport.mockRejectedValue(new Error('synthetic support unavailable'))
     const router = await makeRouter(`/student/support?assessment=${assessment.assessment_id}`)
     const wrapper = mount(SupportChatView, { global: { plugins: [router] } })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('历史记录暂时无法加载')
+    expect(wrapper.text()).toContain('支持记录暂时无法加载')
     expect(wrapper.text()).toContain('synthetic history unavailable')
-    expect(wrapper.text()).not.toContain('还没有已保存的支持报告')
-
-    await wrapper.get('textarea').setValue('这是要保留以便重试的演示问题')
-    await wrapper.get('form').trigger('submit')
-    await flushPromises()
-    expect(wrapper.text()).toContain('支持请求未完成')
-    expect(wrapper.text()).toContain('synthetic support unavailable')
-    expect((wrapper.get('textarea').element as { value: string }).value).toBe('这是要保留以便重试的演示问题')
-  })
-
-  it('来源标签只说明演示资料，不声称经过人工审核', async () => {
-    api.createSupport.mockResolvedValue(envelope(support({
-      status: 'generated',
-      safety_action: 'PROCEED_WITH_BOUNDARY',
-      normal_generation: true,
-      content: { summary: '演示回答', observations: [], suggestions: [], disclaimer: '合成演示内容。' },
-      citations: [{}],
-    })))
-    const router = await makeRouter(`/student/support?assessment=${assessment.assessment_id}`)
-    const wrapper = mount(SupportChatView, { global: { plugins: [router] } })
-    await flushPromises()
-    await wrapper.get('textarea').setValue('演示请求')
-    await wrapper.get('form').trigger('submit')
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('演示资料来源')
-    expect(wrapper.text()).not.toContain('已审核来源')
+    expect(api.createSupport).not.toHaveBeenCalled()
   })
 })

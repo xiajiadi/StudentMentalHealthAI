@@ -29,7 +29,7 @@ const load = async () => {
   }
 }
 
-const openSupport = () => void router.push({ path: '/student/support', query: { assessment: assessmentId } })
+const openSupport = () => void router.push('/student/support')
 onMounted(load)
 </script>
 
@@ -48,8 +48,9 @@ onMounted(load)
         <div class="assessment-result__mark"><CheckCircle2 :size="21" aria-hidden="true" /></div>
         <div><span class="section-label">测量记录</span><h2>已记录 {{ assessment.response_summary.items_answered }} 项回答</h2><p>{{ assessment.assessment_id }} · {{ assessment.timestamps.completed_at || '完成时间未提供' }}</p></div>
       </AppCard>
+      <AppStatusCallout tone="attention" title="独立教育支持暂不可用" body="当前后端需要测评关联，常规支持生成会在 CLAIM_BOUNDARY 阻断。此演示不会生成占位回答或引用。" />
       <section class="assessment-result__actions" aria-label="下一步">
-        <AppButton @click="openSupport">进入 AI 支持对话 <ArrowRight :size="16" aria-hidden="true" /></AppButton>
+        <AppButton @click="openSupport">查看教育支持状态 <ArrowRight :size="16" aria-hidden="true" /></AppButton>
         <RouterLink to="/student/home">返回学生空间</RouterLink>
       </section>
     </template>

@@ -193,7 +193,7 @@ onMounted(load)
       <section class="question-card assessment-complete-card" aria-labelledby="assessment-complete-title">
         <span class="assessment-meta__eyebrow">可以进入下一步</span>
         <h1 id="assessment-complete-title">本次合成测评已经可以结束</h1>
-        <p class="question-card__note">系统已返回完整的测评状态。完成后，后端会按安全流程生成教育支持参考。</p>
+        <p class="question-card__note">系统已返回可以结束的测评状态。完成后会展示服务端保存的测评记录；独立教育支持生成当前受限。</p>
         <AppStatusCallout v-if="errorMessage" tone="critical" title="这一步没有完成" :body="errorMessage">
           <AppButton variant="secondary" size="sm" @click="complete">重试</AppButton>
         </AppStatusCallout>
