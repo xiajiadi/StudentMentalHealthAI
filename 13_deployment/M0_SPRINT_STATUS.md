@@ -2,79 +2,71 @@
 
 更新时间：2026-10-09
 
-状态：**`P0_HANDS_ON_USABLE_WITH_RESET_LIMITATION`。这表示可按既有工作区进行有限的合成演示操作，不是正式 P0 PASS；Reset 被阻断，旧工作区不会被清空。当前凭据有全局 `CREATE`，但完整权限只覆盖旧 `smhai_m0_demo`，未观察到 `GRANT OPTION`；虽可能创建新 schema，现有授权不足以迁移、播种和运行 M0，本轮没有创建新 schema。P1 为 `M0_FULL_E2E_NOT_READY`：正常支持链仍被 Backend `CLAIM_BOUNDARY` 拦截，回答、引用、报告和支持历史尚未通过。**
+## 当前结论
 
-## 当前集成快照
+- **P0：** `P0_HANDS_ON_USABLE_WITH_RESET_LIMITATION`。学生 CAT、结果、历史和教师授权数据可供合成演示；正式 P0 仍被安全 Reset 阻断。
+- **P1：** `M0_FULL_E2E_NOT_READY`。唯一的新浏览器支持请求经过 RAG、Runtime、Safety 和 Backend 内容解析，最后在 `CLAIM_BOUNDARY` 被拒绝；没有发布回答、citation 或报告。
+- **整体：** `M0_BLOCKED`，交由 Controller 审查。本报告不代表 Controller acceptance。
 
-- 集成工作树：`D:\Projects\StudentMentalHealthAI-m0-integration`
+## 集成快照
+
+- 工作树：`D:\Projects\StudentMentalHealthAI-m0-integration`
 - 分支：`milestone/m0-end-to-end-engineering-demo`
-- 本轮真实浏览器与整栈验证代码快照：`27ca23a00901bb36fe04decb58e1ccf4b592b846`
-- 冲刺基线：`3c1bd71c85a4ef618cb11adcaa87d4858fda628a`
-- 本地修改和提交仅用于该 M0 分支；未 push、未 merge 默认分支、未打 tag。
-
-本状态记录区分 Lead 提供的既有现场证据、既有模块测试记录和本次文档/源码检查。本 Worker 未在本工作树重跑浏览器、服务、数据库或测试；文中既有结果不是本次复现，也不能视为 F QA PASS。
+- 本轮已验证的实现快照：`fb148b8d80925b150dbed5cae0e5afc447868382`
+- 本轮基线：`637750286da02b0ae2afbbf0af3601d66712f589`
+- 以上是本轮源码与浏览器验证快照；本文件和操作手册作为 docs-only 更新另行本地提交。未 push、未 merge 默认分支、未打 tag。
 
 ## 能力矩阵
 
-| Capability | API | UI | 持久化 | 状态 / 阻塞 |
-|---|---|---|---|---|
-| Synthetic Student 登录、退出和重登 | 真实 Backend | 已验证 | 用户和会话由本机服务处理；退出后 `/auth/me` 为 401 | 通过 |
-| CAT 测评 | 真实 CAT + Backend | 两条不同作答路径已验证 | 刷新恢复；完成结果重启后可读 | 通过；规则化合成演示，不代表已验证心理测量 |
-| 学生测评与历史 | 真实 Backend + MySQL | 开始、答题、停止、结果、历史均已验证 | 整栈重启后历史仍在 | 通过 |
-| Teacher Dashboard | 真实 Teacher API + MySQL | 概览、授权学生详情、无权主体拒绝均已验证 | 来自当前合成数据库记录 | 通过；只显示非临床摘要 |
-| 教师 / Reviewer 退出 | 服务端 logout | 教师真实浏览器已验证；Reviewer 有 focused UI tests | 服务端会话撤销 | 源码与测试通过；Reviewer 未做现场登录 |
-| AI 支持 | 真实 Backend → RAG → Runtime → Safety → Backend gate | 1 次真实合成 UI 提交 | 新建运行记录为 `FAILED`；candidate 未保存，无报告 | 阻塞于 `CLAIM_BOUNDARY` |
-| Citation / 报告 / 支持历史 | 有路径 | 本轮请求未到发布阶段 | 无新报告、0 条引用 | 未通过；没有伪造答案 |
-| 一键启动 / 停止 | 本机脚本 | 启动后可用浏览器访问 | MySQL demo schema | 启动、readiness、停止和重启已验证 |
-| Demo Reset | 脚本 fail-closed | 页面提供本机命令指引 | 未清理任何数据；旧 schema 和数据保留 | 阻塞；全局 `CREATE` 不提供安全逐条清理能力；没有新工作区被创建 |
+| 能力 | 本轮现场证据 | 状态 |
+|---|---|---|
+| Student 登录、退出 | 独立 F 浏览器验证登录、退出 | 通过 |
+| CAT | 两条不同 synthetic response 路径，各完成并保存 8 项；刷新后两条新记录仍在历史 | 通过；不代表心理测量有效 |
+| 历史持久化 | F 确认本轮两条记录刷新后仍在；整栈重启后的历史恢复沿用先前集成证据，本轮 F 未重复重启验证 | 刷新通过；重启为既有证据 |
+| Teacher Dashboard | 浏览器登录、概览、授权主体 `SUBJ_demo_a` 详情；未见原始作答或对话字段 | 授权详情通过 |
+| 未授权主体 | `SUBJ_demo_c` 的 Backend GET 返回 403；UI 检查发生在 403 被确认完成之前，未能确认页面拒绝提示 | API 隔离通过；UI 呈现未确认 |
+| Demo Reset | 学生首页现显示 `BLOCKED · 暂不可用`；Reset 脚本 fail-closed 并返回 2 | 安全阻断，未执行清理 |
+| AI 支持 | 本轮唯一一次浏览器 POST 返回 502 / `DEPENDENCY_INVALID_RESPONSE`，Backend 在 `CLAIM_BOUNDARY` 拒绝 | 未恢复 |
+| 支持报告 / citation | 回答未展示；无生成报告 ID、0 条 citation；失败运行诊断已持久化 | 未通过 |
+| 启动与停止 | 停止脚本只停止当前工作树登记的 M0 服务；预检 PASS，整栈启动后六个 loopback 服务均为 200 | 通过 |
 
-## Lead 提供的既有真实浏览器证据
+## 本轮支持请求的安全证据
 
-以下描述来自 Lead 对此前集成快照的验证记录，并非本 Worker 在本工作树的复跑结果。
+- 场景：`M0-SUPPORT-ROUTINE-OVERPLAN-V1`，合成教育支持问题。
+- 浏览器 `POST /api/v1/support/requests`：**1 次**；无重发。
+- Prompt：`PROMPT_student_synthetic_v1@1.1.0`，SHA-256 `8a4ff84416e9477c749e21591a086a79ff020773c7edb41ba0ec55b15f74a7cb`。模板内容未改。
+- Runtime profile：`m0-p1-support`；配置文件 `06_llm-runtime/config/runtime.m0-p1-support.v1.json`；`max_attempts=1`、cloud fallback 关闭、无本地 fallback。
+- 模型：`qwen2.5:0.5b`，digest `a8b0c51577010a279d933d14c2a8ab4b268079d44c5c8830c0a93900f1827c67`；硬件探测为 RTX 3060 / 12 GiB。
+- Backend 持久化的最新 `support_run`：`FAILED` / `CLAIM_BOUNDARY` / `dependency_invalid_response` / `candidate_persisted=false`；安全 trace 为 `TRACE_726a8687e0c619c04c798914075311ad`。
+- 实际 provider metadata：`attempt_count=1`、`retry_count=0`、`fallback_attempted=false`、`fallback_count=0`。Runtime 请求过一次，没有自动重试或模型 fallback。
+- Runtime 与 RAG 已执行；Output Safety 通过后流程推进到 `CONTENT_VALIDATION`，GenerationContent 解析完成。精确 Safety action 未写入失败记录。随后 Backend `CLAIM_BOUNDARY` fail-closed，citation binding 未发生。
+- 回答未显示或持久化；没有生成报告，citation 数为 0。刷新后 UI 显示一条失败支持历史项；该项不是成功报告。
+- 语义故障分类：`INDETERMINATE`。持久化安全元数据不包含候选语义或极性；未推断肯定式或否定式内容。
 
-- 学生以合成账号登录，完成两次 8 项测评。`never` 路径题目序列为 `008, 003, 002, 001, 004, 006, 009, 005`；`always` 路径为 `008, 003, 005, 007, 002, 009, 001, 004`。路径在第 3 题分叉；服务端按配置达到 8 项停止条件并保存结果。
-- 测评中途刷新后恢复同一测评和已保存作答；完成后进入学生历史。服务栈停止并重新启动后，两次完成结果仍可从 UI 打开。
-- 学生退出后，向 Backend 查询认证状态返回 401；随后重新登录成功，首页仍显示前述两条已完成测评。教师退出后 `/auth/me` 返回 401；教师概览展示授权范围内的合成记录，未知主体详情页显示无权访问。
-- 本轮从已完成测评结果页进入支持对话，提交了 1 次合成请求。页面显示 Backend 拒绝发布；MySQL 最新 `support_run` 为 `FAILED`，白名单字段为 `failure_stage=CLAIM_BOUNDARY`、`failure_code=dependency_invalid_response`、`failure_component=BACKEND`、`candidate_persisted=false`。candidate 原文只在 Backend 内存中解析，未持久化或展示；当前测评没有新报告或引用。
-- 故障分类：`INDETERMINATE`。留存的白名单数据库诊断没有候选字段语义/极性，不能据此断定肯定式断言或否定式边界说明。
-- 支持请求计数：本轮真实 UI 提交 1 次；前端 `send` 对应一次 `createSupport`，没有客户端自动重试。Runtime 配置允许最多 2 次 provider attempt；Backend 当前丢弃 Runtime trace，因此本次 provider-level `retry_count` 无法从持久化元数据独立核实，状态为 **NOT_EXPOSED**，不报告为已证明的 0。
+## Reset 阻塞
 
-## CAT 与教师的当前含义
-
-CAT 分支来自当前合成规则选择器，能观察到回答影响后续题目及配置停止条件。结果页明确标识 `SYNTHETIC / DEMO / 非诊断`，不提供心理学解释。教师端只显示授权范围内的合成测评状态与聚合计数，不返回作答、量表参数或对话正文。
-
-## 验证来源与审查状态
-
-- **Lead 现场证据：** 上述浏览器 Student/Teacher 流程、整栈重启后历史可读、Reset 被阻断、一次合成支持请求在 `CLAIM_BOUNDARY` 失败，以及当前 DB 用户权限范围，来自 Lead 提供的既有集成记录；本 Worker 未独立复现。授权证据显示全局 `CREATE`，`ALL PRIVILEGES` 仅覆盖旧 `smhai_m0_demo`，未观察到 `GRANT OPTION`；schema 列表仅有旧库，本轮未创建新 schema。
-- **既有模块测试记录：** 下一节所列测试数量来自集成记录中的模块执行，不是本 Worker 本次运行；不同命令的测试集合有重叠。
-- **本次源码/文档检查：** 只读检查登录、测评、结果、历史、教师权限提示和 Reset 用户指引，并更新本文件与操作手册；未改前端、Backend、数据库或部署实现。
-- **F 复核：** 既有记录表示此前检查了退出实现源码，但当时发现文档仍落后。本文档刷新后仍需 F 只读复核；当前不报告 F QA PASS。
+- `reset-demo.ps1` 当前安全返回退出码 2；不停止服务、不连接数据库、不改数据。
+- 旧 `smhai_m0_demo` 中 `audit_events`、`idempotency_records` 等记录没有足够的逐条 M0 ownership 标记，不能安全删除。`SYNTHETIC` 标记本身不足以证明归属。
+- 数据库用户有全局 `CREATE`，但 `ALL PRIVILEGES` 仅覆盖现有 `smhai_m0_demo`；未观察到 `GRANT OPTION`。schema 列表只有旧库；本轮没有创建新 schema，也没有删除旧记录。
+- Reset UI 已明确显示阻断状态。不要通过手工 SQL、DROP schema、添加标签或切换共享数据库绕过。
 
 ## 验证记录
 
-下列测试结果是 Lead 记录的集成阶段 fresh 执行结果，不是本 Worker 本次执行；不同命令的测试集合有重叠，不应相加：
+- Frontend：全量 Vitest **34 passed / 10 files**；typecheck、lint、production build 均通过。Reset UI 聚焦测试 9/9 通过。
+- Backend：全量 pytest **133 passed**；聚焦 D3 chain/trust-context 25 passed；Pyright 对改动文件 **0 errors**。
+- LLM Runtime：全量 pytest **34 passed, 1 skipped**。跳过项是需要显式开启的真实 Ollama 集成测试；本轮未额外直接调用 Runtime generation。
+- Ruff check 通过。Runtime 改动文件 format check 通过；Backend format check 在未改动的 `database.py` 行报告 3 处基线格式差异，没有为此重排整文件。
+- `git diff --check` 通过。Gitleaks / TruffleHog 未安装，专用 secret scan 未执行。
+- 合成危机绕过普通 RAG/Runtime、zero-evidence、EvidenceBundle 和 citation binding 的离线回归通过；本轮没有额外发送 crisis 或 zero-evidence 浏览器请求。
+- 独立 F：Student/CAT/History、Teacher 授权详情、Reset UI 和一次支持请求已现场验证；Teacher 未授权页面在 403 完成后的可见状态仍未确认。支持结果为 `QA_BLOCKED`，不是 P0/P1 acceptance。
 
-- Frontend：`vitest run` **33 passed / 10 files**；typecheck、build、lint 均通过。
-- Backend：集成后的全量 pytest **118 passed**；教师服务/路由 **6 passed**，Ruff 通过。
-- CAT demo service：**4 passed**；Backend CAT/assessment：**8 passed**。
-- Prompt engine：**56 passed**；D3 Backend integration / chain：**48 passed**。
-- `git diff --check`：通过。Gitleaks/TruffleHog 未安装，未报告为已执行。
-- 零证据弃答、合成危机绕过普通 RAG/Runtime 和 claim gate 有离线回归测试；本轮未通过额外浏览器请求触发危机或零证据场景。
-- 独立 F 复核：最新退出实现源码检查通过；文档在复核时仍落后，当前文件刷新后待 F 只读复核。独立 Reviewer 未重复运行本机服务或测试。
+## 用户操作入口
 
-## 主要阻塞
-
-1. **P0 Reset：** `reset-demo.ps1` 当前返回 2，不连接数据库、不停止服务、不改数据。`audit_events` 和 `idempotency_records` 缺少足以证明每条记录属于 M0 的关联标记，现有 `SYNTHETIC` 来源不足以安全清理。
-2. **P1 Support：** Prompt 改进后的一次真实支持请求仍在 Backend `CLAIM_BOUNDARY` 失败；没有已批准回答、citation 或报告。候选原文未持久化，本次安全元数据不足以确定语义分类。
-3. **Runtime trace：** `HttpLLMRuntimeClient` 未将 Runtime 的 attempt/retry metadata 保留到 allowlisted diagnostics，provider-level retry 数不能现场核实。
-4. **Demo account：** 已创建本地 `m0_teacher_demo` synthetic teacher，仅获得原 teacher seed 对两个 active synthetic subject 的相同授权范围。Windows User 环境保存账号凭据变量；本记录不包含凭据值。新账号 API 登录、Teacher overview（200）、logout 和 logout 后 `/auth/me`（401）已由 Lead 验证；浏览器 Teacher 场景使用原 synthetic seed account。
-
-## 操作入口
-
-- 启动：在集成工作树执行 `.\start-demo.ps1`
-- 预检：`.\start-demo.ps1 -PreflightOnly`
+- 预检：在集成工作树运行 `.\start-demo.ps1 -PreflightOnly`
+- 启动：`.\start-demo.ps1`
 - UI：`http://127.0.0.1:4173/`
 - 停止：`.\stop-demo.ps1`
-- 重置：`.\reset-demo.ps1` 当前会安全返回阻断码 2；不要尝试手工数据库清理。
+- Reset：学生首页显示 `BLOCKED · 暂不可用`；手动运行 `.\reset-demo.ps1` 只会返回 2，不会删除数据。
+- Teacher 演示账号由本机 Windows User 环境变量保管；本文件不含凭据值。
 
-本原型仅使用合成数据，不代表心理学有效性、临床能力、真实学生授权、Real Pilot、D4 Formal 或正式部署验收。
+本原型仅限 synthetic demo，不代表心理学有效性、临床能力、真实学生授权、Real Pilot、D4 Formal 或正式部署验收。
