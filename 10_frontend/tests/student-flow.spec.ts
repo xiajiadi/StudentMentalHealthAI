@@ -122,6 +122,19 @@ describe('学生演示闭环页面', () => {
     expect(wrapper.text()).toContain(report.report_id)
   })
 
+  it('学生空间明确显示演示数据重置受阻且不会删除已有记录', async () => {
+    const router = await makeRouter('/student/home')
+    const wrapper = mount(StudentHomeView, { global: { plugins: [router, createPinia()] } })
+    await flushPromises()
+
+    const resetStatus = wrapper.get('.student-reset__status')
+    expect(resetStatus.attributes('role')).toBe('status')
+    expect(resetStatus.text()).toContain('BLOCKED · 暂不可用')
+    expect(resetStatus.text()).toContain('返回退出码 2')
+    expect(resetStatus.text()).toContain('不会停止服务、连接数据库或删除数据')
+    expect(resetStatus.text()).toContain('旧演示工作区和记录会保留')
+  })
+
   it('继续已保存测评，保存回答后同时提供继续和完成选项', async () => {
     api.listAssessments.mockResolvedValue(envelope([{ ...assessment, status: 'in_progress' }]))
     const router = await makeRouter('/student/assessment')

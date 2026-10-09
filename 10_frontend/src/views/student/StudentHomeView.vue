@@ -103,7 +103,8 @@ onMounted(load)
       <section class="student-section student-reset" aria-labelledby="demo-reset-title">
         <div><span class="section-label">演示维护</span><h2 id="demo-reset-title">重置演示数据</h2><p>为避免浏览器端越权清理数据，重置由本地演示运行器执行。</p></div>
         <div class="student-reset__command"><code>.\reset-demo.ps1</code><AppButton variant="secondary" size="sm" @click="copyResetCommand">{{ resetCopyState === 'copied' ? '已复制' : '复制命令' }}</AppButton></div>
-        <p class="student-reset__hint">请在项目根目录的 PowerShell 中运行此命令。前端不会显示清理成功，直到服务端确认完成。</p>
+        <AppStatusCallout class="student-reset__status" tone="attention" title="BLOCKED · 暂不可用" body="当前重置命令会返回退出码 2，不会停止服务、连接数据库或删除数据；旧演示工作区和记录会保留。" />
+        <p class="student-reset__hint">此命令当前只会报告阻断状态，不会重置演示数据。</p>
         <p v-if="resetCopyState === 'error'" class="student-reset__hint" role="status">复制失败，请手动选择上面的命令。</p>
       </section>
     </template>
@@ -121,6 +122,7 @@ onMounted(load)
 .student-list-card span, .student-history-row span { color: var(--color-text-secondary); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .student-history-row > svg { color: var(--color-support); flex: 0 0 auto; }
 .student-reset { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 3px 18px; padding: 18px; border: 1px solid var(--color-border); border-radius: var(--radius-card); background: var(--color-surface); }
+.student-reset__status { grid-column: 1 / -1; }
 .student-reset p { margin: 7px 0 0; color: var(--color-text-secondary); font-size: 12px; }
 .student-reset code { padding: 9px 12px; border-radius: 6px; color: var(--color-text-primary); background: var(--color-surface-raised); font-size: 13px; }
 .student-reset__command { display: flex; align-items: center; gap: 10px; }
