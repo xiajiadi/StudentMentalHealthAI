@@ -535,7 +535,7 @@ export type AssessmentTimestampsDto = {
 /**
  * BackendRole
  */
-export type BackendRole = 'STUDENT' | 'TEACHER' | 'REVIEWER' | 'PARENT' | 'ADMIN';
+export type BackendRole = 'STUDENT' | 'TEACHER' | 'REVIEWER' | 'PSYCHOLOGICAL_SPECIALIST' | 'PARENT' | 'ADMIN';
 
 /**
  * Citation

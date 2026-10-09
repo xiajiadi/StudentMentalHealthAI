@@ -10,5 +10,9 @@ const healthClient = createClient(createConfig({
 export async function readDependencyHealth(): Promise<Record<string, DependencyStatusDto>> {
   const response = await healthDependencies({ client: healthClient })
   if (response.error) throw new Error('依赖状态暂时无法读取。')
-  return response.data.data
+  const dependencies = response.data?.data
+  if (!dependencies || typeof dependencies !== 'object' || Array.isArray(dependencies)) {
+    throw new Error('依赖状态响应格式无法识别。')
+  }
+  return dependencies
 }

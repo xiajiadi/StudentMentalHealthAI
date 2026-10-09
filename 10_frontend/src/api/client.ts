@@ -1,6 +1,7 @@
 import type {
   ApiEnvelope,
   Assessment,
+  Role,
 } from '@/types/contracts'
 import type {
   CatQuestion,
@@ -18,8 +19,8 @@ export interface LoginInput {
 
 export interface LoginResult {
   userId: string
-  role: import('@/types/contracts').Role
-  authorizedRoles?: import('@/types/contracts').Role[]
+  role: Role
+  authorizedRoles?: Role[]
   subjectId: string | null
   displayName: string
   initials: string

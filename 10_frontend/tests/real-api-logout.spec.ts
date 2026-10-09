@@ -44,7 +44,7 @@ afterEach(() => {
 describe('RealApiProvider logout', () => {
   it('revokes the server session with the session-bound CSRF token', async () => {
     const { provider, fetchMock } = await createProvider()
-    await provider.login({ account: 'student_demo', password: 'synthetic-test', role: 'student' })
+    await provider.login({ account: 'student_demo', password: 'synthetic-test' })
 
     await expect(provider.logout()).resolves.toMatchObject({ data: { logged_out: true } })
 

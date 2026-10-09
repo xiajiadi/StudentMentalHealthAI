@@ -25,7 +25,7 @@ const page = computed(() => ({
         <p>这里用于查看专业协作功能的接入状态。系统不会替代专业人员作判断，也不会把演示内容当作个案资料。</p>
         <div class="specialist-hero__tags"><span><Scale :size="15" aria-hidden="true" />人工判断优先</span><span><LockKeyhole :size="15" aria-hidden="true" />当前仅限演示</span></div>
       </div>
-      <figure class="specialist-hero__art"><img :src="'/assets/heartbridge/card-specialist-original.png'" alt="心桥心理专业工作区插画"><figcaption>专业支持协作空间</figcaption></figure>
+      <figure class="specialist-hero__art"><img :src="'/assets/heartbridge/card-specialist-original.png'" alt="" aria-hidden="true"><figcaption>专业支持协作空间</figcaption></figure>
     </section>
 
     <AppPageHeader class="specialist-heading" :eyebrow="page.eyebrow" :title="page.title" :intro="page.intro" />

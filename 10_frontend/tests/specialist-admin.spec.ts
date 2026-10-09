@@ -71,4 +71,12 @@ describe('Specialist 与学校管理员工作区', () => {
     expect(wrapper.text()).not.toContain('Backend 可用')
     expect(health.readDependencyHealth).toHaveBeenCalledTimes(1)
   })
+
+  it('健康端点返回非对象时显示未知状态，不在渲染中抛错', async () => {
+    health.readDependencyHealth.mockResolvedValueOnce(undefined)
+    const wrapper = await mountAt('/admin/settings', AdminWorkspaceView)
+
+    expect(wrapper.text()).toContain('状态未知，不以本地占位值代替')
+    expect(wrapper.text()).not.toContain('正在读取服务端状态')
+  })
 })

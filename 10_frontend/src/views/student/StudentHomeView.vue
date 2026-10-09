@@ -75,7 +75,7 @@ onMounted(load)
           <div class="student-hero__note"><span class="student-hero__note-dot" aria-hidden="true"></span>演示数据 · 教育用途 · 非诊断</div>
         </div>
         <figure class="student-hero__art">
-          <img :src="'/assets/heartbridge/card-student-original.png'" alt="心桥学生空间插画">
+          <img :src="'/assets/heartbridge/card-student-original.png'" alt="" aria-hidden="true">
           <figcaption>按自己的节奏了解流程</figcaption>
         </figure>
       </section>

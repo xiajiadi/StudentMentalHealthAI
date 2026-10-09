@@ -17,14 +17,16 @@ const page = computed(() => ({
   users: { eyebrow: '用户与角色', title: '账号与权限边界', intro: '当前没有可用的账号目录或角色配置管理接口。' },
   settings: { eyebrow: '系统设置', title: '服务能力状态', intro: '以下只读信息来自 Backend 公开的依赖健康端点，不包含配置写入或管理操作。' },
 }[section.value as 'overview' | 'users' | 'settings'] ?? { eyebrow: '学校管理空间', title: '管理概览', intro: '查看本地服务公开的依赖能力状态。' }))
-const healthRows = computed(() => Object.entries(dependencies.value).map(([name, value]) => ({ name, status: value.status, integration: value.integration })))
+const healthRows = computed(() => Object.entries(dependencies.value ?? {}).map(([name, value]) => ({ name, status: value.status, integration: value.integration })))
 const healthLabel = (status: string) => status === 'READY' || status === 'AVAILABLE' ? '可用' : status === 'UNAVAILABLE' ? '不可用' : status === 'DEFERRED' ? '未配置' : status === 'DISABLED' ? '已关闭' : status || '未知'
 const healthTone = (status: string) => status === 'READY' || status === 'AVAILABLE' ? 'health-row__status--ready' : status === 'UNAVAILABLE' ? 'health-row__status--down' : 'health-row__status--unknown'
 
 const loadHealth = async () => {
   healthState.value = 'loading'
   try {
-    dependencies.value = await readDependencyHealth()
+    const result = await readDependencyHealth()
+    if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error('依赖状态响应格式无法识别。')
+    dependencies.value = result
     healthState.value = 'ready'
   } catch {
     dependencies.value = {}
@@ -47,7 +49,7 @@ watch(section, (value) => {
         <p>管理视图只展示已接入的工程信息。学校账号、组织配置和权限变更目前不能通过此工作区操作。</p>
         <div class="admin-hero__note"><Activity :size="15" aria-hidden="true" />全链路演示状态：尚未就绪</div>
       </div>
-      <figure class="admin-hero__art"><img :src="'/assets/heartbridge/card-admin-original.png'" alt="心桥学校管理空间插画"><figcaption>服务能力与组织管理入口</figcaption></figure>
+      <figure class="admin-hero__art"><img :src="'/assets/heartbridge/card-admin-original.png'" alt="" aria-hidden="true"><figcaption>服务能力与组织管理入口</figcaption></figure>
     </section>
 
     <AppPageHeader class="admin-heading" :eyebrow="page.eyebrow" :title="page.title" :intro="page.intro" />

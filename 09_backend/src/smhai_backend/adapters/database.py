@@ -265,7 +265,14 @@ class MySqlBackendAdapter:
         role_code = next(
             (
                 candidate
-                for candidate in ("student", "teacher", "reviewer", "parent", "admin")
+                for candidate in (
+                    "student",
+                    "teacher",
+                    "reviewer",
+                    "psychological_specialist",
+                    "parent",
+                    "admin",
+                )
                 if candidate in roles
             ),
             None,

@@ -25,17 +25,13 @@ describe('Mock API 适配器', () => {
     expect(completed.data.status).toBe('completed')
   })
 
-  it('保留可恢复的登录错误分类', async () => {
+  it('不模拟认证成功，要求连接真实 Backend', async () => {
     const api = new MockApiProvider()
-    await expect(api.login({ account: 'demo', password: 'wrong', role: 'student' })).rejects.toMatchObject({ code: 'AUTH_UNAUTHORIZED' })
+    await expect(api.login({ account: 'demo', password: 'synthetic' })).rejects.toMatchObject({ code: 'MOCK_AUTH_UNAVAILABLE' })
 
-    try {
-      await api.login({ account: 'demo', password: 'network', role: 'student' })
-    } catch (error) {
-      expect(error).toBeInstanceOf(MockApiError)
-      expect((error as MockApiError).code).toBe('NETWORK_UNAVAILABLE')
-      expect((error as MockApiError).retryable).toBe(true)
-    }
+    const error = await api.login({ account: 'demo', password: 'synthetic' }).catch((reason: unknown) => reason)
+    expect(error).toBeInstanceOf(MockApiError)
+    expect((error as MockApiError).retryable).toBe(false)
   })
 
   it('提交复核后拒绝重复写入', async () => {

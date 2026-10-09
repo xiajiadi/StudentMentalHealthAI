@@ -64,7 +64,7 @@ afterEach(() => {
 describe('RealApiProvider assessment subject binding', () => {
   it('uses the authenticated actor subject in the assessment create payload', async () => {
     const { provider, fetchMock } = await createProvider(actorSubjectId)
-    const login = await provider.login({ account: 'student_test', password: 'synthetic', role: 'student' })
+    const login = await provider.login({ account: 'student_test', password: 'synthetic' })
     expect(login.data.subjectId).toBe(actorSubjectId)
 
     await provider.startAssessment()
@@ -78,7 +78,7 @@ describe('RealApiProvider assessment subject binding', () => {
 
   it('fails clearly and does not create an assessment when the actor has no subject', async () => {
     const { provider, fetchMock } = await createProvider(null)
-    await provider.login({ account: 'student_test', password: 'synthetic', role: 'student' })
+    await provider.login({ account: 'student_test', password: 'synthetic' })
 
     await expect(provider.startAssessment()).rejects.toMatchObject({ code: 'AUTH_SUBJECT_MISSING' })
     expect(fetchMock.mock.calls.some(([request]) => (

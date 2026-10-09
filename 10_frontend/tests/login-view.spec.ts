@@ -4,20 +4,21 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import router from '@/router'
 import LoginView from '@/views/auth/LoginView.vue'
 
-describe('M0 demo login hint', () => {
+describe('登录页认证边界', () => {
   beforeEach(async () => {
     setActivePinia(createPinia())
     await router.push('/login')
   })
 
-  it('directs the demo user to retain the prefilled synthetic account information', async () => {
+  it('不预填账号密码，也不允许登录前选择角色', async () => {
     await router.isReady()
     const wrapper = mount(LoginView, { global: { plugins: [router] } })
 
     try {
-      expect(wrapper.get('#password-hint').text()).toBe(
-        '这是本地合成演示；保留预填账号信息即可登录。',
-      )
+      expect((wrapper.get('#account').element as unknown as { value: string }).value).toBe('')
+      expect((wrapper.get('#password').element as unknown as { value: string }).value).toBe('')
+      expect(wrapper.find('.role-picker').exists()).toBe(false)
+      expect(wrapper.text()).toContain('工作区和可访问内容由服务端账号权限决定。')
     } finally {
       wrapper.unmount()
     }

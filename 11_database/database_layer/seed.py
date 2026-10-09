@@ -20,7 +20,14 @@ from .enums import (
 from .models import Role
 from .repositories import AccountRepository, AuditRepository, SubjectRepository
 
-REFERENCE_ROLE_CODES = ("student", "teacher", "parent", "reviewer", "admin")
+REFERENCE_ROLE_CODES = (
+    "student",
+    "teacher",
+    "parent",
+    "reviewer",
+    "psychological_specialist",
+    "admin",
+)
 
 
 async def seed_reference_roles(session: AsyncSession) -> int:

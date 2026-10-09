@@ -3,31 +3,27 @@ import { createPinia, setActivePinia } from 'pinia'
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import TeacherLayout from '@/layouts/TeacherLayout.vue'
-import ReviewerLayout from '@/layouts/ReviewerLayout.vue'
+import WorkspaceLayout from '@/layouts/WorkspaceLayout.vue'
 import { useSessionStore } from '@/stores/session'
 
 const api = vi.hoisted(() => ({ logout: vi.fn() }))
 
 vi.mock('@/services/mock-api', () => ({ frontendApi: api }))
 
-const SidebarStub = defineComponent({
-  emits: ['logout', 'update:mobileOpen'],
-  template: '<button type="button" class="test-logout" @click="$emit(\'logout\')">退出</button>',
-})
+const SidebarStub = defineComponent({ template: '<div class="test-sidebar"></div>' })
 
 async function mountRoleLayout(
-  layout: typeof TeacherLayout | typeof ReviewerLayout,
   role: 'teacher' | 'reviewer',
 ) {
+  const path = role === 'teacher' ? '/teacher/overview' : '/reviewer/queue'
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
-      { path: `/${role}/home`, component: { template: '<div>工作区</div>' } },
+      { path, component: { template: '<div>工作区</div>' } },
       { path: '/login', component: { template: '<div>登录</div>' } },
     ],
   })
-  await router.push(`/${role}/home`)
+  await router.push(path)
   await router.isReady()
 
   const pinia = createPinia()
@@ -41,7 +37,7 @@ async function mountRoleLayout(
     initials: role === 'teacher' ? '师' : '复',
   })
 
-  const wrapper = mount(layout, {
+  const wrapper = mount(WorkspaceLayout, {
     global: {
       plugins: [pinia, router],
       stubs: { RoleSidebar: SidebarStub },
@@ -53,14 +49,11 @@ async function mountRoleLayout(
 afterEach(() => vi.clearAllMocks())
 
 describe('teacher and reviewer session logout', () => {
-  it.each([
-    { layout: TeacherLayout, role: 'teacher' as const },
-    { layout: ReviewerLayout, role: 'reviewer' as const },
-  ])('revokes the server session before leaving the $role workspace', async ({ layout, role }) => {
+  it.each(['teacher' as const, 'reviewer' as const])('revokes the server session before leaving the %s workspace', async (role) => {
     api.logout.mockResolvedValue({ data: { logged_out: true } })
-    const { wrapper, router, session } = await mountRoleLayout(layout, role)
+    const { wrapper, router, session } = await mountRoleLayout(role)
 
-    await wrapper.get('.test-logout').trigger('click')
+    await wrapper.get('.account-menu__logout').trigger('click')
     await flushPromises()
 
     expect(api.logout).toHaveBeenCalledOnce()
@@ -71,12 +64,12 @@ describe('teacher and reviewer session logout', () => {
 
   it('keeps the local session and reports a retryable message when logout cannot reach the backend', async () => {
     api.logout.mockRejectedValue(new Error('synthetic network failure'))
-    const { wrapper, router, session } = await mountRoleLayout(TeacherLayout, 'teacher')
+    const { wrapper, router, session } = await mountRoleLayout('teacher')
 
-    await wrapper.get('.test-logout').trigger('click')
+    await wrapper.get('.account-menu__logout').trigger('click')
     await flushPromises()
 
-    expect(router.currentRoute.value.path).toBe('/teacher/home')
+    expect(router.currentRoute.value.path).toBe('/teacher/overview')
     expect(session.isAuthenticated).toBe(true)
     expect(wrapper.text()).toContain('暂时无法退出')
     wrapper.unmount()
