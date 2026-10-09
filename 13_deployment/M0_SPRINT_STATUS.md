@@ -70,3 +70,13 @@
 - Teacher 演示账号由本机 Windows User 环境变量保管；本文件不含凭据值。
 
 本原型仅限 synthetic demo，不代表心理学有效性、临床能力、真实学生授权、Real Pilot、D4 Formal 或正式部署验收。
+
+## 四角色 UI 与原创素材迭代（2026-10-09）
+
+- 当前本地实现快照：`7847e6d`（`fix(ui): align auth roles and unavailable states`）。此前素材、学生页、共享登录/导航、教师范围、专业人员/管理员页面分别保留在同一集成分支的独立提交中。
+- 参考用户提供的 OpenAI Academy 页面截图生成了原创抽象渐变主视觉与四角色卡片素材，位于 `10_frontend/public/assets/heartbridge/`，并已接入页面。没有复用 Academy 商标、原站图片或源代码。
+- 已用浏览器查看登录、学生、教师、心理专业人员和学校管理员页面的桌面与窄屏布局。角色页面预览通过测试路由提供合成身份和空学生读取数据；这证明页面可渲染及布局，不证明真实角色账号已配置或真实认证链路可用。管理员只读健康页另对本机 M0 服务的公开依赖端点做过浏览器检查。
+- 边界保持明确：教师页因缺少获批的安全任务级汇总接口而不展示数据；心理专业人员工作区因专业工作流未获批而不可用，且与 `REVIEWER` 安全复核角色分离；管理员只读取公开健康状态，账号/组织管理接口仍未接入；学生支持流程仍在 `CLAIM_BOUNDARY` 阻断。
+- 本迭代记录的工程验证：Frontend 单元测试 44 项/12 个文件、构建、lint、typecheck 均通过；管理员/专业人员聚焦测试 11 项通过。Backend pytest 134 项通过，Ruff 通过，改动文件 Pyright 0 errors；数据库种子角色聚焦测试 1 项通过。全量 Pyright 对未改动的 support 与 teacher router 仍报告 2 项类型错误。
+- 未运行完整浏览器端到端套件：支持请求仍会在安全边界失败，部分旧 E2E 用例假设已移除的预填登录/角色选择或成功支持写入。角色页浏览器预览不构成真实登录和端到端通过证据。
+- 总状态仍为 `P0_HANDS_ON_USABLE_WITH_RESET_LIMITATION` / `M0_FULL_E2E_NOT_READY` / `M0_BLOCKED`，交由 Controller 审查；本段是实现与验证记录，不代表 Controller acceptance。
