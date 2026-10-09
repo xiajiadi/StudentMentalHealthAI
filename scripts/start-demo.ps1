@@ -189,7 +189,7 @@ try {
     $modulePlan = @(
         @{ name='CAT'; project='cat'; module='cat_engine.api.app'; port=8180; order=10; env=@{ SMHAI_CAT_PORT='8180' } },
         @{ name='RAG'; project='rag'; module='rag_engine.api.app'; port=8170; order=20; env=$pipelineArtifacts + @{ SMHAI_RAG_PORT='8170' } },
-        @{ name='LLM Runtime'; project='llm'; module='llm_runtime.api.app'; port=8160; order=30; env=@{ SMHAI_LLM_PORT='8160' } },
+        @{ name='LLM Runtime'; project='llm'; module='llm_runtime.api.app'; port=8160; order=30; env=@{ SMHAI_LLM_PORT='8160'; SMHAI_LLM_RUNTIME_PROFILE='m0-p1-support' } },
         @{ name='Safety'; project='safety'; module='safety_engine.api.app'; port=8190; order=40; env=@{ SMHAI_OPA_URL='http://127.0.0.1:8181'; SMHAI_MANAGE_OPA='0' } }
     )
     Start-ManagedDemoProcess -Name 'OPA' -Executable $opaBinary -WorkingDirectory $projectRoots.safety -Arguments @('run', '--server', '--addr=127.0.0.1:8181', '--skip-version-check', $opaPolicyDir) -Environment @{} -StopOrder 35 -Started $started
