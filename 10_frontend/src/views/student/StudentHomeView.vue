@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { ArrowRight, BookOpen, CheckCircle2, ClipboardList, RotateCcw } from '@lucide/vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { ArrowLeft, ArrowRight, BookOpen, CheckCircle2, ClipboardList, RotateCcw } from '@lucide/vue'
 import AppBadge from '@/components/app/AppBadge.vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import { frontendApi } from '@/services/mock-api'
+import { userFacingApiError } from '@/utils/user-facing-errors'
 import type { ReportSummary } from '@/api/client'
 import type { Assessment } from '@/types/contracts'
+import { useSessionStore } from '@/stores/session'
 import { useRoute, useRouter } from 'vue-router'
 
 const route = useRoute()
@@ -17,11 +19,163 @@ const assessments = ref<Assessment[]>([])
 const reports = ref<ReportSummary[]>([])
 const errorMessage = ref('')
 const historyError = ref('')
+type StudentCarouselSlide =
+  | { kind: 'welcome'; title: string; subtitle: string; image: string; imageAlt: string }
+  | { kind: 'tip'; title: string; body: string; image: string; imageAlt: string; backgroundPosition?: string }
 
+const session = useSessionStore()
+const welcomeName = computed(() => session.user?.displayName?.trim() || session.user?.userId?.trim() || 'there')
+
+const wellbeingTipPool: Extract<StudentCarouselSlide, { kind: 'tip' }>[] = [
+  {
+    kind: 'tip',
+    title: '给自己片刻留白',
+    body: '心不必时时回答所有问题。先听见呼吸与脚步，答案可以晚一点到来。',
+    image: '/assets/psynova/monet-wellbeing-postcards.png',
+    imageAlt: '莫奈式晨光下的睡莲池明信片画作',
+    backgroundPosition: '0% 0%',
+  },
+  {
+    kind: 'tip',
+    title: '让感受经过，也让自己留下',
+    body: '情绪像天色，来去有时。看见它、说出它，不等于被它定义。',
+    image: '/assets/psynova/monet-wellbeing-postcards.png',
+    imageAlt: '莫奈式晨光花园小径明信片画作',
+    backgroundPosition: '100% 0%',
+  },
+  {
+    kind: 'tip',
+    title: '让休息成为一部分',
+    body: '停下不是落后。给身体一点安静，常能让下一步变得清楚。',
+    image: '/assets/psynova/monet-wellbeing-postcards.png',
+    imageAlt: '花树下两人安静交谈的莫奈式明信片画作',
+    backgroundPosition: '0% 100%',
+  },
+  {
+    kind: 'tip',
+    title: '与人分享一点重量',
+    body: '有些难处在说出口时会松一点。找可信任的人聊聊，不必一个人撑完。',
+    image: '/assets/psynova/monet-wellbeing-postcards.png',
+    imageAlt: '窗边阅读角与绿植的莫奈式明信片画作',
+    backgroundPosition: '100% 100%',
+  },
+  {
+    kind: 'tip',
+    title: '先走眼前的一步',
+    body: '不必一次看清整条路。先走好眼前这一步，路会在脚下慢慢显形。',
+    image: '/assets/psynova/wellbeing-step-forward.webp',
+    imageAlt: '莫奈式睡莲池边的小径通向花园深处',
+  },
+  {
+    kind: 'tip',
+    title: '给感受一处停靠',
+    body: '把感受写下来，不是为了立刻解释，而是给心一个可以停靠的地方。',
+    image: '/assets/psynova/wellbeing-feelings-shelter.webp',
+    imageAlt: '莫奈式花园窗边的桌上放着空白笔记本和茶杯',
+  },
+  {
+    kind: 'tip',
+    title: '让支持有机会靠近',
+    body: '说出难处，不会削弱自己。它只是让信任的人有机会与你分担。',
+    image: '/assets/psynova/wellbeing-share-support.webp',
+    imageAlt: '莫奈式花树下两位朋友在长椅上交谈倾听',
+  },
+  {
+    kind: 'tip',
+    title: '把休息留在生活里',
+    body: '休息不是退出生活，而是让身体与心重新并肩。给自己一段不必证明什么的时间。',
+    image: '/assets/psynova/wellbeing-rest-in-life.webp',
+    imageAlt: '黎明时分柳树下临水的空长椅与平静河面',
+  },
+]
+
+const featureCards = [
+  {
+    tag: '自我探索',
+    title: '从一次测评开始',
+    description: '用一组循序展开的题目，记录当下的学习、生活与感受。',
+    image: '/assets/psynova/academy-feature-self-exploration.jpeg',
+    imageAlt: '蓝色、青色与粉色交织的流动渐变',
+  },
+  {
+    tag: '测评反馈',
+    title: '换个角度看自己',
+    description: '查看已发布的测评反馈，从不同角度理解自己的近况。',
+    image: '/assets/psynova/academy-feature-assessment-feedback.png',
+    imageAlt: '绿色、青色与浅黄色交织的柔和渐变',
+  },
+  {
+    tag: '教育支持',
+    title: '有困惑，就聊聊',
+    description: '学习、生活、人际相处中的难题，都可以从一次对话说起。',
+    image: '/assets/psynova/academy-feature-education-support.png',
+    imageAlt: '橙色、紫色与粉色交织的柔和渐变',
+  },
+  {
+    tag: '成长记录',
+    title: '记下走过的每一步',
+    description: '回看测评与支持记录，在不同的阶段，重新认识自己。',
+    image: '/assets/psynova/academy-feature-growth-record.png',
+    imageAlt: '粉色、蓝色、紫色与淡金色交织的渐变',
+  },
+]
+
+const pickDailyTips = (tips: Extract<StudentCarouselSlide, { kind: 'tip' }>[], date = new Date()) => {
+  const dayKey = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`
+  let seed = Array.from(dayKey).reduce((value, char) => (value * 31 + char.charCodeAt(0)) >>> 0, 2166136261)
+  const random = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0
+    return seed / 0x100000000
+  }
+  const shuffled = [...tips]
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(random() * (index + 1))
+    ;[shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]]
+  }
+  return shuffled.slice(0, 4)
+}
+
+const carouselSlides = computed<StudentCarouselSlide[]>(() => [
+  {
+    kind: 'welcome',
+    title: 'Welcome back',
+    subtitle: "Let's unlock AI together",
+    image: '/assets/psynova/academy-welcome-card.png',
+    imageAlt: '柔和的蓝色、青色与粉色流动色彩',
+  },
+  ...pickDailyTips(wellbeingTipPool),
+])
+const academyCarouselArrowPath = 'M32 16C32 7.1776 24.824 0 16 0C7.1776 0 0 7.1776 0 16C0 24.8224 7.1776 32 16 32C24.824 32 32 24.8224 32 16ZM14.5385 9.59731C14.3049 9.36371 13.9977 9.24691 13.6921 9.24691C13.3849 9.24691 13.0761 9.36371 12.8425 9.60051C12.3753 10.0709 12.3769 10.8293 12.8457 11.2965L17.5705 16.0005L12.8457 20.7045C12.3769 21.1717 12.3753 21.9317 12.8425 22.4021C13.3113 22.8725 14.0697 22.8725 14.5385 22.4053L20.1177 16.8501C20.3433 16.6245 20.4697 16.3189 20.4697 16.0005C20.4697 15.6805 20.3433 15.3749 20.1177 15.1493L14.5385 9.59731Z'
+const carouselIndex = ref(0)
+const carouselSlide = computed(() => carouselSlides.value[carouselIndex.value])
 const isHistory = computed(() => route.path === '/student/history')
-const inProgress = computed(() => assessments.value.find((item) => item.status === 'in_progress'))
-const completedCount = computed(() => assessments.value.filter((item) => item.status === 'completed').length)
-const recentAssessment = computed(() => assessments.value[0])
+const carouselIntervalMs = 4500
+let carouselTimer: number | undefined
+let reducedMotionQuery: MediaQueryList | null = null
+let pointerPaused = false
+let focusPaused = false
+const carouselMounted = ref(false)
+
+const clearCarouselTimer = () => {
+  if (carouselTimer !== undefined) window.clearTimeout(carouselTimer)
+  carouselTimer = undefined
+}
+
+const scheduleCarouselRotation = () => {
+  clearCarouselTimer()
+  if (!carouselMounted.value || isHistory.value || pointerPaused || focusPaused || document.hidden || reducedMotionQuery?.matches) return
+  carouselTimer = window.setTimeout(() => {
+    carouselIndex.value = (carouselIndex.value + 1) % carouselSlides.value.length
+    scheduleCarouselRotation()
+  }, carouselIntervalMs)
+}
+
+const setCarouselSlide = (index: number) => {
+  carouselIndex.value = (index + carouselSlides.value.length) % carouselSlides.value.length
+  scheduleCarouselRotation()
+}
+const previousCarouselSlide = () => setCarouselSlide(carouselIndex.value - 1)
+const nextCarouselSlide = () => setCarouselSlide(carouselIndex.value + 1)
 
 const load = async () => {
   state.value = 'loading'
@@ -33,12 +187,12 @@ const load = async () => {
       historyError.value = ''
     } catch (error) {
       reports.value = []
-      historyError.value = error instanceof Error ? error.message : '支持记录暂时无法加载。'
+      historyError.value = userFacingApiError(error, '支持记录暂时无法加载。')
     }
     state.value = 'ready'
   } catch (error) {
     state.value = 'error'
-    errorMessage.value = error instanceof Error ? error.message : '页面暂时无法加载，请稍后重试。'
+    errorMessage.value = userFacingApiError(error, '页面暂时无法加载，请稍后重试。')
   }
 }
 
@@ -47,8 +201,56 @@ const continueOrStart = (assessment?: Assessment) => {
 }
 const openResult = (assessmentId: string) => void router.push(`/student/assessment/${encodeURIComponent(assessmentId)}/result`)
 const openSupportHistory = (reportId: string) => void router.push(`/student/reports/${encodeURIComponent(reportId)}`)
+const canOpenSupportReport = (report: ReportSummary) => report.status.toLowerCase() === 'generated' && report.safety_action !== 'CRISIS_ROUTE'
+const supportReportStatus = (report: ReportSummary) => {
+  if (report.safety_action === 'CRISIS_ROUTE') return '安全流程记录'
+  const status = report.status.toLowerCase()
+  if (status === 'generated') return '已发布反馈'
+  if (status === 'needs_review' || status === 'pending' || status === 'in_review') return '待复核'
+  if (status === 'approved' || status === 'closed') return '已批准，正文暂不可见'
+  if (status === 'rejected') return '未获准发布'
+  if (status === 'safety_blocked' || status === 'blocked') return '暂不可发布'
+  return '处理中'
+}
 
-onMounted(load)
+const pauseCarouselForPointer = () => {
+  pointerPaused = true
+  clearCarouselTimer()
+}
+const resumeCarouselForPointer = () => {
+  pointerPaused = false
+  scheduleCarouselRotation()
+}
+const pauseCarouselForFocus = (event: FocusEvent) => {
+  if (!(event.target instanceof HTMLElement) || !event.target.matches(':focus-visible')) return
+  focusPaused = true
+  clearCarouselTimer()
+}
+const resumeCarouselAfterFocus = (event: FocusEvent) => {
+  const carousel = event.currentTarget
+  if (carousel instanceof HTMLElement && event.relatedTarget instanceof Node && carousel.contains(event.relatedTarget)) return
+  focusPaused = false
+  scheduleCarouselRotation()
+}
+const handleVisibilityChange = () => scheduleCarouselRotation()
+const handleMotionPreferenceChange = () => scheduleCarouselRotation()
+
+watch(isHistory, scheduleCarouselRotation)
+onMounted(() => {
+  carouselMounted.value = true
+  reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+  reducedMotionQuery.addEventListener('change', handleMotionPreferenceChange)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  scheduleCarouselRotation()
+  load()
+})
+onUnmounted(() => {
+  carouselMounted.value = false
+  clearCarouselTimer()
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+  reducedMotionQuery?.removeEventListener('change', handleMotionPreferenceChange)
+  reducedMotionQuery = null
+})
 </script>
 
 <template>
@@ -60,56 +262,89 @@ onMounted(load)
       <AppButton variant="secondary" size="sm" @click="load"><RotateCcw :size="15" aria-hidden="true" />重新加载</AppButton>
     </AppStatusCallout>
     <template v-else-if="!isHistory">
-      <section class="student-hero" aria-labelledby="student-home-title">
-        <img class="student-hero__flow" :src="'/assets/heartbridge/hero-flow-original.png'" alt="" aria-hidden="true">
-        <div class="student-hero__copy">
-          <span class="student-kicker">心桥 · 学生空间</span>
-          <h1 id="student-home-title">给自己一点时间，<br>从一步开始。</h1>
-          <p>这里可以完成一项合成测评、查看自己的记录，或了解教育支持当前的可用状态。</p>
-          <div class="student-hero__actions">
-            <AppButton size="lg" @click="continueOrStart(inProgress)">
-              {{ inProgress ? '继续测评' : '开始测评' }} <ArrowRight :size="17" aria-hidden="true" />
-            </AppButton>
-            <RouterLink class="student-secondary-link" to="/student/support"><BookOpen :size="17" aria-hidden="true" />教育支持</RouterLink>
-          </div>
-          <div class="student-hero__note"><span class="student-hero__note-dot" aria-hidden="true"></span>演示数据 · 教育用途 · 非诊断</div>
+      <section
+        class="student-carousel"
+        role="region"
+        aria-roledescription="carousel"
+        aria-label="学生首页轮播"
+        @mouseenter="pauseCarouselForPointer"
+        @mouseleave="resumeCarouselForPointer"
+        @focusin="pauseCarouselForFocus"
+        @focusout="resumeCarouselAfterFocus"
+        @keydown.left.prevent="previousCarouselSlide"
+        @keydown.right.prevent="nextCarouselSlide"
+      >
+        <div class="student-carousel__stage">
+          <Transition name="student-carousel-slide" mode="out-in">
+            <article
+              :key="carouselIndex"
+              class="student-carousel__slide"
+              role="group"
+              aria-roledescription="slide"
+              :aria-label="'第 ' + (carouselIndex + 1) + ' 张，共 ' + carouselSlides.length + ' 张'"
+            >
+              <div class="student-carousel__copy">
+                <template v-if="carouselSlide.kind === 'welcome'">
+                  <h1 id="student-home-title">{{ carouselSlide.title }} {{ welcomeName }}</h1>
+                  <p class="student-carousel__subtitle">{{ carouselSlide.subtitle }}</p>
+                </template>
+                <template v-else>
+                  <h1 id="student-home-title">{{ carouselSlide.title }}</h1>
+                  <p class="student-carousel__subtitle">{{ carouselSlide.body }}</p>
+                </template>
+              </div>
+              <div
+                class="student-carousel__art"
+                :class="{ 'student-carousel__art--postcard': carouselSlide.kind === 'tip' && Boolean(carouselSlide.backgroundPosition) }"
+                :style="carouselSlide.kind === 'tip'
+                  ? (carouselSlide.backgroundPosition
+                    ? { backgroundPosition: carouselSlide.backgroundPosition }
+                    : { backgroundImage: 'url(' + carouselSlide.image + ')' })
+                  : { backgroundImage: 'url(' + carouselSlide.image + ')' }"
+                role="img"
+                :aria-label="carouselSlide.imageAlt"
+              ></div>
+            </article>
+          </Transition>
         </div>
-        <figure class="student-hero__art">
-          <img :src="'/assets/heartbridge/card-student-original.png'" alt="" aria-hidden="true">
-          <figcaption>按自己的节奏了解流程</figcaption>
-        </figure>
-      </section>
-
-      <section class="student-overview" aria-label="我的空间概览">
-        <div class="student-overview__heading"><div><span class="student-kicker">当前空间</span><h2>我的记录</h2></div><RouterLink to="/student/history">查看全部 <ArrowRight :size="15" aria-hidden="true" /></RouterLink></div>
-        <div class="student-overview__grid">
-          <AppCard class="overview-card">
-            <span class="overview-card__icon"><ClipboardList :size="18" aria-hidden="true" /></span>
-            <div><span>测评记录</span><strong>{{ assessments.length }}</strong><small>{{ inProgress ? '有一项可以继续' : '由服务端保存' }}</small></div>
-          </AppCard>
-          <AppCard class="overview-card">
-            <span class="overview-card__icon overview-card__icon--green"><CheckCircle2 :size="18" aria-hidden="true" /></span>
-            <div><span>已完成</span><strong>{{ completedCount }}</strong><small>仅显示当前账号可访问记录</small></div>
-          </AppCard>
-          <AppCard class="overview-card overview-card--recent">
-            <span class="overview-card__icon overview-card__icon--amber"><BookOpen :size="18" aria-hidden="true" /></span>
-            <div><span>一项测评记录</span><strong>{{ recentAssessment ? (recentAssessment.status === 'completed' ? '已完成' : '进行中') : '还没有记录' }}</strong><small>{{ recentAssessment?.timestamps.completed_at || recentAssessment?.timestamps.started_at || '开始测评后会显示在这里' }}</small></div>
-          </AppCard>
+        <button class="student-carousel__arrow student-carousel__arrow--previous" type="button" aria-label="上一张卡片" @click="previousCarouselSlide">
+          <svg viewBox="0 0 32 32" aria-hidden="true" focusable="false"><path :d="academyCarouselArrowPath" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" /></svg>
+        </button>
+        <button class="student-carousel__arrow student-carousel__arrow--next" type="button" aria-label="下一张卡片" @click="nextCarouselSlide">
+          <svg viewBox="0 0 32 32" aria-hidden="true" focusable="false"><path :d="academyCarouselArrowPath" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" /></svg>
+        </button>
+        <div class="student-carousel__dots" aria-label="轮播分页">
+          <button
+            v-for="(_, index) in carouselSlides"
+            :key="index"
+            type="button"
+            :class="{ 'student-carousel__dot--active': carouselIndex === index }"
+            :aria-label="'显示第 ' + (index + 1) + ' 张卡片'"
+            :aria-current="carouselIndex === index ? 'true' : undefined"
+            @click="setCarouselSlide(index)"
+          ></button>
         </div>
       </section>
 
-      <section class="student-support-card" aria-labelledby="education-support-title">
-        <div class="student-support-card__visual"><img :src="'/assets/heartbridge/card-student-original.png'" alt="" aria-hidden="true"></div>
-        <div class="student-support-card__copy"><span class="student-kicker">教育支持</span><h2 id="education-support-title">了解当前支持功能</h2><p>教育支持入口保持开放。独立支持生成目前受后端流程限制，页面会说明哪些功能暂不可用。</p><RouterLink to="/student/support">查看支持状态 <ArrowRight :size="16" aria-hidden="true" /></RouterLink></div>
-        <AppBadge tone="attention" dot>部分功能受限</AppBadge>
+      <section class="student-feature" aria-labelledby="student-feature-title">
+        <h2 id="student-feature-title" class="student-feature__title">Build a better understanding of yourself with AI.</h2>
+        <div class="student-feature__grid">
+          <article v-for="card in featureCards" :key="card.tag" class="student-feature-card">
+            <img class="student-feature-card__image" :src="card.image" :alt="card.imageAlt" />
+            <div class="student-feature-card__content">
+              <span class="student-feature-card__tag">{{ card.tag }}</span>
+              <h3>{{ card.title }}</h3>
+              <p>{{ card.description }}</p>
+            </div>
+          </article>
+        </div>
+        <RouterLink class="student-feature__action" to="/student/assessments">开始测评</RouterLink>
       </section>
-
-      <AppStatusCallout tone="info" title="关于演示数据" body="本空间仅展示合成演示流程。测评记录不代表经过验证的心理测量，也不提供诊断或治疗建议。" />
     </template>
     <template v-else>
       <header class="history-heading">
         <div><span class="student-kicker">学生空间 · 我的记录</span><h1>测评与支持记录</h1><p>这里仅显示当前登录账号有权访问的记录。</p></div>
-        <AppButton variant="secondary" @click="router.push('/student/home')"><ArrowRight :size="16" aria-hidden="true" />返回首页</AppButton>
+        <AppButton variant="secondary" @click="router.push('/student/home')"><ArrowLeft :size="16" aria-hidden="true" />返回首页</AppButton>
       </header>
       <section class="history-section" aria-labelledby="assessment-history-title">
         <div class="history-section__heading"><div><span class="student-kicker">测评</span><h2 id="assessment-history-title">我的测评</h2></div><span>{{ assessments.length }} 条</span></div>
@@ -127,8 +362,8 @@ onMounted(load)
         <p v-else-if="reports.length === 0" class="history-empty-copy">还没有支持记录。独立支持生成目前受限；如果服务端已有可访问的记录，会显示在这里。</p>
         <AppCard v-for="report in reports" :key="report.report_id" class="history-row">
           <span class="history-row__icon history-row__icon--support"><BookOpen :size="18" aria-hidden="true" /></span>
-          <div class="history-row__copy"><strong>{{ report.safety_action === 'CRISIS_ROUTE' ? '安全流程记录' : '教育支持记录' }}</strong><span>{{ report.created_at || '时间未提供' }} · {{ report.citation_count }} 条来源</span></div>
-          <AppButton variant="secondary" size="sm" @click="openSupportHistory(report.report_id)">查看记录 <ArrowRight :size="15" aria-hidden="true" /></AppButton>
+          <div class="history-row__copy"><strong>{{ report.safety_action === 'CRISIS_ROUTE' ? '安全流程记录' : '教育支持记录' }}</strong><span>{{ report.created_at || '时间未提供' }} · {{ supportReportStatus(report) }}</span></div>
+          <AppButton v-if="canOpenSupportReport(report)" variant="secondary" size="sm" @click="openSupportHistory(report.report_id)">查看反馈 <ArrowRight :size="15" aria-hidden="true" /></AppButton>
         </AppCard>
       </section>
     </template>
@@ -136,41 +371,47 @@ onMounted(load)
 </template>
 
 <style scoped>
-.student-space { padding-top: 28px; padding-bottom: 64px; }
-.student-kicker { color: var(--color-support); font-size: 11px; font-weight: 800; letter-spacing: .11em; }
-.student-hero { position: relative; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(260px, .8fr); align-items: center; min-height: 370px; overflow: hidden; padding: clamp(26px, 5vw, 58px); border: 1px solid #d8e7e2; border-radius: 24px; background: linear-gradient(110deg, #f0f7f4 0%, #f6f8f5 50%, #e9f2ee 100%); }
-.student-hero__flow { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .17; pointer-events: none; }
-.student-hero__copy { position: relative; z-index: 1; max-width: 560px; }
-.student-hero h1 { margin: 14px 0 14px; color: #233d39; font-family: var(--font-display); font-size: clamp(34px, 5vw, 55px); font-weight: 650; letter-spacing: -.045em; line-height: 1.18; }
-.student-hero__copy > p { max-width: 465px; margin: 0; color: #536963; font-size: 15px; line-height: 1.85; }
-.student-hero__actions { display: flex; align-items: center; gap: 22px; margin-top: 25px; }
-.student-secondary-link { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: #315e55; font-size: 13px; font-weight: 750; }
-.student-secondary-link:hover, .student-overview__heading > a:hover, .student-support-card__copy > a:hover { text-decoration: underline; text-underline-offset: 4px; }
-.student-hero__note { display: flex; align-items: center; gap: 8px; margin-top: 26px; color: #667a74; font-size: 11px; }
-.student-hero__note-dot { width: 7px; height: 7px; border-radius: 50%; background: #75978a; }
-.student-hero__art { position: relative; z-index: 1; justify-self: center; width: min(100%, 340px); margin: 0; text-align: center; }
-.student-hero__art img { display: block; width: 100%; max-height: 235px; object-fit: contain; filter: drop-shadow(0 18px 28px rgb(42 77 66 / 11%)); }
-.student-hero__art figcaption { margin-top: 3px; color: #647771; font-size: 11px; }
-.student-overview, .history-section { margin-top: 40px; }
-.student-overview__heading, .history-section__heading { display: flex; align-items: end; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
-.student-overview__heading h2, .history-section__heading h2 { margin: 5px 0 0; color: var(--color-text-primary); font-family: var(--font-display); font-size: 23px; }
-.student-overview__heading > a { display: inline-flex; align-items: center; gap: 5px; color: var(--color-support); font-size: 12px; font-weight: 750; }
-.student-overview__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-.overview-card { display: flex; align-items: flex-start; gap: 13px; min-height: 122px; padding: 18px; }
-.overview-card__icon, .history-row__icon { display: grid; place-items: center; width: 36px; height: 36px; flex: 0 0 36px; border-radius: 11px; color: #456f64; background: #eaf3ef; }
-.overview-card__icon--green, .history-row__icon--complete { color: #397c67; background: #e8f3ec; }
-.overview-card__icon--amber { color: #947342; background: #f7f1e5; }
-.overview-card > div { display: grid; min-width: 0; gap: 4px; }
-.overview-card > div > span { color: var(--color-text-secondary); font-size: 11px; }
-.overview-card strong { overflow: hidden; color: #2d4942; font-family: var(--font-display); font-size: 23px; text-overflow: ellipsis; white-space: nowrap; }
-.overview-card small { overflow: hidden; color: var(--color-text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.student-support-card { position: relative; display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; align-items: center; gap: 20px; margin-top: 28px; padding: 20px 24px; border: 1px solid #e3e9e4; border-radius: var(--radius-card); background: #fbfcfa; }
-.student-support-card__visual { display: grid; place-items: center; width: 86px; height: 86px; overflow: hidden; border-radius: 20px; background: #f0f5f1; }
-.student-support-card__visual img { width: 100%; height: 100%; object-fit: contain; }
-.student-support-card__copy h2 { margin: 5px 0 4px; color: var(--color-text-primary); font-family: var(--font-display); font-size: 18px; }
-.student-support-card__copy p { margin: 0; color: var(--color-text-secondary); font-size: 12px; line-height: 1.65; }
-.student-support-card__copy > a { display: inline-flex; align-items: center; gap: 5px; margin-top: 9px; color: var(--color-support); font-size: 12px; font-weight: 750; }
-.student-space > .status-callout { margin-top: 26px; }
+.student-space { padding-top: 0; padding-bottom: 0; }
+.student-kicker { color: var(--color-primary); font-size: 12px; font-weight: 600; letter-spacing: .08em; }
+.student-carousel { position: relative; width: 100%; }
+.student-carousel__stage { position: relative; width: 100%; height: 316px; overflow: hidden; }
+.student-carousel__slide { position: absolute; inset: 0; display: flex; align-items: center; justify-content: space-between; gap: 60px; padding: 0 clamp(74px, 10.12vw, 140px); }
+.student-carousel__copy { width: min(380px, 42%); min-width: 0; color: #1e1d29; }
+.student-carousel__copy h1 { margin: 0; color: #1e1d29; font-family: var(--font-sans); font-size: 24px; font-weight: 500; letter-spacing: -.015em; line-height: 1.3; }
+.student-carousel__copy > p { margin: 20px 0 0; color: #555a64; font-size: 16px; font-weight: 500; line-height: 1.35; }
+.student-carousel__art { display: block; width: min(30vw, 300px); height: auto; aspect-ratio: 4 / 3; flex: 0 0 auto; overflow: hidden; border: 0; background-color: #e9eff0; background-position: center; background-repeat: no-repeat; background-size: cover; box-shadow: none; }
+.student-carousel__art--postcard { border: 1px solid #eee9dd; background-image: url('/assets/psynova/monet-wellbeing-postcards.png'); background-size: 200% 200%; box-shadow: 0 4px 14px rgb(30 29 41 / 10%); }
+.student-carousel__arrow { position: absolute; z-index: 2; top: 50%; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 50%; color: rgb(12 14 19 / 30%); background: transparent; cursor: pointer; opacity: 0; pointer-events: none; transform: translateY(-50%); transition: opacity var(--motion-fast), color var(--motion-fast), transform var(--motion-fast); }
+.student-carousel:hover .student-carousel__arrow, .student-carousel__arrow:focus-visible { opacity: 1; pointer-events: auto; }
+.student-carousel__arrow:hover { color: rgb(12 14 19 / 42%); transform: translateY(-50%) scale(1.03); }
+.student-carousel__arrow svg { display: block; width: 34px; height: 34px; }
+.student-carousel__arrow--previous svg { transform: scaleX(-1); }
+.student-carousel__arrow:focus-visible, .student-carousel__dots button:focus-visible { outline: 2px solid #2c9df0; outline-offset: 3px; }
+.student-carousel__arrow--previous { left: 8px; }
+.student-carousel__arrow--next { right: 8px; }
+.student-carousel__dots { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 5px; margin-top: 14px; }
+.student-carousel__dots button { width: 7px; height: 5px; flex: 0 0 auto; padding: 0; border: 0; border-radius: 4px; background: #cccccc; cursor: pointer; transition: width var(--motion-fast), background-color var(--motion-fast); }
+.student-carousel__dots button.student-carousel__dot--active { width: 18px; background: #888888; }
+.student-carousel-slide-enter-active, .student-carousel-slide-leave-active { transition: opacity 220ms ease, transform 220ms ease; }
+.student-carousel-slide-enter-from { opacity: 0; transform: translateX(12px); }
+.student-carousel-slide-leave-to { opacity: 0; transform: translateX(-12px); }
+.history-section { margin-top: 40px; }
+.history-section__heading { display: flex; align-items: end; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
+.history-section__heading h2 { margin: 5px 0 0; color: var(--color-text-primary); font-family: var(--font-display); font-size: 23px; }
+.student-feature { margin-top: 40px; padding: 35px 59px 40px; overflow: hidden; border-radius: 12px; background: #fff; box-shadow: 0 0 26px rgb(0 0 0 / 5%); }
+.student-feature__title { margin: 0 0 16px; color: #1e1d29; font-family: var(--font-sans); font-size: 28px; font-weight: 600; line-height: 1.6; text-align: center; }
+.student-feature__grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; }
+.student-feature-card { display: flex; min-width: 0; min-height: 455px; flex-direction: column; overflow: hidden; border: 1px solid #f3f5f8; border-radius: 12px; background: #f7faff; box-shadow: 0 20px 12px rgb(0 0 0 / 2%), 0 9px 9px rgb(0 0 0 / 2%), 0 2px 5px rgb(0 0 0 / 2%); }
+.student-feature-card__image { display: block; width: 100%; aspect-ratio: 2.4 / 1; flex: 0 0 auto; object-fit: cover; }
+.student-feature-card__content { display: grid; align-content: start; gap: 0; padding: 24px 28px 28px; }
+.student-feature-card__tag { color: #00a9dd; font-family: var(--font-sans); font-size: 16px; font-weight: 500; line-height: 1.6; }
+.student-feature-card h3 { margin: 0; color: #1e1d29; font-family: var(--font-sans); font-size: 26px; font-weight: 700; line-height: 1.55; overflow-wrap: anywhere; text-wrap: balance; }
+.student-feature-card p { margin: 0; color: #171923; font-family: var(--font-sans); font-size: 16px; font-weight: 400; line-height: 1.6; }
+.student-feature__action { display: flex; width: fit-content; min-height: 40px; align-items: center; justify-content: center; margin: 48px auto 0; padding: 9px 15px; border: 1px solid #41434b; border-radius: 8px; color: #1e1d29; background: #fff; font-family: var(--font-sans); font-size: 14px; font-weight: 600; line-height: 1.4; text-decoration: none; transition: background-color var(--motion-fast), color var(--motion-fast); }
+.student-feature__action:hover { color: #1e1d29; background: rgb(0 0 0 / 5%); }
+.student-feature__action:focus-visible { outline: 2px solid #249de0; outline-offset: 3px; }
+.history-row__icon { display: grid; place-items: center; width: 36px; height: 36px; flex: 0 0 36px; border-radius: 11px; color: #456f64; background: #eaf3ef; }
+.history-row__icon--complete { color: #397c67; background: #e8f3ec; }
 .history-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 15px 0 8px; }
 .history-heading h1 { margin: 8px 0 5px; color: var(--color-text-primary); font-family: var(--font-display); font-size: clamp(28px, 4vw, 38px); letter-spacing: -.035em; }
 .history-heading p { margin: 0; color: var(--color-text-secondary); font-size: 13px; }
@@ -193,33 +434,44 @@ onMounted(load)
 .skeleton--body { width: min(620px, 90%); height: 16px; margin-top: 13px; }
 
 @media (max-width: 760px) {
-  .student-hero { grid-template-columns: 1fr; min-height: 0; padding: 30px 24px; }
-  .student-hero__art { position: absolute; right: -20px; bottom: 8px; width: 36%; opacity: .58; }
-  .student-hero__art figcaption { display: none; }
-  .student-hero__copy { max-width: 78%; }
-  .student-hero h1 { font-size: clamp(30px, 7vw, 42px); }
-  .student-overview__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .overview-card--recent { grid-column: 1 / -1; min-height: 98px; }
-  .student-support-card { grid-template-columns: 68px minmax(0, 1fr); gap: 13px; padding: 16px; }
-  .student-support-card__visual { width: 64px; height: 64px; }
-  .student-support-card > .app-badge { grid-column: 2; justify-self: start; }
+  .student-carousel__stage { height: 392px; }
+  .student-carousel__slide { align-items: flex-start; flex-direction: column; justify-content: center; gap: 18px; padding: 26px 52px; }
+  .student-carousel__copy { width: 100%; max-width: none; }
+  .student-carousel__copy h1 { font-size: 23px; }
+  .student-carousel__copy > p { margin-top: 12px; font-size: 15px; }
+  .student-carousel__art { width: min(180px, 48vw); height: auto; align-self: center; }
+  .student-carousel__arrow { width: 34px; height: 34px; }
+  .student-carousel__arrow--previous { left: 4px; }
+  .student-carousel__arrow--next { right: 4px; }
+  .student-feature { padding-right: 32px; padding-left: 32px; }
+  .student-feature__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 520px) {
-  .student-space { padding-top: 15px; }
-  .student-hero { border-radius: 18px; padding: 24px 18px; }
-  .student-hero__copy { max-width: 100%; }
-  .student-hero__copy > p { max-width: 95%; font-size: 13px; }
-  .student-hero__art { right: -50px; bottom: 25px; width: 42%; opacity: .25; }
-  .student-hero__actions { align-items: flex-start; flex-direction: column; gap: 8px; margin-top: 20px; }
-  .student-hero__note { margin-top: 18px; }
-  .student-overview__grid { grid-template-columns: 1fr; }
-  .overview-card, .overview-card--recent { grid-column: auto; min-height: 88px; }
-  .student-support-card { align-items: start; grid-template-columns: 50px minmax(0, 1fr); }
-  .student-support-card__visual { width: 48px; height: 48px; border-radius: 14px; }
+  .student-carousel__stage { height: 408px; }
+  .student-carousel__slide { gap: 16px; padding: 24px 45px; }
+  .student-carousel__copy h1 { font-size: 21px; }
+  .student-carousel__copy > p { font-size: 14px; line-height: 1.55; }
+  .student-carousel__art { width: min(172px, 48vw); height: auto; }
+  .student-feature { padding: 28px 20px 32px; }
+  .student-feature__title { margin-bottom: 18px; font-size: 23px; line-height: 1.4; }
+  .student-feature-card { min-height: 0; }
+  .student-feature-card__content { padding: 20px 22px 24px; }
+  .student-feature-card h3 { font-size: 24px; }
+  .student-feature__action { margin-top: 32px; }
   .history-heading { align-items: flex-start; flex-direction: column; }
   .history-row { align-items: flex-start; flex-wrap: wrap; }
   .history-row__copy { flex-basis: calc(100% - 52px); }
   .history-row .app-badge { margin-left: 48px; }
   .history-row .app-button { margin-left: 48px; }
+}
+@media (max-width: 620px) {
+  .student-feature { padding-right: 20px; padding-left: 20px; }
+  .student-feature__grid { grid-template-columns: 1fr; }
+}
+@media (hover: none), (pointer: coarse) {
+  .student-carousel__arrow { opacity: 1; pointer-events: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .student-carousel-slide-enter-active, .student-carousel-slide-leave-active { transition: none; }
 }
 </style>

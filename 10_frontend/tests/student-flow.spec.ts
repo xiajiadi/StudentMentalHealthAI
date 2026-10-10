@@ -6,9 +6,11 @@ import type { Assessment, ApiEnvelope } from '@/types/contracts'
 import type { AssessmentState, ReportSummary } from '@/api/client'
 import AssessmentResultView from '@/views/student/AssessmentResultView.vue'
 import AssessmentView from '@/views/student/AssessmentView.vue'
+import StudentAssessmentsView from '@/views/student/StudentAssessmentsView.vue'
 import StudentHomeView from '@/views/student/StudentHomeView.vue'
 import StudentResultView from '@/views/student/StudentResultView.vue'
 import SupportChatView from '@/views/student/SupportChatView.vue'
+import { useSessionStore } from '@/stores/session'
 
 const api = vi.hoisted(() => ({
   getAssessmentResult: vi.fn(),
@@ -68,6 +70,7 @@ const makeRouter = async (path: string) => {
       { path: '/student/assessment/:id/result', component: AssessmentResultView },
       { path: '/student/assessment/:id', component: AssessmentView },
       { path: '/student/assessment', component: AssessmentView },
+      { path: '/student/assessments', component: StudentAssessmentsView },
       { path: '/student/home', component: StudentHomeView },
       { path: '/student/history', component: StudentHomeView },
       { path: '/student/reports', component: StudentResultView },
@@ -83,6 +86,20 @@ const makeRouter = async (path: string) => {
 describe('学生演示闭环页面', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      writable: true,
+      value: vi.fn((media: string) => ({
+        matches: false,
+        media,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    })
     api.getAssessmentResult.mockResolvedValue(envelope(assessment))
     api.listAssessments.mockResolvedValue(envelope([]))
     api.listReports.mockResolvedValue(envelope({ items: [], next_cursor: null }))
@@ -92,19 +109,27 @@ describe('学生演示闭环页面', () => {
     api.getStudentReport.mockRejectedValue(new Error('synthetic report unavailable'))
   })
 
-  it('首页使用服务端记录提供测评入口、教育支持入口和历史导航', async () => {
+  it('首页根据登录名称问候，并展示不可点击的四卡片功能介绍', async () => {
     api.listAssessments.mockResolvedValue(envelope([{ ...assessment, status: 'in_progress' }]))
     api.listReports.mockResolvedValue(envelope({ items: [report], next_cursor: null }))
     const router = await makeRouter('/student/home')
-    const wrapper = mount(StudentHomeView, { global: { plugins: [router, createPinia()] } })
+    const pinia = createPinia()
+    useSessionStore(pinia).signIn({ userId: 'student_01', role: 'student', subjectId: 'SYNTHETIC_STUDENT_DEMO', displayName: 'Jack', initials: 'J' })
+    const wrapper = mount(StudentHomeView, { global: { plugins: [router, pinia] } })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('给自己一点时间')
-    expect(wrapper.text()).toContain('继续测评')
-    expect(wrapper.text()).toContain('教育支持')
-    await wrapper.get('.student-hero__actions .app-button').trigger('click')
+    expect(wrapper.text()).toContain('Welcome back Jack')
+    expect(wrapper.get('.student-feature__title').text()).toBe('Build a better understanding of yourself with AI.')
+    expect(wrapper.findAll('.student-feature-card')).toHaveLength(4)
+    expect(wrapper.findAll('.student-carousel__dots button')).toHaveLength(5)
+    expect(wrapper.text()).toContain('从一次测评开始')
+    expect(wrapper.text()).not.toContain('了解当前支持功能')
+    expect(wrapper.text()).not.toContain('关于演示数据')
+    expect(wrapper.find('.student-feature-card button').exists()).toBe(false)
+    expect(wrapper.find('.student-feature-card a').exists()).toBe(false)
+    await wrapper.get('.student-feature__action').trigger('click')
     await flushPromises()
-    expect(router.currentRoute.value.fullPath).toBe(`/student/assessment/${assessment.assessment_id}`)
+    expect(router.currentRoute.value.fullPath).toBe('/student/assessments')
     wrapper.unmount()
 
     const historyRouter = await makeRouter('/student/history')
@@ -112,9 +137,52 @@ describe('学生演示闭环页面', () => {
     await flushPromises()
     expect(history.text()).toContain('测评与支持记录')
     expect(history.text()).toContain('安全流程记录')
-    await history.get('.history-section:last-child .app-button').trigger('click')
+    expect(history.find('.history-section:last-child .app-button').exists()).toBe(false)
+    expect(historyRouter.currentRoute.value.fullPath).toBe('/student/history')
+  })
+
+  it('我的测评以真实会话生成三列网格和列表视图，并保留继续与结果入口', async () => {
+    const createdAssessment: Assessment = {
+      ...assessment,
+      assessment_id: 'ASSESSMENT_CREATED_001',
+      status: 'created',
+      response_summary: { items_answered: 0, duration_seconds: null },
+      timestamps: { started_at: null, completed_at: null },
+    }
+    const inProgressAssessment: Assessment = { ...assessment, assessment_id: 'ASSESSMENT_PROGRESS_001', status: 'in_progress' }
+    api.listAssessments.mockResolvedValue(envelope([createdAssessment, inProgressAssessment, assessment]))
+    const router = await makeRouter('/student/assessments')
+    const wrapper = mount(StudentAssessmentsView, { global: { plugins: [router, createPinia()] } })
     await flushPromises()
-    expect(historyRouter.currentRoute.value.fullPath).toBe(`/student/reports/${report.report_id}`)
+
+    expect(wrapper.findAll('.assessment-card')).toHaveLength(3)
+    expect(wrapper.get('.assessment-cards').classes()).toContain('assessment-cards--grid')
+    await wrapper.get('[aria-label="列表显示"]').trigger('click')
+    expect(wrapper.get('.assessment-cards').classes()).toContain('assessment-cards--list')
+    await wrapper.get('[role="group"][aria-label="按状态筛选测评"] button:nth-child(3)').trigger('click')
+    expect(wrapper.findAll('.assessment-card')).toHaveLength(1)
+    await wrapper.get('.assessment-card .app-button').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe('/student/assessment/ASSESSMENT_PROGRESS_001')
+    wrapper.unmount()
+
+    api.listAssessments.mockResolvedValue(envelope([assessment]))
+    const completedRouter = await makeRouter('/student/assessments')
+    const completedWrapper = mount(StudentAssessmentsView, { global: { plugins: [completedRouter, createPinia()] } })
+    await flushPromises()
+    await completedWrapper.get('.assessment-card .app-button').trigger('click')
+    await flushPromises()
+    expect(completedRouter.currentRoute.value.fullPath).toBe(`/student/assessment/${assessment.assessment_id}/result`)
+    completedWrapper.unmount()
+  })
+
+  it('我的测评横幅按钮进入现有测评流程', async () => {
+    const router = await makeRouter('/student/assessments')
+    const wrapper = mount(StudentAssessmentsView, { global: { plugins: [router, createPinia()] } })
+    await flushPromises()
+    await wrapper.get('.assessment-hero .app-button').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe('/student/assessment')
   })
 
   it('历史页面为进行中和已完成记录提供真实的继续或结果导航', async () => {

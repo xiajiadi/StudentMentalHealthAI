@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ChevronDown, CircleHelp, LogOut, Menu, Search } from '@lucide/vue'
-import { DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui'
+import { ChevronDown, CircleHelp, LogOut, Menu, Search, X } from '@lucide/vue'
+import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui'
 import AppLogo from '@/components/app/AppLogo.vue'
 import RoleSidebar from '@/components/shell/RoleSidebar.vue'
 import { roleHomes, roleLabels, workspaceConfig } from '@/components/shell/navigation'
@@ -102,7 +102,17 @@ const openFirstResult = async () => {
       <slot />
     </main>
     <DialogRoot :open="helpOpen" @update:open="helpOpen = $event">
-      <DialogPortal><DialogOverlay class="workspace-dialog__overlay" /><DialogContent class="workspace-dialog__content"><DialogTitle>登录与工作区帮助</DialogTitle><DialogDescription>请使用组织提供的账号和密码。可访问的工作区由服务端账号权限决定；如果无法登录或看不到需要的入口，请联系学校信息管理员。</DialogDescription><button class="workspace-dialog__close" type="button" @click="helpOpen = false">知道了</button></DialogContent></DialogPortal>
+      <DialogPortal>
+        <DialogOverlay class="workspace-dialog__overlay" />
+        <DialogContent class="workspace-dialog__content">
+          <DialogClose as-child><button class="workspace-dialog__dismiss" type="button" aria-label="关闭帮助"><X :size="18" aria-hidden="true" /></button></DialogClose>
+          <div class="workspace-dialog__inner">
+            <DialogTitle class="workspace-dialog__title">帮助</DialogTitle>
+            <DialogDescription class="workspace-dialog__description">请使用学校提供的账号和密码。如无法登录或访问工作区，请联系学校信息管理员。可访问的工作区由服务端账号权限决定。</DialogDescription>
+            <DialogClose as-child><button class="workspace-dialog__close" type="button">知道了</button></DialogClose>
+          </div>
+        </DialogContent>
+      </DialogPortal>
     </DialogRoot>
   </div>
 </template>
@@ -144,11 +154,16 @@ const openFirstResult = async () => {
 .account-menu__logout:disabled { opacity: .55; cursor: wait; }
 .workspace-main { min-height: 100vh; margin-left: var(--layout-sidebar); padding-top: var(--layout-topbar); background: var(--color-canvas); }
 .workspace-error { margin: 16px 28px 0; padding: 10px 13px; border: 1px solid rgb(180 35 24 / 22%); border-radius: 8px; color: #8f1d14; background: #fff3f1; font-size: 12px; }
-.workspace-dialog__overlay { position: fixed; z-index: 70; inset: 0; background: rgb(23 32 51 / 38%); }
-.workspace-dialog__content { position: fixed; z-index: 80; top: 50%; left: 50%; width: min(calc(100vw - 32px), 430px); padding: 25px; border: 1px solid var(--color-border); border-radius: 14px; background: white; box-shadow: 0 20px 48px rgb(16 24 40 / 18%); transform: translate(-50%, -50%); }
-.workspace-dialog__content :deep([data-slot="dialog-title"]) { font-size: 18px; }
-.workspace-dialog__content :deep([data-slot="dialog-description"]) { margin-top: 12px; color: var(--color-text-secondary); font-size: 13px; line-height: 1.7; }
-.workspace-dialog__close { min-height: 38px; margin-top: 20px; padding: 0 17px; border: 0; border-radius: 7px; color: white; background: var(--color-primary); cursor: pointer; }
+.workspace-dialog__overlay { position: fixed; z-index: 100; inset: 0; background: rgb(0 0 0 / 80%); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.workspace-dialog__content { position: fixed; z-index: 101; top: 50%; left: 50%; width: min(580px, calc(100vw - 32px)); min-height: 300px; padding: 60px 30px 30px; border: 0; border-radius: 12px; outline: none; background: #fff; box-shadow: none; transform: translate(-50%, -50%); }
+.workspace-dialog__dismiss { position: absolute; top: 15px; right: 15px; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 11px; border: 0; border-radius: 50%; color: #1e1d29; background: transparent; cursor: pointer; transition: all .2s ease-in-out; }
+.workspace-dialog__inner { display: grid; width: 100%; min-height: 210px; grid-template-rows: auto minmax(0, 1fr) auto; gap: 30px; }
+.workspace-dialog__title { display: block; margin: 0; color: #1e1d29; font-size: 24px; font-weight: 600; line-height: 1.3; text-align: center; }
+.workspace-dialog__description { display: flex; align-items: center; margin: 0; color: #3f424a; font-size: 16px; font-weight: 500; line-height: 1.6; }
+.workspace-dialog__close { display: flex; width: 100%; min-height: 0; align-items: center; justify-content: center; padding: 10px 15px; border: 1px solid transparent; border-radius: 8px; color: #fff; background: #00b1e2; cursor: pointer; font: inherit; font-size: 14px; font-weight: 600; line-height: 1.3; transition: all .2s ease-in-out; }
+.workspace-dialog__close:hover { background: #33c1e8; }
+.workspace-dialog__close:active { background: #008eb5; }
+.workspace-dialog__dismiss:focus-visible, .workspace-dialog__close:focus-visible { outline: 2px solid #3f424a; outline-offset: 1px; }
 .workspace-topbar__menu { display: none; }
 @media (max-width: 1023px) { .workspace-topbar { gap: 14px; height: 62px; padding: 0 16px; }.workspace-topbar__menu { display: inline-grid; place-items: center; width: 38px; height: 38px; border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text-secondary); background: white; cursor: pointer; }.workspace-topbar__brand { min-width: 0; }.workspace-search-wrap { width: min(34vw, 260px); margin-left: 12px; }.workspace-main { margin-left: 0; padding-top: 62px; } }
 @media (max-width: 620px) { .workspace-topbar { gap: 10px; padding: 0 12px; }.workspace-topbar__brand :deep(.app-logo__wordmark small) { display: none; }.workspace-search-wrap { width: 38px; flex: 0 1 38px; margin-left: auto; }.workspace-search { width: 38px; padding: 0 10px; border-color: transparent; background: transparent; }.workspace-search:focus-within { width: min(42vw, 200px); background: white; }.workspace-search input { width: 0; padding: 0; }.workspace-search:focus-within input { width: auto; }.workspace-search button { display: none; }.workspace-topbar__actions { gap: 8px; margin-left: 0; }.workspace-help { width: 36px; justify-content: center; }.workspace-help span, .account-menu__copy, .account-menu summary > svg { display: none; }.account-menu__avatar { width: 32px; height: 32px; }.workspace-main :deep(.content-wrap), .workspace-main :deep(.content-wrap--student) { width: min(100% - 28px, var(--layout-content-max)); } }
