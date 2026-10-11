@@ -35,6 +35,7 @@ from .enums import (
 from .errors import NotFound, OptimisticConcurrencyConflict, UniqueConflict
 from .models import (
     Account,
+    AccountRole,
     AccountSchoolMembership,
     AssessmentResponse,
     AssessmentResult,
@@ -55,8 +56,12 @@ from .models import (
     SupportRun,
     SupportSession,
 )
+from .provenance import (
+    SYNTHETIC_SCHOOL_TEST_PROVENANCE_REF,
+    is_registered_school_provenance_ref,
+)
 
-SYNTHETIC_SCHOOL_PROVENANCE_REF = "SYNTHETIC_REF_AUTH_TENANT_FIXTURE_V1"
+SYNTHETIC_SCHOOL_PROVENANCE_REF = SYNTHETIC_SCHOOL_TEST_PROVENANCE_REF
 
 
 def _hash_opaque_token(token: str) -> bytes:
@@ -129,6 +134,12 @@ class SubjectRepository:
         )
         return result.scalar_one_or_none()
 
+    async def for_school(self, *, school_id: int) -> list[Subject]:
+        result = await self.session.scalars(
+            select(Subject).where(Subject.school_id == school_id)
+        )
+        return list(result.all())
+
 
 class SchoolMembershipRepository:
     """Persistence helpers for explicitly provisioned school contexts."""
@@ -145,10 +156,7 @@ class SchoolMembershipRepository:
     ) -> School:
         if data_origin != DataOrigin.SYNTHETIC:
             raise ValueError("school creation requires SYNTHETIC data origin")
-        if (
-            not isinstance(provenance_ref, str)
-            or provenance_ref != SYNTHETIC_SCHOOL_PROVENANCE_REF
-        ):
+        if not is_registered_school_provenance_ref(provenance_ref):
             raise ValueError("school provenance_ref must be an opaque synthetic reference token")
         school = School(
             school_ref=school_ref,
@@ -162,6 +170,62 @@ class SchoolMembershipRepository:
         except IntegrityError as exc:
             raise _map_integrity_error(exc) from exc
         return school
+
+    async def get_school_by_ref(self, school_ref: str) -> School | None:
+        result = await self.session.execute(select(School).where(School.school_ref == school_ref))
+        return result.scalar_one_or_none()
+
+    async def schools_with_provenance(self, *, provenance_ref: str) -> list[School]:
+        result = await self.session.scalars(
+            select(School).where(School.provenance_ref == provenance_ref)
+        )
+        return list(result.all())
+
+    async def memberships_for_account(
+        self, *, account_id: int
+    ) -> list[AccountSchoolMembership]:
+        result = await self.session.scalars(
+            select(AccountSchoolMembership).where(
+                AccountSchoolMembership.account_id == account_id
+            )
+        )
+        return list(result.all())
+
+    async def memberships_for_school(self, *, school_id: int) -> list[AccountSchoolMembership]:
+        result = await self.session.scalars(
+            select(AccountSchoolMembership).where(
+                AccountSchoolMembership.school_id == school_id
+            )
+        )
+        return list(result.all())
+
+    async def roles_for_membership(self, *, membership_id: int) -> list[MembershipRole]:
+        result = await self.session.scalars(
+            select(MembershipRole).where(MembershipRole.membership_id == membership_id)
+        )
+        return list(result.all())
+
+    async def grants_for_account(self, *, account_id: int) -> list[SubjectAccessGrant]:
+        result = await self.session.scalars(
+            select(SubjectAccessGrant).where(
+                SubjectAccessGrant.principal_account_id == account_id
+            )
+        )
+        return list(result.all())
+
+    async def grants_for_subjects(self, *, subject_ids: list[int]) -> list[SubjectAccessGrant]:
+        if not subject_ids:
+            return []
+        result = await self.session.scalars(
+            select(SubjectAccessGrant).where(SubjectAccessGrant.subject_id.in_(subject_ids))
+        )
+        return list(result.all())
+
+    async def platform_roles_for_account(self, *, account_id: int) -> list[AccountRole]:
+        result = await self.session.scalars(
+            select(AccountRole).where(AccountRole.account_id == account_id)
+        )
+        return list(result.all())
 
     async def create_membership(
         self,

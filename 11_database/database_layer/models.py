@@ -44,6 +44,7 @@ from .enums import (
     SupportRunStatus,
     SupportStatus,
 )
+from .provenance import SCHOOL_PROVENANCE_CHECK_VALUES
 
 
 class Account(ResourceIdentityMixin, TimestampMixin, Base):
@@ -78,7 +79,7 @@ class School(ResourceIdentityMixin, TimestampMixin, Base):
             name="data_origin_allowed",
         ),
         CheckConstraint(
-            "provenance_ref = 'SYNTHETIC_REF_AUTH_TENANT_FIXTURE_V1'",
+            f"provenance_ref IN ({SCHOOL_PROVENANCE_CHECK_VALUES})",
             name="provenance_ref_token",
         ),
     )

@@ -32,7 +32,22 @@ class TeacherDashboardService:
 
     async def overview(self, actor: Actor) -> TeacherOverview:
         self._require_teacher(actor)
+        if actor.scope_profile != "legacy_demo":
+            return TeacherOverview(
+                subjects_count=0,
+                assessments_count=0,
+                completed_count=0,
+                in_progress_count=0,
+                reports_count=0,
+                report_status_counts={},
+                review_status_counts={},
+                report_metadata_visible=False,
+                task_progress_available=False,
+                students=[],
+            )
+
         authorized_subjects = self._authorized_subjects(actor)
+        report_metadata_visible = True
         if not authorized_subjects:
             return TeacherOverview(
                 subjects_count=0,
@@ -42,6 +57,8 @@ class TeacherDashboardService:
                 reports_count=0,
                 report_status_counts={},
                 review_status_counts={},
+                report_metadata_visible=report_metadata_visible,
+                task_progress_available=False,
                 students=[],
             )
 
@@ -63,22 +80,31 @@ class TeacherDashboardService:
         ]
         students.sort(key=lambda item: (item.last_activity_at or "", item.subject_id), reverse=True)
 
-        synthetic_assessment_subjects = {
-            record.assessment_id: record.subject_id for record in synthetic_records
-        }
-        report_records = await maybe_await(
-            self.reports.list_for_subjects(authorized_subjects)
-        )
-        scoped_reports = [
-            report
-            for report in report_records
-            if report.subject_id in authorized_subjects
-            and synthetic_assessment_subjects.get(report.assessment_id) == report.subject_id
-        ]
-        report_status_counts = Counter(_safe_status(report.status) for report in scoped_reports)
-        review_status_counts = Counter(
-            _safe_status(report.review_status) for report in scoped_reports
-        )
+        reports_count = 0
+        report_status_counts: dict[str, int] = {}
+        review_status_counts: dict[str, int] = {}
+        if report_metadata_visible:
+            synthetic_assessment_subjects = {
+                record.assessment_id: record.subject_id for record in synthetic_records
+            }
+            report_records = await maybe_await(
+                self.reports.list_for_subjects(authorized_subjects)
+            )
+            scoped_reports = [
+                report
+                for report in report_records
+                if report.subject_id in authorized_subjects
+                and synthetic_assessment_subjects.get(report.assessment_id) == report.subject_id
+            ]
+            report_status_counts = dict(
+                sorted(Counter(_safe_status(report.status) for report in scoped_reports).items())
+            )
+            review_status_counts = dict(
+                sorted(
+                    Counter(_safe_status(report.review_status) for report in scoped_reports).items()
+                )
+            )
+            reports_count = len(scoped_reports)
 
         return TeacherOverview(
             subjects_count=len(grouped),
@@ -87,14 +113,19 @@ class TeacherDashboardService:
             in_progress_count=sum(
                 _status(record) == "in_progress" for record in synthetic_records
             ),
-            reports_count=len(scoped_reports),
-            report_status_counts=dict(sorted(report_status_counts.items())),
-            review_status_counts=dict(sorted(review_status_counts.items())),
+            reports_count=reports_count,
+            report_status_counts=report_status_counts,
+            review_status_counts=review_status_counts,
+            report_metadata_visible=report_metadata_visible,
+            task_progress_available=False,
             students=students,
         )
 
     async def student_history(self, actor: Actor, subject_id: str) -> TeacherStudentHistory:
         self._require_teacher(actor)
+        if actor.scope_profile != "legacy_demo":
+            raise error(ErrorCode.FORBIDDEN, detail="access denied")
+
         authorized_subjects = self._authorized_subjects(actor)
         if subject_id not in authorized_subjects:
             raise error(ErrorCode.FORBIDDEN, detail="access denied")

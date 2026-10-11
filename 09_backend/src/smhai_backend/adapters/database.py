@@ -39,7 +39,7 @@ from smhai_backend.domains.models import (
     SyntheticUser,
 )
 
-REQUIRED_DATABASE_REVISION = "20261011_0003"
+REQUIRED_DATABASE_REVISION = "20261011_0004"
 _LEGACY_CSRF_SECRET = b"smhai-round1-synthetic-csrf-secret"
 
 

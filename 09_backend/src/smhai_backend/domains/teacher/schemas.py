@@ -25,6 +25,8 @@ class TeacherOverview(BaseModel):
     reports_count: int
     report_status_counts: dict[str, int]
     review_status_counts: dict[str, int]
+    report_metadata_visible: bool
+    task_progress_available: bool = False
     students: list[TeacherStudentSummary]
 
 

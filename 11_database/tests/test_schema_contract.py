@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 from database_layer.base import Base
 from database_layer.models import (  # noqa: F401
     Account,
@@ -119,7 +120,8 @@ def test_school_membership_and_legacy_scope_constraints_are_additive() -> None:
     assert "'PRODUCTION_PENDING'" in school_constraints["ck_schools_data_origin_allowed"]
     assert (
         school_constraints["ck_schools_provenance_ref_token"]
-        == "provenance_ref = 'SYNTHETIC_REF_AUTH_TENANT_FIXTURE_V1'"
+        == "provenance_ref IN ('SYNTHETIC_REF_AUTH_TENANT_FIXTURE_V1', "
+        "'SYNTHETIC_REF_SCHOOL_SEED_RECIPE_V1')"
     )
 
     school_subject_fk = next(
@@ -209,3 +211,73 @@ def test_migration_keeps_existing_legacy_rows_unscoped() -> None:
     assert "data_origin" in upgrade
     assert "provenance_ref" in upgrade
     assert "provenance_ref = 'SYNTHETIC_REF_AUTH_TENANT_FIXTURE_V1'" in upgrade
+
+
+def test_school_seed_provenance_migration_is_additive_and_downgrade_guarded(
+    monkeypatch,
+) -> None:
+    from importlib.util import module_from_spec, spec_from_file_location
+
+    migration_path = (
+        Path(__file__).resolve().parents[1]
+        / "migrations"
+        / "versions"
+        / "20261011_0004_school_seed_provenance.py"
+    )
+    spec = spec_from_file_location("migration_20261011_0004", migration_path)
+    assert spec is not None and spec.loader is not None
+    migration = module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    assert migration.revision == "20261011_0004"
+    assert migration.down_revision == "20261011_0003"
+
+    operations: list[tuple[object, ...]] = []
+
+    class _Connection:
+        def __init__(self, count: int) -> None:
+            self.count = count
+
+        def execute(self, _statement, _params):
+            operations.append(("guard", str(_statement), _params))
+            return type("Result", (), {"scalar_one": lambda _self: self.count})()
+
+    class _Ops:
+        def __init__(self, count: int = 0) -> None:
+            self.count = count
+
+        def drop_constraint(self, *args, **kwargs) -> None:
+            operations.append(("drop", *args, kwargs))
+
+        def create_check_constraint(self, *args, **kwargs) -> None:
+            operations.append(("create", *args, kwargs))
+
+        def get_bind(self):
+            return _Connection(self.count)
+
+    monkeypatch.setattr(migration, "op", _Ops())
+    migration.upgrade()
+    assert operations[0][0:3] == ("drop", "ck_schools_provenance_ref_token", "schools")
+    assert operations[1][0:3] == ("create", "ck_schools_provenance_ref_token", "schools")
+    assert "SYNTHETIC_REF_AUTH_TENANT_FIXTURE_V1" in str(operations[1][3])
+    assert "SYNTHETIC_REF_SCHOOL_SEED_RECIPE_V1" in str(operations[1][3])
+
+    operations.clear()
+    monkeypatch.setattr(migration, "op", _Ops(count=1))
+    with pytest.raises(RuntimeError, match="registered seed rows exist"):
+        migration.downgrade()
+    assert len(operations) == 1
+    assert operations[0][0] == "guard"
+    assert "SELECT COUNT(*) FROM schools WHERE provenance_ref = :provenance_ref" in str(
+        operations[0][1]
+    )
+    assert operations[0][2] == {
+        "provenance_ref": "SYNTHETIC_REF_SCHOOL_SEED_RECIPE_V1"
+    }
+
+    operations.clear()
+    monkeypatch.setattr(migration, "op", _Ops(count=0))
+    migration.downgrade()
+    assert operations[0][0] == "guard"
+    assert operations[1][0:3] == ("drop", "ck_schools_provenance_ref_token", "schools")
+    assert operations[2][0:3] == ("create", "ck_schools_provenance_ref_token", "schools")
+    assert operations[2][3] == "provenance_ref = 'SYNTHETIC_REF_AUTH_TENANT_FIXTURE_V1'"

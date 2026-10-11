@@ -10,6 +10,20 @@ from .crypto import (
     MappingKeyProvider,
     WindowsDpapiKeyProvider,
 )
+from .provenance import (
+    PROVENANCE_REGISTRY,
+    SYNTHETIC_SCHOOL_SEED_PROVENANCE_REF,
+    SYNTHETIC_SCHOOL_TEST_PROVENANCE_REF,
+)
+from .school_seed import (
+    SCHOOL_SEED_SLOTS,
+    SYNTHETIC_SCHOOL_RECIPES,
+    PasswordHasher,
+    SyntheticSchoolSeedConflict,
+    SyntheticSchoolSeedError,
+    SyntheticSchoolSeedResult,
+    seed_synthetic_school_contexts,
+)
 from .unit_of_work import SqlAlchemyUnitOfWork
 
 __all__ = [
@@ -20,8 +34,18 @@ __all__ = [
     "FernetDataProtectionProvider",
     "KeyProvider",
     "MappingKeyProvider",
+    "PasswordHasher",
+    "PROVENANCE_REGISTRY",
+    "SCHOOL_SEED_SLOTS",
     "SqlAlchemyUnitOfWork",
+    "SyntheticSchoolSeedConflict",
+    "SyntheticSchoolSeedError",
+    "SyntheticSchoolSeedResult",
+    "SYNTHETIC_SCHOOL_RECIPES",
+    "SYNTHETIC_SCHOOL_SEED_PROVENANCE_REF",
+    "SYNTHETIC_SCHOOL_TEST_PROVENANCE_REF",
     "WindowsDpapiKeyProvider",
     "create_engine",
     "create_session_factory",
+    "seed_synthetic_school_contexts",
 ]

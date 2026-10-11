@@ -4,6 +4,10 @@ from typing import Any, cast
 
 import pytest
 from database_layer.enums import DataOrigin
+from database_layer.provenance import (
+    PROVENANCE_REGISTRY,
+    SYNTHETIC_SCHOOL_SEED_PROVENANCE_REF,
+)
 from database_layer.repositories import (
     SYNTHETIC_SCHOOL_PROVENANCE_REF,
     SchoolMembershipRepository,
@@ -37,6 +41,23 @@ async def test_school_creator_requires_synthetic_origin_and_opaque_provenance_to
     assert school.provenance_ref == provenance_ref
     assert session.added == [school]
     assert session.flush_count == 1
+
+
+async def test_school_creator_accepts_registered_seed_provenance():
+    session = _Session()
+    repository = SchoolMembershipRepository(cast(Any, session))
+    school = await repository.create_school(
+        school_ref="SYNTHETIC_SCHOOL_SEED_ALPHA_V1",
+        data_origin=DataOrigin.SYNTHETIC,
+        provenance_ref=SYNTHETIC_SCHOOL_SEED_PROVENANCE_REF,
+    )
+    assert school.provenance_ref == SYNTHETIC_SCHOOL_SEED_PROVENANCE_REF
+    assert PROVENANCE_REGISTRY[SYNTHETIC_SCHOOL_PROVENANCE_REF].startswith(
+        "11_database/tests/test_mysql_integration.py::"
+    )
+    assert PROVENANCE_REGISTRY[SYNTHETIC_SCHOOL_SEED_PROVENANCE_REF] == (
+        "11_database/database_layer/school_seed.py::seed_synthetic_school_contexts"
+    )
 
 
 @pytest.mark.parametrize("origin", [DataOrigin.PRODUCTION_PENDING, "REAL"])

@@ -37,7 +37,7 @@ def load_runtime(workspace: Path, repo: Path) -> dict:
             cursor.execute("SELECT CURRENT_ROLE()")
             verify_runtime_grants(grants, cursor.fetchone()[0])
             cursor.execute("SELECT version_num FROM database_alembic_version")
-            if cursor.fetchall() != (("20261011_0003",),):
+            if cursor.fetchall() != (("20261011_0004",),):
                 raise PreparationError("Required school revision unavailable")
     finally:
         connection.close()
@@ -71,7 +71,7 @@ def main() -> int:
         result = load_runtime(args.workspace, repo)
         from smhai_backend.core.config import BackendSettings
         from smhai_backend.app_factory import create_app
-        settings = BackendSettings(_env_file=None, environment="demo", identity_profile="school_tenant", persistence_mode="mysql", host="127.0.0.1", port=8088, allowed_origins=["http://127.0.0.1:4178"], cat={"mode":"http", "base_url":"http://127.0.0.1:8180"}, rag={"mode":"http", "base_url":"http://127.0.0.1:8170"}, llm={"mode":"http", "base_url":"http://127.0.0.1:8160"}, safety={"mode":"http", "base_url":"http://127.0.0.1:8190"})
+        settings = BackendSettings(_env_file=None, environment="demo", identity_profile="school_tenant", persistence_mode="mysql", host="127.0.0.1", port=8088, auth={"cookie_name":"psynova_school_session"}, allowed_origins=["http://127.0.0.1:4178"], cat={"mode":"http", "base_url":"http://127.0.0.1:8180"}, rag={"mode":"http", "base_url":"http://127.0.0.1:8170"}, llm={"mode":"http", "base_url":"http://127.0.0.1:8160"}, safety={"mode":"http", "base_url":"http://127.0.0.1:8190"})
         app = create_app(settings=settings)
         if args.preflight_only:
             print(json.dumps(dict(result, preflight="PASS", module_clients="HTTP")))

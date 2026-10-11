@@ -1,10 +1,10 @@
 # Database Schema Round 1
 
 The authoritative implementation is the SQLAlchemy metadata plus the reviewed
-Alembic chain ending at `20261011_0003` (`20260905_0001` initial,
-`20260906_0002` contract provenance, and `20261011_0003` school membership and
-session context). `DATA_DICTIONARY.md` records column-level details. The schema
-has 22 domain tables, all
+Alembic chain ending at `20261011_0004` (`20260905_0001` initial,
+`20260906_0002` contract provenance, `20261011_0003` school membership and
+session context, and `20261011_0004` school seed provenance).
+`DATA_DICTIONARY.md` records column-level details. The schema has 22 domain tables, all
 explicitly configured as InnoDB/utf8mb4/utf8mb4_0900_ai_ci. Machine identifiers
 use case-sensitive ASCII collation. All business timestamps are UTC
 application values stored as `DATETIME(6)`.
@@ -41,14 +41,19 @@ Owner: authorization data supplied to Backend.
 ### `schools`
 
 School tenant reference, active state, origin, and provenance. `data_origin`
-uses the shared origin vocabulary; the application repository currently permits
-only `SYNTHETIC`. Required `provenance_ref` values are opaque tokens matching
-the registered value `SYNTHETIC_REF_AUTH_TENANT_FIXTURE_V1`, which points to
-the synthetic school fixture recipe in
-`11_database/tests/test_mysql_integration.py::test_school_contexts_grants_and_sessions_are_same_school_and_fail_closed`.
+uses the shared origin vocabulary; the application repository permits only
+`SYNTHETIC`. Required `provenance_ref` values are opaque tokens in
+`database_layer.provenance.PROVENANCE_REGISTRY`:
+
+- `SYNTHETIC_REF_AUTH_TENANT_FIXTURE_V1` points to the focused same-school test
+  in `11_database/tests/test_mysql_integration.py`.
+- `SYNTHETIC_REF_SCHOOL_SEED_RECIPE_V1` points to the explicitly invoked seed
+  API in `11_database/database_layer/school_seed.py`.
+
+The latter is the only provenance written by the registered two-school recipe.
 Do not put names, free text, PII, credentials, member data, or source content in
 the field. School creation requires explicit synthetic origin and registered
-non-sensitive source/fixture provenance.
+non-sensitive source provenance.
 
 ### `account_school_memberships` and `membership_roles`
 

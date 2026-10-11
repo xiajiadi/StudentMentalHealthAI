@@ -111,6 +111,8 @@ async def test_overview_returns_only_authorized_synthetic_aggregate_and_history_
     assert data["reports_count"] == 1
     assert data["report_status_counts"] == {"needs_review": 1}
     assert data["review_status_counts"] == {"pending": 1}
+    assert data["report_metadata_visible"] is True
+    assert data["task_progress_available"] is False
     assert data["students"][0]["subject_id"] == "SUBJ_allowed"
     serialized = str(data)
     assert "private_answer" not in serialized
@@ -192,3 +194,49 @@ async def test_overview_includes_exact_cat_synthetic_scope_and_rejects_unrelated
     assert overview.assessments_count == 1
     assert overview.completed_count == 1
     assert overview.students[0].assessment_count == 1
+
+
+@pytest.mark.parametrize("scope_profile", ["school_tenant", "unrecognized_profile"])
+@pytest.mark.asyncio
+async def test_non_legacy_teacher_scope_never_reads_repositories(scope_profile):
+    class _RepositoryMustNotBeRead:
+        def list_assessments_for_subjects(self, subject_ids):
+            del subject_ids
+            raise AssertionError("non-legacy teacher scope queried assessments")
+
+        def list_for_subjects(self, subject_ids):
+            del subject_ids
+            raise AssertionError("non-legacy teacher scope queried reports")
+
+    teacher = Actor(
+        user_id="USER_school_teacher",
+        username="school_teacher",
+        role=BackendRole.TEACHER,
+        subject_id=None,
+        accessible_subject_ids=frozenset({"SUBJ_school_a"}),
+        scope_profile=scope_profile,
+        school_id=1 if scope_profile == "school_tenant" else None,
+        school_ref="SYNTHETIC_SCHOOL_A" if scope_profile == "school_tenant" else None,
+    )
+    service = TeacherDashboardService(
+        assessments=_RepositoryMustNotBeRead(),
+        reports=_RepositoryMustNotBeRead(),
+        authorization=NativeAuthorizationProvider(),
+    )
+
+    overview = await service.overview(teacher)
+    data = overview.model_dump(mode="json")
+    assert data["subjects_count"] == 0
+    assert data["assessments_count"] == 0
+    assert data["completed_count"] == 0
+    assert data["in_progress_count"] == 0
+    assert data["report_metadata_visible"] is False
+    assert data["reports_count"] == 0
+    assert data["report_status_counts"] == {}
+    assert data["review_status_counts"] == {}
+    assert data["task_progress_available"] is False
+    assert data["students"] == []
+
+    with pytest.raises(BackendError) as caught:
+        await service.student_history(teacher, "SUBJ_school_a")
+    assert caught.value.code is ErrorCode.FORBIDDEN

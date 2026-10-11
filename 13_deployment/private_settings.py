@@ -35,9 +35,11 @@ def transform(data: bytes, *, decrypt: bool = False) -> bytes:
         kernel.LocalFree(ctypes.cast(target.data, ctypes.c_void_p))
 
 
-def write_private(path: Path, values: dict) -> None:
+def write_private(path: Path, values: dict, *, exclusive: bool = False) -> None:
     payload = json.dumps(values).encode("utf-8")
-    path.write_bytes(MAGIC + transform(payload))
+    sealed = MAGIC + transform(payload)
+    with path.open("xb" if exclusive else "wb") as destination:
+        destination.write(sealed)
 
 
 def read_private(path: Path) -> dict:

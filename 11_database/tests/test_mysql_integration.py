@@ -111,7 +111,7 @@ async def test_migration_version_table_is_at_head(mysql_engine) -> None:
         revision = (
             await connection.execute(text("SELECT version_num FROM database_alembic_version"))
         ).scalar_one()
-    assert revision == "20261011_0003"
+    assert revision == "20261011_0004"
 
 
 async def test_encrypted_assessment_response_is_not_plaintext(session_factory, protection) -> None:

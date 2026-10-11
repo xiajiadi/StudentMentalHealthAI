@@ -153,11 +153,20 @@ async def test_tenant_teacher_routes_remain_in_membership_scope_and_not_individu
 
     overview = await client.get("/api/v1/teacher/overview")
     assert overview.status_code == 200
-    assert [row["subject_id"] for row in overview.json()["data"]["students"]] == [
-        "SUBJ_school_a"
-    ]
-    assert overview.json()["data"]["assessments_count"] == 1
+    overview_data = overview.json()["data"]
+    assert overview_data["students"] == []
+    assert overview_data["subjects_count"] == 0
+    assert overview_data["assessments_count"] == 0
+    assert overview_data["completed_count"] == 0
+    assert overview_data["in_progress_count"] == 0
+    assert overview_data["reports_count"] == 0
+    assert overview_data["report_status_counts"] == {}
+    assert overview_data["review_status_counts"] == {}
+    assert overview_data["report_metadata_visible"] is False
+    assert overview_data["task_progress_available"] is False
 
+    history_in_scope = await client.get("/api/v1/teacher/students/SUBJ_school_a")
+    assert history_in_scope.status_code == 403
     history = await client.get("/api/v1/teacher/students/SUBJ_school_b")
     assert history.status_code == 403
     assessments = await client.get("/api/v1/assessments")

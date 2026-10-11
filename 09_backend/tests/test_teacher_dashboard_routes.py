@@ -62,6 +62,11 @@ async def test_teacher_routes_return_only_authorized_synthetic_assessment_metada
     assert overview_data["assessments_count"] == 2
     assert overview_data["completed_count"] == 1
     assert overview_data["in_progress_count"] == 1
+    assert overview_data["report_metadata_visible"] is True
+    assert overview_data["task_progress_available"] is False
+    assert overview_data["reports_count"] == 0
+    assert overview_data["report_status_counts"] == {}
+    assert overview_data["review_status_counts"] == {}
     assert [item["subject_id"] for item in overview_data["students"]] == ["SUBJ_demo_a"]
 
     history = await client.get("/api/v1/teacher/students/SUBJ_demo_a")

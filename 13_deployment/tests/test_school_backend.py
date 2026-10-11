@@ -27,7 +27,7 @@ def test_missing_readiness_never_decrypts(tmp_path, monkeypatch):
         backend.load_runtime(tmp_path, tmp_path / "repo")
 
 
-@pytest.mark.parametrize("revision", ["20261011_0003", "obsolete"])
+@pytest.mark.parametrize("revision", ["20261011_0004", "obsolete"])
 def test_configuration_uses_only_verified_sealed_target(tmp_path, monkeypatch, revision):
     marker = {"workspace_id":"expected", "database":"smhai_school_demo", "port":3308}
     monkeypatch.setattr(backend, "validate_marker", lambda *args: marker)
