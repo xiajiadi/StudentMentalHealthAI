@@ -1,8 +1,10 @@
 # Database Schema Round 1
 
 The authoritative implementation is the SQLAlchemy metadata plus the reviewed
-Alembic revision `20260905_0001`. `DATA_DICTIONARY.md` is generated from that
-metadata for column-level review. The schema has 19 domain tables, all
+Alembic chain ending at `20261011_0003` (`20260905_0001` initial,
+`20260906_0002` contract provenance, and `20261011_0003` school membership and
+session context). `DATA_DICTIONARY.md` records column-level details. The schema
+has 22 domain tables, all
 explicitly configured as InnoDB/utf8mb4/utf8mb4_0900_ai_ci. Machine identifiers
 use case-sensitive ASCII collation. All business timestamps are UTC
 application values stored as `DATETIME(6)`.
@@ -36,6 +38,25 @@ Stable role vocabulary (`student`, `teacher`, `parent`, `reviewer`, `admin` may
 be seeded as reference data). `role_code` and status are queryable and unique.
 Owner: authorization data supplied to Backend.
 
+### `schools`
+
+School tenant reference, active state, origin, and provenance. `data_origin`
+uses the shared origin vocabulary; the application repository currently permits
+only `SYNTHETIC`. Required `provenance_ref` values are opaque tokens matching
+the registered value `SYNTHETIC_REF_AUTH_TENANT_FIXTURE_V1`, which points to
+the synthetic school fixture recipe in
+`11_database/tests/test_mysql_integration.py::test_school_contexts_grants_and_sessions_are_same_school_and_fail_closed`.
+Do not put names, free text, PII, credentials, member data, or source content in
+the field. School creation requires explicit synthetic origin and registered
+non-sensitive source/fixture provenance.
+
+### `account_school_memberships` and `membership_roles`
+
+School-scoped account membership and role context with status, validity, and
+revocation state. Only student, teacher, psychological-specialist, and admin
+school roles are allowed. Internal `REVIEWER` remains in the platform role
+system and is not a school membership role.
+
 ### `account_roles`
 
 Join table between `accounts` and `roles`, with active/revoked state and grant
@@ -45,15 +66,18 @@ duplicate active assignments. Owner: authorization persistence.
 ### `subjects`
 
 Pseudonymous person under assessment/support. Stores only `subject_ref`,
-`data_origin`, lifecycle status, retention marker, erasure timestamp, and
-technical identity. It has no direct identifier and is not an account. Owner:
+optional tenant `school_id`, `data_origin`, lifecycle status, retention marker,
+erasure timestamp, and technical identity. A NULL school id retains explicit
+legacy isolation. It has no direct identifier and is not an account. Owner:
 subject-scoped persistence.
 
 ### `subject_access_grants`
 
 Records a supplied relationship between a principal account and a subject:
-relationship type, active lifetime, validity, and revocation. It does not
-decide whether a request is authorized. Index: principal/subject/status.
+relationship type, optional tenant `school_id`, active lifetime, validity, and
+revocation. A school-scoped grant must match the subject's school and an active
+same-school membership. NULL-scoped legacy grants are not tenant grants. It does
+not decide whether a request is authorized. Index: principal/subject/status.
 Owner: access relationship persistence.
 
 ### `consent_records`

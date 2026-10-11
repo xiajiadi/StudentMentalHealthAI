@@ -33,3 +33,15 @@ Baseline report is available. Lead reused its explicit Luna/high app Worker in a
 ## External gates
 
 Real students/pilot, clinical thresholds, formal calibration/validity, ethics and production deployment remain unapproved. Synthetic engineering continues. Credentials and raw sensitive model output must not enter state or reports.
+
+## School-workspace and tenant integration checkpoint
+
+New external workspace `D:\Projects\.StudentMentalHealthAI-school-workspace-20261011` runs its separately owned loopback MySQL on 3308. Its directory DACL grants only the current user; generated credentials and encryption keys use current-user DPAPI. No plaintext secret configuration is written. Initialization was recovered after driver/expired-password setup failures; a clean repeatable installation remains unproven.
+
+The new `smhai_school_demo` schema upgraded from empty to revision `20261011_0003` (23 tables). Alembic consistency check passes after matching three ORM server defaults. A separate owned `smhai_school_synthetic_test_20261011` schema on 3308 passes all seven native MySQL integration tests. Tests preserve foreign keys and explicitly flush cleanup dependencies. Old 3307 and system 3306 were not migrated or reset.
+
+Auth integration includes school memberships/roles, explicit CSRF-protected active context, tenant-scoped grants, invalid/revoked context denial and concurrent context re-projection. School profile does not seed legacy identities. Backend checks the required schema revision before bootstrap. Integration-tree focused tests: backend 23/23, schema/provenance 14/14. Lead's additional safe/quality checks remain separate evidence. Legacy launcher now fails before bootstrap when the school migration is present; existing historical M0 services must not be restarted with this new source against the old schema.
+
+Deployment tests now pass 27/27 (runner 19, workspace 7, launcher guard 1). Runner is a recoverable lease/state CLI, not a coding executor; scheduled unattended/reboot continuation is still unproven.
+
+Next: integrate a DPAPI key provider, create a least-privilege runtime identity, controlled synthetic school accounts and a new owned school launcher, then verify real school-profile auth and browser workflows. Four-role product delivery and AI recovery remain incomplete.

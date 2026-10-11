@@ -33,9 +33,12 @@ from smhai_backend.domains.models import (
     IdempotencyRecord,
     ReportRecord,
     ReviewProjection,
+    SchoolRoleContext,
     SessionRecord,
     SyntheticUser,
 )
+
+REQUIRED_DATABASE_REVISION = "20261011_0003"
 
 
 def _now() -> datetime:
@@ -81,7 +84,12 @@ class MySqlBackendAdapter:
 
     label = "MYSQL"
 
-    def __init__(self, *, repository_root: Path | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        repository_root: Path | None = None,
+        identity_profile: str = "legacy_demo",
+    ) -> None:
         try:
             from database_layer import (
                 DatabaseSettings,
@@ -121,6 +129,7 @@ class MySqlBackendAdapter:
         self.session_factory = create_session_factory(self.engine)
         self.protection = protection
         self._started = False
+        self.identity_profile = identity_profile
         self._idempotency_bodies: dict[tuple[str, str], dict[str, Any]] = {}
         self._metadata_records: list[dict[str, Any]] = []
         self._audit_cache: list[AuditEvent] = []
@@ -131,8 +140,24 @@ class MySqlBackendAdapter:
     def _uow(self) -> Any:
         return self._uow_type(self.session_factory, self.protection)
 
+    def _optional_identity_specs(self) -> tuple[tuple[str, str], ...]:
+        if self.identity_profile != "legacy_demo":
+            return ()
+        return (
+            ("admin", "SMHAI_M0_ADMIN"),
+            ("psychological_specialist", "SMHAI_M0_SPECIALIST"),
+        )
+
     async def start(self) -> None:
-        await self._ensure_synthetic_fixtures()
+        try:
+            await self._require_database_revision()
+            await self._ensure_synthetic_fixtures()
+        except Exception:
+            try:
+                await self.engine.dispose()
+            except Exception:
+                pass
+            raise
         self._started = True
 
     async def close(self) -> None:
@@ -143,6 +168,28 @@ class MySqlBackendAdapter:
     # ------------------------------------------------------------------
     # Synthetic identity and authorization projection
     # ------------------------------------------------------------------
+
+    async def _require_database_revision(self) -> None:
+        """Fail fast unless this isolated runtime schema is at the reviewed head."""
+
+        try:
+            async with self.engine.connect() as connection:
+                result = await connection.exec_driver_sql(
+                    "SELECT version_num FROM database_alembic_version"
+                )
+                revisions = list(result.scalars().all())
+        except Exception:
+            raise RuntimeError(
+                "Database schema revision is missing or unsupported; this runtime does not "
+                "perform migrations. Provision an isolated synthetic workspace at revision "
+                f"{REQUIRED_DATABASE_REVISION}."
+            ) from None
+        if revisions != [REQUIRED_DATABASE_REVISION]:
+            raise RuntimeError(
+                "Database schema revision is missing or unsupported; this runtime does not "
+                "perform migrations. Provision an isolated synthetic workspace at revision "
+                f"{REQUIRED_DATABASE_REVISION}."
+            )
 
     async def _ensure_synthetic_fixtures(self) -> None:
         """Create only clearly-labelled local identities when absent."""
@@ -155,10 +202,9 @@ class MySqlBackendAdapter:
             ("teacher", "synthetic-teacher", "teacher", None),
             ("reviewer", "synthetic-reviewer", "reviewer", None),
         )
-        optional_identity_specs = (
-            ("admin", "SMHAI_M0_ADMIN"),
-            ("psychological_specialist", "SMHAI_M0_SPECIALIST"),
-        )
+        if self.identity_profile == "school_tenant":
+            fixtures = ()
+        optional_identity_specs = self._optional_identity_specs()
         optional_fixtures: list[tuple[str, str, str, str | None]] = []
         for role_code, env_prefix in optional_identity_specs:
             username = os.environ.get(f"{env_prefix}_USERNAME")
@@ -208,6 +254,7 @@ class MySqlBackendAdapter:
                 if subject is None:
                     subject = await uow.subjects.create(
                         subject_ref=subject_ref,
+                        school_id=None,
                         data_origin=e.DataOrigin.SYNTHETIC,
                     )
                 subjects[subject_ref] = subject
@@ -250,6 +297,7 @@ class MySqlBackendAdapter:
                             m.SubjectAccessGrant(
                                 principal_account_id=account.id,
                                 subject_id=subject.id,
+                                school_id=None,
                                 relationship_type=e.RelationshipType.SELF.value,
                                 status=e.GrantStatus.ACTIVE.value,
                                 valid_from=self._utc_now(),
@@ -273,6 +321,7 @@ class MySqlBackendAdapter:
                                 m.SubjectAccessGrant(
                                     principal_account_id=account.id,
                                     subject_id=subject.id,
+                                    school_id=None,
                                     relationship_type=relationship.value,
                                     status=e.GrantStatus.ACTIVE.value,
                                     valid_from=self._utc_now(),
@@ -298,6 +347,56 @@ class MySqlBackendAdapter:
                 )
             ).all()
         )
+        if self.identity_profile == "school_tenant":
+            now = self._utc_now()
+            contexts = []
+            active_contexts = await uow.memberships.active_contexts(
+                account_id=account.id,
+                at=now,
+            )
+            for context_id, role_code, school_id, school_ref in active_contexts:
+                accessible = await uow.memberships.authorized_subject_refs(
+                    account_id=account.id,
+                    school_id=school_id,
+                    role_code=role_code,
+                    at=now,
+                )
+                contexts.append(
+                    SchoolRoleContext(
+                        context_id=str(context_id),
+                        role=BackendRole(role_code.upper()),
+                        school_id=school_id,
+                        school_ref=school_ref,
+                        accessible_subject_ids=accessible,
+                    )
+                )
+            if contexts:
+                first = contexts[0]
+                return SyntheticUser(
+                    user_id=_backend_user_id(account.public_id),
+                    username=account.login_name,
+                    role=first.role,
+                    subject_id=None,
+                    password_hash=account.password_hash,
+                    accessible_subject_ids=frozenset(),
+                    scope_profile="school_tenant",
+                    school_contexts=tuple(contexts),
+                    default_context_id=None,
+                )
+            # REVIEWER is internal and never enters the school selector. The
+            # school_tenant profile does not resolve NULL-scoped legacy grants.
+            if BackendRole.REVIEWER.value.lower() in roles:
+                return SyntheticUser(
+                    user_id=_backend_user_id(account.public_id),
+                    username=account.login_name,
+                    role=BackendRole.REVIEWER,
+                    subject_id=None,
+                    password_hash=account.password_hash,
+                    accessible_subject_ids=frozenset(),
+                    scope_profile="internal",
+                )
+            return None
+
         role_code = next(
             (
                 candidate
@@ -325,6 +424,8 @@ class MySqlBackendAdapter:
                     )
                     .where(
                         m.SubjectAccessGrant.principal_account_id == account.id,
+                        m.SubjectAccessGrant.school_id.is_(None),
+                        m.Subject.school_id.is_(None),
                         m.SubjectAccessGrant.status == e.GrantStatus.ACTIVE.value,
                         m.Subject.status == e.SubjectStatus.ACTIVE.value,
                     )
@@ -341,6 +442,7 @@ class MySqlBackendAdapter:
             subject_id=subject_id,
             password_hash=account.password_hash,
             accessible_subject_ids=accessible,
+            scope_profile="legacy_demo",
         )
 
     async def get_by_username(self, username: str) -> SyntheticUser | None:
@@ -393,9 +495,20 @@ class MySqlBackendAdapter:
             created_at=_as_timestamp(record.created_at),
             expires_at=_as_timestamp(record.idle_expires_at),
             last_seen_at=_as_timestamp(record.last_seen_at),
+            active_context_id=(
+                str(record.active_membership_role_id)
+                if record.active_membership_role_id is not None
+                else None
+            ),
         )
 
-    async def create(self, user_id: str, ttl_seconds: int) -> SessionRecord:
+    async def create(
+        self,
+        user_id: str,
+        ttl_seconds: int,
+        *,
+        active_context_id: str | None = None,
+    ) -> SessionRecord:
         raw_token = secrets.token_urlsafe(32)
         csrf_token = self._csrf_token(raw_token)
         now = self._utc_now()
@@ -403,10 +516,25 @@ class MySqlBackendAdapter:
             account = await self._account_for_user(uow, user_id)
             if account is None:
                 raise error(ErrorCode.AUTH_SESSION_EXPIRED, detail="authentication is required")
+            active_school_id = None
+            active_role_id = None
+            if active_context_id is not None:
+                try:
+                    context_id = int(active_context_id)
+                except ValueError:
+                    raise error(ErrorCode.FORBIDDEN, detail="access denied") from None
+                resolved = await uow.memberships.context_for_account(
+                    account_id=account.id, context_id=context_id, at=now
+                )
+                if resolved is None:
+                    raise error(ErrorCode.FORBIDDEN, detail="access denied")
+                active_role_id, active_school_id, _role_code = resolved
             await uow.auth_sessions.create(
                 account_id=account.id,
                 raw_session_token=raw_token,
                 raw_csrf_token=csrf_token,
+                active_school_id=active_school_id,
+                active_membership_role_id=active_role_id,
                 idle_expires_at=now + timedelta(seconds=ttl_seconds),
                 absolute_expires_at=now + timedelta(seconds=max(ttl_seconds * 8, 3600)),
             )
@@ -417,6 +545,7 @@ class MySqlBackendAdapter:
             created_at=now.replace(tzinfo=UTC).timestamp(),
             expires_at=(now + timedelta(seconds=ttl_seconds)).replace(tzinfo=UTC).timestamp(),
             last_seen_at=now.replace(tzinfo=UTC).timestamp(),
+            active_context_id=active_context_id,
         )
 
     async def _get_session(self, session_id: str) -> SessionRecord | None:
@@ -459,6 +588,37 @@ class MySqlBackendAdapter:
     async def rotate(self, session_id: str, user_id: str, ttl_seconds: int) -> SessionRecord:
         await self.revoke(session_id)
         return await self.create(user_id, ttl_seconds)
+
+    async def set_active_context(
+        self, session_id: str, context_id: str
+    ) -> SessionRecord | None:
+        try:
+            parsed_context_id = int(context_id)
+        except ValueError:
+            return None
+        now = self._utc_now()
+        async with self._uow() as uow:
+            record = await uow.auth_sessions.find_by_token(session_id)
+            if record is None:
+                return None
+            if record.idle_expires_at <= now or record.absolute_expires_at <= now:
+                return None
+            resolved = await uow.memberships.context_for_account(
+                account_id=record.account_id, context_id=parsed_context_id, at=now
+            )
+            if resolved is None:
+                raise error(ErrorCode.FORBIDDEN, detail="access denied")
+            role_id, school_id, _role_code = resolved
+            updated = await uow.auth_sessions.set_active_context(
+                session_id, school_id=school_id, membership_role_id=role_id
+            )
+            if updated is None:
+                return None
+            account = await uow.session.get(self._db_models.Account, record.account_id)
+            if account is None:
+                return None
+            updated.account = account
+            return self._session_record(session_id, updated)
 
     async def revoke(self, session_id: str, reason: str = "logout") -> None:
         async with self._uow() as uow:

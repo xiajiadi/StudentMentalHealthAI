@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from smhai_backend.domains.models import BackendRole
@@ -14,6 +16,13 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=256)
 
 
+class RoleContextDto(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: BackendRole
+    school_ref: str
+
+
 class ActorDto(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -21,6 +30,21 @@ class ActorDto(BaseModel):
     username: str
     role: BackendRole
     subject_id: str | None
+    authorized_roles: list[BackendRole] = Field(default_factory=list)
+    available_contexts: list[RoleContextDto] = Field(default_factory=list)
+    active_context: RoleContextDto | None = None
+
+
+class ActiveContextRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: Literal[
+        BackendRole.STUDENT,
+        BackendRole.TEACHER,
+        BackendRole.PSYCHOLOGICAL_SPECIALIST,
+        BackendRole.ADMIN,
+    ]
+    school_ref: str = Field(min_length=1, max_length=128)
 
 
 class LoginResponse(BaseModel):

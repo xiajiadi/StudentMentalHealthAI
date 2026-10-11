@@ -26,10 +26,17 @@ from smhai_backend.domains.models import (
 
 
 class InMemoryUserRepository:
-    def __init__(self, password_hash: PasswordHash | None = None) -> None:
+    def __init__(
+        self,
+        password_hash: PasswordHash | None = None,
+        *,
+        identity_profile: str = "legacy_demo",
+    ) -> None:
         hasher = password_hash or PasswordHash.recommended()
         self._users: dict[str, SyntheticUser] = {}
         self._by_username: dict[str, SyntheticUser] = {}
+        if identity_profile != "legacy_demo":
+            return
         self._add(
             SyntheticUser(
                 user_id="USER_student_a",
@@ -87,7 +94,9 @@ class InMemorySessionStore:
         self._sessions: dict[str, SessionRecord] = {}
         self._revoked: set[str] = set()
 
-    def create(self, user_id: str, ttl_seconds: int) -> SessionRecord:
+    def create(
+        self, user_id: str, ttl_seconds: int, *, active_context_id: str | None = None
+    ) -> SessionRecord:
         now = self._clock()
         session = SessionRecord(
             session_id=secrets.token_urlsafe(32),
@@ -96,6 +105,7 @@ class InMemorySessionStore:
             created_at=now,
             expires_at=now + ttl_seconds,
             last_seen_at=now,
+            active_context_id=active_context_id,
         )
         self._sessions[session.session_id] = session
         return session
@@ -128,6 +138,13 @@ class InMemorySessionStore:
         now = self._clock()
         session.last_seen_at = now
         session.expires_at = now + ttl_seconds
+        return session
+
+    def set_active_context(self, session_id: str, context_id: str) -> SessionRecord | None:
+        session = self.get(session_id)
+        if session is None:
+            return None
+        session.active_context_id = context_id
         return session
 
 

@@ -22,12 +22,26 @@ class BackendRole(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class SchoolRoleContext:
+    context_id: str
+    role: BackendRole
+    school_id: int
+    school_ref: str
+    accessible_subject_ids: frozenset[str] = frozenset()
+
+
+@dataclass(frozen=True, slots=True)
 class Actor:
     user_id: str
     username: str
     role: BackendRole
     subject_id: str | None
     accessible_subject_ids: frozenset[str] = frozenset()
+    scope_profile: str = "legacy_demo"
+    school_id: int | None = None
+    school_ref: str | None = None
+    authorized_roles: tuple[BackendRole, ...] = ()
+    school_contexts: tuple[SchoolRoleContext, ...] = ()
 
 
 @dataclass(slots=True)
@@ -38,14 +52,47 @@ class SyntheticUser:
     subject_id: str | None
     password_hash: str = field(repr=False)
     accessible_subject_ids: frozenset[str] = frozenset()
+    scope_profile: str = "legacy_demo"
+    school_contexts: tuple[SchoolRoleContext, ...] = ()
+    default_context_id: str | None = None
 
-    def actor(self) -> Actor:
+    def actor(self, active_context_id: str | None = None) -> Actor | None:
+        contexts = self.school_contexts
+        if active_context_id is None and self.default_context_id is not None:
+            active_context_id = self.default_context_id
+        active_context = next(
+            (context for context in contexts if context.context_id == active_context_id), None
+        )
+        if active_context_id is not None and active_context is None:
+            return None
+        roles = tuple(dict.fromkeys(context.role for context in contexts))
+        if not roles:
+            roles = (self.role,)
+        subject_id = self.subject_id
+        if active_context and active_context.role is BackendRole.STUDENT:
+            subject_id = (
+                next(iter(active_context.accessible_subject_ids))
+                if len(active_context.accessible_subject_ids) == 1
+                else None
+            )
+        scoped_subjects = (
+            active_context.accessible_subject_ids
+            if active_context
+            else frozenset()
+            if self.scope_profile == "school_tenant"
+            else self.accessible_subject_ids
+        )
         return Actor(
             user_id=self.user_id,
             username=self.username,
-            role=self.role,
-            subject_id=self.subject_id,
-            accessible_subject_ids=self.accessible_subject_ids,
+            role=active_context.role if active_context else self.role,
+            subject_id=subject_id,
+            accessible_subject_ids=scoped_subjects,
+            scope_profile=self.scope_profile,
+            school_id=active_context.school_id if active_context else None,
+            school_ref=active_context.school_ref if active_context else None,
+            authorized_roles=roles,
+            school_contexts=contexts,
         )
 
 
@@ -57,6 +104,7 @@ class SessionRecord:
     created_at: float
     expires_at: float
     last_seen_at: float
+    active_context_id: str | None = None
 
 
 @dataclass(slots=True)

@@ -11,6 +11,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 Environment = Literal["local", "test", "demo", "research", "production"]
 ClientMode = Literal["http", "contract_fake"]
 PersistenceMode = Literal["memory", "mysql"]
+IdentityProfile = Literal["legacy_demo", "school_tenant"]
 
 
 class TimeoutSettings(BaseModel):
@@ -97,6 +98,7 @@ class BackendSettings(BaseSettings):
     port: int = Field(default=8080, ge=1, le=65_535)
     docs_enabled: bool = True
     persistence_mode: PersistenceMode = "memory"
+    identity_profile: IdentityProfile = "legacy_demo"
     allowed_origins: list[str] = Field(
         default_factory=lambda: [
             "http://localhost:5173",
@@ -150,6 +152,8 @@ class BackendSettings(BaseSettings):
     @model_validator(mode="after")
     def validate_production_security(self) -> BackendSettings:
         if self.environment == "production":
+            if self.identity_profile != "school_tenant":
+                raise ValueError("production requires the school_tenant identity profile")
             if not self.auth.secure_cookie:
                 raise ValueError("production sessions require Secure cookies")
             if self.auth.same_site != "lax":

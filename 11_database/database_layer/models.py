@@ -13,6 +13,7 @@ from sqlalchemy import (
     BINARY,
     CheckConstraint,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -68,6 +69,104 @@ class Role(ResourceIdentityMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="ACTIVE")
 
 
+class School(ResourceIdentityMixin, TimestampMixin, Base):
+    __tablename__ = "schools"
+    __table_args__ = mysql_table_args(
+        CheckConstraint("status IN ('ACTIVE', 'INACTIVE')", name="status_allowed"),
+        CheckConstraint(
+            "data_origin IN ('SYNTHETIC', 'PRODUCTION_PENDING')",
+            name="data_origin_allowed",
+        ),
+        CheckConstraint(
+            "provenance_ref = 'SYNTHETIC_REF_AUTH_TENANT_FIXTURE_V1'",
+            name="provenance_ref_token",
+        ),
+    )
+
+    school_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False, unique=True)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="ACTIVE", server_default="ACTIVE"
+    )
+    data_origin: Mapped[str] = mapped_column(String(24), nullable=False)
+    provenance_ref: Mapped[str] = mapped_column(ascii_id(48), nullable=False)
+
+
+class AccountSchoolMembership(ResourceIdentityMixin, TimestampMixin, Base):
+    __tablename__ = "account_school_memberships"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("account_id", "school_id", name="account_school_unique"),
+        UniqueConstraint("id", "school_id", name="membership_id_school_unique"),
+        CheckConstraint("status IN ('ACTIVE', 'INACTIVE', 'REVOKED')", name="status_allowed"),
+        CheckConstraint(
+            "valid_until IS NULL OR valid_until >= valid_from", name="validity_ordered"
+        ),
+        Index("ix_memberships_account_status", "account_id", "status"),
+        Index("ix_memberships_school_status", "school_id", "status"),
+    )
+
+    account_id: Mapped[int] = mapped_column(
+        unsigned_id(),
+        ForeignKey("accounts.id", ondelete="RESTRICT", name="fk_memberships_account"),
+        nullable=False,
+    )
+    school_id: Mapped[int] = mapped_column(
+        unsigned_id(),
+        ForeignKey("schools.id", ondelete="RESTRICT", name="fk_memberships_school"),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="ACTIVE", server_default="ACTIVE"
+    )
+    valid_from: Mapped[datetime] = mapped_column(utc_datetime(), nullable=False, default=utc_now)
+    valid_until: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+
+
+class MembershipRole(ResourceIdentityMixin, TimestampMixin, Base):
+    __tablename__ = "membership_roles"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("membership_id", "role_code", name="membership_role_unique"),
+        UniqueConstraint("id", "school_id", name="membership_role_id_school_unique"),
+        ForeignKeyConstraint(
+            ["membership_id", "school_id"],
+            ["account_school_memberships.id", "account_school_memberships.school_id"],
+            name="fk_membership_roles_membership_school",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint(
+            "role_code IN ('student', 'teacher', 'psychological_specialist', 'admin')",
+            name="role_allowed",
+        ),
+        CheckConstraint("status IN ('ACTIVE', 'INACTIVE', 'REVOKED')", name="status_allowed"),
+        CheckConstraint(
+            "valid_until IS NULL OR valid_until >= valid_from", name="validity_ordered"
+        ),
+        Index("ix_membership_roles_membership_status", "membership_id", "status"),
+    )
+
+    membership_id: Mapped[int] = mapped_column(
+        unsigned_id(),
+        ForeignKey(
+            "account_school_memberships.id",
+            ondelete="RESTRICT",
+            name="fk_membership_roles_membership",
+        ),
+        nullable=False,
+    )
+    school_id: Mapped[int] = mapped_column(
+        unsigned_id(),
+        ForeignKey("schools.id", ondelete="RESTRICT", name="fk_membership_roles_school"),
+        nullable=False,
+    )
+    role_code: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="ACTIVE", server_default="ACTIVE"
+    )
+    valid_from: Mapped[datetime] = mapped_column(utc_datetime(), nullable=False, default=utc_now)
+    valid_until: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+
+
 class AccountRole(ResourceIdentityMixin, TimestampMixin, Base):
     __tablename__ = "account_roles"
     __table_args__ = mysql_table_args(
@@ -98,9 +197,13 @@ class Subject(ResourceIdentityMixin, TimestampMixin, Base):
         CheckConstraint(
             "data_origin IN ('SYNTHETIC', 'PRODUCTION_PENDING')", name="data_origin_allowed"
         ),
+        UniqueConstraint("id", "school_id", name="subject_id_school_unique"),
     )
 
     subject_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False, unique=True)
+    school_id: Mapped[int | None] = mapped_column(
+        unsigned_id(), ForeignKey("schools.id", ondelete="RESTRICT"), nullable=True
+    )
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default=SubjectStatus.ACTIVE.value
     )
@@ -128,6 +231,19 @@ class SubjectAccessGrant(ResourceIdentityMixin, TimestampMixin, Base):
             "subject_id",
             "status",
         ),
+        Index("ix_subject_grants_school_subject_status", "school_id", "subject_id", "status"),
+        ForeignKeyConstraint(
+            ["subject_id", "school_id"],
+            ["subjects.id", "subjects.school_id"],
+            name="fk_subject_grants_subject_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["principal_account_id", "school_id"],
+            ["account_school_memberships.account_id", "account_school_memberships.school_id"],
+            name="fk_subject_grants_membership_school",
+            ondelete="RESTRICT",
+        ),
     )
 
     principal_account_id: Mapped[int] = mapped_column(
@@ -139,6 +255,9 @@ class SubjectAccessGrant(ResourceIdentityMixin, TimestampMixin, Base):
         unsigned_id(),
         ForeignKey("subjects.id", ondelete="RESTRICT", name="fk_subject_access_grants_subject"),
         nullable=False,
+    )
+    school_id: Mapped[int | None] = mapped_column(
+        unsigned_id(), ForeignKey("schools.id", ondelete="RESTRICT"), nullable=True
     )
     relationship_type: Mapped[str] = mapped_column(String(32), nullable=False)
     status: Mapped[str] = mapped_column(
@@ -184,6 +303,17 @@ class AuthSession(ResourceIdentityMixin, TimestampMixin, Base):
     __table_args__ = mysql_table_args(
         UniqueConstraint("session_token_hash", name="session_token_hash_unique"),
         Index("ix_auth_sessions_account_active", "account_id", "revoked_at", "absolute_expires_at"),
+        CheckConstraint(
+            "(active_membership_role_id IS NULL AND active_school_id IS NULL) OR "
+            "(active_membership_role_id IS NOT NULL AND active_school_id IS NOT NULL)",
+            name="active_context_complete",
+        ),
+        ForeignKeyConstraint(
+            ["active_membership_role_id", "active_school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_auth_sessions_active_role_school",
+            ondelete="RESTRICT",
+        ),
     )
 
     account_id: Mapped[int] = mapped_column(
@@ -191,6 +321,8 @@ class AuthSession(ResourceIdentityMixin, TimestampMixin, Base):
         ForeignKey("accounts.id", ondelete="RESTRICT", name="fk_auth_sessions_account"),
         nullable=False,
     )
+    active_school_id: Mapped[int | None] = mapped_column(unsigned_id(), nullable=True)
+    active_membership_role_id: Mapped[int | None] = mapped_column(unsigned_id(), nullable=True)
     session_token_hash: Mapped[bytes] = mapped_column(BINARY(32), nullable=False)
     csrf_token_hash: Mapped[bytes | None] = mapped_column(BINARY(32), nullable=True)
     user_agent_hash: Mapped[bytes | None] = mapped_column(BINARY(32), nullable=True)

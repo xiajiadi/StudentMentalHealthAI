@@ -8,12 +8,21 @@ import pytest
 from database_layer.base import utc_now
 from database_layer.enums import DataOrigin, ReviewPriority, ReviewStatus, SafetyAction
 from database_layer.errors import OptimisticConcurrencyConflict
-from database_layer.models import Account, AssessmentResponse, IdempotencyRecord, ReviewCase
+from database_layer.models import (
+    Account,
+    AssessmentResponse,
+    IdempotencyRecord,
+    ReviewCase,
+    SubjectAccessGrant,
+)
 from database_layer.repositories import (
+    SYNTHETIC_SCHOOL_PROVENANCE_REF,
     AccountRepository,
     AssessmentRepository,
+    AuthSessionStore,
     IdempotencyStore,
     ReviewRepository,
+    SchoolMembershipRepository,
     SubjectRepository,
 )
 from sqlalchemy import select, text
@@ -25,6 +34,9 @@ REQUIRED_TABLES = {
     "accounts",
     "roles",
     "account_roles",
+    "schools",
+    "account_school_memberships",
+    "membership_roles",
     "subjects",
     "subject_access_grants",
     "consent_records",
@@ -99,14 +111,16 @@ async def test_migration_version_table_is_at_head(mysql_engine) -> None:
         revision = (
             await connection.execute(text("SELECT version_num FROM database_alembic_version"))
         ).scalar_one()
-    assert revision == "20260906_0002"
+    assert revision == "20261011_0003"
 
 
 async def test_encrypted_assessment_response_is_not_plaintext(session_factory, protection) -> None:
     suffix = uuid4().hex
     async with session_factory.begin() as session:
         subject = await SubjectRepository(session).create(
-            subject_ref=f"SUBJ_mysql_test_{suffix}", data_origin=DataOrigin.SYNTHETIC
+            subject_ref=f"SUBJ_mysql_test_{suffix}",
+            school_id=None,
+            data_origin=DataOrigin.SYNTHETIC,
         )
         assessment = await AssessmentRepository(session, protection).create_session(
             assessment_ref=f"ASSESS_mysql_test_{suffix}",
@@ -153,7 +167,9 @@ async def test_review_version_prevents_stale_update(session_factory, protection)
     suffix = uuid4().hex
     async with session_factory.begin() as session:
         subject = await SubjectRepository(session).create(
-            subject_ref=f"SUBJ_review_test_{suffix}", data_origin=DataOrigin.SYNTHETIC
+            subject_ref=f"SUBJ_review_test_{suffix}",
+            school_id=None,
+            data_origin=DataOrigin.SYNTHETIC,
         )
         # The safety FK is created with a small direct fixture in the same
         # transaction by the test helper below.
@@ -256,3 +272,229 @@ async def test_idempotency_concurrent_claim_has_one_authoritative_effect(session
         record = await cleanup.get(IdempotencyRecord, results[0][0])
         if record:
             await cleanup.delete(record)
+
+
+async def test_school_contexts_grants_and_sessions_are_same_school_and_fail_closed(
+    session_factory,
+) -> None:
+    from database_layer.base import utc_now
+
+    suffix = uuid4().hex
+    now = utc_now()
+    async with session_factory.begin() as session:
+        accounts = AccountRepository(session)
+        teacher = await accounts.create(
+            login_name=f"teacher_{suffix}", password_hash="synthetic-hash"
+        )
+        other = await accounts.create(
+            login_name=f"other_{suffix}", password_hash="synthetic-hash"
+        )
+        memberships = SchoolMembershipRepository(session)
+        provenance_ref = SYNTHETIC_SCHOOL_PROVENANCE_REF
+        school_a = await memberships.create_school(
+            school_ref=f"SCHOOL_A_{suffix}",
+            data_origin=DataOrigin.SYNTHETIC,
+            provenance_ref=provenance_ref,
+        )
+        school_b = await memberships.create_school(
+            school_ref=f"SCHOOL_B_{suffix}",
+            data_origin=DataOrigin.SYNTHETIC,
+            provenance_ref=provenance_ref,
+        )
+        membership_a = await memberships.create_membership(
+            account_id=teacher.id, school_id=school_a.id, valid_from=now
+        )
+        membership_b = await memberships.create_membership(
+            account_id=teacher.id, school_id=school_b.id, valid_from=now
+        )
+        inactive_membership = await memberships.create_membership(
+            account_id=other.id, school_id=school_a.id, valid_from=now, status="INACTIVE"
+        )
+        role_a = await memberships.add_role(
+            membership_id=membership_a.id,
+            school_id=school_a.id,
+            role_code="teacher",
+            valid_from=now,
+        )
+        role_b = await memberships.add_role(
+            membership_id=membership_b.id,
+            school_id=school_b.id,
+            role_code="teacher",
+            valid_from=now,
+        )
+        inactive_role = await memberships.add_role(
+            membership_id=inactive_membership.id,
+            school_id=school_a.id,
+            role_code="teacher",
+            valid_from=now,
+        )
+        subject_a = await SubjectRepository(session).create(
+            subject_ref=f"SUBJ_A_{suffix}", school_id=school_a.id
+        )
+        subject_b = await SubjectRepository(session).create(
+            subject_ref=f"SUBJ_B_{suffix}", school_id=school_b.id
+        )
+        legacy_subject = await SubjectRepository(session).create(
+            subject_ref=f"SUBJ_LEGACY_{suffix}", school_id=None
+        )
+
+        grant_a = await memberships.grant_subject_in_school(
+            principal_account_id=teacher.id,
+            subject_id=subject_a.id,
+            school_id=school_a.id,
+            role_code="teacher",
+            valid_from=now,
+        )
+        with pytest.raises(ValueError, match="principal has no active matching school role"):
+            await memberships.grant_subject_in_school(
+                principal_account_id=other.id,
+                subject_id=subject_b.id,
+                school_id=school_b.id,
+                role_code="teacher",
+                valid_from=now,
+            )
+        with pytest.raises(ValueError, match="not active in the requested school"):
+            await memberships.grant_subject_in_school(
+                principal_account_id=teacher.id,
+                subject_id=subject_b.id,
+                school_id=school_a.id,
+                role_code="teacher",
+                valid_from=now,
+            )
+        grant_b = await memberships.grant_subject_in_school(
+            principal_account_id=teacher.id,
+            subject_id=subject_b.id,
+            school_id=school_b.id,
+            role_code="teacher",
+            valid_from=now,
+        )
+        with pytest.raises(ValueError, match="role cannot receive a school subject grant"):
+            await memberships.grant_subject_in_school(
+                principal_account_id=teacher.id,
+                subject_id=subject_a.id,
+                school_id=school_a.id,
+                role_code="reviewer",
+                valid_from=now,
+            )
+
+        school_a_contexts = await memberships.active_contexts(account_id=teacher.id, at=now)
+        assert {(row[1], row[2]) for row in school_a_contexts} == {
+            ("teacher", school_a.id),
+            ("teacher", school_b.id),
+        }
+        assert await memberships.active_contexts(account_id=other.id, at=now) == []
+        assert await memberships.context_for_account(
+            account_id=other.id, context_id=role_a.id, at=now
+        ) is None
+        assert await memberships.authorized_subject_refs(
+            account_id=teacher.id,
+            school_id=school_a.id,
+            role_code="teacher",
+            at=now,
+        ) == frozenset({subject_a.subject_ref})
+        assert await memberships.authorized_subject_refs(
+            account_id=teacher.id,
+            school_id=school_b.id,
+            role_code="teacher",
+            at=now,
+        ) == frozenset({subject_b.subject_ref})
+
+        role_a.revoked_at = now
+        assert await memberships.context_for_account(
+            account_id=teacher.id, context_id=role_a.id, at=now
+        ) is None
+        assert {
+            row[0]
+            for row in await memberships.active_contexts(account_id=teacher.id, at=now)
+        } == {role_b.id}
+        grant_a.revoked_at = now
+        assert await memberships.authorized_subject_refs(
+            account_id=teacher.id,
+            school_id=school_a.id,
+            role_code="teacher",
+            at=now,
+        ) == frozenset()
+        membership_b.revoked_at = now
+        assert await memberships.context_for_account(
+            account_id=teacher.id, context_id=role_b.id, at=now
+        ) is None
+        assert await memberships.authorized_subject_refs(
+            account_id=teacher.id,
+            school_id=school_b.id,
+            role_code="teacher",
+            at=now,
+        ) == frozenset()
+
+        # Internal REVIEW_ASSIGNMENT remains NULL-scoped, but the school
+        # context resolver cannot consume it as a school grant.
+        legacy_reviewer = await accounts.create(
+            login_name=f"reviewer_{suffix}", password_hash="synthetic-hash"
+        )
+        legacy_grant = SubjectAccessGrant(
+                principal_account_id=legacy_reviewer.id,
+                subject_id=legacy_subject.id,
+                school_id=None,
+                relationship_type="REVIEW_ASSIGNMENT",
+                status="ACTIVE",
+                valid_from=now,
+            )
+        session.add(legacy_grant)
+        await session.flush()
+        assert await memberships.authorized_subject_refs(
+            account_id=legacy_reviewer.id,
+            school_id=school_a.id,
+            role_code="teacher",
+            at=now,
+        ) == frozenset()
+
+        sessions = AuthSessionStore(session)
+        raw_token = f"session-{suffix}"
+        auth_session = await sessions.create(
+            account_id=teacher.id,
+            raw_session_token=raw_token,
+            raw_csrf_token=f"csrf-{suffix}",
+            idle_expires_at=now + timedelta(minutes=10),
+            absolute_expires_at=now + timedelta(hours=1),
+            active_school_id=school_a.id,
+            active_membership_role_id=role_a.id,
+        )
+        persisted = await sessions.find_by_token(raw_token)
+        assert persisted is not None
+        assert persisted.active_school_id == school_a.id
+        assert persisted.active_membership_role_id == role_a.id
+        switched = await sessions.set_active_context(
+            raw_token, school_id=school_b.id, membership_role_id=role_b.id
+        )
+        assert switched is not None
+        assert switched.active_school_id == school_b.id
+        assert switched.active_membership_role_id == role_b.id
+
+        await session.delete(auth_session)
+        await session.delete(grant_a)
+        await session.delete(grant_b)
+        await session.delete(legacy_grant)
+        await session.flush()
+
+        await session.delete(inactive_role)
+        await session.delete(role_b)
+        await session.delete(role_a)
+        await session.flush()
+
+        await session.delete(inactive_membership)
+        await session.delete(membership_b)
+        await session.delete(membership_a)
+        await session.flush()
+
+        await session.delete(legacy_subject)
+        await session.delete(subject_b)
+        await session.delete(subject_a)
+        await session.flush()
+
+        await session.delete(legacy_reviewer)
+        await session.delete(teacher)
+        await session.delete(other)
+        await session.flush()
+
+        await session.delete(school_a)
+        await session.delete(school_b)
+        await session.flush()

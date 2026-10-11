@@ -17,7 +17,15 @@ from .dependencies import (
     CsrfActor,
     CurrentActor,
 )
-from .schemas import ActorDto, CsrfResponse, LoginRequest, LoginResponse, LogoutResponse
+from .schemas import (
+    ActiveContextRequest,
+    ActorDto,
+    CsrfResponse,
+    LoginRequest,
+    LoginResponse,
+    LogoutResponse,
+    RoleContextDto,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -29,6 +37,27 @@ def envelope(request: Request, data: object) -> dict[str, object]:
         "trace_id": context.trace_id,
         "data": data.model_dump(mode="json") if isinstance(data, BaseModel) else data,
     }
+
+
+def actor_dto(actor) -> ActorDto:
+    contexts = [
+        RoleContextDto(role=context.role, school_ref=context.school_ref)
+        for context in actor.school_contexts
+    ]
+    active_context = (
+        RoleContextDto(role=actor.role, school_ref=actor.school_ref)
+        if actor.school_ref is not None
+        else None
+    )
+    return ActorDto(
+        user_id=actor.user_id,
+        username=actor.username,
+        role=actor.role,
+        subject_id=actor.subject_id,
+        authorized_roles=list(actor.authorized_roles),
+        available_contexts=contexts,
+        active_context=active_context,
+    )
 
 
 @router.post(
@@ -61,12 +90,7 @@ async def login(request: Request, payload: LoginRequest) -> JSONResponse:
         trace_id=context.trace_id,
     )
     data = LoginResponse(
-        actor=ActorDto(
-            user_id=actor.user_id,
-            username=actor.username,
-            role=actor.role,
-            subject_id=actor.subject_id,
-        ),
+        actor=actor_dto(actor),
         csrf_token=session.csrf_token,
     )
     response = JSONResponse(content=envelope(request, data), status_code=200)
@@ -112,15 +136,34 @@ async def logout(request: Request, actor: CsrfActor) -> JSONResponse:
     summary="Read the current actor",
 )
 async def me(request: Request, actor: CurrentActor) -> dict[str, object]:
-    return envelope(
-        request,
-        ActorDto(
-            user_id=actor.user_id,
-            username=actor.username,
-            role=actor.role,
-            subject_id=actor.subject_id,
-        ),
+    return envelope(request, actor_dto(actor))
+
+
+@router.post(
+    "/active-context",
+    operation_id="authSwitchActiveContext",
+    response_model=ApiEnvelope[ActorDto],
+    openapi_extra=CSRF_SECURITY_OPENAPI_EXTRA,
+    responses=problem_responses(
+        ErrorCode.AUTH_SESSION_EXPIRED,
+        ErrorCode.FORBIDDEN,
+        ErrorCode.CSRF_FAILED,
+    ),
+    summary="Switch the active school role context",
+)
+async def switch_active_context(
+    request: Request, payload: ActiveContextRequest, actor: CsrfActor
+) -> dict[str, object]:
+    container = request.app.state.container
+    context = current_request_context(request)
+    switched = await container.auth.switch_active_context(
+        request.cookies.get(container.settings.cookie_name),
+        role=payload.role,
+        school_ref=payload.school_ref,
+        request_id=context.request_id,
+        trace_id=context.trace_id,
     )
+    return envelope(request, actor_dto(switched))
 
 
 @router.get(

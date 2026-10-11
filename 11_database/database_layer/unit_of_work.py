@@ -16,6 +16,7 @@ from .repositories import (
     ConsentRepository,
     IdempotencyStore,
     ReviewRepository,
+    SchoolMembershipRepository,
     SubjectRepository,
     SupportRepository,
 )
@@ -34,6 +35,7 @@ class SqlAlchemyUnitOfWork:
         self.session: AsyncSession | None = None
         self.accounts: AccountRepository | None = None
         self.subjects: SubjectRepository | None = None
+        self.memberships: SchoolMembershipRepository | None = None
         self.consents: ConsentRepository | None = None
         self.auth_sessions: AuthSessionStore | None = None
         self.assessments: AssessmentRepository | None = None
@@ -47,6 +49,7 @@ class SqlAlchemyUnitOfWork:
         await self.session.begin()
         self.accounts = AccountRepository(self.session)
         self.subjects = SubjectRepository(self.session)
+        self.memberships = SchoolMembershipRepository(self.session)
         self.consents = ConsentRepository(self.session)
         self.auth_sessions = AuthSessionStore(self.session)
         self.assessments = AssessmentRepository(self.session, self.protection)

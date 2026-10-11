@@ -112,12 +112,15 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
     if settings.persistence_mode == "mysql":
         from smhai_backend.adapters.database import MySqlBackendAdapter
 
-        persistence = MySqlBackendAdapter(repository_root=Path(__file__).resolve().parents[3])
+        persistence = MySqlBackendAdapter(
+            repository_root=Path(__file__).resolve().parents[3],
+            identity_profile=settings.identity_profile,
+        )
         users = sessions = assessments_repo = conversations = reports = reviews = audits = (
             idempotency
         ) = persistence
     else:
-        users = InMemoryUserRepository()
+        users = InMemoryUserRepository(identity_profile=settings.identity_profile)
         sessions = InMemorySessionStore()
         assessments_repo = InMemoryAssessmentRepository()
         conversations = InMemoryConversationRepository()

@@ -5,6 +5,14 @@ Round 1 contains synthetic fixtures only; sensitivity labels are engineering cla
 
 | Table | Column | Type | Nullable | Sensitivity | Encrypted/hashed? | Queryable? | Retention notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| `schools` | `school_ref` | `VARCHAR(128) COLLATE ascii_bin` | no | INTERNAL | No | Yes | Synthetic workspace reference; do not store a real school name |
+| `schools` | `status` | `VARCHAR(16)` | no | INTERNAL | No | Yes | Policy-driven technical/audit retention |
+| `schools` | `data_origin` | `VARCHAR(24)` | no | INTERNAL | No | Yes | Shared origin vocabulary; repository accepts SYNTHETIC only |
+| `schools` | `provenance_ref` | `VARCHAR(48) COLLATE ascii_bin` | no | INTERNAL | No | Yes | Registered token `SYNTHETIC_REF_AUTH_TENANT_FIXTURE_V1` points to the non-sensitive synthetic school fixture recipe in `test_mysql_integration.py`; no names, member data, PII, credentials, free text, or source content |
+| `schools` | `id` | `BIGINT UNSIGNED` | no | INTERNAL | No | Yes | Policy-driven technical/audit retention |
+| `schools` | `public_id` | `VARCHAR(36) COLLATE ascii_bin` | no | INTERNAL | No | Yes | Policy-driven technical/audit retention |
+| `schools` | `created_at` | `DATETIME(6)` | no | INTERNAL | No | Yes | Policy-driven technical/audit retention |
+| `schools` | `updated_at` | `DATETIME(6)` | no | INTERNAL | No | Yes | Policy-driven technical/audit retention |
 | `accounts` | `login_name` | `VARCHAR(255)` | no | PERSONAL | No | Yes | Policy-driven; explicit lifecycle |
 | `accounts` | `password_hash` | `VARCHAR(255)` | no | SECURITY_SECRET | Yes | No | Hash lookup or authentication control |
 | `accounts` | `status` | `VARCHAR(16)` | no | PERSONAL | No | Yes | Policy-driven; explicit lifecycle |

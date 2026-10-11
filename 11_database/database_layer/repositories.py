@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select, update
+from sqlalchemy.engine import Row
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,6 +35,7 @@ from .enums import (
 from .errors import NotFound, OptimisticConcurrencyConflict, UniqueConflict
 from .models import (
     Account,
+    AccountSchoolMembership,
     AssessmentResponse,
     AssessmentResult,
     AssessmentSession,
@@ -41,15 +43,20 @@ from .models import (
     AuthSession,
     ConsentRecord,
     IdempotencyRecord,
+    MembershipRole,
     ReviewCase,
     ReviewEvent,
     SafetyDecision,
+    School,
     Subject,
+    SubjectAccessGrant,
     SupportEvidence,
     SupportMessage,
     SupportRun,
     SupportSession,
 )
+
+SYNTHETIC_SCHOOL_PROVENANCE_REF = "SYNTHETIC_REF_AUTH_TENANT_FIXTURE_V1"
 
 
 def _hash_opaque_token(token: str) -> bytes:
@@ -99,11 +106,13 @@ class SubjectRepository:
         self,
         *,
         subject_ref: str,
+        school_id: int | None,
         data_origin: DataOrigin = DataOrigin.SYNTHETIC,
         retention_due_at: datetime | None = None,
     ) -> Subject:
         subject = Subject(
             subject_ref=subject_ref,
+            school_id=school_id,
             data_origin=data_origin.value,
             retention_due_at=retention_due_at,
         )
@@ -119,6 +128,244 @@ class SubjectRepository:
             select(Subject).where(Subject.subject_ref == subject_ref)
         )
         return result.scalar_one_or_none()
+
+
+class SchoolMembershipRepository:
+    """Persistence helpers for explicitly provisioned school contexts."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def create_school(
+        self,
+        *,
+        school_ref: str,
+        data_origin: DataOrigin,
+        provenance_ref: str,
+    ) -> School:
+        if data_origin != DataOrigin.SYNTHETIC:
+            raise ValueError("school creation requires SYNTHETIC data origin")
+        if (
+            not isinstance(provenance_ref, str)
+            or provenance_ref != SYNTHETIC_SCHOOL_PROVENANCE_REF
+        ):
+            raise ValueError("school provenance_ref must be an opaque synthetic reference token")
+        school = School(
+            school_ref=school_ref,
+            status="ACTIVE",
+            data_origin=DataOrigin.SYNTHETIC.value,
+            provenance_ref=provenance_ref,
+        )
+        self.session.add(school)
+        try:
+            await self.session.flush()
+        except IntegrityError as exc:
+            raise _map_integrity_error(exc) from exc
+        return school
+
+    async def create_membership(
+        self,
+        *,
+        account_id: int,
+        school_id: int,
+        valid_from: datetime,
+        status: str = "ACTIVE",
+        valid_until: datetime | None = None,
+    ) -> AccountSchoolMembership:
+        membership = AccountSchoolMembership(
+            account_id=account_id,
+            school_id=school_id,
+            valid_from=valid_from,
+            valid_until=valid_until,
+            status=status,
+        )
+        self.session.add(membership)
+        try:
+            await self.session.flush()
+        except IntegrityError as exc:
+            raise _map_integrity_error(exc) from exc
+        return membership
+
+    async def add_role(
+        self,
+        *,
+        membership_id: int,
+        school_id: int,
+        role_code: str,
+        valid_from: datetime,
+        status: str = "ACTIVE",
+        valid_until: datetime | None = None,
+    ) -> MembershipRole:
+        if role_code not in {"student", "teacher", "psychological_specialist", "admin"}:
+            raise ValueError("role is not available in a school context")
+        role = MembershipRole(
+            membership_id=membership_id,
+            school_id=school_id,
+            role_code=role_code,
+            valid_from=valid_from,
+            valid_until=valid_until,
+            status=status,
+        )
+        self.session.add(role)
+        try:
+            await self.session.flush()
+        except IntegrityError as exc:
+            raise _map_integrity_error(exc) from exc
+        return role
+
+    async def active_contexts(
+        self, *, account_id: int, at: datetime
+    ) -> list[Row[tuple[int, str, int, str]]]:
+        statement = (
+            select(MembershipRole.id, MembershipRole.role_code, School.id, School.school_ref)
+            .join(
+                AccountSchoolMembership,
+                MembershipRole.membership_id == AccountSchoolMembership.id,
+            )
+            .join(School, School.id == AccountSchoolMembership.school_id)
+            .join(Account, Account.id == AccountSchoolMembership.account_id)
+            .where(
+                Account.id == account_id,
+                Account.status == AccountStatus.ACTIVE.value,
+                School.status == "ACTIVE",
+                AccountSchoolMembership.status == "ACTIVE",
+                AccountSchoolMembership.revoked_at.is_(None),
+                AccountSchoolMembership.valid_from <= at,
+                (AccountSchoolMembership.valid_until.is_(None))
+                | (AccountSchoolMembership.valid_until >= at),
+                MembershipRole.status == "ACTIVE",
+                MembershipRole.revoked_at.is_(None),
+                MembershipRole.valid_from <= at,
+                (MembershipRole.valid_until.is_(None)) | (MembershipRole.valid_until >= at),
+            )
+            .order_by(School.school_ref, MembershipRole.role_code, MembershipRole.id)
+        )
+        result = await self.session.execute(statement)
+        return list(result.all())
+
+    async def context_for_account(
+        self, *, account_id: int, context_id: int, at: datetime
+    ) -> tuple[int, int, str] | None:
+        statement = (
+            select(MembershipRole.id, School.id, MembershipRole.role_code)
+            .join(
+                AccountSchoolMembership,
+                MembershipRole.membership_id == AccountSchoolMembership.id,
+            )
+            .join(School, School.id == AccountSchoolMembership.school_id)
+            .join(Account, Account.id == AccountSchoolMembership.account_id)
+            .where(
+                MembershipRole.id == context_id,
+                Account.id == account_id,
+                Account.status == AccountStatus.ACTIVE.value,
+                School.status == "ACTIVE",
+                AccountSchoolMembership.status == "ACTIVE",
+                AccountSchoolMembership.revoked_at.is_(None),
+                AccountSchoolMembership.valid_from <= at,
+                (AccountSchoolMembership.valid_until.is_(None))
+                | (AccountSchoolMembership.valid_until >= at),
+                MembershipRole.status == "ACTIVE",
+                MembershipRole.revoked_at.is_(None),
+                MembershipRole.valid_from <= at,
+                (MembershipRole.valid_until.is_(None)) | (MembershipRole.valid_until >= at),
+            )
+        )
+        row = (await self.session.execute(statement)).one_or_none()
+        if row is None:
+            return None
+        return (row[0], row[1], row[2])
+
+    async def authorized_subject_refs(
+        self, *, account_id: int, school_id: int, role_code: str, at: datetime
+    ) -> frozenset[str]:
+        relationship_type = {
+            "student": "SELF",
+            "teacher": "TEACHER_OF",
+        }.get(role_code)
+        if relationship_type is None:
+            return frozenset()
+        statement = (
+            select(Subject.subject_ref)
+            .join(SubjectAccessGrant, SubjectAccessGrant.subject_id == Subject.id)
+            .join(
+                AccountSchoolMembership,
+                (AccountSchoolMembership.account_id == SubjectAccessGrant.principal_account_id)
+                & (AccountSchoolMembership.school_id == SubjectAccessGrant.school_id),
+            )
+            .join(
+                MembershipRole,
+                MembershipRole.membership_id == AccountSchoolMembership.id,
+            )
+            .join(Account, Account.id == AccountSchoolMembership.account_id)
+            .join(School, School.id == AccountSchoolMembership.school_id)
+            .where(
+                AccountSchoolMembership.account_id == account_id,
+                AccountSchoolMembership.school_id == school_id,
+                AccountSchoolMembership.status == "ACTIVE",
+                AccountSchoolMembership.revoked_at.is_(None),
+                AccountSchoolMembership.valid_from <= at,
+                (AccountSchoolMembership.valid_until.is_(None))
+                | (AccountSchoolMembership.valid_until >= at),
+                Account.status == AccountStatus.ACTIVE.value,
+                School.status == "ACTIVE",
+                MembershipRole.role_code == role_code,
+                MembershipRole.status == "ACTIVE",
+                MembershipRole.revoked_at.is_(None),
+                MembershipRole.valid_from <= at,
+                (MembershipRole.valid_until.is_(None)) | (MembershipRole.valid_until >= at),
+                SubjectAccessGrant.school_id == school_id,
+                Subject.school_id == school_id,
+                Subject.status == "ACTIVE",
+                SubjectAccessGrant.relationship_type == relationship_type,
+                SubjectAccessGrant.status == "ACTIVE",
+                SubjectAccessGrant.revoked_at.is_(None),
+                SubjectAccessGrant.valid_from <= at,
+                (SubjectAccessGrant.valid_until.is_(None)) | (SubjectAccessGrant.valid_until >= at),
+            )
+            .distinct()
+        )
+        return frozenset((await self.session.scalars(statement)).all())
+
+    async def grant_subject_in_school(
+        self,
+        *,
+        principal_account_id: int,
+        subject_id: int,
+        school_id: int,
+        role_code: str,
+        valid_from: datetime,
+        valid_until: datetime | None = None,
+    ) -> SubjectAccessGrant:
+        relationship_type = {"student": "SELF", "teacher": "TEACHER_OF"}.get(role_code)
+        if relationship_type is None:
+            raise ValueError("role cannot receive a school subject grant")
+        contexts = await self.active_contexts(account_id=principal_account_id, at=valid_from)
+        if not any(row[1] == role_code and row[2] == school_id for row in contexts):
+            raise ValueError("principal has no active matching school role")
+        subject = await self.session.scalar(
+            select(Subject).where(
+                Subject.id == subject_id,
+                Subject.school_id == school_id,
+                Subject.status == "ACTIVE",
+            )
+        )
+        if subject is None:
+            raise ValueError("subject is not active in the requested school")
+        grant = SubjectAccessGrant(
+            principal_account_id=principal_account_id,
+            subject_id=subject_id,
+            school_id=school_id,
+            relationship_type=relationship_type,
+            status="ACTIVE",
+            valid_from=valid_from,
+            valid_until=valid_until,
+        )
+        self.session.add(grant)
+        try:
+            await self.session.flush()
+        except IntegrityError as exc:
+            raise _map_integrity_error(exc) from exc
+        return grant
 
 
 class ConsentRepository:
@@ -182,12 +429,16 @@ class AuthSessionStore:
         absolute_expires_at: datetime,
         raw_csrf_token: str | None = None,
         user_agent: str | None = None,
+        active_school_id: int | None = None,
+        active_membership_role_id: int | None = None,
     ) -> AuthSession:
         record = AuthSession(
             account_id=account_id,
             session_token_hash=_hash_opaque_token(raw_session_token),
             csrf_token_hash=_hash_opaque_token(raw_csrf_token) if raw_csrf_token else None,
             user_agent_hash=_hash_opaque_token(user_agent) if user_agent else None,
+            active_school_id=active_school_id,
+            active_membership_role_id=active_membership_role_id,
             idle_expires_at=idle_expires_at,
             absolute_expires_at=absolute_expires_at,
         )
@@ -196,6 +447,21 @@ class AuthSessionStore:
             await self.session.flush()
         except IntegrityError as exc:
             raise _map_integrity_error(exc) from exc
+        return record
+
+    async def set_active_context(
+        self,
+        raw_session_token: str,
+        *,
+        school_id: int,
+        membership_role_id: int,
+    ) -> AuthSession | None:
+        record = await self.find_by_token(raw_session_token)
+        if record is None:
+            return None
+        record.active_school_id = school_id
+        record.active_membership_role_id = membership_role_id
+        await self.session.flush()
         return record
 
     async def find_by_token(self, raw_session_token: str) -> AuthSession | None:
@@ -686,6 +952,7 @@ __all__ = [
     "ConsentRepository",
     "IdempotencyStore",
     "ReviewRepository",
+    "SchoolMembershipRepository",
     "SqlAlchemyAssessmentRepository",
     "SqlAlchemyAuditRepository",
     "SqlAlchemyConversationRepository",

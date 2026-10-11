@@ -64,6 +64,7 @@ async def seed_synthetic_case(
     )
     subject = await SubjectRepository(session).create(
         subject_ref=f"SUBJ_synthetic_{uuid4().hex}",
+        school_id=None,
         data_origin=DataOrigin.SYNTHETIC,
         retention_due_at=utc_now() + timedelta(days=1),
     )
