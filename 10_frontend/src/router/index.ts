@@ -55,6 +55,10 @@ router.beforeEach(async (to) => {
       // The guard below gives the user a sign-in path when the local session cannot be restored.
     }
   }
+  const needsContext = Boolean(session.user?.availableContexts?.length && !session.user.activeContext)
+  if (needsContext) {
+    return to.name === 'login' ? true : { name: 'login', query: { redirect: to.fullPath } }
+  }
   if (to.meta.public) {
     if (to.name === 'login' && session.role) return roleHome(session.role)
     return true
@@ -63,7 +67,7 @@ router.beforeEach(async (to) => {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
   const allowedRoles = to.meta.roles
-  const authorizedRoles = session.user?.authorizedRoles ?? []
+  const authorizedRoles = session.user?.availableContexts?.length ? [] : session.user?.authorizedRoles ?? []
   if (allowedRoles && !allowedRoles.some((role) => role === session.role || authorizedRoles.includes(role))) {
     return session.role ? roleHome(session.role) : { name: 'login' }
   }

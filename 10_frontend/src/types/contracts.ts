@@ -1,5 +1,10 @@
 export type Role = 'student' | 'teacher' | 'psychological_specialist' | 'school_admin' | 'reviewer'
 
+export interface SchoolRoleContext {
+  role: Exclude<Role, 'reviewer'>
+  schoolRef: string
+}
+
 export type RiskLevel = 'normal' | 'attention' | 'high' | 'crisis'
 
 export type GenerationStatus =

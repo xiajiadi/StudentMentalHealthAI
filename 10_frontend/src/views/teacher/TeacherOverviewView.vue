@@ -48,8 +48,8 @@ import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
         </div>
       </div>
       <p>
-        当前教师概览接口返回按匿名主体拆分的测评记录，并包含报告与复核状态计数；它没有任务级进度，也没有小组汇总抑制规则。
-        为避免显示个人记录或可识别的小组信息，此页面不会请求或呈现这些数据。
+        班级任务进度正在接入。学校教师的个人测评记录、报告和复核信息访问已关闭；
+        此页面将在任务级汇总可用后显示完成进度。
       </p>
       <div class="blocked-panel__footer">
         <span class="status-dot" aria-hidden="true"></span>

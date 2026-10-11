@@ -22,6 +22,22 @@ describe('角色路由守卫', () => {
     expect(router.currentRoute.value.name).toBe('teacher-overview')
   })
 
+  it('未激活学校身份时保留登录后的选择页面', async () => {
+    useSessionStore().signIn({ userId: 'USER_context', role: 'student', subjectId: null, displayName: '合成账号', initials: 'S', availableContexts: [{ role: 'student', schoolRef: 'SYNTHETIC_ALPHA' }], activeContext: null })
+    await router.push('/student/home')
+    expect(router.currentRoute.value.name).toBe('login')
+    expect(router.currentRoute.value.query.redirect).toBe('/student/home')
+    await router.push('/login')
+    expect(router.currentRoute.value.name).toBe('login')
+  })
+
+  it('可切换的学校角色不等于当前已激活的角色', async () => {
+    const current = { role: 'teacher' as const, schoolRef: 'SYNTHETIC_ALPHA' }
+    useSessionStore().signIn({ userId: 'USER_context', role: 'teacher', authorizedRoles: ['teacher', 'student'], subjectId: null, displayName: '合成账号', initials: 'S', availableContexts: [current, { role: 'student', schoolRef: 'SYNTHETIC_ALPHA' }], activeContext: current })
+    await router.push('/student/assessments')
+    expect(router.currentRoute.value.name).toBe('teacher-overview')
+  })
+
   it('允许复核员进入安全复核队列', async () => {
     useSessionStore().signIn({ userId: 'USER_demo_reviewer', role: 'reviewer', subjectId: null, displayName: '演示复核员', initials: '复' })
     await router.push('/reviewer/queue')

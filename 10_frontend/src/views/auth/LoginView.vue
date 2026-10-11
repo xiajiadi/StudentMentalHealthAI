@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { CircleHelp, X } from '@lucide/vue'
 import {
   DialogClose,
@@ -12,12 +12,17 @@ import {
 } from 'reka-ui'
 import AppButton from '@/components/app/AppButton.vue'
 import { useSessionStore } from '@/stores/session'
+import { useAssessmentStore } from '@/stores/assessment'
+import type { LoginResult } from '@/api/client'
 import { frontendApi } from '@/services/mock-api'
 import { useRoute, useRouter } from 'vue-router'
 
 const router = useRouter()
 const route = useRoute()
 const session = useSessionStore()
+const assessment = useAssessmentStore()
+const pendingContext = ref<LoginResult | null>(null)
+const selectedContext = ref('')
 const account = ref('')
 const password = ref('')
 const isLoading = ref(false)
@@ -31,6 +36,38 @@ const roleHome: Record<string, string> = {
   psychological_specialist: '/specialist/overview', school_admin: '/admin/overview', reviewer: '/reviewer/queue',
 }
 
+const roleLabels: Record<string, string> = {
+  student: 'Student', teacher: 'Teacher', psychological_specialist: 'Psychological specialist', school_admin: 'School administrator',
+}
+
+onMounted(() => {
+  if (session.user?.availableContexts?.length && !session.user.activeContext) pendingContext.value = session.user
+})
+
+const enterWorkspace = async (user: LoginResult) => {
+  assessment.reset()
+  session.signIn(user)
+  const redirect = typeof route.query.redirect === 'string' && route.query.redirect.startsWith('/') && !route.query.redirect.startsWith('//') ? route.query.redirect : null
+  await router.push(redirect || roleHome[user.role] || '/login')
+}
+
+const chooseContext = async () => {
+  const context = pendingContext.value?.availableContexts?.[Number(selectedContext.value)]
+  if (!selectedContext.value || !context || !frontendApi.switchActiveContext) return
+  isLoading.value = true
+  errorMessage.value = ''
+  try {
+    const result = await frontendApi.switchActiveContext(context)
+    if (result.data.userId !== pendingContext.value?.userId || result.data.activeContext?.role !== context.role || result.data.activeContext.schoolRef !== context.schoolRef) {
+      throw new Error('Workspace selection has not been confirmed')
+    }
+    await enterWorkspace(result.data)
+    pendingContext.value = null
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : 'Workspace selection could not be completed'
+  } finally { isLoading.value = false }
+}
+
 const submit = async () => {
   errorMessage.value = ''
   accountError.value = account.value.trim() ? '' : 'Enter your username'
@@ -40,9 +77,12 @@ const submit = async () => {
   isLoading.value = true
   try {
     const response = await frontendApi.login({ account: account.value.trim(), password: password.value })
-    session.signIn(response.data)
-    const redirect = typeof route.query.redirect === 'string' && route.query.redirect.startsWith('/') ? route.query.redirect : null
-    await router.push(redirect || roleHome[response.data.role] || '/login')
+    password.value = ''
+    if (response.data.availableContexts?.length && !response.data.activeContext) {
+      pendingContext.value = response.data
+      return
+    }
+    await enterWorkspace(response.data)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Sign in could not be completed. Try again later'
     errorMessage.value = message.replace(/[。.]$/, '')
@@ -70,7 +110,7 @@ const submit = async () => {
           <div class="login-card__head">
             <h1 id="login-title">Enter your workspace</h1>
           </div>
-          <form class="login-form" novalidate @submit.prevent="submit">
+          <form v-if="!pendingContext" class="login-form" novalidate @submit.prevent="submit">
             <div class="login-field">
               <input
                 id="account"
@@ -101,6 +141,17 @@ const submit = async () => {
             </div>
             <p v-if="errorMessage" class="login-form__error" role="alert" aria-live="assertive">{{ errorMessage }}</p>
             <AppButton class="login-submit" type="submit" size="md" block :loading="isLoading">Continue</AppButton>
+          </form>
+          <form v-else class="login-form school-context-choice" @submit.prevent="chooseContext">
+            <label for="school-context">Choose your workspace</label>
+            <select id="school-context" v-model="selectedContext" class="login-input" aria-label="School workspace">
+              <option disabled value="">Select a school and role</option>
+              <option v-for="(context, index) in pendingContext.availableContexts" :key="`${context.schoolRef}:${context.role}`" :value="String(index)">
+                {{ context.schoolRef }} · {{ roleLabels[context.role] }}
+              </option>
+            </select>
+            <p v-if="errorMessage" class="login-form__error" role="alert">{{ errorMessage }}</p>
+            <AppButton class="login-submit" type="submit" size="md" block :loading="isLoading" :disabled="!selectedContext || !frontendApi.switchActiveContext">Continue</AppButton>
           </form>
         </div>
       </section>

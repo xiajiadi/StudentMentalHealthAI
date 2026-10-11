@@ -15,7 +15,7 @@ import {
   reviewReport,
 } from '@/api/generated/sdk.gen'
 import { createClient, createConfig } from '@/api/generated/client'
-import type { ApiEnvelope, Assessment, Citation, GenerationResult, Role } from '@/types/contracts'
+import type { ApiEnvelope, Assessment, Citation, GenerationResult, Role, SchoolRoleContext } from '@/types/contracts'
 import type {
   CatQuestion,
   ReviewCase,
@@ -142,6 +142,21 @@ const mapAuthorizedRoles = (value: unknown): Role[] | undefined => {
     try { return [mapRole(item)] } catch { return [] }
   })
   return [...new Set(roles)]
+}
+
+const mapSchoolContext = (value: unknown): SchoolRoleContext => {
+  if (!isRecord(value) || !valueAsString(value.school_ref)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '学校身份信息不完整。')
+  }
+  const role = mapRole(value.role)
+  if (role === 'reviewer') throw new RealApiError('API_INVALID_RESPONSE', '该身份不属于学校工作区。')
+  return { role, schoolRef: valueAsString(value.school_ref) }
+}
+
+const mapSchoolContexts = (value: unknown): SchoolRoleContext[] => {
+  if (value === undefined) return []
+  if (!Array.isArray(value)) throw new RealApiError('API_INVALID_RESPONSE', '学校身份列表格式错误。')
+  return value.map(mapSchoolContext)
 }
 
 const mapAssessment = (value: unknown, assessmentId: string): Assessment => {
@@ -373,6 +388,40 @@ export class RealApiProvider implements FrontendApi {
   private actorSubjectId: string | null = null
   private readonly reviewCases = new Map<string, ReviewCase>()
 
+  private projectActor(actor: UnknownRecord, fallbackName = '工作区用户'): LoginResult {
+    const contexts = mapSchoolContexts(actor.available_contexts)
+    const active = actor.active_context == null ? null : mapSchoolContext(actor.active_context)
+    const role = mapRole(actor.role)
+    if (active && (active.role !== role || !contexts.some((item) => item.role === active.role && item.schoolRef === active.schoolRef))) {
+      throw new RealApiError('API_INVALID_RESPONSE', '当前学校身份与授权列表不一致。')
+    }
+    const subjectId = nullableString(actor.subject_id)
+    const name = valueAsString(actor.username, fallbackName)
+    return {
+      userId: valueAsString(actor.user_id), role,
+      authorizedRoles: mapAuthorizedRoles(actor.authorized_roles),
+      subjectId, displayName: name,
+      initials: name.slice(0, 1).toUpperCase(),
+      ...(contexts.length ? { availableContexts: contexts, activeContext: active } : {}),
+    }
+  }
+
+  async switchActiveContext(context: SchoolRoleContext): Promise<ApiEnvelope<LoginResult>> {
+    await this.ensureCsrfToken()
+    const response = await unwrap<UnknownRecord>(() => apiClient.request({
+      method: 'POST', url: '/api/v1/auth/active-context',
+      body: { role: context.role === 'school_admin' ? 'ADMIN' : context.role.toUpperCase(), school_ref: context.schoolRef },
+      headers: { 'Content-Type': 'application/json', ...mutationHeaders(this.csrfToken, nowToken('frontend-auth-context')) },
+    }))
+    const data = this.projectActor(response.data)
+    if (data.activeContext?.role !== context.role || data.activeContext.schoolRef !== context.schoolRef) {
+      throw new RealApiError('API_INVALID_RESPONSE', '学校身份尚未激活，请重试。')
+    }
+    this.actorSubjectId = data.subjectId
+    this.reviewCases.clear()
+    return { ...response, data }
+  }
+
   private async ensureCsrfToken(): Promise<string> {
     if (this.csrfToken) return this.csrfToken
     const response = await unwrap<{ csrf_token: string }>(() => authCsrf({ client: apiClient }))
@@ -387,18 +436,11 @@ export class RealApiProvider implements FrontendApi {
     }))
     const actor = isRecord(response.data.actor) ? response.data.actor : {}
     this.csrfToken = valueAsString(response.data.csrf_token)
-    this.actorSubjectId = nullableString(actor.subject_id)
-    return {
-      ...response,
-      data: {
-        userId: valueAsString(actor.user_id),
-        role: mapRole(actor.role),
-        authorizedRoles: mapAuthorizedRoles(actor.authorized_roles),
-        subjectId: this.actorSubjectId,
-        displayName: valueAsString(actor.username, input.account),
-        initials: valueAsString(actor.username, input.account).slice(0, 1).toUpperCase(),
-      },
-    }
+    this.reviewCases.clear()
+    const data = this.projectActor(actor, input.account)
+    this.actorSubjectId = data.subjectId
+    if (data.availableContexts?.length === 1 && !data.activeContext) return this.switchActiveContext(data.availableContexts[0]!)
+    return { ...response, data }
   }
 
   async logout(): Promise<ApiEnvelope<{ logged_out: boolean }>> {
@@ -409,6 +451,7 @@ export class RealApiProvider implements FrontendApi {
     }))
     this.csrfToken = ''
     this.actorSubjectId = null
+    this.reviewCases.clear()
     return response
   }
 
@@ -417,19 +460,10 @@ export class RealApiProvider implements FrontendApi {
     const actor = isRecord(response.data.actor) ? response.data.actor : response.data
     const userId = valueAsString(actor.user_id)
     if (!userId) return { ...response, data: null }
-    const username = valueAsString(actor.username, '演示同学')
-    this.actorSubjectId = nullableString(actor.subject_id)
-    return {
-      ...response,
-      data: {
-        userId,
-        role: mapRole(actor.role),
-        authorizedRoles: mapAuthorizedRoles(actor.authorized_roles),
-        subjectId: this.actorSubjectId,
-        displayName: username,
-        initials: username.slice(0, 1).toUpperCase(),
-      },
-    }
+    const data = this.projectActor(actor)
+    this.actorSubjectId = data.subjectId
+    if (data.availableContexts?.length === 1 && !data.activeContext) return this.switchActiveContext(data.availableContexts[0]!)
+    return { ...response, data }
   }
 
   async getStudentHome(): Promise<ApiEnvelope<StudentHomeViewModel | null>> {

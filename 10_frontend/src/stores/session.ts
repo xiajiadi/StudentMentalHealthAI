@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import type { Role } from '@/types/contracts'
+import type { Role, SchoolRoleContext } from '@/types/contracts'
 import type { SessionUser } from '@/types/view-models'
 
 export const useSessionStore = defineStore('session', () => {
@@ -9,7 +9,7 @@ export const useSessionStore = defineStore('session', () => {
   const isAuthenticated = computed(() => user.value !== null)
   const role = computed<Role | null>(() => user.value?.role ?? null)
 
-  const signIn = (input: { userId: string; role: Role; authorizedRoles?: Role[]; subjectId: string | null; displayName: string; initials: string }) => {
+  const signIn = (input: { userId: string; role: Role; authorizedRoles?: Role[]; availableContexts?: SchoolRoleContext[]; activeContext?: SchoolRoleContext | null; subjectId: string | null; displayName: string; initials: string }) => {
     user.value = {
       ...input,
       disclosure: input.role,

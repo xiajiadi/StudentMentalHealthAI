@@ -4,12 +4,15 @@ import type {
   GenerationResult,
   RiskLevel,
   Role,
+  SchoolRoleContext,
 } from './contracts'
 
 export interface SessionUser {
   userId: string
   role: Role
   authorizedRoles?: Role[]
+  availableContexts?: SchoolRoleContext[]
+  activeContext?: SchoolRoleContext | null
   subjectId: string | null
   displayName: string
   initials: string

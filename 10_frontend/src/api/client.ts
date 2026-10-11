@@ -2,6 +2,7 @@ import type {
   ApiEnvelope,
   Assessment,
   Role,
+  SchoolRoleContext,
 } from '@/types/contracts'
 import type {
   CatQuestion,
@@ -27,6 +28,8 @@ export interface LoginResult {
   userId: string
   role: Role
   authorizedRoles?: Role[]
+  availableContexts?: SchoolRoleContext[]
+  activeContext?: SchoolRoleContext | null
   subjectId: string | null
   displayName: string
   initials: string
@@ -74,6 +77,7 @@ export interface ReviewSubmission {
 
 export interface FrontendApi {
   login(input: LoginInput): Promise<ApiEnvelope<LoginResult>>
+  switchActiveContext?(context: SchoolRoleContext): Promise<ApiEnvelope<LoginResult>>
   logout(): Promise<ApiEnvelope<{ logged_out: boolean }>>
   getCurrentUser(): Promise<ApiEnvelope<LoginResult | null>>
   getStudentHome(): Promise<ApiEnvelope<StudentHomeViewModel | null>>
