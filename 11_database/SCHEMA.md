@@ -185,9 +185,56 @@ reference, result, trace, allowlisted JSON metadata, and timestamp. There is no
 raw chat, answer, result, password, token, key, safety payload, or full review
 note. Owner: audit persistence.
 
+## School classes and measurement tasks (revision 0005)
+
+### `school_classes`
+
+An opaque class reference scoped to a required `school_id`. The creator is a
+same-school `MembershipRole`; repository validation requires that role to be
+active and have role code `admin`. Class rows contain no roster names or
+psychological fields.
+
+### `school_class_students` and `school_class_teachers`
+
+Student links point to a same-school `Subject`; teacher links point to a
+same-school `MembershipRole`. Repository validation requires an active teacher
+role for teacher links and exactly one active same-school student `SELF` grant
+for a linked student subject. Both link tables retain status, validity and
+revocation metadata. A teacher's existing `TEACHER_OF` subject grant alone does
+not create a class assignment.
+
+### `measurement_tasks` and `task_enrollments`
+
+A measurement task belongs to one same-school class and records only an opaque
+task reference, instrument/configuration references, schedule and lifecycle
+state. Publishing a task snapshots all currently active class student links
+into `task_enrollments` inside a caller-owned UOW savepoint. A failed member
+validation or insert conflict rolls back the task and all snapshot rows.
+Subsequent roster changes do not rewrite the published snapshot. Revocation
+marks enrollment rows `REVOKED`; it does not delete them. Teacher progress
+queries return only task-level counts, including active/revoked enrollment
+counts and lifecycle buckets for active enrollments. Student access requires an
+active published task within its opening and due window, in addition to current
+school, class, roster, account, membership, role and grant checks.
+
+### Task-bound `assessment_sessions`
+
+The nullable unique `task_enrollment_id` links at most one assessment session
+to each enrollment. A composite foreign key includes `subject_id`, so a linked
+session must concern the enrollment's subject. Existing self-started and
+legacy sessions remain unbound (`task_enrollment_id IS NULL`). An unbound
+self-started session is never attached to a task, regardless of lifecycle
+status. `create_task_assessment_session` creates a new `CREATED` session already
+bound to the enrollment, deriving subject, instrument and version fields from
+persisted enrollment/task rows. Repeated starts return the same linked session;
+the unique enrollment constraint plus a savepoint handles concurrent creation.
+Task progress aggregation reads only enrollment/session lifecycle columns and
+never loads encrypted response or result payloads.
+
 ## Deliberately absent
 
-There are no school/classroom ERP tables, analytics copies, long-term
-psychological profiles, vector-corpus duplicates, notification tables,
-clinical-diagnosis fields, direct student identifiers, or database-owned
-authorization policy tables in Round 1.
+There are no broader school ERP, import-file, analytics-copy, long-term
+psychological-profile, vector-corpus duplicate, notification, or
+clinical-diagnosis tables in this slice. Class and task tables do not contain
+direct student identifiers or act as a substitute for Backend request
+authorization.

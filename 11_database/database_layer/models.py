@@ -269,6 +269,196 @@ class SubjectAccessGrant(ResourceIdentityMixin, TimestampMixin, Base):
     revoked_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
 
 
+class SchoolClass(ResourceIdentityMixin, TimestampMixin, Base):
+    __tablename__ = "school_classes"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("school_id", "class_ref", name="school_class_ref_unique"),
+        UniqueConstraint("id", "school_id", name="school_class_id_school_unique"),
+        ForeignKeyConstraint(
+            ["created_by_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_school_classes_creator_role_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["school_id"], ["schools.id"], name="fk_school_classes_school", ondelete="RESTRICT"
+        ),
+        CheckConstraint("status IN ('ACTIVE', 'ARCHIVED')", name="status_allowed"),
+        Index("ix_school_classes_school_status", "school_id", "status"),
+    )
+
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    class_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    created_by_membership_role_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="ACTIVE", server_default="ACTIVE"
+    )
+
+
+class SchoolClassStudent(ResourceIdentityMixin, TimestampMixin, Base):
+    __tablename__ = "school_class_students"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("class_id", "subject_id", name="school_class_student_unique"),
+        UniqueConstraint(
+            "id", "subject_id", "class_id", "school_id", name="class_student_subject_scope_unique"
+        ),
+        ForeignKeyConstraint(
+            ["class_id", "school_id"],
+            ["school_classes.id", "school_classes.school_id"],
+            name="fk_class_students_class_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["subject_id", "school_id"],
+            ["subjects.id", "subjects.school_id"],
+            name="fk_class_students_subject_school",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint("status IN ('ACTIVE', 'INACTIVE', 'REVOKED')", name="status_allowed"),
+        CheckConstraint(
+            "valid_until IS NULL OR valid_until >= valid_from", name="validity_ordered"
+        ),
+        CheckConstraint(
+            "revoked_at IS NULL OR status = 'REVOKED'", name="revocation_matches_status"
+        ),
+        Index("ix_class_students_school_class_status", "school_id", "class_id", "status"),
+        Index("ix_class_students_subject_status", "subject_id", "status"),
+    )
+
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    class_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    subject_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="ACTIVE", server_default="ACTIVE"
+    )
+    valid_from: Mapped[datetime] = mapped_column(utc_datetime(), nullable=False, default=utc_now)
+    valid_until: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+
+
+class SchoolClassTeacher(ResourceIdentityMixin, TimestampMixin, Base):
+    __tablename__ = "school_class_teachers"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("class_id", "membership_role_id", name="school_class_teacher_unique"),
+        UniqueConstraint(
+            "id", "class_id", "school_id", name="class_teacher_scope_unique"
+        ),
+        ForeignKeyConstraint(
+            ["class_id", "school_id"],
+            ["school_classes.id", "school_classes.school_id"],
+            name="fk_class_teachers_class_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_class_teachers_role_school",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint("status IN ('ACTIVE', 'INACTIVE', 'REVOKED')", name="status_allowed"),
+        CheckConstraint(
+            "valid_until IS NULL OR valid_until >= valid_from", name="validity_ordered"
+        ),
+        CheckConstraint(
+            "revoked_at IS NULL OR status = 'REVOKED'", name="revocation_matches_status"
+        ),
+        Index("ix_class_teachers_school_class_status", "school_id", "class_id", "status"),
+        Index("ix_class_teachers_role_status", "membership_role_id", "status"),
+    )
+
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    class_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    membership_role_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="ACTIVE", server_default="ACTIVE"
+    )
+    valid_from: Mapped[datetime] = mapped_column(utc_datetime(), nullable=False, default=utc_now)
+    valid_until: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+
+
+class MeasurementTask(ResourceIdentityMixin, TimestampMixin, Base):
+    __tablename__ = "measurement_tasks"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("task_ref", name="measurement_task_ref_unique"),
+        UniqueConstraint(
+            "id", "school_id", "class_id", name="measurement_task_scope_unique"
+        ),
+        ForeignKeyConstraint(
+            ["class_id", "school_id"],
+            ["school_classes.id", "school_classes.school_id"],
+            name="fk_measurement_tasks_class_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["created_by_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_measurement_tasks_creator_role_school",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint("status IN ('PUBLISHED', 'CLOSED', 'CANCELLED')", name="status_allowed"),
+        CheckConstraint("due_at IS NULL OR due_at >= opens_at", name="task_window_ordered"),
+        Index("ix_measurement_tasks_school_class_status", "school_id", "class_id", "status"),
+        Index("ix_measurement_tasks_open_due", "status", "opens_at", "due_at"),
+    )
+
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    class_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    task_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    created_by_membership_role_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    instrument_id: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    instrument_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    item_bank_version: Mapped[str | None] = mapped_column(ascii_id(64), nullable=True)
+    config_version: Mapped[str | None] = mapped_column(ascii_id(64), nullable=True)
+    opens_at: Mapped[datetime] = mapped_column(utc_datetime(), nullable=False)
+    due_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    published_at: Mapped[datetime] = mapped_column(utc_datetime(), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="PUBLISHED", server_default="PUBLISHED"
+    )
+
+
+class TaskEnrollment(ResourceIdentityMixin, TimestampMixin, Base):
+    __tablename__ = "task_enrollments"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("task_id", "class_student_id", name="task_student_enrollment_unique"),
+        UniqueConstraint("id", "subject_id", name="task_enrollment_subject_unique"),
+        ForeignKeyConstraint(
+            ["task_id", "school_id", "class_id"],
+            ["measurement_tasks.id", "measurement_tasks.school_id", "measurement_tasks.class_id"],
+            name="fk_task_enrollments_task_scope",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["class_student_id", "subject_id", "class_id", "school_id"],
+            [
+                "school_class_students.id",
+                "school_class_students.subject_id",
+                "school_class_students.class_id",
+                "school_class_students.school_id",
+            ],
+            name="fk_task_enrollments_roster_scope",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint("status IN ('ACTIVE', 'REVOKED')", name="status_allowed"),
+        CheckConstraint(
+            "revoked_at IS NULL OR status = 'REVOKED'", name="revocation_matches_status"
+        ),
+        Index("ix_task_enrollments_school_task_status", "school_id", "task_id", "status"),
+        Index("ix_task_enrollments_student_status", "class_student_id", "status"),
+    )
+
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    task_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    class_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    class_student_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    subject_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="ACTIVE", server_default="ACTIVE"
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+
+
 class ConsentRecord(ResourceIdentityMixin, TimestampMixin, Base):
     __tablename__ = "consent_records"
     __table_args__ = mysql_table_args(
@@ -343,6 +533,14 @@ class AssessmentSession(ResourceIdentityMixin, TimestampMixin, Base):
         ),
         Index("ix_assessment_sessions_subject_created", "subject_id", "created_at"),
         Index("ix_assessment_sessions_status_created", "status", "created_at"),
+        UniqueConstraint("task_enrollment_id", name="assessment_task_enrollment_unique"),
+        UniqueConstraint("id", "subject_id", name="assessment_session_subject_unique"),
+        ForeignKeyConstraint(
+            ["task_enrollment_id", "subject_id"],
+            ["task_enrollments.id", "task_enrollments.subject_id"],
+            name="fk_assessment_sessions_task_enrollment_subject",
+            ondelete="RESTRICT",
+        ),
     )
 
     assessment_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False, unique=True)
@@ -351,6 +549,7 @@ class AssessmentSession(ResourceIdentityMixin, TimestampMixin, Base):
         ForeignKey("subjects.id", ondelete="RESTRICT", name="fk_assessment_sessions_subject"),
         nullable=False,
     )
+    task_enrollment_id: Mapped[int | None] = mapped_column(unsigned_id(), nullable=True)
     instrument_id: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
     instrument_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
     item_bank_version: Mapped[str | None] = mapped_column(ascii_id(64), nullable=True)
@@ -695,14 +894,19 @@ __all__ = [
     "AuthSession",
     "ConsentRecord",
     "IdempotencyRecord",
+    "MeasurementTask",
     "ReviewCase",
     "ReviewEvent",
     "Role",
     "SafetyDecision",
+    "SchoolClass",
+    "SchoolClassStudent",
+    "SchoolClassTeacher",
     "Subject",
     "SubjectAccessGrant",
     "SupportEvidence",
     "SupportMessage",
     "SupportRun",
     "SupportSession",
+    "TaskEnrollment",
 ]

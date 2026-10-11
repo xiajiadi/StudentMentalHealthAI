@@ -17,6 +17,7 @@ from .repositories import (
     IdempotencyStore,
     ReviewRepository,
     SchoolMembershipRepository,
+    SchoolOperationsRepository,
     SubjectRepository,
     SupportRepository,
 )
@@ -36,6 +37,7 @@ class SqlAlchemyUnitOfWork:
         self.accounts: AccountRepository | None = None
         self.subjects: SubjectRepository | None = None
         self.memberships: SchoolMembershipRepository | None = None
+        self.school_operations: SchoolOperationsRepository | None = None
         self.consents: ConsentRepository | None = None
         self.auth_sessions: AuthSessionStore | None = None
         self.assessments: AssessmentRepository | None = None
@@ -50,6 +52,7 @@ class SqlAlchemyUnitOfWork:
         self.accounts = AccountRepository(self.session)
         self.subjects = SubjectRepository(self.session)
         self.memberships = SchoolMembershipRepository(self.session)
+        self.school_operations = SchoolOperationsRepository(self.session)
         self.consents = ConsentRepository(self.session)
         self.auth_sessions = AuthSessionStore(self.session)
         self.assessments = AssessmentRepository(self.session, self.protection)

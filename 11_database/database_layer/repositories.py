@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import and_, case, distinct, func, select, update
 from sqlalchemy.engine import Row
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -44,17 +45,22 @@ from .models import (
     AuthSession,
     ConsentRecord,
     IdempotencyRecord,
+    MeasurementTask,
     MembershipRole,
     ReviewCase,
     ReviewEvent,
     SafetyDecision,
     School,
+    SchoolClass,
+    SchoolClassStudent,
+    SchoolClassTeacher,
     Subject,
     SubjectAccessGrant,
     SupportEvidence,
     SupportMessage,
     SupportRun,
     SupportSession,
+    TaskEnrollment,
 )
 from .provenance import (
     SYNTHETIC_SCHOOL_TEST_PROVENANCE_REF,
@@ -430,6 +436,774 @@ class SchoolMembershipRepository:
         except IntegrityError as exc:
             raise _map_integrity_error(exc) from exc
         return grant
+
+
+@dataclass(frozen=True, slots=True)
+class PublishedTaskSnapshot:
+    """Persistence result without student or assessment identifiers."""
+
+    task: MeasurementTask
+    enrollment_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class TaskProgressCounts:
+    """Task-only aggregate; deliberately contains no person/resource IDs."""
+
+    published_enrollment_count: int
+    active_enrollment_count: int
+    revoked_enrollment_count: int
+    not_started_count: int
+    created_count: int
+    in_progress_count: int
+    completed_count: int
+    abandoned_count: int
+    invalid_count: int
+
+
+class SchoolOperationsRepository:
+    """Persistence primitives for same-school classes and task snapshots.
+
+    This repository validates persisted relationship types and tenant links. It
+    does not replace request-level Backend authorization; commit and rollback
+    remain owned by the caller's ``SqlAlchemyUnitOfWork``.
+    """
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def create_class(
+        self,
+        *,
+        school_id: int,
+        class_ref: str,
+        admin_membership_role_id: int,
+        at: datetime,
+    ) -> SchoolClass:
+        await self._require_active_role(
+            admin_membership_role_id,
+            school_id=school_id,
+            role_code="admin",
+            at=at,
+        )
+        record = SchoolClass(
+            school_id=school_id,
+            class_ref=class_ref,
+            created_by_membership_role_id=admin_membership_role_id,
+            status="ACTIVE",
+        )
+        self.session.add(record)
+        await self._flush_unique()
+        return record
+
+    async def add_student_subject_to_class(
+        self,
+        *,
+        school_id: int,
+        class_id: int,
+        subject_id: int,
+        admin_membership_role_id: int,
+        at: datetime,
+        valid_until: datetime | None = None,
+    ) -> SchoolClassStudent:
+        await self._require_active_role(
+            admin_membership_role_id,
+            school_id=school_id,
+            role_code="admin",
+            at=at,
+        )
+        await self._require_active_class(class_id, school_id=school_id)
+        await self._require_active_student_subject(
+            subject_id,
+            school_id=school_id,
+            at=at,
+        )
+        if valid_until is not None and valid_until < at:
+            raise ValueError("class student link validity is invalid")
+        existing = await self.session.scalar(
+            select(SchoolClassStudent).where(
+                SchoolClassStudent.school_id == school_id,
+                SchoolClassStudent.class_id == class_id,
+                SchoolClassStudent.subject_id == subject_id,
+            )
+        )
+        if existing is not None:
+            if (
+                existing.status != "ACTIVE"
+                or existing.revoked_at is not None
+                or existing.valid_from > at
+                or (existing.valid_until is not None and existing.valid_until < at)
+            ):
+                existing.status = "ACTIVE"
+                existing.valid_from = at
+                existing.valid_until = valid_until
+                existing.revoked_at = None
+                await self._flush_unique()
+            return existing
+        record = SchoolClassStudent(
+            school_id=school_id,
+            class_id=class_id,
+            subject_id=subject_id,
+            status="ACTIVE",
+            valid_from=at,
+            valid_until=valid_until,
+        )
+        self.session.add(record)
+        await self._flush_unique()
+        return record
+
+    async def add_teacher_role_to_class(
+        self,
+        *,
+        school_id: int,
+        class_id: int,
+        teacher_membership_role_id: int,
+        admin_membership_role_id: int,
+        at: datetime,
+        valid_until: datetime | None = None,
+    ) -> SchoolClassTeacher:
+        await self._require_active_role(
+            admin_membership_role_id,
+            school_id=school_id,
+            role_code="admin",
+            at=at,
+        )
+        await self._require_active_class(class_id, school_id=school_id)
+        await self._require_active_role(
+            teacher_membership_role_id,
+            school_id=school_id,
+            role_code="teacher",
+            at=at,
+        )
+        if valid_until is not None and valid_until < at:
+            raise ValueError("class teacher link validity is invalid")
+        existing = await self.session.scalar(
+            select(SchoolClassTeacher).where(
+                SchoolClassTeacher.school_id == school_id,
+                SchoolClassTeacher.class_id == class_id,
+                SchoolClassTeacher.membership_role_id == teacher_membership_role_id,
+            )
+        )
+        if existing is not None:
+            if (
+                existing.status != "ACTIVE"
+                or existing.revoked_at is not None
+                or existing.valid_from > at
+                or (existing.valid_until is not None and existing.valid_until < at)
+            ):
+                existing.status = "ACTIVE"
+                existing.valid_from = at
+                existing.valid_until = valid_until
+                existing.revoked_at = None
+                await self._flush_unique()
+            return existing
+        record = SchoolClassTeacher(
+            school_id=school_id,
+            class_id=class_id,
+            membership_role_id=teacher_membership_role_id,
+            status="ACTIVE",
+            valid_from=at,
+            valid_until=valid_until,
+        )
+        self.session.add(record)
+        await self._flush_unique()
+        return record
+
+    async def revoke_class_student_link(
+        self,
+        *,
+        link_id: int,
+        school_id: int,
+        admin_membership_role_id: int,
+        at: datetime,
+    ) -> SchoolClassStudent:
+        await self._require_active_role(
+            admin_membership_role_id,
+            school_id=school_id,
+            role_code="admin",
+            at=at,
+        )
+        link = await self.session.get(SchoolClassStudent, link_id)
+        if link is None or link.school_id != school_id:
+            raise NotFound("class student link was not found")
+        if link.status != "REVOKED":
+            link.status = "REVOKED"
+            link.revoked_at = at
+            await self.session.execute(
+                update(TaskEnrollment)
+                .where(
+                    TaskEnrollment.class_student_id == link.id,
+                    TaskEnrollment.school_id == school_id,
+                    TaskEnrollment.status == "ACTIVE",
+                )
+                .values(status="REVOKED", revoked_at=at)
+            )
+            await self.session.flush()
+        return link
+
+    async def revoke_class_teacher_link(
+        self,
+        *,
+        link_id: int,
+        school_id: int,
+        admin_membership_role_id: int,
+        at: datetime,
+    ) -> SchoolClassTeacher:
+        await self._require_active_role(
+            admin_membership_role_id,
+            school_id=school_id,
+            role_code="admin",
+            at=at,
+        )
+        link = await self.session.get(SchoolClassTeacher, link_id)
+        if link is None or link.school_id != school_id:
+            raise NotFound("class teacher link was not found")
+        if link.status != "REVOKED":
+            link.status = "REVOKED"
+            link.revoked_at = at
+            await self.session.flush()
+        return link
+
+    async def publish_task_with_snapshot(
+        self,
+        *,
+        school_id: int,
+        class_id: int,
+        task_ref: str,
+        admin_membership_role_id: int,
+        instrument_id: str,
+        instrument_version: str,
+        item_bank_version: str | None,
+        config_version: str | None,
+        opens_at: datetime,
+        due_at: datetime | None,
+        published_at: datetime,
+    ) -> PublishedTaskSnapshot:
+        """Create a published task and snapshot active class students atomically.
+
+        The nested transaction is a savepoint inside the caller's UOW. An
+        invalid roster link or any flush conflict removes both the task and
+        every enrollment created by this operation.
+        """
+
+        if due_at is not None and due_at < opens_at:
+            raise ValueError("measurement task window is invalid")
+        try:
+            async with self.session.begin_nested():
+                await self._require_active_role(
+                    admin_membership_role_id,
+                    school_id=school_id,
+                    role_code="admin",
+                    at=published_at,
+                )
+                await self._require_active_class(class_id, school_id=school_id)
+                task = MeasurementTask(
+                    school_id=school_id,
+                    class_id=class_id,
+                    task_ref=task_ref,
+                    created_by_membership_role_id=admin_membership_role_id,
+                    instrument_id=instrument_id,
+                    instrument_version=instrument_version,
+                    item_bank_version=item_bank_version,
+                    config_version=config_version,
+                    opens_at=opens_at,
+                    due_at=due_at,
+                    published_at=published_at,
+                    status="PUBLISHED",
+                )
+                self.session.add(task)
+                await self.session.flush()
+
+                links = list(
+                    (
+                        await self.session.scalars(
+                            select(SchoolClassStudent).where(
+                                SchoolClassStudent.school_id == school_id,
+                                SchoolClassStudent.class_id == class_id,
+                                SchoolClassStudent.status == "ACTIVE",
+                                SchoolClassStudent.revoked_at.is_(None),
+                                SchoolClassStudent.valid_from <= published_at,
+                                (SchoolClassStudent.valid_until.is_(None))
+                                | (SchoolClassStudent.valid_until >= published_at),
+                            )
+                        )
+                    ).all()
+                )
+                for link in links:
+                    await self._require_active_student_subject(
+                        link.subject_id,
+                        school_id=school_id,
+                        at=published_at,
+                    )
+                    self.session.add(
+                        TaskEnrollment(
+                            school_id=school_id,
+                            task_id=task.id,
+                            class_id=class_id,
+                            class_student_id=link.id,
+                            subject_id=link.subject_id,
+                            status="ACTIVE",
+                        )
+                    )
+                    await self.session.flush()
+                return PublishedTaskSnapshot(task=task, enrollment_count=len(links))
+        except IntegrityError as exc:
+            raise _map_integrity_error(exc) from exc
+
+    async def revoke_enrollment(
+        self,
+        *,
+        enrollment_id: int,
+        school_id: int,
+        admin_membership_role_id: int,
+        at: datetime,
+    ) -> TaskEnrollment:
+        await self._require_active_role(
+            admin_membership_role_id,
+            school_id=school_id,
+            role_code="admin",
+            at=at,
+        )
+        enrollment = await self.session.get(TaskEnrollment, enrollment_id)
+        if enrollment is None or enrollment.school_id != school_id:
+            raise NotFound("task enrollment was not found")
+        if enrollment.status != "REVOKED":
+            enrollment.status = "REVOKED"
+            enrollment.revoked_at = at
+            await self.session.flush()
+        return enrollment
+
+    async def link_assessment_session(
+        self,
+        *,
+        enrollment_id: int,
+        assessment_session_id: int,
+        school_id: int,
+        student_account_id: int,
+        at: datetime,
+    ) -> AssessmentSession:
+        enrollment = await self._require_active_enrollment(
+            enrollment_id=enrollment_id,
+            school_id=school_id,
+            student_account_id=student_account_id,
+            at=at,
+        )
+        assessment = await self.session.get(AssessmentSession, assessment_session_id)
+        if assessment is None:
+            raise NotFound("assessment session was not found")
+        if assessment.subject_id != enrollment.subject_id:
+            raise ValueError("assessment subject does not match task enrollment")
+        if assessment.task_enrollment_id == enrollment.id:
+            return assessment
+        if assessment.task_enrollment_id is not None:
+            raise UniqueConflict("assessment session is already linked to another task enrollment")
+        raise ValueError("unbound assessment sessions cannot be linked to a task enrollment")
+
+    async def create_task_assessment_session(
+        self,
+        *,
+        enrollment_id: int,
+        assessment_ref: str,
+        school_id: int,
+        student_account_id: int,
+        at: datetime,
+        trace_id: str | None = None,
+    ) -> AssessmentSession:
+        """Create or recover the one task-bound session for a current enrollment.
+
+        All task-derived fields come from persisted task/enrollment records.
+        The savepoint makes uniqueness races recoverable without leaving the
+        caller-owned unit of work in a failed state.
+        """
+
+        enrollment = await self._require_active_enrollment(
+            enrollment_id=enrollment_id,
+            school_id=school_id,
+            student_account_id=student_account_id,
+            at=at,
+        )
+        existing = await self._linked_session_for_enrollment(enrollment.id, enrollment.subject_id)
+        if existing is not None:
+            return existing
+
+        task = await self.session.get(MeasurementTask, enrollment.task_id)
+        if (
+            task is None
+            or task.school_id != enrollment.school_id
+            or task.class_id != enrollment.class_id
+            or task.status != "PUBLISHED"
+            or task.opens_at > at
+            or (task.due_at is not None and task.due_at < at)
+        ):
+            raise NotFound("open measurement task was not found")
+
+        candidate = AssessmentSession(
+            assessment_ref=assessment_ref,
+            subject_id=enrollment.subject_id,
+            task_enrollment_id=enrollment.id,
+            instrument_id=task.instrument_id,
+            instrument_version=task.instrument_version,
+            item_bank_version=task.item_bank_version,
+            config_version=task.config_version,
+            trace_id=trace_id,
+            status=AssessmentStatus.CREATED.value,
+        )
+        try:
+            async with self.session.begin_nested():
+                self.session.add(candidate)
+                await self.session.flush()
+            return candidate
+        except IntegrityError as exc:
+            # A concurrent start may have won the unique enrollment constraint.
+            # Locking read observes the committed winner even under REPEATABLE READ.
+            existing = await self._linked_session_for_enrollment(
+                enrollment.id, enrollment.subject_id, current_read=True
+            )
+            if existing is not None:
+                return existing
+            raise _map_integrity_error(exc) from exc
+
+    async def linked_assessment_session(
+        self,
+        *,
+        enrollment_id: int,
+        school_id: int,
+        student_account_id: int,
+        at: datetime,
+    ) -> AssessmentSession | None:
+        """Return the existing session for a current enrollment, if present."""
+
+        enrollment = await self._require_active_enrollment(
+            enrollment_id=enrollment_id,
+            school_id=school_id,
+            student_account_id=student_account_id,
+            at=at,
+        )
+        return await self.session.scalar(
+            select(AssessmentSession).where(
+                AssessmentSession.task_enrollment_id == enrollment.id,
+                AssessmentSession.subject_id == enrollment.subject_id,
+            )
+        )
+
+    async def active_enrollment_for_assessment(
+        self,
+        *,
+        assessment_ref: str,
+        student_account_id: int,
+        at: datetime,
+    ) -> TaskEnrollment | None:
+        return await self.session.scalar(
+            self._active_enrollment_statement(
+                student_account_id=student_account_id,
+                at=at,
+                assessment_ref=assessment_ref,
+            )
+        )
+
+    async def _require_active_enrollment(
+        self,
+        *,
+        enrollment_id: int,
+        school_id: int,
+        student_account_id: int,
+        at: datetime,
+    ) -> TaskEnrollment:
+        enrollment = await self.session.scalar(
+            self._active_enrollment_statement(
+                student_account_id=student_account_id,
+                at=at,
+                enrollment_id=enrollment_id,
+            )
+        )
+        if enrollment is None or enrollment.school_id != school_id:
+            raise NotFound("active task enrollment was not found")
+        return enrollment
+
+    def _active_enrollment_statement(
+        self,
+        *,
+        student_account_id: int,
+        at: datetime,
+        enrollment_id: int | None = None,
+        assessment_ref: str | None = None,
+    ):
+        statement = (
+            select(TaskEnrollment)
+            .select_from(TaskEnrollment)
+            .join(
+                SchoolClassStudent,
+                (SchoolClassStudent.id == TaskEnrollment.class_student_id)
+                & (SchoolClassStudent.subject_id == TaskEnrollment.subject_id)
+                & (SchoolClassStudent.class_id == TaskEnrollment.class_id)
+                & (SchoolClassStudent.school_id == TaskEnrollment.school_id),
+            )
+            .join(
+                SchoolClass,
+                (SchoolClass.id == TaskEnrollment.class_id)
+                & (SchoolClass.school_id == TaskEnrollment.school_id),
+            )
+            .join(
+                MeasurementTask,
+                (MeasurementTask.id == TaskEnrollment.task_id)
+                & (MeasurementTask.school_id == TaskEnrollment.school_id)
+                & (MeasurementTask.class_id == TaskEnrollment.class_id),
+            )
+            .join(Subject, (Subject.id == TaskEnrollment.subject_id))
+            .join(
+                SubjectAccessGrant,
+                (SubjectAccessGrant.subject_id == TaskEnrollment.subject_id)
+                & (SubjectAccessGrant.school_id == TaskEnrollment.school_id),
+            )
+            .join(
+                AccountSchoolMembership,
+                (AccountSchoolMembership.account_id == SubjectAccessGrant.principal_account_id)
+                & (AccountSchoolMembership.school_id == TaskEnrollment.school_id),
+            )
+            .join(
+                MembershipRole,
+                MembershipRole.membership_id == AccountSchoolMembership.id,
+            )
+            .join(Account, Account.id == AccountSchoolMembership.account_id)
+            .join(School, School.id == TaskEnrollment.school_id)
+            .where(
+                TaskEnrollment.status == "ACTIVE",
+                MeasurementTask.status == "PUBLISHED",
+                MeasurementTask.opens_at <= at,
+                (MeasurementTask.due_at.is_(None)) | (MeasurementTask.due_at >= at),
+                SchoolClassStudent.status == "ACTIVE",
+                SchoolClassStudent.revoked_at.is_(None),
+                SchoolClassStudent.valid_from <= at,
+                (SchoolClassStudent.valid_until.is_(None))
+                | (SchoolClassStudent.valid_until >= at),
+                SchoolClass.status == "ACTIVE",
+                Subject.status == "ACTIVE",
+                Subject.data_origin == DataOrigin.SYNTHETIC.value,
+                Subject.school_id == TaskEnrollment.school_id,
+                SubjectAccessGrant.principal_account_id == student_account_id,
+                SubjectAccessGrant.relationship_type == "SELF",
+                SubjectAccessGrant.status == "ACTIVE",
+                SubjectAccessGrant.revoked_at.is_(None),
+                SubjectAccessGrant.valid_from <= at,
+                (SubjectAccessGrant.valid_until.is_(None))
+                | (SubjectAccessGrant.valid_until >= at),
+                Account.status == AccountStatus.ACTIVE.value,
+                AccountSchoolMembership.status == "ACTIVE",
+                AccountSchoolMembership.revoked_at.is_(None),
+                AccountSchoolMembership.valid_from <= at,
+                (AccountSchoolMembership.valid_until.is_(None))
+                | (AccountSchoolMembership.valid_until >= at),
+                MembershipRole.school_id == TaskEnrollment.school_id,
+                MembershipRole.role_code == "student",
+                MembershipRole.status == "ACTIVE",
+                MembershipRole.revoked_at.is_(None),
+                MembershipRole.valid_from <= at,
+                (MembershipRole.valid_until.is_(None)) | (MembershipRole.valid_until >= at),
+                School.status == "ACTIVE",
+                School.data_origin == DataOrigin.SYNTHETIC.value,
+            )
+        )
+        if enrollment_id is not None:
+            statement = statement.where(TaskEnrollment.id == enrollment_id)
+        if assessment_ref is not None:
+            statement = statement.join(
+                AssessmentSession,
+                (AssessmentSession.task_enrollment_id == TaskEnrollment.id)
+                & (AssessmentSession.subject_id == TaskEnrollment.subject_id),
+            ).where(AssessmentSession.assessment_ref == assessment_ref)
+        return statement.distinct()
+
+    async def _linked_session_for_enrollment(
+        self, enrollment_id: int, subject_id: int, *, current_read: bool = False
+    ) -> AssessmentSession | None:
+        statement = select(AssessmentSession).where(
+            AssessmentSession.task_enrollment_id == enrollment_id,
+            AssessmentSession.subject_id == subject_id,
+        )
+        if current_read:
+            statement = statement.with_for_update()
+        return await self.session.scalar(statement)
+
+    async def task_progress_counts(
+        self, *, task_id: int, school_id: int
+    ) -> TaskProgressCounts:
+        active = TaskEnrollment.status == "ACTIVE"
+        statement = (
+            select(
+                func.count(TaskEnrollment.id).label("published_enrollment_count"),
+                func.sum(case((active, 1), else_=0)).label("active_enrollment_count"),
+                func.sum(case((TaskEnrollment.status == "REVOKED", 1), else_=0)).label(
+                    "revoked_enrollment_count"
+                ),
+                func.sum(
+                    case(
+                        (and_(active, AssessmentSession.id.is_(None)), 1),
+                        else_=0,
+                    )
+                ).label("not_started_count"),
+                *(
+                    func.sum(
+                        case(
+                            (and_(active, AssessmentSession.status == status), 1),
+                            else_=0,
+                        )
+                    ).label(label)
+                    for status, label in (
+                        ("CREATED", "created_count"),
+                        ("IN_PROGRESS", "in_progress_count"),
+                        ("COMPLETED", "completed_count"),
+                        ("ABANDONED", "abandoned_count"),
+                        ("INVALID", "invalid_count"),
+                    )
+                ),
+            )
+            .select_from(MeasurementTask)
+            .outerjoin(
+                TaskEnrollment,
+                (TaskEnrollment.task_id == MeasurementTask.id)
+                & (TaskEnrollment.school_id == MeasurementTask.school_id),
+            )
+            .outerjoin(
+                AssessmentSession,
+                (AssessmentSession.task_enrollment_id == TaskEnrollment.id)
+                & (AssessmentSession.subject_id == TaskEnrollment.subject_id),
+            )
+            .where(MeasurementTask.id == task_id, MeasurementTask.school_id == school_id)
+            .group_by(MeasurementTask.id)
+        )
+        row = (await self.session.execute(statement)).one_or_none()
+        if row is None:
+            raise NotFound("measurement task was not found")
+        return TaskProgressCounts(*(int(value or 0) for value in row))
+
+    async def _require_active_role(
+        self,
+        membership_role_id: int,
+        *,
+        school_id: int,
+        role_code: str,
+        at: datetime,
+    ) -> MembershipRole:
+        statement = (
+            select(MembershipRole)
+            .join(
+                AccountSchoolMembership,
+                MembershipRole.membership_id == AccountSchoolMembership.id,
+            )
+            .join(Account, Account.id == AccountSchoolMembership.account_id)
+            .join(School, School.id == AccountSchoolMembership.school_id)
+            .where(
+                MembershipRole.id == membership_role_id,
+                MembershipRole.school_id == school_id,
+                MembershipRole.role_code == role_code,
+                MembershipRole.status == "ACTIVE",
+                MembershipRole.revoked_at.is_(None),
+                MembershipRole.valid_from <= at,
+                (MembershipRole.valid_until.is_(None)) | (MembershipRole.valid_until >= at),
+                AccountSchoolMembership.school_id == school_id,
+                AccountSchoolMembership.status == "ACTIVE",
+                AccountSchoolMembership.revoked_at.is_(None),
+                AccountSchoolMembership.valid_from <= at,
+                (AccountSchoolMembership.valid_until.is_(None))
+                | (AccountSchoolMembership.valid_until >= at),
+                Account.status == AccountStatus.ACTIVE.value,
+                School.status == "ACTIVE",
+                School.data_origin == DataOrigin.SYNTHETIC.value,
+            )
+        )
+        record = await self.session.scalar(statement)
+        if (
+            record is None
+            or record.role_code != role_code
+            or record.school_id != school_id
+            or record.status != "ACTIVE"
+            or record.revoked_at is not None
+        ):
+            raise ValueError(f"an active same-school {role_code} role is required")
+        return record
+
+    async def _require_active_class(self, class_id: int, *, school_id: int) -> SchoolClass:
+        statement = (
+            select(SchoolClass)
+            .join(School, School.id == SchoolClass.school_id)
+            .where(
+                SchoolClass.id == class_id,
+                SchoolClass.school_id == school_id,
+                SchoolClass.status == "ACTIVE",
+                School.status == "ACTIVE",
+                School.data_origin == DataOrigin.SYNTHETIC.value,
+            )
+        )
+        record = await self.session.scalar(statement)
+        if record is None:
+            raise NotFound("active school class was not found")
+        return record
+
+    async def _require_active_student_subject(
+        self,
+        subject_id: int,
+        *,
+        school_id: int,
+        at: datetime,
+        principal_account_id: int | None = None,
+    ) -> None:
+        statement = (
+            select(func.count(distinct(SubjectAccessGrant.principal_account_id)))
+            .select_from(SubjectAccessGrant)
+            .join(
+                AccountSchoolMembership,
+                (AccountSchoolMembership.account_id == SubjectAccessGrant.principal_account_id)
+                & (AccountSchoolMembership.school_id == SubjectAccessGrant.school_id),
+            )
+            .join(
+                MembershipRole,
+                MembershipRole.membership_id == AccountSchoolMembership.id,
+            )
+            .join(Account, Account.id == AccountSchoolMembership.account_id)
+            .join(School, School.id == AccountSchoolMembership.school_id)
+            .join(Subject, Subject.id == SubjectAccessGrant.subject_id)
+            .where(
+                SubjectAccessGrant.subject_id == subject_id,
+                SubjectAccessGrant.school_id == school_id,
+                SubjectAccessGrant.relationship_type == "SELF",
+                SubjectAccessGrant.status == "ACTIVE",
+                SubjectAccessGrant.revoked_at.is_(None),
+                SubjectAccessGrant.valid_from <= at,
+                (SubjectAccessGrant.valid_until.is_(None))
+                | (SubjectAccessGrant.valid_until >= at),
+                AccountSchoolMembership.school_id == school_id,
+                AccountSchoolMembership.status == "ACTIVE",
+                AccountSchoolMembership.revoked_at.is_(None),
+                AccountSchoolMembership.valid_from <= at,
+                (AccountSchoolMembership.valid_until.is_(None))
+                | (AccountSchoolMembership.valid_until >= at),
+                MembershipRole.role_code == "student",
+                MembershipRole.status == "ACTIVE",
+                MembershipRole.revoked_at.is_(None),
+                MembershipRole.valid_from <= at,
+                (MembershipRole.valid_until.is_(None)) | (MembershipRole.valid_until >= at),
+                MembershipRole.school_id == school_id,
+                Account.status == AccountStatus.ACTIVE.value,
+                School.status == "ACTIVE",
+                School.data_origin == DataOrigin.SYNTHETIC.value,
+                Subject.school_id == school_id,
+                Subject.status == "ACTIVE",
+                Subject.data_origin == DataOrigin.SYNTHETIC.value,
+            )
+        )
+        if principal_account_id is not None:
+            statement = statement.where(
+                SubjectAccessGrant.principal_account_id == principal_account_id
+            )
+        principal_count = int(await self.session.scalar(statement) or 0)
+        if principal_count != 1:
+            raise ValueError("subject requires one active same-school student SELF grant")
+
+    async def _flush_unique(self) -> None:
+        try:
+            await self.session.flush()
+        except IntegrityError as exc:
+            raise _map_integrity_error(exc) from exc
 
 
 class ConsentRepository:
