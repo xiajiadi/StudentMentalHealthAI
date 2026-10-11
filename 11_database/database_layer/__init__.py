@@ -8,6 +8,7 @@ from .crypto import (
     FernetDataProtectionProvider,
     KeyProvider,
     MappingKeyProvider,
+    WindowsDpapiKeyProvider,
 )
 from .unit_of_work import SqlAlchemyUnitOfWork
 
@@ -20,6 +21,7 @@ __all__ = [
     "KeyProvider",
     "MappingKeyProvider",
     "SqlAlchemyUnitOfWork",
+    "WindowsDpapiKeyProvider",
     "create_engine",
     "create_session_factory",
 ]

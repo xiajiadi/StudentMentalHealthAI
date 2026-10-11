@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
+import sys
+from pathlib import Path
+from types import ModuleType, SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -9,6 +11,7 @@ import smhai_backend.adapters.database as database_adapter
 from smhai_backend.adapters.database import (
     REQUIRED_DATABASE_REVISION,
     MySqlBackendAdapter,
+    _create_data_protection_provider,
 )
 
 
@@ -112,6 +115,13 @@ def _adapter(revision_rows: list[str] | Exception, profile: str) -> Any:
     return adapter
 
 
+def _database_layer_stub(**attributes: object) -> ModuleType:
+    module = ModuleType("database_layer")
+    for name, value in attributes.items():
+        setattr(module, name, value)
+    return module
+
+
 @pytest.mark.parametrize("profile", ["legacy_demo", "school_tenant"])
 async def test_start_requires_exact_schema_revision_before_fixture_bootstrap(profile: str):
     adapter = _adapter([REQUIRED_DATABASE_REVISION], profile)
@@ -193,3 +203,87 @@ async def test_school_tenant_ignores_legacy_identity_environment_and_creates_no_
     assert optional_environment.reads == []
     assert session.query_count == 1
     assert session.flush_count == 1
+
+
+def test_school_tenant_selects_explicit_dpapi_provider_without_legacy_fallback(monkeypatch):
+    dpapi_roots: list[Path] = []
+    legacy_calls: list[Path] = []
+
+    class _DpapiProvider:
+        def __init__(self) -> None:
+            pass
+
+        @classmethod
+        def from_env(cls, repository_root: Path) -> object:
+            dpapi_roots.append(repository_root)
+            return cls()
+
+    class _LegacyProvider:
+        @classmethod
+        def from_env(cls, repository_root: Path) -> object:
+            legacy_calls.append(repository_root)
+            return object()
+
+    class _FernetProtection:
+        def __init__(self, key_provider: object) -> None:
+            self.key_provider = key_provider
+
+    monkeypatch.setitem(
+        sys.modules,
+        "database_layer",
+        _database_layer_stub(
+            WindowsDpapiKeyProvider=_DpapiProvider,
+            DevLocalKeyProvider=_LegacyProvider,
+            FernetDataProtectionProvider=_FernetProtection,
+        ),
+    )
+    root = Path("SYNTHETIC_REPOSITORY_ROOT_SENTINEL")
+    tenant_provider = _create_data_protection_provider("school_tenant", root)
+
+    assert isinstance(tenant_provider, _FernetProtection)
+    assert isinstance(tenant_provider.key_provider, _DpapiProvider)
+    assert dpapi_roots == [root]
+    assert legacy_calls == []
+
+
+def test_legacy_demo_keeps_dev_local_provider_selection(monkeypatch):
+    legacy_calls: list[Path] = []
+
+    class _LegacyProvider:
+        @classmethod
+        def from_env(cls, repository_root: Path) -> object:
+            legacy_calls.append(repository_root)
+            return object()
+
+    class _DpapiProvider:
+        def __init__(self, _path: Path) -> None:
+            raise AssertionError("legacy_demo selected the DPAPI provider")
+
+    class _FernetProtection:
+        def __init__(self, key_provider: object) -> None:
+            self.key_provider = key_provider
+
+    monkeypatch.setitem(
+        sys.modules,
+        "database_layer",
+        _database_layer_stub(
+            DevLocalKeyProvider=_LegacyProvider,
+            WindowsDpapiKeyProvider=_DpapiProvider,
+            FernetDataProtectionProvider=_FernetProtection,
+        ),
+    )
+    monkeypatch.setattr(database_adapter.os, "environ", {})
+    root = Path("SYNTHETIC_REPOSITORY_ROOT_SENTINEL")
+
+    provider = _create_data_protection_provider("legacy_demo", root)
+
+    assert isinstance(provider, _FernetProtection)
+    assert legacy_calls == [root]
+
+
+def test_unknown_profile_does_not_fall_back_to_legacy_provider():
+    with pytest.raises(RuntimeError, match="unsupported database identity profile"):
+        _create_data_protection_provider(
+            "SYNTHETIC_UNKNOWN_PROFILE_SENTINEL",
+            Path("SYNTHETIC_REPOSITORY_ROOT_SENTINEL"),
+        )

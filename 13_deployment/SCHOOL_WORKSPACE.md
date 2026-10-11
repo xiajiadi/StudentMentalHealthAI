@@ -15,3 +15,17 @@ The initializer rejects existing paths, repository paths and system/legacy ports
 Creation does not silently reuse a failed directory. On setup failure, preserve the new data and sealed recovery material; stop only the process tree held by this creation attempt. Recovery requires checking the marker/executable/datadir/listener and the actual failure cause. Current initialization was recovered after a missing driver environment and expired-password driver initialization issue; generic unattended recovery is not yet implemented or accepted.
 
 The state is Windows/user-bound: another user or machine cannot decrypt the DPAPI settings by merely copying these files. Portability, backup/recovery and runtime-key-provider integration still need separate implementation and QA before packaging.
+
+## Runtime database identity
+
+After the empty-schema migration and ownership checks, run:
+
+```powershell
+.\11_database\.venv\Scripts\python.exe .\13_deployment\prepare_school_runtime.py --workspace <absolute-external-directory>
+```
+
+This validates the marker, guardian/listener ownership, current-user-only DACL, connected port/datadir/schema and revision 0003. It generates a separate account with only SELECT/INSERT/UPDATE/DELETE on `smhai_school_demo`. Sealed recovery settings are written before account DDL; existing runtime settings are never overwritten. A new login then checks actual grants and active roles, refusing global/schema/role/grant-option expansion. Failure locks the account created by this attempt and preserves sealed material for explicit inspection rather than silently resetting or retrying account creation. Only successful permission verification writes `runtime-ready.json`; launchers must require that marker and recheck permissions. If locking fails, startup remains blocked pending owned-workspace inspection. The script does not launch applications or seed users.
+
+Current isolated 3308 workspace has passed native runtime login, exact grants/no-active-role verification and revision read. A clean repeated full install and school backend/browser operation remain pending.
+
+School-profile backend now consumes the current-user DPAPI key provider without plaintext fallback. Real workspace key-provider/Fernet encryption and decryption roundtrip passes; this proves key-format compatibility, not full backend/browser operation.

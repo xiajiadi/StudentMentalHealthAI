@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import base64
+import ctypes
 import json
 import os
 from collections.abc import Mapping
+from ctypes import wintypes
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -108,6 +110,180 @@ class DevLocalKeyProvider:
         configured = os.environ.get(
             "DATABASE_KEY_FILE", r"D:\Dev\secrets\studentmentalhealthai\database-keys.json"
         )
+        return cls(Path(configured), repository_root=repository_root)
+
+    @property
+    def active_version(self) -> str:
+        return self._delegate.active_version
+
+    def get_key(self, version: str) -> bytes:
+        return self._delegate.get_key(version)
+
+    def versions(self) -> tuple[str, ...]:
+        return self._delegate.versions()
+
+
+_DPAPI_FILE_MAGIC = b"PSYNOVA-DPAPI-v1\x00"
+_DPAPI_UI_FORBIDDEN = 0x1
+_MAX_DPAPI_FILE_BYTES = 1024 * 1024
+
+
+class _DataBlob(ctypes.Structure):
+    _fields_ = [
+        ("cbData", wintypes.DWORD),
+        ("pbData", ctypes.POINTER(ctypes.c_ubyte)),
+    ]
+
+
+def _is_windows() -> bool:
+    return os.name == "nt"
+
+
+def _dpapi_transform_current_user(data: bytes, *, decrypt: bool) -> bytes:
+    """Protect or unprotect bytes with current-user Windows DPAPI."""
+
+    if not _is_windows():
+        raise EncryptionKeyUnavailable("Windows current-user DPAPI is required")
+    if not data or len(data) > _MAX_DPAPI_FILE_BYTES:
+        raise EncryptionKeyUnavailable("DPAPI input is invalid")
+
+    source_buffer = (ctypes.c_ubyte * len(data)).from_buffer_copy(data)
+    source = _DataBlob(
+        len(data), ctypes.cast(source_buffer, ctypes.POINTER(ctypes.c_ubyte))
+    )
+    target = _DataBlob()
+    crypt32 = ctypes.WinDLL("crypt32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.LocalFree.argtypes = [ctypes.c_void_p]
+    kernel32.LocalFree.restype = ctypes.c_void_p
+
+    if decrypt:
+        transform = crypt32.CryptUnprotectData
+        transform.argtypes = [
+            ctypes.POINTER(_DataBlob),
+            ctypes.POINTER(wintypes.LPWSTR),
+            ctypes.POINTER(_DataBlob),
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+            ctypes.POINTER(_DataBlob),
+        ]
+    else:
+        transform = crypt32.CryptProtectData
+        transform.argtypes = [
+            ctypes.POINTER(_DataBlob),
+            wintypes.LPCWSTR,
+            ctypes.POINTER(_DataBlob),
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+            ctypes.POINTER(_DataBlob),
+        ]
+    transform.restype = wintypes.BOOL
+
+    # UI_FORBIDDEN is the only flag. Omitting LOCAL_MACHINE keeps the blob
+    # scoped to the current Windows user.
+    if not transform(
+        ctypes.byref(source),
+        None,
+        None,
+        None,
+        None,
+        _DPAPI_UI_FORBIDDEN,
+        ctypes.byref(target),
+    ):
+        raise EncryptionKeyUnavailable("Windows current-user DPAPI operation failed")
+    if not target.pbData:
+        raise EncryptionKeyUnavailable("Windows current-user DPAPI output is invalid")
+    try:
+        if target.cbData > _MAX_DPAPI_FILE_BYTES:
+            raise EncryptionKeyUnavailable("Windows current-user DPAPI output is invalid")
+        return ctypes.string_at(target.pbData, target.cbData)
+    finally:
+        kernel32.LocalFree(ctypes.cast(target.pbData, ctypes.c_void_p))
+
+
+def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError
+        result[key] = value
+    return result
+
+
+def _parse_dpapi_key_payload(plaintext: bytes) -> MappingKeyProvider:
+    try:
+        payload = json.loads(
+            plaintext.decode("utf-8"), object_pairs_hook=_unique_json_object
+        )
+        if not isinstance(payload, dict) or set(payload) != {"active_version", "keys"}:
+            raise ValueError
+        active_version = payload["active_version"]
+        encoded_keys = payload["keys"]
+        if (
+            not isinstance(active_version, str)
+            or not active_version
+            or not isinstance(encoded_keys, dict)
+            or not encoded_keys
+        ):
+            raise ValueError
+        keys: dict[str, bytes] = {}
+        for version, encoded_key in encoded_keys.items():
+            if (
+                not isinstance(version, str)
+                or not version
+                or not isinstance(encoded_key, str)
+                or not encoded_key
+            ):
+                raise ValueError
+            keys[version] = encoded_key.encode("ascii")
+        return MappingKeyProvider(keys, active_version)
+    except Exception:
+        raise EncryptionKeyUnavailable("DPAPI encryption key payload is invalid") from None
+
+
+class WindowsDpapiKeyProvider:
+    """Key provider for the current-user ``PSYNOVA-DPAPI-v1`` file format."""
+
+    def __init__(self, key_file: Path, repository_root: Path | None = None) -> None:
+        try:
+            resolved = key_file.expanduser().resolve()
+            repository = repository_root.expanduser().resolve() if repository_root else None
+        except Exception:
+            raise EncryptionKeyUnavailable("DPAPI encryption key file is unavailable") from None
+        if repository is not None and (resolved == repository or repository in resolved.parents):
+            raise EncryptionKeyUnavailable(
+                "DPAPI encryption key file must be outside the repository"
+            )
+        try:
+            container = resolved.read_bytes()
+        except Exception:
+            raise EncryptionKeyUnavailable("DPAPI encryption key file is unavailable") from None
+        if (
+            len(container) <= len(_DPAPI_FILE_MAGIC)
+            or len(container) > _MAX_DPAPI_FILE_BYTES
+            or not container.startswith(_DPAPI_FILE_MAGIC)
+        ):
+            raise EncryptionKeyUnavailable("DPAPI encryption key file is invalid")
+        if not _is_windows():
+            raise EncryptionKeyUnavailable("Windows current-user DPAPI is required")
+        try:
+            plaintext = _dpapi_transform_current_user(
+                container[len(_DPAPI_FILE_MAGIC) :], decrypt=True
+            )
+            delegate = _parse_dpapi_key_payload(plaintext)
+        except Exception:
+            raise EncryptionKeyUnavailable("DPAPI encryption key file is invalid") from None
+        self._delegate = delegate
+
+    @classmethod
+    def from_env(cls, repository_root: Path | None = None) -> WindowsDpapiKeyProvider:
+        configured = os.environ.get("DATABASE_KEY_FILE")
+        if not configured or not configured.strip():
+            raise EncryptionKeyUnavailable(
+                "school_tenant requires an explicit DATABASE_KEY_FILE DPAPI key file"
+            )
         return cls(Path(configured), repository_root=repository_root)
 
     @property

@@ -41,6 +41,26 @@ from smhai_backend.domains.models import (
 REQUIRED_DATABASE_REVISION = "20261011_0003"
 
 
+def _create_data_protection_provider(identity_profile: str, repository_root: Path) -> Any:
+    if identity_profile not in {"legacy_demo", "school_tenant"}:
+        raise RuntimeError("unsupported database identity profile")
+
+    from database_layer import (
+        DevLocalKeyProvider,
+        FernetDataProtectionProvider,
+        WindowsDpapiKeyProvider,
+    )
+
+    if identity_profile == "school_tenant":
+        return FernetDataProtectionProvider(
+            WindowsDpapiKeyProvider.from_env(repository_root=repository_root)
+        )
+
+    return FernetDataProtectionProvider(
+        DevLocalKeyProvider.from_env(repository_root=repository_root)
+    )
+
+
 def _now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
@@ -93,8 +113,6 @@ class MySqlBackendAdapter:
         try:
             from database_layer import (
                 DatabaseSettings,
-                DevLocalKeyProvider,
-                FernetDataProtectionProvider,
                 SqlAlchemyUnitOfWork,
                 create_engine,
                 create_session_factory,
@@ -122,9 +140,7 @@ class MySqlBackendAdapter:
         self._uow_type = SqlAlchemyUnitOfWork
         self.settings = DatabaseSettings.from_env()
         root = (repository_root or Path(__file__).resolve().parents[4]).resolve()
-        protection = FernetDataProtectionProvider(
-            DevLocalKeyProvider.from_env(repository_root=root)
-        )
+        protection = _create_data_protection_provider(identity_profile, root)
         self.engine = create_engine(self.settings)
         self.session_factory = create_session_factory(self.engine)
         self.protection = protection

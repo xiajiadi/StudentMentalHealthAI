@@ -1,11 +1,15 @@
+import json
+import os
 from pathlib import Path
 
 import pytest
 from cryptography.fernet import Fernet
+from database_layer import crypto
 from database_layer.crypto import (
     DevLocalKeyProvider,
     FernetDataProtectionProvider,
     MappingKeyProvider,
+    WindowsDpapiKeyProvider,
 )
 from database_layer.errors import EncryptionFailure, EncryptionKeyUnavailable
 
@@ -65,3 +69,90 @@ def test_dev_key_provider_rejects_repository_path(tmp_path: Path) -> None:
     key_file.write_text('{"active_version":"v1","keys":{"v1":"invalid"}}', encoding="utf-8")
     with pytest.raises(EncryptionKeyUnavailable):
         DevLocalKeyProvider(key_file, repository_root=tmp_path)
+
+
+def test_dpapi_provider_rejects_missing_and_malformed_files_without_path_leak(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    missing_path = tmp_path / "SYNTHETIC_MISSING_KEYFILE_SENTINEL"
+    with pytest.raises(EncryptionKeyUnavailable) as missing:
+        WindowsDpapiKeyProvider(missing_path)
+    assert str(missing_path) not in str(missing.value)
+
+    malformed_path = tmp_path / "SYNTHETIC_MALFORMED_KEYFILE_SENTINEL"
+    malformed_path.write_bytes(b"not-a-dpapi-container")
+    with pytest.raises(EncryptionKeyUnavailable) as malformed:
+        WindowsDpapiKeyProvider(malformed_path)
+    assert str(malformed_path) not in str(malformed.value)
+
+    valid_magic_path = tmp_path / "SYNTHETIC_NONWINDOWS_KEYFILE_SENTINEL"
+    valid_magic_path.write_bytes(crypto._DPAPI_FILE_MAGIC + b"synthetic-protected-blob")
+    monkeypatch.setattr(crypto, "_is_windows", lambda: False)
+    with pytest.raises(EncryptionKeyUnavailable) as non_windows:
+        WindowsDpapiKeyProvider(valid_magic_path)
+    assert "Windows current-user DPAPI is required" == str(non_windows.value)
+    assert str(valid_magic_path) not in str(non_windows.value)
+
+
+def test_dpapi_provider_rejects_invalid_payload_without_value_leak() -> None:
+    sentinel = "SYNTHETIC_INVALID_PAYLOAD_SENTINEL"
+    with pytest.raises(EncryptionKeyUnavailable) as caught:
+        crypto._parse_dpapi_key_payload(
+            json.dumps({"active_version": sentinel, "keys": {}}).encode("utf-8")
+        )
+    assert sentinel not in str(caught.value)
+
+
+def test_dpapi_provider_sanitizes_protection_and_payload_failures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "synthetic-protected-file.bin"
+    path.write_bytes(crypto._DPAPI_FILE_MAGIC + b"synthetic-blob")
+    monkeypatch.setattr(crypto, "_is_windows", lambda: True)
+
+    def raise_synthetic_error(_data: bytes, *, decrypt: bool) -> bytes:
+        raise RuntimeError("SYNTHETIC_DPAPI_ERROR_SENTINEL")
+
+    monkeypatch.setattr(
+        crypto,
+        "_dpapi_transform_current_user",
+        raise_synthetic_error,
+    )
+    with pytest.raises(EncryptionKeyUnavailable) as caught:
+        WindowsDpapiKeyProvider(path)
+    assert "SYNTHETIC_DPAPI_ERROR_SENTINEL" not in str(caught.value)
+
+
+def test_dpapi_provider_requires_explicit_external_key_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(crypto.os, "environ", {})
+    with pytest.raises(EncryptionKeyUnavailable, match="explicit DATABASE_KEY_FILE"):
+        WindowsDpapiKeyProvider.from_env(repository_root=tmp_path)
+
+    inside_repository = tmp_path / "synthetic-repository"
+    inside_repository.mkdir()
+    with pytest.raises(EncryptionKeyUnavailable, match="outside the repository"):
+        WindowsDpapiKeyProvider(
+            inside_repository / "synthetic-dpapi-key.bin",
+            repository_root=inside_repository,
+        )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="requires Windows current-user DPAPI")
+def test_dpapi_provider_reads_synthetic_current_user_protected_file(tmp_path: Path) -> None:
+    key = Fernet.generate_key()
+    plaintext = json.dumps(
+        {"active_version": "synthetic-v1", "keys": {"synthetic-v1": key.decode("ascii")}},
+        separators=(",", ":"),
+    ).encode("utf-8")
+    protected = crypto._dpapi_transform_current_user(plaintext, decrypt=False)
+    key_file = tmp_path / "synthetic-dpapi-keys.bin"
+    key_file.write_bytes(crypto._DPAPI_FILE_MAGIC + protected)
+
+    provider = WindowsDpapiKeyProvider(key_file)
+
+    assert provider.active_version == "synthetic-v1"
+    assert provider.versions() == ("synthetic-v1",)
+    assert provider.get_key("synthetic-v1") == key
+    assert key not in key_file.read_bytes()

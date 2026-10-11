@@ -45,3 +45,7 @@ Auth integration includes school memberships/roles, explicit CSRF-protected acti
 Deployment tests now pass 27/27 (runner 19, workspace 7, launcher guard 1). Runner is a recoverable lease/state CLI, not a coding executor; scheduled unattended/reboot continuation is still unproven.
 
 Next: integrate a DPAPI key provider, create a least-privilege runtime identity, controlled synthetic school accounts and a new owned school launcher, then verify real school-profile auth and browser workflows. Four-role product delivery and AI recovery remain incomplete.
+
+Runtime preparation checkpoint: generated current-user DPAPI-sealed runtime identity on the owned 3308 instance. Native login and exact schema-only DML/no-active-role gate pass. Script fresh tests: 16/16; deployment aggregate before the last four permission-negative additions: 39/39. Lead identified missing in-script grant readback; this is now implemented and native-checked. No clean repeat-install or application launch claim.
+
+DPAPI integration checkpoint: Worker af4a928 reviewed and integrated; integration crypto 9/9 and adapter 12/12 pass, and the actual workspace key file supports Fernet roundtrip without plaintext persistence. Runtime preparation now locks its newly-created account on failed verification and emits readiness only on success; focused tests 17/17. School-profile CSRF key configuration is the next isolated backend task.
