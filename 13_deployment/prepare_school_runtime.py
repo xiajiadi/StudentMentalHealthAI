@@ -84,7 +84,7 @@ def prepare(workspace: Path, repo: Path) -> dict:
     marker = validate_marker(workspace, repo)
     verify_process(marker)
     destination = workspace / "runtime.private.dpapi"
-    if destination.exists():
+    if destination.exists() or (workspace / "school-auth.private.dpapi").exists() or (workspace / "runtime-ready.json").exists():
         raise PreparationError("Runtime settings already exist; inspect before recovery")
     private = read_private(workspace / "database.private.dpapi")
     if private.get("DB_NAME") != marker["database"] or int(private.get("DB_PORT", 0)) != marker["port"] or private.get("DB_HOST") != "127.0.0.1":
@@ -105,6 +105,7 @@ def prepare(workspace: Path, repo: Path) -> dict:
             password = secrets.token_hex(32)
             # Persist sealed recovery material BEFORE nontransactional account DDL.
             write_private(destination, {"DB_USER": username, "DB_PASSWORD": password, "DB_HOST": "127.0.0.1", "DB_PORT": str(port), "DB_NAME": database})
+            write_private(workspace / "school-auth.private.dpapi", {"SMHAI_SCHOOL_CSRF_SECRET": secrets.token_hex(32)})
             cursor.execute("CREATE USER %s@'127.0.0.1' IDENTIFIED BY %s", (username, password))
             created_username = username
             cursor.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON `smhai_school_demo`.* TO %s@'127.0.0.1'", (username,))
