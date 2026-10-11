@@ -2,6 +2,12 @@
 
 Updated: 2026-10-11. Phase I continues; final delivery is not accepted.
 
+User shutdown deadline: Beijing 2026-10-12 06:40 (UTC 2026-10-11 22:40).
+Start wrap-up at 06:20 and pause by 06:35; see SHUTDOWN_CHECKPOINT.md. The user has
+explicitly authorized this future pause. Do not pause prematurely or auto-resume
+after the cutoff. Heartbeats psynova/psynova-2 are bounded by the cutoff; actual
+scheduled execution and pause remain pending.
+
 ## Objective and authority
 
 Continue the synthetic four-role PsyNova engineering mission to evidenced ENGINEERING_DEMO_READY. The original application is historical product background; current mandate, frozen contracts and Controller decisions govern implementation. Do not use real students, assert professional approval, reset old data, bypass Safety/Claim Boundary, contact people automatically or introduce cloud model fallback.
