@@ -50,6 +50,88 @@
       }
     },
     "/api/v1/assessments": {
+      "get": {
+        "tags": [
+          "assessment"
+        ],
+        "operationId": "listAssessments",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Maximum number of authorized assessments to return (1–100). Omitted to retain the legacy unpaged response.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "description": "Number of matching assessments to skip before returning results.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "Optional status filter, applied within the authenticated subject scope before pagination.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "created",
+                "in_progress",
+                "completed",
+                "abandoned",
+                "invalid"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Assessment rows within the authenticated subject scope. Results are ordered newest first with a stable assessment ID tie-break.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "request_id",
+                    "trace_id",
+                    "data"
+                  ],
+                  "properties": {
+                    "request_id": {
+                      "type": "string",
+                      "pattern": "^REQ_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+                    },
+                    "trace_id": {
+                      "type": "string",
+                      "pattern": "^TRACE_[A-Za-z0-9][A-Za-z0-9_.-]*$"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Assessment"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          }
+        }
+      },
       "post": {
         "tags": [
           "assessment"

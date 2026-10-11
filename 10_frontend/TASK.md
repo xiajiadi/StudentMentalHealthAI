@@ -34,6 +34,7 @@
 ## 接口
 
 - 只消费和调用 /api/v1 端点；
+- 测评列表支持按状态筛选，并以 30 条为一页按需请求后续数据；
 - 使用统一 request_id/trace_id 处理错误反馈；
 - 报告页面展示 generation status、review status 和 citation；
 - 审核动作调用 reports review API，不能直接修改本地状态冒充成功；

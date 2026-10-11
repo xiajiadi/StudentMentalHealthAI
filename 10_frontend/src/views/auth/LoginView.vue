@@ -1,9 +1,16 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Eye, EyeOff, LockKeyhole, ShieldCheck } from '@lucide/vue'
+import { CircleHelp, X } from '@lucide/vue'
+import {
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogOverlay,
+  DialogPortal,
+  DialogRoot,
+  DialogTitle,
+} from 'reka-ui'
 import AppButton from '@/components/app/AppButton.vue'
-import AppInput from '@/components/app/AppInput.vue'
-import AppLogo from '@/components/app/AppLogo.vue'
 import { useSessionStore } from '@/stores/session'
 import { frontendApi } from '@/services/mock-api'
 import { useRoute, useRouter } from 'vue-router'
@@ -13,8 +20,8 @@ const route = useRoute()
 const session = useSessionStore()
 const account = ref('')
 const password = ref('')
-const showPassword = ref(false)
 const isLoading = ref(false)
+const helpOpen = ref(false)
 const errorMessage = ref('')
 const accountError = ref('')
 const passwordError = ref('')
@@ -26,8 +33,8 @@ const roleHome: Record<string, string> = {
 
 const submit = async () => {
   errorMessage.value = ''
-  accountError.value = account.value.trim() ? '' : '请输入账号。'
-  passwordError.value = password.value ? '' : '请输入密码。'
+  accountError.value = account.value.trim() ? '' : 'Enter your username'
+  passwordError.value = password.value ? '' : 'Enter your password'
   if (accountError.value || passwordError.value) return
 
   isLoading.value = true
@@ -37,93 +44,518 @@ const submit = async () => {
     const redirect = typeof route.query.redirect === 'string' && route.query.redirect.startsWith('/') ? route.query.redirect : null
     await router.push(redirect || roleHome[response.data.role] || '/login')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '登录没有完成，请稍后重试。'
+    const message = error instanceof Error ? error.message : 'Sign in could not be completed. Try again later'
+    errorMessage.value = message.replace(/[。.]$/, '')
   } finally { isLoading.value = false }
 }
 </script>
 
 <template>
   <main class="login-page">
-    <section class="login-visual" aria-label="心桥教育支持">
-      <div class="login-visual__brand"><AppLogo /></div>
-      <div class="login-visual__tile" aria-hidden="true">
-        <div class="login-visual__orb login-visual__orb--one"></div><div class="login-visual__orb login-visual__orb--two"></div>
-        <div class="login-visual__bridge"><span></span><span></span><span></span><span></span></div>
-        <div class="login-visual__tile-copy"><small>HEARTBRIDGE</small><strong>让支持<br />清晰可达</strong><span>测评 · 依据 · 支持</span></div>
-        <div class="login-visual__spark login-visual__spark--one"></div><div class="login-visual__spark login-visual__spark--two"></div>
-      </div>
-      <p class="login-visual__caption">在清晰的边界里，让每一步支持都有依据。</p>
-    </section>
+    <img class="login-page__brand" src="/assets/psynova/wordmark.png" alt="PsyNova">
 
-    <section class="login-side" aria-labelledby="login-title">
-      <div class="login-card">
-        <div class="login-card__brand"><AppLogo /></div>
-        <div class="login-card__head">
-          <span class="login-card__eyebrow">欢迎使用心桥</span>
-          <h1 id="login-title">登录你的账号</h1>
-          <p>请输入组织提供的账号和密码。</p>
+    <div class="login-content">
+      <section class="login-visual" aria-label="PsyNova Workspace">
+        <div class="login-visual__tile" aria-hidden="true">
+          <img class="login-visual__flow-track" src="/assets/psynova/gentle-rightward-flow.svg" alt="" aria-hidden="true">
+          <span>PsyNova Workspace</span>
         </div>
-        <form class="login-form" novalidate @submit.prevent="submit">
-          <AppInput id="account" v-model="account" label="账号" autocomplete="username" placeholder="请输入账号" :error="accountError" />
-          <label class="password-field" for="password">
-            <span class="password-field__label">密码</span>
-            <span class="password-field__control"><LockKeyhole :size="16" aria-hidden="true" /><input id="password" v-model="password" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" placeholder="请输入密码" :aria-invalid="Boolean(passwordError)" :aria-describedby="passwordError ? 'password-error' : undefined" /><button type="button" class="password-field__toggle" :aria-label="showPassword ? '隐藏密码' : '显示密码'" @click="showPassword = !showPassword"><EyeOff v-if="showPassword" :size="17" /><Eye v-else :size="17" /></button></span>
-            <span v-if="passwordError" id="password-error" class="password-field__error" role="alert">{{ passwordError }}</span>
-          </label>
-          <p v-if="errorMessage" class="login-form__error" role="alert" aria-live="assertive">{{ errorMessage }}</p>
-          <AppButton type="submit" size="lg" block :loading="isLoading">登录</AppButton>
-        </form>
-        <div class="login-card__boundary"><ShieldCheck :size="17" aria-hidden="true" /><p>工作区和可访问内容由服务端账号权限决定。</p></div>
-        <p class="login-card__help">登录遇到问题？请联系学校信息管理员。</p>
-      </div>
-      <footer class="login-side__footer">心桥 · 心理健康教育支持</footer>
-    </section>
+      </section>
+
+      <section class="login-side" aria-labelledby="login-title">
+        <div class="login-card">
+          <div class="login-card__brand">
+            <img src="/assets/psynova/mark.png" alt="" aria-hidden="true">
+          </div>
+          <div class="login-card__head">
+            <h1 id="login-title">Enter your workspace</h1>
+          </div>
+          <form class="login-form" novalidate @submit.prevent="submit">
+            <div class="login-field">
+              <input
+                id="account"
+                v-model="account"
+                class="login-input"
+                type="text"
+                autocomplete="username"
+                placeholder="Enter your username"
+                aria-label="Username"
+                :aria-invalid="Boolean(accountError)"
+                :aria-describedby="accountError ? 'account-error' : undefined"
+              >
+              <p v-if="accountError" id="account-error" class="login-field__error" role="alert">{{ accountError }}</p>
+            </div>
+            <div class="login-field">
+              <input
+                id="password"
+                v-model="password"
+                class="login-input"
+                type="password"
+                autocomplete="current-password"
+                placeholder="Enter your password"
+                aria-label="Password"
+                :aria-invalid="Boolean(passwordError)"
+                :aria-describedby="passwordError ? 'password-error' : undefined"
+              >
+              <p v-if="passwordError" id="password-error" class="login-field__error" role="alert">{{ passwordError }}</p>
+            </div>
+            <p v-if="errorMessage" class="login-form__error" role="alert" aria-live="assertive">{{ errorMessage }}</p>
+            <AppButton class="login-submit" type="submit" size="md" block :loading="isLoading">Continue</AppButton>
+          </form>
+        </div>
+      </section>
+    </div>
+
+    <button class="login-help-trigger" type="button" aria-label="Help" @click="helpOpen = true">
+      <CircleHelp :size="18" aria-hidden="true" />
+    </button>
+
+    <DialogRoot :open="helpOpen" @update:open="helpOpen = $event">
+      <DialogPortal>
+        <DialogOverlay class="login-help-overlay" />
+        <DialogContent class="login-help-dialog">
+          <DialogClose as-child>
+            <button class="login-help-close" type="button" aria-label="Close">
+              <X :size="18" aria-hidden="true" />
+            </button>
+          </DialogClose>
+          <div class="login-help-content">
+            <DialogTitle class="login-help-title">Help</DialogTitle>
+            <DialogDescription id="login-help-copy" class="login-help-copy">
+              Use the username and password provided by your school. Contact your school administrator if you cannot sign in or access your workspace
+            </DialogDescription>
+            <DialogClose as-child>
+              <button class="login-help-confirm" type="button">Got it</button>
+            </DialogClose>
+          </div>
+        </DialogContent>
+      </DialogPortal>
+    </DialogRoot>
   </main>
 </template>
 
 <style scoped>
-.login-page { display: grid; grid-template-columns: minmax(420px, .92fr) minmax(500px, 1.08fr); min-height: 100vh; background: #f4f5f6; }
-.login-visual { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 34px; overflow: hidden; background: #f1f3f3; }
-.login-visual__brand { position: absolute; top: 35px; left: 44px; }
-.login-visual__tile { position: relative; display: flex; align-items: center; justify-content: center; width: min(100%, 440px); aspect-ratio: 1; overflow: hidden; border-radius: 26px; color: #fff; background: linear-gradient(145deg, rgb(0 167 207 / 30%), rgb(32 191 209 / 24%)), url('/assets/heartbridge/hero-flow-original.png') center / cover; box-shadow: 0 30px 70px rgb(21 108 117 / 17%); }
-.login-visual__tile::before, .login-visual__tile::after { position: absolute; border: 1px solid rgb(255 255 255 / 22%); border-radius: 50%; content: ""; }
-.login-visual__tile::before { width: 88%; aspect-ratio: 1; }
-.login-visual__tile::after { width: 68%; aspect-ratio: 1; }
-.login-visual__orb { position: absolute; border-radius: 50%; background: rgb(255 255 255 / 12%); filter: blur(1px); }
-.login-visual__orb--one { top: -12%; right: -9%; width: 48%; aspect-ratio: 1; }
-.login-visual__orb--two { bottom: -20%; left: -12%; width: 55%; aspect-ratio: 1; background: rgb(255 255 255 / 9%); }
-.login-visual__bridge { position: absolute; top: 20%; left: 19%; display: flex; align-items: center; gap: 9px; width: 62%; transform: rotate(-22deg); }
-.login-visual__bridge span { display: block; width: 25%; height: 1px; background: rgb(255 255 255 / 58%); }
-.login-visual__bridge span:nth-child(2), .login-visual__bridge span:nth-child(4) { transform: translateY(-7px); }
-.login-visual__tile-copy { position: relative; z-index: 1; display: grid; justify-items: center; gap: 15px; text-align: center; text-shadow: 0 2px 12px rgb(8 92 102 / 12%); }
-.login-visual__tile-copy small { font-size: 10px; font-weight: 700; letter-spacing: .25em; opacity: .8; }
-.login-visual__tile-copy strong { font-size: clamp(30px, 3.1vw, 46px); font-weight: 600; letter-spacing: .08em; line-height: 1.35; }
-.login-visual__tile-copy span { font-size: 12px; letter-spacing: .12em; opacity: .85; }
-.login-visual__spark { position: absolute; width: 7px; height: 7px; border: 1px solid rgb(255 255 255 / 78%); border-radius: 50%; }
-.login-visual__spark--one { top: 23%; right: 21%; }.login-visual__spark--two { bottom: 24%; left: 22%; width: 5px; height: 5px; }
-.login-visual__caption { margin: 24px 0 0; color: #747e84; font-size: 12px; letter-spacing: .04em; }
-.login-side { position: relative; display: grid; place-items: center; min-height: 100vh; padding: 42px 36px 66px; background: #f8f9fa; }
-.login-card { width: min(100%, 438px); padding: 43px 42px 35px; border: 1px solid #edf0f2; border-radius: 16px; background: white; box-shadow: 0 20px 55px rgb(24 39 49 / 7%); }
-.login-card__brand { display: none; }
-.login-card__head { margin: 0 0 29px; }
-.login-card__eyebrow { color: #00a8d0; font-size: 12px; font-weight: 700; letter-spacing: .08em; }
-.login-card__head h1 { margin: 10px 0 9px; color: #242d32; font-size: 26px; font-weight: 700; letter-spacing: -.035em; }
-.login-card__head p { margin: 0; color: #828c92; font-size: 13px; line-height: 1.6; }
-.login-form { display: grid; gap: 21px; }
-.password-field { display: grid; gap: 7px; }
-.password-field__label { color: #384349; font-size: 12px; font-weight: 700; }
-.password-field__control { display: flex; align-items: center; gap: 9px; min-height: 47px; padding: 0 12px; border: 1px solid #dfe4e7; border-radius: 8px; color: #98a1a6; background: white; transition: border-color var(--motion-fast), box-shadow var(--motion-fast); }
-.password-field__control:focus-within { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgb(0 177 226 / 12%); }
-.password-field__control input { min-width: 0; flex: 1; height: 43px; border: 0; outline: 0; color: #303b41; background: transparent; font-size: 13px; }
-.password-field__control input::placeholder { color: #abb3b7; }
-.password-field__toggle { display: inline-grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 6px; color: #7f898f; background: transparent; cursor: pointer; }
-.password-field__error { color: #b42318; font-size: 11px; }
-.login-form__error { margin: -7px 0 0; padding: 10px 12px; border: 1px solid rgb(180 35 24 / 18%); border-radius: 7px; color: #8f1d14; background: #fff3f1; font-size: 12px; line-height: 1.55; }
-.login-card__boundary { display: flex; align-items: flex-start; gap: 9px; margin-top: 24px; padding-top: 18px; border-top: 1px solid #edf0f2; color: #00a8d0; }
-.login-card__boundary p { margin: 0; color: #828c92; font-size: 11px; line-height: 1.6; }
-.login-card__help { margin: 18px 0 0; color: #91999e; font-size: 11px; text-align: center; }
-.login-side__footer { position: absolute; right: 30px; bottom: 21px; left: 30px; color: #a3aaae; font-size: 10px; text-align: center; }
-@media (max-width: 960px) { .login-page { grid-template-columns: minmax(320px, .85fr) minmax(420px, 1.15fr); }.login-visual__brand { top: 25px; left: 26px; }.login-card { padding: 36px 30px 30px; } }
-@media (max-width: 760px) { .login-page { display: flex; flex-direction: column; }.login-visual { min-height: auto; padding: 86px 22px 24px; }.login-visual__brand { top: 20px; left: 20px; }.login-visual__tile { width: min(67vw, 270px); border-radius: 18px; }.login-visual__tile-copy { gap: 8px; }.login-visual__tile-copy strong { font-size: 27px; }.login-visual__tile-copy small { font-size: 8px; }.login-visual__tile-copy span { font-size: 9px; }.login-visual__caption { margin-top: 15px; font-size: 10px; }.login-side { min-height: 0; flex: 1; padding: 10px 18px 60px; }.login-card { width: min(100%, 440px); padding: 31px 27px 27px; }.login-side__footer { bottom: 19px; } }
-@media (max-width: 400px) { .login-visual { padding-top: 75px; }.login-visual__tile { width: 62vw; }.login-side { padding-right: 12px; padding-left: 12px; }.login-card { padding-right: 20px; padding-left: 20px; } }
+.login-page {
+  position: relative;
+  display: grid;
+  min-height: 100vh;
+  min-height: 100svh;
+  place-items: center;
+  padding: 60px 40px;
+  background: linear-gradient(276deg, #f7f7f7 2.53%, #f1f1f3 97.25%);
+  color: #1e1d29;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Segoe UI", "Noto Sans", ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.6;
+}
+
+.login-page__brand {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  display: block;
+  width: 160px;
+  height: 80px;
+  object-fit: contain;
+}
+
+.login-content {
+  --login-art-width: clamp(310px, 21.3vw, 409px);
+  --login-card-width: clamp(500px, 26.9vw, 520px);
+
+  display: grid;
+  grid-template-columns: var(--login-art-width) var(--login-card-width);
+  align-items: center;
+  gap: 100px;
+  width: min(100%, calc(var(--login-art-width) + 100px + var(--login-card-width)));
+}
+
+.login-visual {
+  display: flex;
+  justify-content: center;
+}
+
+.login-visual__tile {
+  position: relative;
+  display: grid;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 31 / 27;
+  place-items: center;
+  overflow: hidden;
+  color: #fff;
+  background-color: #118edb;
+}
+
+.login-visual__flow-track {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+.login-visual__tile span {
+  position: relative;
+  z-index: 1;
+  color: rgb(255 255 255 / 94%);
+  font-size: clamp(25px, 1.35vw, 26px);
+  font-weight: 600;
+  letter-spacing: -.035em;
+  line-height: 1.2;
+  text-align: center;
+  text-shadow: 0 1px 10px rgb(8 31 91 / 24%);
+}
+
+.login-side {
+  display: grid;
+  place-items: center;
+}
+
+.login-card {
+  display: flex;
+  width: var(--login-card-width);
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(20px, 1.15vw, 22px);
+  padding: clamp(40px, 2.2vw, 44px) clamp(30px, 1.67vw, 32px) clamp(50px, 2.8vw, 54px);
+  border: 0;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 20px 12px rgb(0 0 0 / 2%), 0 9px 9px rgb(0 0 0 / 2%), 0 2px 5px rgb(0 0 0 / 2%);
+}
+
+.login-card__brand {
+  display: grid;
+  width: 50px;
+  height: 50px;
+  flex: 0 0 50px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 12px;
+}
+
+.login-card__brand img {
+  display: block;
+  width: 50px;
+  height: 50px;
+  object-fit: contain;
+}
+
+.login-card__head {
+  width: 100%;
+  margin: 0;
+  text-align: center;
+}
+
+.login-card__head h1 {
+  margin: 0;
+  color: #1e1d29;
+  font-size: clamp(21px, 1.1vw, 22px);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.login-form {
+  display: grid;
+  width: 100%;
+  gap: 10px;
+}
+
+.login-field {
+  display: grid;
+  gap: 6px;
+}
+
+.login-input {
+  display: inline-block;
+  position: relative;
+  width: 100%;
+  padding: clamp(13px, 0.7vw, 14px) 20px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  outline: none;
+  color: #1e1d29;
+  background: rgb(24 26 31 / 7%);
+  font: inherit;
+  font-size: clamp(16px, 0.9vw, 17px);
+  font-weight: 500;
+  line-height: 1.3;
+  transition: all 0.2s ease-in-out;
+}
+
+.login-input::placeholder {
+  color: #a0a3ab;
+  opacity: 1;
+}
+
+.login-input:focus,
+.login-input:focus-visible {
+  border-color: #3f424a;
+  outline: none;
+  color: #1e1d29;
+}
+
+.login-input[aria-invalid='true'] {
+  border-color: #d53633;
+}
+
+.login-field__error {
+  margin: 0 2px;
+  color: #d53633;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.login-form__error {
+  margin: 0;
+  padding: 9px 11px;
+  border: 1px solid rgb(213 54 51 / 18%);
+  border-radius: 6px;
+  color: #a3261b;
+  background: #fff3f1;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.login-card :deep(.login-submit) {
+  width: 100%;
+  min-height: 0;
+  padding: 10px 20px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #fff;
+  background: #00b1e2;
+  box-shadow: none;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.3;
+  transition: all 0.2s ease-in-out;
+}
+
+.login-card :deep(.login-submit:hover:not(:disabled)) {
+  transform: none;
+  color: #fff;
+  background: #33c1e8;
+  box-shadow: none;
+}
+
+.login-card :deep(.login-submit:active:not(:disabled)) {
+  transform: none;
+  color: #fff;
+  background: #008eb5;
+  box-shadow: none;
+}
+
+.login-card :deep(.login-submit:focus-visible) {
+  outline: 2px solid #3f424a;
+  outline-offset: 1px;
+}
+
+.login-help-trigger {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 10;
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  padding: 5px;
+  border: 0;
+  border-radius: 4px;
+  color: #656b76;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+.login-help-trigger:hover {
+  background: #f1f1f3;
+}
+
+.login-help-trigger:active {
+  background: #e6e6e8;
+}
+
+.login-help-trigger:focus-visible,
+.login-help-close:focus-visible,
+.login-help-confirm:focus-visible {
+  outline: 2px solid #3f424a;
+  outline-offset: 1px;
+}
+
+.login-help-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgb(0 0 0 / 80%);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.login-help-dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 101;
+  width: min(580px, calc(100vw - 32px));
+  min-height: 300px;
+  padding: 60px 30px 30px;
+  border: 0;
+  border-radius: 12px;
+  outline: none;
+  background: #fff;
+  box-shadow: none;
+  transform: translate(-50%, -50%);
+}
+
+.login-help-close {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  display: flex;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  padding: 11px;
+  border: 0;
+  border-radius: 50%;
+  color: #1e1d29;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+.login-help-content {
+  display: grid;
+  width: 100%;
+  min-height: 210px;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 30px;
+}
+
+.login-help-title {
+  display: block;
+  margin: 0;
+  color: #1e1d29;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: center;
+}
+
+.login-help-copy {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  color: #3f424a;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.6;
+}
+
+.login-help-confirm {
+  display: flex;
+  width: 100%;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 15px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #fff;
+  background: #00b1e2;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  transition: all 0.2s ease-in-out;
+}
+
+.login-help-confirm:hover {
+  background: #33c1e8;
+}
+
+.login-help-confirm:active {
+  background: #008eb5;
+}
+
+@media (max-width: 1024px) {
+  .login-content {
+    grid-template-columns: minmax(220px, 1fr) minmax(400px, 500px);
+    gap: clamp(28px, 6vw, 61px);
+  }
+
+  .login-visual__tile {
+    width: min(100%, 310px);
+    height: auto;
+    aspect-ratio: 31 / 27;
+  }
+}
+
+@media (max-width: 860px) {
+  .login-page {
+    align-content: start;
+    padding: 100px 22px 36px;
+  }
+
+  .login-page__brand {
+    top: 20px;
+    left: 20px;
+  }
+
+  .login-content {
+    grid-template-columns: minmax(0, 500px);
+    justify-content: center;
+    gap: 22px;
+    width: min(100%, 500px);
+  }
+
+  .login-visual__tile {
+    width: min(68vw, 310px);
+    height: auto;
+    aspect-ratio: 31 / 27;
+  }
+
+  .login-visual__tile span {
+    font-size: clamp(19px, 5.8vw, 24px);
+  }
+
+  .login-card {
+    width: 100%;
+    padding: 30px 20px 34px;
+  }
+
+  .login-help-dialog {
+    min-height: 0;
+    padding: 60px 20px 24px;
+  }
+
+  .login-help-content {
+    min-height: 190px;
+    gap: 24px;
+  }
+}
+
+@media (max-width: 400px) {
+  .login-page {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  .login-card {
+    padding-right: 20px;
+    padding-left: 20px;
+  }
+}
+
 </style>

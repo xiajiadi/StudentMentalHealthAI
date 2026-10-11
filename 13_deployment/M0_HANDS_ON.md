@@ -39,9 +39,11 @@
 
 所有服务 ready 后，在浏览器打开 `http://127.0.0.1:4173/`。只使用合成账号和合成信息；不要输入真实姓名、学号、联系方式、测评回答或其他真实学生数据。
 
-- **Student：** 保持默认的“学生”身份及页面预填的合成账号信息，提交登录后进入学生工作区。不要将真实个人信息输入演示。
-- **Teacher：** 选择“教师”身份；账号信息由本机运行环境保管，变量名为 `SMHAI_M0_TEACHER_USERNAME` 和 `SMHAI_M0_TEACHER_PASSWORD`。在本机登录表单中使用这组账号信息，不要把密码写入仓库、终端记录、日志或聊天。该演示账号的授权范围仅覆盖两个合成主体。
-- **Reviewer：** 使用本机 synthetic seed account；本轮未现场复核 reviewer 登录流程。
+- **Student：** 使用本机 synthetic identity bootstrap 创建的学生演示账号。登录页当前不预填账号，也没有身份选择器；服务端从已认证账号确定角色。不要将真实个人信息输入演示。
+- **Teacher：** 使用本机运行环境中的演示账号，变量名为 `SMHAI_M0_TEACHER_USERNAME` 和 `SMHAI_M0_TEACHER_PASSWORD`。登录表单只接收账号和密码；服务端根据账号角色进入教师工作区。不要把密码写入仓库、终端记录、日志或聊天。该演示账号的授权范围仅覆盖两个合成主体。
+- **Reviewer：** 使用本机 synthetic seed account 登录；服务端根据账号角色进入复核工作区。本轮未现场复核 reviewer 登录流程。
+- **Admin：** 可选本地合成演示账号由 `SMHAI_M0_ADMIN_USERNAME` 和 `SMHAI_M0_ADMIN_PASSWORD` 配置。初始化不创建 subject access grant；当前管理页只展示原型与只读健康状态，不开放组织账号或权限写操作。
+- **Psychological specialist：** 可选本地合成演示账号由 `SMHAI_M0_SPECIALIST_USERNAME` 和 `SMHAI_M0_SPECIALIST_PASSWORD` 配置。初始化不创建 subject access grant；专业个案读取和处理流程尚未接入。
 - **AI 支持：** 本轮唯一一次真实合成请求被 Backend `CLAIM_BOUNDARY` 安全门拒绝，没有回答、citation 或成功报告；失败状态写入支持历史。请求没有重试，但这次运行已结束。当前 P1 不可用，请勿再次提交支持请求。
 
 登录后，Student 可从“大学新生适应测评”选择“开始测评”，逐题选择页面提供的选项并提交；如需离开，选择“暂停并离开”，之后可从学生空间继续。完成时按页面提示完成测评并查看结构化记录。当前 Lead 提供的浏览器证据中，两条合成作答路径均在配置的 8 项后完成，结果标记为 `SYNTHETIC / DEMO / 非诊断`；这不表示心理测量有效。

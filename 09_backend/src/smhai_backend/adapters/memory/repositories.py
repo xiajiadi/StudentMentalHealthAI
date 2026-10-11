@@ -141,12 +141,32 @@ class InMemoryAssessmentRepository:
     def get(self, assessment_id: str) -> AssessmentRecord | None:
         return self._records.get(assessment_id)
 
-    def list_assessments_for_subjects(self, subject_ids: set[str]) -> list[AssessmentRecord]:
-        return sorted(
-            (record for record in self._records.values() if record.subject_id in subject_ids),
-            key=lambda record: str(record.assessment.get("timestamps", {}).get("started_at", "")),
+    def list_assessments_for_subjects(
+        self,
+        subject_ids: set[str],
+        *,
+        limit: int | None = None,
+        skip: int = 0,
+        status: str | None = None,
+    ) -> list[AssessmentRecord]:
+        rows = (
+            record
+            for record in self._records.values()
+            if record.subject_id in subject_ids
+            and (
+                status is None
+                or str(record.assessment.get("status", "")).lower() == status
+            )
+        )
+        ordered = sorted(
+            rows,
+            key=lambda record: (
+                str(record.assessment.get("timestamps", {}).get("started_at", "")),
+                record.assessment_id,
+            ),
             reverse=True,
         )
+        return ordered[skip : None if limit is None else skip + limit]
 
 
 class InMemoryConversationRepository:

@@ -33,7 +33,14 @@ class SessionStore(Protocol):
 class AssessmentRepository(Protocol):
     def save(self, record: AssessmentRecord) -> None: ...
     def get(self, assessment_id: str) -> AssessmentRecord | None: ...
-    def list_assessments_for_subjects(self, subject_ids: set[str]) -> list[AssessmentRecord]: ...
+    def list_assessments_for_subjects(
+        self,
+        subject_ids: set[str],
+        *,
+        limit: int | None = None,
+        skip: int = 0,
+        status: str | None = None,
+    ) -> list[AssessmentRecord]: ...
 
 
 class ConversationRepository(Protocol):

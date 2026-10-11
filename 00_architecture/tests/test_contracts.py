@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import re
-import sys
 import unittest
 from copy import deepcopy
 from pathlib import Path
@@ -307,6 +306,7 @@ class OpenApiContractTests(unittest.TestCase):
     def test_public_paths_and_methods_are_complete(self) -> None:
         expected = {
             ("GET", "/api/v1/health"),
+            ("GET", "/api/v1/assessments"),
             ("POST", "/api/v1/assessments"),
             ("POST", "/api/v1/assessments/{assessment_id}/responses"),
             ("POST", "/api/v1/assessments/{assessment_id}/complete"),

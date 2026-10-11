@@ -19,6 +19,8 @@ const router = createRouter({
     { path: '/login', name: 'login', component: () => import('@/views/auth/LoginView.vue'), meta: { public: true, layout: 'auth' } },
     { path: '/student', redirect: '/student/home' },
     { path: '/student/home', name: 'student-home', component: () => import('@/views/student/StudentHomeView.vue'), meta: { roles: ['student'], layout: 'workspace' } },
+    { path: '/student/assessments', name: 'student-assessments', component: () => import('@/views/student/StudentAssessmentsView.vue'), meta: { roles: ['student'], layout: 'workspace' } },
+    { path: '/student/feedback', name: 'student-feedback', component: () => import('@/views/student/StudentFeedbackView.vue'), meta: { roles: ['student'], layout: 'workspace' } },
     { path: '/student/assessment', name: 'student-assessment', component: () => import('@/views/student/AssessmentView.vue'), meta: { roles: ['student'], layout: 'focus' } },
     { path: '/student/assessment/:id', name: 'student-assessment-resume', component: () => import('@/views/student/AssessmentView.vue'), meta: { roles: ['student'], layout: 'focus' } },
     { path: '/student/assessment/:id/result', name: 'student-assessment-result', component: () => import('@/views/student/AssessmentResultView.vue'), meta: { roles: ['student'], layout: 'workspace' } },

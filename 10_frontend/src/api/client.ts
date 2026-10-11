@@ -17,6 +17,12 @@ export interface LoginInput {
   password: string
 }
 
+export interface AssessmentListParams {
+  limit?: number
+  skip?: number
+  status?: Assessment['status']
+}
+
 export interface LoginResult {
   userId: string
   role: Role
@@ -71,7 +77,7 @@ export interface FrontendApi {
   logout(): Promise<ApiEnvelope<{ logged_out: boolean }>>
   getCurrentUser(): Promise<ApiEnvelope<LoginResult | null>>
   getStudentHome(): Promise<ApiEnvelope<StudentHomeViewModel | null>>
-  listAssessments(): Promise<ApiEnvelope<Assessment[]>>
+  listAssessments(params?: AssessmentListParams): Promise<ApiEnvelope<Assessment[]>>
   getAssessmentState(assessmentId: string): Promise<ApiEnvelope<AssessmentState>>
   getAssessmentResult(assessmentId: string): Promise<ApiEnvelope<Assessment>>
   listReports(assessmentId?: string): Promise<ApiEnvelope<{ items: ReportSummary[]; next_cursor: string | null }>>

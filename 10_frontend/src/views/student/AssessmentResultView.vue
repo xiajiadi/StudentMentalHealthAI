@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { ArrowRight, CheckCircle2, RotateCcw } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, CheckCircle2, RotateCcw } from '@lucide/vue'
 import AppBadge from '@/components/app/AppBadge.vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
@@ -51,7 +51,7 @@ onMounted(load)
       <AppStatusCallout tone="attention" title="独立教育支持暂不可用" body="当前后端需要测评关联，常规支持生成会在 CLAIM_BOUNDARY 阻断。此演示不会生成占位回答或引用。" />
       <section class="assessment-result__actions" aria-label="下一步">
         <AppButton @click="openSupport">查看教育支持状态 <ArrowRight :size="16" aria-hidden="true" /></AppButton>
-        <RouterLink to="/student/home">返回学生空间</RouterLink>
+        <RouterLink class="assessment-result__back" to="/student/home"><ArrowLeft :size="16" aria-hidden="true" />返回学生空间</RouterLink>
       </section>
     </template>
   </div>
@@ -59,6 +59,8 @@ onMounted(load)
 
 <style scoped>
 .assessment-result__summary { display: flex; align-items: center; gap: 16px; margin-top: 22px; padding: 22px; }
+.assessment-result__back { display: inline-flex; align-items: center; gap: 7px; color: var(--color-text-secondary); font-size: 13px; font-weight: 500; transition: color var(--motion-fast); }
+.assessment-result__back:hover { color: var(--color-primary); }
 .assessment-result__mark { display: grid; place-items: center; width: 44px; height: 44px; flex: 0 0 44px; border-radius: 50%; color: var(--color-support); background: var(--color-support-wash); }
 .assessment-result__summary h2 { margin: 6px 0; color: var(--color-text-primary); font-family: var(--font-display); font-size: 20px; }
 .assessment-result__summary p { margin: 0; color: var(--color-text-secondary); font-size: 12px; overflow-wrap: anywhere; }

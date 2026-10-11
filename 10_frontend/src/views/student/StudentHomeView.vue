@@ -93,28 +93,28 @@ const featureCards = [
   {
     tag: '自我探索',
     title: '从一次测评开始',
-    description: '用一组循序展开的题目，记录当下的学习、生活与感受。',
+    description: '一题一答之间，记下此刻的学习、生活与感受。',
     image: '/assets/psynova/academy-feature-self-exploration.jpeg',
     imageAlt: '蓝色、青色与粉色交织的流动渐变',
   },
   {
     tag: '测评反馈',
     title: '换个角度看自己',
-    description: '查看已发布的测评反馈，从不同角度理解自己的近况。',
+    description: '读一读已发布的反馈，从不同角度理解自己的近况。',
     image: '/assets/psynova/academy-feature-assessment-feedback.png',
     imageAlt: '绿色、青色与浅黄色交织的柔和渐变',
   },
   {
     tag: '教育支持',
     title: '有困惑，就聊聊',
-    description: '学习、生活、人际相处中的难题，都可以从一次对话说起。',
+    description: '学习、生活与人际相处的难题，都可以从一次对话说起。',
     image: '/assets/psynova/academy-feature-education-support.png',
     imageAlt: '橙色、紫色与粉色交织的柔和渐变',
   },
   {
     tag: '成长记录',
-    title: '记下走过的每一步',
-    description: '回看测评与支持记录，在不同的阶段，重新认识自己。',
+    title: '回望来时路',
+    description: '翻看测评与支持记录，看看自己在不同阶段的变化。',
     image: '/assets/psynova/academy-feature-growth-record.png',
     imageAlt: '粉色、蓝色、紫色与淡金色交织的渐变',
   },
@@ -149,7 +149,7 @@ const academyCarouselArrowPath = 'M32 16C32 7.1776 24.824 0 16 0C7.1776 0 0 7.17
 const carouselIndex = ref(0)
 const carouselSlide = computed(() => carouselSlides.value[carouselIndex.value])
 const isHistory = computed(() => route.path === '/student/history')
-const carouselIntervalMs = 4500
+const carouselIntervalMs = 30_000
 let carouselTimer: number | undefined
 let reducedMotionQuery: MediaQueryList | null = null
 let pointerPaused = false
@@ -401,7 +401,7 @@ onUnmounted(() => {
 .student-feature { margin-top: 40px; padding: 35px 59px 40px; overflow: hidden; border-radius: 12px; background: #fff; box-shadow: 0 0 26px rgb(0 0 0 / 5%); }
 .student-feature__title { margin: 0 0 16px; color: #1e1d29; font-family: var(--font-sans); font-size: 28px; font-weight: 600; line-height: 1.6; text-align: center; }
 .student-feature__grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; }
-.student-feature-card { display: flex; min-width: 0; min-height: 455px; flex-direction: column; overflow: hidden; border: 1px solid #f3f5f8; border-radius: 12px; background: #f7faff; box-shadow: 0 20px 12px rgb(0 0 0 / 2%), 0 9px 9px rgb(0 0 0 / 2%), 0 2px 5px rgb(0 0 0 / 2%); }
+.student-feature-card { display: flex; min-width: 0; min-height: 380px; flex-direction: column; overflow: hidden; border: 1px solid #f3f5f8; border-radius: 12px; background: #f7faff; box-shadow: 0 20px 12px rgb(0 0 0 / 2%), 0 9px 9px rgb(0 0 0 / 2%), 0 2px 5px rgb(0 0 0 / 2%); }
 .student-feature-card__image { display: block; width: 100%; aspect-ratio: 2.4 / 1; flex: 0 0 auto; object-fit: cover; }
 .student-feature-card__content { display: grid; align-content: start; gap: 0; padding: 24px 28px 28px; }
 .student-feature-card__tag { color: #00a9dd; font-family: var(--font-sans); font-size: 16px; font-weight: 500; line-height: 1.6; }

@@ -226,7 +226,14 @@ class AssessmentService:
             trace_id=trace_id,
         )
 
-    async def list_for_actor(self, actor: Actor) -> list[AssessmentRecord]:
+    async def list_for_actor(
+        self,
+        actor: Actor,
+        *,
+        limit: int | None = None,
+        skip: int = 0,
+        status: str | None = None,
+    ) -> list[AssessmentRecord]:
         """List assessments only for subjects the authenticated actor can read."""
 
         subject_ids = set(actor.accessible_subject_ids)
@@ -239,9 +246,18 @@ class AssessmentService:
                 actor, "assessment:read", resource={"subject_id": subject_id}
             )
         }
-        return await maybe_await(
-            self.repository.list_assessments_for_subjects(allowed_subject_ids)
-        )
+        if limit is None and skip == 0 and status is None:
+            records = self.repository.list_assessments_for_subjects(
+                allowed_subject_ids
+            )
+        else:
+            records = self.repository.list_assessments_for_subjects(
+                allowed_subject_ids,
+                limit=limit,
+                skip=skip,
+                status=status,
+            )
+        return await maybe_await(records)
 
     async def state_for_actor(
         self, actor: Actor, assessment_id: str, *, action: str, request_id: str, trace_id: str

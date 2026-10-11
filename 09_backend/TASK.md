@@ -34,6 +34,7 @@
 ## 接口
 
 - GET /api/v1/health；
+- GET /api/v1/assessments（可选 limit、skip、status；在授权主体范围内分页）；
 - POST /api/v1/assessments；
 - POST /api/v1/assessments/{assessment_id}/responses；
 - POST /api/v1/assessments/{assessment_id}/complete；

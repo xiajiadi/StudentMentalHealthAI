@@ -379,6 +379,7 @@ Knowledge 的受控枚举如下：
 | 方法 | 路径 | 输入 | 成功结果 |
 | --- | --- | --- | --- |
 | GET | /health | 无 | 服务和依赖的非敏感状态 |
+| GET | /assessments | 可选 `limit`、`skip`、`status` | 权限范围内的测评数组 |
 | POST | /assessments | 测评工具、匿名主体、配置引用 | 创建 Assessment |
 | POST | /assessments/{assessment_id}/responses | 单题回答事件 | 当前测评状态 |
 | POST | /assessments/{assessment_id}/complete | 完成请求 | assessment.v1 |
@@ -387,6 +388,10 @@ Knowledge 的受控枚举如下：
 | POST | /generations | Generation Request | generation.v1 |
 | GET | /reports/{report_id} | 报告 ID | 权限范围内的报告和审核状态 |
 | POST | /reports/{report_id}/reviews | 审核动作和备注 | 更新后的审核状态 |
+
+`GET /assessments` 先按已授权的主体范围筛选，再按开始时间从新到旧、测评 ID 从大到小稳定排序。`limit` 可选，取值为 1–100；`skip` 可选且默认 0；`status` 可选，支持 `created`、`in_progress`、`completed`、`abandoned`、`invalid`。这三个参数都是可选的，不带参数时继续返回旧版的完整结果数组；分页和状态过滤仍使用原有成功响应外壳，不返回额外的总数。
+
+学生测评页每页请求 30 条，点击“加载更多”时使用当前状态筛选和已请求行数作为 `skip`。当返回条数少于 30 时隐藏按钮；刚好返回 30 条时保留按钮，下一次请求为空后再隐藏。
 
 ### 5.3 成功响应外壳
 

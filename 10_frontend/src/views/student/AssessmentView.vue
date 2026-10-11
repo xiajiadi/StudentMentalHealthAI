@@ -1,17 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ArrowRight } from '@lucide/vue'
-import { CircleHelp } from '@lucide/vue'
-import { Pause } from '@lucide/vue'
 import { RotateCcw } from '@lucide/vue'
 import { RadioGroupIndicator, RadioGroupItem, RadioGroupRoot } from 'reka-ui'
 import AppButton from '@/components/app/AppButton.vue'
-import AppDialog from '@/components/app/AppDialog.vue'
 import AppProgress from '@/components/app/AppProgress.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import { frontendApi } from '@/services/mock-api'
 import { useAssessmentStore } from '@/stores/assessment'
-import { useRoute, useRouter } from 'vue-router'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 
 const router = useRouter()
 const route = useRoute()
@@ -21,12 +18,17 @@ const pageState = ref<'loading' | 'ready' | 'error'>('loading')
 const isSubmitting = ref(false)
 const isCompleting = ref(false)
 const errorMessage = ref('')
-const isPauseDialogOpen = ref(false)
 
 const question = computed(() => assessment.question)
 const canComplete = computed(() => assessment.canComplete && assessment.answeredCount > 0)
 const progressLabel = computed(() => `已记录 ${assessment.answeredCount} 项`)
-const actionLabel = computed(() => canComplete.value ? '完成并查看结构' : '保存并继续')
+const progressMaximum = computed(() => Math.max(
+  question.value === null && assessment.canComplete
+    ? assessment.answeredCount
+    : assessment.maxItems ?? assessment.answeredCount + 1,
+  1,
+))
+const progressValue = computed(() => Math.min(assessment.answeredCount, progressMaximum.value))
 
 const load = async () => {
   pageState.value = 'loading'
@@ -53,24 +55,45 @@ const load = async () => {
   }
 }
 
-const submitResponse = async () => {
-  if (!question.value || !assessment.assessmentId || !selectedResponse.value) return
+let pendingSubmission: Promise<boolean> | null = null
+
+const saveSelectedResponse = () => {
+  if (pendingSubmission) return pendingSubmission
+
+  const currentQuestion = question.value
+  const assessmentId = assessment.assessmentId
+  const responseValue = selectedResponse.value
+  if (!currentQuestion || !assessmentId || !responseValue) return Promise.resolve(true)
+
   isSubmitting.value = true
   errorMessage.value = ''
-  try {
-    const response = await frontendApi.submitAssessmentResponse(assessment.assessmentId, question.value.item_id, selectedResponse.value)
-    assessment.update({
-      question: response.data.question,
-      currentIndex: response.data.current_index,
-      answeredCount: response.data.answered_count,
-      canComplete: response.data.can_complete,
-    })
-    selectedResponse.value = ''
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '答案暂时没有保存，请重试。'
-  } finally {
-    isSubmitting.value = false
-  }
+  pendingSubmission = (async () => {
+    try {
+      const response = await frontendApi.submitAssessmentResponse(assessmentId, currentQuestion.item_id, responseValue)
+      assessment.update({
+        question: response.data.question,
+        currentIndex: response.data.current_index,
+        answeredCount: response.data.answered_count,
+        canComplete: response.data.can_complete,
+      })
+      selectedResponse.value = ''
+      return true
+    } catch (error) {
+      errorMessage.value = error instanceof Error ? error.message : '答案暂时没有保存，请重试。'
+      return false
+    } finally {
+      isSubmitting.value = false
+    }
+  })().finally(() => {
+    pendingSubmission = null
+  })
+
+  return pendingSubmission
+}
+
+const submitResponse = async () => {
+  if (!selectedResponse.value || !question.value || !assessment.assessmentId) return
+  await saveSelectedResponse()
 }
 
 const complete = async () => {
@@ -88,24 +111,13 @@ const complete = async () => {
   }
 }
 
-const primaryAction = () => selectedResponse.value && question.value
-  ? submitResponse()
-  : canComplete.value
-    ? complete()
-    : submitResponse()
-const leave = () => {
-  isPauseDialogOpen.value = false
-  assessment.reset()
-  void router.push('/student/home')
-}
-
 onMounted(load)
+onBeforeRouteLeave(saveSelectedResponse)
 </script>
 
 <template>
   <div class="assessment-page">
     <div v-if="pageState === 'loading'" class="assessment-loading" aria-busy="true" aria-label="正在准备测评">
-      <div class="skeleton skeleton--meta"></div>
       <div class="skeleton skeleton--question"></div>
       <div class="skeleton skeleton--option"></div>
       <div class="skeleton skeleton--option"></div>
@@ -117,25 +129,15 @@ onMounted(load)
     </AppStatusCallout>
 
     <template v-else-if="pageState === 'ready' && question">
-      <div class="assessment-meta">
-        <div>
-          <span class="assessment-meta__eyebrow">专注模式</span>
-          <p>第 {{ assessment.currentIndex + 1 }} 题 · 测评进行中</p>
-        </div>
-        <span class="assessment-meta__boundary">不计算或展示内部测量参数</span>
-      </div>
-
-      <AppProgress :value="assessment.answeredCount" :max="assessment.maxItems || 8" :label="progressLabel" :value-label="`${assessment.answeredCount} 项`" />
+      <AppProgress :value="progressValue" :max="progressMaximum" :label="progressLabel" />
 
       <section class="question-card" aria-labelledby="question-title">
         <div class="question-card__top">
           <span class="question-card__number">{{ String(assessment.currentIndex + 1).padStart(2, '0') }}</span>
-          <span class="question-card__hint"><CircleHelp :size="15" aria-hidden="true" />按自己的感受选择即可</span>
         </div>
         <h1 id="question-title">{{ question.prompt }}</h1>
-        <p class="question-card__note">这是一个合成流程示例。选择后请点击下方按钮保存，不会自动提交。</p>
 
-        <RadioGroupRoot v-model="selectedResponse" class="answer-list" :aria-label="question.prompt">
+        <RadioGroupRoot v-model="selectedResponse" class="answer-list" :aria-label="question.prompt" :disabled="isSubmitting || isCompleting">
           <label v-for="option in question.options" :key="option.value" class="answer-option" :class="{ 'answer-option--selected': selectedResponse === option.value }">
             <RadioGroupItem :id="`answer-${option.value}`" class="answer-option__radio" :value="option.value">
               <RadioGroupIndicator class="answer-option__indicator" />
@@ -145,126 +147,82 @@ onMounted(load)
         </RadioGroupRoot>
 
         <AppStatusCallout v-if="errorMessage" tone="critical" title="这一步没有完成" :body="errorMessage">
-          <AppButton variant="secondary" size="sm" @click="primaryAction">重试</AppButton>
+          <AppButton variant="secondary" size="sm" @click="submitResponse">重试</AppButton>
         </AppStatusCallout>
 
-        <div v-if="canComplete" class="completion-note" role="status">
-          <span class="completion-note__line" aria-hidden="true"></span>
-          <p>系统已返回可以结束流程的状态。你可以保存当前作答并继续，也可以直接完成。</p>
-        </div>
-
         <div class="question-card__footer">
-          <button class="assessment-back" type="button" :disabled="isSubmitting || isCompleting" @click="isPauseDialogOpen = true">
-            <Pause :size="16" aria-hidden="true" />暂停并离开
-          </button>
-          <div class="question-card__actions">
-            <AppButton
-              v-if="canComplete"
-              variant="secondary"
-              :disabled="!selectedResponse || isSubmitting || isCompleting"
-              :loading="isSubmitting"
-              @click="submitResponse"
-            >
-              保存并继续回答
-            </AppButton>
-            <AppButton
-              :disabled="!canComplete && !selectedResponse"
-              :loading="isSubmitting || isCompleting"
-              @click="canComplete ? complete() : submitResponse()"
-            >
-              {{ canComplete ? '完成并查看结构' : actionLabel }} <ArrowRight :size="16" aria-hidden="true" />
-            </AppButton>
-          </div>
+          <AppButton :disabled="!selectedResponse || isSubmitting || isCompleting" :loading="isSubmitting" @click="submitResponse">
+            下一题
+          </AppButton>
         </div>
       </section>
     </template>
 
     <template v-else-if="pageState === 'ready' && canComplete">
-      <div class="assessment-meta">
-        <div>
-          <span class="assessment-meta__eyebrow">专注模式</span>
-          <p>测评项目已完成</p>
-        </div>
-        <span class="assessment-meta__boundary">不计算或展示内部测量参数</span>
-      </div>
-
-      <AppProgress :value="assessment.answeredCount" :max="assessment.maxItems || assessment.answeredCount" :label="progressLabel" :value-label="`${assessment.answeredCount} 项`" />
+      <AppProgress :value="progressValue" :max="progressMaximum" :label="progressLabel" />
 
       <section class="question-card assessment-complete-card" aria-labelledby="assessment-complete-title">
-        <span class="assessment-meta__eyebrow">可以进入下一步</span>
-        <h1 id="assessment-complete-title">本次合成测评已经可以结束</h1>
-        <p class="question-card__note">系统已返回可以结束的测评状态。完成后会展示服务端保存的测评记录；独立教育支持生成当前受限。</p>
+        <h1 id="assessment-complete-title">测评可结束</h1>
         <AppStatusCallout v-if="errorMessage" tone="critical" title="这一步没有完成" :body="errorMessage">
           <AppButton variant="secondary" size="sm" @click="complete">重试</AppButton>
         </AppStatusCallout>
         <div class="question-card__footer">
-          <button class="assessment-back" type="button" :disabled="isCompleting" @click="isPauseDialogOpen = true">
-            <Pause :size="16" aria-hidden="true" />暂停并离开
-          </button>
-          <div class="question-card__actions">
-            <AppButton :loading="isCompleting" @click="complete">
-              完成并查看结构 <ArrowRight :size="16" aria-hidden="true" />
-            </AppButton>
-          </div>
+          <AppButton :loading="isCompleting" @click="complete">
+            完成 <ArrowRight :size="16" aria-hidden="true" />
+          </AppButton>
         </div>
       </section>
     </template>
-
-    <AppDialog v-model:open="isPauseDialogOpen" title="要离开这次测评吗？" description="当前已保存的进度会保留。之后可以从学生空间继续这次测评。">
-      <div class="pause-dialog__actions">
-        <AppButton variant="secondary" @click="isPauseDialogOpen = false">继续测评</AppButton>
-        <AppButton variant="danger" @click="leave">离开测评</AppButton>
-      </div>
-    </AppDialog>
   </div>
 </template>
 
 <style scoped>
-.assessment-page { animation: page-in 260ms ease both; }
-.assessment-meta { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 19px; }
-.assessment-meta__eyebrow { color: var(--color-primary); font-size: 11px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
-.assessment-meta p { margin: 7px 0 0; color: var(--color-text-primary); font-family: var(--font-display); font-size: 19px; font-weight: 700; }
-.assessment-meta__boundary { color: var(--color-text-muted); font-size: 11px; }
-.question-card { margin-top: 30px; padding: clamp(22px, 5vw, 42px); border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-surface); box-shadow: var(--shadow-raised); }
-.question-card__top { display: flex; align-items: center; justify-content: space-between; gap: 15px; }
-.question-card__number { color: var(--color-primary); font-family: var(--font-mono); font-size: 13px; font-weight: 700; }
-.question-card__hint { display: inline-flex; align-items: center; gap: 6px; color: var(--color-text-muted); font-size: 12px; }
-.question-card h1 { max-width: 590px; margin: 32px 0 11px; color: var(--color-text-primary); font-family: var(--font-display); font-size: clamp(23px, 3vw, 31px); letter-spacing: -0.04em; line-height: 1.5; }
-.question-card__note { margin: 0; color: var(--color-text-secondary); font-size: 13px; line-height: 1.7; }
-.answer-list { display: grid; gap: 10px; margin-top: 28px; }
-.answer-option { display: flex; align-items: center; gap: 13px; min-height: 58px; padding: 0 15px; border: 1px solid var(--color-border); border-radius: var(--radius-control); color: var(--color-text-primary); background: var(--color-surface); cursor: pointer; transition: border-color var(--motion-fast) ease, background-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease; }
+.assessment-page { width: 100%; animation: page-in 180ms ease both; }
+.assessment-page :deep(.progress-wrap) { gap: clamp(5px, 0.8svh, 7px); }
+.assessment-page :deep(.progress-wrap__label) { justify-content: flex-start; font-size: 12px; }
+.assessment-page :deep(.progress-wrap__label strong) { display: none; }
+.assessment-page :deep(.progress) { height: 5px; }
+.question-card { margin-top: clamp(8px, 1.5svh, 14px); padding: clamp(16px, 2.4svh, 24px) clamp(18px, 2vw, 28px); border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-surface); box-shadow: var(--shadow-raised); }
+.question-card__top { display: flex; align-items: center; }
+.question-card__number { color: var(--color-primary); font-family: var(--font-sans); font-size: 12px; font-variant-numeric: tabular-nums; font-weight: 700; }
+.question-card h1 { max-width: none; margin: clamp(8px, 1.4svh, 13px) 0 clamp(10px, 1.8svh, 16px); color: var(--color-text-primary); font-family: var(--font-display); font-size: clamp(20px, calc(0.9vw + 0.8svh + 14px), 26px); letter-spacing: -0.025em; line-height: 1.35; }
+.assessment-complete-card h1 { margin: 0 0 8px; }
+.answer-list { display: grid; gap: clamp(6px, 0.9svh, 9px); margin-top: 0; }
+.answer-option { display: flex; align-items: center; gap: 11px; min-height: clamp(38px, 5.8svh, 50px); padding: clamp(6px, 0.9svh, 10px) 12px; border: 1px solid var(--color-border); border-radius: var(--radius-control); color: var(--color-text-primary); background: var(--color-surface); cursor: pointer; transition: border-color var(--motion-fast) ease, background-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease; }
 .answer-option:hover { border-color: rgb(37 99 235 / 45%); background: var(--color-surface-soft); }
 .answer-option--selected { border-color: var(--color-primary); background: var(--color-info-wash); box-shadow: 0 0 0 2px rgb(37 99 235 / 10%); }
-.answer-option__radio { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; flex: 0 0 20px; border: 1.5px solid var(--color-border-strong); border-radius: 50%; background: var(--color-surface); cursor: pointer; }
+.answer-option__radio { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; flex: 0 0 18px; border: 1.5px solid var(--color-border-strong); border-radius: 50%; background: var(--color-surface); cursor: pointer; }
 .answer-option__radio[data-state="checked"] { border-color: var(--color-primary); }
-.answer-option__indicator { width: 10px; height: 10px; border-radius: 50%; background: var(--color-primary); }
-.answer-option__label { font-size: 14px; font-weight: 600; }
-.question-card .status-callout { margin-top: 18px; }
-.completion-note { display: flex; align-items: center; gap: 10px; margin-top: 22px; padding-top: 15px; border-top: 1px solid var(--color-border); }
-.completion-note__line { width: 24px; height: 2px; background: var(--color-support); }
-.completion-note p { margin: 0; color: var(--color-support); font-size: 12px; line-height: 1.6; }
-.question-card__footer { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-top: 30px; padding-top: 18px; border-top: 1px solid var(--color-border); }
-.assessment-back { display: inline-flex; align-items: center; gap: 7px; min-height: 44px; border: 0; color: var(--color-text-secondary); background: transparent; cursor: pointer; font-size: 12px; font-weight: 700; }
-.assessment-back:hover { color: var(--color-primary); }
-.assessment-back:disabled { cursor: not-allowed; opacity: 0.5; }
-.question-card__actions { display: flex; align-items: center; gap: 10px; }
-.pause-dialog__actions { display: flex; justify-content: flex-end; gap: 9px; }
-.assessment-loading { display: grid; gap: 15px; padding-top: 20px; }
+.answer-option__radio:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.answer-option__indicator { width: 9px; height: 9px; border-radius: 50%; background: var(--color-primary); }
+.answer-option__label { font-size: 14px; font-weight: 600; line-height: 1.35; }
+.question-card .status-callout { margin-top: 14px; }
+.question-card__footer { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: clamp(10px, 1.6svh, 16px); padding-top: clamp(9px, 1.4svh, 14px); border-top: 1px solid var(--color-border); }
+.assessment-loading { display: grid; gap: 9px; padding-top: 8px; }
 .skeleton { position: relative; overflow: hidden; border-radius: 7px; background: var(--color-surface-skeleton); }
 .skeleton::after { position: absolute; inset: 0; content: ""; background: linear-gradient(90deg, transparent, rgb(255 255 255 / 58%), transparent); animation: shimmer 1.4s infinite; transform: translateX(-100%); }
-.skeleton--meta { width: 180px; height: 20px; }
-.skeleton--question { width: 90%; height: 120px; margin-top: 25px; }
-.skeleton--option { width: 100%; height: 58px; }
+.skeleton--question { width: 90%; height: 72px; margin-top: 8px; }
+.skeleton--option { width: 100%; height: 46px; }
 @keyframes page-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes shimmer { to { transform: translateX(100%); } }
 
 @media (max-width: 600px) {
-  .assessment-meta { display: block; }
-  .assessment-meta__boundary { display: block; margin-top: 9px; }
-  .question-card { padding: 21px 17px; }
-  .question-card h1 { margin-top: 25px; font-size: 22px; }
-  .question-card__footer { display: grid; gap: 12px; }
-  .question-card__actions { justify-content: flex-end; }
-  .assessment-back { justify-self: start; }
+  .question-card { padding: 16px; }
+  .question-card h1 { margin-top: 8px; font-size: 21px; }
+  .answer-list { gap: 7px; }
+  .question-card__footer { margin-top: 12px; }
+}
+
+@media (max-height: 640px) {
+  .question-card { padding-block: 14px; }
+  .question-card h1 { margin-block: 7px 9px; }
+  .answer-option { min-height: 36px; padding-block: 5px; }
+  .answer-list { gap: 5px; }
+  .question-card__footer { margin-top: 8px; padding-top: 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assessment-page { animation: none; }
+  .answer-option { transition: none; }
 }
 </style>

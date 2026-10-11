@@ -31,32 +31,47 @@ defineEmits<{
     @click="$emit('click', $event)"
   >
     <LoaderCircle v-if="loading" class="app-button__loader" :size="16" aria-hidden="true" />
-    <span><slot /></span>
+    <span class="app-button__label"><slot /></span>
   </button>
 </template>
 
 <style scoped>
 .app-button {
   display: inline-flex;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: center;
   gap: 8px;
   min-height: 44px;
   border: 1px solid transparent;
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-button);
   cursor: pointer;
   font-size: 14px;
-  font-weight: 700;
-  line-height: 1;
-  transition: background-color var(--motion-fast) ease, border-color var(--motion-fast) ease, color var(--motion-fast) ease, box-shadow var(--motion-fast) ease, transform var(--motion-fast) ease;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+  transition: all var(--motion-fast) ease;
+}
+
+.app-button__label {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.app-button__label :deep(svg) {
+  flex: 0 0 auto;
 }
 
 .app-button:hover:not(:disabled) {
-  transform: translateY(-1px);
+  filter: brightness(1.1);
 }
 
 .app-button:active:not(:disabled) {
-  transform: translateY(0);
+  filter: brightness(1.1);
+  transform: none;
 }
 
 .app-button:disabled {
@@ -87,24 +102,28 @@ defineEmits<{
 .app-button--primary {
   color: var(--color-text-inverse);
   background: var(--color-primary);
-  box-shadow: 0 4px 12px rgb(37 99 235 / 18%);
+  box-shadow: none;
 }
 
 .app-button--primary:hover:not(:disabled) {
   background: var(--color-primary-hover);
-  box-shadow: 0 6px 16px rgb(37 99 235 / 22%);
+  box-shadow: none;
+}
+
+.app-button--primary:active:not(:disabled) {
+  background: var(--color-primary-active);
 }
 
 .app-button--secondary {
-  border-color: var(--color-border-strong);
+  border-color: var(--color-text-secondary);
   color: var(--color-text-primary);
-  background: var(--color-surface);
+  background: transparent;
 }
 
 .app-button--secondary:hover:not(:disabled) {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-  background: var(--color-info-wash);
+  border-color: var(--color-text-secondary);
+  color: var(--color-text-primary);
+  background: rgb(0 0 0 / 5%);
 }
 
 .app-button--quiet {
@@ -113,8 +132,8 @@ defineEmits<{
 }
 
 .app-button--quiet:hover:not(:disabled) {
-  color: var(--color-primary);
-  background: var(--color-info-wash);
+  color: var(--color-text-primary);
+  background: rgb(0 0 0 / 5%);
 }
 
 .app-button--danger {

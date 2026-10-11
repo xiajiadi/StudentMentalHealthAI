@@ -26,6 +26,7 @@ import type {
 } from '@/types/view-models'
 import type {
   AssessmentState,
+  AssessmentListParams,
   FrontendApi,
   LoginInput,
   LoginResult,
@@ -436,10 +437,15 @@ export class RealApiProvider implements FrontendApi {
     return { ...response, data: null }
   }
 
-  async listAssessments(): Promise<ApiEnvelope<Assessment[]>> {
+  async listAssessments(params?: AssessmentListParams): Promise<ApiEnvelope<Assessment[]>> {
+    const query = new URLSearchParams()
+    if (params?.limit !== undefined) query.set('limit', String(params.limit))
+    if (params?.skip !== undefined) query.set('skip', String(params.skip))
+    if (params?.status !== undefined) query.set('status', params.status)
+    const queryString = query.toString()
     const response = await unwrap<unknown>(() => apiClient.request({
       method: 'GET',
-      url: '/api/v1/assessments',
+      url: `/api/v1/assessments${queryString ? `?${queryString}` : ''}`,
       parseAs: 'json',
     }))
     const rows = Array.isArray(response.data) ? response.data : []

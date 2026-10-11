@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from copy import deepcopy
+
 import pytest
 
 from smhai_backend.adapters.memory.repositories import InMemoryReportRepository
@@ -28,10 +30,23 @@ async def _start_assessment(client, csrf_token: str, subject_id: str = "SUBJ_dem
 async def test_assessment_list_result_and_scope(client):
     csrf_token = await login(client)
     assessment_id = await _start_assessment(client, csrf_token)
+    second_assessment_id = await _start_assessment(client, csrf_token)
 
     listing = await client.get("/api/v1/assessments")
     assert listing.status_code == 200
-    assert [item["assessment_id"] for item in listing.json()["data"]] == [assessment_id]
+    full_ids = [item["assessment_id"] for item in listing.json()["data"]]
+    assert set(full_ids) == {assessment_id, second_assessment_id}
+
+    first_page = await client.get("/api/v1/assessments?limit=1&skip=0")
+    second_page = await client.get("/api/v1/assessments?limit=1&skip=1")
+    assert first_page.status_code == second_page.status_code == 200
+    assert [item["assessment_id"] for item in first_page.json()["data"]] + [
+        item["assessment_id"] for item in second_page.json()["data"]
+    ] == full_ids
+
+    created_page = await client.get("/api/v1/assessments?limit=30&status=created")
+    assert {item["assessment_id"] for item in created_page.json()["data"]} == set(full_ids)
+    assert (await client.get("/api/v1/assessments?limit=0")).status_code == 422
 
     incomplete = await client.get(f"/api/v1/assessments/{assessment_id}")
     assert incomplete.status_code == 200
@@ -52,11 +67,41 @@ async def test_assessment_list_result_and_scope(client):
     result = await client.get(f"/api/v1/assessments/{assessment_id}")
     assert result.status_code == 200
     assert result.json()["data"]["status"] == "completed"
+    completed_page = await client.get("/api/v1/assessments?limit=30&status=completed")
+    assert [item["assessment_id"] for item in completed_page.json()["data"]] == [assessment_id]
 
     await login(client, "student_b")
-    other_subject = await client.get("/api/v1/assessments")
+    other_subject = await client.get("/api/v1/assessments?limit=1&skip=0")
     assert other_subject.status_code == 200
     assert other_subject.json()["data"] == []
+
+
+@pytest.mark.asyncio
+async def test_assessment_list_returns_30_rows_then_the_remaining_page(client, app):
+    csrf_token = await login(client)
+    first_id = await _start_assessment(client, csrf_token)
+    repository = app.state.container.assessments.repository
+    source = repository.get(first_id)
+    assert source is not None
+
+    for index in range(31):
+        assessment_id = f"ASSESS_demo_page_{index:03d}"
+        assessment = deepcopy(source.assessment)
+        assessment["assessment_id"] = assessment_id
+        assessment["timestamps"]["started_at"] = f"2026-10-11T00:{index:02d}:00Z"
+        repository.save(AssessmentRecord(assessment_id, source.subject_id, assessment))
+
+    first_page = await client.get("/api/v1/assessments?limit=30&skip=0")
+    second_page = await client.get("/api/v1/assessments?limit=30&skip=30")
+    exhausted_page = await client.get("/api/v1/assessments?limit=30&skip=32")
+    first_ids = [item["assessment_id"] for item in first_page.json()["data"]]
+    second_ids = [item["assessment_id"] for item in second_page.json()["data"]]
+
+    assert first_page.status_code == second_page.status_code == exhausted_page.status_code == 200
+    assert len(first_ids) == 30
+    assert len(second_ids) == 2
+    assert set(first_ids).isdisjoint(second_ids)
+    assert exhausted_page.json()["data"] == []
 
 
 @pytest.mark.asyncio

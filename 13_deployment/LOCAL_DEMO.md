@@ -44,7 +44,7 @@
 
 服务端口：CAT `8180`、RAG `8170`、Runtime `8160`、Safety `8190`、Backend `8080`、Frontend `4173`。浏览器地址为 `http://127.0.0.1:4173/`。RAG corpus 与 BM25 index、临时运行配置、进程清单写入本地运行目录，不会放入 Git。
 
-Backend 启动时调用现有 MySQL adapter 的幂等 synthetic identity bootstrap；测评 instrument 与 item bank 由 CAT 配置/fixture 提供。启动器本身不输出账号密码或密钥。
+Backend 启动时调用现有 MySQL adapter 的幂等 synthetic identity bootstrap；测评 instrument 与 item bank 由 CAT 配置/fixture 提供。可选管理员和心理老师演示账号从本机环境变量 `SMHAI_M0_ADMIN_USERNAME` / `SMHAI_M0_ADMIN_PASSWORD` 与 `SMHAI_M0_SPECIALIST_USERNAME` / `SMHAI_M0_SPECIALIST_PASSWORD` 读取。初始化只添加缺少的合成身份，不重置或删除现有数据。启动器本身不输出账号密码或密钥。
 
 ## 停止
 

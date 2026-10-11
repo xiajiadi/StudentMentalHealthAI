@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from typing import Literal
+
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -48,8 +50,29 @@ def envelope(request: Request, data: object) -> dict[str, object]:
     responses=problem_responses(ErrorCode.AUTH_SESSION_EXPIRED),
     summary="List assessments in the authenticated subject scope",
 )
-async def list_assessments(request: Request, actor: CurrentActor) -> JSONResponse:
-    records = await request.app.state.container.assessments.list_for_actor(actor)
+async def list_assessments(
+    request: Request,
+    actor: CurrentActor,
+    limit: int | None = Query(
+        default=None,
+        ge=1,
+        le=100,
+        description="Maximum rows to return; omitted to retain the unpaged response.",
+    ),
+    skip: int = Query(
+        default=0, ge=0, description="Number of matching authorized rows to skip."
+    ),
+    status: Literal[
+        "created", "in_progress", "completed", "abandoned", "invalid"
+    ]
+    | None = Query(
+        default=None,
+        description="Optional status filter, applied before pagination within the actor scope.",
+    ),
+) -> JSONResponse:
+    records = await request.app.state.container.assessments.list_for_actor(
+        actor, limit=limit, skip=skip, status=status
+    )
     return JSONResponse(
         envelope(
             request,

@@ -17,6 +17,7 @@ import type {
 } from '@/types/view-models'
 import type {
   AssessmentState,
+  AssessmentListParams,
   FrontendApi,
   LoginInput,
   LoginResult,
@@ -87,12 +88,17 @@ export class MockApiProvider implements FrontendApi {
     } as ApiEnvelope<StudentHomeViewModel | null>
   }
 
-  async listAssessments(): Promise<ApiEnvelope<Assessment[]>> {
+  async listAssessments(params?: AssessmentListParams): Promise<ApiEnvelope<Assessment[]>> {
     await sleep()
-    const rows = answeredCount > 0
+    const rows: Assessment[] = answeredCount > 0
       ? [{ ...clone(syntheticAssessment), assessment_id: mockAssessmentId, status: assessmentIndex >= 3 ? 'completed' as const : 'in_progress' as const }]
       : []
-    return { ...requestIds('assessment_list'), data: rows } as ApiEnvelope<Assessment[]>
+    const matchingRows = params?.status
+      ? rows.filter((row) => row.status === params.status)
+      : rows
+    const start = params?.skip ?? 0
+    const end = params?.limit === undefined ? undefined : start + params.limit
+    return { ...requestIds('assessment_list'), data: matchingRows.slice(start, end) } as ApiEnvelope<Assessment[]>
   }
 
   async getAssessmentState(assessmentId: string): Promise<ApiEnvelope<AssessmentState>> {

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import os
 import secrets
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
@@ -154,6 +155,36 @@ class MySqlBackendAdapter:
             ("teacher", "synthetic-teacher", "teacher", None),
             ("reviewer", "synthetic-reviewer", "reviewer", None),
         )
+        optional_identity_specs = (
+            ("admin", "SMHAI_M0_ADMIN"),
+            ("psychological_specialist", "SMHAI_M0_SPECIALIST"),
+        )
+        optional_fixtures: list[tuple[str, str, str, str | None]] = []
+        for role_code, env_prefix in optional_identity_specs:
+            username = os.environ.get(f"{env_prefix}_USERNAME")
+            password = os.environ.get(f"{env_prefix}_PASSWORD")
+            if (username is None) != (password is None):
+                raise RuntimeError(
+                    f"Incomplete local demo identity configuration: {env_prefix}."
+                )
+            if username is None or password is None:
+                continue
+            if (
+                not username.strip()
+                or len(username) > 128
+                or not password
+                or len(password) > 256
+            ):
+                raise RuntimeError(
+                    f"Invalid local demo identity configuration: {env_prefix}."
+                )
+            optional_fixtures.append((username.strip(), password, role_code, None))
+
+        fixtures = (*fixtures, *optional_fixtures)
+        fixture_usernames = [fixture[0].casefold() for fixture in fixtures]
+        if len(fixture_usernames) != len(set(fixture_usernames)):
+            raise RuntimeError("Duplicate local synthetic identity configuration.")
+
         hasher = PasswordHash.recommended()
         async with self._uow() as uow:
             assert uow.session is not None
@@ -164,6 +195,11 @@ class MySqlBackendAdapter:
                     await uow.session.scalars(self._select(m.Role).where(m.Role.status == "ACTIVE"))
                 ).all()
             }
+            configured_roles = {fixture[2] for fixture in optional_fixtures}
+            if any(role_code not in role_rows for role_code in configured_roles):
+                raise RuntimeError(
+                    "A configured local demo identity references an unavailable role."
+                )
             subjects: dict[str, Any] = {}
             for _, _, _, subject_ref in fixtures:
                 if subject_ref is None:
@@ -581,20 +617,37 @@ class MySqlBackendAdapter:
             )
 
     async def list_assessments_for_subjects(
-        self, subject_ids: set[str]
+        self,
+        subject_ids: set[str],
+        *,
+        limit: int | None = None,
+        skip: int = 0,
+        status: str | None = None,
     ) -> list[AssessmentRecord]:
         if not subject_ids:
             return []
         m = self._db_models
         async with self._uow() as uow:
+            statement = (
+                self._select(m.AssessmentSession.assessment_ref)
+                .join(m.Subject, m.Subject.id == m.AssessmentSession.subject_id)
+                .where(m.Subject.subject_ref.in_(subject_ids))
+                .order_by(
+                    m.AssessmentSession.started_at.desc(),
+                    m.AssessmentSession.assessment_ref.desc(),
+                )
+            )
+            if status is not None:
+                statement = statement.where(
+                    m.AssessmentSession.status == status.upper()
+                )
+            if skip:
+                statement = statement.offset(skip)
+            if limit is not None:
+                statement = statement.limit(limit)
             refs = list(
                 (
-                    await uow.session.scalars(
-                        self._select(m.AssessmentSession.assessment_ref)
-                        .join(m.Subject, m.Subject.id == m.AssessmentSession.subject_id)
-                        .where(m.Subject.subject_ref.in_(subject_ids))
-                        .order_by(m.AssessmentSession.created_at.desc())
-                    )
+                    await uow.session.scalars(statement)
                 ).all()
             )
         records: list[AssessmentRecord] = []

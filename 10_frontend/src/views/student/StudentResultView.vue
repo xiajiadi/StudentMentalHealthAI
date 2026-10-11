@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ArrowLeft } from '@lucide/vue'
 import { ArrowRight } from '@lucide/vue'
 import { BookOpen } from '@lucide/vue'
@@ -23,6 +23,27 @@ const router = useRouter()
 const state = ref<'loading' | 'ready' | 'error'>('loading')
 const data = ref<StudentReportViewModel | null>(null)
 const errorMessage = ref('')
+const canDisplayFeedback = computed(() => {
+  const generation = data.value?.report.generation
+  return generation?.status === 'generated' && Boolean(generation.content)
+})
+const feedbackNotice = computed(() => {
+  const generation = data.value?.report.generation
+  if (!generation) return { title: '反馈状态不可用', body: '服务端没有返回可展示的反馈状态。', tone: 'attention' as const }
+  if (generation.status === 'needs_review' || generation.review.status === 'pending') {
+    return { title: '反馈正在等待复核', body: '人工复核完成并获准发布前，此页面不会显示个性化反馈内容。', tone: 'attention' as const }
+  }
+  if (generation.status === 'approved') {
+    return { title: '反馈已批准，正文暂不可见', body: '服务端当前没有向学生端返回报告正文，因此页面不会补写或推测反馈内容。', tone: 'attention' as const }
+  }
+  if (generation.status === 'rejected') {
+    return { title: '反馈未获准发布', body: '这条记录没有获准发布的反馈内容。', tone: 'critical' as const }
+  }
+  if (generation.status === 'safety_blocked') {
+    return { title: '反馈暂不可发布', body: '当前流程未允许发布普通反馈。你可以返回“测评反馈”查看其他状态。', tone: 'attention' as const }
+  }
+  return { title: '反馈暂不可用', body: '服务端尚未返回完整且获准展示的反馈内容。', tone: 'attention' as const }
+})
 
 const load = async () => {
   state.value = 'loading'
@@ -53,6 +74,10 @@ onMounted(load)
 
     <AppStatusCallout v-else-if="state === 'error'" tone="critical" title="这份结果暂时无法打开" :body="errorMessage">
       <AppButton variant="secondary" size="sm" @click="load"><RotateCcw :size="15" aria-hidden="true" />重新加载</AppButton>
+    </AppStatusCallout>
+
+    <AppStatusCallout v-else-if="data && !canDisplayFeedback" :tone="feedbackNotice.tone" :title="feedbackNotice.title" :body="feedbackNotice.body">
+      <AppButton variant="quiet" size="sm" @click="router.push('/student/feedback')"><ArrowLeft :size="15" aria-hidden="true" />返回测评反馈</AppButton>
     </AppStatusCallout>
 
     <template v-else-if="data">

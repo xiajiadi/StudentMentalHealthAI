@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { ArrowRight, BookOpen, RotateCcw, ShieldAlert } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, BookOpen, RotateCcw, ShieldAlert } from '@lucide/vue'
 import AppBadge from '@/components/app/AppBadge.vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
@@ -46,7 +46,7 @@ onMounted(loadHistory)
         <p>当前后端支持请求需要关联测评；常规生成路径会在 <code>CLAIM_BOUNDARY</code> 阻断。此页面不会提交消息、创建虚构的测评关联，也不会展示占位回答或来源。</p>
         <div class="support-unavailable__actions">
           <AppButton @click="router.push('/student/history')">查看我的记录 <ArrowRight :size="16" aria-hidden="true" /></AppButton>
-          <RouterLink to="/student/home">返回学生首页</RouterLink>
+          <RouterLink class="support-unavailable__back" to="/student/home"><ArrowLeft :size="16" aria-hidden="true" />返回学生首页</RouterLink>
         </div>
       </div>
       <img class="support-unavailable__art" :src="'/assets/heartbridge/card-student-original.png'" alt="" aria-hidden="true">
@@ -81,6 +81,8 @@ onMounted(loadHistory)
 .support-unavailable__copy h2 { margin: 7px 0 8px; color: #3d4843; font-family: var(--font-display); font-size: clamp(20px, 3vw, 26px); }
 .support-unavailable__copy p { margin: 0; color: #5e6963; font-size: 13px; line-height: 1.8; }
 .support-unavailable__copy code { padding: 2px 5px; border-radius: 4px; color: #765d35; background: #f0ecdf; font-size: 11px; }
+.support-unavailable__back { display: inline-flex; align-items: center; gap: 7px; min-height: 38px; color: var(--color-text-secondary); font-size: 13px; font-weight: 500; transition: color var(--motion-fast); }
+.support-unavailable__back:hover { color: var(--color-primary); }
 .support-unavailable__actions { display: flex; align-items: center; gap: 20px; margin-top: 19px; }
 .support-unavailable__actions a { color: var(--color-support); font-size: 12px; font-weight: 750; }
 .support-unavailable__actions a:hover { text-decoration: underline; text-underline-offset: 3px; }
