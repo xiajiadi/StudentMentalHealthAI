@@ -1,55 +1,51 @@
 # Current autonomous delivery state
 
-Updated: 2026-10-11. Phase I, ongoing; no delivery acceptance.
+Updated: 2026-10-11. Phase I continues; final delivery is not accepted.
+
+## Objective and authority
+
+Continue the synthetic four-role PsyNova engineering mission to evidenced ENGINEERING_DEMO_READY. The original application is historical product background; current mandate, frozen contracts and Controller decisions govern implementation. Do not use real students, assert professional approval, reset old data, bypass Safety/Claim Boundary, contact people automatically or introduce cloud model fallback.
 
 ## Git and ownership
 
-Baseline local and remote M0: `74372fef547ea6d0eba0e88fd5dd44750d7f1f8e`.
-Current dedicated integration branch: `xiajiadi/autonomous-delivery-20261011`.
-Existing untracked frontend output and unused login asset are preserved.
-Root owns mission, queue, recovery runner and integration. Luna/max Lead owns `AUTONOMOUS_BASELINE_REPORT.md`; its explicit Luna/high app-audit Worker runs in an isolated baseline worktree. Confirm live agent inventory on recovery before reassigning files.
+- Worktree: `D:\Projects\StudentMentalHealthAI-m0-integration`.
+- Baseline M0: `74372fef547ea6d0eba0e88fd5dd44750d7f1f8e`.
+- Dedicated integration/remote branch: `xiajiadi/autonomous-delivery-20261011`; reviewed seed/runtime/teacher increment `1252425`, frontend context increment `a761641`. Push this checkpoint only to this dedicated branch.
+- Earlier reviewed commits: runner/audit `2f29f5e`, student completion/original covers `2d69368`, isolated-workspace guard `2ba26b6`, school auth `4c730a2`, runtime/DPAPI `9390442`, school entrypoint `b6e6bea`.
+- Preserve untracked `10_frontend/output/` and `10_frontend/public/assets/heartbridge/login-mark-v2.png`; never stage/reset/delete them.
+- Root owns integration, deployment, frontend and this state. Explicit Luna/max Lead reuses its explicit Luna/high Worker in isolated `audit/phase1-application`. Confirm live inventory before reassigning files. Worker now owns only database seed/provenance/0004 migration and associated tests/docs.
 
-## Fresh evidence
+## Runtime and data boundaries
 
-- M0 HEAD equals remote at initial inspection.
-- Initial inspection found M0 services stopped; subsequent project-only recovery restored frontend 4173/backend 8080/CAT 8180/RAG 8170/Runtime 8160/OPA 8181/Safety 8190 and Ollama 11434 through the existing launcher.
-- System MySQL listens on 3306; it must remain unchanged.
-- Initial preflight exited 1. Old manifest matched this worktree and all eight recorded PIDs were absent; it was backed up externally before the existing stop script cleared it. Project MySQL was started from its existing external datadir with no-defaults, loopback bind and port 3307. Native listener PID and parent executable/arguments were verified. No reset, old-row deletion, privilege escalation or global MySQL change occurred.
-- New preflight and launcher completed successfully. Knowledge pipeline exported one synthetic document/chunk for M0; all listed services reported ready. Actual student/database/model/browser business workflows still need verification.
-- Runner: 17 fresh tests pass, independent Lead rerun and disposable Git dirty-tree verification pass. This accepts the bounded task-state mechanism only, not Phase I or final delivery. Heartbeat `psynova` is ACTIVE at 90-minute intervals; first actual scheduled trigger/reboot continuation is unproven.
-- Final-package redistribution evidence is missing for several image groups; original compatible replacements are planned.
-- Original proposal was read as background, not as current capability evidence.
+- System MySQL 3306 is untouched. Preserved M0 MySQL 3307 and historical M0 services were recovered without reset/migration; never restart new-schema source against that database. Existing legacy launcher now blocks before bootstrap when 0003 exists.
+- New owned external workspace: `D:\Projects\.StudentMentalHealthAI-school-workspace-20261011`; loopback MySQL 3308, `smhai_school_demo`. Current-user-only directory DACL; randomly generated database/auth/encryption settings sealed with Windows current-user DPAPI. No plaintext secret configuration or password argv.
+- New demo and separate owned test schemas are at additive revision 0004; Alembic consistency checks pass. Native MySQL integration passes 7/7. Test-schema downgrade/re-upgrade passes; demo downgrade with registered seed rows is rejected before DDL. Old schemas were not migrated.
+- Runtime identity has exactly demo-schema SELECT/INSERT/UPDATE/DELETE, no active roles or grant option. Actual login/grant/revision checks pass. Initialization/runtime settings required explicit recovery; clean repeated install is unproven. Failed new-account verification now locks that account and withholds runtime readiness.
+- Registered seed provisions two synthetic schools, two subjects and eight random-password role accounts. Exact repeat preserves sealed credentials and verifies existing rows. Specialist/admin have zero subject grants. Generated credentials stay in current-user DPAPI storage.
+- School backend serves 8088; HTTP health passes with four REAL_HTTP module clients. Frontend serves 4178; static login was inspected. Native login/context/CSRF/logout checks pass for all eight accounts, with distinct `psynova_school_session` cookie and seven private-record masked denials. Authenticated browser operations remain unproven.
+- External `school-processes.json` records native creation times and process tree: backend interpreter 34364 (exec session 89598), frontend 47260 (exec session 25584). Reverify identities before process actions; numeric PIDs alone are insufficient. Shared M0 module processes are not owned by that manifest.
+- Backend was explicitly restarted after exact owned-process verification to load 0004, CSRF and cookie separation. Further source changes require another verified reload.
 
-## Checkpoint after first engineering cycle
+## Reviewed implementation and fresh evidence
 
-Root committed runner/audit (`2f29f5e`) and student completion/original covers (`2d69368`), and pushed only the new dedicated development branch. Latest frontend verification: 48 unit tests, Lint and typechecked build pass. Existing untracked artifacts remain excluded. One real synthetic support attempt returns 502; only status/code were recorded, so its precise failing stage is not yet established. Login/list/logout return 200.
+- School memberships/roles, CSRF-protected active context, tenant-scoped grants, revocation/invalid-context denial, concurrent context re-projection and revision gate are integrated. School profile has no legacy seed and no implicit admin psychological access.
+- DPAPI key provider consumes sealed format without plaintext fallback; actual workspace Fernet roundtrip passes. School CSRF uses a sealed random 32-byte key, SecretStr config and in-memory adapter injection; invalid values redact secrets and unrelated errors remain specific.
+- Integration focused backend 37/37 passes after CSRF integration. Lead's broader isolated backend checks and quality review are separate evidence. DPAPI integration crypto 9/9 and adapter 12/12 pass.
+- Deployment tests 54/54 pass; fresh combined deployment/teacher/seed suite passes 72/72 after explicitly adding the existing database environment to PYTHONPATH. An initial run without SQLAlchemy failed at import and is not pass evidence. Runtime/entrypoint check actual ownership, DACL, grants, revision, readiness and sealed target. Configuration preflight is not HTTP workflow proof.
+- Frontend 14 files/55 unit tests, Lint and typechecked build pass. Single authorized school context is explicitly activated; multiple contexts require authenticated server-provided selection. Independent Lead review and focused tests pass 12/12. Student completion persists pending answer and honors the updated server gate. Assessment art is 28 unique reproducible original SVGs; card brand marks are removed. Static inspection does not prove authenticated workflows.
+- Native school student completed eight synthetic CAT responses through the server-authorized completion gate. Results/answers were not printed. Fresh support request returned 502; stored allowlisted diagnostics confirm CONTENT_VALIDATION succeeded and CLAIM_BOUNDARY rejected the candidate. Runtime used one CONSUMER_GPU attempt with qwen2.5-0.5b-engineering, no retry/fallback. Do not weaken the boundary or reopen the accepted GPU line. Exact rejected claim remains uninspected.
+- Baseline CAT 28, Runtime 33, Safety 15, selected pipeline 12 and focused backend 7 are historical/fake-suite evidence; no psychometric/model-runtime acceptance. RAG baseline export fixture is still missing. One actual legacy synthetic support request returned 502/dependency_invalid_response; exact fresh failure stage remains unproven.
 
-A real local runner lease for task `runner` has now been adopted by root and saved atomically in ignored state. The initial capability audit task is complete; Foundation phase is not accepted. Auth/tenant Worker has reviewed local commits, pending provenance, new-schema migration proof and launcher integration guard; no new migration has run against the old demo database.
+## Active next increment
 
-## Next actions
+Seed/provenance/0004 and frontend context changes are committed as the increments above. Seed username/password bounds now match HTTP login. 0003 stays immutable. Specialist case/publication assignment requires its own subsequent workflow; never misuse internal NULL-scoped REVIEW_ASSIGNMENT.
 
-Baseline report is available. Lead reused its explicit Luna/high app Worker in an isolated baseline worktree for schools/memberships/roles, tenant-scoped auth and negative tests. Root approved additive nullable legacy isolation, explicit context selection and disposable-schema-only migration checks. Never run the new migration against the old demo database. Root is replacing assessment covers with reproducible original SVGs and removing the per-card brand mark per the operator's latest annotations; other unverified image groups still block final packaging. Prioritize actual business QA and Claim Boundary diagnosis next.
+Teacher school/unknown overview now skips both assessment and report repositories, returns empty compatibility fields and task_progress_available=false; per-subject history is denied before repository access. Independent source/sentinel review passes; Root focused teacher/tenant tests pass 11/11 and native checks pass for both school teachers after reload. Real task progress remains unavailable. School/class/task design will use publication-time enrollment snapshots; revoked students lose access immediately, historical enrollment totals remain with active/revoked counts separated. Preserve separate self-initiated assessments outside task counts. No privacy threshold or psychological rule is invented. Lead/Worker now own only the next additive 0005 DB models/repository transaction increment in their isolated worktree.
 
-## External gates
+Next priorities remain school operations, task-level teacher Scope A, specialist case/publication workflow, independent AI conversations and safe diagnosis of support generation failures.
 
-Real students/pilot, clinical thresholds, formal calibration/validity, ethics and production deployment remain unapproved. Synthetic engineering continues. Credentials and raw sensitive model output must not enter state or reports.
+## Continuation and remaining gates
 
-## School-workspace and tenant integration checkpoint
+Runner is a lease/checkpoint/recovery state CLI, not a coding executor. Its current root lease/checkpoint is stored in ignored `.autonomous/`. Heartbeat `psynova` is configured ACTIVE/90 minutes; first actual scheduled trigger, unattended/reboot continuation and sustained operation remain unproven. Do not mark the whole mission complete at a checkpoint.
 
-New external workspace `D:\Projects\.StudentMentalHealthAI-school-workspace-20261011` runs its separately owned loopback MySQL on 3308. Its directory DACL grants only the current user; generated credentials and encryption keys use current-user DPAPI. No plaintext secret configuration is written. Initialization was recovered after driver/expired-password setup failures; a clean repeatable installation remains unproven.
-
-The new `smhai_school_demo` schema upgraded from empty to revision `20261011_0003` (23 tables). Alembic consistency check passes after matching three ORM server defaults. A separate owned `smhai_school_synthetic_test_20261011` schema on 3308 passes all seven native MySQL integration tests. Tests preserve foreign keys and explicitly flush cleanup dependencies. Old 3307 and system 3306 were not migrated or reset.
-
-Auth integration includes school memberships/roles, explicit CSRF-protected active context, tenant-scoped grants, invalid/revoked context denial and concurrent context re-projection. School profile does not seed legacy identities. Backend checks the required schema revision before bootstrap. Integration-tree focused tests: backend 23/23, schema/provenance 14/14. Lead's additional safe/quality checks remain separate evidence. Legacy launcher now fails before bootstrap when the school migration is present; existing historical M0 services must not be restarted with this new source against the old schema.
-
-Deployment tests now pass 27/27 (runner 19, workspace 7, launcher guard 1). Runner is a recoverable lease/state CLI, not a coding executor; scheduled unattended/reboot continuation is still unproven.
-
-Next: integrate a DPAPI key provider, create a least-privilege runtime identity, controlled synthetic school accounts and a new owned school launcher, then verify real school-profile auth and browser workflows. Four-role product delivery and AI recovery remain incomplete.
-
-Runtime preparation checkpoint: generated current-user DPAPI-sealed runtime identity on the owned 3308 instance. Native login and exact schema-only DML/no-active-role gate pass. Script fresh tests: 16/16; deployment aggregate before the last four permission-negative additions: 39/39. Lead identified missing in-script grant readback; this is now implemented and native-checked. No clean repeat-install or application launch claim.
-
-DPAPI integration checkpoint: Worker af4a928 reviewed and integrated; integration crypto 9/9 and adapter 12/12 pass, and the actual workspace key file supports Fernet roundtrip without plaintext persistence. Runtime preparation now locks its newly-created account on failed verification and emits readiness only on success; focused tests 17/17. School-profile CSRF key configuration is the next isolated backend task.
-
-School entrypoint checkpoint: deployment tests 49/49 pass in integration and independent Lead rerun. Actual owned workspace target/grants/revision/sealed-auth environment gate passes. Missing/mismatched readiness denies before decrypting; stale revision denies before auth/environment injection. A readiness marker and previously absent sealed authentication settings were explicitly recovered after fresh ownership/grant/revision checks. No backend startup or four-role browser proof yet.
-
-School authentication/startup checkpoint: reviewed CSRF candidates e84a9d6 + f19fa45 integrated. School profile requires SecretStr-backed 64-hex deployment configuration, passed in memory and decoded to 32-byte HMAC key; invalid/missing configuration errors redact values while unrelated diagnostics remain specific. Integration focused backend 37/37 pass. Sealed configuration preflight passes on the actual workspace. Foreground school backend exec session 22924 started successfully on 8088; health/ready returns 200. Native query confirms accounts remain zero, proving no implicit legacy account seed. Native Python launcher guardian PID 32416 and interpreter/listener PID 48784 are recorded with creation times in the external school-processes manifest; reverify before any process action, never act on old numeric PIDs alone. Historical shared module processes are not owned by this new manifest. Application process loaded e84 configuration before the later f19 diagnostic-only correction; full role/browser business QA remains pending controlled synthetic provisioning.
+Other homepage/Heartbridge/brand assets still require per-file provenance or compatible original replacement. Final packaging, least-privilege installer recovery/portability, full E2E, professional review and real pilot/production permissions remain open. Synthetic engineering continues.
