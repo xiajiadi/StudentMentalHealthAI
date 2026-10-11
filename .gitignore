@@ -97,3 +97,6 @@ data/qdrant-integration-check/
 *.dmp
 *.core
 *.trace.zip
+
+# Project-local autonomous runner leases and disposable verification output.
+.autonomous/

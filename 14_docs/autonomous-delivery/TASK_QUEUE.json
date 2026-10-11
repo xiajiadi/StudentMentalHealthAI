@@ -1,0 +1,263 @@
+{
+  "schema_version": 1,
+  "baseline": "74372fef547ea6d0eba0e88fd5dd44750d7f1f8e",
+  "max_attempts": 3,
+  "baseline_untracked_artifacts": [
+    "10_frontend/output/",
+    "10_frontend/public/assets/heartbridge/login-mark-v2.png"
+  ],
+  "tasks": [
+    {
+      "id": "foundation_audit",
+      "title": "核实基线、权限与模块能力",
+      "priority": 100,
+      "depends_on": [],
+      "status": "READY",
+      "owner": null,
+      "attempts": 0,
+      "acceptance": [
+        "源码能力逐项分级",
+        "实际测试命令与结果",
+        "数据库/运行环境/素材阻塞证据"
+      ],
+      "evidence": [],
+      "commits": [],
+      "next_action": "核实基线、权限与模块能力"
+    },
+    {
+      "id": "runner",
+      "title": "实现并独立验证任务队列、恢复和续跑",
+      "priority": 99,
+      "depends_on": [],
+      "status": "READY",
+      "owner": null,
+      "attempts": 0,
+      "acceptance": [
+        "互斥任务占用",
+        "依赖和独立复核门禁",
+        "有界失败及中断恢复",
+        "定向测试与独立审查"
+      ],
+      "evidence": [],
+      "commits": [],
+      "next_action": "实现并独立验证任务队列、恢复和续跑"
+    },
+    {
+      "id": "environment",
+      "title": "恢复隔离本地服务并验证非破坏性启动",
+      "priority": 98,
+      "depends_on": [
+        "foundation_audit"
+      ],
+      "status": "BACKLOG",
+      "owner": null,
+      "attempts": 0,
+      "acceptance": [
+        "完整业务操作与权限限制",
+        "定向测试、真实集成证据",
+        "独立审查及可追溯提交"
+      ],
+      "evidence": [],
+      "commits": [],
+      "next_action": "恢复隔离本地服务并验证非破坏性启动"
+    },
+    {
+      "id": "auth_tenant",
+      "title": "学校、账号、会话与跨学校权限闭环",
+      "priority": 95,
+      "depends_on": [
+        "foundation_audit"
+      ],
+      "status": "BACKLOG",
+      "owner": null,
+      "attempts": 0,
+      "acceptance": [
+        "完整业务操作与权限限制",
+        "定向测试、真实集成证据",
+        "独立审查及可追溯提交"
+      ],
+      "evidence": [],
+      "commits": [],
+      "next_action": "学校、账号、会话与跨学校权限闭环"
+    },
+    {
+      "id": "ai_boundary",
+      "title": "定位正常支持的 Claim Boundary 失败并保持所有门禁",
+      "priority": 94,
+      "depends_on": [
+        "foundation_audit"
+      ],
+      "status": "BACKLOG",
+      "owner": null,
+      "attempts": 0,
+      "acceptance": [
+        "完整业务操作与权限限制",
+        "定向测试、真实集成证据",
+        "独立审查及可追溯提交"
+      ],
+      "evidence": [],
+      "commits": [],
+      "next_action": "定位正常支持的 Claim Boundary 失败并保持所有门禁"
+    },
+    {
+      "id": "assets",
+      "title": "原创替换许可未确认素材并核实字体图标许可",
+      "priority": 85,
+      "depends_on": [
+        "foundation_audit"
+      ],
+      "status": "BACKLOG",
+      "owner": null,
+      "attempts": 0,
+      "acceptance": [
+        "完整业务操作与权限限制",
+        "定向测试、真实集成证据",
+        "独立审查及可追溯提交"
+      ],
+      "evidence": [],
+      "commits": [],
+      "next_action": "原创替换许可未确认素材并核实字体图标许可"
+    },
+    {
+      "id": "cat_platform",
+      "title": "合成题库版本、CAT配置、算法和模拟质量",
+      "priority": 90,
+      "depends_on": [
+        "foundation_audit"
+      ],
+      "status": "BACKLOG",
+      "owner": null,
+      "attempts": 0,
+      "acceptance": [
+        "完整业务操作与权限限制",
+        "定向测试、真实集成证据",
+        "独立审查及可追溯提交"
+      ],
+      "evidence": [],
+      "commits": [],
+      "next_action": "合成题库版本、CAT配置、算法和模拟质量"
+    },
+    {
+      "id": "school_operations",
+      "title": "管理员组织、导入、账号和测评任务",
+      "priority": 88,
+      "depends_on": [
+        "auth_tenant"
+      ],
+      "status": "BACKLOG",
+      "owner": null,
+      "attempts": 0,
+      "acceptance": [
+        "完整业务操作与权限限制",
+        "定向测试、真实集成证据",
+        "独立审查及可追溯提交"
+      ],
+      "evidence": [],
+      "commits": [],
+      "next_action": "管理员组织、导入、账号和测评任务"
+    },
+    {
+      "id": "student_teacher",
+      "title": "学生任务恢复及教师Scope A进度闭环",
+      "priority": 87,
+      "depends_on": [
+        "school_operations",
+        "cat_platform"
+      ],
+      "status": "BACKLOG",
+      "owner": null,
+      "attempts": 0,
+      "acceptance": [
+        "完整业务操作与权限限制",
+        "定向测试、真实集成证据",
+        "独立审查及可追溯提交"
+      ],
+      "evidence": [],
+      "commits": [],
+      "next_action": "学生任务恢复及教师Scope A进度闭环"
+    },
+    {
+      "id": "publication",
+      "title": "专业分级授权、复核和L1/L2/L3发布状态",
+      "priority": 86,
+      "depends_on": [
+        "auth_tenant",
+        "cat_platform"
+      ],
+      "status": "BACKLOG",
+      "owner": null,
+      "attempts": 0,
+      "acceptance": [
+        "完整业务操作与权限限制",
+        "定向测试、真实集成证据",
+        "独立审查及可追溯提交"
+      ],
+      "evidence": [],
+      "commits": [],
+      "next_action": "专业分级授权、复核和L1/L2/L3发布状态"
+    },
+    {
+      "id": "ai_conversations",
+      "title": "独立本地AI、引用、多轮持久化与访问控制",
+      "priority": 89,
+      "depends_on": [
+        "auth_tenant",
+        "ai_boundary"
+      ],
+      "status": "BACKLOG",
+      "owner": null,
+      "attempts": 0,
+      "acceptance": [
+        "完整业务操作与权限限制",
+        "定向测试、真实集成证据",
+        "独立审查及可追溯提交"
+      ],
+      "evidence": [],
+      "commits": [],
+      "next_action": "独立本地AI、引用、多轮持久化与访问控制"
+    },
+    {
+      "id": "e2e",
+      "title": "实际数据库、模型、浏览器和安全负面验证",
+      "priority": 80,
+      "depends_on": [
+        "environment",
+        "student_teacher",
+        "publication",
+        "ai_conversations"
+      ],
+      "status": "BACKLOG",
+      "owner": null,
+      "attempts": 0,
+      "acceptance": [
+        "完整业务操作与权限限制",
+        "定向测试、真实集成证据",
+        "独立审查及可追溯提交"
+      ],
+      "evidence": [],
+      "commits": [],
+      "next_action": "实际数据库、模型、浏览器和安全负面验证"
+    },
+    {
+      "id": "delivery",
+      "title": "重复安装、备份恢复、操作手册和独立交付QA",
+      "priority": 70,
+      "depends_on": [
+        "e2e",
+        "assets",
+        "runner"
+      ],
+      "status": "BACKLOG",
+      "owner": null,
+      "attempts": 0,
+      "acceptance": [
+        "完整业务操作与权限限制",
+        "定向测试、真实集成证据",
+        "独立审查及可追溯提交"
+      ],
+      "evidence": [],
+      "commits": [],
+      "next_action": "重复安装、备份恢复、操作手册和独立交付QA"
+    }
+  ]
+}
