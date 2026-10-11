@@ -83,7 +83,7 @@ class Runner:
             if runtime.get("definition_hash") != definition_hash:
                 raise TaskError("Queue changed; explicit state migration required")
             current = {t["id"]: t for t in runtime["tasks"]}
-            spec["tasks"] = [current.get(t["id"], t) for t in spec["tasks"]]
+            spec["tasks"] = [{**current.get(t["id"], t), "checkpoint_references": t.get("checkpoint_references", [])} for t in spec["tasks"]]
             spec["stopped"] = runtime.get("stopped", False)
         spec["definition_hash"] = definition_hash
         return spec
@@ -136,7 +136,7 @@ class Runner:
                     if expanded == changed:
                         break
                     changed = expanded
-                spec["tasks"] = [t if t["id"] in changed else old.get(t["id"], t) for t in spec["tasks"]]
+                spec["tasks"] = [t if t["id"] in changed else {**old.get(t["id"], t), "checkpoint_references": t.get("checkpoint_references", [])} for t in spec["tasks"]]
                 spec["stopped"] = runtime.get("stopped", False)
             ids = [t["id"] for t in spec["tasks"]]
             if len(ids) != len(set(ids)) or any(not set(t["depends_on"]).issubset(ids) for t in spec["tasks"]):
@@ -166,7 +166,7 @@ class Runner:
                 state["stopped"] = action == "stop"
             elif action == "recover":
                 for task in state["tasks"]:
-                    if task["status"] in {"IN_PROGRESS", "TESTING", "INTEGRATING"} and task.get("lease_until", 0) <= time.time():
+                    if task["status"] in {"IN_PROGRESS", "TESTING", "INTEGRATING"} and "lease_until" in task and task["lease_until"] <= time.time():
                         task["status"] = "REVIEW" if task["evidence"] else "READY"
                         task["owner"] = None
                         task["lease_until"] = 0
@@ -175,7 +175,9 @@ class Runner:
                     raise TaskError("Runner stopped")
                 task = self.task(state, task_id)
                 if action == "claim":
-                    if not owner or not self.eligible(state, task):
+                    imported_assignment = task["status"] == "IN_PROGRESS" and "lease_until" not in task and task.get("owner") == owner
+                    done = {t["id"] for t in state["tasks"] if t["status"] == "DONE"}
+                    if not owner or not (self.eligible(state, task) or (imported_assignment and set(task["depends_on"]).issubset(done))):
                         raise TaskError("Task unavailable or dependencies incomplete")
                     if task["attempts"] >= state["max_attempts"]:
                         raise TaskError("Attempt limit reached")

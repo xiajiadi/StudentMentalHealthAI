@@ -82,6 +82,18 @@ class RunnerTests(unittest.TestCase):
         state = self.runner.mutate("recover")
         self.assertEqual(self.runner.task(state, "a")["status"], "READY")
 
+    def test_controller_assignment_adopted_only_by_owner(self):
+        path = self.runner.queue_path
+        state = json.loads(path.read_text(encoding="utf-8"))
+        self.runner.task(state, "a").update(status="IN_PROGRESS", owner="worker")
+        path.write_text(json.dumps(state), encoding="utf-8")
+        state = self.runner.mutate("recover")
+        self.assertEqual(self.runner.task(state, "a")["status"], "IN_PROGRESS")
+        with self.assertRaises(TaskError):
+            self.runner.mutate("claim", "a", "other")
+        state = self.runner.mutate("claim", "a", "worker")
+        self.assertGreater(self.runner.task(state, "a")["lease_until"], time.time())
+
     def test_exclusive_lock(self):
         with self.runner.locked():
             with self.assertRaises(TaskError):
@@ -136,6 +148,19 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(r.task(state, "a")["attempts"], 0)
         self.assertIsNone(r.task(state, "a")["owner"])
         self.assertEqual(r.task(r.load(), "a")["title"], "changed requirement")
+
+    def test_sync_keeps_controller_references_without_accepting_them_as_proof(self):
+        r = self.runner
+        r.mutate("stop")
+        path = r.queue_path
+        spec = json.loads(path.read_text(encoding="utf-8"))
+        r.task(spec, "a")["checkpoint_references"] = ["new-reference.md"]
+        path.write_text(json.dumps(spec), encoding="utf-8")
+        state = r.sync_queue()
+        task = r.task(state, "a")
+        self.assertEqual(task["checkpoint_references"], ["new-reference.md"])
+        self.assertEqual(task["evidence"], [])
+        self.assertEqual(r.task(r.load(), "a")["checkpoint_references"], ["new-reference.md"])
 
     def test_dirty_tree_blocks_done(self):
         r = self.runner

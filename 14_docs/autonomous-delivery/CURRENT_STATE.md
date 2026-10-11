@@ -20,6 +20,12 @@ Root owns mission, queue, recovery runner and integration. Luna/max Lead owns `A
 - Final-package redistribution evidence is missing for several image groups; original compatible replacements are planned.
 - Original proposal was read as background, not as current capability evidence.
 
+## Checkpoint after first engineering cycle
+
+Root committed runner/audit (`2f29f5e`) and student completion/original covers (`2d69368`), and pushed only the new dedicated development branch. Latest frontend verification: 48 unit tests, Lint and typechecked build pass. Existing untracked artifacts remain excluded. One real synthetic support attempt returns 502; only status/code were recorded, so its precise failing stage is not yet established. Login/list/logout return 200.
+
+A real local runner lease for task `runner` has now been adopted by root and saved atomically in ignored state. The initial capability audit task is complete; Foundation phase is not accepted. Auth/tenant Worker has reviewed local commits, pending provenance, new-schema migration proof and launcher integration guard; no new migration has run against the old demo database.
+
 ## Next actions
 
 Baseline report is available. Lead reused its explicit Luna/high app Worker in an isolated baseline worktree for schools/memberships/roles, tenant-scoped auth and negative tests. Root approved additive nullable legacy isolation, explicit context selection and disposable-schema-only migration checks. Never run the new migration against the old demo database. Root is replacing assessment covers with reproducible original SVGs and removing the per-card brand mark per the operator's latest annotations; other unverified image groups still block final packaging. Prioritize actual business QA and Claim Boundary diagnosis next.

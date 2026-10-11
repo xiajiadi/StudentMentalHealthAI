@@ -4,6 +4,12 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'demo-common.ps1')
 
 $blockers = [System.Collections.Generic.List[string]]::new()
+$schoolSchemaMigration = Join-Path $DemoRoot '11_database\migrations\versions\20261011_0003_school_membership_context.py'
+if (Test-Path -LiteralPath $schoolSchemaMigration -PathType Leaf) {
+    Write-Host 'BLOCKED: This checkout requires an isolated school-schema workspace. The legacy M0 launcher must not upgrade the existing smhai_m0_demo database; use the pinned M0 checkout for legacy operation.'
+    Set-DemoExitCode -Code 2
+    return
+}
 $requiredCommands = @('uv', 'node', 'npm')
 foreach ($name in $requiredCommands) {
     if (-not (Get-Command $name -ErrorAction SilentlyContinue)) { $blockers.Add("Missing command: $name") }

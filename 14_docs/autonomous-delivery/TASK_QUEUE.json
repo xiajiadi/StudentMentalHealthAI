@@ -20,13 +20,14 @@
         "实际测试命令与结果",
         "数据库/运行环境/素材阻塞证据"
       ],
-      "evidence": [
-        "14_docs/autonomous-delivery/AUTONOMOUS_BASELINE_REPORT.md"
-      ],
+      "evidence": [],
       "commits": [
         "2f29f5e"
       ],
-      "next_action": "Initial capability audit accepted; product and phase acceptance remain open."
+      "next_action": "Initial capability audit accepted; product and phase acceptance remain open.",
+      "checkpoint_references": [
+        "14_docs/autonomous-delivery/AUTONOMOUS_BASELINE_REPORT.md"
+      ]
     },
     {
       "id": "runner",
@@ -42,14 +43,15 @@
         "有界失败及中断恢复",
         "定向测试与独立审查"
       ],
-      "evidence": [
-        "13_deployment/tests/test_autonomous_runner.py",
-        "14_docs/autonomous-delivery/AUTONOMOUS_BASELINE_REPORT.md"
-      ],
+      "evidence": [],
       "commits": [
         "2f29f5e"
       ],
-      "next_action": "Verify first actual heartbeat and recovery checkpoint; 17 tests and independent review passed."
+      "next_action": "Verify first actual heartbeat and recovery checkpoint; 17 tests and independent review passed.",
+      "checkpoint_references": [
+        "13_deployment/tests/test_autonomous_runner.py",
+        "14_docs/autonomous-delivery/AUTONOMOUS_BASELINE_REPORT.md"
+      ]
     },
     {
       "id": "environment",
@@ -66,11 +68,12 @@
         "定向测试、真实集成证据",
         "独立审查及可追溯提交"
       ],
-      "evidence": [
-        "14_docs/autonomous-delivery/CURRENT_STATE.md"
-      ],
+      "evidence": [],
       "commits": [],
-      "next_action": "Review restored local services and real API outcomes; no new migrations against legacy schema."
+      "next_action": "Review restored local services and real API outcomes; no new migrations against legacy schema.",
+      "checkpoint_references": [
+        "14_docs/autonomous-delivery/CURRENT_STATE.md"
+      ]
     },
     {
       "id": "auth_tenant",
