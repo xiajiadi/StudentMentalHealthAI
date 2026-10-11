@@ -2,16 +2,35 @@
 
 from __future__ import annotations
 
-from typing import Literal
+import re
+from typing import Any, Literal
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["local", "test", "demo", "research", "production"]
 ClientMode = Literal["http", "contract_fake"]
 PersistenceMode = Literal["memory", "mysql"]
 IdentityProfile = Literal["legacy_demo", "school_tenant"]
+_SCHOOL_CSRF_SECRET_PATTERN = re.compile(r"[0-9a-fA-F]{64}\Z")
+
+
+def school_csrf_secret_bytes(secret: str | SecretStr | None) -> bytes:
+    """Validate and decode the deployment-provided 32-byte hex secret."""
+
+    raw = secret.get_secret_value() if isinstance(secret, SecretStr) else secret
+    if not isinstance(raw, str) or _SCHOOL_CSRF_SECRET_PATTERN.fullmatch(raw) is None:
+        raise ValueError("school CSRF secret must be exactly 64 hexadecimal characters")
+    return bytes.fromhex(raw)
 
 
 class TimeoutSettings(BaseModel):
@@ -90,7 +109,33 @@ class BackendSettings(BaseSettings):
         env_nested_delimiter="__",
         env_file=".env",
         extra="ignore",
+        hide_input_in_errors=True,
     )
+
+    def __init__(self, **values: Any) -> None:
+        try:
+            super().__init__(**values)
+        except ValidationError as exc:
+            safe_errors = exc.errors(include_input=False)
+            csrf_error = any(
+                entry.get("loc") == ()
+                and "SMHAI_SCHOOL_CSRF_SECRET" in str(entry.get("msg", ""))
+                for entry in safe_errors
+            )
+            if csrf_error:
+                missing = any(
+                    "requires SMHAI_SCHOOL_CSRF_SECRET" in str(entry.get("msg", ""))
+                    for entry in safe_errors
+                )
+                detail = (
+                    "school_tenant requires SMHAI_SCHOOL_CSRF_SECRET"
+                    if missing
+                    else "SMHAI_SCHOOL_CSRF_SECRET must be exactly 64 hexadecimal characters"
+                )
+                raise ValueError(
+                    f"{detail}; supplied values are redacted"
+                ) from None
+            raise
 
     environment: Environment = "local"
     api_prefix: str = "/api/v1"
@@ -99,6 +144,9 @@ class BackendSettings(BaseSettings):
     docs_enabled: bool = True
     persistence_mode: PersistenceMode = "memory"
     identity_profile: IdentityProfile = "legacy_demo"
+    school_csrf_secret: SecretStr | None = Field(
+        default=None, validate_default=True, repr=False
+    )
     allowed_origins: list[str] = Field(
         default_factory=lambda: [
             "http://localhost:5173",
@@ -151,6 +199,17 @@ class BackendSettings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_security(self) -> BackendSettings:
+        if self.identity_profile == "school_tenant":
+            if self.school_csrf_secret is None:
+                raise ValueError("school_tenant requires SMHAI_SCHOOL_CSRF_SECRET")
+            try:
+                school_csrf_secret_bytes(self.school_csrf_secret)
+            except ValueError:
+                raise ValueError(
+                    "SMHAI_SCHOOL_CSRF_SECRET must be exactly 64 hexadecimal characters"
+                ) from None
+        else:
+            self.school_csrf_secret = None
         if self.environment == "production":
             if self.identity_profile != "school_tenant":
                 raise ValueError("production requires the school_tenant identity profile")

@@ -115,6 +115,12 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         persistence = MySqlBackendAdapter(
             repository_root=Path(__file__).resolve().parents[3],
             identity_profile=settings.identity_profile,
+            school_csrf_secret=(
+                settings.school_csrf_secret.get_secret_value()
+                if settings.identity_profile == "school_tenant"
+                and settings.school_csrf_secret is not None
+                else None
+            ),
         )
         users = sessions = assessments_repo = conversations = reports = reviews = audits = (
             idempotency

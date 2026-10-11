@@ -24,6 +24,7 @@ from typing import Any
 
 from pwdlib import PasswordHash
 
+from smhai_backend.core.config import school_csrf_secret_bytes
 from smhai_backend.core.errors import ErrorCode, error
 from smhai_backend.core.support_diagnostics import sanitize_support_stage_diagnostics
 from smhai_backend.domains.models import (
@@ -39,6 +40,7 @@ from smhai_backend.domains.models import (
 )
 
 REQUIRED_DATABASE_REVISION = "20261011_0003"
+_LEGACY_CSRF_SECRET = b"smhai-round1-synthetic-csrf-secret"
 
 
 def _create_data_protection_provider(identity_profile: str, repository_root: Path) -> Any:
@@ -59,6 +61,14 @@ def _create_data_protection_provider(identity_profile: str, repository_root: Pat
     return FernetDataProtectionProvider(
         DevLocalKeyProvider.from_env(repository_root=repository_root)
     )
+
+
+def _csrf_secret_for_profile(identity_profile: str, school_csrf_secret: str | None) -> bytes:
+    if identity_profile == "legacy_demo":
+        return _LEGACY_CSRF_SECRET
+    if identity_profile == "school_tenant":
+        return school_csrf_secret_bytes(school_csrf_secret)
+    raise RuntimeError("unsupported database identity profile")
 
 
 def _now() -> datetime:
@@ -109,7 +119,9 @@ class MySqlBackendAdapter:
         *,
         repository_root: Path | None = None,
         identity_profile: str = "legacy_demo",
+        school_csrf_secret: str | None = None,
     ) -> None:
+        csrf_secret_bytes = _csrf_secret_for_profile(identity_profile, school_csrf_secret)
         try:
             from database_layer import (
                 DatabaseSettings,
@@ -149,7 +161,7 @@ class MySqlBackendAdapter:
         self._idempotency_bodies: dict[tuple[str, str], dict[str, Any]] = {}
         self._metadata_records: list[dict[str, Any]] = []
         self._audit_cache: list[AuditEvent] = []
-        self._csrf_secret = b"smhai-round1-synthetic-csrf-secret"
+        self._csrf_secret = csrf_secret_bytes
 
         self._seed_reference_roles = seed_reference_roles
 
