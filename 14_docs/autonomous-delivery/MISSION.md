@@ -17,7 +17,7 @@ Required work: organization/accounts/imports/tasks; synthetic item banks, tested
 
 The operator delegates ordinary synthetic engineering, additive interfaces, tests, local commits, integration and pushes to NEW dedicated development branches, draft PRs and local packaging. Never force-push, overwrite protected/default branches, merge protected D4, alter frozen evidence, or create production release tags. Preserve untracked user artifacts.
 
-Root acts as Autonomous Controller. Execution Lead uses explicit Luna/max; its direct Workers use the explicit Luna/high role, default 272k context and depth 0. Each worker owns disjoint files or an isolated worktree. Independent review must inspect actual changes and fresh evidence.
+Root acts as Autonomous Controller, retaining the user's UI-selected main model. Root owns direction, design, architecture, decomposition, integration and final review, and directly dispatches one or more explicit Luna/high Workers with 272k context and delegation depth 0. No intermediate Execution Lead. Each worker owns disjoint files or an isolated worktree. Independent review must inspect actual changes and fresh evidence.
 
 No real student data, approved pilot, clinical thresholds, professional validity claim, cloud-model fallback, automatic external contact, global MySQL change, privilege escalation, destructive old-database reset or unlicensed redistribution. Preserve Safety, Claim Boundary, crisis routing, abstention and citation validation. Human professional approvals remain external gates; unrelated synthetic engineering continues.
 

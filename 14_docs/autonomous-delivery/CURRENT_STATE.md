@@ -13,7 +13,7 @@ Continue the synthetic four-role PsyNova engineering mission to evidenced ENGINE
 - Dedicated integration/remote branch: `xiajiadi/autonomous-delivery-20261011`; reviewed seed/runtime/teacher increment `1252425`, frontend context increment `a761641`. Push this checkpoint only to this dedicated branch.
 - Earlier reviewed commits: runner/audit `2f29f5e`, student completion/original covers `2d69368`, isolated-workspace guard `2ba26b6`, school auth `4c730a2`, runtime/DPAPI `9390442`, school entrypoint `b6e6bea`.
 - Preserve untracked `10_frontend/output/` and `10_frontend/public/assets/heartbridge/login-mark-v2.png`; never stage/reset/delete them.
-- Root owns integration, deployment, frontend and this state. Explicit Luna/max Lead reuses its explicit Luna/high Worker in isolated `audit/phase1-application`. Confirm live inventory before reassigning files. Worker now owns only database seed/provenance/0004 migration and associated tests/docs.
+- Governance V4 follows the user's explicit two-level decision: UI-selected Root owns direction, design, architecture, decomposition, integration and final review; Root directly dispatches Luna/high Workers. Former Lead has ended dispatch and handed off the isolated 0005 checkpoint. Direct `school_task_db_review` Worker now reviews that checkpoint read-only. Confirm live inventory before reassigning files.
 
 ## Runtime and data boundaries
 
@@ -42,7 +42,7 @@ Seed/provenance/0004 and frontend context changes are committed as the increment
 
 Teacher school/unknown overview now skips both assessment and report repositories, returns empty compatibility fields and task_progress_available=false; per-subject history is denied before repository access. Independent source/sentinel review passes; Root focused teacher/tenant tests pass 11/11 and native checks pass for both school teachers after reload. Real task progress remains unavailable. School/class/task design will use publication-time enrollment snapshots; revoked students lose access immediately, historical enrollment totals remain with active/revoked counts separated. Preserve separate self-initiated assessments outside task counts. No privacy threshold or psychological rule is invented. Lead/Worker now own only the next additive 0005 DB models/repository transaction increment in their isolated worktree.
 
-Next priorities remain school operations, task-level teacher Scope A, specialist case/publication workflow, independent AI conversations and safe diagnosis of support generation failures.
+The isolated DB checkpoint `8acea881` adds classes, typed student/teacher links, task publication snapshots and enrollment/session persistence with additive 0005. It is not integrated or natively verified yet; direct independent review is active. Next priorities remain school operations, task-level teacher Scope A, specialist case/publication workflow, independent AI conversations and safe diagnosis of support generation failures.
 
 ## Continuation and remaining gates
 
