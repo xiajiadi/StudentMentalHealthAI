@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 628" width="1200" height="628">
+<defs>
+ <linearGradient id="base" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#247a91"/><stop offset=".6" stop-color="#52cfb3"/><stop offset="1" stop-color="#247a91"/></linearGradient>
+ <linearGradient id="ribbon" x1="0" y1="0" x2="1" y2=".5"><stop stop-color="#c7f18c"/><stop offset=".55" stop-color="#6fbfea"/><stop offset="1" stop-color="#52cfb3"/></linearGradient>
+ <radialGradient id="glow"><stop stop-color="#6fbfea" stop-opacity=".9"/><stop offset="1" stop-color="#6fbfea" stop-opacity="0"/></radialGradient>
+ <filter id="soft" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="18"/></filter>
+</defs>
+<rect width="1200" height="628" fill="url(#base)"/>
+<g transform="translate(1200 0) scale(-1 1)">
+ <ellipse cx="243" cy="132" rx="460" ry="310" fill="url(#glow)"/>
+ <path d="M-150 259 C180 51,370 469,610 324 S1040 84,1350 314 L1350 489 C980 409,805 599,520 469 S110 369,-150 459Z" fill="url(#ribbon)" opacity=".88" filter="url(#soft)"/>
+ <path d="M-100 314 C220 189,400 489,680 369 S1000 204,1300 334" fill="none" stroke="#c7f18c" stroke-width="62" opacity=".28" filter="url(#soft)"/>
+ <path d="M-80 344 C230 224,430 509,700 394 S1020 239,1320 359" fill="none" stroke="#6fbfea" stroke-width="12" opacity=".2"/>
+</g>
+</svg>

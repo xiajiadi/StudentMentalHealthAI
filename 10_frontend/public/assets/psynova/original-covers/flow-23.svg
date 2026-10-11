@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 628" width="1200" height="628">
+<defs>
+ <linearGradient id="base" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#247a91"/><stop offset=".6" stop-color="#52cfb3"/><stop offset="1" stop-color="#247a91"/></linearGradient>
+ <linearGradient id="ribbon" x1="0" y1="0" x2="1" y2=".5"><stop stop-color="#c7f18c"/><stop offset=".55" stop-color="#6fbfea"/><stop offset="1" stop-color="#52cfb3"/></linearGradient>
+ <radialGradient id="glow"><stop stop-color="#6fbfea" stop-opacity=".9"/><stop offset="1" stop-color="#6fbfea" stop-opacity="0"/></radialGradient>
+ <filter id="soft" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="18"/></filter>
+</defs>
+<rect width="1200" height="628" fill="url(#base)"/>
+<g transform="">
+ <ellipse cx="726" cy="489" rx="460" ry="310" fill="url(#glow)"/>
+ <path d="M-150 242 C180 32,370 452,610 307 S1040 67,1350 297 L1350 472 C980 392,805 582,520 452 S110 352,-150 442Z" fill="url(#ribbon)" opacity=".88" filter="url(#soft)"/>
+ <path d="M-100 297 C220 172,400 472,680 352 S1000 187,1300 317" fill="none" stroke="#c7f18c" stroke-width="74" opacity=".28" filter="url(#soft)"/>
+ <path d="M-80 327 C230 207,430 492,700 377 S1020 222,1320 342" fill="none" stroke="#6fbfea" stroke-width="12" opacity=".2"/>
+</g>
+</svg>

@@ -31,36 +31,7 @@ const filters: { id: AssessmentFilter; label: string }[] = [
   { id: 'completed', label: '已完成' },
 ]
 
-const posterImages = [
-  'Academy-covers-1--86a706cb-322e-4460-84b9-9d519fe7a6ce-1784001289199.jpeg',
-  'Academy-covers-2--d46be7c4-d8e9-4f24-a605-1b24e8e87a5c-1784001746244.jpeg',
-  'Academy-covers-986da62a-14cd-4839-9d2f-6cf947a99c2a-1784000716304.jpeg',
-  'academy-event-cover-0db4eafe-8db7-4913-b450-d27757ffc984-1791307859880.jpeg',
-  'academy-event-cover-causevox-impact-overflow-1200x628-cd16ddfd-8e8f-4bb7-b5d6-d6d42afc4470-1787332408660.jpeg',
-  'academy-event-cover-older-adults-jam-boise-id-green-1200x628-efa616a0-3a31-4652-80be-26ac8b80ad1a-1787354319616.jpeg',
-  'academy-event-cover-older-adults-jam-denver-co-green-1200x628-46d91aed-739d-48b5-b098-5742b99d664b-1787354266673.jpeg',
-  'academy-event-cover-older-adults-jam-fresno-ca-green-1200x628-04daf43d-dbc0-4e72-9498-df54616b555f-1787354452753.jpeg',
-  'academy-event-cover-older-adults-jam-miami-fl-green-1200x628-a7908cd1-5bf9-470d-964e-6e8407ff4601-1787353064660.jpeg',
-  'academy-event-cover-older-adults-jam-nashville-tn-green-1200x628-a65b559d-6e1c-4f12-9d69-5b30404df729-1787354335922.jpeg',
-  'academy-event-cover-older-adults-jam-queens-ny-green-1200x628-1702dcfe-0e5f-49d7-ad69-ed63c09d9932-1787354165437.jpeg',
-  'academy-event-cover-older-adults-jam-san-antonio-tx-green-1200x628-15f4dfca-4579-4cd2-a2c6-41a6af9f8689-1787354423438.jpeg',
-  'academy-event-cover-older-adults-jam-st-louis-mo-green-1200x628-bd576a02-b121-4bc7-bef6-a7650bda5421-1787354283224.jpeg',
-  'academy-event-cover-older-adults-jam-twin-cities-mn-green-1200x628-a712d035-f78b-41cb-b331-eed6c97eefb0-1787354352048.jpeg',
-  'Builder-OpenAI-Academy-Event-Card-Templates-1--bb0b67ff-03ce-444a-bb54-1e61d82c34ae-1781219219807.jpeg',
-  'Builder-OpenAI-Academy-Event-Card-Templates-2--0d1104d4-1056-4674-879c-2da62e1771c4-1781219293700.jpeg',
-  'chatgpt-101-government-professionals-cover-3d7c6830-980c-4493-b09e-0a96f1322d11-1788369020056.jpeg',
-  'chatgpt-101-government-professionals-cover-74ee2203-bd3b-43cd-8c7a-b7bbce0d2ef3-1788368859424.jpeg',
-  'chatgpt-101-legislative-it-template-cover-0dbef8fc-e53f-4822-b184-b675d427985c-1788464493420.jpeg',
-  'ChatGPT-Academy-Cover-16--8bc3eccb-96db-4f66-bc6a-a4f3e1431037-1787058926748.jpeg',
-  'cover-title-date-0138fc8e-23bf-4e13-b02f-ffe4863f4de6-1789744654158.jpeg',
-  'High-Res-Slides-a4d90c0f-6b12-4ebb-ac8b-9b62bf38a4c9-1788272937904.jpeg',
-  'impact-math-cover-0da42f81-ca40-4ca0-ac78-4e8a00ea488e-1788543993300.jpeg',
-  'K12JamWFF8-nine-1200x628-61bc2b90-de0b-4c60-a321-168bbf04a76a-1788806742910.jpeg',
-  'Older-Adults-Jam-banner-image--e9e53bb2-314d-4943-b1cf-a170ce33148d-1787865494421.jpeg',
-  'OpenAI-Academy-Event-Card-Templates-8--ac77cc8a-b5b6-4a75-8bfb-4be871a025f0-1781542632168.jpeg',
-  'OpenAI-OneGov-2-53dba416-47d0-4ca4-a64e-e51082ff4fb9-1788735823597.jpeg',
-  'performance-reviews-cover-fef03c19-1574-4cf1-9d2f-7a0489cae327-1788545563319.jpeg',
-]
+const posterImages = Array.from({ length: 28 }, (_, index) => `flow-${String(index + 1).padStart(2, '0')}.svg`)
 
 const assessmentProfiles = [
   { category: '校园生活', title: '新生校园适应与生活' },
@@ -104,7 +75,7 @@ const assessmentCards = computed(() => {
     return {
       item,
       profile: assessmentProfiles[index % assessmentProfiles.length],
-      poster: `/assets/psynova/academy-events/${posterImages[index % posterImages.length]}`,
+      poster: `/assets/psynova/original-covers/${posterImages[index % posterImages.length]}`,
     }
   })
 })
@@ -271,9 +242,6 @@ onMounted(load)
         <article v-for="card in assessmentCards" :key="card.item.assessment_id" class="assessment-card">
           <div class="assessment-card__poster">
             <img class="assessment-card__art" :src="card.poster" alt="" aria-hidden="true" />
-            <span class="assessment-card__brand" aria-hidden="true">
-              <img src="/assets/psynova/mark.png" alt="" />
-            </span>
             <span class="assessment-card__status" :class="`assessment-card__status--${card.item.status}`">{{ statusLabel(card.item) }}</span>
           </div>
           <div class="assessment-card__body">
@@ -341,8 +309,6 @@ onMounted(load)
 .assessment-card { display: flex; min-width: 0; flex-direction: column; }
 .assessment-card__poster { position: relative; overflow: hidden; aspect-ratio: 1.91 / 1; border-radius: 12px; background: #eaf3f5; }
 .assessment-card__art { position: absolute; z-index: 0; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; }
-.assessment-card__brand { position: absolute; z-index: 2; top: 13px; left: 14px; display: grid; width: 28px; height: 28px; place-items: center; overflow: hidden; border-radius: 7px; background: #fff; box-shadow: 0 1px 4px rgb(10 24 48 / 12%); }
-.assessment-card__brand img { display: block; width: 22px; height: 22px; object-fit: contain; }
 .assessment-card__status { position: absolute; z-index: 2; top: 12px; right: 12px; left: auto; padding: 5px 10px; border-radius: 7px; color: #fff; background: #00addf; font-size: 13px; font-weight: 600; line-height: 1.3; }
 .assessment-card__status--completed { background: #568f7d; }
 .assessment-card__status--abandoned, .assessment-card__status--invalid { background: #717681; }
@@ -397,8 +363,6 @@ onMounted(load)
   .assessment-cards--list .assessment-card { grid-template-columns: 112px minmax(0, 1fr); gap: 13px; }
   .assessment-cards--list .assessment-card__poster { grid-row: auto; }
   .assessment-cards--list .assessment-card__status { font-size: 11px; }
-  .assessment-cards--list .assessment-card__brand { top: 5px; left: 6px; width: 19px; height: 19px; border-radius: 5px; }
-  .assessment-cards--list .assessment-card__brand img { width: 15px; height: 15px; }
   .assessment-cards--list .assessment-card__status { top: 4px; right: 4px; padding: 3px 5px; font-size: 9px; }
   .assessment-cards--list .assessment-card__details { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
   .assessment-cards--list .assessment-card__actions, .assessment-card__actions { justify-content: flex-start; }

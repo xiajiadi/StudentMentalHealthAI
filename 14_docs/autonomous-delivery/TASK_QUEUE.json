@@ -12,25 +12,29 @@
       "title": "核实基线、权限与模块能力",
       "priority": 100,
       "depends_on": [],
-      "status": "READY",
-      "owner": null,
+      "status": "DONE",
+      "owner": "autonomous_execution_lead",
       "attempts": 0,
       "acceptance": [
         "源码能力逐项分级",
         "实际测试命令与结果",
         "数据库/运行环境/素材阻塞证据"
       ],
-      "evidence": [],
-      "commits": [],
-      "next_action": "核实基线、权限与模块能力"
+      "evidence": [
+        "14_docs/autonomous-delivery/AUTONOMOUS_BASELINE_REPORT.md"
+      ],
+      "commits": [
+        "2f29f5e"
+      ],
+      "next_action": "Initial capability audit accepted; product and phase acceptance remain open."
     },
     {
       "id": "runner",
       "title": "实现并独立验证任务队列、恢复和续跑",
       "priority": 99,
       "depends_on": [],
-      "status": "READY",
-      "owner": null,
+      "status": "IN_PROGRESS",
+      "owner": "root",
       "attempts": 0,
       "acceptance": [
         "互斥任务占用",
@@ -38,9 +42,14 @@
         "有界失败及中断恢复",
         "定向测试与独立审查"
       ],
-      "evidence": [],
-      "commits": [],
-      "next_action": "实现并独立验证任务队列、恢复和续跑"
+      "evidence": [
+        "13_deployment/tests/test_autonomous_runner.py",
+        "14_docs/autonomous-delivery/AUTONOMOUS_BASELINE_REPORT.md"
+      ],
+      "commits": [
+        "2f29f5e"
+      ],
+      "next_action": "Verify first actual heartbeat and recovery checkpoint; 17 tests and independent review passed."
     },
     {
       "id": "environment",
@@ -49,7 +58,7 @@
       "depends_on": [
         "foundation_audit"
       ],
-      "status": "BACKLOG",
+      "status": "REVIEW",
       "owner": null,
       "attempts": 0,
       "acceptance": [
@@ -57,9 +66,11 @@
         "定向测试、真实集成证据",
         "独立审查及可追溯提交"
       ],
-      "evidence": [],
+      "evidence": [
+        "14_docs/autonomous-delivery/CURRENT_STATE.md"
+      ],
       "commits": [],
-      "next_action": "恢复隔离本地服务并验证非破坏性启动"
+      "next_action": "Review restored local services and real API outcomes; no new migrations against legacy schema."
     },
     {
       "id": "auth_tenant",
@@ -68,8 +79,8 @@
       "depends_on": [
         "foundation_audit"
       ],
-      "status": "BACKLOG",
-      "owner": null,
+      "status": "IN_PROGRESS",
+      "owner": "autonomous_execution_lead/phase1_app_audit",
       "attempts": 0,
       "acceptance": [
         "完整业务操作与权限限制",
@@ -78,7 +89,7 @@
       ],
       "evidence": [],
       "commits": [],
-      "next_action": "学校、账号、会话与跨学校权限闭环"
+      "next_action": "Independent review of isolated Worker commit, negative authorization tests and static migration."
     },
     {
       "id": "ai_boundary",
@@ -87,7 +98,7 @@
       "depends_on": [
         "foundation_audit"
       ],
-      "status": "BACKLOG",
+      "status": "READY",
       "owner": null,
       "attempts": 0,
       "acceptance": [
@@ -97,7 +108,7 @@
       ],
       "evidence": [],
       "commits": [],
-      "next_action": "定位正常支持的 Claim Boundary 失败并保持所有门禁"
+      "next_action": "Fresh real request still returns 502; obtain sanitized stage/category evidence before another model attempt."
     },
     {
       "id": "assets",
@@ -106,8 +117,8 @@
       "depends_on": [
         "foundation_audit"
       ],
-      "status": "BACKLOG",
-      "owner": null,
+      "status": "IN_PROGRESS",
+      "owner": "root",
       "attempts": 0,
       "acceptance": [
         "完整业务操作与权限限制",
@@ -116,7 +127,7 @@
       ],
       "evidence": [],
       "commits": [],
-      "next_action": "原创替换许可未确认素材并核实字体图标许可"
+      "next_action": "Assessment 28 original covers complete; finish home/heartbridge/brand provenance before final packaging."
     },
     {
       "id": "cat_platform",

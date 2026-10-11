@@ -101,6 +101,7 @@ const complete = async () => {
   isCompleting.value = true
   errorMessage.value = ''
   try {
+    if (!(await saveSelectedResponse()) || !canComplete.value) return
     const response = await frontendApi.completeAssessment(assessment.assessmentId)
     assessment.reset()
     await router.push(`/student/assessment/${encodeURIComponent(response.data.assessment_id)}/result`)
@@ -151,6 +152,9 @@ onBeforeRouteLeave(saveSelectedResponse)
         </AppStatusCallout>
 
         <div class="question-card__footer">
+          <AppButton v-if="canComplete" variant="secondary" :disabled="isSubmitting || isCompleting" :loading="isCompleting" aria-label="完成测评" @click="complete">
+            完成
+          </AppButton>
           <AppButton :disabled="!selectedResponse || isSubmitting || isCompleting" :loading="isSubmitting" @click="submitResponse">
             下一题
           </AppButton>

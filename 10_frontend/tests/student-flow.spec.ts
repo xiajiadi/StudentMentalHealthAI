@@ -156,6 +156,9 @@ describe('学生演示闭环页面', () => {
     await flushPromises()
 
     expect(wrapper.findAll('.assessment-card')).toHaveLength(3)
+    expect(wrapper.find('.assessment-card__brand').exists()).toBe(false)
+    expect(wrapper.find('.assessment-card__poster-title').exists()).toBe(false)
+    expect(wrapper.get('.assessment-card__art').attributes('src')).toBe('/assets/psynova/original-covers/flow-01.svg')
     expect(wrapper.get('.assessment-cards').classes()).toContain('assessment-cards--grid')
     await wrapper.get('[aria-label="列表显示"]').trigger('click')
     expect(wrapper.get('.assessment-cards').classes()).toContain('assessment-cards--list')
@@ -208,9 +211,12 @@ describe('学生演示闭环页面', () => {
     await flushPromises()
 
     expect(api.submitAssessmentResponse).toHaveBeenCalledWith(assessment.assessment_id, 'ITEM_demo_001', '1')
-    expect(wrapper.text()).toContain('保存当前作答并继续')
-    expect(wrapper.text()).toContain('保存并继续回答')
-    expect(wrapper.text()).toContain('完成并查看结构')
+    expect(wrapper.text()).toContain('下一题')
+    expect(wrapper.get('[aria-label="完成测评"]').text()).toBe('完成')
+    await wrapper.get('[aria-label="完成测评"]').trigger('click')
+    await flushPromises()
+    expect(api.completeAssessment).toHaveBeenCalledWith(assessment.assessment_id)
+    expect(router.currentRoute.value.fullPath).toBe(`/student/assessment/${assessment.assessment_id}/result`)
   })
 
   it('没有下一题但可完成时仍显示明确的完成操作', async () => {
@@ -219,8 +225,41 @@ describe('学生演示闭环页面', () => {
     const wrapper = mount(AssessmentView, { global: { plugins: [router, createPinia()] } })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('本次合成测评已经可以结束')
-    expect(wrapper.text()).toContain('完成并查看结构')
+    expect(wrapper.get('#assessment-complete-title').text()).toBe('测评可结束')
+    await wrapper.get('button.app-button--primary').trigger('click')
+    await flushPromises()
+    expect(api.completeAssessment).toHaveBeenCalledWith(assessment.assessment_id)
+  })
+
+  it('完成前保存失败时不结束测评或跳转结果页', async () => {
+    api.startAssessment.mockResolvedValue(envelope(assessmentState({ can_complete: true })))
+    api.submitAssessmentResponse.mockRejectedValueOnce(new Error('保存失败'))
+    const router = await makeRouter(`/student/assessment/${assessment.assessment_id}`)
+    const wrapper = mount(AssessmentView, { global: { plugins: [router, createPinia()] } })
+    await flushPromises()
+    await wrapper.get('[role="radio"]').trigger('click')
+    await wrapper.get('[aria-label="完成测评"]').trigger('click')
+    await flushPromises()
+    expect(api.submitAssessmentResponse).toHaveBeenCalledWith(assessment.assessment_id, question.item_id, '1')
+    expect(api.completeAssessment).not.toHaveBeenCalled()
+    expect(router.currentRoute.value.fullPath).toBe(`/student/assessment/${assessment.assessment_id}`)
+    expect(wrapper.text()).toContain('保存失败')
+    wrapper.unmount()
+  })
+
+  it('保存后服务端取消可完成状态时不调用结束接口', async () => {
+    api.startAssessment.mockResolvedValue(envelope(assessmentState({ can_complete: true })))
+    api.submitAssessmentResponse.mockResolvedValueOnce(envelope(assessmentState({ can_complete: false, answered_count: 2 })))
+    const router = await makeRouter(`/student/assessment/${assessment.assessment_id}`)
+    const wrapper = mount(AssessmentView, { global: { plugins: [router, createPinia()] } })
+    await flushPromises()
+    await wrapper.get('[role="radio"]').trigger('click')
+    await wrapper.get('[aria-label="完成测评"]').trigger('click')
+    await flushPromises()
+    expect(api.submitAssessmentResponse).toHaveBeenCalled()
+    expect(api.completeAssessment).not.toHaveBeenCalled()
+    expect(wrapper.find('[aria-label="完成测评"]').exists()).toBe(false)
+    wrapper.unmount()
   })
 
   it('报告详情不会伪造缺失的 ID，并会显示服务端错误说明', async () => {
