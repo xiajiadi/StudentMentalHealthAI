@@ -31,9 +31,14 @@ MODULE_ENDPOINTS = {
     "llm": {"mode": "http", "base_url": "http://127.0.0.1:8160"},
     "safety": {"mode": "http", "base_url": "http://127.0.0.1:8190"},
 }
+LLM_PROFILES = ("default", "school-gpu-7b")
+SCHOOL_GPU_7B_LOGICAL_MODEL_ID = "qwen2.5-7b-instruct-school-demo"
+SCHOOL_GPU_7B_CONTEXT_LENGTH = 8192
 
 
-def build_school_settings_kwargs(port: int, frontend_port: int) -> dict[str, object]:
+def build_school_settings_kwargs(
+    port: int, frontend_port: int, llm_profile: str = "default"
+) -> dict[str, object]:
     """Build fixed loopback school settings with only validated port choices."""
     for name, value in (("port", port), ("frontend_port", frontend_port)):
         if (
@@ -42,6 +47,16 @@ def build_school_settings_kwargs(port: int, frontend_port: int) -> dict[str, obj
             or not MIN_SERVICE_PORT <= value <= MAX_SERVICE_PORT
         ):
             raise ValueError(f"{name} must be between {MIN_SERVICE_PORT} and {MAX_SERVICE_PORT}")
+    if llm_profile not in LLM_PROFILES:
+        raise ValueError("unsupported LLM profile")
+    llm_settings = dict(MODULE_ENDPOINTS["llm"])
+    if llm_profile == "school-gpu-7b":
+        llm_settings.update(
+            {
+                "logical_model_id": SCHOOL_GPU_7B_LOGICAL_MODEL_ID,
+                "context_length": SCHOOL_GPU_7B_CONTEXT_LENGTH,
+            }
+        )
     return {
         "environment": "demo",
         "identity_profile": "school_tenant",
@@ -52,7 +67,7 @@ def build_school_settings_kwargs(port: int, frontend_port: int) -> dict[str, obj
         "allowed_origins": [f"http://127.0.0.1:{frontend_port}"],
         "cat": dict(MODULE_ENDPOINTS["cat"]),
         "rag": dict(MODULE_ENDPOINTS["rag"]),
-        "llm": dict(MODULE_ENDPOINTS["llm"]),
+        "llm": llm_settings,
         "safety": dict(MODULE_ENDPOINTS["safety"]),
     }
 
@@ -63,6 +78,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--preflight-only", action="store_true")
     parser.add_argument("--port", type=int, default=DEFAULT_BACKEND_PORT)
     parser.add_argument("--frontend-port", type=int, default=DEFAULT_FRONTEND_PORT)
+    parser.add_argument("--llm-profile", choices=LLM_PROFILES, default="default")
     return parser
 
 
@@ -119,7 +135,9 @@ def main() -> int:
     sys.path.insert(0, str(repo / "11_database"))
     sys.path.insert(0, str(repo / "09_backend" / "src"))
     try:
-        settings_kwargs = build_school_settings_kwargs(args.port, args.frontend_port)
+        settings_kwargs = build_school_settings_kwargs(
+            args.port, args.frontend_port, args.llm_profile
+        )
         result = load_runtime(args.workspace, repo)
         from smhai_backend.app_factory import create_app
         from smhai_backend.core.config import BackendSettings

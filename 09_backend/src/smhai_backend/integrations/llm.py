@@ -180,6 +180,9 @@ class HttpLLMRuntimeClient(LongLivedHttpClient):
             },
             "metadata": {"synthetic_fixture": True, **dict(metadata or {})},
         }
+        context_length = getattr(self.settings, "context_length", None)
+        if context_length is not None:
+            payload["config"]["context_length"] = context_length
         try:
             response = await self.post_json("/internal/llm/generations", payload, context=context)
             data = response.get("data")

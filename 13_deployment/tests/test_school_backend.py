@@ -27,13 +27,19 @@ def test_missing_readiness_never_decrypts(tmp_path, monkeypatch):
         backend.load_runtime(tmp_path, tmp_path / "repo")
 
 
-@pytest.mark.parametrize("revision", ["20261011_0005", "obsolete"])
+@pytest.mark.parametrize("revision", ["20261012_0006", "obsolete"])
 def test_configuration_uses_only_verified_sealed_target(tmp_path, monkeypatch, revision):
     marker = {"workspace_id":"expected", "database":"smhai_school_demo", "port":3308}
     monkeypatch.setattr(backend, "validate_marker", lambda *args: marker)
     monkeypatch.setattr(backend, "verify_process", lambda *args: None)
     (tmp_path / "runtime-ready.json").write_text(json.dumps(dict(marker,state="VERIFIED")))
-    private = dict(DB_HOST="127.0.0.1", DB_PORT="3308", DB_NAME="smhai_school_demo", DB_USER="psynova_runtime_test", DB_PASSWORD="synthetic-only")
+    private = {
+        "DB_HOST": "127.0.0.1",
+        "DB_PORT": "3308",
+        "DB_NAME": "smhai_school_demo",
+        "DB_USER": "psynova_runtime_test",
+        "DB_PASSWORD": "synthetic-only",
+    }
     reads = []
 
     def read(path):
@@ -41,7 +47,13 @@ def test_configuration_uses_only_verified_sealed_target(tmp_path, monkeypatch, r
         return private if path.name == "runtime.private.dpapi" else {"SMHAI_SCHOOL_CSRF_SECRET":"a" * 64}
 
     monkeypatch.setattr(backend, "read_private", read)
-    environment = dict(DB_PASSWORD="wrong", DATABASE_URL="wrong", SMHAI_IDENTITY_PROFILE="legacy_demo", MYSQL_PWD="wrong", KEEP="preserved")
+    environment = {
+        "DB_PASSWORD": "wrong",
+        "DATABASE_URL": "wrong",
+        "SMHAI_IDENTITY_PROFILE": "legacy_demo",
+        "MYSQL_PWD": "wrong",
+        "KEEP": "preserved",
+    }
     monkeypatch.setattr(backend.os, "environ", environment)
 
     class Cursor:

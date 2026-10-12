@@ -71,7 +71,15 @@ class LLMModuleClientSettings(ModuleClientSettings):
         max_length=128,
         pattern=r"^[A-Za-z0-9][A-Za-z0-9._:/+-]*$",
     )
+    context_length: int | None = Field(default=None, ge=1, le=8192, strict=True)
     timeout: TimeoutSettings = Field(default_factory=lambda: TimeoutSettings(read=65.0))
+
+    @field_validator("context_length", mode="before")
+    @classmethod
+    def parse_context_length_environment(cls, value: Any) -> Any:
+        if isinstance(value, str) and re.fullmatch(r"[0-9]{1,4}", value):
+            return int(value)
+        return value
 
 
 class AuthSettings(BaseModel):

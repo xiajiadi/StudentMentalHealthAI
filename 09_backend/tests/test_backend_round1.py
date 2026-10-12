@@ -378,12 +378,14 @@ async def test_long_lived_httpx_local_policy_and_explicit_timeouts(monkeypatch):
         "SMHAI_LLM__TIMEOUT",
         "SMHAI_LLM__TIMEOUT__READ",
         "SMHAI_LLM__LOGICAL_MODEL_ID",
+        "SMHAI_LLM__CONTEXT_LENGTH",
         "SMHAI_SUPPORT_DEADLINE_SECONDS",
     ):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("SMHAI_LLM__MODE", "http")
     monkeypatch.setenv("SMHAI_LLM__BASE_URL", "http://127.0.0.1:8272")
     monkeypatch.setenv("SMHAI_LLM__LOGICAL_MODEL_ID", "synthetic-runtime:model-v1")
+    monkeypatch.setenv("SMHAI_LLM__CONTEXT_LENGTH", "8192")
 
     settings = BackendSettings(_env_file=None)
     assert settings.llm.mode == "http"
@@ -428,6 +430,7 @@ async def test_long_lived_httpx_local_policy_and_explicit_timeouts(monkeypatch):
             trace_id="TRACE_timeout_budget",
         )
         assert captured_payload["logical_model_id"] == "synthetic-runtime:model-v1"
+        assert captured_payload["config"]["context_length"] == 8192
         runtime_request_budget_seconds = float(
             captured_payload["config"]["timeout_seconds"]
         )
@@ -453,6 +456,13 @@ def test_llm_logical_model_id_rejects_empty_or_malformed_values(logical_model_id
 
 def test_llm_logical_model_id_keeps_current_default() -> None:
     assert LLMModuleClientSettings().logical_model_id == "qwen2.5-0.5b-engineering"
+    assert LLMModuleClientSettings().context_length is None
+
+
+@pytest.mark.parametrize("context_length", [0, -1, 8193, True, 1.5])
+def test_llm_context_length_rejects_invalid_values(context_length) -> None:
+    with pytest.raises(ValidationError):
+        LLMModuleClientSettings(context_length=context_length)
 
 
 @pytest.mark.asyncio
@@ -482,6 +492,7 @@ async def test_http_llm_runtime_keeps_default_for_base_module_settings() -> None
             trace_id="TRACE_llm_settings_compat",
         )
         assert captured_payload["logical_model_id"] == "qwen2.5-0.5b-engineering"
+        assert "context_length" not in captured_payload["config"]
     finally:
         await client.close()
 
