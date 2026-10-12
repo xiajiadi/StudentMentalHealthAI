@@ -4,6 +4,8 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import AdminWorkspaceView from '@/views/admin/AdminWorkspaceView.vue'
 import SpecialistWorkspaceView from '@/views/specialist/SpecialistWorkspaceView.vue'
+import AdminSchoolOperations from '@/components/school/AdminSchoolOperations.vue'
+import { useSessionStore } from '@/stores/session'
 
 const health = vi.hoisted(() => ({ readDependencyHealth: vi.fn() }))
 vi.mock('@/views/admin/health', () => health)
@@ -38,6 +40,27 @@ describe('Specialist 与学校管理员工作区', () => {
   beforeEach(() => {
     health.readDependencyHealth.mockReset()
     professionalReviewTransport.request.mockReset()
+  })
+
+  it('管理员学校上下文变化时重建任务组件，清除上一个学校的本地选择', async () => {
+    health.readDependencyHealth.mockResolvedValue({})
+    const wrapper = await mountAt('/admin/overview', AdminWorkspaceView)
+    const session = useSessionStore(wrapper.vm.$pinia)
+    session.signIn({
+      userId: 'USER_synthetic_admin', role: 'school_admin', subjectId: null,
+      displayName: '合成管理员', initials: 'A',
+      activeContext: { role: 'school_admin', schoolRef: 'SCHOOL_synthetic_alpha' },
+    })
+    await flushPromises()
+    const previous = wrapper.findComponent(AdminSchoolOperations).vm
+    session.signIn({
+      userId: 'USER_synthetic_admin', role: 'school_admin', subjectId: null,
+      displayName: '合成管理员', initials: 'A',
+      activeContext: { role: 'school_admin', schoolRef: 'SCHOOL_synthetic_beta' },
+    })
+    await flushPromises()
+    expect(wrapper.findComponent(AdminSchoolOperations).vm).not.toBe(previous)
+    wrapper.unmount()
   })
 
   it('专业工作事项使用后端空完成记录，不伪造复核成功状态', async () => {

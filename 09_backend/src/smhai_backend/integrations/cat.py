@@ -35,6 +35,8 @@ class CatStart:
     item_bank_version: str | None = None
     config_version: str | None = None
     provider_version: str | None = None
+    cat_binding_mode: str = field(default="FIXTURE", repr=False)
+    saved_binding: dict[str, str] | None = field(default=None, repr=False)
 
 
 class CatClient(Protocol):
@@ -47,6 +49,20 @@ class CatClient(Protocol):
         subject_id: str,
         instrument_id: str,
         instrument_version: str,
+        request_id: str | None = None,
+        trace_id: str | None = None,
+    ) -> CatStart: ...
+
+    async def start_saved_session(
+        self,
+        *,
+        assessment_id: str,
+        subject_id: str,
+        instrument_id: str,
+        instrument_version: str,
+        binding: Mapping[str, str],
+        bank_document: Mapping[str, Any],
+        config_document: Mapping[str, Any],
         request_id: str | None = None,
         trace_id: str | None = None,
     ) -> CatStart: ...
@@ -104,6 +120,8 @@ class ContractFakeCatClient:
             instrument_id=instrument_id,
             instrument_version=instrument_version,
             started_at=_timestamp(),
+            cat_binding_mode="FIXTURE",
+            saved_binding=None,
         )
         self._sessions[assessment_id] = session
         self.call_count += 1
@@ -227,6 +245,8 @@ class HttpCatClient(LongLivedHttpClient):
                 subject_id=subject_id,
                 instrument_id=instrument_id,
                 instrument_version=instrument_version,
+                expected_binding_mode="FIXTURE",
+                expected_saved_binding=None,
             )
         except UpstreamError as exc:
             raise translate_upstream_error(exc) from exc
@@ -235,6 +255,82 @@ class HttpCatClient(LongLivedHttpClient):
                 ErrorCode.DEPENDENCY_INVALID_RESPONSE,
                 status_code=502,
                 detail="CAT returned an invalid session projection",
+            ) from exc
+
+    async def start_saved_session(
+        self,
+        *,
+        assessment_id: str,
+        subject_id: str,
+        instrument_id: str,
+        instrument_version: str,
+        binding: Mapping[str, str],
+        bank_document: Mapping[str, Any],
+        config_document: Mapping[str, Any],
+        request_id: str | None = None,
+        trace_id: str | None = None,
+    ) -> CatStart:
+        expected_keys = {
+            "binding_ref", "activation_ref", "plan_version_ref", "bank_version_ref"
+        }
+        bank_metadata = (
+            bank_document.get("metadata")
+            if isinstance(bank_document, Mapping)
+            else None
+        )
+        if isinstance(bank_metadata, Mapping):
+            saved_instrument_version = bank_metadata.get(
+                "instrument_version", bank_document.get("version")
+            )
+        elif isinstance(bank_document, Mapping):
+            saved_instrument_version = bank_document.get("version")
+        else:
+            saved_instrument_version = None
+        if (
+            not isinstance(binding, Mapping)
+            or set(binding) != expected_keys
+            or not isinstance(bank_document, Mapping)
+            or not isinstance(config_document, Mapping)
+            or bank_document.get("instrument_id") != instrument_id
+            or saved_instrument_version != instrument_version
+            or not isinstance(config_document.get("config_version"), str)
+        ):
+            raise error(
+                ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                detail="saved CAT binding is invalid",
+            )
+        saved_binding = dict(binding)
+        context = _context(request_id, trace_id, "cat_saved_session_start")
+        try:
+            value = await self.post_json(
+                "/internal/cat/saved-sessions",
+                {
+                    "assessment_id": assessment_id,
+                    "subject_id": subject_id,
+                    "instrument_id": instrument_id,
+                    "instrument_version": instrument_version,
+                    **saved_binding,
+                    "bank_document": dict(bank_document),
+                    "config_document": dict(config_document),
+                },
+                context=context,
+            )
+            return _state_to_start(
+                value,
+                assessment_id=assessment_id,
+                subject_id=subject_id,
+                instrument_id=instrument_id,
+                instrument_version=instrument_version,
+                expected_binding_mode="SAVED_VERSION",
+                expected_saved_binding=saved_binding,
+            )
+        except UpstreamError as exc:
+            raise translate_upstream_error(exc) from exc
+        except (TypeError, ValueError) as exc:
+            raise error(
+                ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                status_code=502,
+                detail="CAT returned an invalid saved-session projection",
             ) from exc
 
     async def submit_response(
@@ -309,6 +405,8 @@ class HttpCatClient(LongLivedHttpClient):
                 subject_id=session.subject_id,
                 instrument_id=session.instrument_id,
                 instrument_version=session.instrument_version,
+                expected_binding_mode=session.cat_binding_mode,
+                expected_saved_binding=session.saved_binding,
             )
         except UpstreamError as exc:
             if exc.status_code == 404:
@@ -346,10 +444,15 @@ def _state_to_start(
     subject_id: str,
     instrument_id: str,
     instrument_version: str,
+    expected_binding_mode: str,
+    expected_saved_binding: Mapping[str, str] | None,
 ) -> CatStart:
     if (
         value.get("assessment_id") != assessment_id
         or value.get("subject_id") != subject_id
+        or value.get("cat_binding_mode") != expected_binding_mode
+        or value.get("saved_binding")
+        != (dict(expected_saved_binding) if expected_saved_binding is not None else None)
     ):
         raise ValueError("CAT session identity does not match the request")
     return CatStart(
@@ -372,4 +475,6 @@ def _state_to_start(
         else None,
         config_version=str(value["config_version"]) if value.get("config_version") else None,
         provider_version=str(value["provider_version"]) if value.get("provider_version") else None,
+        cat_binding_mode=expected_binding_mode,
+        saved_binding=dict(expected_saved_binding) if expected_saved_binding is not None else None,
     )

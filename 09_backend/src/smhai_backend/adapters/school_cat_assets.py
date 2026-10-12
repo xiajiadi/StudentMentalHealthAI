@@ -23,6 +23,7 @@ _BANK_RESOURCE = "school_cat_item_bank"
 _BANK_VERSION_RESOURCE = "school_cat_item_bank_version"
 _PLAN_RESOURCE = "school_cat_plan"
 _PLAN_VERSION_RESOURCE = "school_cat_plan_version"
+_ACTIVATION_RESOURCE = "school_cat_activation"
 _NOT_FOUND = "CAT asset was not found"
 
 
@@ -308,6 +309,57 @@ class SchoolCatAssetsPersistenceAdapter:
             "created_at": _iso(row.created_at),
         }
 
+    async def _activation_metadata(self, uow: Any, actor: Actor, row: Any) -> dict[str, Any]:
+        m = self._db_models
+        version = await uow.session.scalar(
+            self._select(m.SchoolCatPlanVersion).where(
+                m.SchoolCatPlanVersion.id == row.plan_version_id,
+                m.SchoolCatPlanVersion.school_id == actor.school_id,
+            )
+        )
+        if version is None:
+            raise error(ErrorCode.RESOURCE_NOT_FOUND, detail=_NOT_FOUND)
+        plan = await uow.session.scalar(
+            self._select(m.SchoolCatPlan).where(
+                m.SchoolCatPlan.id == version.plan_id,
+                m.SchoolCatPlan.school_id == actor.school_id,
+            )
+        )
+        bank_version = await uow.session.scalar(
+            self._select(m.SchoolCatItemBankVersion).where(
+                m.SchoolCatItemBankVersion.id == version.bank_version_id,
+                m.SchoolCatItemBankVersion.school_id == actor.school_id,
+            )
+        )
+        bank = await uow.session.scalar(
+            self._select(m.SchoolCatItemBank).where(
+                m.SchoolCatItemBank.id == bank_version.bank_id,
+                m.SchoolCatItemBank.school_id == actor.school_id,
+            )
+        ) if bank_version is not None else None
+        if plan is None or bank_version is None or bank is None:
+            raise error(ErrorCode.RESOURCE_NOT_FOUND, detail=_NOT_FOUND)
+        return {
+            "activation_ref": _asset_ref("CACT", row),
+            "plan_version_ref": _asset_ref("CPVER", version),
+            "bank_version_ref": _asset_ref("CBVER", bank_version),
+            "plan_name": plan.display_name,
+            "plan_version_number": int(version.version_number),
+            "bank_name": bank.display_name,
+            "bank_version_number": int(bank_version.version_number),
+            "status": row.status,
+            "revision": int(row.revision),
+            "created_at": _iso(row.created_at),
+            "revoked_at": _iso(row.revoked_at) if row.revoked_at is not None else None,
+        }
+
+    def _activation_response(self, metadata: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "engineering_only": True,
+            "psychological_interpretation_allowed": False,
+            "activation": metadata,
+        }
+
     async def _bank_detail(self, uow: Any, actor: Actor, row: Any) -> dict[str, Any]:
         m = self._db_models
         versions = list(
@@ -579,6 +631,20 @@ class SchoolCatAssetsPersistenceAdapter:
                     )
                 result = await self._plan_detail(uow, actor, row)
                 result["version_ref"] = _asset_ref("CPVER", version)
+            elif resource_type == _ACTIVATION_RESOURCE:
+                activation = await uow.session.scalar(
+                    self._select(m.SchoolCatActivation).where(
+                        m.SchoolCatActivation.public_id == public_id,
+                        m.SchoolCatActivation.school_id == actor.school_id,
+                    )
+                )
+                if activation is None:
+                    raise error(
+                        ErrorCode.WORKFLOW_CONFLICT, detail="CAT activation result is unavailable"
+                    )
+                result = self._activation_response(
+                    await self._activation_metadata(uow, actor, activation)
+                )
             else:
                 raise error(
                     ErrorCode.WORKFLOW_CONFLICT, detail="CAT asset idempotency result unavailable"
@@ -1249,15 +1315,16 @@ class SchoolCatAssetsPersistenceAdapter:
         }
 
     async def _require_active_simulation_parents(
-        self, uow: Any, actor: Actor, plan_version: Any
+        self, uow: Any, actor: Actor, plan_version: Any, *, lock: bool = False
     ) -> tuple[Any, Any]:
         m = self._db_models
-        plan = await uow.session.scalar(
-            self._select(m.SchoolCatPlan).where(
+        plan_statement = self._select(m.SchoolCatPlan).where(
                 m.SchoolCatPlan.id == plan_version.plan_id,
                 m.SchoolCatPlan.school_id == actor.school_id,
             )
-        )
+        if lock:
+            plan_statement = plan_statement.with_for_update()
+        plan = await uow.session.scalar(plan_statement)
         if plan is None:
             raise error(ErrorCode.RESOURCE_NOT_FOUND, detail=_NOT_FOUND)
         if plan.status != "ACTIVE":
@@ -1270,12 +1337,13 @@ class SchoolCatAssetsPersistenceAdapter:
         )
         if bank_version is None:
             raise error(ErrorCode.RESOURCE_NOT_FOUND, detail=_NOT_FOUND)
-        bank = await uow.session.scalar(
-            self._select(m.SchoolCatItemBank).where(
+        bank_statement = self._select(m.SchoolCatItemBank).where(
                 m.SchoolCatItemBank.id == bank_version.bank_id,
                 m.SchoolCatItemBank.school_id == actor.school_id,
             )
-        )
+        if lock:
+            bank_statement = bank_statement.with_for_update()
+        bank = await uow.session.scalar(bank_statement)
         if bank is None:
             raise error(ErrorCode.RESOURCE_NOT_FOUND, detail=_NOT_FOUND)
         if bank.status != "ACTIVE":
@@ -1312,6 +1380,288 @@ class SchoolCatAssetsPersistenceAdapter:
             }
 
         return await self._authorized_read(actor, "plan_version_read", operation)
+
+
+    async def school_cat_assets_list_activations(
+        self,
+        actor: Actor,
+        *,
+        limit: int,
+        skip: int,
+        plan_version_ref: str | None = None,
+    ) -> dict[str, Any]:
+        if actor.role not in {BackendRole.PSYCHOLOGICAL_SPECIALIST, BackendRole.ADMIN}:
+            raise error(ErrorCode.FORBIDDEN, detail="access denied")
+        m = self._db_models
+
+        async def operation(uow):
+            statement = self._select(m.SchoolCatActivation).where(
+                m.SchoolCatActivation.school_id == actor.school_id
+            )
+            if plan_version_ref is not None:
+                if actor.role is not BackendRole.PSYCHOLOGICAL_SPECIALIST:
+                    raise error(
+                        ErrorCode.VALIDATION_FAILED,
+                        detail="activation filter is specialist-only",
+                    )
+                version = await self._plan_version(uow, actor, plan_version_ref)
+                statement = statement.where(
+                    m.SchoolCatActivation.plan_version_id == version.id
+                )
+            if actor.role is BackendRole.ADMIN:
+                statement = (
+                    statement.join(
+                        m.SchoolCatPlanVersion,
+                        (m.SchoolCatPlanVersion.id == m.SchoolCatActivation.plan_version_id)
+                        & (m.SchoolCatPlanVersion.school_id == m.SchoolCatActivation.school_id),
+                    )
+                    .join(
+                        m.SchoolCatPlan,
+                        (m.SchoolCatPlan.id == m.SchoolCatPlanVersion.plan_id)
+                        & (m.SchoolCatPlan.school_id == m.SchoolCatActivation.school_id),
+                    )
+                    .join(
+                        m.SchoolCatItemBankVersion,
+                        (m.SchoolCatItemBankVersion.id == m.SchoolCatPlanVersion.bank_version_id)
+                        & (
+                            m.SchoolCatItemBankVersion.school_id
+                            == m.SchoolCatActivation.school_id
+                        ),
+                    )
+                    .join(
+                        m.SchoolCatItemBank,
+                        (m.SchoolCatItemBank.id == m.SchoolCatItemBankVersion.bank_id)
+                        & (m.SchoolCatItemBank.school_id == m.SchoolCatActivation.school_id),
+                    )
+                    .where(
+                        m.SchoolCatActivation.status == "ACTIVE",
+                        m.SchoolCatPlan.status == "ACTIVE",
+                        m.SchoolCatItemBank.status == "ACTIVE",
+                    )
+                )
+            rows = list(
+                (
+                    await uow.session.scalars(
+                        statement.order_by(
+                            m.SchoolCatActivation.created_at.desc(),
+                            m.SchoolCatActivation.id.desc(),
+                        )
+                        .offset(skip)
+                        .limit(limit + 1)
+                    )
+                ).all()
+            )
+            return {
+                "engineering_only": True,
+                "psychological_interpretation_allowed": False,
+                "items": [
+                    await self._activation_metadata(uow, actor, row) for row in rows[:limit]
+                ],
+                "has_more": len(rows) > limit,
+            }
+
+        role_code = (
+            "psychological_specialist"
+            if actor.role is BackendRole.PSYCHOLOGICAL_SPECIALIST
+            else "admin"
+        )
+        at = self._utc_now()
+        async with self._uow() as uow:
+            account_id, _role_id = await self._school_actor_role(uow, actor, role_code, at)
+            result = await operation(uow)
+            await self._audit_resource(
+                uow,
+                account_id,
+                "school_cat_assets.activations_listed",
+                "school_cat_activation",
+                None,
+                get_request_context().trace_id,
+            )
+        return result
+
+    async def _school_cat_assets_preflight_activation(
+        self, actor: Actor, plan_version_ref: str
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        m = self._db_models
+
+        async def operation(uow):
+            plan_version = await self._plan_version(uow, actor, plan_version_ref)
+            _plan, bank = await self._require_active_simulation_parents(
+                uow, actor, plan_version
+            )
+            bank_version = await uow.session.scalar(
+                self._select(m.SchoolCatItemBankVersion).where(
+                    m.SchoolCatItemBankVersion.id == plan_version.bank_version_id,
+                    m.SchoolCatItemBankVersion.school_id == actor.school_id,
+                )
+            )
+            if bank_version is None or bank.id != bank_version.bank_id:
+                raise error(ErrorCode.RESOURCE_NOT_FOUND, detail=_NOT_FOUND)
+            return (
+                self._decrypt(uow, bank_version, _BANK_SCHEMA),
+                self._decrypt(uow, plan_version, _PLAN_SCHEMA),
+            )
+
+        return await self._authorized_read(actor, "activation_preflight", operation)
+
+    async def school_cat_assets_create_activation(
+        self, actor: Actor, plan_version_ref: str, *, idempotency, trace_id: str
+    ) -> dict[str, Any]:
+        self._require_actor(actor)
+        if idempotency is None:
+            raise error(ErrorCode.VALIDATION_FAILED, detail="Idempotency-Key is required")
+        replay = await self.school_cat_assets_replay(actor, idempotency)
+        if replay is not None:
+            return replay
+
+        bank_document, config_document = await self._school_cat_assets_preflight_activation(
+            actor, plan_version_ref
+        )
+        context = get_request_context()
+        validated = await self._network_call(
+            actor,
+            "activation_assets_validated",
+            lambda client: client.validate_assets(bank_document, config_document, context=context),
+        )
+        if (
+            validated.get("bank_document") != bank_document
+            or validated.get("config_document") != config_document
+            or validated.get("engineering_only") is not True
+            or validated.get("psychological_interpretation_allowed") is not False
+        ):
+            raise error(
+                ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                detail="CAT activation validation response is invalid",
+            )
+        bank_document = None
+        config_document = None
+        validated = None
+
+        m = self._db_models
+        async with self._uow() as uow:
+            account_id, role_id = await self._authorize(uow, actor, self._utc_now())
+            claim = await self._claim_write(uow, idempotency)
+            if claim.replayed:
+                public_id = await self._receipt(uow, claim, _ACTIVATION_RESOURCE)
+                row = await uow.session.scalar(
+                    self._select(m.SchoolCatActivation).where(
+                        m.SchoolCatActivation.public_id == public_id,
+                        m.SchoolCatActivation.school_id == actor.school_id,
+                    )
+                )
+                if row is None:
+                    raise error(
+                        ErrorCode.WORKFLOW_CONFLICT, detail="activation result is unavailable"
+                    )
+                return self._activation_response(
+                    await self._activation_metadata(uow, actor, row)
+                )
+
+            plan_version = await self._plan_version(uow, actor, plan_version_ref, lock=True)
+            await self._require_active_simulation_parents(
+                uow, actor, plan_version, lock=True
+            )
+            active = await uow.session.scalar(
+                self._select(m.SchoolCatActivation)
+                .where(
+                    m.SchoolCatActivation.school_id == actor.school_id,
+                    m.SchoolCatActivation.plan_version_id == plan_version.id,
+                    m.SchoolCatActivation.status == "ACTIVE",
+                )
+                .with_for_update()
+            )
+            if active is not None:
+                raise error(
+                    ErrorCode.WORKFLOW_CONFLICT, detail="saved CAT version is already active"
+                )
+            row = m.SchoolCatActivation(
+                school_id=actor.school_id,
+                plan_version_id=plan_version.id,
+                creator_membership_role_id=role_id,
+                status="ACTIVE",
+                revision=1,
+                purpose="SYNTHETIC_ENGINEERING",
+                revoked_at=None,
+            )
+            uow.session.add(row)
+            await uow.session.flush()
+            await self._school_idempotency_complete(
+                uow, claim, resource_type=_ACTIVATION_RESOURCE, result_ref=row.public_id
+            )
+            await self._audit_resource(
+                uow,
+                account_id,
+                "school_cat_assets.activation_created",
+                _ACTIVATION_RESOURCE,
+                row.public_id,
+                trace_id,
+            )
+            return self._activation_response(await self._activation_metadata(uow, actor, row))
+
+    async def school_cat_assets_revoke_activation(
+        self,
+        actor: Actor,
+        activation_ref: str,
+        *,
+        expected_revision: int,
+        idempotency,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        self._require_actor(actor)
+        try:
+            public_id = _database_public_id(activation_ref, "CACT")
+        except ValueError:
+            raise error(
+                ErrorCode.RESOURCE_NOT_FOUND,
+                detail="CAT activation was not found",
+            ) from None
+        m = self._db_models
+        async with self._uow() as uow:
+            account_id, _role_id = await self._authorize(uow, actor, self._utc_now())
+            claim = await self._claim_write(uow, idempotency)
+            if claim.replayed:
+                result_public_id = await self._receipt(uow, claim, _ACTIVATION_RESOURCE)
+                row = await uow.session.scalar(
+                    self._select(m.SchoolCatActivation).where(
+                        m.SchoolCatActivation.public_id == result_public_id,
+                        m.SchoolCatActivation.school_id == actor.school_id,
+                    )
+                )
+                if row is None:
+                    raise error(
+                        ErrorCode.WORKFLOW_CONFLICT, detail="activation result is unavailable"
+                    )
+                return self._activation_response(
+                    await self._activation_metadata(uow, actor, row)
+                )
+            row = await uow.session.scalar(
+                self._select(m.SchoolCatActivation)
+                .where(
+                    m.SchoolCatActivation.public_id == public_id,
+                    m.SchoolCatActivation.school_id == actor.school_id,
+                )
+                .with_for_update()
+            )
+            if row is None:
+                raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="CAT activation was not found")
+            if row.revision != expected_revision or row.status != "ACTIVE":
+                raise error(ErrorCode.WORKFLOW_CONFLICT, detail="CAT activation revision changed")
+            row.status = "REVOKED"
+            row.revision += 1
+            row.revoked_at = self._utc_now()
+            await uow.session.flush()
+            await self._school_idempotency_complete(
+                uow, claim, resource_type=_ACTIVATION_RESOURCE, result_ref=row.public_id
+            )
+            await self._audit_resource(
+                uow,
+                account_id,
+                "school_cat_assets.activation_revoked",
+                _ACTIVATION_RESOURCE,
+                row.public_id,
+                trace_id,
+            )
+            return self._activation_response(await self._activation_metadata(uow, actor, row))
 
 
 __all__ = ["SchoolCatAssetsPersistenceAdapter"]

@@ -198,6 +198,9 @@ async def test_tenant_student_assessment_and_support_routes_keep_subject_scope(a
         _bound_synthetic_record("SUBJ_school_b", "ASSESS_other_school")
     )
     app.state.container.assessments_repo.save(
+        _bound_synthetic_record("SUBJ_school_a", "ASSESS_school_a")
+    )
+    app.state.container.assessments_repo.save(
         _bound_synthetic_record("SUBJ_legacy", "ASSESS_legacy")
     )
 
@@ -224,11 +227,8 @@ async def test_tenant_student_assessment_and_support_routes_keep_subject_scope(a
             "instrument_version": "1.0",
         },
     )
-    assert assessment.status_code == 201
-    assessment_id = assessment.json()["data"]["assessment_id"]
-    app.state.container.assessments_repo.save(
-        _bound_synthetic_record("SUBJ_school_a", assessment_id)
-    )
+    assert assessment.status_code == 403
+    assessment_id = "ASSESS_school_a"
 
     support = await client.post(
         "/api/v1/support/requests",

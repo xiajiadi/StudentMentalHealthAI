@@ -9,11 +9,20 @@ const api = vi.hoisted(() => ({
   createBank: vi.fn(), createBankVersion: vi.fn(), updateBank: vi.fn(), getPlan: vi.fn(), getPlanVersion: vi.fn(),
   createPlan: vi.fn(), createPlanVersion: vi.fn(), updatePlan: vi.fn(),
   simulateSavedPlanVersion: vi.fn(),
+  listActivations: vi.fn(), createActivation: vi.fn(), revokeActivation: vi.fn(),
 }))
 vi.mock('@/services/school-cat-assets', () => ({
   schoolCatAssets: api,
   latestCatAssetVersion: (versions: Array<{ version_number: number }>) => versions.reduce((latest, version) => version.version_number > latest.version_number ? version : latest),
   newCatAssetIdempotencyKey: vi.fn(() => 'cat-asset-stable-test-key'),
+}))
+vi.mock('@/services/school-cat-activations', () => ({
+  schoolCatActivations: {
+    list: api.listActivations,
+    create: api.createActivation,
+    revoke: api.revokeActivation,
+  },
+  newCatActivationIdempotencyKey: vi.fn(() => 'stable-activation-test-key'),
 }))
 
 const bankDoc = () => ({
@@ -42,6 +51,16 @@ const planVersion = (number = 1) => ({
   bank_version_ref: 'CBVER_synthetic', config_document: config(),
 })
 const planMeta = { plan_ref: 'CPLAN_synthetic', display_name: '合成方案', status: 'ACTIVE', revision: 2, created_at: '2026-10-12T00:00:00Z', updated_at: '2026-10-12T00:02:00Z' }
+const activationMeta = (overrides: Record<string, unknown> = {}) => ({
+  activation_ref: 'CACT_12345678-1234-1234-1234-123456789012',
+  plan_version_ref: 'CPVER_synthetic_1', bank_version_ref: 'CBVER_synthetic',
+  plan_name: '合成方案', plan_version_number: 1, bank_name: '合成题库', bank_version_number: 1,
+  status: 'ACTIVE' as const, revision: 1, created_at: '2026-10-12T00:00:00Z', revoked_at: null,
+  ...overrides,
+})
+const activationPage = (items: ReturnType<typeof activationMeta>[] = [], has_more = false) => ({
+  engineering_only: true as const, psychological_interpretation_allowed: false as const, items, has_more,
+})
 const planDetail = () => ({ ...flags, ...planMeta, versions: [1, 2].map((number) => ({ version_ref: `CPVER_synthetic_${number}`, version_number: number, created_at: `2026-10-12T00:0${number}:00Z`, bank_version_ref: 'CBVER_synthetic' })) })
 const simulation = (number = 1, batch: 100 | 1000 = 100, bias = 0.1) => ({
   engineering_only: true, psychological_interpretation_allowed: false,
@@ -60,6 +79,7 @@ function setup(role: 'teacher' | 'psychological_specialist' = 'psychological_spe
   api.getTemplate.mockResolvedValue({ ...flags, bank_document: bankDoc(), config_document: config() })
   api.listBanks.mockResolvedValue({ ...flags, items: [], has_more: false })
   api.listPlans.mockResolvedValue({ ...flags, items: [], has_more: false })
+  api.listActivations.mockResolvedValue(activationPage())
   if (withPlanAssets) configurePlanAssets()
   const wrapper = mount(SpecialistCatAssets, { props: { active: true }, global: { plugins: [pinia] } })
   return { wrapper, session }
@@ -73,6 +93,7 @@ function mountAssets(props?: { active?: boolean }) {
   api.getTemplate.mockResolvedValue({ ...flags, bank_document: bankDoc(), config_document: config() })
   api.listBanks.mockResolvedValue({ ...flags, items: [], has_more: false })
   api.listPlans.mockResolvedValue({ ...flags, items: [], has_more: false })
+  api.listActivations.mockResolvedValue(activationPage())
   const wrapper = mount(SpecialistCatAssets, { ...(props ? { props } : {}), global: { plugins: [pinia] } })
   return { wrapper, session }
 }
@@ -322,6 +343,73 @@ describe('specialist CAT asset editor', () => {
     await flushPromises()
     expect(api.simulateSavedPlanVersion).toHaveBeenCalledTimes(2)
     expect(wrapper.text()).toContain('本次汇总 · 100 个合成样本')
+    wrapper.unmount()
+  })
+
+  it('activates only an explicitly selected saved version and retries an unknown write with the same key', async () => {
+    const selected = activationMeta({ plan_version_ref: 'CPVER_synthetic_2', plan_version_number: 2 })
+    api.listActivations.mockResolvedValueOnce(activationPage())
+      .mockResolvedValueOnce(activationPage([selected]))
+    api.createActivation.mockRejectedValueOnce(Object.assign(new Error('private network detail'), { code: 'NETWORK_UNAVAILABLE' }))
+      .mockResolvedValueOnce(selected)
+    const { wrapper } = setup('psychological_specialist', true)
+    await flushPromises()
+    await openPlanEditor(wrapper)
+    await wrapper.findAll('.asset-history__row')[1]!.trigger('click')
+    await flushPromises()
+    expect(api.listActivations).toHaveBeenLastCalledWith({ skip: 0, limit: 30, planVersionRef: 'CPVER_synthetic_2' })
+    await wrapper.get('.asset-activation').get('button.asset-button--primary').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('请求结果尚未确认')
+    expect(wrapper.text()).not.toContain('private network detail')
+    expect(api.createActivation).toHaveBeenCalledOnce()
+    await wrapper.get('.asset-activation').get('button:last-child').trigger('click')
+    await flushPromises()
+    expect(api.createActivation).toHaveBeenCalledTimes(2)
+    expect(api.createActivation.mock.calls[0]).toEqual(['CPVER_synthetic_2', 'stable-activation-test-key'])
+    expect(api.createActivation.mock.calls[1]).toEqual(api.createActivation.mock.calls[0])
+    expect(wrapper.text()).toContain('当前启用')
+    expect(wrapper.text()).not.toContain(selected.activation_ref)
+    wrapper.unmount()
+  })
+
+  it('does not blindly retry a revision conflict and requires a manual activation refresh', async () => {
+    const active = activationMeta({ plan_version_ref: 'CPVER_synthetic_2', plan_version_number: 2 })
+    api.listActivations.mockResolvedValueOnce(activationPage([active]))
+      .mockResolvedValueOnce(activationPage([activationMeta({ ...active, revision: 2 })]))
+    api.revokeActivation.mockRejectedValueOnce(Object.assign(new Error('revision conflict'), { code: 'WORKFLOW_CONFLICT' }))
+    const { wrapper } = setup('psychological_specialist', true)
+    await flushPromises()
+    await openPlanEditor(wrapper)
+    await wrapper.findAll('.asset-history__row')[1]!.trigger('click')
+    await flushPromises()
+    await wrapper.get('.asset-activation').get('button.asset-button--danger').trigger('click')
+    await flushPromises()
+    expect(api.revokeActivation).toHaveBeenCalledOnce()
+    expect(wrapper.text()).toContain('启用状态已变化')
+    await wrapper.get('.asset-activation').get('button.asset-button--quiet').trigger('click')
+    await flushPromises()
+    expect(api.listActivations).toHaveBeenCalledTimes(2)
+    expect(api.revokeActivation).toHaveBeenCalledOnce()
+    wrapper.unmount()
+  })
+
+  it('drops a late activation history response after the specialist context ends', async () => {
+    let finishRead!: (page: ReturnType<typeof activationPage>) => void
+    api.listActivations.mockImplementationOnce(() => new Promise((resolve) => { finishRead = resolve }))
+    const { wrapper, session } = setup('psychological_specialist', true)
+    await flushPromises()
+    await openPlanEditor(wrapper)
+    await wrapper.find('.asset-history__row').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('正在读取该版本的启用记录')
+    session.signOut()
+    await flushPromises()
+    finishRead(activationPage([activationMeta()]))
+    await flushPromises()
+    expect(wrapper.text()).toContain('无法读取资产')
+    expect(wrapper.text()).not.toContain('当前启用')
+    expect(wrapper.text()).not.toContain('合成方案 v1 · 合成题库 v1')
     wrapper.unmount()
   })
 

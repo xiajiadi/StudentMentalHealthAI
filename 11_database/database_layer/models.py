@@ -494,6 +494,10 @@ class MeasurementTask(ResourceIdentityMixin, TimestampMixin, Base):
             ondelete="RESTRICT",
         ),
         CheckConstraint("status IN ('PUBLISHED', 'CLOSED', 'CANCELLED')", name="status_allowed"),
+        CheckConstraint(
+            "cat_binding_mode IN ('FIXTURE', 'SAVED_VERSION')",
+            name="cat_binding_mode_allowed",
+        ),
         CheckConstraint("due_at IS NULL OR due_at >= opens_at", name="task_window_ordered"),
         Index("ix_measurement_tasks_school_class_status", "school_id", "class_id", "status"),
         Index("ix_measurement_tasks_open_due", "status", "opens_at", "due_at"),
@@ -512,6 +516,9 @@ class MeasurementTask(ResourceIdentityMixin, TimestampMixin, Base):
     published_at: Mapped[datetime] = mapped_column(utc_datetime(), nullable=False)
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="PUBLISHED", server_default="PUBLISHED"
+    )
+    cat_binding_mode: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="FIXTURE", server_default="FIXTURE"
     )
 
 
@@ -632,6 +639,10 @@ class AssessmentSession(ResourceIdentityMixin, TimestampMixin, Base):
             "status IN ('CREATED', 'IN_PROGRESS', 'COMPLETED', 'ABANDONED', 'INVALID')",
             name="status_allowed",
         ),
+        CheckConstraint(
+            "cat_binding_mode IN ('FIXTURE', 'SAVED_VERSION')",
+            name="cat_binding_mode_allowed",
+        ),
         Index("ix_assessment_sessions_subject_created", "subject_id", "created_at"),
         Index("ix_assessment_sessions_status_created", "status", "created_at"),
         UniqueConstraint("task_enrollment_id", name="assessment_task_enrollment_unique"),
@@ -664,6 +675,9 @@ class AssessmentSession(ResourceIdentityMixin, TimestampMixin, Base):
     )
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default=AssessmentStatus.CREATED.value
+    )
+    cat_binding_mode: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="FIXTURE", server_default="FIXTURE"
     )
     started_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
@@ -1249,6 +1263,153 @@ class SchoolCatPlanVersion(ResourceIdentityMixin, TimestampMixin, Base):
     cipher_format_version: Mapped[str] = mapped_column(ascii_id(32), nullable=False)
     key_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
     payload_schema_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+
+
+class SchoolCatActivation(ResourceIdentityMixin, TimestampMixin, Base):
+    """A revocable engineering-only eligibility record for one saved plan version."""
+
+    __tablename__ = "school_cat_activations"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint(
+            "id", "school_id", "plan_version_id",
+            name="school_cat_activation_exact_version_unique",
+        ),
+        CheckConstraint("status IN ('ACTIVE', 'REVOKED')", name="status_allowed"),
+        CheckConstraint("revision >= 1", name="revision_positive"),
+        CheckConstraint(
+            "revoked_at IS NULL OR status = 'REVOKED'", name="revocation_matches_status"
+        ),
+        CheckConstraint(
+            "purpose = 'SYNTHETIC_ENGINEERING'", name="purpose_engineering_only"
+        ),
+        ForeignKeyConstraint(
+            ["school_id"], ["schools.id"],
+            name="fk_school_cat_activations_school", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["plan_version_id", "school_id"],
+            ["school_cat_plan_versions.id", "school_cat_plan_versions.school_id"],
+            name="fk_school_cat_activations_plan_version_school", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["creator_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_school_cat_activations_creator_role_school", ondelete="RESTRICT",
+        ),
+        Index("ix_school_cat_activations_school_status", "school_id", "status"),
+        Index(
+            "ix_school_cat_activations_school_version_status",
+            "school_id", "plan_version_id", "status",
+        ),
+    )
+
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    plan_version_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    creator_membership_role_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="ACTIVE", server_default="ACTIVE"
+    )
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    purpose: Mapped[str] = mapped_column(
+        ascii_id(32), nullable=False, default="SYNTHETIC_ENGINEERING",
+        server_default="SYNTHETIC_ENGINEERING",
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+
+
+class SchoolCatTaskBinding(ResourceIdentityMixin, TimestampMixin, Base):
+    """The immutable activation and plan version selected for a school task."""
+
+    __tablename__ = "school_cat_task_bindings"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("task_id", name="school_cat_task_binding_task_unique"),
+        UniqueConstraint(
+            "id", "school_id", "task_id", "activation_id", "plan_version_id",
+            name="school_cat_task_binding_exact_scope_unique",
+        ),
+        ForeignKeyConstraint(
+            ["task_id", "school_id"],
+            ["measurement_tasks.id", "measurement_tasks.school_id"],
+            name="fk_school_cat_task_bindings_task_scope", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["activation_id", "school_id", "plan_version_id"],
+            [
+                "school_cat_activations.id", "school_cat_activations.school_id",
+                "school_cat_activations.plan_version_id",
+            ],
+            name="fk_school_cat_task_bindings_activation_exact_version", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["plan_version_id", "school_id"],
+            ["school_cat_plan_versions.id", "school_cat_plan_versions.school_id"],
+            name="fk_school_cat_task_bindings_plan_version_school", ondelete="RESTRICT",
+        ),
+        Index("ix_school_cat_task_bindings_school_task", "school_id", "task_id"),
+    )
+
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    task_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    activation_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    plan_version_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+
+
+class SchoolCatSessionBinding(ResourceIdentityMixin, TimestampMixin, Base):
+    """The immutable saved CAT version attached to one assessment session."""
+
+    __tablename__ = "school_cat_session_bindings"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint(
+            "assessment_session_id", name="school_cat_session_binding_assessment_unique"
+        ),
+        ForeignKeyConstraint(
+            ["assessment_session_id", "task_enrollment_id", "subject_id"],
+            [
+                "assessment_sessions.id", "assessment_sessions.task_enrollment_id",
+                "assessment_sessions.subject_id",
+            ],
+            name="fk_school_cat_session_bindings_assessment_scope", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["task_enrollment_id", "task_id", "school_id", "subject_id"],
+            [
+                "task_enrollments.id", "task_enrollments.task_id",
+                "task_enrollments.school_id", "task_enrollments.subject_id",
+            ],
+            name="fk_school_cat_session_bindings_enrollment_scope", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["task_binding_id", "school_id", "task_id", "activation_id", "plan_version_id"],
+            [
+                "school_cat_task_bindings.id", "school_cat_task_bindings.school_id",
+                "school_cat_task_bindings.task_id", "school_cat_task_bindings.activation_id",
+                "school_cat_task_bindings.plan_version_id",
+            ],
+            name="fk_school_cat_session_bindings_task_binding_exact", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["activation_id", "school_id", "plan_version_id"],
+            [
+                "school_cat_activations.id", "school_cat_activations.school_id",
+                "school_cat_activations.plan_version_id",
+            ],
+            name="fk_school_cat_session_bindings_activation_exact_version",
+            ondelete="RESTRICT",
+        ),
+        Index(
+            "ix_school_cat_session_bindings_school_enrollment",
+            "school_id", "task_enrollment_id",
+        ),
+    )
+
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    assessment_session_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    task_enrollment_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    subject_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    task_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    task_binding_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    activation_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    plan_version_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
 
 
 class IdempotencyRecord(ResourceIdentityMixin, TimestampMixin, Base):

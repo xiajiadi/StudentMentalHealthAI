@@ -22,10 +22,13 @@ from database_layer.models import (  # noqa: F401
     School,
     SchoolAccountBatch,
     SchoolAccountProvision,
+    SchoolCatActivation,
     SchoolCatItemBank,
     SchoolCatItemBankVersion,
     SchoolCatPlan,
     SchoolCatPlanVersion,
+    SchoolCatSessionBinding,
+    SchoolCatTaskBinding,
     SchoolClass,
     SchoolClassStudent,
     SchoolClassTeacher,
@@ -45,8 +48,8 @@ from sqlalchemy.dialects import mysql
 from sqlalchemy.schema import CreateTable
 
 
-def test_round1_domain_table_count_and_explicit_mysql_defaults() -> None:
-    assert len(Base.metadata.tables) == 36
+def test_domain_table_count_and_explicit_mysql_defaults() -> None:
+    assert len(Base.metadata.tables) == 39
     assert set(Base.metadata.tables) == {
         "accounts",
         "roles",
@@ -82,6 +85,9 @@ def test_round1_domain_table_count_and_explicit_mysql_defaults() -> None:
         "school_cat_item_bank_versions",
         "school_cat_plans",
         "school_cat_plan_versions",
+        "school_cat_activations",
+        "school_cat_task_bindings",
+        "school_cat_session_bindings",
         "idempotency_records",
         "audit_events",
     }
@@ -916,6 +922,166 @@ def test_school_cat_assets_migration_is_additive_and_downgrade_guarded(monkeypat
     operations.clear()
     monkeypatch.setattr(migration, "op", _Ops())
     migration.downgrade()
+    assert [entry[1] for entry in operations if entry[0] == "drop_table"] == list(
+        migration._BUSINESS_TABLES
+    )
+
+
+def test_school_cat_activation_and_bindings_are_exactly_scoped() -> None:
+    tasks = Base.metadata.tables["measurement_tasks"]
+    sessions = Base.metadata.tables["assessment_sessions"]
+    activations = Base.metadata.tables["school_cat_activations"]
+    task_bindings = Base.metadata.tables["school_cat_task_bindings"]
+    session_bindings = Base.metadata.tables["school_cat_session_bindings"]
+
+    assert tasks.c.cat_binding_mode.server_default.arg == "FIXTURE"
+    assert sessions.c.cat_binding_mode.server_default.arg == "FIXTURE"
+    assert tasks.c.cat_binding_mode.type.length == 16
+    assert sessions.c.cat_binding_mode.type.length == 16
+    assert SchoolCatActivation.__tablename__ == activations.name
+    assert SchoolCatTaskBinding.__tablename__ == task_bindings.name
+    assert SchoolCatSessionBinding.__tablename__ == session_bindings.name
+    assert activations.c.purpose.default.arg == "SYNTHETIC_ENGINEERING"
+    assert activations.c.revoked_at.nullable
+
+    def unique_columns(table):
+        return {
+            tuple(column.name for column in constraint.columns)
+            for constraint in table.constraints
+            if isinstance(constraint, UniqueConstraint)
+        }
+
+    assert ("task_id",) in unique_columns(task_bindings)
+    assert ("assessment_session_id",) in unique_columns(session_bindings)
+
+    def fk_targets(table, name):
+        constraint = next(
+            constraint
+            for constraint in table.foreign_key_constraints
+            if constraint.name == name
+        )
+        assert all(element.ondelete == "RESTRICT" for element in constraint.elements)
+        return tuple(element.target_fullname for element in constraint.elements)
+
+    assert fk_targets(
+        activations, "fk_school_cat_activations_plan_version_school"
+    ) == ("school_cat_plan_versions.id", "school_cat_plan_versions.school_id")
+    assert fk_targets(
+        task_bindings, "fk_school_cat_task_bindings_task_scope"
+    ) == ("measurement_tasks.id", "measurement_tasks.school_id")
+    assert fk_targets(
+        task_bindings, "fk_school_cat_task_bindings_activation_exact_version"
+    ) == (
+        "school_cat_activations.id",
+        "school_cat_activations.school_id",
+        "school_cat_activations.plan_version_id",
+    )
+    assert fk_targets(
+        session_bindings, "fk_school_cat_session_bindings_assessment_scope"
+    ) == (
+        "assessment_sessions.id",
+        "assessment_sessions.task_enrollment_id",
+        "assessment_sessions.subject_id",
+    )
+    assert fk_targets(
+        session_bindings, "fk_school_cat_session_bindings_enrollment_scope"
+    ) == (
+        "task_enrollments.id",
+        "task_enrollments.task_id",
+        "task_enrollments.school_id",
+        "task_enrollments.subject_id",
+    )
+    assert fk_targets(
+        session_bindings, "fk_school_cat_session_bindings_task_binding_exact"
+    ) == (
+        "school_cat_task_bindings.id",
+        "school_cat_task_bindings.school_id",
+        "school_cat_task_bindings.task_id",
+        "school_cat_task_bindings.activation_id",
+        "school_cat_task_bindings.plan_version_id",
+    )
+
+    for table in (activations, task_bindings, session_bindings):
+        for constraint in table.foreign_key_constraints:
+            assert all(element.ondelete == "RESTRICT" for element in constraint.elements)
+
+
+def test_school_cat_task_binding_migration_is_additive_and_guarded(monkeypatch) -> None:
+    from importlib.util import module_from_spec, spec_from_file_location
+
+    migration_path = (
+        Path(__file__).resolve().parents[1]
+        / "migrations"
+        / "versions"
+        / "20261013_0009_synthetic_cat_task_binding.py"
+    )
+    spec = spec_from_file_location("migration_20261013_0009", migration_path)
+    assert spec is not None and spec.loader is not None
+    migration = module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    assert migration.revision == "20261013_0009"
+    assert migration.down_revision == "20261012_0008"
+
+    operations: list[tuple[object, ...]] = []
+
+    class _Connection:
+        def __init__(self, populated_query: str | None = None) -> None:
+            self.populated_query = populated_query
+
+        def execute(self, statement):
+            statement_text = str(statement)
+            operations.append(("guard", statement_text))
+            return type("Result", (), {
+                "scalar_one": lambda _self: int(
+                    self.populated_query is not None and self.populated_query in statement_text
+                )
+            })()
+
+    class _Ops:
+        def __init__(self, populated_query: str | None = None) -> None:
+            self.populated_query = populated_query
+
+        def __getattr__(self, name):
+            if name == "get_bind":
+                return lambda: _Connection(self.populated_query)
+
+            def record(*args, **kwargs):
+                operations.append((name, *args, kwargs))
+
+            return record
+
+    monkeypatch.setattr(migration, "op", _Ops())
+    migration.upgrade()
+    added_columns = [entry for entry in operations if entry[0] == "add_column"]
+    assert [entry[1] for entry in added_columns] == ["measurement_tasks", "assessment_sessions"]
+    assert [entry[2].name for entry in added_columns] == [
+        "cat_binding_mode", "cat_binding_mode"
+    ]
+    assert all(entry[2].server_default.arg == "FIXTURE" for entry in added_columns)
+    assert [entry[1] for entry in operations if entry[0] == "create_table"] == [
+        "school_cat_activations", "school_cat_task_bindings", "school_cat_session_bindings"
+    ]
+    assert not any(
+        entry[0] in {"execute", "drop_table", "drop_column", "drop_constraint"}
+        for entry in operations
+    )
+
+    guarded_selects = [
+        *(f"FROM {table}" for table in migration._BUSINESS_TABLES),
+        "FROM measurement_tasks WHERE cat_binding_mode = 'SAVED_VERSION'",
+        "FROM assessment_sessions WHERE cat_binding_mode = 'SAVED_VERSION'",
+    ]
+    for query in guarded_selects:
+        operations.clear()
+        monkeypatch.setattr(migration, "op", _Ops(populated_query=query))
+        with pytest.raises(RuntimeError, match="cannot downgrade synthetic CAT bindings"):
+            migration.downgrade()
+        assert operations and all(entry[0] == "guard" for entry in operations)
+
+    operations.clear()
+    monkeypatch.setattr(migration, "op", _Ops())
+    migration.downgrade()
+    assert len([entry for entry in operations if entry[0] == "guard"]) == len(guarded_selects)
     assert [entry[1] for entry in operations if entry[0] == "drop_table"] == list(
         migration._BUSINESS_TABLES
     )

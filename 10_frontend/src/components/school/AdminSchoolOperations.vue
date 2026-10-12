@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { CircleHelp, RotateCcw, UsersRound } from '@lucide/vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
@@ -7,6 +7,7 @@ import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import AdminProfessionalAssignments from '@/components/school/AdminProfessionalAssignments.vue'
 import type { SchoolClass, SchoolMember, SchoolTask, SchoolTaskEnrollment } from '@/api/client'
 import { frontendApi } from '@/services/mock-api'
+import { schoolCatActivations, type CatActivationMetadata } from '@/services/school-cat-activations'
 
 const props = withDefaults(defineProps<{ mode?: 'all' | 'members' }>(), { mode: 'all' })
 type LoadState = 'loading' | 'ready' | 'error'
@@ -21,6 +22,13 @@ const selectedStudent = ref('')
 const selectedTeacher = ref('')
 const opensAt = ref('')
 const dueAt = ref('')
+const taskBindingMode = ref<'FIXTURE' | 'SAVED_VERSION'>('FIXTURE')
+const selectedActivationRef = ref('')
+const eligibleActivations = ref<CatActivationMetadata[]>([])
+const activationState = ref<LoadState>('ready')
+const activationError = ref('')
+const activationHasMore = ref(false)
+const activationSkip = ref(0)
 const enrollmentsByTask = ref<Record<string, SchoolTaskEnrollment[]>>({})
 const enrollmentTask = ref('')
 const pending = ref('')
@@ -30,6 +38,8 @@ const taskState = ref<LoadState>('ready')
 const taskError = ref('')
 const taskRequestGeneration = ref(0)
 const enrollmentLoadingTask = ref('')
+let activationRequestGeneration = 0
+let disposed = false
 
 const activeClass = computed(() => classes.value.find((item) => item.class_ref === selectedClassRef.value) ?? null)
 const methodsAvailable = computed(() => Boolean(
@@ -82,6 +92,41 @@ const loadTasks = async () => {
     tasks.value = []
     taskState.value = 'error'
     taskError.value = requestMessage(error, '暂时无法读取这个班级的任务。')
+  }
+}
+
+const loadEligibleActivations = async (reset = true) => {
+  if (taskBindingMode.value !== 'SAVED_VERSION') return
+  const generation = ++activationRequestGeneration
+  const skip = reset ? 0 : activationSkip.value
+  if (reset) {
+    eligibleActivations.value = []
+    activationSkip.value = 0
+    activationHasMore.value = false
+    selectedActivationRef.value = ''
+  }
+  activationState.value = 'loading'
+  activationError.value = ''
+  try {
+    const page = await schoolCatActivations.list({ skip, limit: 30 })
+    if (disposed || generation !== activationRequestGeneration || taskBindingMode.value !== 'SAVED_VERSION') return
+    const items = reset ? [] : eligibleActivations.value
+    const byRef = new Map(items.map((item) => [item.activation_ref, item]))
+    for (const item of page.items) byRef.set(item.activation_ref, item)
+    eligibleActivations.value = [...byRef.values()]
+    activationSkip.value = skip + page.items.length
+    activationHasMore.value = page.has_more
+    if (!eligibleActivations.value.some((item) => item.activation_ref === selectedActivationRef.value)) {
+      selectedActivationRef.value = ''
+    }
+    activationState.value = 'ready'
+  } catch (cause) {
+    if (disposed || generation !== activationRequestGeneration) return
+    eligibleActivations.value = []
+    selectedActivationRef.value = ''
+    activationHasMore.value = false
+    activationState.value = 'error'
+    activationError.value = requestMessage(cause, '暂时无法读取可用于新任务的合成版本。任务不会按其他版本发布。')
   }
 }
 
@@ -166,6 +211,16 @@ const assignMember = async (role: 'student' | 'teacher') => {
 
 const publishTask = async () => {
   if (!selectedClassRef.value || pending.value || !frontendApi.publishSchoolTask) return
+  const activation = taskBindingMode.value === 'SAVED_VERSION'
+    ? eligibleActivations.value.find((item) => item.activation_ref === selectedActivationRef.value && item.status === 'ACTIVE')
+    : undefined
+  if (taskBindingMode.value === 'SAVED_VERSION'
+    && (activationState.value !== 'ready' || !activation)) {
+    errorMessage.value = activationState.value === 'error'
+      ? '可用版本列表尚未读取成功。请重新读取；任务不会按默认方案发布。'
+      : '请选择服务端列出的可用合成版本。'
+    return
+  }
   if (!opensAt.value) {
     errorMessage.value = '请设置开放时间。'
     return
@@ -180,14 +235,19 @@ const publishTask = async () => {
   errorMessage.value = ''
   notice.value = ''
   try {
-    const result = await frontendApi.publishSchoolTask(
-      selectedClassRef.value,
-      opens.toISOString(),
-      due?.toISOString() ?? null,
-    )
+    const result = activation
+      ? await frontendApi.publishSchoolTask(
+        selectedClassRef.value, opens.toISOString(), due?.toISOString() ?? null, activation.activation_ref,
+      )
+      : await frontendApi.publishSchoolTask(
+        selectedClassRef.value, opens.toISOString(), due?.toISOString() ?? null,
+      )
     opensAt.value = ''
     dueAt.value = ''
-    notice.value = `${taskLabel(result.data.task_ref)}已发布，并按发布时班级名册建立报名记录。`
+    const selectedPlan = result.data.plan_name && result.data.plan_version_number
+      ? `；绑定 ${result.data.plan_name} v${result.data.plan_version_number}`
+      : ''
+    notice.value = `${taskLabel(result.data.task_ref)}已发布，并按发布时班级名册建立报名记录${selectedPlan}。`
     await loadTasks()
     await loadClassesOnly()
   } catch (error) {
@@ -243,11 +303,23 @@ const revokeEnrollment = async (taskRef: string, enrollmentRef: string) => {
   } finally { pending.value = '' }
 }
 
+watch(taskBindingMode, (mode) => {
+  activationRequestGeneration += 1
+  eligibleActivations.value = []
+  selectedActivationRef.value = ''
+  activationError.value = ''
+  activationHasMore.value = false
+  activationSkip.value = 0
+  activationState.value = mode === 'SAVED_VERSION' ? 'loading' : 'ready'
+  if (mode === 'SAVED_VERSION') void loadEligibleActivations(true)
+})
 watch(selectedClassRef, () => {
   enrollmentTask.value = ''
   void loadTasks()
+  if (taskBindingMode.value === 'SAVED_VERSION') void loadEligibleActivations(true)
 })
 onMounted(() => { void load() })
+onBeforeUnmount(() => { disposed = true; activationRequestGeneration += 1 })
 </script>
 
 <template>
@@ -294,7 +366,26 @@ onMounted(() => { void load() })
         <form class="school-form school-form--dates" @submit.prevent="publishTask">
           <label for="school-task-opens">开放时间</label><input id="school-task-opens" v-model="opensAt" type="datetime-local" :disabled="!activeClass || Boolean(pending)" required>
           <label for="school-task-due">截止时间（可选）</label><input id="school-task-due" v-model="dueAt" type="datetime-local" :disabled="!activeClass || Boolean(pending)">
-          <AppButton type="submit" :disabled="!activeClass" :loading="pending === 'publish-task'">发布任务</AppButton>
+          <fieldset class="school-task-mode" :disabled="Boolean(pending)">
+            <legend>任务题目来源</legend>
+            <label><input id="school-task-mode-fixture" v-model="taskBindingMode" type="radio" value="FIXTURE">固定工程模板</label>
+            <label><input id="school-task-mode-saved" v-model="taskBindingMode" type="radio" value="SAVED_VERSION">已启用的合成版本</label>
+          </fieldset>
+          <div v-if="taskBindingMode === 'SAVED_VERSION'" class="school-task-activation">
+            <p class="school-form__hint">只列出当前学校可用于新任务的版本。此选择不会向管理员显示题目正文或配置参数。</p>
+            <div v-if="activationState === 'loading'" class="school-empty" role="status" aria-busy="true">正在读取可用版本…</div>
+            <div v-else-if="activationState === 'error'" class="school-empty school-empty--error" role="alert">{{ activationError }}<AppButton variant="secondary" size="sm" type="button" @click="loadEligibleActivations(true)">重新读取</AppButton></div>
+            <template v-else>
+              <label for="school-task-activation">已启用版本</label>
+              <select id="school-task-activation" v-model="selectedActivationRef" :disabled="!activeClass || Boolean(pending) || activationState !== 'ready' || !eligibleActivations.length">
+                <option value="">请选择版本</option>
+                <option v-for="activation in eligibleActivations" :key="activation.activation_ref" :value="activation.activation_ref">{{ activation.plan_name }} v{{ activation.plan_version_number }} · {{ activation.bank_name }} v{{ activation.bank_version_number }}</option>
+              </select>
+              <p v-if="activationState === 'ready' && !eligibleActivations.length" class="school-form__hint">当前没有可用于新任务的启用版本。</p>
+              <AppButton v-if="activationHasMore" variant="secondary" size="sm" type="button" :disabled="activationState === 'loading'" @click="loadEligibleActivations(false)">读取更多版本</AppButton>
+            </template>
+          </div>
+          <AppButton type="submit" :disabled="!activeClass || (taskBindingMode === 'SAVED_VERSION' && (activationState !== 'ready' || !selectedActivationRef))" :loading="pending === 'publish-task'">发布任务</AppButton>
         </form>
         <div v-if="taskState === 'loading'" class="school-empty" aria-busy="true">正在读取当前班级任务…</div>
         <div v-else-if="taskState === 'error'" class="school-empty school-empty--error" role="alert">{{ taskError }}<AppButton variant="secondary" size="sm" @click="loadTasks">重新读取</AppButton></div>
@@ -336,6 +427,12 @@ onMounted(() => { void load() })
 .school-form--dates { grid-template-columns: repeat(2,minmax(0,1fr)); align-items: end; padding: 14px; border-radius: 10px; background: #f8fafb; }
 .school-form--dates label { align-self: end; }
 .school-form--dates button { grid-column: 1 / -1; justify-self: start; }
+.school-task-mode,.school-task-activation { display: grid; grid-column: 1 / -1; gap: 8px; min-width: 0; margin: 0; padding: 10px; border: 1px solid var(--color-border); border-radius: 9px; background: #fff; }
+.school-task-mode legend { padding: 0 4px; color: var(--color-text-secondary); font-size: 12px; font-weight: 650; }
+.school-task-mode label { display: flex; align-items: center; gap: 7px; color: var(--color-text-secondary); font-size: 12px; }
+.school-task-mode input { width: auto; min-height: 0; margin: 0; accent-color: #388576; }
+.school-task-activation { background: #fcfdfc; }
+.school-task-activation > label { margin-top: 2px; }
 .school-form__hint { margin: 0; color: var(--color-text-muted); font-size: 11px; }
 .school-empty { display: flex; align-items: center; gap: 8px; min-height: 50px; padding: 11px; border-radius: 9px; color: var(--color-text-secondary); background: #f7f8f9; font-size: 12px; line-height: 1.55; }
 .school-empty--error { color: #8f651d; background: #fcf7eb; }

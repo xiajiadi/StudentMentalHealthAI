@@ -124,6 +124,11 @@ class AssessmentRecord:
     cat_item_bank_version: str | None = None
     cat_config_version: str | None = None
     data_origin: str | None = None
+    task_enrollment_id: int | None = field(default=None, repr=False)
+    cat_binding_mode: str = field(default="FIXTURE", repr=False)
+    saved_binding: dict[str, str] | None = field(default=None, repr=False)
+    saved_bank_document: dict[str, Any] | None = field(default=None, repr=False)
+    saved_config_document: dict[str, Any] | None = field(default=None, repr=False)
 
 
 @dataclass(slots=True)

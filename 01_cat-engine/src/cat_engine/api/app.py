@@ -8,19 +8,29 @@ only through the authenticated school specialist gateway.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
 from typing import Any
 
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
-from cat_engine.api.assets import create_assets_router
+from cat_engine.api.assets import (
+    BankDocument,
+    ConfigDocument,
+    ValidateAssetsRequest,
+    create_assets_router,
+    validate_documents,
+)
 from cat_engine.api.management import create_management_router
 from cat_engine.domain.config import CATConfig
+from cat_engine.domain.errors import ValidationError as CATValidationError
 from cat_engine.domain.item_bank import ItemBank
 from cat_engine.domain.result import RiskSnapshot
 from cat_engine.domain.session import Session
@@ -35,6 +45,53 @@ class StartRequest(BaseModel):
     subject_id: str = Field(pattern=r"^SUBJ_[A-Za-z0-9][A-Za-z0-9_.-]*$")
     instrument_id: str = Field(min_length=1, max_length=160)
     instrument_version: str = Field(min_length=1, max_length=64)
+
+
+class SavedSessionStartRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    assessment_id: str = Field(pattern=r"^ASSESS_[A-Za-z0-9][A-Za-z0-9_.-]*$")
+    subject_id: str = Field(pattern=r"^SUBJ_[A-Za-z0-9][A-Za-z0-9_.-]*$")
+    instrument_id: str = Field(min_length=1, max_length=160)
+    instrument_version: str = Field(min_length=1, max_length=64)
+    binding_ref: str = Field(pattern=r"^CSBIND_[A-Za-z0-9-]{36}$")
+    activation_ref: str = Field(pattern=r"^CACT_[A-Za-z0-9-]{36}$")
+    plan_version_ref: str = Field(pattern=r"^CPVER_[A-Za-z0-9-]{36}$")
+    bank_version_ref: str = Field(pattern=r"^CBVER_[A-Za-z0-9-]{36}$")
+    bank_document: BankDocument
+    config_document: ConfigDocument
+
+
+@dataclass(frozen=True)
+class SessionExecutionBinding:
+    mode: str
+    binding_ref: str | None = None
+    activation_ref: str | None = None
+    plan_version_ref: str | None = None
+    bank_version_ref: str | None = None
+    bank_document_digest: str | None = None
+    config_document_digest: str | None = None
+
+    def saved_metadata(self) -> dict[str, str] | None:
+        if self.mode != "SAVED_VERSION":
+            return None
+        assert self.binding_ref is not None
+        assert self.activation_ref is not None
+        assert self.plan_version_ref is not None
+        assert self.bank_version_ref is not None
+        return {
+            "binding_ref": self.binding_ref,
+            "activation_ref": self.activation_ref,
+            "plan_version_ref": self.plan_version_ref,
+            "bank_version_ref": self.bank_version_ref,
+        }
+
+
+def _document_digest(document: dict[str, Any]) -> str:
+    canonical = json.dumps(
+        document, ensure_ascii=False, allow_nan=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
 
 
 class ResponseRequest(BaseModel):
@@ -67,8 +124,15 @@ class CatRuntime:
         self.item_bank = ItemBank.from_json(self.bank_path)
         self.service = CATService(AdaptiveTestingProvider())
         self.sessions: dict[str, Session] = {}
+        self.session_bindings: dict[str, SessionExecutionBinding] = {}
 
     def health(self) -> dict[str, Any]:
+        fixture_only = all(
+            self.session_bindings.get(
+                assessment_id, SessionExecutionBinding(mode="FIXTURE")
+            ).mode == "FIXTURE"
+            for assessment_id in self.sessions
+        )
         return {
             "status": "READY",
             "service": "cat",
@@ -78,7 +142,8 @@ class CatRuntime:
             "item_bank_version": self.item_bank.version,
             "config_version": self.config.config_version,
             "session_count": len(self.sessions),
-            "synthetic_fixture_only": True,
+            "synthetic_fixture_only": fixture_only,
+            "supports_saved_versions": True,
         }
 
     def start(self, request: StartRequest) -> dict[str, Any]:
@@ -102,10 +167,55 @@ class CatRuntime:
                 self.config,
             )
             self.sessions[request.assessment_id] = session
+            self.session_bindings[request.assessment_id] = SessionExecutionBinding(
+                mode="FIXTURE"
+            )
         else:
+            binding = self.session_bindings.get(
+                request.assessment_id, SessionExecutionBinding(mode="FIXTURE")
+            )
+            if binding.mode != "FIXTURE":
+                raise HTTPException(status_code=409, detail="assessment binding does not match")
             if existing.subject_id != request.subject_id:
                 raise HTTPException(status_code=409, detail="assessment belongs to another subject")
             session = existing
+        return self._start_session(session)
+
+    def start_saved(
+        self,
+        request: SavedSessionStartRequest,
+        item_bank: ItemBank,
+        config: CATConfig,
+        bank_document_digest: str,
+        config_document_digest: str,
+    ) -> dict[str, Any]:
+        requested_binding = SessionExecutionBinding(
+            mode="SAVED_VERSION",
+            binding_ref=request.binding_ref,
+            activation_ref=request.activation_ref,
+            plan_version_ref=request.plan_version_ref,
+            bank_version_ref=request.bank_version_ref,
+            bank_document_digest=bank_document_digest,
+            config_document_digest=config_document_digest,
+        )
+        existing = self.sessions.get(request.assessment_id)
+        if existing is None:
+            session = self.service.create_session(
+                request.assessment_id, request.subject_id, item_bank, config
+            )
+            self.sessions[request.assessment_id] = session
+            self.session_bindings[request.assessment_id] = requested_binding
+        else:
+            binding = self.session_bindings.get(request.assessment_id)
+            if (
+                existing.subject_id != request.subject_id
+                or binding != requested_binding
+            ):
+                raise HTTPException(status_code=409, detail="assessment binding does not match")
+            session = existing
+        return self._start_session(session)
+
+    def _start_session(self, session: Session) -> dict[str, Any]:
         if session.selected_item_id is None and session.status.value in {"INITIALIZED", "IN_PROGRESS"}:
             try:
                 self.service.next_item(session)
@@ -160,7 +270,7 @@ class CatRuntime:
     def state(self, session: Session) -> dict[str, Any]:
         item: dict[str, Any] | None = None
         if session.selected_item_id is not None:
-            selected = self.item_bank.item_by_id(session.selected_item_id)
+            selected = session.item_bank.item_by_id(session.selected_item_id)
             item = {
                 "item_id": selected.item_id,
                 "prompt": selected.stem,
@@ -171,6 +281,9 @@ class CatRuntime:
                 ],
             }
         administered = len(session.traces)
+        binding = self.session_bindings.get(
+            session.assessment_id, SessionExecutionBinding(mode="FIXTURE")
+        )
         return {
             "assessment_id": session.assessment_id,
             "subject_id": session.subject_id,
@@ -182,11 +295,14 @@ class CatRuntime:
             "answered_count": sum(1 for trace in session.traces if trace.response_status.value == "answered"),
             "administered_count": administered,
             "can_complete": session.status.value == "IN_PROGRESS" and session.selected_item_id is None and self._should_stop(session),
-            "max_items": self.config.max_items,
-            "item_bank_version": self.item_bank.version,
-            "config_version": self.config.config_version,
+            "max_items": session.config.max_items,
+            "item_bank_version": session.item_bank.version,
+            "config_version": session.config.config_version,
             "provider_version": "adaptivetesting-1.2.1",
-            "synthetic_fixture_only": True,
+            "synthetic_fixture_only": binding.mode == "FIXTURE",
+            "synthetic_engineering_only": True,
+            "cat_binding_mode": binding.mode,
+            "saved_binding": binding.saved_metadata(),
         }
 
     def _session(self, assessment_id: str) -> Session:
@@ -254,16 +370,67 @@ def create_app(*, runtime: CatRuntime | None = None) -> FastAPI:
             "transport": "http",
             "operations": [
                 "start", "state", "submit_response", "complete",
+                "saved_session_start",
                 "management_catalog", "management_simulation",
                 "management_asset_simulation",
             ],
             "provider": "adaptivetesting-1.2.1",
-            "synthetic_fixture_only": True,
+            "synthetic_fixture_only": False,
+            "synthetic_engineering_only": True,
+            "supports_saved_versions": True,
         }
 
     @app.post("/internal/cat/sessions", operation_id="catCreateSession")
     async def create_session(request: StartRequest) -> dict[str, Any]:
         return runtime.start(request)
+
+    @app.post("/internal/cat/saved-sessions", operation_id="catCreateSavedSession")
+    async def create_saved_session(
+        request: SavedSessionStartRequest,
+        http_request: Request,
+    ) -> dict[str, Any]:
+        try:
+            raw_payload = json.loads(await http_request.body())
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise HTTPException(status_code=422, detail="saved CAT assets are invalid") from exc
+        if not isinstance(raw_payload, dict):
+            raise HTTPException(status_code=422, detail="saved CAT assets are invalid")
+
+        validated = validate_documents(
+            ValidateAssetsRequest(
+                bank_document=request.bank_document,
+                config_document=request.config_document,
+            )
+        )
+        bank_document = validated["bank_document"]
+        config_document = validated["config_document"]
+        raw_bank_document = raw_payload.get("bank_document")
+        raw_config_document = raw_payload.get("config_document")
+        if not isinstance(raw_bank_document, dict) or not isinstance(raw_config_document, dict):
+            raise HTTPException(status_code=422, detail="saved CAT assets are invalid")
+        try:
+            item_bank = ItemBank.from_dict(bank_document)
+            item_bank.assert_runtime_ready()
+            config = CATConfig.from_dict(config_document)
+        except CATValidationError as exc:
+            raise HTTPException(status_code=422, detail="saved CAT assets are invalid") from exc
+
+        instrument_version = str(
+            item_bank.metadata.get("instrument_version", item_bank.version)
+        )
+        if (
+            request.instrument_id != item_bank.instrument_id
+            or request.instrument_version != instrument_version
+        ):
+            raise HTTPException(status_code=422, detail="saved CAT instrument identity does not match")
+
+        return runtime.start_saved(
+            request,
+            item_bank,
+            config,
+            _document_digest(raw_bank_document),
+            _document_digest(raw_config_document),
+        )
 
     @app.get("/internal/cat/sessions/{assessment_id}", operation_id="catGetSession")
     async def get_session(assessment_id: str) -> dict[str, Any]:

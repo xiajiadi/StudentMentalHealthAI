@@ -16,6 +16,10 @@ from smhai_backend.domains.auth.dependencies import (
     CurrentActor,
 )
 from smhai_backend.domains.cat_assets.schemas import (
+    ActivationCreateRequest,
+    ActivationListDto,
+    ActivationResponseDto,
+    ActivationRevokeRequest,
     BankCreateRequest,
     BankDetailResponseDto,
     BankListDto,
@@ -302,6 +306,83 @@ async def simulate_plan_version(
     return _response(
         request, SavedSimulationResponseDto.model_validate(data).model_dump(mode="json")
     )
+
+
+@router.get(
+    "/activations",
+    response_model=ApiEnvelope[ActivationListDto],
+    responses=_ERRORS,
+)
+async def list_activations(
+    request: Request,
+    actor: CurrentActor,
+    limit: int = Query(default=30, ge=1, le=100),
+    skip: int = Query(default=0, ge=0, le=100000),
+    plan_version_ref: str | None = Query(default=None, pattern=r"^CPVER_[A-Za-z0-9-]{36}$"),
+):
+    data = await request.app.state.container.cat_assets.list_activations(
+        actor, limit=limit, skip=skip, plan_version_ref=plan_version_ref
+    )
+    return _response(request, ActivationListDto.model_validate(data).model_dump(mode="json"))
+
+
+@router.post(
+    "/plan-versions/{version_ref}/activations",
+    status_code=201,
+    response_model=ApiEnvelope[ActivationResponseDto],
+    openapi_extra=CSRF_SECURITY_OPENAPI_EXTRA,
+    responses=_ERRORS,
+)
+async def create_activation(
+    request: Request,
+    version_ref: str,
+    payload: ActivationCreateRequest,
+    actor: CsrfActor,
+):
+    data = await request.app.state.container.cat_assets.create_activation(
+        actor,
+        version_ref,
+        payload=payload.model_dump(mode="python"),
+        idempotency=_idempotency(
+            request,
+            actor,
+            f"school_cat_assets:create_activation:{version_ref}",
+            payload.model_dump(mode="json"),
+        ),
+        trace_id=_trace_id(request),
+    )
+    return _response(
+        request,
+        ActivationResponseDto.model_validate(data).model_dump(mode="json"),
+        status_code=201,
+    )
+
+
+@router.patch(
+    "/activations/{activation_ref}",
+    response_model=ApiEnvelope[ActivationResponseDto],
+    openapi_extra=CSRF_SECURITY_OPENAPI_EXTRA,
+    responses=_ERRORS,
+)
+async def revoke_activation(
+    request: Request,
+    activation_ref: str,
+    payload: ActivationRevokeRequest,
+    actor: CsrfActor,
+):
+    data = await request.app.state.container.cat_assets.revoke_activation(
+        actor,
+        activation_ref,
+        payload=payload.model_dump(mode="python"),
+        idempotency=_idempotency(
+            request,
+            actor,
+            f"school_cat_assets:revoke_activation:{activation_ref}",
+            payload.model_dump(mode="json"),
+        ),
+        trace_id=_trace_id(request),
+    )
+    return _response(request, ActivationResponseDto.model_validate(data).model_dump(mode="json"))
 
 
 __all__ = ["router"]

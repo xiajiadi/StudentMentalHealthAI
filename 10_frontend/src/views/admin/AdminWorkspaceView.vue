@@ -9,8 +9,14 @@ import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import AdminSchoolDirectory from '@/components/school/AdminSchoolDirectory.vue'
 import AdminSchoolOperations from '@/components/school/AdminSchoolOperations.vue'
 import { readDependencyHealth } from '@/views/admin/health'
+import { useSessionStore } from '@/stores/session'
 
 const route = useRoute()
+const session = useSessionStore()
+const schoolScopeKey = computed(() => [
+  session.user?.userId ?? '', session.role ?? '',
+  session.user?.activeContext?.schoolRef ?? '', session.user?.activeContext?.role ?? '',
+].join('|'))
 const section = computed(() => String(route.params.section ?? 'overview'))
 const healthState = ref<'loading' | 'ready' | 'error'>('loading')
 const dependencies = ref<Record<string, DependencyStatusDto>>({})
@@ -62,12 +68,12 @@ watch(section, (value) => {
         <AppCard class="admin-feature"><span class="admin-feature__icon"><UsersRound :size="19" aria-hidden="true" /></span><span class="admin-feature__state">按学校授权</span><h2>班级与人员</h2><p>从同校的在用账号中分配教师和学生。</p><RouterLink to="/admin/users">管理班级人员 <ArrowRight :size="15" aria-hidden="true" /></RouterLink></AppCard>
         <AppCard class="admin-feature"><span class="admin-feature__icon admin-feature__icon--teal"><Settings2 :size="19" aria-hidden="true" /></span><span class="admin-feature__state">只读状态</span><h2>服务能力</h2><p>仅读取公开的依赖健康端点，不提供配置变更操作。</p><RouterLink to="/admin/settings">查看服务状态 <ArrowRight :size="15" aria-hidden="true" /></RouterLink></AppCard>
       </section>
-      <AdminSchoolOperations />
+      <AdminSchoolOperations :key="schoolScopeKey" />
     </template>
 
     <template v-else-if="section === 'users'">
       <AdminSchoolDirectory />
-      <AdminSchoolOperations mode="members" />
+      <AdminSchoolOperations :key="schoolScopeKey" mode="members" />
       <AppStatusCallout tone="info" title="安全复核权限单独管理" body="学校管理员页面不展示安全复核队列或复核操作。安全复核员（REVIEWER）是独立角色，需使用其专属工作区。" />
     </template>
 

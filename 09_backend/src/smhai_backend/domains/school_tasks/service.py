@@ -64,7 +64,16 @@ class SchoolTaskService:
             actor, class_ref, teacher_user_id, at=utc_now(), idempotency=idempotency
         )
 
-    async def publish_task(self, actor: Actor, class_ref: str, *, opens_at, due_at, idempotency):
+    async def publish_task(
+        self,
+        actor: Actor,
+        class_ref: str,
+        *,
+        opens_at,
+        due_at,
+        activation_ref: str | None = None,
+        idempotency,
+    ):
         self._require(actor, BackendRole.ADMIN)
         now = utc_now()
         opens = _naive_utc(opens_at)
@@ -78,6 +87,7 @@ class SchoolTaskService:
             task_ref_for_idempotency(actor, class_ref, key),
             opens_at=opens,
             due_at=due,
+            activation_ref=activation_ref,
             at=now,
             idempotency=idempotency,
         )

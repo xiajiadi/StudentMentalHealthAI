@@ -288,6 +288,16 @@ const mapSchoolAccountBatch = (value: unknown): SchoolAccountBatch => {
 
 const mapSchoolTask = (value: unknown): SchoolTask => {
   if (!isRecord(value)) throw new RealApiError('API_INVALID_RESPONSE', '任务列表格式无法识别。')
+  const activationRef = value.activation_ref
+  const planName = value.plan_name
+  const planVersionNumber = value.plan_version_number
+  if ((activationRef !== undefined && activationRef !== null
+      && (typeof activationRef !== 'string' || !/^CACT_[A-Za-z0-9-]{36}$/.test(activationRef)))
+    || (planName !== undefined && planName !== null && typeof planName !== 'string')
+    || (planVersionNumber !== undefined && planVersionNumber !== null
+      && (typeof planVersionNumber !== 'number' || !Number.isSafeInteger(planVersionNumber) || planVersionNumber < 1))) {
+    throw new RealApiError('API_INVALID_RESPONSE', '任务版本信息格式无法识别。')
+  }
   return {
     task_ref: requiredString(value, 'task_ref'),
     class_ref: requiredString(value, 'class_ref'),
@@ -300,6 +310,9 @@ const mapSchoolTask = (value: unknown): SchoolTask => {
     revoked_enrollment_count: requiredCount(value, 'revoked_enrollment_count'),
     instrument_id: requiredString(value, 'instrument_id'),
     instrument_version: requiredString(value, 'instrument_version'),
+    activation_ref: typeof activationRef === 'string' ? activationRef : null,
+    plan_name: typeof planName === 'string' ? planName : null,
+    plan_version_number: typeof planVersionNumber === 'number' ? planVersionNumber : null,
   }
 }
 
@@ -731,11 +744,14 @@ export class RealApiProvider implements FrontendApi {
     const collection = input.path === `${base}/banks` || input.path === `${base}/plans`
     const detail = new RegExp(`^${resource}$`).test(input.path)
     const version = new RegExp(`^${base}/(?:bank-versions/CBVER_|plan-versions/CPVER_)[A-Za-z0-9][A-Za-z0-9_.-]{0,122}$`).test(input.path)
+    const activationCollection = input.path === `${base}/activations`
+    const activationDetail = new RegExp(`^${base}/activations/CACT_[A-Za-z0-9-]{36}$`).test(input.path)
+    const createActivation = new RegExp(`^${base}/plan-versions/CPVER_[A-Za-z0-9-]{36}/activations$`).test(input.path)
     const allowed = input.method === 'GET'
-      ? collection || detail || version || input.path === `${base}/template`
+      ? collection || detail || version || activationCollection || input.path === `${base}/template`
       : input.method === 'POST'
-        ? collection || new RegExp(`^${resource}/versions$`).test(input.path)
-        : input.method === 'PATCH' && detail
+        ? collection || new RegExp(`^${resource}/versions$`).test(input.path) || createActivation
+        : input.method === 'PATCH' && (detail || activationDetail)
     if (!allowed) throw new RealApiError('API_INVALID_REQUEST', '题库与方案请求地址无效。')
     if (input.method !== 'GET' && !input.idempotencyKey?.trim()) {
       throw new RealApiError('API_INVALID_REQUEST', '题库与方案请求缺少操作标识。')
@@ -1002,6 +1018,9 @@ export class RealApiProvider implements FrontendApi {
 
   async startAssessment(assessmentId?: string): Promise<ApiEnvelope<AssessmentState>> {
     if (assessmentId) return this.getAssessmentState(assessmentId)
+    if (this.activeSchoolContext) {
+      throw new RealApiError('SCHOOL_TASK_REQUIRED', '请选择当前开放的学校测评任务。')
+    }
     if (!this.actorSubjectId) {
       throw new RealApiError('AUTH_SUBJECT_MISSING', '当前登录账号缺少授权的合成主体标识，无法创建测评。')
     }
@@ -1219,10 +1238,19 @@ export class RealApiProvider implements FrontendApi {
     return { ...response, data: response.data.map(mapSchoolTask) }
   }
 
-  async publishSchoolTask(classRef: string, opensAt: string, dueAt: string | null): Promise<ApiEnvelope<SchoolTask>> {
+  async publishSchoolTask(
+    classRef: string,
+    opensAt: string,
+    dueAt: string | null,
+    activationRef?: string | null,
+  ): Promise<ApiEnvelope<SchoolTask>> {
+    if (activationRef !== undefined && activationRef !== null
+      && !/^CACT_[A-Za-z0-9-]{36}$/.test(activationRef)) {
+      throw new RealApiError('API_INVALID_REQUEST', '启用记录编号无效。')
+    }
     const response = await this.schoolWrite(
       `/api/v1/school/classes/${encodeURIComponent(classRef)}/tasks`,
-      { opens_at: opensAt, due_at: dueAt },
+      { opens_at: opensAt, due_at: dueAt, ...(activationRef ? { activation_ref: activationRef } : {}) },
       `class-${classRef}-task-publish`,
     )
     return { ...response, data: mapSchoolTask(response.data) }

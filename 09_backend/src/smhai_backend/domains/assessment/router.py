@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from smhai_backend.core.api_models import ApiEnvelope
-from smhai_backend.core.errors import ErrorCode, problem_responses
+from smhai_backend.core.errors import ErrorCode, error, problem_responses
 from smhai_backend.core.idempotency import (
     fingerprint,
     prior_result_async,
@@ -93,6 +93,7 @@ async def list_assessments(
     responses=problem_responses(
         ErrorCode.AUTH_SESSION_EXPIRED,
         ErrorCode.CSRF_FAILED,
+        ErrorCode.FORBIDDEN,
         ErrorCode.VALIDATION_FAILED,
         ErrorCode.WORKFLOW_CONFLICT,
     ),
@@ -102,6 +103,8 @@ async def create_assessment(
     request: Request, payload: AssessmentStartRequest, actor: CsrfActor
 ) -> JSONResponse:
     container = request.app.state.container
+    if actor.scope_profile == "school_tenant":
+        raise error(ErrorCode.FORBIDDEN, detail="direct school assessment start is unavailable")
     context = current_request_context(request)
     key = request_key(request)
     body_fingerprint = fingerprint(payload.model_dump(mode="json"))
@@ -137,6 +140,7 @@ async def create_assessment(
     responses=problem_responses(
         ErrorCode.AUTH_SESSION_EXPIRED,
         ErrorCode.CSRF_FAILED,
+        ErrorCode.FORBIDDEN,
         ErrorCode.RESOURCE_NOT_FOUND,
         ErrorCode.WORKFLOW_CONFLICT,
     ),
@@ -157,6 +161,13 @@ async def record_response(
             container.idempotency, scope=scope, key=key, request_fingerprint=body_fingerprint
         )
         if prior is not None:
+            await container.assessments.get_for_actor(
+                actor,
+                assessment_id,
+                action="assessment:write",
+                request_id=context.request_id,
+                trace_id=context.trace_id,
+            )
             return JSONResponse(prior)
     record = await container.assessments.submit(
         actor, assessment_id, payload, request_id=context.request_id, trace_id=context.trace_id
@@ -198,6 +209,7 @@ async def record_response(
     responses=problem_responses(
         ErrorCode.AUTH_SESSION_EXPIRED,
         ErrorCode.CSRF_FAILED,
+        ErrorCode.FORBIDDEN,
         ErrorCode.RESOURCE_NOT_FOUND,
         ErrorCode.WORKFLOW_CONFLICT,
     ),
@@ -216,6 +228,13 @@ async def complete_assessment(
             container.idempotency, scope=scope, key=key, request_fingerprint=body_fingerprint
         )
         if prior is not None:
+            await container.assessments.get_for_actor(
+                actor,
+                assessment_id,
+                action="assessment:complete",
+                request_id=context.request_id,
+                trace_id=context.trace_id,
+            )
             return JSONResponse(prior)
     record = await container.assessments.complete(
         actor, assessment_id, request_id=context.request_id, trace_id=context.trace_id

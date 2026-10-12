@@ -18,6 +18,8 @@ from school_backup import (
     encode_value,
 )
 from school_schema import (
+    CAT_ASSETS_REVISION,
+    CAT_TASK_BINDING_REVISION,
     CURRENT_SCHOOL_REVISION,
     DIRECTORY_SCHOOL_REVISION,
     PROFESSIONAL_REVIEW_REVISION,
@@ -50,7 +52,7 @@ def test_current_snapshot_requires_its_exact_table_layout_and_revision():
     package["tables"][restore_plan.REVISION_TABLE]["rows"] = [[CURRENT_SCHOOL_REVISION]]
     plan = restore_plan.plan_restore(package, restored_at=RESTORED_AT)
     assert plan["revision"] == CURRENT_SCHOOL_REVISION
-    assert len(plan["table_order"]) == 36
+    assert len(plan["table_order"]) == 39
     package["revision"] = SUPPORTED_REVISION
     with pytest.raises(ValueError, match="manifest mismatch"):
         restore_plan.plan_restore(package, restored_at=RESTORED_AT)
@@ -80,17 +82,17 @@ def test_professional_review_manifest_preserves_directory_snapshot_layout():
 
 def test_cat_assets_manifest_preserves_professional_snapshot_and_exact_foreign_keys():
     professional = restore_plan.trusted_manifest(PROFESSIONAL_REVIEW_REVISION)
-    current = restore_plan.trusted_manifest(CURRENT_SCHOOL_REVISION)
+    current = restore_plan.trusted_manifest(CAT_ASSETS_REVISION)
     assert set(current) - set(professional) == restore_plan.CAT_ASSET_TABLES
     assert len(current) == 37
     assert all(current[name] == columns for name, columns in professional.items())
     package = empty_package()
-    package['revision'] = CURRENT_SCHOOL_REVISION
+    package['revision'] = CAT_ASSETS_REVISION
     package['tables'] = {
         name: {'create_sql': 'opaque archived DDL', 'columns': columns, 'rows': []}
         for name, columns in current.items()
     }
-    package['tables'][restore_plan.REVISION_TABLE]['rows'] = [[CURRENT_SCHOOL_REVISION]]
+    package['tables'][restore_plan.REVISION_TABLE]['rows'] = [[CAT_ASSETS_REVISION]]
     plan = restore_plan.plan_restore(package, restored_at=RESTORED_AT)
     order = plan['table_order']
     assert order.index('school_cat_item_banks') < order.index('school_cat_item_bank_versions')
@@ -98,6 +100,47 @@ def test_cat_assets_manifest_preserves_professional_snapshot_and_exact_foreign_k
     assert order.index('school_cat_plans') < order.index('school_cat_plan_versions')
     package['revision'] = PROFESSIONAL_REVIEW_REVISION
     with pytest.raises(ValueError, match='manifest mismatch'):
+        restore_plan.plan_restore(package, restored_at=RESTORED_AT)
+
+
+def test_task_binding_manifest_preserves_exact_previous_columns_and_scope_chain():
+    previous = restore_plan.trusted_manifest(CAT_ASSETS_REVISION)
+    current = restore_plan.trusted_manifest(CAT_TASK_BINDING_REVISION)
+    assert len(previous) == 37 and len(current) == 40
+    assert set(current) - set(previous) == restore_plan.CAT_TASK_BINDING_TABLES
+    for name, columns in previous.items():
+        if name in restore_plan.CAT_TASK_BINDING_MODE_TABLES:
+            assert "cat_binding_mode" not in columns
+            assert set(current[name]) - set(columns) == {"cat_binding_mode"}
+            assert [column for column in current[name] if column != "cat_binding_mode"] == columns
+        else:
+            assert current[name] == columns
+    specs = restore_plan._load_trusted_tables(CAT_TASK_BINDING_REVISION)
+    binding = specs["school_cat_session_bindings"]
+    assert any(
+        fk.remote_table == "school_cat_task_bindings"
+        and fk.local_columns == ("task_binding_id", "school_id", "task_id", "activation_id", "plan_version_id")
+        for fk in binding.foreign_keys
+    )
+    assert any(
+        fk.remote_table == "task_enrollments"
+        and fk.local_columns == ("task_enrollment_id", "task_id", "school_id", "subject_id")
+        for fk in binding.foreign_keys
+    )
+    package = empty_package()
+    package["revision"] = CAT_TASK_BINDING_REVISION
+    package["tables"] = {
+        name: {"create_sql": "opaque archived DDL", "columns": columns, "rows": []}
+        for name, columns in current.items()
+    }
+    package["tables"][restore_plan.REVISION_TABLE]["rows"] = [[CAT_TASK_BINDING_REVISION]]
+    order = restore_plan.plan_restore(package, restored_at=RESTORED_AT)["table_order"]
+    assert order.index("school_cat_plan_versions") < order.index("school_cat_activations")
+    assert order.index("school_cat_activations") < order.index("school_cat_task_bindings")
+    assert order.index("school_cat_task_bindings") < order.index("school_cat_session_bindings")
+    assert order.index("assessment_sessions") < order.index("school_cat_session_bindings")
+    package["revision"] = CAT_ASSETS_REVISION
+    with pytest.raises(ValueError, match="manifest mismatch"):
         restore_plan.plan_restore(package, restored_at=RESTORED_AT)
 
 

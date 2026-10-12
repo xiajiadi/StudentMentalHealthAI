@@ -93,6 +93,45 @@ describe('RealApiProvider school task endpoints', () => {
     await expect(writes[1]!.clone().json()).resolves.toEqual({ opens_at: '2026-10-12T01:00:00.000Z', due_at: null })
   })
 
+  it('keeps fixture publication unchanged and includes only an explicitly selected activation', async () => {
+    const { provider, fetchMock } = await createProvider((request) => {
+      const url = new URLConstructor(request.url)
+      if (url.pathname === '/api/v1/auth/csrf') return envelope({ csrf_token: 'csrf-synthetic' })
+      if (url.pathname.endsWith('/tasks')) return envelope({
+        task_ref: 'TASK_A', class_ref: 'CLASS_A', status: 'PUBLISHED',
+        opens_at: '2026-10-12T01:00:00.000Z', due_at: null, published_at: '2026-10-11T02:00:00.000Z',
+        published_enrollment_count: 2, active_enrollment_count: 2, revoked_enrollment_count: 0,
+        instrument_id: 'INSTRUMENT_A', instrument_version: '1',
+        activation_ref: 'CACT_12345678-1234-1234-1234-123456789012',
+        plan_name: '合成方案', plan_version_number: 2,
+      }, 201)
+      throw new Error('unexpected route')
+    })
+
+    await provider.publishSchoolTask('CLASS_A', '2026-10-12T01:00:00.000Z', null)
+    await expect(provider.publishSchoolTask(
+      'CLASS_A', '2026-10-12T01:00:00.000Z', null,
+      'CACT_12345678-1234-1234-1234-123456789012',
+    )).resolves.toMatchObject({ data: {
+      activation_ref: 'CACT_12345678-1234-1234-1234-123456789012',
+      plan_name: '合成方案', plan_version_number: 2,
+    } })
+    const writes = fetchMock.mock.calls.map(([request]) => request).filter((request) => request.method === 'POST')
+    expect(writes).toHaveLength(2)
+    await expect(writes[0]!.clone().json()).resolves.toEqual({
+      opens_at: '2026-10-12T01:00:00.000Z', due_at: null,
+    })
+    await expect(writes[1]!.clone().json()).resolves.toEqual({
+      opens_at: '2026-10-12T01:00:00.000Z', due_at: null,
+      activation_ref: 'CACT_12345678-1234-1234-1234-123456789012',
+    })
+    const invalidProvider = await createProvider(() => envelope({}))
+    await expect(invalidProvider.provider.publishSchoolTask(
+      'CLASS_A', '2026-10-12T01:00:00.000Z', null, 'CACT_bad',
+    )).rejects.toMatchObject({ code: 'API_INVALID_REQUEST' })
+    expect(invalidProvider.fetchMock).not.toHaveBeenCalled()
+  })
+
   it('starts a task through the bound backend route and maps only the returned session', async () => {
     const item = { item_id: 'ITEM_1', prompt: '合成题目', options: [{ value: 'A', label: '选项 A' }] }
     const { provider, fetchMock } = await createProvider((request) => {

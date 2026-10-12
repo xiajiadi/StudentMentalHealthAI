@@ -81,6 +81,15 @@ class PlanVersionRequest(StrictDto):
     config_document: dict[str, Any]
 
 
+class ActivationCreateRequest(StrictDto):
+    """Explicit opt-in to synthetic task eligibility for one saved version."""
+
+
+class ActivationRevokeRequest(StrictDto):
+    expected_revision: StrictInt = Field(ge=1)
+    status: Literal["REVOKED"]
+
+
 class AssetVersionDto(StrictDto):
     version_ref: str = Field(pattern=r"^(CBVER|CPVER)_[A-Za-z0-9-]{36}$")
     version_number: StrictInt = Field(ge=1)
@@ -216,6 +225,33 @@ class PlanDto(StrictDto):
     revision: StrictInt = Field(ge=1)
     created_at: str
     updated_at: str
+
+
+class ActivationDto(StrictDto):
+    activation_ref: str = Field(pattern=r"^CACT_[A-Za-z0-9-]{36}$")
+    plan_version_ref: str = Field(pattern=r"^CPVER_[A-Za-z0-9-]{36}$")
+    bank_version_ref: str = Field(pattern=r"^CBVER_[A-Za-z0-9-]{36}$")
+    plan_name: str = Field(min_length=1, max_length=120)
+    plan_version_number: StrictInt = Field(ge=1)
+    bank_name: str = Field(min_length=1, max_length=120)
+    bank_version_number: StrictInt = Field(ge=1)
+    status: Literal["ACTIVE", "REVOKED"]
+    revision: StrictInt = Field(ge=1)
+    created_at: str
+    revoked_at: str | None
+
+
+class ActivationListDto(EngineeringOnlyDto):
+    engineering_only: Literal[True]
+    psychological_interpretation_allowed: Literal[False]
+    items: list[ActivationDto]
+    has_more: bool
+
+
+class ActivationResponseDto(EngineeringOnlyDto):
+    engineering_only: Literal[True]
+    psychological_interpretation_allowed: Literal[False]
+    activation: ActivationDto
 
 
 class PlanDetailDto(PlanDto):

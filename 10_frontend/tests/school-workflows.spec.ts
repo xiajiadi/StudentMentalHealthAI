@@ -22,6 +22,7 @@ const api = vi.hoisted(() => ({
   assignSchoolTeacher: vi.fn(),
   listSchoolTasks: vi.fn(),
   publishSchoolTask: vi.fn(),
+  listActivations: vi.fn(),
   listStudentSchoolTasks: vi.fn(),
   listStudentSchoolTaskHistory: vi.fn(),
   startStudentSchoolTask: vi.fn(),
@@ -31,6 +32,9 @@ const api = vi.hoisted(() => ({
 }))
 
 vi.mock('@/services/mock-api', () => ({ frontendApi: api }))
+vi.mock('@/services/school-cat-activations', () => ({
+  schoolCatActivations: { list: api.listActivations },
+}))
 
 const envelope = <T,>(data: T) => ({ request_id: 'REQ_school_ui', trace_id: 'TRACE_school_ui', data })
 const task = {
@@ -41,6 +45,13 @@ const task = {
   due_at: null,
   assessment_id: null,
   assessment_status: null,
+}
+const eligibleActivation = {
+  activation_ref: 'CACT_12345678-1234-1234-1234-123456789012',
+  plan_version_ref: 'CPVER_12345678-1234-1234-1234-123456789012',
+  bank_version_ref: 'CBVER_12345678-1234-1234-1234-123456789012',
+  plan_name: '合成方案', plan_version_number: 2, bank_name: '合成题库', bank_version_number: 3,
+  status: 'ACTIVE', revision: 1, created_at: '2026-10-12T00:00:00Z', revoked_at: null,
 }
 const teacherTask = {
   class_ref: task.class_ref,
@@ -103,6 +114,7 @@ beforeEach(() => {
     instrument_id: 'INSTRUMENT_SYNTHETIC', instrument_version: 'v1',
   }]))
   api.publishSchoolTask.mockResolvedValue(envelope({}))
+  api.listActivations.mockResolvedValue({ items: [], has_more: false, engineering_only: true, psychological_interpretation_allowed: false })
   api.listSchoolTaskEnrollments.mockResolvedValue(envelope([{ enrollment_ref: 'ENROLL_123456', status: 'ACTIVE' }]))
   api.revokeSchoolTaskEnrollment.mockResolvedValue(envelope({ enrollment_ref: 'ENROLL_123456', status: 'REVOKED' }))
   api.listStudentSchoolTasks.mockResolvedValue(envelope([task]))
@@ -260,6 +272,73 @@ describe('学校测评任务页面', () => {
     await flushPromises()
     expect(api.revokeSchoolTaskEnrollment).toHaveBeenCalledWith(task.task_ref, 'ENROLL_123456')
     expect(wrapper.text()).toContain('该报名已撤销')
+  })
+
+  it('fixture task publication keeps the existing three-argument request', async () => {
+    api.publishSchoolTask.mockResolvedValueOnce(envelope({
+      task_ref: 'TASK_published_fixture', plan_name: null, plan_version_number: null,
+    }))
+    const wrapper = mount(AdminSchoolOperations)
+    await flushPromises()
+    await wrapper.get('#school-task-opens').setValue('2026-10-15T09:00')
+    await wrapper.get('.school-form--dates').trigger('submit')
+    await flushPromises()
+    expect(api.publishSchoolTask).toHaveBeenCalledOnce()
+    expect(api.publishSchoolTask.mock.calls[0]).toHaveLength(3)
+    expect(wrapper.text()).toContain('已发布')
+    wrapper.unmount()
+  })
+
+  it('saved-version publication pages metadata and binds only the selected activation', async () => {
+    const earlierActivation = {
+      ...eligibleActivation,
+      activation_ref: 'CACT_87654321-4321-4321-4321-210987654321',
+      plan_name: '較早方案',
+    }
+    api.listActivations.mockResolvedValueOnce({
+      items: [earlierActivation], has_more: true, engineering_only: true, psychological_interpretation_allowed: false,
+    }).mockResolvedValueOnce({
+      items: [eligibleActivation], has_more: false, engineering_only: true, psychological_interpretation_allowed: false,
+    })
+    api.publishSchoolTask.mockResolvedValueOnce(envelope({
+      task_ref: 'TASK_published_saved', plan_name: '合成方案', plan_version_number: 2,
+    }))
+    const wrapper = mount(AdminSchoolOperations)
+    await flushPromises()
+    await wrapper.get('#school-task-mode-saved').setValue(true)
+    await flushPromises()
+    expect(api.listActivations).toHaveBeenCalledWith({ skip: 0, limit: 30 })
+    await wrapper.get('.school-task-activation button').trigger('click')
+    await flushPromises()
+    expect(api.listActivations).toHaveBeenLastCalledWith({ skip: 1, limit: 30 })
+    expect(wrapper.text()).toContain('合成方案 v2 · 合成题库 v3')
+    expect(wrapper.text()).not.toContain(eligibleActivation.activation_ref)
+    await wrapper.get('#school-task-activation').setValue(eligibleActivation.activation_ref)
+    await wrapper.get('#school-task-opens').setValue('2026-10-15T09:00')
+    await wrapper.get('.school-form--dates').trigger('submit')
+    await flushPromises()
+    expect(api.publishSchoolTask).toHaveBeenCalledWith(
+      task.class_ref, '2026-10-15T01:00:00.000Z', null, eligibleActivation.activation_ref,
+    )
+    expect(wrapper.text()).toContain('绑定 合成方案 v2')
+    wrapper.unmount()
+  })
+
+  it('does not fall back to fixture mode when eligible activation metadata fails to load', async () => {
+    api.listActivations.mockRejectedValueOnce({ code: 'NETWORK_UNAVAILABLE' })
+    const wrapper = mount(AdminSchoolOperations)
+    await flushPromises()
+    await wrapper.get('#school-task-mode-saved').setValue(true)
+    await flushPromises()
+    expect(wrapper.text()).toContain('暂时无法读取可用于新任务')
+    expect(wrapper.get('.school-form--dates button[type="submit"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('#school-task-opens').setValue('2026-10-15T09:00')
+    await wrapper.get('.school-form--dates').trigger('submit')
+    await flushPromises()
+    expect(api.publishSchoolTask).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('任务不会按默认方案发布')
+    expect(wrapper.text()).not.toContain('已收到服务端确认')
+    wrapper.unmount()
   })
 
   it('管理端权限被拒绝时明确显示错误，不显示空班级或成功状态', async () => {

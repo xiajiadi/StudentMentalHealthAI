@@ -154,6 +154,9 @@ export interface SchoolTask {
   revoked_enrollment_count: number
   instrument_id: string
   instrument_version: string
+  activation_ref: string | null
+  plan_name: string | null
+  plan_version_number: number | null
 }
 
 export interface StudentSchoolTask {
@@ -246,7 +249,7 @@ export interface FrontendApi {
   assignSchoolStudent?(classRef: string, studentUserId: string): Promise<ApiEnvelope<unknown>>
   assignSchoolTeacher?(classRef: string, teacherUserId: string): Promise<ApiEnvelope<unknown>>
   listSchoolTasks?(classRef: string): Promise<ApiEnvelope<SchoolTask[]>>
-  publishSchoolTask?(classRef: string, opensAt: string, dueAt: string | null): Promise<ApiEnvelope<SchoolTask>>
+  publishSchoolTask?(classRef: string, opensAt: string, dueAt: string | null, activationRef?: string | null): Promise<ApiEnvelope<SchoolTask>>
   listStudentSchoolTasks?(): Promise<ApiEnvelope<StudentSchoolTask[]>>
   listStudentSchoolTaskHistory?(): Promise<ApiEnvelope<StudentSchoolTaskHistory[]>>
   startStudentSchoolTask?(taskRef: string): Promise<ApiEnvelope<SchoolTaskStart>>

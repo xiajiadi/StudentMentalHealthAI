@@ -199,6 +199,24 @@ describe('学生演示闭环页面', () => {
     wrapper.unmount()
   })
 
+  it('学校账号没有进行中会话时选择任务，不创建无任务测评', async () => {
+    const router = await makeRouter('/student/assessment')
+    const pinia = createPinia()
+    useSessionStore(pinia).signIn({
+      userId: 'USER_synthetic_school', role: 'student', subjectId: 'SUBJ_synthetic_school',
+      displayName: '合成学生', initials: 'S',
+      activeContext: { role: 'student', schoolRef: 'SCHOOL_synthetic_alpha' },
+    })
+    const wrapper = mount(AssessmentView, {
+      global: { plugins: [router, pinia], stubs: { StudentAssignedTasks: { template: '<div>学校任务选择入口</div>' } } },
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain('选择学校测评任务')
+    expect(wrapper.text()).toContain('学校任务选择入口')
+    expect(api.startAssessment).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
   it('首页根据登录名称问候，并展示不可点击的四卡片功能介绍', async () => {
     api.listAssessments.mockResolvedValue(envelope([{ ...assessment, status: 'in_progress' }]))
     api.listReports.mockResolvedValue(envelope({ items: [report], next_cursor: null }))

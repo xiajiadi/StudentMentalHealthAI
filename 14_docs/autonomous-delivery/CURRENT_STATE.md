@@ -13,6 +13,147 @@ GPU and process entries below are historical; verify live identities before acti
 
 ## Latest resumed increment
 
+- Exact saved CAT task-binding increment is IN_PROGRESS on base7d5996f26d;
+  previous saved simulation increment is pushed and verified at that exact SHA.
+  New0009 schema source adds activation/task/session attachment tables and explicit
+  FIXTURE/SAVED_VERSION markers, with composite scope/subject/version FKs and
+  guarded downgrade; offline schema17 and generated SQL pass. Internal CAT saved
+  start/session-owned state source is implemented with focused integration40 pass
+  (one N100 simulation deselected), not native-loaded. Root restore manifests now
+  explicitly support0009 while retaining exact0005–0008 layouts; focused49 checks
+  pass, including new FK order/old-column preservation tests.
+  Backend activation/publication/start/recovery and Frontend eligibility controls
+  are implemented. Independent review exposed and fixed real instrument-version
+  versus bank-version confusion, generic school-start bypass, cached-result replay
+  without current access checks, and a fresh-read/write-UOW authorization gap.
+  School writes now lock current role/enrollment/roster/task/window/subject/SELF,
+  session and binding in the same short write UOW; old unbound school records stay
+  readable through SELF authorization, but new school starts use assigned tasks.
+  Native0009 migration passed after verified Backend stop:36 old business tables/
+  2192 rows preserve exact old-column values; three new tables empty, both new mode
+  columns FIXTURE. Sealed0008 backup backups/20261012-183012-
+  f304e4943e074002b93236c8f6320519.private.dpapi, evidence cat-task-binding-migration-
+  2fe0f52f826b48779f6763593b7af12e.json. Root restarted original Backend exec45398/
+  PID45296 and CAT exec29237/PID44496; Frontend exec90451/PID36496 unchanged.
+  Fresh external school-processes.json and ownership/preflight pass; original DB
+  now0009. B/C/D restore targets remain at previous revisions and must be preserved.
+  Latest source tests Backend455, Frontend222+lint/build pass; CAT72 full before
+  final raw-document identity/flag changes plus focused16 after those changes.
+  Independent source review now reports no boot blocker; inverse mode/binding
+  existence is enforced by Backend guards, not a database reverse FK.
+  Native saved-task HTTP phases passed21 and17 stages in Root exec92587/61542.
+  The actual CAT restart between phases cleared its in-memory sessions; recovery
+  restored the exact saved version and persisted answer order, then completed
+  the three-item session. Revoking enrollment denied state and original cached
+  response/completion keys. These are Controller-observed tool results; the
+  initial harness did not persist result JSON, so no retroactive raw evidence
+  file is claimed. Continuation logs/school-saved-cat-task-continuation-
+  f130d31e38da4f038b849a44dc3fcad4.dpapi is sealed and preserved. Future runs use
+  the reviewed evidence writer. CAT is now exec1322/PID33136, with current exact
+  identity in external school-processes.json. Latest full CAT suite73 passes;
+  Root focused authorization/binding checks19 pass. Independent review found
+  task publication/session creation lacked transaction-local audit writes;
+  source repair is reviewed: task/session creation now writes safe metadata
+  audit in the same UOW, excluding replay/existing-session reuse. Root full
+  Backend460 tests pass. Original Backend reloaded as exec86154/PID15028; its
+  actual parent/executable/argv/creation identity is recorded and verified in
+  school-processes.json. Native rollback QA first attempt failed whole-audit
+  comparison at activation rollback; independent network-validation audits are
+  being separated explicitly from the target transaction audit, without
+  weakening business/receipt comparisons. No native rollback PASS is claimed.
+  New0009 backup is sealed/readback verified,40 tables, at backups/20261012-
+  194621-5695534934c3401ea4ebbd5447130ca6.private.dpapi; restoring this revision
+  to a new isolated target remains unverified.
+  Four-role native browser proof is IN_PROGRESS. Initial attempt184437 failed
+  strict template metadata projection in the harness; corrected against actual
+  fixture metadata. Attempt184940 reached the bounded900s timeout and is terminal;
+  NodePID42156 is absent. Later harness defects included argument position and
+  page response-body waits; bank/plan setup now uses the actual shared-cookie
+  Playwright APIRequestContext, while activation/publication/answers remain UI.
+  Attempt191912 reached bank/plan201, then failed because the harness omitted
+  the CAT-plan tab switch. Corrected source has10 Node/5 Python focused passes;
+  Subsequent source-derived harness fixes addressed async version selection,
+  duplicate-text strict locators, initial administered_count0, object options,
+  and fresh assessment statusCREATED. Latest native attempt20261012T194710Z-
+  29dc6d1b2522446cb19dc157537faf8f passes explicit activation/admin publication,
+  student exact-version start/state/three answers/completion/history; teacher
+  progress returns200 but its final aggregate/DOM assertion fails. Actual masked
+  screenshots exist in that failed run; they do not establish full browser PASS.
+  Root inspected specialist/admin desktop images from earlier193821 attempt.
+  Browser exec7427 is terminal. Worker is repairing teacher harness diagnostics;
+  no live browser proof is pending on that process. Root full Backend460 rerun
+  passed. Transaction QA also is terminal: target activation fault hook, business
+  and receipt preservation pass, but strict expected preflight audit comparisons
+  and cleanup fail; remaining race/task/session stages are unverified. Source QA
+  retain failure evidence rather than relabeling PASS. Subsequent native
+  transaction QA passes all14 reported checks after fixing driver JSON decoding
+  and diagnostic stage indexing. Root reviewed target post-flush fault matching
+  and exact before/after projections: activation/task/session writes roll back
+  with their receipt/audit rows; concurrent activation yields exactly one success
+  and one conflict. The only allowed added audits are the exact two independent
+  preflight events. Safe Controller observation is stored externally at logs/
+  cat-binding-controller-observation-20261012T1952.json, explicitly not
+  reconstructed raw HTTP evidence. Latest browser195237 still fails reading
+  teacher page response JSON after200; student completion passed again. Worker
+  is fixing navigation/body evidence capture rather than changing product DTO.
+  Root focused QA source tests34 pass. Native browser all48 reported stages now
+  pass at browser-qa/20261012T195638Z-2bbd54fb5cb74b949f9adb9f375911f5, including
+  exact saved-plan activation, admin publication, student three responses and
+  completion/history, teacher aggregate only, six masked screenshots and logout.
+  Root inspected desktop teacher and student history/mobile layout screenshots.
+  Fresh HTTP phases both pass and now persist actual safe evidence at logs/
+  school-saved-cat-task-http-evidence-fd3c0976e16449b29c8b27d5ff136629-phase1-
+  ffaa05806813433d8ce1a62cc726618a.json and logs/school-saved-cat-task-http-evidence-
+  3ef17bfc03cf463f89bdb41d128d7469-phase2-3e9db4578de643f9a21c9d8421b35cb6.json.
+  CAT was verified empty after an actual restart between phases; current
+  exec52580/PID39204 is recorded with exact identity in school-processes.json.
+  Native phase2 confirms ordered exact-version resume/completion and state,
+  response replay and completion replay404 after enrollment revoke.
+  Independent source-only final review finds a start-vs-revoke write window:
+  initial enrollment authorization is a plain RR read. Direct Backend Worker is
+  repairing creation-time locked scope checks consistent with existing write
+  guards. This is a checkpoint blocker until reviewed/tested; no new commit/push
+  or whole-product readiness is claimed. Reviewer did not independently rerun
+  Root's native evidence. Previous native checks do not cover this concurrent
+  authorization case. Backend source now uses current scope locks in shared
+  roster/enrollment/class/task/subject/SELF order, also for answer saves; candidate
+  selection explicitly matches the authenticated student. Worker full464 and
+  focused30 checks pass; native concurrent proof remains pending. Root reviewed
+  guard and reloaded Backend exec2107/PID47332 with verified process manifest.
+  Fresh loaded-source browser201433 fails at student start500: guard/candidate
+  referenced nonexistent SchoolClassStudent.student_account_id. Fake tests did
+  not model the real subject-only roster schema. Backend owner is replacing that
+  assumption with actual SELF subject grants and adding real-model query checks;
+  retain this failure as a source regression, not a harness defect. Current
+  Backend remains exec2107/PID47332 until the corrected source is reviewed and
+  explicitly reloaded. The source regression is corrected with actual SELF
+  SubjectAccessGrant candidate matching, preserving subject-only roster scope.
+  Root exercised the real ORM query tests through the existing11_database
+  site-packages:5 passed without skip; worker full Backend465 pass/1 optional
+  SQLAlchemy skip and Ruff pass. Backend now exec79892/PID50668, identity recorded
+  and verified. Corrected-source browser all48 stages pass at browser-qa/
+  20261012T202133Z-47046f43e26a4918989ba5a773dd778f. Native transaction14 checks
+  pass again. New explicit start-vs-revoke native QA first fails in its own setup
+  because it calls an asset method on the base database adapter; Worker is
+  correcting this harness to the real admin API. Concurrent authorization proof
+  initially remained unverified. Corrected native concurrent QA now passes all7
+  stages: revoke commits first denies start404 with exact unchanged session/
+  binding/receipt/audit projections; start holding current scope locks blocks
+  concurrent revoke until commit, then revoked access is denied. Root reviewed
+  the bounded QA synchronization and actual MySQL result. No schema, grant,
+  legacy data or professional authorization was changed to obtain these checks.
+  Exact saved CAT task-binding slice is ENGINEERING_PASS, subject to final
+  curated source commit/remote checkpoint. Whole product remains incomplete.
+  Root additionally restored the0009 sealed snapshot into a new isolated targetE
+  at D:\Projects\.StudentMentalHealthAI-school-restore-20261013-e,3313. Native
+  import preserves39 business tables/2905 rows, revokes8 old sessions, verifies
+  190 encrypted fields and prepares current runtime; ready=false until apps/
+  browser/restart are verified. Evidence cat-binding-restore-
+  8601d6893bd24f7d97f6079d4961369b.json. Older A/B/C/D targets are preserved.
+  Root fresh restore source checks41 pass; original-source data was not reset.
+  Previous failures and cleanup statuses are retained.
+  This slice and whole-product ENGINEERING_DEMO_READY remain incomplete.
+
 - Saved-version simulation source is implemented; native HTTP checks pass at
   logs/saved-cat-simulation-http-a1b314eb80c54e90801c3e06994ac0f6.json:
   exact immutable versions, repeat equality, changed max-items6 to3 changes actual

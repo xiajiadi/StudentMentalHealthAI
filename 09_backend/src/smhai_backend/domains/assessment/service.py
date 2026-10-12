@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -34,6 +35,8 @@ class AssessmentService:
     async def create(
         self, actor: Actor, payload: AssessmentStartRequest, *, request_id: str, trace_id: str
     ) -> AssessmentRecord:
+        if actor.scope_profile == "school_tenant":
+            raise error(ErrorCode.FORBIDDEN, detail="direct school assessment start is unavailable")
         self.authorization.require(
             actor, "assessment:create", resource={"subject_id": payload.subject_id}
         )
@@ -101,7 +104,7 @@ class AssessmentService:
             cat_config_version=session.config_version,
         )
         self._sessions[assessment_id] = session
-        await maybe_await(self.repository.save(record))
+        await self._save_for_actor(actor, record, trace_id=trace_id)
         await maybe_await(
             self.audit.record(
                 event="ASSESSMENT_STARTED",
@@ -142,6 +145,9 @@ class AssessmentService:
         )
         session = await self.cat.state(session, request_id=request_id, trace_id=trace_id)
         self._sessions[assessment_id] = session
+        record = await self._fresh_authorized_record(
+            actor, record, action="assessment:write", request_id=request_id, trace_id=trace_id
+        )
         record.responses[payload.item_id] = payload.response
         record.assessment["status"] = "in_progress"
         record.assessment["response_summary"]["items_answered"] = len(record.responses)
@@ -151,7 +157,7 @@ class AssessmentService:
             if isinstance(first_dimension, dict):
                 first_dimension["items_answered"] = len(record.responses)
         self._apply_state(record, session)
-        await maybe_await(self.repository.save(record))
+        await self._save_for_actor(actor, record, trace_id=trace_id)
         await maybe_await(
             self.audit.record(
                 event="ASSESSMENT_RESPONSE_ACCEPTED",
@@ -193,11 +199,14 @@ class AssessmentService:
             request_id=request_id,
             trace_id=trace_id,
         )
+        record = await self._fresh_authorized_record(
+            actor, record, action="assessment:complete", request_id=request_id, trace_id=trace_id
+        )
         record.assessment = result
         record.current_item = None
         record.selected_item_id = None
         record.can_complete = False
-        await maybe_await(self.repository.save(record))
+        await self._save_for_actor(actor, record, trace_id=trace_id)
         await maybe_await(
             self.audit.record(
                 event="ASSESSMENT_COMPLETED",
@@ -277,8 +286,54 @@ class AssessmentService:
         )
         if record.assessment.get("status") in {"created", "in_progress"}:
             session = await self._cat_session(record, request_id=request_id, trace_id=trace_id)
+            record = await self._fresh_authorized_record(
+                actor, record, action=action, request_id=request_id, trace_id=trace_id
+            )
             self._apply_state(record, session)
         return record
+
+    async def _fresh_authorized_record(
+        self,
+        actor: Actor,
+        original: AssessmentRecord,
+        *,
+        action: str,
+        request_id: str,
+        trace_id: str,
+    ) -> AssessmentRecord:
+        fresh = await self._get_for_actor(
+            actor,
+            original.assessment_id,
+            action,
+            request_id=request_id,
+            trace_id=trace_id,
+        )
+        if (
+            fresh.subject_id != original.subject_id
+            or fresh.task_enrollment_id != original.task_enrollment_id
+            or fresh.cat_binding_mode != original.cat_binding_mode
+            or fresh.saved_binding != original.saved_binding
+        ):
+            raise error(ErrorCode.WORKFLOW_CONFLICT, detail="assessment session binding changed")
+        return fresh
+
+    async def _save_for_actor(
+        self, actor: Actor, record: AssessmentRecord, *, trace_id: str
+    ) -> None:
+        if actor.scope_profile == "school_tenant":
+            writer = getattr(self.repository, "school_save_assessment_for_actor", None)
+            if writer is None:
+                raise error(ErrorCode.FORBIDDEN, detail="assessment access is unavailable")
+            await maybe_await(
+                writer(
+                    actor,
+                    record,
+                    at=datetime.now(UTC).replace(tzinfo=None),
+                    trace_id=trace_id,
+                )
+            )
+            return
+        await maybe_await(self.repository.save(record))
 
     async def _get(self, assessment_id: str) -> AssessmentRecord:
         record = await maybe_await(self.repository.get(assessment_id))
@@ -362,13 +417,59 @@ class AssessmentService:
     async def _cat_session(
         self, record: AssessmentRecord, *, request_id: str, trace_id: str
     ) -> CatStart:
-        session = self._sessions.get(record.assessment_id) or CatStart(
+        instrument = record.assessment.get("instrument", {})
+        instrument_id = str(instrument.get("instrument_id", "instrument.synthetic"))
+        instrument_version = str(instrument.get("version", "1.0"))
+        if record.task_enrollment_id is not None:
+            from smhai_backend.domains.assessment.binding import D3_IDENTITY
+
+            if record.cat_binding_mode == "FIXTURE" and (
+                instrument_id != D3_IDENTITY.instrument_id
+                or instrument_version != D3_IDENTITY.instrument_version
+            ):
+                raise error(
+                    ErrorCode.WORKFLOW_CONFLICT,
+                    detail="fixture task CAT identity is unsupported",
+                )
+        saved_binding = None
+        if record.cat_binding_mode == "SAVED_VERSION":
+            expected_binding_keys = {
+                "binding_ref", "activation_ref", "plan_version_ref", "bank_version_ref"
+            }
+            bank_document = record.saved_bank_document
+            config_document = record.saved_config_document
+            metadata = bank_document.get("metadata") if isinstance(bank_document, dict) else None
+            if isinstance(metadata, Mapping):
+                saved_instrument_version = metadata.get(
+                    "instrument_version", bank_document.get("version")
+                )
+            elif isinstance(bank_document, dict):
+                saved_instrument_version = bank_document.get("version")
+            else:
+                saved_instrument_version = None
+            if (
+                not isinstance(record.saved_binding, dict)
+                or set(record.saved_binding) != expected_binding_keys
+                or not isinstance(bank_document, dict)
+                or not isinstance(config_document, dict)
+                or bank_document.get("instrument_id") != instrument_id
+                or saved_instrument_version != instrument_version
+                or record.cat_item_bank_version != bank_document.get("version")
+                or record.cat_config_version != config_document.get("config_version")
+            ):
+                raise error(
+                    ErrorCode.WORKFLOW_CONFLICT,
+                    detail="saved CAT session binding is unavailable",
+                )
+            saved_binding = dict(record.saved_binding)
+        elif record.cat_binding_mode != "FIXTURE":
+            raise error(ErrorCode.WORKFLOW_CONFLICT, detail="CAT binding mode is invalid")
+
+        expected_session = CatStart(
             assessment_id=record.assessment_id,
             subject_id=record.subject_id,
-            instrument_id=str(
-                record.assessment.get("instrument", {}).get("instrument_id", "instrument.synthetic")
-            ),
-            instrument_version=str(record.assessment.get("instrument", {}).get("version", "1.0")),
+            instrument_id=instrument_id,
+            instrument_version=instrument_version,
             started_at=str(record.assessment.get("timestamps", {}).get("started_at") or ""),
             current_item=record.current_item,
             current_index=record.current_index,
@@ -379,7 +480,19 @@ class AssessmentService:
             item_bank_version=record.cat_item_bank_version,
             config_version=record.cat_config_version,
             provider_version=record.cat_provider_version,
+            cat_binding_mode=record.cat_binding_mode,
+            saved_binding=saved_binding,
         )
+        cached = self._sessions.get(record.assessment_id)
+        if cached is not None and (
+            cached.subject_id != expected_session.subject_id
+            or cached.instrument_id != expected_session.instrument_id
+            or cached.instrument_version != expected_session.instrument_version
+            or cached.cat_binding_mode != expected_session.cat_binding_mode
+            or cached.saved_binding != expected_session.saved_binding
+        ):
+            raise error(ErrorCode.WORKFLOW_CONFLICT, detail="CAT session binding changed")
+        session = cached or expected_session
         try:
             session = await self.cat.state(session, request_id=request_id, trace_id=trace_id)
         except BackendError as exc:
@@ -387,14 +500,33 @@ class AssessmentService:
                 raise
             # CAT owns process-local provider state. Recreate it from the
             # encrypted response history persisted by the Backend repository.
-            session = await self.cat.start(
-                assessment_id=record.assessment_id,
-                subject_id=record.subject_id,
-                instrument_id=session.instrument_id,
-                instrument_version=session.instrument_version,
-                request_id=request_id,
-                trace_id=trace_id,
-            )
+            if record.cat_binding_mode == "SAVED_VERSION":
+                start_saved = getattr(self.cat, "start_saved_session", None)
+                if start_saved is None:
+                    raise error(
+                        ErrorCode.DEPENDENCY_UNAVAILABLE,
+                        detail="saved CAT session start is unavailable",
+                    ) from exc
+                session = await start_saved(
+                    assessment_id=record.assessment_id,
+                    subject_id=record.subject_id,
+                    instrument_id=instrument_id,
+                    instrument_version=instrument_version,
+                    binding=saved_binding,
+                    bank_document=record.saved_bank_document,
+                    config_document=record.saved_config_document,
+                    request_id=request_id,
+                    trace_id=trace_id,
+                )
+            else:
+                session = await self.cat.start(
+                    assessment_id=record.assessment_id,
+                    subject_id=record.subject_id,
+                    instrument_id=instrument_id,
+                    instrument_version=instrument_version,
+                    request_id=request_id,
+                    trace_id=trace_id,
+                )
             for item_id, response in record.responses.items():
                 if (session.current_item or {}).get("item_id") != item_id:
                     raise error(

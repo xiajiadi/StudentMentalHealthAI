@@ -41,6 +41,9 @@ class TaskPublishRequest(BaseModel):
 
     opens_at: datetime
     due_at: datetime | None = None
+    activation_ref: str | None = Field(
+        default=None, pattern=r"^CACT_[A-Za-z0-9-]{36}$"
+    )
 
 
 class SchoolOutputDto(BaseModel):
@@ -76,6 +79,9 @@ class TaskDto(SchoolOutputDto):
     revoked_enrollment_count: int
     instrument_id: str
     instrument_version: str
+    activation_ref: str | None = None
+    plan_name: str | None = None
+    plan_version_number: int | None = None
 
 
 class StudentTaskDto(SchoolOutputDto):

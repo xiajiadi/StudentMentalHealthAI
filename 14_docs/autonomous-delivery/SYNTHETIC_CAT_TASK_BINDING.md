@@ -1,6 +1,7 @@
 # Exact synthetic CAT activation and task binding
 
-Controller direction, 2026-10-13 Beijing. Implementation pending. This follows
+Controller direction, 2026-10-13 Beijing. Synthetic increment implemented and
+verified against the owned native database and browser. This follows
 saved-version simulation; it does not approve psychological interpretation,
 personal feedback, real student use or professional publication.
 
@@ -78,3 +79,46 @@ backup; actual four-role HTTP/UI task publication and saved-version CAT completi
 cross-school/role denials, idempotency and transaction rollback. Demonstrate partial
 answer persistence, verified CAT process restart, exact-version resume and outcome.
 Do not claim full recovery, L2/L3 publication or professional approval from this slice.
+
+## Additive interface for this increment
+
+- POST /api/v1/school/cat-assets/plan-versions/{CPVER}/activations, strict empty
+  body{}, specialist/CSRF/idempotency,201. Validate published engineering-only
+  saved bank/config before locked write; one active activation per version by
+  locking its version row. A revoked activation remains historical; another explicit
+  create may enable the same version. No automatic activation from simulation.
+- GET /api/v1/school/cat-assets/activations?limit=30&skip=0, specialist or school
+  administrator. Metadata only; administrator receives only currently eligible
+  active resources, specialist can inspect active/revoked history. Use bounded
+  paging, fresh role and same-school checks.
+- PATCH /api/v1/school/cat-assets/activations/{CACT}, strict
+  {expected_revision:int>=1,status:"REVOKED"}; specialist/CSRF/idempotency,200.
+  Revision conflict409, no reactivation. Mutation and audit/receipt share a UOW.
+- Activation metadata: activation_ref CACT_UUID, plan_version_ref CPVER_UUID,
+  bank_version_ref CBVER_UUID, plan_name, plan_version_number, bank_name,
+  bank_version_number, status, revision, created_at, revoked_at nullable. Wrappers
+  retain engineering_only:true, psychological_interpretation_allowed:false.
+  Never expose documents/parameters, actor credentials or private case data.
+- TaskPublishRequest adds optional activation_ref CACT_UUID. Fingerprints include
+  the selected activation. Existing absent/null calls remain the exact fixture.
+- POST /internal/cat/saved-sessions accepts assessment_id, subject_id,
+  instrument_id, instrument_version, binding_ref CSBIND_UUID, activation_ref,
+  plan_version_ref, bank_version_ref, bank_document and config_document.
+  Strict bounded bank/config validation, published synthetic readiness, exact
+  instrument metadata match. Internal state extends the existing shape with
+  cat_binding_mode and saved_binding{binding_ref,activation_ref,plan_version_ref,
+  bank_version_ref}; the fixed route always reports FIXTURE with saved_binding:null.
+  Reusing an assessment must match subject, mode, all saved refs and canonical
+  validated documents, otherwise409. Shared state/submit/complete routes use the
+  session-owned assets; fixture start cannot retrieve a saved-mode session.
+- Backend's internal CatStart/AssessmentRecord may retain binding metadata and
+  ephemeral decrypted documents (repr=False); public frozen assessment, logs,
+  generic metadata serialization, teacher/admin outputs and AI never include them.
+  Ordinary CAT timeout remains unchanged. Do not add an automatic retry/fallback.
+
+Ownership: database Worker owns11_database models/exports/additive0009/schema
+tests only; CAT Worker owns01_cat-engine API and bounded tests only; Backend Worker
+owns09_backend integration/persistence/domains and bounded tests only. Controller
+owns13_deployment revision/restore gates, frontend integration, native migration,
+service lifecycle/browser proof, shared decisions and final review. Workers must
+not run native databases/services/GPU/browsers or read sealed credentials.

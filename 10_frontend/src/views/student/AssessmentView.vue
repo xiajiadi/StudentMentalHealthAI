@@ -6,15 +6,18 @@ import { RadioGroupIndicator, RadioGroupItem, RadioGroupRoot } from 'reka-ui'
 import AppButton from '@/components/app/AppButton.vue'
 import AppProgress from '@/components/app/AppProgress.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
+import StudentAssignedTasks from '@/components/school/StudentAssignedTasks.vue'
 import { frontendApi } from '@/services/mock-api'
 import { useAssessmentStore } from '@/stores/assessment'
+import { useSessionStore } from '@/stores/session'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 
 const router = useRouter()
 const route = useRoute()
 const assessment = useAssessmentStore()
+const session = useSessionStore()
 const selectedResponse = ref('')
-const pageState = ref<'loading' | 'ready' | 'error'>('loading')
+const pageState = ref<'loading' | 'ready' | 'error' | 'assigned'>('loading')
 const isSubmitting = ref(false)
 const isCompleting = ref(false)
 const errorMessage = ref('')
@@ -41,6 +44,11 @@ const load = async () => {
           ? frontendApi.listAssessmentEntries({ status: 'in_progress', limit: 1 })
           : frontendApi.listAssessments({ status: 'in_progress', limit: 1 })))
         .data.find((item) => item.status === 'in_progress')
+    if (!routeAssessmentId && !existing && session.user?.activeContext) {
+      assessment.reset()
+      pageState.value = 'assigned'
+      return
+    }
     const response = await frontendApi.startAssessment(routeAssessmentId || existing?.assessment_id)
     assessment.start({
       assessmentId: response.data.assessment_id,
@@ -131,6 +139,12 @@ onBeforeRouteLeave(saveSelectedResponse)
     <AppStatusCallout v-else-if="pageState === 'error'" tone="critical" title="测评会话暂时不可用" :body="errorMessage">
       <AppButton variant="secondary" size="sm" @click="load"><RotateCcw :size="15" aria-hidden="true" />重新准备</AppButton>
     </AppStatusCallout>
+
+    <section v-else-if="pageState === 'assigned'" class="assessment-assigned" aria-label="选择学校测评任务">
+      <h1>选择学校测评任务</h1>
+      <p>请选择当前开放的任务。已开始的测评可从本人记录中继续。</p>
+      <StudentAssignedTasks />
+    </section>
 
     <template v-else-if="pageState === 'ready' && question">
       <AppProgress :value="progressValue" :max="progressMaximum" :label="progressLabel" />

@@ -197,16 +197,22 @@ async def assign_teacher(
 async def publish_task(
     request: Request, class_ref: str, payload: TaskPublishRequest, actor: CsrfActor
 ):
+    fingerprint_payload = payload.model_dump(mode="json")
+    if payload.activation_ref is None:
+        # Preserve the legacy FIXTURE fingerprint while making absent and
+        # explicit null activation choices equivalent.
+        fingerprint_payload.pop("activation_ref", None)
     return await _write(
         request,
         actor,
         f"class:{class_ref}:task:publish",
-        payload.model_dump(mode="json"),
+        fingerprint_payload,
         lambda idem: request.app.state.container.school_tasks.publish_task(
             actor,
             class_ref,
             opens_at=payload.opens_at,
             due_at=payload.due_at,
+            activation_ref=payload.activation_ref,
             idempotency=idem,
         ),
         TaskDto,

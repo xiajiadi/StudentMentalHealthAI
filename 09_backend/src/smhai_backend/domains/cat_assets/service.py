@@ -8,6 +8,8 @@ from pydantic import ValidationError
 
 from smhai_backend.core.errors import ErrorCode, error
 from smhai_backend.domains.cat_assets.schemas import (
+    ActivationCreateRequest,
+    ActivationRevokeRequest,
     BankCreateRequest,
     BankPatchRequest,
     BankVersionRequest,
@@ -231,6 +233,51 @@ class SchoolCatAssetService:
                 ErrorCode.DEPENDENCY_INVALID_RESPONSE,
                 detail="CAT saved-version simulation response is invalid",
             ) from exc
+
+    async def list_activations(
+        self, actor: Actor, *, limit: int, skip: int, plan_version_ref: str | None = None
+    ):
+        if (
+            actor.scope_profile != "school_tenant"
+            or actor.school_id is None
+            or actor.school_id <= 0
+            or not actor.school_ref
+            or actor.role not in {BackendRole.PSYCHOLOGICAL_SPECIALIST, BackendRole.ADMIN}
+        ):
+            raise error(ErrorCode.FORBIDDEN, detail="access denied")
+        if actor.role is BackendRole.ADMIN and plan_version_ref is not None:
+            raise error(ErrorCode.VALIDATION_FAILED, detail="activation filter is specialist-only")
+        return await self.persistence.school_cat_assets_list_activations(
+            actor, limit=limit, skip=skip, plan_version_ref=plan_version_ref
+        )
+
+    async def create_activation(
+        self, actor: Actor, version_ref: str, *, payload, idempotency, trace_id: str
+    ):
+        self._require_specialist(actor)
+        self._request(ActivationCreateRequest, **payload)
+        replay = await self._replay(actor, idempotency)
+        if replay is not None:
+            return replay
+        return await self.persistence.school_cat_assets_create_activation(
+            actor, version_ref, idempotency=idempotency, trace_id=trace_id
+        )
+
+    async def revoke_activation(
+        self, actor: Actor, activation_ref: str, *, payload, idempotency, trace_id: str
+    ):
+        self._require_specialist(actor)
+        request = self._request(ActivationRevokeRequest, **payload)
+        replay = await self._replay(actor, idempotency)
+        if replay is not None:
+            return replay
+        return await self.persistence.school_cat_assets_revoke_activation(
+            actor,
+            activation_ref,
+            expected_revision=request.expected_revision,
+            idempotency=idempotency,
+            trace_id=trace_id,
+        )
 
 
 __all__ = ["MAX_ASSET_DOCUMENT_BYTES", "SchoolCatAssetService"]
