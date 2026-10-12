@@ -20,15 +20,23 @@ Stop this heartbeat at actual pause; do not revive obsolete `psynova-2`.
 Scheduled execution depends on the computer and desktop app remaining available;
 configuration is not proof that the scheduled wrap-up or pause has executed.
 
+## Executed shutdown
+
+2026-10-13 07:15 Beijing: all six owned app/CAT exec handles stopped; five running
+owned MySQL instances3308/3310/3311/3312/3313 gracefully shut down and verified absent.
+A3309 remains stopped. All data/keys/backups preserved. Exact receipt is indexed at
+the top of CURRENT_STATE.md. Runner stopped=true/owners0 and heartbeat psynova
+PAUSED are verified. No active Worker. Goal pause is the final action after saving
+this source checkpoint. Wait for explicit user Continue before resuming.
+
 ## Latest saved increment
 
 Original3308 and E3313 are0010; original/E current42-table sealed backups and
 feedback HTTP/rollback/browser evidence are indexed in CURRENT_STATE.md. E Backend
 exec33795, Frontend29114, CAT31277; original Backend36838, Frontend5948, CAT52580.
 Earlier IDs below are historical and must never be killed by number alone.
-Pending: final curated Git checkpoint, safe stop of owned six app services and five
-running MySQL instances, Runner stop, heartbeat PAUSED, goal PAUSED. Do not claim
-those actions complete from this planned checkpoint. Next resume requires fresh
+Completed service/DB/Runner/heartbeat stops are recorded above. Final harness goal
+pause follows the checkpoint commit. Next resume requires fresh
 clock/branch/HEAD/manifest evidence and explicit user Continue.
 
 ## Wrap-up procedure

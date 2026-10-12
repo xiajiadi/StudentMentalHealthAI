@@ -1,6 +1,21 @@
 # Current autonomous delivery state
 
-Updated: 2026-10-13, Beijing, explicit user Continue. Goal ACTIVE; ENGINEERING_DEMO_READY is not yet achieved.
+Updated: 2026-10-13, Beijing, explicit user Continue. Execution stopped for user-authorized shutdown; ENGINEERING_DEMO_READY is not yet achieved.
+
+## Shutdown handoff: 2026-10-13 07:15 Beijing
+
+User-authorized execution stop completed before07:30. Source increment35cc5a03c5ddbbdedd8747b9c1149fd6e312b2cf is committed and exact remote SHA verified.
+Six owned foreground services stopped cleanly via their verified exec handles;
+3308/3310/3311/3312/3313 MySQL received safe SQL SHUTDOWN after fresh guardian,
+creation-time, loopback/datadir and zero-transaction checks, and absence was observed.
+A3309 remains previously stopped. No reset/delete/grant change or old PID kill.
+Receipt: original/logs/owned-shutdown-20261013-87a6fbfca1a24361abdf8ea46fb03ade.json.
+Runner stopped=true, active owners0; heartbeat psynova PAUSED verified in saved
+configuration. All Workers completed or errored, none running. Goal pause is the
+final harness action after this checkpoint is committed. Do not auto-resume.
+Next explicit Continue restores from this top section and actual live state, then
+continues the unfinished0010 restore/authorization/AI/install work described below.
+The two baseline untracked user paths remain preserved and excluded from commits.
 
 ## 2026-10-13 07:05 Beijing: feedback publication increment
 
