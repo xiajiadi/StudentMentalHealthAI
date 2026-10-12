@@ -16,6 +16,7 @@ from smhai_backend.adapters.memory.repositories import (
     InMemorySessionStore,
     InMemoryUserRepository,
 )
+from smhai_backend.adapters.school_conversations import SchoolConversationsPersistenceAdapter
 from smhai_backend.adapters.school_directory import SchoolDirectoryPersistenceAdapter
 from smhai_backend.core.async_utils import maybe_await
 from smhai_backend.core.config import BackendSettings
@@ -24,11 +25,13 @@ from smhai_backend.domains.assessment.service import AssessmentService
 from smhai_backend.domains.audit import AuditService
 from smhai_backend.domains.auth.service import AuthService
 from smhai_backend.domains.authorization import NativeAuthorizationProvider
+from smhai_backend.domains.conversations.service import IndependentConversationService
 from smhai_backend.domains.school_directory.service import SchoolDirectoryService
 from smhai_backend.domains.school_tasks.service import SchoolTaskService
 from smhai_backend.domains.support.service import SupportOrchestrator
 from smhai_backend.domains.teacher.service import TeacherDashboardService
 from smhai_backend.integrations.cat import ContractFakeCatClient, HttpCatClient
+from smhai_backend.integrations.independent import IndependentLLMRuntimeClient, IndependentRagClient
 from smhai_backend.integrations.llm import ContractFakeLLMRuntimeClient, HttpLLMRuntimeClient
 from smhai_backend.integrations.rag import ContractFakeRagClient, HttpRagClient
 from smhai_backend.integrations.safety import (
@@ -63,6 +66,9 @@ class BackendContainer:
     school_tasks: SchoolTaskService
     school_directory: SchoolDirectoryService
     rate_limiter: InMemoryRateLimiter
+    independent_conversations: IndependentConversationService | None = None
+    independent_rag: IndependentRagClient | None = None
+    independent_llm: IndependentLLMRuntimeClient | None = None
 
     async def start(self) -> None:
         if self.persistence is not None:
@@ -71,7 +77,7 @@ class BackendContainer:
 
     async def close(self) -> None:
         await self.safety.close()
-        for client in (self.cat, self.rag, self.llm):
+        for client in (self.cat, self.rag, self.llm, self.independent_rag, self.independent_llm):
             close = getattr(client, "close", None)
             if close is not None:
                 await maybe_await(close())
@@ -185,6 +191,24 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         SchoolDirectoryPersistenceAdapter(persistence) if persistence is not None else None
     )
     school_directory = SchoolDirectoryService(persistence=directory_persistence)
+    independent_rag = independent_llm = independent_conversations = None
+    if (
+        persistence is not None
+        and settings.identity_profile == "school_tenant"
+        and settings.rag.mode == "http"
+        and settings.llm.mode == "http"
+        and settings.safety.mode == "http"
+    ):
+        if settings.safety.base_url != "http://127.0.0.1:8190":
+            raise ValueError("independent conversation Safety must use the local school endpoint")
+        independent_rag = IndependentRagClient(settings.rag)
+        independent_llm = IndependentLLMRuntimeClient(settings.llm)
+        independent_conversations = IndependentConversationService(
+            persistence=SchoolConversationsPersistenceAdapter(persistence),
+            safety=safety,
+            rag=independent_rag,
+            llm=independent_llm,
+        )
     support = SupportOrchestrator(
         assessments=assessments,
         conversations=conversations,
@@ -230,6 +254,9 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         teacher_dashboard=teacher_dashboard,
         school_tasks=school_tasks,
         school_directory=school_directory,
+        independent_conversations=independent_conversations,
+        independent_rag=independent_rag,
+        independent_llm=independent_llm,
         support=support,
         rate_limiter=rate_limiter,
     )

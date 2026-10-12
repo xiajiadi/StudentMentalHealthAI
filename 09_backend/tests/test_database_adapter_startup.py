@@ -10,6 +10,7 @@ import pytest
 import smhai_backend.adapters.database as database_adapter
 from smhai_backend.adapters.database import (
     REQUIRED_DATABASE_REVISION,
+    REQUIRED_SCHOOL_TENANT_DATABASE_REVISION,
     MySqlBackendAdapter,
     _create_data_protection_provider,
 )
@@ -115,6 +116,14 @@ def _adapter(revision_rows: list[str] | Exception, profile: str) -> Any:
     return adapter
 
 
+def _required_revision(profile: str) -> str:
+    return (
+        REQUIRED_SCHOOL_TENANT_DATABASE_REVISION
+        if profile == "school_tenant"
+        else REQUIRED_DATABASE_REVISION
+    )
+
+
 def _database_layer_stub(**attributes: object) -> ModuleType:
     module = ModuleType("database_layer")
     for name, value in attributes.items():
@@ -124,7 +133,7 @@ def _database_layer_stub(**attributes: object) -> ModuleType:
 
 @pytest.mark.parametrize("profile", ["legacy_demo", "school_tenant"])
 async def test_start_requires_exact_schema_revision_before_fixture_bootstrap(profile: str):
-    adapter = _adapter([REQUIRED_DATABASE_REVISION], profile)
+    adapter = _adapter([_required_revision(profile)], profile)
     bootstraps: list[bool] = []
 
     async def ensure_fixtures() -> None:
@@ -161,9 +170,35 @@ async def test_start_rejects_missing_or_mismatched_revision_before_bootstrap(row
         await adapter.start()
 
     message = str(caught.value)
-    assert REQUIRED_DATABASE_REVISION in message
+    assert _required_revision(profile) in message
     assert "does not perform migrations" in message
     assert "DB_ERROR_SENTINEL" not in message
+    assert bootstraps == []
+    assert adapter._started is False
+    assert adapter.engine.dispose_count == 1
+
+
+@pytest.mark.parametrize(
+    ("profile", "other_profile_revision"),
+    [
+        ("school_tenant", REQUIRED_DATABASE_REVISION),
+        ("legacy_demo", REQUIRED_SCHOOL_TENANT_DATABASE_REVISION),
+    ],
+)
+async def test_start_rejects_the_other_profile_revision_before_bootstrap(
+    profile: str, other_profile_revision: str
+):
+    adapter = _adapter([other_profile_revision], profile)
+    bootstraps: list[bool] = []
+
+    async def ensure_fixtures() -> None:
+        bootstraps.append(True)
+
+    adapter._ensure_synthetic_fixtures = ensure_fixtures
+    with pytest.raises(RuntimeError) as caught:
+        await adapter.start()
+
+    assert _required_revision(profile) in str(caught.value)
     assert bootstraps == []
     assert adapter._started is False
     assert adapter.engine.dispose_count == 1

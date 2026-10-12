@@ -14,9 +14,10 @@ def make_lifespan(container: BackendContainer):
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         configure_logging(json_logs=container.settings.observability.json_logs)
-        await container.start()
-        app.state.lifecycle_started = True
+        app.state.lifecycle_started = False
         try:
+            await container.start()
+            app.state.lifecycle_started = True
             yield
         finally:
             await container.close()
