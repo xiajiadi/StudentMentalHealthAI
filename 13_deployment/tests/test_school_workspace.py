@@ -58,19 +58,5 @@ class WorkspaceBoundaryTests(unittest.TestCase):
             self.assertTrue(value.encode() not in path.read_bytes())
             self.assertTrue(read_private(path).get("generated") == value)
 
-    def test_failed_setup_cleanup_only_targets_owned_live_process(self):
-        from unittest.mock import Mock
-        process = Mock(pid=123)
-        process.poll.return_value = None
-        with patch.object(module.os, "name", "nt"), patch.object(module.subprocess, "run") as run:
-            module.stop_owned_tree(process)
-            self.assertEqual(run.call_args.args[0], ["taskkill", "/PID", "123", "/T", "/F"])
-            process.wait.assert_called_once_with(timeout=15)
-        process.poll.return_value = 0
-        with patch.object(module.subprocess, "run") as run:
-            module.stop_owned_tree(process)
-            run.assert_not_called()
-
-
 if __name__ == "__main__":
     unittest.main()

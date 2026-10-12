@@ -28,8 +28,12 @@ function failResult() {
 function validPayload(payload) {
   if (!payload || typeof payload !== 'object') return false;
   if (!path.isAbsolute(payload.artifact_dir)) return false;
-  if (payload.frontend_url !== 'http://127.0.0.1:4178') return false;
-  if (payload.backend_url !== 'http://127.0.0.1:8088') return false;
+  const allowedTargets = [
+    ['http://127.0.0.1:4178', 'http://127.0.0.1:8088'],
+    ['http://127.0.0.1:4179', 'http://127.0.0.1:8089'],
+  ];
+  if (!allowedTargets.some(([frontend, backend]) =>
+    payload.frontend_url === frontend && payload.backend_url === backend)) return false;
   for (const slot of ACCOUNT_SLOTS) {
     const account = payload.credentials?.[slot];
     const expected = payload.accounts?.[slot];
