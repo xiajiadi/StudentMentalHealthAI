@@ -33,11 +33,6 @@ class AccountImportRow(SchoolDirectoryRequest):
     display_name: str = Field(min_length=1, max_length=120)
     role: Literal["student", "teacher"]
 
-    @field_validator("login_name")
-    @classmethod
-    def trim_login_name(cls, value: str) -> str:
-        return value.strip()
-
     @field_validator("display_name")
     @classmethod
     def trim_display_name(cls, value: str) -> str:

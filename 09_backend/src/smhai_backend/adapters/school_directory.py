@@ -181,12 +181,14 @@ class SchoolDirectoryPersistenceAdapter:
         async with self._uow() as uow:
             account_id, _role_id = await self._school_actor_role(uow, actor, "admin", now)
             school = await uow.session.scalar(
-                self._select(m.School).where(
+                self._select(m.School)
+                .where(
                     m.School.id == actor.school_id,
                     m.School.school_ref == actor.school_ref,
                     m.School.status == "ACTIVE",
                     m.School.data_origin == self._db_enums.DataOrigin.SYNTHETIC.value,
-                ).with_for_update()
+                )
+                .with_for_update()
             )
             if school is None:
                 raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="school was not found")
@@ -296,9 +298,7 @@ class SchoolDirectoryPersistenceAdapter:
                 class_query = class_query.with_for_update()
             class_id = await uow.session.scalar(class_query)
             if class_id is None:
-                errors.extend(
-                    {"row_no": row.row_no, "code": "CLASS_UNAVAILABLE"} for row in rows
-                )
+                errors.extend({"row_no": row.row_no, "code": "CLASS_UNAVAILABLE"} for row in rows)
         names = [row.login_name.casefold() for row in rows]
         found = set(
             (
@@ -392,7 +392,10 @@ class SchoolDirectoryPersistenceAdapter:
                 )
                 claim = await self._school_idempotency_begin(uow, idempotency)
                 if claim.replayed:
-                    if claim.record.result_public_id is None:
+                    if (
+                        claim.record.result_resource_type != "school_account_batch"
+                        or claim.record.result_public_id is None
+                    ):
                         raise error(
                             ErrorCode.WORKFLOW_CONFLICT,
                             detail="idempotency result is unavailable",
@@ -420,10 +423,7 @@ class SchoolDirectoryPersistenceAdapter:
                     )
                     if class_id is None:
                         raise SchoolDirectoryImportRejected(
-                            [
-                                {"row_no": row.row_no, "code": "CLASS_UNAVAILABLE"}
-                                for row in rows
-                            ]
+                            [{"row_no": row.row_no, "code": "CLASS_UNAVAILABLE"} for row in rows]
                         )
 
                 batch_ref = f"BATCH_{uuid4().hex}"
@@ -527,9 +527,7 @@ class SchoolDirectoryPersistenceAdapter:
         async with self._uow() as uow:
             actor_account_id, admin_role_id = await self._school_actor_role(uow, actor, "admin", at)
             account = await uow.session.scalar(
-                self._select(m.Account)
-                .where(m.Account.public_id == public_id)
-                .with_for_update()
+                self._select(m.Account).where(m.Account.public_id == public_id).with_for_update()
             )
             if account is None:
                 raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="account was not found")
@@ -577,12 +575,24 @@ class SchoolDirectoryPersistenceAdapter:
                     m.MembershipRole.status == "ACTIVE",
                     m.MembershipRole.revoked_at.is_(None),
                     m.MembershipRole.valid_from <= at,
-                    (m.MembershipRole.valid_until.is_(None))
-                    | (m.MembershipRole.valid_until >= at),
+                    (m.MembershipRole.valid_until.is_(None)) | (m.MembershipRole.valid_until >= at),
                 )
                 .with_for_update()
             )
-            if membership_role is None or provision.role_code not in {"student", "teacher"}:
+            role_ids = list(
+                (
+                    await uow.session.scalars(
+                        self._select(m.MembershipRole.id)
+                        .where(m.MembershipRole.membership_id == provision.membership_id)
+                        .with_for_update()
+                    )
+                ).all()
+            )
+            if (
+                membership_role is None
+                or role_ids != [provision.membership_role_id]
+                or provision.role_code not in {"student", "teacher"}
+            ):
                 raise error(ErrorCode.FORBIDDEN, detail="account activation scope is invalid")
             batch = await uow.session.scalar(
                 self._select(m.SchoolAccountBatch)
@@ -668,4 +678,3 @@ class SchoolDirectoryPersistenceAdapter:
                 trace_id=trace_id,
             )
             return {"user_id": user_ref, "status": "ACTIVE"}
-

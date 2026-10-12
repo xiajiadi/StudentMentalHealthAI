@@ -272,6 +272,30 @@
       "evidence": [],
       "commits": [],
       "next_action": "重复安装、备份恢复、操作手册和独立交付QA"
+    },
+    {
+      "attempts": 0,
+      "priority": 96,
+      "depends_on": [
+        "foundation_audit"
+      ],
+      "commits": [],
+      "title": "学校目录名称、合成批量导入和一次激活闭环",
+      "id": "school_directory_increment",
+      "checkpoint_references": [
+        "14_docs/autonomous-delivery/SCHOOL_DIRECTORY.md",
+        "14_docs/autonomous-delivery/CURRENT_STATE.md"
+      ],
+      "status": "READY",
+      "owner": null,
+      "next_action": "Root integrates direct Workers and verifies native school directory flows.",
+      "evidence": [],
+      "acceptance": [
+        "增量迁移保留旧数据与备份",
+        "真实导入重放和失败回滚",
+        "新学生教师激活登录和权限",
+        "浏览器目录配置与密码清空"
+      ]
     }
   ]
 }

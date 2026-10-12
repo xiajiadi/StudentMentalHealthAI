@@ -10,6 +10,7 @@ import type {
   SchoolDirectory,
 } from '@/api/client'
 import { frontendApi } from '@/services/mock-api'
+import { RealApiError } from '@/services/real-api'
 import { parseSchoolAccountCsv, type SchoolAccountCsvErrorCode } from '@/utils/school-account-csv'
 
 const directory = ref<SchoolDirectory | null>(null)
@@ -49,6 +50,7 @@ const pendingAccounts = computed(() => {
     }
   }
   for (const account of importedBatch.value?.accounts ?? []) {
+    if (account.status !== 'PENDING_ACTIVATION') continue
     if (directory.value?.members.some((member) => member.user_id === account.user_id && member.provisioning_status !== 'PENDING_ACTIVATION')) continue
     found.set(account.user_id, { user_id: account.user_id, display_name: account.display_name, role: account.role })
   }
@@ -210,8 +212,19 @@ const importAccounts = async () => {
     importKey.value = ''
     await load()
     notice.value = `服务端已一次性创建 ${result.data.created_count} 个待激活账号。`
-  } catch {
-    errorMessage.value = '导入结果尚未确认。可重试以复用同一请求编号；服务端会按整批幂等处理。'
+  } catch (error) {
+    const rejectedPreview = error instanceof RealApiError
+      && error.code === 'SCHOOL_ACCOUNT_IMPORT_REJECTED'
+      ? error.schoolAccountPreview
+      : null
+    if (rejectedPreview) {
+      preview.value = rejectedPreview
+      previewErrors.value = rejectedPreview.errors
+      importKey.value = ''
+      errorMessage.value = '服务端在导入时检测到数据已变化。请重新预览后再导入。'
+    } else {
+      errorMessage.value = '导入结果尚未确认。可重试以复用同一请求编号；服务端会按整批幂等处理。'
+    }
   } finally {
     pending.value = ''
   }
@@ -219,6 +232,12 @@ const importAccounts = async () => {
 
 const chooseActivation = (userId: string) => {
   activationUserId.value = userId
+  newPassword.value = ''
+  errorMessage.value = ''
+}
+
+const cancelActivation = () => {
+  activationUserId.value = ''
   newPassword.value = ''
   errorMessage.value = ''
 }
@@ -289,9 +308,9 @@ onBeforeUnmount(() => {
       <AppCard class="directory-panel directory-panel--wide">
         <div class="directory-panel__heading"><h3>同校账号名称</h3><span>{{ directory.members.length }} 个账号</span></div>
         <div v-if="!directory.members.length" class="directory-empty">当前学校没有账号。</div>
-        <div v-for="member in directory.members" :key="member.user_id" class="directory-name-row">
-          <label :for="`member-name-${member.user_id}`">{{ roleLabel(member.role) }} · {{ shortRef(member.user_id) }}</label>
-          <input :id="`member-name-${member.user_id}`" v-model="memberNames[member.user_id]" maxlength="120" autocomplete="off">
+        <div v-for="member in directory.members" :key="`${member.user_id}:${member.role}`" class="directory-name-row">
+          <label :for="`member-name-${member.user_id}-${member.role}`">{{ roleLabel(member.role) }} · {{ shortRef(member.user_id) }}</label>
+          <input :id="`member-name-${member.user_id}-${member.role}`" v-model="memberNames[member.user_id]" maxlength="120" autocomplete="off">
           <AppButton variant="secondary" size="sm" :disabled="Boolean(pending)" :loading="pending === `name-member-${member.user_id}`" @click="saveName('member', member.user_id)">保存</AppButton>
         </div>
       </AppCard>
@@ -326,9 +345,10 @@ onBeforeUnmount(() => {
         </div>
         <form v-if="activationUserId" class="directory-activation" @submit.prevent="activateAccount">
           <label for="school-account-new-password">新登录密码</label>
-          <input id="school-account-new-password" v-model="newPassword" type="password" autocomplete="off" required>
+          <input id="school-account-new-password" v-model="newPassword" type="password" autocomplete="new-password" required>
           <p>密码只发送给服务端验证并设置，不会显示在账号列表中。</p>
           <AppButton type="submit" :disabled="Boolean(pending) || !newPassword" :loading="pending.startsWith('activate-')">激活账号</AppButton>
+          <AppButton type="button" variant="secondary" :disabled="Boolean(pending)" @click="cancelActivation">取消</AppButton>
         </form>
       </AppCard>
     </div>
@@ -361,7 +381,7 @@ onBeforeUnmount(() => {
 .directory-account-row > div { display: grid; gap: 3px; min-width: 0; }
 .directory-account-row strong { color: var(--color-text-primary); font-size: 12px; }
 .directory-account-row span { color: var(--color-text-muted); font-size: 10px; }
-.directory-activation { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.5fr) auto; align-items: center; gap: 9px; padding-top: 11px; border-top: 1px solid var(--color-border); }
+.directory-activation { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.5fr) auto auto; align-items: center; gap: 9px; padding-top: 11px; border-top: 1px solid var(--color-border); }
 .directory-activation p { grid-column: 1 / -1; }
 @media(max-width:700px) { .school-directory__grid { grid-template-columns: 1fr; }.directory-panel--wide { grid-column: auto; }.directory-name-row { grid-template-columns: minmax(0,1fr) auto; }.directory-name-row label { grid-column: 1 / -1; }.directory-activation { grid-template-columns: 1fr; }.directory-activation p { grid-column: auto; } }
 </style>

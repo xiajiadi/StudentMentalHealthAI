@@ -121,14 +121,32 @@ describe('学校测评任务页面', () => {
   it('学校目录按当前同校服务端数据编辑学校、班级和人员显示名称', async () => {
     const wrapper = mount(AdminSchoolDirectory)
     await flushPromises()
-    expect((wrapper.get('#school-display-name').element as HTMLInputElement).value).toBe('合成学校')
-    expect((wrapper.get(`#class-name-${task.class_ref}`).element as HTMLInputElement).value).toBe('合成一班')
-    expect((wrapper.get('#member-name-USER_student').element as HTMLInputElement).value).toBe('合成学生')
+    expect((wrapper.get('#school-display-name').element as { value: string }).value).toBe('合成学校')
+    expect((wrapper.get(`#class-name-${task.class_ref}`).element as { value: string }).value).toBe('合成一班')
+    expect((wrapper.get('#member-name-USER_student-student').element as { value: string }).value).toBe('合成学生')
     await wrapper.get('#school-display-name').setValue('更新后的合成学校')
     await wrapper.get('#school-display-name + .app-button').trigger('click')
     await flushPromises()
     expect(api.updateSchoolDisplayName).toHaveBeenCalledWith('更新后的合成学校')
     expect(api.getSchoolAdminDirectory).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+
+  it('同一账号的多个角色使用不同输入ID并共享成员名称', async () => {
+    api.getSchoolAdminDirectory.mockResolvedValue(envelope({
+      school: { school_ref: 'SCHOOL_synthetic', display_name: '合成学校' },
+      classes: [],
+      members: ['student', 'teacher'].map((role) => ({
+        user_id: 'USER_multi', display_name: '合成成员', role,
+        account_status: 'ACTIVE', provisioning_status: null,
+      })),
+    }))
+    const wrapper = mount(AdminSchoolDirectory)
+    await flushPromises()
+    await wrapper.get('#member-name-USER_multi-student').setValue('合成新名称')
+    expect((wrapper.get('#member-name-USER_multi-teacher').element as { value: string }).value).toBe('合成新名称')
+    expect(wrapper.findAll('[id="member-name-USER_multi-student"]')).toHaveLength(1)
+    expect(wrapper.findAll('[id="member-name-USER_multi-teacher"]')).toHaveLength(1)
     wrapper.unmount()
   })
 
@@ -143,9 +161,9 @@ describe('学校测评任务页面', () => {
     const wrapper = mount(AdminSchoolDirectory)
     await flushPromises()
     const csv = 'login_name,display_name,role\nSYNTHETIC_student1,新合成学生,student\nSYNTHETIC_teacher1,新合成教师,teacher'
-    const file = new File([csv], 'synthetic-accounts.csv', { type: 'text/csv' })
-    Object.defineProperty(file, 'arrayBuffer', { value: async () => new TextEncoder().encode(csv).buffer })
-    const input = wrapper.get('#school-account-csv').element as HTMLInputElement
+    const file = new globalThis.File([csv], 'synthetic-accounts.csv', { type: 'text/csv' })
+    Object.defineProperty(file, 'arrayBuffer', { value: async () => new globalThis.TextEncoder().encode(csv).buffer })
+    const input = wrapper.get('#school-account-csv').element as { files?: ArrayLike<globalThis.File> }
     Object.defineProperty(input, 'files', { configurable: true, value: [file] })
     await wrapper.get('#school-account-csv').trigger('change')
     await flushPromises()
@@ -174,6 +192,42 @@ describe('学校测评任务页面', () => {
     expect(api.activateSchoolAccount).toHaveBeenCalledWith('USER_new_student', 'Synthetic-Test-Password-42!')
     expect(wrapper.find('#school-account-new-password').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('Synthetic-Test-Password-42!')
+    wrapper.unmount()
+  })
+
+  it('激活失败后清除密码并要求重新输入；取消也会清除输入', async () => {
+    api.getSchoolAdminDirectory.mockResolvedValue(envelope({
+      school: { school_ref: 'SCHOOL_synthetic', display_name: '合成学校' },
+      classes: [],
+      members: [{ user_id: 'USER_pending', display_name: '待激活学生', role: 'student', account_status: 'SUSPENDED', provisioning_status: 'PENDING_ACTIVATION' }],
+    }))
+    api.activateSchoolAccount.mockRejectedValueOnce(new Error('synthetic validation failure'))
+    const wrapper = mount(AdminSchoolDirectory)
+    await flushPromises()
+    await wrapper.get('.directory-account-row .app-button').trigger('click')
+    const passwordInput = wrapper.get('#school-account-new-password')
+    expect(passwordInput.attributes('autocomplete')).toBe('new-password')
+    await passwordInput.setValue('Synthetic-Only-Passphrase-123!')
+    await wrapper.get('.directory-activation').trigger('submit')
+    await flushPromises()
+    expect(wrapper.text()).toContain('账号激活未完成')
+    expect((wrapper.get('#school-account-new-password').element as { value: string }).value).toBe('')
+    expect(wrapper.text()).not.toContain('Synthetic-Only-Passphrase-123!')
+
+    await wrapper.get('#school-account-new-password').setValue('Another-Synthetic-Passphrase-456!')
+    await wrapper.get('.directory-activation button[type="button"]').trigger('click')
+    expect(wrapper.find('#school-account-new-password').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Another-Synthetic-Passphrase-456!')
+    wrapper.unmount()
+  })
+
+  it('目录接口失败时显示服务错误且不显示演示目录数据', async () => {
+    api.getSchoolAdminDirectory.mockRejectedValueOnce(new Error('synthetic network failure'))
+    const wrapper = mount(AdminSchoolDirectory)
+    await flushPromises()
+    expect(wrapper.text()).toContain('暂时无法读取当前学校目录')
+    expect(wrapper.text()).not.toContain('合成学校')
+    expect(wrapper.find('#school-account-csv').exists()).toBe(false)
     wrapper.unmount()
   })
 

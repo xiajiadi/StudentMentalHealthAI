@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import get_args
 
 import pytest
 from pydantic import SecretStr, ValidationError
@@ -13,7 +14,7 @@ from smhai_backend.adapters.database import (
 from smhai_backend.app_factory import create_app
 from smhai_backend.core.config import BackendSettings
 from smhai_backend.domains.models import Actor, BackendRole
-from smhai_backend.domains.school_directory.router import _batch_idempotency
+from smhai_backend.domains.school_directory.router import _batch_idempotency, _import_responses
 from smhai_backend.domains.school_directory.router import router as school_directory_router
 from smhai_backend.domains.school_directory.schemas import (
     AccountActivationRequest,
@@ -61,6 +62,21 @@ def test_display_name_is_trimmed_and_bounded():
         DisplayNameRequest(display_name="  ")
     with pytest.raises(ValidationError):
         DisplayNameRequest(display_name="x" * 121)
+
+
+def test_module_local_import_documents_both_rejection_forms():
+    from smhai_backend.core.api_models import ApiEnvelope
+    from smhai_backend.core.errors import ProblemDetails
+    from smhai_backend.domains.school_directory.schemas import AccountImportPreviewDto
+
+    assert set(get_args(_import_responses()[409]["model"])) == {
+        ApiEnvelope[AccountImportPreviewDto],
+        ProblemDetails,
+    }
+    route = next(
+        item for item in school_directory_router.routes if item.path.endswith("/accounts/import")
+    )
+    assert route.status_code == 201
 
 
 def test_import_dto_rejects_password_and_unknown_columns():
@@ -117,6 +133,22 @@ def test_preview_errors_do_not_echo_login_names_or_display_names():
     ]
     assert "invalid-private-value" not in repr(errors)
     assert "synthetic-name-not-to-echo" not in repr(errors)
+
+
+def test_import_login_names_are_validated_without_silent_whitespace_normalization():
+    payload = batch_payload(
+        rows=[
+            {
+                "row_no": 1,
+                "login_name": " SYNTHETIC_STUDENT_001 ",
+                "display_name": "合成学生",
+                "role": "student",
+            }
+        ]
+    )
+
+    assert payload.rows[0].login_name == " SYNTHETIC_STUDENT_001 "
+    assert validate_import_rows(payload.rows) == [{"row_no": 1, "code": "INVALID_LOGIN_NAME"}]
 
 
 def test_activation_secret_is_masked_and_strength_checked():

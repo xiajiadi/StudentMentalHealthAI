@@ -183,6 +183,39 @@ def test_wrong_database_rejected_before_content_read():
     assert len(connection.sql) == 1
 
 
+@pytest.mark.parametrize("revision", ["20261011_0005", "20261012_0006"])
+def test_snapshot_accepts_each_explicit_supported_revision(revision):
+    class RevisionConnection(WrongTargetConnection):
+        def fetchone(self):
+            if self.sql[-1].startswith("SELECT DATABASE()"):
+                return ("smhai_school_demo", 3308, "REPEATABLE-READ")
+            return (revision,)
+
+        def fetchall(self):
+            return []
+
+    connection = RevisionConnection()
+    result = school_backup.snapshot(connection, {
+        "database": "smhai_school_demo", "port": 3308, "workspace_id": "synthetic-source",
+    })
+    assert result["revision"] == revision
+    assert connection.rolled_back
+
+
+def test_snapshot_rejects_unapproved_revision_before_table_read():
+    class FutureConnection(WrongTargetConnection):
+        def fetchone(self):
+            if self.sql[-1].startswith("SELECT DATABASE()"):
+                return ("smhai_school_demo", 3308, "REPEATABLE-READ")
+            return ("unapproved_head",)
+
+    connection = FutureConnection()
+    with pytest.raises(ValueError, match="Unsupported backup schema revision"):
+        school_backup.snapshot(connection, {"database": "smhai_school_demo", "port": 3308})
+    assert connection.rolled_back
+    assert not any("information_schema" in sql for sql in connection.sql)
+
+
 def test_backup_uses_fake_runtime_and_sealer_and_reports_only_safe_metadata(tmp_path, monkeypatch):
     workspace = tmp_path / "synthetic-workspace"
     workspace.mkdir()

@@ -221,7 +221,7 @@ def snapshot(connection, marker: dict) -> dict:
             cursor.execute("START TRANSACTION WITH CONSISTENT SNAPSHOT")
             cursor.execute("SELECT version_num FROM database_alembic_version")
             revision = cursor.fetchone()[0]
-            if revision != SUPPORTED_REVISION:
+            if revision not in SUPPORTED_BACKUP_REVISIONS:
                 raise ValueError("Unsupported backup schema revision")
             cursor.execute(
                 "SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES "

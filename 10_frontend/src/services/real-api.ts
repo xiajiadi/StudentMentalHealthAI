@@ -63,6 +63,7 @@ export class RealApiError extends Error {
     public readonly code: string,
     message: string,
     public readonly retryable = false,
+    public readonly schoolAccountPreview: SchoolAccountPreview | null = null,
   ) {
     super(message)
     this.name = 'RealApiError'
@@ -182,22 +183,39 @@ const mapSchoolDirectory = (value: unknown): SchoolDirectory => {
     school_ref: requiredString(value.school, 'school_ref'),
     display_name: nullableDisplayName(value.school.display_name),
   }
+  const classRefs = new Set<string>()
   const classes = value.classes.map((item) => {
     const allowed = new Set(['class_ref', 'status', 'active_student_count', 'active_teacher_count', 'display_name'])
     if (!isRecord(item) || Object.keys(item).some((key) => !allowed.has(key))) {
       throw new RealApiError('API_INVALID_RESPONSE', '学校目录班级包含不支持的信息。')
     }
     if (!Object.hasOwn(item, 'display_name')) throw new RealApiError('API_INVALID_RESPONSE', '学校目录班级名称缺失。')
-    return mapSchoolClass(item)
+    const mapped = mapSchoolClass(item)
+    if (classRefs.has(mapped.class_ref)) {
+      throw new RealApiError('API_INVALID_RESPONSE', '学校目录包含重复班级。')
+    }
+    classRefs.add(mapped.class_ref)
+    return mapped
   })
+  const memberKeys = new Set<string>()
   const members = value.members.map((item) => {
     const allowed = new Set(['user_id', 'display_name', 'role', 'account_status', 'provisioning_status'])
     if (!isRecord(item) || Object.keys(item).some((key) => !allowed.has(key))
       || (item.role !== 'student' && item.role !== 'teacher')) {
       throw new RealApiError('API_INVALID_RESPONSE', '学校目录人员包含不支持的信息。')
     }
+    const userId = requiredString(item, 'user_id')
+    const memberKey = JSON.stringify([userId, item.role])
+    if (memberKeys.has(memberKey)) throw new RealApiError('API_INVALID_RESPONSE', '学校目录包含重复账号角色。')
+    memberKeys.add(memberKey)
+    if (!['ACTIVE', 'SUSPENDED', 'DISABLED'].includes(String(item.account_status))) {
+      throw new RealApiError('API_INVALID_RESPONSE', '学校目录账号状态无法识别。')
+    }
+    if (item.provisioning_status !== null && item.provisioning_status !== 'PENDING_ACTIVATION' && item.provisioning_status !== 'ACTIVE') {
+      throw new RealApiError('API_INVALID_RESPONSE', '学校目录账号状态无法识别。')
+    }
     return {
-      user_id: requiredString(item, 'user_id'),
+      user_id: userId,
       display_name: nullableDisplayName(item.display_name),
       role: item.role,
       account_status: requiredString(item, 'account_status'),
@@ -214,6 +232,7 @@ const mapSchoolAccountPreview = (value: unknown): SchoolAccountPreview => {
   }
   const rowCount = requiredCount(value, 'row_count')
   if (rowCount > 100) throw new RealApiError('API_INVALID_RESPONSE', '账号预览格式无法识别。')
+  const errorKeys = new Set<string>()
   const errors = value.errors.map((item) => {
     const allowed = new Set(['row_no', 'code'])
     if (!isRecord(item) || Object.keys(item).some((key) => !allowed.has(key))
@@ -221,8 +240,16 @@ const mapSchoolAccountPreview = (value: unknown): SchoolAccountPreview => {
       || typeof item.code !== 'string' || !/^[A-Z0-9_]{1,64}$/.test(item.code)) {
       throw new RealApiError('API_INVALID_RESPONSE', '账号预览包含不支持的信息。')
     }
+    const errorKey = JSON.stringify([item.row_no, item.code])
+    if (errorKeys.has(errorKey)) {
+      throw new RealApiError('API_INVALID_RESPONSE', '账号预览包含不支持的信息。')
+    }
+    errorKeys.add(errorKey)
     return { row_no: item.row_no as number, code: item.code }
   })
+  if (value.valid !== (errors.length === 0)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '账号预览状态无法识别。')
+  }
   return { valid: value.valid, row_count: rowCount, errors }
 }
 
@@ -231,19 +258,25 @@ const mapSchoolAccountBatch = (value: unknown): SchoolAccountBatch => {
   if (!isRecord(value) || Object.keys(value).some((key) => !allowed.has(key)) || !Array.isArray(value.accounts)) {
     throw new RealApiError('API_INVALID_RESPONSE', '账号批次格式无法识别。')
   }
+  const rowNumbers = new Set<number>()
   const accounts = value.accounts.map((item) => {
     const accountKeys = new Set(['row_no', 'user_id', 'display_name', 'role', 'status'])
     if (!isRecord(item) || Object.keys(item).some((key) => !accountKeys.has(key))
       || !Number.isInteger(item.row_no) || (item.row_no as number) < 1
-      || (item.role !== 'student' && item.role !== 'teacher') || item.status !== 'PENDING_ACTIVATION') {
+      || (item.role !== 'student' && item.role !== 'teacher')
+      || (item.status !== 'PENDING_ACTIVATION' && item.status !== 'ACTIVE')) {
       throw new RealApiError('API_INVALID_RESPONSE', '账号批次包含不支持的信息。')
     }
+    if (rowNumbers.has(item.row_no as number) || typeof item.display_name !== 'string' || !item.display_name.trim() || item.display_name.length > 120) {
+      throw new RealApiError('API_INVALID_RESPONSE', '账号批次包含不支持的信息。')
+    }
+    rowNumbers.add(item.row_no as number)
     return {
       row_no: item.row_no as number,
       user_id: requiredString(item, 'user_id'),
       display_name: requiredString(item, 'display_name'),
       role: item.role,
-      status: 'PENDING_ACTIVATION' as const,
+      status: item.status,
     }
   })
   const createdCount = requiredCount(value, 'created_count')
@@ -959,12 +992,41 @@ export class RealApiProvider implements FrontendApi {
     rows: SchoolAccountImportRow[],
     idempotencyKey: string,
   ): Promise<ApiEnvelope<SchoolAccountBatch>> {
-    const response = await this.schoolWrite(
-      '/api/v1/school/admin/accounts/import',
-      { class_ref: classRef, rows },
-      'account-import',
-      idempotencyKey,
-    )
+    await this.ensureCsrfToken()
+    const raw = await apiClient.request({
+      method: 'POST',
+      url: '/api/v1/school/admin/accounts/import',
+      body: { class_ref: classRef, rows },
+      parseAs: 'json',
+      headers: {
+        'Content-Type': 'application/json',
+        ...mutationHeaders(this.csrfToken, idempotencyKey),
+      },
+    })
+    if (isRecord(raw) && isRecord(raw.response) && raw.response.status === 409) {
+      const body = raw.error
+      const envelope = isRecord(body) && typeof body.request_id === 'string' && isRecord(body.data)
+        ? body
+        : isRecord(body) && isRecord(body.data) && typeof body.data.request_id === 'string' && isRecord(body.data.data)
+          ? body.data
+          : null
+      if (envelope) {
+        try {
+          const preview = mapSchoolAccountPreview(envelope.data)
+          if (!preview.valid && preview.errors.length > 0) {
+            throw new RealApiError(
+              'SCHOOL_ACCOUNT_IMPORT_REJECTED',
+              '导入前服务端发现数据已变化，请重新预览。',
+              false,
+              preview,
+            )
+          }
+        } catch (error) {
+          if (error instanceof RealApiError && error.code === 'SCHOOL_ACCOUNT_IMPORT_REJECTED') throw error
+        }
+      }
+    }
+    const response = await unwrap<unknown>(async () => raw)
     return { ...response, data: mapSchoolAccountBatch(response.data) }
   }
 

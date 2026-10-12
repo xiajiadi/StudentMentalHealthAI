@@ -52,6 +52,117 @@ describe('RealApiProvider school directory', () => {
     await expect(provider.getSchoolAdminDirectory()).rejects.toMatchObject({ code: 'API_INVALID_RESPONSE' })
   })
 
+  it('allows one account to retain distinct school roles but rejects duplicate role rows and unknown states', async () => {
+    const member = { user_id: 'USER_1', display_name: '合成学生', role: 'student', account_status: 'SUSPENDED', provisioning_status: 'PENDING_ACTIVATION' }
+    const { provider } = await createProvider(() => envelope({
+      school: { school_ref: 'SCHOOL_1', display_name: '合成学校' },
+      classes: [],
+      members: [member, member],
+    }))
+    await expect(provider.getSchoolAdminDirectory()).rejects.toMatchObject({ code: 'API_INVALID_RESPONSE' })
+
+    const { provider: multiRoleProvider } = await createProvider(() => envelope({
+      school: { school_ref: 'SCHOOL_1', display_name: '合成学校' },
+      classes: [],
+      members: [member, { ...member, role: 'teacher' }],
+    }))
+    await expect(multiRoleProvider.getSchoolAdminDirectory()).resolves.toMatchObject({
+      data: { members: [{ role: 'student' }, { role: 'teacher' }] },
+    })
+
+    const { provider: invalidStatusProvider } = await createProvider(() => envelope({
+      school: { school_ref: 'SCHOOL_1', display_name: '合成学校' },
+      classes: [],
+      members: [{ ...member, provisioning_status: 'RESET_REQUIRED' }],
+    }))
+    await expect(invalidStatusProvider.getSchoolAdminDirectory()).rejects.toMatchObject({ code: 'API_INVALID_RESPONSE' })
+  })
+
+  it('accepts several distinct preview errors per positive row number and rejects duplicate row-code pairs', async () => {
+    const { provider: previewProvider } = await createProvider(() => envelope({ valid: false, row_count: 1, errors: [
+      { row_no: 1, code: 'INVALID_LOGIN_NAME' },
+      { row_no: 1, code: 'DUPLICATE_LOGIN_NAME' },
+      { row_no: 9, code: 'LOGIN_UNAVAILABLE' },
+    ] }))
+    await expect(previewProvider.previewSchoolAccountImport(null, [
+      { row_no: 1, login_name: 'SYNTHETIC_A', display_name: '合成学生', role: 'student' },
+    ])).resolves.toMatchObject({
+      data: { valid: false, row_count: 1, errors: [
+        { row_no: 1, code: 'INVALID_LOGIN_NAME' },
+        { row_no: 1, code: 'DUPLICATE_LOGIN_NAME' },
+        { row_no: 9, code: 'LOGIN_UNAVAILABLE' },
+      ] },
+    })
+
+    const { provider: duplicateErrorProvider } = await createProvider(() => envelope({ valid: false, row_count: 1, errors: [
+      { row_no: 1, code: 'LOGIN_UNAVAILABLE' },
+      { row_no: 1, code: 'LOGIN_UNAVAILABLE' },
+    ] }))
+    await expect(duplicateErrorProvider.previewSchoolAccountImport(null, [
+      { row_no: 1, login_name: 'SYNTHETIC_A', display_name: '合成学生', role: 'student' },
+    ])).rejects.toMatchObject({ code: 'API_INVALID_RESPONSE' })
+
+  })
+
+  it('rejects batch responses with repeated row numbers', async () => {
+    const { provider: batchProvider } = await createProvider(() => envelope({
+      batch_ref: 'BATCH_1', created_count: 2,
+      accounts: [
+        { row_no: 1, user_id: 'USER_1', display_name: '合成学生', role: 'student', status: 'PENDING_ACTIVATION' },
+        { row_no: 1, user_id: 'USER_2', display_name: '合成教师', role: 'teacher', status: 'PENDING_ACTIVATION' },
+      ],
+    }))
+    await expect(batchProvider.getSchoolAccountBatch('BATCH_1')).rejects.toMatchObject({ code: 'API_INVALID_RESPONSE' })
+  })
+
+  it('classifies only an enveloped invalid preview on import HTTP 409 as a definite rejection', async () => {
+    const rows = [{ row_no: 1, login_name: 'SYNTHETIC_A', display_name: '合成学生', role: 'student' as const }]
+    const { provider: previewConflictProvider, fetchMock: previewConflictFetch } = await createProvider((request) => {
+      const url = new URLConstructor(request.url)
+      if (url.pathname === '/api/v1/auth/csrf') return envelope({ csrf_token: 'csrf-synthetic' })
+      if (url.pathname.endsWith('/import')) {
+        return envelope({ valid: false, row_count: 1, errors: [
+          { row_no: 1, code: 'LOGIN_UNAVAILABLE' },
+          { row_no: 1, code: 'CLASS_UNAVAILABLE' },
+        ] }, 409)
+      }
+      throw new Error('unexpected route')
+    })
+    await expect(previewConflictProvider.importSchoolAccounts(null, rows, 'import-conflict-key')).rejects.toMatchObject({
+      code: 'SCHOOL_ACCOUNT_IMPORT_REJECTED',
+      schoolAccountPreview: { valid: false, row_count: 1, errors: [
+        { row_no: 1, code: 'LOGIN_UNAVAILABLE' },
+        { row_no: 1, code: 'CLASS_UNAVAILABLE' },
+      ] },
+    })
+    const importRequest = previewConflictFetch.mock.calls.map(([request]) => request)
+      .find((request) => new URLConstructor(request.url).pathname.endsWith('/import'))!
+    expect(importRequest.headers.get('Idempotency-Key')).toBe('import-conflict-key')
+
+    const { provider: genericConflictProvider } = await createProvider((request) => {
+      const url = new URLConstructor(request.url)
+      if (url.pathname === '/api/v1/auth/csrf') return envelope({ csrf_token: 'csrf-synthetic' })
+      if (url.pathname.endsWith('/import')) {
+        return new ResponseConstructor(JSON.stringify({
+          type: 'about:blank', title: 'Conflict', status: 409, detail: 'conflict',
+        }), { status: 409, headers: { 'Content-Type': 'application/problem+json' } })
+      }
+      throw new Error('unexpected route')
+    })
+    await expect(genericConflictProvider.importSchoolAccounts(null, rows, 'import-conflict-key'))
+      .rejects.toMatchObject({ code: 'API_ERROR', schoolAccountPreview: null })
+  })
+
+  it('maps activated accounts returned by a batch lookup without treating them as pending', async () => {
+    const { provider } = await createProvider(() => envelope({
+      batch_ref: 'BATCH_1', created_count: 1,
+      accounts: [{ row_no: 1, user_id: 'USER_1', display_name: '合成学生', role: 'student', status: 'ACTIVE' }],
+    }))
+    await expect(provider.getSchoolAccountBatch('BATCH_1')).resolves.toMatchObject({
+      data: { accounts: [{ user_id: 'USER_1', status: 'ACTIVE' }] },
+    })
+  })
+
   it('uses fixed CSRF write routes and reuses the caller idempotency key for whole-batch import', async () => {
     const batch = {
       batch_ref: 'BATCH_1', created_count: 1,

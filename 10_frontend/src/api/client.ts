@@ -133,7 +133,7 @@ export interface SchoolProvisionedAccount {
   user_id: string
   display_name: string
   role: SchoolMemberRole
-  status: 'PENDING_ACTIVATION'
+  status: 'PENDING_ACTIVATION' | 'ACTIVE'
 }
 
 export interface SchoolAccountBatch {

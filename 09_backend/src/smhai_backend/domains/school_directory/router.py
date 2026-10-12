@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from smhai_backend.core.api_models import ApiEnvelope
-from smhai_backend.core.errors import ErrorCode, problem_responses
+from smhai_backend.core.errors import ErrorCode, ProblemDetails, problem_responses
 from smhai_backend.core.idempotency import fingerprint, request_key
 from smhai_backend.core.request_context import current_request_context
 from smhai_backend.domains.auth.dependencies import (
@@ -47,6 +47,22 @@ def _responses(*codes):
     return problem_responses(*codes)
 
 
+def _import_responses():
+    responses = _responses(
+        ErrorCode.AUTH_SESSION_EXPIRED,
+        ErrorCode.FORBIDDEN,
+        ErrorCode.CSRF_FAILED,
+        ErrorCode.VALIDATION_FAILED,
+        ErrorCode.WORKFLOW_CONFLICT,
+        ErrorCode.RESOURCE_NOT_FOUND,
+    )
+    responses[409] = {
+        "model": ApiEnvelope[AccountImportPreviewDto] | ProblemDetails,
+        "description": "Whole-batch preflight rejection or an idempotency/workflow conflict",
+    }
+    return responses
+
+
 @router.get(
     "/directory",
     response_model=ApiEnvelope[SchoolDirectoryDto],
@@ -77,7 +93,9 @@ async def set_school_name(request: Request, payload: DisplayNameRequest, actor: 
     response_model=ApiEnvelope[dict],
     openapi_extra=CSRF_SECURITY_OPENAPI_EXTRA,
     responses=_responses(
-        ErrorCode.AUTH_SESSION_EXPIRED, ErrorCode.FORBIDDEN, ErrorCode.CSRF_FAILED,
+        ErrorCode.AUTH_SESSION_EXPIRED,
+        ErrorCode.FORBIDDEN,
+        ErrorCode.CSRF_FAILED,
         ErrorCode.RESOURCE_NOT_FOUND,
     ),
 )
@@ -95,7 +113,9 @@ async def set_class_name(
     response_model=ApiEnvelope[dict],
     openapi_extra=CSRF_SECURITY_OPENAPI_EXTRA,
     responses=_responses(
-        ErrorCode.AUTH_SESSION_EXPIRED, ErrorCode.FORBIDDEN, ErrorCode.CSRF_FAILED,
+        ErrorCode.AUTH_SESSION_EXPIRED,
+        ErrorCode.FORBIDDEN,
+        ErrorCode.CSRF_FAILED,
         ErrorCode.RESOURCE_NOT_FOUND,
     ),
 )
@@ -136,12 +156,9 @@ async def preview_accounts(request: Request, payload: AccountBatchRequest, actor
 @router.post(
     "/accounts/import",
     response_model=ApiEnvelope[AccountBatchDto],
+    status_code=201,
     openapi_extra=CSRF_SECURITY_OPENAPI_EXTRA,
-    responses=_responses(
-        ErrorCode.AUTH_SESSION_EXPIRED, ErrorCode.FORBIDDEN, ErrorCode.CSRF_FAILED,
-        ErrorCode.VALIDATION_FAILED, ErrorCode.WORKFLOW_CONFLICT,
-        ErrorCode.RESOURCE_NOT_FOUND,
-    ),
+    responses=_import_responses(),
 )
 async def import_accounts(request: Request, payload: AccountBatchRequest, actor: CsrfActor):
     key = request_key(request)
@@ -179,8 +196,11 @@ async def get_account_batch(request: Request, batch_ref: str, actor: CurrentActo
     response_model=ApiEnvelope[dict],
     openapi_extra=CSRF_SECURITY_OPENAPI_EXTRA,
     responses=_responses(
-        ErrorCode.AUTH_SESSION_EXPIRED, ErrorCode.FORBIDDEN, ErrorCode.CSRF_FAILED,
-        ErrorCode.RESOURCE_NOT_FOUND, ErrorCode.WORKFLOW_CONFLICT,
+        ErrorCode.AUTH_SESSION_EXPIRED,
+        ErrorCode.FORBIDDEN,
+        ErrorCode.CSRF_FAILED,
+        ErrorCode.RESOURCE_NOT_FOUND,
+        ErrorCode.WORKFLOW_CONFLICT,
         ErrorCode.VALIDATION_FAILED,
     ),
 )
