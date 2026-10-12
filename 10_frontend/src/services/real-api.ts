@@ -709,6 +709,24 @@ export class RealApiProvider implements FrontendApi {
   private activeSchoolContext: SchoolRoleContext | null = null
   private readonly reviewCases = new Map<string, ReviewCase>()
 
+  async requestSchoolCatManagement<T>(input: {
+    method: 'GET' | 'POST'; path: string; body?: Record<string, unknown>
+  }): Promise<ApiEnvelope<T>> {
+    const base = '/api/v1/school/cat-management'
+    if (!((input.method === 'GET' && input.path === `${base}/catalog`)
+      || (input.method === 'POST' && input.path === `${base}/simulations`))) {
+      throw new RealApiError('API_INVALID_REQUEST', '测评方案请求地址无效。')
+    }
+    if (input.method === 'POST') await this.ensureCsrfToken()
+    return unwrap<T>(() => apiClient.request({
+      method: input.method, url: input.path,
+      ...(input.body ? { body: input.body } : {}),
+      headers: input.method === 'POST'
+        ? { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrfToken! }
+        : {},
+    }))
+  }
+
   async requestProfessionalReview<T>(input: IndependentConversationRequest): Promise<ApiEnvelope<T>> {
     const base = '/api/v1/school/professional-reviews'
     const task = `${base}/tasks/TASK_[A-Za-z0-9][A-Za-z0-9_.-]{0,122}`
@@ -1358,3 +1376,7 @@ export const requestIndependentConversation = <T>(input: IndependentConversation
 
 export const requestProfessionalReview = <T>(input: IndependentConversationRequest): Promise<ApiEnvelope<T>> =>
   realApiProvider.requestProfessionalReview<T>(input)
+
+export const requestSchoolCatManagement = <T>(input: {
+  method: 'GET' | 'POST'; path: string; body?: Record<string, unknown>
+}): Promise<ApiEnvelope<T>> => realApiProvider.requestSchoolCatManagement<T>(input)

@@ -23,6 +23,7 @@ from cat_engine.domain.result import RiskSnapshot
 from cat_engine.domain.session import Session
 from cat_engine.providers.adaptivetesting_provider import AdaptiveTestingProvider
 from cat_engine.service.cat_service import CATService
+from cat_engine.api.management import create_management_router
 
 
 class StartRequest(BaseModel):
@@ -228,6 +229,7 @@ def create_app(*, runtime: CatRuntime | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.cat_runtime = runtime
+    app.include_router(create_management_router(runtime))
 
     @app.get("/health/live", operation_id="catLiveHealth")
     async def health_live() -> dict[str, Any]:
@@ -246,7 +248,10 @@ def create_app(*, runtime: CatRuntime | None = None) -> FastAPI:
         return {
             "service": "cat",
             "transport": "http",
-            "operations": ["start", "state", "submit_response", "complete"],
+            "operations": [
+                "start", "state", "submit_response", "complete",
+                "management_catalog", "management_simulation",
+            ],
             "provider": "adaptivetesting-1.2.1",
             "synthetic_fixture_only": True,
         }

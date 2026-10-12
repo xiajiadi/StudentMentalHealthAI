@@ -33,7 +33,7 @@ const router = createRouter({
     { path: '/teacher/students', name: 'teacher-students', component: () => import('@/views/teacher/TeacherStudentsView.vue'), meta: { roles: ['teacher'], layout: 'workspace' } },
     { path: '/teacher/students/:id', name: 'teacher-student-detail', component: () => import('@/views/teacher/TeacherStudentDetailView.vue'), meta: { roles: ['teacher'], layout: 'workspace' } },
     { path: '/specialist', redirect: '/specialist/overview' },
-    { path: '/specialist/:section(overview|resources|tasks)', name: 'specialist-workspace', component: () => import('@/views/specialist/SpecialistWorkspaceView.vue'), meta: { roles: ['psychological_specialist'], layout: 'workspace' } },
+    { path: '/specialist/:section(overview|resources|tasks|cat)', name: 'specialist-workspace', component: () => import('@/views/specialist/SpecialistWorkspaceView.vue'), meta: { roles: ['psychological_specialist'], layout: 'workspace' } },
     { path: '/admin', redirect: '/admin/overview' },
     { path: '/admin/:section(overview|users|settings)', name: 'admin-workspace', component: () => import('@/views/admin/AdminWorkspaceView.vue'), meta: { roles: ['school_admin'], layout: 'workspace' } },
     { path: '/reviewer', redirect: '/reviewer/queue' },

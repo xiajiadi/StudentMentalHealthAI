@@ -6,6 +6,7 @@ import AppCard from '@/components/app/AppCard.vue'
 import AppPageHeader from '@/components/app/AppPageHeader.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import SpecialistTaskReviews from '@/components/school/SpecialistTaskReviews.vue'
+import SpecialistCatManagement from '@/components/school/SpecialistCatManagement.vue'
 
 const route = useRoute()
 const section = computed(() => String(route.params.section ?? 'overview'))
@@ -13,7 +14,8 @@ const page = computed(() => ({
   overview: { eyebrow: '心理专业工作区', title: '专业支持与协作', intro: '查看专业资料边界与任务工作流入口。涉及个体判断的事项仍需由具备资质的人员依据已确认流程独立处理。' },
   resources: { eyebrow: '专业资料', title: '资料使用边界', intro: '资料审核与使用权限尚未在此工作区接通；当前页面不提供个体化建议或资料发布操作。' },
   tasks: { eyebrow: '工作事项', title: '任务专业复核', intro: '查看已指派任务中的完成记录，并记录任务范围内的工作流状态。处理决定不会发布学生报告。' },
-}[section.value as 'overview' | 'resources' | 'tasks'] ?? { eyebrow: '心理专业工作区', title: '专业支持与协作', intro: '查看当前可用的资料与工作入口。' }))
+  cat: { eyebrow: 'CAT 工程管理', title: '测评方案与模拟', intro: '只读查看当前合成题库和配置，运行固定样本量的工程模拟。结果尚待心理学验证。' },
+}[section.value as 'overview' | 'resources' | 'tasks' | 'cat'] ?? { eyebrow: '心理专业工作区', title: '专业支持与协作', intro: '查看当前可用的资料与工作入口。' }))
 </script>
 
 <template>
@@ -58,7 +60,8 @@ const page = computed(() => ({
       <section class="specialist-resource-note" aria-label="资料审阅提示"><div><span class="specialist-kicker">开始提供资料前</span><h2>先确认来源与适用范围</h2><p>资料需经过相应的权利、内容和角色范围审核后再决定是否接入。工程展示不等于专业批准或可用于真实个案。</p></div><img :src="'/assets/heartbridge/card-specialist-original.png'" alt="" aria-hidden="true"></section>
     </template>
 
-    <SpecialistTaskReviews v-else />
+    <SpecialistTaskReviews v-else-if="section === 'tasks'" />
+    <SpecialistCatManagement v-else-if="section === 'cat'" />
   </main>
 </template>
 

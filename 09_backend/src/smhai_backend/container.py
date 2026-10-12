@@ -16,6 +16,7 @@ from smhai_backend.adapters.memory.repositories import (
     InMemorySessionStore,
     InMemoryUserRepository,
 )
+from smhai_backend.adapters.school_cat_management import SchoolCatManagementPersistenceAdapter
 from smhai_backend.adapters.school_conversations import SchoolConversationsPersistenceAdapter
 from smhai_backend.adapters.school_directory import SchoolDirectoryPersistenceAdapter
 from smhai_backend.adapters.school_professional_reviews import (
@@ -28,6 +29,7 @@ from smhai_backend.domains.assessment.service import AssessmentService
 from smhai_backend.domains.audit import AuditService
 from smhai_backend.domains.auth.service import AuthService
 from smhai_backend.domains.authorization import NativeAuthorizationProvider
+from smhai_backend.domains.cat_management.service import SchoolCatManagementService
 from smhai_backend.domains.conversations.service import IndependentConversationService
 from smhai_backend.domains.professional_reviews.service import SchoolProfessionalReviewService
 from smhai_backend.domains.school_directory.service import SchoolDirectoryService
@@ -35,6 +37,7 @@ from smhai_backend.domains.school_tasks.service import SchoolTaskService
 from smhai_backend.domains.support.service import SupportOrchestrator
 from smhai_backend.domains.teacher.service import TeacherDashboardService
 from smhai_backend.integrations.cat import ContractFakeCatClient, HttpCatClient
+from smhai_backend.integrations.cat_management import HttpCatManagementClient
 from smhai_backend.integrations.independent import IndependentLLMRuntimeClient, IndependentRagClient
 from smhai_backend.integrations.llm import ContractFakeLLMRuntimeClient, HttpLLMRuntimeClient
 from smhai_backend.integrations.rag import ContractFakeRagClient, HttpRagClient
@@ -74,6 +77,8 @@ class BackendContainer:
     independent_conversations: IndependentConversationService | None = None
     independent_rag: IndependentRagClient | None = None
     independent_llm: IndependentLLMRuntimeClient | None = None
+    cat_management: SchoolCatManagementService | None = None
+    cat_management_client: HttpCatManagementClient | None = None
 
     async def start(self) -> None:
         if self.persistence is not None:
@@ -82,7 +87,14 @@ class BackendContainer:
 
     async def close(self) -> None:
         await self.safety.close()
-        for client in (self.cat, self.rag, self.llm, self.independent_rag, self.independent_llm):
+        for client in (
+            self.cat,
+            self.cat_management_client,
+            self.rag,
+            self.llm,
+            self.independent_rag,
+            self.independent_llm,
+        ):
             close = getattr(client, "close", None)
             if close is not None:
                 await maybe_await(close())
@@ -159,6 +171,9 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         audit=audit,
     )
     cat = HttpCatClient(settings.cat) if settings.cat.mode == "http" else ContractFakeCatClient()
+    cat_management_client = (
+        HttpCatManagementClient(settings.cat) if settings.cat.mode == "http" else None
+    )
     rag = HttpRagClient(settings.rag) if settings.rag.mode == "http" else ContractFakeRagClient()
     llm = (
         HttpLLMRuntimeClient(settings.llm)
@@ -200,6 +215,13 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         persistence=SchoolProfessionalReviewPersistenceAdapter(persistence)
         if persistence is not None and settings.identity_profile == "school_tenant"
         else None
+    )
+    cat_management = SchoolCatManagementService(
+        persistence=(
+            SchoolCatManagementPersistenceAdapter(persistence, cat_management_client)
+            if persistence is not None and settings.identity_profile == "school_tenant"
+            else None
+        )
     )
     independent_rag = independent_llm = independent_conversations = None
     if (
@@ -265,6 +287,8 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         school_tasks=school_tasks,
         school_directory=school_directory,
         professional_reviews=professional_reviews,
+        cat_management=cat_management,
+        cat_management_client=cat_management_client,
         independent_conversations=independent_conversations,
         independent_rag=independent_rag,
         independent_llm=independent_llm,

@@ -1,4 +1,4 @@
-import { BookOpenCheck, ClipboardList, FileCheck2, History, LayoutDashboard, Settings2, ShieldCheck, UsersRound } from '@lucide/vue'
+import { Activity, BookOpenCheck, ClipboardList, FileCheck2, History, LayoutDashboard, Settings2, ShieldCheck, UsersRound } from '@lucide/vue'
 import { defineComponent, h } from 'vue'
 import type { Component } from 'vue'
 import type { Role } from '@/types/contracts'
@@ -43,6 +43,7 @@ export const workspaceConfig: Partial<Record<Role, WorkspaceConfig>> = {
   psychological_specialist: { title: 'Counselor Workspace', home: '/specialist/overview', items: [
     { label: '工作概览', to: '/specialist/overview', icon: LayoutDashboard },
     { label: '专业资料', to: '/specialist/resources', icon: BookOpenCheck },
+    { label: 'CAT 管理', to: '/specialist/cat', icon: Activity },
     { label: '工作事项', to: '/specialist/tasks', icon: FileCheck2 },
   ] },
   school_admin: { title: 'Admin Workspace', home: '/admin/overview', items: [

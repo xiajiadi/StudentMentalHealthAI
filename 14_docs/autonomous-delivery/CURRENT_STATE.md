@@ -13,6 +13,19 @@ GPU and process entries below are historical; verify live identities before acti
 
 ## Latest resumed increment
 
+- CAT fixture inspection and real engineering simulation are now connected through
+  the specialist-only gateway. Root CAT37/Backend392/Frontend162 suites passed,
+  Frontend build/scoped lint and shared transport2 checks passed. Native specialist
+  browser14 stages passed (two N100 runs and actual API/DOM/repeat comparison),
+  masked desktop/mobile inspected at browser-qa/20261012T152140Z-3743dd13f7804ddf92f75e6c4a3704c9.
+  Native HTTP role/CSRF/strict-input/busy/N1000 checks passed at
+  logs/cat-management-http-3af9f18e1b52406fb0776dfb563db8f1.json; N1000 took318.593s
+  with live session_count0 before/after. No psychological validity is implied.
+  Current original CAT exec88502/PID45844 and Backend exec87089/PID45564 loaded
+  new source; fresh ownership manifest/listener checks passed. Full school-scoped
+  draft bank/version/plan management remains next, plus publication, grounded
+  university corpus and install/recovery/full-product acceptance work.
+
 - Recovery/transaction milestone afterec92d18: native QA-process-only audit failure injection against original3308 proved both case creation and encrypted decision rollback. Stored projections of case/event/idempotency/audit tables matched exactly before/after the injected failure. Logs/professional-review-rollback-f384355be0484f67947906fefedd081e.json. Initial incomplete Actor reconstruction was refused by the persisted context guard; the corrected harness resolves the actual authenticated account/context through the existing database user mapper. The live Backend was never patched.
 - Current0007 snapshot restored into new isolated targetB D:\Projects\.StudentMentalHealthAI-school-restore-20261012-b, MySQL3310:32 business tables/1371 imported stored-value-verified rows,2 imported sessions revoked,107 encrypted fields readable. Target note API readback/role/tenant/version/revocation passed before and after restart, latest logs/professional-review-restored-api-7e5886e5b1964c66bacefe65e8113aea.json in original external logs. This is not whole-product or cross-user portability approval.
 - Explicit restore-mode resume now binds source/target IDs, paths, datadir, revision, port and protected runtime. Native targetB graceful shutdown/resume STARTED passed; all32 business tables/1444 then-current stored rows exactly matched across the database restart, new guardian identity verified and original3308 guardian untouched. TargetB restart-checkpoint.json contains aggregate evidence. First shutdown with the schema-scoped identity failed; Root used only this new target's sealed initializer root credential for the authorized SHUTDOWN after repeat datadir/port verification. No runtime privilege expansion, reset, reseed or numeric PID kill.

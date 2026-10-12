@@ -1,0 +1,1 @@
+"""Synthetic CAT management gateway."""
