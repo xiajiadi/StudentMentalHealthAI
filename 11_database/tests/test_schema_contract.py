@@ -25,6 +25,9 @@ from database_layer.models import (  # noqa: F401
     SchoolClass,
     SchoolClassStudent,
     SchoolClassTeacher,
+    SchoolProfessionalReviewCase,
+    SchoolProfessionalReviewEvent,
+    SchoolTaskSpecialistAssignment,
     Subject,
     SubjectAccessGrant,
     SupportEvidence,
@@ -39,7 +42,7 @@ from sqlalchemy.schema import CreateTable
 
 
 def test_round1_domain_table_count_and_explicit_mysql_defaults() -> None:
-    assert len(Base.metadata.tables) == 29
+    assert len(Base.metadata.tables) == 32
     assert set(Base.metadata.tables) == {
         "accounts",
         "roles",
@@ -68,6 +71,9 @@ def test_round1_domain_table_count_and_explicit_mysql_defaults() -> None:
         "safety_decisions",
         "review_cases",
         "review_events",
+        "school_task_specialist_assignments",
+        "school_professional_review_cases",
+        "school_professional_review_events",
         "idempotency_records",
         "audit_events",
     }
@@ -90,6 +96,7 @@ def test_sensitive_columns_are_binary_and_raw_secret_columns_absent() -> None:
         "safety_decisions.detail_ciphertext",
         "review_cases.case_note_ciphertext",
         "review_events.note_ciphertext",
+        "school_professional_review_cases.case_note_ciphertext",
     }
     for dotted in encrypted_columns:
         table_name, column_name = dotted.split(".")
@@ -540,6 +547,148 @@ def test_school_task_migration_is_additive_and_data_guarded(monkeypatch) -> None
     migration.downgrade()
     assert all(entry[0] == "guard" for entry in operations[: len(migration._BUSINESS_TABLES) + 1])
     assert any(entry[0] == "drop_table" for entry in operations)
+
+
+def test_school_professional_review_schema_has_task_school_subject_and_assessment_scope():
+    tasks = Base.metadata.tables["measurement_tasks"]
+    enrollments = Base.metadata.tables["task_enrollments"]
+    assessments = Base.metadata.tables["assessment_sessions"]
+    assignments = Base.metadata.tables["school_task_specialist_assignments"]
+    cases = Base.metadata.tables["school_professional_review_cases"]
+    events = Base.metadata.tables["school_professional_review_events"]
+
+    def unique_columns(table):
+        return {
+            tuple(column.name for column in constraint.columns)
+            for constraint in table.constraints
+            if isinstance(constraint, UniqueConstraint)
+        }
+
+    def fk_targets(table, column_names):
+        return next(
+            constraint
+            for constraint in table.constraints
+            if isinstance(constraint, ForeignKeyConstraint)
+            and tuple(element.parent.name for element in constraint.elements) == column_names
+        )
+
+    assert ("id", "school_id") in unique_columns(tasks)
+    assert ("id", "task_id", "school_id", "subject_id") in unique_columns(enrollments)
+    assert ("id", "task_enrollment_id", "subject_id") in unique_columns(assessments)
+    assert ("task_id", "specialist_membership_role_id") in unique_columns(assignments)
+    assert assignments.c.status.type.length == 16
+    assert cases.c.case_note_ciphertext.type.python_type is bytes
+    assert "note" not in cases.c
+    assert "note" not in events.c
+
+    assert tuple(
+        element.target_fullname
+        for element in fk_targets(
+            cases,
+            ("task_enrollment_id", "task_id", "school_id", "subject_id"),
+        ).elements
+    ) == (
+        "task_enrollments.id",
+        "task_enrollments.task_id",
+        "task_enrollments.school_id",
+        "task_enrollments.subject_id",
+    )
+    assert tuple(
+        element.target_fullname
+        for element in fk_targets(
+            cases,
+            ("assessment_session_id", "task_enrollment_id", "subject_id"),
+        ).elements
+    ) == (
+        "assessment_sessions.id",
+        "assessment_sessions.task_enrollment_id",
+        "assessment_sessions.subject_id",
+    )
+    assert tuple(
+        element.target_fullname
+        for element in fk_targets(
+            assignments, ("specialist_membership_role_id", "school_id")
+        ).elements
+    ) == ("membership_roles.id", "membership_roles.school_id")
+    assert tuple(
+        element.target_fullname
+        for element in fk_targets(events, ("actor_membership_role_id", "school_id")).elements
+    ) == ("membership_roles.id", "membership_roles.school_id")
+
+
+def test_school_professional_review_migration_is_additive_and_downgrade_guarded(
+    monkeypatch,
+) -> None:
+    from importlib.util import module_from_spec, spec_from_file_location
+
+    migration_path = (
+        Path(__file__).resolve().parents[1]
+        / "migrations"
+        / "versions"
+        / "20261012_0007_school_professional_reviews.py"
+    )
+    spec = spec_from_file_location("migration_20261012_0007", migration_path)
+    assert spec is not None and spec.loader is not None
+    migration = module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    assert migration.revision == "20261012_0007"
+    assert migration.down_revision == "20261012_0006"
+
+    operations: list[tuple[object, ...]] = []
+
+    class _Connection:
+        def __init__(self, populated_table: str | None = None) -> None:
+            self.populated_table = populated_table
+
+        def execute(self, statement):
+            statement_text = str(statement)
+            operations.append(("guard", statement_text))
+            return type("Result", (), {
+                "scalar_one": lambda _self: int(
+                    self.populated_table is not None and self.populated_table in statement_text
+                )
+            })()
+
+    class _Ops:
+        def __init__(self, populated_table: str | None = None) -> None:
+            self.populated_table = populated_table
+
+        def __getattr__(self, name):
+            if name == "get_bind":
+                return lambda: _Connection(self.populated_table)
+
+            def record(*args, **kwargs):
+                operations.append((name, *args, kwargs))
+
+            return record
+
+    monkeypatch.setattr(migration, "op", _Ops())
+    migration.upgrade()
+    created_tables = [entry[1] for entry in operations if entry[0] == "create_table"]
+    assert created_tables == list(migration._BUSINESS_TABLES)
+    created_uniques = [entry[1] for entry in operations if entry[0] == "create_unique_constraint"]
+    assert created_uniques == [name for _table, name in migration._ADDED_UNIQUES[::-1]]
+
+    for populated_table in migration._BUSINESS_TABLES:
+        operations.clear()
+        monkeypatch.setattr(migration, "op", _Ops(populated_table=populated_table))
+        with pytest.raises(RuntimeError, match="cannot downgrade school professional review"):
+            migration.downgrade()
+        assert operations
+        assert all(entry[0] == "guard" for entry in operations)
+
+    operations.clear()
+    monkeypatch.setattr(migration, "op", _Ops())
+    migration.downgrade()
+    assert all(entry[0] == "guard" for entry in operations[: len(migration._BUSINESS_TABLES)])
+    assert [entry[1] for entry in operations if entry[0] == "drop_table"] == [
+        "school_professional_review_events",
+        "school_professional_review_cases",
+        "school_task_specialist_assignments",
+    ]
+    assert [entry[1] for entry in operations if entry[0] == "drop_constraint"] == [
+        name for _table, name in migration._ADDED_UNIQUES
+    ]
 
 
 def test_school_seed_provenance_migration_is_additive_and_downgrade_guarded(

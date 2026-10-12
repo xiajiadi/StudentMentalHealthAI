@@ -82,6 +82,14 @@ def test_source_port_rejected_before_target_creation(scenario):
     assert "create" not in scenario[-1]
 
 
+def test_newer_snapshot_is_rejected_before_target_creation(scenario, monkeypatch):
+    monkeypatch.setattr(restore_module, "CURRENT_SCHOOL_REVISION", "20261012_0006")
+    scenario[-2]["revision"] = "20261012_0007"
+    with pytest.raises(ValueError, match="newer than"):
+        run(scenario)
+    assert "create" not in scenario[-1]
+
+
 def test_overlap_rejected_before_target_creation(scenario):
     overlap = (*scenario[:2], scenario[1] / "nested-target", *scenario[3:])
     with pytest.raises(ValueError, match="must not overlap"):

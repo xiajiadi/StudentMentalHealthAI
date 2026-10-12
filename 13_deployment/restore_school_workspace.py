@@ -18,7 +18,7 @@ from create_school_workspace import create, validate_target
 from private_settings import read_private
 from school_restore_import import import_snapshot
 from school_restore_plan import plan_restore
-from school_schema import CURRENT_SCHOOL_REVISION
+from school_schema import CURRENT_SCHOOL_REVISION, SCHOOL_REVISION_CHAIN
 
 
 def _record(target: Path, state: dict) -> None:
@@ -111,6 +111,16 @@ def restore(backup_file: Path, source: Path, target: Path, mysql_bin: Path,
     if package["workspace_id"] != source_marker.get("workspace_id"):
         raise ValueError("Backup source identity does not match")
     plan_restore(package, restored_at=datetime.now(UTC))
+    # A snapshot may only stay at its revision or move forward. During a
+    # staged schema rollout, never create a target for a newer snapshot and
+    # subsequently attempt to move it back to an older application runtime.
+    if (
+        package["revision"] not in SCHOOL_REVISION_CHAIN
+        or CURRENT_SCHOOL_REVISION not in SCHOOL_REVISION_CHAIN
+        or SCHOOL_REVISION_CHAIN.index(package["revision"])
+        > SCHOOL_REVISION_CHAIN.index(CURRENT_SCHOOL_REVISION)
+    ):
+        raise ValueError("Snapshot is newer than the supported runtime revision")
     resolved = target.resolve(strict=False)
     if resolved == source or resolved.is_relative_to(source) or source.is_relative_to(resolved):
         raise ValueError("Restore target and source must not overlap")

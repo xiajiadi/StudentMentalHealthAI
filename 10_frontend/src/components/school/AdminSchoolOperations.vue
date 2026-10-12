@@ -4,6 +4,7 @@ import { CircleHelp, RotateCcw, UsersRound } from '@lucide/vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
+import AdminProfessionalAssignments from '@/components/school/AdminProfessionalAssignments.vue'
 import type { SchoolClass, SchoolMember, SchoolTask, SchoolTaskEnrollment } from '@/api/client'
 import { frontendApi } from '@/services/mock-api'
 
@@ -309,6 +310,7 @@ onMounted(() => { void load() })
           </article>
         </div>
         <div v-else class="school-empty">{{ activeClass ? '这个班级目前没有已发布任务。' : '先创建或选择一个班级。' }}</div>
+        <AdminProfessionalAssignments v-if="taskState === 'ready'" :tasks="tasks" />
       </AppCard>
     </template>
   </section>

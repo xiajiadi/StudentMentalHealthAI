@@ -183,7 +183,7 @@ def test_wrong_database_rejected_before_content_read():
     assert len(connection.sql) == 1
 
 
-@pytest.mark.parametrize("revision", ["20261011_0005", "20261012_0006"])
+@pytest.mark.parametrize("revision", ["20261011_0005", "20261012_0006", "20261012_0007"])
 def test_snapshot_accepts_each_explicit_supported_revision(revision):
     class RevisionConnection(WrongTargetConnection):
         def fetchone(self):

@@ -480,6 +480,7 @@ class MeasurementTask(ResourceIdentityMixin, TimestampMixin, Base):
         UniqueConstraint(
             "id", "school_id", "class_id", name="measurement_task_scope_unique"
         ),
+        UniqueConstraint("id", "school_id", name="measurement_task_id_school_unique"),
         ForeignKeyConstraint(
             ["class_id", "school_id"],
             ["school_classes.id", "school_classes.school_id"],
@@ -519,6 +520,10 @@ class TaskEnrollment(ResourceIdentityMixin, TimestampMixin, Base):
     __table_args__ = mysql_table_args(
         UniqueConstraint("task_id", "class_student_id", name="task_student_enrollment_unique"),
         UniqueConstraint("id", "subject_id", name="task_enrollment_subject_unique"),
+        UniqueConstraint(
+            "id", "task_id", "school_id", "subject_id",
+            name="task_enrollment_review_scope_unique",
+        ),
         ForeignKeyConstraint(
             ["task_id", "school_id", "class_id"],
             ["measurement_tasks.id", "measurement_tasks.school_id", "measurement_tasks.class_id"],
@@ -631,6 +636,10 @@ class AssessmentSession(ResourceIdentityMixin, TimestampMixin, Base):
         Index("ix_assessment_sessions_status_created", "status", "created_at"),
         UniqueConstraint("task_enrollment_id", name="assessment_task_enrollment_unique"),
         UniqueConstraint("id", "subject_id", name="assessment_session_subject_unique"),
+        UniqueConstraint(
+            "id", "task_enrollment_id", "subject_id",
+            name="assessment_session_review_scope_unique",
+        ),
         ForeignKeyConstraint(
             ["task_enrollment_id", "subject_id"],
             ["task_enrollments.id", "task_enrollments.subject_id"],
@@ -938,6 +947,177 @@ class ReviewEvent(ResourceIdentityMixin, TimestampMixin, Base):
     retention_due_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
 
 
+class SchoolTaskSpecialistAssignment(ResourceIdentityMixin, TimestampMixin, Base):
+    __tablename__ = "school_task_specialist_assignments"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint(
+            "task_id", "specialist_membership_role_id",
+            name="school_task_specialist_unique",
+        ),
+        CheckConstraint("status IN ('ACTIVE', 'REVOKED')", name="status_allowed"),
+        CheckConstraint(
+            "(status = 'ACTIVE' AND revoked_at IS NULL) OR "
+            "(status = 'REVOKED' AND revoked_at IS NOT NULL)",
+            name="revocation_matches_status",
+        ),
+        ForeignKeyConstraint(
+            ["task_id", "school_id", "class_id"],
+            ["measurement_tasks.id", "measurement_tasks.school_id", "measurement_tasks.class_id"],
+            name="fk_school_task_specialist_task_scope",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["specialist_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_school_task_specialist_specialist_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["assigned_by_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_school_task_specialist_assigner_school",
+            ondelete="RESTRICT",
+        ),
+        Index(
+            "ix_school_task_specialist_scope_status",
+            "school_id", "task_id", "status",
+        ),
+        Index(
+            "ix_school_task_specialist_role_status",
+            "specialist_membership_role_id", "status",
+        ),
+    )
+
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    task_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    class_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    specialist_membership_role_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    assigned_by_membership_role_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="ACTIVE")
+    revoked_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+
+
+class SchoolProfessionalReviewCase(ResourceIdentityMixin, TimestampMixin, Base):
+    __tablename__ = "school_professional_review_cases"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("review_ref", name="school_professional_review_ref_unique"),
+        UniqueConstraint(
+            "task_enrollment_id", name="school_professional_review_enrollment_unique"
+        ),
+        UniqueConstraint(
+            "assessment_session_id", name="school_professional_review_assessment_unique"
+        ),
+        UniqueConstraint("id", "school_id", name="school_professional_review_id_school_unique"),
+        CheckConstraint(
+            "status IN ('OPEN', 'IN_REVIEW', 'APPROVED', 'REJECTED')",
+            name="status_allowed",
+        ),
+        CheckConstraint("version >= 1", name="version_positive"),
+        ForeignKeyConstraint(
+            ["task_id", "school_id", "class_id"],
+            ["measurement_tasks.id", "measurement_tasks.school_id", "measurement_tasks.class_id"],
+            name="fk_school_professional_review_task_scope",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["task_enrollment_id", "task_id", "school_id", "subject_id"],
+            [
+                "task_enrollments.id",
+                "task_enrollments.task_id",
+                "task_enrollments.school_id",
+                "task_enrollments.subject_id",
+            ],
+            name="fk_school_professional_review_enrollment_scope",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["assessment_session_id", "task_enrollment_id", "subject_id"],
+            [
+                "assessment_sessions.id",
+                "assessment_sessions.task_enrollment_id",
+                "assessment_sessions.subject_id",
+            ],
+            name="fk_school_professional_review_assessment_scope",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["subject_id", "school_id"],
+            ["subjects.id", "subjects.school_id"],
+            name="fk_school_professional_review_subject_scope",
+            ondelete="RESTRICT",
+        ),
+        Index(
+            "ix_school_professional_review_scope_status",
+            "school_id", "task_id", "status", "created_at",
+        ),
+        Index(
+            "ix_school_professional_review_subject_created",
+            "subject_id", "created_at",
+        ),
+    )
+
+    review_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    task_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    class_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    task_enrollment_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    subject_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    assessment_session_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="OPEN")
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    case_note_ciphertext: Mapped[bytes | None] = mapped_column(mysql.MEDIUMBLOB, nullable=True)
+    cipher_format_version: Mapped[str | None] = mapped_column(ascii_id(32), nullable=True)
+    key_version: Mapped[str | None] = mapped_column(ascii_id(64), nullable=True)
+    payload_schema_version: Mapped[str | None] = mapped_column(ascii_id(64), nullable=True)
+    closed_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    retention_due_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+
+
+class SchoolProfessionalReviewEvent(ResourceIdentityMixin, TimestampMixin, Base):
+    __tablename__ = "school_professional_review_events"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint(
+            "review_case_id", "version", name="school_professional_review_event_version_unique"
+        ),
+        CheckConstraint("event_type IN ('CREATED', 'TRANSITION')", name="event_type_allowed"),
+        CheckConstraint("version >= 1", name="version_positive"),
+        CheckConstraint(
+            "from_status IS NULL OR from_status IN ('OPEN', 'IN_REVIEW', 'APPROVED', 'REJECTED')",
+            name="from_status_allowed",
+        ),
+        CheckConstraint(
+            "to_status IN ('OPEN', 'IN_REVIEW', 'APPROVED', 'REJECTED')",
+            name="to_status_allowed",
+        ),
+        ForeignKeyConstraint(
+            ["review_case_id", "school_id"],
+            ["school_professional_review_cases.id", "school_professional_review_cases.school_id"],
+            name="fk_school_professional_review_events_case_scope",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["actor_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_school_professional_review_events_actor_school",
+            ondelete="RESTRICT",
+        ),
+        Index(
+            "ix_school_professional_review_events_case_created",
+            "review_case_id", "created_at",
+        ),
+    )
+
+    review_case_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    actor_membership_role_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    from_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    to_status: Mapped[str] = mapped_column(String(16), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    trace_id: Mapped[str | None] = mapped_column(ascii_id(128), nullable=True)
+    retention_due_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+
+
 class IdempotencyRecord(ResourceIdentityMixin, TimestampMixin, Base):
     __tablename__ = "idempotency_records"
     __table_args__ = mysql_table_args(
@@ -993,6 +1173,8 @@ __all__ = [
     "MeasurementTask",
     "ReviewCase",
     "ReviewEvent",
+    "SchoolProfessionalReviewCase",
+    "SchoolProfessionalReviewEvent",
     "Role",
     "SafetyDecision",
     "SchoolAccountBatch",
@@ -1000,6 +1182,7 @@ __all__ = [
     "SchoolClass",
     "SchoolClassStudent",
     "SchoolClassTeacher",
+    "SchoolTaskSpecialistAssignment",
     "Subject",
     "SubjectAccessGrant",
     "SupportEvidence",

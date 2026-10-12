@@ -5,13 +5,14 @@ import { ArrowRight, BookOpenCheck, ClipboardCheck, LockKeyhole, Scale, ShieldCh
 import AppCard from '@/components/app/AppCard.vue'
 import AppPageHeader from '@/components/app/AppPageHeader.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
+import SpecialistTaskReviews from '@/components/school/SpecialistTaskReviews.vue'
 
 const route = useRoute()
 const section = computed(() => String(route.params.section ?? 'overview'))
 const page = computed(() => ({
-  overview: { eyebrow: '心理专业工作区', title: '专业支持与协作', intro: '查看当前可用的资料与工作入口。涉及个体判断的事项仍需由具备资质的人员依据已确认流程独立处理。' },
+  overview: { eyebrow: '心理专业工作区', title: '专业支持与协作', intro: '查看专业资料边界与任务工作流入口。涉及个体判断的事项仍需由具备资质的人员依据已确认流程独立处理。' },
   resources: { eyebrow: '专业资料', title: '资料使用边界', intro: '资料审核与使用权限尚未在此工作区接通；当前页面不提供个体化建议或资料发布操作。' },
-  tasks: { eyebrow: '工作事项', title: '专业工作入口', intro: '专业案例查看与处理接口尚未接入，因此当前没有可操作的案例列表。' },
+  tasks: { eyebrow: '工作事项', title: '任务专业复核', intro: '查看已指派任务中的完成记录，并记录任务范围内的工作流状态。处理决定不会发布学生报告。' },
 }[section.value as 'overview' | 'resources' | 'tasks'] ?? { eyebrow: '心理专业工作区', title: '专业支持与协作', intro: '查看当前可用的资料与工作入口。' }))
 </script>
 
@@ -41,9 +42,9 @@ const page = computed(() => ({
         </AppCard>
         <AppCard class="specialist-card">
           <span class="specialist-card__icon"><ClipboardCheck :size="19" aria-hidden="true" /></span>
-          <span class="specialist-card__state">暂不可用</span>
-          <h2>专业工作事项</h2><p>目前没有获批准的专业案例查看或处理接口。</p>
-          <RouterLink to="/specialist/tasks">查看接入状态 <ArrowRight :size="15" aria-hidden="true" /></RouterLink>
+          <span class="specialist-card__state">任务范围</span>
+          <h2>专业工作事项</h2><p>查看已指派任务的完成记录并记录工作流状态；此操作不会发布学生报告。</p>
+          <RouterLink to="/specialist/tasks">进入任务工作区 <ArrowRight :size="15" aria-hidden="true" /></RouterLink>
         </AppCard>
       </section>
       <AppCard class="specialist-boundary">
@@ -57,10 +58,7 @@ const page = computed(() => ({
       <section class="specialist-resource-note" aria-label="资料审阅提示"><div><span class="specialist-kicker">开始提供资料前</span><h2>先确认来源与适用范围</h2><p>资料需经过相应的权利、内容和角色范围审核后再决定是否接入。工程展示不等于专业批准或可用于真实个案。</p></div><img :src="'/assets/heartbridge/card-specialist-original.png'" alt="" aria-hidden="true"></section>
     </template>
 
-    <template v-else>
-      <AppCard class="specialist-blocked" role="status"><span class="specialist-blocked__icon"><LockKeyhole :size="20" aria-hidden="true" /></span><div><span class="specialist-kicker">专业操作状态</span><h2>案例查看与处理尚未开放</h2><p>Backend 尚未提供经批准的心理专业人员身份映射或专业案例操作。本页不会调用安全复核接口，也不会模拟审核成功。</p><span class="specialist-blocked__foot">等待后端权限映射与经批准的专业工作流程</span></div></AppCard>
-      <AppStatusCallout tone="attention" title="没有待办数量或个案详情" body="当前没有从服务端读取专业工作事项；此状态表示功能未接通，不表示没有个案或无需人工支持。" />
-    </template>
+    <SpecialistTaskReviews v-else />
   </main>
 </template>
 

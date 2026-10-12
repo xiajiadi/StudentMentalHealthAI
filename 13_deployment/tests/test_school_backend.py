@@ -27,7 +27,7 @@ def test_missing_readiness_never_decrypts(tmp_path, monkeypatch):
         backend.load_runtime(tmp_path, tmp_path / "repo")
 
 
-@pytest.mark.parametrize("revision", ["20261012_0006", "obsolete"])
+@pytest.mark.parametrize("revision", ["20261012_0007", "20261012_0006", "obsolete"])
 def test_configuration_uses_only_verified_sealed_target(tmp_path, monkeypatch, revision):
     marker = {"workspace_id":"expected", "database":"smhai_school_demo", "port":3308}
     monkeypatch.setattr(backend, "validate_marker", lambda *args: marker)
@@ -89,7 +89,7 @@ def test_configuration_uses_only_verified_sealed_target(tmp_path, monkeypatch, r
             return Connection()
 
     monkeypatch.setitem(sys.modules, "pymysql", Driver)
-    if revision == "obsolete":
+    if revision != "20261012_0007":
         with pytest.raises(backend.PreparationError):
             backend.load_runtime(tmp_path, tmp_path / "repo")
         assert reads == ["runtime.private.dpapi"]

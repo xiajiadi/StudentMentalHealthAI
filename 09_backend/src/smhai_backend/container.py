@@ -18,6 +18,9 @@ from smhai_backend.adapters.memory.repositories import (
 )
 from smhai_backend.adapters.school_conversations import SchoolConversationsPersistenceAdapter
 from smhai_backend.adapters.school_directory import SchoolDirectoryPersistenceAdapter
+from smhai_backend.adapters.school_professional_reviews import (
+    SchoolProfessionalReviewPersistenceAdapter,
+)
 from smhai_backend.core.async_utils import maybe_await
 from smhai_backend.core.config import BackendSettings
 from smhai_backend.core.rate_limit import InMemoryRateLimiter
@@ -26,6 +29,7 @@ from smhai_backend.domains.audit import AuditService
 from smhai_backend.domains.auth.service import AuthService
 from smhai_backend.domains.authorization import NativeAuthorizationProvider
 from smhai_backend.domains.conversations.service import IndependentConversationService
+from smhai_backend.domains.professional_reviews.service import SchoolProfessionalReviewService
 from smhai_backend.domains.school_directory.service import SchoolDirectoryService
 from smhai_backend.domains.school_tasks.service import SchoolTaskService
 from smhai_backend.domains.support.service import SupportOrchestrator
@@ -66,6 +70,7 @@ class BackendContainer:
     school_tasks: SchoolTaskService
     school_directory: SchoolDirectoryService
     rate_limiter: InMemoryRateLimiter
+    professional_reviews: SchoolProfessionalReviewService | None = None
     independent_conversations: IndependentConversationService | None = None
     independent_rag: IndependentRagClient | None = None
     independent_llm: IndependentLLMRuntimeClient | None = None
@@ -191,6 +196,11 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         SchoolDirectoryPersistenceAdapter(persistence) if persistence is not None else None
     )
     school_directory = SchoolDirectoryService(persistence=directory_persistence)
+    professional_reviews = SchoolProfessionalReviewService(
+        persistence=SchoolProfessionalReviewPersistenceAdapter(persistence)
+        if persistence is not None and settings.identity_profile == "school_tenant"
+        else None
+    )
     independent_rag = independent_llm = independent_conversations = None
     if (
         persistence is not None
@@ -254,6 +264,7 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         teacher_dashboard=teacher_dashboard,
         school_tasks=school_tasks,
         school_directory=school_directory,
+        professional_reviews=professional_reviews,
         independent_conversations=independent_conversations,
         independent_rag=independent_rag,
         independent_llm=independent_llm,

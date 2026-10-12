@@ -709,6 +709,34 @@ export class RealApiProvider implements FrontendApi {
   private activeSchoolContext: SchoolRoleContext | null = null
   private readonly reviewCases = new Map<string, ReviewCase>()
 
+  async requestProfessionalReview<T>(input: IndependentConversationRequest): Promise<ApiEnvelope<T>> {
+    const base = '/api/v1/school/professional-reviews'
+    const task = `${base}/tasks/TASK_[A-Za-z0-9][A-Za-z0-9_.-]{0,122}`
+    const casePath = `${task}/cases/PCR_[A-Za-z0-9][A-Za-z0-9_.-]{0,123}`
+    const allowed = input.method === 'GET'
+      ? input.path === `${base}/tasks` || input.path === `${base}/assignments` || input.path === `${base}/specialists`
+        || new RegExp(`^${task}/(?:cases|eligible-enrollments)$`).test(input.path)
+        || new RegExp(`^${casePath}$`).test(input.path)
+      : new RegExp(`^${task}/(?:cases|assignments)$`).test(input.path)
+        || new RegExp(`^${casePath}/(?:open|decision)$`).test(input.path)
+        || new RegExp(`^${task}/assignments/ASSIGN_[A-Za-z0-9][A-Za-z0-9_.-]{0,120}/revoke$`).test(input.path)
+    if (!allowed || !['GET', 'POST'].includes(input.method)) {
+      throw new RealApiError('API_INVALID_REQUEST', '专业工作请求地址无效。')
+    }
+    if (input.method === 'POST' && !input.idempotencyKey?.trim()) {
+      throw new RealApiError('API_INVALID_REQUEST', '专业工作请求缺少操作标识。')
+    }
+    if (input.method === 'POST') await this.ensureCsrfToken()
+    return unwrap<T>(() => apiClient.request({
+      method: input.method, url: input.path,
+      ...(input.query ? { query: input.query } : {}),
+      ...(input.body ? { body: input.body } : {}),
+      headers: input.method === 'POST'
+        ? { 'Content-Type': 'application/json', ...mutationHeaders(this.csrfToken, input.idempotencyKey!) }
+        : {},
+    }))
+  }
+
   async requestIndependentConversation<T>(input: IndependentConversationRequest): Promise<ApiEnvelope<T>> {
     const base = '/api/v1/student/conversations'
     const isCollection = input.path === base
@@ -1327,3 +1355,6 @@ export const realApiProvider = new RealApiProvider()
 
 export const requestIndependentConversation = <T>(input: IndependentConversationRequest): Promise<ApiEnvelope<T>> =>
   realApiProvider.requestIndependentConversation<T>(input)
+
+export const requestProfessionalReview = <T>(input: IndependentConversationRequest): Promise<ApiEnvelope<T>> =>
+  realApiProvider.requestProfessionalReview<T>(input)
