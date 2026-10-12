@@ -1,18 +1,24 @@
 # Planned shutdown and resume checkpoint
 
-User instruction received: 2026-10-11, Beijing time.
+Latest user instruction received: 2026-10-12, Beijing time.
 
 ## Deadline
 
-- Laptop shutdown: **2026-10-12 06:40 Asia/Shanghai** / 2026-10-11 22:40 UTC.
-- Begin safe wrap-up: 06:20 Beijing / 22:20 UTC.
-- Complete pause by: 06:35 Beijing / 22:35 UTC, allowing five minutes of buffer.
+- Laptop shutdown: **2026-10-13 07:30 Asia/Shanghai** / 2026-10-12 23:30 UTC.
+- Begin safe wrap-up: 07:15 Beijing / 23:15 UTC. No new long-running jobs.
+- Stop new Worker dispatch: 07:20 Beijing / 23:20 UTC.
+- Complete checkpoint and pause by: 07:25 Beijing / 23:25 UTC.
+- The user mentioned shutdown around 07:30 and pause around 07:40. The earlier
+  pause is the conservative operational choice so shutdown cannot precede saving.
 - Continue authorized synthetic engineering before this window. Do not mark the
   project complete unless the entire mandate is actually satisfied.
 
-Desktop heartbeat `psynova` is bounded by the pause deadline. Separate heartbeat
-`psynova-2` requests wrap-up at 22:20/22:35 UTC. Scheduled execution depends on the
-computer and desktop app remaining available; configuration is not trigger proof.
+Desktop thread heartbeat `psynova` is ACTIVE, hourly at minute 15 for nine runs,
+as verified in its saved configuration on 2026-10-12 at approximately 22:38 Beijing.
+Its prompt checks this date-specific deadline and requests wrap-up from 07:15.
+Stop this heartbeat at actual pause; do not revive obsolete `psynova-2`.
+Scheduled execution depends on the computer and desktop app remaining available;
+configuration is not proof that the scheduled wrap-up or pause has executed.
 
 ## Wrap-up procedure
 
@@ -25,7 +31,7 @@ computer and desktop app remaining available; configuration is not trigger proof
    owned process manifest, unresolved failures and the exact next action in
    CURRENT_STATE.md. Review and commit coherent source when possible; unfinished
    changes may remain explicitly recorded for resumption.
-5. Stop the project Runner and pause both heartbeats. Stop only verified owned
+5. Stop the project Runner and pause the current heartbeat. Stop only verified owned
    school application processes, preserving old M0/system/shared module services.
    Do not shut down the user's machine or delete data.
 6. Call update_goal(status="paused") under the user's explicit authorization,
@@ -41,7 +47,7 @@ reseed existing passwords, rerun an already-completed migration blindly or reviv
 an expired automation automatically. Resume the Runner and establish a fresh
 schedule only within the user's resumed authorization and available resources.
 
-## Actual pause record
+## Historical pause record — superseded by the active deadline above
 
 On2026-10-12 Beijing late morning the user explicitly said: save work and pause for shutdown. Root interrupted the active frontend Worker, stopped the Runner(stopped=true) and deleted both obsolete deadline heartbeats through the app tool. Original and restored MySQL instances were identity-verified, had zero observed active InnoDB transactions and were shut down via SQL SHUTDOWN. Owned application listeners were stopped through creation-verified process handles. Fresh inspection shows3308/3309/4178/4179/8088/8089/8180 absent. No reset, initialization,0006 migration or old system/M0 operation was performed.
 

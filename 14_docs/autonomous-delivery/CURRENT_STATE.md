@@ -2,6 +2,15 @@
 
 Updated: 2026-10-12, Beijing, explicit user Continue. Goal ACTIVE; ENGINEERING_DEMO_READY is not yet achieved.
 
+## Active shutdown deadline
+
+User's latest shutdown notice sets 2026-10-13 07:30 Beijing (2026-10-12 23:30 UTC).
+Begin wrap-up at07:15, stop new dispatch at07:20, save and pause by07:25 to finish
+before shutdown. Current thread heartbeat psynova is configured ACTIVE, hourly at
+minute15 for nine runs; this is configuration evidence, not execution proof.
+SHUTDOWN_CHECKPOINT.md governs the safe stop and resume sequence. Older shutdown,
+GPU and process entries below are historical; verify live identities before acting.
+
 ## Latest resumed increment
 
 - Recovery/transaction milestone afterec92d18: native QA-process-only audit failure injection against original3308 proved both case creation and encrypted decision rollback. Stored projections of case/event/idempotency/audit tables matched exactly before/after the injected failure. Logs/professional-review-rollback-f384355be0484f67947906fefedd081e.json. Initial incomplete Actor reconstruction was refused by the persisted context guard; the corrected harness resolves the actual authenticated account/context through the existing database user mapper. The live Backend was never patched.
@@ -65,7 +74,7 @@ Updated: 2026-10-12, Beijing, explicit user Continue. Goal ACTIVE; ENGINEERING_D
 - AGENTS.md V4 is the operator-supplied two-layer authority. Root directs and reviews direct Luna/high Workers; no Lead or recursive delegation.
 - MISSION.md and SCHOOL_TASKS.md define this increment. Preserve frozen contracts, C Runtime/D4 evidence, Safety/Claim Boundary, synthetic-only scope, and all existing databases.
 - User explicitly resumed on 2026-10-12 while away without RTX 3060. Actual inventory shows Intel Arc integrated graphics, no NVIDIA device. CPU school/CAT work continues; AI inference is not started, and no model/configuration/cloud fallback is changed.
-- Previous 06:40 shutdown window has passed. Its expired heartbeats psynova and psynova-2 were set PAUSED at the late reminder. User's later Continue resumes the engineering goal, not that expired schedule. There is no new shutdown deadline or proof of unattended execution.
+- Previous 06:40 shutdown window has passed; its schedules are historical. The latest10-13 07:30 deadline and replacement psynova heartbeat are recorded above. Scheduling does not prove unattended execution or successful pause.
 
 ## Runtime and data preservation
 
