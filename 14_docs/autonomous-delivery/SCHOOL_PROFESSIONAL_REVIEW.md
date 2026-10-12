@@ -31,3 +31,11 @@ Prove assigned specialist access and state persistence; reject same-school unass
 - Fresh checks: Backend381, Frontend137, DB schema13, deployment backup/restore/runtime70, harness Python12/Node5; build/lint passed. Source-only independent review corroborated migration guard and privilege/DTO boundaries.
 
 Controller status: PARTIAL_PASS for this bounded increment. Native audit-failure injection/rollback,0007 new-isolated-target restore/restart and separate feedback publication remain outstanding. Review state APPROVED is not psychological validity or publication approval. Earlier failed harness runs remain retained. The screenshot helper's subsequent scroll-to-top adjustment awaits its next native run.
+
+## Native rollback and restoration follow-up
+
+The previously pending audit-failure rollback was tested in an isolated QA Python process against the owned synthetic database, without patching the live server. Failure was injected after the audit append/flush. Case/event/receipt/audit projections matched exactly after failed creation; case ciphertext/status/version and all four categories matched after failed decision. Evidence: original external logs/professional-review-rollback-f384355be0484f67947906fefedd081e.json.
+
+A new0007 restore on3310 imported32 business tables/1371 stored-value-verified rows, revoked2 archived sessions and read107 encrypted fields. The restored API subsequently recovered the actual encrypted workflow note with its status/version intact, denied other roles/tenant, and denied access after target-local assignment revocation. After graceful target-only shutdown and resume, all32 business-table projections/1444 current rows remained identical. Fresh restored Backend/Frontend and four-role browser4/4 passed; see SCHOOL_RECOVERY.md for artifacts and environment limits.
+
+These follow-up checks close the first increment's rollback and0007 restore/restart evidence gaps. Separate feedback publication, complete professional content/item-bank governance, professional validity and full-project delivery remain open. Controller records ENGINEERING_PASS only for this bounded synthetic task-review workflow; overall goal remains active and not ENGINEERING_DEMO_READY.

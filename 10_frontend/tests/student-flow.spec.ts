@@ -231,6 +231,39 @@ describe('学生演示闭环页面', () => {
     expect(historyRouter.currentRoute.value.fullPath).toBe('/student/history')
   })
 
+  it.each(['SYNTHETIC_STUDENT_DEMO', 'USER_demo_student'])('技术账号标识 %s 不进入首页问候', async (identifier) => {
+    const router = await makeRouter('/student/home')
+    const pinia = createPinia()
+    useSessionStore(pinia).signIn({
+      userId: identifier, role: 'student', subjectId: 'SYNTHETIC_STUDENT_DEMO',
+      displayName: identifier, initials: 'S',
+    })
+    const wrapper = mount(StudentHomeView, { global: { plugins: [router, pinia] } })
+    await flushPromises()
+
+    const welcomeTitle = wrapper.get('#student-home-title')
+    expect(welcomeTitle.text()).toBe('Welcome back 同学')
+    expect(wrapper.text()).not.toContain(identifier)
+    wrapper.unmount()
+  })
+
+  it('保留较长的人类显示名称，并将欢迎标题限制在可换行的两行内', async () => {
+    const longDisplayName = 'AlexandriaVeryLongHumanReadableStudentDisplayNameThatNeedsWrapping'
+    const router = await makeRouter('/student/home')
+    const pinia = createPinia()
+    useSessionStore(pinia).signIn({
+      userId: 'student_01', role: 'student', subjectId: 'SYNTHETIC_STUDENT_DEMO',
+      displayName: longDisplayName, initials: 'A',
+    })
+    const wrapper = mount(StudentHomeView, { global: { plugins: [router, pinia] } })
+    await flushPromises()
+
+    const welcomeTitle = wrapper.get('#student-home-title')
+    expect(welcomeTitle.text()).toBe(`Welcome back ${longDisplayName}`)
+    expect(welcomeTitle.classes()).toContain('student-carousel__welcome-title')
+    wrapper.unmount()
+  })
+
   it('首页不请求测评列表，历史页以metadata显示待开始和UTC记录', async () => {
     api.listAssessmentEntries = vi.fn().mockResolvedValue(envelope([
       {

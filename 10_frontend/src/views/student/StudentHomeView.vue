@@ -29,7 +29,11 @@ type StudentCarouselSlide =
   | { kind: 'tip'; title: string; body: string; image: string; imageAlt: string; backgroundPosition?: string }
 
 const session = useSessionStore()
-const welcomeName = computed(() => session.user?.displayName?.trim() || session.user?.userId?.trim() || 'there')
+const welcomeName = computed(() => {
+  const displayName = session.user?.displayName?.trim()
+  if (!displayName || /^(?:USER|SYNTHETIC)_/i.test(displayName)) return '同学'
+  return displayName
+})
 
 const wellbeingTipPool: Extract<StudentCarouselSlide, { kind: 'tip' }>[] = [
   {
@@ -373,7 +377,7 @@ onUnmounted(() => {
             >
               <div class="student-carousel__copy">
                 <template v-if="carouselSlide.kind === 'welcome'">
-                  <h1 id="student-home-title">{{ carouselSlide.title }} {{ welcomeName }}</h1>
+                  <h1 id="student-home-title" class="student-carousel__welcome-title">{{ carouselSlide.title }} {{ welcomeName }}</h1>
                   <p class="student-carousel__subtitle">{{ carouselSlide.subtitle }}</p>
                 </template>
                 <template v-else>
@@ -470,6 +474,7 @@ onUnmounted(() => {
 .student-carousel__slide { position: absolute; inset: 0; display: flex; align-items: center; justify-content: space-between; gap: 60px; padding: 0 clamp(74px, 10.12vw, 140px); }
 .student-carousel__copy { width: min(380px, 42%); min-width: 0; color: #1e1d29; }
 .student-carousel__copy h1 { margin: 0; color: #1e1d29; font-family: var(--font-sans); font-size: 24px; font-weight: 500; letter-spacing: -.015em; line-height: 1.3; }
+.student-carousel__welcome-title { display: -webkit-box; max-width: 100%; overflow: hidden; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .student-carousel__copy > p { margin: 20px 0 0; color: #555a64; font-size: 16px; font-weight: 500; line-height: 1.35; }
 .student-carousel__art { display: block; width: min(30vw, 300px); height: auto; aspect-ratio: 4 / 3; flex: 0 0 auto; overflow: hidden; border: 0; background-color: #e9eff0; background-position: center; background-repeat: no-repeat; background-size: cover; box-shadow: none; }
 .student-carousel__art--postcard { border: 1px solid #eee9dd; background-image: url('/assets/psynova/monet-wellbeing-postcards.png'); background-size: 200% 200%; box-shadow: 0 4px 14px rgb(30 29 41 / 10%); }

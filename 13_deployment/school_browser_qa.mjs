@@ -177,6 +177,13 @@ async function checkAccount(browser, payload, slot) {
     }
     stages.auth_me = 'PASS';
 
+    if (slot === 'alpha.student') {
+      const welcome = await page.locator('#student-home-title').innerText();
+      if (!welcome.includes('同学') || /(?:USER|SYNTHETIC)_/i.test(welcome)) {
+        throw new Error('StudentWelcomeShowsTechnicalIdentity');
+      }
+    }
+
     const screenshot = path.join(payload.artifact_dir, `${slot.replaceAll('.', '-')}.png`);
     const screenshotMasks = [page.locator('.account-menu')];
     if (await page.locator('#student-home-title').count()) {

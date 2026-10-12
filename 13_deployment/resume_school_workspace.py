@@ -12,6 +12,7 @@ import ctypes
 import json
 import math
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -24,17 +25,37 @@ from pathlib import Path
 from typing import Any
 
 from prepare_school_runtime import PreparationError, validate_marker, verify_process
+from school_schema import CURRENT_SCHOOL_REVISION, SCHOOL_REVISION_CHAIN
 
 DEFAULT_WORKSPACE = Path(r"D:\Projects\.StudentMentalHealthAI-school-workspace-20261011")
 DEFAULT_REPO = Path(__file__).resolve().parents[1]
 DATABASE = "smhai_school_demo"
 HOST = "127.0.0.1"
 PORT = 3308
+MIN_DATABASE_PORT = 3308
+MAX_DATABASE_PORT = 3399
 MAX_READINESS_SECONDS = 60
+RESTORE_STATE_SCHEMA = "psynova.synthetic-restore-target.v1"
+RESTORE_VERIFIED_PHASE = "DATA_KEYS_RUNTIME_VERIFIED_REQUIRES_BROWSER"
+_RESTORE_TARGET_NAME = re.compile(
+    r"^\.StudentMentalHealthAI-school-restore-\d{8}-[a-z0-9][a-z0-9-]{0,31}$",
+    re.IGNORECASE,
+)
 
 
 class ResumeError(RuntimeError):
     """Safe, non-secret failure for resuming the owned workspace."""
+
+
+def _validate_expected_port(expected_port: int) -> int:
+    if (
+        type(expected_port) is not int
+        or not MIN_DATABASE_PORT <= expected_port <= MAX_DATABASE_PORT
+    ):
+        raise ResumeError(
+            f"Expected database port must be within {MIN_DATABASE_PORT}-{MAX_DATABASE_PORT}"
+        )
+    return expected_port
 
 
 def guardian_arguments(
@@ -83,9 +104,14 @@ def _reject_reparse_path(path: Path) -> None:
 
 
 def validate_existing_workspace(
-    workspace: Path, repo: Path, *, expected_workspace: Path = DEFAULT_WORKSPACE
+    workspace: Path,
+    repo: Path,
+    *,
+    expected_workspace: Path = DEFAULT_WORKSPACE,
+    expected_port: int = PORT,
 ) -> dict[str, Any]:
     """Validate the existing marker, protected paths, vendor binary and datadir."""
+    _validate_expected_port(expected_port)
     if not workspace.is_absolute():
         raise ResumeError("Absolute external workspace required")
     _reject_reparse_path(workspace)
@@ -102,7 +128,7 @@ def validate_existing_workspace(
         marker = validate_marker(root, repository)
     except (PreparationError, OSError, ValueError, TypeError, json.JSONDecodeError):
         raise ResumeError("Owned synthetic workspace marker is invalid") from None
-    if marker.get("port") != PORT or marker.get("database") != DATABASE:
+    if marker.get("port") != expected_port or marker.get("database") != DATABASE:
         raise ResumeError("Workspace target does not match the registered school database")
 
     data_directory = Path(marker.get("data_directory", ""))
@@ -129,6 +155,108 @@ def validate_existing_workspace(
             continue
         _reject_reparse_path(root / name)
     return marker
+
+
+def _paths_overlap(first: Path, second: Path) -> bool:
+    first_path = first.resolve(strict=False)
+    second_path = second.resolve(strict=False)
+    return (
+        first_path == second_path
+        or first_path.is_relative_to(second_path)
+        or second_path.is_relative_to(first_path)
+    )
+
+
+def validate_restored_workspace(
+    workspace: Path,
+    repo: Path,
+    *,
+    source_workspace: Path,
+    expected_port: int,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Bind an isolated restored target to the original source and restore proof."""
+    _validate_expected_port(expected_port)
+    if expected_port == PORT:
+        raise ResumeError("A restored target must use a separate database port")
+
+    target_path = Path(workspace)
+    source_path = Path(source_workspace)
+    repository = Path(repo)
+    _reject_reparse_path(target_path)
+    _reject_reparse_path(source_path)
+    target_root = target_path.resolve(strict=True)
+    source_root = source_path.resolve(strict=True)
+    repo_root = repository.resolve(strict=True)
+    if (
+        target_root.parent != source_root.parent
+        or not _RESTORE_TARGET_NAME.fullmatch(target_root.name)
+        or _paths_overlap(target_root, source_root)
+        or _paths_overlap(target_root, repo_root)
+        or _paths_overlap(source_root, repo_root)
+    ):
+        raise ResumeError("Restored workspace path is not isolated")
+
+    source_marker = validate_existing_workspace(
+        source_root,
+        repo_root,
+        expected_workspace=source_root,
+        expected_port=PORT,
+    )
+    target_marker = validate_existing_workspace(
+        target_root,
+        repo_root,
+        expected_workspace=target_root,
+        expected_port=expected_port,
+    )
+    source_id = source_marker.get("workspace_id")
+    target_id = target_marker.get("workspace_id")
+    if (
+        not isinstance(source_id, str)
+        or not source_id
+        or not isinstance(target_id, str)
+        or not target_id
+        or source_id == target_id
+        or source_marker.get("host") != HOST
+        or target_marker.get("host") != HOST
+        or source_marker.get("synthetic_only") is not True
+        or target_marker.get("synthetic_only") is not True
+        or source_marker.get("data_directory") == target_marker.get("data_directory")
+    ):
+        raise ResumeError("Restore source and target identities do not match")
+
+    restore_state_path = target_root / "restore-state.json"
+    _reject_reparse_path(restore_state_path)
+    try:
+        restore_state = json.loads(restore_state_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        raise ResumeError("Verified restore state is unavailable") from None
+    if not isinstance(restore_state, dict):
+        raise ResumeError("Verified restore state is invalid")
+    try:
+        recorded_workspace = Path(restore_state.get("workspace", ""))
+        recorded_data_directory = Path(restore_state.get("data_directory", ""))
+    except (TypeError, ValueError):
+        raise ResumeError("Verified restore paths are invalid") from None
+    if (
+        restore_state.get("schema_version") != RESTORE_STATE_SCHEMA
+        or restore_state.get("phase") != RESTORE_VERIFIED_PHASE
+        or restore_state.get("synthetic_only") is not True
+        or restore_state.get("host") != HOST
+        or restore_state.get("database") != DATABASE
+        or type(restore_state.get("port")) is not int
+        or restore_state.get("port") != expected_port
+        or restore_state.get("workspace_id") != target_id
+        or restore_state.get("source_workspace_id") != source_id
+        or not recorded_workspace.is_absolute()
+        or recorded_workspace.resolve(strict=False) != target_root
+        or not recorded_data_directory.is_absolute()
+        or recorded_data_directory.resolve(strict=False)
+        != Path(target_marker["data_directory"]).resolve(strict=True)
+        or restore_state.get("snapshot_revision") not in SCHOOL_REVISION_CHAIN
+        or restore_state.get("runtime_revision") != CURRENT_SCHOOL_REVISION
+    ):
+        raise ResumeError("Restore evidence does not match the isolated target")
+    return source_marker, target_marker
 
 
 def atomic_write_marker(workspace: Path, marker: dict[str, Any]) -> None:
@@ -473,6 +601,47 @@ def _new_process_creation_time(ops: ResumeOperations, process) -> str:
         return ""
 
 
+def _load_verified_runtime(
+    operations: ResumeOperations, workspace: Path, repo: Path, expected_port: int
+) -> dict[str, Any]:
+    runtime = operations.load_runtime(workspace, repo)
+    if (
+        not isinstance(runtime, dict)
+        or runtime.get("database") != DATABASE
+        or type(runtime.get("port")) is not int
+        or runtime.get("port") != expected_port
+        or runtime.get("identity_profile") != "school_tenant"
+    ):
+        raise ResumeError("Runtime grants or schema revision do not match the workspace")
+    return runtime
+
+
+def _validate_resume_scope(
+    workspace: Path,
+    repo: Path,
+    *,
+    expected_workspace: Path,
+    expected_port: int,
+    restore_source_workspace: Path | None,
+) -> dict[str, Any]:
+    if restore_source_workspace is not None:
+        _, marker = validate_restored_workspace(
+            workspace,
+            repo,
+            source_workspace=restore_source_workspace,
+            expected_port=expected_port,
+        )
+        return marker
+    if expected_port != PORT:
+        raise ResumeError("Non-default database ports require explicit restore mode")
+    return validate_existing_workspace(
+        workspace,
+        repo,
+        expected_workspace=expected_workspace,
+        expected_port=expected_port,
+    )
+
+
 def resume_workspace(
     workspace: Path = DEFAULT_WORKSPACE,
     repo: Path = DEFAULT_REPO,
@@ -481,10 +650,23 @@ def resume_workspace(
     timeout: float = 45.0,
     lock_factory=workspace_lock,
     expected_workspace: Path = DEFAULT_WORKSPACE,
+    expected_port: int = PORT,
+    _restore_source_workspace: Path | None = None,
 ) -> dict[str, Any]:
     """Verify the running instance or start the existing initialized data once."""
+    _validate_expected_port(expected_port)
     if not math.isfinite(timeout) or not 0 < timeout <= MAX_READINESS_SECONDS:
         raise ResumeError("Readiness observation must be bounded to 60 seconds")
+    if _restore_source_workspace is not None and expected_port == PORT:
+        raise ResumeError("A restored target must use a separate database port")
+    if expected_port != PORT and _restore_source_workspace is None:
+        raise ResumeError("Non-default database ports require explicit restore mode")
+    if (
+        _restore_source_workspace is not None
+        and Path(_restore_source_workspace).resolve(strict=False)
+        != Path(DEFAULT_WORKSPACE).resolve(strict=False)
+    ):
+        raise ResumeError("Restore mode is bound to the registered source workspace")
     operations = ops or ResumeOperations()
     if not operations.is_supported_platform():
         raise ResumeError("Workspace resume requires Windows")
@@ -493,26 +675,34 @@ def resume_workspace(
 
     workspace_path = Path(workspace)
     # Verify the protected parent before creating the mutual-exclusion file.
-    validate_existing_workspace(
-        workspace_path, Path(repo), expected_workspace=Path(expected_workspace)
+    _validate_resume_scope(
+        workspace_path,
+        Path(repo),
+        expected_workspace=Path(expected_workspace),
+        expected_port=expected_port,
+        restore_source_workspace=_restore_source_workspace,
     )
     operations.verify_acl(workspace_path)
     with lock_factory(Path(workspace)):
-        marker = validate_existing_workspace(
-            Path(workspace), Path(repo), expected_workspace=Path(expected_workspace)
+        marker = _validate_resume_scope(
+            workspace_path,
+            Path(repo),
+            expected_workspace=Path(expected_workspace),
+            expected_port=expected_port,
+            restore_source_workspace=_restore_source_workspace,
         )
         operations.verify_acl(Path(workspace))
         pid_value = marker.get("parent_pid")
         process = operations.inspect_process(int(pid_value)) if isinstance(pid_value, int) else None
-        listeners = operations.listeners(int(marker["port"]))
+        listeners = operations.listeners(expected_port)
 
         if process is not None:
             if not _process_matches(process, marker):
                 raise ResumeError("Recorded guardian identity does not match; refusing to start")
-            _require_loopback_listeners(listeners, int(marker["port"]))
+            _require_loopback_listeners(listeners, expected_port)
             operations.verify_running_process(marker)
             try:
-                operations.load_runtime(Path(workspace), Path(repo))
+                _load_verified_runtime(operations, workspace_path, Path(repo), expected_port)
             except Exception as exc:
                 marker["resume_state"] = f"RUNTIME_VALIDATION_FAILED_{type(exc).__name__}"
                 atomic_write_marker(Path(workspace), marker)
@@ -525,14 +715,16 @@ def resume_workspace(
                     .replace("+00:00", "Z")
                 )
                 atomic_write_marker(Path(workspace), marker)
-            return {"status": "ALREADY_RUNNING", "database": DATABASE, "port": PORT}
+            return {"status": "ALREADY_RUNNING", "database": DATABASE, "port": expected_port}
 
-        if listeners or not operations.port_is_free(int(marker["port"])):
+        if listeners or not operations.port_is_free(expected_port):
             raise ResumeError("Port is occupied by an unverified listener")
 
         executable = Path(marker["executable"])
         data_directory = Path(marker["data_directory"])
-        process = operations.start_guardian(executable, Path(workspace), data_directory, PORT)
+        process = operations.start_guardian(
+            executable, workspace_path, data_directory, expected_port
+        )
         # A launched process is never killed here. Persist its identity before
         # readiness work so any later failure has a recoverable handoff.
         updated = dict(marker)
@@ -553,7 +745,7 @@ def resume_workspace(
             raise ResumeError("Started guardian identity unavailable; preserve it for recovery")
 
         try:
-            if not operations.wait_ready(process, PORT, timeout):
+            if not operations.wait_ready(process, expected_port, timeout):
                 marker["resume_state"] = "READINESS_OBSERVATION_FAILED"
                 atomic_write_marker(Path(workspace), marker)
                 raise ResumeError(
@@ -564,9 +756,9 @@ def resume_workspace(
                 marker["resume_state"] = "GUARDIAN_IDENTITY_CHANGED"
                 atomic_write_marker(Path(workspace), marker)
                 raise ResumeError("Started guardian identity changed; preserve it for recovery")
-            _require_loopback_listeners(operations.listeners(PORT), PORT)
+            _require_loopback_listeners(operations.listeners(expected_port), expected_port)
             operations.verify_running_process(marker)
-            operations.load_runtime(Path(workspace), Path(repo))
+            _load_verified_runtime(operations, workspace_path, Path(repo), expected_port)
         except Exception as exc:
             if marker.get("resume_state") == "STARTING":
                 marker["resume_state"] = f"VALIDATION_FAILED_{type(exc).__name__}"
@@ -575,16 +767,66 @@ def resume_workspace(
 
         marker["resume_state"] = "READY"
         atomic_write_marker(Path(workspace), marker)
-        return {"status": "STARTED", "database": DATABASE, "port": PORT}
+        return {"status": "STARTED", "database": DATABASE, "port": expected_port}
+
+
+def resume_restored_workspace(
+    workspace: Path,
+    repo: Path = DEFAULT_REPO,
+    *,
+    expected_port: int,
+    ops: Any | None = None,
+    timeout: float = 45.0,
+    lock_factory=workspace_lock,
+) -> dict[str, Any]:
+    """Resume a verified isolated restore bound to the registered source workspace."""
+    target = Path(workspace)
+    return resume_workspace(
+        target,
+        repo,
+        ops=ops,
+        timeout=timeout,
+        lock_factory=lock_factory,
+        expected_workspace=target,
+        expected_port=expected_port,
+        _restore_source_workspace=Path(DEFAULT_WORKSPACE),
+    )
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--workspace", type=Path)
+    parser.add_argument("--restore-mode", action="store_true")
+    parser.add_argument("--port", type=int)
+    parser.add_argument("--timeout", type=float, default=45.0)
+    return parser
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--workspace", type=Path, default=DEFAULT_WORKSPACE)
-    parser.add_argument("--timeout", type=float, default=45.0)
+    parser = build_parser()
     args = parser.parse_args()
+    if args.restore_mode:
+        if args.workspace is None or args.port is None:
+            parser.error("--restore-mode requires explicit --workspace and --port")
+        if args.port == PORT:
+            parser.error("--restore-mode requires a separate database port")
+    elif args.port is not None and args.port != PORT:
+        parser.error("--port changes require --restore-mode")
     try:
-        result = resume_workspace(args.workspace, DEFAULT_REPO, timeout=args.timeout)
+        if args.restore_mode:
+            result = resume_restored_workspace(
+                args.workspace,
+                DEFAULT_REPO,
+                expected_port=args.port,
+                timeout=args.timeout,
+            )
+        else:
+            result = resume_workspace(
+                args.workspace or DEFAULT_WORKSPACE,
+                DEFAULT_REPO,
+                expected_port=PORT,
+                timeout=args.timeout,
+            )
         print(json.dumps(result, sort_keys=True))
         return 0
     except Exception as exc:  # noqa: BLE001 - avoid emitting process/database details.

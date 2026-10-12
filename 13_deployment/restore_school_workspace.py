@@ -17,7 +17,7 @@ from pathlib import Path
 from create_school_workspace import create, validate_target
 from private_settings import read_private
 from school_restore_import import import_snapshot
-from school_restore_plan import plan_restore
+from school_restore_plan import plan_restore, trusted_manifest
 from school_schema import CURRENT_SCHOOL_REVISION, SCHOOL_REVISION_CHAIN
 
 
@@ -58,28 +58,31 @@ def _migrate(target: Path, repository: Path, marker: dict, revision: str) -> Non
             os.environ["DATABASE_URL"] = previous
 
 
-def _verify_ciphertexts(connection, target: Path, repository: Path) -> int:
+def _verify_ciphertexts(
+    connection, target: Path, repository: Path, snapshot_revision: str
+) -> int:
     """Decrypt synthetic fields in memory only, returning an aggregate count."""
-    from database_layer import models
-    from database_layer.base import Base
+    # Use the exact trusted schema projection for the imported snapshot. Current
+    # ORM metadata may contain tables that did not exist in an older restore.
+    manifest = trusted_manifest(snapshot_revision)
+
     from database_layer.crypto import (
         EncryptedPayload,
         FernetDataProtectionProvider,
         WindowsDpapiKeyProvider,
     )
 
-    del models  # Local models register the trusted metadata.
     protection = FernetDataProtectionProvider(
         WindowsDpapiKeyProvider(target / "database-keys.private.dpapi", repository)
     )
     checked = 0
     with connection.cursor() as cursor:
-        for table in Base.metadata.tables.values():
-            encrypted = [column.name for column in table.columns if column.name.endswith("_ciphertext")]
+        for table_name, columns in manifest.items():
+            encrypted = [column for column in columns if column.endswith("_ciphertext")]
             for column in encrypted:
                 cursor.execute(
                     f"SELECT `{column}`,key_version,cipher_format_version,payload_schema_version "
-                    f"FROM `{table.name}` WHERE `{column}` IS NOT NULL"
+                    f"FROM `{table_name}` WHERE `{column}` IS NOT NULL"
                 )
                 for ciphertext, key_version, cipher_format, payload_schema in cursor.fetchall():
                     value = protection.decrypt_json(EncryptedPayload(
@@ -165,7 +168,9 @@ def restore(backup_file: Path, source: Path, target: Path, mysql_bin: Path,
                 stream.write(key_container)
                 stream.flush()
                 os.fsync(stream.fileno())
-            ciphertext_count = _verify_ciphertexts(connection, target, repository)
+            ciphertext_count = _verify_ciphertexts(
+                connection, target, repository, package["revision"]
+            )
         finally:
             connection.close()
         if package["revision"] != CURRENT_SCHOOL_REVISION:

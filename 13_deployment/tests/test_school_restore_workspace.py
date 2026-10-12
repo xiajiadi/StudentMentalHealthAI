@@ -11,6 +11,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import prepare_school_runtime
 import restore_school_workspace as restore_module
+from school_restore_plan import trusted_manifest
 
 
 @pytest.fixture
@@ -53,7 +54,11 @@ def scenario(tmp_path, monkeypatch):
     monkeypatch.setattr(prepare_school_runtime, "prepare", lambda *_a: calls.append("prepare-runtime"))
     monkeypatch.setattr(restore_module, "_migrate", lambda *_a: calls.append("migrate"))
     monkeypatch.setattr(restore_module, "import_snapshot", lambda *_a, **_kw: {"row_count": 3})
-    monkeypatch.setattr(restore_module, "_verify_ciphertexts", lambda *_a: 2)
+    def verify_ciphertexts(_connection, _target, _repository, snapshot_revision):
+        calls.append(("verify-ciphertexts", snapshot_revision))
+        return 2
+
+    monkeypatch.setattr(restore_module, "_verify_ciphertexts", verify_ciphertexts)
     monkeypatch.setitem(sys.modules, "pymysql", types.SimpleNamespace(connect=lambda **_kw: Connection()))
     return backup_file, source, target, tmp_path / "vendor", tmp_path / "repo", package, calls
 
@@ -74,6 +79,7 @@ def test_full_fake_restore_preserves_source_and_unused_generated_keys(scenario):
     assert not (source / "restore-state.json").exists()
     assert scenario[-1].index("preflight") < scenario[-1].index("create")
     assert scenario[-1].index("verify-process") < scenario[-1].index("migrate")
+    assert ("verify-ciphertexts", scenario[-2]["revision"]) in scenario[-1]
 
 
 def test_source_port_rejected_before_target_creation(scenario):
@@ -120,3 +126,120 @@ def test_failed_import_preserves_target_and_records_only_error_type(scenario, mo
     assert (scenario[2] / "database-keys.private.dpapi").read_bytes() == b"generated-sealed-key"
     assert "close" in scenario[-1]
     assert "prepare-runtime" not in scenario[-1]
+
+
+class CiphertextCursor:
+    def __init__(self, available_tables, rows_by_column):
+        self.available_tables = available_tables
+        self.rows_by_column = rows_by_column
+        self.queries = []
+        self.rows = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, _exc_type, _exc, _traceback):
+        return False
+
+    def execute(self, statement):
+        self.queries.append(statement)
+        table = statement.split("FROM `", maxsplit=1)[1].split("`", maxsplit=1)[0]
+        column = statement.split("SELECT `", maxsplit=1)[1].split("`", maxsplit=1)[0]
+        if table not in self.available_tables:
+            raise AssertionError(f"query references a table absent from this snapshot: {table}")
+        self.rows = self.rows_by_column.get((table, column), [])
+
+    def fetchall(self):
+        return self.rows
+
+
+class CiphertextConnection:
+    def __init__(self, available_tables, rows_by_column=None):
+        self.fake_cursor = CiphertextCursor(available_tables, rows_by_column or {})
+
+    def cursor(self):
+        return self.fake_cursor
+
+
+def install_fake_crypto(monkeypatch, decrypted):
+    crypto = types.ModuleType("database_layer.crypto")
+
+    class EncryptedPayload:
+        def __init__(self, *, ciphertext, key_version, cipher_format_version, payload_schema_version):
+            self.ciphertext = ciphertext
+            self.key_version = key_version
+            self.cipher_format_version = cipher_format_version
+            self.payload_schema_version = payload_schema_version
+
+    class DataProtection:
+        def __init__(self, _key_provider):
+            pass
+
+        def decrypt_json(self, payload):
+            decrypted.append(payload.ciphertext)
+            return {"synthetic": True}
+
+    crypto.EncryptedPayload = EncryptedPayload
+    crypto.FernetDataProtectionProvider = DataProtection
+    crypto.WindowsDpapiKeyProvider = lambda *_args: object()
+    monkeypatch.setitem(sys.modules, "database_layer.crypto", crypto)
+
+
+@pytest.mark.parametrize("revision", ["20261011_0005", "20261012_0006"])
+def test_ciphertext_verification_uses_historical_manifest_without_new_review_table(
+    tmp_path, monkeypatch, revision
+):
+    manifest = trusted_manifest(revision)
+    assert "school_professional_review_cases" not in manifest
+    connection = CiphertextConnection(set(manifest))
+    decrypted = []
+    install_fake_crypto(monkeypatch, decrypted)
+
+    checked = restore_module._verify_ciphertexts(
+        connection, tmp_path, tmp_path, revision
+    )
+
+    assert checked == 0
+    assert decrypted == []
+    assert connection.fake_cursor.queries
+    assert all("school_professional_review_cases" not in sql for sql in connection.fake_cursor.queries)
+
+
+def test_ciphertext_verification_checks_review_note_for_0007_snapshot(tmp_path, monkeypatch):
+    revision = "20261012_0007"
+    manifest = trusted_manifest(revision)
+    assert "case_note_ciphertext" in manifest["school_professional_review_cases"]
+    connection = CiphertextConnection(
+        set(manifest),
+        {
+            ("school_professional_review_cases", "case_note_ciphertext"): [
+                (b"synthetic-encrypted-note", "key-v1", "fernet.v1", "review-note.v1")
+            ]
+        },
+    )
+    decrypted = []
+    install_fake_crypto(monkeypatch, decrypted)
+
+    checked = restore_module._verify_ciphertexts(
+        connection, tmp_path, tmp_path, revision
+    )
+
+    assert checked == 1
+    assert decrypted == [b"synthetic-encrypted-note"]
+    assert any(
+        "SELECT `case_note_ciphertext`" in sql
+        and "FROM `school_professional_review_cases`" in sql
+        for sql in connection.fake_cursor.queries
+    )
+
+
+def test_ciphertext_verification_rejects_unknown_revision_before_query(tmp_path, monkeypatch):
+    connection = CiphertextConnection(set())
+    decrypted = []
+    install_fake_crypto(monkeypatch, decrypted)
+
+    with pytest.raises(ValueError, match="Unsupported restore revision"):
+        restore_module._verify_ciphertexts(connection, tmp_path, tmp_path, "head")
+
+    assert connection.fake_cursor.queries == []
+    assert decrypted == []

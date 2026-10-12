@@ -5,7 +5,7 @@ import json
 import os
 import subprocess
 import sys
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 
 import pytest
@@ -43,6 +43,8 @@ class FakeOperations:
         self.verify_calls = 0
         self.runtime_calls = 0
         self.last_marker = None
+        self.listener_ports = []
+        self.readiness_ports = []
 
     def is_supported_platform(self):
         return True
@@ -58,6 +60,7 @@ class FakeOperations:
         return "2026-10-12T01:00:00.000000Z"
 
     def listeners(self, port):
+        self.listener_ports.append(port)
         return [dict(row, LocalPort=port) for row in self.listener_rows]
 
     def port_is_free(self, _port):
@@ -75,7 +78,8 @@ class FakeOperations:
         }
         return process
 
-    def wait_ready(self, _process, _port, _timeout):
+    def wait_ready(self, _process, port, _timeout):
+        self.readiness_ports.append(port)
         if self.ready:
             self.listener_rows = [{"OwningProcess": 2222, "LocalAddress": "127.0.0.1"}]
         return self.ready
@@ -84,9 +88,14 @@ class FakeOperations:
         self.verify_calls += 1
         self.last_marker = dict(marker)
 
-    def load_runtime(self, _workspace, _repo):
+    def load_runtime(self, workspace, _repo):
         self.runtime_calls += 1
-        return {"database": "smhai_school_demo", "port": 3308}
+        marker = json.loads((workspace / "workspace.json").read_text(encoding="utf-8"))
+        return {
+            "database": marker["database"],
+            "port": marker["port"],
+            "identity_profile": "school_tenant",
+        }
 
 
 @pytest.fixture
@@ -130,6 +139,57 @@ def run_resume(workspace, repo, ops, **kwargs):
         ops=ops,
         lock_factory=lambda _path: nullcontext(),
         expected_workspace=workspace,
+        **kwargs,
+    )
+
+
+@pytest.fixture
+def restored_workspace_pair(tmp_path, monkeypatch, owned_workspace):
+    source, repo, source_marker = owned_workspace
+    monkeypatch.setattr(resume, "DEFAULT_WORKSPACE", source)
+    target = source.parent / ".StudentMentalHealthAI-school-restore-20261012-b"
+    data = target / "mysql-data"
+    (data / "mysql").mkdir(parents=True)
+    (data / "auto.cnf").write_text("synthetic-target", encoding="utf-8")
+    (data / "ibdata1").write_bytes(b"restored synthetic target")
+    executable = target / "vendor" / "mysqld.exe"
+    executable.parent.mkdir()
+    executable.write_bytes(b"synthetic target executable fixture")
+    target_marker = {
+        **source_marker,
+        "workspace_id": "synthetic-restored-target",
+        "port": 3310,
+        "data_directory": str(data),
+        "executable": str(executable),
+        "parent_pid": 22280,
+    }
+    (target / "workspace.json").write_text(json.dumps(target_marker), encoding="utf-8")
+    restore_state = {
+        "schema_version": "psynova.synthetic-restore-target.v1",
+        "synthetic_only": True,
+        "phase": "DATA_KEYS_RUNTIME_VERIFIED_REQUIRES_BROWSER",
+        "database": "smhai_school_demo",
+        "host": "127.0.0.1",
+        "port": 3310,
+        "workspace_id": target_marker["workspace_id"],
+        "source_workspace_id": source_marker["workspace_id"],
+        "workspace": str(target),
+        "data_directory": str(data),
+        "snapshot_revision": "20261011_0005",
+        "runtime_revision": "20261012_0007",
+    }
+    (target / "restore-state.json").write_text(json.dumps(restore_state), encoding="utf-8")
+    return source, target, repo, source_marker, target_marker, restore_state
+
+
+def run_restore_resume(pair, ops, *, expected_port=3310, **kwargs):
+    _source, target, repo, *_rest = pair
+    return resume.resume_restored_workspace(
+        target,
+        repo,
+        expected_port=expected_port,
+        ops=ops,
+        lock_factory=lambda _path: nullcontext(),
         **kwargs,
     )
 
@@ -353,6 +413,220 @@ def test_successful_resume_atomically_records_guardian_then_verifies_runtime(own
     assert ops.verify_calls == 1
     assert ops.runtime_calls == 1
     assert (workspace / "mysql-data" / "ibdata1").read_bytes() == b"existing synthetic data"
+
+
+def test_verified_restore_resume_uses_target_port_and_existing_runtime_checks(
+    restored_workspace_pair,
+):
+    source, target, repo, _source_marker, target_marker, restore_state = restored_workspace_pair
+    source_data_before = (source / "mysql-data" / "ibdata1").read_bytes()
+    target_data_before = (target / "mysql-data" / "ibdata1").read_bytes()
+    original_state = json.loads((target / "restore-state.json").read_text(encoding="utf-8"))
+    ops = FakeOperations()
+
+    result = run_restore_resume(restored_workspace_pair, ops, timeout=5)
+
+    saved = json.loads((target / "workspace.json").read_text(encoding="utf-8"))
+    assert result == {"status": "STARTED", "database": "smhai_school_demo", "port": 3310}
+    assert ops.started == (
+        Path(target_marker["executable"]), target, Path(target_marker["data_directory"]), 3310
+    )
+    assert ops.readiness_ports == [3310]
+    assert ops.listener_ports == [3310, 3310]
+    assert ops.runtime_calls == 1 and ops.verify_calls == 1
+    assert saved["port"] == 3310 and saved["resume_state"] == "READY"
+    assert json.loads((target / "restore-state.json").read_text(encoding="utf-8")) == original_state
+    assert (source / "mysql-data" / "ibdata1").read_bytes() == source_data_before
+    assert (target / "mysql-data" / "ibdata1").read_bytes() == target_data_before
+    assert restore_state["workspace_id"] != _source_marker["workspace_id"]
+    assert repo not in target.parents
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "schema",
+        "phase",
+        "source_id",
+        "target_id",
+        "same_id",
+        "workspace_path",
+        "data_directory",
+        "state_port",
+        "nonsynthetic",
+        "snapshot_revision",
+        "runtime_revision",
+    ],
+)
+def test_restore_resume_rejects_unverified_or_mismatched_restore_state_before_acl(
+    restored_workspace_pair, mutation
+):
+    _source, target, _repo, source_marker, target_marker, state = restored_workspace_pair
+    if mutation == "schema":
+        state["schema_version"] = "unknown"
+    elif mutation == "phase":
+        state["phase"] = "FAILED_PRESERVED"
+    elif mutation == "source_id":
+        state["source_workspace_id"] = "wrong-source"
+    elif mutation == "target_id":
+        state["workspace_id"] = "wrong-target"
+    elif mutation == "same_id":
+        state["source_workspace_id"] = state["workspace_id"]
+    elif mutation == "workspace_path":
+        state["workspace"] = str(_source)
+    elif mutation == "data_directory":
+        state["data_directory"] = source_marker["data_directory"]
+    elif mutation == "state_port":
+        state["port"] = 3311
+    elif mutation == "nonsynthetic":
+        state["synthetic_only"] = False
+    elif mutation == "snapshot_revision":
+        state["snapshot_revision"] = "head"
+    elif mutation == "runtime_revision":
+        state["runtime_revision"] = "20261012_0006"
+    (target / "restore-state.json").write_text(json.dumps(state), encoding="utf-8")
+    ops = FakeOperations()
+
+    with pytest.raises(resume.ResumeError):
+        run_restore_resume(restored_workspace_pair, ops)
+
+    assert ops.acl_calls == 0
+    assert ops.started is None
+    assert ops.runtime_calls == 0
+    assert target_marker["port"] == 3310
+
+
+@pytest.mark.parametrize("expected_port", [3308, 3307, 3400, True, 3310.0])
+def test_restore_resume_requires_explicit_dedicated_integer_port(
+    restored_workspace_pair, expected_port
+):
+    ops = FakeOperations()
+    with pytest.raises(resume.ResumeError):
+        run_restore_resume(restored_workspace_pair, ops, expected_port=expected_port)
+    assert ops.acl_calls == 0
+    assert ops.started is None
+
+
+def test_nondefault_core_port_requires_restore_mode(restored_workspace_pair):
+    _source, target, repo, *_rest = restored_workspace_pair
+    ops = FakeOperations()
+
+    with pytest.raises(resume.ResumeError, match="explicit restore mode"):
+        resume.resume_workspace(
+            target,
+            repo,
+            expected_workspace=target,
+            expected_port=3310,
+            ops=ops,
+            lock_factory=lambda _path: nullcontext(),
+        )
+
+    assert ops.acl_calls == 0 and ops.started is None
+
+
+def test_restore_resume_revalidates_original_source_marker(restored_workspace_pair):
+    source, _target, _repo, source_marker, *_rest = restored_workspace_pair
+    source_marker["port"] = 3309
+    (source / "workspace.json").write_text(json.dumps(source_marker), encoding="utf-8")
+    ops = FakeOperations()
+
+    with pytest.raises(resume.ResumeError):
+        run_restore_resume(restored_workspace_pair, ops)
+
+    assert ops.acl_calls == 0 and ops.started is None
+
+
+def test_restore_resume_refuses_runtime_identity_mismatch_after_readiness(
+    restored_workspace_pair,
+):
+    class WrongRuntimeOperations(FakeOperations):
+        def load_runtime(self, workspace, _repo):
+            self.runtime_calls += 1
+            marker = json.loads((workspace / "workspace.json").read_text(encoding="utf-8"))
+            return {
+                "database": marker["database"],
+                "port": marker["port"] + 1,
+                "identity_profile": "school_tenant",
+            }
+
+    _source, target, _repo, *_rest = restored_workspace_pair
+    ops = WrongRuntimeOperations()
+
+    with pytest.raises(resume.ResumeError, match="Runtime grants or schema"):
+        run_restore_resume(restored_workspace_pair, ops)
+
+    saved = json.loads((target / "workspace.json").read_text(encoding="utf-8"))
+    assert ops.readiness_ports == [3310]
+    assert saved["resume_state"] == "VALIDATION_FAILED_ResumeError"
+    assert ops.started is not None
+
+
+def test_restore_state_is_revalidated_after_lock_is_acquired(restored_workspace_pair):
+    _source, target, repo, *_rest, state = restored_workspace_pair
+    ops = FakeOperations()
+
+    @contextmanager
+    def mutate_before_lock(_path):
+        changed = dict(state, phase="FAILED_PRESERVED")
+        (target / "restore-state.json").write_text(json.dumps(changed), encoding="utf-8")
+        yield
+
+    with pytest.raises(resume.ResumeError):
+        resume.resume_restored_workspace(
+            target, repo, expected_port=3310, ops=ops, lock_factory=mutate_before_lock
+        )
+
+    assert ops.acl_calls == 1
+    assert ops.started is None and ops.runtime_calls == 0
+
+
+def test_restore_resume_cli_requires_explicit_workspace_and_port(monkeypatch):
+    calls = []
+    monkeypatch.setattr(resume, "resume_restored_workspace", lambda *args, **kwargs: calls.append((args, kwargs)) or {"status": "STARTED"})
+    monkeypatch.setattr(sys, "argv", ["resume_school_workspace.py", "--restore-mode", "--workspace", r"D:\Projects\.StudentMentalHealthAI-school-restore-20261012-b"])
+
+    with pytest.raises(SystemExit) as caught:
+        resume.main()
+
+    assert caught.value.code == 2
+    assert calls == []
+
+
+def test_restore_resume_cli_passes_explicit_workspace_and_port(monkeypatch, capsys):
+    calls = []
+    target = Path(r"D:\Projects\.StudentMentalHealthAI-school-restore-20261012-b")
+    monkeypatch.setattr(
+        resume,
+        "resume_restored_workspace",
+        lambda *args, **kwargs: calls.append((args, kwargs)) or {"status": "STARTED"},
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["resume_school_workspace.py", "--restore-mode", "--workspace", str(target), "--port", "3310"],
+    )
+
+    assert resume.main() == 0
+
+    assert calls == [((target, resume.DEFAULT_REPO), {"expected_port": 3310, "timeout": 45.0})]
+    assert json.loads(capsys.readouterr().out) == {"status": "STARTED"}
+
+
+def test_default_cli_resumes_only_registered_workspace_on_3308(monkeypatch, capsys):
+    calls = []
+    monkeypatch.setattr(
+        resume,
+        "resume_workspace",
+        lambda *args, **kwargs: calls.append((args, kwargs)) or {"status": "ALREADY_RUNNING"},
+    )
+    monkeypatch.setattr(sys, "argv", ["resume_school_workspace.py"])
+
+    assert resume.main() == 0
+
+    assert calls == [
+        ((resume.DEFAULT_WORKSPACE, resume.DEFAULT_REPO), {"expected_port": 3308, "timeout": 45.0})
+    ]
+    assert json.loads(capsys.readouterr().out) == {"status": "ALREADY_RUNNING"}
 
 
 def test_marker_update_is_atomic_and_preserves_unknown_fields(owned_workspace):
