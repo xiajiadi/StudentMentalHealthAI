@@ -30,6 +30,36 @@ boundary. Worker and Root separately ran the focused file:12 passed/no skips.
 Those are API-boundary tests, not native database or restored-history proof;
 the latter is the next ongoing verification.
 
+Restored independent conversation verification now has fresh native evidence.
+TargetE `restored-conversation-read-fcd5b0b6dde244c8af66931ea5d6d24a.json`
+records11 passed checks and one NOT_RUN (same-school second-student fixture
+unavailable). Source and E each expose13 terminal conversation candidates,
+14 turns/22 messages through metadata-only queries. One existing Alpha self
+conversation matches exact stored metadata, its blocked turn and two encrypted
+messages read successfully, and the read preserves session/turn/message metadata.
+Teacher/specialist/admin list and detail are403; Beta student foreign detail and
+unknown reference are404. All QA sessions logged out. This proves saved history
+and authorization, not a newly generated grounded answer or all conversation cases.
+An initial helper run failed a nonexistent DatabaseSettings.port assumption;
+Root corrected the helper to verify the actual engine URL host/port/database.
+The failed artifact remains `restored-conversation-read-8ceadbd427544bae951eb66cadaff2a6.json`.
+
+Real browser existing-history proof passes13 stages, reload and fresh login,
+two messages (one student/one assistant), desktop/mobile masked screenshots,
+and zero conversation writes. TargetE artifact `browser-qa/
+20261012T214752Z-c1b9cdd6a2774479a5dec65c9d44ee70/restored-conversation-browser.json`.
+Root inspected both screenshots. The first mobile title was partly covered by
+the sticky header because the external screenshot helper retained scroll position
+after resizing. Root reset document/internal scroll, waited for fonts/two animation
+frames and required heading geometry below the topbar; the new native run again
+passes13 stages at `browser-qa/20261012T215116Z-072f3ee955b446cfbec96da81e7e02b7`.
+Root inspected its corrected masked mobile screenshot. No product CSS was changed.
+Helpers are external at D:/Dev/temp/psynova-restored-conversations-qa-20261013.py
+and psynova-restored-conversations-browser-20261013.py/.mjs; no credentials or
+dialogue bodies are written to their evidence. Fresh E0009 backup40 tables sealed
+and readback verified at `backups/20261012-214901-a40733a0bfd649fcb15597bd8f33e416.private.dpapi`;
+this newest backup has not itself been imported into another new target.
+
 ## Active shutdown deadline
 
 User's latest shutdown notice sets 2026-10-13 07:30 Beijing (2026-10-12 23:30 UTC).
