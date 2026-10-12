@@ -123,8 +123,11 @@ def validate_existing_workspace(
     if not (data_directory / "mysql").is_dir():
         raise ResumeError("Initialized MySQL system data is unavailable")
     for name in ("mysql.private.log", "mysql.pid"):
-        if (root / name).exists() or (root / name).is_symlink():
-            _reject_reparse_path(root / name)
+        try:
+            (root / name).lstat()
+        except FileNotFoundError:
+            continue
+        _reject_reparse_path(root / name)
     return marker
 
 
@@ -443,7 +446,8 @@ def _process_matches(process: dict[str, Any], marker: dict[str, Any]) -> bool:
         def normalize(value: str) -> str:
             return value.replace("/", "\\").casefold()
         return (
-            len(actual) == len(required)
+            bool(actual)
+            and len(actual) == len(required)
             and normalize(actual[0]) == normalize(required[0])
             and sorted(map(normalize, actual[1:])) == sorted(map(normalize, required[1:]))
         )
