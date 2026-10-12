@@ -65,6 +65,12 @@ class ModuleClientSettings(BaseModel):
 class LLMModuleClientSettings(ModuleClientSettings):
     """Keep the Runtime request window when launcher env overrides other LLM fields."""
 
+    logical_model_id: str = Field(
+        default="qwen2.5-0.5b-engineering",
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:/+-]*$",
+    )
     timeout: TimeoutSettings = Field(default_factory=lambda: TimeoutSettings(read=65.0))
 
 

@@ -2,10 +2,16 @@ from __future__ import annotations
 
 import httpx
 import pytest
+from pydantic import ValidationError
 
 from smhai_backend.adapters.memory.repositories import InMemorySessionStore
 from smhai_backend.container import build_container
-from smhai_backend.core.config import BackendSettings, RateLimitSettings
+from smhai_backend.core.config import (
+    BackendSettings,
+    LLMModuleClientSettings,
+    ModuleClientSettings,
+    RateLimitSettings,
+)
 from smhai_backend.core.errors import ErrorCode
 from smhai_backend.core.request_context import RequestContext
 from smhai_backend.integrations.common_http import LongLivedHttpClient, UpstreamError
@@ -371,15 +377,18 @@ async def test_long_lived_httpx_local_policy_and_explicit_timeouts(monkeypatch):
         "SMHAI_LLM",
         "SMHAI_LLM__TIMEOUT",
         "SMHAI_LLM__TIMEOUT__READ",
+        "SMHAI_LLM__LOGICAL_MODEL_ID",
         "SMHAI_SUPPORT_DEADLINE_SECONDS",
     ):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("SMHAI_LLM__MODE", "http")
     monkeypatch.setenv("SMHAI_LLM__BASE_URL", "http://127.0.0.1:8272")
+    monkeypatch.setenv("SMHAI_LLM__LOGICAL_MODEL_ID", "synthetic-runtime:model-v1")
 
     settings = BackendSettings(_env_file=None)
     assert settings.llm.mode == "http"
     assert settings.llm.base_url == "http://127.0.0.1:8272"
+    assert settings.llm.logical_model_id == "synthetic-runtime:model-v1"
     llm_client = HttpLLMRuntimeClient(settings.llm)
     rag_client = LongLivedHttpClient(settings.rag)
     safety_client = LongLivedHttpClient(settings.safety)
@@ -418,6 +427,7 @@ async def test_long_lived_httpx_local_policy_and_explicit_timeouts(monkeypatch):
             provider_class="local",
             trace_id="TRACE_timeout_budget",
         )
+        assert captured_payload["logical_model_id"] == "synthetic-runtime:model-v1"
         runtime_request_budget_seconds = float(
             captured_payload["config"]["timeout_seconds"]
         )
@@ -431,6 +441,49 @@ async def test_long_lived_httpx_local_policy_and_explicit_timeouts(monkeypatch):
         await llm_client.close()
         await rag_client.close()
         await safety_client.close()
+
+
+@pytest.mark.parametrize(
+    "logical_model_id", ["", " model", "model name", "/model", "x" * 129]
+)
+def test_llm_logical_model_id_rejects_empty_or_malformed_values(logical_model_id: str) -> None:
+    with pytest.raises(ValidationError):
+        LLMModuleClientSettings(logical_model_id=logical_model_id)
+
+
+def test_llm_logical_model_id_keeps_current_default() -> None:
+    assert LLMModuleClientSettings().logical_model_id == "qwen2.5-0.5b-engineering"
+
+
+@pytest.mark.asyncio
+async def test_http_llm_runtime_keeps_default_for_base_module_settings() -> None:
+    client = HttpLLMRuntimeClient(
+        ModuleClientSettings(mode="http", base_url="http://127.0.0.1:8160")
+    )
+    captured_payload: dict[str, object] = {}
+
+    async def capture_post_json(path, payload, *, context, headers=None):
+        captured_payload.update(payload)
+        return {
+            "data": {
+                "text": "{}",
+                "model_id": "MODEL_test",
+                "model_version": "1.0",
+                "runtime_version": "runtime-test",
+            }
+        }
+
+    client.post_json = capture_post_json
+    try:
+        await client.generate(
+            prompt="Synthetic compatibility check.",
+            model_id="MODEL_test",
+            provider_class="local",
+            trace_id="TRACE_llm_settings_compat",
+        )
+        assert captured_payload["logical_model_id"] == "qwen2.5-0.5b-engineering"
+    finally:
+        await client.close()
 
 
 @pytest.mark.asyncio

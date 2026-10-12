@@ -12,6 +12,8 @@ from smhai_backend.core.request_context import RequestContext
 
 from .common_http import LongLivedHttpClient, UpstreamError, translate_upstream_error
 
+_DEFAULT_LOGICAL_MODEL_ID = "qwen2.5-0.5b-engineering"
+
 
 @dataclass(frozen=True, slots=True)
 class CandidateResponse:
@@ -163,7 +165,9 @@ class HttpLLMRuntimeClient(LongLivedHttpClient):
             "prompt_id": prompt_id,
             "prompt_version": prompt_version,
             "contract_model_id": model_id,
-            "logical_model_id": "qwen2.5-0.5b-engineering",
+            "logical_model_id": getattr(
+                self.settings, "logical_model_id", _DEFAULT_LOGICAL_MODEL_ID
+            ),
             "prompt": prompt,
             "stream": False,
             "structured_schema": _generation_content_schema(),
