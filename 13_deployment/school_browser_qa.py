@@ -16,6 +16,7 @@ from typing import Any
 REPO = Path(__file__).resolve().parents[1]
 FRONTEND = REPO / "10_frontend"
 NODE_SCRIPT = Path(__file__).with_name("school_browser_qa.mjs")
+TASK_NODE_SCRIPT = Path(__file__).with_name("school_task_browser_qa.mjs")
 FRONTEND_URL = "http://127.0.0.1:4178"
 BACKEND_URL = "http://127.0.0.1:8088"
 WORKSPACE_PREFIX = ".StudentMentalHealthAI-school-workspace-20261011"
@@ -41,8 +42,55 @@ STAGE_KEYS = (
     "ui_logout",
     "blank_restore",
 )
-
-
+TASK_STAGE_KEYS = (
+    "admin_login",
+    "class_created",
+    "student_assigned",
+    "teacher_assigned",
+    "task_published",
+    "student_login",
+    "cat_started",
+    "cat_completed",
+    "student_completed_history",
+    "teacher_login",
+    "teacher_completed_aggregate",
+    "admin_revoke",
+    "student_revoked_history",
+    "result_detail_request_blocked",
+    "sessions_cleaned",
+    "screenshots",
+)
+TASK_SCREENSHOTS = (
+    "admin-task-published.png",
+    "student-completed-history.png",
+    "teacher-task-summary.png",
+    "admin-task-revoked.png",
+    "student-revoked-history.png",
+)
+FAILURE_SCREENSHOT_NAME = "admin-school-operations-failure.png"
+SAFE_FAILURE_CLASSES = {
+    "Error", "TimeoutError", "TypeError", "RangeError", "ReferenceError",
+    "ProtocolError", "TargetClosedError", "WorkflowResponseError",
+}
+FAILURE_ROUTE_MODES = {
+    "login", "student_home", "student_assessments", "student_assessment_new",
+    "student_assessment_session", "student_assessment_result", "teacher_overview",
+    "admin_overview", "other",
+}
+CAT_FAILURE_SUBSTAGES = {
+    "task_row", "task_click", "task_route", "question_ready", "progress",
+    "submit", "complete",
+}
+FAILURE_SELECTOR_KEYS = (
+    "assessment_page", "assessment_loading", "question_title", "question_card",
+    "assessment_complete_card", "assessment_error", "assigned_task",
+)
+SAFE_DIAGNOSTIC_ENDPOINTS = {
+    "/api/v1/school/tasks/{task_ref}/start",
+    "/api/v1/assessments/{assessment_id}/state",
+    "/api/v1/assessments/{assessment_id}/responses",
+    "/api/v1/assessments/{assessment_id}/complete",
+}
 class HarnessError(Exception):
     """Safe, fixed-message wrapper error."""
 
@@ -98,6 +146,127 @@ def _result_shell() -> dict[str, Any]:
         "fail_count": len(ACCOUNT_SLOTS),
         "results": [],
     }
+
+
+def _node_script_for_workflow(workflow: str) -> Path:
+    if workflow == "auth":
+        return NODE_SCRIPT
+    if workflow == "school-tasks":
+        return TASK_NODE_SCRIPT
+    raise HarnessError("WorkflowUnavailable")
+
+
+def sanitize_task_child_output(
+    stdout: str,
+    *,
+    artifact_dir: Path,
+    child_exit_code: int,
+) -> dict[str, Any]:
+    """Allowlist workflow evidence; never forward child paths or free-form text."""
+    try:
+        parsed = json.loads(stdout)
+    except (json.JSONDecodeError, TypeError):
+        parsed = None
+    child_stages = parsed.get("stages") if isinstance(parsed, dict) else None
+    recognized_stages = isinstance(child_stages, dict)
+    exact_stage_set = (
+        recognized_stages
+        and set(child_stages) == set(TASK_STAGE_KEYS)
+        and all(value in {"PASS", "FAIL"} for value in child_stages.values())
+    )
+    safe_stages = {
+        key: "PASS" if recognized_stages and child_stages.get(key) == "PASS" else "FAIL"
+        for key in TASK_STAGE_KEYS
+    }
+    children = parsed.get("screenshots") if isinstance(parsed, dict) else None
+    valid_screenshots = (
+        isinstance(children, list)
+        and all(isinstance(name, str) for name in children)
+        and len(children) == len(TASK_SCREENSHOTS)
+        and set(children) == set(TASK_SCREENSHOTS)
+    )
+    screenshot_paths = [artifact_dir / name for name in TASK_SCREENSHOTS]
+    screenshots_exist = valid_screenshots and all(path.is_file() for path in screenshot_paths)
+    runner_ok = type(child_exit_code) is int and child_exit_code == 0
+    stages_passed = exact_stage_set and all(value == "PASS" for value in safe_stages.values())
+    passed = (
+        runner_ok
+        and isinstance(parsed, dict)
+        and parsed.get("workflow") == "school-tasks"
+        and parsed.get("status") == "PASS"
+        and stages_passed
+        and screenshots_exist
+    )
+    result: dict[str, Any] = {
+        "workflow": "school-tasks",
+        "status": "PASS" if passed else "FAIL",
+        "runner_status": "PASS" if runner_ok else "FAIL",
+        "stages": safe_stages,
+    }
+    if passed:
+        result["screenshots"] = [str(path) for path in screenshot_paths]
+    else:
+        result["failure_class"] = "BrowserWorkflowFailed"
+        child_failure = parsed.get("failure") if isinstance(parsed, dict) else None
+        if isinstance(child_failure, dict):
+            stage = child_failure.get("stage")
+            error_class = child_failure.get("error_class")
+            if (
+                stage in TASK_STAGE_KEYS
+                and safe_stages[stage] == "FAIL"
+                and isinstance(error_class, str)
+                and error_class in SAFE_FAILURE_CLASSES
+            ):
+                safe_failure: dict[str, Any] = {"stage": stage, "error_class": error_class}
+                diagnostics = child_failure.get("diagnostics")
+                if (
+                    stage == "cat_started"
+                    and isinstance(diagnostics, dict)
+                    and diagnostics.get("cat_substage") in CAT_FAILURE_SUBSTAGES
+                ):
+                    safe_failure["cat_substage"] = diagnostics["cat_substage"]
+                if child_failure.get("screenshot") == FAILURE_SCREENSHOT_NAME:
+                    failure_screenshot = artifact_dir / FAILURE_SCREENSHOT_NAME
+                    if failure_screenshot.is_file():
+                        safe_failure["screenshot"] = str(failure_screenshot)
+                if isinstance(diagnostics, dict):
+                    route_mode = diagnostics.get("route_mode")
+                    if isinstance(route_mode, str) and route_mode in FAILURE_ROUTE_MODES:
+                        safe_failure["route_mode"] = route_mode
+                    selectors = diagnostics.get("selectors")
+                    if (
+                        isinstance(selectors, dict)
+                        and set(selectors) == set(FAILURE_SELECTOR_KEYS)
+                        and all(type(value) is bool for value in selectors.values())
+                    ):
+                        safe_failure["selectors"] = {
+                            key: selectors[key] for key in FAILURE_SELECTOR_KEYS
+                        }
+                    responses = diagnostics.get("responses")
+                    if isinstance(responses, list):
+                        safe_responses = []
+                        for item in responses[-12:]:
+                            if not isinstance(item, dict):
+                                continue
+                            method = item.get("method")
+                            status = item.get("status")
+                            endpoint = item.get("endpoint")
+                            if (
+                                isinstance(method, str)
+                                and method in {"GET", "POST"}
+                                and type(status) is int
+                                and 100 <= status <= 599
+                                and isinstance(endpoint, str)
+                                and endpoint in SAFE_DIAGNOSTIC_ENDPOINTS
+                            ):
+                                safe_responses.append({
+                                    "method": method,
+                                    "status": status,
+                                    "endpoint": endpoint,
+                                })
+                        safe_failure["responses"] = safe_responses
+                result["failure"] = safe_failure
+    return result
 
 
 def sanitize_child_output(
@@ -213,7 +382,11 @@ def create_artifact_run_dir(workspace: Path) -> Path:
     return run_dir
 
 
-def run(workspace_arg: Path) -> dict[str, Any]:
+def run(workspace_arg: Path, workflow: str = "auth") -> dict[str, Any]:
+    try:
+        node_script = _node_script_for_workflow(workflow)
+    except HarnessError as exc:
+        return safe_error_result("workflow_gate", exc)
     try:
         workspace = validate_workspace_path(workspace_arg)
     except Exception as exc:
@@ -260,7 +433,7 @@ def run(workspace_arg: Path) -> dict[str, Any]:
     del credentials, payload
     try:
         child = subprocess.run(
-            [node, str(NODE_SCRIPT)],
+            [node, str(node_script)],
             input=serialized,
             text=True,
             encoding="utf-8",
@@ -280,19 +453,22 @@ def run(workspace_arg: Path) -> dict[str, Any]:
     del serialized
     # Child stdout/stderr are intentionally held only in memory. stdout is
     # parsed through a strict allowlist; stderr is never used or emitted.
-    return sanitize_child_output(
-        child.stdout,
-        artifact_dir=artifact_dir,
-        child_exit_code=child.returncode,
-    )
+    if workflow == "school-tasks":
+        return sanitize_task_child_output(
+            child.stdout,
+            artifact_dir=artifact_dir,
+            child_exit_code=child.returncode,
+        )
+    return sanitize_child_output(child.stdout, artifact_dir=artifact_dir, child_exit_code=child.returncode)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workspace", type=Path, required=True)
+    parser.add_argument("--workflow", default="auth")
     args = parser.parse_args()
     try:
-        result = run(args.workspace)
+        result = run(args.workspace, args.workflow)
     except Exception as exc:  # SQL/DPAPI/Playwright errors may embed secrets.
         result = safe_error_result("harness", exc)
     print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
