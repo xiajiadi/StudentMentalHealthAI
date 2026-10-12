@@ -186,6 +186,39 @@ async function checkAccount(browser, payload, slot) {
     });
     stages.screenshot = 'PASS';
 
+    if (slot === 'alpha.student') {
+      let legacyListRequested = false;
+      const observeList = (request) => {
+        if (request.method() === 'GET' && new URL(request.url()).pathname === '/api/v1/assessments') {
+          legacyListRequested = true;
+        }
+      };
+      page.on('request', observeList);
+      const historyResponse = page.waitForResponse((response) =>
+        new URL(response.url()).pathname === '/api/v1/school/assessments');
+      await page.getByRole('link', { name: '我的记录', exact: true }).click();
+      if ((await historyResponse).status() !== 200) throw new Error('StudentHistoryUnavailable');
+      await page.locator('#assessment-history-title').waitFor({ state: 'visible' });
+      await page.locator('.history-row').first().waitFor({ state: 'visible' });
+      await page.getByText('尚未开始的合成测评', { exact: true }).waitFor({ state: 'visible' });
+      await page.screenshot({ path: path.join(payload.artifact_dir, 'student-history.png'),
+        fullPage: true, animations: 'disabled', mask: [page.locator('.account-menu')] });
+      const feedbackResponse = page.waitForResponse((response) =>
+        new URL(response.url()).pathname === '/api/v1/school/assessments');
+      await page.getByRole('link', { name: '测评反馈', exact: true }).click();
+      if ((await feedbackResponse).status() !== 200) throw new Error('StudentFeedbackUnavailable');
+      await page.locator('#reports-title').waitFor({ state: 'visible' });
+      await page.locator('.feedback-loading').waitFor({ state: 'hidden' });
+      if (await page.getByText('测评反馈暂时无法加载', { exact: true }).isVisible()) {
+        throw new Error('StudentFeedbackUnavailable');
+      }
+      await page.locator('.feedback-row, .feedback-empty').first().waitFor({ state: 'visible' });
+      if (legacyListRequested) throw new Error('LegacyPrivateListRequested');
+      await page.screenshot({ path: path.join(payload.artifact_dir, 'student-feedback.png'),
+        fullPage: true, animations: 'disabled', mask: [page.locator('.account-menu')] });
+      page.off('request', observeList);
+    }
+
     const forbiddenPath = FORBIDDEN_PATHS[slot];
     await page.goto(`${payload.frontend_url}${forbiddenPath}`, { waitUntil: 'domcontentloaded' });
     await page.waitForURL((url) => url.pathname === expected.path, { timeout: 10000 });

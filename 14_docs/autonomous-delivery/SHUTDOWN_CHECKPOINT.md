@@ -43,6 +43,4 @@ schedule only within the user's resumed authorization and available resources.
 
 ## Actual pause record
 
-**PENDING.** No claim is made that wrap-up, a scheduled trigger or goal pause has
-already occurred. At the deadline, replace this section with actual time, HEAD,
-dirty state, evidence, stopped/running services and next action.
+The reminder was observed after the deadline at UTC2026-10-12 00:09 (Beijing08:09). Both expired heartbeats were set PAUSED. A scheduled pause by06:35 is not verified and must not be claimed. The user then explicitly resumed while away without RTX3060; the goal is now ACTIVE. Existing data/credentials were preserved and missing CPU school services were recovered after fresh ownership checks. See CURRENT_STATE.md for actual service identities, working tree and next actions. The old deadline is historical; do not revive its expired automations automatically.
