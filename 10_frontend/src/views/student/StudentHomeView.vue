@@ -1,24 +1,29 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { ArrowLeft, ArrowRight, BookOpen, CheckCircle2, ClipboardList, RotateCcw } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, BookOpen, CheckCircle2, ClipboardList, History, RotateCcw } from '@lucide/vue'
 import AppBadge from '@/components/app/AppBadge.vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import { frontendApi } from '@/services/mock-api'
 import { userFacingApiError } from '@/utils/user-facing-errors'
-import type { ReportSummary } from '@/api/client'
-import type { Assessment } from '@/types/contracts'
+import type { AssessmentListEntry, ReportSummary } from '@/api/client'
 import { useSessionStore } from '@/stores/session'
 import { useRoute, useRouter } from 'vue-router'
 
 const route = useRoute()
 const router = useRouter()
 const state = ref<'loading' | 'ready' | 'error'>('loading')
-const assessments = ref<Assessment[]>([])
+const assessments = ref<AssessmentListEntry[]>([])
 const reports = ref<ReportSummary[]>([])
 const errorMessage = ref('')
 const historyError = ref('')
+const loadMoreError = ref('')
+const assessmentPageSize = 30
+const nextAssessmentOffset = ref(0)
+const assessmentRequestGeneration = ref(0)
+const isLoadingMoreAssessments = ref(false)
+const hasMoreAssessments = ref(false)
 type StudentCarouselSlide =
   | { kind: 'welcome'; title: string; subtitle: string; image: string; imageAlt: string }
   | { kind: 'tip'; title: string; body: string; image: string; imageAlt: string; backgroundPosition?: string }
@@ -178,29 +183,109 @@ const previousCarouselSlide = () => setCarouselSlide(carouselIndex.value - 1)
 const nextCarouselSlide = () => setCarouselSlide(carouselIndex.value + 1)
 
 const load = async () => {
+  const generation = ++assessmentRequestGeneration.value
   state.value = 'loading'
   errorMessage.value = ''
+  loadMoreError.value = ''
+  hasMoreAssessments.value = false
+  nextAssessmentOffset.value = 0
+  isLoadingMoreAssessments.value = false
+  assessments.value = []
   try {
-    assessments.value = (await frontendApi.listAssessments()).data
+    if (isHistory.value) {
+      const rows = frontendApi.listAssessmentEntries
+        ? (await frontendApi.listAssessmentEntries({ limit: assessmentPageSize, skip: 0 })).data
+        : (await frontendApi.listAssessments({ limit: assessmentPageSize, skip: 0 })).data.map((assessment) => ({
+            assessment_id: assessment.assessment_id,
+            status: assessment.status,
+            items_answered: assessment.response_summary.items_answered,
+            started_at: assessment.timestamps.started_at,
+            completed_at: assessment.timestamps.completed_at,
+          }))
+      if (generation !== assessmentRequestGeneration.value) return
+      assessments.value = rows
+      nextAssessmentOffset.value = rows.length
+      hasMoreAssessments.value = rows.length === assessmentPageSize
+    }
     try {
-      reports.value = (await frontendApi.listReports()).data.items
+      const reportResponse = await frontendApi.listReports()
+      if (generation !== assessmentRequestGeneration.value) return
+      reports.value = reportResponse.data.items
       historyError.value = ''
     } catch (error) {
+      if (generation !== assessmentRequestGeneration.value) return
       reports.value = []
       historyError.value = userFacingApiError(error, '支持记录暂时无法加载。')
     }
+    if (generation !== assessmentRequestGeneration.value) return
     state.value = 'ready'
   } catch (error) {
+    if (generation !== assessmentRequestGeneration.value) return
     state.value = 'error'
     errorMessage.value = userFacingApiError(error, '页面暂时无法加载，请稍后重试。')
   }
 }
 
-const continueOrStart = (assessment?: Assessment) => {
+const loadMoreAssessments = async () => {
+  if (isLoadingMoreAssessments.value || !hasMoreAssessments.value || state.value !== 'ready') return
+  const generation = assessmentRequestGeneration.value
+  isLoadingMoreAssessments.value = true
+  loadMoreError.value = ''
+  try {
+    const rows = frontendApi.listAssessmentEntries
+      ? (await frontendApi.listAssessmentEntries({ limit: assessmentPageSize, skip: nextAssessmentOffset.value })).data
+      : (await frontendApi.listAssessments({ limit: assessmentPageSize, skip: nextAssessmentOffset.value })).data.map((assessment) => ({
+          assessment_id: assessment.assessment_id,
+          status: assessment.status,
+          items_answered: assessment.response_summary.items_answered,
+          started_at: assessment.timestamps.started_at,
+          completed_at: assessment.timestamps.completed_at,
+        }))
+    if (generation !== assessmentRequestGeneration.value) return
+    const existingIds = new Set(assessments.value.map((item) => item.assessment_id))
+    assessments.value = [...assessments.value, ...rows.filter((item) => !existingIds.has(item.assessment_id))]
+    nextAssessmentOffset.value += rows.length
+    hasMoreAssessments.value = rows.length === assessmentPageSize
+  } catch (error) {
+    if (generation !== assessmentRequestGeneration.value) return
+    const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : ''
+    loadMoreError.value = userFacingApiError({ code }, '暂时无法加载更多测评记录，请重试。')
+  } finally {
+    if (generation === assessmentRequestGeneration.value) isLoadingMoreAssessments.value = false
+  }
+}
+
+const continueOrStart = (assessment?: AssessmentListEntry) => {
   void router.push(assessment ? `/student/assessment/${encodeURIComponent(assessment.assessment_id)}` : '/student/assessment')
 }
 const openResult = (assessmentId: string) => void router.push(`/student/assessment/${encodeURIComponent(assessmentId)}/result`)
 const openSupportHistory = (reportId: string) => void router.push(`/student/reports/${encodeURIComponent(reportId)}`)
+const assessmentStatusLabel = (assessment: AssessmentListEntry) => {
+  if (assessment.status === 'created') return '待开始'
+  if (assessment.status === 'in_progress') return '进行中'
+  if (assessment.status === 'completed') return '已完成'
+  if (assessment.status === 'abandoned') return '已结束'
+  return '状态暂不可用'
+}
+const formatHistoryDate = (value: string | null | undefined) => {
+  if (!value) return '时间未提供'
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return '时间暂不可用'
+  return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(parsed)
+}
+const assessmentTimeLabel = (assessment: AssessmentListEntry) => assessment.status === 'created' && !assessment.started_at
+  ? '尚未开始'
+  : formatHistoryDate(assessment.completed_at || assessment.started_at)
+const assessmentActionLabel = (assessment: AssessmentListEntry) => {
+  if (assessment.status === 'created') return '开始测评'
+  if (assessment.status === 'in_progress') return '继续测评'
+  if (assessment.status === 'completed') return '查看结果'
+  return ''
+}
+const openAssessmentEntry = (assessment: AssessmentListEntry) => {
+  if (assessment.status === 'completed') openResult(assessment.assessment_id)
+  else if (assessment.status === 'created' || assessment.status === 'in_progress') continueOrStart(assessment)
+}
 const canOpenSupportReport = (report: ReportSummary) => report.status.toLowerCase() === 'generated' && report.safety_action !== 'CRISIS_ROUTE'
 const supportReportStatus = (report: ReportSummary) => {
   if (report.safety_action === 'CRISIS_ROUTE') return '安全流程记录'
@@ -235,7 +320,10 @@ const resumeCarouselAfterFocus = (event: FocusEvent) => {
 const handleVisibilityChange = () => scheduleCarouselRotation()
 const handleMotionPreferenceChange = () => scheduleCarouselRotation()
 
-watch(isHistory, scheduleCarouselRotation)
+watch(isHistory, () => {
+  scheduleCarouselRotation()
+  void load()
+})
 onMounted(() => {
   carouselMounted.value = true
   reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -347,14 +435,18 @@ onUnmounted(() => {
         <AppButton variant="secondary" @click="router.push('/student/home')"><ArrowLeft :size="16" aria-hidden="true" />返回首页</AppButton>
       </header>
       <section class="history-section" aria-labelledby="assessment-history-title">
-        <div class="history-section__heading"><div><span class="student-kicker">测评</span><h2 id="assessment-history-title">我的测评</h2></div><span>{{ assessments.length }} 条</span></div>
+        <div class="history-section__heading"><div><span class="student-kicker">测评</span><h2 id="assessment-history-title">我的测评</h2></div><span>{{ hasMoreAssessments ? `已显示 ${assessments.length} 条` : `${assessments.length} 条` }}</span></div>
         <AppCard v-if="assessments.length === 0" class="history-empty"><ClipboardList :size="21" aria-hidden="true" /><div><strong>还没有测评记录</strong><p>开始测评后，保存的记录会显示在这里。</p><AppButton size="sm" @click="continueOrStart()">开始测评 <ArrowRight :size="15" aria-hidden="true" /></AppButton></div></AppCard>
         <AppCard v-for="item in assessments" :key="item.assessment_id" class="history-row">
-          <span class="history-row__icon" :class="{ 'history-row__icon--complete': item.status === 'completed' }"><CheckCircle2 :size="18" aria-hidden="true" /></span>
-          <div class="history-row__copy"><strong>{{ item.status === 'completed' ? '已完成的合成测评' : '进行中的合成测评' }}</strong><span>{{ item.response_summary.items_answered }} 项已记录 · {{ item.timestamps.completed_at || item.timestamps.started_at }}</span></div>
-          <AppBadge :tone="item.status === 'completed' ? 'teal' : 'blue'" dot>{{ item.status === 'completed' ? '已完成' : '进行中' }}</AppBadge>
-          <AppButton variant="secondary" size="sm" @click="item.status === 'completed' ? openResult(item.assessment_id) : continueOrStart(item)">{{ item.status === 'completed' ? '查看结果' : '继续测评' }} <ArrowRight :size="15" aria-hidden="true" /></AppButton>
+          <span class="history-row__icon" :class="{ 'history-row__icon--complete': item.status === 'completed' }"><CheckCircle2 v-if="item.status === 'completed'" :size="18" aria-hidden="true" /><History v-else :size="18" aria-hidden="true" /></span>
+          <div class="history-row__copy"><strong>{{ item.status === 'completed' ? '已完成的合成测评' : item.status === 'created' ? '尚未开始的合成测评' : '测评记录' }}</strong><span>{{ item.items_answered }} 项已记录 · {{ assessmentTimeLabel(item) }}</span></div>
+          <AppBadge :tone="item.status === 'completed' ? 'teal' : item.status === 'created' ? 'neutral' : 'blue'" dot>{{ assessmentStatusLabel(item) }}</AppBadge>
+          <AppButton v-if="assessmentActionLabel(item)" variant="secondary" size="sm" @click="openAssessmentEntry(item)">{{ assessmentActionLabel(item) }} <ArrowRight :size="15" aria-hidden="true" /></AppButton>
         </AppCard>
+        <div v-if="hasMoreAssessments || loadMoreError" class="history-load-more">
+          <AppButton variant="secondary" :disabled="isLoadingMoreAssessments" @click="loadMoreAssessments">{{ isLoadingMoreAssessments ? '正在加载…' : '加载更多记录' }} <ArrowRight :size="15" aria-hidden="true" /></AppButton>
+          <p v-if="loadMoreError" role="alert">{{ loadMoreError }}</p>
+        </div>
       </section>
       <section class="history-section" aria-labelledby="report-history-title">
         <div class="history-section__heading"><div><span class="student-kicker">教育支持</span><h2 id="report-history-title">支持记录</h2></div><span>{{ reports.length }} 条</span></div>
@@ -362,7 +454,7 @@ onUnmounted(() => {
         <p v-else-if="reports.length === 0" class="history-empty-copy">还没有支持记录。独立支持生成目前受限；如果服务端已有可访问的记录，会显示在这里。</p>
         <AppCard v-for="report in reports" :key="report.report_id" class="history-row">
           <span class="history-row__icon history-row__icon--support"><BookOpen :size="18" aria-hidden="true" /></span>
-          <div class="history-row__copy"><strong>{{ report.safety_action === 'CRISIS_ROUTE' ? '安全流程记录' : '教育支持记录' }}</strong><span>{{ report.created_at || '时间未提供' }} · {{ supportReportStatus(report) }}</span></div>
+          <div class="history-row__copy"><strong>{{ report.safety_action === 'CRISIS_ROUTE' ? '安全流程记录' : '教育支持记录' }}</strong><span>{{ formatHistoryDate(report.created_at) }} · {{ supportReportStatus(report) }}</span></div>
           <AppButton v-if="canOpenSupportReport(report)" variant="secondary" size="sm" @click="openSupportHistory(report.report_id)">查看反馈 <ArrowRight :size="15" aria-hidden="true" /></AppButton>
         </AppCard>
       </section>
@@ -421,6 +513,8 @@ onUnmounted(() => {
 .history-row__copy { display: grid; min-width: 0; flex: 1; gap: 4px; }
 .history-row__copy strong { color: var(--color-text-primary); font-size: 13px; }
 .history-row__copy span { overflow: hidden; color: var(--color-text-secondary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.history-load-more { display: grid; justify-items: center; gap: 8px; margin-top: 16px; }
+.history-load-more p { margin: 0; color: var(--color-critical); font-size: 12px; }
 .history-empty { display: flex; align-items: flex-start; gap: 13px; padding: 20px; color: #54766b; }
 .history-empty > div { display: grid; gap: 7px; }
 .history-empty strong { color: var(--color-text-primary); font-size: 13px; }

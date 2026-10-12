@@ -26,12 +26,22 @@ import type {
 } from '@/types/view-models'
 import type {
   AssessmentState,
+  AssessmentListEntry,
   AssessmentListParams,
   FrontendApi,
   LoginInput,
   LoginResult,
   ReportSummary,
+  SchoolClass,
+  SchoolMember,
+  SchoolMemberRole,
+  SchoolTask,
+  SchoolTaskEnrollment,
+  SchoolTaskStart,
+  StudentSchoolTask,
+  StudentSchoolTaskHistory,
   ReviewSubmission,
+  TeacherTaskProgress,
   SupportResult,
 } from '@/api/client'
 
@@ -94,6 +104,150 @@ const nowToken = (prefix: string) => {
 
 const valueAsString = (value: unknown, fallback = '') => typeof value === 'string' ? value : fallback
 const nullableString = (value: unknown): string | null => typeof value === 'string' ? value : null
+const requiredString = (source: UnknownRecord, key: string): string => {
+  const value = source[key]
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new RealApiError('API_INVALID_RESPONSE', '学校任务响应格式无法识别。')
+  }
+  return value
+}
+const requiredCount = (source: UnknownRecord, key: string): number => {
+  const value = source[key]
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    throw new RealApiError('API_INVALID_RESPONSE', '学校任务统计格式无法识别。')
+  }
+  return value
+}
+const requiredTimestamp = (source: UnknownRecord, key: string, nullable = false): string | null => {
+  const value = source[key]
+  if (nullable && (value === null || value === undefined)) return null
+  if (typeof value !== 'string' || Number.isNaN(Date.parse(value))) {
+    throw new RealApiError('API_INVALID_RESPONSE', '学校任务时间格式无法识别。')
+  }
+  return value
+}
+const isAssessmentStatus = (value: unknown): value is Assessment['status'] =>
+  value === 'created' || value === 'in_progress' || value === 'completed' || value === 'abandoned' || value === 'invalid'
+
+const mapSchoolClass = (value: unknown): SchoolClass => {
+  if (!isRecord(value)) throw new RealApiError('API_INVALID_RESPONSE', '班级列表格式无法识别。')
+  return {
+    class_ref: requiredString(value, 'class_ref'),
+    status: requiredString(value, 'status'),
+    active_student_count: requiredCount(value, 'active_student_count'),
+    active_teacher_count: requiredCount(value, 'active_teacher_count'),
+  }
+}
+
+const mapSchoolMember = (value: unknown): SchoolMember => {
+  if (!isRecord(value) || (value.role !== 'student' && value.role !== 'teacher')) {
+    throw new RealApiError('API_INVALID_RESPONSE', '人员列表格式无法识别。')
+  }
+  if (value.subject_id !== undefined && value.subject_id !== null && typeof value.subject_id !== 'string') {
+    throw new RealApiError('API_INVALID_RESPONSE', '人员列表格式无法识别。')
+  }
+  return {
+    user_id: requiredString(value, 'user_id'),
+    role: value.role,
+    subject_id: nullableString(value.subject_id),
+  }
+}
+
+const mapSchoolTask = (value: unknown): SchoolTask => {
+  if (!isRecord(value)) throw new RealApiError('API_INVALID_RESPONSE', '任务列表格式无法识别。')
+  return {
+    task_ref: requiredString(value, 'task_ref'),
+    class_ref: requiredString(value, 'class_ref'),
+    status: requiredString(value, 'status'),
+    opens_at: requiredTimestamp(value, 'opens_at')!,
+    due_at: requiredTimestamp(value, 'due_at', true),
+    published_at: requiredTimestamp(value, 'published_at')!,
+    published_enrollment_count: requiredCount(value, 'published_enrollment_count'),
+    active_enrollment_count: requiredCount(value, 'active_enrollment_count'),
+    revoked_enrollment_count: requiredCount(value, 'revoked_enrollment_count'),
+    instrument_id: requiredString(value, 'instrument_id'),
+    instrument_version: requiredString(value, 'instrument_version'),
+  }
+}
+
+const mapStudentSchoolTask = (value: unknown): StudentSchoolTask => {
+  if (!isRecord(value)) throw new RealApiError('API_INVALID_RESPONSE', '学校任务列表格式无法识别。')
+  const assessmentStatus = value.assessment_status
+  if (assessmentStatus !== null && assessmentStatus !== undefined && !isAssessmentStatus(assessmentStatus)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '测评进度格式无法识别。')
+  }
+  if (value.assessment_id !== null && value.assessment_id !== undefined && typeof value.assessment_id !== 'string') {
+    throw new RealApiError('API_INVALID_RESPONSE', '测评会话格式无法识别。')
+  }
+  return {
+    task_ref: requiredString(value, 'task_ref'),
+    class_ref: requiredString(value, 'class_ref'),
+    status: requiredString(value, 'status'),
+    opens_at: requiredTimestamp(value, 'opens_at')!,
+    due_at: requiredTimestamp(value, 'due_at', true),
+    assessment_id: nullableString(value.assessment_id),
+    assessment_status: assessmentStatus ?? null,
+  }
+}
+
+const mapStudentSchoolTaskHistory = (value: unknown): StudentSchoolTaskHistory => {
+  const allowed = new Set([
+    'task_ref', 'class_ref', 'task_status', 'enrollment_status',
+    'assessment_status', 'started_at', 'completed_at',
+  ])
+  if (!isRecord(value) || Object.keys(value).some((key) => !allowed.has(key))) {
+    throw new RealApiError('API_INVALID_RESPONSE', '任务历史包含不支持的信息，已停止展示。')
+  }
+  const assessmentStatus = value.assessment_status
+  if (assessmentStatus !== null && assessmentStatus !== undefined && !isAssessmentStatus(assessmentStatus)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '任务历史状态格式无法识别。')
+  }
+  return {
+    task_ref: requiredString(value, 'task_ref'),
+    class_ref: requiredString(value, 'class_ref'),
+    task_status: requiredString(value, 'task_status'),
+    enrollment_status: requiredString(value, 'enrollment_status'),
+    assessment_status: assessmentStatus ?? null,
+    started_at: requiredTimestamp(value, 'started_at', true),
+    completed_at: requiredTimestamp(value, 'completed_at', true),
+  }
+}
+
+const mapTeacherTaskProgress = (value: unknown): TeacherTaskProgress => {
+  const allowed = new Set([
+    'class_ref', 'task_ref', 'task_status', 'opens_at', 'due_at',
+    'published_enrollment_count', 'active_enrollment_count', 'revoked_enrollment_count',
+    'not_started_count', 'created_count', 'in_progress_count', 'completed_count',
+    'abandoned_count', 'invalid_count',
+  ])
+  if (!isRecord(value) || Object.keys(value).some((key) => !allowed.has(key))) {
+    throw new RealApiError('API_INVALID_RESPONSE', '任务汇总包含不支持的信息，已停止展示。')
+  }
+  return {
+    class_ref: requiredString(value, 'class_ref'),
+    task_ref: requiredString(value, 'task_ref'),
+    task_status: requiredString(value, 'task_status'),
+    opens_at: requiredTimestamp(value, 'opens_at')!,
+    due_at: requiredTimestamp(value, 'due_at', true),
+    published_enrollment_count: requiredCount(value, 'published_enrollment_count'),
+    active_enrollment_count: requiredCount(value, 'active_enrollment_count'),
+    revoked_enrollment_count: requiredCount(value, 'revoked_enrollment_count'),
+    not_started_count: requiredCount(value, 'not_started_count'),
+    created_count: requiredCount(value, 'created_count'),
+    in_progress_count: requiredCount(value, 'in_progress_count'),
+    completed_count: requiredCount(value, 'completed_count'),
+    abandoned_count: requiredCount(value, 'abandoned_count'),
+    invalid_count: requiredCount(value, 'invalid_count'),
+  }
+}
+
+const mapSchoolTaskEnrollment = (value: unknown): SchoolTaskEnrollment => {
+  if (!isRecord(value)) throw new RealApiError('API_INVALID_RESPONSE', '报名记录格式无法识别。')
+  return {
+    enrollment_ref: requiredString(value, 'enrollment_ref'),
+    status: requiredString(value, 'status'),
+  }
+}
 
 const mapQuestion = (value: unknown): CatQuestion | null => {
   if (!isRecord(value) || typeof value.item_id !== 'string' || typeof value.prompt !== 'string') return null
@@ -229,6 +383,31 @@ const mapAssessment = (value: unknown, assessmentId: string): Assessment => {
       started_at: valueAsString(timestamps.started_at, new Date().toISOString()),
       completed_at: typeof timestamps.completed_at === 'string' ? timestamps.completed_at : null,
     },
+  }
+}
+
+const mapAssessmentListEntry = (value: unknown): AssessmentListEntry => {
+  const allowed = new Set(['assessment_id', 'status', 'items_answered', 'started_at', 'completed_at'])
+  if (!isRecord(value) || Object.keys(value).some((key) => !allowed.has(key))) {
+    throw new RealApiError('API_INVALID_RESPONSE', '测评列表包含不支持的信息，已停止展示。')
+  }
+  const startedAt = value.started_at
+  const completedAt = value.completed_at
+  const isTimestamp = (timestamp: unknown): timestamp is string | null =>
+    timestamp === null || (typeof timestamp === 'string'
+      && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(timestamp)
+      && !Number.isNaN(Date.parse(timestamp)))
+  if (!isAssessmentStatus(value.status)
+    || !Number.isInteger(value.items_answered) || (value.items_answered as number) < 0
+    || !isTimestamp(startedAt) || !isTimestamp(completedAt)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '测评进度格式无法识别。')
+  }
+  return {
+    assessment_id: requiredString(value, 'assessment_id'),
+    status: value.status,
+    items_answered: value.items_answered as number,
+    started_at: startedAt,
+    completed_at: completedAt,
   }
 }
 
@@ -386,6 +565,7 @@ const mapReviewCase = (value: unknown): ReviewCase => {
 export class RealApiProvider implements FrontendApi {
   private csrfToken = ''
   private actorSubjectId: string | null = null
+  private activeSchoolContext: SchoolRoleContext | null = null
   private readonly reviewCases = new Map<string, ReviewCase>()
 
   private projectActor(actor: UnknownRecord, fallbackName = '工作区用户'): LoginResult {
@@ -407,6 +587,7 @@ export class RealApiProvider implements FrontendApi {
   }
 
   async switchActiveContext(context: SchoolRoleContext): Promise<ApiEnvelope<LoginResult>> {
+    this.activeSchoolContext = null
     await this.ensureCsrfToken()
     const response = await unwrap<UnknownRecord>(() => apiClient.request({
       method: 'POST', url: '/api/v1/auth/active-context',
@@ -418,6 +599,7 @@ export class RealApiProvider implements FrontendApi {
       throw new RealApiError('API_INVALID_RESPONSE', '学校身份尚未激活，请重试。')
     }
     this.actorSubjectId = data.subjectId
+    this.activeSchoolContext = data.activeContext ?? null
     this.reviewCases.clear()
     return { ...response, data }
   }
@@ -430,6 +612,8 @@ export class RealApiProvider implements FrontendApi {
   }
 
   async login(input: LoginInput): Promise<ApiEnvelope<LoginResult>> {
+    this.actorSubjectId = null
+    this.activeSchoolContext = null
     const response = await unwrap<UnknownRecord>(() => authLogin({
       client: apiClient,
       body: { username: input.account, password: input.password },
@@ -439,6 +623,7 @@ export class RealApiProvider implements FrontendApi {
     this.reviewCases.clear()
     const data = this.projectActor(actor, input.account)
     this.actorSubjectId = data.subjectId
+    this.activeSchoolContext = data.activeContext ?? null
     if (data.availableContexts?.length === 1 && !data.activeContext) return this.switchActiveContext(data.availableContexts[0]!)
     return { ...response, data }
   }
@@ -451,17 +636,26 @@ export class RealApiProvider implements FrontendApi {
     }))
     this.csrfToken = ''
     this.actorSubjectId = null
+    this.activeSchoolContext = null
     this.reviewCases.clear()
     return response
   }
 
   async getCurrentUser(): Promise<ApiEnvelope<LoginResult | null>> {
+    this.actorSubjectId = null
+    this.activeSchoolContext = null
     const response = await unwrap<UnknownRecord>(() => authMe({ client: apiClient }))
     const actor = isRecord(response.data.actor) ? response.data.actor : response.data
     const userId = valueAsString(actor.user_id)
-    if (!userId) return { ...response, data: null }
+    if (!userId) {
+      this.actorSubjectId = null
+      this.activeSchoolContext = null
+      this.reviewCases.clear()
+      return { ...response, data: null }
+    }
     const data = this.projectActor(actor)
     this.actorSubjectId = data.subjectId
+    this.activeSchoolContext = data.activeContext ?? null
     if (data.availableContexts?.length === 1 && !data.activeContext) return this.switchActiveContext(data.availableContexts[0]!)
     return { ...response, data }
   }
@@ -487,6 +681,35 @@ export class RealApiProvider implements FrontendApi {
       const source = isRecord(row) ? row : {}
       return mapAssessment(source, valueAsString(source.assessment_id))
     }) }
+  }
+
+  async listAssessmentEntries(params?: AssessmentListParams): Promise<ApiEnvelope<AssessmentListEntry[]>> {
+    if (this.activeSchoolContext?.role === 'student') {
+      const query = new URLSearchParams()
+      if (params?.limit !== undefined) query.set('limit', String(params.limit))
+      if (params?.skip !== undefined) query.set('skip', String(params.skip))
+      if (params?.status !== undefined) query.set('status', params.status)
+      const queryString = query.toString()
+      const response = await unwrap<unknown>(() => apiClient.request({
+        method: 'GET',
+        url: `/api/v1/school/assessments${queryString ? `?${queryString}` : ''}`,
+        parseAs: 'json',
+      }))
+      if (!Array.isArray(response.data)) throw new RealApiError('API_INVALID_RESPONSE', '测评列表格式无法识别。')
+      return { ...response, data: response.data.map(mapAssessmentListEntry) }
+    }
+
+    const response = await this.listAssessments(params)
+    return {
+      ...response,
+      data: response.data.map((assessment) => ({
+        assessment_id: assessment.assessment_id,
+        status: assessment.status,
+        items_answered: assessment.response_summary.items_answered,
+        started_at: assessment.timestamps.started_at,
+        completed_at: assessment.timestamps.completed_at,
+      })),
+    }
   }
 
   async getAssessmentState(assessmentId: string): Promise<ApiEnvelope<AssessmentState>> {
@@ -570,6 +793,155 @@ export class RealApiProvider implements FrontendApi {
       headers: mutationHeaders(this.csrfToken, nowToken(`frontend-assessment-complete-${assessmentId}`)),
     }))
     return { ...response, data: mapAssessment(response.data, assessmentId) }
+  }
+
+  private async schoolWrite(path: string, body: unknown, operation: string): Promise<ApiEnvelope<unknown>> {
+    await this.ensureCsrfToken()
+    return unwrap<unknown>(() => apiClient.request({
+      method: 'POST',
+      url: path,
+      body,
+      parseAs: 'json',
+      headers: {
+        'Content-Type': 'application/json',
+        ...mutationHeaders(this.csrfToken, nowToken(`frontend-school-${operation}`)),
+      },
+    }))
+  }
+
+  async listSchoolClasses(): Promise<ApiEnvelope<SchoolClass[]>> {
+    const response = await unwrap<unknown>(() => apiClient.request({
+      method: 'GET', url: '/api/v1/school/classes', parseAs: 'json',
+    }))
+    if (!Array.isArray(response.data)) throw new RealApiError('API_INVALID_RESPONSE', '班级列表格式无法识别。')
+    return { ...response, data: response.data.map(mapSchoolClass) }
+  }
+
+  async listSchoolMembers(role: SchoolMemberRole): Promise<ApiEnvelope<SchoolMember[]>> {
+    const response = await unwrap<unknown>(() => apiClient.request({
+      method: 'GET',
+      url: '/api/v1/school/members',
+      query: { role },
+      parseAs: 'json',
+    }))
+    if (!Array.isArray(response.data)) throw new RealApiError('API_INVALID_RESPONSE', '人员列表格式无法识别。')
+    return { ...response, data: response.data.map(mapSchoolMember) }
+  }
+
+  async createSchoolClass(classRef: string): Promise<ApiEnvelope<SchoolClass>> {
+    const response = await this.schoolWrite('/api/v1/school/classes', { class_ref: classRef }, 'class-create')
+    return { ...response, data: mapSchoolClass(response.data) }
+  }
+
+  async assignSchoolStudent(classRef: string, studentUserId: string): Promise<ApiEnvelope<unknown>> {
+    return this.schoolWrite(
+      `/api/v1/school/classes/${encodeURIComponent(classRef)}/students`,
+      { student_user_id: studentUserId },
+      `class-${classRef}-student`,
+    )
+  }
+
+  async assignSchoolTeacher(classRef: string, teacherUserId: string): Promise<ApiEnvelope<unknown>> {
+    return this.schoolWrite(
+      `/api/v1/school/classes/${encodeURIComponent(classRef)}/teachers`,
+      { teacher_user_id: teacherUserId },
+      `class-${classRef}-teacher`,
+    )
+  }
+
+  async listSchoolTasks(classRef: string): Promise<ApiEnvelope<SchoolTask[]>> {
+    const response = await unwrap<unknown>(() => apiClient.request({
+      method: 'GET',
+      url: `/api/v1/school/classes/${encodeURIComponent(classRef)}/tasks`,
+      parseAs: 'json',
+    }))
+    if (!Array.isArray(response.data)) throw new RealApiError('API_INVALID_RESPONSE', '任务列表格式无法识别。')
+    return { ...response, data: response.data.map(mapSchoolTask) }
+  }
+
+  async publishSchoolTask(classRef: string, opensAt: string, dueAt: string | null): Promise<ApiEnvelope<SchoolTask>> {
+    const response = await this.schoolWrite(
+      `/api/v1/school/classes/${encodeURIComponent(classRef)}/tasks`,
+      { opens_at: opensAt, due_at: dueAt },
+      `class-${classRef}-task-publish`,
+    )
+    return { ...response, data: mapSchoolTask(response.data) }
+  }
+
+  async listStudentSchoolTasks(): Promise<ApiEnvelope<StudentSchoolTask[]>> {
+    const response = await unwrap<unknown>(() => apiClient.request({
+      method: 'GET', url: '/api/v1/school/tasks/student', parseAs: 'json',
+    }))
+    if (!Array.isArray(response.data)) throw new RealApiError('API_INVALID_RESPONSE', '学校任务列表格式无法识别。')
+    return { ...response, data: response.data.map(mapStudentSchoolTask) }
+  }
+
+  async listStudentSchoolTaskHistory(): Promise<ApiEnvelope<StudentSchoolTaskHistory[]>> {
+    const response = await unwrap<unknown>(() => apiClient.request({
+      method: 'GET', url: '/api/v1/school/tasks/student/history', parseAs: 'json',
+    }))
+    if (!Array.isArray(response.data)) throw new RealApiError('API_INVALID_RESPONSE', '任务历史格式无法识别。')
+    return { ...response, data: response.data.map(mapStudentSchoolTaskHistory) }
+  }
+
+  async startStudentSchoolTask(taskRef: string): Promise<ApiEnvelope<SchoolTaskStart>> {
+    const response = await this.schoolWrite(
+      `/api/v1/school/tasks/${encodeURIComponent(taskRef)}/start`,
+      {},
+      `task-${taskRef}-start`,
+    )
+    if (!isRecord(response.data)) throw new RealApiError('API_INVALID_RESPONSE', '测评会话格式无法识别。')
+    const source = response.data
+    if (!isAssessmentStatus(source.status)) throw new RealApiError('API_INVALID_RESPONSE', '测评进度格式无法识别。')
+    const currentItem = source.current_item === null ? null : mapQuestion(source.current_item)
+    if (source.current_item !== null && !currentItem) throw new RealApiError('API_INVALID_RESPONSE', '当前题目格式无法识别。')
+    if (typeof source.can_complete !== 'boolean') throw new RealApiError('API_INVALID_RESPONSE', '测评进度格式无法识别。')
+    const maxItems = source.max_items === null ? null : requiredCount(source, 'max_items')
+    if (source.selected_item_id !== null && source.selected_item_id !== undefined && typeof source.selected_item_id !== 'string') {
+      throw new RealApiError('API_INVALID_RESPONSE', '当前题目格式无法识别。')
+    }
+    return {
+      ...response,
+      data: {
+        task_ref: requiredString(source, 'task_ref'),
+        assessment_id: requiredString(source, 'assessment_id'),
+        subject_id: requiredString(source, 'subject_id'),
+        status: source.status,
+        selected_item_id: nullableString(source.selected_item_id),
+        current_item: currentItem,
+        answered_count: requiredCount(source, 'answered_count'),
+        administered_count: requiredCount(source, 'administered_count'),
+        can_complete: source.can_complete,
+        max_items: maxItems,
+      },
+    }
+  }
+
+  async listTeacherSchoolTaskProgress(): Promise<ApiEnvelope<TeacherTaskProgress[]>> {
+    const response = await unwrap<unknown>(() => apiClient.request({
+      method: 'GET', url: '/api/v1/school/teacher/task-progress', parseAs: 'json',
+    }))
+    if (!Array.isArray(response.data)) throw new RealApiError('API_INVALID_RESPONSE', '任务汇总格式无法识别。')
+    return { ...response, data: response.data.map(mapTeacherTaskProgress) }
+  }
+
+  async listSchoolTaskEnrollments(taskRef: string): Promise<ApiEnvelope<SchoolTaskEnrollment[]>> {
+    const response = await unwrap<unknown>(() => apiClient.request({
+      method: 'GET',
+      url: `/api/v1/school/tasks/${encodeURIComponent(taskRef)}/enrollments`,
+      parseAs: 'json',
+    }))
+    if (!Array.isArray(response.data)) throw new RealApiError('API_INVALID_RESPONSE', '报名列表格式无法识别。')
+    return { ...response, data: response.data.map(mapSchoolTaskEnrollment) }
+  }
+
+  async revokeSchoolTaskEnrollment(taskRef: string, enrollmentRef: string): Promise<ApiEnvelope<SchoolTaskEnrollment>> {
+    const response = await this.schoolWrite(
+      `/api/v1/school/tasks/${encodeURIComponent(taskRef)}/enrollments/${encodeURIComponent(enrollmentRef)}/revoke`,
+      {},
+      `task-${taskRef}-revoke`,
+    )
+    return { ...response, data: mapSchoolTaskEnrollment(response.data) }
   }
 
   async createSupport(assessmentId: string, message: string): Promise<ApiEnvelope<SupportResult>> {

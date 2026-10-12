@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { Activity, ArrowRight, Building2, CircleHelp, LockKeyhole, RefreshCw, Settings2, UsersRound } from '@lucide/vue'
+import { Activity, ArrowRight, Building2, CircleHelp, RefreshCw, Settings2, UsersRound } from '@lucide/vue'
 import type { DependencyStatusDto } from '@/api/generated/types.gen'
 import AppCard from '@/components/app/AppCard.vue'
 import AppPageHeader from '@/components/app/AppPageHeader.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
+import AdminSchoolOperations from '@/components/school/AdminSchoolOperations.vue'
 import { readDependencyHealth } from '@/views/admin/health'
 
 const route = useRoute()
@@ -13,8 +14,8 @@ const section = computed(() => String(route.params.section ?? 'overview'))
 const healthState = ref<'loading' | 'ready' | 'error'>('loading')
 const dependencies = ref<Record<string, DependencyStatusDto>>({})
 const page = computed(() => ({
-  overview: { eyebrow: '学校管理空间', title: '管理概览', intro: '查看本地服务公开的依赖能力状态。账号、组织与权限管理尚未接入。' },
-  users: { eyebrow: '用户与角色', title: '账号与权限边界', intro: '当前没有可用的账号目录或角色配置管理接口。' },
+  overview: { eyebrow: '学校管理空间', title: '管理概览', intro: '管理班级、人员分配和测评任务，并查看本地服务能力。' },
+  users: { eyebrow: '用户与角色', title: '班级与人员', intro: '仅从当前学校返回的在用账号中选择人员。' },
   settings: { eyebrow: '系统设置', title: '服务能力状态', intro: '以下只读信息来自 Backend 公开的依赖健康端点，不包含配置写入或管理操作。' },
 }[section.value as 'overview' | 'users' | 'settings'] ?? { eyebrow: '学校管理空间', title: '管理概览', intro: '查看本地服务公开的依赖能力状态。' }))
 const healthRows = computed(() => Object.entries(dependencies.value ?? {}).map(([name, value]) => ({ name, status: value.status, integration: value.integration })))
@@ -46,8 +47,8 @@ watch(section, (value) => {
       <div class="admin-hero__copy">
         <span class="admin-kicker">HEARTBRIDGE · SCHOOL ADMIN</span>
         <h1 id="admin-title">清晰了解系统，<br>再管理组织事务。</h1>
-        <p>管理视图只展示已接入的工程信息。学校账号、组织配置和权限变更目前不能通过此工作区操作。</p>
-        <div class="admin-hero__note"><Activity :size="15" aria-hidden="true" />全链路演示状态：尚未就绪</div>
+        <p>组织和任务操作由服务端按当前学校权限处理。此页面不展示个人测评内容或心理判断。</p>
+        <div class="admin-hero__note"><Activity :size="15" aria-hidden="true" />全链路验证仍在进行</div>
       </div>
       <figure class="admin-hero__art"><img :src="'/assets/heartbridge/card-admin-original.png'" alt="" aria-hidden="true"><figcaption>服务能力与组织管理入口</figcaption></figure>
     </section>
@@ -55,15 +56,16 @@ watch(section, (value) => {
     <AppPageHeader class="admin-heading" :eyebrow="page.eyebrow" :title="page.title" :intro="page.intro" />
 
     <template v-if="section === 'overview'">
-      <AppStatusCallout tone="attention" title="M0 全链路尚未就绪" body="当前界面展示的是工程原型状态。此标记不代表生产系统健康度，也不表示任何学校组织已完成配置。" />
+      <AppStatusCallout tone="info" title="合成演示 · 验证进行中" body="班级和任务操作受当前学校权限约束。系统其他流程仍待端到端验证；本页不开放心理内容或安全复核权限。" />
       <section class="admin-summary" aria-label="管理功能可用状态">
-        <AppCard class="admin-feature"><span class="admin-feature__icon"><UsersRound :size="19" aria-hidden="true" /></span><span class="admin-feature__state">未接入</span><h2>用户与角色</h2><p>账号目录和学校角色配置当前没有可调用接口。</p><RouterLink to="/admin/users">查看权限边界 <ArrowRight :size="15" aria-hidden="true" /></RouterLink></AppCard>
+        <AppCard class="admin-feature"><span class="admin-feature__icon"><UsersRound :size="19" aria-hidden="true" /></span><span class="admin-feature__state">按学校授权</span><h2>班级与人员</h2><p>从同校的在用账号中分配教师和学生。</p><RouterLink to="/admin/users">管理班级人员 <ArrowRight :size="15" aria-hidden="true" /></RouterLink></AppCard>
         <AppCard class="admin-feature"><span class="admin-feature__icon admin-feature__icon--teal"><Settings2 :size="19" aria-hidden="true" /></span><span class="admin-feature__state">只读状态</span><h2>服务能力</h2><p>仅读取公开的依赖健康端点，不提供配置变更操作。</p><RouterLink to="/admin/settings">查看服务状态 <ArrowRight :size="15" aria-hidden="true" /></RouterLink></AppCard>
       </section>
+      <AdminSchoolOperations />
     </template>
 
     <template v-else-if="section === 'users'">
-      <AppCard class="admin-blocked" role="status"><span class="admin-blocked__icon"><LockKeyhole :size="20" aria-hidden="true" /></span><div><span class="admin-kicker">组织管理状态</span><h2>账号与角色管理尚不可用</h2><p>当前 Backend 没有声明可供此角色使用的学校账号管理映射。此页面不会读取用户目录、创建账号、调整权限或模拟保存成功。</p><span class="admin-blocked__foot">等待经授权的组织管理接口与角色权限定义</span></div></AppCard>
+      <AdminSchoolOperations mode="members" />
       <AppStatusCallout tone="info" title="安全复核权限单独管理" body="学校管理员页面不展示安全复核队列或复核操作。安全复核员（REVIEWER）是独立角色，需使用其专属工作区。" />
     </template>
 

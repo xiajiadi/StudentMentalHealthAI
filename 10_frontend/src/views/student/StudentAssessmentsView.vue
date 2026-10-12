@@ -3,9 +3,11 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { CalendarDays, ClipboardList, History, LayoutDashboard, Play, RotateCcw } from '@lucide/vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
+import StudentAssignedTasks from '@/components/school/StudentAssignedTasks.vue'
 import { frontendApi } from '@/services/mock-api'
 import { userFacingApiError } from '@/utils/user-facing-errors'
 import type { Assessment } from '@/types/contracts'
+import type { AssessmentListEntry } from '@/api/client'
 import { useRouter } from 'vue-router'
 
 type AssessmentFilter = 'all' | 'created' | 'in_progress' | 'completed'
@@ -13,7 +15,7 @@ type AssessmentViewMode = 'grid' | 'list'
 
 const router = useRouter()
 const state = ref<'loading' | 'ready' | 'error'>('loading')
-const assessments = ref<Assessment[]>([])
+const assessments = ref<AssessmentListEntry[]>([])
 const errorMessage = ref('')
 const loadMoreError = ref('')
 const activeFilter = ref<AssessmentFilter>('all')
@@ -87,8 +89,8 @@ const formatDate = (value: string | null | undefined) => {
   return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(date)
 }
 
-const latestActivity = (item: Assessment) => formatDate(item.timestamps.completed_at || item.timestamps.started_at)
-const statusLabel = (item: Assessment) => {
+const latestActivity = (item: AssessmentListEntry) => formatDate(item.completed_at || item.started_at)
+const statusLabel = (item: AssessmentListEntry) => {
   if (item.status === 'created') return '待开始'
   if (item.status === 'in_progress') return '进行中'
   if (item.status === 'completed') return '已完成'
@@ -96,14 +98,26 @@ const statusLabel = (item: Assessment) => {
   return '不可用'
 }
 
-const actionLabel = (item: Assessment) => {
+const actionLabel = (item: AssessmentListEntry) => {
   if (item.status === 'created') return '开始测评'
   if (item.status === 'in_progress') return '继续测评'
   if (item.status === 'completed') return '查看结果'
   return ''
 }
 
-const hasAction = (item: Assessment) => Boolean(actionLabel(item))
+const hasAction = (item: AssessmentListEntry) => Boolean(actionLabel(item))
+
+const listAssessmentEntries = async (params: { limit: number; skip: number; status?: Assessment['status'] }) => {
+  if (frontendApi.listAssessmentEntries) return (await frontendApi.listAssessmentEntries(params)).data
+  const rows = (await frontendApi.listAssessments(params)).data
+  return rows.map((assessment) => ({
+    assessment_id: assessment.assessment_id,
+    status: assessment.status,
+    items_answered: assessment.response_summary.items_answered,
+    started_at: assessment.timestamps.started_at,
+    completed_at: assessment.timestamps.completed_at,
+  }))
+}
 
 const load = async () => {
   const generation = ++requestGeneration.value
@@ -116,7 +130,7 @@ const load = async () => {
   assessments.value = []
   try {
     const status = activeFilter.value === 'all' ? undefined : activeFilter.value
-    const rows = (await frontendApi.listAssessments({ limit: pageSize, skip: 0, status })).data
+    const rows = await listAssessmentEntries({ limit: pageSize, skip: 0, status })
     if (generation !== requestGeneration.value) return
     assessments.value = rows
     nextOffset.value = rows.length
@@ -136,11 +150,11 @@ const loadMore = async () => {
   isLoadingMore.value = true
   loadMoreError.value = ''
   try {
-    const rows = (await frontendApi.listAssessments({
+    const rows = await listAssessmentEntries({
       limit: pageSize,
       skip: nextOffset.value,
       status,
-    })).data
+    })
     if (generation !== requestGeneration.value) return
     const knownIds = new Set(assessments.value.map((item) => item.assessment_id))
     assessments.value = [
@@ -159,7 +173,7 @@ const loadMore = async () => {
 
 watch(activeFilter, () => { void load() })
 
-const openAssessment = (assessment?: Assessment) => {
+const openAssessment = (assessment?: AssessmentListEntry) => {
   if (assessment?.status === 'completed') {
     void router.push(`/student/assessment/${encodeURIComponent(assessment.assessment_id)}/result`)
     return
@@ -186,6 +200,8 @@ onMounted(load)
         <Play :size="15" aria-hidden="true" />开始测评
       </AppButton>
     </header>
+
+    <StudentAssignedTasks />
 
     <section class="assessment-library" aria-label="测评列表">
       <div class="assessment-toolbar">
@@ -250,7 +266,7 @@ onMounted(load)
             <div class="assessment-card__details">
               <div class="assessment-card__metadata">
                 <p class="assessment-card__activity"><CalendarDays :size="15" aria-hidden="true" />{{ card.item.status === 'created' ? '尚未开始' : latestActivity(card.item) }}</p>
-                <p class="assessment-card__answers"><History :size="15" aria-hidden="true" />{{ card.item.response_summary.items_answered }} 项已记录</p>
+                <p class="assessment-card__answers"><History :size="15" aria-hidden="true" />{{ card.item.items_answered }} 项已记录</p>
               </div>
               <div v-if="hasAction(card.item)" class="assessment-card__actions">
                 <AppButton

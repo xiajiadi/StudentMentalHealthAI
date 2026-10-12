@@ -7,6 +7,7 @@ import type { AssessmentState, ReportSummary } from '@/api/client'
 import AssessmentResultView from '@/views/student/AssessmentResultView.vue'
 import AssessmentView from '@/views/student/AssessmentView.vue'
 import StudentAssessmentsView from '@/views/student/StudentAssessmentsView.vue'
+import StudentFeedbackView from '@/views/student/StudentFeedbackView.vue'
 import StudentHomeView from '@/views/student/StudentHomeView.vue'
 import StudentResultView from '@/views/student/StudentResultView.vue'
 import SupportChatView from '@/views/student/SupportChatView.vue'
@@ -15,6 +16,7 @@ import { useSessionStore } from '@/stores/session'
 const api = vi.hoisted(() => ({
   getAssessmentResult: vi.fn(),
   listAssessments: vi.fn(),
+  listAssessmentEntries: undefined as undefined | ReturnType<typeof vi.fn>,
   listReports: vi.fn(),
   startAssessment: vi.fn(),
   submitAssessmentResponse: vi.fn(),
@@ -75,6 +77,7 @@ const makeRouter = async (path: string) => {
       { path: '/student/history', component: StudentHomeView },
       { path: '/student/reports', component: StudentResultView },
       { path: '/student/reports/:id', component: StudentResultView },
+      { path: '/student/feedback', component: StudentFeedbackView },
       { path: '/student/support', component: SupportChatView },
     ],
   })
@@ -86,6 +89,7 @@ const makeRouter = async (path: string) => {
 describe('学生演示闭环页面', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    api.listAssessmentEntries = undefined
     Object.defineProperty(window, 'matchMedia', {
       configurable: true,
       writable: true,
@@ -107,6 +111,20 @@ describe('学生演示闭环页面', () => {
     api.submitAssessmentResponse.mockResolvedValue(envelope(assessmentState({ can_complete: true, answered_count: 2, question: { ...question, item_id: 'ITEM_demo_003' } })))
     api.completeAssessment.mockResolvedValue(envelope(assessment))
     api.getStudentReport.mockRejectedValue(new Error('synthetic report unavailable'))
+  })
+
+  it('自主测评使用进度列表恢复会话，不读取完整测评列表', async () => {
+    api.listAssessmentEntries = vi.fn().mockResolvedValue(envelope([{
+      assessment_id: assessment.assessment_id, status: 'in_progress', items_answered: 1,
+      started_at: '2026-10-07T00:00:00Z', completed_at: null,
+    }]))
+    const router = await makeRouter('/student/assessment')
+    const wrapper = mount(AssessmentView, { global: { plugins: [router, createPinia()] } })
+    await flushPromises()
+    expect(api.listAssessmentEntries).toHaveBeenCalledWith({ status: 'in_progress', limit: 1 })
+    expect(api.listAssessments).not.toHaveBeenCalled()
+    expect(api.startAssessment).toHaveBeenCalledWith(assessment.assessment_id)
+    wrapper.unmount()
   })
 
   it('首页根据登录名称问候，并展示不可点击的四卡片功能介绍', async () => {
@@ -141,6 +159,118 @@ describe('学生演示闭环页面', () => {
     expect(historyRouter.currentRoute.value.fullPath).toBe('/student/history')
   })
 
+  it('首页不请求测评列表，历史页以metadata显示待开始和UTC记录', async () => {
+    api.listAssessmentEntries = vi.fn().mockResolvedValue(envelope([
+      {
+        assessment_id: 'ASSESS_CREATED_METADATA', status: 'created', items_answered: 0,
+        started_at: null, completed_at: null,
+      },
+      {
+        assessment_id: 'ASSESS_PROGRESS_METADATA', status: 'in_progress', items_answered: 2,
+        started_at: '2026-10-07T00:00:00Z', completed_at: null,
+      },
+    ]))
+    api.listAssessments.mockResolvedValue(envelope([{ ...assessment, status: 'completed' }]))
+
+    const homeRouter = await makeRouter('/student/home')
+    const home = mount(StudentHomeView, { global: { plugins: [homeRouter, createPinia()] } })
+    await flushPromises()
+    expect(api.listAssessmentEntries).not.toHaveBeenCalled()
+    expect(api.listAssessments).not.toHaveBeenCalled()
+    home.unmount()
+
+    const historyRouter = await makeRouter('/student/history')
+    const history = mount(StudentHomeView, { global: { plugins: [historyRouter, createPinia()] } })
+    await flushPromises()
+    expect(api.listAssessmentEntries).toHaveBeenCalledWith({ limit: 30, skip: 0 })
+    expect(api.listAssessments).not.toHaveBeenCalled()
+    const rows = history.findAll('.history-row')
+    expect(rows).toHaveLength(2)
+    expect(rows[0]!.text()).toContain('待开始')
+    expect(rows[0]!.text()).toContain('0 项已记录')
+    expect(rows[0]!.text()).toContain('尚未开始')
+    expect(rows[0]!.text()).not.toContain('进行中')
+    expect(rows[1]!.text()).toContain('进行中')
+    expect(rows[1]!.text()).toContain('2 项已记录')
+    expect(rows[1]!.text()).toContain('2026年10月')
+    history.unmount()
+  })
+
+  it('历史metadata按30分页、失败保留旧行并去重追加', async () => {
+    const firstPage = Array.from({ length: 30 }, (_, index) => ({
+      assessment_id: `ASSESS_HISTORY_${index}`,
+      status: 'completed' as const,
+      items_answered: index,
+      started_at: null,
+      completed_at: '2026-10-07T00:00:00Z',
+    }))
+    const duplicate = firstPage[29]!
+    const finalPage = [duplicate, {
+      assessment_id: 'ASSESS_HISTORY_30', status: 'created' as const, items_answered: 0,
+      started_at: null, completed_at: null,
+    }]
+    let pageCalls = 0
+    api.listAssessmentEntries = vi.fn().mockImplementation(({ skip }: { skip: number }) => {
+      if (skip === 0) return Promise.resolve(envelope(firstPage))
+      pageCalls += 1
+      if (pageCalls === 1) return Promise.reject(new Error('synthetic metadata page outage'))
+      return Promise.resolve(envelope(finalPage))
+    })
+    const router = await makeRouter('/student/history')
+    const wrapper = mount(StudentHomeView, { global: { plugins: [router, createPinia()] } })
+    await flushPromises()
+    expect(wrapper.findAll('.history-row')).toHaveLength(30)
+    expect(wrapper.text()).toContain('已显示 30 条')
+    await wrapper.get('.history-load-more .app-button').trigger('click')
+    await flushPromises()
+    expect(wrapper.findAll('.history-row')).toHaveLength(30)
+    expect(wrapper.get('[role="alert"]').text()).toContain('暂时无法加载更多测评记录')
+    expect(wrapper.get('[role="alert"]').text()).not.toContain('synthetic metadata page outage')
+    await wrapper.get('.history-load-more .app-button').trigger('click')
+    await flushPromises()
+    expect(api.listAssessmentEntries).toHaveBeenNthCalledWith(2, { limit: 30, skip: 30 })
+    expect(api.listAssessmentEntries).toHaveBeenNthCalledWith(3, { limit: 30, skip: 30 })
+    expect(wrapper.findAll('.history-row')).toHaveLength(31)
+    expect(wrapper.findAll('.history-row').filter((row) => row.text().includes('尚未开始的合成测评'))).toHaveLength(1)
+    expect(wrapper.text()).toContain('待开始')
+    expect(api.listAssessments).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('反馈只取completed metadata并支持更多页，metadata失败不回退旧测评接口', async () => {
+    const firstPage = Array.from({ length: 30 }, (_, index) => ({
+      assessment_id: `ASSESS_FEEDBACK_${index}`, status: 'completed' as const,
+      items_answered: 4, started_at: null, completed_at: '2026-10-07T00:01:00Z',
+    }))
+    api.listAssessmentEntries = vi.fn()
+      .mockResolvedValueOnce(envelope(firstPage))
+      .mockResolvedValueOnce(envelope([{
+        assessment_id: 'ASSESS_FEEDBACK_30', status: 'completed', items_answered: 3,
+        started_at: null, completed_at: null,
+      }]))
+    const router = await makeRouter('/student/feedback')
+    const wrapper = mount(StudentFeedbackView, { global: { plugins: [router, createPinia()] } })
+    await flushPromises()
+    expect(api.listAssessmentEntries).toHaveBeenCalledWith({ limit: 30, skip: 0, status: 'completed' })
+    expect(wrapper.findAll('.feedback-section--completed .feedback-row')).toHaveLength(30)
+    await wrapper.get('.assessment-load-more .app-button').trigger('click')
+    await flushPromises()
+    expect(api.listAssessmentEntries).toHaveBeenNthCalledWith(2, { limit: 30, skip: 30, status: 'completed' })
+    expect(wrapper.findAll('.feedback-section--completed .feedback-row')).toHaveLength(31)
+    expect(api.listAssessments).not.toHaveBeenCalled()
+    wrapper.unmount()
+
+    api.listAssessmentEntries = vi.fn().mockRejectedValue(new Error('synthetic metadata outage'))
+    const failedRouter = await makeRouter('/student/feedback')
+    const failed = mount(StudentFeedbackView, { global: { plugins: [failedRouter, createPinia()] } })
+    await flushPromises()
+    expect(api.listAssessmentEntries).toHaveBeenCalledTimes(1)
+    expect(api.listAssessments).not.toHaveBeenCalled()
+    expect(failed.text()).toContain('测评反馈暂时无法加载')
+    expect(failed.findAll('.feedback-section--completed .feedback-row')).toHaveLength(0)
+    failed.unmount()
+  })
+
   it('我的测评以真实会话生成三列网格和列表视图，并保留继续与结果入口', async () => {
     const createdAssessment: Assessment = {
       ...assessment,
@@ -163,6 +293,7 @@ describe('学生演示闭环页面', () => {
     await wrapper.get('[aria-label="列表显示"]').trigger('click')
     expect(wrapper.get('.assessment-cards').classes()).toContain('assessment-cards--list')
     await wrapper.get('[role="group"][aria-label="按状态筛选测评"] button:nth-child(3)').trigger('click')
+    await flushPromises()
     expect(wrapper.findAll('.assessment-card')).toHaveLength(1)
     await wrapper.get('.assessment-card .app-button').trigger('click')
     await flushPromises()
@@ -177,6 +308,36 @@ describe('学生演示闭环页面', () => {
     await flushPromises()
     expect(completedRouter.currentRoute.value.fullPath).toBe(`/student/assessment/${assessment.assessment_id}/result`)
     completedWrapper.unmount()
+  })
+
+  it('我的测评直接呈现学校metadata，并把空开始时间显示为尚未开始', async () => {
+    api.listAssessmentEntries = vi.fn().mockResolvedValue(envelope([{
+      assessment_id: 'ASSESS_CREATED_METADATA', status: 'created', items_answered: 0,
+      started_at: null, completed_at: null,
+    }]))
+    const router = await makeRouter('/student/assessments')
+    const wrapper = mount(StudentAssessmentsView, { global: { plugins: [router, createPinia()] } })
+    await flushPromises()
+
+    expect(api.listAssessmentEntries).toHaveBeenCalledWith({ limit: 30, skip: 0, status: undefined })
+    expect(wrapper.text()).toContain('尚未开始')
+    expect(wrapper.text()).toContain('0 项已记录')
+    expect(wrapper.get('.assessment-card .app-button').text()).toContain('开始测评')
+    expect(router.currentRoute.value.fullPath).toBe('/student/assessments')
+    wrapper.unmount()
+  })
+
+  it('学校metadata接口失败时显示列表错误，不回退到完整测评列表', async () => {
+    api.listAssessmentEntries = vi.fn().mockRejectedValue(new Error('synthetic metadata outage'))
+    const router = await makeRouter('/student/assessments')
+    const wrapper = mount(StudentAssessmentsView, { global: { plugins: [router, createPinia()] } })
+    await flushPromises()
+
+    expect(api.listAssessmentEntries).toHaveBeenCalledTimes(1)
+    expect(api.listAssessments).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('测评列表暂时无法加载')
+    expect(wrapper.findAll('.assessment-card')).toHaveLength(0)
+    wrapper.unmount()
   })
 
   it('我的测评横幅按钮进入现有测评流程', async () => {

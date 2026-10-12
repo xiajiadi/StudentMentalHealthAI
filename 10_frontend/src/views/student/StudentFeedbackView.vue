@@ -8,19 +8,36 @@ import AppPageHeader from '@/components/app/AppPageHeader.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import { frontendApi } from '@/services/mock-api'
 import { userFacingApiError } from '@/utils/user-facing-errors'
-import type { ReportSummary } from '@/api/client'
-import type { Assessment } from '@/types/contracts'
+import type { AssessmentListEntry, ReportSummary } from '@/api/client'
 
 type FeedbackMeta = { label: string; tone: 'neutral' | 'blue' | 'teal' | 'amber' | 'critical'; description: string; canOpen: boolean }
 
 const state = ref<'loading' | 'ready' | 'error'>('loading')
-const assessments = ref<Assessment[]>([])
+const assessments = ref<AssessmentListEntry[]>([])
 const reports = ref<ReportSummary[]>([])
 const errorMessage = ref('')
+const loadMoreError = ref('')
+const assessmentPageSize = 30
+const nextAssessmentOffset = ref(0)
+const assessmentRequestGeneration = ref(0)
+const isLoadingMoreAssessments = ref(false)
+const hasMoreAssessments = ref(false)
 
-const completedAssessments = computed(() => assessments.value.filter((item) => item.status === 'completed'))
 const reportsForAssessment = (assessmentId: string) => reports.value.filter((report) => report.assessment_id === assessmentId)
-const assessmentsWithoutReport = computed(() => completedAssessments.value.filter((item) => reportsForAssessment(item.assessment_id).length === 0))
+const assessmentsWithoutReport = computed(() => assessments.value.filter((item) => item.status === 'completed' && reportsForAssessment(item.assessment_id).length === 0))
+
+const listCompletedAssessmentEntries = async (skip: number) => {
+  const params = { limit: assessmentPageSize, skip, status: 'completed' as const }
+  if (frontendApi.listAssessmentEntries) return (await frontendApi.listAssessmentEntries(params)).data
+  const rows = (await frontendApi.listAssessments(params)).data
+  return rows.filter((assessment) => assessment.status === 'completed').map((assessment) => ({
+    assessment_id: assessment.assessment_id,
+    status: assessment.status,
+    items_answered: assessment.response_summary.items_answered,
+    started_at: assessment.timestamps.started_at,
+    completed_at: assessment.timestamps.completed_at,
+  }))
+}
 
 const formatDate = (value: string | null | undefined) => {
   if (!value) return '时间未提供'
@@ -53,19 +70,50 @@ const feedbackMeta = (report: ReportSummary): FeedbackMeta => {
 }
 
 const load = async () => {
+  const generation = ++assessmentRequestGeneration.value
   state.value = 'loading'
   errorMessage.value = ''
+  loadMoreError.value = ''
+  nextAssessmentOffset.value = 0
+  hasMoreAssessments.value = false
+  isLoadingMoreAssessments.value = false
+  assessments.value = []
   try {
-    const [assessmentResponse, reportResponse] = await Promise.all([
-      frontendApi.listAssessments(),
+    const [assessmentRows, reportResponse] = await Promise.all([
+      listCompletedAssessmentEntries(0),
       frontendApi.listReports(),
     ])
-    assessments.value = assessmentResponse.data
+    if (generation !== assessmentRequestGeneration.value) return
+    assessments.value = assessmentRows
+    nextAssessmentOffset.value = assessmentRows.length
+    hasMoreAssessments.value = assessmentRows.length === assessmentPageSize
     reports.value = reportResponse.data.items
     state.value = 'ready'
   } catch (error) {
+    if (generation !== assessmentRequestGeneration.value) return
     state.value = 'error'
     errorMessage.value = userFacingApiError(error, '测评反馈暂时无法加载，请稍后重试。')
+  }
+}
+
+const loadMoreAssessments = async () => {
+  if (isLoadingMoreAssessments.value || !hasMoreAssessments.value || state.value !== 'ready') return
+  const generation = assessmentRequestGeneration.value
+  isLoadingMoreAssessments.value = true
+  loadMoreError.value = ''
+  try {
+    const rows = await listCompletedAssessmentEntries(nextAssessmentOffset.value)
+    if (generation !== assessmentRequestGeneration.value) return
+    const existingIds = new Set(assessments.value.map((item) => item.assessment_id))
+    assessments.value = [...assessments.value, ...rows.filter((item) => !existingIds.has(item.assessment_id))]
+    nextAssessmentOffset.value += rows.length
+    hasMoreAssessments.value = rows.length === assessmentPageSize
+  } catch (error) {
+    if (generation !== assessmentRequestGeneration.value) return
+    const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : ''
+    loadMoreError.value = userFacingApiError({ code }, '暂时无法加载更多已完成测评，请重试。')
+  } finally {
+    if (generation === assessmentRequestGeneration.value) isLoadingMoreAssessments.value = false
   }
 }
 
@@ -122,17 +170,23 @@ onMounted(load)
     <section v-if="state === 'ready' && assessmentsWithoutReport.length" class="feedback-section feedback-section--completed" aria-labelledby="completed-assessments-title">
       <header class="feedback-section__heading">
         <div><span class="section-label">测评记录</span><h2 id="completed-assessments-title">已完成测评</h2></div>
-        <span>{{ assessmentsWithoutReport.length }} 项</span>
+        <span>{{ hasMoreAssessments ? `已显示 ${assessmentsWithoutReport.length} 项` : `${assessmentsWithoutReport.length} 项` }}</span>
       </header>
       <AppCard v-for="assessment in assessmentsWithoutReport" :key="assessment.assessment_id" class="feedback-row">
         <span class="feedback-row__icon feedback-row__icon--completed" aria-hidden="true"><FileCheck2 :size="19" /></span>
         <div class="feedback-row__copy">
           <strong>已完成的合成测评</strong>
-          <span>{{ formatDate(assessment.timestamps.completed_at) }}</span>
+          <span>{{ formatDate(assessment.completed_at) }}</span>
           <small>当前没有获准发布的反馈。可在“我的记录”中查看这项测评的保存状态。</small>
         </div>
         <AppBadge tone="neutral" dot>暂无反馈</AppBadge>
       </AppCard>
+    </section>
+
+    <section v-if="state === 'ready' && hasMoreAssessments" class="assessment-load-more" aria-label="更多已完成测评">
+      <p>已加载 {{ assessments.length }} 项已完成测评记录。</p>
+      <AppButton variant="secondary" :disabled="isLoadingMoreAssessments" @click="loadMoreAssessments">{{ isLoadingMoreAssessments ? '正在加载…' : '加载更多测评记录' }} <ArrowRight :size="15" aria-hidden="true" /></AppButton>
+      <p v-if="loadMoreError" role="alert">{{ loadMoreError }}</p>
     </section>
 
     <footer class="feedback-footer">

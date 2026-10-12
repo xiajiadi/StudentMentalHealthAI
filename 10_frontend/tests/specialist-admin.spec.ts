@@ -52,13 +52,13 @@ describe('Specialist 与学校管理员工作区', () => {
     expect(admin.findAll('img').map((image) => image.attributes('src'))).toContain('/assets/heartbridge/hero-flow-original.png')
   })
 
-  it('学校账号页面显示管理接口不可用，且不把只读健康检查当作账号操作', async () => {
+  it('学校账号页面在缺少组织接口时显示不可用，不返回演示账号或成功状态', async () => {
     const wrapper = await mountAt('/admin/users', AdminWorkspaceView)
 
-    expect(wrapper.text()).toContain('账号与角色管理尚不可用')
-    expect(wrapper.text()).toContain('不会读取用户目录、创建账号、调整权限或模拟保存成功')
+    expect(wrapper.text()).toContain('当前运行环境未提供学校组织服务')
+    expect(wrapper.text()).not.toContain('USER_')
+    expect(wrapper.text()).not.toContain('已加入班级')
     expect(wrapper.text()).toContain('安全复核员（REVIEWER）是独立角色')
-    expect(wrapper.findAll('button')).toHaveLength(0)
     expect(health.readDependencyHealth).not.toHaveBeenCalled()
   })
 

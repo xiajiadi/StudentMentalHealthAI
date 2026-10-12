@@ -37,7 +37,10 @@ const load = async () => {
     const routeAssessmentId = typeof route.params.id === 'string' ? route.params.id : undefined
     const existing = routeAssessmentId
       ? undefined
-      : (await frontendApi.listAssessments()).data.find((item) => item.status === 'in_progress')
+      : (await (frontendApi.listAssessmentEntries
+          ? frontendApi.listAssessmentEntries({ status: 'in_progress', limit: 1 })
+          : frontendApi.listAssessments({ status: 'in_progress', limit: 1 })))
+        .data.find((item) => item.status === 'in_progress')
     const response = await frontendApi.startAssessment(routeAssessmentId || existing?.assessment_id)
     assessment.start({
       assessmentId: response.data.assessment_id,
