@@ -27,7 +27,60 @@ def test_missing_readiness_never_decrypts(tmp_path, monkeypatch):
         backend.load_runtime(tmp_path, tmp_path / "repo")
 
 
-@pytest.mark.parametrize("revision", ["20261012_0007", "20261012_0006", "obsolete"])
+def test_cat_port_defaults_to_original_listener_and_cli_accepts_explicit_restore_port():
+    defaults = backend.build_parser().parse_args(["--workspace", "C:/synthetic/workspace"])
+    restored = backend.build_parser().parse_args(
+        ["--workspace", "C:/synthetic/workspace", "--cat-port", "8181"]
+    )
+
+    assert defaults.cat_port == 8180
+    assert restored.cat_port == 8181
+
+
+def test_explicit_cat_port_changes_only_the_copied_cat_endpoint():
+    original_cat = dict(backend.MODULE_ENDPOINTS["cat"])
+    original_endpoints = {name: dict(value) for name, value in backend.MODULE_ENDPOINTS.items()}
+
+    settings = backend.build_school_settings_kwargs(8088, 4178, cat_port=8181)
+
+    assert settings["cat"] == {"mode": "http", "base_url": "http://127.0.0.1:8181"}
+    assert settings["rag"] == original_endpoints["rag"]
+    assert settings["llm"] == original_endpoints["llm"]
+    assert settings["safety"] == original_endpoints["safety"]
+    assert backend.MODULE_ENDPOINTS["cat"] == original_cat
+    assert backend.MODULE_ENDPOINTS == original_endpoints
+
+
+def test_cat_port_keeps_the_selected_llm_profile_unchanged():
+    settings = backend.build_school_settings_kwargs(
+        8088, 4178, "school-gpu-7b", cat_port=8181
+    )
+
+    assert settings["cat"]["base_url"] == "http://127.0.0.1:8181"
+    assert settings["llm"] == {
+        "mode": "http",
+        "base_url": "http://127.0.0.1:8160",
+        "logical_model_id": "qwen2.5-7b-instruct-school-demo",
+        "context_length": 8192,
+    }
+
+
+@pytest.mark.parametrize("cat_port", [True, False, 8181.0, "8181", 1023, 65536])
+def test_cat_port_requires_a_tcp_port_integer_in_range(cat_port):
+    with pytest.raises(ValueError, match="cat_port must be between 1024 and 65535"):
+        backend.build_school_settings_kwargs(8088, 4178, cat_port=cat_port)
+
+
+@pytest.mark.parametrize("cat_port", [8088, 4178, 8160, 8170, 8190])
+def test_cat_port_rejects_backend_frontend_and_fixed_module_collisions(cat_port):
+    with pytest.raises(ValueError, match="cat_port conflicts with another service port"):
+        backend.build_school_settings_kwargs(8088, 4178, cat_port=cat_port)
+
+
+@pytest.mark.parametrize(
+    "revision",
+    [backend.CURRENT_SCHOOL_REVISION, "20261012_0008", "20261012_0007"],
+)
 def test_configuration_uses_only_verified_sealed_target(tmp_path, monkeypatch, revision):
     marker = {"workspace_id":"expected", "database":"smhai_school_demo", "port":3308}
     monkeypatch.setattr(backend, "validate_marker", lambda *args: marker)
@@ -89,7 +142,7 @@ def test_configuration_uses_only_verified_sealed_target(tmp_path, monkeypatch, r
             return Connection()
 
     monkeypatch.setitem(sys.modules, "pymysql", Driver)
-    if revision != "20261012_0007":
+    if revision != backend.CURRENT_SCHOOL_REVISION:
         with pytest.raises(backend.PreparationError):
             backend.load_runtime(tmp_path, tmp_path / "repo")
         assert reads == ["runtime.private.dpapi"]

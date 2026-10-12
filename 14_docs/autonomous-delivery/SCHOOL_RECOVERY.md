@@ -14,11 +14,44 @@ Validate version, project, synthetic scope, supported schema revision, source id
 
 Only a previously nonexistent external workspace/datadir and a free loopback port may become a restore target. Reject source/target overlap, existing content, reparse points and foreign process ownership. Never DROP, reset, truncate or overwrite an existing schema. Failure preserves the new target and a non-sensitive phase marker for inspection.
 
-Use trusted repository migrations to build precisely supported revision 20261011_0005. MySQL DDL is not transactional; failed migration cannot be described as rolled back. Match the complete snapshot table/column manifest to the trusted revision before importing. Keep foreign-key checks enabled and use a reviewed parent-first dependency order, including composite constraints. Import data transactionally where supported and verify counts and references before publishing readiness.
+Use trusted repository migrations to build the snapshot's explicitly supported revision (0005 through0009). Match its exact table/column manifest before importing; upgrade to the current runtime revision only after old-layout import succeeds. MySQL DDL is not transactional, so a failed migration cannot be described as rolled back. Keep foreign-key checks enabled and use the reviewed parent-first dependency order, including composite constraints. Import data transactionally and verify stored values and references before publishing readiness.
 
 Restore the original sealed application-key container exclusively to the new private target. Generate new target database/runtime identities and CSRF configuration; never reuse source administrative credentials. Revoke all imported authentication sessions in the target and require fresh login. This is a deliberate recovery transformation; record it in the recovery summary without changing the source snapshot.
 
 ## Evidence and current limits
+
+### Current0009 recovery evidence
+
+New isolated targetE (`.StudentMentalHealthAI-school-restore-20261013-e`,3313)
+imports39 business tables/2905 rows, revokes8 imported sessions and verifies190
+encrypted fields. After browser activity, its guarded SQL shutdown and actual
+resume preserve all39 tables/2937 current rows; new guardian identity and unchanged
+original guardian are verified. No old restore target was reset.
+
+Current Backend8089/Frontend4179 use a dedicated CPU CAT8181 selected by the
+validated `--cat-port`; the original8180 registry is separate. A restored saved
+session resumes its one persisted response, keeps the exact immutable bank/config
+and binding, saves the two remaining responses and completes with teacher
+aggregate-only proof. The original8180 session count is unchanged; this is not
+an exhaustive comparison of original in-memory state.
+
+Fresh restored four-role browser checks pass at targetE
+`browser-qa/20261012T211504Z-3f5227cd583d4e87baef54e881066f1f` with actual
+`school-restore-browser-qa.json` and masked screenshots. History rows are checked
+against the returned metadata in order, including status, count and date/null
+labels. Duplicate account slots and malformed diagnostic fields fail closed.
+Root source checks98 Python/3 Node pass. Earlier failed checks remain historical
+evidence; they are not relabeled as successful runs.
+
+Target evidence: `restart-checkpoint.json` and
+`restored-saved-cat-qa-b438cb5aad4d4ab7ba6bb86b21a5ad9b.json`. A new target-local
+backup is sealed/readback verified at
+`backups/20261012-211143-d83ea271c4294531b1356f76758bba17.private.dpapi`.
+This establishes local current-user restore/restart and bounded business proof.
+Cross-user DPAPI portability, OS reboot, the final installer, full university AI
+grounding and controlled L2/L3 publication remain unverified.
+
+The following earlier milestone records retain their original evidence scope.
 
 The guarded resume helper passed 24 focused tests and a native ALREADY_RUNNING check against the existing owned workspace. That check did not restart the database. Native missing-service start through the helper, complete restore import, encrypted-payload readability after restore and installation portability remain unverified.
 

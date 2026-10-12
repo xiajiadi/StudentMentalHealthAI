@@ -47,6 +47,146 @@ _RESTORE_TARGET_NAME = re.compile(
     re.IGNORECASE,
 )
 _RESTORE_PROCESS_SCHEMA = "psynova.restore-owned-processes.v1"
+RESTORE_RESULT_NAME = "school-restore-browser-qa.json"
+_ARTIFACT_RUN_NAME = re.compile(r"^\d{8}T\d{6}Z-[a-f0-9]{32}$")
+RESTORE_FAILURE_DIAGNOSTICS = {
+    "forbidden_route": {
+        ("direct_navigation", "NAVIGATION_FAILED"),
+        ("role_redirect", "ROLE_REDIRECT_NOT_COMPLETED"),
+        ("destination_check", "UNEXPECTED_DESTINATION"),
+    },
+    "student_history": {
+        ("metadata_response", "RESPONSE_NOT_RECEIVED"),
+        ("metadata_response", "HTTP_STATUS"),
+        ("metadata_response", "BODY_READ_FAILED"),
+        ("metadata_response", "ENVELOPE_INVALID"),
+        ("metadata_response", "DTO_INVALID"),
+        ("metadata_render", "ROW_COUNT_MISMATCH"),
+        ("metadata_render", "STATUS_LABEL_MISMATCH"),
+        ("metadata_render", "ITEM_COUNT_LABEL_MISMATCH"),
+        ("metadata_render", "DATE_LABEL_MISMATCH"),
+        ("metadata_render", "NULL_TIME_LABEL_MISMATCH"),
+        ("metadata_render", "EMPTY_STATE_MISMATCH"),
+    },
+    "student_feedback": {
+        ("route", "ROUTE_NOT_REACHED"),
+        ("assessment_request", "RESPONSE_NOT_RECEIVED"),
+        ("assessment_request", "HTTP_STATUS"),
+        ("reports_request", "RESPONSE_NOT_RECEIVED"),
+        ("reports_request", "HTTP_STATUS"),
+        ("content_state", "CONTENT_NOT_RENDERED"),
+    },
+}
+RESTORE_CURRENT_PATH_CODES = {
+    "login", "student_home", "student_assessments", "teacher_overview",
+    "student_history", "student_feedback", "specialist_overview", "admin_overview",
+    "reviewer_queue", "other", "unknown",
+}
+
+
+def _bootstrap_runtime_import_paths(repo: Path | None = None) -> tuple[Path, ...]:
+    """Reuse project-isolated DB dependencies for the restore CLI/runtime."""
+    repo = REPO if repo is None else Path(repo)
+    paths = (
+        Path(repo) / "11_database" / ".venv" / "Lib" / "site-packages",
+        Path(repo) / "11_database",
+        Path(repo) / "09_backend" / "src",
+    )
+    added = []
+    for candidate in reversed(paths):
+        if not candidate.is_dir():
+            continue
+        normalized = str(candidate.resolve())
+        if normalized not in sys.path:
+            sys.path.insert(0, normalized)
+            added.append(candidate)
+    return tuple(reversed(added))
+
+
+def sanitize_restore_child_output(
+    stdout: str, *, artifact_dir: Path, child_exit_code: int,
+) -> dict:
+    """Retain only fixed student/route diagnostic fields, when allowlisted."""
+    safe = sanitize_child_output(stdout, artifact_dir=artifact_dir, child_exit_code=child_exit_code)
+    try:
+        parsed = json.loads(stdout)
+    except (json.JSONDecodeError, TypeError):
+        parsed = None
+    children = parsed.get("results") if isinstance(parsed, dict) else None
+    by_slot: dict[str, dict] = {}
+    duplicate_slots: set[str] = set()
+    if isinstance(children, list):
+        for item in children:
+            if not isinstance(item, dict):
+                continue
+            slot = item.get("slot")
+            if not isinstance(slot, str) or slot not in ACCOUNT_SLOTS:
+                continue
+            if slot in by_slot:
+                duplicate_slots.add(slot)
+            else:
+                by_slot[slot] = item
+    for row in safe.get("results", []):
+        slot = row.get("slot")
+        if row.get("status") != "FAIL" or not isinstance(slot, str) or slot in duplicate_slots:
+            continue
+        diagnostic = by_slot.get(slot, {}).get("diagnostic")
+        if not isinstance(diagnostic, dict) or set(diagnostic) != {
+            "stage", "substage", "code", "current_path",
+        }:
+            continue
+        stage = diagnostic.get("stage")
+        substage = diagnostic.get("substage")
+        code = diagnostic.get("code")
+        current_path = diagnostic.get("current_path")
+        if not all(isinstance(value, str) for value in (stage, substage, code, current_path)):
+            continue
+        pair = (substage, code)
+        if pair in RESTORE_FAILURE_DIAGNOSTICS.get(stage, set()) and current_path in RESTORE_CURRENT_PATH_CODES:
+            row["diagnostic"] = {
+                "stage": stage,
+                "substage": substage,
+                "code": code,
+                "current_path": current_path,
+            }
+    return safe
+
+
+def write_sanitized_restore_result(target: Path, artifact_dir: Path, result: dict) -> Path:
+    """Exclusively persist an already-sanitized result within its verified run directory."""
+    target = validate_target_path(Path(target))
+    _reject_reparse_path(target)
+    target_root = target.resolve(strict=True)
+    browser_root = target_root / "browser-qa"
+    _reject_reparse_path(browser_root)
+    browser_root = browser_root.resolve(strict=True)
+    artifact = Path(artifact_dir)
+    _reject_reparse_path(artifact)
+    artifact = artifact.resolve(strict=True)
+    if artifact.parent != browser_root or not _ARTIFACT_RUN_NAME.fullmatch(artifact.name):
+        raise ValueError("Verified restore artifact directory required")
+
+    output_path = artifact / RESTORE_RESULT_NAME
+    if os.path.lexists(output_path):
+        _reject_reparse_path(output_path)
+        raise FileExistsError("Restore result already exists")
+    payload = (json.dumps(result, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
+    flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY
+    if hasattr(os, "O_BINARY"):
+        flags |= os.O_BINARY
+    descriptor = os.open(output_path, flags, 0o600)
+    try:
+        with os.fdopen(descriptor, "wb") as output:
+            output.write(payload)
+            output.flush()
+            os.fsync(output.fileno())
+    except BaseException:
+        try:
+            output_path.unlink()
+        except OSError:
+            pass
+        raise
+    return output_path
 
 
 def _path_key(value: object) -> str | None:
@@ -387,13 +527,20 @@ def run(
     if process is None or not _process_matches(process, target_marker):
         raise ValueError("Restored guardian identity changed")
     verify_owned_listeners(target, backend_port, frontend_port)
+    _bootstrap_runtime_import_paths()
     load_runtime(target, REPO)
     _reject_reparse_path(SOURCE / ACCOUNT_FILE)
     credentials = validate_credentials(read_private(SOURCE / ACCOUNT_FILE))
-    artifact_dir = create_artifact_run_dir(target)
     node = shutil.which("node")
     if not node:
         raise RuntimeError("Existing Node runtime unavailable")
+    environment = safe_node_environment()
+    if browser_cache is not None:
+        _reject_reparse_path(browser_cache)
+        if not browser_cache.is_dir():
+            raise ValueError("Existing browser cache directory required")
+        environment["PLAYWRIGHT_BROWSERS_PATH"] = str(browser_cache)
+    artifact_dir = create_artifact_run_dir(target)
     payload = {
         "credentials": credentials, "artifact_dir": str(artifact_dir),
         "frontend_url": f"http://127.0.0.1:{frontend_port}",
@@ -401,20 +548,28 @@ def run(
         "accounts": {slot: {"role": frontend_role, "api_role": api_role, "path": route}
                      for slot, (frontend_role, api_role, route) in ACCOUNT_SLOTS.items()},
     }
-    environment = safe_node_environment()
-    if browser_cache is not None:
-        _reject_reparse_path(browser_cache)
-        if not browser_cache.is_dir():
-            raise ValueError("Existing browser cache directory required")
-        environment["PLAYWRIGHT_BROWSERS_PATH"] = str(browser_cache)
-    child = subprocess.run(
-        [node, str(NODE_SCRIPT)], input=json.dumps(payload), text=True, encoding="utf-8",
-        capture_output=True, cwd=FRONTEND, timeout=300, check=False, shell=False,
-        env=environment,
+    serialized_payload = json.dumps(payload)
+    del payload
+    try:
+        child = subprocess.run(
+            [node, str(NODE_SCRIPT)], input=serialized_payload, text=True, encoding="utf-8",
+            capture_output=True, cwd=FRONTEND, timeout=300, check=False, shell=False,
+            env=environment,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        child = None
+    finally:
+        del serialized_payload
+        for account in credentials.values():
+            account["username"] = ""
+            account["password"] = ""
+        del credentials
+    result = (
+        sanitize_restore_child_output(child.stdout, artifact_dir=artifact_dir,
+                                      child_exit_code=child.returncode)
+        if child is not None
+        else sanitize_restore_child_output("", artifact_dir=artifact_dir, child_exit_code=2)
     )
-    del credentials, payload
-    result = sanitize_child_output(child.stdout, artifact_dir=artifact_dir,
-                                   child_exit_code=child.returncode)
     result["restored_workspace"] = True
     result["profile"] = {
         "target": str(target),
@@ -423,6 +578,7 @@ def run(
         "frontend_port": frontend_port,
     }
     result["artifact_dir"] = str(artifact_dir)
+    write_sanitized_restore_result(target, artifact_dir, result)
     # Child stderr/unsanitized stdout and browser storage never become artifacts.
     return result
 
@@ -439,8 +595,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 if __name__ == "__main__":
     args = build_parser().parse_args()
-    for path in (REPO / "11_database", REPO / "09_backend" / "src"):
-        sys.path.insert(0, str(path))
+    _bootstrap_runtime_import_paths()
     try:
         result = run(
             args.browser_cache,

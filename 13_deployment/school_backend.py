@@ -23,6 +23,7 @@ from school_schema import CURRENT_SCHOOL_REVISION
 
 DEFAULT_BACKEND_PORT = 8088
 DEFAULT_FRONTEND_PORT = 4178
+DEFAULT_CAT_PORT = 8180
 MIN_SERVICE_PORT = 1024
 MAX_SERVICE_PORT = 65535
 MODULE_ENDPOINTS = {
@@ -37,10 +38,18 @@ SCHOOL_GPU_7B_CONTEXT_LENGTH = 8192
 
 
 def build_school_settings_kwargs(
-    port: int, frontend_port: int, llm_profile: str = "default"
+    port: int,
+    frontend_port: int,
+    llm_profile: str = "default",
+    *,
+    cat_port: int = DEFAULT_CAT_PORT,
 ) -> dict[str, object]:
     """Build fixed loopback school settings with only validated port choices."""
-    for name, value in (("port", port), ("frontend_port", frontend_port)):
+    for name, value in (
+        ("port", port),
+        ("frontend_port", frontend_port),
+        ("cat_port", cat_port),
+    ):
         if (
             isinstance(value, bool)
             or not isinstance(value, int)
@@ -49,6 +58,11 @@ def build_school_settings_kwargs(
             raise ValueError(f"{name} must be between {MIN_SERVICE_PORT} and {MAX_SERVICE_PORT}")
     if llm_profile not in LLM_PROFILES:
         raise ValueError("unsupported LLM profile")
+    fixed_module_ports = {8170, 8160, 8190}
+    if cat_port in {port, frontend_port} | fixed_module_ports:
+        raise ValueError("cat_port conflicts with another service port")
+    cat_settings = dict(MODULE_ENDPOINTS["cat"])
+    cat_settings["base_url"] = f"http://127.0.0.1:{cat_port}"
     llm_settings = dict(MODULE_ENDPOINTS["llm"])
     if llm_profile == "school-gpu-7b":
         llm_settings.update(
@@ -65,7 +79,7 @@ def build_school_settings_kwargs(
         "port": port,
         "auth": {"cookie_name": "psynova_school_session"},
         "allowed_origins": [f"http://127.0.0.1:{frontend_port}"],
-        "cat": dict(MODULE_ENDPOINTS["cat"]),
+        "cat": cat_settings,
         "rag": dict(MODULE_ENDPOINTS["rag"]),
         "llm": llm_settings,
         "safety": dict(MODULE_ENDPOINTS["safety"]),
@@ -78,6 +92,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--preflight-only", action="store_true")
     parser.add_argument("--port", type=int, default=DEFAULT_BACKEND_PORT)
     parser.add_argument("--frontend-port", type=int, default=DEFAULT_FRONTEND_PORT)
+    parser.add_argument("--cat-port", type=int, default=DEFAULT_CAT_PORT)
     parser.add_argument("--llm-profile", choices=LLM_PROFILES, default="default")
     return parser
 
@@ -136,7 +151,7 @@ def main() -> int:
     sys.path.insert(0, str(repo / "09_backend" / "src"))
     try:
         settings_kwargs = build_school_settings_kwargs(
-            args.port, args.frontend_port, args.llm_profile
+            args.port, args.frontend_port, args.llm_profile, cat_port=args.cat_port
         )
         result = load_runtime(args.workspace, repo)
         from smhai_backend.app_factory import create_app

@@ -283,6 +283,8 @@ def test_run_builds_target_specific_urls_but_reads_credentials_only_from_fixed_s
     def fake_verify_owned(workspace, backend_port, frontend_port):
         steps.append(("ownership", backend_port, frontend_port))
 
+    monkeypatch.setattr(qa, "_bootstrap_runtime_import_paths", lambda: steps.append("bootstrap"))
+
     monkeypatch.setattr(qa, "verify_owned_listeners", fake_verify_owned)
 
     def fake_read_private(path):
@@ -294,7 +296,8 @@ def test_run_builds_target_specific_urls_but_reads_credentials_only_from_fixed_s
     monkeypatch.setattr(qa, "validate_credentials", lambda _private: {slot: {"username": "SYNTHETIC_ACCOUNT", "password": "p" * 24} for slot in qa.ACCOUNT_SLOTS})
     monkeypatch.setattr(qa.ResumeOperations, "inspect_process", lambda _self, _pid: {"owned": True})
     monkeypatch.setattr(qa, "_process_matches", lambda process, marker: bool(process and marker))
-    artifacts = target / "browser-qa" / "synthetic-run"
+    artifacts = target / "browser-qa" / "20261013T010203Z-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    artifacts.mkdir(parents=True)
     monkeypatch.setattr(qa, "create_artifact_run_dir", lambda _workspace: artifacts)
     monkeypatch.setattr(qa.shutil, "which", lambda _name: "node")
     monkeypatch.setattr(qa, "safe_node_environment", lambda: {"PATH": "synthetic"})
@@ -305,7 +308,7 @@ def test_run_builds_target_specific_urls_but_reads_credentials_only_from_fixed_s
     def fake_subprocess(command, **kwargs):
         captured["command"] = command
         captured["payload"] = json.loads(kwargs["input"])
-        return SimpleNamespace(stdout="{}", returncode=2)
+        return SimpleNamespace(stdout='{"credential":"restore-raw-stdout-sentinel"}', returncode=2)
 
     monkeypatch.setattr(qa.subprocess, "run", fake_subprocess)
 
@@ -320,9 +323,218 @@ def test_run_builds_target_specific_urls_but_reads_credentials_only_from_fixed_s
         "backend_port": 8089,
         "frontend_port": 4179,
     }
+    persisted = json.loads((artifacts / qa.RESTORE_RESULT_NAME).read_text(encoding="utf-8"))
+    assert persisted == result
+    assert "restore-raw-stdout-sentinel" not in json.dumps(persisted)
     # Only the original source's sealed account container is ever opened.
     assert opened_private_paths == [source / qa.ACCOUNT_FILE]
     assert steps == [
         ("ownership", 8089, 4179),
+        "bootstrap",
         ("credentials", source / qa.ACCOUNT_FILE),
     ]
+
+
+def test_runtime_bootstrap_uses_only_existing_project_isolated_import_paths(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    site_packages = repo / "11_database" / ".venv" / "Lib" / "site-packages"
+    database = repo / "11_database"
+    backend = repo / "09_backend" / "src"
+    site_packages.mkdir(parents=True)
+    database.mkdir(exist_ok=True)
+    backend.mkdir(parents=True)
+    monkeypatch.setattr(qa, "REPO", repo)
+    monkeypatch.setattr(sys, "path", [])
+
+    added = qa._bootstrap_runtime_import_paths()
+
+    assert [str(path.resolve()) for path in added] == [
+        str(site_packages.resolve()), str(database.resolve()), str(backend.resolve()),
+    ]
+    assert sys.path == [str(site_packages.resolve()), str(database.resolve()), str(backend.resolve())]
+
+
+def _trusted_result_artifact(tmp_path, monkeypatch):
+    projects = tmp_path / "projects"
+    projects.mkdir()
+    source = projects / ".StudentMentalHealthAI-school-workspace-20261011"
+    repo = tmp_path / "repo"
+    target = projects / ".StudentMentalHealthAI-school-restore-20261013-writer"
+    source.mkdir()
+    repo.mkdir()
+    target.mkdir()
+    artifact = target / "browser-qa" / "20261013T010203Z-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    artifact.mkdir(parents=True)
+    monkeypatch.setattr(qa, "PROJECTS_ROOT", projects)
+    monkeypatch.setattr(qa, "SOURCE", source)
+    monkeypatch.setattr(qa, "REPO", repo)
+    return target, artifact
+
+
+def test_restore_result_writer_persists_only_the_sanitized_result_exclusively(tmp_path, monkeypatch):
+    target, artifact = _trusted_result_artifact(tmp_path, monkeypatch)
+    result = {
+        "status": "FAIL", "runner_status": "FAIL", "restored_workspace": True,
+        "results": [{"slot": "alpha.student", "status": "FAIL", "diagnostic": {
+            "stage": "student_history", "substage": "metadata_render",
+            "code": "NULL_TIME_LABEL_MISMATCH", "current_path": "student_history",
+        }}],
+        "profile": {"database_port": 3310, "backend_port": 8089, "frontend_port": 4179},
+        "artifact_dir": str(artifact),
+    }
+
+    output = qa.write_sanitized_restore_result(target, artifact, result)
+
+    assert output == artifact / qa.RESTORE_RESULT_NAME
+    assert json.loads(output.read_text(encoding="utf-8")) == result
+    contents = output.read_bytes()
+    with pytest.raises(FileExistsError):
+        qa.write_sanitized_restore_result(target, artifact, {"status": "PASS"})
+    assert output.read_bytes() == contents
+
+
+def test_restore_result_writer_rejects_reparse_artifact_before_writing(tmp_path, monkeypatch):
+    target, artifact = _trusted_result_artifact(tmp_path, monkeypatch)
+    observed = []
+
+    def reject_artifact(path):
+        observed.append(Path(path))
+        if Path(path) == artifact:
+            raise ValueError("reparse sentinel")
+
+    monkeypatch.setattr(qa, "_reject_reparse_path", reject_artifact)
+    with pytest.raises(ValueError):
+        qa.write_sanitized_restore_result(target, artifact, {"status": "FAIL"})
+    assert artifact in observed
+    assert not (artifact / qa.RESTORE_RESULT_NAME).exists()
+
+
+def test_restore_child_sanitizer_allowlists_forbidden_route_diagnostic_only(tmp_path):
+    artifact_dir = tmp_path / "artifacts"
+    artifact_dir.mkdir()
+    sentinel = "ASSESS_private-sentinel-cookie-dom"
+    stages = {key: "PASS" for key in ("blank_login", "real_login", "role_route", "auth_me", "screenshot",
+                                      "forbidden_route", "forbidden_api", "ui_logout", "blank_restore")}
+    stages["forbidden_route"] = "FAIL"
+    child = {
+        "results": [{
+            "slot": "alpha.student", "status": "FAIL", "stages": stages,
+            "diagnostic": {
+                "stage": "forbidden_route", "substage": "role_redirect",
+                "code": "ROLE_REDIRECT_NOT_COMPLETED", "current_path": "admin_overview",
+            },
+            "raw_path": f"/student/assessment/{sentinel}", "exception": sentinel,
+        }],
+    }
+
+    result = qa.sanitize_restore_child_output(
+        json.dumps(child), artifact_dir=artifact_dir, child_exit_code=2,
+    )
+    student = next(item for item in result["results"] if item["slot"] == "alpha.student")
+    assert student["diagnostic"] == {
+        "stage": "forbidden_route", "substage": "role_redirect",
+        "code": "ROLE_REDIRECT_NOT_COMPLETED", "current_path": "admin_overview",
+    }
+    assert sentinel not in json.dumps(result)
+
+    child["results"][0]["diagnostic"] = {
+        "stage": "student_history", "substage": "metadata_render",
+        "code": "NULL_TIME_LABEL_MISMATCH", "current_path": "student_history",
+    }
+    history_result = qa.sanitize_restore_child_output(
+        json.dumps(child), artifact_dir=artifact_dir, child_exit_code=2,
+    )
+    history_student = next(item for item in history_result["results"] if item["slot"] == "alpha.student")
+    assert history_student["diagnostic"]["stage"] == "student_history"
+
+    child["results"][0]["diagnostic"]["current_path"] = f"/admin/{sentinel}"
+    unsafe = qa.sanitize_restore_child_output(
+        json.dumps(child), artifact_dir=artifact_dir, child_exit_code=2,
+    )
+    unsafe_student = next(item for item in unsafe["results"] if item["slot"] == "alpha.student")
+    assert "diagnostic" not in unsafe_student
+
+    child["results"][0]["diagnostic"] = {
+        "stage": "forbidden_route", "substage": "metadata_render",
+        "code": "NULL_TIME_LABEL_MISMATCH", "current_path": "student_history",
+    }
+    mismatched = qa.sanitize_restore_child_output(
+        json.dumps(child), artifact_dir=artifact_dir, child_exit_code=2,
+    )
+    mismatched_student = next(item for item in mismatched["results"] if item["slot"] == "alpha.student")
+    assert "diagnostic" not in mismatched_student
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid_value"),
+    [
+        ("stage", []),
+        ("substage", []),
+        ("code", {}),
+        ("current_path", []),
+        ("stage", 1),
+        ("substage", None),
+        ("code", 1),
+        ("current_path", None),
+    ],
+)
+def test_restore_child_sanitizer_drops_malformed_diagnostic_fields(tmp_path, field, invalid_value):
+    artifact_dir = tmp_path / "artifacts"
+    artifact_dir.mkdir()
+    stages = {key: "PASS" for key in (
+        "blank_login", "real_login", "role_route", "auth_me", "screenshot",
+        "forbidden_route", "forbidden_api", "ui_logout", "blank_restore",
+    )}
+    stages["forbidden_route"] = "FAIL"
+    diagnostic = {
+        "stage": "forbidden_route", "substage": "role_redirect",
+        "code": "ROLE_REDIRECT_NOT_COMPLETED", "current_path": "admin_overview",
+    }
+    diagnostic[field] = invalid_value
+    child = {"results": [{
+        "slot": "alpha.student", "status": "FAIL", "stages": stages,
+        "diagnostic": diagnostic,
+    }]}
+    baseline = qa.sanitize_child_output(
+        json.dumps(child), artifact_dir=artifact_dir, child_exit_code=2,
+    )
+
+    result = qa.sanitize_restore_child_output(
+        json.dumps(child), artifact_dir=artifact_dir, child_exit_code=2,
+    )
+    student = next(item for item in result["results"] if item["slot"] == "alpha.student")
+    baseline_student = next(item for item in baseline["results"] if item["slot"] == "alpha.student")
+    assert "diagnostic" not in student
+    assert student["status"] == baseline_student["status"]
+    assert student["stages"] == baseline_student["stages"]
+
+
+def test_duplicate_child_slots_do_not_add_or_replace_sanitized_diagnostics(tmp_path):
+    artifact_dir = tmp_path / "artifacts"
+    artifact_dir.mkdir()
+    stages = {key: "PASS" for key in (
+        "blank_login", "real_login", "role_route", "auth_me", "screenshot",
+        "forbidden_route", "forbidden_api", "ui_logout", "blank_restore",
+    )}
+    stages["forbidden_route"] = "FAIL"
+    child = {"results": [
+        {
+            "slot": "alpha.student", "status": "FAIL", "stages": stages,
+            "diagnostic": {
+                "stage": "forbidden_route", "substage": "role_redirect",
+                "code": "ROLE_REDIRECT_NOT_COMPLETED", "current_path": "admin_overview",
+            },
+        },
+        {"slot": "alpha.student", "status": "PASS", "stages": {key: "PASS" for key in stages}},
+    ]}
+    baseline = qa.sanitize_child_output(
+        json.dumps(child), artifact_dir=artifact_dir, child_exit_code=2,
+    )
+    result = qa.sanitize_restore_child_output(
+        json.dumps(child), artifact_dir=artifact_dir, child_exit_code=2,
+    )
+    student = next(item for item in result["results"] if item["slot"] == "alpha.student")
+    baseline_student = next(item for item in baseline["results"] if item["slot"] == "alpha.student")
+    assert "diagnostic" not in student
+    assert student["status"] == baseline_student["status"]
+    assert student["stages"] == baseline_student["stages"]

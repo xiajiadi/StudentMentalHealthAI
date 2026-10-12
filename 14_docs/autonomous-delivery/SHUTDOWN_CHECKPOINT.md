@@ -28,11 +28,16 @@ is stopped and preserved. Exact paths/guardian creation identities are in their
 workspace.json files; these are discovery hints, not permission to kill a PID.
 New isolated restoreE at D:\Projects\.StudentMentalHealthAI-school-restore-20261013-e
 uses3313, workspace44826b86814c6c42b97b191611b67ace; guardian parent46252/
-creation2026-10-12T20:06:03.408759Z is only a discovery hint. It holds restored0009
+creation2026-10-12T20:06:03.408759Z is a superseded discovery hint after its
+verified graceful restart. Read its current workspace.json before any stop. It holds restored0009
 data and must also be preserved and identity-verified before graceful shutdown.
 Original latest applications and evidence are in CURRENT_STATE.md. Revalidate
 live guardians, datadirs, listener ownership and transactions before safe SQL
 shutdown; preserve all schemas/keys/backups and do not reset older restore targets.
+TargetE now also owns a separate CPU CAT8181 (foreground exec31277), recorded in
+cat-process.json; verify it before stopping it. Its restarted Backend8089
+(exec63747) and Frontend4179(exec46491) are recorded in restore-processes.json.
+Old targetB application sessions66648/72482 are stopped; databaseB remains intact.
 
 1. Check real clock and live agents; stop dispatching new work at wrap-up time.
 2. Ask running Workers to return their actual diff, current checks and remaining

@@ -108,6 +108,10 @@ def test_sanitizer_drops_credentials_raw_errors_and_untrusted_paths(tmp_path):
                 "failure_class": f"ValueError:{secret}",
                 "error": secret,
             },
+            *[
+                {"slot": slot, "status": "FAIL", "error": secret}
+                for slot in ("alpha.psychological_specialist", "alpha.admin")
+            ],
         ],
     }
 
@@ -123,6 +127,41 @@ def test_sanitizer_drops_credentials_raw_errors_and_untrusted_paths(tmp_path):
     assert result["results"][0]["screenshot"] == str(screenshot)
     assert result["results"][1]["failure_class"] == "BrowserCheckFailed"
     assert "error" not in result["results"][1]
+
+
+def test_auth_sanitizer_fails_closed_on_duplicate_missing_unknown_or_malformed_slots(tmp_path):
+    artifact_dir = tmp_path / "browser-qa"
+    artifact_dir.mkdir()
+    for slot in qa.ACCOUNT_SLOTS:
+        (artifact_dir / f"{slot.replace('.', '-')}.png").write_bytes(b"masked synthetic screenshot")
+
+    passing = [
+        {"slot": slot, "status": "PASS", "stages": _passed_stages()}
+        for slot in qa.ACCOUNT_SLOTS
+    ]
+    student = next(item for item in passing if item["slot"] == "alpha.student")
+    fail_then_pass = [
+        {**student, "status": "FAIL", "stages": {**_passed_stages(), "forbidden_route": "FAIL"}},
+        *[item for item in passing if item["slot"] != "alpha.student"],
+        student,
+    ]
+    pass_then_fail = [
+        *passing,
+        {**student, "status": "FAIL", "stages": {**_passed_stages(), "forbidden_route": "FAIL"}},
+    ]
+    unknown = [*passing, {"slot": "beta.student", "status": "PASS", "stages": _passed_stages()}]
+    missing = [item for item in passing if item["slot"] != "alpha.student"]
+    malformed = [*passing[:-1], {"slot": [], "status": "PASS", "stages": _passed_stages()}]
+
+    for children in (fail_then_pass, pass_then_fail, unknown, missing, malformed):
+        result = qa.sanitize_child_output(
+            json.dumps({"results": children}), artifact_dir=artifact_dir, child_exit_code=0,
+        )
+        assert result["status"] == "FAIL"
+        assert result["runner_status"] == "FAIL"
+        assert result["pass_count"] == 0
+        assert result["fail_count"] == len(qa.ACCOUNT_SLOTS)
+        assert all(item["status"] == "FAIL" for item in result["results"])
 
 
 def test_child_pass_without_expected_screenshot_is_reported_failed(tmp_path):
@@ -322,6 +361,28 @@ def test_task_sanitizer_rejects_unknown_workflow_and_untrusted_screenshot_path(t
         json.dumps(child), artifact_dir=tmp_path, child_exit_code=0
     )
     assert result["status"] == "FAIL"
+
+
+@pytest.mark.parametrize(
+    "screenshots",
+    [
+        [*qa.TASK_SCREENSHOTS[:-1], qa.TASK_SCREENSHOTS[0]],
+        [*qa.TASK_SCREENSHOTS[:-1], "unknown.png"],
+        [*qa.TASK_SCREENSHOTS[:-1], []],
+    ],
+)
+def test_task_sanitizer_fails_closed_on_duplicate_unknown_or_malformed_screenshot_slots(tmp_path, screenshots):
+    for name in qa.TASK_SCREENSHOTS:
+        (tmp_path / name).write_bytes(b"masked synthetic screenshot")
+    child = {
+        "workflow": "school-tasks", "status": "PASS",
+        "stages": _passed_task_stages(), "screenshots": screenshots,
+    }
+    result = qa.sanitize_task_child_output(
+        json.dumps(child), artifact_dir=tmp_path, child_exit_code=0,
+    )
+    assert result["status"] == "FAIL"
+    assert result["failure_class"] == "BrowserWorkflowFailed"
     assert result["failure_class"] == "BrowserWorkflowFailed"
 
 

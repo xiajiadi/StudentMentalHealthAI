@@ -13,6 +13,55 @@ GPU and process entries below are historical; verify live identities before acti
 
 ## Latest resumed increment
 
+- Remote checkpoint997bece898217ad5350f39cd77f3b574d089382b is verified on the
+  dedicated branch; at that checkpoint only the two baseline untracked paths
+  remained. The following recovery deployment/QA increment has passed Controller
+  review and is ready for a curated dedicated-branch checkpoint.
+  Recovery verification now owns targetE3313. Root verified targetB application
+  identities and stopped its old Backend exec66648/Frontend exec72482, preserving
+  databaseB3310 and all older data. TargetE Backend8089 exec68149/PID16608 and
+  Frontend4179 exec62571 are running from current source; exact process/parent/
+  creation/listener/argv proof is in targetE restore-processes.json.
+  Direct restore-browser CLI initially failed missing database dependency paths;
+  with the existing database environment path it ran and passed complete teacher,
+  specialist and admin login/route/API-denial/logout checks. Student login/role/
+  auth/screenshot passed, but its optional history check failed before forbidden
+  route; the harness still assumes a single old demo title. Artifact targetE
+  browser-qa/20261012T203605Z-68e8594d665a45d6b506ec7894fdab13. Worker is replacing
+  this assumption with actual metadata/DOM checks and repairing CLI bootstrap.
+  Do not claim four-role restored browser PASS from this3/4 run. TargetE real
+  Student history failure was an ambiguous locator/old-fixture assumption:
+  the page legitimately renders several CREATED rows with the same title. The
+  repaired harness compares actual metadata to scoped DOM rows and keeps
+  history/feedback/route diagnostics distinct. Direct CLI bootstrap now uses
+  existing isolated DB dependencies. Fresh native restore browser4/4 passes at
+  targetE browser-qa/20261012T204637Z-86107506dd4248e7a0b2752cf8df6404; Root
+  inspected student-history and admin screenshots. After verified app stops,
+  targetE SQL SHUTDOWN with zero active InnoDB transactions and actual resume
+  passes:39 business tables/2937 rows preserve every stored value, new guardian
+  verified, original guardian untouched. Evidence targetE restart-checkpoint.json.
+  Restored Backend now exec63747/PID32664, Frontend exec46491; old manifests are
+  preserved as restore-processes.pre-restart.json. Explicit validated --cat-port
+  is being integrated so targetE uses dedicated CAT8181 exec31277/PID36876;
+  original8180 is preserved. Exact E app/module identities are in
+  restore-processes.json and cat-process.json. Post-restart browser4/4 passes at
+  browser-qa/20261012T205550Z-b9ddbdd305044181aecfc41e10a45524. Actual restored
+  SAVED_VERSION session with one persisted answer loads its exact bank/config
+  and binding into the empty8181 registry, completes remaining two responses,
+  and yields teacher completion metadata. Original8180 session count is unchanged
+  (not a proof of all original in-memory values). Evidence targetE
+  restored-saved-cat-qa-b438cb5aad4d4ab7ba6bb86b21a5ad9b.json. Cross-user DPAPI
+  portability, OS reboot, final installer/full AI/publication remain unverified.
+  The final stricter metadata/unique-slot/diagnostic/writer source checks98 Python
+  and3 Node pass. Native restored4/4 passes again at targetE browser-qa/
+  20261012T211504Z-3f5227cd583d4e87baef54e881066f1f, now with actual sanitized
+  school-restore-browser-qa.json persisted exclusively beside the screenshots.
+  Target-local new0009 backup40 tables is sealed/readback verified at backups/
+  20261012-211143-d83ea271c4294531b1356f76758bba17.private.dpapi. Source-only
+  independent final review found no remaining source blocker; it did not rerun
+  native QA or tests. Recovery increment ENGINEERING_PASS is limited to these
+  recorded checks; whole-product readiness remains open.
+
 - Exact saved CAT task-binding increment is IN_PROGRESS on base7d5996f26d;
   previous saved simulation increment is pushed and verified at that exact SHA.
   New0009 schema source adds activation/task/session attachment tables and explicit

@@ -156,6 +156,23 @@ def _node_script_for_workflow(workflow: str) -> Path:
     raise HarnessError("WorkflowUnavailable")
 
 
+def _exact_account_results(children: object) -> dict[str, dict[str, Any]] | None:
+    """Accept one child result for each registered account and nothing else."""
+    if not isinstance(children, list) or len(children) != len(ACCOUNT_SLOTS):
+        return None
+    by_slot: dict[str, dict[str, Any]] = {}
+    for item in children:
+        if not isinstance(item, dict):
+            return None
+        slot = item.get("slot")
+        if type(slot) is not str or slot not in ACCOUNT_SLOTS or slot in by_slot:
+            return None
+        by_slot[slot] = item
+    if set(by_slot) != set(ACCOUNT_SLOTS):
+        return None
+    return by_slot
+
+
 def sanitize_task_child_output(
     stdout: str,
     *,
@@ -181,7 +198,7 @@ def sanitize_task_child_output(
     children = parsed.get("screenshots") if isinstance(parsed, dict) else None
     valid_screenshots = (
         isinstance(children, list)
-        and all(isinstance(name, str) for name in children)
+        and all(type(name) is str for name in children)
         and len(children) == len(TASK_SCREENSHOTS)
         and set(children) == set(TASK_SCREENSHOTS)
     )
@@ -282,16 +299,12 @@ def sanitize_child_output(
     except (json.JSONDecodeError, TypeError):
         parsed = None
     children = parsed.get("results") if isinstance(parsed, dict) else None
-    by_slot = {
-        item.get("slot"): item
-        for item in children
-        if isinstance(item, dict) and item.get("slot") in ACCOUNT_SLOTS
-    } if isinstance(children, list) else {}
-    runner_ok = type(child_exit_code) is int and child_exit_code == 0
+    by_slot = _exact_account_results(children)
+    runner_ok = type(child_exit_code) is int and child_exit_code == 0 and by_slot is not None
     safe["runner_status"] = "PASS" if runner_ok else "FAIL"
 
     for slot, (frontend_role, api_role, expected_path) in ACCOUNT_SLOTS.items():
-        child = by_slot.get(slot, {})
+        child = by_slot.get(slot, {}) if by_slot is not None else {}
         screenshot = artifact_dir / f"{slot.replace('.', '-')}.png"
         child_stages = child.get("stages")
         if not isinstance(child_stages, dict):
