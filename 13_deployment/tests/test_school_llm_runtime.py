@@ -336,4 +336,3 @@ def test_cli_failure_reports_type_without_exception_text(monkeypatch, capsys) ->
     output = capsys.readouterr().out
     assert output == '{"status":"FAILED","error_type":"RuntimeError"}\n'
     assert "sensitive path detail" not in output
-
