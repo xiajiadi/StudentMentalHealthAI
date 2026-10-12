@@ -99,7 +99,7 @@ def prepare(workspace: Path, repo: Path) -> dict:
             if port != marker["port"] or database != marker["database"] or Path(directory).resolve() != Path(marker["data_directory"]).resolve():
                 raise PreparationError("Connected database identity does not match")
             cursor.execute("SELECT version_num FROM database_alembic_version")
-            if cursor.fetchall() != (("20261011_0004",),):
+            if cursor.fetchall() != (("20261011_0005",),):
                 raise PreparationError("Required school migration is missing")
             username = "psynova_runtime_" + secrets.token_hex(8)
             password = secrets.token_hex(32)

@@ -23,6 +23,7 @@ from smhai_backend.domains.assessment.service import AssessmentService
 from smhai_backend.domains.audit import AuditService
 from smhai_backend.domains.auth.service import AuthService
 from smhai_backend.domains.authorization import NativeAuthorizationProvider
+from smhai_backend.domains.school_tasks.service import SchoolTaskService
 from smhai_backend.domains.support.service import SupportOrchestrator
 from smhai_backend.domains.teacher.service import TeacherDashboardService
 from smhai_backend.integrations.cat import ContractFakeCatClient, HttpCatClient
@@ -57,6 +58,7 @@ class BackendContainer:
     assessments: AssessmentService
     support: SupportOrchestrator
     teacher_dashboard: TeacherDashboardService
+    school_tasks: SchoolTaskService
     rate_limiter: InMemoryRateLimiter
 
     async def start(self) -> None:
@@ -171,6 +173,11 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         reports=reports,
         authorization=authorization,
     )
+    school_tasks = SchoolTaskService(
+        persistence=persistence,
+        assessments=assessments,
+        cat=cat,
+    )
     support = SupportOrchestrator(
         assessments=assessments,
         conversations=conversations,
@@ -214,6 +221,7 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         safety=safety,
         assessments=assessments,
         teacher_dashboard=teacher_dashboard,
+        school_tasks=school_tasks,
         support=support,
         rate_limiter=rate_limiter,
     )

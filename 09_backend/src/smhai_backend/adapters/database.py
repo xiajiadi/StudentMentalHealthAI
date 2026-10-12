@@ -18,6 +18,7 @@ import hmac
 import os
 import secrets
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -39,8 +40,14 @@ from smhai_backend.domains.models import (
     SyntheticUser,
 )
 
-REQUIRED_DATABASE_REVISION = "20261011_0004"
+REQUIRED_DATABASE_REVISION = "20261011_0005"
 _LEGACY_CSRF_SECRET = b"smhai-round1-synthetic-csrf-secret"
+
+
+@dataclass(frozen=True, slots=True)
+class SchoolIdempotencyClaim:
+    record: Any
+    replayed: bool
 
 
 def _create_data_protection_provider(identity_profile: str, repository_root: Path) -> Any:
@@ -82,6 +89,15 @@ def _as_datetime(value: str | datetime | None) -> datetime | None:
         return value.astimezone(UTC).replace(tzinfo=None) if value.tzinfo else value
     parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     return parsed.astimezone(UTC).replace(tzinfo=None) if parsed.tzinfo else parsed
+
+
+def _database_utc_datetime(value: datetime | None) -> datetime | None:
+    """Attach UTC semantics to timezone-naive UTC database timestamps."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 def _as_timestamp(value: datetime | None) -> float:
@@ -219,6 +235,1044 @@ class MySqlBackendAdapter:
                 f"{REQUIRED_DATABASE_REVISION}."
             )
 
+    def _school_actor_ref(self, actor: Any) -> str:
+        if (
+            self.identity_profile != "school_tenant"
+            or actor.scope_profile != "school_tenant"
+            or actor.school_id is None
+            or actor.school_ref is None
+        ):
+            raise error(ErrorCode.FORBIDDEN, detail="access denied")
+        try:
+            return _database_public_id(actor.user_id, "USER")
+        except ValueError:
+            raise error(ErrorCode.FORBIDDEN, detail="access denied") from None
+
+    async def _school_idempotency_begin(self, uow, idempotency):
+        if idempotency is None:
+            raise error(ErrorCode.VALIDATION_FAILED, detail="Idempotency-Key is required")
+        key, request_fingerprint, scope = idempotency
+        m = self._db_models
+        key_hash = _hash_token(key)
+        now = self._utc_now()
+        row = await uow.session.scalar(
+            self._select(m.IdempotencyRecord)
+            .where(
+                m.IdempotencyRecord.scope == scope,
+                m.IdempotencyRecord.key_hash == key_hash,
+            )
+            .with_for_update()
+        )
+        request_hash = bytes.fromhex(request_fingerprint)
+        if row is not None and row.expires_at > now:
+            if row.request_hash != request_hash:
+                raise error(
+                    ErrorCode.WORKFLOW_CONFLICT,
+                    detail="idempotency key was already used for another request",
+                )
+            if row.state == self._db_enums.IdempotencyState.COMPLETED.value:
+                return SchoolIdempotencyClaim(record=row, replayed=True)
+            raise error(ErrorCode.WORKFLOW_CONFLICT, detail="idempotency request is in progress")
+        if row is None:
+            row = m.IdempotencyRecord(
+                scope=scope,
+                key_hash=key_hash,
+                request_hash=request_hash,
+                state=self._db_enums.IdempotencyState.IN_PROGRESS.value,
+                expires_at=now + timedelta(hours=24),
+            )
+            uow.session.add(row)
+        else:
+            row.request_hash = request_hash
+            row.state = self._db_enums.IdempotencyState.IN_PROGRESS.value
+            row.result_resource_type = None
+            row.result_public_id = None
+            row.expires_at = now + timedelta(hours=24)
+        try:
+            await uow.session.flush()
+        except self._integrity_error as exc:
+            raise error(
+                ErrorCode.WORKFLOW_CONFLICT,
+                detail="idempotency request is already in progress",
+            ) from exc
+        return SchoolIdempotencyClaim(record=row, replayed=False)
+
+    async def _school_idempotency_complete(
+        self, uow, claim: SchoolIdempotencyClaim, *, resource_type: str, result_ref: str
+    ) -> None:
+        if claim.replayed or claim.record is None:
+            raise RuntimeError("only a newly claimed school write can complete its receipt")
+        row = claim.record
+        if row.state != self._db_enums.IdempotencyState.IN_PROGRESS.value:
+            raise RuntimeError("school idempotency receipt is not in progress")
+        row.state = self._db_enums.IdempotencyState.COMPLETED.value
+        row.result_resource_type = resource_type
+        row.result_public_id = result_ref
+        await uow.session.flush()
+
+    async def _school_actor_role(
+        self, uow, actor: Any, role_code: str, at: datetime
+    ) -> tuple[int, int]:
+        """Resolve account and active role from the server actor and persisted membership."""
+        m = self._db_models
+        public_id = self._school_actor_ref(actor)
+        statement = (
+            self._select(m.Account.id, m.MembershipRole.id)
+            .join(m.AccountSchoolMembership, m.AccountSchoolMembership.account_id == m.Account.id)
+            .join(m.MembershipRole, m.MembershipRole.membership_id == m.AccountSchoolMembership.id)
+            .join(m.School, m.School.id == m.AccountSchoolMembership.school_id)
+            .where(
+                m.Account.public_id == public_id,
+                m.Account.status == self._db_enums.AccountStatus.ACTIVE.value,
+                m.AccountSchoolMembership.school_id == actor.school_id,
+                m.AccountSchoolMembership.status == "ACTIVE",
+                m.AccountSchoolMembership.revoked_at.is_(None),
+                m.AccountSchoolMembership.valid_from <= at,
+                (m.AccountSchoolMembership.valid_until.is_(None))
+                | (m.AccountSchoolMembership.valid_until >= at),
+                m.MembershipRole.school_id == actor.school_id,
+                m.MembershipRole.role_code == role_code,
+                m.MembershipRole.status == "ACTIVE",
+                m.MembershipRole.revoked_at.is_(None),
+                m.MembershipRole.valid_from <= at,
+                (m.MembershipRole.valid_until.is_(None)) | (m.MembershipRole.valid_until >= at),
+                m.School.school_ref == actor.school_ref,
+                m.School.status == "ACTIVE",
+                m.School.data_origin == self._db_enums.DataOrigin.SYNTHETIC.value,
+            )
+            .limit(2)
+        )
+        rows = list((await uow.session.execute(statement)).all())
+        if len(rows) != 1:
+            raise error(ErrorCode.FORBIDDEN, detail="access denied")
+        contexts = [
+            context
+            for context in actor.school_contexts
+            if context.role.value.lower() == role_code
+            and context.school_id == actor.school_id
+            and context.school_ref == actor.school_ref
+        ]
+        if len(contexts) != 1 or str(rows[0][1]) != contexts[0].context_id:
+            raise error(ErrorCode.FORBIDDEN, detail="access denied")
+        return int(rows[0][0]), int(rows[0][1])
+
+    async def school_list_classes(self, actor: Any) -> list[dict[str, Any]]:
+        from sqlalchemy import func
+
+        m = self._db_models
+        now = self._utc_now()
+        _account_id, _role_id = None, None
+        async with self._uow() as uow:
+            _account_id, _role_id = await self._school_actor_role(uow, actor, "admin", now)
+            students = (
+                self._select(func.count(m.SchoolClassStudent.id))
+                .where(
+                    m.SchoolClassStudent.class_id == m.SchoolClass.id,
+                    m.SchoolClassStudent.school_id == actor.school_id,
+                    m.SchoolClassStudent.status == "ACTIVE",
+                    m.SchoolClassStudent.revoked_at.is_(None),
+                    m.SchoolClassStudent.valid_from <= now,
+                    (m.SchoolClassStudent.valid_until.is_(None))
+                    | (m.SchoolClassStudent.valid_until >= now),
+                )
+                .scalar_subquery()
+            )
+            teachers = (
+                self._select(func.count(m.SchoolClassTeacher.id))
+                .where(
+                    m.SchoolClassTeacher.class_id == m.SchoolClass.id,
+                    m.SchoolClassTeacher.school_id == actor.school_id,
+                    m.SchoolClassTeacher.status == "ACTIVE",
+                    m.SchoolClassTeacher.revoked_at.is_(None),
+                    m.SchoolClassTeacher.valid_from <= now,
+                    (m.SchoolClassTeacher.valid_until.is_(None))
+                    | (m.SchoolClassTeacher.valid_until >= now),
+                )
+                .scalar_subquery()
+            )
+            rows = (
+                await uow.session.execute(
+                    self._select(m.SchoolClass.class_ref, m.SchoolClass.status, students, teachers)
+                    .where(m.SchoolClass.school_id == actor.school_id)
+                    .order_by(m.SchoolClass.class_ref)
+                )
+            ).all()
+            return [
+                dict(
+                    class_ref=row[0],
+                    status=row[1],
+                    active_student_count=int(row[2]),
+                    active_teacher_count=int(row[3]),
+                )
+                for row in rows
+            ]
+
+    async def school_create_class(
+        self, actor: Any, class_ref: str, *, at: datetime, idempotency=None
+    ) -> dict[str, Any]:
+        async with self._uow() as uow:
+            _account_id, role_id = await self._school_actor_role(uow, actor, "admin", at)
+            claim = await self._school_idempotency_begin(uow, idempotency)
+            if claim.replayed:
+                existing = await uow.session.scalar(
+                    self._select(self._db_models.SchoolClass).where(
+                        self._db_models.SchoolClass.school_id == actor.school_id,
+                        self._db_models.SchoolClass.class_ref == class_ref,
+                    )
+                )
+                if existing is None:
+                    raise error(
+                        ErrorCode.WORKFLOW_CONFLICT, detail="idempotency result is unavailable"
+                    )
+                return {
+                    "class_ref": existing.class_ref,
+                    "status": existing.status,
+                    "active_student_count": 0,
+                    "active_teacher_count": 0,
+                }
+            row = await uow.school_operations.create_class(
+                school_id=actor.school_id,
+                class_ref=class_ref,
+                admin_membership_role_id=role_id,
+                at=at,
+            )
+            await self._school_idempotency_complete(
+                uow, claim, resource_type="school_class", result_ref=row.public_id
+            )
+            return {
+                "class_ref": row.class_ref,
+                "status": row.status,
+                "active_student_count": 0,
+                "active_teacher_count": 0,
+            }
+
+    async def school_list_members(
+        self, actor: Any, role_code: str, *, at: datetime
+    ) -> list[dict[str, Any]]:
+        m = self._db_models
+        async with self._uow() as uow:
+            await self._school_actor_role(uow, actor, "admin", at)
+            statement = (
+                self._select(m.Account.public_id)
+                .join(
+                    m.AccountSchoolMembership, m.AccountSchoolMembership.account_id == m.Account.id
+                )
+                .join(
+                    m.MembershipRole, m.MembershipRole.membership_id == m.AccountSchoolMembership.id
+                )
+                .join(m.School, m.School.id == m.AccountSchoolMembership.school_id)
+                .where(
+                    m.Account.status == self._db_enums.AccountStatus.ACTIVE.value,
+                    m.AccountSchoolMembership.school_id == actor.school_id,
+                    m.AccountSchoolMembership.status == "ACTIVE",
+                    m.AccountSchoolMembership.revoked_at.is_(None),
+                    m.AccountSchoolMembership.valid_from <= at,
+                    (m.AccountSchoolMembership.valid_until.is_(None))
+                    | (m.AccountSchoolMembership.valid_until >= at),
+                    m.MembershipRole.school_id == actor.school_id,
+                    m.MembershipRole.role_code == role_code,
+                    m.MembershipRole.status == "ACTIVE",
+                    m.MembershipRole.revoked_at.is_(None),
+                    m.MembershipRole.valid_from <= at,
+                    (m.MembershipRole.valid_until.is_(None)) | (m.MembershipRole.valid_until >= at),
+                    m.School.school_ref == actor.school_ref,
+                    m.School.status == "ACTIVE",
+                    m.School.data_origin == self._db_enums.DataOrigin.SYNTHETIC.value,
+                )
+            )
+            if role_code == "teacher":
+                refs = (await uow.session.scalars(statement.order_by(m.Account.public_id))).all()
+                return [
+                    {"user_id": f"USER_{ref}", "role": role_code, "subject_id": None}
+                    for ref in refs
+                ]
+            statement = (
+                statement.add_columns(m.Subject.subject_ref)
+                .join(
+                    m.SubjectAccessGrant,
+                    (m.SubjectAccessGrant.principal_account_id == m.Account.id)
+                    & (m.SubjectAccessGrant.school_id == actor.school_id),
+                )
+                .join(m.Subject, m.Subject.id == m.SubjectAccessGrant.subject_id)
+                .where(
+                    m.SubjectAccessGrant.relationship_type == "SELF",
+                    m.SubjectAccessGrant.status == "ACTIVE",
+                    m.SubjectAccessGrant.revoked_at.is_(None),
+                    m.SubjectAccessGrant.valid_from <= at,
+                    (m.SubjectAccessGrant.valid_until.is_(None))
+                    | (m.SubjectAccessGrant.valid_until >= at),
+                    m.Subject.school_id == actor.school_id,
+                    m.Subject.status == self._db_enums.SubjectStatus.ACTIVE.value,
+                    m.Subject.data_origin == self._db_enums.DataOrigin.SYNTHETIC.value,
+                )
+                .distinct()
+                .order_by(m.Account.public_id, m.Subject.subject_ref)
+            )
+            rows = (await uow.session.execute(statement)).all()
+            return [
+                {"user_id": f"USER_{row[0]}", "role": role_code, "subject_id": row[1]}
+                for row in rows
+            ]
+
+    async def school_assign_student(
+        self, actor: Any, class_ref: str, student_user_ref: str, *, at: datetime, idempotency=None
+    ) -> dict[str, Any]:
+        m = self._db_models
+        try:
+            student_public_id = _database_public_id(student_user_ref, "USER")
+        except ValueError:
+            raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="student was not found") from None
+        async with self._uow() as uow:
+            _account_id, role_id = await self._school_actor_role(uow, actor, "admin", at)
+            claim = await self._school_idempotency_begin(uow, idempotency)
+            receipt = claim.record
+            if claim.replayed:
+                link = await uow.session.scalar(
+                    self._select(m.SchoolClassStudent).where(
+                        m.SchoolClassStudent.public_id == receipt.result_public_id,
+                        m.SchoolClassStudent.school_id == actor.school_id,
+                    )
+                )
+                if link is None:
+                    raise error(
+                        ErrorCode.WORKFLOW_CONFLICT, detail="idempotency result is unavailable"
+                    )
+                return {
+                    "class_ref": class_ref,
+                    "student_user_id": student_user_ref,
+                    "status": link.status,
+                }
+            school_class = await uow.session.scalar(
+                self._select(m.SchoolClass).where(
+                    m.SchoolClass.school_id == actor.school_id, m.SchoolClass.class_ref == class_ref
+                )
+            )
+            student = await uow.session.scalar(
+                self._select(m.Account).where(
+                    m.Account.public_id == student_public_id,
+                    m.Account.status == self._db_enums.AccountStatus.ACTIVE.value,
+                )
+            )
+            subject_ids = []
+            if student is not None:
+                subject_ids = list(
+                    (
+                        await uow.session.scalars(
+                            self._select(m.Subject.id)
+                            .join(
+                                m.SubjectAccessGrant,
+                                m.SubjectAccessGrant.subject_id == m.Subject.id,
+                            )
+                            .join(
+                                m.AccountSchoolMembership,
+                                (
+                                    m.AccountSchoolMembership.account_id
+                                    == m.SubjectAccessGrant.principal_account_id
+                                )
+                                & (
+                                    m.AccountSchoolMembership.school_id
+                                    == m.SubjectAccessGrant.school_id
+                                ),
+                            )
+                            .join(
+                                m.MembershipRole,
+                                m.MembershipRole.membership_id == m.AccountSchoolMembership.id,
+                            )
+                            .where(
+                                m.SubjectAccessGrant.principal_account_id == student.id,
+                                m.SubjectAccessGrant.school_id == actor.school_id,
+                                m.SubjectAccessGrant.relationship_type == "SELF",
+                                m.SubjectAccessGrant.status == "ACTIVE",
+                                m.SubjectAccessGrant.revoked_at.is_(None),
+                                m.SubjectAccessGrant.valid_from <= at,
+                                (m.SubjectAccessGrant.valid_until.is_(None))
+                                | (m.SubjectAccessGrant.valid_until >= at),
+                                m.AccountSchoolMembership.status == "ACTIVE",
+                                m.AccountSchoolMembership.revoked_at.is_(None),
+                                m.AccountSchoolMembership.valid_from <= at,
+                                (m.AccountSchoolMembership.valid_until.is_(None))
+                                | (m.AccountSchoolMembership.valid_until >= at),
+                                m.MembershipRole.school_id == actor.school_id,
+                                m.MembershipRole.role_code == "student",
+                                m.MembershipRole.status == "ACTIVE",
+                                m.MembershipRole.revoked_at.is_(None),
+                                m.MembershipRole.valid_from <= at,
+                                (m.MembershipRole.valid_until.is_(None))
+                                | (m.MembershipRole.valid_until >= at),
+                                m.Subject.school_id == actor.school_id,
+                                m.Subject.status == self._db_enums.SubjectStatus.ACTIVE.value,
+                                m.Subject.data_origin == self._db_enums.DataOrigin.SYNTHETIC.value,
+                            )
+                        )
+                    ).all()
+                )
+            if school_class is None or len(subject_ids) != 1:
+                raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="class or student was not found")
+            link = await uow.school_operations.add_student_subject_to_class(
+                school_id=actor.school_id,
+                class_id=school_class.id,
+                subject_id=int(subject_ids[0]),
+                admin_membership_role_id=role_id,
+                at=at,
+            )
+            await self._school_idempotency_complete(
+                uow, claim, resource_type="class_student", result_ref=link.public_id
+            )
+            return {
+                "class_ref": class_ref,
+                "student_user_id": student_user_ref,
+                "status": link.status,
+            }
+
+    async def school_assign_teacher(
+        self, actor: Any, class_ref: str, teacher_user_ref: str, *, at: datetime, idempotency=None
+    ) -> dict[str, Any]:
+        m = self._db_models
+        try:
+            public_id = _database_public_id(teacher_user_ref, "USER")
+        except ValueError:
+            raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="teacher was not found") from None
+        async with self._uow() as uow:
+            _account_id, admin_role_id = await self._school_actor_role(uow, actor, "admin", at)
+            claim = await self._school_idempotency_begin(uow, idempotency)
+            receipt = claim.record
+            if claim.replayed:
+                link = await uow.session.scalar(
+                    self._select(m.SchoolClassTeacher).where(
+                        m.SchoolClassTeacher.public_id == receipt.result_public_id,
+                        m.SchoolClassTeacher.school_id == actor.school_id,
+                    )
+                )
+                if link is None:
+                    raise error(
+                        ErrorCode.WORKFLOW_CONFLICT, detail="idempotency result is unavailable"
+                    )
+                return {
+                    "class_ref": class_ref,
+                    "teacher_user_id": teacher_user_ref,
+                    "status": link.status,
+                }
+            teacher = await uow.session.scalar(
+                self._select(m.Account).where(
+                    m.Account.public_id == public_id,
+                    m.Account.status == self._db_enums.AccountStatus.ACTIVE.value,
+                )
+            )
+            school_class = await uow.session.scalar(
+                self._select(m.SchoolClass).where(
+                    m.SchoolClass.school_id == actor.school_id, m.SchoolClass.class_ref == class_ref
+                )
+            )
+            if teacher is None or school_class is None:
+                raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="class or teacher was not found")
+            teacher_roles = (
+                await uow.session.scalars(
+                    self._select(m.MembershipRole.id)
+                    .join(
+                        m.AccountSchoolMembership,
+                        m.MembershipRole.membership_id == m.AccountSchoolMembership.id,
+                    )
+                    .where(
+                        m.AccountSchoolMembership.account_id == teacher.id,
+                        m.AccountSchoolMembership.school_id == actor.school_id,
+                        m.AccountSchoolMembership.status == "ACTIVE",
+                        m.MembershipRole.school_id == actor.school_id,
+                        m.MembershipRole.role_code == "teacher",
+                        m.MembershipRole.status == "ACTIVE",
+                        m.MembershipRole.revoked_at.is_(None),
+                        m.MembershipRole.valid_from <= at,
+                        (m.MembershipRole.valid_until.is_(None))
+                        | (m.MembershipRole.valid_until >= at),
+                    )
+                )
+            ).all()
+            if len(teacher_roles) != 1:
+                raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="teacher was not found")
+            link = await uow.school_operations.add_teacher_role_to_class(
+                school_id=actor.school_id,
+                class_id=school_class.id,
+                teacher_membership_role_id=int(teacher_roles[0]),
+                admin_membership_role_id=admin_role_id,
+                at=at,
+            )
+            await self._school_idempotency_complete(
+                uow, claim, resource_type="class_teacher", result_ref=link.public_id
+            )
+            return {
+                "class_ref": class_ref,
+                "teacher_user_id": teacher_user_ref,
+                "status": link.status,
+            }
+
+    async def school_publish_task(
+        self,
+        actor: Any,
+        class_ref: str,
+        task_ref: str,
+        *,
+        opens_at: datetime,
+        due_at: datetime | None,
+        at: datetime,
+        idempotency=None,
+    ) -> dict[str, Any]:
+        m = self._db_models
+        async with self._uow() as uow:
+            _account_id, role_id = await self._school_actor_role(uow, actor, "admin", at)
+            claim = await self._school_idempotency_begin(uow, idempotency)
+            if claim.replayed:
+                task = await uow.session.scalar(
+                    self._select(m.MeasurementTask).where(
+                        m.MeasurementTask.school_id == actor.school_id,
+                        m.MeasurementTask.task_ref == task_ref,
+                    )
+                )
+                if task is None:
+                    raise error(
+                        ErrorCode.WORKFLOW_CONFLICT, detail="idempotency result is unavailable"
+                    )
+                counts = await uow.school_operations.task_progress_counts(
+                    task_id=task.id, school_id=actor.school_id
+                )
+                from dataclasses import asdict
+
+                return {
+                    "task_ref": task.task_ref,
+                    "class_ref": class_ref,
+                    "status": task.status,
+                    "opens_at": task.opens_at,
+                    "due_at": task.due_at,
+                    "published_at": task.published_at,
+                    **asdict(counts),
+                    "instrument_id": task.instrument_id,
+                    "instrument_version": task.instrument_version,
+                }
+            school_class = await uow.session.scalar(
+                self._select(m.SchoolClass).where(
+                    m.SchoolClass.school_id == actor.school_id, m.SchoolClass.class_ref == class_ref
+                )
+            )
+            if school_class is None:
+                raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="class was not found")
+            # This is the sole module-owned publishable CAT identity, sourced from
+            # the accepted D3 adapter binding rather than a request field.
+            from smhai_backend.domains.assessment.binding import D3_IDENTITY
+
+            snapshot = await uow.school_operations.publish_task_with_snapshot(
+                school_id=actor.school_id,
+                class_id=school_class.id,
+                task_ref=task_ref,
+                admin_membership_role_id=role_id,
+                instrument_id=D3_IDENTITY.instrument_id,
+                instrument_version=D3_IDENTITY.instrument_version,
+                item_bank_version=None,
+                config_version=None,
+                opens_at=opens_at,
+                due_at=due_at,
+                published_at=at,
+            )
+            task = snapshot.task
+            await self._school_idempotency_complete(
+                uow, claim, resource_type="measurement_task", result_ref=task.public_id
+            )
+            return {
+                "task_ref": task.task_ref,
+                "class_ref": class_ref,
+                "status": task.status,
+                "opens_at": task.opens_at,
+                "due_at": task.due_at,
+                "published_at": task.published_at,
+                "published_enrollment_count": snapshot.enrollment_count,
+                "active_enrollment_count": snapshot.enrollment_count,
+                "revoked_enrollment_count": 0,
+                "instrument_id": task.instrument_id,
+                "instrument_version": task.instrument_version,
+            }
+
+    async def school_list_class_tasks(
+        self, actor: Any, class_ref: str, *, at: datetime
+    ) -> list[dict[str, Any]]:
+        from dataclasses import asdict
+
+        m = self._db_models
+        async with self._uow() as uow:
+            await self._school_actor_role(uow, actor, "admin", at)
+            school_class = await uow.session.scalar(
+                self._select(m.SchoolClass).where(
+                    m.SchoolClass.school_id == actor.school_id,
+                    m.SchoolClass.class_ref == class_ref,
+                )
+            )
+            if school_class is None:
+                raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="class was not found")
+            tasks = (
+                await uow.session.scalars(
+                    self._select(m.MeasurementTask)
+                    .where(
+                        m.MeasurementTask.school_id == actor.school_id,
+                        m.MeasurementTask.class_id == school_class.id,
+                    )
+                    .order_by(m.MeasurementTask.published_at.desc())
+                )
+            ).all()
+            output = []
+            for task in tasks:
+                counts = await uow.school_operations.task_progress_counts(
+                    task_id=task.id, school_id=actor.school_id
+                )
+                output.append(
+                    {
+                        "task_ref": task.task_ref,
+                        "class_ref": class_ref,
+                        "status": task.status,
+                        "opens_at": task.opens_at,
+                        "due_at": task.due_at,
+                        "published_at": task.published_at,
+                        "instrument_id": task.instrument_id,
+                        "instrument_version": task.instrument_version,
+                        **asdict(counts),
+                    }
+                )
+            return output
+
+    async def school_list_student_tasks(self, actor: Any, *, at: datetime) -> list[dict[str, Any]]:
+        m = self._db_models
+        async with self._uow() as uow:
+            account_id, _role_id = await self._school_actor_role(uow, actor, "student", at)
+            statement = (
+                self._select(
+                    m.MeasurementTask.task_ref,
+                    m.SchoolClass.class_ref,
+                    m.MeasurementTask.status,
+                    m.MeasurementTask.opens_at,
+                    m.MeasurementTask.due_at,
+                    m.AssessmentSession.assessment_ref,
+                    m.AssessmentSession.status,
+                )
+                .select_from(m.TaskEnrollment)
+                .join(
+                    m.SchoolClassStudent,
+                    (m.SchoolClassStudent.id == m.TaskEnrollment.class_student_id)
+                    & (m.SchoolClassStudent.subject_id == m.TaskEnrollment.subject_id)
+                    & (m.SchoolClassStudent.class_id == m.TaskEnrollment.class_id)
+                    & (m.SchoolClassStudent.school_id == m.TaskEnrollment.school_id),
+                )
+                .join(
+                    m.SchoolClass,
+                    (m.SchoolClass.id == m.TaskEnrollment.class_id)
+                    & (m.SchoolClass.school_id == m.TaskEnrollment.school_id),
+                )
+                .join(
+                    m.MeasurementTask,
+                    (m.MeasurementTask.id == m.TaskEnrollment.task_id)
+                    & (m.MeasurementTask.school_id == m.TaskEnrollment.school_id)
+                    & (m.MeasurementTask.class_id == m.TaskEnrollment.class_id),
+                )
+                .join(m.Subject, m.Subject.id == m.TaskEnrollment.subject_id)
+                .join(
+                    m.SubjectAccessGrant,
+                    (m.SubjectAccessGrant.subject_id == m.TaskEnrollment.subject_id)
+                    & (m.SubjectAccessGrant.school_id == m.TaskEnrollment.school_id),
+                )
+                .join(
+                    m.AccountSchoolMembership,
+                    (
+                        m.AccountSchoolMembership.account_id
+                        == m.SubjectAccessGrant.principal_account_id
+                    )
+                    & (m.AccountSchoolMembership.school_id == m.TaskEnrollment.school_id),
+                )
+                .join(
+                    m.MembershipRole, m.MembershipRole.membership_id == m.AccountSchoolMembership.id
+                )
+                .join(m.Account, m.Account.id == m.AccountSchoolMembership.account_id)
+                .join(m.School, m.School.id == m.TaskEnrollment.school_id)
+                .outerjoin(
+                    m.AssessmentSession,
+                    (m.AssessmentSession.task_enrollment_id == m.TaskEnrollment.id)
+                    & (m.AssessmentSession.subject_id == m.TaskEnrollment.subject_id),
+                )
+            )
+            statement = (
+                statement.where(
+                    m.TaskEnrollment.school_id == actor.school_id,
+                    m.TaskEnrollment.status == "ACTIVE",
+                    m.SchoolClassStudent.status == "ACTIVE",
+                    m.SchoolClassStudent.revoked_at.is_(None),
+                    m.SchoolClassStudent.valid_from <= at,
+                    (m.SchoolClassStudent.valid_until.is_(None))
+                    | (m.SchoolClassStudent.valid_until >= at),
+                    m.SchoolClass.status == "ACTIVE",
+                    m.MeasurementTask.status == "PUBLISHED",
+                    m.MeasurementTask.opens_at <= at,
+                    (m.MeasurementTask.due_at.is_(None)) | (m.MeasurementTask.due_at >= at),
+                    m.Subject.status == self._db_enums.SubjectStatus.ACTIVE.value,
+                    m.Subject.data_origin == self._db_enums.DataOrigin.SYNTHETIC.value,
+                    m.Subject.school_id == actor.school_id,
+                    m.SubjectAccessGrant.principal_account_id == account_id,
+                    m.SubjectAccessGrant.relationship_type == "SELF",
+                    m.SubjectAccessGrant.status == "ACTIVE",
+                    m.SubjectAccessGrant.revoked_at.is_(None),
+                    m.SubjectAccessGrant.valid_from <= at,
+                    (m.SubjectAccessGrant.valid_until.is_(None))
+                    | (m.SubjectAccessGrant.valid_until >= at),
+                    m.AccountSchoolMembership.status == "ACTIVE",
+                    m.AccountSchoolMembership.revoked_at.is_(None),
+                    m.AccountSchoolMembership.valid_from <= at,
+                    (m.AccountSchoolMembership.valid_until.is_(None))
+                    | (m.AccountSchoolMembership.valid_until >= at),
+                    m.MembershipRole.school_id == actor.school_id,
+                    m.MembershipRole.role_code == "student",
+                    m.MembershipRole.status == "ACTIVE",
+                    m.MembershipRole.revoked_at.is_(None),
+                    m.MembershipRole.valid_from <= at,
+                    (m.MembershipRole.valid_until.is_(None)) | (m.MembershipRole.valid_until >= at),
+                    m.Account.status == self._db_enums.AccountStatus.ACTIVE.value,
+                    m.School.school_ref == actor.school_ref,
+                    m.School.status == "ACTIVE",
+                    m.School.data_origin == self._db_enums.DataOrigin.SYNTHETIC.value,
+                )
+                .distinct()
+                .order_by(m.MeasurementTask.opens_at, m.MeasurementTask.task_ref)
+            )
+            rows = (await uow.session.execute(statement)).all()
+            return [
+                dict(
+                    task_ref=row[0],
+                    class_ref=row[1],
+                    status=row[2],
+                    opens_at=row[3],
+                    due_at=row[4],
+                    assessment_id=row[5],
+                    assessment_status=row[6],
+                )
+                for row in rows
+            ]
+
+    async def school_list_student_task_history(
+        self, actor: Any, *, at: datetime
+    ) -> list[dict[str, Any]]:
+        """Return own task lifecycle metadata without loading assessment payloads."""
+        if (
+            actor.scope_profile != "school_tenant"
+            or actor.role is not BackendRole.STUDENT
+            or actor.school_id is None
+            or actor.school_ref is None
+        ):
+            return []
+        m = self._db_models
+        async with self._uow() as uow:
+            account_id, role_id = await self._school_actor_role(uow, actor, "student", at)
+            statement = (
+                self._select(
+                    m.MeasurementTask.task_ref,
+                    m.SchoolClass.class_ref,
+                    m.MeasurementTask.status,
+                    m.TaskEnrollment.status,
+                    m.AssessmentSession.status,
+                    m.AssessmentSession.started_at,
+                    m.AssessmentSession.completed_at,
+                )
+                .select_from(m.TaskEnrollment)
+                .join(
+                    m.MeasurementTask,
+                    (m.MeasurementTask.id == m.TaskEnrollment.task_id)
+                    & (m.MeasurementTask.school_id == m.TaskEnrollment.school_id)
+                    & (m.MeasurementTask.class_id == m.TaskEnrollment.class_id),
+                )
+                .join(
+                    m.SchoolClass,
+                    (m.SchoolClass.id == m.TaskEnrollment.class_id)
+                    & (m.SchoolClass.school_id == m.TaskEnrollment.school_id),
+                )
+                .join(
+                    m.SchoolClassStudent,
+                    (m.SchoolClassStudent.id == m.TaskEnrollment.class_student_id)
+                    & (m.SchoolClassStudent.subject_id == m.TaskEnrollment.subject_id)
+                    & (m.SchoolClassStudent.class_id == m.TaskEnrollment.class_id)
+                    & (m.SchoolClassStudent.school_id == m.TaskEnrollment.school_id),
+                )
+                .join(
+                    m.Subject,
+                    (m.Subject.id == m.TaskEnrollment.subject_id)
+                    & (m.Subject.school_id == m.TaskEnrollment.school_id),
+                )
+                .join(
+                    m.SubjectAccessGrant,
+                    (m.SubjectAccessGrant.subject_id == m.Subject.id)
+                    & (m.SubjectAccessGrant.school_id == m.TaskEnrollment.school_id),
+                )
+                .join(
+                    m.AccountSchoolMembership,
+                    (
+                        m.AccountSchoolMembership.account_id
+                        == m.SubjectAccessGrant.principal_account_id
+                    )
+                    & (m.AccountSchoolMembership.school_id == m.TaskEnrollment.school_id),
+                )
+                .join(
+                    m.MembershipRole,
+                    m.MembershipRole.membership_id == m.AccountSchoolMembership.id,
+                )
+                .join(m.Account, m.Account.id == m.AccountSchoolMembership.account_id)
+                .join(m.School, m.School.id == m.TaskEnrollment.school_id)
+                .outerjoin(
+                    m.AssessmentSession,
+                    (m.AssessmentSession.task_enrollment_id == m.TaskEnrollment.id)
+                    & (m.AssessmentSession.subject_id == m.TaskEnrollment.subject_id),
+                )
+                .where(
+                    m.TaskEnrollment.school_id == actor.school_id,
+                    m.SchoolClassStudent.subject_id == m.TaskEnrollment.subject_id,
+                    m.Subject.status == self._db_enums.SubjectStatus.ACTIVE.value,
+                    m.Subject.data_origin == self._db_enums.DataOrigin.SYNTHETIC.value,
+                    m.SubjectAccessGrant.principal_account_id == account_id,
+                    m.SubjectAccessGrant.relationship_type == "SELF",
+                    m.SubjectAccessGrant.status == "ACTIVE",
+                    m.SubjectAccessGrant.revoked_at.is_(None),
+                    m.SubjectAccessGrant.valid_from <= at,
+                    (m.SubjectAccessGrant.valid_until.is_(None))
+                    | (m.SubjectAccessGrant.valid_until >= at),
+                    m.AccountSchoolMembership.status == "ACTIVE",
+                    m.AccountSchoolMembership.revoked_at.is_(None),
+                    m.AccountSchoolMembership.valid_from <= at,
+                    (m.AccountSchoolMembership.valid_until.is_(None))
+                    | (m.AccountSchoolMembership.valid_until >= at),
+                    m.MembershipRole.id == role_id,
+                    m.MembershipRole.school_id == actor.school_id,
+                    m.MembershipRole.role_code == "student",
+                    m.MembershipRole.status == "ACTIVE",
+                    m.MembershipRole.revoked_at.is_(None),
+                    m.MembershipRole.valid_from <= at,
+                    (m.MembershipRole.valid_until.is_(None)) | (m.MembershipRole.valid_until >= at),
+                    m.Account.status == self._db_enums.AccountStatus.ACTIVE.value,
+                    m.School.school_ref == actor.school_ref,
+                    m.School.status == "ACTIVE",
+                    m.School.data_origin == self._db_enums.DataOrigin.SYNTHETIC.value,
+                )
+                .order_by(m.MeasurementTask.published_at.desc(), m.MeasurementTask.task_ref)
+            )
+            rows = (await uow.session.execute(statement)).all()
+            return [
+                {
+                    "task_ref": row[0],
+                    "class_ref": row[1],
+                    "task_status": row[2],
+                    "enrollment_status": row[3],
+                    "assessment_status": row[4],
+                    "started_at": row[5],
+                    "completed_at": row[6],
+                }
+                for row in rows
+            ]
+
+    async def school_prepare_task_session(
+        self,
+        actor: Any,
+        task_ref: str,
+        assessment_ref: str,
+        *,
+        at: datetime,
+        trace_id: str,
+        idempotency=None,
+    ) -> dict[str, Any]:
+        m = self._db_models
+        account_id, _role_id = None, None
+        async with self._uow() as uow:
+            account_id, _role_id = await self._school_actor_role(uow, actor, "student", at)
+            claim = await self._school_idempotency_begin(uow, idempotency)
+            receipt = claim.record
+            if claim.replayed:
+                if (
+                    receipt.result_resource_type != "assessment_session"
+                    or not receipt.result_public_id
+                ):
+                    raise error(
+                        ErrorCode.WORKFLOW_CONFLICT,
+                        detail="idempotency result is unavailable",
+                    )
+                assessment_ref = receipt.result_public_id
+            enrollment = await uow.session.scalar(
+                self._select(m.TaskEnrollment)
+                .join(
+                    m.MeasurementTask,
+                    (m.MeasurementTask.id == m.TaskEnrollment.task_id)
+                    & (m.MeasurementTask.school_id == m.TaskEnrollment.school_id)
+                    & (m.MeasurementTask.class_id == m.TaskEnrollment.class_id),
+                )
+                .where(
+                    m.TaskEnrollment.school_id == actor.school_id,
+                    m.TaskEnrollment.status == "ACTIVE",
+                    m.MeasurementTask.task_ref == task_ref,
+                )
+            )
+            if enrollment is None:
+                raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="open assigned task was not found")
+            session = await uow.school_operations.create_task_assessment_session(
+                enrollment_id=enrollment.id,
+                assessment_ref=assessment_ref,
+                school_id=actor.school_id,
+                student_account_id=account_id,
+                at=at,
+                trace_id=trace_id,
+            )
+            if claim.replayed:
+                if session.assessment_ref != assessment_ref:
+                    raise error(
+                        ErrorCode.WORKFLOW_CONFLICT,
+                        detail="idempotency result does not match the task session",
+                    )
+            else:
+                await self._school_idempotency_complete(
+                    uow,
+                    claim,
+                    resource_type="assessment_session",
+                    result_ref=session.assessment_ref,
+                )
+            subject = await uow.session.get(m.Subject, session.subject_id)
+            if subject is None:
+                raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="assigned task was not found")
+            task = await uow.session.get(m.MeasurementTask, enrollment.task_id)
+            return {
+                "assessment_id": session.assessment_ref,
+                "subject_id": subject.subject_ref,
+                "instrument_id": session.instrument_id,
+                "instrument_version": session.instrument_version,
+                "item_bank_version": session.item_bank_version,
+                "config_version": session.config_version,
+                "started_at": session.started_at or at,
+                "task_ref": task.task_ref,
+                "session_status": session.status,
+            }
+
+    async def school_revoke_enrollment(
+        self, actor: Any, task_ref: str, enrollment_ref: str, *, at: datetime, idempotency=None
+    ) -> dict[str, str]:
+        m = self._db_models
+        try:
+            enrollment_public_id = _database_public_id(enrollment_ref, "ENROLL")
+        except ValueError:
+            raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="enrollment was not found") from None
+        async with self._uow() as uow:
+            _account_id, role_id = await self._school_actor_role(uow, actor, "admin", at)
+            claim = await self._school_idempotency_begin(uow, idempotency)
+            receipt = claim.record
+            if claim.replayed:
+                enrollment = await uow.session.scalar(
+                    self._select(m.TaskEnrollment).where(
+                        m.TaskEnrollment.public_id == receipt.result_public_id,
+                        m.TaskEnrollment.school_id == actor.school_id,
+                    )
+                )
+                if enrollment is None:
+                    raise error(
+                        ErrorCode.WORKFLOW_CONFLICT, detail="idempotency result is unavailable"
+                    )
+                return {"enrollment_ref": enrollment_ref, "status": enrollment.status}
+            enrollment = await uow.session.scalar(
+                self._select(m.TaskEnrollment)
+                .join(m.MeasurementTask, m.MeasurementTask.id == m.TaskEnrollment.task_id)
+                .where(
+                    m.TaskEnrollment.public_id == enrollment_public_id,
+                    m.TaskEnrollment.school_id == actor.school_id,
+                    m.MeasurementTask.task_ref == task_ref,
+                )
+            )
+            if enrollment is None:
+                raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="enrollment was not found")
+            enrollment = await uow.school_operations.revoke_enrollment(
+                enrollment_id=enrollment.id,
+                school_id=actor.school_id,
+                admin_membership_role_id=role_id,
+                at=at,
+            )
+            await self._school_idempotency_complete(
+                uow, claim, resource_type="task_enrollment", result_ref=enrollment.public_id
+            )
+            return {"enrollment_ref": enrollment_ref, "status": enrollment.status}
+
+    async def school_list_task_enrollments(
+        self, actor: Any, task_ref: str, *, at: datetime
+    ) -> list[dict[str, str]]:
+        m = self._db_models
+        async with self._uow() as uow:
+            _account_id, _role_id = await self._school_actor_role(uow, actor, "admin", at)
+            task = await uow.session.scalar(
+                self._select(m.MeasurementTask).where(
+                    m.MeasurementTask.school_id == actor.school_id,
+                    m.MeasurementTask.task_ref == task_ref,
+                )
+            )
+            if task is None:
+                raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="task was not found")
+            rows = (
+                await uow.session.execute(
+                    self._select(m.TaskEnrollment.public_id, m.TaskEnrollment.status)
+                    .where(
+                        m.TaskEnrollment.task_id == task.id,
+                        m.TaskEnrollment.school_id == actor.school_id,
+                    )
+                    .order_by(m.TaskEnrollment.created_at, m.TaskEnrollment.public_id)
+                )
+            ).all()
+            return [{"enrollment_ref": f"ENROLL_{row[0]}", "status": row[1]} for row in rows]
+
+    async def school_teacher_progress(
+        self, actor: Any, class_ref: str | None = None
+    ) -> list[dict[str, Any]]:
+        m = self._db_models
+        now = self._utc_now()
+        async with self._uow() as uow:
+            account_id, role_id = await self._school_actor_role(uow, actor, "teacher", now)
+            classes_statement = (
+                self._select(m.SchoolClass.class_ref)
+                .join(m.SchoolClassTeacher, m.SchoolClassTeacher.class_id == m.SchoolClass.id)
+                .where(
+                    m.SchoolClass.status == "ACTIVE",
+                    m.SchoolClassTeacher.school_id == actor.school_id,
+                    m.SchoolClassTeacher.membership_role_id == role_id,
+                    m.SchoolClassTeacher.status == "ACTIVE",
+                    m.SchoolClassTeacher.revoked_at.is_(None),
+                    m.SchoolClassTeacher.valid_from <= now,
+                    (m.SchoolClassTeacher.valid_until.is_(None))
+                    | (m.SchoolClassTeacher.valid_until >= now),
+                )
+            )
+            if class_ref is not None:
+                classes_statement = classes_statement.where(m.SchoolClass.class_ref == class_ref)
+            class_refs = sorted(set((await uow.session.scalars(classes_statement)).all()))
+            if class_ref is not None and not class_refs:
+                raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="class was not found")
+            output = []
+            from dataclasses import asdict
+
+            for current_class_ref in class_refs:
+                tasks = (
+                    await uow.session.scalars(
+                        self._select(m.MeasurementTask)
+                        .join(m.SchoolClass, m.SchoolClass.id == m.MeasurementTask.class_id)
+                        .where(
+                            m.MeasurementTask.school_id == actor.school_id,
+                            m.SchoolClass.class_ref == current_class_ref,
+                        )
+                        .order_by(m.MeasurementTask.published_at.desc())
+                    )
+                ).all()
+                for task in tasks:
+                    counts = await uow.school_operations.task_progress_counts(
+                        task_id=task.id, school_id=actor.school_id
+                    )
+                    output.append(
+                        {
+                            "class_ref": current_class_ref,
+                            "task_ref": task.task_ref,
+                            "task_status": task.status,
+                            "opens_at": task.opens_at,
+                            "due_at": task.due_at,
+                            **asdict(counts),
+                        }
+                    )
+            return output
+
     async def _ensure_synthetic_fixtures(self) -> None:
         """Create only clearly-labelled local identities when absent."""
 
@@ -238,20 +1292,11 @@ class MySqlBackendAdapter:
             username = os.environ.get(f"{env_prefix}_USERNAME")
             password = os.environ.get(f"{env_prefix}_PASSWORD")
             if (username is None) != (password is None):
-                raise RuntimeError(
-                    f"Incomplete local demo identity configuration: {env_prefix}."
-                )
+                raise RuntimeError(f"Incomplete local demo identity configuration: {env_prefix}.")
             if username is None or password is None:
                 continue
-            if (
-                not username.strip()
-                or len(username) > 128
-                or not password
-                or len(password) > 256
-            ):
-                raise RuntimeError(
-                    f"Invalid local demo identity configuration: {env_prefix}."
-                )
+            if not username.strip() or len(username) > 128 or not password or len(password) > 256:
+                raise RuntimeError(f"Invalid local demo identity configuration: {env_prefix}.")
             optional_fixtures.append((username.strip(), password, role_code, None))
 
         fixtures = (*fixtures, *optional_fixtures)
@@ -617,9 +1662,7 @@ class MySqlBackendAdapter:
         await self.revoke(session_id)
         return await self.create(user_id, ttl_seconds)
 
-    async def set_active_context(
-        self, session_id: str, context_id: str
-    ) -> SessionRecord | None:
+    async def set_active_context(self, session_id: str, context_id: str) -> SessionRecord | None:
         try:
             parsed_context_id = int(context_id)
         except ValueError:
@@ -751,13 +1794,82 @@ class MySqlBackendAdapter:
                 result_row.completed_at = db_record.completed_at or self._utc_now()
             await uow.session.flush()
 
-    async def get_assessment(self, assessment_id: str) -> AssessmentRecord | None:
+    async def get_assessment(
+        self, assessment_id: str, *, actor: Any = None, at: datetime | None = None
+    ) -> AssessmentRecord | None:
+        if actor is not None and (
+            self.identity_profile != "school_tenant"
+            or actor.scope_profile != "school_tenant"
+            or actor.role is not BackendRole.STUDENT
+            or actor.school_id is None
+            or actor.school_ref is None
+        ):
+            return None
         m = self._db_models
         async with self._uow() as uow:
             try:
                 db_record = await uow.assessments.get_session(assessment_id)
             except self._db_not_found:
                 return None
+            if actor is not None and actor.scope_profile == "school_tenant":
+                at = at or self._utc_now()
+                account_id, _role_id = await self._school_actor_role(uow, actor, "student", at)
+                if db_record.task_enrollment_id is not None:
+                    enrollment = await uow.school_operations.active_enrollment_for_assessment(
+                        assessment_ref=assessment_id,
+                        student_account_id=account_id,
+                        at=at,
+                    )
+                    if enrollment is None or enrollment.school_id != actor.school_id:
+                        return None
+                else:
+                    own_subject = await uow.session.scalar(
+                        self._select(m.Subject.id)
+                        .join(
+                            m.SubjectAccessGrant,
+                            (m.SubjectAccessGrant.subject_id == m.Subject.id)
+                            & (m.SubjectAccessGrant.school_id == actor.school_id),
+                        )
+                        .join(
+                            m.AccountSchoolMembership,
+                            (
+                                m.AccountSchoolMembership.account_id
+                                == m.SubjectAccessGrant.principal_account_id
+                            )
+                            & (m.AccountSchoolMembership.school_id == actor.school_id),
+                        )
+                        .join(
+                            m.MembershipRole,
+                            m.MembershipRole.membership_id == m.AccountSchoolMembership.id,
+                        )
+                        .where(
+                            m.Subject.id == db_record.subject_id,
+                            m.Subject.school_id == actor.school_id,
+                            m.Subject.status == self._db_enums.SubjectStatus.ACTIVE.value,
+                            m.Subject.data_origin == self._db_enums.DataOrigin.SYNTHETIC.value,
+                            m.SubjectAccessGrant.principal_account_id == account_id,
+                            m.SubjectAccessGrant.relationship_type == "SELF",
+                            m.SubjectAccessGrant.status == "ACTIVE",
+                            m.SubjectAccessGrant.revoked_at.is_(None),
+                            m.SubjectAccessGrant.valid_from <= at,
+                            (m.SubjectAccessGrant.valid_until.is_(None))
+                            | (m.SubjectAccessGrant.valid_until >= at),
+                            m.AccountSchoolMembership.status == "ACTIVE",
+                            m.AccountSchoolMembership.revoked_at.is_(None),
+                            m.AccountSchoolMembership.valid_from <= at,
+                            (m.AccountSchoolMembership.valid_until.is_(None))
+                            | (m.AccountSchoolMembership.valid_until >= at),
+                            m.MembershipRole.school_id == actor.school_id,
+                            m.MembershipRole.role_code == "student",
+                            m.MembershipRole.status == "ACTIVE",
+                            m.MembershipRole.revoked_at.is_(None),
+                            m.MembershipRole.valid_from <= at,
+                            (m.MembershipRole.valid_until.is_(None))
+                            | (m.MembershipRole.valid_until >= at),
+                        )
+                    )
+                    if own_subject is None:
+                        return None
             subject = await uow.session.get(m.Subject, db_record.subject_id)
             if subject is None:
                 return None
@@ -804,6 +1916,19 @@ class MySqlBackendAdapter:
                 administered_count=len(responses),
             )
 
+    async def school_get_assessment_for_actor(
+        self, actor: Any, assessment_id: str, *, at: datetime
+    ) -> AssessmentRecord | None:
+        if (
+            self.identity_profile != "school_tenant"
+            or actor.scope_profile != "school_tenant"
+            or actor.role is not BackendRole.STUDENT
+            or actor.school_id is None
+            or actor.school_ref is None
+        ):
+            return None
+        return await self.get_assessment(assessment_id, actor=actor, at=at)
+
     async def list_assessments_for_subjects(
         self,
         subject_ids: set[str],
@@ -826,21 +1951,248 @@ class MySqlBackendAdapter:
                 )
             )
             if status is not None:
-                statement = statement.where(
-                    m.AssessmentSession.status == status.upper()
-                )
+                statement = statement.where(m.AssessmentSession.status == status.upper())
             if skip:
                 statement = statement.offset(skip)
             if limit is not None:
                 statement = statement.limit(limit)
-            refs = list(
-                (
-                    await uow.session.scalars(statement)
-                ).all()
-            )
+            refs = list((await uow.session.scalars(statement)).all())
         records: list[AssessmentRecord] = []
         for assessment_id in refs:
             record = await self.get_assessment(assessment_id)
+            if record is not None:
+                records.append(record)
+        return records
+
+    def _school_assessment_scope_statement(
+        self,
+        actor: Any,
+        subject_refs: set[str],
+        *,
+        now: datetime,
+        account_id: int,
+        role_id: int,
+        status: str | None,
+        limit: int | None,
+        skip: int,
+        metadata_only: bool,
+    ):
+        """Build the shared, pre-pagination school student authorization query."""
+        m = self._db_models
+        from sqlalchemy import and_, or_
+
+        if metadata_only:
+            from sqlalchemy import func
+
+            response_count = (
+                self._select(func.count(m.AssessmentResponse.id))
+                .where(
+                    m.AssessmentResponse.assessment_session_id == m.AssessmentSession.id
+                )
+                .scalar_subquery()
+            )
+            selected = (
+                m.AssessmentSession.assessment_ref,
+                m.AssessmentSession.status,
+                response_count,
+                m.AssessmentSession.started_at,
+                m.AssessmentSession.completed_at,
+            )
+        else:
+            selected = (
+                m.AssessmentSession.assessment_ref,
+                m.AssessmentSession.started_at,
+            )
+
+        statement = (
+            self._select(*selected)
+            .join(m.Subject, m.Subject.id == m.AssessmentSession.subject_id)
+            .outerjoin(
+                m.TaskEnrollment,
+                (m.TaskEnrollment.id == m.AssessmentSession.task_enrollment_id)
+                & (m.TaskEnrollment.subject_id == m.AssessmentSession.subject_id),
+            )
+            .outerjoin(
+                m.SchoolClassStudent,
+                (m.SchoolClassStudent.id == m.TaskEnrollment.class_student_id)
+                & (m.SchoolClassStudent.subject_id == m.TaskEnrollment.subject_id)
+                & (m.SchoolClassStudent.class_id == m.TaskEnrollment.class_id)
+                & (m.SchoolClassStudent.school_id == m.TaskEnrollment.school_id),
+            )
+            .outerjoin(
+                m.SchoolClass,
+                (m.SchoolClass.id == m.TaskEnrollment.class_id)
+                & (m.SchoolClass.school_id == m.TaskEnrollment.school_id),
+            )
+            .outerjoin(
+                m.MeasurementTask,
+                (m.MeasurementTask.id == m.TaskEnrollment.task_id)
+                & (m.MeasurementTask.school_id == m.TaskEnrollment.school_id)
+                & (m.MeasurementTask.class_id == m.TaskEnrollment.class_id),
+            )
+            .join(
+                m.SubjectAccessGrant,
+                (m.SubjectAccessGrant.subject_id == m.Subject.id)
+                & (m.SubjectAccessGrant.school_id == actor.school_id),
+            )
+            .join(
+                m.AccountSchoolMembership,
+                (m.AccountSchoolMembership.account_id
+                 == m.SubjectAccessGrant.principal_account_id)
+                & (m.AccountSchoolMembership.school_id == actor.school_id),
+            )
+            .join(
+                m.MembershipRole,
+                m.MembershipRole.membership_id == m.AccountSchoolMembership.id,
+            )
+            .where(
+                m.Subject.subject_ref.in_(subject_refs),
+                m.Subject.school_id == actor.school_id,
+                m.Subject.status == self._db_enums.SubjectStatus.ACTIVE.value,
+                m.Subject.data_origin == self._db_enums.DataOrigin.SYNTHETIC.value,
+                m.SubjectAccessGrant.principal_account_id == account_id,
+                m.SubjectAccessGrant.relationship_type == "SELF",
+                m.SubjectAccessGrant.status == "ACTIVE",
+                m.SubjectAccessGrant.revoked_at.is_(None),
+                m.SubjectAccessGrant.valid_from <= now,
+                (m.SubjectAccessGrant.valid_until.is_(None))
+                | (m.SubjectAccessGrant.valid_until >= now),
+                m.AccountSchoolMembership.status == "ACTIVE",
+                m.AccountSchoolMembership.revoked_at.is_(None),
+                m.AccountSchoolMembership.valid_from <= now,
+                (m.AccountSchoolMembership.valid_until.is_(None))
+                | (m.AccountSchoolMembership.valid_until >= now),
+                m.MembershipRole.id == role_id,
+                m.MembershipRole.school_id == actor.school_id,
+                m.MembershipRole.role_code == "student",
+                m.MembershipRole.status == "ACTIVE",
+                m.MembershipRole.revoked_at.is_(None),
+                m.MembershipRole.valid_from <= now,
+                (m.MembershipRole.valid_until.is_(None))
+                | (m.MembershipRole.valid_until >= now),
+                or_(
+                    and_(
+                        m.AssessmentSession.task_enrollment_id.is_(None),
+                        m.TaskEnrollment.id.is_(None),
+                    ),
+                    and_(
+                        m.AssessmentSession.task_enrollment_id.is_not(None),
+                        m.TaskEnrollment.status == "ACTIVE",
+                        m.SchoolClassStudent.status == "ACTIVE",
+                        m.SchoolClassStudent.revoked_at.is_(None),
+                        m.SchoolClassStudent.valid_from <= now,
+                        (m.SchoolClassStudent.valid_until.is_(None))
+                        | (m.SchoolClassStudent.valid_until >= now),
+                        m.SchoolClass.status == "ACTIVE",
+                        m.MeasurementTask.status == "PUBLISHED",
+                        m.MeasurementTask.opens_at <= now,
+                        (m.MeasurementTask.due_at.is_(None))
+                        | (m.MeasurementTask.due_at >= now),
+                        m.TaskEnrollment.school_id == actor.school_id,
+                        m.Subject.school_id == actor.school_id,
+                    ),
+                ),
+            )
+            .distinct()
+            .order_by(
+                m.AssessmentSession.started_at.desc(),
+                m.AssessmentSession.assessment_ref.desc(),
+            )
+        )
+        if status is not None:
+            statement = statement.where(m.AssessmentSession.status == status.upper())
+        if skip:
+            statement = statement.offset(skip)
+        if limit is not None:
+            statement = statement.limit(limit)
+        return statement
+
+    async def school_list_assessment_metadata_for_actor(
+        self,
+        actor: Any,
+        subject_refs: set[str],
+        *,
+        limit: int,
+        skip: int,
+        status: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return authorized lifecycle metadata without loading encrypted payloads."""
+        if (
+            self.identity_profile != "school_tenant"
+            or actor.scope_profile != "school_tenant"
+            or actor.role is not BackendRole.STUDENT
+            or actor.school_id is None
+            or actor.school_ref is None
+            or not subject_refs
+        ):
+            return []
+        async with self._uow() as uow:
+            now = self._utc_now()
+            account_id, role_id = await self._school_actor_role(uow, actor, "student", now)
+            statement = self._school_assessment_scope_statement(
+                actor,
+                subject_refs,
+                now=now,
+                account_id=account_id,
+                role_id=role_id,
+                status=status,
+                limit=limit,
+                skip=skip,
+                metadata_only=True,
+            )
+            rows = list((await uow.session.execute(statement)).all())
+        return [
+            {
+                "assessment_id": row[0],
+                "status": str(row[1]).lower(),
+                "items_answered": int(row[2]),
+                "started_at": _database_utc_datetime(row[3]),
+                "completed_at": _database_utc_datetime(row[4]),
+            }
+            for row in rows
+        ]
+
+    async def school_list_assessments_for_actor(
+        self,
+        actor: Any,
+        subject_refs: set[str],
+        *,
+        limit: int | None = None,
+        skip: int = 0,
+        status: str | None = None,
+    ) -> list[AssessmentRecord]:
+        """List records in the current student's authorized assessment scope.
+
+        Membership, SELF grant, and task lifecycle/window predicates are
+        applied before pagination. Each row is rechecked in the same UOW as
+        decryption to close the revocation race.
+        """
+        if (
+            actor.scope_profile != "school_tenant"
+            or actor.role is not BackendRole.STUDENT
+            or actor.school_id is None
+            or actor.school_ref is None
+            or not subject_refs
+        ):
+            return []
+        async with self._uow() as uow:
+            now = self._utc_now()
+            account_id, role_id = await self._school_actor_role(uow, actor, "student", now)
+            statement = self._school_assessment_scope_statement(
+                actor,
+                subject_refs,
+                now=now,
+                account_id=account_id,
+                role_id=role_id,
+                status=status,
+                limit=limit,
+                skip=skip,
+                metadata_only=False,
+            )
+            refs = list((await uow.session.scalars(statement)).all())
+        records = []
+        for assessment_ref in refs:
+            record = await self.get_assessment(assessment_ref, actor=actor, at=self._utc_now())
             if record is not None:
                 records.append(record)
         return records
@@ -1062,8 +2414,7 @@ class MySqlBackendAdapter:
                         source_id=source_id,
                         chunk_id=getattr(citation, "chunk_id", None),
                         document_id=getattr(citation, "document_id", None),
-                        source_version=getattr(citation, "source_version", None)
-                        or "knowledge.v1",
+                        source_version=getattr(citation, "source_version", None) or "knowledge.v1",
                         source_hash=getattr(citation, "source_hash", None),
                         citation_title=getattr(citation, "title", None),
                         citation_organization=getattr(citation, "organization", None),
@@ -1278,9 +2629,7 @@ class MySqlBackendAdapter:
                 .where(m.Subject.subject_ref.in_(subject_ids))
             )
             if assessment_id is not None:
-                statement = statement.where(
-                    m.AssessmentSession.assessment_ref == assessment_id
-                )
+                statement = statement.where(m.AssessmentSession.assessment_ref == assessment_id)
             rows = list(
                 (
                     await uow.session.execute(

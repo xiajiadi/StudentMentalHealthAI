@@ -51,7 +51,7 @@ def test_existing_settings_never_overwritten(tmp_path, monkeypatch):
     assert protected.read_bytes() == b"preserved"
 
 
-@pytest.mark.parametrize("revision,role", [("20261011_0004","NONE"), ("20261010_0002","NONE"), ("20261011_0004","unexpected-role")])
+@pytest.mark.parametrize("revision,role", [("20261011_0005","NONE"), ("20261010_0002","NONE"), ("20261011_0005","unexpected-role")])
 def test_provision_checks_revision_before_sealed_write_and_ddl(tmp_path, monkeypatch, revision, role):
     target, marker = workspace(tmp_path)
     calls = []
@@ -96,7 +96,7 @@ def test_provision_checks_revision_before_sealed_write_and_ddl(tmp_path, monkeyp
     monkeypatch.setattr(runtime, "verify_process", lambda marker: None)
     monkeypatch.setattr(runtime, "read_private", lambda path: {"DB_NAME":marker["database"], "DB_PORT":str(marker["port"]), "DB_HOST":"127.0.0.1", "root_password":"test-only-value"})
     monkeypatch.setattr(runtime, "write_private", lambda path, values: calls.append("sealed write"))
-    if revision != "20261011_0004":
+    if revision != "20261011_0005":
         with pytest.raises(runtime.PreparationError):
             runtime.prepare(target, tmp_path / "repo")
         assert "sealed write" not in calls

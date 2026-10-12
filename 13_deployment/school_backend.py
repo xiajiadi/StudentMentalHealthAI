@@ -37,7 +37,7 @@ def load_runtime(workspace: Path, repo: Path) -> dict:
             cursor.execute("SELECT CURRENT_ROLE()")
             verify_runtime_grants(grants, cursor.fetchone()[0])
             cursor.execute("SELECT version_num FROM database_alembic_version")
-            if cursor.fetchall() != (("20261011_0004",),):
+            if cursor.fetchall() != (("20261011_0005",),):
                 raise PreparationError("Required school revision unavailable")
     finally:
         connection.close()

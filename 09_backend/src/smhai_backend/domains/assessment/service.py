@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from smhai_backend.core.async_utils import maybe_await
@@ -242,14 +243,19 @@ class AssessmentService:
         allowed_subject_ids = {
             subject_id
             for subject_id in subject_ids
-            if self.authorization.can(
-                actor, "assessment:read", resource={"subject_id": subject_id}
-            )
+            if self.authorization.can(actor, "assessment:read", resource={"subject_id": subject_id})
         }
-        if limit is None and skip == 0 and status is None:
-            records = self.repository.list_assessments_for_subjects(
-                allowed_subject_ids
+        school_list = getattr(self.repository, "school_list_assessments_for_actor", None)
+        if actor.scope_profile == "school_tenant" and school_list is not None:
+            records = school_list(
+                actor,
+                allowed_subject_ids,
+                limit=limit,
+                skip=skip,
+                status=status,
             )
+        elif limit is None and skip == 0 and status is None:
+            records = self.repository.list_assessments_for_subjects(allowed_subject_ids)
         else:
             records = self.repository.list_assessments_for_subjects(
                 allowed_subject_ids,
@@ -297,7 +303,17 @@ class AssessmentService:
         provider continues to expose its normal 403 behavior elsewhere.
         """
 
-        record = await maybe_await(self.repository.get(assessment_id))
+        school_reader = getattr(self.repository, "school_get_assessment_for_actor", None)
+        if actor.scope_profile == "school_tenant" and school_reader is not None:
+            record = await maybe_await(
+                school_reader(
+                    actor,
+                    assessment_id,
+                    at=datetime.now(UTC).replace(tzinfo=None),
+                )
+            )
+        else:
+            record = await maybe_await(self.repository.get(assessment_id))
         if record is None:
             await self._record_lookup_denial(
                 actor,
@@ -395,9 +411,7 @@ class AssessmentService:
                     request_id=request_id,
                     trace_id=trace_id,
                 )
-                session = await self.cat.state(
-                    session, request_id=request_id, trace_id=trace_id
-                )
+                session = await self.cat.state(session, request_id=request_id, trace_id=trace_id)
         self._sessions[record.assessment_id] = session
         return session
 

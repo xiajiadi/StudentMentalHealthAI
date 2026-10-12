@@ -24,7 +24,9 @@ def test_source_openapi_has_typed_successes_stable_ids_and_problem_schema() -> N
     operations = _operations(document)
     operation_ids = [operation["operationId"] for _, _, operation in operations]
     assert document["openapi"].startswith("3.1.")
-    assert len(operation_ids) == len(set(operation_ids)) == 23
+    assert len(operation_ids) == len(set(operation_ids)) == 24
+    assert "authSwitchActiveContext" in operation_ids
+    assert not any(path.startswith("/api/v1/school/") for path in document["paths"])
     assert "ProblemDetails" in document["components"]["schemas"]
     assert "sessionCookie" in document["components"]["securitySchemes"]
     assert "csrfToken" in document["components"]["securitySchemes"]

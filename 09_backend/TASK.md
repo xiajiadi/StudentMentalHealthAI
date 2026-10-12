@@ -111,3 +111,31 @@ Safety 算法。
 具体证据、真实与 ContractFake 边界以及未完成的跨模块接口见
 research/OPEN_SOURCE_REFERENCE_AUDIT.md、BACKEND_TECHNICAL_DECISION_V1.md、
 reports/ 和各 integration request。
+
+## Additive school task API increment
+
+Backend now has module-local school class and measurement task routes backed by
+Database revision `20261011_0005`. These routes stay out of frozen `api.v1`
+OpenAPI. They require a server-resolved active school role, CSRF for writes,
+and a durable request fingerprint recorded in the same unit of work as each
+business mutation. Student task CAT starts use the task snapshot's instrument
+identity and the existing CAT client; standalone assessment creation remains
+separate.
+
+The service exposes same-school admin class/member/task operations, a student's
+own assigned-task list and start/resume, task lifecycle metadata for the
+student's own history, and teacher task progress aggregates. Teacher projections
+contain status counts only. Student history contains task/enrollment/session
+status and task start/completion timestamps, without assessment references or
+measurement content. Task-linked assessment reads revalidate the student
+enrollment and task window in the same database unit of work before reading or
+decrypting assessment data. Native migration/runtime, transaction-race and
+browser workflow evidence remains owned by the Controller.
+
+The additive `GET /api/v1/school/assessments` endpoint returns only assessment
+reference, status, response count and nullable UTC lifecycle timestamps. Current
+student membership, SELF grants and task access are filtered before pagination;
+the query never decrypts psychological payloads. This list projection is separate
+from frozen `assessment.v1`, whose required start timestamp cannot represent an
+unstarted persisted session. School task/history DTOs use known lowercase
+assessment states and explicit UTC timestamps; unknown states fail validation.
