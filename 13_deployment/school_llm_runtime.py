@@ -341,6 +341,9 @@ def run_server(settings: HostSettings, *, hardware: Any | None = None) -> None:
             raise HostError("RUNTIME_NOT_READY")
         _verify_discovery(service)
         app = create_app(runtime=runtime)
+        from school_independent_runtime import attach_independent_routes
+
+        attach_independent_routes(app, runtime)
         run(
             app,
             host=settings.runtime_host,

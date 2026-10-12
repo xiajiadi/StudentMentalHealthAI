@@ -299,7 +299,9 @@ def test_run_server_shuts_down_owned_process_after_api_server_returns(
     run_calls: list[tuple[object, dict[str, object]]] = []
     monkeypatch.setattr(host, "_wait_for_provider_version", lambda *_args: None)
     monkeypatch.setattr(host, "_verify_discovery", lambda _service: None)
-    monkeypatch.setattr(runtime_api, "create_app", lambda *, runtime: ("fake-app", runtime))
+    from fastapi import FastAPI
+
+    monkeypatch.setattr(runtime_api, "create_app", lambda *, runtime: FastAPI())
     monkeypatch.setattr(
         "uvicorn.run",
         lambda app, **kwargs: run_calls.append((app, kwargs)),
@@ -312,6 +314,10 @@ def test_run_server_shuts_down_owned_process_after_api_server_returns(
     assert service.shutdown_count == 1
     assert run_calls[0][1]["host"] == "127.0.0.1"
     assert run_calls[0][1]["port"] == host.RUNTIME_PORT
+    assert any(
+        route.path == "/internal/llm/independent-generations"
+        for route in run_calls[0][0].routes
+    )
 
 
 def test_preflight_only_returns_safe_status_without_server(monkeypatch, capsys) -> None:

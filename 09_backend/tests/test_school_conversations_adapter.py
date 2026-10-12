@@ -1,0 +1,668 @@
+from datetime import UTC, datetime, timedelta
+from types import ModuleType, SimpleNamespace
+
+import pytest
+
+from smhai_backend.adapters.school_conversations import (
+    SchoolConversationsPersistenceAdapter,
+    _page,
+    _required_key,
+    _safe_component_metadata,
+    _safe_evidence_projection,
+    _safe_id,
+    _timestamp,
+)
+from smhai_backend.core.errors import BackendError, ErrorCode
+from smhai_backend.core.idempotency import fingerprint
+
+
+def test_pagination_is_bounded_and_rejects_boolean_values() -> None:
+    assert _page(0, 50) == (0, 50)
+    with pytest.raises(BackendError):
+        _page(True, 10)
+    with pytest.raises(BackendError):
+        _page(0, 51)
+
+
+def test_public_ids_are_prefix_checked_and_opaque() -> None:
+    assert _safe_id("CONV_0123456789abcdef", "CONV") == "CONV_0123456789abcdef"
+    for invalid in ("TURN_0123456789abcdef", "CONV_", "CONV_名字", "CONV_" + "x" * 128):
+        with pytest.raises(BackendError):
+            _safe_id(invalid, "CONV")
+
+
+def test_metadata_allowlist_drops_free_text_and_sensitive_keys() -> None:
+    assert _safe_component_metadata(
+        {
+            "generation_id": "GEN_demo_01",
+            "evidence_count": 3,
+            "message": "private student text",
+            "prompt": "do not persist",
+            "failure_code": "TURN_INTERRUPTED",
+            "attempt_count": -1,
+        }
+    ) == {
+        "generation_id": "GEN_demo_01",
+        "evidence_count": 3,
+        "failure_code": "TURN_INTERRUPTED",
+    }
+
+
+def test_key_and_timestamp_helpers_normalize_without_echoing_input() -> None:
+    assert _required_key("  synthetic-key  ") == "synthetic-key"
+    with pytest.raises(BackendError):
+        _required_key("  ")
+    instant = datetime(2026, 10, 12, 3, 4, 5, tzinfo=UTC) + timedelta(milliseconds=123)
+    assert _timestamp(instant) == "2026-10-12T03:04:05.123Z"
+
+
+class _Expr:
+    def __init__(self, clauses=()):
+        self.clauses = tuple(clauses)
+
+    def __and__(self, other):
+        return _Expr((*self.clauses, *other.clauses))
+
+    def __or__(self, other):
+        return _Expr((*self.clauses, *other.clauses))
+
+
+class _Column:
+    def __init__(self, name):
+        self.name = name
+
+    def __eq__(self, value):
+        return _Expr(((self.name, "eq", value),))
+
+    def __le__(self, value):
+        return _Expr(((self.name, "le", value),))
+
+    def __ge__(self, value):
+        return _Expr(((self.name, "ge", value),))
+
+    def is_(self, value):
+        return _Expr(((self.name, "is", value),))
+
+    def in_(self, value):
+        return _Expr(((self.name, "in", value),))
+
+    def desc(self):
+        return self
+
+
+class _Query:
+    def __init__(self, *selected):
+        self.selected = selected
+        self.criteria = []
+        self.locked = False
+        self.limit_value = None
+
+    def where(self, *criteria):
+        self.criteria.extend(criteria)
+        return self
+
+    def join(self, *_args):
+        return self
+
+    def order_by(self, *_args):
+        return self
+
+    def offset(self, *_args):
+        return self
+
+    def limit(self, value):
+        self.limit_value = value
+        return self
+
+    def with_for_update(self):
+        self.locked = True
+        return self
+
+
+def _model(name, *fields):
+    return type(name, (), {field: _Column(f"{name}.{field}") for field in fields})
+
+
+def _sqlalchemy_fake(monkeypatch):
+    sqlalchemy = ModuleType("sqlalchemy")
+    sqlalchemy.func = SimpleNamespace(
+        max=lambda value: ("max", value),
+        count=lambda value: ("count", value),
+    )
+    monkeypatch.setitem(__import__("sys").modules, "sqlalchemy", sqlalchemy)
+
+
+def _enums():
+    def values(**items):
+        return SimpleNamespace(
+            **{key: SimpleNamespace(value=value) for key, value in items.items()}
+        )
+
+    return SimpleNamespace(
+        AuditResult=values(SUCCESS="SUCCESS"),
+        SubjectStatus=values(ACTIVE="ACTIVE"),
+        DataOrigin=values(SYNTHETIC="SYNTHETIC"),
+        SupportStatus=values(OPEN="OPEN", ACTIVE="ACTIVE"),
+        SupportRunStatus=values(
+            REQUESTED="REQUESTED", COMPLETED="COMPLETED", BLOCKED="BLOCKED", FAILED="FAILED"
+        ),
+        MessageKind=values(USER_INPUT="USER_INPUT", APPROVED_OUTPUT="APPROVED_OUTPUT"),
+        SafetyAction=(
+            SimpleNamespace(value="PROCEED"),
+            SimpleNamespace(value="PROCEED_WITH_BOUNDARY"),
+            SimpleNamespace(value="BLOCK"),
+            SimpleNamespace(value="REVIEW_REQUIRED"),
+            SimpleNamespace(value="CRISIS_ROUTE"),
+        ),
+    )
+
+
+class _FakeSession:
+    def __init__(self, *scalar_results):
+        self.scalar_results = list(scalar_results)
+        self.statements = []
+
+    async def scalar(self, statement):
+        self.statements.append(statement)
+        if not self.scalar_results:
+            raise AssertionError("unexpected scalar query")
+        return self.scalar_results.pop(0)
+
+
+class _FakeSupport:
+    def __init__(self):
+        self.run_calls = []
+        self.message_calls = []
+        self.evidence_calls = []
+
+    async def create_run(self, **kwargs):
+        self.run_calls.append(kwargs)
+        return SimpleNamespace(
+            id=901,
+            run_ref=kwargs["run_ref"],
+            status=kwargs["status"].value,
+            workflow_action=kwargs["workflow_action"],
+            component_versions=kwargs["component_versions"],
+            started_at=None,
+            created_at=NOW,
+        )
+
+    async def persist_message(self, **kwargs):
+        self.message_calls.append(kwargs)
+        return SimpleNamespace(id=902)
+
+    async def add_evidence(self, **kwargs):
+        self.evidence_calls.append(kwargs)
+        return SimpleNamespace(id=903)
+
+
+class _FakeUow:
+    def __init__(self, session):
+        self.session = session
+        self.support = _FakeSupport()
+        self.audit = SimpleNamespace(append=self._audit)
+        self.audit_calls = []
+        self.entered = False
+        self.committed = False
+        self.rolled_back = False
+
+    async def _audit(self, **kwargs):
+        self.audit_calls.append(kwargs)
+
+    async def __aenter__(self):
+        self.entered = True
+        return self
+
+    async def __aexit__(self, exc_type, _exc, _traceback):
+        self.committed = exc_type is None
+        self.rolled_back = exc_type is not None
+        return False
+
+
+NOW = datetime(2026, 10, 12, 0, 0, tzinfo=UTC)
+ACTOR = SimpleNamespace(
+    role="student", subject_id="SUBJ_SYNTHETIC_A", school_id=5, school_ref="SCHOOL_SYNTHETIC"
+)
+SUBJECT = SimpleNamespace(id=71, subject_ref="SUBJ_SYNTHETIC_A", retention_due_at=None)
+SESSION = SimpleNamespace(
+    id=81,
+    support_ref="CONV_0123456789abcdef",
+    status="OPEN",
+    retention_due_at=None,
+    trace_id=None,
+)
+
+
+def _fake_adapter(monkeypatch, session):
+    _sqlalchemy_fake(monkeypatch)
+    models = SimpleNamespace(
+        SupportRun=_model(
+            "support_runs",
+            "id",
+            "run_ref",
+            "support_session_id",
+            "assessment_session_id",
+            "status",
+            "created_at",
+        ),
+        SupportMessage=_model("support_messages", "support_session_id", "sequence_no"),
+        SupportEvidence=_model("support_evidence", "support_run_id", "rank_order"),
+    )
+    persistence = SimpleNamespace(
+        _decrypt_support_message=lambda _row: (_ for _ in ()).throw(
+            AssertionError("message decrypt was not expected")
+        )
+    )
+    adapter = SchoolConversationsPersistenceAdapter(persistence)
+    adapter._db_models = models
+    adapter._db_enums = _enums()
+    adapter._select = _Query
+    adapter._uow = lambda: uow
+    adapter._utc_now = lambda: NOW
+    uow = _FakeUow(session)
+
+    async def student_subject(_uow, _actor, _now):
+        return 17, SUBJECT
+
+    async def owned_session(_uow, actor, subject, conversation_id, *, lock):
+        assert actor is ACTOR
+        assert subject is SUBJECT
+        assert conversation_id == SESSION.support_ref
+        assert lock is True
+        return SESSION
+
+    adapter._student_subject = student_subject
+    adapter._owned_session = owned_session
+    return adapter, uow
+
+
+@pytest.mark.asyncio
+async def test_reserve_turn_persists_requested_run_encrypted_message_and_scoped_receipt(
+    monkeypatch,
+):
+    session = _FakeSession(None, 4)
+    adapter, uow = _fake_adapter(monkeypatch, session)
+    claims = []
+    completed = []
+
+    async def claim(_uow, value):
+        claims.append(value)
+        return SimpleNamespace(replayed=False, record=SimpleNamespace())
+
+    async def complete(_uow, claim_value, *, resource_type, result_ref):
+        completed.append((claim_value, resource_type, result_ref))
+
+    async def no_abandoned(_uow, _session, _now):
+        return 0
+
+    adapter._school_idempotency_begin = claim
+    adapter._school_idempotency_complete = complete
+    adapter._expire_abandoned = no_abandoned
+
+    result = await adapter.reserve_turn(
+        ACTOR,
+        SESSION.support_ref,
+        message="synthetic student message",
+        idempotency_key="synthetic-turn-key",
+        trace_id="TRACE_synthetic",
+    )
+
+    assert result["status"] == "requested"
+    assert result["user_message_sequence"] == 5
+    assert claims[0][0] == "synthetic-turn-key"
+    assert claims[0][1] == fingerprint(
+        {
+            "operation": "conversation.reserve_turn",
+            "conversation_id": SESSION.support_ref,
+            "message": "synthetic student message",
+        }
+    )
+    assert claims[0][2] == "17:student:conversation:turn:5:CONV_0123456789abcdef"
+    assert uow.support.run_calls[0]["assessment_session_id"] is None
+    assert uow.support.run_calls[0]["component_versions"]["user_message_sequence"] == 5
+    assert uow.support.message_calls[0]["message_kind"].value == "USER_INPUT"
+    assert uow.support.message_calls[0]["payload"]["text"] == "synthetic student message"
+    assert completed[0][1] == "student_conversation_turn"
+    assert completed[0][2] == result["turn_id"]
+    assert uow.committed is True
+    assert all("count" in row["safe_metadata"] for row in uow.audit_calls)
+
+
+@pytest.mark.asyncio
+async def test_finish_turn_blocked_is_terminal_without_persisting_candidate(monkeypatch):
+    run = SimpleNamespace(
+        id=901,
+        run_ref="TURN_0123456789abcdef",
+        support_session_id=SESSION.id,
+        assessment_session_id=None,
+        status="REQUESTED",
+        workflow_action="REQUESTED",
+        component_versions={"user_message_sequence": 1, "safe_metadata": {}},
+        started_at=NOW,
+        created_at=NOW,
+        completed_at=None,
+        duration_ms=None,
+    )
+    session = _FakeSession(run)
+    adapter, uow = _fake_adapter(monkeypatch, session)
+
+    result = await adapter.finish_turn(
+        ACTOR,
+        SESSION.support_ref,
+        run.run_ref,
+        status="BLOCKED",
+        action="BLOCK",
+        trace_id="TRACE_synthetic",
+    )
+
+    assert result["status"] == "blocked"
+    assert run.status == "BLOCKED"
+    assert run.workflow_action == "BLOCK"
+    assert uow.support.message_calls == []
+    assert uow.support.evidence_calls == []
+    assert uow.committed is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failure_action",
+    ("DEPENDENCY_FAILURE", "INVALID_OUTPUT", "CLAIM_REJECTED", "INTERRUPTED"),
+)
+async def test_finish_turn_failure_actions_are_terminal_without_output(monkeypatch, failure_action):
+    run = SimpleNamespace(
+        id=901,
+        run_ref="TURN_0123456789abcdef",
+        support_session_id=SESSION.id,
+        assessment_session_id=None,
+        status="REQUESTED",
+        workflow_action="REQUESTED",
+        component_versions={"user_message_sequence": 1, "safe_metadata": {}},
+        started_at=NOW,
+        created_at=NOW,
+        completed_at=None,
+        duration_ms=None,
+    )
+    session = _FakeSession(run)
+    adapter, uow = _fake_adapter(monkeypatch, session)
+
+    result = await adapter.finish_turn(
+        ACTOR,
+        SESSION.support_ref,
+        run.run_ref,
+        status="FAILED",
+        action=failure_action,
+        safe_metadata={"failure_code": failure_action},
+        trace_id="TRACE_synthetic",
+    )
+
+    assert result["status"] == "failed"
+    assert result["action"] == failure_action
+    assert run.status == "FAILED"
+    assert run.workflow_action == failure_action
+    assert uow.support.message_calls == []
+    assert uow.support.evidence_calls == []
+    assert uow.committed is True
+
+
+@pytest.mark.asyncio
+async def test_failed_proceed_candidate_is_rejected_before_any_persistence(monkeypatch):
+    session = _FakeSession()
+    adapter, uow = _fake_adapter(monkeypatch, session)
+
+    with pytest.raises(BackendError) as caught:
+        await adapter.finish_turn(
+            ACTOR,
+            SESSION.support_ref,
+            "TURN_0123456789abcdef",
+            status="FAILED",
+            action="PROCEED",
+            approved_content={"summary": "synthetic rejected candidate"},
+            trace_id="TRACE_synthetic",
+        )
+
+    assert caught.value.code is ErrorCode.VALIDATION_FAILED
+    assert uow.entered is False
+    assert uow.support.message_calls == []
+    assert uow.support.evidence_calls == []
+
+
+@pytest.mark.asyncio
+async def test_abstention_requires_approved_content_and_rejects_citations(monkeypatch):
+    session = _FakeSession()
+    adapter, uow = _fake_adapter(monkeypatch, session)
+
+    with pytest.raises(BackendError) as caught:
+        await adapter.finish_turn(
+            ACTOR,
+            SESSION.support_ref,
+            "TURN_0123456789abcdef",
+            status="COMPLETED",
+            action="ABSTAIN",
+            approved_content={"summary": "合成说明"},
+            citations=({"citation_id": "CITE_SYNTHETIC"},),
+            trace_id="TRACE_synthetic",
+        )
+
+    assert caught.value.code is ErrorCode.VALIDATION_FAILED
+    assert uow.entered is False
+    assert uow.support.message_calls == []
+
+
+@pytest.mark.asyncio
+async def test_abstention_persists_approved_content_without_citations(monkeypatch):
+    run = SimpleNamespace(
+        id=901,
+        run_ref="TURN_0123456789abcdef",
+        support_session_id=SESSION.id,
+        assessment_session_id=None,
+        status="REQUESTED",
+        workflow_action="REQUESTED",
+        component_versions={"user_message_sequence": 1, "safe_metadata": {}},
+        started_at=NOW,
+        created_at=NOW,
+        completed_at=None,
+        duration_ms=None,
+    )
+    session = _FakeSession(run, 1)
+    adapter, uow = _fake_adapter(monkeypatch, session)
+
+    result = await adapter.finish_turn(
+        ACTOR,
+        SESSION.support_ref,
+        run.run_ref,
+        status="COMPLETED",
+        action="ABSTAIN",
+        approved_content={"summary": "合成证据不足说明"},
+        citations=(),
+        trace_id="TRACE_synthetic",
+    )
+
+    assert result["action"] == "ABSTAIN"
+    assert result["assistant_message_sequence"] == 2
+    assert run.status == "COMPLETED"
+    assert run.workflow_action == "ABSTAIN"
+    assert uow.support.message_calls[0]["payload"]["content"] == {"summary": "合成证据不足说明"}
+    assert uow.support.evidence_calls == []
+
+
+@pytest.mark.asyncio
+async def test_blocked_crisis_route_keeps_approved_response_path(monkeypatch):
+    run = SimpleNamespace(
+        id=901,
+        run_ref="TURN_0123456789abcdef",
+        support_session_id=SESSION.id,
+        assessment_session_id=None,
+        status="REQUESTED",
+        workflow_action="REQUESTED",
+        component_versions={"user_message_sequence": 1, "safe_metadata": {}},
+        started_at=NOW,
+        created_at=NOW,
+        completed_at=None,
+        duration_ms=None,
+    )
+    session = _FakeSession(run, 1)
+    adapter, uow = _fake_adapter(monkeypatch, session)
+
+    result = await adapter.finish_turn(
+        ACTOR,
+        SESSION.support_ref,
+        run.run_ref,
+        status="BLOCKED",
+        action="CRISIS_ROUTE",
+        approved_content={"summary": "approved synthetic safety response"},
+        citations=(),
+        trace_id="TRACE_synthetic",
+    )
+
+    assert result["status"] == "blocked"
+    assert result["action"] == "CRISIS_ROUTE"
+    assert run.status == "BLOCKED"
+    assert uow.support.message_calls[0]["payload"]["content"] == {
+        "summary": "approved synthetic safety response"
+    }
+    assert uow.support.evidence_calls == []
+
+
+@pytest.mark.asyncio
+async def test_cross_owner_detail_denial_happens_before_any_decryption(monkeypatch):
+    session = _FakeSession()
+    adapter, uow = _fake_adapter(monkeypatch, session)
+
+    async def deny_owner(*_args, **_kwargs):
+        from smhai_backend.core.errors import error
+
+        raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="conversation was not found")
+
+    adapter._owned_session = deny_owner
+    with pytest.raises(BackendError) as caught:
+        await adapter.detail(ACTOR, SESSION.support_ref, offset=0, limit=10)
+
+    assert caught.value.code is ErrorCode.RESOURCE_NOT_FOUND
+    assert session.statements == []
+    assert uow.committed is False
+    assert uow.rolled_back is True
+
+
+@pytest.mark.asyncio
+async def test_create_replay_rejects_wrong_receipt_type_before_resource_lookup(monkeypatch):
+    session = _FakeSession()
+    adapter, uow = _fake_adapter(monkeypatch, session)
+    claims = []
+
+    async def replay(_uow, value):
+        claims.append(value)
+        return SimpleNamespace(
+            replayed=True,
+            record=SimpleNamespace(
+                result_resource_type="student_conversation_turn",
+                result_public_id="TURN_0123456789abcdef",
+            ),
+        )
+
+    adapter._school_idempotency_begin = replay
+
+    with pytest.raises(BackendError) as caught:
+        await adapter.create(ACTOR, idempotency_key="synthetic-create-key", trace_id="TRACE_x")
+
+    assert caught.value.code is ErrorCode.WORKFLOW_CONFLICT
+    assert claims[0][2] == "17:student:conversation:create:5"
+    assert session.statements == []
+    assert uow.support.run_calls == []
+
+
+@pytest.mark.asyncio
+async def test_turn_replay_receipt_lookup_is_bound_to_same_session_and_unbound_assessment(
+    monkeypatch,
+):
+    run = SimpleNamespace(
+        id=901,
+        run_ref="TURN_0123456789abcdef",
+        support_session_id=SESSION.id,
+        assessment_session_id=None,
+        status="REQUESTED",
+        component_versions={"user_message_sequence": 7},
+    )
+    session = _FakeSession(run)
+    adapter, uow = _fake_adapter(monkeypatch, session)
+    receipt_record = SimpleNamespace(
+        result_resource_type="student_conversation_turn",
+        result_public_id=run.run_ref,
+    )
+    claims = []
+
+    async def replay(_uow, value):
+        claims.append(value)
+        return SimpleNamespace(replayed=True, record=receipt_record)
+
+    async def no_abandoned(_uow, _session, _now):
+        return 0
+
+    adapter._school_idempotency_begin = replay
+    adapter._expire_abandoned = no_abandoned
+
+    result = await adapter.reserve_turn(
+        ACTOR,
+        SESSION.support_ref,
+        message="synthetic student message",
+        idempotency_key="synthetic-turn-key",
+        trace_id="TRACE_synthetic",
+    )
+
+    assert result == {
+        "turn_id": run.run_ref,
+        "status": "requested",
+        "replayed": True,
+        "user_message_sequence": 7,
+    }
+    assert claims[0][2] == "17:student:conversation:turn:5:CONV_0123456789abcdef"
+    criteria = session.statements[0].criteria
+    flattened = [clause for criterion in criteria for clause in criterion.clauses]
+    assert ("support_runs.support_session_id", "eq", SESSION.id) in flattened
+    assert ("support_runs.assessment_session_id", "is", None) in flattened
+    assert uow.support.message_calls == []
+
+
+def test_citation_fields_enforce_each_persisted_column_length():
+    adapter = SchoolConversationsPersistenceAdapter(SimpleNamespace())
+    valid = {
+        "citation_id": "C" * 128,
+        "document_id": "D" * 128,
+        "chunk_id": "K" * 128,
+        "source_version": "V" * 64,
+        "source_hash": "H" * 128,
+        "title": "T" * 512,
+        "organization": "O" * 512,
+        "locator": "L" * 512,
+    }
+    evidence = adapter._persist_evidence(None, None, [valid])[0]
+    assert evidence["document_id"] == "D" * 128
+
+    for field, too_long in (
+        ("citation_id", "C" * 129),
+        ("document_id", "D" * 129),
+        ("chunk_id", "K" * 129),
+        ("source_version", "V" * 65),
+        ("source_hash", "H" * 129),
+        ("title", "T" * 513),
+        ("organization", "O" * 513),
+        ("locator", "L" * 513),
+    ):
+        with pytest.raises(BackendError) as caught:
+            adapter._persist_evidence(None, None, [{**valid, field: too_long}])
+        assert caught.value.code is ErrorCode.VALIDATION_FAILED
+
+
+def test_detail_projection_drops_malformed_stored_citation_instead_of_returning_it():
+    row = SimpleNamespace(
+        citation_id="CITE_1",
+        source_id="DOC_1",
+        chunk_id="CHUNK_1",
+        document_id="D" * 129,
+        source_version="V" * 65,
+        source_hash="a" * 64,
+        citation_title="synthetic title",
+        citation_organization="synthetic org",
+        locator="p.1",
+        rank_order=1,
+    )
+    assert _safe_evidence_projection(row) is None

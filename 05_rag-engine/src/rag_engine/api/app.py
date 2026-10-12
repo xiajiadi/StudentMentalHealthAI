@@ -217,6 +217,9 @@ def create_app(*, runtime: RagRuntime | None = None) -> FastAPI:
         trace_id = request.headers.get("X-Trace-ID") or f"TRACE_rag_{uuid4().hex[:20]}"
         return runtime.retrieve(payload, request_id=request_id, trace_id=trace_id)
 
+    from rag_engine.independent import attach_independent_routes
+
+    attach_independent_routes(app, runtime)
     return app
 
 
