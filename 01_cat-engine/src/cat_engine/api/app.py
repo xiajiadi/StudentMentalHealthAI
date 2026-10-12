@@ -11,21 +11,21 @@ from __future__ import annotations
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
+from cat_engine.api.assets import create_assets_router
+from cat_engine.api.management import create_management_router
 from cat_engine.domain.config import CATConfig
-from cat_engine.domain.item import ResponseValue
 from cat_engine.domain.item_bank import ItemBank
 from cat_engine.domain.result import RiskSnapshot
 from cat_engine.domain.session import Session
 from cat_engine.providers.adaptivetesting_provider import AdaptiveTestingProvider
 from cat_engine.service.cat_service import CATService
-from cat_engine.api.management import create_management_router
-from cat_engine.api.assets import create_assets_router
 
 
 class StartRequest(BaseModel):
@@ -218,6 +218,7 @@ def _domain_error(exc: Exception) -> HTTPException:
 
 def create_app(*, runtime: CatRuntime | None = None) -> FastAPI:
     runtime = runtime or CatRuntime()
+    simulation_lock = Lock()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -231,8 +232,8 @@ def create_app(*, runtime: CatRuntime | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.cat_runtime = runtime
-    app.include_router(create_management_router(runtime))
-    app.include_router(create_assets_router(runtime))
+    app.include_router(create_management_router(runtime, simulation_lock))
+    app.include_router(create_assets_router(runtime, simulation_lock))
 
     @app.get("/health/live", operation_id="catLiveHealth")
     async def health_live() -> dict[str, Any]:
@@ -254,6 +255,7 @@ def create_app(*, runtime: CatRuntime | None = None) -> FastAPI:
             "operations": [
                 "start", "state", "submit_response", "complete",
                 "management_catalog", "management_simulation",
+                "management_asset_simulation",
             ],
             "provider": "adaptivetesting-1.2.1",
             "synthetic_fixture_only": True,

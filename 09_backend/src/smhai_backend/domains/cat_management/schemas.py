@@ -12,6 +12,22 @@ class StrictDto(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
 
+class EngineeringOnlyDto(StrictDto):
+    @field_validator("engineering_only", mode="before", check_fields=False)
+    @classmethod
+    def exact_engineering_only_flag(cls, value):
+        if type(value) is not bool or value is not True:
+            raise ValueError("engineering_only must be true")
+        return value
+
+    @field_validator("psychological_interpretation_allowed", mode="before", check_fields=False)
+    @classmethod
+    def exact_interpretation_flag(cls, value):
+        if type(value) is not bool or value is not False:
+            raise ValueError("psychological_interpretation_allowed must be false")
+        return value
+
+
 class ItemBankDto(StrictDto):
     item_bank_id: Literal["ITEMBANK_demo_cat"]
     version: Literal["demo.v1"]
@@ -61,7 +77,7 @@ class SimulationAvailabilityDto(StrictDto):
         return value
 
 
-class CatalogResponseDto(StrictDto):
+class CatalogResponseDto(EngineeringOnlyDto):
     schema_version: Literal["synthetic_cat_management.v1"]
     engineering_only: Literal[True]
     psychological_interpretation_allowed: Literal[False]
@@ -97,7 +113,7 @@ class SimulationMetricsDto(StrictDto):
         return value
 
 
-class SimulationResponseDto(StrictDto):
+class SimulationResponseDto(EngineeringOnlyDto):
     schema_version: Literal["synthetic_cat_management.v1"]
     engineering_only: Literal[True]
     psychological_interpretation_allowed: Literal[False]

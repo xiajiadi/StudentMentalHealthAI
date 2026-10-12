@@ -39,7 +39,10 @@ from smhai_backend.domains.school_tasks.service import SchoolTaskService
 from smhai_backend.domains.support.service import SupportOrchestrator
 from smhai_backend.domains.teacher.service import TeacherDashboardService
 from smhai_backend.integrations.cat import ContractFakeCatClient, HttpCatClient
-from smhai_backend.integrations.cat_assets import HttpCatAssetsClient
+from smhai_backend.integrations.cat_assets import (
+    HttpCatAssetsClient,
+    HttpCatSavedSimulationClient,
+)
 from smhai_backend.integrations.cat_management import HttpCatManagementClient
 from smhai_backend.integrations.independent import IndependentLLMRuntimeClient, IndependentRagClient
 from smhai_backend.integrations.llm import ContractFakeLLMRuntimeClient, HttpLLMRuntimeClient
@@ -84,6 +87,7 @@ class BackendContainer:
     cat_management_client: HttpCatManagementClient | None = None
     cat_assets: SchoolCatAssetService | None = None
     cat_assets_client: HttpCatAssetsClient | None = None
+    cat_saved_simulation_client: HttpCatSavedSimulationClient | None = None
 
     async def start(self) -> None:
         if self.persistence is not None:
@@ -96,6 +100,7 @@ class BackendContainer:
             self.cat,
             self.cat_management_client,
             self.cat_assets_client,
+            self.cat_saved_simulation_client,
             self.rag,
             self.llm,
             self.independent_rag,
@@ -181,6 +186,9 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         HttpCatManagementClient(settings.cat) if settings.cat.mode == "http" else None
     )
     cat_assets_client = HttpCatAssetsClient(settings.cat) if settings.cat.mode == "http" else None
+    cat_saved_simulation_client = (
+        HttpCatSavedSimulationClient(settings.cat) if settings.cat.mode == "http" else None
+    )
     rag = HttpRagClient(settings.rag) if settings.rag.mode == "http" else ContractFakeRagClient()
     llm = (
         HttpLLMRuntimeClient(settings.llm)
@@ -232,7 +240,9 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
     )
     cat_assets = SchoolCatAssetService(
         persistence=(
-            SchoolCatAssetsPersistenceAdapter(persistence, cat_assets_client)
+            SchoolCatAssetsPersistenceAdapter(
+                persistence, cat_assets_client, cat_saved_simulation_client
+            )
             if persistence is not None and settings.identity_profile == "school_tenant"
             else None
         )
@@ -305,6 +315,7 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         cat_management_client=cat_management_client,
         cat_assets=cat_assets,
         cat_assets_client=cat_assets_client,
+        cat_saved_simulation_client=cat_saved_simulation_client,
         independent_conversations=independent_conversations,
         independent_rag=independent_rag,
         independent_llm=independent_llm,

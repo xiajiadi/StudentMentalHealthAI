@@ -103,6 +103,19 @@ def test_strict_projections_fail_closed_on_unknown_assets_and_private_fields():
     catalog = catalog_payload()
     CatalogResponseDto.model_validate(catalog, strict=True)
 
+    for field, value in (
+        ("engineering_only", 1),
+        ("psychological_interpretation_allowed", 0),
+    ):
+        invalid_catalog_flag = catalog_payload()
+        invalid_catalog_flag[field] = value
+        with pytest.raises(ValidationError):
+            CatalogResponseDto.model_validate(invalid_catalog_flag, strict=True)
+        invalid_simulation_flag = simulation_payload()
+        invalid_simulation_flag[field] = value
+        with pytest.raises(ValidationError):
+            SimulationResponseDto.model_validate(invalid_simulation_flag, strict=True)
+
     unknown = catalog_payload()
     unknown["item_bank"]["item_bank_id"] = "ITEMBANK_other"
     with pytest.raises(ValidationError):
@@ -332,6 +345,37 @@ async def test_http_client_rejects_malformed_projection_without_echoing_upstream
             await client.catalog(context=context())
         assert invalid.value.code is ErrorCode.DEPENDENCY_INVALID_RESPONSE
         assert "private synthetic payload" not in invalid.value.detail
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "endpoint,field,value",
+    [
+        ("catalog", "engineering_only", 1),
+        ("catalog", "psychological_interpretation_allowed", 0),
+        ("simulation", "engineering_only", 1),
+        ("simulation", "psychological_interpretation_allowed", 0),
+    ],
+)
+async def test_http_client_rejects_numeric_engineering_flags(endpoint, field, value):
+    async def handler(request: httpx.Request):
+        payload = catalog_payload() if endpoint == "catalog" else simulation_payload()
+        payload[field] = value
+        return httpx.Response(200, json=payload)
+
+    client = HttpCatManagementClient(
+        ModuleClientSettings(mode="http", base_url="http://127.0.0.1:8180"),
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        with pytest.raises(BackendError) as invalid:
+            if endpoint == "catalog":
+                await client.catalog(context=context())
+            else:
+                await client.simulate(100, context=context())
+        assert invalid.value.code is ErrorCode.DEPENDENCY_INVALID_RESPONSE
     finally:
         await client.close()
 

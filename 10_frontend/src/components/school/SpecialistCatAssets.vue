@@ -17,6 +17,8 @@ import {
   type CatPlanDetail,
   type CatPlanMetadata,
   type CatPlanVersion,
+  type CatSavedPlanSimulation,
+  type CatSavedSimulationBatch,
 } from '@/services/school-cat-assets'
 
 type Tab = 'banks' | 'plans'
@@ -37,6 +39,12 @@ const bankDetail = ref<CatBankDetail | null>(null)
 const planDetail = ref<CatPlanDetail | null>(null)
 const selectedBankVersion = ref<CatBankVersion | null>(null)
 const selectedPlanVersion = ref<CatPlanVersion | null>(null)
+const simulationBankVersion = ref<CatBankVersion | null>(null)
+const simulationBatch = ref<CatSavedSimulationBatch>(100)
+const simulationResult = ref<CatSavedPlanSimulation | null>(null)
+const comparisonBaseline = ref<CatSavedPlanSimulation | null>(null)
+const simulationState = ref<'idle' | 'running' | 'complete' | 'busy' | 'error' | 'blocked'>('idle')
+const simulationError = ref('')
 const bankDraft = ref<CatBankDocument | null>(null)
 const configDraft = ref<CatConfigDocument | null>(null)
 const bankName = ref('')
@@ -48,6 +56,7 @@ const pendingIntent = ref<PendingIntent | null>(null)
 const conflictRefresh = ref<null | (() => Promise<void>)>(null)
 const notice = ref('')
 let sequence = 0
+let simulationSequence = 0
 let disposed = false
 let activated = false
 
@@ -57,7 +66,10 @@ const hasRole = () => session.role === 'psychological_specialist'
 const active = computed(() => props.active !== false)
 const resources = computed(() => tab.value === 'banks' ? banks.value : plans.value)
 const selectedBankDocument = computed(() => selectedBankVersion.value?.bank_document ?? null)
-const inputLocked = computed(() => busy.value || Boolean(pendingIntent.value))
+const inputLocked = computed(() => state.value === 'loading' || busy.value || Boolean(pendingIntent.value) || simulationState.value === 'running')
+const simulationLocked = computed(() => inputLocked.value)
+const canRunSavedSimulation = computed(() => Boolean(selectedPlanVersion.value && simulationBankVersion.value)
+  && simulationState.value !== 'running' && simulationState.value !== 'blocked' && !inputLocked.value)
 const mutationBlocked = computed(() => inputLocked.value || Boolean(conflictRefresh.value))
 const canSaveBank = computed(() => Boolean(bankDraft.value && bankName.value.trim() && !mutationBlocked.value))
 const canSavePlan = computed(() => Boolean(configDraft.value && planName.value.trim() && bankVersionRef.value && selectedBankDocument.value && !mutationBlocked.value))
@@ -65,11 +77,44 @@ const bankVersionLabel = (reference: string) => {
   const found = availableBankVersions.value.find((entry) => entry.version.version_ref === reference)
   return found ? `${found.bank.display_name} v${found.version.version_number}` : '本校历史题库版本'
 }
+const simulationBankLabel = computed(() => {
+  const version = simulationBankVersion.value
+  if (!version) return ''
+  return `${bankVersionLabel(version.version_ref)}（v${version.version_number}）`
+})
+const simulationComparisonText = computed(() => {
+  if (!simulationResult.value || !comparisonBaseline.value
+    || !sameSimulationBasis(simulationResult.value, comparisonBaseline.value)) return ''
+  return sameSimulationOutput(simulationResult.value, comparisonBaseline.value)
+    ? '本次与上次运行的汇总结果相同。'
+    : '本次与上次运行的汇总结果不同。'
+})
+const stoppingReasonLabel = (reason: string) => ({
+  SE_THRESHOLD_REACHED: '达到停止阈值',
+  MAX_ITEMS_REACHED: '达到最多题数',
+  ITEM_BANK_EXHAUSTED: '题库题目已用尽',
+  MANUAL_TERMINATION: '手动结束',
+  ERROR: '运行错误',
+  NOT_STOPPED: '未停止',
+}[reason] ?? '其他')
 
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
 const errorCode = (value: unknown) => value && typeof value === 'object' && 'code' in value ? String(value.code).toUpperCase() : ''
 const isForbidden = (value: unknown) => ['403', 'HTTP_403', 'FORBIDDEN', 'UNAUTHORIZED', '401', 'HTTP_401', 'AUTH_SESSION_EXPIRED', 'AUTH_SESSION_REVOKED'].includes(errorCode(value))
 const isConflict = (value: unknown) => ['409', 'HTTP_409', 'CONFLICT', 'CAT_ASSET_CONFLICT', 'IDEMPOTENCY_CONFLICT'].includes(errorCode(value))
+
+function clearSavedSimulation(clearSelection: boolean) {
+  simulationSequence += 1
+  simulationResult.value = null
+  comparisonBaseline.value = null
+  simulationError.value = ''
+  simulationState.value = 'idle'
+  if (clearSelection) {
+    simulationBatch.value = 100
+    selectedPlanVersion.value = null
+    simulationBankVersion.value = null
+  }
+}
 
 function clearPrivate() {
   banks.value = []; plans.value = []; availableBankVersions.value = []; templateBank.value = null; templateConfig.value = null
@@ -77,12 +122,14 @@ function clearPrivate() {
   bankDraft.value = null; configDraft.value = null; bankName.value = ''; planName.value = ''
   bankVersionRef.value = ''; selectedBankRef.value = ''; pendingIntent.value = null; conflictRefresh.value = null
   error.value = ''; notice.value = ''; busy.value = false
+  clearSavedSimulation(true)
 }
 
 function clearSelection() {
   bankDetail.value = null; planDetail.value = null; selectedBankVersion.value = null; selectedPlanVersion.value = null
   bankDraft.value = null; configDraft.value = null; bankName.value = ''; planName.value = ''; bankVersionRef.value = ''
   error.value = ''; notice.value = ''; pendingIntent.value = null; conflictRefresh.value = null
+  clearSavedSimulation(true)
 }
 
 async function loadWorkspace() {
@@ -180,7 +227,6 @@ async function selectPlan(item: CatPlanMetadata) {
       const bankVersion = await schoolCatAssets.getBankVersion(planVersion.bank_version_ref)
       if (disposed || token !== sequence || scope !== scopeKey()) return
       selectedBankVersion.value = bankVersion
-      selectedPlanVersion.value = planVersion
       configDraft.value = copy(planVersion.config_document)
     }
     state.value = 'ready'
@@ -230,6 +276,7 @@ function updateOption(item: CatAssetItemDocument, index: number, value: string) 
 }
 
 function captureMutation(label: string, run: () => Promise<void>, conflictRefreshAction?: () => Promise<void>) {
+  clearSavedSimulation(true)
   const scope = scopeKey()
   pendingIntent.value = { label, retry: run, scope }
   conflictRefresh.value = conflictRefreshAction ?? null
@@ -373,12 +420,104 @@ async function inspectBankVersion(reference: string) {
 }
 
 async function inspectPlanVersion(reference: string) {
+  clearSavedSimulation(true)
   const token = ++sequence; const scope = scopeKey()
   try {
     const version = await schoolCatAssets.getPlanVersion(reference)
-    if (!disposed && token === sequence && scope === scopeKey()) selectedPlanVersion.value = version
+    if (disposed || token !== sequence || scope !== scopeKey() || !hasRole()) return
+    const bank = await schoolCatAssets.getBankVersion(version.bank_version_ref)
+    if (disposed || token !== sequence || scope !== scopeKey() || !hasRole()) return
+    selectedPlanVersion.value = version
+    simulationBankVersion.value = bank
   } catch (cause) { handleLoadFailure(cause, token, scope) }
 }
+
+function changeSimulationBatch(value: string) {
+  const batch = Number(value)
+  if (batch !== 100 && batch !== 1000) return
+  if (simulationBatch.value === batch) return
+  clearSavedSimulation(false)
+  simulationBatch.value = batch
+}
+
+function sameSimulationBasis(left: CatSavedPlanSimulation, right: CatSavedPlanSimulation) {
+  return left.plan_version_ref === right.plan_version_ref
+    && left.bank_version_ref === right.bank_version_ref
+    && left.n_examinees === right.n_examinees
+    && left.seed === right.seed
+}
+
+function sameSimulationOutput(left: CatSavedPlanSimulation, right: CatSavedPlanSimulation) {
+  const metricKeys = Object.keys(left.metrics) as Array<keyof CatSavedPlanSimulation['metrics']>
+  const sameMetrics = metricKeys.every((key) => left.metrics[key] === right.metrics[key])
+  const leftStops = Object.entries(left.stopping_reason_distribution).sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey))
+  const rightStops = Object.entries(right.stopping_reason_distribution).sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey))
+  return sameMetrics && JSON.stringify(leftStops) === JSON.stringify(rightStops)
+}
+
+async function runSavedSimulation() {
+  const planVersion = selectedPlanVersion.value
+  const bankVersion = simulationBankVersion.value
+  if (!planVersion || !bankVersion || !canRunSavedSimulation.value) return
+
+  const token = ++simulationSequence
+  const scope = scopeKey()
+  const batch = simulationBatch.value
+  const previous = simulationResult.value
+  const baseline = previous && previous.plan_version_ref === planVersion.version_ref
+    && previous.bank_version_ref === bankVersion.version_ref
+    && previous.n_examinees === batch
+    && previous.seed === planVersion.config_document.seed ? previous : null
+  comparisonBaseline.value = null
+  simulationResult.value = null
+  simulationError.value = ''
+  simulationState.value = 'running'
+  try {
+    const result = await schoolCatAssets.simulateSavedPlanVersion(
+      planVersion.version_ref,
+      planVersion.bank_version_ref,
+      bankVersion.bank_document,
+      planVersion.config_document,
+      batch,
+    )
+    if (disposed || token !== simulationSequence || scope !== scopeKey() || !hasRole()
+      || selectedPlanVersion.value?.version_ref !== planVersion.version_ref
+      || simulationBankVersion.value?.version_ref !== bankVersion.version_ref
+      || simulationBatch.value !== batch) return
+    simulationResult.value = result
+    comparisonBaseline.value = baseline && sameSimulationBasis(baseline, result) ? baseline : null
+    simulationState.value = 'complete'
+  } catch (cause) {
+    if (disposed || token !== simulationSequence || scope !== scopeKey()) return
+    if (isForbidden(cause)) {
+      clearPrivate(); state.value = 'forbidden'; error.value = '访问权限已变化，已清除本页资产与模拟结果。'
+      simulationState.value = 'blocked'
+      return
+    }
+    const code = errorCode(cause)
+    const detail = cause && typeof cause === 'object' && 'message' in cause ? String(cause.message) : ''
+    if ((isConflict(cause) || code === 'WORKFLOW_CONFLICT') && detail.includes('synthetic_cat_simulation_busy')) {
+      simulationState.value = 'busy'
+      simulationError.value = '已有工程模拟正在运行。本次没有排队，请稍后手动重试。'
+    } else if (['404', 'HTTP_404', 'RESOURCE_NOT_FOUND', '409', 'HTTP_409', 'WORKFLOW_CONFLICT'].includes(code)) {
+      simulationState.value = 'blocked'
+      simulationError.value = '此保存版本或关联题库目前不可运行，请刷新方案并选择有效版本。'
+    } else {
+      simulationState.value = 'error'
+      simulationError.value = '本次结果尚未确认。请检查连接状态后手动重新运行。'
+    }
+  }
+}
+
+function changeTab(next: Tab) {
+  if (inputLocked.value || tab.value === next) return
+  sequence += 1
+  clearSelection()
+  tab.value = next
+}
+
+watch(bankDraft, () => clearSavedSimulation(false), { deep: true })
+watch(configDraft, () => clearSavedSimulation(false), { deep: true })
 
 function refresh() { void loadWorkspace() }
 watch(scopeKey, (next, previous) => {
@@ -396,8 +535,8 @@ onBeforeUnmount(() => { disposed = true; sequence += 1; clearPrivate() })
   <section class="asset-workspace" aria-label="合成题库与 CAT 方案资产管理">
     <AppStatusCallout tone="attention" title="仅供工程验证" body="这里保存的是合成题库与CAT配置版本。结构校验不代表心理测量学有效性，也不会启用测评、生成个人结论或发布报告。" />
     <nav class="asset-tabs" aria-label="资产类型">
-      <button type="button" :disabled="inputLocked" :aria-pressed="tab === 'banks'" @click="tab = 'banks'; clearSelection()">题库</button>
-      <button type="button" :disabled="inputLocked" :aria-pressed="tab === 'plans'" @click="tab = 'plans'; clearSelection()">CAT 方案</button>
+      <button type="button" :disabled="inputLocked" :aria-pressed="tab === 'banks'" @click="changeTab('banks')">题库</button>
+      <button type="button" :disabled="inputLocked" :aria-pressed="tab === 'plans'" @click="changeTab('plans')">CAT 方案</button>
     </nav>
     <div v-if="state === 'loading'" class="asset-state" role="status" aria-busy="true"><RotateCcw class="asset-spin" :size="16" /> 正在读取本校资产…</div>
     <div v-else-if="state === 'forbidden'" class="asset-state asset-state--error" role="alert"><ShieldCheck :size="18" /><div><strong>无法读取资产</strong><p>{{ error || '请切换到本校心理专业账号。' }}</p></div></div>
@@ -452,7 +591,25 @@ onBeforeUnmount(() => { disposed = true; sequence += 1; clearPrivate() })
           </div>
           <p class="asset-inline-note">题型GRM、选题MFI、暴露控制和内容平衡按当前工程实现固定。配置只用于合成工程验证。</p>
           <footer class="asset-actions"><button class="asset-button asset-button--primary" type="button" :disabled="!canSavePlan" @click="savePlan"><Save :size="15" />{{ busy ? '保存中…' : planDetail ? '保存方案新版本' : '创建方案' }}</button><button v-if="planDetail" class="asset-button asset-button--quiet" type="button" :disabled="mutationBlocked" @click="renameOrArchive(false)">保存名称</button><button v-if="planDetail && planDetail.status === 'ACTIVE'" class="asset-button asset-button--danger" type="button" :disabled="mutationBlocked" @click="renameOrArchive(true)"><Archive :size="14" />归档</button></footer>
-          <section v-if="planDetail" class="asset-history"><h3><History :size="15" />方案版本历史</h3><button v-for="version in planDetail.versions" :key="version.version_ref" type="button" class="asset-history__row" @click="inspectPlanVersion(version.version_ref)"><span>版本 {{ version.version_number }} · {{ selectedPlanVersion?.version_ref === version.version_ref ? bankVersionLabel(selectedPlanVersion.bank_version_ref) : '查看固定题库版本' }}</span><time>{{ new Date(version.created_at).toLocaleString('zh-CN') }}</time></button><p v-if="selectedPlanVersion" class="asset-history__selected">查看 v{{ selectedPlanVersion.version_number }}：绑定题库为 {{ bankVersionLabel(selectedPlanVersion.bank_version_ref) }}。</p></section>
+          <section v-if="planDetail" class="asset-history"><h3><History :size="15" />方案版本历史</h3><button v-for="version in planDetail.versions" :key="version.version_ref" type="button" class="asset-history__row" :aria-pressed="selectedPlanVersion?.version_ref === version.version_ref" @click="inspectPlanVersion(version.version_ref)"><span>版本 {{ version.version_number }} · {{ selectedPlanVersion?.version_ref === version.version_ref ? bankVersionLabel(selectedPlanVersion.bank_version_ref) : '查看固定题库版本' }}</span><time>{{ new Date(version.created_at).toLocaleString('zh-CN') }}</time></button><p v-if="selectedPlanVersion" class="asset-history__selected">已选择 {{ planDetail.display_name }} v{{ selectedPlanVersion.version_number }}：绑定 {{ simulationBankLabel }}。</p></section>
+          <section v-if="planDetail" class="asset-simulation" aria-label="已保存 CAT 方案版本的合成工程模拟">
+            <header><div><h3>运行已保存版本</h3><p>从上方历史中选择一个版本后，再运行对应的合成工程模拟。</p></div><ShieldCheck :size="17" /></header>
+            <p class="asset-inline-note">模拟只读取已保存的方案和题库版本；未保存的当前表单配置不会用于模拟。</p>
+            <p v-if="!selectedPlanVersion" class="asset-inline-note">请先选择方案历史版本。</p>
+            <template v-else>
+              <div class="asset-simulation__binding"><strong>{{ planDetail.display_name }} v{{ selectedPlanVersion.version_number }}</strong><span>题库：{{ simulationBankLabel }}</span><span>配置：{{ selectedPlanVersion.config_document.config_version }} · 种子 {{ selectedPlanVersion.config_document.seed }}</span></div>
+              <label class="asset-field asset-simulation__batch">合成样本量<select :value="simulationBatch" :disabled="simulationLocked" @change="changeSimulationBatch(($event.target as HTMLSelectElement).value)"><option :value="100">100</option><option :value="1000">1000</option></select></label>
+              <button class="asset-button asset-button--primary" type="button" :disabled="!canRunSavedSimulation" @click="runSavedSimulation">{{ simulationState === 'running' ? '运行中…' : simulationState === 'busy' ? '稍后手动重试' : simulationState === 'error' ? '手动重新运行' : simulationResult ? '再次运行并比较' : '运行已保存版本' }}</button>
+              <p v-if="simulationState === 'running'" class="asset-simulation__pending" role="status" aria-busy="true">运行中，较大批次可能需要几分钟。</p>
+              <p v-else-if="simulationError" class="asset-simulation__error" role="alert">{{ simulationError }}</p>
+              <div v-if="simulationResult" class="asset-simulation__result" role="status">
+                <strong>本次汇总 · {{ simulationResult.n_examinees }} 个合成样本</strong>
+                <dl><div><dt>偏差</dt><dd>{{ simulationResult.metrics.bias.toFixed(3) }}</dd></div><div><dt>均方根误差</dt><dd>{{ simulationResult.metrics.rmse.toFixed(3) }}</dd></div><div><dt>平均绝对误差</dt><dd>{{ simulationResult.metrics.mae.toFixed(3) }}</dd></div><div><dt>平均题数</dt><dd>{{ simulationResult.metrics.mean_test_length.toFixed(2) }}</dd></div><div><dt>中位题数</dt><dd>{{ simulationResult.metrics.median_test_length.toFixed(2) }}</dd></div><div><dt>平均标准误</dt><dd>{{ simulationResult.metrics.mean_se.toFixed(3) }}</dd></div></dl>
+                <p>停止原因计数：<span v-for="(count, reason, index) in simulationResult.stopping_reason_distribution" :key="reason">{{ index ? ' · ' : '' }}{{ stoppingReasonLabel(reason) }} {{ count }}</span></p>
+                <p v-if="simulationComparisonText" class="asset-simulation__comparison">{{ simulationComparisonText }}仅在方案版本、题库版本、样本量和种子一致时比较。</p>
+              </div>
+            </template>
+          </section>
         </template>
         <div v-else class="asset-placeholder"><span><ShieldCheck :size="19" /></span><strong>选择或新建{{ tab === 'banks' ? '题库' : 'CAT 方案' }}</strong><p>内容只在当前本校专业账号会话中读取。</p></div>
         <div v-if="error" class="asset-feedback asset-feedback--error" role="alert"><CircleAlert :size="15" /><span>{{ error }}</span><button v-if="pendingIntent" type="button" :disabled="busy" @click="retrySameRequest">使用同一请求重试</button><button v-if="conflictRefresh" type="button" :disabled="busy" @click="refreshConflict">刷新版本信息</button></div>
@@ -464,6 +621,7 @@ onBeforeUnmount(() => { disposed = true; sequence += 1; clearPrivate() })
 
 <style scoped>
 .asset-workspace{display:grid;gap:14px;color:var(--color-text-primary)}.asset-tabs{display:flex;gap:7px;padding:4px;border:1px solid #e3ece7;border-radius:11px;background:#f5f9f6;width:max-content}.asset-tabs button{min-height:34px;padding:7px 14px;border:0;border-radius:8px;background:transparent;color:#63766c;font:inherit;font-size:11px;font-weight:700;cursor:pointer}.asset-tabs button[aria-pressed=true]{background:#fff;color:#357c6b;box-shadow:0 1px 3px #203c3014}.asset-layout{display:grid;grid-template-columns:minmax(235px,.7fr) minmax(0,1.6fr);gap:13px;align-items:start}.asset-list,.asset-editor{min-width:0;padding:17px}.asset-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:12px;border-bottom:1px solid #e8efeb}.asset-heading h2{margin:3px 0 0;font-size:16px;letter-spacing:-.02em}.asset-kicker{margin:0;color:#548275;font-size:9px;font-weight:800;letter-spacing:.08em}.asset-help{margin:12px 0;color:var(--color-text-muted);font-size:10px;line-height:1.6}.asset-list__items{display:grid;gap:6px;margin:0;padding:0;list-style:none}.asset-row{display:flex;width:100%;align-items:center;justify-content:space-between;gap:9px;padding:11px;border:1px solid #e7eee9;border-radius:9px;background:#fff;text-align:left;cursor:pointer}.asset-row[aria-current=true]{border-color:#83ad9b;background:#f0f7f3}.asset-row__main{display:grid;gap:4px;min-width:0}.asset-row strong{overflow:hidden;color:#40574d;font-size:11px;text-overflow:ellipsis;white-space:nowrap}.asset-row small{color:#788a81;font-size:9px}.asset-row__chevron{color:#8ba096;font-size:19px}.asset-empty,.asset-placeholder{padding:25px 12px;color:var(--color-text-muted);font-size:11px;line-height:1.6;text-align:center}.asset-placeholder{display:grid;justify-items:center;gap:7px;min-height:190px;align-content:center}.asset-placeholder span{color:#478675}.asset-placeholder strong{color:#496158;font-size:12px}.asset-placeholder p{margin:0}.asset-button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:35px;padding:8px 11px;border:1px solid transparent;border-radius:8px;font:inherit;font-size:10px;font-weight:750;cursor:pointer}.asset-button:disabled,.asset-icon:disabled{opacity:.5;cursor:not-allowed}.asset-button--quiet{border-color:#dce8e3;background:#fff;color:#4c6c61}.asset-button--primary{background:#357c6b;color:#fff}.asset-button--primary:hover:not(:disabled){background:#286b5a}.asset-button--danger{border-color:#eddfd7;background:#fffaf7;color:#955e45}.asset-icon,.asset-remove{display:grid;width:31px;height:31px;place-items:center;border:1px solid #e1eae5;border-radius:8px;background:#fff;color:#63796f;cursor:pointer}.asset-field{display:grid;gap:5px;min-width:0;color:#52685e;font-size:10px;font-weight:700}.asset-field input,.asset-field textarea,.asset-field select{width:100%;min-width:0;padding:9px 10px;border:1px solid #dfe9e3;border-radius:8px;background:#fff;color:#344b41;font:inherit;font-size:11px;font-weight:500;outline:none}.asset-field input:focus,.asset-field textarea:focus,.asset-field select:focus{border-color:#74a692;box-shadow:0 0 0 3px #438e7b1c}.asset-field input:disabled,.asset-field textarea:disabled,.asset-field select:disabled{background:#f5f8f6;color:#819087}.asset-field textarea{resize:vertical;line-height:1.6}.asset-field small{color:#7a8b82;font-size:9px;font-weight:500}.asset-editor>.asset-field{margin:13px 0}.asset-subheading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:18px 0 10px}.asset-subheading h3,.asset-history h3{display:flex;align-items:center;gap:6px;margin:0;color:#405b50;font-size:12px}.asset-subheading p{margin:4px 0 0;color:#7a8a82;font-size:9px;line-height:1.5}.asset-items{display:grid;gap:9px}.asset-item{display:grid;gap:10px;padding:12px;border:1px solid #e5ece8;border-radius:10px;background:#fbfdfb}.asset-item>header{display:flex;align-items:center;justify-content:space-between;color:#4d695d;font-size:10px}.asset-remove{width:26px;height:26px}.asset-options{display:grid;gap:6px}.asset-option{display:grid;grid-template-columns:minmax(0,1fr) 95px;gap:8px}.asset-params{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.asset-score input{text-align:right}.asset-config-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:14px 0}.asset-inline-note{margin:10px 0;padding:10px 11px;border-left:3px solid #88aa99;border-radius:0 7px 7px 0;background:#f3f8f5;color:#64786e;font-size:10px;line-height:1.6}.asset-actions{display:flex;flex-wrap:wrap;gap:7px;margin:15px 0;padding-top:12px;border-top:1px solid #e9efeb}.asset-history{display:grid;gap:7px;margin-top:18px;padding-top:13px;border-top:1px solid #e9efeb}.asset-history h3{margin-bottom:2px}.asset-history__row{display:flex;justify-content:space-between;gap:10px;padding:8px 9px;border:1px solid #e7eee9;border-radius:7px;background:#fff;color:#4c6258;text-align:left;font:inherit;font-size:9px;cursor:pointer}.asset-history__row time{color:#85938c;white-space:nowrap}.asset-history__selected{margin:2px 0;color:#71857a;font-size:9px}.asset-feedback{display:flex;align-items:center;gap:8px;margin-top:12px;padding:10px;border-radius:8px;font-size:10px;line-height:1.5}.asset-feedback--error{border:1px solid #efdfd4;background:#fff9f4;color:#805e4b}.asset-feedback--success{border:1px solid #dcebe2;background:#f3f9f5;color:#4d7564}.asset-feedback button{margin-left:auto;padding:6px 8px;border:1px solid #e4d6ca;border-radius:6px;background:#fff;color:#795b48;font:inherit;font-size:9px;white-space:nowrap;cursor:pointer}.asset-state{display:flex;align-items:center;gap:9px;min-height:54px;padding:13px;border:1px solid #e3ece7;border-radius:10px;background:#f7faf8;color:#52685e;font-size:11px}.asset-state--error{align-items:flex-start;border-color:#e9e2d5;background:#fcfaf5;color:#716348}.asset-state p{margin:3px 0 0;font-size:10px;line-height:1.5}.asset-state .asset-button{margin-left:auto}.asset-spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+.asset-simulation{display:grid;gap:10px;margin-top:16px;padding:14px;border:1px solid #dfeae4;border-radius:10px;background:#f8fbf9}.asset-simulation>header{display:flex;align-items:center;justify-content:space-between;color:#43816f}.asset-simulation h3{margin:0;color:#405b50;font-size:12px}.asset-simulation>header p{margin:4px 0 0;color:#788980;font-size:9px;line-height:1.5}.asset-simulation__binding{display:grid;gap:4px;padding:9px 10px;border-radius:7px;background:#fff;color:#63766c;font-size:9px}.asset-simulation__binding strong{color:#3d5e50;font-size:10px}.asset-simulation__batch{max-width:200px}.asset-simulation__pending,.asset-simulation__error{margin:0;color:#6e7e75;font-size:10px;line-height:1.5}.asset-simulation__error{color:#805e4b}.asset-simulation__result{display:grid;gap:9px;padding:11px;border:1px solid #dcebe2;border-radius:8px;background:#fff;color:#52685e;font-size:9px}.asset-simulation__result>strong{color:#3f6e5a;font-size:10px}.asset-simulation__result dl{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:0}.asset-simulation__result dl div{padding:7px;border-radius:6px;background:#f5f8f6}.asset-simulation__result dt{color:#788980}.asset-simulation__result dd{margin:4px 0 0;color:#3b584a;font-size:11px;font-weight:750}.asset-simulation__result p{margin:0;line-height:1.5}.asset-simulation__comparison{color:#43816f!important}
 @media(max-width:820px){.asset-layout{grid-template-columns:1fr}.asset-list__items{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:560px){.asset-list,.asset-editor{padding:13px}.asset-list__items{grid-template-columns:1fr}.asset-params{grid-template-columns:repeat(2,minmax(0,1fr))}.asset-option{grid-template-columns:minmax(0,1fr) 76px}.asset-history__row{align-items:flex-start;flex-direction:column}.asset-feedback{flex-wrap:wrap}.asset-feedback button{margin-left:0}}
 @media(prefers-reduced-motion:reduce){.asset-spin{animation:none}}

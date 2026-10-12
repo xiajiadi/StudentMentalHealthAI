@@ -13,11 +13,14 @@ from smhai_backend.core.config import ModuleClientSettings
 from smhai_backend.core.errors import ErrorCode, error
 from smhai_backend.core.request_context import RequestContext
 from smhai_backend.domains.cat_assets.schemas import (
+    SavedSimulationUpstreamResponseDto,
     TemplateResponseDto,
     ValidatedAssetsResponseDto,
 )
 
 CAT_ASSETS_TIMEOUT_SECONDS = 30.0
+CAT_SAVED_SIMULATION_TIMEOUT_SECONDS = 600.0
+_SIMULATION_BUSY_DETAIL = "synthetic_cat_simulation_busy"
 
 
 class HttpCatAssetsClient:
@@ -138,4 +141,153 @@ class HttpCatAssetsClient:
         )
 
 
-__all__ = ["CAT_ASSETS_TIMEOUT_SECONDS", "HttpCatAssetsClient"]
+class HttpCatSavedSimulationClient:
+    """Separate long-budget transport for bounded, immutable saved-version runs."""
+
+    label = "REAL_HTTP"
+
+    def __init__(
+        self,
+        settings: ModuleClientSettings,
+        *,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
+        parsed = urlparse(settings.base_url)
+        self.client = httpx.AsyncClient(
+            base_url=settings.base_url,
+            timeout=httpx.Timeout(
+                connect=settings.timeout.connect,
+                read=CAT_SAVED_SIMULATION_TIMEOUT_SECONDS,
+                write=settings.timeout.write,
+                pool=settings.timeout.pool,
+            ),
+            limits=httpx.Limits(
+                max_connections=settings.max_connections,
+                max_keepalive_connections=settings.max_keepalive_connections,
+            ),
+            trust_env=parsed.hostname not in {"localhost", "127.0.0.1", "::1"},
+            headers={"Accept": "application/json", "User-Agent": "smhai-backend/0.1.0"},
+            transport=transport,
+        )
+
+    async def close(self) -> None:
+        if not self.client.is_closed:
+            await self.client.aclose()
+
+    async def simulate_saved_assets(
+        self,
+        bank_document: Mapping[str, Any],
+        config_document: Mapping[str, Any],
+        n_examinees: int,
+        *,
+        context: RequestContext,
+    ) -> dict[str, Any]:
+        value = await self._request(
+            context=context,
+            payload={
+                "bank_document": dict(bank_document),
+                "config_document": dict(config_document),
+                "n_examinees": n_examinees,
+            },
+        )
+        projected = self._project(value)
+        expected = (
+            bank_document.get("item_bank_id"),
+            bank_document.get("version"),
+            config_document.get("config_version"),
+            n_examinees,
+            config_document.get("seed"),
+        )
+        actual = (
+            projected["item_bank_id"],
+            projected["item_bank_version"],
+            projected["config_version"],
+            projected["n_examinees"],
+            projected["seed"],
+        )
+        if (
+            any(not isinstance(value, str) or not value for value in expected[:3])
+            or type(expected[3]) is not int
+            or type(expected[4]) is not int
+            or actual != expected
+        ):
+            raise self._invalid_response()
+        return projected
+
+    async def _request(
+        self,
+        *,
+        context: RequestContext,
+        payload: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        headers = {"X-Request-ID": context.request_id, "X-Trace-ID": context.trace_id}
+        if context.traceparent:
+            headers["traceparent"] = context.traceparent
+        try:
+            response = await self.client.post(
+                "/internal/cat/management/simulate-assets",
+                json=dict(payload),
+                headers=headers,
+            )
+        except httpx.TimeoutException as exc:
+            raise error(
+                ErrorCode.DEPENDENCY_TIMEOUT,
+                detail="CAT saved-version simulation timed out",
+                retryable=True,
+            ) from exc
+        except httpx.TransportError as exc:
+            raise error(
+                ErrorCode.DEPENDENCY_UNAVAILABLE,
+                detail="CAT service is unavailable",
+                retryable=True,
+            ) from exc
+
+        if response.status_code == 409:
+            try:
+                detail = response.json().get("detail")
+            except (ValueError, AttributeError):
+                detail = None
+            if detail == _SIMULATION_BUSY_DETAIL:
+                raise error(ErrorCode.WORKFLOW_CONFLICT, detail=_SIMULATION_BUSY_DETAIL)
+            raise self._invalid_response()
+        if response.status_code in {400, 422}:
+            raise error(ErrorCode.VALIDATION_FAILED, detail="saved CAT assets are invalid")
+        if response.status_code >= 500:
+            raise error(
+                ErrorCode.DEPENDENCY_UNAVAILABLE,
+                detail="CAT service is unavailable",
+                retryable=True,
+            )
+        if response.status_code >= 400:
+            raise self._invalid_response()
+        try:
+            value = response.json()
+        except ValueError as exc:
+            raise self._invalid_response() from exc
+        if not isinstance(value, dict):
+            raise self._invalid_response()
+        return value
+
+    @classmethod
+    def _project(cls, value: Mapping[str, Any]) -> dict[str, Any]:
+        try:
+            return SavedSimulationUpstreamResponseDto.model_validate(value, strict=True).model_dump(
+                mode="python"
+            )
+        except (ValidationError, TypeError, ValueError) as exc:
+            raise cls._invalid_response() from exc
+
+    @staticmethod
+    def _invalid_response():
+        return error(
+            ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+            detail="CAT saved-version simulation response is invalid",
+        )
+
+
+__all__ = [
+    "CAT_ASSETS_TIMEOUT_SECONDS",
+    "CAT_SAVED_SIMULATION_TIMEOUT_SECONDS",
+    "HttpCatAssetsClient",
+    "HttpCatSavedSimulationClient",
+]

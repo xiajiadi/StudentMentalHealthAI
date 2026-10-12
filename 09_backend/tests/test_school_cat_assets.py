@@ -24,18 +24,27 @@ from smhai_backend.domains.auth.dependencies import current_actor
 from smhai_backend.domains.cat_assets.router import router as cat_assets_router
 from smhai_backend.domains.cat_assets.schemas import (
     BankCreateRequest,
+    BankListDto,
     BankPatchRequest,
     BankVersionRequest,
     PlanCreateRequest,
     PlanDetailDto,
     PlanVersionRequest,
+    SavedSimulationRequestDto,
+    SavedSimulationUpstreamResponseDto,
+    TemplateResponseDto,
 )
 from smhai_backend.domains.cat_assets.service import (
     MAX_ASSET_DOCUMENT_BYTES,
     SchoolCatAssetService,
 )
 from smhai_backend.domains.models import Actor, BackendRole, SchoolRoleContext
-from smhai_backend.integrations.cat_assets import CAT_ASSETS_TIMEOUT_SECONDS, HttpCatAssetsClient
+from smhai_backend.integrations.cat_assets import (
+    CAT_ASSETS_TIMEOUT_SECONDS,
+    CAT_SAVED_SIMULATION_TIMEOUT_SECONDS,
+    HttpCatAssetsClient,
+    HttpCatSavedSimulationClient,
+)
 
 
 def specialist(*, school_id: int = 7) -> Actor:
@@ -111,6 +120,27 @@ def config_document(*, version: str = "demo.cat.v1") -> dict:
     }
 
 
+def saved_simulation_result(bank_doc: dict, config_doc: dict, n_examinees: int = 100) -> dict:
+    return {
+        "engineering_only": True,
+        "psychological_interpretation_allowed": False,
+        "item_bank_id": bank_doc["item_bank_id"],
+        "item_bank_version": bank_doc["version"],
+        "config_version": config_doc["config_version"],
+        "n_examinees": n_examinees,
+        "seed": config_doc["seed"],
+        "metrics": {
+            "bias": 0.0,
+            "rmse": 0.4,
+            "mae": 0.3,
+            "mean_test_length": 5.2,
+            "median_test_length": 5.0,
+            "mean_se": 0.51,
+        },
+        "stopping_reason_distribution": {"SE_THRESHOLD_REACHED": n_examinees},
+    }
+
+
 def request_context() -> RequestContext:
     return RequestContext("REQ_asset_test", "TRACE_asset_test")
 
@@ -162,6 +192,54 @@ def test_plan_detail_only_accepts_plan_version_references():
     plan["versions"][0]["version_ref"] = "CBVER_" + str(uuid4())
     with pytest.raises(ValidationError):
         PlanDetailDto.model_validate(plan)
+
+
+def test_saved_simulation_request_is_strict_and_has_only_supported_batches():
+    assert SavedSimulationRequestDto.model_validate({}, strict=True).n_examinees == 100
+    assert (
+        SavedSimulationRequestDto.model_validate({"n_examinees": 1000}, strict=True).n_examinees
+        == 1000
+    )
+    for invalid in (100.0, 1000.0, True, "100", 99):
+        with pytest.raises(ValidationError):
+            SavedSimulationRequestDto.model_validate({"n_examinees": invalid}, strict=True)
+    with pytest.raises(ValidationError):
+        SavedSimulationRequestDto.model_validate({"n_examinees": 100, "seed": 1}, strict=True)
+
+
+def test_cat_asset_response_flags_require_actual_booleans():
+    flags = {
+        "engineering_only": True,
+        "psychological_interpretation_allowed": False,
+    }
+    bank = bank_document()
+    config = config_document()
+    template = {
+        **flags,
+        "bank_document": bank,
+        "config_document": config,
+        "item_count": 1,
+        "dimension_count": 1,
+    }
+    assert TemplateResponseDto.model_validate(template, strict=True).engineering_only is True
+    assert BankListDto.model_validate({**flags, "items": [], "has_more": False}, strict=True)
+    assert (
+        SavedSimulationUpstreamResponseDto.model_validate(
+            saved_simulation_result(bank, config), strict=True
+        ).engineering_only
+        is True
+    )
+
+    for field, numeric_value in (
+        ("engineering_only", 1),
+        ("psychological_interpretation_allowed", 0),
+    ):
+        invalid_template = {**template, field: numeric_value}
+        with pytest.raises(ValidationError):
+            TemplateResponseDto.model_validate(invalid_template, strict=True)
+        invalid_simulation = {**saved_simulation_result(bank, config), field: numeric_value}
+        with pytest.raises(ValidationError):
+            SavedSimulationUpstreamResponseDto.model_validate(invalid_simulation, strict=True)
 
 
 class Expr:
@@ -512,6 +590,23 @@ class CountingAssetsClient(FakeAssetsClient):
         return await super().validate_assets(bank_doc, config_doc, context=context)
 
 
+class FakeSavedSimulationClient:
+    def __init__(self, backend, *, fail=None, mutate=None):
+        self.backend = backend
+        self.fail = fail
+        self.mutate = mutate
+        self.calls = []
+
+    async def simulate_saved_assets(self, bank_doc, config_doc, n_examinees, *, context):
+        self.calls.append((bank_doc, config_doc, n_examinees, context.trace_id))
+        self.backend.events.append(("saved_simulation", n_examinees, context.trace_id))
+        if self.mutate is not None:
+            self.mutate()
+        if self.fail is not None:
+            raise self.fail
+        return saved_simulation_result(bank_doc, config_doc, n_examinees)
+
+
 def idem(key: str, operation: str, request_hash: str = "a" * 64):
     return key, request_hash, f"school:7:{operation}"
 
@@ -716,6 +811,215 @@ async def test_plan_version_binds_exact_school_bank_version_and_returns_only_its
     assert (await adapter.school_cat_assets_get_plan_version(actor, version_ref))[
         "config_document"
     ] == config_v1
+
+
+@pytest.mark.asyncio
+async def test_saved_simulation_loads_exact_versions_and_audits_after_final_scope_check(
+    monkeypatch,
+):
+    install_encrypted_payload_module(monkeypatch)
+    backend = FakePersistence()
+    simulation_client = FakeSavedSimulationClient(backend)
+    adapter = SchoolCatAssetsPersistenceAdapter(
+        backend, FakeAssetsClient(backend), simulation_client
+    )
+    actor = specialist()
+    bank_doc = bank_document(stem="Private saved synthetic stem")
+    bank_doc["status"] = "published"
+    config_doc = config_document(version="saved.plan.v7")
+    bank = await adapter.school_cat_assets_create_bank(
+        actor,
+        "Saved bank",
+        bank_doc,
+        item_count=1,
+        dimension_count=1,
+        idempotency=idem("saved-simulation-bank", "create_bank"),
+        trace_id="TRACE_test",
+    )
+    plan = await adapter.school_cat_assets_create_plan(
+        actor,
+        "Saved plan",
+        bank["version_ref"],
+        config_doc,
+        idempotency=idem("saved-simulation-plan", "create_plan"),
+        trace_id="TRACE_test",
+    )
+    backend.events.clear()
+
+    result = await adapter.school_cat_assets_simulate_plan_version(actor, plan["version_ref"], 100)
+
+    assert result["plan_version_ref"] == plan["version_ref"]
+    assert result["bank_version_ref"] == bank["version_ref"]
+    assert result["item_bank_id"] == bank_doc["item_bank_id"]
+    assert result["item_bank_version"] == bank_doc["version"]
+    assert result["config_version"] == config_doc["config_version"]
+    assert result["seed"] == config_doc["seed"]
+    assert set(result) == {
+        "engineering_only",
+        "psychological_interpretation_allowed",
+        "item_bank_id",
+        "item_bank_version",
+        "config_version",
+        "n_examinees",
+        "seed",
+        "metrics",
+        "stopping_reason_distribution",
+        "plan_version_ref",
+        "bank_version_ref",
+    }
+    assert simulation_client.calls[0][:3] == (bank_doc, config_doc, 100)
+    event_names = [event[0] for event in backend.events]
+    simulation_index = event_names.index("saved_simulation")
+    assert event_names[0:4] == ["uow_open", "role", "commit", "uow_close"]
+    assert event_names[simulation_index + 1 : simulation_index + 4] == [
+        "uow_open",
+        "role",
+        "audit",
+    ]
+    audit = next(event[1] for event in backend.events if event[0] == "audit")
+    assert audit["action"] == "school_cat_assets.saved_simulation_completed"
+    assert audit["resource_public_id"] == plan["version_ref"].removeprefix("CPVER_")
+    assert "Private saved synthetic stem" not in repr(audit)
+    assert not any(key in repr(audit) for key in ("bank_document", "config_document", "seed"))
+
+
+@pytest.mark.asyncio
+async def test_saved_simulation_denies_unknown_scope_archived_parents_and_midrun_revocation(
+    monkeypatch,
+):
+    install_encrypted_payload_module(monkeypatch)
+    backend = FakePersistence()
+    simulation_client = FakeSavedSimulationClient(backend)
+    adapter = SchoolCatAssetsPersistenceAdapter(
+        backend, FakeAssetsClient(backend), simulation_client
+    )
+    actor = specialist()
+    bank_doc = bank_document()
+    bank_doc["status"] = "published"
+    bank = await adapter.school_cat_assets_create_bank(
+        actor,
+        "Bank",
+        bank_doc,
+        item_count=1,
+        dimension_count=1,
+        idempotency=idem("saved-scope-bank", "create_bank"),
+        trace_id="TRACE_test",
+    )
+    plan = await adapter.school_cat_assets_create_plan(
+        actor,
+        "Plan",
+        bank["version_ref"],
+        config_document(),
+        idempotency=idem("saved-scope-plan", "create_plan"),
+        trace_id="TRACE_test",
+    )
+    plan_version_ref = plan["version_ref"]
+    backend.events.clear()
+
+    with pytest.raises(BackendError) as missing:
+        await adapter.school_cat_assets_simulate_plan_version(actor, "CPVER_" + str(uuid4()), 100)
+    assert missing.value.code is ErrorCode.RESOURCE_NOT_FOUND
+    with pytest.raises(BackendError) as cross_school:
+        await adapter.school_cat_assets_simulate_plan_version(
+            specialist(school_id=8), plan_version_ref, 100
+        )
+    assert cross_school.value.code is ErrorCode.RESOURCE_NOT_FOUND
+    assert simulation_client.calls == []
+
+    await adapter.school_cat_assets_patch_plan(
+        actor,
+        plan["plan"]["plan_ref"],
+        expected_revision=1,
+        display_name=None,
+        status="ARCHIVED",
+        idempotency=idem("saved-scope-archive-plan", "patch_plan"),
+        trace_id="TRACE_test",
+    )
+    with pytest.raises(BackendError) as archived_plan:
+        await adapter.school_cat_assets_simulate_plan_version(actor, plan_version_ref, 100)
+    assert archived_plan.value.code is ErrorCode.WORKFLOW_CONFLICT
+    await adapter.school_cat_assets_patch_plan(
+        actor,
+        plan["plan"]["plan_ref"],
+        expected_revision=2,
+        display_name=None,
+        status="ACTIVE",
+        idempotency=idem("saved-scope-reactivate-plan", "patch_plan"),
+        trace_id="TRACE_test",
+    )
+    await adapter.school_cat_assets_patch_bank(
+        actor,
+        bank["bank"]["bank_ref"],
+        expected_revision=1,
+        display_name=None,
+        status="ARCHIVED",
+        idempotency=idem("saved-scope-archive-bank", "patch_bank"),
+        trace_id="TRACE_test",
+    )
+    with pytest.raises(BackendError) as archived_bank:
+        await adapter.school_cat_assets_simulate_plan_version(actor, plan_version_ref, 100)
+    assert archived_bank.value.code is ErrorCode.WORKFLOW_CONFLICT
+    assert simulation_client.calls == []
+
+    # Restore an active synthetic target, then deny the post-compute role check.
+    await adapter.school_cat_assets_patch_bank(
+        actor,
+        bank["bank"]["bank_ref"],
+        expected_revision=2,
+        display_name=None,
+        status="ACTIVE",
+        idempotency=idem("saved-scope-reactivate-bank", "patch_bank"),
+        trace_id="TRACE_test",
+    )
+    backend.events.clear()
+    backend.role_checks = 0
+    backend.deny_call = 2
+    with pytest.raises(BackendError) as revoked:
+        await adapter.school_cat_assets_simulate_plan_version(actor, plan_version_ref, 100)
+    assert revoked.value.code is ErrorCode.FORBIDDEN
+    assert len(simulation_client.calls) == 1
+    assert not any(event[0] == "audit" for event in backend.events)
+
+
+@pytest.mark.asyncio
+async def test_saved_simulation_rechecks_parent_state_after_cat_returns(monkeypatch):
+    install_encrypted_payload_module(monkeypatch)
+    backend = FakePersistence()
+    actor = specialist()
+    bank_doc = bank_document()
+    bank_doc["status"] = "published"
+    adapter = SchoolCatAssetsPersistenceAdapter(
+        backend,
+        FakeAssetsClient(backend),
+        FakeSavedSimulationClient(backend),
+    )
+    bank = await adapter.school_cat_assets_create_bank(
+        actor,
+        "Bank",
+        bank_doc,
+        item_count=1,
+        dimension_count=1,
+        idempotency=idem("saved-race-bank", "create_bank"),
+        trace_id="TRACE_test",
+    )
+    plan = await adapter.school_cat_assets_create_plan(
+        actor,
+        "Plan",
+        bank["version_ref"],
+        config_document(),
+        idempotency=idem("saved-race-plan", "create_plan"),
+        trace_id="TRACE_test",
+    )
+    backend.events.clear()
+
+    def archive_plan():
+        backend.rows[Plan][0].status = "ARCHIVED"
+
+    adapter._simulation_client.mutate = archive_plan
+    with pytest.raises(BackendError) as archived_during_run:
+        await adapter.school_cat_assets_simulate_plan_version(actor, plan["version_ref"], 100)
+    assert archived_during_run.value.code is ErrorCode.WORKFLOW_CONFLICT
+    assert not any(event[0] == "audit" for event in backend.events)
 
 
 @pytest.mark.asyncio
@@ -1261,6 +1565,134 @@ async def test_http_client_maps_validator_transport_failure_and_timeout_to_gatew
 
 
 @pytest.mark.asyncio
+async def test_saved_simulation_http_client_uses_long_budget_and_exact_saved_payload():
+    seen = []
+    bank_doc = bank_document()
+    bank_doc["status"] = "published"
+    config_doc = config_document(version="saved.v7")
+
+    async def handler(request: httpx.Request):
+        seen.append(request)
+        return httpx.Response(200, json=saved_simulation_result(bank_doc, config_doc, 1000))
+
+    simulation_client = HttpCatSavedSimulationClient(
+        ModuleClientSettings(mode="http", base_url="http://127.0.0.1:8180"),
+        transport=httpx.MockTransport(handler),
+    )
+    assets_client = HttpCatAssetsClient(
+        ModuleClientSettings(mode="http", base_url="http://127.0.0.1:8180"),
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        assert (
+            simulation_client.client.timeout.read == CAT_SAVED_SIMULATION_TIMEOUT_SECONDS == 600.0
+        )
+        assert assets_client.client.timeout.read == CAT_ASSETS_TIMEOUT_SECONDS == 30.0
+        result = await simulation_client.simulate_saved_assets(
+            bank_doc, config_doc, 1000, context=request_context()
+        )
+        assert result["n_examinees"] == 1000
+        assert len(seen) == 1
+        assert seen[0].url.path == "/internal/cat/management/simulate-assets"
+        assert seen[0].headers["X-Trace-ID"] == "TRACE_asset_test"
+        assert json.loads(seen[0].content) == {
+            "bank_document": bank_doc,
+            "config_document": config_doc,
+            "n_examinees": 1000,
+        }
+    finally:
+        await simulation_client.close()
+        await assets_client.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "bank_id",
+        "bank_version",
+        "config_version",
+        "batch",
+        "seed",
+        "extra_payload",
+        "engineering_flag_numeric",
+        "interpretation_flag_numeric",
+        "nonfinite_metric",
+        "bad_stopping_sum",
+    ],
+)
+async def test_saved_simulation_http_client_rejects_unbound_or_malformed_results(mutation):
+    bank_doc = bank_document()
+    bank_doc["status"] = "published"
+    config_doc = config_document()
+    invalid_result = saved_simulation_result(bank_doc, config_doc)
+    if mutation == "bank_id":
+        invalid_result["item_bank_id"] = "ITEMBANK_other"
+    elif mutation == "bank_version":
+        invalid_result["item_bank_version"] = "other.version"
+    elif mutation == "config_version":
+        invalid_result["config_version"] = "other.config"
+    elif mutation == "batch":
+        invalid_result["n_examinees"] = 1000
+    elif mutation == "seed":
+        invalid_result["seed"] += 1
+    elif mutation == "extra_payload":
+        invalid_result["results"] = [{"stem": "must not leave CAT"}]
+    elif mutation == "engineering_flag_numeric":
+        invalid_result["engineering_only"] = 1
+    elif mutation == "interpretation_flag_numeric":
+        invalid_result["psychological_interpretation_allowed"] = 0
+    elif mutation == "nonfinite_metric":
+        invalid_result["metrics"]["rmse"] = float("nan")
+    else:
+        invalid_result["stopping_reason_distribution"] = {"SE_THRESHOLD_REACHED": 99}
+
+    async def handler(_request: httpx.Request):
+        if mutation == "nonfinite_metric":
+            return httpx.Response(
+                200,
+                content=json.dumps(invalid_result, allow_nan=True).encode(),
+                headers={"Content-Type": "application/json"},
+            )
+        return httpx.Response(200, json=invalid_result)
+
+    client = HttpCatSavedSimulationClient(
+        ModuleClientSettings(mode="http", base_url="http://127.0.0.1:8180"),
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        with pytest.raises(BackendError) as invalid:
+            await client.simulate_saved_assets(bank_doc, config_doc, 100, context=request_context())
+        assert invalid.value.code is ErrorCode.DEPENDENCY_INVALID_RESPONSE
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_saved_simulation_http_client_surfaces_busy_without_retry_or_fallback():
+    calls = []
+
+    async def busy(request: httpx.Request):
+        calls.append(request)
+        return httpx.Response(409, json={"detail": "synthetic_cat_simulation_busy"})
+
+    client = HttpCatSavedSimulationClient(
+        ModuleClientSettings(mode="http", base_url="http://127.0.0.1:8180"),
+        transport=httpx.MockTransport(busy),
+    )
+    try:
+        with pytest.raises(BackendError) as rejected:
+            await client.simulate_saved_assets(
+                bank_document(), config_document(), 100, context=request_context()
+            )
+        assert rejected.value.code is ErrorCode.WORKFLOW_CONFLICT
+        assert rejected.value.detail == "synthetic_cat_simulation_busy"
+        assert len(calls) == 1
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
 async def test_routes_hidden_from_frozen_openapi_and_post_uses_csrf(client):
     login = await client.post(
         "/api/v1/auth/login",
@@ -1426,3 +1858,61 @@ async def test_create_bank_and_plan_return_201_including_idempotent_replay(clien
     )
     assert bank_version.status_code == 200
     assert plan_version.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_saved_simulation_route_requires_csrf_and_rejects_invalid_batches(client, app):
+    bank_doc = bank_document()
+    config_doc = config_document(version="saved.route.v2")
+    plan_version_ref = "CPVER_" + str(uuid4())
+    bank_version_ref = "CBVER_" + str(uuid4())
+
+    class SimulationService:
+        def __init__(self):
+            self.calls = []
+
+        async def simulate_plan_version(self, actor, version_ref, *, payload):
+            self.calls.append((actor, version_ref, payload))
+            return {
+                **saved_simulation_result(bank_doc, config_doc, payload["n_examinees"]),
+                "plan_version_ref": plan_version_ref,
+                "bank_version_ref": bank_version_ref,
+            }
+
+    service = SimulationService()
+    app.state.container.cat_assets = service
+
+    async def authenticated_specialist(request: Request):
+        request.state.session = SimpleNamespace(csrf_token="saved-sim-csrf")
+        return specialist()
+
+    app.dependency_overrides[current_actor] = authenticated_specialist
+    path = f"/api/v1/school/cat-assets/plan-versions/{plan_version_ref}/simulations"
+    no_csrf = await client.post(path, json={})
+    assert no_csrf.status_code == 403
+    assert no_csrf.json()["code"] == "csrf_failed"
+    assert service.calls == []
+
+    response = await client.post(path, json={}, headers={"X-CSRF-Token": "saved-sim-csrf"})
+    assert response.status_code == 200
+    assert response.json()["data"]["n_examinees"] == 100
+    assert response.json()["data"]["plan_version_ref"] == plan_version_ref
+    assert response.json()["data"]["bank_version_ref"] == bank_version_ref
+    assert len(service.calls) == 1
+    assert service.calls[0][1:] == (plan_version_ref, {"n_examinees": 100})
+
+    for invalid in (
+        {"n_examinees": 100.0},
+        {"n_examinees": 1000.0},
+        {"n_examinees": True},
+        {"n_examinees": "100"},
+        {"n_examinees": 100, "seed": 9},
+    ):
+        rejected = await client.post(
+            path,
+            json=invalid,
+            headers={"X-CSRF-Token": "saved-sim-csrf"},
+        )
+        assert rejected.status_code == 422
+    assert len(service.calls) == 1
+    assert path.removeprefix("/api/v1") not in app.openapi()["paths"]

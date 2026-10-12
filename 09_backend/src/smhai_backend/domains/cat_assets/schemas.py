@@ -2,13 +2,37 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictInt,
+    field_validator,
+    model_validator,
+)
 
 
 class StrictDto(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
+
+
+class EngineeringOnlyDto(StrictDto):
+    @field_validator("engineering_only", mode="before", check_fields=False)
+    @classmethod
+    def exact_engineering_only_flag(cls, value):
+        if type(value) is not bool or value is not True:
+            raise ValueError("engineering_only must be true")
+        return value
+
+    @field_validator("psychological_interpretation_allowed", mode="before", check_fields=False)
+    @classmethod
+    def exact_interpretation_flag(cls, value):
+        if type(value) is not bool or value is not False:
+            raise ValueError("psychological_interpretation_allowed must be false")
+        return value
 
 
 class BankCreateRequest(StrictDto):
@@ -80,6 +104,74 @@ class PlanVersionMetadataDto(AssetVersionDto):
     version_ref: str = Field(pattern=r"^CPVER_[A-Za-z0-9-]{36}$")
 
 
+class SavedSimulationRequestDto(StrictDto):
+    n_examinees: StrictInt = 100
+
+    @field_validator("n_examinees")
+    @classmethod
+    def valid_batch_size(cls, value: int) -> int:
+        if value not in {100, 1000}:
+            raise ValueError("n_examinees must be 100 or 1000")
+        return value
+
+
+class SavedSimulationMetricsDto(StrictDto):
+    bias: float
+    rmse: float = Field(ge=0)
+    mae: float = Field(ge=0)
+    mean_test_length: float = Field(gt=0)
+    median_test_length: float = Field(gt=0)
+    mean_se: float = Field(ge=0)
+
+    @field_validator("bias", "rmse", "mae", "mean_test_length", "median_test_length", "mean_se")
+    @classmethod
+    def finite_metric(cls, value: float) -> float:
+        if not math.isfinite(value):
+            raise ValueError("metric must be finite")
+        return value
+
+
+class SavedSimulationUpstreamResponseDto(EngineeringOnlyDto):
+    engineering_only: Literal[True]
+    psychological_interpretation_allowed: Literal[False]
+    item_bank_id: str = Field(min_length=1, max_length=120)
+    item_bank_version: str = Field(min_length=1, max_length=120)
+    config_version: str = Field(min_length=1, max_length=120)
+    n_examinees: StrictInt
+    seed: StrictInt
+    metrics: SavedSimulationMetricsDto
+    stopping_reason_distribution: dict[
+        Literal[
+            "SE_THRESHOLD_REACHED",
+            "MAX_ITEMS_REACHED",
+            "ITEM_BANK_EXHAUSTED",
+            "MANUAL_TERMINATION",
+            "ERROR",
+            "NOT_STOPPED",
+        ],
+        StrictInt,
+    ]
+
+    @field_validator("n_examinees")
+    @classmethod
+    def valid_batch_size(cls, value: int) -> int:
+        if value not in {100, 1000}:
+            raise ValueError("n_examinees must be 100 or 1000")
+        return value
+
+    @model_validator(mode="after")
+    def valid_stopping_counts(self):
+        counts = self.stopping_reason_distribution
+        if not counts or sum(counts.values()) != self.n_examinees:
+            raise ValueError("stopping counts must sum to n_examinees")
+        return self
+
+
+class SavedSimulationResponseDto(SavedSimulationUpstreamResponseDto):
+    plan_version_ref: str = Field(pattern=r"^CPVER_[A-Za-z0-9-]{36}$")
+    bank_version_ref: str = Field(pattern=r"^CBVER_[A-Za-z0-9-]{36}$")
+
+
 class BankDto(StrictDto):
     bank_ref: str = Field(pattern=r"^CBANK_[A-Za-z0-9-]{36}$")
     display_name: str = Field(min_length=1, max_length=120)
@@ -93,14 +185,14 @@ class BankDetailDto(BankDto):
     versions: list[BankVersionMetadataDto]
 
 
-class BankListDto(StrictDto):
+class BankListDto(EngineeringOnlyDto):
     engineering_only: Literal[True]
     psychological_interpretation_allowed: Literal[False]
     items: list[BankDto]
     has_more: bool
 
 
-class BankDetailResponseDto(StrictDto):
+class BankDetailResponseDto(EngineeringOnlyDto):
     engineering_only: Literal[True]
     psychological_interpretation_allowed: Literal[False]
     bank: BankDetailDto
@@ -110,7 +202,7 @@ class BankWriteResponseDto(BankDetailResponseDto):
     version_ref: str = Field(pattern=r"^CBVER_[A-Za-z0-9-]{36}$")
 
 
-class BankVersionResponseDto(StrictDto):
+class BankVersionResponseDto(EngineeringOnlyDto):
     engineering_only: Literal[True]
     psychological_interpretation_allowed: Literal[False]
     version: BankVersionMetadataDto
@@ -130,14 +222,14 @@ class PlanDetailDto(PlanDto):
     versions: list[PlanVersionMetadataDto]
 
 
-class PlanListDto(StrictDto):
+class PlanListDto(EngineeringOnlyDto):
     engineering_only: Literal[True]
     psychological_interpretation_allowed: Literal[False]
     items: list[PlanDto]
     has_more: bool
 
 
-class PlanDetailResponseDto(StrictDto):
+class PlanDetailResponseDto(EngineeringOnlyDto):
     engineering_only: Literal[True]
     psychological_interpretation_allowed: Literal[False]
     plan: PlanDetailDto
@@ -147,7 +239,7 @@ class PlanWriteResponseDto(PlanDetailResponseDto):
     version_ref: str = Field(pattern=r"^CPVER_[A-Za-z0-9-]{36}$")
 
 
-class PlanVersionResponseDto(StrictDto):
+class PlanVersionResponseDto(EngineeringOnlyDto):
     engineering_only: Literal[True]
     psychological_interpretation_allowed: Literal[False]
     version: AssetVersionDto
@@ -155,7 +247,7 @@ class PlanVersionResponseDto(StrictDto):
     config_document: dict[str, Any]
 
 
-class TemplateResponseDto(StrictDto):
+class TemplateResponseDto(EngineeringOnlyDto):
     engineering_only: Literal[True]
     psychological_interpretation_allowed: Literal[False]
     bank_document: dict[str, Any]
@@ -176,7 +268,7 @@ class ValidatedAssetsRequest(StrictDto):
     config_document: dict[str, Any] | None = None
 
 
-class ValidatedAssetsResponseDto(StrictDto):
+class ValidatedAssetsResponseDto(EngineeringOnlyDto):
     engineering_only: Literal[True]
     psychological_interpretation_allowed: Literal[False]
     bank_document: dict[str, Any]
@@ -219,6 +311,10 @@ __all__ = [
     "PlanVersionRequest",
     "PlanVersionResponseDto",
     "PlanWriteResponseDto",
+    "SavedSimulationMetricsDto",
+    "SavedSimulationRequestDto",
+    "SavedSimulationResponseDto",
+    "SavedSimulationUpstreamResponseDto",
     "TemplateResponseDto",
     "ValidatedAssetsRequest",
     "ValidatedAssetsResponseDto",

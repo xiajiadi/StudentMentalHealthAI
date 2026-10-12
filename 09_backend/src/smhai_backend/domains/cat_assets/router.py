@@ -30,6 +30,8 @@ from smhai_backend.domains.cat_assets.schemas import (
     PlanVersionRequest,
     PlanVersionResponseDto,
     PlanWriteResponseDto,
+    SavedSimulationRequestDto,
+    SavedSimulationResponseDto,
     TemplateResponseDto,
 )
 
@@ -280,6 +282,26 @@ async def create_plan_version(
 async def get_plan_version(request: Request, version_ref: str, actor: CurrentActor):
     data = await request.app.state.container.cat_assets.get_plan_version(actor, version_ref)
     return _response(request, PlanVersionResponseDto.model_validate(data).model_dump(mode="json"))
+
+
+@router.post(
+    "/plan-versions/{version_ref}/simulations",
+    response_model=ApiEnvelope[SavedSimulationResponseDto],
+    openapi_extra=CSRF_SECURITY_OPENAPI_EXTRA,
+    responses=_ERRORS,
+)
+async def simulate_plan_version(
+    request: Request,
+    version_ref: str,
+    payload: SavedSimulationRequestDto,
+    actor: CsrfActor,
+):
+    data = await request.app.state.container.cat_assets.simulate_plan_version(
+        actor, version_ref, payload=payload.model_dump(mode="python")
+    )
+    return _response(
+        request, SavedSimulationResponseDto.model_validate(data).model_dump(mode="json")
+    )
 
 
 __all__ = ["router"]

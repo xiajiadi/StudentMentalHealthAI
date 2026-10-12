@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-const transport = vi.hoisted(() => ({ requestSchoolCatAssets: vi.fn() }))
+const transport = vi.hoisted(() => ({ requestSchoolCatAssets: vi.fn(), requestSchoolCatSavedSimulation: vi.fn() }))
 vi.mock('@/services/real-api', () => ({
   RealApiError: class RealApiError extends Error {
     constructor(public code: string, message: string, public retryable = false) { super(message) }
   },
   requestSchoolCatAssets: transport.requestSchoolCatAssets,
+  requestSchoolCatSavedSimulation: transport.requestSchoolCatSavedSimulation,
 }))
 
 import {
@@ -65,6 +66,15 @@ const planVersions = [
 const planDetail = () => ({ ...flags, plan: { ...planMeta, versions: planVersions.map(({ version_ref, version_number, created_at }) => ({ version_ref, version_number, created_at })) } })
 const planVersion = () => ({ ...flags, version: { version_ref: planVersions[0]!.version_ref, version_number: planVersions[0]!.version_number, created_at: planVersions[0]!.created_at }, bank_version_ref: planVersions[0]!.bank_version_ref, config_document: configDocument() })
 const template = () => ({ ...flags, bank_document: bankDocument(), config_document: configDocument() })
+const simulation = (overrides: Record<string, unknown> = {}) => ({
+  ...flags,
+  plan_version_ref: 'CPVER_SYNTHETIC_1', bank_version_ref: 'CBVER_SYNTHETIC_2',
+  item_bank_id: bankDocument().item_bank_id, item_bank_version: bankDocument().version,
+  config_version: configDocument().config_version, n_examinees: 100, seed: configDocument().seed,
+  metrics: { bias: 0.1, rmse: 0.2, mae: 0.15, mean_test_length: 6, median_test_length: 6, mean_se: 0.3 },
+  stopping_reason_distribution: { MAX_ITEMS_REACHED: 100 },
+  ...overrides,
+})
 
 afterEach(() => vi.clearAllMocks())
 
@@ -153,6 +163,59 @@ describe('school CAT assets transport adapter', () => {
     await expect(service.getBank('../private')).rejects.toMatchObject({ code: 'VALIDATION_FAILED' })
     expect(transport.requestSchoolCatAssets).toHaveBeenCalledTimes(4)
     expect(catAssetReferencePatterns.bank.test('CBANK_SYNTHETIC_1')).toBe(true)
+  })
+
+  it('runs only a selected immutable saved plan version with the chosen supported batch', async () => {
+    transport.requestSchoolCatSavedSimulation.mockResolvedValueOnce(envelope(simulation()))
+    const result = await new SchoolCatAssetsService().simulateSavedPlanVersion(
+      'CPVER_SYNTHETIC_1', 'CBVER_SYNTHETIC_2', bankDocument(), configDocument(), 100,
+    )
+    expect(result).toMatchObject({
+      engineering_only: true, psychological_interpretation_allowed: false,
+      plan_version_ref: 'CPVER_SYNTHETIC_1', bank_version_ref: 'CBVER_SYNTHETIC_2',
+      n_examinees: 100, seed: configDocument().seed, metrics: { rmse: 0.2 },
+    })
+    expect(transport.requestSchoolCatSavedSimulation).toHaveBeenCalledOnce()
+    expect(transport.requestSchoolCatSavedSimulation).toHaveBeenCalledWith({
+      path: '/api/v1/school/cat-assets/plan-versions/CPVER_SYNTHETIC_1/simulations',
+      body: { n_examinees: 100 },
+    })
+  })
+
+  it('accepts the supported 1000 synthetic sample batch when the response count matches', async () => {
+    transport.requestSchoolCatSavedSimulation.mockResolvedValueOnce(envelope(simulation({
+      n_examinees: 1000, stopping_reason_distribution: { MAX_ITEMS_REACHED: 1000 },
+    })))
+    await expect(new SchoolCatAssetsService().simulateSavedPlanVersion(
+      'CPVER_SYNTHETIC_1', 'CBVER_SYNTHETIC_2', bankDocument(), configDocument(), 1000,
+    )).resolves.toMatchObject({ n_examinees: 1000 })
+    expect(transport.requestSchoolCatSavedSimulation).toHaveBeenCalledWith(expect.objectContaining({ body: { n_examinees: 1000 } }))
+  })
+
+  it.each([
+    ['mismatched saved plan ref', { plan_version_ref: 'CPVER_SYNTHETIC_2' }],
+    ['mismatched bank ref', { bank_version_ref: 'CBVER_SYNTHETIC_1' }],
+    ['mismatched seed', { seed: 99 }],
+    ['unknown metric', { metrics: { bias: 0, rmse: 0, mae: 0, mean_test_length: 5, median_test_length: 5, mean_se: 0, accuracy: 1 } }],
+    ['non-finite metric', { metrics: { bias: 0, rmse: Number.POSITIVE_INFINITY, mae: 0, mean_test_length: 5, median_test_length: 5, mean_se: 0 } }],
+    ['test length beyond the saved bank', { metrics: { bias: 0, rmse: 0, mae: 0, mean_test_length: 10, median_test_length: 5, mean_se: 0 } }],
+    ['incomplete stopping counts', { stopping_reason_distribution: { MAX_ITEMS_REACHED: 99 } }],
+  ])('rejects %s from saved simulation response', async (_label, changes) => {
+    transport.requestSchoolCatSavedSimulation.mockResolvedValueOnce(envelope(simulation(changes)))
+    await expect(new SchoolCatAssetsService().simulateSavedPlanVersion(
+      'CPVER_SYNTHETIC_1', 'CBVER_SYNTHETIC_2', bankDocument(), configDocument(), 100,
+    )).rejects.toMatchObject({ code: 'API_INVALID_RESPONSE' })
+  })
+
+  it('rejects unsupported batches and unsafe saved refs before transport', async () => {
+    const service = new SchoolCatAssetsService()
+    await expect(service.simulateSavedPlanVersion(
+      'CPVER_SYNTHETIC_1', 'CBVER_SYNTHETIC_2', bankDocument(), configDocument(), 101 as 100,
+    )).rejects.toMatchObject({ code: 'VALIDATION_FAILED' })
+    await expect(service.simulateSavedPlanVersion(
+      'CPVER_bad/ref', 'CBVER_SYNTHETIC_2', bankDocument(), configDocument(), 100,
+    )).rejects.toMatchObject({ code: 'VALIDATION_FAILED' })
+    expect(transport.requestSchoolCatSavedSimulation).not.toHaveBeenCalled()
   })
 
   it('generates a non-reused idempotency key for each user-created operation', () => {

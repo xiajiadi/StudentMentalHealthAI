@@ -709,6 +709,19 @@ export class RealApiProvider implements FrontendApi {
   private activeSchoolContext: SchoolRoleContext | null = null
   private readonly reviewCases = new Map<string, ReviewCase>()
 
+  async requestSchoolCatSavedSimulation<T>(input: {
+    path: string; body: Record<string, unknown>
+  }): Promise<ApiEnvelope<T>> {
+    if (!/^\/api\/v1\/school\/cat-assets\/plan-versions\/CPVER_[A-Za-z0-9][A-Za-z0-9_.-]{0,122}\/simulations$/.test(input.path)) {
+      throw new RealApiError('API_INVALID_REQUEST', '保存方案的模拟请求地址无效。')
+    }
+    await this.ensureCsrfToken()
+    return unwrap<T>(() => apiClient.request({
+      method: 'POST', url: input.path, body: input.body,
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrfToken! },
+    }))
+  }
+
   async requestSchoolCatAssets<T>(input: {
     method: 'GET' | 'POST' | 'PATCH'; path: string; body?: Record<string, unknown>
     query?: Record<string, unknown>; idempotencyKey?: string
@@ -1414,3 +1427,7 @@ export const requestSchoolCatAssets = <T>(input: {
   method: 'GET' | 'POST' | 'PATCH'; path: string; body?: Record<string, unknown>
   query?: Record<string, unknown>; idempotencyKey?: string
 }): Promise<ApiEnvelope<T>> => realApiProvider.requestSchoolCatAssets<T>(input)
+
+export const requestSchoolCatSavedSimulation = <T>(input: {
+  path: string; body: Record<string, unknown>
+}): Promise<ApiEnvelope<T>> => realApiProvider.requestSchoolCatSavedSimulation<T>(input)

@@ -12,7 +12,10 @@ from smhai_backend.core.errors import ErrorCode, error
 from smhai_backend.core.request_context import get_request_context
 from smhai_backend.domains.cat_assets.service import MAX_ASSET_DOCUMENT_BYTES
 from smhai_backend.domains.models import Actor, BackendRole
-from smhai_backend.integrations.cat_assets import HttpCatAssetsClient
+from smhai_backend.integrations.cat_assets import (
+    HttpCatAssetsClient,
+    HttpCatSavedSimulationClient,
+)
 
 _BANK_SCHEMA = "school_cat_bank_document.v1"
 _PLAN_SCHEMA = "school_cat_config_document.v1"
@@ -43,9 +46,15 @@ def _iso(value: Any) -> str:
 class SchoolCatAssetsPersistenceAdapter:
     """Short-UOW operations; no database transaction spans CAT validation calls."""
 
-    def __init__(self, persistence: Any, client: HttpCatAssetsClient | None) -> None:
+    def __init__(
+        self,
+        persistence: Any,
+        client: HttpCatAssetsClient | None,
+        simulation_client: HttpCatSavedSimulationClient | None = None,
+    ) -> None:
         self._directory = SchoolDirectoryPersistenceAdapter(persistence)
         self._client = client
+        self._simulation_client = simulation_client
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._directory, name)
@@ -135,6 +144,15 @@ class SchoolCatAssetsPersistenceAdapter:
                 retryable=True,
             )
         return self._client
+
+    def _require_simulation_client(self) -> HttpCatSavedSimulationClient:
+        if self._simulation_client is None:
+            raise error(
+                ErrorCode.DEPENDENCY_UNAVAILABLE,
+                detail="CAT saved-version simulation is not configured",
+                retryable=True,
+            )
+        return self._simulation_client
 
     async def school_cat_assets_template(self, actor: Actor) -> dict[str, Any]:
         context = get_request_context()
@@ -1138,6 +1156,137 @@ class SchoolCatAssetsPersistenceAdapter:
             result = await self._plan_detail(uow, actor, plan)
             result["version_ref"] = _asset_ref("CPVER", version)
             return result
+
+    async def school_cat_assets_simulate_plan_version(
+        self, actor: Actor, version_ref: str, n_examinees: int
+    ) -> dict[str, Any]:
+        """Run CAT against one immutable saved version without holding a UOW."""
+
+        self._require_actor(actor)
+        m = self._db_models
+        async with self._uow() as uow:
+            await self._authorize(uow, actor, self._utc_now())
+            plan_version = await self._plan_version(uow, actor, version_ref)
+            plan = await uow.session.scalar(
+                self._select(m.SchoolCatPlan).where(
+                    m.SchoolCatPlan.id == plan_version.plan_id,
+                    m.SchoolCatPlan.school_id == actor.school_id,
+                )
+            )
+            if plan is None:
+                raise error(ErrorCode.RESOURCE_NOT_FOUND, detail=_NOT_FOUND)
+            if plan.status != "ACTIVE":
+                raise error(
+                    ErrorCode.WORKFLOW_CONFLICT,
+                    detail="archived CAT plan cannot be simulated",
+                )
+            bank_version = await uow.session.scalar(
+                self._select(m.SchoolCatItemBankVersion).where(
+                    m.SchoolCatItemBankVersion.id == plan_version.bank_version_id,
+                    m.SchoolCatItemBankVersion.school_id == actor.school_id,
+                )
+            )
+            if bank_version is None:
+                raise error(ErrorCode.RESOURCE_NOT_FOUND, detail=_NOT_FOUND)
+            bank = await uow.session.scalar(
+                self._select(m.SchoolCatItemBank).where(
+                    m.SchoolCatItemBank.id == bank_version.bank_id,
+                    m.SchoolCatItemBank.school_id == actor.school_id,
+                )
+            )
+            if bank is None:
+                raise error(ErrorCode.RESOURCE_NOT_FOUND, detail=_NOT_FOUND)
+            if bank.status != "ACTIVE":
+                raise error(
+                    ErrorCode.WORKFLOW_CONFLICT,
+                    detail="archived CAT bank cannot be simulated",
+                )
+            bank_document = self._decrypt(uow, bank_version, _BANK_SCHEMA)
+            config_document = self._decrypt(uow, plan_version, _PLAN_SCHEMA)
+            plan_version_id = plan_version.id
+            plan_id = plan.id
+            bank_version_id = bank_version.id
+            resolved_plan_version_ref = _asset_ref("CPVER", plan_version)
+            resolved_bank_version_ref = _asset_ref("CBVER", bank_version)
+
+        client = self._require_simulation_client()
+        context = get_request_context()
+        try:
+            result = await client.simulate_saved_assets(
+                bank_document,
+                config_document,
+                n_examinees,
+                context=context,
+            )
+        except Exception:
+            # A failed run still must not disclose status to a role or resource
+            # scope that was revoked while CAT computation was in progress.
+            await self._recheck_simulation_scope(actor, version_ref)
+            raise
+
+        async with self._uow() as uow:
+            account_id, _role_id = await self._authorize(uow, actor, self._utc_now())
+            current_plan_version = await self._plan_version(uow, actor, version_ref)
+            if (
+                current_plan_version.id != plan_version_id
+                or current_plan_version.plan_id != plan_id
+                or current_plan_version.bank_version_id != bank_version_id
+            ):
+                raise error(ErrorCode.RESOURCE_NOT_FOUND, detail=_NOT_FOUND)
+            await self._require_active_simulation_parents(uow, actor, current_plan_version)
+            await self._audit_resource(
+                uow,
+                account_id,
+                "school_cat_assets.saved_simulation_completed",
+                _PLAN_VERSION_RESOURCE,
+                current_plan_version.public_id,
+                context.trace_id,
+            )
+        return {
+            **result,
+            "plan_version_ref": resolved_plan_version_ref,
+            "bank_version_ref": resolved_bank_version_ref,
+        }
+
+    async def _require_active_simulation_parents(
+        self, uow: Any, actor: Actor, plan_version: Any
+    ) -> tuple[Any, Any]:
+        m = self._db_models
+        plan = await uow.session.scalar(
+            self._select(m.SchoolCatPlan).where(
+                m.SchoolCatPlan.id == plan_version.plan_id,
+                m.SchoolCatPlan.school_id == actor.school_id,
+            )
+        )
+        if plan is None:
+            raise error(ErrorCode.RESOURCE_NOT_FOUND, detail=_NOT_FOUND)
+        if plan.status != "ACTIVE":
+            raise error(ErrorCode.WORKFLOW_CONFLICT, detail="archived CAT plan cannot be simulated")
+        bank_version = await uow.session.scalar(
+            self._select(m.SchoolCatItemBankVersion).where(
+                m.SchoolCatItemBankVersion.id == plan_version.bank_version_id,
+                m.SchoolCatItemBankVersion.school_id == actor.school_id,
+            )
+        )
+        if bank_version is None:
+            raise error(ErrorCode.RESOURCE_NOT_FOUND, detail=_NOT_FOUND)
+        bank = await uow.session.scalar(
+            self._select(m.SchoolCatItemBank).where(
+                m.SchoolCatItemBank.id == bank_version.bank_id,
+                m.SchoolCatItemBank.school_id == actor.school_id,
+            )
+        )
+        if bank is None:
+            raise error(ErrorCode.RESOURCE_NOT_FOUND, detail=_NOT_FOUND)
+        if bank.status != "ACTIVE":
+            raise error(ErrorCode.WORKFLOW_CONFLICT, detail="archived CAT bank cannot be simulated")
+        return plan, bank
+
+    async def _recheck_simulation_scope(self, actor: Actor, version_ref: str) -> None:
+        async with self._uow() as uow:
+            await self._authorize(uow, actor, self._utc_now())
+            plan_version = await self._plan_version(uow, actor, version_ref)
+            await self._require_active_simulation_parents(uow, actor, plan_version)
 
     async def school_cat_assets_get_plan_version(
         self, actor: Actor, version_ref: str

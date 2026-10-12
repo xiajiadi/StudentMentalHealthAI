@@ -14,6 +14,38 @@ afterEach(() => {
 })
 
 describe('CAT management shared transport', () => {
+  it('uses CSRF without a mutation key for stateless saved-version computation', async () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'http://127.0.0.1:8088')
+    const paths: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (request: TestRequest) => {
+      const path = new URLConstructor(request.url).pathname
+      paths.push(path)
+      if (path === '/api/v1/auth/csrf') return envelope({ csrf_token: 'csrf_saved_test' })
+      expect(path).toBe('/api/v1/school/cat-assets/plan-versions/CPVER_demo/simulations')
+      expect(request.method).toBe('POST')
+      expect(request.credentials).toBe('include')
+      expect(request.headers.get('X-CSRF-Token')).toBe('csrf_saved_test')
+      expect(request.headers.get('Idempotency-Key')).toBeNull()
+      expect(await request.json()).toEqual({ n_examinees: 100 })
+      return envelope({ n_examinees: 100 })
+    }))
+    const { RealApiProvider } = await import('@/services/real-api')
+    await expect(new RealApiProvider().requestSchoolCatSavedSimulation({
+      path: '/api/v1/school/cat-assets/plan-versions/CPVER_demo/simulations', body: { n_examinees: 100 },
+    })).resolves.toMatchObject({ data: { n_examinees: 100 } })
+    expect(paths).toHaveLength(2)
+  })
+
+  it('rejects non-plan-version simulation paths before requesting CSRF', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const { RealApiProvider } = await import('@/services/real-api')
+    await expect(new RealApiProvider().requestSchoolCatSavedSimulation({
+      path: '/api/v1/school/cat-assets/bank-versions/CBVER_demo/simulations', body: { n_examinees: 100 },
+    })).rejects.toMatchObject({ code: 'API_INVALID_REQUEST' })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('obtains CSRF for one explicit simulation request and preserves cookies', async () => {
     vi.stubEnv('VITE_API_BASE_URL', 'http://127.0.0.1:8088')
     const paths: string[] = []

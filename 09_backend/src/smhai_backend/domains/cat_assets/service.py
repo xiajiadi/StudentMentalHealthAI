@@ -14,6 +14,8 @@ from smhai_backend.domains.cat_assets.schemas import (
     PlanCreateRequest,
     PlanPatchRequest,
     PlanVersionRequest,
+    SavedSimulationRequestDto,
+    SavedSimulationResponseDto,
 )
 from smhai_backend.domains.models import Actor, BackendRole
 
@@ -213,6 +215,22 @@ class SchoolCatAssetService:
     async def get_plan_version(self, actor: Actor, version_ref: str):
         self._require_specialist(actor)
         return await self.persistence.school_cat_assets_get_plan_version(actor, version_ref)
+
+    async def simulate_plan_version(self, actor: Actor, version_ref: str, *, payload):
+        self._require_specialist(actor)
+        request = self._request(SavedSimulationRequestDto, **payload)
+        result = await self.persistence.school_cat_assets_simulate_plan_version(
+            actor, version_ref, request.n_examinees
+        )
+        try:
+            return SavedSimulationResponseDto.model_validate(result, strict=True).model_dump(
+                mode="json"
+            )
+        except ValidationError as exc:
+            raise error(
+                ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                detail="CAT saved-version simulation response is invalid",
+            ) from exc
 
 
 __all__ = ["MAX_ASSET_DOCUMENT_BYTES", "SchoolCatAssetService"]

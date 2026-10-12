@@ -139,54 +139,76 @@ def _run_simulation_captured(
 ) -> tuple[SimulationSummary | None, Exception | None]:
     try:
         return _run_simulation(runtime, n_examinees), None
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - provider failures must be captured after cancellation.
         # Return failures as values so a cancelled request's shielded future
         # cannot emit an unobserved exception after the client has disconnected.
         return None, exc
 
 
-def create_management_router(runtime: CatManagementRuntime) -> APIRouter:
+def _release_simulation_lock_after_completion(
+    task: asyncio.Task[Any], simulation_lock: Lock
+) -> None:
+    try:
+        # Retrieve the outcome even when the original HTTP request was cancelled.
+        task.result()
+    except asyncio.CancelledError:
+        pass
+    finally:
+        simulation_lock.release()
+
+
+async def _run_in_simulation_slot(
+    simulation_lock: Lock,
+    worker: Any,
+    *args: Any,
+    unavailable_detail: str,
+) -> Any:
+    if not simulation_lock.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="synthetic_cat_simulation_busy")
+
+    task = asyncio.create_task(asyncio.to_thread(worker, *args))
+    release_on_completion = False
+    try:
+        try:
+            return await asyncio.shield(task)
+        except asyncio.CancelledError:
+            # CPU work continues in its thread after HTTP cancellation. Keep the
+            # shared admission lock until that thread really completes.
+            task.add_done_callback(
+                lambda completed: _release_simulation_lock_after_completion(
+                    completed, simulation_lock
+                )
+            )
+            release_on_completion = True
+            raise
+        except Exception:  # noqa: BLE001 - worker failures map to a stable API error.
+            raise HTTPException(status_code=503, detail=unavailable_detail) from None
+    finally:
+        if not release_on_completion:
+            simulation_lock.release()
+
+
+def create_management_router(
+    runtime: CatManagementRuntime, simulation_lock: Lock | None = None
+) -> APIRouter:
     router = APIRouter(prefix="/internal/cat/management", tags=["cat-management"])
-    simulation_lock = Lock()
+    if simulation_lock is None:
+        simulation_lock = Lock()
 
     @router.get("/catalog", operation_id="catManagementCatalog")
     async def get_catalog() -> dict[str, Any]:
         return _catalog(runtime)
 
-    def release_cancelled_simulation(
-        task: asyncio.Task[tuple[SimulationSummary | None, Exception | None]],
-    ) -> None:
-        try:
-            # Retrieving the result prevents an abandoned HTTP request from
-            # leaving any worker-task outcome unobserved on the event loop.
-            task.result()
-        except asyncio.CancelledError:
-            pass
-        finally:
-            simulation_lock.release()
-
     @router.post("/simulations", operation_id="catManagementSimulation")
     async def run_simulation(request: SimulationRequest) -> dict[str, Any]:
         _require_synthetic_runtime(runtime)
-        if not simulation_lock.acquire(blocking=False):
-            raise HTTPException(status_code=409, detail="synthetic_cat_simulation_busy")
-
-        simulation_task = asyncio.create_task(
-            asyncio.to_thread(_run_simulation_captured, runtime, request.n_examinees)
+        summary, simulation_error = await _run_in_simulation_slot(
+            simulation_lock,
+            _run_simulation_captured,
+            runtime,
+            request.n_examinees,
+            unavailable_detail="synthetic_cat_simulation_unavailable",
         )
-        release_on_completion = False
-        try:
-            summary, simulation_error = await asyncio.shield(simulation_task)
-        except asyncio.CancelledError:
-            # A disconnected request does not make the still-running CPU work available twice.
-            simulation_task.add_done_callback(release_cancelled_simulation)
-            release_on_completion = True
-            raise
-        except Exception:
-            raise HTTPException(status_code=503, detail="synthetic_cat_simulation_unavailable") from None
-        finally:
-            if not release_on_completion:
-                simulation_lock.release()
 
         if simulation_error is not None or summary is None:
             raise HTTPException(status_code=503, detail="synthetic_cat_simulation_unavailable")

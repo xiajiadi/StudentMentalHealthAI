@@ -13,6 +13,40 @@ GPU and process entries below are historical; verify live identities before acti
 
 ## Latest resumed increment
 
+- Saved-version simulation source is implemented; native HTTP checks pass at
+  logs/saved-cat-simulation-http-a1b314eb80c54e90801c3e06994ac0f6.json:
+  exact immutable versions, repeat equality, changed max-items6 to3 changes actual
+  mean length6 to3, N1000 completes in93.719s, shared CPU admission409, strict
+  role/school/CSRF/input denials and unchanged live CAT session count. Mid-run
+  parent archive denies computed results and emits no success audit at
+  logs/saved-cat-midrun-archive-fd7722b8dfc34be7af678039989b74c4.json.
+  Root fresh suites: Backend435, CAT63, Frontend204 plus lint/build pass.
+  Browser attempt20261012T171755Z-10af77c5a6034c149f247ea111bc637c failed at
+  synthetic_assets_prepared: harness expected201 for plan-version creation, but
+  the implemented route correctly returns200. Additional harness key mapping and
+  tab navigation defects were repaired. Native reproduction then exposed a real
+  initial-load/tab-switch race: switching tabs invalidated pending bank-detail
+  loading. Tabs now remain locked through initial loading; deferred-response
+  regression passes. Latest attempt20261012T174631Z-a7395a541013477ca6cca9ba4ca0fa60
+  selects the exact saved version and completes actualN100, but fails the UI
+  aggregate check because the harness expects source labels inside the metrics
+  element instead of the adjacent binding element. Harness correction and native
+  comparator was corrected without weakening the metrics/source checks. Latest
+  native browser run20261012T175313Z-9da075fdc5a0432f8076d3edcdf23b04 passes all17
+  stages: exact saved history selection, actualN100/API-DOM aggregates, same-version
+  repeat, unsaved-form isolation, history-result clearing, desktop/mobile and logout.
+  Root inspected both masked screenshots. Harness offline Python14/Node12 pass;
+  independent source review found no conclusion-changing authorization/UOW/CPU
+  gate issue. Saved simulation slice ENGINEERING_PASS; whole goal remains ACTIVE.
+  Original latest apps:
+  Backend exec43932/PID48084, CAT exec81073/PID7508, Frontend exec90451/PID36496;
+  external school-processes.json is the live ownership source. Schema remains0008.
+- Following design keeps exact saved-version activation/task/session bindings
+  additive and synthetic-only. Existing enrollment revocation still denies access;
+  archival of assets must preserve the original version of an already authorized
+  in-progress session. No activation, task binding or dynamic CAT start is yet
+  implemented; no L2/L3 publication or professional approval is implied.
+
 - School synthetic CAT asset/version increment now native0008 in original3308.
   Four additive tables;32 old business tables/1494 stored rows preserved exactly;
   sealed0007 pre-DDL backup retained. API CRUD/replay/history/race/plan-binding/

@@ -1,4 +1,4 @@
-import { RealApiError, requestSchoolCatAssets } from '@/services/real-api'
+import { RealApiError, requestSchoolCatAssets, requestSchoolCatSavedSimulation } from '@/services/real-api'
 
 type UnknownRecord = Record<string, unknown>
 type JsonRecord = { [key: string]: unknown }
@@ -100,6 +100,37 @@ export interface CatBankVersion extends CatBankVersionMetadata {
 
 export interface CatPlanVersion extends CatPlanVersionMetadata {
   config_document: CatConfigDocument
+}
+
+export const CAT_SAVED_SIMULATION_BATCHES = [100, 1000] as const
+export type CatSavedSimulationBatch = typeof CAT_SAVED_SIMULATION_BATCHES[number]
+export type CatStopReason =
+  | 'SE_THRESHOLD_REACHED'
+  | 'MAX_ITEMS_REACHED'
+  | 'ITEM_BANK_EXHAUSTED'
+  | 'MANUAL_TERMINATION'
+  | 'ERROR'
+  | 'NOT_STOPPED'
+
+export interface CatSavedPlanSimulation {
+  engineering_only: true
+  psychological_interpretation_allowed: false
+  plan_version_ref: string
+  bank_version_ref: string
+  item_bank_id: string
+  item_bank_version: string
+  config_version: string
+  n_examinees: CatSavedSimulationBatch
+  seed: number
+  metrics: {
+    bias: number
+    rmse: number
+    mae: number
+    mean_test_length: number
+    median_test_length: number
+    mean_se: number
+  }
+  stopping_reason_distribution: Partial<Record<CatStopReason, number>>
 }
 
 export type CatAssetVersionSummary = CatBankVersionMetadata | CatPlanVersionMetadata
@@ -424,10 +455,79 @@ function mapPlanVersion(value: unknown): CatPlanVersion {
   return { ...metadata, config_document: mapConfigDocument(source.config_document) }
 }
 
+const SAVED_SIMULATION_METRICS = ['bias', 'rmse', 'mae', 'mean_test_length', 'median_test_length', 'mean_se'] as const
+const SAVED_SIMULATION_REASONS: readonly CatStopReason[] = [
+  'SE_THRESHOLD_REACHED', 'MAX_ITEMS_REACHED', 'ITEM_BANK_EXHAUSTED', 'MANUAL_TERMINATION', 'ERROR', 'NOT_STOPPED',
+]
+
+function mapSavedPlanSimulation(
+  value: unknown,
+  expected: {
+    planVersionRef: string
+    bankVersionRef: string
+    bankDocument: CatBankDocument
+    configDocument: CatConfigDocument
+    batch: CatSavedSimulationBatch
+  },
+): CatSavedPlanSimulation {
+  const source = record(value)
+  requireFlags(source)
+  if (!exactKeys(source, [
+    'engineering_only', 'psychological_interpretation_allowed', 'plan_version_ref', 'bank_version_ref',
+    'item_bank_id', 'item_bank_version', 'config_version', 'n_examinees', 'seed', 'metrics',
+    'stopping_reason_distribution',
+  ])) return invalid()
+  const planVersionRef = text(source, 'plan_version_ref', 128)
+  const bankVersionRef = text(source, 'bank_version_ref', 128)
+  const itemBankId = text(source, 'item_bank_id', 160)
+  const itemBankVersion = text(source, 'item_bank_version', 160)
+  const configVersion = text(source, 'config_version', 160)
+  const nExaminees = source.n_examinees
+  const seed = integer(source, 'seed', 0, 4294967295)
+  if (!PLAN_VERSION_REF.test(planVersionRef) || planVersionRef !== expected.planVersionRef
+    || !BANK_VERSION_REF.test(bankVersionRef) || bankVersionRef !== expected.bankVersionRef
+    || itemBankId !== expected.bankDocument.item_bank_id || itemBankVersion !== expected.bankDocument.version
+    || configVersion !== expected.configDocument.config_version || nExaminees !== expected.batch
+    || seed !== expected.configDocument.seed) return invalid()
+
+  const metricSource = record(source.metrics)
+  if (!exactKeys(metricSource, [...SAVED_SIMULATION_METRICS])) return invalid()
+  const metrics = Object.fromEntries(SAVED_SIMULATION_METRICS.map((key) => [key, finite(metricSource, key)])) as CatSavedPlanSimulation['metrics']
+  if (metrics.rmse < 0 || metrics.mae < 0 || metrics.mean_test_length <= 0
+    || metrics.median_test_length <= 0 || metrics.mean_test_length > expected.bankDocument.items.length
+    || metrics.median_test_length > expected.bankDocument.items.length || metrics.mean_se < 0) return invalid()
+
+  const stopSource = record(source.stopping_reason_distribution)
+  const stops: Partial<Record<CatStopReason, number>> = {}
+  for (const [reason, count] of Object.entries(stopSource)) {
+    if (!SAVED_SIMULATION_REASONS.includes(reason as CatStopReason)
+      || typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) return invalid()
+    stops[reason as CatStopReason] = count
+  }
+  if (Object.keys(stops).length === 0 || Object.values(stops).reduce((sum, count) => sum + (count ?? 0), 0) !== expected.batch) return invalid()
+  return {
+    engineering_only: true,
+    psychological_interpretation_allowed: false,
+    plan_version_ref: planVersionRef,
+    bank_version_ref: bankVersionRef,
+    item_bank_id: itemBankId,
+    item_bank_version: itemBankVersion,
+    config_version: configVersion,
+    n_examinees: expected.batch,
+    seed,
+    metrics,
+    stopping_reason_distribution: stops,
+  }
+}
+
 type CatAssetRequest = Parameters<typeof requestSchoolCatAssets>[0]
+type CatSavedSimulationRequest = Parameters<typeof requestSchoolCatSavedSimulation>[0]
 
 const unwrap = async (request: CatAssetRequest): Promise<unknown> =>
   (await requestSchoolCatAssets<unknown>(request)).data
+
+const unwrapSavedSimulation = async (request: CatSavedSimulationRequest): Promise<unknown> =>
+  (await requestSchoolCatSavedSimulation<unknown>(request)).data
 
 const pathRef = (reference: string, pattern: RegExp): string => {
   if (!pattern.test(reference)) throw new RealApiError('VALIDATION_FAILED', '题库或方案编号无效。')
@@ -596,6 +696,29 @@ export class SchoolCatAssetsService {
     return mapPlanVersion(await unwrap({
       method: 'GET', path: `/api/v1/school/cat-assets/plan-versions/${pathRef(versionRef, PLAN_VERSION_REF)}`,
     }))
+  }
+
+  async simulateSavedPlanVersion(
+    planVersionRef: string,
+    bankVersionRef: string,
+    bankDocument: CatBankDocument,
+    configDocument: CatConfigDocument,
+    batch: CatSavedSimulationBatch,
+  ): Promise<CatSavedPlanSimulation> {
+    const savedBankDocument = mapBankDocument(bankDocument)
+    const savedConfigDocument = mapConfigDocument(configDocument, savedBankDocument)
+    if (!CAT_SAVED_SIMULATION_BATCHES.includes(batch)) {
+      throw new RealApiError('VALIDATION_FAILED', '请选择支持的模拟样本量。')
+    }
+    const savedPlanVersionRef = pathRef(planVersionRef, PLAN_VERSION_REF)
+    pathRef(bankVersionRef, BANK_VERSION_REF)
+    const response = await unwrapSavedSimulation({
+      path: `/api/v1/school/cat-assets/plan-versions/${savedPlanVersionRef}/simulations`,
+      body: { n_examinees: batch },
+    })
+    return mapSavedPlanSimulation(response, {
+      planVersionRef, bankVersionRef, bankDocument: savedBankDocument, configDocument: savedConfigDocument, batch,
+    })
   }
 }
 
