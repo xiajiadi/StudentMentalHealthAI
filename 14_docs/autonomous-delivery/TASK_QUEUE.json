@@ -13,45 +13,46 @@
       "priority": 100,
       "depends_on": [],
       "status": "DONE",
-      "owner": "autonomous_execution_lead",
+      "owner": null,
       "attempts": 0,
       "acceptance": [
-        "源码能力逐项分级",
-        "实际测试命令与结果",
-        "数据库/运行环境/素材阻塞证据"
+        "基线、角色和模块能力范围已记录在自主交付基线报告。",
+        "历史审计结论与测试边界可追溯；不表示后续业务阶段或整体交付已完成。"
       ],
       "evidence": [],
       "commits": [
         "2f29f5e"
       ],
-      "next_action": "Initial capability audit accepted; product and phase acceptance remain open.",
+      "next_action": "窄范围基线审计保留为历史完成项；后续按当前独立任务推进。",
       "checkpoint_references": [
         "14_docs/autonomous-delivery/AUTONOMOUS_BASELINE_REPORT.md"
-      ]
+      ],
+      "previous_owner": "autonomous_execution_lead"
     },
     {
       "id": "runner",
-      "title": "实现并独立验证任务队列、恢复和续跑",
+      "title": "核验任务队列续跑与恢复边界",
       "priority": 99,
       "depends_on": [],
-      "status": "IN_PROGRESS",
-      "owner": "root",
-      "attempts": 0,
+      "status": "READY",
+      "owner": null,
+      "attempts": 2,
       "acceptance": [
-        "互斥任务占用",
-        "依赖和独立复核门禁",
-        "有界失败及中断恢复",
-        "定向测试与独立审查"
+        "互斥租约、依赖门禁、独立审查和有界失败由当前Runner测试覆盖。",
+        "本Chat中的heartbeat自动续跑/恢复已有实际观察证据；尚未证明独立后台Runner跨OS或操作系统重启后的持续保证。",
+        "以当前源码和Runner正常证据流程完成可追溯交付。"
       ],
       "evidence": [],
       "commits": [
         "2f29f5e"
       ],
-      "next_action": "Verify first actual heartbeat and recovery checkpoint; 17 tests and independent review passed.",
+      "next_action": "记录本Chat已观察到的heartbeat自动续跑/恢复证据；独立后台Runner跨OS或操作系统重启后的持续保证仍未证明。",
       "checkpoint_references": [
+        "13_deployment/AUTONOMOUS_RUNNER.md",
         "13_deployment/tests/test_autonomous_runner.py",
-        "14_docs/autonomous-delivery/AUTONOMOUS_BASELINE_REPORT.md"
-      ]
+        "14_docs/autonomous-delivery/CURRENT_STATE.md"
+      ],
+      "author": "root"
     },
     {
       "id": "environment",
@@ -60,18 +61,19 @@
       "depends_on": [
         "foundation_audit"
       ],
-      "status": "REVIEW",
+      "status": "READY",
       "owner": null,
       "attempts": 0,
       "acceptance": [
-        "完整业务操作与权限限制",
-        "定向测试、真实集成证据",
-        "独立审查及可追溯提交"
+        "在独立目标上恢复0009快照，按存储值核对业务表及加密字段，保留源库和旧恢复目标。",
+        "验证恢复目标数据库及Backend/Frontend/CAT的进程身份、重启和代表性四角色浏览器流程。",
+        "记录支持范围；跨用户DPAPI迁移、操作系统重启和最终安装包另行验证。"
       ],
       "evidence": [],
       "commits": [],
-      "next_action": "Review restored local services and real API outcomes; no new migrations against legacy schema.",
+      "next_action": "Root复核targetE 0009导入、39表/2937行保留、应用重启和四角色/CAT恢复证据；这些结果不代表跨用户可移植、OS重启或完整安装器通过。",
       "checkpoint_references": [
+        "14_docs/autonomous-delivery/SCHOOL_RECOVERY.md",
         "14_docs/autonomous-delivery/CURRENT_STATE.md"
       ]
     },
@@ -82,21 +84,28 @@
       "depends_on": [
         "foundation_audit"
       ],
-      "status": "IN_PROGRESS",
-      "owner": "autonomous_execution_lead/phase1_app_audit",
+      "status": "READY",
+      "owner": null,
       "attempts": 0,
       "acceptance": [
-        "完整业务操作与权限限制",
-        "定向测试、真实集成证据",
-        "独立审查及可追溯提交"
+        "当前学校上下文及持久化角色、学校、主体和有效期均由Backend重新授权。",
+        "跨校/跨角色拒绝、撤销后拒绝、CSRF/幂等和最小披露由当前接口/浏览器证据覆盖。",
+        "0009任务启动、会话读写与enrollment/roster撤销使用同一当前授权锁序；保留冻结assessment.v1和旧记录读取边界。",
+        "在当前集成源上补齐独立复核及Runner可追溯证据，不把历史Worker/Lead分配视为活动所有权。"
       ],
       "evidence": [],
       "commits": [],
-      "next_action": "Independent review of isolated Worker commit, negative authorization tests and static migration."
+      "next_action": "Root复核最新0009当前角色/SELF/roster/task授权及start-vs-revoke并发证据，并在当前集成源提交新鲜Runner证据；历史phase1 owner不是当前活动owner。",
+      "previous_owner": "autonomous_execution_lead/phase1_app_audit",
+      "checkpoint_references": [
+        "14_docs/autonomous-delivery/SCHOOL_TASKS.md",
+        "14_docs/autonomous-delivery/SYNTHETIC_CAT_TASK_BINDING.md",
+        "14_docs/autonomous-delivery/CURRENT_STATE.md"
+      ]
     },
     {
       "id": "ai_boundary",
-      "title": "定位正常支持的 Claim Boundary 失败并保持所有门禁",
+      "title": "复核大学支持边界与无证据拒答",
       "priority": 94,
       "depends_on": [
         "foundation_audit"
@@ -105,13 +114,18 @@
       "owner": null,
       "attempts": 0,
       "acceptance": [
-        "完整业务操作与权限限制",
-        "定向测试、真实集成证据",
-        "独立审查及可追溯提交"
+        "独立大学过滤在当前无合格语料时返回真实ABSTAIN；合成危机fixture走现有CRISIS_ROUTE。",
+        "普通大学有根据回答须等具备资格且通过权利、内容与人群审核的语料；当前尚无此类合格语料。",
+        "保留Safety、Claim Boundary、引用校验和候选正文不落盘，不添加自动重试、修补或fallback。"
       ],
       "evidence": [],
       "commits": [],
-      "next_action": "Fresh real request still returns 502; obtain sanitized stage/category evidence before another model attempt."
+      "next_action": "保留并复核现有ABSTAIN及合成危机fixture证据；普通大学有根据回答因当前无eligible已审核语料尚未验收。不得将早期502/Claim拒绝表述为当前路径阻断，也不重复模型请求或放宽门禁。",
+      "checkpoint_references": [
+        "14_docs/autonomous-delivery/AI_CONVERSATIONS.md",
+        "14_docs/autonomous-delivery/UNIVERSITY_KNOWLEDGE_INTAKE.md",
+        "14_docs/autonomous-delivery/CURRENT_STATE.md"
+      ]
     },
     {
       "id": "assets",
@@ -120,17 +134,20 @@
       "depends_on": [
         "foundation_audit"
       ],
-      "status": "IN_PROGRESS",
-      "owner": "root",
+      "status": "READY",
+      "owner": null,
       "attempts": 0,
       "acceptance": [
-        "完整业务操作与权限限制",
-        "定向测试、真实集成证据",
-        "独立审查及可追溯提交"
+        "逐项确认剩余首页/Heartbridge/品牌图片、字体和图标来源及使用授权。",
+        "未确认项不得进入正式打包；保留原始用户素材及既有未跟踪基线文件。"
       ],
       "evidence": [],
       "commits": [],
-      "next_action": "Assessment 28 original covers complete; finish home/heartbridge/brand provenance before final packaging."
+      "next_action": "完成首页、Heartbridge及剩余品牌资源的来源/许可核对；保持10_frontend/output/和public/assets/heartbridge/login-mark-v2.png原样，不作未经证实的许可声明。",
+      "previous_owner": "root",
+      "checkpoint_references": [
+        "14_docs/autonomous-delivery/CURRENT_STATE.md"
+      ]
     },
     {
       "id": "cat_platform",
@@ -139,17 +156,25 @@
       "depends_on": [
         "foundation_audit"
       ],
-      "status": "BACKLOG",
+      "status": "READY",
       "owner": null,
       "attempts": 0,
       "acceptance": [
-        "完整业务操作与权限限制",
-        "定向测试、真实集成证据",
-        "独立审查及可追溯提交"
+        "真实合成题库/方案版本CRUD、精确版本历史和并发/权限/CSRF检查。",
+        "固定种子的工程模拟验证真实API与聚合结果；不引入诊断或效度结论。",
+        "任务/会话绑定精确保存版本；CAT进程重启后从加密回答恢复同一版本及答题顺序。",
+        "在最终集成源上复核0009兼容、原D3 fixture隔离及独立测试/证据。"
       ],
       "evidence": [],
       "commits": [],
-      "next_action": "合成题库版本、CAT配置、算法和模拟质量"
+      "next_action": "整合并复核当前0009题库、固定种子模拟、SAVED_VERSION任务与targetE恢复CAT证据，补当前源/提交的独立复核记录；本工程PASS不表示心理测量学效度。",
+      "checkpoint_references": [
+        "14_docs/autonomous-delivery/SYNTHETIC_CAT_MANAGEMENT.md",
+        "14_docs/autonomous-delivery/SCHOOL_CAT_ASSET_MANAGEMENT.md",
+        "14_docs/autonomous-delivery/SAVED_CAT_VERSION_EXECUTION.md",
+        "14_docs/autonomous-delivery/SYNTHETIC_CAT_TASK_BINDING.md",
+        "14_docs/autonomous-delivery/CURRENT_STATE.md"
+      ]
     },
     {
       "id": "school_operations",
@@ -162,13 +187,18 @@
       "owner": null,
       "attempts": 0,
       "acceptance": [
-        "完整业务操作与权限限制",
-        "定向测试、真实集成证据",
-        "独立审查及可追溯提交"
+        "同校管理员学校/班级/成员命名、合成批量导入、原子回滚/重放与一次激活。",
+        "管理员按班级发布、分配、撤销任务；操作元数据不泄漏个体心理正文。",
+        "当前0009源的真实API和浏览器证明与历史0006目录证据分别记录。"
       ],
       "evidence": [],
       "commits": [],
-      "next_action": "管理员组织、导入、账号和测评任务"
+      "next_action": "等待auth_tenant依赖完成当前源复核；随后在0009集成源重走目录导入/激活与任务发布/撤销，并记录本轮可追溯证据。既有0006目录增量不等于整个管理员运营面已最终验收。",
+      "checkpoint_references": [
+        "14_docs/autonomous-delivery/SCHOOL_DIRECTORY.md",
+        "14_docs/autonomous-delivery/SCHOOL_TASKS.md",
+        "14_docs/autonomous-delivery/CURRENT_STATE.md"
+      ]
     },
     {
       "id": "student_teacher",
@@ -182,13 +212,18 @@
       "owner": null,
       "attempts": 0,
       "acceptance": [
-        "完整业务操作与权限限制",
-        "定向测试、真实集成证据",
-        "独立审查及可追溯提交"
+        "学生只见本人分配任务；开始、保存、恢复和撤销后拒绝均由Backend授权。",
+        "教师仅见其班级任务完成汇总和生命周期元数据，不返回回答、分数或复核正文。",
+        "在当前0009源上记录学生CAT及教师Scope A的API/浏览器复核。"
       ],
       "evidence": [],
       "commits": [],
-      "next_action": "学生任务恢复及教师Scope A进度闭环"
+      "next_action": "等待学校运营和CAT依赖复核；随后在同一当前0009源验证学生开始/完成/恢复、撤销负面路径与教师汇总，勿将既有48-stage模块证据当作整项目验收。",
+      "checkpoint_references": [
+        "14_docs/autonomous-delivery/SCHOOL_TASKS.md",
+        "14_docs/autonomous-delivery/SYNTHETIC_CAT_TASK_BINDING.md",
+        "14_docs/autonomous-delivery/CURRENT_STATE.md"
+      ]
     },
     {
       "id": "publication",
@@ -202,13 +237,17 @@
       "owner": null,
       "attempts": 0,
       "acceptance": [
-        "完整业务操作与权限限制",
-        "定向测试、真实集成证据",
-        "独立审查及可追溯提交"
+        "为L1完成回执、L2专业预批准个体反馈、L3人工复核分别定义版本化发布状态。",
+        "复核APPROVED与显式发布分开；学生只读取本人已发布版本，教师/管理员不读取正文。",
+        "模板/文本/个性化规则须有外部专业授权；不将合成CAT分数解释为临床结论。"
       ],
       "evidence": [],
       "commits": [],
-      "next_action": "专业分级授权、复核和L1/L2/L3发布状态"
+      "next_action": "等待auth_tenant与CAT依赖；由Controller确定独立发布实体/API与撤销访问策略。L2模板和L3专业决策内容须另获专业人员授权；不复用Safety Review或把个案APPROVED当成已发布。",
+      "checkpoint_references": [
+        "14_docs/autonomous-delivery/SCHOOL_PROFESSIONAL_REVIEW.md",
+        "14_docs/autonomous-delivery/CURRENT_STATE.md"
+      ]
     },
     {
       "id": "ai_conversations",
@@ -222,13 +261,18 @@
       "owner": null,
       "attempts": 0,
       "acceptance": [
-        "完整业务操作与权限限制",
-        "定向测试、真实集成证据",
-        "独立审查及可追溯提交"
+        "与CAT隔离的学生多轮会话、加密持久化、幂等恢复、本人访问控制和浏览器完成流程。",
+        "安全拦截、无证据ABSTAIN、引用/输出校验和失败状态使用真实本地接口验证。",
+        "大学人群来源/内容/授权未审核时不得宣称可提供有根据的大学支持。"
       ],
       "evidence": [],
       "commits": [],
-      "next_action": "独立本地AI、引用、多轮持久化与访问控制"
+      "next_action": "等待auth_tenant和ai_boundary依赖；完成当前前端/Backend/RAG集成与真实浏览器检查。大学内容与许可审核未通过前保留ABSTAIN能力，不导入未经审核的语料。",
+      "checkpoint_references": [
+        "14_docs/autonomous-delivery/AI_CONVERSATIONS.md",
+        "14_docs/autonomous-delivery/UNIVERSITY_KNOWLEDGE_INTAKE.md",
+        "14_docs/autonomous-delivery/CURRENT_STATE.md"
+      ]
     },
     {
       "id": "e2e",
@@ -244,13 +288,17 @@
       "owner": null,
       "attempts": 0,
       "acceptance": [
-        "完整业务操作与权限限制",
-        "定向测试、真实集成证据",
-        "独立审查及可追溯提交"
+        "当前集成源真实数据库/API/四角色浏览器端到端复核。",
+        "覆盖跨校、越权、撤销、CSRF、幂等、恢复及受控反馈发布负面路径。",
+        "逐项标注本次证据边界；模块PASS不自动提升为ENGINEERING_DEMO_READY。"
       ],
       "evidence": [],
       "commits": [],
-      "next_action": "实际数据库、模型、浏览器和安全负面验证"
+      "next_action": "等待student_teacher、publication、ai_conversations与environment依赖全部完成后，基于同一冻结提交执行整体验证和独立复核；不得用分散的历史截图拼成当前完整E2E证据。",
+      "checkpoint_references": [
+        "14_docs/autonomous-delivery/MISSION.md",
+        "14_docs/autonomous-delivery/CURRENT_STATE.md"
+      ]
     },
     {
       "id": "delivery",
@@ -265,21 +313,28 @@
       "owner": null,
       "attempts": 0,
       "acceptance": [
-        "完整业务操作与权限限制",
-        "定向测试、真实集成证据",
-        "独立审查及可追溯提交"
+        "重复安装、启动/停止、备份/恢复和当前版本回滚流程可重复。",
+        "在已授权隔离目标证明重启及权限边界；不覆盖旧数据库或用户素材。",
+        "独立交付QA通过后才报告ENGINEERING_DEMO_READY；不代表生产、真实试点或心理效度批准。"
       ],
       "evidence": [],
       "commits": [],
-      "next_action": "重复安装、备份恢复、操作手册和独立交付QA"
+      "next_action": "等待整体验证、素材来源和Runner依赖；跨用户DPAPI可移植、OS重启与最终安装器仍未验证，逐项设计并保留已有数据库/备份。",
+      "checkpoint_references": [
+        "13_deployment/AUTONOMOUS_RUNNER.md",
+        "14_docs/autonomous-delivery/SCHOOL_RECOVERY.md",
+        "14_docs/autonomous-delivery/MISSION.md"
+      ]
     },
     {
-      "attempts": 0,
+      "attempts": 1,
       "priority": 96,
       "depends_on": [
         "foundation_audit"
       ],
-      "commits": [],
+      "commits": [
+        "2ba7a299ad6fdb7557d47795e37dfd0083441ae9"
+      ],
       "title": "学校目录名称、合成批量导入和一次激活闭环",
       "id": "school_directory_increment",
       "checkpoint_references": [
@@ -288,14 +343,22 @@
       ],
       "status": "READY",
       "owner": null,
-      "next_action": "Root integrates direct Workers and verifies native school directory flows.",
+      "next_action": "目录功能已有0006原生API/事务及17-stage浏览器证据和已记录提交；当前队列定义仍需在Root处理现存lease后显式sync，并为集成HEAD记录新证据/独立复核，故暂保持READY。",
       "evidence": [],
       "acceptance": [
-        "增量迁移保留旧数据与备份",
-        "真实导入重放和失败回滚",
-        "新学生教师激活登录和权限",
-        "浏览器目录配置与密码清空"
-      ]
+        "0006目录增量保留旧数据与备份，真实导入重放/失败回滚通过。",
+        "新学生/教师激活登录与同校权限、浏览器命名/CSV配置通过。",
+        "当前静态源码对账后按Runner流程补齐当前提交证据与独立复核；不覆盖0009项目整体状态。"
+      ],
+      "author": "root"
     }
-  ]
+  ],
+  "source_reconciliation": {
+    "kind": "source_only",
+    "as_of": "2026-10-13",
+    "source": "14_docs/autonomous-delivery/CURRENT_STATE.md",
+    "reviewed_head": "ab2eb3e4e3ef28fe8d132972389b7ce3b1ce00b5",
+    "runtime_mutated": false,
+    "note": "Task status/owner fields were reconciled from recorded project evidence only. Existing .autonomous state and leases were read-only; Root must verify/backup and explicitly sync after resolving any active lease."
+  }
 }

@@ -1,6 +1,34 @@
 # Current autonomous delivery state
 
-Updated: 2026-10-12, Beijing, explicit user Continue. Goal ACTIVE; ENGINEERING_DEMO_READY is not yet achieved.
+Updated: 2026-10-13, Beijing, explicit user Continue. Goal ACTIVE; ENGINEERING_DEMO_READY is not yet achieved.
+
+## Current reviewed checkpoints
+
+Recovery increment is committed and remote SHA verified:
+`ab2eb3e4e3ef28fe8d132972389b7ce3b1ce00b5`, dedicated development branch only.
+TargetE checkpoint `recovery-engineering-checkpoint-ab2eb3e.json` records the
+0009 restore, graceful database restart, exact saved CAT continuation and fresh
+four-role browser evidence. This is ENGINEERING_PASS for the recovery increment,
+not whole-product readiness. The two baseline untracked user paths remain intact.
+Next: restored independent conversation ownership/history checks; reconcile stale
+Runner definitions and leases; continue separate publication and installation work.
+Use current process manifests and fresh live identities before any lifecycle action.
+
+Runner reconciliation: Root inspected all old owner records; none had a live
+lease. Preserved the ignored runtime state as original external logs/
+runner-state-before-reconciliation-722398792d2541d3878375977b4aefcc.json, then
+ran explicit `autonomous_runner.py sync` successfully. Current runtime has no
+active owner, remains stopped=false, and preserves the original baseline and
+historical commit references. Only the narrow foundation audit is DONE; broad
+remaining tasks are READY/BACKLOG. This is continuity maintenance, not a new
+whole-product acceptance or proof of an independent background process.
+
+Independent conversation API negative regression now covers TEACHER,
+PSYCHOLOGICAL_SPECIALIST and ADMIN on list/detail/create/message routes, all403
+before service delegation. A student ownership rejection remains404 at the API
+boundary. Worker and Root separately ran the focused file:12 passed/no skips.
+Those are API-boundary tests, not native database or restored-history proof;
+the latter is the next ongoing verification.
 
 ## Active shutdown deadline
 
@@ -11,7 +39,11 @@ minute15 for nine runs; this is configuration evidence, not execution proof.
 SHUTDOWN_CHECKPOINT.md governs the safe stop and resume sequence. Older shutdown,
 GPU and process entries below are historical; verify live identities before acting.
 
-## Latest resumed increment
+## Earlier stages of this recovery increment
+
+The following entries preserve the earlier investigation and failures. Their
+WIP labels and superseded process identities describe those earlier stages;
+the reviewed checkpoint above and final evidence within each entry take precedence.
 
 - Remote checkpoint997bece898217ad5350f39cd77f3b574d089382b is verified on the
   dedicated branch; at that checkpoint only the two baseline untracked paths

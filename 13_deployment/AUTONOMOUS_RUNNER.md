@@ -19,7 +19,14 @@ Failed verification cannot be submitted. `reject` returns a reviewed task for ch
 
 Queue edits fail closed until explicit `sync`: active leases must first be released, changed task definitions and their dependents lose previous acceptance. A baseline change requires separate reviewed migration; never delete local state to conceal prior failure.
 
-The configured thread heartbeat `psynova` schedules a 90-minute continuation. It requires the machine/app and project to remain available. Its first unattended run and actual reboot recovery are not yet proven. User stop/pause requests take precedence. Do not implement OS power changes, global scheduled services or a recursive prompt loop as a substitute.
+Thread heartbeat scheduling is separate from this lease Runner. The current
+schedule and shutdown deadline are recorded in `CURRENT_STATE.md` and
+`SHUTDOWN_CHECKPOINT.md`; inspect the saved automation before changing it.
+This chat has performed actual continuations, but those do not prove an
+independent persistent Runner or automatic recovery across an OS reboot.
+The machine/app and project must remain available. User stop/pause requests
+take precedence. Do not implement OS power changes, global scheduled services
+or a recursive prompt loop as a substitute.
 
 Verification:
 

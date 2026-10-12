@@ -7,6 +7,7 @@ import pytest
 
 from smhai_backend.app_factory import create_app
 from smhai_backend.core.config import BackendSettings
+from smhai_backend.core.errors import ErrorCode, error
 from smhai_backend.core.rate_limit import InMemoryRateLimiter
 from smhai_backend.domains.auth.dependencies import csrf_protected, current_actor
 from smhai_backend.domains.conversations.router import router as conversations_router
@@ -203,6 +204,72 @@ async def test_teacher_role_is_denied_before_service_and_missing_service_is_503(
     )
     assert unavailable.status_code == 503
     assert unavailable.json()["code"] == "dependency_unavailable"
+
+
+@pytest.mark.parametrize(
+    "role",
+    [
+        BackendRole.TEACHER,
+        BackendRole.PSYCHOLOGICAL_SPECIALIST,
+        BackendRole.ADMIN,
+    ],
+    ids=["teacher", "psychological-specialist", "school-admin"],
+)
+@pytest.mark.asyncio
+async def test_non_student_roles_are_denied_on_all_conversation_routes_before_service_work(
+    app, client, role
+):
+    service = FakeConversationService()
+    app.state.container.independent_conversations = service
+    _override_actor(app, _actor(role))
+
+    responses = [
+        await client.get("/api/v1/student/conversations"),
+        await client.get("/api/v1/student/conversations/CONV_api-test"),
+        await client.post(
+            "/api/v1/student/conversations",
+            headers={"Idempotency-Key": "role-denied-create"},
+            json={},
+        ),
+        await client.post(
+            "/api/v1/student/conversations/CONV_api-test/messages",
+            headers={"Idempotency-Key": "role-denied-message"},
+            json={"text": "合成请求"},
+        ),
+    ]
+
+    assert [response.status_code for response in responses] == [403, 403, 403, 403]
+    assert all(response.json()["code"] == "forbidden" for response in responses)
+    # The conversation service is the only route to stored bodies or model
+    # generation. An empty call log proves all four requests stop before it.
+    assert service.calls == []
+
+
+@pytest.mark.asyncio
+async def test_student_owner_scope_not_found_remains_404_at_the_api_boundary(app, client):
+    class OwnerScopedService(FakeConversationService):
+        async def detail(self, actor, conversation_id, *, offset, limit):
+            self.calls.append(
+                ("detail", (actor, conversation_id), {"offset": offset, "limit": limit})
+            )
+            raise error(
+                ErrorCode.RESOURCE_NOT_FOUND,
+                detail="conversation was not found",
+            )
+
+    service = OwnerScopedService()
+    app.state.container.independent_conversations = service
+    actor = _actor(BackendRole.STUDENT)
+    _override_actor(app, actor)
+
+    response = await client.get(
+        "/api/v1/student/conversations/CONV_owned-by-another-student"
+    )
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "resource_not_found"
+    assert [call[0] for call in service.calls] == ["detail"]
+    assert service.calls[0][1] == (actor, "CONV_owned-by-another-student")
 
 
 @pytest.mark.asyncio
