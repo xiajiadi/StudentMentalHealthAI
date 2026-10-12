@@ -41,7 +41,7 @@ from smhai_backend.domains.models import (
 )
 
 REQUIRED_DATABASE_REVISION = "20261011_0005"
-REQUIRED_SCHOOL_TENANT_DATABASE_REVISION = "20261013_0009"
+REQUIRED_SCHOOL_TENANT_DATABASE_REVISION = "20261013_0010"
 _SCHOOL_CAT_BANK_DOCUMENT_SCHEMA = "school_cat_bank_document.v1"
 _SCHOOL_CAT_CONFIG_DOCUMENT_SCHEMA = "school_cat_config_document.v1"
 _LEGACY_CSRF_SECRET = b"smhai-round1-synthetic-csrf-secret"

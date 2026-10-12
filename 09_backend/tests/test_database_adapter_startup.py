@@ -124,16 +124,17 @@ def _required_revision(profile: str) -> str:
     )
 
 
-async def test_school_tenant_startup_requires_binding_migration_revision():
-    assert REQUIRED_SCHOOL_TENANT_DATABASE_REVISION == "20261013_0009"
-    adapter = _adapter(["20261012_0008"], "school_tenant")
+@pytest.mark.parametrize("old_revision", ["20261012_0008", "20261013_0009"])
+async def test_school_tenant_startup_requires_feedback_migration_revision(old_revision):
+    assert REQUIRED_SCHOOL_TENANT_DATABASE_REVISION == "20261013_0010"
+    adapter = _adapter([old_revision], "school_tenant")
 
     async def no_bootstrap():
         pytest.fail("old schema must not bootstrap")
 
     adapter._ensure_synthetic_fixtures = no_bootstrap
 
-    with pytest.raises(RuntimeError, match="20261013_0009"):
+    with pytest.raises(RuntimeError, match="20261013_0010"):
         await adapter.start()
 
 

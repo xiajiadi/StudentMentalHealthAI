@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ArrowRight, FileCheck2, RotateCcw } from '@lucide/vue'
 import AppBadge from '@/components/app/AppBadge.vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
 import AppPageHeader from '@/components/app/AppPageHeader.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
+import { useSessionStore } from '@/stores/session'
 import { frontendApi } from '@/services/mock-api'
+import { schoolFeedback, type StudentSchoolFeedback } from '@/services/school-feedback'
 import { userFacingApiError } from '@/utils/user-facing-errors'
 import type { AssessmentListEntry, ReportSummary } from '@/api/client'
 
@@ -15,11 +17,16 @@ type FeedbackMeta = { label: string; tone: 'neutral' | 'blue' | 'teal' | 'amber'
 const state = ref<'loading' | 'ready' | 'error'>('loading')
 const assessments = ref<AssessmentListEntry[]>([])
 const reports = ref<ReportSummary[]>([])
+const schoolFeedbackState = ref<'loading' | 'ready' | 'error'>('loading')
+const schoolFeedbackRows = ref<StudentSchoolFeedback[]>([])
+const schoolFeedbackError = ref('')
+const session = useSessionStore()
 const errorMessage = ref('')
 const loadMoreError = ref('')
 const assessmentPageSize = 30
 const nextAssessmentOffset = ref(0)
 const assessmentRequestGeneration = ref(0)
+const schoolFeedbackGeneration = ref(0)
 const isLoadingMoreAssessments = ref(false)
 const hasMoreAssessments = ref(false)
 
@@ -44,6 +51,24 @@ const formatDate = (value: string | null | undefined) => {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return '时间暂不可用'
   return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(date)
+}
+
+const loadSchoolFeedback = async () => {
+  const generation = ++schoolFeedbackGeneration.value
+  schoolFeedbackState.value = 'loading'
+  schoolFeedbackRows.value = []
+  schoolFeedbackError.value = ''
+  try {
+    const result = await schoolFeedback.listStudent()
+    if (generation !== schoolFeedbackGeneration.value) return
+    schoolFeedbackRows.value = result.items
+    schoolFeedbackState.value = 'ready'
+  } catch (error) {
+    if (generation !== schoolFeedbackGeneration.value) return
+    schoolFeedbackRows.value = []
+    schoolFeedbackState.value = 'error'
+    schoolFeedbackError.value = userFacingApiError(error, '已发布反馈暂时无法加载。')
+  }
 }
 
 const feedbackMeta = (report: ReportSummary): FeedbackMeta => {
@@ -117,7 +142,28 @@ const loadMoreAssessments = async () => {
   }
 }
 
-onMounted(load)
+watch(
+  () => [session.user?.role ?? null, session.user?.userId ?? null, session.user?.activeContext?.schoolRef ?? null, session.user?.activeContext ?? null] as const,
+  (next, previous) => {
+    if (!previous || next.every((value, index) => value === previous[index])) return
+    schoolFeedbackRows.value = []
+    schoolFeedbackError.value = ''
+    if (next[0] === 'student') void loadSchoolFeedback()
+    else {
+      schoolFeedbackGeneration.value += 1
+      schoolFeedbackState.value = 'ready'
+    }
+  },
+)
+
+onBeforeUnmount(() => {
+  schoolFeedbackGeneration.value += 1
+})
+
+onMounted(() => {
+  void load()
+  void loadSchoolFeedback()
+})
 </script>
 
 <template>
@@ -133,6 +179,28 @@ onMounted(load)
       title="反馈发布由服务端权限控制"
       body="待复核、被阻断或尚未向学生端提供正文的记录只显示状态，不会在页面中生成或补写建议。"
     />
+
+    <section class="feedback-section published-feedback" aria-labelledby="published-feedback-title">
+      <header class="feedback-section__heading">
+        <div><span class="section-label">单独发布 · 合成演示</span><h2 id="published-feedback-title">已发布的学生反馈</h2></div>
+        <AppButton variant="quiet" size="sm" :disabled="schoolFeedbackState === 'loading'" aria-label="刷新已发布反馈" @click="loadSchoolFeedback">
+          <RotateCcw :size="15" aria-hidden="true" />刷新
+        </AppButton>
+      </header>
+      <p v-if="schoolFeedbackState === 'loading'" class="feedback-publication-state" role="status" aria-busy="true">正在读取已发布反馈…</p>
+      <AppStatusCallout v-else-if="schoolFeedbackState === 'error'" tone="critical" title="已发布反馈暂时无法加载" :body="schoolFeedbackError">
+        <AppButton variant="secondary" size="sm" @click="loadSchoolFeedback">重新加载</AppButton>
+      </AppStatusCallout>
+      <AppCard v-else-if="!schoolFeedbackRows.length" class="feedback-empty">
+        <span class="feedback-empty__icon" aria-hidden="true"><FileCheck2 :size="20" /></span>
+        <div><strong>目前没有单独发布的反馈</strong><p>完成测评或复核决定本身不会显示反馈正文；只有专业人员明确发布的内容才会出现在这里。</p></div>
+      </AppCard>
+      <AppCard v-for="item in schoolFeedbackRows" v-else :key="item.feedback_ref" class="published-feedback__row">
+        <div class="published-feedback__heading"><h3>{{ item.title }}</h3><AppBadge tone="teal" dot>合成演示 · L3</AppBadge></div>
+        <p class="published-feedback__body">{{ item.body }}</p>
+        <p class="published-feedback__time">发布于 {{ formatDate(item.published_at) }}</p>
+      </AppCard>
+    </section>
 
     <section class="feedback-section" aria-labelledby="reports-title">
       <header class="feedback-section__heading">
@@ -197,6 +265,12 @@ onMounted(load)
 
 <style scoped>
 .feedback-section { margin-top: 34px; }
+.published-feedback__row { display: grid; gap: 9px; margin-top: 10px; padding: 16px 18px; }
+.published-feedback__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.published-feedback__heading h3 { margin: 0; color: var(--color-text-primary); font-size: 14px; }
+.published-feedback__body { margin: 0; color: var(--color-text-primary); font-size: 13px; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
+.published-feedback__time, .feedback-publication-state { margin: 0; color: var(--color-text-muted); font-size: 11px; line-height: 1.55; }
+.published-feedback > .status-callout { margin-top: 10px; }
 .feedback-section__heading { display: flex; align-items: end; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
 .feedback-section__heading h2 { margin: 5px 0 0; color: var(--color-text-primary); font-family: var(--font-display); font-size: 23px; }
 .feedback-section__heading > span { color: var(--color-text-muted); font-size: 12px; }
@@ -221,5 +295,6 @@ onMounted(load)
   .feedback-row { align-items: flex-start; flex-wrap: wrap; }
   .feedback-row__copy { flex-basis: calc(100% - 54px); }
   .feedback-row .app-badge, .feedback-row__link { margin-left: 52px; }
+  .published-feedback__heading { align-items: flex-start; flex-direction: column; }
 }
 </style>

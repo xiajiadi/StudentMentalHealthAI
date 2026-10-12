@@ -20,6 +20,17 @@ Stop this heartbeat at actual pause; do not revive obsolete `psynova-2`.
 Scheduled execution depends on the computer and desktop app remaining available;
 configuration is not proof that the scheduled wrap-up or pause has executed.
 
+## Latest saved increment
+
+Original3308 and E3313 are0010; original/E current42-table sealed backups and
+feedback HTTP/rollback/browser evidence are indexed in CURRENT_STATE.md. E Backend
+exec33795, Frontend29114, CAT31277; original Backend36838, Frontend5948, CAT52580.
+Earlier IDs below are historical and must never be killed by number alone.
+Pending: final curated Git checkpoint, safe stop of owned six app services and five
+running MySQL instances, Runner stop, heartbeat PAUSED, goal PAUSED. Do not claim
+those actions complete from this planned checkpoint. Next resume requires fresh
+clock/branch/HEAD/manifest evidence and explicit user Continue.
+
 ## Wrap-up procedure
 
 Owned databases recorded at the latest0008 milestone: original workspace3308,

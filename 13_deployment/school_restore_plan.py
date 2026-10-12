@@ -18,7 +18,10 @@ from school_backup import (
     validate_backup_package,
 )
 from school_schema import (
-    CAT_ASSETS_REVISION, CAT_TASK_BINDING_REVISION, PROFESSIONAL_REVIEW_REVISION,
+    CAT_ASSETS_REVISION,
+    CAT_TASK_BINDING_REVISION,
+    PROFESSIONAL_REVIEW_REVISION,
+    SCHOOL_FEEDBACK_PUBLICATION_REVISION,
 )
 
 REVISION_TABLE = "database_alembic_version"
@@ -69,6 +72,7 @@ CAT_TASK_BINDING_TABLES = frozenset({
     "school_cat_activations", "school_cat_task_bindings", "school_cat_session_bindings",
 })
 CAT_TASK_BINDING_MODE_TABLES = frozenset({"measurement_tasks", "assessment_sessions"})
+SCHOOL_FEEDBACK_TABLES = frozenset({"school_feedback_records", "school_feedback_events"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,7 +118,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
     }
     expected_current = (
         EXPECTED_MODEL_TABLES | DIRECTORY_TABLES | PROFESSIONAL_REVIEW_TABLES
-        | CAT_ASSET_TABLES | CAT_TASK_BINDING_TABLES
+        | CAT_ASSET_TABLES | CAT_TASK_BINDING_TABLES | SCHOOL_FEEDBACK_TABLES
     )
     if revision not in SUPPORTED_BACKUP_REVISIONS:
         raise ValueError("Unsupported restore revision")
@@ -127,17 +131,37 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
 
     tables: dict[str, TableSpec] = {}
     for table_name, table in metadata_tables.items():
-        if revision != CAT_TASK_BINDING_REVISION and table_name in CAT_TASK_BINDING_TABLES:
+        if (
+            revision not in {CAT_TASK_BINDING_REVISION, SCHOOL_FEEDBACK_PUBLICATION_REVISION}
+            and table_name in CAT_TASK_BINDING_TABLES
+        ):
             continue
-        if revision not in {CAT_ASSETS_REVISION, CAT_TASK_BINDING_REVISION} and table_name in CAT_ASSET_TABLES:
+        if (
+            revision != SCHOOL_FEEDBACK_PUBLICATION_REVISION
+            and table_name in SCHOOL_FEEDBACK_TABLES
+        ):
             continue
-        if revision not in {PROFESSIONAL_REVIEW_REVISION, CAT_ASSETS_REVISION, CAT_TASK_BINDING_REVISION} and table_name in PROFESSIONAL_REVIEW_TABLES:
+        if (
+            revision not in {CAT_ASSETS_REVISION, CAT_TASK_BINDING_REVISION, SCHOOL_FEEDBACK_PUBLICATION_REVISION}
+            and table_name in CAT_ASSET_TABLES
+        ):
+            continue
+        if (
+            revision not in {
+                PROFESSIONAL_REVIEW_REVISION, CAT_ASSETS_REVISION, CAT_TASK_BINDING_REVISION,
+                SCHOOL_FEEDBACK_PUBLICATION_REVISION,
+            }
+            and table_name in PROFESSIONAL_REVIEW_TABLES
+        ):
             continue
         if revision == SUPPORTED_REVISION and table_name in DIRECTORY_TABLES:
             continue
         columns = tuple(column.name for column in table.columns)
         nullable = frozenset(column.name for column in table.columns if column.nullable)
-        if revision != CAT_TASK_BINDING_REVISION and table_name in CAT_TASK_BINDING_MODE_TABLES:
+        if (
+            revision not in {CAT_TASK_BINDING_REVISION, SCHOOL_FEEDBACK_PUBLICATION_REVISION}
+            and table_name in CAT_TASK_BINDING_MODE_TABLES
+        ):
             columns = tuple(column for column in columns if column != "cat_binding_mode")
             nullable = nullable - {"cat_binding_mode"}
         if revision == SUPPORTED_REVISION and table_name in DIRECTORY_NAME_TABLES:

@@ -32,6 +32,8 @@ from database_layer.models import (  # noqa: F401
     SchoolClass,
     SchoolClassStudent,
     SchoolClassTeacher,
+    SchoolFeedbackEvent,
+    SchoolFeedbackRecord,
     SchoolProfessionalReviewCase,
     SchoolProfessionalReviewEvent,
     SchoolTaskSpecialistAssignment,
@@ -49,7 +51,7 @@ from sqlalchemy.schema import CreateTable
 
 
 def test_domain_table_count_and_explicit_mysql_defaults() -> None:
-    assert len(Base.metadata.tables) == 39
+    assert len(Base.metadata.tables) == 41
     assert set(Base.metadata.tables) == {
         "accounts",
         "roles",
@@ -81,6 +83,8 @@ def test_domain_table_count_and_explicit_mysql_defaults() -> None:
         "school_task_specialist_assignments",
         "school_professional_review_cases",
         "school_professional_review_events",
+        "school_feedback_records",
+        "school_feedback_events",
         "school_cat_item_banks",
         "school_cat_item_bank_versions",
         "school_cat_plans",

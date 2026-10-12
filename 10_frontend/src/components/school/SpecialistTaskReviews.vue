@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { RotateCcw, ClipboardCheck, ChevronLeft, ChevronRight, ShieldCheck } from '@lucide/vue'
 import AppCard from '@/components/app/AppCard.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
+import SpecialistFeedbackPanel from '@/components/school/SpecialistFeedbackPanel.vue'
 import {
   newProfessionalReviewIdempotencyKey,
   professionalReviews,
@@ -355,7 +356,7 @@ onMounted(() => { void loadTasks() })
         <div v-else-if="detailState === 'error'" class="reviews-error" role="alert"><span>{{ detailError }}</span><button type="button" @click="currentEnrollment.case_ref && loadCase(currentEnrollment.case_ref)">重新加载</button></div>
         <div v-else-if="!selectedCase && !currentEnrollment.case_ref" class="case-create"><p>这条完成记录还没有复核记录。</p><button class="reviews-button reviews-button--primary" type="button" :disabled="!canWrite" @click="createCase">建立复核记录</button></div>
         <div v-else-if="selectedCase" class="case-detail">
-          <p class="publication-note">报告状态：未发布。此工作流操作不会向学生端发布内容。</p>
+          <p class="publication-note">复核决定不会自动发布；学生反馈需在下方单独发布。</p>
           <p v-if="selectedCase.status === 'OPEN'" class="case-help">先开始处理，再记录本次工作流决定。</p>
           <button v-if="selectedCase.status === 'OPEN'" class="reviews-button reviews-button--primary" type="button" :disabled="!canWrite" @click="openCase">开始处理</button>
           <template v-else-if="!terminalCase">
@@ -365,6 +366,12 @@ onMounted(() => { void loadTasks() })
           <div v-else class="terminal-summary"><strong>{{ selectedCase.status === 'APPROVED' ? '工作流已完成' : '记录已退回' }}</strong><p>{{ selectedCase.review_note || '此记录已完成状态流转。' }}</p></div>
         </div>
       </AppCard>
+      <SpecialistFeedbackPanel
+        v-if="selectedCase && detailState === 'ready'"
+        :case-ref="selectedCase.case_ref"
+        :case-version="selectedCase.version"
+        :case-status="selectedCase.status"
+      />
     </template>
 
     <div v-if="mutationError" class="mutation-error" role="alert">

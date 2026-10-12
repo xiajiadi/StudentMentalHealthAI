@@ -11,6 +11,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     BINARY,
+    Boolean,
     CheckConstraint,
     ForeignKey,
     ForeignKeyConstraint,
@@ -1022,6 +1023,10 @@ class SchoolProfessionalReviewCase(ResourceIdentityMixin, TimestampMixin, Base):
             "assessment_session_id", name="school_professional_review_assessment_unique"
         ),
         UniqueConstraint("id", "school_id", name="school_professional_review_id_school_unique"),
+        UniqueConstraint(
+            "id", "school_id", "task_id", "class_id", "task_enrollment_id", "subject_id",
+            "assessment_session_id", name="school_professional_review_feedback_scope_unique",
+        ),
         CheckConstraint(
             "status IN ('OPEN', 'IN_REVIEW', 'APPROVED', 'REJECTED')",
             name="status_allowed",
@@ -1130,6 +1135,201 @@ class SchoolProfessionalReviewEvent(ResourceIdentityMixin, TimestampMixin, Base)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     trace_id: Mapped[str | None] = mapped_column(ascii_id(128), nullable=True)
     retention_due_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+
+
+class SchoolFeedbackRecord(ResourceIdentityMixin, TimestampMixin, Base):
+    """Immutable synthetic L3 feedback content revision and release state."""
+
+    __tablename__ = "school_feedback_records"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("feedback_ref", name="school_feedback_ref_unique"),
+        UniqueConstraint(
+            "review_case_id",
+            "content_revision",
+            name="school_feedback_case_content_revision_unique",
+        ),
+        UniqueConstraint(
+            "id",
+            "school_id",
+            "review_case_id",
+            "content_revision",
+            name="school_feedback_event_scope_unique",
+        ),
+        CheckConstraint("status IN ('DRAFT', 'PUBLISHED', 'REVOKED')", name="status_allowed"),
+        CheckConstraint("content_revision >= 1", name="content_revision_positive"),
+        CheckConstraint("state_version >= 1", name="state_version_positive"),
+        CheckConstraint("case_version >= 1", name="case_version_positive"),
+        CheckConstraint("level = 'L3'", name="level_synthetic_l3_only"),
+        CheckConstraint("synthetic_only = 1", name="synthetic_only_locked"),
+        CheckConstraint(
+            "(status = 'DRAFT' AND published_at IS NULL AND revoked_at IS NULL) OR "
+            "(status = 'PUBLISHED' AND published_at IS NOT NULL AND revoked_at IS NULL) OR "
+            "(status = 'REVOKED' AND published_at IS NOT NULL AND revoked_at IS NOT NULL)",
+            name="status_timestamps_match",
+        ),
+        ForeignKeyConstraint(
+            ["school_id"],
+            ["schools.id"],
+            name="fk_school_feedback_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            [
+                "review_case_id",
+                "school_id",
+                "task_id",
+                "class_id",
+                "task_enrollment_id",
+                "subject_id",
+                "assessment_session_id",
+            ],
+            [
+                "school_professional_review_cases.id",
+                "school_professional_review_cases.school_id",
+                "school_professional_review_cases.task_id",
+                "school_professional_review_cases.class_id",
+                "school_professional_review_cases.task_enrollment_id",
+                "school_professional_review_cases.subject_id",
+                "school_professional_review_cases.assessment_session_id",
+            ],
+            name="fk_school_feedback_review_case_exact_scope",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["task_id", "school_id", "class_id"],
+            ["measurement_tasks.id", "measurement_tasks.school_id", "measurement_tasks.class_id"],
+            name="fk_school_feedback_task_scope",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["task_enrollment_id", "task_id", "school_id", "subject_id"],
+            [
+                "task_enrollments.id",
+                "task_enrollments.task_id",
+                "task_enrollments.school_id",
+                "task_enrollments.subject_id",
+            ],
+            name="fk_school_feedback_enrollment_scope",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["assessment_session_id", "task_enrollment_id", "subject_id"],
+            [
+                "assessment_sessions.id",
+                "assessment_sessions.task_enrollment_id",
+                "assessment_sessions.subject_id",
+            ],
+            name="fk_school_feedback_assessment_scope",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["subject_id", "school_id"],
+            ["subjects.id", "subjects.school_id"],
+            name="fk_school_feedback_subject_scope",
+            ondelete="RESTRICT",
+        ),
+        Index(
+            "ix_school_feedback_student_status_created",
+            "school_id",
+            "subject_id",
+            "status",
+            "created_at",
+        ),
+        Index(
+            "ix_school_feedback_case_revision",
+            "school_id",
+            "review_case_id",
+            "content_revision",
+        ),
+    )
+
+    feedback_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    task_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    class_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    task_enrollment_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    subject_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    assessment_session_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    review_case_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    content_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    case_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    state_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="DRAFT")
+    level: Mapped[str] = mapped_column(ascii_id(2), nullable=False, default="L3")
+    synthetic_only: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="1"
+    )
+    payload_ciphertext: Mapped[bytes] = mapped_column(mysql.MEDIUMBLOB, nullable=False)
+    cipher_format_version: Mapped[str] = mapped_column(ascii_id(32), nullable=False)
+    key_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    payload_schema_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    published_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    retention_due_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+
+
+class SchoolFeedbackEvent(ResourceIdentityMixin, TimestampMixin, Base):
+    """Content-free history of authorized feedback state transitions."""
+
+    __tablename__ = "school_feedback_events"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint(
+            "feedback_id",
+            "state_version",
+            name="school_feedback_event_state_version_unique",
+        ),
+        CheckConstraint(
+            "event_type IN ('CREATED', 'PUBLISHED', 'REVOKED')", name="event_type_allowed"
+        ),
+        CheckConstraint(
+            "from_status IS NULL OR from_status IN ('DRAFT', 'PUBLISHED', 'REVOKED')",
+            name="from_status_allowed",
+        ),
+        CheckConstraint("to_status IN ('DRAFT', 'PUBLISHED', 'REVOKED')", name="to_status_allowed"),
+        CheckConstraint("state_version >= 1", name="state_version_positive"),
+        ForeignKeyConstraint(
+            ["feedback_id", "school_id", "review_case_id", "content_revision"],
+            [
+                "school_feedback_records.id",
+                "school_feedback_records.school_id",
+                "school_feedback_records.review_case_id",
+                "school_feedback_records.content_revision",
+            ],
+            name="fk_school_feedback_events_record_scope",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["actor_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_school_feedback_events_actor_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["school_id"],
+            ["schools.id"],
+            name="fk_school_feedback_events_school",
+            ondelete="RESTRICT",
+        ),
+        Index(
+            "ix_school_feedback_events_case_created",
+            "school_id",
+            "review_case_id",
+            "created_at",
+        ),
+    )
+
+    feedback_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    review_case_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    content_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    actor_membership_role_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    from_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    to_status: Mapped[str] = mapped_column(String(16), nullable=False)
+    state_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    trace_id: Mapped[str | None] = mapped_column(ascii_id(128), nullable=True)
 
 
 class SchoolCatItemBank(ResourceIdentityMixin, TimestampMixin, Base):
@@ -1469,6 +1669,8 @@ __all__ = [
     "ReviewEvent",
     "SchoolProfessionalReviewCase",
     "SchoolProfessionalReviewEvent",
+    "SchoolFeedbackRecord",
+    "SchoolFeedbackEvent",
     "Role",
     "SafetyDecision",
     "SchoolAccountBatch",

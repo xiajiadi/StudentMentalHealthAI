@@ -2,6 +2,54 @@
 
 Updated: 2026-10-13, Beijing, explicit user Continue. Goal ACTIVE; ENGINEERING_DEMO_READY is not yet achieved.
 
+## 2026-10-13 07:05 Beijing: feedback publication increment
+
+Status: PARTIAL_PASS for whole mandate. New synthetic-only L3 content is encrypted,
+immutable and separate from case notes/L1 completion. Assigned specialists explicitly
+publish or revoke an exact draft and case version. Fresh persisted school/SELF/task
+scope precedes reads and receipt replay; a historical replay never restores visibility.
+No L2 catalogue, professional approval, real student data or AI interpretation is added.
+
+Original3308 and restoreE3313 were additively migrated0009 to0010. Sealed pre-DDL
+snapshots and exact old column/row multiset comparisons prove preservation: original
+39 business tables/3809 rows, E39/3037. E initial full-DDL equality check failed on the
+intentional added case unique index; the same pre-DDL sealed snapshot was rechecked
+without another migration. E failure and corrected artifacts are retained.
+
+Fresh Root evidence:
+- Backend507 tests/no skips including real AuditRepository whitelist regression;
+  focused persistence12 pass. Deployment restore/profile92 pass.
+- Frontend34 files/238 tests and typechecked production build pass. Test harness
+  emits Vue/router injection warnings; these are not hidden or production acceptance.
+- Native feedback HTTP16 checks at E/browser-qa/
+  20261012T224831Z-2db8584c05444719b4aa935671bf41c9/school-feedback-http-qa.json.
+  Initial assignment403 and audit500 attempts are preserved; ordering and audit caller
+  were corrected, without weakening authorization or audit metadata whitelist.
+- Native audit-failure rollback12 checks at E/logs/
+  school-feedback-rollback-qa-ae1e1168ea384aa0bf28067a36fd5774.json. Create/publish/revoke
+  all preserve exact feedback/event/receipt/audit rows after injected post-flush failure.
+- Actual specialist/student browser12 stages at E/browser-qa/
+  20261012T225944Z-f9d882f855454502884b68e882ad9fed/school-feedback-browser.json.
+  Exactly3 feedback writes, preserved previous publication, fresh login after revoke;
+  Root inspected masked specialist desktop/student mobile screenshots.
+- Final0010 sealed readback backups: E/backups/
+  20261012-230257-f9c97424badf47558b3aa6eacf496636.private.dpapi and original/backups/
+  20261012-230301-ab842cfeb9b84a9da5ae6b3c7811e0cd.private.dpapi, each42 tables.
+  Current Windows user recovery only; actual new-target0010 feedback restore NOT_RUN.
+
+Current E Backend8089 exec33795 loads latest source, Frontend4179 exec29114 and
+CAT8181 exec31277. Original Backend8088 exec36838 loaded earlier feedback source
+before the audit/replay corrections and has no latest publication acceptance claim;
+original Frontend4178 exec5948 and CAT8180 exec52580. Reverify manifests/listeners,
+not these hints, before stop. B3310/C3311/D3312 unchanged; A3309 remains stopped.
+
+Next after explicit resume: restore0010 encrypted feedback into a NEW isolated target
+and verify authorization/revocation; broaden native fresh-grant/assignment negatives;
+continue university rights/content review, grounded independent AI and installation.
+Whole ENGINEERING_DEMO_READY, psychometric validity, pilot and production remain false.
+Independent source review Worker disconnected; Root inspected actual scope/receipt/
+audit/transition source and native rollback/browser evidence. No independent PASS claimed.
+
 ## Current reviewed checkpoints
 
 Recovery increment is committed and remote SHA verified:

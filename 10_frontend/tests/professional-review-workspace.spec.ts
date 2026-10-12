@@ -80,7 +80,7 @@ describe('specialist task review workflow', () => {
     await approve!.trigger('click')
     await flushPromises()
     expect(reviewApi.decideCase).toHaveBeenCalledWith(task.task_ref, created.case_ref, 2, 'APPROVED', '合成演示工作流备注', 'stable-synthetic-key')
-    expect(wrapper.text()).toContain('报告状态：未发布')
+    expect(wrapper.text()).toContain('复核决定不会自动发布；学生反馈需在下方单独发布。')
     expect(wrapper.text()).not.toContain(task.task_ref)
     expect(wrapper.text()).not.toContain(enrollment.enrollment_ref)
     expect(wrapper.text()).not.toContain(created.case_ref)

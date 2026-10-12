@@ -23,6 +23,9 @@ from school_schema import (
     CURRENT_SCHOOL_REVISION,
     DIRECTORY_SCHOOL_REVISION,
     PROFESSIONAL_REVIEW_REVISION,
+    SCHOOL_FEEDBACK_PUBLICATION_REVISION,
+    SCHOOL_REVISION_CHAIN,
+    SUPPORTED_SNAPSHOT_REVISIONS,
 )
 
 RESTORED_AT = datetime(2026, 10, 12, 4, 5, 6, 123456, tzinfo=UTC)
@@ -52,7 +55,7 @@ def test_current_snapshot_requires_its_exact_table_layout_and_revision():
     package["tables"][restore_plan.REVISION_TABLE]["rows"] = [[CURRENT_SCHOOL_REVISION]]
     plan = restore_plan.plan_restore(package, restored_at=RESTORED_AT)
     assert plan["revision"] == CURRENT_SCHOOL_REVISION
-    assert len(plan["table_order"]) == 39
+    assert len(plan["table_order"]) == 41
     package["revision"] = SUPPORTED_REVISION
     with pytest.raises(ValueError, match="manifest mismatch"):
         restore_plan.plan_restore(package, restored_at=RESTORED_AT)
@@ -142,6 +145,69 @@ def test_task_binding_manifest_preserves_exact_previous_columns_and_scope_chain(
     package["revision"] = CAT_ASSETS_REVISION
     with pytest.raises(ValueError, match="manifest mismatch"):
         restore_plan.plan_restore(package, restored_at=RESTORED_AT)
+
+
+def test_feedback_publication_revision_adds_only_feedback_tables_and_preserves_0009():
+    assert CURRENT_SCHOOL_REVISION == SCHOOL_FEEDBACK_PUBLICATION_REVISION
+    assert SCHOOL_REVISION_CHAIN[-1] == SCHOOL_FEEDBACK_PUBLICATION_REVISION
+    assert SCHOOL_FEEDBACK_PUBLICATION_REVISION in SUPPORTED_SNAPSHOT_REVISIONS
+    previous = restore_plan.trusted_manifest(CAT_TASK_BINDING_REVISION)
+    current = restore_plan.trusted_manifest(SCHOOL_FEEDBACK_PUBLICATION_REVISION)
+    assert len(previous) == 40
+    assert len(current) == 42
+    assert set(previous).issubset(current)
+    assert set(current) - set(previous) == restore_plan.SCHOOL_FEEDBACK_TABLES
+    assert "school_feedback_records" not in previous
+    assert "school_feedback_events" not in previous
+    assert all(current[name] == columns for name, columns in previous.items())
+
+    specs = restore_plan._load_trusted_tables(SCHOOL_FEEDBACK_PUBLICATION_REVISION)
+    record = specs["school_feedback_records"]
+    assert any(
+        fk.remote_table == "school_professional_review_cases"
+        and fk.local_columns
+        == (
+            "review_case_id",
+            "school_id",
+            "task_id",
+            "class_id",
+            "task_enrollment_id",
+            "subject_id",
+            "assessment_session_id",
+        )
+        for fk in record.foreign_keys
+    )
+    assert any(
+        fk.remote_table == "task_enrollments"
+        and fk.local_columns
+        == ("task_enrollment_id", "task_id", "school_id", "subject_id")
+        for fk in record.foreign_keys
+    )
+
+    package = empty_package()
+    package["revision"] = SCHOOL_FEEDBACK_PUBLICATION_REVISION
+    package["tables"] = {
+        name: {"create_sql": "opaque archived DDL", "columns": columns, "rows": []}
+        for name, columns in current.items()
+    }
+    package["tables"][restore_plan.REVISION_TABLE]["rows"] = [
+        [SCHOOL_FEEDBACK_PUBLICATION_REVISION]
+    ]
+    plan = restore_plan.plan_restore(package, restored_at=RESTORED_AT)
+    order = plan["table_order"]
+    assert len(order) == 41
+    for parent in (
+        "school_professional_review_cases",
+        "measurement_tasks",
+        "task_enrollments",
+        "assessment_sessions",
+        "subjects",
+        "membership_roles",
+    ):
+        assert order.index(parent) < order.index("school_feedback_records")
+    assert order.index("school_feedback_records") < order.index(
+        "school_feedback_events"
+    )
 
 
 def empty_package():

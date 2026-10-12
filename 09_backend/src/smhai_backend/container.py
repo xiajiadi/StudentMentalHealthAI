@@ -20,6 +20,7 @@ from smhai_backend.adapters.school_cat_assets import SchoolCatAssetsPersistenceA
 from smhai_backend.adapters.school_cat_management import SchoolCatManagementPersistenceAdapter
 from smhai_backend.adapters.school_conversations import SchoolConversationsPersistenceAdapter
 from smhai_backend.adapters.school_directory import SchoolDirectoryPersistenceAdapter
+from smhai_backend.adapters.school_feedback import SchoolFeedbackPersistenceAdapter
 from smhai_backend.adapters.school_professional_reviews import (
     SchoolProfessionalReviewPersistenceAdapter,
 )
@@ -35,6 +36,7 @@ from smhai_backend.domains.cat_management.service import SchoolCatManagementServ
 from smhai_backend.domains.conversations.service import IndependentConversationService
 from smhai_backend.domains.professional_reviews.service import SchoolProfessionalReviewService
 from smhai_backend.domains.school_directory.service import SchoolDirectoryService
+from smhai_backend.domains.school_feedback.service import SchoolFeedbackService
 from smhai_backend.domains.school_tasks.service import SchoolTaskService
 from smhai_backend.domains.support.service import SupportOrchestrator
 from smhai_backend.domains.teacher.service import TeacherDashboardService
@@ -80,6 +82,7 @@ class BackendContainer:
     school_directory: SchoolDirectoryService
     rate_limiter: InMemoryRateLimiter
     professional_reviews: SchoolProfessionalReviewService | None = None
+    school_feedback: SchoolFeedbackService | None = None
     independent_conversations: IndependentConversationService | None = None
     independent_rag: IndependentRagClient | None = None
     independent_llm: IndependentLLMRuntimeClient | None = None
@@ -231,6 +234,11 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         if persistence is not None and settings.identity_profile == "school_tenant"
         else None
     )
+    school_feedback = SchoolFeedbackService(
+        persistence=SchoolFeedbackPersistenceAdapter(persistence)
+        if persistence is not None and settings.identity_profile == "school_tenant"
+        else None
+    )
     cat_management = SchoolCatManagementService(
         persistence=(
             SchoolCatManagementPersistenceAdapter(persistence, cat_management_client)
@@ -311,6 +319,7 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         school_tasks=school_tasks,
         school_directory=school_directory,
         professional_reviews=professional_reviews,
+        school_feedback=school_feedback,
         cat_management=cat_management,
         cat_management_client=cat_management_client,
         cat_assets=cat_assets,
