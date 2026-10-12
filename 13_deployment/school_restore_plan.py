@@ -17,7 +17,7 @@ from school_backup import (
     decode_value,
     validate_backup_package,
 )
-from school_schema import PROFESSIONAL_REVIEW_REVISION
+from school_schema import CAT_ASSETS_REVISION, PROFESSIONAL_REVIEW_REVISION
 
 REVISION_TABLE = "database_alembic_version"
 MODEL_TABLE_COUNT = 27
@@ -58,6 +58,10 @@ DIRECTORY_NAME_TABLES = frozenset({"schools", "school_classes", "account_school_
 PROFESSIONAL_REVIEW_TABLES = frozenset({
     "school_task_specialist_assignments", "school_professional_review_cases",
     "school_professional_review_events",
+})
+CAT_ASSET_TABLES = frozenset({
+    "school_cat_item_banks", "school_cat_item_bank_versions",
+    "school_cat_plans", "school_cat_plan_versions",
 })
 
 
@@ -102,7 +106,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
         and getattr(mapped, "__table__", None) is not None
         and mapped.__table__.metadata is Base.metadata
     }
-    expected_current = EXPECTED_MODEL_TABLES | DIRECTORY_TABLES | PROFESSIONAL_REVIEW_TABLES
+    expected_current = EXPECTED_MODEL_TABLES | DIRECTORY_TABLES | PROFESSIONAL_REVIEW_TABLES | CAT_ASSET_TABLES
     if revision not in SUPPORTED_BACKUP_REVISIONS:
         raise ValueError("Unsupported restore revision")
     if (
@@ -114,7 +118,9 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
 
     tables: dict[str, TableSpec] = {}
     for table_name, table in metadata_tables.items():
-        if revision != PROFESSIONAL_REVIEW_REVISION and table_name in PROFESSIONAL_REVIEW_TABLES:
+        if revision != CAT_ASSETS_REVISION and table_name in CAT_ASSET_TABLES:
+            continue
+        if revision not in {PROFESSIONAL_REVIEW_REVISION, CAT_ASSETS_REVISION} and table_name in PROFESSIONAL_REVIEW_TABLES:
             continue
         if revision == SUPPORTED_REVISION and table_name in DIRECTORY_TABLES:
             continue

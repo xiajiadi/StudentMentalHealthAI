@@ -709,6 +709,35 @@ export class RealApiProvider implements FrontendApi {
   private activeSchoolContext: SchoolRoleContext | null = null
   private readonly reviewCases = new Map<string, ReviewCase>()
 
+  async requestSchoolCatAssets<T>(input: {
+    method: 'GET' | 'POST' | 'PATCH'; path: string; body?: Record<string, unknown>
+    query?: Record<string, unknown>; idempotencyKey?: string
+  }): Promise<ApiEnvelope<T>> {
+    const base = '/api/v1/school/cat-assets'
+    const resource = `${base}/(?:banks/CBANK_|plans/CPLAN_)[A-Za-z0-9][A-Za-z0-9_.-]{0,122}`
+    const collection = input.path === `${base}/banks` || input.path === `${base}/plans`
+    const detail = new RegExp(`^${resource}$`).test(input.path)
+    const version = new RegExp(`^${base}/(?:bank-versions/CBVER_|plan-versions/CPVER_)[A-Za-z0-9][A-Za-z0-9_.-]{0,122}$`).test(input.path)
+    const allowed = input.method === 'GET'
+      ? collection || detail || version || input.path === `${base}/template`
+      : input.method === 'POST'
+        ? collection || new RegExp(`^${resource}/versions$`).test(input.path)
+        : input.method === 'PATCH' && detail
+    if (!allowed) throw new RealApiError('API_INVALID_REQUEST', '题库与方案请求地址无效。')
+    if (input.method !== 'GET' && !input.idempotencyKey?.trim()) {
+      throw new RealApiError('API_INVALID_REQUEST', '题库与方案请求缺少操作标识。')
+    }
+    if (input.method !== 'GET') await this.ensureCsrfToken()
+    return unwrap<T>(() => apiClient.request({
+      method: input.method, url: input.path,
+      ...(input.body ? { body: input.body } : {}),
+      ...(input.query ? { query: input.query } : {}),
+      headers: input.method !== 'GET'
+        ? { 'Content-Type': 'application/json', ...mutationHeaders(this.csrfToken, input.idempotencyKey!) }
+        : {},
+    }))
+  }
+
   async requestSchoolCatManagement<T>(input: {
     method: 'GET' | 'POST'; path: string; body?: Record<string, unknown>
   }): Promise<ApiEnvelope<T>> {
@@ -1380,3 +1409,8 @@ export const requestProfessionalReview = <T>(input: IndependentConversationReque
 export const requestSchoolCatManagement = <T>(input: {
   method: 'GET' | 'POST'; path: string; body?: Record<string, unknown>
 }): Promise<ApiEnvelope<T>> => realApiProvider.requestSchoolCatManagement<T>(input)
+
+export const requestSchoolCatAssets = <T>(input: {
+  method: 'GET' | 'POST' | 'PATCH'; path: string; body?: Record<string, unknown>
+  query?: Record<string, unknown>; idempotencyKey?: string
+}): Promise<ApiEnvelope<T>> => realApiProvider.requestSchoolCatAssets<T>(input)

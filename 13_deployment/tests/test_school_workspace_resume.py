@@ -176,7 +176,7 @@ def restored_workspace_pair(tmp_path, monkeypatch, owned_workspace):
         "workspace": str(target),
         "data_directory": str(data),
         "snapshot_revision": "20261011_0005",
-        "runtime_revision": "20261012_0007",
+        "runtime_revision": resume.CURRENT_SCHOOL_REVISION,
     }
     (target / "restore-state.json").write_text(json.dumps(restore_state), encoding="utf-8")
     return source, target, repo, source_marker, target_marker, restore_state

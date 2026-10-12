@@ -20,6 +20,7 @@ from smhai_backend.core.errors import (
 from smhai_backend.core.middleware import RequestContextMiddleware, SecurityHeadersMiddleware
 from smhai_backend.domains.assessment.router import router as assessment_router
 from smhai_backend.domains.auth.router import router as auth_router
+from smhai_backend.domains.cat_assets.router import router as cat_assets_router
 from smhai_backend.domains.cat_management.router import router as cat_management_router
 from smhai_backend.domains.conversations.router import router as conversations_router
 from smhai_backend.domains.health.router import router as health_router
@@ -86,4 +87,5 @@ def create_app(
         professional_reviews_router, prefix=settings.api_prefix, include_in_schema=False
     )
     app.include_router(cat_management_router, prefix=settings.api_prefix, include_in_schema=False)
+    app.include_router(cat_assets_router, prefix=settings.api_prefix, include_in_schema=False)
     return app

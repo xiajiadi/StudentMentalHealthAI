@@ -1118,6 +1118,139 @@ class SchoolProfessionalReviewEvent(ResourceIdentityMixin, TimestampMixin, Base)
     retention_due_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
 
 
+class SchoolCatItemBank(ResourceIdentityMixin, TimestampMixin, Base):
+    __tablename__ = "school_cat_item_banks"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("id", "school_id", name="school_cat_item_bank_id_school_unique"),
+        CheckConstraint("status IN ('ACTIVE', 'ARCHIVED')", name="status_allowed"),
+        CheckConstraint("revision >= 1", name="revision_positive"),
+        ForeignKeyConstraint(
+            ["school_id"], ["schools.id"],
+            name="fk_school_cat_item_banks_school", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["creator_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_school_cat_item_banks_creator_role_school", ondelete="RESTRICT",
+        ),
+        Index("ix_school_cat_item_banks_school_status", "school_id", "status"),
+    )
+
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="ACTIVE", server_default="ACTIVE"
+    )
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    creator_membership_role_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+
+
+class SchoolCatItemBankVersion(ResourceIdentityMixin, TimestampMixin, Base):
+    __tablename__ = "school_cat_item_bank_versions"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("id", "school_id", name="school_cat_item_bank_version_id_school_unique"),
+        UniqueConstraint(
+            "bank_id", "version_number", name="school_cat_item_bank_version_number_unique"
+        ),
+        CheckConstraint("version_number >= 1", name="version_number_positive"),
+        CheckConstraint("item_count BETWEEN 1 AND 100", name="item_count_allowed"),
+        CheckConstraint("dimension_count = 1", name="dimension_count_allowed"),
+        ForeignKeyConstraint(
+            ["school_id"], ["schools.id"],
+            name="fk_school_cat_item_bank_versions_school", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["bank_id", "school_id"],
+            ["school_cat_item_banks.id", "school_cat_item_banks.school_id"],
+            name="fk_school_cat_item_bank_versions_bank_school", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["creator_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_school_cat_item_bank_versions_creator_role_school", ondelete="RESTRICT",
+        ),
+        Index("ix_school_cat_item_bank_versions_school_bank", "school_id", "bank_id"),
+    )
+
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    bank_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    creator_membership_role_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    item_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    dimension_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    payload_ciphertext: Mapped[bytes] = mapped_column(mysql.MEDIUMBLOB, nullable=False)
+    cipher_format_version: Mapped[str] = mapped_column(ascii_id(32), nullable=False)
+    key_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    payload_schema_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+
+
+class SchoolCatPlan(ResourceIdentityMixin, TimestampMixin, Base):
+    __tablename__ = "school_cat_plans"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("id", "school_id", name="school_cat_plan_id_school_unique"),
+        CheckConstraint("status IN ('ACTIVE', 'ARCHIVED')", name="status_allowed"),
+        CheckConstraint("revision >= 1", name="revision_positive"),
+        ForeignKeyConstraint(
+            ["school_id"], ["schools.id"],
+            name="fk_school_cat_plans_school", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["creator_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_school_cat_plans_creator_role_school", ondelete="RESTRICT",
+        ),
+        Index("ix_school_cat_plans_school_status", "school_id", "status"),
+    )
+
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="ACTIVE", server_default="ACTIVE"
+    )
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    creator_membership_role_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+
+
+class SchoolCatPlanVersion(ResourceIdentityMixin, TimestampMixin, Base):
+    __tablename__ = "school_cat_plan_versions"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("id", "school_id", name="school_cat_plan_version_id_school_unique"),
+        UniqueConstraint("plan_id", "version_number", name="school_cat_plan_version_number_unique"),
+        CheckConstraint("version_number >= 1", name="version_number_positive"),
+        ForeignKeyConstraint(
+            ["school_id"], ["schools.id"],
+            name="fk_school_cat_plan_versions_school", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["plan_id", "school_id"],
+            ["school_cat_plans.id", "school_cat_plans.school_id"],
+            name="fk_school_cat_plan_versions_plan_school", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["bank_version_id", "school_id"],
+            ["school_cat_item_bank_versions.id", "school_cat_item_bank_versions.school_id"],
+            name="fk_school_cat_plan_versions_bank_version_school", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["creator_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_school_cat_plan_versions_creator_role_school", ondelete="RESTRICT",
+        ),
+        Index("ix_school_cat_plan_versions_school_plan", "school_id", "plan_id"),
+        Index("ix_school_cat_plan_versions_bank_version", "bank_version_id", "school_id"),
+    )
+
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    plan_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    bank_version_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    creator_membership_role_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    payload_ciphertext: Mapped[bytes] = mapped_column(mysql.MEDIUMBLOB, nullable=False)
+    cipher_format_version: Mapped[str] = mapped_column(ascii_id(32), nullable=False)
+    key_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    payload_schema_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+
+
 class IdempotencyRecord(ResourceIdentityMixin, TimestampMixin, Base):
     __tablename__ = "idempotency_records"
     __table_args__ = mysql_table_args(

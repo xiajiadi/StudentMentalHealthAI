@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Activity, Beaker, CircleAlert, RotateCcw, ShieldCheck } from '@lucide/vue'
 import AppCard from '@/components/app/AppCard.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
+import SpecialistCatAssets from '@/components/school/SpecialistCatAssets.vue'
 import { useSessionStore } from '@/stores/session'
 import {
   schoolCatManagement,
@@ -23,6 +24,7 @@ const comparisonCandidate = ref<SchoolCatSimulation | null>(null)
 const comparisonText = ref('')
 const errorText = ref('')
 const sampleSize = ref<CatSimulationSampleSize>(100)
+const activePanel = ref<'simulation' | 'assets'>('simulation')
 
 let catalogSequence = 0
 let simulationSequence = 0
@@ -219,113 +221,123 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="cat-management" aria-label="CAT 方案与工程模拟">
-    <AppStatusCallout tone="attention" title="工程模拟不代表心理学结论" body="这里只读取当前合成题库与配置。心理学解释已关闭；模拟结果尚待独立心理学验证，不用于个人判断或报告发布。" />
+    <nav class="cat-management__tabs" aria-label="CAT管理功能">
+      <button type="button" :aria-pressed="activePanel === 'simulation'" @click="activePanel = 'simulation'">工程模拟</button>
+      <button type="button" :aria-pressed="activePanel === 'assets'" @click="activePanel = 'assets'">题库与方案</button>
+    </nav>
+    <SpecialistCatAssets v-if="activePanel === 'assets'" />
+    <div v-show="activePanel === 'simulation'">
+      <AppStatusCallout tone="attention" title="工程模拟不代表心理学结论" body="这里只读取当前合成题库与配置。心理学解释已关闭；模拟结果尚待独立心理学验证，不用于个人判断或报告发布。" />
 
-    <div v-if="catalogState === 'loading'" class="cat-state" role="status" aria-busy="true">
-      <span class="cat-state__mark"><RotateCcw :size="17" aria-hidden="true" /></span>
-      <span>正在读取当前题库和配置…</span>
-    </div>
-    <div v-else-if="catalogState === 'forbidden'" class="cat-state cat-state--restricted" role="alert">
-      <span class="cat-state__mark"><ShieldCheck :size="18" aria-hidden="true" /></span>
-      <div><strong>无法查看CAT配置</strong><p>{{ catalogMessage }}</p></div>
-    </div>
-    <div v-else-if="catalogState === 'unavailable'" class="cat-state cat-state--unavailable" role="alert">
-      <span class="cat-state__mark"><CircleAlert :size="18" aria-hidden="true" /></span>
-      <div><strong>题库信息暂不可用</strong><p>{{ catalogMessage }}</p></div>
-      <button class="cat-button cat-button--quiet" type="button" @click="refreshCatalog">重新读取</button>
-    </div>
+      <div v-if="catalogState === 'loading'" class="cat-state" role="status" aria-busy="true">
+        <span class="cat-state__mark"><RotateCcw :size="17" aria-hidden="true" /></span>
+        <span>正在读取当前题库和配置…</span>
+      </div>
+      <div v-else-if="catalogState === 'forbidden'" class="cat-state cat-state--restricted" role="alert">
+        <span class="cat-state__mark"><ShieldCheck :size="18" aria-hidden="true" /></span>
+        <div><strong>无法查看CAT配置</strong><p>{{ catalogMessage }}</p></div>
+      </div>
+      <div v-else-if="catalogState === 'unavailable'" class="cat-state cat-state--unavailable" role="alert">
+        <span class="cat-state__mark"><CircleAlert :size="18" aria-hidden="true" /></span>
+        <div><strong>题库信息暂不可用</strong><p>{{ catalogMessage }}</p></div>
+        <button class="cat-button cat-button--quiet" type="button" @click="refreshCatalog">重新读取</button>
+      </div>
 
-    <div v-else-if="catalog" class="cat-workbench">
-      <AppCard class="cat-catalog">
-        <header class="cat-panel-heading">
-          <span class="cat-panel-heading__icon"><Activity :size="18" aria-hidden="true" /></span>
-          <div><p class="cat-overline">当前运行资产</p><h2>题库与配置</h2></div>
-          <button class="cat-icon-button" type="button" aria-label="重新读取题库配置" :disabled="simulationState === 'running'" @click="refreshCatalog">
-            <RotateCcw :size="16" aria-hidden="true" />
-          </button>
-        </header>
-        <dl class="cat-facts">
-          <div><dt>题库版本</dt><dd>{{ catalog.item_bank.version }}</dd></div>
-          <div><dt>结构检查</dt><dd><span class="cat-badge">通过</span></dd></div>
-          <div><dt>题目数量</dt><dd>{{ catalog.item_bank.item_count }} 道</dd></div>
-          <div><dt>维度数量</dt><dd>{{ catalog.item_bank.dimension_count }} 个</dd></div>
-          <div><dt>题库状态</dt><dd>{{ statusLabel(catalog.item_bank.status) }}</dd></div>
-        </dl>
-        <div class="cat-config-block">
-          <div class="cat-config-block__heading"><span>测评配置</span><span>{{ catalog.config.config_version }}</span></div>
-          <dl class="cat-config-grid">
-            <div><dt>估计方法</dt><dd>{{ catalog.config.estimator }}</dd></div>
-            <div><dt>选题方法</dt><dd>{{ catalog.config.selection_method }}</dd></div>
-            <div><dt>题数范围</dt><dd>{{ catalog.config.min_items }}–{{ catalog.config.max_items }}</dd></div>
-            <div><dt>模型</dt><dd>{{ catalog.config.model }}</dd></div>
+      <div v-else-if="catalog" class="cat-workbench">
+        <AppCard class="cat-catalog">
+          <header class="cat-panel-heading">
+            <span class="cat-panel-heading__icon"><Activity :size="18" aria-hidden="true" /></span>
+            <div><p class="cat-overline">当前运行资产</p><h2>题库与配置</h2></div>
+            <button class="cat-icon-button" type="button" aria-label="重新读取题库配置" :disabled="simulationState === 'running'" @click="refreshCatalog">
+              <RotateCcw :size="16" aria-hidden="true" />
+            </button>
+          </header>
+          <dl class="cat-facts">
+            <div><dt>题库版本</dt><dd>{{ catalog.item_bank.version }}</dd></div>
+            <div><dt>结构检查</dt><dd><span class="cat-badge">通过</span></dd></div>
+            <div><dt>题目数量</dt><dd>{{ catalog.item_bank.item_count }} 道</dd></div>
+            <div><dt>维度数量</dt><dd>{{ catalog.item_bank.dimension_count }} 个</dd></div>
+            <div><dt>题库状态</dt><dd>{{ statusLabel(catalog.item_bank.status) }}</dd></div>
           </dl>
-        </div>
-        <p class="cat-readonly-note">配置来自当前服务端，只读展示。本页不会编辑或启用题库。</p>
-      </AppCard>
+          <div class="cat-config-block">
+            <div class="cat-config-block__heading"><span>测评配置</span><span>{{ catalog.config.config_version }}</span></div>
+            <dl class="cat-config-grid">
+              <div><dt>估计方法</dt><dd>{{ catalog.config.estimator }}</dd></div>
+              <div><dt>选题方法</dt><dd>{{ catalog.config.selection_method }}</dd></div>
+              <div><dt>题数范围</dt><dd>{{ catalog.config.min_items }}–{{ catalog.config.max_items }}</dd></div>
+              <div><dt>模型</dt><dd>{{ catalog.config.model }}</dd></div>
+            </dl>
+          </div>
+          <p class="cat-readonly-note">配置来自当前服务端，只读展示。本页不会编辑或启用题库。</p>
+        </AppCard>
 
-      <AppCard class="cat-run-panel">
-        <header class="cat-panel-heading cat-panel-heading--run">
-          <span class="cat-panel-heading__icon cat-panel-heading__icon--run"><Beaker :size="18" aria-hidden="true" /></span>
-          <div><p class="cat-overline">固定配置 · 合成数据</p><h2>运行工程模拟</h2></div>
+        <AppCard class="cat-run-panel">
+          <header class="cat-panel-heading cat-panel-heading--run">
+            <span class="cat-panel-heading__icon cat-panel-heading__icon--run"><Beaker :size="18" aria-hidden="true" /></span>
+            <div><p class="cat-overline">固定配置 · 合成数据</p><h2>运行工程模拟</h2></div>
+          </header>
+          <p class="cat-run-intro">选择样本量后手动开始一次运行。相同条件可再次运行并比较聚合结果。</p>
+          <fieldset class="cat-sample-picker" :disabled="simulationState === 'running'">
+            <legend>模拟样本量</legend>
+            <label v-for="size in catalog.simulation.sample_sizes" :key="size" class="cat-sample-option" :class="{ 'cat-sample-option--active': sampleSize === size }">
+              <input type="radio" name="cat-sample-size" :value="size" :checked="sampleSize === size" @change="changeSampleSize(size)">
+              <span><strong>{{ size.toLocaleString('zh-CN') }}</strong><small>合成模拟样本</small></span>
+            </label>
+          </fieldset>
+          <button class="cat-button cat-button--primary" type="button" :disabled="!canRun" @click="runSimulation">
+            <RotateCcw v-if="simulationState === 'running'" :size="16" class="cat-spin" aria-hidden="true" />
+            <Beaker v-else :size="16" aria-hidden="true" />
+            {{ simulationState === 'running' ? '模拟运行中…' : runLabel }}
+          </button>
+          <p class="cat-run-footnote"><ShieldCheck :size="14" aria-hidden="true" />不写入测评会话、报告或业务记录；再次运行需手动发起</p>
+        </AppCard>
+      </div>
+
+      <div v-if="simulationState === 'running'" class="cat-progress" role="status" aria-live="polite" aria-busy="true">
+        <span class="cat-progress__spinner" aria-hidden="true"><RotateCcw :size="15" /></span><span>运行中，较大批次可能需要数分钟。当前样本量 {{ sampleSize.toLocaleString('zh-CN') }}。</span>
+      </div>
+      <div v-else-if="simulationState === 'busy' || simulationState === 'error'" class="cat-state cat-state--unavailable" role="alert">
+        <span class="cat-state__mark"><CircleAlert :size="18" aria-hidden="true" /></span>
+        <div><strong>{{ simulationState === 'busy' ? '模拟服务正忙' : '本次模拟未完成' }}</strong><p>{{ simulationMessage }}</p></div>
+      </div>
+
+      <section v-if="simulation" class="cat-results" aria-labelledby="cat-results-title" aria-live="polite">
+        <header class="cat-results__heading">
+          <div><p class="cat-overline">服务端返回 · 聚合值</p><h2 id="cat-results-title">模拟结果</h2><p>样本量 {{ simulation.n_examinees.toLocaleString('zh-CN') }} · 题库 {{ simulation.item_bank_version }} · 配置 {{ simulation.config_version }}</p></div>
+          <span class="cat-result-chip"><ShieldCheck :size="14" aria-hidden="true" />仅供工程验证</span>
         </header>
-        <p class="cat-run-intro">选择样本量后手动开始一次运行。相同条件可再次运行并比较聚合结果。</p>
-        <fieldset class="cat-sample-picker" :disabled="simulationState === 'running'">
-          <legend>模拟样本量</legend>
-          <label v-for="size in catalog.simulation.sample_sizes" :key="size" class="cat-sample-option" :class="{ 'cat-sample-option--active': sampleSize === size }">
-            <input type="radio" name="cat-sample-size" :value="size" :checked="sampleSize === size" @change="changeSampleSize(size)">
-            <span><strong>{{ size.toLocaleString('zh-CN') }}</strong><small>合成模拟样本</small></span>
-          </label>
-        </fieldset>
-        <button class="cat-button cat-button--primary" type="button" :disabled="!canRun" @click="runSimulation">
-          <RotateCcw v-if="simulationState === 'running'" :size="16" class="cat-spin" aria-hidden="true" />
-          <Beaker v-else :size="16" aria-hidden="true" />
-          {{ simulationState === 'running' ? '模拟运行中…' : runLabel }}
-        </button>
-        <p class="cat-run-footnote"><ShieldCheck :size="14" aria-hidden="true" />不写入测评会话、报告或业务记录；再次运行需手动发起</p>
-      </AppCard>
-    </div>
+        <p v-if="hasRepeatabilityComparison" class="cat-comparison" role="status">{{ comparisonText }}</p>
+        <div class="cat-metrics" aria-label="聚合指标">
+          <div><dt>偏差 Bias</dt><dd>{{ formatNumber(simulation.metrics.bias) }}</dd></div>
+          <div><dt>均方根误差 RMSE</dt><dd>{{ formatNumber(simulation.metrics.rmse) }}</dd></div>
+          <div><dt>平均绝对误差 MAE</dt><dd>{{ formatNumber(simulation.metrics.mae) }}</dd></div>
+          <div><dt>平均题数</dt><dd>{{ formatNumber(simulation.metrics.mean_test_length, 2) }}</dd></div>
+          <div><dt>中位题数</dt><dd>{{ formatNumber(simulation.metrics.median_test_length, 2) }}</dd></div>
+          <div><dt>平均标准误</dt><dd>{{ formatNumber(simulation.metrics.mean_se) }}</dd></div>
+        </div>
+        <div class="cat-stopping">
+          <h3>停止原因汇总</h3>
+          <ul>
+            <li v-for="row in stoppingRows" :key="row.reason">
+              <span>{{ row.label }}</span><span class="cat-stopping__bar"><i :style="{ width: row.width }" /></span><strong>{{ row.count }}</strong>
+            </li>
+          </ul>
+        </div>
+        <p class="cat-result-boundary">结果采用当前配置中的固定随机种子；这些指标不验证量表、模型或心理学解释的有效性。</p>
+      </section>
 
-    <div v-if="simulationState === 'running'" class="cat-progress" role="status" aria-live="polite" aria-busy="true">
-      <span class="cat-progress__spinner" aria-hidden="true"><RotateCcw :size="15" /></span><span>运行中，较大批次可能需要数分钟。当前样本量 {{ sampleSize.toLocaleString('zh-CN') }}。</span>
+      <p v-else-if="catalogState === 'ready' && simulationState === 'idle'" class="cat-empty">
+        运行后，这里会显示接口返回的聚合指标与停止原因汇总。
+      </p>
     </div>
-    <div v-else-if="simulationState === 'busy' || simulationState === 'error'" class="cat-state cat-state--unavailable" role="alert">
-      <span class="cat-state__mark"><CircleAlert :size="18" aria-hidden="true" /></span>
-      <div><strong>{{ simulationState === 'busy' ? '模拟服务正忙' : '本次模拟未完成' }}</strong><p>{{ simulationMessage }}</p></div>
-    </div>
-
-    <section v-if="simulation" class="cat-results" aria-labelledby="cat-results-title" aria-live="polite">
-      <header class="cat-results__heading">
-        <div><p class="cat-overline">服务端返回 · 聚合值</p><h2 id="cat-results-title">模拟结果</h2><p>样本量 {{ simulation.n_examinees.toLocaleString('zh-CN') }} · 题库 {{ simulation.item_bank_version }} · 配置 {{ simulation.config_version }}</p></div>
-        <span class="cat-result-chip"><ShieldCheck :size="14" aria-hidden="true" />仅供工程验证</span>
-      </header>
-      <p v-if="hasRepeatabilityComparison" class="cat-comparison" role="status">{{ comparisonText }}</p>
-      <div class="cat-metrics" aria-label="聚合指标">
-        <div><dt>偏差 Bias</dt><dd>{{ formatNumber(simulation.metrics.bias) }}</dd></div>
-        <div><dt>均方根误差 RMSE</dt><dd>{{ formatNumber(simulation.metrics.rmse) }}</dd></div>
-        <div><dt>平均绝对误差 MAE</dt><dd>{{ formatNumber(simulation.metrics.mae) }}</dd></div>
-        <div><dt>平均题数</dt><dd>{{ formatNumber(simulation.metrics.mean_test_length, 2) }}</dd></div>
-        <div><dt>中位题数</dt><dd>{{ formatNumber(simulation.metrics.median_test_length, 2) }}</dd></div>
-        <div><dt>平均标准误</dt><dd>{{ formatNumber(simulation.metrics.mean_se) }}</dd></div>
-      </div>
-      <div class="cat-stopping">
-        <h3>停止原因汇总</h3>
-        <ul>
-          <li v-for="row in stoppingRows" :key="row.reason">
-            <span>{{ row.label }}</span><span class="cat-stopping__bar"><i :style="{ width: row.width }" /></span><strong>{{ row.count }}</strong>
-          </li>
-        </ul>
-      </div>
-      <p class="cat-result-boundary">结果采用当前配置中的固定随机种子；这些指标不验证量表、模型或心理学解释的有效性。</p>
-    </section>
-
-    <p v-else-if="catalogState === 'ready' && simulationState === 'idle'" class="cat-empty">
-      运行后，这里会显示接口返回的聚合指标与停止原因汇总。
-    </p>
   </section>
 </template>
 
 <style scoped>
 .cat-management { display: grid; gap: 15px; color: var(--color-text-primary); }
+.cat-management__tabs { display: flex; gap: 7px; width: max-content; padding: 4px; border: 1px solid #e3ece7; border-radius: 11px; background: #f5f9f6; }
+.cat-management__tabs button { min-height: 34px; padding: 7px 14px; border: 0; border-radius: 8px; background: transparent; color: #63766c; font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
+.cat-management__tabs button[aria-pressed="true"] { background: #fff; color: #357c6b; box-shadow: 0 1px 3px #203c3014; }
 .cat-workbench { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(280px, .92fr); align-items: start; gap: 14px; }
 .cat-catalog,.cat-run-panel { min-width: 0; padding: 19px; }
 .cat-panel-heading { display: flex; align-items: center; gap: 11px; padding-bottom: 15px; border-bottom: 1px solid #e8efeb; }

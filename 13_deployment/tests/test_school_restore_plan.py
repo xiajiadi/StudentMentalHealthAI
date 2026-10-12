@@ -17,7 +17,11 @@ from school_backup import (
     TARGET_POLICY,
     encode_value,
 )
-from school_schema import CURRENT_SCHOOL_REVISION, DIRECTORY_SCHOOL_REVISION, PROFESSIONAL_REVIEW_REVISION
+from school_schema import (
+    CURRENT_SCHOOL_REVISION,
+    DIRECTORY_SCHOOL_REVISION,
+    PROFESSIONAL_REVIEW_REVISION,
+)
 
 RESTORED_AT = datetime(2026, 10, 12, 4, 5, 6, 123456, tzinfo=UTC)
 STAMP = datetime(2026, 10, 10, 1, 2, 3)  # noqa: DTZ001 - MySQL DATETIME is naive UTC.
@@ -46,7 +50,7 @@ def test_current_snapshot_requires_its_exact_table_layout_and_revision():
     package["tables"][restore_plan.REVISION_TABLE]["rows"] = [[CURRENT_SCHOOL_REVISION]]
     plan = restore_plan.plan_restore(package, restored_at=RESTORED_AT)
     assert plan["revision"] == CURRENT_SCHOOL_REVISION
-    assert len(plan["table_order"]) == 32
+    assert len(plan["table_order"]) == 36
     package["revision"] = SUPPORTED_REVISION
     with pytest.raises(ValueError, match="manifest mismatch"):
         restore_plan.plan_restore(package, restored_at=RESTORED_AT)
@@ -71,6 +75,29 @@ def test_professional_review_manifest_preserves_directory_snapshot_layout():
     assert order.index("school_professional_review_cases") < order.index("school_professional_review_events")
     package["revision"] = "20261012_0006"
     with pytest.raises(ValueError, match="manifest mismatch"):
+        restore_plan.plan_restore(package, restored_at=RESTORED_AT)
+
+
+def test_cat_assets_manifest_preserves_professional_snapshot_and_exact_foreign_keys():
+    professional = restore_plan.trusted_manifest(PROFESSIONAL_REVIEW_REVISION)
+    current = restore_plan.trusted_manifest(CURRENT_SCHOOL_REVISION)
+    assert set(current) - set(professional) == restore_plan.CAT_ASSET_TABLES
+    assert len(current) == 37
+    assert all(current[name] == columns for name, columns in professional.items())
+    package = empty_package()
+    package['revision'] = CURRENT_SCHOOL_REVISION
+    package['tables'] = {
+        name: {'create_sql': 'opaque archived DDL', 'columns': columns, 'rows': []}
+        for name, columns in current.items()
+    }
+    package['tables'][restore_plan.REVISION_TABLE]['rows'] = [[CURRENT_SCHOOL_REVISION]]
+    plan = restore_plan.plan_restore(package, restored_at=RESTORED_AT)
+    order = plan['table_order']
+    assert order.index('school_cat_item_banks') < order.index('school_cat_item_bank_versions')
+    assert order.index('school_cat_item_bank_versions') < order.index('school_cat_plan_versions')
+    assert order.index('school_cat_plans') < order.index('school_cat_plan_versions')
+    package['revision'] = PROFESSIONAL_REVIEW_REVISION
+    with pytest.raises(ValueError, match='manifest mismatch'):
         restore_plan.plan_restore(package, restored_at=RESTORED_AT)
 
 

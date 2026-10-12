@@ -1,0 +1,470 @@
+<script setup lang="ts">
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { Archive, CircleAlert, FilePlus2, History, RotateCcw, Save, ShieldCheck, X } from '@lucide/vue'
+import AppCard from '@/components/app/AppCard.vue'
+import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
+import { useSessionStore } from '@/stores/session'
+import {
+  latestCatAssetVersion,
+  newCatAssetIdempotencyKey,
+  schoolCatAssets,
+  type CatAssetItemDocument,
+  type CatBankDetail,
+  type CatBankDocument,
+  type CatBankMetadata,
+  type CatBankVersion,
+  type CatConfigDocument,
+  type CatPlanDetail,
+  type CatPlanMetadata,
+  type CatPlanVersion,
+} from '@/services/school-cat-assets'
+
+type Tab = 'banks' | 'plans'
+type State = 'loading' | 'ready' | 'forbidden' | 'unavailable'
+type PendingIntent = { label: string; retry: () => Promise<void>; scope: string }
+
+const props = withDefaults(defineProps<{ active?: boolean }>(), { active: true })
+const session = useSessionStore()
+const tab = ref<Tab>('banks')
+const state = ref<State>('loading')
+const error = ref('')
+const banks = ref<CatBankMetadata[]>([])
+const plans = ref<CatPlanMetadata[]>([])
+const availableBankVersions = ref<Array<{ bank: CatBankMetadata; version: CatBankDetail['versions'][number] }>>([])
+const templateBank = ref<CatBankDocument | null>(null)
+const templateConfig = ref<CatConfigDocument | null>(null)
+const bankDetail = ref<CatBankDetail | null>(null)
+const planDetail = ref<CatPlanDetail | null>(null)
+const selectedBankVersion = ref<CatBankVersion | null>(null)
+const selectedPlanVersion = ref<CatPlanVersion | null>(null)
+const bankDraft = ref<CatBankDocument | null>(null)
+const configDraft = ref<CatConfigDocument | null>(null)
+const bankName = ref('')
+const planName = ref('')
+const bankVersionRef = ref('')
+const selectedBankRef = ref('')
+const busy = ref(false)
+const pendingIntent = ref<PendingIntent | null>(null)
+const conflictRefresh = ref<null | (() => Promise<void>)>(null)
+const notice = ref('')
+let sequence = 0
+let disposed = false
+let activated = false
+
+const scopeKey = () => [session.user?.userId ?? '', session.role ?? '', session.user?.activeContext?.role ?? '', session.user?.activeContext?.schoolRef ?? ''].join('|')
+const hasRole = () => session.role === 'psychological_specialist'
+  && (!session.user?.activeContext || session.user.activeContext.role === 'psychological_specialist')
+const active = computed(() => props.active !== false)
+const resources = computed(() => tab.value === 'banks' ? banks.value : plans.value)
+const selectedBankDocument = computed(() => selectedBankVersion.value?.bank_document ?? null)
+const inputLocked = computed(() => busy.value || Boolean(pendingIntent.value))
+const mutationBlocked = computed(() => inputLocked.value || Boolean(conflictRefresh.value))
+const canSaveBank = computed(() => Boolean(bankDraft.value && bankName.value.trim() && !mutationBlocked.value))
+const canSavePlan = computed(() => Boolean(configDraft.value && planName.value.trim() && bankVersionRef.value && selectedBankDocument.value && !mutationBlocked.value))
+const bankVersionLabel = (reference: string) => {
+  const found = availableBankVersions.value.find((entry) => entry.version.version_ref === reference)
+  return found ? `${found.bank.display_name} v${found.version.version_number}` : '本校历史题库版本'
+}
+
+const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
+const errorCode = (value: unknown) => value && typeof value === 'object' && 'code' in value ? String(value.code).toUpperCase() : ''
+const isForbidden = (value: unknown) => ['403', 'HTTP_403', 'FORBIDDEN', 'UNAUTHORIZED', '401', 'HTTP_401', 'AUTH_SESSION_EXPIRED', 'AUTH_SESSION_REVOKED'].includes(errorCode(value))
+const isConflict = (value: unknown) => ['409', 'HTTP_409', 'CONFLICT', 'CAT_ASSET_CONFLICT', 'IDEMPOTENCY_CONFLICT'].includes(errorCode(value))
+
+function clearPrivate() {
+  banks.value = []; plans.value = []; availableBankVersions.value = []; templateBank.value = null; templateConfig.value = null
+  bankDetail.value = null; planDetail.value = null; selectedBankVersion.value = null; selectedPlanVersion.value = null
+  bankDraft.value = null; configDraft.value = null; bankName.value = ''; planName.value = ''
+  bankVersionRef.value = ''; selectedBankRef.value = ''; pendingIntent.value = null; conflictRefresh.value = null
+  error.value = ''; notice.value = ''; busy.value = false
+}
+
+function clearSelection() {
+  bankDetail.value = null; planDetail.value = null; selectedBankVersion.value = null; selectedPlanVersion.value = null
+  bankDraft.value = null; configDraft.value = null; bankName.value = ''; planName.value = ''; bankVersionRef.value = ''
+  error.value = ''; notice.value = ''; pendingIntent.value = null; conflictRefresh.value = null
+}
+
+async function loadWorkspace() {
+  const token = ++sequence
+  const scope = scopeKey()
+  clearPrivate()
+  state.value = 'loading'
+  if (!hasRole()) { state.value = 'forbidden'; return }
+  try {
+    const [template, bankPage, planPage] = await Promise.all([
+      schoolCatAssets.getTemplate(), schoolCatAssets.listBanks(), schoolCatAssets.listPlans(),
+    ])
+    if (disposed || token !== sequence || scope !== scopeKey() || !hasRole()) return
+    templateBank.value = template.bank_document
+    templateConfig.value = template.config_document
+    banks.value = bankPage.items
+    plans.value = planPage.items
+    const details = await Promise.all(bankPage.items.filter((bank) => bank.status === 'ACTIVE').map(async (bank) => {
+      try { return { bank, detail: await schoolCatAssets.getBank(bank.bank_ref) } } catch { return null }
+    }))
+    if (disposed || token !== sequence || scope !== scopeKey() || !hasRole()) return
+    availableBankVersions.value = details.flatMap((result) => result ? result.detail.versions.map((version) => ({ bank: result.bank, version })) : [])
+    state.value = 'ready'
+  } catch (cause) {
+    if (disposed || token !== sequence || scope !== scopeKey()) return
+    clearPrivate()
+    state.value = isForbidden(cause) ? 'forbidden' : 'unavailable'
+    error.value = isForbidden(cause) ? '当前账号或学校上下文无权读取资产内容。' : '题库与方案暂不可用，请重新读取。'
+  }
+}
+
+function activate() {
+  if (!active.value || activated) return
+  activated = true
+  void loadWorkspace()
+}
+
+function startNewBank() {
+  if (!templateBank.value || busy.value) return
+  clearSelection()
+  tab.value = 'banks'
+  bankName.value = '新的合成题库'
+  bankDraft.value = copy(templateBank.value)
+}
+
+function startNewPlan() {
+  if (!templateConfig.value || busy.value) return
+  clearSelection()
+  tab.value = 'plans'
+  planName.value = '新的合成方案'
+  configDraft.value = copy(templateConfig.value)
+  selectedBankRef.value = ''
+}
+
+async function selectBank(item: CatBankMetadata) {
+  const token = ++sequence
+  const scope = scopeKey()
+  clearSelection()
+  state.value = 'loading'
+  try {
+    const detail = await schoolCatAssets.getBank(item.bank_ref)
+    if (disposed || token !== sequence || scope !== scopeKey()) return
+    bankDetail.value = detail
+    bankName.value = detail.display_name
+    const latest = latestCatAssetVersion(detail.versions)
+    if (latest) {
+      const version = await schoolCatAssets.getBankVersion(latest.version_ref)
+      if (disposed || token !== sequence || scope !== scopeKey()) return
+      selectedBankVersion.value = version
+      bankDraft.value = copy(version.bank_document)
+      bankVersionRef.value = version.version_ref
+    }
+    state.value = 'ready'
+  } catch (cause) { handleLoadFailure(cause, token, scope) }
+}
+
+async function selectPlan(item: CatPlanMetadata) {
+  const token = ++sequence
+  const scope = scopeKey()
+  clearSelection()
+  state.value = 'loading'
+  try {
+    const detail = await schoolCatAssets.getPlan(item.plan_ref)
+    if (disposed || token !== sequence || scope !== scopeKey()) return
+    planDetail.value = detail
+    planName.value = detail.display_name
+    const latest = latestCatAssetVersion(detail.versions)
+    if (latest) {
+      const planVersion = await schoolCatAssets.getPlanVersion(latest.version_ref)
+      if (disposed || token !== sequence || scope !== scopeKey()) return
+      bankVersionRef.value = planVersion.bank_version_ref
+      const exact = availableBankVersions.value.find((entry) => entry.version.version_ref === planVersion.bank_version_ref)
+      if (!exact) throw new Error('linked bank version unavailable')
+      selectedBankRef.value = exact.bank.bank_ref
+      const bankVersion = await schoolCatAssets.getBankVersion(planVersion.bank_version_ref)
+      if (disposed || token !== sequence || scope !== scopeKey()) return
+      selectedBankVersion.value = bankVersion
+      selectedPlanVersion.value = planVersion
+      configDraft.value = copy(planVersion.config_document)
+    }
+    state.value = 'ready'
+  } catch (cause) { handleLoadFailure(cause, token, scope) }
+}
+
+function handleLoadFailure(cause: unknown, token: number, scope: string) {
+  if (disposed || token !== sequence || scope !== scopeKey()) return
+  clearSelection()
+  error.value = isForbidden(cause) ? '当前账号或学校上下文无权读取资产内容。' : '所选资产暂不可用，请重新读取。'
+  state.value = isForbidden(cause) ? 'forbidden' : 'unavailable'
+}
+
+async function chooseBankVersion(reference: string) {
+  bankVersionRef.value = reference
+  selectedBankVersion.value = null
+  const token = ++sequence
+  const scope = scopeKey()
+  try {
+    const version = await schoolCatAssets.getBankVersion(reference)
+    if (disposed || token !== sequence || scope !== scopeKey()) return
+    selectedBankVersion.value = version
+    selectedBankRef.value = availableBankVersions.value.find((entry) => entry.version.version_ref === reference)?.bank.bank_ref ?? ''
+  } catch (cause) { handleLoadFailure(cause, token, scope) }
+}
+
+function addItem() {
+  const document = bankDraft.value
+  if (!document || document.items.length >= 100) return
+  const item: CatAssetItemDocument = copy(document.items[document.items.length - 1]!)
+  item.item_id = `ITEM_demo_${crypto.randomUUID()}`
+  item.stem = ''
+  document.items.push(item)
+}
+
+function removeItem(index: number) { bankDraft.value?.items.splice(index, 1) }
+
+function updateOption(item: CatAssetItemDocument, index: number, value: string) {
+  const previous = item.response_options[index]
+  if (previous === undefined || previous === value) return
+  const score = item.scoring[previous]
+  const options = [...item.response_options]
+  options[index] = value
+  item.response_options = options
+  delete item.scoring[previous]
+  if (value.trim()) item.scoring[value] = score ?? index
+}
+
+function captureMutation(label: string, run: () => Promise<void>, conflictRefreshAction?: () => Promise<void>) {
+  const scope = scopeKey()
+  pendingIntent.value = { label, retry: run, scope }
+  conflictRefresh.value = conflictRefreshAction ?? null
+  void runMutation(run, scope)
+}
+
+async function runMutation(run: () => Promise<void>, scope = scopeKey()) {
+  if (busy.value || !hasRole()) return
+  busy.value = true; error.value = ''; notice.value = ''
+  try {
+    await run()
+    if (disposed || scope !== scopeKey() || !hasRole()) return
+    pendingIntent.value = null; conflictRefresh.value = null
+    notice.value = '保存完成，服务端已生成新的版本。'
+    try { await reloadLists() } catch { notice.value = '保存已完成；列表暂未刷新，请重新读取后确认最新状态。' }
+  } catch (cause) {
+    if (disposed || scope !== scopeKey()) return
+    if (isForbidden(cause)) {
+      clearPrivate(); state.value = 'forbidden'; error.value = '访问权限已变化，已清除本页资产内容。'
+    } else if (isConflict(cause)) {
+      pendingIntent.value = null
+      error.value = '资产已被其他操作更新。保留当前编辑内容；刷新版本信息后可继续保存。'
+    } else if (['422', 'HTTP_422', 'VALIDATION_FAILED', 'API_VALIDATION_FAILED'].includes(errorCode(cause))) {
+      pendingIntent.value = null; conflictRefresh.value = null
+      error.value = '内容未通过结构校验。请检查题干、选项计分、递增阈值、题数范围和题库版本绑定。'
+    } else {
+      error.value = '保存结果尚未确认。可使用同一请求再次尝试，避免重复创建版本。'
+    }
+  } finally { if (!disposed && scope === scopeKey()) busy.value = false }
+}
+
+async function reloadLists() {
+  const token = sequence
+  const scope = scopeKey()
+  const [bankPage, planPage] = await Promise.all([schoolCatAssets.listBanks(), schoolCatAssets.listPlans()])
+  if (disposed || token !== sequence || scope !== scopeKey() || !hasRole()) return
+  const details = await Promise.all(bankPage.items.filter((bank) => bank.status === 'ACTIVE').map(async (bank) => {
+    try { return { bank, detail: await schoolCatAssets.getBank(bank.bank_ref) } } catch { return null }
+  }))
+  if (disposed || token !== sequence || scope !== scopeKey() || !hasRole()) return
+  banks.value = bankPage.items
+  plans.value = planPage.items
+  availableBankVersions.value = details.flatMap((result) => result ? result.detail.versions.map((version) => ({ bank: result.bank, version })) : [])
+}
+
+function saveBank() {
+  if (!bankDraft.value || !bankName.value.trim() || busy.value) return
+  const document = copy(bankDraft.value)
+  const name = bankName.value
+  if (bankDetail.value) {
+    const detail = bankDetail.value
+    const action = async () => {
+      bankDetail.value = await schoolCatAssets.createBankVersion(detail.bank_ref, detail.revision, document, idempotencyKey)
+      bankDraft.value = copy(document)
+    }
+    const idempotencyKey = newCatAssetIdempotencyKey()
+    captureMutation('保存题库新版本', action, async () => {
+      const fresh = await schoolCatAssets.getBank(detail.bank_ref)
+      bankDetail.value = fresh
+    })
+  } else {
+    const idempotencyKey = newCatAssetIdempotencyKey()
+    captureMutation('创建题库', async () => {
+      const created = await schoolCatAssets.createBank(name, document, idempotencyKey)
+      bankDetail.value = created
+      bankDraft.value = copy(document)
+      bankName.value = created.display_name
+    })
+  }
+}
+
+function savePlan() {
+  if (!configDraft.value || !planName.value.trim() || !selectedBankVersion.value || !selectedBankDocument.value || busy.value) return
+  const config = copy(configDraft.value)
+  const name = planName.value
+  const ref = bankVersionRef.value
+  const bankDoc = copy(selectedBankDocument.value)
+  if (planDetail.value) {
+    const detail = planDetail.value
+    const idempotencyKey = newCatAssetIdempotencyKey()
+    captureMutation('保存方案新版本', async () => {
+      planDetail.value = await schoolCatAssets.createPlanVersion(detail.plan_ref, detail.revision, ref, bankDoc, config, idempotencyKey)
+    }, async () => { planDetail.value = await schoolCatAssets.getPlan(detail.plan_ref) })
+  } else {
+    const idempotencyKey = newCatAssetIdempotencyKey()
+    captureMutation('创建方案', async () => {
+      const created = await schoolCatAssets.createPlan(name, ref, bankDoc, config, idempotencyKey)
+      planDetail.value = created
+      planName.value = created.display_name
+      configDraft.value = copy(config)
+    })
+  }
+}
+
+function renameOrArchive(archive: boolean) {
+  if (busy.value) return
+  if (tab.value === 'banks' && bankDetail.value) {
+    const detail = bankDetail.value
+    const changes = archive ? { status: 'ARCHIVED' as const } : { display_name: bankName.value }
+    const idempotencyKey = newCatAssetIdempotencyKey()
+    captureMutation(archive ? '归档题库' : '重命名题库', async () => {
+      bankDetail.value = await schoolCatAssets.updateBank(detail.bank_ref, detail.revision, changes, idempotencyKey)
+      bankName.value = bankDetail.value.display_name
+    }, async () => { bankDetail.value = await schoolCatAssets.getBank(detail.bank_ref) })
+  } else if (planDetail.value) {
+    const detail = planDetail.value
+    const changes = archive ? { status: 'ARCHIVED' as const } : { display_name: planName.value }
+    const idempotencyKey = newCatAssetIdempotencyKey()
+    captureMutation(archive ? '归档方案' : '重命名方案', async () => {
+      planDetail.value = await schoolCatAssets.updatePlan(detail.plan_ref, detail.revision, changes, idempotencyKey)
+      planName.value = planDetail.value.display_name
+    }, async () => { planDetail.value = await schoolCatAssets.getPlan(detail.plan_ref) })
+  }
+}
+
+async function refreshConflict() {
+  if (busy.value || !conflictRefresh.value) return
+  busy.value = true
+  try {
+    await conflictRefresh.value()
+    pendingIntent.value = null; conflictRefresh.value = null
+    error.value = ''; notice.value = '版本信息已更新，编辑内容仍保留。再次保存将创建新的请求。'
+  } catch (cause) {
+    if (isForbidden(cause)) { clearPrivate(); state.value = 'forbidden'; error.value = '访问权限已变化，已清除本页资产内容。' }
+    else error.value = '无法刷新版本信息，请稍后重试。'
+  } finally { busy.value = false }
+}
+
+function retrySameRequest() {
+  const intent = pendingIntent.value
+  if (!intent || intent.scope !== scopeKey()) return
+  void runMutation(intent.retry, intent.scope)
+}
+
+async function inspectBankVersion(reference: string) {
+  const token = ++sequence; const scope = scopeKey()
+  try {
+    const version = await schoolCatAssets.getBankVersion(reference)
+    if (!disposed && token === sequence && scope === scopeKey()) selectedBankVersion.value = version
+  } catch (cause) { handleLoadFailure(cause, token, scope) }
+}
+
+async function inspectPlanVersion(reference: string) {
+  const token = ++sequence; const scope = scopeKey()
+  try {
+    const version = await schoolCatAssets.getPlanVersion(reference)
+    if (!disposed && token === sequence && scope === scopeKey()) selectedPlanVersion.value = version
+  } catch (cause) { handleLoadFailure(cause, token, scope) }
+}
+
+function refresh() { void loadWorkspace() }
+watch(scopeKey, (next, previous) => {
+  if (next === previous) return
+  sequence += 1; clearPrivate()
+  state.value = hasRole() ? 'loading' : 'forbidden'
+  if (hasRole() && active.value) void loadWorkspace()
+})
+watch(active, (value) => { if (value) activate() })
+onMounted(activate)
+onBeforeUnmount(() => { disposed = true; sequence += 1; clearPrivate() })
+</script>
+
+<template>
+  <section class="asset-workspace" aria-label="合成题库与 CAT 方案资产管理">
+    <AppStatusCallout tone="attention" title="仅供工程验证" body="这里保存的是合成题库与CAT配置版本。结构校验不代表心理测量学有效性，也不会启用测评、生成个人结论或发布报告。" />
+    <nav class="asset-tabs" aria-label="资产类型">
+      <button type="button" :disabled="inputLocked" :aria-pressed="tab === 'banks'" @click="tab = 'banks'; clearSelection()">题库</button>
+      <button type="button" :disabled="inputLocked" :aria-pressed="tab === 'plans'" @click="tab = 'plans'; clearSelection()">CAT 方案</button>
+    </nav>
+    <div v-if="state === 'loading'" class="asset-state" role="status" aria-busy="true"><RotateCcw class="asset-spin" :size="16" /> 正在读取本校资产…</div>
+    <div v-else-if="state === 'forbidden'" class="asset-state asset-state--error" role="alert"><ShieldCheck :size="18" /><div><strong>无法读取资产</strong><p>{{ error || '请切换到本校心理专业账号。' }}</p></div></div>
+    <div v-else-if="state === 'unavailable'" class="asset-state asset-state--error" role="alert"><CircleAlert :size="18" /><div><strong>资产暂不可用</strong><p>{{ error }}</p></div><button class="asset-button asset-button--quiet" type="button" @click="refresh">重新读取</button></div>
+    <div v-else class="asset-layout">
+      <AppCard class="asset-list">
+        <header class="asset-heading"><div><p class="asset-kicker">{{ tab === 'banks' ? 'ITEM BANKS' : 'CAT PLANS' }}</p><h2>{{ tab === 'banks' ? '题库' : 'CAT 方案' }}</h2></div><button class="asset-button asset-button--quiet" type="button" :disabled="inputLocked" @click="tab === 'banks' ? startNewBank() : startNewPlan()"><FilePlus2 :size="15" />新建</button></header>
+        <p class="asset-help">列表只显示名称、状态和修订号，不包含题目正文或配置参数。</p>
+        <ul v-if="resources.length" class="asset-list__items">
+          <li v-for="resource in resources" :key="'bank_ref' in resource ? resource.bank_ref : resource.plan_ref">
+            <button type="button" class="asset-row" :disabled="inputLocked" :aria-current="(tab === 'banks' ? bankDetail?.bank_ref === ('bank_ref' in resource ? resource.bank_ref : '') : planDetail?.plan_ref === ('plan_ref' in resource ? resource.plan_ref : '')) ? 'true' : undefined" @click="tab === 'banks' ? selectBank(resource as CatBankMetadata) : selectPlan(resource as CatPlanMetadata)">
+              <span class="asset-row__main"><strong>{{ resource.display_name }}</strong><small>修订 {{ resource.revision }} · {{ resource.status === 'ACTIVE' ? '有效' : '已归档' }}</small></span><span class="asset-row__chevron">›</span>
+            </button>
+          </li>
+        </ul>
+        <p v-else class="asset-empty">还没有{{ tab === 'banks' ? '题库' : '方案' }}。可以从合成模板开始创建。</p>
+      </AppCard>
+
+      <AppCard class="asset-editor">
+        <template v-if="tab === 'banks' && bankDraft">
+          <header class="asset-heading"><div><p class="asset-kicker">{{ bankDetail ? `修订 ${bankDetail.revision}` : 'NEW SYNTHETIC BANK' }}</p><h2>{{ bankDetail ? '编辑题库版本' : '新建题库' }}</h2></div><button class="asset-icon" type="button" aria-label="清除编辑内容" :disabled="inputLocked" @click="clearSelection"><X :size="16" /></button></header>
+          <label class="asset-field">题库名称<input v-model="bankName" maxlength="120" :disabled="inputLocked"></label>
+          <div class="asset-subheading"><div><h3>题目内容</h3><p>每次保存会生成不可覆盖的新版本。当前题型采用单维GRM结构。</p></div><button class="asset-button asset-button--quiet" type="button" :disabled="inputLocked || bankDraft.items.length >= 100" @click="addItem"><FilePlus2 :size="14" />添加题目</button></div>
+          <div class="asset-items">
+            <article v-for="(item, index) in bankDraft.items" :key="item.item_id" class="asset-item">
+              <header><strong>题目 {{ index + 1 }}</strong><button class="asset-remove" type="button" aria-label="删除题目" :disabled="inputLocked || bankDraft.items.length <= 1" @click="removeItem(index)"><X :size="14" /></button></header>
+              <label class="asset-field">题干<textarea v-model="item.stem" rows="2" maxlength="5000" :disabled="inputLocked" /></label>
+              <div class="asset-options"><div v-for="(option, optionIndex) in item.response_options" :key="optionIndex" class="asset-option"><label class="asset-field">选项 {{ optionIndex + 1 }}<input :value="option" maxlength="120" :disabled="inputLocked" @input="updateOption(item, optionIndex, ($event.target as HTMLInputElement).value)"></label><label class="asset-field asset-score">计分<input v-model.number="item.scoring[item.response_options[optionIndex]!]" type="number" min="0" :disabled="inputLocked"></label></div></div>
+              <div class="asset-params"><label class="asset-field">GRM 区分参数 a<input v-model.number="item.parameters.a" type="number" min="0.000001" step="0.01" :disabled="inputLocked"></label><label v-for="(threshold, thresholdIndex) in item.parameters.thresholds" :key="thresholdIndex" class="asset-field">阈值 {{ thresholdIndex + 1 }}<input v-model.number="item.parameters.thresholds[thresholdIndex]" type="number" step="0.1" :disabled="inputLocked"></label></div>
+            </article>
+          </div>
+          <footer class="asset-actions"><button class="asset-button asset-button--primary" type="button" :disabled="!canSaveBank" @click="saveBank"><Save :size="15" />{{ busy ? '保存中…' : bankDetail ? '保存新版本' : '创建题库' }}</button><button v-if="bankDetail" class="asset-button asset-button--quiet" type="button" :disabled="mutationBlocked" @click="renameOrArchive(false)">保存名称</button><button v-if="bankDetail && bankDetail.status === 'ACTIVE'" class="asset-button asset-button--danger" type="button" :disabled="mutationBlocked" @click="renameOrArchive(true)"><Archive :size="14" />归档</button></footer>
+          <section v-if="bankDetail" class="asset-history"><h3><History :size="15" />版本历史</h3><button v-for="version in bankDetail.versions" :key="version.version_ref" type="button" class="asset-history__row" @click="inspectBankVersion(version.version_ref)"><span>版本 {{ version.version_number }} · {{ version.item_count }} 道题</span><time>{{ new Date(version.created_at).toLocaleString('zh-CN') }}</time></button><p v-if="selectedBankVersion" class="asset-history__selected">正在查看 v{{ selectedBankVersion.version_number }} 的题库文档。</p></section>
+        </template>
+
+        <template v-else-if="tab === 'plans' && configDraft">
+          <header class="asset-heading"><div><p class="asset-kicker">{{ planDetail ? `修订 ${planDetail.revision}` : 'NEW ENGINEERING PLAN' }}</p><h2>{{ planDetail ? '编辑 CAT 方案版本' : '新建 CAT 方案' }}</h2></div><button class="asset-icon" type="button" aria-label="清除编辑内容" :disabled="busy" @click="clearSelection"><X :size="16" /></button></header>
+          <label class="asset-field">方案名称<input v-model="planName" maxlength="120" :disabled="inputLocked"></label>
+          <label class="asset-field">绑定的题库<select :value="bankVersionRef" :disabled="inputLocked" @change="chooseBankVersion(($event.target as HTMLSelectElement).value)"><option value="">选择本校有效题库版本</option><optgroup v-for="bank in banks.filter((entry) => entry.status === 'ACTIVE')" :key="bank.bank_ref" :label="bank.display_name"><option v-for="entry in availableBankVersions.filter((candidate) => candidate.bank.bank_ref === bank.bank_ref)" :key="entry.version.version_ref" :value="entry.version.version_ref">版本 {{ entry.version.version_number }} · {{ entry.version.item_count }} 道</option></optgroup></select><small v-if="selectedBankVersion">固定绑定：{{ selectedBankVersion.version_number }} · {{ selectedBankDocument?.items.length }} 道合成题</small></label>
+          <p v-if="!selectedBankVersion" class="asset-inline-note">请先选择题库版本。可在左侧打开题库并查看版本，再回到这里选择。</p>
+          <div class="asset-config-grid">
+            <label class="asset-field">估计方法<select v-model="configDraft.estimator" :disabled="inputLocked"><option value="EAP">EAP</option><option value="BM">BM</option></select></label>
+            <label class="asset-field">最少题数<input v-model.number="configDraft.min_items" type="number" min="1" max="100" :disabled="inputLocked"></label>
+            <label class="asset-field">最多题数<input v-model.number="configDraft.max_items" type="number" min="1" max="100" :disabled="inputLocked"></label>
+            <label class="asset-field">标准误停止阈值<input v-model.number="configDraft.se_threshold" type="number" min="0.000001" step="0.01" :disabled="inputLocked"></label>
+            <label class="asset-field">初始估计值<input v-model.number="configDraft.initial_theta" type="number" step="0.1" :disabled="inputLocked"></label>
+            <label class="asset-field">先验均值<input v-model.number="configDraft.prior_mean" type="number" step="0.1" :disabled="inputLocked"></label>
+            <label class="asset-field">先验标准差<input v-model.number="configDraft.prior_sd" type="number" min="0.000001" step="0.1" :disabled="inputLocked"></label>
+            <label class="asset-field">随机种子<input v-model.number="configDraft.seed" type="number" min="0" step="1" :disabled="inputLocked"></label>
+            <label class="asset-field">优化区间下限<input v-model.number="configDraft.optimization_interval[0]" type="number" step="0.1" :disabled="inputLocked"></label>
+            <label class="asset-field">优化区间上限<input v-model.number="configDraft.optimization_interval[1]" type="number" step="0.1" :disabled="inputLocked"></label>
+          </div>
+          <p class="asset-inline-note">题型GRM、选题MFI、暴露控制和内容平衡按当前工程实现固定。配置只用于合成工程验证。</p>
+          <footer class="asset-actions"><button class="asset-button asset-button--primary" type="button" :disabled="!canSavePlan" @click="savePlan"><Save :size="15" />{{ busy ? '保存中…' : planDetail ? '保存方案新版本' : '创建方案' }}</button><button v-if="planDetail" class="asset-button asset-button--quiet" type="button" :disabled="mutationBlocked" @click="renameOrArchive(false)">保存名称</button><button v-if="planDetail && planDetail.status === 'ACTIVE'" class="asset-button asset-button--danger" type="button" :disabled="mutationBlocked" @click="renameOrArchive(true)"><Archive :size="14" />归档</button></footer>
+          <section v-if="planDetail" class="asset-history"><h3><History :size="15" />方案版本历史</h3><button v-for="version in planDetail.versions" :key="version.version_ref" type="button" class="asset-history__row" @click="inspectPlanVersion(version.version_ref)"><span>版本 {{ version.version_number }} · {{ selectedPlanVersion?.version_ref === version.version_ref ? bankVersionLabel(selectedPlanVersion.bank_version_ref) : '查看固定题库版本' }}</span><time>{{ new Date(version.created_at).toLocaleString('zh-CN') }}</time></button><p v-if="selectedPlanVersion" class="asset-history__selected">查看 v{{ selectedPlanVersion.version_number }}：绑定题库为 {{ bankVersionLabel(selectedPlanVersion.bank_version_ref) }}。</p></section>
+        </template>
+        <div v-else class="asset-placeholder"><span><ShieldCheck :size="19" /></span><strong>选择或新建{{ tab === 'banks' ? '题库' : 'CAT 方案' }}</strong><p>内容只在当前本校专业账号会话中读取。</p></div>
+        <div v-if="error" class="asset-feedback asset-feedback--error" role="alert"><CircleAlert :size="15" /><span>{{ error }}</span><button v-if="pendingIntent" type="button" :disabled="busy" @click="retrySameRequest">使用同一请求重试</button><button v-if="conflictRefresh" type="button" :disabled="busy" @click="refreshConflict">刷新版本信息</button></div>
+        <p v-if="notice" class="asset-feedback asset-feedback--success" role="status"><ShieldCheck :size="15" />{{ notice }}</p>
+      </AppCard>
+    </div>
+  </section>
+</template>
+
+<style scoped>
+.asset-workspace{display:grid;gap:14px;color:var(--color-text-primary)}.asset-tabs{display:flex;gap:7px;padding:4px;border:1px solid #e3ece7;border-radius:11px;background:#f5f9f6;width:max-content}.asset-tabs button{min-height:34px;padding:7px 14px;border:0;border-radius:8px;background:transparent;color:#63766c;font:inherit;font-size:11px;font-weight:700;cursor:pointer}.asset-tabs button[aria-pressed=true]{background:#fff;color:#357c6b;box-shadow:0 1px 3px #203c3014}.asset-layout{display:grid;grid-template-columns:minmax(235px,.7fr) minmax(0,1.6fr);gap:13px;align-items:start}.asset-list,.asset-editor{min-width:0;padding:17px}.asset-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:12px;border-bottom:1px solid #e8efeb}.asset-heading h2{margin:3px 0 0;font-size:16px;letter-spacing:-.02em}.asset-kicker{margin:0;color:#548275;font-size:9px;font-weight:800;letter-spacing:.08em}.asset-help{margin:12px 0;color:var(--color-text-muted);font-size:10px;line-height:1.6}.asset-list__items{display:grid;gap:6px;margin:0;padding:0;list-style:none}.asset-row{display:flex;width:100%;align-items:center;justify-content:space-between;gap:9px;padding:11px;border:1px solid #e7eee9;border-radius:9px;background:#fff;text-align:left;cursor:pointer}.asset-row[aria-current=true]{border-color:#83ad9b;background:#f0f7f3}.asset-row__main{display:grid;gap:4px;min-width:0}.asset-row strong{overflow:hidden;color:#40574d;font-size:11px;text-overflow:ellipsis;white-space:nowrap}.asset-row small{color:#788a81;font-size:9px}.asset-row__chevron{color:#8ba096;font-size:19px}.asset-empty,.asset-placeholder{padding:25px 12px;color:var(--color-text-muted);font-size:11px;line-height:1.6;text-align:center}.asset-placeholder{display:grid;justify-items:center;gap:7px;min-height:190px;align-content:center}.asset-placeholder span{color:#478675}.asset-placeholder strong{color:#496158;font-size:12px}.asset-placeholder p{margin:0}.asset-button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:35px;padding:8px 11px;border:1px solid transparent;border-radius:8px;font:inherit;font-size:10px;font-weight:750;cursor:pointer}.asset-button:disabled,.asset-icon:disabled{opacity:.5;cursor:not-allowed}.asset-button--quiet{border-color:#dce8e3;background:#fff;color:#4c6c61}.asset-button--primary{background:#357c6b;color:#fff}.asset-button--primary:hover:not(:disabled){background:#286b5a}.asset-button--danger{border-color:#eddfd7;background:#fffaf7;color:#955e45}.asset-icon,.asset-remove{display:grid;width:31px;height:31px;place-items:center;border:1px solid #e1eae5;border-radius:8px;background:#fff;color:#63796f;cursor:pointer}.asset-field{display:grid;gap:5px;min-width:0;color:#52685e;font-size:10px;font-weight:700}.asset-field input,.asset-field textarea,.asset-field select{width:100%;min-width:0;padding:9px 10px;border:1px solid #dfe9e3;border-radius:8px;background:#fff;color:#344b41;font:inherit;font-size:11px;font-weight:500;outline:none}.asset-field input:focus,.asset-field textarea:focus,.asset-field select:focus{border-color:#74a692;box-shadow:0 0 0 3px #438e7b1c}.asset-field input:disabled,.asset-field textarea:disabled,.asset-field select:disabled{background:#f5f8f6;color:#819087}.asset-field textarea{resize:vertical;line-height:1.6}.asset-field small{color:#7a8b82;font-size:9px;font-weight:500}.asset-editor>.asset-field{margin:13px 0}.asset-subheading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:18px 0 10px}.asset-subheading h3,.asset-history h3{display:flex;align-items:center;gap:6px;margin:0;color:#405b50;font-size:12px}.asset-subheading p{margin:4px 0 0;color:#7a8a82;font-size:9px;line-height:1.5}.asset-items{display:grid;gap:9px}.asset-item{display:grid;gap:10px;padding:12px;border:1px solid #e5ece8;border-radius:10px;background:#fbfdfb}.asset-item>header{display:flex;align-items:center;justify-content:space-between;color:#4d695d;font-size:10px}.asset-remove{width:26px;height:26px}.asset-options{display:grid;gap:6px}.asset-option{display:grid;grid-template-columns:minmax(0,1fr) 95px;gap:8px}.asset-params{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.asset-score input{text-align:right}.asset-config-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:14px 0}.asset-inline-note{margin:10px 0;padding:10px 11px;border-left:3px solid #88aa99;border-radius:0 7px 7px 0;background:#f3f8f5;color:#64786e;font-size:10px;line-height:1.6}.asset-actions{display:flex;flex-wrap:wrap;gap:7px;margin:15px 0;padding-top:12px;border-top:1px solid #e9efeb}.asset-history{display:grid;gap:7px;margin-top:18px;padding-top:13px;border-top:1px solid #e9efeb}.asset-history h3{margin-bottom:2px}.asset-history__row{display:flex;justify-content:space-between;gap:10px;padding:8px 9px;border:1px solid #e7eee9;border-radius:7px;background:#fff;color:#4c6258;text-align:left;font:inherit;font-size:9px;cursor:pointer}.asset-history__row time{color:#85938c;white-space:nowrap}.asset-history__selected{margin:2px 0;color:#71857a;font-size:9px}.asset-feedback{display:flex;align-items:center;gap:8px;margin-top:12px;padding:10px;border-radius:8px;font-size:10px;line-height:1.5}.asset-feedback--error{border:1px solid #efdfd4;background:#fff9f4;color:#805e4b}.asset-feedback--success{border:1px solid #dcebe2;background:#f3f9f5;color:#4d7564}.asset-feedback button{margin-left:auto;padding:6px 8px;border:1px solid #e4d6ca;border-radius:6px;background:#fff;color:#795b48;font:inherit;font-size:9px;white-space:nowrap;cursor:pointer}.asset-state{display:flex;align-items:center;gap:9px;min-height:54px;padding:13px;border:1px solid #e3ece7;border-radius:10px;background:#f7faf8;color:#52685e;font-size:11px}.asset-state--error{align-items:flex-start;border-color:#e9e2d5;background:#fcfaf5;color:#716348}.asset-state p{margin:3px 0 0;font-size:10px;line-height:1.5}.asset-state .asset-button{margin-left:auto}.asset-spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+@media(max-width:820px){.asset-layout{grid-template-columns:1fr}.asset-list__items{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.asset-list,.asset-editor{padding:13px}.asset-list__items{grid-template-columns:1fr}.asset-params{grid-template-columns:repeat(2,minmax(0,1fr))}.asset-option{grid-template-columns:minmax(0,1fr) 76px}.asset-history__row{align-items:flex-start;flex-direction:column}.asset-feedback{flex-wrap:wrap}.asset-feedback button{margin-left:0}}
+@media(prefers-reduced-motion:reduce){.asset-spin{animation:none}}
+</style>

@@ -1,8 +1,9 @@
 """Loopback CAT service for the Round 1 integration path.
 
 The process owns provider sessions and exposes only item presentation,
-response recording, and the frozen ``assessment.v1`` projection.  Provider
-objects and item parameters never cross this HTTP boundary.
+response recording, and the frozen ``assessment.v1`` projection. Provider objects
+remain private. Separate internal management routes expose synthetic documents
+only through the authenticated school specialist gateway.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from cat_engine.domain.session import Session
 from cat_engine.providers.adaptivetesting_provider import AdaptiveTestingProvider
 from cat_engine.service.cat_service import CATService
 from cat_engine.api.management import create_management_router
+from cat_engine.api.assets import create_assets_router
 
 
 class StartRequest(BaseModel):
@@ -230,6 +232,7 @@ def create_app(*, runtime: CatRuntime | None = None) -> FastAPI:
     )
     app.state.cat_runtime = runtime
     app.include_router(create_management_router(runtime))
+    app.include_router(create_assets_router(runtime))
 
     @app.get("/health/live", operation_id="catLiveHealth")
     async def health_live() -> dict[str, Any]:

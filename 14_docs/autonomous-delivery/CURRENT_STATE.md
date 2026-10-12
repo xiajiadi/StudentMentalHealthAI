@@ -13,6 +13,29 @@ GPU and process entries below are historical; verify live identities before acti
 
 ## Latest resumed increment
 
+- School synthetic CAT asset/version increment now native0008 in original3308.
+  Four additive tables;32 old business tables/1494 stored rows preserved exactly;
+  sealed0007 pre-DDL backup retained. API CRUD/replay/history/race/plan-binding/
+  role/CSRF/school/archive tests pass at logs/cat-assets-http-
+  bfc8f42780d249d6a3a1f46f08432df3.json. Native three audit-fault rollback paths
+  and nonplaintext storage pass at logs/cat-assets-transaction-qa-
+  421e470775014840ab8be0add950e24a.json. Browser27 stages pass; latest desktop/mobile
+  inspected at browser-qa/20261012T164021Z-82cd4907f40247de8e44300476f1a7b9.
+  Backend413/CAT49/Frontend184+lint/build/DBschema15/deployment154 pass. See
+  SCHOOL_CAT_ASSET_MANAGEMENT.md for exact limits and retained failed attempts.
+- Latest original apps: Backend exec86252/PID44360, CAT exec91295/PID50324,
+  Frontend exec90451/PID36496. Original schema/source runtime both0008; previous
+  Backend gate0007 startup failure was repaired, not bypassed. New targetD3312
+  restores0008:36 tables/1651 rows/127 ciphertexts/3 sessions revoked; no targetD
+  browser or restart yet. Original/B/C/D MySQL remain owned and preserved; targetA
+  stays stopped. B/C remain0007 and their old loaded applications do not prove
+  compatibility with current0008 source. Shutdown must recheck each guardian.
+- Next required work: simulate exact saved bank/plan versions; implement controlled
+  synthetic activation and immutable task/session/runtime bindings; retain existing
+  fixture path and professional/student publication boundaries. Full mission also
+  needs approved university grounded support, L1/L2/L3 publication and installation/
+  reboot/recovery evidence. Goal ACTIVE; this increment does not complete the goal.
+
 - CAT fixture inspection and real engineering simulation are now connected through
   the specialist-only gateway. Root CAT37/Backend392/Frontend162 suites passed,
   Frontend build/scoped lint and shared transport2 checks passed. Native specialist

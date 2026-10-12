@@ -22,6 +22,14 @@ configuration is not proof that the scheduled wrap-up or pause has executed.
 
 ## Wrap-up procedure
 
+Owned databases recorded at the latest0008 milestone: original workspace3308,
+restore-20261012-b3310, restore-20261012-c3311, restore-20261013-d3312. TargetA3309
+is stopped and preserved. Exact paths/guardian creation identities are in their
+workspace.json files; these are discovery hints, not permission to kill a PID.
+Original latest applications and evidence are in CURRENT_STATE.md. Revalidate
+live guardians, datadirs, listener ownership and transactions before safe SQL
+shutdown; preserve all schemas/keys/backups and do not reset older restore targets.
+
 1. Check real clock and live agents; stop dispatching new work at wrap-up time.
 2. Ask running Workers to return their actual diff, current checks and remaining
    work. Preserve uncommitted edits; do not discard or fabricate completion.

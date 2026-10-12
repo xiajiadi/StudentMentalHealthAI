@@ -22,6 +22,10 @@ from database_layer.models import (  # noqa: F401
     School,
     SchoolAccountBatch,
     SchoolAccountProvision,
+    SchoolCatItemBank,
+    SchoolCatItemBankVersion,
+    SchoolCatPlan,
+    SchoolCatPlanVersion,
     SchoolClass,
     SchoolClassStudent,
     SchoolClassTeacher,
@@ -42,7 +46,7 @@ from sqlalchemy.schema import CreateTable
 
 
 def test_round1_domain_table_count_and_explicit_mysql_defaults() -> None:
-    assert len(Base.metadata.tables) == 32
+    assert len(Base.metadata.tables) == 36
     assert set(Base.metadata.tables) == {
         "accounts",
         "roles",
@@ -74,6 +78,10 @@ def test_round1_domain_table_count_and_explicit_mysql_defaults() -> None:
         "school_task_specialist_assignments",
         "school_professional_review_cases",
         "school_professional_review_events",
+        "school_cat_item_banks",
+        "school_cat_item_bank_versions",
+        "school_cat_plans",
+        "school_cat_plan_versions",
         "idempotency_records",
         "audit_events",
     }
@@ -759,3 +767,155 @@ def test_school_seed_provenance_migration_is_additive_and_downgrade_guarded(
     assert operations[1][0:3] == ("drop", "ck_schools_provenance_ref_token", "schools")
     assert operations[2][0:3] == ("create", "ck_schools_provenance_ref_token", "schools")
     assert operations[2][3] == "provenance_ref = 'SYNTHETIC_REF_AUTH_TENANT_FIXTURE_V1'"
+
+
+def test_school_cat_asset_models_keep_versions_immutable_and_school_scoped() -> None:
+    banks = Base.metadata.tables["school_cat_item_banks"]
+    bank_versions = Base.metadata.tables["school_cat_item_bank_versions"]
+    plans = Base.metadata.tables["school_cat_plans"]
+    plan_versions = Base.metadata.tables["school_cat_plan_versions"]
+
+    assert set(banks.c.keys()) >= {
+        "school_id", "display_name", "status", "revision", "creator_membership_role_id"
+    }
+    assert set(bank_versions.c.keys()) >= {
+        "school_id", "bank_id", "version_number", "creator_membership_role_id",
+        "item_count", "dimension_count", "payload_ciphertext", "cipher_format_version",
+        "key_version", "payload_schema_version",
+    }
+    assert set(plans.c.keys()) >= {
+        "school_id", "display_name", "status", "revision", "creator_membership_role_id"
+    }
+    assert set(plan_versions.c.keys()) >= {
+        "school_id", "plan_id", "version_number", "bank_version_id",
+        "creator_membership_role_id", "payload_ciphertext", "cipher_format_version",
+        "key_version", "payload_schema_version",
+    }
+    assert SchoolCatItemBank.__tablename__ == banks.name
+    assert SchoolCatItemBankVersion.__tablename__ == bank_versions.name
+    assert SchoolCatPlan.__tablename__ == plans.name
+    assert SchoolCatPlanVersion.__tablename__ == plan_versions.name
+    assert bank_versions.c.payload_ciphertext.type.python_type is bytes
+    assert plan_versions.c.payload_ciphertext.type.python_type is bytes
+
+    def constraints(table):
+        return {constraint.name: constraint for constraint in table.constraints}
+
+    for table in (banks, bank_versions, plans, plan_versions):
+        table_constraints = constraints(table)
+        assert any(
+            isinstance(constraint, UniqueConstraint)
+            and tuple(column.name for column in constraint.columns) == ("id", "school_id")
+            for constraint in table_constraints.values()
+        )
+        assert all(
+            element.ondelete == "RESTRICT"
+            for constraint in table_constraints.values()
+            if isinstance(constraint, ForeignKeyConstraint)
+            for element in constraint.elements
+        )
+
+    bank_version_scope = next(
+        constraint for constraint in bank_versions.foreign_key_constraints
+        if constraint.name == "fk_school_cat_item_bank_versions_bank_school"
+    )
+    assert tuple(element.target_fullname for element in bank_version_scope.elements) == (
+        "school_cat_item_banks.id", "school_cat_item_banks.school_id"
+    )
+    plan_bank_version_scope = next(
+        constraint for constraint in plan_versions.foreign_key_constraints
+        if constraint.name == "fk_school_cat_plan_versions_bank_version_school"
+    )
+    assert tuple(element.target_fullname for element in plan_bank_version_scope.elements) == (
+        "school_cat_item_bank_versions.id", "school_cat_item_bank_versions.school_id"
+    )
+    bank_version_checks = {
+        constraint.name
+        for constraint in bank_versions.constraints
+        if isinstance(constraint, CheckConstraint)
+    }
+    assert bank_version_checks >= {
+        "ck_school_cat_item_bank_versions_version_number_positive",
+        "ck_school_cat_item_bank_versions_item_count_allowed",
+        "ck_school_cat_item_bank_versions_dimension_count_allowed",
+    }
+    plan_version_checks = {
+        constraint.name
+        for constraint in plan_versions.constraints
+        if isinstance(constraint, CheckConstraint)
+    }
+    assert plan_version_checks >= {
+        "ck_school_cat_plan_versions_version_number_positive",
+    }
+
+
+def test_school_cat_assets_migration_is_additive_and_downgrade_guarded(monkeypatch) -> None:
+    from importlib.util import module_from_spec, spec_from_file_location
+
+    migration_path = (
+        Path(__file__).resolve().parents[1]
+        / "migrations"
+        / "versions"
+        / "20261012_0008_school_cat_assets.py"
+    )
+    spec = spec_from_file_location("migration_20261012_0008", migration_path)
+    assert spec is not None and spec.loader is not None
+    migration = module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    assert migration.revision == "20261012_0008"
+    assert migration.down_revision == "20261012_0007"
+
+    operations: list[tuple[object, ...]] = []
+
+    class _Connection:
+        def __init__(self, populated_table: str | None = None) -> None:
+            self.populated_table = populated_table
+
+        def execute(self, statement):
+            statement_text = str(statement)
+            operations.append(("guard", statement_text))
+            return type("Result", (), {
+                "scalar_one": lambda _self: int(
+                    self.populated_table is not None and self.populated_table in statement_text
+                )
+            })()
+
+    class _Ops:
+        def __init__(self, populated_table: str | None = None) -> None:
+            self.populated_table = populated_table
+
+        def __getattr__(self, name):
+            if name == "get_bind":
+                return lambda: _Connection(self.populated_table)
+
+            def record(*args, **kwargs):
+                operations.append((name, *args, kwargs))
+
+            return record
+
+    monkeypatch.setattr(migration, "op", _Ops())
+    migration.upgrade()
+    assert [entry[1] for entry in operations if entry[0] == "create_table"] == [
+        "school_cat_item_banks",
+        "school_cat_item_bank_versions",
+        "school_cat_plans",
+        "school_cat_plan_versions",
+    ]
+    assert not any(
+        entry[0] in {"drop_table", "drop_column", "drop_constraint"}
+        for entry in operations
+    )
+
+    for populated_table in migration._BUSINESS_TABLES:
+        operations.clear()
+        monkeypatch.setattr(migration, "op", _Ops(populated_table=populated_table))
+        with pytest.raises(RuntimeError, match="cannot downgrade school CAT assets"):
+            migration.downgrade()
+        assert operations and all(entry[0] == "guard" for entry in operations)
+
+    operations.clear()
+    monkeypatch.setattr(migration, "op", _Ops())
+    migration.downgrade()
+    assert [entry[1] for entry in operations if entry[0] == "drop_table"] == list(
+        migration._BUSINESS_TABLES
+    )

@@ -15,7 +15,12 @@ spec.loader.exec_module(runtime)
 def workspace(tmp_path):
     target = tmp_path / "workspace"
     target.mkdir()
-    marker = dict(schema_version="psynova.synthetic-workspace.v1", project="StudentMentalHealthAI", synthetic_only=True, host="127.0.0.1", database="smhai_school_demo", port=3308, state="READY_FOR_MIGRATION", workspace_id="owned-test-workspace", data_directory=str(target / "mysql-data"))
+    marker = {
+        "schema_version": "psynova.synthetic-workspace.v1", "project": "StudentMentalHealthAI",
+        "synthetic_only": True, "host": "127.0.0.1", "database": "smhai_school_demo", "port": 3308,
+        "state": "READY_FOR_MIGRATION", "workspace_id": "owned-test-workspace",
+        "data_directory": str(target / "mysql-data"),
+    }
     (target / "workspace.json").write_text(json.dumps(marker))
     return target, marker
 
@@ -51,7 +56,7 @@ def test_existing_settings_never_overwritten(tmp_path, monkeypatch):
     assert protected.read_bytes() == b"preserved"
 
 
-@pytest.mark.parametrize("revision,role", [("20261011_0005","NONE"), ("20261010_0002","NONE"), ("20261011_0005","unexpected-role")])
+@pytest.mark.parametrize("revision,role", [(runtime.CURRENT_SCHOOL_REVISION,"NONE"), ("20261010_0002","NONE"), (runtime.CURRENT_SCHOOL_REVISION,"unexpected-role"), ("20261011_0005","NONE")])
 def test_provision_checks_revision_before_sealed_write_and_ddl(tmp_path, monkeypatch, revision, role):
     target, marker = workspace(tmp_path)
     calls = []
@@ -96,7 +101,7 @@ def test_provision_checks_revision_before_sealed_write_and_ddl(tmp_path, monkeyp
     monkeypatch.setattr(runtime, "verify_process", lambda marker: None)
     monkeypatch.setattr(runtime, "read_private", lambda path: {"DB_NAME":marker["database"], "DB_PORT":str(marker["port"]), "DB_HOST":"127.0.0.1", "root_password":"test-only-value"})
     monkeypatch.setattr(runtime, "write_private", lambda path, values: calls.append("sealed write"))
-    if revision != "20261011_0005":
+    if revision != runtime.CURRENT_SCHOOL_REVISION:
         with pytest.raises(runtime.PreparationError):
             runtime.prepare(target, tmp_path / "repo")
         assert "sealed write" not in calls

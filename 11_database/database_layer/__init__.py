@@ -10,6 +10,12 @@ from .crypto import (
     MappingKeyProvider,
     WindowsDpapiKeyProvider,
 )
+from .models import (
+    SchoolCatItemBank,
+    SchoolCatItemBankVersion,
+    SchoolCatPlan,
+    SchoolCatPlanVersion,
+)
 from .provenance import (
     PROVENANCE_REGISTRY,
     SYNTHETIC_SCHOOL_SEED_PROVENANCE_REF,
@@ -38,6 +44,10 @@ __all__ = [
     "PROVENANCE_REGISTRY",
     "SCHOOL_SEED_SLOTS",
     "SqlAlchemyUnitOfWork",
+    "SchoolCatItemBank",
+    "SchoolCatItemBankVersion",
+    "SchoolCatPlan",
+    "SchoolCatPlanVersion",
     "SyntheticSchoolSeedConflict",
     "SyntheticSchoolSeedError",
     "SyntheticSchoolSeedResult",
