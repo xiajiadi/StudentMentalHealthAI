@@ -85,6 +85,7 @@ class School(ResourceIdentityMixin, TimestampMixin, Base):
     )
 
     school_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False, unique=True)
+    display_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="ACTIVE", server_default="ACTIVE"
     )
@@ -97,6 +98,7 @@ class AccountSchoolMembership(ResourceIdentityMixin, TimestampMixin, Base):
     __table_args__ = mysql_table_args(
         UniqueConstraint("account_id", "school_id", name="account_school_unique"),
         UniqueConstraint("id", "school_id", name="membership_id_school_unique"),
+        UniqueConstraint("id", "account_id", "school_id", name="membership_account_school_unique"),
         CheckConstraint("status IN ('ACTIVE', 'INACTIVE', 'REVOKED')", name="status_allowed"),
         CheckConstraint(
             "valid_until IS NULL OR valid_until >= valid_from", name="validity_ordered"
@@ -115,6 +117,7 @@ class AccountSchoolMembership(ResourceIdentityMixin, TimestampMixin, Base):
         ForeignKey("schools.id", ondelete="RESTRICT", name="fk_memberships_school"),
         nullable=False,
     )
+    display_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="ACTIVE", server_default="ACTIVE"
     )
@@ -128,6 +131,7 @@ class MembershipRole(ResourceIdentityMixin, TimestampMixin, Base):
     __table_args__ = mysql_table_args(
         UniqueConstraint("membership_id", "role_code", name="membership_role_unique"),
         UniqueConstraint("id", "school_id", name="membership_role_id_school_unique"),
+        UniqueConstraint("id", "membership_id", "school_id", name="role_membership_school_unique"),
         ForeignKeyConstraint(
             ["membership_id", "school_id"],
             ["account_school_memberships.id", "account_school_memberships.school_id"],
@@ -166,6 +170,97 @@ class MembershipRole(ResourceIdentityMixin, TimestampMixin, Base):
     valid_from: Mapped[datetime] = mapped_column(utc_datetime(), nullable=False, default=utc_now)
     valid_until: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+
+
+class SchoolAccountBatch(ResourceIdentityMixin, TimestampMixin, Base):
+    __tablename__ = "school_account_batches"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("batch_ref", name="school_account_batch_ref_unique"),
+        UniqueConstraint("id", "school_id", name="school_account_batch_id_school_unique"),
+        ForeignKeyConstraint(
+            ["created_by_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_school_account_batches_creator_role_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["class_id", "school_id"],
+            ["school_classes.id", "school_classes.school_id"],
+            name="fk_school_account_batches_class_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["school_id"], ["schools.id"], name="fk_school_account_batches_school",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint("row_count BETWEEN 1 AND 100", name="row_count_allowed"),
+        Index("ix_school_account_batches_school_created", "school_id", "created_at"),
+    )
+
+    batch_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    created_by_membership_role_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    class_id: Mapped[int | None] = mapped_column(unsigned_id(), nullable=True)
+    row_count: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class SchoolAccountProvision(ResourceIdentityMixin, TimestampMixin, Base):
+    __tablename__ = "school_account_provisions"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("account_id", name="school_account_provision_account_unique"),
+        UniqueConstraint(
+            "batch_id", "row_no", name="school_account_provision_batch_row_unique"
+        ),
+        ForeignKeyConstraint(
+            ["batch_id", "school_id"],
+            ["school_account_batches.id", "school_account_batches.school_id"],
+            name="fk_school_account_provisions_batch_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["membership_id", "account_id", "school_id"],
+            [
+                "account_school_memberships.id", "account_school_memberships.account_id",
+                "account_school_memberships.school_id",
+            ],
+            name="fk_school_account_provisions_membership_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["membership_role_id", "membership_id", "school_id"],
+            ["membership_roles.id", "membership_roles.membership_id", "membership_roles.school_id"],
+            name="fk_school_account_provisions_role_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["account_id"], ["accounts.id"], name="fk_school_account_provisions_account",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["school_id"], ["schools.id"], name="fk_school_account_provisions_school",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint("role_code IN ('student', 'teacher')", name="role_allowed"),
+        CheckConstraint(
+            "status IN ('PENDING_ACTIVATION', 'ACTIVE')", name="status_allowed"
+        ),
+        CheckConstraint(
+            "(status = 'PENDING_ACTIVATION' AND activated_at IS NULL) OR "
+            "(status = 'ACTIVE' AND activated_at IS NOT NULL)",
+            name="activation_matches_status",
+        ),
+        Index("ix_school_account_provisions_school_status", "school_id", "status"),
+    )
+
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    batch_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    account_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    membership_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    membership_role_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    row_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    role_code: Mapped[str] = mapped_column(ascii_id(16), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    activated_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
 
 
 class AccountRole(ResourceIdentityMixin, TimestampMixin, Base):
@@ -289,6 +384,7 @@ class SchoolClass(ResourceIdentityMixin, TimestampMixin, Base):
 
     school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
     class_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     created_by_membership_role_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="ACTIVE", server_default="ACTIVE"
@@ -899,6 +995,8 @@ __all__ = [
     "ReviewEvent",
     "Role",
     "SafetyDecision",
+    "SchoolAccountBatch",
+    "SchoolAccountProvision",
     "SchoolClass",
     "SchoolClassStudent",
     "SchoolClassTeacher",

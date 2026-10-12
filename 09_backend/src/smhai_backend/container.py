@@ -16,6 +16,7 @@ from smhai_backend.adapters.memory.repositories import (
     InMemorySessionStore,
     InMemoryUserRepository,
 )
+from smhai_backend.adapters.school_directory import SchoolDirectoryPersistenceAdapter
 from smhai_backend.core.async_utils import maybe_await
 from smhai_backend.core.config import BackendSettings
 from smhai_backend.core.rate_limit import InMemoryRateLimiter
@@ -23,6 +24,7 @@ from smhai_backend.domains.assessment.service import AssessmentService
 from smhai_backend.domains.audit import AuditService
 from smhai_backend.domains.auth.service import AuthService
 from smhai_backend.domains.authorization import NativeAuthorizationProvider
+from smhai_backend.domains.school_directory.service import SchoolDirectoryService
 from smhai_backend.domains.school_tasks.service import SchoolTaskService
 from smhai_backend.domains.support.service import SupportOrchestrator
 from smhai_backend.domains.teacher.service import TeacherDashboardService
@@ -59,6 +61,7 @@ class BackendContainer:
     support: SupportOrchestrator
     teacher_dashboard: TeacherDashboardService
     school_tasks: SchoolTaskService
+    school_directory: SchoolDirectoryService
     rate_limiter: InMemoryRateLimiter
 
     async def start(self) -> None:
@@ -178,6 +181,10 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         assessments=assessments,
         cat=cat,
     )
+    directory_persistence = (
+        SchoolDirectoryPersistenceAdapter(persistence) if persistence is not None else None
+    )
+    school_directory = SchoolDirectoryService(persistence=directory_persistence)
     support = SupportOrchestrator(
         assessments=assessments,
         conversations=conversations,
@@ -222,6 +229,7 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         assessments=assessments,
         teacher_dashboard=teacher_dashboard,
         school_tasks=school_tasks,
+        school_directory=school_directory,
         support=support,
         rate_limiter=rate_limiter,
     )

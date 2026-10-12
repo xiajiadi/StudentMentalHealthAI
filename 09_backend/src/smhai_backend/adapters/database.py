@@ -41,6 +41,7 @@ from smhai_backend.domains.models import (
 )
 
 REQUIRED_DATABASE_REVISION = "20261011_0005"
+REQUIRED_SCHOOL_TENANT_DATABASE_REVISION = "20261012_0006"
 _LEGACY_CSRF_SECRET = b"smhai-round1-synthetic-csrf-secret"
 
 
@@ -223,16 +224,26 @@ class MySqlBackendAdapter:
                 )
                 revisions = list(result.scalars().all())
         except Exception:
+            required_revision = (
+                REQUIRED_SCHOOL_TENANT_DATABASE_REVISION
+                if self.identity_profile == "school_tenant"
+                else REQUIRED_DATABASE_REVISION
+            )
             raise RuntimeError(
                 "Database schema revision is missing or unsupported; this runtime does not "
                 "perform migrations. Provision an isolated synthetic workspace at revision "
-                f"{REQUIRED_DATABASE_REVISION}."
+                f"{required_revision}."
             ) from None
-        if revisions != [REQUIRED_DATABASE_REVISION]:
+        required_revision = (
+            REQUIRED_SCHOOL_TENANT_DATABASE_REVISION
+            if self.identity_profile == "school_tenant"
+            else REQUIRED_DATABASE_REVISION
+        )
+        if revisions != [required_revision]:
             raise RuntimeError(
                 "Database schema revision is missing or unsupported; this runtime does not "
                 "perform migrations. Provision an isolated synthetic workspace at revision "
-                f"{REQUIRED_DATABASE_REVISION}."
+                f"{required_revision}."
             )
 
     def _school_actor_ref(self, actor: Any) -> str:
@@ -392,7 +403,13 @@ class MySqlBackendAdapter:
             )
             rows = (
                 await uow.session.execute(
-                    self._select(m.SchoolClass.class_ref, m.SchoolClass.status, students, teachers)
+                    self._select(
+                        m.SchoolClass.class_ref,
+                        m.SchoolClass.display_name,
+                        m.SchoolClass.status,
+                        students,
+                        teachers,
+                    )
                     .where(m.SchoolClass.school_id == actor.school_id)
                     .order_by(m.SchoolClass.class_ref)
                 )
@@ -400,9 +417,10 @@ class MySqlBackendAdapter:
             return [
                 dict(
                     class_ref=row[0],
-                    status=row[1],
-                    active_student_count=int(row[2]),
-                    active_teacher_count=int(row[3]),
+                    display_name=row[1],
+                    status=row[2],
+                    active_student_count=int(row[3]),
+                    active_teacher_count=int(row[4]),
                 )
                 for row in rows
             ]
@@ -453,7 +471,7 @@ class MySqlBackendAdapter:
         async with self._uow() as uow:
             await self._school_actor_role(uow, actor, "admin", at)
             statement = (
-                self._select(m.Account.public_id)
+                self._select(m.Account.public_id, m.AccountSchoolMembership.display_name)
                 .join(
                     m.AccountSchoolMembership, m.AccountSchoolMembership.account_id == m.Account.id
                 )
@@ -481,10 +499,15 @@ class MySqlBackendAdapter:
                 )
             )
             if role_code == "teacher":
-                refs = (await uow.session.scalars(statement.order_by(m.Account.public_id))).all()
+                refs = (await uow.session.execute(statement.order_by(m.Account.public_id))).all()
                 return [
-                    {"user_id": f"USER_{ref}", "role": role_code, "subject_id": None}
-                    for ref in refs
+                    {
+                        "user_id": f"USER_{row[0]}",
+                        "role": role_code,
+                        "subject_id": None,
+                        "display_name": row[1],
+                    }
+                    for row in refs
                 ]
             statement = (
                 statement.add_columns(m.Subject.subject_ref)
@@ -510,7 +533,12 @@ class MySqlBackendAdapter:
             )
             rows = (await uow.session.execute(statement)).all()
             return [
-                {"user_id": f"USER_{row[0]}", "role": role_code, "subject_id": row[1]}
+                {
+                    "user_id": f"USER_{row[0]}",
+                    "role": role_code,
+                    "subject_id": row[2],
+                    "display_name": row[1],
+                }
                 for row in rows
             ]
 

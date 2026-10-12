@@ -15,11 +15,13 @@ from uuid import uuid4
 
 from private_settings import MAGIC, read_private, write_private
 from school_backend import load_runtime
+from school_schema import LEGACY_SCHOOL_SNAPSHOT_REVISION, SUPPORTED_SNAPSHOT_REVISIONS
 
 NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 BACKUP_V1 = "psynova.sealed-school-backup.v1"
 BACKUP_V2 = "psynova.sealed-school-backup.v2"
-SUPPORTED_REVISION = "20261011_0005"
+SUPPORTED_REVISION = LEGACY_SCHOOL_SNAPSHOT_REVISION
+SUPPORTED_BACKUP_REVISIONS = SUPPORTED_SNAPSHOT_REVISIONS
 RECOVERY_SCOPE = "WINDOWS_CURRENT_USER_ONLY"
 TARGET_POLICY = "NEW_ISOLATED_INSTANCE_ONLY"
 AUTH_SESSION_POLICY = "REVOKE_ALL_AFTER_IMPORT"
@@ -153,7 +155,7 @@ def validate_backup_package(package: dict) -> dict:
     if (
         package.get("project") != "StudentMentalHealthAI"
         or package.get("synthetic_only") is not True
-        or package.get("revision") != SUPPORTED_REVISION
+        or package.get("revision") not in SUPPORTED_BACKUP_REVISIONS
         or not isinstance(package.get("workspace_id"), str)
         or not package["workspace_id"]
         or package.get("database") != "smhai_school_demo"

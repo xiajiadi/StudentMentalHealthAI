@@ -19,6 +19,7 @@ from prepare_school_runtime import (
     verify_runtime_grants,
 )
 from private_settings import read_private
+from school_schema import CURRENT_SCHOOL_REVISION
 
 DEFAULT_BACKEND_PORT = 8088
 DEFAULT_FRONTEND_PORT = 4178
@@ -86,7 +87,7 @@ def load_runtime(workspace: Path, repo: Path) -> dict:
             cursor.execute("SELECT CURRENT_ROLE()")
             verify_runtime_grants(grants, cursor.fetchone()[0])
             cursor.execute("SELECT version_num FROM database_alembic_version")
-            if cursor.fetchall() != (("20261011_0005",),):
+            if cursor.fetchall() != ((CURRENT_SCHOOL_REVISION,),):
                 raise PreparationError("Required school revision unavailable")
     finally:
         connection.close()

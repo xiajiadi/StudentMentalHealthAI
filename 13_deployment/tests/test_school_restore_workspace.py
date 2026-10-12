@@ -23,7 +23,7 @@ def scenario(tmp_path, monkeypatch):
     backup_file = backups / "sealed.private.dpapi"
     backup_file.write_bytes(b"synthetic-sealed-fixture")
     target = tmp_path / "new-target"
-    package = {"workspace_id": "source-id", "port": 3308,
+    package = {"workspace_id": "source-id", "port": 3308, "revision": "20261011_0005",
                "database_key_container_b64": base64.b64encode(b"original-sealed-key").decode()}
     calls = []
 

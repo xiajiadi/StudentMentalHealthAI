@@ -270,7 +270,7 @@ onMounted(() => { void load() })
           <label class="school-form__label" for="school-class-select">当前班级</label>
           <select id="school-class-select" v-model="selectedClassRef" :disabled="!classes.length || Boolean(pending)">
             <option value="" disabled>请选择班级</option>
-            <option v-for="item in classes" :key="item.class_ref" :value="item.class_ref">{{ classLabel(item.class_ref) }} · 学生 {{ item.active_student_count }} · 教师 {{ item.active_teacher_count }}</option>
+            <option v-for="item in classes" :key="item.class_ref" :value="item.class_ref">{{ item.display_name?.trim() || classLabel(item.class_ref) }} · 学生 {{ item.active_student_count }} · 教师 {{ item.active_teacher_count }}</option>
           </select>
           <p v-if="!classes.length" class="school-empty">当前没有可用班级。创建班级后，可分配同校人员并发布任务。</p>
         </AppCard>
@@ -279,10 +279,10 @@ onMounted(() => { void load() })
           <div class="school-panel__heading"><UsersRound :size="18" aria-hidden="true" /><div><h3>人员分配</h3><p>选择服务端返回的同校在用账号，不输入学校或角色范围。</p></div></div>
           <div class="school-form">
             <label for="school-student-select">学生</label>
-            <div class="school-form__row"><select id="school-student-select" v-model="selectedStudent" :disabled="!activeClass || Boolean(pending)"><option value="">选择学生</option><option v-for="member in students" :key="member.user_id" :value="member.user_id">{{ `学生账号 ${shortRef(member.user_id)}` }}</option></select><AppButton variant="secondary" size="sm" :disabled="!activeClass || !selectedStudent" :loading="pending === 'assign-student'" @click="assignMember('student')">分配</AppButton></div>
+            <div class="school-form__row"><select id="school-student-select" v-model="selectedStudent" :disabled="!activeClass || Boolean(pending)"><option value="">选择学生</option><option v-for="member in students" :key="member.user_id" :value="member.user_id">{{ member.display_name?.trim() || `学生账号 ${shortRef(member.user_id)}` }}</option></select><AppButton variant="secondary" size="sm" :disabled="!activeClass || !selectedStudent" :loading="pending === 'assign-student'" @click="assignMember('student')">分配</AppButton></div>
             <p v-if="!students.length" class="school-form__hint">没有可分配的同校学生账号。</p>
             <label for="school-teacher-select">教师</label>
-            <div class="school-form__row"><select id="school-teacher-select" v-model="selectedTeacher" :disabled="!activeClass || Boolean(pending)"><option value="">选择教师</option><option v-for="member in teachers" :key="member.user_id" :value="member.user_id">{{ `教师账号 ${shortRef(member.user_id)}` }}</option></select><AppButton variant="secondary" size="sm" :disabled="!activeClass || !selectedTeacher" :loading="pending === 'assign-teacher'" @click="assignMember('teacher')">分配</AppButton></div>
+            <div class="school-form__row"><select id="school-teacher-select" v-model="selectedTeacher" :disabled="!activeClass || Boolean(pending)"><option value="">选择教师</option><option v-for="member in teachers" :key="member.user_id" :value="member.user_id">{{ member.display_name?.trim() || `教师账号 ${shortRef(member.user_id)}` }}</option></select><AppButton variant="secondary" size="sm" :disabled="!activeClass || !selectedTeacher" :loading="pending === 'assign-teacher'" @click="assignMember('teacher')">分配</AppButton></div>
             <p v-if="!teachers.length" class="school-form__hint">没有可分配的同校教师账号。</p>
           </div>
         </AppCard>

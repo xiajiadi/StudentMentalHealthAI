@@ -6,6 +6,7 @@ import type { DependencyStatusDto } from '@/api/generated/types.gen'
 import AppCard from '@/components/app/AppCard.vue'
 import AppPageHeader from '@/components/app/AppPageHeader.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
+import AdminSchoolDirectory from '@/components/school/AdminSchoolDirectory.vue'
 import AdminSchoolOperations from '@/components/school/AdminSchoolOperations.vue'
 import { readDependencyHealth } from '@/views/admin/health'
 
@@ -15,7 +16,7 @@ const healthState = ref<'loading' | 'ready' | 'error'>('loading')
 const dependencies = ref<Record<string, DependencyStatusDto>>({})
 const page = computed(() => ({
   overview: { eyebrow: '学校管理空间', title: '管理概览', intro: '管理班级、人员分配和测评任务，并查看本地服务能力。' },
-  users: { eyebrow: '用户与角色', title: '班级与人员', intro: '仅从当前学校返回的在用账号中选择人员。' },
+  users: { eyebrow: '用户与角色', title: '班级与人员', intro: '管理当前学校的目录名称、合成账号和班级分配。' },
   settings: { eyebrow: '系统设置', title: '服务能力状态', intro: '以下只读信息来自 Backend 公开的依赖健康端点，不包含配置写入或管理操作。' },
 }[section.value as 'overview' | 'users' | 'settings'] ?? { eyebrow: '学校管理空间', title: '管理概览', intro: '查看本地服务公开的依赖能力状态。' }))
 const healthRows = computed(() => Object.entries(dependencies.value ?? {}).map(([name, value]) => ({ name, status: value.status, integration: value.integration })))
@@ -65,6 +66,7 @@ watch(section, (value) => {
     </template>
 
     <template v-else-if="section === 'users'">
+      <AdminSchoolDirectory />
       <AdminSchoolOperations mode="members" />
       <AppStatusCallout tone="info" title="安全复核权限单独管理" body="学校管理员页面不展示安全复核队列或复核操作。安全复核员（REVIEWER）是独立角色，需使用其专属工作区。" />
     </template>

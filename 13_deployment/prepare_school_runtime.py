@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 from private_settings import read_private, write_private
+from school_schema import CURRENT_SCHOOL_REVISION
 
 
 class PreparationError(RuntimeError):
@@ -99,7 +100,7 @@ def prepare(workspace: Path, repo: Path) -> dict:
             if port != marker["port"] or database != marker["database"] or Path(directory).resolve() != Path(marker["data_directory"]).resolve():
                 raise PreparationError("Connected database identity does not match")
             cursor.execute("SELECT version_num FROM database_alembic_version")
-            if cursor.fetchall() != (("20261011_0005",),):
+            if cursor.fetchall() != ((CURRENT_SCHOOL_REVISION,),):
                 raise PreparationError("Required school migration is missing")
             username = "psynova_runtime_" + secrets.token_hex(8)
             password = secrets.token_hex(32)
@@ -127,7 +128,7 @@ def prepare(workspace: Path, repo: Path) -> dict:
                 with connection.cursor() as cursor:
                     cursor.execute("ALTER USER %s@'127.0.0.1' ACCOUNT LOCK", (created_username,))
                 connection.commit()
-            except Exception:
+            except Exception:  # noqa: BLE001 - preserve recovery evidence without credential-bearing errors.
                 raise PreparationError("Runtime isolation failed; manual owned-workspace inspection required") from None
         raise
     finally:
@@ -142,7 +143,7 @@ def main() -> int:
     try:
         print(json.dumps(prepare(args.workspace, Path(__file__).resolve().parents[1])))
         return 0
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - emit only safe error type.
         print(json.dumps({"runtime_identity": "BLOCKED", "error_type": type(exc).__name__, "recovery": "Preserve sealed settings and inspect owned workspace."}))
         return 2
 

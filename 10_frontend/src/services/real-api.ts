@@ -43,6 +43,10 @@ import type {
   ReviewSubmission,
   TeacherTaskProgress,
   SupportResult,
+  SchoolDirectory,
+  SchoolAccountImportRow,
+  SchoolAccountPreview,
+  SchoolAccountBatch,
 } from '@/api/client'
 
 type UnknownRecord = Record<string, unknown>
@@ -129,13 +133,24 @@ const requiredTimestamp = (source: UnknownRecord, key: string, nullable = false)
 const isAssessmentStatus = (value: unknown): value is Assessment['status'] =>
   value === 'created' || value === 'in_progress' || value === 'completed' || value === 'abandoned' || value === 'invalid'
 
+const nullableDisplayName = (value: unknown): string | null => {
+  if (value !== null && (typeof value !== 'string' || value.length > 120)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '学校目录名称格式无法识别。')
+  }
+  return value as string | null
+}
+
 const mapSchoolClass = (value: unknown): SchoolClass => {
   if (!isRecord(value)) throw new RealApiError('API_INVALID_RESPONSE', '班级列表格式无法识别。')
+  if (value.display_name !== undefined && value.display_name !== null && typeof value.display_name !== 'string') {
+    throw new RealApiError('API_INVALID_RESPONSE', '班级列表格式无法识别。')
+  }
   return {
     class_ref: requiredString(value, 'class_ref'),
     status: requiredString(value, 'status'),
     active_student_count: requiredCount(value, 'active_student_count'),
     active_teacher_count: requiredCount(value, 'active_teacher_count'),
+    ...(value.display_name !== undefined ? { display_name: value.display_name as string | null } : {}),
   }
 }
 
@@ -150,7 +165,92 @@ const mapSchoolMember = (value: unknown): SchoolMember => {
     user_id: requiredString(value, 'user_id'),
     role: value.role,
     subject_id: nullableString(value.subject_id),
+    ...(value.display_name === undefined ? {} : { display_name: nullableDisplayName(value.display_name) }),
+    ...(value.account_status === undefined ? {} : { account_status: requiredString(value, 'account_status') }),
+    ...(value.provisioning_status === undefined ? {} : { provisioning_status: nullableDisplayName(value.provisioning_status) }),
   }
+}
+
+const mapSchoolDirectory = (value: unknown): SchoolDirectory => {
+  const rootKeys = new Set(['school', 'classes', 'members'])
+  if (!isRecord(value) || Object.keys(value).some((key) => !rootKeys.has(key))
+    || !isRecord(value.school) || Object.keys(value.school).some((key) => !['school_ref', 'display_name'].includes(key))
+    || !Array.isArray(value.classes) || !Array.isArray(value.members)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '学校目录格式无法识别。')
+  }
+  const school = {
+    school_ref: requiredString(value.school, 'school_ref'),
+    display_name: nullableDisplayName(value.school.display_name),
+  }
+  const classes = value.classes.map((item) => {
+    const allowed = new Set(['class_ref', 'status', 'active_student_count', 'active_teacher_count', 'display_name'])
+    if (!isRecord(item) || Object.keys(item).some((key) => !allowed.has(key))) {
+      throw new RealApiError('API_INVALID_RESPONSE', '学校目录班级包含不支持的信息。')
+    }
+    if (!Object.hasOwn(item, 'display_name')) throw new RealApiError('API_INVALID_RESPONSE', '学校目录班级名称缺失。')
+    return mapSchoolClass(item)
+  })
+  const members = value.members.map((item) => {
+    const allowed = new Set(['user_id', 'display_name', 'role', 'account_status', 'provisioning_status'])
+    if (!isRecord(item) || Object.keys(item).some((key) => !allowed.has(key))
+      || (item.role !== 'student' && item.role !== 'teacher')) {
+      throw new RealApiError('API_INVALID_RESPONSE', '学校目录人员包含不支持的信息。')
+    }
+    return {
+      user_id: requiredString(item, 'user_id'),
+      display_name: nullableDisplayName(item.display_name),
+      role: item.role,
+      account_status: requiredString(item, 'account_status'),
+      provisioning_status: nullableDisplayName(item.provisioning_status),
+    }
+  })
+  return { school, classes, members }
+}
+
+const mapSchoolAccountPreview = (value: unknown): SchoolAccountPreview => {
+  if (!isRecord(value) || Object.keys(value).some((key) => !['valid', 'row_count', 'errors'].includes(key))
+    || typeof value.valid !== 'boolean' || !Array.isArray(value.errors)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '账号预览格式无法识别。')
+  }
+  const rowCount = requiredCount(value, 'row_count')
+  if (rowCount > 100) throw new RealApiError('API_INVALID_RESPONSE', '账号预览格式无法识别。')
+  const errors = value.errors.map((item) => {
+    const allowed = new Set(['row_no', 'code'])
+    if (!isRecord(item) || Object.keys(item).some((key) => !allowed.has(key))
+      || !Number.isInteger(item.row_no) || (item.row_no as number) < 1
+      || typeof item.code !== 'string' || !/^[A-Z0-9_]{1,64}$/.test(item.code)) {
+      throw new RealApiError('API_INVALID_RESPONSE', '账号预览包含不支持的信息。')
+    }
+    return { row_no: item.row_no as number, code: item.code }
+  })
+  return { valid: value.valid, row_count: rowCount, errors }
+}
+
+const mapSchoolAccountBatch = (value: unknown): SchoolAccountBatch => {
+  const allowed = new Set(['batch_ref', 'created_count', 'accounts'])
+  if (!isRecord(value) || Object.keys(value).some((key) => !allowed.has(key)) || !Array.isArray(value.accounts)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '账号批次格式无法识别。')
+  }
+  const accounts = value.accounts.map((item) => {
+    const accountKeys = new Set(['row_no', 'user_id', 'display_name', 'role', 'status'])
+    if (!isRecord(item) || Object.keys(item).some((key) => !accountKeys.has(key))
+      || !Number.isInteger(item.row_no) || (item.row_no as number) < 1
+      || (item.role !== 'student' && item.role !== 'teacher') || item.status !== 'PENDING_ACTIVATION') {
+      throw new RealApiError('API_INVALID_RESPONSE', '账号批次包含不支持的信息。')
+    }
+    return {
+      row_no: item.row_no as number,
+      user_id: requiredString(item, 'user_id'),
+      display_name: requiredString(item, 'display_name'),
+      role: item.role,
+      status: 'PENDING_ACTIVATION' as const,
+    }
+  })
+  const createdCount = requiredCount(value, 'created_count')
+  if (createdCount !== accounts.length || createdCount > 100) {
+    throw new RealApiError('API_INVALID_RESPONSE', '账号批次数量无法识别。')
+  }
+  return { batch_ref: requiredString(value, 'batch_ref'), created_count: createdCount, accounts }
 }
 
 const mapSchoolTask = (value: unknown): SchoolTask => {
@@ -795,7 +895,12 @@ export class RealApiProvider implements FrontendApi {
     return { ...response, data: mapAssessment(response.data, assessmentId) }
   }
 
-  private async schoolWrite(path: string, body: unknown, operation: string): Promise<ApiEnvelope<unknown>> {
+  private async schoolWrite(
+    path: string,
+    body: unknown,
+    operation: string,
+    idempotencyKey = nowToken(`frontend-school-${operation}`),
+  ): Promise<ApiEnvelope<unknown>> {
     await this.ensureCsrfToken()
     return unwrap<unknown>(() => apiClient.request({
       method: 'POST',
@@ -804,8 +909,82 @@ export class RealApiProvider implements FrontendApi {
       parseAs: 'json',
       headers: {
         'Content-Type': 'application/json',
-        ...mutationHeaders(this.csrfToken, nowToken(`frontend-school-${operation}`)),
+        ...mutationHeaders(this.csrfToken, idempotencyKey),
       },
+    }))
+  }
+
+  async getSchoolAdminDirectory(): Promise<ApiEnvelope<SchoolDirectory>> {
+    const response = await unwrap<unknown>(() => apiClient.request({
+      method: 'GET', url: '/api/v1/school/admin/directory', parseAs: 'json',
+    }))
+    return { ...response, data: mapSchoolDirectory(response.data) }
+  }
+
+  async updateSchoolDisplayName(displayName: string): Promise<ApiEnvelope<unknown>> {
+    return this.schoolWrite('/api/v1/school/admin/school/name', { display_name: displayName }, 'school-name')
+  }
+
+  async updateSchoolClassDisplayName(classRef: string, displayName: string): Promise<ApiEnvelope<unknown>> {
+    return this.schoolWrite(
+      `/api/v1/school/admin/classes/${encodeURIComponent(classRef)}/name`,
+      { display_name: displayName }, 'class-name',
+    )
+  }
+
+  async updateSchoolMemberDisplayName(userId: string, displayName: string): Promise<ApiEnvelope<unknown>> {
+    return this.schoolWrite(
+      `/api/v1/school/admin/members/${encodeURIComponent(userId)}/name`,
+      { display_name: displayName }, 'member-name',
+    )
+  }
+
+  async previewSchoolAccountImport(
+    classRef: string | null,
+    rows: SchoolAccountImportRow[],
+  ): Promise<ApiEnvelope<SchoolAccountPreview>> {
+    await this.ensureCsrfToken()
+    const response = await unwrap<unknown>(() => apiClient.request({
+      method: 'POST',
+      url: '/api/v1/school/admin/accounts/preview',
+      body: { class_ref: classRef, rows },
+      parseAs: 'json',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrfToken },
+    }))
+    return { ...response, data: mapSchoolAccountPreview(response.data) }
+  }
+
+  async importSchoolAccounts(
+    classRef: string | null,
+    rows: SchoolAccountImportRow[],
+    idempotencyKey: string,
+  ): Promise<ApiEnvelope<SchoolAccountBatch>> {
+    const response = await this.schoolWrite(
+      '/api/v1/school/admin/accounts/import',
+      { class_ref: classRef, rows },
+      'account-import',
+      idempotencyKey,
+    )
+    return { ...response, data: mapSchoolAccountBatch(response.data) }
+  }
+
+  async getSchoolAccountBatch(batchRef: string): Promise<ApiEnvelope<SchoolAccountBatch>> {
+    const response = await unwrap<unknown>(() => apiClient.request({
+      method: 'GET',
+      url: `/api/v1/school/admin/accounts/batches/${encodeURIComponent(batchRef)}`,
+      parseAs: 'json',
+    }))
+    return { ...response, data: mapSchoolAccountBatch(response.data) }
+  }
+
+  async activateSchoolAccount(userId: string, newPassword: string): Promise<ApiEnvelope<unknown>> {
+    await this.ensureCsrfToken()
+    return unwrap<unknown>(() => apiClient.request({
+      method: 'POST',
+      url: `/api/v1/school/admin/accounts/${encodeURIComponent(userId)}/activate`,
+      body: { new_password: newPassword },
+      parseAs: 'json',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrfToken },
     }))
   }
 

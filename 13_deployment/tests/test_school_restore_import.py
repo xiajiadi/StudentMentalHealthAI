@@ -100,7 +100,7 @@ def fixture(tmp_path, monkeypatch):
     manifest = {"accounts": ["id", "password_hash"], "auth_sessions": ["id", "revoked_at"],
                 "database_alembic_version": ["version_num"]}
     monkeypatch.setattr(importer, "plan_restore", lambda *_args, **_kwargs: plan)
-    monkeypatch.setattr(importer, "trusted_manifest", lambda: manifest)
+    monkeypatch.setattr(importer, "trusted_manifest", lambda _revision: manifest)
     return FakeConnection(target["data_directory"]), package, target
 
 

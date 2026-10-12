@@ -11,7 +11,12 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from school_backup import SUPPORTED_REVISION, decode_value, validate_backup_package
+from school_backup import (
+    SUPPORTED_BACKUP_REVISIONS,
+    SUPPORTED_REVISION,
+    decode_value,
+    validate_backup_package,
+)
 
 REVISION_TABLE = "database_alembic_version"
 MODEL_TABLE_COUNT = 27
@@ -47,6 +52,8 @@ EXPECTED_MODEL_TABLES = frozenset(
     }
 )
 RECOVERY_REVOCATION_REASON = "RECOVERY_RELOGIN_REQUIRED"
+DIRECTORY_TABLES = frozenset({"school_account_batches", "school_account_provisions"})
+DIRECTORY_NAME_TABLES = frozenset({"schools", "school_classes", "account_school_memberships"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,7 +71,7 @@ class TableSpec:
     foreign_keys: tuple[ForeignKeySpec, ...] = ()
 
 
-def _load_trusted_tables() -> dict[str, TableSpec]:
+def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableSpec]:
     """Load and completeness-check the local revision's 27 ORM mappings."""
     repository = Path(__file__).resolve().parents[1]
     database_root = (repository / "11_database").resolve()
@@ -90,17 +97,25 @@ def _load_trusted_tables() -> dict[str, TableSpec]:
         and getattr(mapped, "__table__", None) is not None
         and mapped.__table__.metadata is Base.metadata
     }
+    expected_current = EXPECTED_MODEL_TABLES | DIRECTORY_TABLES
+    if revision not in SUPPORTED_BACKUP_REVISIONS:
+        raise ValueError("Unsupported restore revision")
     if (
-        len(metadata_tables) != MODEL_TABLE_COUNT
-        or set(metadata_tables) != EXPECTED_MODEL_TABLES
-        or mapped_tables != EXPECTED_MODEL_TABLES
+        len(metadata_tables) != MODEL_TABLE_COUNT + len(DIRECTORY_TABLES)
+        or set(metadata_tables) != expected_current
+        or mapped_tables != expected_current
     ):
         raise RuntimeError("Trusted model table manifest is incomplete or changed")
 
     tables: dict[str, TableSpec] = {}
     for table_name, table in metadata_tables.items():
+        if revision == SUPPORTED_REVISION and table_name in DIRECTORY_TABLES:
+            continue
         columns = tuple(column.name for column in table.columns)
         nullable = frozenset(column.name for column in table.columns if column.nullable)
+        if revision == SUPPORTED_REVISION and table_name in DIRECTORY_NAME_TABLES:
+            columns = tuple(column for column in columns if column != "display_name")
+            nullable = nullable - {"display_name"}
         primary_key = tuple(column.name for column in table.primary_key.columns)
         foreign_keys = tuple(
             ForeignKeySpec(
@@ -120,9 +135,9 @@ def _load_trusted_tables() -> dict[str, TableSpec]:
     return tables
 
 
-def trusted_manifest() -> dict[str, list[str]]:
+def trusted_manifest(revision: str = SUPPORTED_REVISION) -> dict[str, list[str]]:
     """Return the supported revision's exact local table-to-column manifest."""
-    tables = _load_trusted_tables()
+    tables = _load_trusted_tables(revision)
     return {name: list(tables[name].columns) for name in sorted(tables)}
 
 
@@ -225,14 +240,14 @@ def plan_restore(package: dict, *, restored_at: datetime) -> dict[str, Any]:
     restore target. The original package and snapshot rows remain untouched.
     """
     validate_backup_package(package)
-    if package["revision"] != SUPPORTED_REVISION:
+    if package["revision"] not in SUPPORTED_BACKUP_REVISIONS:
         raise ValueError("Unsupported restore revision")
     recovery_time = _utc_as_mysql_datetime(restored_at)
 
-    tables = _load_trusted_tables()
+    tables = _load_trusted_tables(package["revision"])
     rows_by_table = _decode_rows(package, tables)
     revision_rows = rows_by_table[REVISION_TABLE]
-    if len(revision_rows) != 1 or revision_rows[0]["version_num"] != SUPPORTED_REVISION:
+    if len(revision_rows) != 1 or revision_rows[0]["version_num"] != package["revision"]:
         raise ValueError("Snapshot revision table must contain exactly the supported revision")
 
     auth_spec = tables["auth_sessions"]
@@ -259,7 +274,7 @@ def plan_restore(package: dict, *, restored_at: datetime) -> dict[str, Any]:
         row_counts[table_name] = len(rows_by_table[table_name])
 
     return {
-        "revision": SUPPORTED_REVISION,
+        "revision": package["revision"],
         "table_order": table_order,
         "tables": planned_tables,
         "row_counts": row_counts,

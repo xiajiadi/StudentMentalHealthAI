@@ -21,6 +21,7 @@ from smhai_backend.core.middleware import RequestContextMiddleware, SecurityHead
 from smhai_backend.domains.assessment.router import router as assessment_router
 from smhai_backend.domains.auth.router import router as auth_router
 from smhai_backend.domains.health.router import router as health_router
+from smhai_backend.domains.school_directory.router import router as school_directory_router
 from smhai_backend.domains.school_tasks.router import router as school_tasks_router
 from smhai_backend.domains.support.router import router as support_router
 from smhai_backend.domains.teacher.router import router as teacher_router
@@ -76,4 +77,5 @@ def create_app(
     # frozen shared api.v1 OpenAPI contract.
     app.include_router(teacher_router, prefix=settings.api_prefix, include_in_schema=False)
     app.include_router(school_tasks_router, prefix=settings.api_prefix, include_in_schema=False)
+    app.include_router(school_directory_router, prefix=settings.api_prefix, include_in_schema=False)
     return app

@@ -89,6 +89,7 @@ export interface SchoolClass {
   status: string
   active_student_count: number
   active_teacher_count: number
+  display_name?: string | null
 }
 
 export type SchoolMemberRole = 'student' | 'teacher'
@@ -97,6 +98,48 @@ export interface SchoolMember {
   user_id: string
   role: SchoolMemberRole
   subject_id: string | null
+  display_name?: string | null
+  account_status?: string
+  provisioning_status?: string | null
+}
+
+export interface SchoolDirectory {
+  school: { school_ref: string; display_name: string | null }
+  classes: SchoolClass[]
+  members: Array<{
+    user_id: string
+    display_name: string | null
+    role: SchoolMemberRole
+    account_status: string
+    provisioning_status: string | null
+  }>
+}
+
+export interface SchoolAccountImportRow {
+  row_no: number
+  login_name: string
+  display_name: string
+  role: SchoolMemberRole
+}
+
+export interface SchoolAccountPreview {
+  valid: boolean
+  row_count: number
+  errors: Array<{ row_no: number; code: string }>
+}
+
+export interface SchoolProvisionedAccount {
+  row_no: number
+  user_id: string
+  display_name: string
+  role: SchoolMemberRole
+  status: 'PENDING_ACTIVATION'
+}
+
+export interface SchoolAccountBatch {
+  batch_ref: string
+  created_count: number
+  accounts: SchoolProvisionedAccount[]
 }
 
 export interface SchoolTask {
@@ -191,6 +234,14 @@ export interface FrontendApi {
   submitReview(reportId: string, input: ReviewSubmission): Promise<ApiEnvelope<ReviewCase>>
   listSchoolClasses?(): Promise<ApiEnvelope<SchoolClass[]>>
   listSchoolMembers?(role: SchoolMemberRole): Promise<ApiEnvelope<SchoolMember[]>>
+  getSchoolAdminDirectory?(): Promise<ApiEnvelope<SchoolDirectory>>
+  updateSchoolDisplayName?(displayName: string): Promise<ApiEnvelope<unknown>>
+  updateSchoolClassDisplayName?(classRef: string, displayName: string): Promise<ApiEnvelope<unknown>>
+  updateSchoolMemberDisplayName?(userId: string, displayName: string): Promise<ApiEnvelope<unknown>>
+  previewSchoolAccountImport?(classRef: string | null, rows: SchoolAccountImportRow[]): Promise<ApiEnvelope<SchoolAccountPreview>>
+  importSchoolAccounts?(classRef: string | null, rows: SchoolAccountImportRow[], idempotencyKey: string): Promise<ApiEnvelope<SchoolAccountBatch>>
+  getSchoolAccountBatch?(batchRef: string): Promise<ApiEnvelope<SchoolAccountBatch>>
+  activateSchoolAccount?(userId: string, newPassword: string): Promise<ApiEnvelope<unknown>>
   createSchoolClass?(classRef: string): Promise<ApiEnvelope<SchoolClass>>
   assignSchoolStudent?(classRef: string, studentUserId: string): Promise<ApiEnvelope<unknown>>
   assignSchoolTeacher?(classRef: string, teacherUserId: string): Promise<ApiEnvelope<unknown>>

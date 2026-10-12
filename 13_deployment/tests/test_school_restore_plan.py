@@ -17,9 +17,39 @@ from school_backup import (
     TARGET_POLICY,
     encode_value,
 )
+from school_schema import CURRENT_SCHOOL_REVISION
 
 RESTORED_AT = datetime(2026, 10, 12, 4, 5, 6, 123456, tzinfo=UTC)
 STAMP = datetime(2026, 10, 10, 1, 2, 3)  # noqa: DTZ001 - MySQL DATETIME is naive UTC.
+
+
+def test_explicit_current_manifest_preserves_old_snapshot_layout():
+    old = restore_plan.trusted_manifest(SUPPORTED_REVISION)
+    current = restore_plan.trusted_manifest(CURRENT_SCHOOL_REVISION)
+    assert len(old) == 28 and len(current) == 30
+    assert set(current) - set(old) == restore_plan.DIRECTORY_TABLES
+    for name in restore_plan.DIRECTORY_NAME_TABLES:
+        assert "display_name" not in old[name]
+        assert "display_name" in current[name]
+    with pytest.raises(ValueError, match="Unsupported restore revision"):
+        restore_plan.trusted_manifest("head")
+
+
+def test_current_snapshot_requires_its_exact_table_layout_and_revision():
+    package = empty_package()
+    package["revision"] = CURRENT_SCHOOL_REVISION
+    current = restore_plan.trusted_manifest(CURRENT_SCHOOL_REVISION)
+    package["tables"] = {
+        name: {"create_sql": "opaque archived DDL", "columns": columns, "rows": []}
+        for name, columns in current.items()
+    }
+    package["tables"][restore_plan.REVISION_TABLE]["rows"] = [[CURRENT_SCHOOL_REVISION]]
+    plan = restore_plan.plan_restore(package, restored_at=RESTORED_AT)
+    assert plan["revision"] == CURRENT_SCHOOL_REVISION
+    assert len(plan["table_order"]) == 29
+    package["revision"] = SUPPORTED_REVISION
+    with pytest.raises(ValueError, match="manifest mismatch"):
+        restore_plan.plan_restore(package, restored_at=RESTORED_AT)
 
 
 def empty_package():

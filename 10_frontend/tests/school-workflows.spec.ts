@@ -2,10 +2,19 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AdminSchoolOperations from '@/components/school/AdminSchoolOperations.vue'
+import AdminSchoolDirectory from '@/components/school/AdminSchoolDirectory.vue'
 import StudentAssignedTasks from '@/components/school/StudentAssignedTasks.vue'
 import TeacherOverviewView from '@/views/teacher/TeacherOverviewView.vue'
 
 const api = vi.hoisted(() => ({
+  getSchoolAdminDirectory: vi.fn(),
+  updateSchoolDisplayName: vi.fn(),
+  updateSchoolClassDisplayName: vi.fn(),
+  updateSchoolMemberDisplayName: vi.fn(),
+  previewSchoolAccountImport: vi.fn(),
+  importSchoolAccounts: vi.fn(),
+  getSchoolAccountBatch: vi.fn(),
+  activateSchoolAccount: vi.fn(),
   listSchoolClasses: vi.fn(),
   listSchoolMembers: vi.fn(),
   createSchoolClass: vi.fn(),
@@ -65,6 +74,21 @@ const makeStudentRouter = async () => {
 }
 
 beforeEach(() => {
+  api.getSchoolAdminDirectory.mockResolvedValue(envelope({
+    school: { school_ref: 'SCHOOL_synthetic', display_name: '合成学校' },
+    classes: [{ class_ref: task.class_ref, status: 'ACTIVE', active_student_count: 1, active_teacher_count: 1, display_name: '合成一班' }],
+    members: [{ user_id: 'USER_student', display_name: '合成学生', role: 'student', account_status: 'ACTIVE', provisioning_status: 'ACTIVE' }],
+  }))
+  api.updateSchoolDisplayName.mockResolvedValue(envelope({}))
+  api.updateSchoolClassDisplayName.mockResolvedValue(envelope({}))
+  api.updateSchoolMemberDisplayName.mockResolvedValue(envelope({}))
+  api.previewSchoolAccountImport.mockResolvedValue(envelope({ valid: true, row_count: 2, errors: [] }))
+  api.importSchoolAccounts.mockResolvedValue(envelope({ batch_ref: 'BATCH_123456', created_count: 2, accounts: [
+    { row_no: 1, user_id: 'USER_new_student', display_name: '新合成学生', role: 'student', status: 'PENDING_ACTIVATION' },
+    { row_no: 2, user_id: 'USER_new_teacher', display_name: '新合成教师', role: 'teacher', status: 'PENDING_ACTIVATION' },
+  ] }))
+  api.getSchoolAccountBatch.mockResolvedValue(envelope({ batch_ref: 'BATCH_123456', created_count: 0, accounts: [] }))
+  api.activateSchoolAccount.mockResolvedValue(envelope({ activated: true }))
   api.listSchoolClasses.mockResolvedValue(envelope([{ class_ref: task.class_ref, status: 'ACTIVE', active_student_count: 1, active_teacher_count: 1 }]))
   api.listSchoolMembers.mockImplementation(async (role: string) => envelope([
     { user_id: role === 'student' ? 'USER_student' : 'USER_teacher', role, subject_id: role === 'student' ? 'SUBJ_student' : null },
@@ -94,6 +118,65 @@ beforeEach(() => {
 afterEach(() => { vi.clearAllMocks(); vi.unstubAllGlobals() })
 
 describe('学校测评任务页面', () => {
+  it('学校目录按当前同校服务端数据编辑学校、班级和人员显示名称', async () => {
+    const wrapper = mount(AdminSchoolDirectory)
+    await flushPromises()
+    expect((wrapper.get('#school-display-name').element as HTMLInputElement).value).toBe('合成学校')
+    expect((wrapper.get(`#class-name-${task.class_ref}`).element as HTMLInputElement).value).toBe('合成一班')
+    expect((wrapper.get('#member-name-USER_student').element as HTMLInputElement).value).toBe('合成学生')
+    await wrapper.get('#school-display-name').setValue('更新后的合成学校')
+    await wrapper.get('#school-display-name + .app-button').trigger('click')
+    await flushPromises()
+    expect(api.updateSchoolDisplayName).toHaveBeenCalledWith('更新后的合成学校')
+    expect(api.getSchoolAdminDirectory).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+
+  it('CSV服务端预览后整批幂等导入，并在激活完成后立即清除密码', async () => {
+    vi.stubGlobal('crypto', { randomUUID: () => 'import-test-uuid' })
+    api.importSchoolAccounts
+      .mockRejectedValueOnce(new Error('network unavailable after submit'))
+      .mockResolvedValueOnce(envelope({ batch_ref: 'BATCH_123456', created_count: 2, accounts: [
+        { row_no: 1, user_id: 'USER_new_student', display_name: '新合成学生', role: 'student', status: 'PENDING_ACTIVATION' },
+        { row_no: 2, user_id: 'USER_new_teacher', display_name: '新合成教师', role: 'teacher', status: 'PENDING_ACTIVATION' },
+      ] }))
+    const wrapper = mount(AdminSchoolDirectory)
+    await flushPromises()
+    const csv = 'login_name,display_name,role\nSYNTHETIC_student1,新合成学生,student\nSYNTHETIC_teacher1,新合成教师,teacher'
+    const file = new File([csv], 'synthetic-accounts.csv', { type: 'text/csv' })
+    Object.defineProperty(file, 'arrayBuffer', { value: async () => new TextEncoder().encode(csv).buffer })
+    const input = wrapper.get('#school-account-csv').element as HTMLInputElement
+    Object.defineProperty(input, 'files', { configurable: true, value: [file] })
+    await wrapper.get('#school-account-csv').trigger('change')
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('SYNTHETIC_student1')
+    await wrapper.get('.directory-actions .app-button').trigger('click')
+    await flushPromises()
+    expect(api.previewSchoolAccountImport).toHaveBeenCalledWith(null, [
+      { row_no: 1, login_name: 'SYNTHETIC_student1', display_name: '新合成学生', role: 'student' },
+      { row_no: 2, login_name: 'SYNTHETIC_teacher1', display_name: '新合成教师', role: 'teacher' },
+    ])
+    const importButton = wrapper.get('.directory-actions .app-button:last-child')
+    await importButton.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('导入结果尚未确认')
+    await importButton.trigger('click')
+    await flushPromises()
+    expect(api.importSchoolAccounts).toHaveBeenCalledTimes(2)
+    expect(api.importSchoolAccounts.mock.calls[0]![2]).toBe(api.importSchoolAccounts.mock.calls[1]![2])
+    expect(wrapper.text()).toContain('新合成学生')
+    expect(wrapper.text()).toContain('待激活')
+
+    await wrapper.get('.directory-account-row .app-button').trigger('click')
+    await wrapper.get('#school-account-new-password').setValue('Synthetic-Test-Password-42!')
+    await wrapper.get('.directory-activation').trigger('submit')
+    await flushPromises()
+    expect(api.activateSchoolAccount).toHaveBeenCalledWith('USER_new_student', 'Synthetic-Test-Password-42!')
+    expect(wrapper.find('#school-account-new-password').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Synthetic-Test-Password-42!')
+    wrapper.unmount()
+  })
+
   it('管理端能读取组织信息并完成班级人员分配与任务报名撤销', async () => {
     vi.stubGlobal('crypto', { randomUUID: () => 'synthetic-uuid-1234' })
     api.createSchoolClass.mockImplementation(async (classRef: string) => {

@@ -20,6 +20,8 @@ from database_layer.models import (  # noqa: F401
     Role,
     SafetyDecision,
     School,
+    SchoolAccountBatch,
+    SchoolAccountProvision,
     SchoolClass,
     SchoolClassStudent,
     SchoolClassTeacher,
@@ -37,13 +39,15 @@ from sqlalchemy.schema import CreateTable
 
 
 def test_round1_domain_table_count_and_explicit_mysql_defaults() -> None:
-    assert len(Base.metadata.tables) == 27
+    assert len(Base.metadata.tables) == 29
     assert set(Base.metadata.tables) == {
         "accounts",
         "roles",
         "account_roles",
         "schools",
         "school_classes",
+        "school_account_batches",
+        "school_account_provisions",
         "school_class_students",
         "school_class_teachers",
         "measurement_tasks",
@@ -308,6 +312,173 @@ def test_school_task_models_are_typed_and_same_school() -> None:
     }
     for table in (classes, students, teachers, tasks, enrollments):
         assert not private_or_psychological.intersection(table.c.keys())
+
+
+def test_school_directory_models_have_scoped_provenance_constraints() -> None:
+    schools = Base.metadata.tables["schools"]
+    classes = Base.metadata.tables["school_classes"]
+    memberships = Base.metadata.tables["account_school_memberships"]
+    batches = Base.metadata.tables["school_account_batches"]
+    provisions = Base.metadata.tables["school_account_provisions"]
+
+    for table in (schools, classes, memberships):
+        assert table.c.display_name.nullable is True
+        assert isinstance(table.c.display_name.type, String)
+        assert table.c.display_name.type.length == 120
+
+    assert SchoolAccountBatch.__tablename__ == "school_account_batches"
+    assert SchoolAccountProvision.__tablename__ == "school_account_provisions"
+    assert batches.c.class_id.nullable is True
+    assert batches.c.row_count.nullable is False
+    assert provisions.c.activated_at.nullable is True
+
+    def fk_targets(table, column_names):
+        return next(
+            constraint
+            for constraint in table.constraints
+            if isinstance(constraint, ForeignKeyConstraint)
+            and tuple(element.parent.name for element in constraint.elements) == column_names
+        )
+
+    assert tuple(
+        element.target_fullname
+        for element in fk_targets(batches, ("created_by_membership_role_id", "school_id")).elements
+    ) == ("membership_roles.id", "membership_roles.school_id")
+    assert tuple(
+        element.target_fullname
+        for element in fk_targets(batches, ("class_id", "school_id")).elements
+    ) == ("school_classes.id", "school_classes.school_id")
+    assert tuple(
+        element.target_fullname
+        for element in fk_targets(provisions, ("batch_id", "school_id")).elements
+    ) == ("school_account_batches.id", "school_account_batches.school_id")
+    assert tuple(
+        element.target_fullname
+        for element in fk_targets(provisions, ("membership_id", "account_id", "school_id")).elements
+    ) == (
+        "account_school_memberships.id", "account_school_memberships.account_id",
+        "account_school_memberships.school_id",
+    )
+    assert tuple(
+        element.target_fullname
+        for element in fk_targets(
+            provisions, ("membership_role_id", "membership_id", "school_id")
+        ).elements
+    ) == ("membership_roles.id", "membership_roles.membership_id", "membership_roles.school_id")
+
+    def unique_columns(table):
+        return {
+            tuple(column.name for column in constraint.columns)
+            for constraint in table.constraints
+            if isinstance(constraint, UniqueConstraint)
+        }
+
+    assert ("id", "school_id") in unique_columns(batches)
+    assert ("batch_ref",) in unique_columns(batches)
+    assert ("account_id",) in unique_columns(provisions)
+    assert ("batch_id", "row_no") in unique_columns(provisions)
+
+    checks = {
+        table.name: {
+            constraint.name: str(constraint.sqltext)
+            for constraint in table.constraints
+            if isinstance(constraint, CheckConstraint)
+        }
+        for table in (batches, provisions)
+    }
+    assert "row_count BETWEEN 1 AND 100" in checks[batches.name][
+        "ck_school_account_batches_row_count_allowed"
+    ]
+    assert "role_code IN ('student', 'teacher')" in checks[provisions.name][
+        "ck_school_account_provisions_role_allowed"
+    ]
+    activation_check = checks[provisions.name][
+        "ck_school_account_provisions_activation_matches_status"
+    ]
+    assert "PENDING_ACTIVATION" in activation_check
+    assert "activated_at IS NOT NULL" in activation_check
+
+
+def test_school_account_directory_migration_is_additive_and_downgrade_guarded(
+    monkeypatch,
+) -> None:
+    from importlib.util import module_from_spec, spec_from_file_location
+
+    migration_path = (
+        Path(__file__).resolve().parents[1]
+        / "migrations"
+        / "versions"
+        / "20261012_0006_school_account_directory.py"
+    )
+    spec = spec_from_file_location("migration_20261012_0006", migration_path)
+    assert spec is not None and spec.loader is not None
+    migration = module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    assert migration.revision == "20261012_0006"
+    assert migration.down_revision == "20261011_0005"
+
+    operations: list[tuple[object, ...]] = []
+
+    class _Connection:
+        def __init__(self, populated_query: str | None = None) -> None:
+            self.populated_query = populated_query
+
+        def execute(self, statement):
+            statement_text = str(statement)
+            operations.append(("guard", statement_text))
+            return type("Result", (), {
+                "scalar_one": lambda _self: int(
+                    self.populated_query is not None
+                    and self.populated_query in statement_text
+                )
+            })()
+
+    class _Ops:
+        def __init__(self, populated_query: str | None = None) -> None:
+            self.populated_query = populated_query
+
+        def __getattr__(self, name):
+            if name == "get_bind":
+                return lambda: _Connection(self.populated_query)
+
+            def record(*args, **kwargs):
+                operations.append((name, *args, kwargs))
+
+            return record
+
+    monkeypatch.setattr(migration, "op", _Ops())
+    migration.upgrade()
+    assert [entry[1] for entry in operations if entry[0] == "create_table"] == [
+        "school_account_batches",
+        "school_account_provisions",
+    ]
+    assert [entry[1] for entry in operations if entry[0] == "add_column"] == [
+        "schools",
+        "school_classes",
+        "account_school_memberships",
+    ]
+
+    guarded_queries = (
+        "FROM school_account_batches",
+        "FROM school_account_provisions",
+        "FROM schools WHERE display_name IS NOT NULL",
+        "FROM school_classes WHERE display_name IS NOT NULL",
+        "FROM account_school_memberships WHERE display_name IS NOT NULL",
+    )
+    for populated_query in guarded_queries:
+        operations.clear()
+        monkeypatch.setattr(migration, "op", _Ops(populated_query=populated_query))
+        with pytest.raises(RuntimeError, match="cannot downgrade school account directory"):
+            migration.downgrade()
+        assert operations
+        assert all(entry[0] == "guard" for entry in operations)
+
+    operations.clear()
+    monkeypatch.setattr(migration, "op", _Ops())
+    migration.downgrade()
+    assert all(entry[0] == "guard" for entry in operations[:5])
+    assert any(entry[0] == "drop_table" for entry in operations)
+    assert any(entry[0] == "drop_column" for entry in operations)
 
 
 def test_school_task_migration_is_additive_and_data_guarded(monkeypatch) -> None:

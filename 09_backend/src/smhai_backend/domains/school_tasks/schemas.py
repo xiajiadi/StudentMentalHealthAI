@@ -58,6 +58,7 @@ class SchoolOutputDto(BaseModel):
 
 class ClassDto(SchoolOutputDto):
     class_ref: str
+    display_name: str | None = None
     status: str
     active_student_count: int
     active_teacher_count: int
@@ -161,6 +162,7 @@ class SchoolMemberDto(SchoolOutputDto):
     user_id: str
     role: str
     subject_id: str | None = None
+    display_name: str | None = None
 
 
 class StudentAssignmentDto(SchoolOutputDto):

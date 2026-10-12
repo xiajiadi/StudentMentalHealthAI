@@ -16,9 +16,9 @@ from pathlib import Path
 
 from create_school_workspace import create, validate_target
 from private_settings import read_private
-from school_backup import SUPPORTED_REVISION
 from school_restore_import import import_snapshot
 from school_restore_plan import plan_restore
+from school_schema import CURRENT_SCHOOL_REVISION
 
 
 def _record(target: Path, state: dict) -> None:
@@ -31,7 +31,7 @@ def _record(target: Path, state: dict) -> None:
     os.replace(temporary, path)
 
 
-def _migrate(target: Path, repository: Path, marker: dict) -> None:
+def _migrate(target: Path, repository: Path, marker: dict, revision: str) -> None:
     """Use trusted pinned migration code; no credential-bearing child argv."""
     from alembic import command
     from alembic.config import Config
@@ -52,7 +52,7 @@ def _migrate(target: Path, repository: Path, marker: dict) -> None:
     config.set_main_option("sqlalchemy.url", url.render_as_string(hide_password=False).replace("%", "%%"))
     previous = os.environ.pop("DATABASE_URL", None)
     try:
-        command.upgrade(config, SUPPORTED_REVISION)
+        command.upgrade(config, revision)
     finally:
         if previous is not None:
             os.environ["DATABASE_URL"] = previous
@@ -130,7 +130,7 @@ def restore(backup_file: Path, source: Path, target: Path, mysql_bin: Path,
     _record(target, state)
     try:
         verify_process(marker)
-        _migrate(target, repository, marker)
+        _migrate(target, repository, marker, package["revision"])
         state["phase"] = "SCHEMA_READY"
         _record(target, state)
         private = read_private(target / "database.private.dpapi")
@@ -158,7 +158,13 @@ def restore(backup_file: Path, source: Path, target: Path, mysql_bin: Path,
             ciphertext_count = _verify_ciphertexts(connection, target, repository)
         finally:
             connection.close()
+        if package["revision"] != CURRENT_SCHOOL_REVISION:
+            state["phase"] = "ADDITIVE_RUNTIME_UPGRADE"
+            _record(target, state)
+            _migrate(target, repository, marker, CURRENT_SCHOOL_REVISION)
         prepare(target, repository)
+        state["snapshot_revision"] = package["revision"]
+        state["runtime_revision"] = CURRENT_SCHOOL_REVISION
         state["phase"] = "DATA_KEYS_RUNTIME_VERIFIED_REQUIRES_BROWSER"
         _record(target, state)
         return dict(imported, ciphertext_count=ciphertext_count,

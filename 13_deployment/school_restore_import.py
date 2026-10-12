@@ -11,8 +11,11 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from school_backup import SUPPORTED_REVISION, encode_value
+from school_backup import encode_value
 from school_restore_plan import plan_restore, trusted_manifest
+from school_schema import LEGACY_SCHOOL_SNAPSHOT_REVISION
+
+SUPPORTED_REVISION = LEGACY_SCHOOL_SNAPSHOT_REVISION
 
 
 class RestoreImportError(RuntimeError):
@@ -52,7 +55,7 @@ def import_snapshot(connection, package: dict, target: dict, *, restored_at: dat
     """
     plan = plan_restore(package, restored_at=restored_at)
     validate_target_marker(target, package)
-    manifest = trusted_manifest()
+    manifest = trusted_manifest(plan["revision"])
     try:
         with connection.cursor() as cursor:
             cursor.execute("SELECT DATABASE(), @@port, @@datadir, @@session.foreign_key_checks")
@@ -86,7 +89,7 @@ def import_snapshot(connection, package: dict, target: dict, *, restored_at: dat
             ):
                 raise RestoreImportError("Live restore column manifest does not match")
             cursor.execute("SELECT version_num FROM database_alembic_version")
-            if list(cursor.fetchall()) != [(SUPPORTED_REVISION,)]:
+            if list(cursor.fetchall()) != [(plan["revision"],)]:
                 raise RestoreImportError("Pinned restore schema revision required")
             for name in plan["table_order"]:
                 cursor.execute(f"SELECT COUNT(*) FROM `{name}`")
@@ -134,7 +137,7 @@ def import_snapshot(connection, package: dict, target: dict, *, restored_at: dat
             raise exc from None
         raise RestoreImportError(f"Restore import failed ({type(exc).__name__})") from None
     return {
-        "status": "IMPORTED_REQUIRES_FINAL_VALIDATION", "revision": SUPPORTED_REVISION,
+        "status": "IMPORTED_REQUIRES_FINAL_VALIDATION", "revision": plan["revision"],
         "table_count": len(plan["table_order"]),
         "row_count": sum(plan["row_counts"].values()),
         "revoked_session_count": plan["revoked_session_count"],

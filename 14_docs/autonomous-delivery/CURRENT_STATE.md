@@ -1,6 +1,15 @@
 # Current autonomous delivery state
 
-Updated: 2026-10-12, Beijing morning. Goal ACTIVE; ENGINEERING_DEMO_READY is not yet achieved.
+Updated: 2026-10-12, Beijing, explicit user shutdown pause. Goal PAUSED by user authorization; ENGINEERING_DEMO_READY is not yet achieved.
+
+## Latest shutdown checkpoint
+
+- User asked to save work and pause before power-off. Active frontend Worker was interrupted; no new task is authorized until the user clicks Continue. Runner reports stopped=true. Both expired desktop heartbeats psynova/psynova-2 were deleted with confirmed tool results; do not recreate them automatically.
+- Root verified owned application executable/command/creation identity and process-handle creation time before stopping listeners4178/4179/8088/8089/8180. Both owned MySQL instances had zero observed active InnoDB transactions and received graceful SQL SHUTDOWN after guardian/listener/datadir validation. Fresh listener inspection confirms3308/3309/4178/4179/8088/8089/8180 are all absent. Old system/M0 instances were not targeted. Data directories, sealed credentials and all backups remain intact.
+- Last reviewed remote checkpoint remains83a40cb on the dedicated branch. Current directory/import work is saved as a LOCAL WIP checkpoint, not approved or deployed, and must not be treated as passing browser/native acceptance. Baseline untracked user output/ andlogin-mark-v2.png remain unstaged and preserved.
+- No0006 native migration has run: original and restored databases remain0005. Reviewed0005 pre-upgrade sealed backups were created at source backups/20261012-032419-4fbe68cbb8844e4abdff317e8d9f4945.private.dpapi and restored target backups/20261012-032422-252ddbb4a2dd4c3eacddb67ee0a49886.private.dpapi.
+- WIP: DB nullable names/batch/provision models and0006 migration; Root strengthened account/membership/role identity FKs. Backend directory/preview/import/activation source has Worker30 fake tests, but SQLAlchemy write paths/native business checks are still unreviewed. Frontend was interrupted and may be incomplete; no fresh frontend verification is claimed. Root added explicit0005/0006 restore manifests and school runtime0006 gates;82 focused DB/backup/planner/importer tests passed after fixing fixtures, and selected Ruff passed. New runtime gates cannot start against the still0005 databases until the reviewed migration step is performed.
+- Resume first reads this checkpoint and SHUTDOWN_CHECKPOINT.md, inspects Git/agents/clock, then finishes WIP source/privacy/type/UOW review. Start existing owned databases without initialize/reset/reseed; do not blindly call current runtime preflight against0005 or rerun schema changes. Review and apply only the additive0006 migration to owned synthetic instances, verify old-row preservation and grants, then restart school services and run real directory/import/activation/new-role/browser checks. Restore0005 snapshots against their explicit old manifest first, then record additive runtime upgrade. AI/GPU work remains deferred without RTX3060; no cloud fallback.
 
 ## Authority and recovery
 
