@@ -695,11 +695,42 @@ const mapReviewCase = (value: unknown): ReviewCase => {
   }
 }
 
+export interface IndependentConversationRequest {
+  method: 'GET' | 'POST'
+  path: string
+  query?: { offset?: number; limit?: number }
+  body?: Record<string, unknown>
+  idempotencyKey?: string
+}
+
 export class RealApiProvider implements FrontendApi {
   private csrfToken = ''
   private actorSubjectId: string | null = null
   private activeSchoolContext: SchoolRoleContext | null = null
   private readonly reviewCases = new Map<string, ReviewCase>()
+
+  async requestIndependentConversation<T>(input: IndependentConversationRequest): Promise<ApiEnvelope<T>> {
+    const base = '/api/v1/student/conversations'
+    const isCollection = input.path === base
+    const isDetail = /^\/api\/v1\/student\/conversations\/CONV_[A-Za-z0-9][A-Za-z0-9_.-]{0,122}$/.test(input.path)
+    const isMessages = /^\/api\/v1\/student\/conversations\/CONV_[A-Za-z0-9][A-Za-z0-9_.-]{0,122}\/messages$/.test(input.path)
+    if (!(input.method === 'GET' ? isCollection || isDetail : isCollection || isMessages)) {
+      throw new RealApiError('API_INVALID_REQUEST', '教育支持请求地址无效。')
+    }
+    if (input.method === 'POST' && !input.idempotencyKey?.trim()) {
+      throw new RealApiError('API_INVALID_REQUEST', '教育支持请求缺少操作标识。')
+    }
+    if (input.method === 'POST') await this.ensureCsrfToken()
+    return unwrap<T>(() => apiClient.request({
+      method: input.method,
+      url: input.path,
+      ...(input.query ? { query: input.query } : {}),
+      ...(input.body ? { body: input.body } : {}),
+      headers: input.method === 'POST'
+        ? { 'Content-Type': 'application/json', ...mutationHeaders(this.csrfToken, input.idempotencyKey!) }
+        : {},
+    }))
+  }
 
   private projectActor(actor: UnknownRecord, fallbackName = '工作区用户'): LoginResult {
     const contexts = mapSchoolContexts(actor.available_contexts)
@@ -1291,3 +1322,8 @@ export class RealApiProvider implements FrontendApi {
     return { ...response, data: caseData }
   }
 }
+
+export const realApiProvider = new RealApiProvider()
+
+export const requestIndependentConversation = <T>(input: IndependentConversationRequest): Promise<ApiEnvelope<T>> =>
+  realApiProvider.requestIndependentConversation<T>(input)

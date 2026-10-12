@@ -592,17 +592,159 @@ class SchoolConversationsPersistenceAdapter:
             await uow.session.flush()
         return interrupted
 
-    def _replay_turn(self, run: Any, *, replayed: bool) -> dict[str, Any]:
+    async def _replay_turn(
+        self, uow: Any, session: Any, run: Any, *, replayed: bool
+    ) -> dict[str, Any]:
         stored = run.component_versions if isinstance(run.component_versions, Mapping) else {}
         sequence = stored.get("user_message_sequence")
         if not isinstance(sequence, int) or isinstance(sequence, bool) or sequence < 1:
             raise error(ErrorCode.WORKFLOW_CONFLICT, detail="turn reservation is unavailable")
-        return {
+        status = str(getattr(run.status, "value", run.status)).upper()
+        action = getattr(run, "workflow_action", None)
+        safe = _safe_component_metadata(stored.get("safe_metadata"))
+        result = {
             "turn_id": run.run_ref,
-            "status": str(run.status).lower(),
+            "status": status.lower(),
             "replayed": replayed,
             "user_message_sequence": sequence,
+            "action": action,
+            "completed_at": _timestamp(getattr(run, "completed_at", None)),
+            "assistant_message_sequence": None,
+            "citations": [],
+            "safe_metadata": safe,
+            "content": None,
         }
+        if status == self._db_enums.SupportRunStatus.REQUESTED.value:
+            return result
+        if (
+            status
+            not in {
+                self._db_enums.SupportRunStatus.COMPLETED.value,
+                self._db_enums.SupportRunStatus.BLOCKED.value,
+                self._db_enums.SupportRunStatus.FAILED.value,
+            }
+            or not isinstance(action, str)
+            or not action
+            or getattr(run, "completed_at", None) is None
+        ):
+            raise error(ErrorCode.WORKFLOW_CONFLICT, detail="turn reservation is unavailable")
+
+        assistant_sequence = stored.get("assistant_message_sequence")
+        if assistant_sequence is not None and (
+            not isinstance(assistant_sequence, int)
+            or isinstance(assistant_sequence, bool)
+            or assistant_sequence < 1
+            or assistant_sequence == sequence
+        ):
+            raise error(ErrorCode.WORKFLOW_CONFLICT, detail="turn reservation is unavailable")
+
+        has_approved_output = status == self._db_enums.SupportRunStatus.COMPLETED.value or (
+            status == self._db_enums.SupportRunStatus.BLOCKED.value and action == "CRISIS_ROUTE"
+        )
+        if has_approved_output != (assistant_sequence is not None):
+            raise error(ErrorCode.WORKFLOW_CONFLICT, detail="turn reservation is unavailable")
+        if status == self._db_enums.SupportRunStatus.COMPLETED.value and action not in {
+            "PROCEED",
+            "PROCEED_WITH_BOUNDARY",
+            "ABSTAIN",
+        }:
+            raise error(ErrorCode.WORKFLOW_CONFLICT, detail="turn reservation is unavailable")
+        if (
+            status == self._db_enums.SupportRunStatus.FAILED.value
+            and action not in _TURN_FAILURE_ACTIONS
+        ):
+            raise error(ErrorCode.WORKFLOW_CONFLICT, detail="turn reservation is unavailable")
+        if status == self._db_enums.SupportRunStatus.BLOCKED.value and action not in {
+            "BLOCK",
+            "REVIEW_REQUIRED",
+            "CRISIS_ROUTE",
+        }:
+            raise error(ErrorCode.WORKFLOW_CONFLICT, detail="turn reservation is unavailable")
+
+        m = self._db_models
+        citations: list[dict[str, Any]] = []
+        evidence_rows = list(
+            (
+                await uow.session.scalars(
+                    self._select(m.SupportEvidence)
+                    .where(m.SupportEvidence.support_run_id == run.id)
+                    .order_by(m.SupportEvidence.rank_order)
+                    .limit(20)
+                )
+            ).all()
+        )
+        for evidence in evidence_rows:
+            projection = _safe_evidence_projection(evidence)
+            if projection is not None:
+                citations.append(projection)
+
+        if assistant_sequence is not None:
+            message_rows = list(
+                (
+                    await uow.session.scalars(
+                        self._select(m.SupportMessage).where(
+                            m.SupportMessage.support_session_id == session.id,
+                            m.SupportMessage.sequence_no == assistant_sequence,
+                        )
+                    )
+                ).all()
+            )
+            if len(message_rows) != 1:
+                raise error(ErrorCode.WORKFLOW_CONFLICT, detail="turn reservation is unavailable")
+            message = message_rows[0]
+            if (
+                message.sequence_no != assistant_sequence
+                or message.message_kind != self._db_enums.MessageKind.APPROVED_OUTPUT.value
+            ):
+                raise error(ErrorCode.WORKFLOW_CONFLICT, detail="turn reservation is unavailable")
+            payload = self._persistence._decrypt_support_message(message)
+            if (
+                not isinstance(payload, Mapping)
+                or payload.get("schema_version") != "independent-message.v1"
+                or payload.get("turn_id") != run.run_ref
+                or not isinstance(payload.get("content"), Mapping)
+            ):
+                raise error(ErrorCode.WORKFLOW_CONFLICT, detail="turn reservation is unavailable")
+            stored_content = payload["content"]
+            if action == "CRISIS_ROUTE":
+                crisis_text = stored_content.get("text")
+                if (
+                    set(stored_content) != {"kind", "text"}
+                    or stored_content.get("kind") != "approved_safety_response"
+                    or not isinstance(crisis_text, str)
+                    or not crisis_text.strip()
+                    or len(crisis_text) > _MESSAGE_MAX
+                ):
+                    raise error(
+                        ErrorCode.WORKFLOW_CONFLICT, detail="turn reservation is unavailable"
+                    )
+                result["content"] = {"kind": "approved_safety_response", "text": crisis_text}
+            else:
+                from smhai_backend.domains.support.schemas import GenerationContent
+
+                try:
+                    content = GenerationContent.model_validate(stored_content, strict=True)
+                except (TypeError, ValueError):
+                    raise error(
+                        ErrorCode.WORKFLOW_CONFLICT, detail="turn reservation is unavailable"
+                    ) from None
+                result["content"] = content.model_dump(mode="json")
+
+        if status == self._db_enums.SupportRunStatus.FAILED.value and citations:
+            raise error(ErrorCode.WORKFLOW_CONFLICT, detail="turn reservation is unavailable")
+        if (
+            status == self._db_enums.SupportRunStatus.BLOCKED.value
+            and action != "CRISIS_ROUTE"
+            and citations
+        ):
+            raise error(ErrorCode.WORKFLOW_CONFLICT, detail="turn reservation is unavailable")
+        if action == "ABSTAIN" and citations:
+            raise error(ErrorCode.WORKFLOW_CONFLICT, detail="turn reservation is unavailable")
+        if action == "CRISIS_ROUTE" and citations:
+            raise error(ErrorCode.WORKFLOW_CONFLICT, detail="turn reservation is unavailable")
+        result["assistant_message_sequence"] = assistant_sequence
+        result["citations"] = citations
+        return result
 
     async def reserve_turn(
         self,
@@ -676,7 +818,7 @@ class SchoolConversationsPersistenceAdapter:
                     resource_ref=turn_id,
                     trace_id=trace_id,
                 )
-                return self._replay_turn(run, replayed=True)
+                return await self._replay_turn(uow, session, run, replayed=True)
             active = await uow.session.scalar(
                 self._select(m.SupportRun)
                 .where(

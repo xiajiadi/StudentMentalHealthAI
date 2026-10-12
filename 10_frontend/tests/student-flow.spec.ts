@@ -24,8 +24,18 @@ const api = vi.hoisted(() => ({
   createSupport: vi.fn(),
   getStudentReport: vi.fn(),
 }))
+const conversations = vi.hoisted(() => ({
+  list: vi.fn(),
+  create: vi.fn(),
+  detail: vi.fn(),
+  send: vi.fn(),
+}))
 
 vi.mock('@/services/mock-api', () => ({ frontendApi: api }))
+vi.mock('@/services/independent-conversations', () => ({
+  independentConversations: conversations,
+  newConversationIdempotencyKey: vi.fn(() => 'synthetic-independent-key'),
+}))
 
 const envelope = <T>(data: T): ApiEnvelope<T> => ({ request_id: 'REQ_test', trace_id: 'TRACE_test', data })
 
@@ -50,6 +60,53 @@ const report: ReportSummary = {
   safety_action: 'CRISIS_ROUTE',
   created_at: '2026-10-07T00:02:00Z',
   citation_count: 0,
+}
+
+const conversationProjection = (conversationId: string) => ({
+  conversationId,
+  status: 'open' as const,
+  createdAt: '2026-10-07T00:00:00Z',
+  updatedAt: '2026-10-07T00:01:00Z',
+})
+
+const conversationMessage = (index: number, status: 'completed' | 'requested', text: string) => {
+  const turnId = `TURN_SYNTHETIC_${String(index).padStart(3, '0')}`
+  return {
+    messageId: `MSG_SYNTHETIC_${String(index).padStart(3, '0')}`,
+    sequence: index,
+    createdAt: `2026-10-07T00:${String(Math.floor(index / 60)).padStart(2, '0')}:${String(index % 60).padStart(2, '0')}Z`,
+    turnId,
+    role: 'student' as const,
+    text,
+    content: null,
+    turn: {
+      turnId,
+      status,
+      action: status === 'requested' ? null : 'ALLOW',
+      createdAt: '2026-10-07T00:00:00Z',
+      completedAt: status === 'requested' ? null : '2026-10-07T00:01:00Z',
+      citations: [],
+    },
+  }
+}
+
+const conversationDetail = (conversationId: string, messages: ReturnType<typeof conversationMessage>[], offset: number, totalTurns: number) => ({
+  conversation: conversationProjection(conversationId),
+  messages,
+  offset,
+  limit: 20,
+  totalTurns,
+  hasMore: offset + 20 < totalTurns,
+})
+
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void
+  let reject!: (error: Error) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
 }
 
 const question = { item_id: 'ITEM_demo_002', prompt: '你最近是否容易开始一项学习任务？', options: [{ value: '1', label: '不太容易' }, { value: '2', label: '比较容易' }] }
@@ -111,6 +168,21 @@ describe('学生演示闭环页面', () => {
     api.submitAssessmentResponse.mockResolvedValue(envelope(assessmentState({ can_complete: true, answered_count: 2, question: { ...question, item_id: 'ITEM_demo_003' } })))
     api.completeAssessment.mockResolvedValue(envelope(assessment))
     api.getStudentReport.mockRejectedValue(new Error('synthetic report unavailable'))
+    conversations.list.mockResolvedValue({ items: [], total: 0, hasMore: false })
+    conversations.create.mockResolvedValue({
+      conversationId: 'CONV_SYNTHETIC_001', status: 'open',
+      createdAt: '2026-10-07T00:00:00Z', updatedAt: '2026-10-07T00:00:00Z',
+    })
+    conversations.detail.mockResolvedValue({
+      conversation: {
+        conversationId: 'CONV_SYNTHETIC_001', status: 'open',
+        createdAt: '2026-10-07T00:00:00Z', updatedAt: '2026-10-07T00:00:00Z',
+      }, messages: [], offset: 0, limit: 20, totalTurns: 0, hasMore: false,
+    })
+    conversations.send.mockResolvedValue({
+      turnId: 'TURN_SYNTHETIC_001', status: 'requested', replayed: false,
+      action: null, completedAt: null, content: null, citations: [],
+    })
   })
 
   it('自主测评使用进度列表恢复会话，不读取完整测评列表', async () => {
@@ -452,15 +524,34 @@ describe('学生演示闭环页面', () => {
     expect(router.currentRoute.value.fullPath).toBe('/student/support')
   })
 
-  it('教育支持页面说明 CLAIM_BOUNDARY 阻断且不提交消息或显示占位回答', async () => {
+  it('教育支持可独立新建会话并保留教育用途与隐私边界', async () => {
     api.listReports.mockResolvedValue(envelope({ items: [report], next_cursor: null }))
     const router = await makeRouter(`/student/support?assessment=${assessment.assessment_id}`)
     const wrapper = mount(SupportChatView, { global: { plugins: [router] } })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('独立支持生成暂不可用')
-    expect(wrapper.text()).toContain('CLAIM_BOUNDARY')
+    expect(wrapper.text()).toContain('这是一般教育支持')
+    expect(wrapper.text()).toContain('对话不会读取测评答案')
     expect(wrapper.find('textarea').exists()).toBe(false)
+    await wrapper.get('button[aria-label="新建会话"]').trigger('click')
+    await flushPromises()
+    expect(conversations.create).toHaveBeenCalledWith('synthetic-independent-key')
+    expect(wrapper.find('textarea').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('CLAIM_BOUNDARY')
+    conversations.send.mockRejectedValueOnce(new Error('synthetic network timeout'))
+    await wrapper.get('textarea').setValue('如何安排复习？')
+    await wrapper.get('.conversation-composer').trigger('submit')
+    await flushPromises()
+    expect(wrapper.text()).toContain('synthetic network timeout')
+    expect(wrapper.text()).toContain('本次重试会沿用相同消息请求')
+    const firstRequest = conversations.send.mock.calls[0]
+    expect(firstRequest).toEqual(['CONV_SYNTHETIC_001', '如何安排复习？', 'synthetic-independent-key'])
+    await wrapper.get('.conversation-composer').trigger('submit')
+    await flushPromises()
+    expect(conversations.send).toHaveBeenCalledTimes(2)
+    expect(conversations.send.mock.calls[1]).toEqual(firstRequest)
+    expect(wrapper.text()).toContain('消息已收到，回复仍在处理中')
+    expect(wrapper.text()).not.toContain('synthetic network timeout')
     expect(api.createSupport).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('安全流程记录')
     expect(api.listReports).toHaveBeenCalledWith()
@@ -469,13 +560,106 @@ describe('学生演示闭环页面', () => {
     expect(router.currentRoute.value.fullPath).toBe(`/student/reports/${report.report_id}`)
   })
 
-  it('支持历史失败显示不可用和重试', async () => {
+  it('快速切换会话时丢弃较早详情请求的迟到结果与错误', async () => {
+    const conversationA = conversationProjection('CONV_SYNTHETIC_A')
+    const conversationB = conversationProjection('CONV_SYNTHETIC_B')
+    const detailARequests = [deferred<ReturnType<typeof conversationDetail>>(), deferred<ReturnType<typeof conversationDetail>>() ]
+    const detailBRequests = [deferred<ReturnType<typeof conversationDetail>>(), deferred<ReturnType<typeof conversationDetail>>() ]
+    const requestIndexes = new Map<string, number>()
+    conversations.list.mockResolvedValue({ items: [conversationA, conversationB], total: 2, hasMore: false })
+    conversations.detail.mockImplementation((conversationId: string) => {
+      const requests = conversationId === conversationA.conversationId ? detailARequests : detailBRequests
+      const index = requestIndexes.get(conversationId) ?? 0
+      requestIndexes.set(conversationId, index + 1)
+      return requests[index]!.promise
+    })
+    const router = await makeRouter('/student/support')
+    const wrapper = mount(SupportChatView, { global: { plugins: [router] } })
+    await flushPromises()
+
+    const conversationButtons = wrapper.findAll('.conversation-list__item')
+    await conversationButtons[0]!.trigger('click')
+    await conversationButtons[1]!.trigger('click')
+    detailBRequests[0]!.resolve(conversationDetail(conversationB.conversationId, [conversationMessage(2, 'completed', 'B 会话正文')], 0, 1))
+    await flushPromises()
+    detailARequests[0]!.resolve(conversationDetail(conversationA.conversationId, [conversationMessage(1, 'completed', '过期 A 会话正文')], 0, 1))
+    await flushPromises()
+
+    await conversationButtons[0]!.trigger('click')
+    await conversationButtons[1]!.trigger('click')
+    detailARequests[1]!.reject(new Error('stale conversation A error'))
+    detailBRequests[1]!.resolve(conversationDetail(conversationB.conversationId, [conversationMessage(2, 'completed', 'B 会话正文')], 0, 1))
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('B 会话正文')
+    expect(wrapper.text()).not.toContain('过期 A 会话正文')
+    expect(wrapper.text()).not.toContain('stale conversation A error')
+    expect(wrapper.get('.conversation-list__item--selected').text()).toContain('会话 2')
+    wrapper.unmount()
+  })
+
+  it('REQUESTED 轮次只允许手动读取状态，不能发送下一条消息', async () => {
+    const conversationId = 'CONV_SYNTHETIC_PENDING'
+    const pendingDetail = conversationDetail(conversationId, [conversationMessage(1, 'requested', '处理中消息')], 0, 1)
+    conversations.list.mockResolvedValue({ items: [pendingDetail.conversation], total: 1, hasMore: false })
+    conversations.detail.mockResolvedValue(pendingDetail)
+    const router = await makeRouter('/student/support')
+    const wrapper = mount(SupportChatView, { global: { plugins: [router] } })
+    await flushPromises()
+    await wrapper.get('.conversation-list__item').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('上一条消息仍在处理中')
+    expect(wrapper.text()).toContain('刷新只读取已保存状态，不会重新发送消息')
+    expect(wrapper.get('.conversation-composer button').attributes('disabled')).toBeDefined()
+    await wrapper.get('button[aria-label="刷新会话"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('.conversation-composer').trigger('submit')
+    expect(conversations.detail).toHaveBeenCalledTimes(2)
+    expect(conversations.send).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('超过一页后发送会打开最新页，并可向前加载较早对话', async () => {
+    const conversationId = 'CONV_SYNTHETIC_LONG'
+    const item = conversationProjection(conversationId)
+    const firstTwenty = Array.from({ length: 20 }, (_, index) => conversationMessage(index + 1, 'completed', `第 ${index + 1} 轮`))
+    const firstPage = conversationDetail(conversationId, firstTwenty, 0, 20)
+    const latestPage = conversationDetail(conversationId, [conversationMessage(21, 'requested', '最新第 21 轮')], 20, 21)
+    conversations.list.mockResolvedValue({ items: [item], total: 1, hasMore: false })
+    conversations.detail
+      .mockResolvedValueOnce(firstPage)
+      .mockResolvedValueOnce(latestPage)
+      .mockResolvedValueOnce(firstPage)
+    const router = await makeRouter('/student/support')
+    const wrapper = mount(SupportChatView, { global: { plugins: [router] } })
+    await flushPromises()
+    await wrapper.get('.conversation-list__item').trigger('click')
+    await flushPromises()
+    await wrapper.get('textarea').setValue('继续安排复习')
+    await wrapper.get('.conversation-composer').trigger('submit')
+    await flushPromises()
+
+    expect(conversations.detail.mock.calls.map(([id, offset]) => [id, offset])).toEqual([
+      [conversationId, 0], [conversationId, 20],
+    ])
+    expect(wrapper.text()).toContain('最新第 21 轮')
+    expect(wrapper.text()).toContain('加载更早的对话')
+    await wrapper.get('.conversation-thread button').trigger('click')
+    await flushPromises()
+    expect(wrapper.findAll('.conversation-message')).toHaveLength(21)
+    expect(wrapper.text()).toContain('第 20 轮')
+    expect(conversations.send).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it('测评关联历史失败显示不可用和重试', async () => {
     api.listReports.mockRejectedValueOnce(new Error('synthetic history unavailable'))
     const router = await makeRouter(`/student/support?assessment=${assessment.assessment_id}`)
     const wrapper = mount(SupportChatView, { global: { plugins: [router] } })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('支持记录暂时无法加载')
+    expect(wrapper.text()).toContain('既有记录暂时无法加载')
     expect(wrapper.text()).toContain('synthetic history unavailable')
     expect(api.createSupport).not.toHaveBeenCalled()
   })

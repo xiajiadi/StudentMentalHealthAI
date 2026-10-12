@@ -161,6 +161,17 @@ class _FakeSession:
     def __init__(self, *scalar_results):
         self.scalar_results = list(scalar_results)
         self.statements = []
+        self.scalars_results = []
+
+    def add_scalars(self, rows):
+        self.scalars_results.append(list(rows))
+
+    async def scalars(self, statement):
+        self.statements.append(statement)
+        if not self.scalars_results:
+            raise AssertionError("unexpected scalars query")
+        rows = self.scalars_results.pop(0)
+        return SimpleNamespace(all=lambda: rows)
 
     async def scalar(self, statement):
         self.statements.append(statement)
@@ -219,6 +230,10 @@ class _FakeUow:
         return False
 
 
+async def _async_value(value):
+    return value
+
+
 NOW = datetime(2026, 10, 12, 0, 0, tzinfo=UTC)
 ACTOR = SimpleNamespace(
     role="student", subject_id="SUBJ_SYNTHETIC_A", school_id=5, school_ref="SCHOOL_SYNTHETIC"
@@ -245,7 +260,9 @@ def _fake_adapter(monkeypatch, session):
             "status",
             "created_at",
         ),
-        SupportMessage=_model("support_messages", "support_session_id", "sequence_no"),
+        SupportMessage=_model(
+            "support_messages", "support_session_id", "sequence_no", "message_kind"
+        ),
         SupportEvidence=_model("support_evidence", "support_run_id", "rank_order"),
     )
     persistence = SimpleNamespace(
@@ -613,12 +630,366 @@ async def test_turn_replay_receipt_lookup_is_bound_to_same_session_and_unbound_a
         "status": "requested",
         "replayed": True,
         "user_message_sequence": 7,
+        "action": None,
+        "completed_at": None,
+        "assistant_message_sequence": None,
+        "citations": [],
+        "safe_metadata": {},
+        "content": None,
     }
     assert claims[0][2] == "17:student:conversation:turn:5:CONV_0123456789abcdef"
     criteria = session.statements[0].criteria
     flattened = [clause for criterion in criteria for clause in criterion.clauses]
     assert ("support_runs.support_session_id", "eq", SESSION.id) in flattened
     assert ("support_runs.assessment_session_id", "is", None) in flattened
+    assert uow.support.message_calls == []
+
+
+@pytest.mark.asyncio
+async def test_failed_turn_replay_returns_terminal_projection_without_output(monkeypatch):
+    run = SimpleNamespace(
+        id=901,
+        run_ref="TURN_0123456789abcdef",
+        support_session_id=SESSION.id,
+        assessment_session_id=None,
+        status="FAILED",
+        workflow_action="DEPENDENCY_FAILURE",
+        completed_at=NOW,
+        component_versions={
+            "user_message_sequence": 7,
+            "assistant_message_sequence": None,
+            "safe_metadata": {"failure_code": "DEPENDENCY_FAILURE"},
+        },
+    )
+    session = _FakeSession(run)
+    session.add_scalars([])  # No stored citations on failed turns.
+    adapter, uow = _fake_adapter(monkeypatch, session)
+    adapter._school_idempotency_begin = lambda *_args: _async_value(
+        SimpleNamespace(
+            replayed=True,
+            record=SimpleNamespace(
+                result_resource_type="student_conversation_turn",
+                result_public_id=run.run_ref,
+            ),
+        )
+    )
+    adapter._expire_abandoned = lambda *_args: _async_value(0)
+
+    result = await adapter.reserve_turn(
+        ACTOR,
+        SESSION.support_ref,
+        message="synthetic student message",
+        idempotency_key="synthetic-turn-key",
+        trace_id="TRACE_replay",
+    )
+
+    assert result == {
+        "turn_id": run.run_ref,
+        "status": "failed",
+        "replayed": True,
+        "user_message_sequence": 7,
+        "action": "DEPENDENCY_FAILURE",
+        "completed_at": "2026-10-12T00:00:00.000Z",
+        "assistant_message_sequence": None,
+        "citations": [],
+        "safe_metadata": {"failure_code": "DEPENDENCY_FAILURE"},
+        "content": None,
+    }
+    assert uow.support.message_calls == []
+    assert uow.support.evidence_calls == []
+    assert uow.committed is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status", "action"),
+    (("COMPLETED", "PROCEED"), ("BLOCKED", "CRISIS_ROUTE")),
+)
+async def test_approved_and_crisis_turn_replay_returns_validated_content_and_citations(
+    monkeypatch, status, action
+):
+    content = (
+        {"kind": "approved_safety_response", "text": "合成的已审核安全提示。"}
+        if action == "CRISIS_ROUTE"
+        else {
+            "summary": "合成的已批准教育支持说明",
+            "observations": [],
+            "suggestions": [],
+            "disclaimer": "这不是诊断或治疗建议。",
+        }
+    )
+    run = SimpleNamespace(
+        id=901,
+        run_ref="TURN_0123456789abcdef",
+        support_session_id=SESSION.id,
+        assessment_session_id=None,
+        status=status,
+        workflow_action=action,
+        completed_at=NOW,
+        component_versions={
+            "user_message_sequence": 7,
+            "assistant_message_sequence": 8,
+            "safe_metadata": {"output_safety_action": "PROCEED"},
+        },
+    )
+    evidence = SimpleNamespace(
+        support_run_id=run.id,
+        citation_id="CITE_synthetic_1",
+        source_id="DOC_synthetic_1",
+        chunk_id="CHUNK_synthetic_1",
+        document_id="DOC_synthetic_1",
+        source_version="v1",
+        source_hash="HASH_synthetic_1",
+        citation_title="合成教育资料",
+        citation_organization="合成组织",
+        locator="第 1 页",
+        rank_order=1,
+    )
+    message = SimpleNamespace(
+        sequence_no=8,
+        message_kind="APPROVED_OUTPUT",
+    )
+    session = _FakeSession(run)
+    session.add_scalars([evidence] if status == "COMPLETED" else [])
+    session.add_scalars([message])
+    adapter, uow = _fake_adapter(monkeypatch, session)
+    decrypted = []
+
+    def decrypt(row):
+        decrypted.append(row)
+        return {
+            "schema_version": "independent-message.v1",
+            "turn_id": run.run_ref,
+            "content": content,
+        }
+
+    adapter._persistence._decrypt_support_message = decrypt
+    adapter._school_idempotency_begin = lambda *_args: _async_value(
+        SimpleNamespace(
+            replayed=True,
+            record=SimpleNamespace(
+                result_resource_type="student_conversation_turn",
+                result_public_id=run.run_ref,
+            ),
+        )
+    )
+    adapter._expire_abandoned = lambda *_args: _async_value(0)
+
+    result = await adapter.reserve_turn(
+        ACTOR,
+        SESSION.support_ref,
+        message="synthetic student message",
+        idempotency_key="synthetic-turn-key",
+        trace_id="TRACE_replay",
+    )
+
+    assert result["status"] == status.lower()
+    assert result["action"] == action
+    assert result["completed_at"] == "2026-10-12T00:00:00.000Z"
+    assert result["user_message_sequence"] == 7
+    assert result["assistant_message_sequence"] == 8
+    assert result["content"] == content
+    assert result["citations"] == (
+        [
+            {
+                "citation_id": "CITE_synthetic_1",
+                "source_id": "DOC_synthetic_1",
+                "chunk_id": "CHUNK_synthetic_1",
+                "document_id": "DOC_synthetic_1",
+                "title": "合成教育资料",
+                "organization": "合成组织",
+                "locator": "第 1 页",
+                "source_version": "v1",
+                "source_hash": "HASH_synthetic_1",
+                "rank": 1,
+            }
+        ]
+        if status == "COMPLETED"
+        else []
+    )
+    assert decrypted == [message]
+    assert uow.support.message_calls == []
+    assert uow.support.evidence_calls == []
+    assert uow.committed is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("message_kind", "payload"),
+    (
+        (
+            "USER_INPUT",
+            {
+                "schema_version": "independent-message.v1",
+                "turn_id": "TURN_0123456789abcdef",
+                "content": {"summary": "must not be returned"},
+            },
+        ),
+        (
+            "APPROVED_OUTPUT",
+            {
+                "schema_version": "independent-message.v1",
+                "turn_id": "TURN_other",
+                "content": {"summary": "must not be returned"},
+            },
+        ),
+        (
+            "APPROVED_OUTPUT",
+            {
+                "schema_version": "wrong.v1",
+                "turn_id": "TURN_0123456789abcdef",
+                "content": {"summary": "must not be returned"},
+            },
+        ),
+        (
+            "APPROVED_OUTPUT",
+            {
+                "schema_version": "independent-message.v1",
+                "turn_id": "TURN_0123456789abcdef",
+                "content": {"summary": "incomplete schema"},
+            },
+        ),
+    ),
+)
+async def test_terminal_replay_fails_closed_on_malformed_approved_message(
+    monkeypatch, message_kind, payload
+):
+    run = SimpleNamespace(
+        id=901,
+        run_ref="TURN_0123456789abcdef",
+        support_session_id=SESSION.id,
+        assessment_session_id=None,
+        status="COMPLETED",
+        workflow_action="PROCEED",
+        completed_at=NOW,
+        component_versions={"user_message_sequence": 7, "assistant_message_sequence": 8},
+    )
+    session = _FakeSession(run)
+    session.add_scalars([])
+    session.add_scalars([SimpleNamespace(sequence_no=8, message_kind=message_kind)])
+    adapter, uow = _fake_adapter(monkeypatch, session)
+    adapter._persistence._decrypt_support_message = lambda _row: payload
+    adapter._school_idempotency_begin = lambda *_args: _async_value(
+        SimpleNamespace(
+            replayed=True,
+            record=SimpleNamespace(
+                result_resource_type="student_conversation_turn",
+                result_public_id=run.run_ref,
+            ),
+        )
+    )
+    adapter._expire_abandoned = lambda *_args: _async_value(0)
+
+    with pytest.raises(BackendError) as caught:
+        await adapter.reserve_turn(
+            ACTOR,
+            SESSION.support_ref,
+            message="synthetic student message",
+            idempotency_key="synthetic-turn-key",
+            trace_id="TRACE_replay",
+        )
+
+    assert caught.value.code is ErrorCode.WORKFLOW_CONFLICT
+    assert uow.committed is False
+    assert uow.rolled_back is True
+    assert uow.support.message_calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "crisis_content",
+    (
+        {"kind": "wrong_kind", "text": "synthetic approved text"},
+        {"kind": "approved_safety_response", "text": None},
+        {"kind": "approved_safety_response", "text": "  "},
+        {"kind": "approved_safety_response", "text": "x" * 20_001},
+        {"kind": "approved_safety_response", "text": "synthetic approved text", "extra": "no"},
+    ),
+)
+async def test_crisis_replay_fails_closed_on_malformed_approved_safety_content(
+    monkeypatch, crisis_content
+):
+    run = SimpleNamespace(
+        id=901,
+        run_ref="TURN_0123456789abcdef",
+        support_session_id=SESSION.id,
+        assessment_session_id=None,
+        status="BLOCKED",
+        workflow_action="CRISIS_ROUTE",
+        completed_at=NOW,
+        component_versions={"user_message_sequence": 7, "assistant_message_sequence": 8},
+    )
+    session = _FakeSession(run)
+    session.add_scalars([])
+    session.add_scalars([SimpleNamespace(sequence_no=8, message_kind="APPROVED_OUTPUT")])
+    adapter, uow = _fake_adapter(monkeypatch, session)
+    adapter._persistence._decrypt_support_message = lambda _row: {
+        "schema_version": "independent-message.v1",
+        "turn_id": run.run_ref,
+        "content": crisis_content,
+    }
+    adapter._school_idempotency_begin = lambda *_args: _async_value(
+        SimpleNamespace(
+            replayed=True,
+            record=SimpleNamespace(
+                result_resource_type="student_conversation_turn",
+                result_public_id=run.run_ref,
+            ),
+        )
+    )
+    adapter._expire_abandoned = lambda *_args: _async_value(0)
+
+    with pytest.raises(BackendError) as caught:
+        await adapter.reserve_turn(
+            ACTOR,
+            SESSION.support_ref,
+            message="synthetic student message",
+            idempotency_key="synthetic-turn-key",
+            trace_id="TRACE_replay",
+        )
+
+    assert caught.value.code is ErrorCode.WORKFLOW_CONFLICT
+    assert uow.rolled_back is True
+    assert uow.support.message_calls == []
+
+
+@pytest.mark.asyncio
+async def test_non_crisis_blocked_replay_rejects_proceed_action(monkeypatch):
+    run = SimpleNamespace(
+        id=901,
+        run_ref="TURN_0123456789abcdef",
+        support_session_id=SESSION.id,
+        assessment_session_id=None,
+        status="BLOCKED",
+        workflow_action="PROCEED",
+        completed_at=NOW,
+        component_versions={"user_message_sequence": 7, "assistant_message_sequence": None},
+    )
+    session = _FakeSession(run)
+    adapter, uow = _fake_adapter(monkeypatch, session)
+    adapter._school_idempotency_begin = lambda *_args: _async_value(
+        SimpleNamespace(
+            replayed=True,
+            record=SimpleNamespace(
+                result_resource_type="student_conversation_turn",
+                result_public_id=run.run_ref,
+            ),
+        )
+    )
+    adapter._expire_abandoned = lambda *_args: _async_value(0)
+
+    with pytest.raises(BackendError) as caught:
+        await adapter.reserve_turn(
+            ACTOR,
+            SESSION.support_ref,
+            message="synthetic student message",
+            idempotency_key="synthetic-turn-key",
+            trace_id="TRACE_replay",
+        )
+
+    assert caught.value.code is ErrorCode.WORKFLOW_CONFLICT
+    assert session.scalars_results == []
+    assert uow.rolled_back is True
     assert uow.support.message_calls == []
 
 

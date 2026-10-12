@@ -25,7 +25,7 @@ import type {
   ReviewSubmission,
   SupportResult,
 } from '@/api/client'
-import { RealApiProvider } from '@/services/real-api'
+import { realApiProvider } from '@/services/real-api'
 
 export class MockApiError extends Error {
   constructor(
@@ -310,6 +310,6 @@ export class MockApiProvider implements FrontendApi {
 
 export const frontendApi: FrontendApi = import.meta.env.MODE === 'test' || import.meta.env.VITE_API_MODE === 'mock'
   ? new MockApiProvider()
-  : new RealApiProvider()
+  : realApiProvider
 
 export type FrontendReport = Report

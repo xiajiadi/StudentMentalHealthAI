@@ -434,6 +434,18 @@ async def test_normal_path_validates_and_persists_only_approved_content_and_cita
     assert safety.contexts[0]["actor_role"] == "STUDENT"
     assert safety.contexts[0]["assessment_signals"] == []
     assert all(item["assessment_signals"] == [] for item in safety.contexts)
+    assert all(
+        item["conversation_metadata"]
+        == {
+            "source": "independent_education_support",
+            "synthetic_fixture": True,
+        }
+        for item in safety.contexts
+    )
+    assert all(
+        "explicit_crisis_signal" not in item["conversation_metadata"]
+        for item in safety.contexts
+    )
     assert safety.contexts[1]["retrieval_metadata"]["retrieval_id"] == rag.calls[0]["retrieval_id"]
     assert safety.contexts[2]["generation_metadata"]["retrieval_id"] == rag.calls[0]["retrieval_id"]
     assert persistence.finish_calls[0]["approved_content"].summary.startswith("可以从")
@@ -670,5 +682,11 @@ async def test_valid_json_without_evidence_citation_is_rejected_without_candidat
 def test_request_dtos_reject_unknown_owner_ai_fields_and_coercion() -> None:
     with pytest.raises(ValidationError):
         ConversationMessageRequest.model_validate({"text": "help", "assessment_id": "ASSESS_fake"})
+    with pytest.raises(ValidationError):
+        ConversationMessageRequest.model_validate({
+            "text": "help",
+            "conversation_metadata": {"synthetic_fixture": True},
+            "explicit_crisis_signal": True,
+        })
     with pytest.raises(ValidationError):
         ConversationCreateRequest.model_validate({"owner_id": "SUBJ_other"})

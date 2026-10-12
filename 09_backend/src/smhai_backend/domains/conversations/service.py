@@ -124,7 +124,10 @@ class IndependentConversationService:
             "age_group": "UNKNOWN",
             "assessment_signals": [],
             "current_user_message": message,
-            "conversation_metadata": {"source": "independent_education_support"},
+            "conversation_metadata": {
+                "source": "independent_education_support",
+                "synthetic_fixture": True,
+            },
             "retrieval_metadata": {},
             "generation_metadata": {},
             "component_health": {},
