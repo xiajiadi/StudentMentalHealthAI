@@ -48,6 +48,27 @@ symlink creation unavailable). New outbox0011 additive source schema underreview
 Root DB21/deployment133focusedtests pass. Native G/H still0010; no0011 DDL applied,
 no job published or processed. Repository/lease implementation active in Worker.
 
+2026-10-14 01:46 recovery milestone: H0010 sealed backup readback verified at
+H/backups/20261013-172045-8c800ca24423473bafe6440d7c846c71.private.dpapi.
+Restored to NEW I D:\Projects\.StudentMentalHealthAI-school-install-20261014-i,
+ID3eefe99d2123fa4d03bb76791a1711f2/DB3317. Restore imports41 application tables/
+9725 rows at0010 then additive-migrates0011 and prepares runtime; oldH/G intact.
+One old auth session revoked. Ciphertext count0 because H has no CAT/feedback;
+this is not proof of restored psychological payload decryption.
+I owned Backend8091/Frontend4181 preview RUNNING, school-gpu-7b profile,
+external modules still UNVERIFIED.800/800 restored students reauthenticated with
+school context/own metadata/permissions. Same-user DPAPI credentials transferred
+to I only, no plaintext files. Initial I QA failed from external helper's default
+Windows text decoding corrupting a Chinese literal; fixed explicit UTF8, retained
+failure, no data/permission relaxation. Reverification PASS.
+Browser screenshots/evidence at I/browser-qa/empirical800-20261013T174506Z;
+802 directory members include2 original seed members. Initial screenshot captured
+loading; tightened UI wait to loaded empty history/assessments and reran PASS.
+Queue atomic completion wiring committede97eb26, exactBackend0011 startup gate;
+Root52focusedtests pass. Worker queue framework25focusedtests pass after Root
+required strict source review/rights checks and rollback/visible persistence errors;
+container authorization/lifecycle wiring is underway, not yet runtime-verified.
+
 2026-10-14 00:05 nextscenario: Root created newH workspace
 D:\Projects\.StudentMentalHealthAI-school-install-20261013-h,
 ID28823cc1dcd2d8a4d41991eac1e045b0/DB3316. Fresh additive migration0010 MIGRATED;
