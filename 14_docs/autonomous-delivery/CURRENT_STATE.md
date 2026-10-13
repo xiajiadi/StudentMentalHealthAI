@@ -1,3 +1,65 @@
+## ACTIVE — 2026-10-13 23:25 Beijing, public empirical-data extension
+
+23:33 milestone: G professional browser allstages PASS at browser-qa/
+20261013T152606Z-bda5a64435df4e4d9703acbe1f02b0a1; Root inspected masked desktop
+screenshot. Native storage proof PASS: logs/professional-review-storage-
+425c4e48300b41cab401addb841e963e.json, ciphertext nonplaintext,3 actor/versioned
+events,4 note-free detail-access audit records. This is review workflow only;
+L3 publication/retraction still pending, no professional approval inferred.
+Independent QA importer16tests PASS and independently recomputed derived output
+hashes match Root's splits (calibration449f63d3/evaluationabb772d4). QA generated
+an equivalent external staging split copy; keep it as evidence, don't delete
+user/parallel artifacts. Fixed test-only metadata to synthetic source/test
+population instead of a real pediatric DOI claim; rerun pending.
+Research calibration decision: first independent one-dimensional GRM MML baseline
+per each IPIP official domain, negative-key direction checked and missing kept.
+Direct Worker examining GIRTH official implementation in isolatedresearch venv;
+first actualdomain pilot only after missing handling proven. No defaultonline
+math/parameters/state change; no claim of5D MIRT or adolescent/clinical validity.
+
+Actual public data acquired: SAPA Harvard Dataverse DOI10.7910/DVN/C40K1U v3.0
+CC0, original CSV size141414305/MD5 matches publisher metadata. Response-only
+128464x99 exact IPIP key columns at D:\Dev\datasets\psynova-public-research\staging;
+q1483 excluded rather than approximated; RID/gender/age and unrelated fields
+excluded. Planned missingness retained, observed count median49/max66; not a
+school/clinical representative sample. Root ran new importer: seeded disjoint
+10000 calibration +800 evaluation under derived/sapa-ipip99-20261013-v1. Missing
+responses remain missing; no fitted parameters, published scale or clinical labels
+created. Source/codebook/key and aggregate manifests kept outside Git. Current
+importer16 focused tests passed; direct independent QA pending.
+
+Three-layer RAG research now has4 real text-only excerpts and verified per-excerpt
+license/hash/attribution in external staging/rag. Professional content review stays
+pending; no real source promoted into active corpus. PROMIS pediatric codebook
+requests gated by Guestbook110; no submission or bypass. Swedish parameter appendix
+downloaded, incomplete Anxiety bank and language/population mismatches retained.
+
+Root commits0155183 and3c72bb7; Targetc safely stopped, locally fetched and detached
+at3c72bb7 preserving all generated/untracked artifacts, then G apps restarted
+on8089/4179 with school-gpu-7b. Native generation context reproduced422
+INVALID_STRUCTURED_OUTPUT under256 tokens; bounded768-token direct probe passed.
+Backend public conversation nowpassed normal3-citation/input+retrieval+outputSafety/
+Claim Boundary/singleattempt/persistence/replay and authorization negatives:
+G logs/independent-public-api-d054d89cde604e1bb5359098b6c61637.json.
+This uses isolated synthetic RAG for chain engineering; real-source RAG/800 cohort
+are still pending and cannot be claimed from it.
+
+G professional API setup passed assignment/CSRF/crossschool/idempotency/incomplete
+CATdenial. Browser reached saved decision but stale publication-label assertion
+timedout; corrected current label and fixed3-substage safe diagnostics, no checks
+weakened. Fresh API setup b673803415e84ec8a97e8196ce793255 now handed to browser
+exec pending. Failed artifacts retained. API setup creates additional completed
+synthetic CAT data, so the earlier9-response/1-result count is historical, not
+the current global database total.
+
+Owned foreground services: Runtimeexec47445(8160/11437), CATexec65385(8180),
+Safetyexec3075(8190/OPA8181), isolatedRAGexec65864(8170). G3315 remains owned;
+original3308 remains stopped. No deadline; user requires continuous project work.
+Heartbeat actual saved cadence90minutes, not a5minute claim, retains quiet policy.
+No production/psychometric/frozen approval changed; next: review importer, actual
+GRM research calibration plan, browser review completion, realRAG research staging
+and empirical800 scenario workflows.
+
 ## ACTIVE — 2026-10-13 22:28 Beijing, explicit user resume with RTX 3060
 
 Latest operator extension: real publicly reusable item banks and de-identified
