@@ -407,6 +407,31 @@ async def test_fixture_write_keeps_cat_runtime_versions_without_binding_them_to_
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("error_code", [ErrorCode.FORBIDDEN, ErrorCode.RESOURCE_NOT_FOUND])
+async def test_write_scope_lock_failure_is_propagated_without_saving(error_code):
+    adapter, record, _task_row, _db_record, saves = _writer_fixture()
+    lock_calls = []
+
+    async def reject_scope(*_args, **_kwargs):
+        lock_calls.append("called")
+        raise BackendError(error_code, detail="synthetic write scope unavailable")
+
+    adapter._lock_school_assessment_write_scope = reject_scope
+
+    with pytest.raises(BackendError) as caught:
+        await adapter.school_save_assessment_for_actor(
+            _actor(BackendRole.STUDENT),
+            record,
+            at=None,
+            trace_id="TRACE_write_scope_rejected",
+        )
+
+    assert caught.value.code is error_code
+    assert lock_calls == ["called"]
+    assert saves == []
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("field_name", "unexpected_version"),
     [
