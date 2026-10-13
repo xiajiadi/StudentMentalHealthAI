@@ -1,3 +1,26 @@
+## ACTIVE — 2026-10-13 evening CPU-only resume; pause before21:00 Beijing
+
+User explicitly confirmed tonight21:00 (not tomorrow09:00); noRTX3060. At18:56
+clock verified and Git HEADd8afb0d; two baseline untracked user artifacts preserved.
+GoalACTIVE, Runner recovered then resumed(stopped=false), existing psynova heartbeat
+updated via app to ACTIVE/5minutes with this new deadline. Stop new dispatch20:40;
+wrap up20:50; finish saved checkpoint/owned shutdown/automation+goal pause by20:55.
+No old shutdown schedule may automatically resume work. Automation is scheduling,
+not independent model Runner or whole-engineering acceptance.
+
+No owned listeners were found on3308/3315/8088/4178/8180/8089/4179/8181 before work.
+Root directly owns integration/native DB/service operations; bounded Luna/high
+Workers own (A) strict0010 historical CHECK naming representation validation and
+(B) explicit fresh-owned existing-data resume mode, with disjoint files. NoLead.
+Trusted0003 migration supplies already prefixed CHECK names to the naming rule,
+creating deterministic double-prefix/truncated physical names. Keep legacy
+migration and CURRENT0010 unchanged; validate only exact source-derived aliases,
+CHECK expressions/enforced/count still exact, unknown/duplicate failclosed. NoDDL
+rename is planned in this increment. This avoids broad runtime/restore0011 impact.
+G remains preserved/stopped until reviewed resume code; no seed/runtime prep yet.
+Next: review both actual diffs/tests, resume existingG withoutreset, run strict
+CURRENT schema check, then gated newruntime/seed and native business evidence.
+
 ## PAUSED — 2026-10-13 16:04 Beijing shutdown checkpoint
 
 Latest user shutdown deadline: 2026-10-13 16:05:55 Beijing. New dispatch stopped;
