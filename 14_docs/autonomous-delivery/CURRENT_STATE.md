@@ -2,12 +2,75 @@
 
 Updated: 2026-10-13, Beijing, explicit user Continue. Goal ACTIVE after explicit user Continue at09:08 Beijing; current environment has no RTX3060. ENGINEERING_DEMO_READY is not yet achieved.
 
+## 2026-10-13 application lifecycle increment
+
+Controller status: ENGINEERING_PASS for prepared-workspace Backend/Frontend lifecycle;
+whole mandate remains PARTIAL_PASS. New school_app_lifecycle.py provides plan/start/
+status/stop, explicit dev/preview, exact approved interpreter/parent-child/creation/
+argv/listener ownership, fixed Windows process handles, retained partial/stopped
+manifests and repeat startup after confirmed stop. No database lifecycle, migration,
+seed, shared module startup, model fallback or installer acceptance is included.
+Child environments remove inherited DB/SMHAI/VITE and Python/Node execution overrides;
+loopback probes bypass proxies. Unknown process/port/manifest fails closed.
+
+Direct Luna/high implementation and independent read-only source QA were followed by
+Root native verification and fresh tests:28 lifecycle fake-ops tests,108 related
+lifecycle/backend/ports/resume tests, Ruff and diff check pass. Root made the test
+import work from repo root and applied Ruff import sorting; initial Root collection
+failure due to missing13_deployment import path is not a product regression.
+
+Native failures were retained and fixed without weakening ownership:
+- Existing configured Python home is a legitimate same-volume version junction;
+  blanket rejection prevented startup before spawn. Only that explicitly configured
+  home leaf is now canonicalized/verified; workspace/ancestor/network/reparse guards
+  remain. Global Python, junction and cache settings are untouched.
+- Windows venv child uses approved base Python argv[0], not launcher argv[0]. Root
+  verified exact parent/base/tail, retained old partial manifest, explicitly reconciled
+  only known spawned child25668/15588, then stopped it. New starts record actual argv.
+- Child stop can naturally exit the launcher. Fresh absence plus no listener is now
+  recognized as EXITED; reused/changed PIDs or remaining foreign listeners still deny.
+- Unknown existing/O_EXCL-conflicting/dangling temporary files are preserved.
+
+Clean managed dev start:Backend5728/29456, Frontend22712; both ready. Four-role browser
+4/4 passes at F/browser-qa/20261013T024346Z-4cac95b25af4422d89a2fa78470d5fd5,
+Root inspected student screenshot. Native stop then returnsSTOPPED, including actual
+launcher auto-exit. Fresh preview start archives that stopped manifest, actually
+runs frontend typecheck/build with real API, then starts Backend33612/32392 and
+Frontend34536. Preview four-role browser4/4 passes at
+20261013T025433Z-587c2935dff04cd985bd57a8ab55652d; Root inspected teacher screenshot.
+Both are login/route/denial/logout evidence, not all business paths or AI acceptance.
+
+Current F process owner is school_app_lifecycle.json, stateRUNNING/preview,8089/4179.
+Use that owner's status/stop commands after fresh verification. The older
+restore-processes.json entries are stopped Root foreground processes and cannot
+be used as current identities or rewritten to invent a live parent. Managed browser
+QA gates on the new owner's strict status/manifest, plus restore profile/runtime
+verification before credentials; it did not weaken the older foreground verifier.
+Original8088/4178 Root exec36871/28296 remains running; F/root DBs are unchanged.
+No CAT/RAG/Runtime/Safety/Ollama is started. Latest F42-table backup remains
+20261013-014733-0c8210ade949495f82e6937d6deb782e.private.dpapi.
+
+Host OS LastBootUpTime observed2026-10-13T01:03:19.5000000Z, after the prior07:15
+Beijing safe stop and before09:08 user Continue. Original current-user sealed runtime
+resumed and authenticated feedback operations succeeded after that observed boot.
+This is bounded actual reboot/current-user recovery evidence; portable/cross-user
+installation and full-stack reboot remain unverified.
+
+Next: commit and verify this reviewed increment, then continue reproducible dependency
+and full installer/business validation under CPU constraints. Broader university
+rights/content approval and grounded7B AI evidence remain pending; no clinical/pilot/
+production upgrade. Goal ACTIVE and updated hourly heartbeat ACTIVE; configuration
+is not proof of a future run. Baseline two untracked user paths are preserved.
+
 ## 2026-10-13 CPU resume and0010 recovery
 
 The07:30 shutdown was completed and is historical. User explicitly resumed at09:08
 Beijing without RTX3060. Original3308 was started from existing initialized data;
 no reset/reseed/revision change. Runner stopped=false, no active owner leases at
-resume. Old shutdown heartbeat remains PAUSED; never reuse its expired deadline.
+resume. Old shutdown heartbeat was initially PAUSED. At09:53 it was updated through the
+app tool and reactivated as psynova autonomous continuation, hourly at minute15,
+with the expired shutdown window removed and CPU/no-fallback constraints explicit.
+Saved configuration confirms ACTIVE; this is not proof of a future scheduled run.
 No new shutdown time has been supplied. Keep7B model routing and frozen GPU proof;
 RAG/Runtime/Safety/Ollama are not running and no AI/GPU-readiness claim is made.
 
@@ -27,9 +90,11 @@ TargetF fresh evidence (all paths external target unless marked source):
   Root inspected masked desktop/mobile screenshots. First attempt failed at case
   selection and remains20261013T012010Z-ca88deba75dd4e7284b1dbe972f1b966. Added
   metadata-only selection diagnostics; subsequent run passes. The initial failure
-  cause is not conclusively isolated; the external helper lacks per-request selection
-  waits and should be hardened before repeated acceptance runs. No product fix or
-  suppressed result is claimed for that intermittent helper failure.
+  first timing was not captured. Source inspection identified missing asynchronous
+  task/response waits. Root hardened the external helper to await the actual case and
+  feedback requests; read-only original control passes6 stages/0 feedback writes at
+  20261013T020316Z-71e6ddc620f74743a066e2c7475ae6b8. Failed result remains preserved,
+  and no product fix is claimed for that helper synchronization defect.
 - Fresh persisted authorization11 checks at browser-qa/
   20261013T012438Z-05809c7af0c741bf8494490f8fb467fd/school-feedback-revocation-qa.json:
   actual admin API assignment revoke denies history and prior create/publish keys.
