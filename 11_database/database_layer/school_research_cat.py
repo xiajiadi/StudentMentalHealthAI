@@ -276,7 +276,7 @@ def map_cat_status_to_storage(value: object) -> str:
 
 
 class SchoolResearchCatRepository:
-    """Repository using profile → task → binding → enrollment → roster/subject → session locks.
+    """Repository using profile → task → binding → roster → enrollment → subject → session locks.
 
     The caller owns the transaction and actor authorization. This ordering
     keeps start, resume, save, and binding setup from taking shared row locks
@@ -1205,7 +1205,7 @@ class SchoolResearchCatRepository:
         return ResearchSessionForResume(_session_metadata(row), _canonical_json(signed_snapshot))
 
     async def _lock_session(self, session: SchoolResearchSession) -> SchoolResearchSession:
-        """Lock the session only after profile, task, binding, and enrollment."""
+        """Lock session only after profile, task, binding, roster, and enrollment."""
 
         row = await self._one(
             SchoolResearchSession,
@@ -1386,6 +1386,56 @@ class SchoolResearchCatRepository:
                 ResearchCatRepositoryErrorCode.TASK_MODE_MISMATCH,
                 "published research CAT task is unavailable in this scope",
             )
+        # Enrollment is first read without a lock only to discover the roster
+        # row to lock. Re-read it under lock after the roster lock is held so
+        # this path follows the same roster → enrollment order as revocation.
+        candidate = await self._one(
+            TaskEnrollment,
+            TaskEnrollment.id == task_enrollment_id,
+            TaskEnrollment.task_id == task_id,
+            TaskEnrollment.school_id == school_id,
+            TaskEnrollment.subject_id == subject_id,
+            TaskEnrollment.class_id == task.class_id,
+            TaskEnrollment.status == "ACTIVE",
+        )
+        if (
+            candidate is None
+            or candidate.id != task_enrollment_id
+            or candidate.task_id != task_id
+            or candidate.school_id != school_id
+            or candidate.subject_id != subject_id
+            or candidate.class_id != task.class_id
+            or candidate.status != "ACTIVE"
+            or not isinstance(candidate.class_student_id, int)
+            or isinstance(candidate.class_student_id, bool)
+            or candidate.class_student_id < 1
+        ):
+            _raise(
+                ResearchCatRepositoryErrorCode.SCOPE_MISMATCH,
+                "active task enrollment does not match the requested school and subject",
+            )
+        candidate_class_student_id = candidate.class_student_id
+        class_student = await self._one(
+            SchoolClassStudent,
+            SchoolClassStudent.id == candidate_class_student_id,
+            SchoolClassStudent.subject_id == subject_id,
+            SchoolClassStudent.class_id == candidate.class_id,
+            SchoolClassStudent.school_id == school_id,
+            SchoolClassStudent.status == "ACTIVE",
+            lock=True,
+        )
+        if (
+            class_student is None
+            or class_student.id != candidate_class_student_id
+            or class_student.subject_id != subject_id
+            or class_student.class_id != candidate.class_id
+            or class_student.school_id != school_id
+            or class_student.status != "ACTIVE"
+        ):
+            _raise(
+                ResearchCatRepositoryErrorCode.SCOPE_MISMATCH,
+                "active class roster row does not match the enrollment subject",
+            )
         enrollment = await self._one(
             TaskEnrollment,
             TaskEnrollment.id == task_enrollment_id,
@@ -1393,6 +1443,7 @@ class SchoolResearchCatRepository:
             TaskEnrollment.school_id == school_id,
             TaskEnrollment.subject_id == subject_id,
             TaskEnrollment.class_id == task.class_id,
+            TaskEnrollment.class_student_id == candidate_class_student_id,
             TaskEnrollment.status == "ACTIVE",
             lock=True,
         )
@@ -1403,32 +1454,12 @@ class SchoolResearchCatRepository:
             or enrollment.school_id != school_id
             or enrollment.subject_id != subject_id
             or enrollment.class_id != task.class_id
+            or enrollment.class_student_id != candidate_class_student_id
             or enrollment.status != "ACTIVE"
         ):
             _raise(
                 ResearchCatRepositoryErrorCode.SCOPE_MISMATCH,
-                "active task enrollment does not match the requested school and subject",
-            )
-        class_student = await self._one(
-            SchoolClassStudent,
-            SchoolClassStudent.id == enrollment.class_student_id,
-            SchoolClassStudent.subject_id == subject_id,
-            SchoolClassStudent.class_id == enrollment.class_id,
-            SchoolClassStudent.school_id == school_id,
-            SchoolClassStudent.status == "ACTIVE",
-            lock=True,
-        )
-        if (
-            class_student is None
-            or class_student.id != enrollment.class_student_id
-            or class_student.subject_id != subject_id
-            or class_student.class_id != enrollment.class_id
-            or class_student.school_id != school_id
-            or class_student.status != "ACTIVE"
-        ):
-            _raise(
-                ResearchCatRepositoryErrorCode.SCOPE_MISMATCH,
-                "active class roster row does not match the enrollment subject",
+                "active task enrollment changed while its roster scope was being locked",
             )
         await self._require_active_class(school_id, enrollment.class_id)
         await self._require_synthetic_school(school_id)
@@ -1521,7 +1552,12 @@ class SchoolResearchCatRepository:
     async def _one(self, model, *conditions, lock: bool = False):
         statement = select(model).where(*conditions)
         if lock:
-            statement = statement.with_for_update()
+            # A locked re-read must refresh rows already present in this
+            # AsyncSession identity map (notably the unlocked enrollment
+            # candidate above).
+            statement = statement.with_for_update().execution_options(
+                populate_existing=True
+            )
         result = await self.session.scalars(statement)
         return result.one_or_none()
 

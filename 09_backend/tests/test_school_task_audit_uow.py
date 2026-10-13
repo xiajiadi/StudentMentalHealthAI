@@ -19,6 +19,9 @@ class _Column:
     def __eq__(self, _other):
         return _Expression()
 
+    def in_(self, _values):
+        return _Expression()
+
 
 class _ModelMeta(type):
     def __getattr__(cls, _name):

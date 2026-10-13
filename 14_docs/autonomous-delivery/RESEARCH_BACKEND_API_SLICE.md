@@ -1,6 +1,32 @@
 # Research CAT Backend API slice
 
 Status: **design proposal; routes and Backend authorization are not implemented**
+
+## Implementation delta — 2026-10-14
+
+The historical inspection below predates schema0013. Research persistence is
+now committed, including v3 published-reference parameter provenance; it no
+longer requires fictitious fit/calibration hashes. The server registry supports
+v1/v2/v3 storage compatibility without granting execution eligibility.
+
+A separate Python3.14 private CAT HTTP bridge is committed in4a6f86c. It accepts
+explicit bindings, authenticates before parsing private requests, bounds actual
+body bytes/JSON structure and returns signed Backend-private state plus L1
+metadata. Root ran104 research tests; independent QA ran64 bridge/session tests
+with actual pinned PROMIS artifacts. Backend remains Python3.12 and must use
+HTTP rather than importing the CAT runtime. Client/runtime wiring is in progress.
+
+Scope locks now take roster before a refreshed enrollment, matching roster
+revocation. Ordinary start filters research tasks before taking scope locks;
+the post-lock normal-mode guard remains. Root ran33 repository tests and45
+Backend start/audit/authorization/binding tests with configured DB dependencies.
+Native MySQL contention verification is pending. Do not compose the historical
+helper with the research prefix or declare global concurrency acceptance. Every operation still needs live
+account/membership/SELF/roster/task-window checks, CSRF, idempotency and encrypted
+CAS persistence. No research session API, online800 run or AI publication is
+established by the bridge tests.
+
+## Historical design inspection
 Inspected source: branch `xiajiadi/autonomous-delivery-20261011`, HEAD
 `a6e442a01e3d0d60db1666d7b56af35bd6dd3ce0`, 2026-10-14.
 

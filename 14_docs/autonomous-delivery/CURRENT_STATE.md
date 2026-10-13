@@ -1,4 +1,35 @@
-## ACTIVE — 2026-10-14 05:55 Beijing, public empirical school integration
+## ACTIVE — 2026-10-14, private research HTTP and recovery integration
+
+Committed4a6f86c private CAT bridge andeca1484 strict Backend client plus scoped
+research key primitives. Root104 CATresearch tests,56 Backendclient tests,
+20key tests; independent64 CATbridge/session tests and client/key code review.
+Private requests authenticate before body parsing, max64KiB/JSON bounds; random
+session refs have stable safe prefix. Client rejects malformed answer containers
+and operation/session/progress changes; supports legacy and versioned MAC shapes
+but still requires trusted authenticator verification before persistence.
+
+Actual one-observation PROMIS HTTP flow PASS: start→4answers→signedrestore→
+4answers→L1complete, wrongbearer/tamper denied. Aggregate:
+D:\Dev\temp\psynova-research-http-native-20261014.json,
+SHA7bf6ce5827cc4f2957afc084ce6f5e622c90726998d9eeedfd5ee23fe733b81f.
+Final actual run Python3.14.6 CAT/Python3.12.13 Backend, loopback61838, owned
+PID47696 exited. Prior successful preliminary run reused the aggregate filename;
+its independent hash was not preserved. Only the final pinned artifact is used.
+This proof uses ephemeral stdin-injected keys, not installed DPAPI service keys.
+K retainedDPAPI provider reload primitive PASS separately:
+K/logs/research-key-recovery-96ba55cfb4b245d0a955b533cd58e0ce.json.
+No key/session/answer/credential values enter either aggregate.
+
+Cross-path deadlock risk found: research enrollment→roster opposed normal
+revoke roster→enrollment. Updated research scope to nonlocking candidate→
+lockedroster→freshlocked enrollment with identity-map refresh; ordinary start
+SQLfilters onlyFIXTURE/SAVED_VERSION before locking. Root33repository and45
+Backend targeted tests passed; native MySQL scope contention proof in progress.
+School research routes/auth/CSRF/idempotency/persisted HTTP resume, installed
+keyring wiring, online800 and realRAG/AI review remain unfinished. GoalACTIVE,
+no shutdown deadline. PrimaryK below is retained; no production approval.
+
+## Previous checkpoint — 2026-10-14 05:55 Beijing
 
 Current primary target is NEW K:
 D:\Projects\.StudentMentalHealthAI-school-install-20261014-k,

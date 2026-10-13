@@ -10,6 +10,10 @@ from smhai_backend.core.errors import BackendError, ErrorCode
 
 
 class _Expression:
+    def __init__(self, operation=None, values=None):
+        self.operation = operation
+        self.values = values
+
     def __and__(self, _other):
         return self
 
@@ -21,15 +25,20 @@ class _Column:
     def is_(self, _other):
         return _Expression()
 
+    def in_(self, values):
+        return _Expression("in", tuple(values))
+
 
 class _Query:
     def __init__(self, model):
         self.model = model
+        self.conditions = []
 
     def join(self, *_args):
         return self
 
-    def where(self, *_args):
+    def where(self, *conditions):
+        self.conditions.extend(conditions)
         return self
 
     def with_for_update(self):
@@ -37,14 +46,28 @@ class _Query:
 
 
 class _Session:
-    def __init__(self):
+    def __init__(self, *, task_binding_mode="FIXTURE", apply_sql_cat_filter=False):
         self.scalar_models = []
+        self.scalar_queries = []
+        self.task_binding_mode = task_binding_mode
+        self.apply_sql_cat_filter = apply_sql_cat_filter
 
-    async def scalar(self, _query):
-        self.scalar_models.append(_query.model)
-        if _query.model is _TaskEnrollment:
+    async def scalar(self, query):
+        self.scalar_models.append(query.model)
+        self.scalar_queries.append(query)
+        if query.model is _TaskEnrollment:
+            allowed_modes = {
+                expression.values
+                for expression in query.conditions
+                if expression.operation == "in"
+            }
+            if self.apply_sql_cat_filter and (
+                ("FIXTURE", "SAVED_VERSION") not in allowed_modes
+                or self.task_binding_mode not in {"FIXTURE", "SAVED_VERSION"}
+            ):
+                return None
             return SimpleNamespace(id=51, task_id=61, subject_id=71)
-        if _query.model is _AssessmentSession or _query.model is _SchoolCatSessionBinding:
+        if query.model is _AssessmentSession or query.model is _SchoolCatSessionBinding:
             return None
         raise AssertionError("unexpected scalar query")
 
@@ -69,6 +92,7 @@ class _MeasurementTask:
     school_id = _Column()
     class_id = _Column()
     task_ref = _Column()
+    cat_binding_mode = _Column()
 
 
 class _TaskEnrollment:
@@ -137,9 +161,13 @@ class _SchoolOperations:
         )
 
 
-def _replay_adapter(*, failure=None, scope_failure=None, cat_binding_mode="FIXTURE"):
+def _replay_adapter(
+    *, failure=None, scope_failure=None, cat_binding_mode="FIXTURE", apply_sql_cat_filter=False
+):
     operations = _SchoolOperations(failure=failure)
     uow = _UnitOfWork(operations)
+    uow.session.task_binding_mode = cat_binding_mode
+    uow.session.apply_sql_cat_filter = apply_sql_cat_filter
     adapter = MySqlBackendAdapter.__new__(MySqlBackendAdapter)
     adapter.identity_profile = "school_tenant"
     adapter._db_models = SimpleNamespace(
@@ -174,7 +202,10 @@ def _replay_adapter(*, failure=None, scope_failure=None, cat_binding_mode="FIXTU
     adapter._school_idempotency_begin = claim_receipt
     adapter._school_idempotency_complete = unexpected_completion
 
+    adapter.scope_lock_calls = 0
+
     async def already_locked_scope(_uow, _actor, account_id, enrollment, *, at):
+        adapter.scope_lock_calls += 1
         assert account_id == 12
         if scope_failure is not None:
             raise scope_failure
@@ -210,6 +241,35 @@ async def test_normal_task_start_rejects_research_mode_before_assessment_session
     assert caught.value.code is ErrorCode.WORKFLOW_CONFLICT
     assert operations.calls == []
     assert adapter._uow().session.scalar_models == [_TaskEnrollment]
+    assert adapter.scope_lock_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_research_mode_is_filtered_by_candidate_query_before_locking_scope():
+    adapter, operations = _replay_adapter(
+        cat_binding_mode="RESEARCH_PROFILE", apply_sql_cat_filter=True
+    )
+
+    with pytest.raises(BackendError) as caught:
+        await adapter.school_prepare_task_session(
+            SimpleNamespace(school_id=8),
+            "TASK_SYNTHETIC",
+            "ASSESS_UNUSED",
+            at=datetime(2026, 10, 11, 12, tzinfo=UTC),
+            trace_id="trace-synthetic",
+            idempotency=("key", "f" * 64, "scope"),
+        )
+
+    assert caught.value.code is ErrorCode.RESOURCE_NOT_FOUND
+    assert operations.calls == []
+    assert adapter.scope_lock_calls == 0
+    session = adapter._uow().session
+    assert session.scalar_models == [_TaskEnrollment]
+    assert any(
+        expression.operation == "in"
+        and expression.values == ("FIXTURE", "SAVED_VERSION")
+        for expression in session.scalar_queries[0].conditions
+    )
 
 
 @pytest.mark.asyncio

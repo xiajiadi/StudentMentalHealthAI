@@ -1615,6 +1615,10 @@ class MySqlBackendAdapter:
                     m.TaskEnrollment.school_id == actor.school_id,
                     m.TaskEnrollment.status == "ACTIVE",
                     m.MeasurementTask.task_ref == task_ref,
+                    # A research start locks its research task before the
+                    # ordinary roster/enrollment write path. Exclude it here
+                    # so the ordinary path cannot invert those lock orders.
+                    m.MeasurementTask.cat_binding_mode.in_(("FIXTURE", "SAVED_VERSION")),
                     m.SubjectAccessGrant.principal_account_id == account_id,
                     m.SubjectAccessGrant.relationship_type == "SELF",
                 )

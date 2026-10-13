@@ -139,13 +139,27 @@ class _FakeSession:
         self.executed = []
         self.locked_models = []
         self.held_lock_rows = set()
+        self.query_events = []
+        self.change_enrollment_before_locked_read = False
         self.commits = 0
         self.rollbacks = 0
 
     async def scalars(self, statement):
         model = statement.column_descriptions[0]["entity"]
         rows = self.rows.get(model, [])
-        if statement._for_update_arg is not None:
+        locked = statement._for_update_arg is not None
+        self.query_events.append(
+            (
+                model,
+                locked,
+                statement.get_execution_options().get("populate_existing", False),
+            )
+        )
+        if model is TaskEnrollment and locked and self.change_enrollment_before_locked_read:
+            self.change_enrollment_before_locked_read = False
+            if rows:
+                rows[0].class_student_id = 29
+        if locked:
             for row in rows:
                 identity = (model, getattr(row, "id", id(row)))
                 if identity not in self.held_lock_rows:
@@ -156,6 +170,7 @@ class _FakeSession:
     def reset_lock_tracking(self):
         self.locked_models.clear()
         self.held_lock_rows.clear()
+        self.query_events.clear()
 
     async def execute(self, statement):
         self.executed.append(statement)
@@ -242,8 +257,8 @@ def _assert_research_lock_order(session):
         SchoolResearchProfileVersion: 0,
         MeasurementTask: 1,
         SchoolResearchTaskBinding: 2,
-        TaskEnrollment: 3,
-        SchoolClassStudent: 4,
+        SchoolClassStudent: 3,
+        TaskEnrollment: 4,
         Subject: 5,
         SchoolResearchSession: 6,
     }
@@ -644,6 +659,21 @@ async def test_binding_and_session_are_exact_scoped_encrypted_and_cas_saved():
     assert "answers" not in resume.metadata.__dataclass_fields__
     assert json.loads(resume.signed_snapshot_json)["payload"]["answers"] == []
     _assert_research_lock_order(session)
+    scope_reads = [
+        (model, locked, populate_existing)
+        for model, locked, populate_existing in session.query_events
+        if model in (TaskEnrollment, SchoolClassStudent)
+    ]
+    scope_lock_sequence = [
+        (TaskEnrollment, False, False),
+        (SchoolClassStudent, True, True),
+        (TaskEnrollment, True, True),
+    ]
+    assert len(scope_reads) % len(scope_lock_sequence) == 0
+    assert all(
+        scope_reads[offset : offset + len(scope_lock_sequence)] == scope_lock_sequence
+        for offset in range(0, len(scope_reads), len(scope_lock_sequence))
+    )
     session.reset_lock_tracking()
 
     next_snapshot = _snapshot(answers=({"item_id": "fixture-item-1", "raw_value": 2},))
@@ -702,6 +732,73 @@ async def test_binding_and_session_are_exact_scoped_encrypted_and_cas_saved():
     )
     assert metadata.items_answered == 1
     assert not hasattr(metadata, "snapshot_ciphertext")
+
+
+@pytest.mark.asyncio
+async def test_enrollment_rebinding_between_candidate_and_locked_read_fails_closed():
+    repo, session, _protection = _repo()
+    await _install_research_records(repo, session)
+    session.change_enrollment_before_locked_read = True
+
+    with pytest.raises(ResearchCatRepositoryError) as caught:
+        await repo.create_or_load_session(
+            school_id=3,
+            task_id=13,
+            task_enrollment_id=17,
+            subject_id=23,
+            session_ref="research-session-fixture-v1",
+            expected_profile_sha256=_PROFILE_SHA,
+            expected_config_sha256=_CONFIG_SHA,
+            signed_snapshot=_snapshot(),
+        )
+
+    assert caught.value.code is ResearchCatRepositoryErrorCode.SCOPE_MISMATCH
+    assert session.rows[SchoolResearchSession] == []
+    _assert_research_lock_order(session)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_reads"),
+    [
+        ("missing_roster", [(TaskEnrollment, False), (SchoolClassStudent, True)]),
+        ("revoked_roster", [(TaskEnrollment, False), (SchoolClassStudent, True)]),
+        ("missing_enrollment", [(TaskEnrollment, False)]),
+        ("revoked_enrollment", [(TaskEnrollment, False)]),
+    ],
+)
+@pytest.mark.asyncio
+async def test_missing_or_revoked_roster_and_enrollment_fail_closed(mutation, expected_reads):
+    repo, session, _protection = _repo()
+    await _install_research_records(repo, session)
+    if mutation == "missing_roster":
+        session.rows[SchoolClassStudent].clear()
+    elif mutation == "revoked_roster":
+        session.rows[SchoolClassStudent][0].status = "REVOKED"
+    elif mutation == "missing_enrollment":
+        session.rows[TaskEnrollment].clear()
+    else:
+        session.rows[TaskEnrollment][0].status = "REVOKED"
+
+    with pytest.raises(ResearchCatRepositoryError) as caught:
+        await repo.create_or_load_session(
+            school_id=3,
+            task_id=13,
+            task_enrollment_id=17,
+            subject_id=23,
+            session_ref="research-session-fixture-v1",
+            expected_profile_sha256=_PROFILE_SHA,
+            expected_config_sha256=_CONFIG_SHA,
+            signed_snapshot=_snapshot(),
+        )
+
+    assert caught.value.code is ResearchCatRepositoryErrorCode.SCOPE_MISMATCH
+    assert session.rows[SchoolResearchSession] == []
+    relevant_reads = [
+        (model, locked)
+        for model, locked, _populate_existing in session.query_events
+        if model in (TaskEnrollment, SchoolClassStudent)
+    ]
+    assert relevant_reads == expected_reads
 
 
 @pytest.mark.asyncio
