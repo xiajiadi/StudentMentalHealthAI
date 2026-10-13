@@ -70,6 +70,8 @@ SAFE_CACHE_ENV = (
 BASE_ENV = ("PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "USERNAME")
 ERROR_EXIT = 2
 STATE_FILENAME = ".school-dependency-preparation-state.json"
+NPM_USER_CONFIG_FILENAME = ".school-deps-user.npmrc"
+NPM_GLOBAL_CONFIG_FILENAME = ".school-deps-global.npmrc"
 ACTIVE_INSTALL_STATE_ROOT: Path | None = None
 PYPI_INDEX = "https://pypi.org/simple"
 NPM_REGISTRY_HOST = "registry.npmjs.org"
@@ -586,6 +588,27 @@ def _node_and_npm_cli() -> tuple[str, str]:
     return str(node), str(npm_cli)
 
 
+def _create_npm_config_files(target: Path) -> tuple[Path, Path]:
+    paths = (
+        target / FRONTEND_MODULE / NPM_USER_CONFIG_FILENAME,
+        target / FRONTEND_MODULE / NPM_GLOBAL_CONFIG_FILENAME,
+    )
+    for path in paths:
+        _reject_reparse_path(path, include_missing_leaf=True)
+        if path.exists() or path.is_symlink():
+            raise PreparationError("NpmConfigArtifactExists")
+    for path in paths:
+        try:
+            with path.open("x", encoding="utf-8", newline="\n") as stream:
+                stream.flush()
+                os.fsync(stream.fileno())
+        except FileExistsError as exc:
+            raise PreparationError("NpmConfigArtifactExists") from exc
+        except OSError as exc:
+            raise PreparationError("NpmConfigArtifactCreationFailed") from exc
+    return paths
+
+
 def _public_import_check(
     module: str,
     interpreter: Path,
@@ -893,18 +916,30 @@ def execute(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
 
     if all(item["state"] == "succeeded" for item in stages[: len(PYTHON_MODULES)]):
         frontend_index = tuple(MODULES).index(FRONTEND_MODULE)
-        frontend = _run_step(
-            name=FRONTEND_MODULE,
-            command=[node, npm_cli, "ci", "--offline", "--ignore-scripts"],
-            cwd=target / FRONTEND_MODULE,
-            root=target,
-            protected_roots=(source,),
-            extra_env={
-                "NPM_CONFIG_USERCONFIG": os.devnull,
-                "NPM_CONFIG_GLOBALCONFIG": os.devnull,
-            },
-            on_update=lambda stage: persist_stage(frontend_index, stage),
-        )
+        try:
+            npm_user_config, npm_global_config = _create_npm_config_files(target)
+        except PreparationError as exc:
+            frontend = {
+                "name": FRONTEND_MODULE,
+                "state": "failed",
+                "exit_code": None,
+                "error_class": exc.args[0],
+            }
+            if not persist_stage(frontend_index, frontend):
+                frontend["error_class"] = "StatePersistenceFailed"
+        else:
+            frontend = _run_step(
+                name=FRONTEND_MODULE,
+                command=[node, npm_cli, "ci", "--offline", "--ignore-scripts"],
+                cwd=target / FRONTEND_MODULE,
+                root=target,
+                protected_roots=(source,),
+                extra_env={
+                    "NPM_CONFIG_USERCONFIG": str(npm_user_config),
+                    "NPM_CONFIG_GLOBALCONFIG": str(npm_global_config),
+                },
+                on_update=lambda stage: persist_stage(frontend_index, stage),
+            )
         if frontend["state"] == "succeeded":
             frontend["state"] = "verifying"
             if not persist_stage(frontend_index, frontend):

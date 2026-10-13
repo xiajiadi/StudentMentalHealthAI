@@ -713,3 +713,16 @@ installation. Next after reviewed fix: newclean Targetb at reviewed sourceSHA,
 actual locked offline full4module preparation, then fresh migration/seed/app/CAT QA.
 Pending fresh migration tool adds shared workspace lock and private-memory cleanup;
 no native DDL/newworkspace yet. Full objective remainsACTIVE/incomplete.
+
+Targetb at8e42517 native locked offline install proves CAT/Backend/Database sync,
+interpreter and public imports all pass after realUSERNAME environment fix.
+Frontend npmci failed exit1 before completion; manifest sayspartial, locks unchanged.
+Readonly node/npm config probe confirmedDouble-loading config: user/global config
+both pointedNUL. Not a cache miss or model issue. Dependency owner now creates two
+separate exclusive empty target-owned config artifacts, no inherited configs or
+cleanup. Preserve Targeta andTargetb partial environments; next is newTargetc.
+Migration independent QA requires post-DDL guardian errors bepartial (fixed38tests),
+and rejects table/column-onlyALREADY_CURRENT as too weak. Controller chose model-
+derived fulltype/null/PK/unique/FK/check comparison before native acceptance; fresh
+and current validation reuse it. Newmigration remainsuntracked/reviewrequested,
+no real DDL/new DB or source-model/Contract changes. GoalACTIVE, CPUonly.

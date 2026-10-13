@@ -177,6 +177,7 @@ def test_install_uses_only_offline_locked_commands_and_verifies_created_targets(
         lambda root, node, *, protected_roots=(): None,
     )
     commands = []
+    frontend_configs = {}
 
     def fake_run_step(
         *,
@@ -190,6 +191,8 @@ def test_install_uses_only_offline_locked_commands_and_verifies_created_targets(
         on_update=None,
     ):
         commands.append(command)
+        if name == prepare.FRONTEND_MODULE:
+            frontend_configs.update(extra_env or {})
         if on_update:
             assert on_update({"name": name, "state": "running", "exit_code": None})
         output = prepare._target_path(root, name)
@@ -216,6 +219,14 @@ def test_install_uses_only_offline_locked_commands_and_verifies_created_targets(
     assert all("--no-dev" in command for command in commands[:3])
     assert "--no-install-project" in commands[2]
     assert commands[3][-3:] == ["ci", "--offline", "--ignore-scripts"]
+    user_config = target / prepare.FRONTEND_MODULE / prepare.NPM_USER_CONFIG_FILENAME
+    global_config = (
+        target / prepare.FRONTEND_MODULE / prepare.NPM_GLOBAL_CONFIG_FILENAME
+    )
+    assert user_config.read_bytes() == global_config.read_bytes() == b""
+    assert user_config != global_config
+    assert Path(frontend_configs["NPM_CONFIG_USERCONFIG"]) == user_config
+    assert Path(frontend_configs["NPM_CONFIG_GLOBALCONFIG"]) == global_config
     assert report["target_head"] == report["source_head"]
     assert report["stages"][-1]["name"] == "manifest_integrity"
     assert report["run_state"] == "completed"
@@ -585,6 +596,80 @@ def test_existing_environment_is_rejected_before_any_install(tmp_path, monkeypat
     with pytest.raises(prepare.PreparationError, match="TargetEnvironmentExists"):
         prepare.execute(_args(source, target))
     assert not called
+
+
+def test_npm_config_files_are_created_empty_and_distinct(tmp_path):
+    _, target = _repositories(tmp_path)
+
+    user_config, global_config = prepare._create_npm_config_files(target)
+
+    assert user_config != global_config
+    assert user_config.read_bytes() == b""
+    assert global_config.read_bytes() == b""
+
+
+def test_npm_config_collision_is_rejected_without_overwrite_or_partial_creation(
+    tmp_path,
+):
+    _, target = _repositories(tmp_path)
+    user_config = target / prepare.FRONTEND_MODULE / prepare.NPM_USER_CONFIG_FILENAME
+    global_config = (
+        target / prepare.FRONTEND_MODULE / prepare.NPM_GLOBAL_CONFIG_FILENAME
+    )
+    user_config.write_text("preserve-me", encoding="utf-8")
+
+    with pytest.raises(prepare.PreparationError, match="NpmConfigArtifactExists"):
+        prepare._create_npm_config_files(target)
+
+    assert user_config.read_text(encoding="utf-8") == "preserve-me"
+    assert not global_config.exists()
+
+
+def test_npm_config_reparse_point_is_rejected_before_creation(tmp_path, monkeypatch):
+    _, target = _repositories(tmp_path)
+    user_config = target / prepare.FRONTEND_MODULE / prepare.NPM_USER_CONFIG_FILENAME
+    global_config = (
+        target / prepare.FRONTEND_MODULE / prepare.NPM_GLOBAL_CONFIG_FILENAME
+    )
+    original_reject = prepare._reject_reparse_path
+
+    def reject_user_config(path, **kwargs):
+        if path == user_config:
+            raise prepare.PreparationError("ReparsePoint")
+        return original_reject(path, **kwargs)
+
+    monkeypatch.setattr(prepare, "_reject_reparse_path", reject_user_config)
+
+    with pytest.raises(prepare.PreparationError, match="ReparsePoint"):
+        prepare._create_npm_config_files(target)
+
+    assert not user_config.exists()
+    assert not global_config.exists()
+
+
+def test_npm_config_creation_failure_keeps_already_created_file(tmp_path, monkeypatch):
+    _, target = _repositories(tmp_path)
+    user_config = target / prepare.FRONTEND_MODULE / prepare.NPM_USER_CONFIG_FILENAME
+    global_config = (
+        target / prepare.FRONTEND_MODULE / prepare.NPM_GLOBAL_CONFIG_FILENAME
+    )
+    original_open = Path.open
+
+    def fail_global_config(path, *args, **kwargs):
+        if path == global_config:
+            raise OSError("synthetic create failure")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", fail_global_config)
+
+    with pytest.raises(
+        prepare.PreparationError, match="NpmConfigArtifactCreationFailed"
+    ):
+        prepare._create_npm_config_files(target)
+
+    assert user_config.exists()
+    assert user_config.read_bytes() == b""
+    assert not global_config.exists()
 
 
 def test_clean_child_environment_drops_redirects_and_preserves_d_cache(
