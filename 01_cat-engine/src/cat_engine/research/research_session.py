@@ -15,7 +15,7 @@ import json
 import math
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from itertools import pairwise
 from pathlib import Path
 from typing import Protocol
@@ -26,12 +26,160 @@ from cat_engine.domain.config import CATConfig
 
 PROFILE_SCHEMA = "psynova.research-profile.v1"
 SNAPSHOT_SCHEMA = "psynova.research-cat-snapshot.v1"
+NHANES_DPQ_PROFILE_SCHEMA = "psynova.research-profile.v2"
+PROMIS_PEDIATRIC_PROFILE_SCHEMA = "psynova.research-profile.v3"
 RESEARCH_PUBLICATION_STATUS = "not_approved_for_publication_or_operational_use"
 PROFILE_STATUS = "CAT_RESEARCH_PROFILE_CANDIDATE"
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _SAFE_REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _SAFE_SIGNATURE = re.compile(r"^[!-~]{1,4096}$")
 _ALLOWED_CATEGORY_SCALES = ((1, 2, 3, 4, 5, 6), (0, 1, 2, 3))
+_NHANES_DPQ_ITEMS = (
+    "DPQ010",
+    "DPQ020",
+    "DPQ030",
+    "DPQ040",
+    "DPQ050",
+    "DPQ060",
+    "DPQ070",
+    "DPQ080",
+    "DPQ090",
+)
+_NHANES_DPQ_PROFILE_ID = "nhanes-p-dpq-adult-mirt1.47-20261014-v2"
+_NHANES_DPQ_SOURCE_POPULATION = (
+    "NHANES 2017-March 2020 pre-pandemic public-use adults; codebook target "
+    "18-150, but ages are absent from this response-only fit; not an adolescent, "
+    "high-school, or school cohort"
+)
+_NHANES_DPQ_SOURCE_URL = (
+    "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2017/DataFiles/P_DPQ.htm"
+)
+_NHANES_DPQ_DATA_URL = (
+    "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2017/DataFiles/P_DPQ.xpt"
+)
+_NHANES_DPQ_SOURCE_SHA256 = (
+    "1a050397dc420e8eb685a43a5a7b481bb3ff61c38e3b5f4d6fb00988a15a2091"
+)
+_NHANES_DPQ_CODEBOOK_SHA256 = (
+    "579e0bcef4f8c2efc815f538b590cdbbf86f3d201309d8d8347d7b3dd299684d"
+)
+_NHANES_DPQ_FIT_SHA256 = (
+    "becedd3437d18a1bdfbb2cf7e4af6f8fef84fd37ca740c68c0bd04b4eb1ae9f6"
+)
+_NHANES_DPQ_FIT_SCRIPT_SHA256 = (
+    "2145704a0ea0c4ab80840122936488913e79555f346b4f9836c2c1e241834a96"
+)
+_NHANES_DPQ_IMPORTER_SHA256 = (
+    "901d09e23f95c58ebd5f3d5cb2676822df25f1a2c6b89fe4634c592fa4ea99e2"
+)
+_NHANES_DPQ_SPLIT_MANIFEST_SHA256 = (
+    "17f73b25173206e28e7342448eb9a106a539d3d65886e513483bc8b94b8e361f"
+)
+_NHANES_DPQ_CALIBRATION_SHA256 = (
+    "4d7536cc669084b7ff815e47e5da556d3dc69e58254630e3c20b3d4874396c95"
+)
+_NHANES_DPQ_EVALUATION_SHA256 = (
+    "0a2e2f825cc450f9f53ce403e30c5979fb57f2e4e239b6dedbb2afaa79ba9669"
+)
+_NHANES_DPQ_FIT_FILE = (
+    "derived/nhanes-dpq-20261014-v1/mirt-nhanes-dpq-20261014-r1/fit-summary.json"
+)
+_NHANES_DPQ_RIGHTS_STATUS = (
+    "research_only_candidate_rights_and_specialist_review_pending"
+)
+_PROMIS_PEDIATRIC_PROFILE_ID = "promis-pediatric-anxiety-8-item-subset-20261014-r1"
+_PROMIS_PEDIATRIC_PROFILE_SHA256 = (
+    "a2720adf10496f495efe21262de0e1890650847a84aff770aa025e9da825acf3"
+)
+_PROMIS_PEDIATRIC_MANIFEST_SHA256 = (
+    "984d395c29c26c1ce728d97790abf99d583ef47518ee6e058e067c8e8c15f524"
+)
+_PROMIS_PEDIATRIC_ITEMS = (
+    (
+        "Q227BR1",
+        "In the past 7 days...I felt scared.",
+        1.89,
+        (-0.25, 0.59, 1.72, 2.52),
+        "I felt scared.",
+    ),
+    (
+        "Q2230R1",
+        "In the past 7 days...I worried about what could happen to me.",
+        1.84,
+        (-0.24, 0.48, 1.54, 2.21),
+        "I worried about what could happen to me.",
+    ),
+    (
+        "Q3150BR2",
+        "In the past 7 days...I worried when I went to bed at night.",
+        1.83,
+        (0.25, 0.91, 1.83, 2.57),
+        "I worried when I went to bed at night.",
+    ),
+    (
+        "Q5044R1",
+        "In the past 7 days...I felt worried.",
+        1.81,
+        (-0.78, 0.25, 1.59, 2.65),
+        "I felt worried.",
+    ),
+    (
+        "Q2220R2",
+        "In the past 7 days...I felt like something awful might happen.",
+        1.71,
+        (-0.43, 0.51, 1.75, 2.65),
+        "I felt like something awful might happen.",
+    ),
+    (
+        "Q3459BR1",
+        "In the past 7 days...I worried when I was at home",
+        1.64,
+        (0.40, 1.22, 2.61, 3.30),
+        "I worried when I was at home.",
+    ),
+    (
+        "Q713R1",
+        "In the past 7 days...I felt nervous.",
+        1.51,
+        (-0.85, 0.18, 1.86, 2.85),
+        "I felt nervous.",
+    ),
+    (
+        "Q3462R1",
+        "In the past 7 days...I got scared really easy.",
+        1.49,
+        (0.29, 1.16, 2.07, 2.74),
+        "I got scared really easy.",
+    ),
+)
+_PROMIS_PEDIATRIC_LABELS = (
+    "Never",
+    "Almost Never",
+    "Sometimes",
+    "Often",
+    "Almost Always",
+)
+_PROMIS_PEDIATRIC_CODEBOOK_SHA256 = (
+    "00344836cabd71ca2ab247dedd04b5a2b759b574874dd3296db06699d132f786"
+)
+_PROMIS_PEDIATRIC_CROSSWALK_SHA256 = (
+    "2176b6cbf7498d8ef912f2902a22c31cb7b229ac82d988d54567cfe615c9066c"
+)
+_PROMIS_PEDIATRIC_RESPONSE_SHA256 = (
+    "c833b0614e74d40aca54b64fcbb5d8983a83638d66d9e7da642147fe9603834a"
+)
+_PROMIS_PEDIATRIC_NUMERIC_SHA256 = (
+    "b00e87fc4e0335a941d92b09195943deec92e21a53f3101576941e2dab54f6fc"
+)
+_PROMIS_PEDIATRIC_COMPLETE800_SHA256 = (
+    "7c723fbdb2590a24cc3fa33adb70c8affb323e3688ce3f0477620bd6507d7f32"
+)
+_PROMIS_PEDIATRIC_ITEM_MAP_SHA256 = (
+    "e395bcd95374dcfba2271491cd1f16215c25179e59a9ef1b26f91225a54c59e9"
+)
+_PROMIS_PEDIATRIC_BUILD_SHA256 = (
+    "b6f35c59dcecb11181dfd6ec510cdabfecdb282da9ee5fde5c4abb9dbac26b7b"
+)
 _RECOVERABLE_ENGINE_ERRORS = (
     ArithmeticError,
     AttributeError,
@@ -150,6 +298,8 @@ class ResearchCATProfile:
     publication_status: str
     psychological_interpretation_allowed: bool
     human_curated: bool
+    raw_profile_bytes: bytes = field(repr=False)
+    manifest_sha256: str | None
     source_metadata_json: str
     rights_metadata_json: str
     model_metadata_json: str
@@ -158,8 +308,20 @@ class ResearchCATProfile:
     raw_metadata_json: str
 
     @classmethod
-    def load(cls, path: Path, *, expected_file_sha256: str) -> ResearchCATProfile:
-        """Load a profile only when its exact file bytes match a trusted digest."""
+    def load(
+        cls,
+        path: Path,
+        *,
+        expected_file_sha256: str,
+        manifest_path: Path | None = None,
+        expected_manifest_sha256: str | None = None,
+    ) -> ResearchCATProfile:
+        """Load exact bytes against an independently registered trusted digest.
+
+        The digest must come from the server's reviewed registry, never from an
+        uploaded profile or a client-computed digest. Structural validation does
+        not independently prove that parameters were exported from a fit.
+        """
 
         try:
             raw = path.read_bytes()
@@ -167,10 +329,31 @@ class ResearchCATProfile:
             raise ResearchSessionError(
                 "profile_unreadable", "research profile file could not be read"
             ) from exc
-        return cls.from_bytes(raw, expected_file_sha256=expected_file_sha256)
+        manifest_bytes = None
+        if manifest_path is not None:
+            try:
+                manifest_bytes = manifest_path.read_bytes()
+            except OSError as exc:
+                raise ResearchSessionError(
+                    "profile_manifest_unreadable",
+                    "research profile manifest could not be read",
+                ) from exc
+        return cls.from_bytes(
+            raw,
+            expected_file_sha256=expected_file_sha256,
+            manifest_bytes=manifest_bytes,
+            expected_manifest_sha256=expected_manifest_sha256,
+        )
 
     @classmethod
-    def from_bytes(cls, raw: bytes, *, expected_file_sha256: str) -> ResearchCATProfile:
+    def from_bytes(
+        cls,
+        raw: bytes,
+        *,
+        expected_file_sha256: str,
+        manifest_bytes: bytes | None = None,
+        expected_manifest_sha256: str | None = None,
+    ) -> ResearchCATProfile:
         if (
             not isinstance(raw, bytes)
             or type(expected_file_sha256) is not str
@@ -202,12 +385,42 @@ class ResearchCATProfile:
             raise ResearchSessionError(
                 "profile_schema_invalid", "research profile root must be an object"
             )
-        return cls._from_verified_document(document, actual_sha256)
+        return cls._from_verified_document(
+            document,
+            actual_sha256,
+            raw,
+            manifest_bytes=manifest_bytes,
+            expected_manifest_sha256=expected_manifest_sha256,
+        )
 
     @classmethod
     def _from_verified_document(
-        cls, document: Mapping[str, object], file_sha256: str
+        cls,
+        document: Mapping[str, object],
+        file_sha256: str,
+        raw: bytes,
+        *,
+        manifest_bytes: bytes | None = None,
+        expected_manifest_sha256: str | None = None,
     ) -> ResearchCATProfile:
+        if document.get("schema") != PROMIS_PEDIATRIC_PROFILE_SCHEMA and (
+            manifest_bytes is not None or expected_manifest_sha256 is not None
+        ):
+            raise ResearchSessionError(
+                "profile_manifest_unexpected",
+                "manifest inputs are supported only by the pinned PROMIS pediatric v3 schema",
+            )
+        if document.get("schema") == NHANES_DPQ_PROFILE_SCHEMA:
+            return _from_verified_nhanes_dpq_document(cls, document, file_sha256, raw)
+        if document.get("schema") == PROMIS_PEDIATRIC_PROFILE_SCHEMA:
+            return _from_verified_promis_pediatric_document(
+                cls,
+                document,
+                file_sha256,
+                raw,
+                manifest_bytes=manifest_bytes,
+                expected_manifest_sha256=expected_manifest_sha256,
+            )
         required = {
             "schema",
             "profile_id",
@@ -356,6 +569,8 @@ class ResearchCATProfile:
             "scoring_metadata_json": _canonical_json(scoring),
             "provenance_metadata_json": _canonical_json(provenance),
             "raw_metadata_json": _canonical_json(document),
+            "raw_profile_bytes": raw,
+            "manifest_sha256": None,
         }
         for key, value in fields.items():
             object.__setattr__(instance, key, value)
@@ -981,6 +1196,1248 @@ def _parse_item(
     )
 
 
+def _from_verified_nhanes_dpq_document(
+    cls: type[ResearchCATProfile],
+    document: Mapping[str, object],
+    file_sha256: str,
+    raw: bytes,
+) -> ResearchCATProfile:
+    root_fields = {
+        "schema",
+        "profile_id",
+        "profile_type",
+        "instrument_id",
+        "instrument_family",
+        "dimension",
+        "research_only",
+        "publication_status",
+        "psychological_interpretation_allowed",
+        "response_scale",
+        "scoring",
+        "candidate_cat_config",
+        "model",
+        "source",
+        "rights",
+        "provenance",
+        "loader_compatibility",
+        "items",
+        "not_approved_for",
+    }
+    if set(document) != root_fields:
+        raise ResearchSessionError(
+            "profile_v2_schema_invalid",
+            "NHANES_DPQ v2 profile fields differ from its closed schema",
+        )
+    if (
+        document.get("schema") != NHANES_DPQ_PROFILE_SCHEMA
+        or document.get("profile_type") != PROFILE_STATUS
+        or document.get("instrument_id") != "NHANES_P_DPQ_9ITEM_RESEARCH_CANDIDATE"
+        or document.get("instrument_family") != "NHANES_DPQ"
+        or type(document.get("research_only")) is not bool
+        or document.get("research_only") is not True
+        or document.get("publication_status") != RESEARCH_PUBLICATION_STATUS
+        or type(document.get("psychological_interpretation_allowed")) is not bool
+        or document.get("psychological_interpretation_allowed") is not False
+    ):
+        raise ResearchSessionError(
+            "profile_status_invalid",
+            "NHANES_DPQ v2 must remain a non-published research candidate",
+        )
+
+    profile_id = _require_ref(document.get("profile_id"), "profile_id")
+    if profile_id != _NHANES_DPQ_PROFILE_ID:
+        raise ResearchSessionError(
+            "profile_identity_invalid",
+            "NHANES_DPQ v2 profile ID must match the fixed adult research candidate",
+        )
+    dimension = _require_text(document.get("dimension"), "dimension", max_length=128)
+    if dimension != "DPQ item-response research dimension; no clinical interpretation":
+        raise ResearchSessionError(
+            "profile_dimension_invalid",
+            "NHANES_DPQ v2 dimension label must preserve its nonclinical scope",
+        )
+
+    response_scale = _require_v2_mapping(
+        document.get("response_scale"),
+        {
+            "values",
+            "category_labels",
+            "category_labels_status",
+            "missing_codes",
+            "missing_policy",
+        },
+        "response_scale",
+    )
+    values = response_scale.get("values")
+    labels_value = response_scale.get("category_labels")
+    if (
+        type(values) is not list
+        or values != [0, 1, 2, 3]
+        or any(type(value) is not int for value in values)
+        or type(labels_value) is not list
+        or labels_value
+        != [
+            "Not at all",
+            "Several days",
+            "More than half the days",
+            "Nearly every day",
+        ]
+        or response_scale.get("category_labels_status")
+        != "verified_verbatim_against_official_NCHS_P_DPQ_codebook"
+        or response_scale.get("missing_codes") != ["7", "9", "."]
+        or not isinstance(response_scale.get("missing_policy"), str)
+        or not response_scale["missing_policy"].strip()
+    ):
+        raise ResearchSessionError(
+            "profile_categories_invalid",
+            "NHANES_DPQ v2 must retain its official direct 0..3 categories and missing codes",
+        )
+
+    scoring = _require_v2_mapping(
+        document.get("scoring"),
+        {
+            "positive_key_transform",
+            "reverse_key_transform",
+            "key_direction",
+            "item_parameters",
+            "no_person_scores_or_norms_included",
+            "clinical_cutpoints",
+            "crisis_thresholds",
+        },
+        "scoring",
+    )
+    if (
+        scoring.get("positive_key_transform") != "identity"
+        or scoring.get("reverse_key_transform") is not None
+        or scoring.get("key_direction") != "direct for all nine source variables"
+        or scoring.get("item_parameters")
+        != "mirt 1.47 graded model; source categories 0..3 retained directly"
+        or scoring.get("no_person_scores_or_norms_included") is not True
+        or scoring.get("clinical_cutpoints") is not None
+        or scoring.get("crisis_thresholds") is not None
+    ):
+        raise ResearchSessionError(
+            "profile_scoring_invalid",
+            "NHANES_DPQ v2 cannot introduce reverse keys, scores, or clinical thresholds",
+        )
+
+    candidate = _require_v2_mapping(
+        document.get("candidate_cat_config"),
+        {"min_items", "max_items", "se_threshold", "status", "rationale"},
+        "candidate_cat_config",
+    )
+    if (
+        type(candidate.get("min_items")) is not int
+        or candidate.get("min_items") != 9
+        or type(candidate.get("max_items")) is not int
+        or candidate.get("max_items") != 9
+        or candidate.get("se_threshold") is not None
+        or candidate.get("status") != "NOT_APPROVED_RESEARCH_CANDIDATE"
+        or not isinstance(candidate.get("rationale"), str)
+        or not candidate["rationale"].strip()
+    ):
+        raise ResearchSessionError(
+            "profile_candidate_config_invalid",
+            "NHANES_DPQ v2 candidate bounds must remain explicit and unapproved",
+        )
+
+    model = _require_v2_mapping(
+        document.get("model"),
+        {
+            "package",
+            "version",
+            "itemtype",
+            "factors",
+            "method",
+            "latent_distribution",
+            "converged",
+            "iterations",
+            "quadrature_points",
+            "maximum_cycles",
+            "standard_errors",
+            "freely_estimated_parameters",
+            "calibration_records",
+            "estimation_rows_used",
+            "all_missing_rows_retained_in_input",
+            "all_missing_rows_omitted_as_informationless",
+            "partial_missing_rows_used",
+            "complete_case_filter",
+            "imputation",
+            "fit_sha256",
+            "calibration_sha256",
+            "evaluation_sha256",
+            "evaluation_fit_performed",
+            "log_likelihood",
+            "aic",
+            "bic",
+            "warnings",
+        },
+        "model",
+    )
+    _validate_model_metadata(model)
+    if (
+        model.get("version") != "1.47"
+        or model.get("method") != "EM"
+        or model.get("iterations") != 76
+        or type(model.get("iterations")) is not int
+        or model.get("quadrature_points") != 41
+        or type(model.get("quadrature_points")) is not int
+        or model.get("maximum_cycles") != 1000
+        or type(model.get("maximum_cycles")) is not int
+        or model.get("standard_errors") is not False
+        or model.get("freely_estimated_parameters") != 36
+        or model.get("calibration_records") != 6000
+        or model.get("estimation_rows_used") != 5551
+        or model.get("all_missing_rows_retained_in_input") != 449
+        or model.get("all_missing_rows_omitted_as_informationless") != 449
+        or model.get("partial_missing_rows_used") is not True
+        or model.get("complete_case_filter") is not False
+        or model.get("imputation") is not False
+        or model.get("fit_sha256") != _NHANES_DPQ_FIT_SHA256
+        or model.get("calibration_sha256") != _NHANES_DPQ_CALIBRATION_SHA256
+        or model.get("evaluation_sha256") != _NHANES_DPQ_EVALUATION_SHA256
+        or model.get("evaluation_fit_performed") is not False
+        or model.get("log_likelihood") != -30361.64541003759
+        or model.get("aic") != 60795.29082007518
+        or model.get("bic") != 61033.673221420024
+        or model.get("warnings") != "data contains response patterns with only NAs"
+    ):
+        raise ResearchSessionError(
+            "profile_model_provenance_invalid",
+            "NHANES_DPQ v2 fit metadata differs from the fixed calibration-only research fit",
+        )
+    for name in ("log_likelihood", "aic", "bic"):
+        value = model.get(name)
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+        ):
+            raise ResearchSessionError(
+                "profile_model_provenance_invalid",
+                "NHANES_DPQ v2 aggregate fit diagnostics must be finite numbers",
+            )
+
+    source = _require_v2_mapping(
+        document.get("source"),
+        {
+            "population",
+            "language",
+            "version",
+            "data_reference",
+            "response_only_sha256",
+            "codebook_url",
+            "codebook_content_sha256",
+            "codebook_bytes",
+            "codebook_first_published",
+            "codebook_last_revised",
+            "target_age",
+            "adolescent_access",
+        },
+        "source",
+    )
+    source_population = _require_text(
+        source.get("population"), "source.population", max_length=512
+    )
+    if (
+        source.get("language") != "English"
+        or source.get("version")
+        != "NHANES 2017-March 2020 pre-pandemic public-use P_DPQ"
+        or source.get("data_reference") != _NHANES_DPQ_DATA_URL
+        or source.get("response_only_sha256") != _NHANES_DPQ_SOURCE_SHA256
+        or source.get("codebook_url") != _NHANES_DPQ_SOURCE_URL
+        or source.get("codebook_content_sha256") != _NHANES_DPQ_CODEBOOK_SHA256
+        or type(source.get("codebook_bytes")) is not int
+        or source.get("codebook_bytes") != 44395
+        or source.get("codebook_first_published") != "June 2021"
+        or source.get("codebook_last_revised") != "NA"
+        or source.get("target_age") != "18-150 in codebook; ages absent from fit input"
+        or source.get("adolescent_access")
+        != "P_DPQ public file has ages 18+ only; youth 12-17 is available through the NCHS Research Data Center and was not accessed"
+        or source_population != _NHANES_DPQ_SOURCE_POPULATION
+    ):
+        raise ResearchSessionError(
+            "profile_source_invalid",
+            "NHANES_DPQ v2 source provenance or adult-only scope is invalid",
+        )
+
+    rights = _require_v2_mapping(
+        document.get("rights"),
+        {"items", "dataset", "cdc_content_guidance", "profile"},
+        "rights",
+    )
+    item_rights = _require_v2_mapping(
+        rights.get("items"),
+        {
+            "status",
+            "basis",
+            "source_url",
+            "source_content_sha256",
+            "source_bytes",
+            "attribution",
+        },
+        "rights.items",
+    )
+    dataset_rights = _require_v2_mapping(
+        rights.get("dataset"),
+        {"status", "terms_url", "scope", "official_page_checked_via_web"},
+        "rights.dataset",
+    )
+    cdc_guidance = _require_v2_mapping(
+        rights.get("cdc_content_guidance"),
+        {"source_url", "scope", "direct_http_status"},
+        "rights.cdc_content_guidance",
+    )
+    profile_rights = _require_v2_mapping(
+        rights.get("profile"), {"status", "operational_release"}, "rights.profile"
+    )
+    if (
+        item_rights.get("status")
+        != "official_reproduction_basis_found_for_PHQ_screener_content"
+        or item_rights.get("source_url")
+        != "https://www.phqscreeners.com/select-screener"
+        or not _SHA256.fullmatch(str(item_rights.get("source_content_sha256") or ""))
+        or type(item_rights.get("source_bytes")) is not int
+        or item_rights.get("source_bytes") < 1
+        or not _require_text(
+            item_rights.get("basis"), "rights.items.basis", max_length=1000
+        )
+        or not _require_text(
+            item_rights.get("attribution"), "rights.items.attribution", max_length=500
+        )
+        or dataset_rights.get("status") != "public_use_under_NCHS_data_user_agreement"
+        or dataset_rights.get("terms_url")
+        != "https://www.cdc.gov/nchs/policy/data-user-agreement.html"
+        or not _require_text(
+            dataset_rights.get("scope"), "rights.dataset.scope", max_length=1000
+        )
+        or dataset_rights.get("official_page_checked_via_web") != "2026-10-14"
+        or cdc_guidance.get("source_url") != "https://www.cdc.gov/Other/imagereuse.html"
+        or cdc_guidance.get("direct_http_status")
+        != "403; page reviewed through official CDC search result only."
+        or not _require_text(
+            cdc_guidance.get("scope"),
+            "rights.cdc_content_guidance.scope",
+            max_length=1000,
+        )
+        or profile_rights.get("status") != _NHANES_DPQ_RIGHTS_STATUS
+        or type(profile_rights.get("operational_release")) is not bool
+        or profile_rights.get("operational_release") is not False
+    ):
+        raise ResearchSessionError(
+            "profile_rights_invalid",
+            "NHANES_DPQ v2 rights must remain source-attributed and pending operational review",
+        )
+
+    provenance = _require_v2_mapping(
+        document.get("provenance"),
+        {
+            "created_at_utc",
+            "fit_summary_sha256",
+            "fit_script_sha256",
+            "importer_sha256",
+            "source_response_only_sha256",
+            "split_manifest_sha256",
+            "mirt_version",
+            "r_version",
+            "source_row_ids_included",
+            "individual_theta_or_responses_included",
+        },
+        "provenance",
+    )
+    for name in ("fit_script_sha256", "importer_sha256", "split_manifest_sha256"):
+        if not _SHA256.fullmatch(str(provenance.get(name) or "")):
+            raise ResearchSessionError(
+                "profile_provenance_invalid",
+                f"provenance.{name} must be a lowercase SHA-256",
+            )
+    if (
+        provenance.get("fit_summary_sha256") != model.get("fit_sha256")
+        or provenance.get("source_response_only_sha256") != _NHANES_DPQ_SOURCE_SHA256
+        or provenance.get("fit_script_sha256") != _NHANES_DPQ_FIT_SCRIPT_SHA256
+        or provenance.get("importer_sha256") != _NHANES_DPQ_IMPORTER_SHA256
+        or provenance.get("split_manifest_sha256") != _NHANES_DPQ_SPLIT_MANIFEST_SHA256
+        or provenance.get("mirt_version") != "1.47"
+        or not isinstance(provenance.get("r_version"), str)
+        or not provenance.get("r_version", "").startswith("R version 4.6.1")
+        or type(provenance.get("source_row_ids_included")) is not bool
+        or provenance.get("source_row_ids_included") is not False
+        or type(provenance.get("individual_theta_or_responses_included")) is not bool
+        or provenance.get("individual_theta_or_responses_included") is not False
+        or not _require_text(
+            provenance.get("created_at_utc"), "provenance.created_at_utc", max_length=64
+        )
+    ):
+        raise ResearchSessionError(
+            "profile_provenance_invalid",
+            "NHANES_DPQ v2 provenance cannot claim row IDs or person-level outputs",
+        )
+
+    loader = _require_v2_mapping(
+        document.get("loader_compatibility"),
+        {"status", "required_followup"},
+        "loader_compatibility",
+    )
+    if loader.get(
+        "status"
+    ) != "not_compatible_with_current_research_profile_v1_loader" or not _require_text(
+        loader.get("required_followup"),
+        "loader_compatibility.required_followup",
+        max_length=500,
+    ):
+        raise ResearchSessionError(
+            "profile_v2_loader_metadata_invalid",
+            "NHANES_DPQ v2 must declare that its source schema differs from v1",
+        )
+
+    not_approved = document.get("not_approved_for")
+    required_prohibited_uses = {
+        "adolescent or high-school use",
+        "diagnosis or clinical severity classification",
+        "crisis or suicide-risk determination",
+        "psychological interpretation or individual reports",
+        "approved/adaptive school CAT use",
+        "population norms or cut-points",
+        "operational or publication release",
+    }
+    if (
+        type(not_approved) is not list
+        or any(not isinstance(value, str) for value in not_approved)
+        or not required_prohibited_uses.issubset(set(not_approved))
+    ):
+        raise ResearchSessionError(
+            "profile_status_invalid",
+            "NHANES_DPQ v2 must retain its explicit nonclinical and nonoperational exclusions",
+        )
+
+    raw_items = document.get("items")
+    if type(raw_items) is not list or len(raw_items) != len(_NHANES_DPQ_ITEMS):
+        raise ResearchSessionError(
+            "profile_items_invalid",
+            "NHANES_DPQ v2 must include exactly nine source variables",
+        )
+    parsed_items: list[ResearchCATItem] = []
+    item_fields = {
+        "item_id",
+        "qid",
+        "instrument_item_code",
+        "stem",
+        "key_direction",
+        "response_transform",
+        "a",
+        "thresholds",
+        "observed_n",
+        "missing_n",
+        "category_counts",
+        "source_locator",
+        "fit_locator",
+    }
+    locator_section = (
+        "Codebook and Frequencies; English Text and Code or Value / Value Description"
+    )
+    for expected_item, value in zip(_NHANES_DPQ_ITEMS, raw_items, strict=True):
+        value = _require_v2_mapping(value, item_fields, f"item[{expected_item}]")
+        item_id = value.get("item_id")
+        qid = value.get("qid")
+        item_code = value.get("instrument_item_code")
+        if (
+            item_id != expected_item
+            or qid != expected_item
+            or item_code != expected_item
+            or value.get("key_direction") != "direct"
+            or value.get("response_transform") != "identity"
+        ):
+            raise ResearchSessionError(
+                "profile_item_mapping_invalid",
+                "NHANES_DPQ v2 item identifiers and direct source coding must match the nine DPQ variables",
+            )
+        item_id = _require_ref(item_id, "item.item_id")
+        _require_text(value.get("stem"), f"item.{item_id}.stem", max_length=2000)
+        source_locator = _require_v2_mapping(
+            value.get("source_locator"),
+            {"url", "variable", "section"},
+            "item.source_locator",
+        )
+        if (
+            source_locator.get("url") != _NHANES_DPQ_SOURCE_URL
+            or source_locator.get("variable") != expected_item
+            or source_locator.get("section") != locator_section
+        ):
+            raise ResearchSessionError(
+                "profile_item_locator_invalid",
+                "NHANES_DPQ v2 source locator must point to its exact official codebook variable",
+            )
+        fit_locator = _require_v2_mapping(
+            value.get("fit_locator"),
+            {"file", "sha256", "parameter_key", "parameter_metric"},
+            "item.fit_locator",
+        )
+        if (
+            fit_locator.get("file") != _NHANES_DPQ_FIT_FILE
+            or fit_locator.get("sha256") != _NHANES_DPQ_FIT_SHA256
+            or fit_locator.get("sha256") != model.get("fit_sha256")
+            or fit_locator.get("parameter_key") != expected_item
+            or fit_locator.get("parameter_metric")
+            != "direct mirt 1.47 graded a and ordered thresholds for source codes 0..3; no reverse transform"
+        ):
+            raise ResearchSessionError(
+                "profile_fit_locator_invalid",
+                "NHANES_DPQ v2 parameters must bind to the exact variable and current fit hash",
+            )
+        observed_n = value.get("observed_n")
+        missing_n = value.get("missing_n")
+        category_counts = _require_v2_mapping(
+            value.get("category_counts"), {"0", "1", "2", "3"}, "item.category_counts"
+        )
+        counts = [category_counts[str(category)] for category in range(4)]
+        if (
+            type(observed_n) is not int
+            or type(missing_n) is not int
+            or observed_n < 1
+            or missing_n < 0
+            or observed_n + missing_n != 6000
+            or any(type(count) is not int or count < 1 for count in counts)
+            or sum(counts) != observed_n
+        ):
+            raise ResearchSessionError(
+                "profile_item_counts_invalid",
+                "NHANES_DPQ v2 item support must match the calibration-only aggregate counts",
+            )
+        parsed_items.append(
+            _parse_nhanes_dpq_item(
+                value,
+                expected_item=expected_item,
+                source_categories=(0, 1, 2, 3),
+                expected_fit_sha256=_NHANES_DPQ_FIT_SHA256,
+            )
+        )
+
+    instance = object.__new__(cls)
+    fields = {
+        "profile_id": profile_id,
+        "profile_type": PROFILE_STATUS,
+        "instrument_id": "NHANES_P_DPQ_9ITEM_RESEARCH_CANDIDATE",
+        "dimension": dimension,
+        "source_population": source_population,
+        "source_categories": (0, 1, 2, 3),
+        "category_labels": tuple(labels_value),
+        "category_labels_status": "verified_verbatim_against_official_NCHS_P_DPQ_codebook",
+        "items": tuple(parsed_items),
+        "file_sha256": file_sha256,
+        "research_only": True,
+        "publication_status": RESEARCH_PUBLICATION_STATUS,
+        "psychological_interpretation_allowed": False,
+        "human_curated": False,
+        "source_metadata_json": _canonical_json(source),
+        "rights_metadata_json": _canonical_json(rights),
+        "model_metadata_json": _canonical_json(model),
+        "scoring_metadata_json": _canonical_json(scoring),
+        "provenance_metadata_json": _canonical_json(provenance),
+        "raw_metadata_json": _canonical_json(document),
+        "raw_profile_bytes": raw,
+        "manifest_sha256": None,
+    }
+    for name, value in fields.items():
+        object.__setattr__(instance, name, value)
+    _verify_profile_probability_parity(instance, model)
+    return instance
+
+
+def _from_verified_promis_pediatric_document(
+    cls: type[ResearchCATProfile],
+    document: Mapping[str, object],
+    file_sha256: str,
+    raw: bytes,
+    *,
+    manifest_bytes: bytes | None,
+    expected_manifest_sha256: str | None,
+) -> ResearchCATProfile:
+    # The profile and manifest hashes are pinned independently of their contents.
+    # This adapter accepts this one reviewed research artifact, never arbitrary v3.
+    if file_sha256 != _PROMIS_PEDIATRIC_PROFILE_SHA256:
+        raise ResearchSessionError(
+            "profile_identity_invalid",
+            "PROMIS pediatric v3 bytes are not the independently pinned candidate",
+        )
+    manifest_sha256 = _validate_promis_manifest(
+        manifest_bytes, expected_manifest_sha256
+    )
+    root_fields = {
+        "schema",
+        "profile_id",
+        "profile_type",
+        "instrument_id",
+        "instrument_family",
+        "dimension",
+        "research_only",
+        "publication_status",
+        "human_curated",
+        "psychological_interpretation_allowed",
+        "loader_compatibility",
+        "response_scale",
+        "model",
+        "scoring",
+        "candidate_cat_config",
+        "items",
+        "source_data",
+        "rights",
+        "provenance",
+        "not_approved_for",
+    }
+    if set(document) != root_fields:
+        raise ResearchSessionError(
+            "profile_v3_schema_invalid",
+            "PROMIS pediatric v3 profile fields differ from its closed schema",
+        )
+    if (
+        document.get("schema") != PROMIS_PEDIATRIC_PROFILE_SCHEMA
+        or document.get("profile_id") != _PROMIS_PEDIATRIC_PROFILE_ID
+        or document.get("profile_type") != "research_only_candidate"
+        or document.get("instrument_id") != "PROMIS_PEDIATRIC_ANXIETY_8_ITEM_SUBSET"
+        or document.get("instrument_family") != "PROMIS_PEDIATRIC_ANXIETY_8_ITEM_SUBSET"
+        or document.get("dimension")
+        != "Pediatric anxiety item-response research dimension; no psychological interpretation"
+        or type(document.get("research_only")) is not bool
+        or document.get("research_only") is not True
+        or document.get("publication_status") != "not_approved"
+        or type(document.get("human_curated")) is not bool
+        or document.get("human_curated") is not False
+        or type(document.get("psychological_interpretation_allowed")) is not bool
+        or document.get("psychological_interpretation_allowed") is not False
+    ):
+        raise ResearchSessionError(
+            "profile_status_invalid",
+            "PROMIS pediatric candidate must remain unpublished, uncurated and noninterpretive",
+        )
+
+    scale = _require_v3_mapping(
+        document.get("response_scale"),
+        {
+            "source_labels",
+            "source_raw_codes",
+            "published_v1_raw_codes",
+            "engine_category_indices",
+            "category_mapping",
+            "missing_policy",
+            "label_source",
+        },
+        "response_scale",
+    )
+    expected_mapping = [
+        {
+            "label": label,
+            "source_raw_code": code,
+            "published_v1_raw_code": code - 1,
+            "engine_category_index": code - 1,
+        }
+        for code, label in enumerate(_PROMIS_PEDIATRIC_LABELS, start=1)
+    ]
+    if (
+        scale.get("source_labels") != list(_PROMIS_PEDIATRIC_LABELS)
+        or scale.get("source_raw_codes") != [1, 2, 3, 4, 5]
+        or scale.get("published_v1_raw_codes") != [0, 1, 2, 3, 4]
+        or scale.get("engine_category_indices") != [0, 1, 2, 3, 4]
+        or scale.get("category_mapping") != expected_mapping
+        or scale.get("missing_policy")
+        != {
+            "source_blank": "NA",
+            "source_codebook_refused_minus1": "not distinguishable from system missing in source CSV; do not infer subtype",
+        }
+        or scale.get("label_source")
+        != f"PROMIS GenPop Dataverse V2 codebook, SHA-256 {_PROMIS_PEDIATRIC_CODEBOOK_SHA256}"
+    ):
+        raise ResearchSessionError(
+            "profile_categories_invalid",
+            "PROMIS v3 categories must map source codes 1..5 to engine indices 0..4 exactly",
+        )
+
+    scoring = _require_v3_mapping(
+        document.get("scoring"),
+        {
+            "response_label_to_engine_category_index",
+            "reverse_key_transform",
+            "person_scores_included",
+            "theta_included",
+            "clinical_cutoffs",
+            "crisis_thresholds",
+            "interpretation_allowed",
+        },
+        "scoring",
+    )
+    if (
+        scoring.get("response_label_to_engine_category_index")
+        != dict(zip(_PROMIS_PEDIATRIC_LABELS, range(5), strict=True))
+        or scoring.get("reverse_key_transform") is not None
+        or scoring.get("person_scores_included") is not False
+        or type(scoring.get("person_scores_included")) is not bool
+        or scoring.get("theta_included") is not False
+        or type(scoring.get("theta_included")) is not bool
+        or scoring.get("clinical_cutoffs") is not None
+        or scoring.get("crisis_thresholds") is not None
+        or scoring.get("interpretation_allowed") is not False
+        or type(scoring.get("interpretation_allowed")) is not bool
+    ):
+        raise ResearchSessionError(
+            "profile_scoring_invalid",
+            "PROMIS v3 scoring must retain identity keying and prohibit person scores",
+        )
+
+    candidate = _require_v3_mapping(
+        document.get("candidate_cat_config"),
+        {"min_items", "max_items", "se_threshold", "status", "rationale"},
+        "candidate_cat_config",
+    )
+    if (
+        type(candidate.get("min_items")) is not int
+        or candidate.get("min_items") != 8
+        or type(candidate.get("max_items")) is not int
+        or candidate.get("max_items") != 8
+        or candidate.get("se_threshold") is not None
+        or candidate.get("status")
+        != "reference_full_subset_only_not_approved_research_configuration"
+        or not _require_text(
+            candidate.get("rationale"),
+            "candidate_cat_config.rationale",
+            max_length=1000,
+        )
+    ):
+        raise ResearchSessionError(
+            "profile_candidate_config_invalid",
+            "PROMIS v3 candidate bounds must remain a fixed, unapproved eight-item reference",
+        )
+
+    model = _require_v3_mapping(
+        document.get("model"),
+        {
+            "family",
+            "parameter_origin",
+            "parameter_version",
+            "parameter_metric",
+            "precision",
+            "version_compatibility",
+        },
+        "model",
+    )
+    if (
+        model.get("family") != "Samejima graded response model"
+        or model.get("parameter_origin") != "published item bank parameters; no refit"
+        or model.get("parameter_version") != "PROMIS Pediatric Anxiety v1.0"
+        or model.get("parameter_metric")
+        != "theta anchored to the North Carolina reference group with mean 0 and variance 1"
+        or model.get("precision")
+        != "a and b1..b4 retained at two decimal places as published; no precision inferred"
+        or model.get("version_compatibility")
+        != "HealthMeasures reports Pediatric Anxiety v1.0/v1.1/v2.0 calibrations identical; v1.1 8b and v2.0 8a item sets match, with different raw category scores. GenPop v3.0 is a different metric."
+    ):
+        raise ResearchSessionError(
+            "profile_model_unsupported",
+            "PROMIS v3 requires its published v1.0 GRM parameters and stated metric",
+        )
+
+    source_data = _require_v3_mapping(
+        document.get("source_data"),
+        {"observed_response_source", "published_parameters"},
+        "source_data",
+    )
+    source = _require_v3_mapping(
+        source_data.get("observed_response_source"),
+        {
+            "doi",
+            "version",
+            "license",
+            "population",
+            "response_only_csv_sha256",
+            "rows_with_any_selected_response",
+            "complete_on_8_selected_items",
+            "partial_rows_retained",
+        },
+        "source_data.observed_response_source",
+    )
+    population = _require_text(
+        source.get("population"), "source.population", max_length=512
+    )
+    if (
+        source.get("doi") != "10.7910/DVN/UXH6DH"
+        or source.get("version") != "2"
+        or source.get("license") != "CC0-1.0 per official Dataverse record"
+        or "child self-report age 8" not in population
+        or "not school-based" not in population
+        or source.get("response_only_csv_sha256") != _PROMIS_PEDIATRIC_RESPONSE_SHA256
+        or type(source.get("rows_with_any_selected_response")) is not int
+        or source.get("rows_with_any_selected_response") != 1005
+        or type(source.get("complete_on_8_selected_items")) is not int
+        or source.get("complete_on_8_selected_items") != 958
+        or type(source.get("partial_rows_retained")) is not int
+        or source.get("partial_rows_retained") != 47
+    ):
+        raise ResearchSessionError(
+            "profile_source_invalid",
+            "PROMIS v3 must preserve its public child self-report research population and counts",
+        )
+    published = _require_v3_mapping(
+        source_data.get("published_parameters"),
+        {"citation", "calibration_sample", "table"},
+        "source_data.published_parameters",
+    )
+    if (
+        "10.1007/s11136-010-9619-3" not in str(published.get("citation"))
+        or "1,529 children ages 8" not in str(published.get("calibration_sample"))
+        or published.get("table")
+        != "Table 5; item-level a and four category thresholds."
+    ):
+        raise ResearchSessionError(
+            "profile_source_invalid",
+            "PROMIS v3 published parameter source must be the cited Table 5 pediatric calibration",
+        )
+
+    rights = _require_v3_mapping(
+        document.get("rights"), {"dataset", "measure_text", "distribution"}, "rights"
+    )
+    if (
+        not _require_text(rights.get("dataset"), "rights.dataset", max_length=500)
+        or "CC0-1.0" not in rights["dataset"]
+        or not _require_text(
+            rights.get("measure_text"), "rights.measure_text", max_length=1000
+        )
+        or not _require_text(
+            rights.get("distribution"), "rights.distribution", max_length=500
+        )
+        or "no product-bank import" not in rights["distribution"]
+        or "school deployment" not in rights["distribution"]
+    ):
+        raise ResearchSessionError(
+            "profile_rights_invalid",
+            "PROMIS v3 must retain the research-only rights and distribution boundary",
+        )
+
+    provenance = _require_v3_mapping(
+        document.get("provenance"),
+        {
+            "response_label_csv_sha256",
+            "numeric_1_5_csv_sha256",
+            "complete_observed_800_csv_sha256",
+            "item_map_sha256",
+            "parameter_crosswalk_sha256",
+            "transform_script_sha256",
+            "source_sha256_scope",
+            "numeric_transform",
+            "coverage_sample",
+        },
+        "provenance",
+    )
+    for key, digest in (
+        ("response_label_csv_sha256", _PROMIS_PEDIATRIC_RESPONSE_SHA256),
+        ("numeric_1_5_csv_sha256", _PROMIS_PEDIATRIC_NUMERIC_SHA256),
+        ("complete_observed_800_csv_sha256", _PROMIS_PEDIATRIC_COMPLETE800_SHA256),
+        ("item_map_sha256", _PROMIS_PEDIATRIC_ITEM_MAP_SHA256),
+        ("parameter_crosswalk_sha256", _PROMIS_PEDIATRIC_CROSSWALK_SHA256),
+        ("transform_script_sha256", _PROMIS_PEDIATRIC_BUILD_SHA256),
+    ):
+        if provenance.get(key) != digest:
+            raise ResearchSessionError(
+                "profile_provenance_invalid",
+                "PROMIS v3 provenance hashes differ from the pinned research artifacts",
+            )
+    coverage = _require_v3_mapping(
+        provenance.get("coverage_sample"),
+        {
+            "name",
+            "seed",
+            "algorithm",
+            "python_implementation",
+            "python_version",
+            "complete_source_rows",
+            "selected_rows",
+            "complete_rows_not_selected",
+            "partial_rows_retained_in_full_numeric_matrix",
+            "calibration_or_evaluation_split",
+        },
+        "provenance.coverage_sample",
+    )
+    if (
+        provenance.get("source_sha256_scope")
+        != "file-level hashes only; no per-person hashes or row identifiers stored"
+        or provenance.get("numeric_transform")
+        != "exact English label to codebook raw values 1..5; blank to literal NA; no reverse coding or imputation"
+        or coverage.get("name") != "COMPLETE_OBSERVED800"
+        or type(coverage.get("seed")) is not int
+        or coverage.get("seed") != 2026101403
+        or "without replacement" not in str(coverage.get("algorithm"))
+        or coverage.get("python_implementation") != "CPython"
+        or coverage.get("python_version") != "3.14.6"
+        or type(coverage.get("complete_source_rows")) is not int
+        or coverage.get("complete_source_rows") != 958
+        or type(coverage.get("selected_rows")) is not int
+        or coverage.get("selected_rows") != 800
+        or type(coverage.get("complete_rows_not_selected")) is not int
+        or coverage.get("complete_rows_not_selected") != 158
+        or type(coverage.get("partial_rows_retained_in_full_numeric_matrix")) is not int
+        or coverage.get("partial_rows_retained_in_full_numeric_matrix") != 47
+        or coverage.get("calibration_or_evaluation_split")
+        != "none; published item parameters are used as references and no local model is fit"
+    ):
+        raise ResearchSessionError(
+            "profile_provenance_invalid",
+            "PROMIS v3 coverage provenance is not the declared response-only subset",
+        )
+
+    raw_items = document.get("items")
+    if type(raw_items) is not list or len(raw_items) != len(_PROMIS_PEDIATRIC_ITEMS):
+        raise ResearchSessionError(
+            "profile_items_invalid", "PROMIS v3 must contain exactly eight mapped items"
+        )
+    parsed: list[ResearchCATItem] = []
+    item_fields = {
+        "item_id",
+        "source_column",
+        "stem",
+        "key_direction",
+        "parameters",
+        "source_locator",
+        "parameter_locator",
+    }
+    for index, (expected, value) in enumerate(
+        zip(_PROMIS_PEDIATRIC_ITEMS, raw_items, strict=True)
+    ):
+        item_id, stem, expected_a, expected_thresholds, table_stem = expected
+        value = _require_v3_mapping(value, item_fields, f"items[{index}]")
+        parameters = _require_v3_mapping(
+            value.get("parameters"),
+            {
+                "model",
+                "a",
+                "thresholds",
+                "parameter_precision_decimal_places",
+                "precision_note",
+            },
+            f"items[{index}].parameters",
+        )
+        source_locator = _require_v3_mapping(
+            value.get("source_locator"),
+            {"dataset_doi", "dataset_version", "codebook_variable", "codebook_sha256"},
+            f"items[{index}].source_locator",
+        )
+        parameter_locator = _require_v3_mapping(
+            value.get("parameter_locator"),
+            {
+                "citation_doi",
+                "paper_version",
+                "table",
+                "row_stem",
+                "metric",
+                "crosswalk_sha256",
+            },
+            f"items[{index}].parameter_locator",
+        )
+        a = parameters.get("a")
+        thresholds = parameters.get("thresholds")
+        if (
+            value.get("item_id") != item_id
+            or value.get("source_column") != item_id
+            or value.get("stem") != stem
+            or value.get("key_direction")
+            != "direct_positive_symptom_no_reverse_transform"
+            or parameters.get("model") != "Samejima graded response model"
+            or isinstance(a, bool)
+            or not isinstance(a, (int, float))
+            or not math.isfinite(float(a))
+            or float(a) <= 0
+            or type(thresholds) is not list
+            or len(thresholds) != 4
+            or any(
+                type(v) not in (int, float) or not math.isfinite(float(v))
+                for v in thresholds
+            )
+            or type(parameters.get("parameter_precision_decimal_places")) is not int
+            or parameters.get("parameter_precision_decimal_places") != 2
+            or parameters.get("precision_note")
+            != "transcribed at the two-decimal precision published in Irwin et al. Table 5; no additional precision inferred"
+            or float(a) != expected_a
+            or tuple(float(v) for v in thresholds) != expected_thresholds
+            or any(left >= right for left, right in pairwise(thresholds))
+            or source_locator.get("dataset_doi") != "10.7910/DVN/UXH6DH"
+            or source_locator.get("dataset_version") != "2"
+            or source_locator.get("codebook_variable") != item_id
+            or source_locator.get("codebook_sha256")
+            != _PROMIS_PEDIATRIC_CODEBOOK_SHA256
+            or parameter_locator.get("citation_doi") != "10.1007/s11136-010-9619-3"
+            or parameter_locator.get("paper_version")
+            != "PROMIS Pediatric Anxiety v1.0 item bank calibration"
+            or parameter_locator.get("table") != "Table 5, Anxiety item parameters"
+            or parameter_locator.get("row_stem") != table_stem
+            or parameter_locator.get("metric")
+            != "theta metric anchored to NC reference group N(0,1)"
+            or parameter_locator.get("crosswalk_sha256")
+            != _PROMIS_PEDIATRIC_CROSSWALK_SHA256
+        ):
+            raise ResearchSessionError(
+                "profile_item_mapping_invalid",
+                "PROMIS v3 item text, source mapping or published parameter differs from its pinned crosswalk",
+            )
+        parsed.append(
+            ResearchCATItem(
+                item_id=item_id,
+                qid=item_id,
+                item_code=item_id,
+                stem=stem,
+                source_locator=_canonical_json(source_locator),
+                fit_locator=_canonical_json(parameter_locator),
+                key_direction="positive",
+                a=float(a),
+                thresholds=tuple(float(v) for v in thresholds),
+            )
+        )
+
+    exclusions = document.get("not_approved_for")
+    required_exclusions = {
+        "psychological interpretation or clinical decisions",
+        "school administration or pilot use",
+        "production CAT item bank or published measure",
+        "Chinese translation or cross-cultural validity claim",
+        "diagnosis, risk thresholds, crisis classification, or cutoffs",
+    }
+    if (
+        type(exclusions) is not list
+        or any(type(value) is not str for value in exclusions)
+        or not required_exclusions.issubset(set(exclusions))
+    ):
+        raise ResearchSessionError(
+            "profile_status_invalid",
+            "PROMIS v3 must retain all nonclinical, non-school and non-publication exclusions",
+        )
+
+    fields = {
+        "profile_id": _PROMIS_PEDIATRIC_PROFILE_ID,
+        "profile_type": PROFILE_STATUS,
+        "instrument_id": "PROMIS_PEDIATRIC_ANXIETY_8_ITEM_SUBSET",
+        "dimension": "Pediatric anxiety item-response research dimension; no psychological interpretation",
+        "source_population": population,
+        "source_categories": (1, 2, 3, 4, 5),
+        "category_labels": _PROMIS_PEDIATRIC_LABELS,
+        "category_labels_status": "verified_verbatim_against_PROMIS_GenPop_Dataverse_V2_codebook",
+        "items": tuple(parsed),
+        "file_sha256": file_sha256,
+        "research_only": True,
+        "publication_status": "not_approved",
+        "psychological_interpretation_allowed": False,
+        "human_curated": False,
+        "source_metadata_json": _canonical_json(source_data),
+        "rights_metadata_json": _canonical_json(rights),
+        "model_metadata_json": _canonical_json(model),
+        "scoring_metadata_json": _canonical_json(scoring),
+        "provenance_metadata_json": _canonical_json(provenance),
+        "raw_metadata_json": _canonical_json(document),
+        "raw_profile_bytes": raw,
+        "manifest_sha256": manifest_sha256,
+    }
+    instance = object.__new__(cls)
+    for name, value in fields.items():
+        object.__setattr__(instance, name, value)
+    _verify_profile_probability_parity(instance, model)
+    return instance
+
+
+def _validate_promis_manifest(
+    manifest_bytes: bytes | None, expected_manifest_sha256: str | None
+) -> str:
+    if (
+        not isinstance(manifest_bytes, bytes)
+        or type(expected_manifest_sha256) is not str
+        or expected_manifest_sha256 != _PROMIS_PEDIATRIC_MANIFEST_SHA256
+        or not _SHA256.fullmatch(expected_manifest_sha256)
+        or hashlib.sha256(manifest_bytes).hexdigest() != expected_manifest_sha256
+    ):
+        raise ResearchSessionError(
+            "profile_manifest_hash_invalid",
+            "PROMIS v3 requires independently pinned, hash-matched manifest bytes",
+        )
+    try:
+        manifest = json.loads(
+            manifest_bytes.decode("utf-8-sig"),
+            object_pairs_hook=_reject_duplicate_json_keys,
+            parse_constant=_reject_nonfinite_json_constant,
+        )
+    except ResearchSessionError:
+        raise
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ResearchSessionError(
+            "profile_manifest_invalid", "PROMIS manifest is not valid UTF-8 JSON"
+        ) from exc
+    if not isinstance(manifest, Mapping) or set(manifest) != {
+        "artifact_status",
+        "profile_sha256",
+        "numeric_response_csv",
+        "complete_observed_800",
+        "profile_json_sha256",
+        "build_script_sha256",
+        "source_response_only_sha256",
+        "parameter_crosswalk_sha256",
+        "item_map_sha256",
+        "no_person_response_hashes_or_identifiers",
+        "no_scores_or_person_parameters",
+    }:
+        raise ResearchSessionError(
+            "profile_manifest_invalid",
+            "PROMIS manifest fields differ from the closed schema",
+        )
+    numeric = _require_v3_mapping(
+        manifest.get("numeric_response_csv"),
+        {
+            "path",
+            "sha256",
+            "rows",
+            "columns",
+            "partial_rows_NA_retained",
+            "category_counts",
+        },
+        "manifest.numeric_response_csv",
+    )
+    complete = _require_v3_mapping(
+        manifest.get("complete_observed_800"),
+        {
+            "path",
+            "sha256",
+            "rows",
+            "complete_source_rows",
+            "not_selected_complete_rows",
+            "seed",
+            "sampling",
+            "python_implementation",
+            "python_version",
+        },
+        "manifest.complete_observed_800",
+    )
+    _require_v3_mapping(
+        numeric.get("category_counts"),
+        {item[0] for item in _PROMIS_PEDIATRIC_ITEMS},
+        "manifest.numeric_response_csv.category_counts",
+    )
+    if (
+        manifest.get("artifact_status") != "research_staging_only"
+        or manifest.get("profile_sha256") != _PROMIS_PEDIATRIC_PROFILE_SHA256
+        or manifest.get("profile_json_sha256") != _PROMIS_PEDIATRIC_PROFILE_SHA256
+        or manifest.get("build_script_sha256") != _PROMIS_PEDIATRIC_BUILD_SHA256
+        or manifest.get("source_response_only_sha256")
+        != _PROMIS_PEDIATRIC_RESPONSE_SHA256
+        or manifest.get("parameter_crosswalk_sha256")
+        != _PROMIS_PEDIATRIC_CROSSWALK_SHA256
+        or manifest.get("item_map_sha256") != _PROMIS_PEDIATRIC_ITEM_MAP_SHA256
+        or manifest.get("no_person_response_hashes_or_identifiers") is not True
+        or type(manifest.get("no_person_response_hashes_or_identifiers")) is not bool
+        or manifest.get("no_scores_or_person_parameters") is not True
+        or type(manifest.get("no_scores_or_person_parameters")) is not bool
+        or numeric.get("path") != "responses_numeric_1_5.csv"
+        or numeric.get("sha256") != _PROMIS_PEDIATRIC_NUMERIC_SHA256
+        or type(numeric.get("rows")) is not int
+        or numeric.get("rows") != 1005
+        or numeric.get("columns") != [item[0] for item in _PROMIS_PEDIATRIC_ITEMS]
+        or type(numeric.get("partial_rows_NA_retained")) is not int
+        or numeric.get("partial_rows_NA_retained") != 47
+        or complete.get("path") != "complete_observed_800.csv"
+        or complete.get("sha256") != _PROMIS_PEDIATRIC_COMPLETE800_SHA256
+        or type(complete.get("rows")) is not int
+        or complete.get("rows") != 800
+        or type(complete.get("complete_source_rows")) is not int
+        or complete.get("complete_source_rows") != 958
+        or type(complete.get("not_selected_complete_rows")) is not int
+        or complete.get("not_selected_complete_rows") != 158
+        or type(complete.get("seed")) is not int
+        or complete.get("seed") != 2026101403
+        or complete.get("python_implementation") != "CPython"
+        or complete.get("python_version") != "3.14.6"
+        or not _require_text(
+            complete.get("sampling"),
+            "manifest.complete_observed_800.sampling",
+            max_length=500,
+        )
+    ):
+        raise ResearchSessionError(
+            "profile_manifest_invalid",
+            "PROMIS manifest does not match its source, transform, and coverage artifacts",
+        )
+    return expected_manifest_sha256
+
+
+def _require_v3_mapping(
+    value: object, fields: set[str], name: str
+) -> Mapping[str, object]:
+    if not isinstance(value, Mapping) or set(value) != fields:
+        raise ResearchSessionError(
+            "profile_v3_schema_invalid",
+            f"PROMIS pediatric v3 {name} fields differ from the closed schema",
+        )
+    return value
+
+
+def _require_v2_mapping(
+    value: object, fields: set[str], name: str
+) -> Mapping[str, object]:
+    if not isinstance(value, Mapping) or set(value) != fields:
+        raise ResearchSessionError(
+            "profile_v2_schema_invalid",
+            f"NHANES_DPQ v2 {name} fields differ from its closed schema",
+        )
+    return value
+
+
+def _parse_nhanes_dpq_item(
+    value: Mapping[str, object],
+    *,
+    expected_item: str,
+    source_categories: tuple[int, ...],
+    expected_fit_sha256: str,
+) -> ResearchCATItem:
+    a = value.get("a")
+    raw_thresholds = value.get("thresholds")
+    if (
+        isinstance(a, bool)
+        or not isinstance(a, (int, float))
+        or not math.isfinite(float(a))
+        or float(a) <= 0
+        or type(raw_thresholds) is not list
+        or len(raw_thresholds) != len(source_categories) - 1
+        or any(
+            isinstance(value, bool) or not isinstance(value, (int, float))
+            for value in raw_thresholds
+        )
+    ):
+        raise ResearchSessionError(
+            "profile_item_parameters_invalid",
+            "NHANES_DPQ v2 GRM parameters require finite a>0 and three thresholds",
+        )
+    thresholds = tuple(float(value) for value in raw_thresholds)
+    if any(not math.isfinite(value) for value in thresholds) or any(
+        left >= right for left, right in pairwise(thresholds)
+    ):
+        raise ResearchSessionError(
+            "profile_item_parameters_invalid",
+            "NHANES_DPQ v2 thresholds must be finite and strictly increasing",
+        )
+    locator = value["fit_locator"]
+    if (
+        not isinstance(locator, Mapping)
+        or locator.get("sha256") != expected_fit_sha256
+        or locator.get("parameter_key") != expected_item
+    ):
+        raise ResearchSessionError(
+            "profile_fit_locator_invalid",
+            "NHANES_DPQ v2 fit parameters are not hash-bound to their variable",
+        )
+    return ResearchCATItem(
+        item_id=expected_item,
+        qid=expected_item,
+        item_code=expected_item,
+        stem=_require_text(
+            value.get("stem"), f"item.{expected_item}.stem", max_length=2000
+        ),
+        source_locator=_canonical_json(value["source_locator"]),
+        fit_locator=_canonical_json(locator),
+        key_direction="direct",
+        a=float(a),
+        thresholds=thresholds,
+    )
+
+
 def _validate_model_metadata(model: Mapping[str, object]) -> None:
     if (
         model.get("package") != "mirt"
@@ -1209,39 +2666,46 @@ def _verify_generic_probability_parity(profile: ResearchCATProfile) -> None:
     for item in profile.items:
         for theta in theta_grid:
             probabilities = _category_probabilities(theta, item)
-            if abs(sum(probabilities) - 1.0) > 1e-12:
+            if (
+                len(probabilities) != len(profile.source_categories)
+                or any(
+                    not math.isfinite(value) or value < -1e-12 or value > 1.0 + 1e-12
+                    for value in probabilities
+                )
+                or abs(sum(probabilities) - 1.0) > 1e-12
+            ):
                 raise ResearchSessionError(
                     "profile_probability_normalization_failed",
                     "GRM probabilities do not sum to one",
                 )
-    item = profile.items[len(profile.items) // 2]
-    engine_item = adt.TestItem()
-    engine_item.id = 0
-    engine_item.a = item.a
-    engine_item.b = list(item.thresholds)
-    for score in range(len(profile.source_categories)):
-        try:
-            estimator = adt.ExpectedAPosteriori(
-                [score],
-                [engine_item],
-                prior=adt.NormalPrior(0.0, 1.0),
-                optimization_interval=(-4.0, 4.0),
-                model="GRM",
+    for item_index, item in enumerate(profile.items):
+        engine_item = adt.TestItem()
+        engine_item.id = item_index
+        engine_item.a = item.a
+        engine_item.b = list(item.thresholds)
+        for score in range(len(profile.source_categories)):
+            try:
+                estimator = adt.ExpectedAPosteriori(
+                    [score],
+                    [engine_item],
+                    prior=adt.NormalPrior(0.0, 1.0),
+                    optimization_interval=(-4.0, 4.0),
+                    model="GRM",
+                )
+                public_mean = float(estimator.get_estimation())
+                public_se = float(estimator.get_standard_error(public_mean))
+            except Exception as exc:
+                raise ResearchSessionError(
+                    "profile_public_eap_failed", "public EAP parity check failed"
+                ) from exc
+            local_mean, local_se = _manual_eap_moments(
+                item, score, len(profile.source_categories)
             )
-            public_mean = float(estimator.get_estimation())
-            public_se = float(estimator.get_standard_error(public_mean))
-        except Exception as exc:
-            raise ResearchSessionError(
-                "profile_public_eap_failed", "public EAP parity check failed"
-            ) from exc
-        local_mean, local_se = _manual_eap_moments(
-            item, score, len(profile.source_categories)
-        )
-        if abs(public_mean - local_mean) > 1e-3 or abs(public_se - local_se) > 1e-3:
-            raise ResearchSessionError(
-                "profile_public_eap_mismatch",
-                "public EAP differs from the declared GRM likelihood",
-            )
+            if abs(public_mean - local_mean) > 1e-3 or abs(public_se - local_se) > 1e-3:
+                raise ResearchSessionError(
+                    "profile_public_eap_mismatch",
+                    "public EAP differs from the declared GRM likelihood",
+                )
 
 
 def _category_probabilities(theta: float, item: ResearchCATItem) -> tuple[float, ...]:

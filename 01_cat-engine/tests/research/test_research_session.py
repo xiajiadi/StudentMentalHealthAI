@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import math
+from copy import deepcopy
 from dataclasses import asdict
 from pathlib import Path
 
@@ -12,7 +14,9 @@ import pytest
 from cat_engine.domain.config import CATConfig
 from cat_engine.research import research_session
 from cat_engine.research.research_session import (
+    NHANES_DPQ_PROFILE_SCHEMA,
     PROFILE_SCHEMA,
+    PROMIS_PEDIATRIC_PROFILE_SCHEMA,
     RESEARCH_PUBLICATION_STATUS,
     ResearchCATProfile,
     ResearchCATSession,
@@ -24,6 +28,32 @@ REAL_PROFILE_PATH = Path(
     r"D:\Dev\datasets\psynova-public-research\research-profiles\ipip100-extraversion-sapa-mirt-20261014-r1\profile.json"
 )
 REAL_PROFILE_SHA256 = "cf49329d2848f5fc4ba38f29e39144b79e7363e0725a3381d0b0273bab235f10"
+REAL_NHANES_PROFILE_PATH = Path(
+    r"D:\Dev\datasets\psynova-public-research\research-profiles\nhanes-p-dpq-adult-mirt-20261014-v2\profile.json"
+)
+REAL_NHANES_PROFILE_SHA256 = (
+    "8fd1a76718447b5401da3a9c380f1b2fd64bb5a8b22b60e148986a7f74ca7401"
+)
+REAL_PROMIS_PROFILE_PATH = Path(
+    r"D:\Dev\datasets\psynova-public-research\research-profiles\promis-pediatric-anxiety-8-item-subset-20261014-r1\profile.json"
+)
+REAL_PROMIS_PROFILE_SHA256 = (
+    "a2720adf10496f495efe21262de0e1890650847a84aff770aa025e9da825acf3"
+)
+REAL_PROMIS_MANIFEST_SHA256 = (
+    "984d395c29c26c1ce728d97790abf99d583ef47518ee6e058e067c8e8c15f524"
+)
+NHANES_DPQ_ITEMS = (
+    "DPQ010",
+    "DPQ020",
+    "DPQ030",
+    "DPQ040",
+    "DPQ050",
+    "DPQ060",
+    "DPQ070",
+    "DPQ080",
+    "DPQ090",
+)
 
 
 class _TestAuthenticator:
@@ -161,6 +191,63 @@ def _load_test_profile(
     )
 
 
+def _load_nhanes_profile() -> ResearchCATProfile:
+    if not REAL_NHANES_PROFILE_PATH.is_file():
+        pytest.skip(
+            "external NHANES_DPQ v2 research profile is not mounted in this environment"
+        )
+    return ResearchCATProfile.load(
+        REAL_NHANES_PROFILE_PATH,
+        expected_file_sha256=REAL_NHANES_PROFILE_SHA256,
+    )
+
+
+def _load_promis_profile() -> ResearchCATProfile:
+    if not REAL_PROMIS_PROFILE_PATH.is_file():
+        pytest.skip(
+            "external PROMIS pediatric v3 profile is not mounted in this environment"
+        )
+    manifest_path = REAL_PROMIS_PROFILE_PATH.with_name("manifest.json")
+    return ResearchCATProfile.load(
+        REAL_PROMIS_PROFILE_PATH,
+        expected_file_sha256=REAL_PROMIS_PROFILE_SHA256,
+        manifest_path=manifest_path,
+        expected_manifest_sha256=REAL_PROMIS_MANIFEST_SHA256,
+    )
+
+
+def test_profile_preserves_verified_original_bytes_for_encrypted_persistence() -> None:
+    from dataclasses import FrozenInstanceError
+
+    raw = json.dumps(_test_profile_document(), indent=2).encode("utf-8") + b"\n"
+    profile = ResearchCATProfile.from_bytes(
+        raw, expected_file_sha256=hashlib.sha256(raw).hexdigest()
+    )
+    assert profile.raw_profile_bytes == raw
+    assert hashlib.sha256(profile.raw_profile_bytes).hexdigest() == profile.file_sha256
+    assert profile.raw_metadata_json.encode("utf-8") != raw
+    assert "raw_profile_bytes=" not in repr(profile)
+    with pytest.raises(FrozenInstanceError):
+        profile.raw_profile_bytes = b"changed"
+
+
+def test_nhanes_preserves_verified_original_profile_bytes() -> None:
+    profile = _load_nhanes_profile()
+    assert profile.raw_profile_bytes == REAL_NHANES_PROFILE_PATH.read_bytes()
+    assert (
+        hashlib.sha256(profile.raw_profile_bytes).hexdigest()
+        == REAL_NHANES_PROFILE_SHA256
+    )
+
+
+def _nhanes_profile_document() -> dict:
+    if not REAL_NHANES_PROFILE_PATH.is_file():
+        pytest.skip(
+            "external NHANES_DPQ v2 research profile is not mounted in this environment"
+        )
+    return json.loads(REAL_NHANES_PROFILE_PATH.read_text(encoding="utf-8"))
+
+
 def _config(
     *, min_items: int = 1, max_items: int = 2, version: str = "test-v1"
 ) -> CATConfig:
@@ -238,6 +325,472 @@ def test_public_profile_hash_and_source_fields_are_bound() -> None:
     assert completion["research_only"] is True
     assert completion["psychological_interpretation_allowed"] is False
     assert not ({"theta", "se", "score", "ability"} & set(completion))
+
+
+def test_real_nhanes_v2_profile_runs_full_nine_step_authenticated_lifecycle() -> None:
+    if not REAL_NHANES_PROFILE_PATH.is_file():
+        pytest.skip(
+            "external NHANES_DPQ v2 research profile is not mounted in this environment"
+        )
+
+    manifest = json.loads(
+        REAL_NHANES_PROFILE_PATH.with_name("manifest.json").read_text(encoding="utf-8")
+    )
+    assert manifest["profile_sha256"] == REAL_NHANES_PROFILE_SHA256
+    profile = _load_nhanes_profile()
+    assert profile.raw_metadata_json
+    metadata = json.loads(profile.raw_metadata_json)
+    assert metadata["schema"] == NHANES_DPQ_PROFILE_SCHEMA
+    assert metadata["instrument_family"] == "NHANES_DPQ"
+    assert [item.item_id for item in profile.items] == list(NHANES_DPQ_ITEMS)
+    assert all(item.qid == item.item_code == item.item_id for item in profile.items)
+    assert all(item.key_direction == "direct" for item in profile.items)
+    assert profile.source_categories == (0, 1, 2, 3)
+    assert profile.category_labels == (
+        "Not at all",
+        "Several days",
+        "More than half the days",
+        "Nearly every day",
+    )
+    assert profile.human_curated is False
+    assert profile.research_only is True
+    assert profile.psychological_interpretation_allowed is False
+    assert metadata["candidate_cat_config"]["min_items"] == 9
+    assert metadata["candidate_cat_config"]["max_items"] == 9
+    assert (
+        metadata["candidate_cat_config"]["status"] == "NOT_APPROVED_RESEARCH_CANDIDATE"
+    )
+    assert metadata["loader_compatibility"]["status"] == (
+        "not_compatible_with_current_research_profile_v1_loader"
+    )
+
+    config = _config(min_items=9, max_items=9, version="nhanes-explicit-9-item-v1")
+    original_config = config.to_dict()
+    signer = _TestAuthenticator()
+    session = ResearchCATSession.start(
+        profile, config, session_id="real-nhanes-virtual-session-01"
+    )
+    answered = 0
+    while True:
+        question = session.next_item()
+        if question is None:
+            break
+        assert question.item_id in NHANES_DPQ_ITEMS
+        assert question.profile_id == profile.profile_id
+        assert question.profile_sha256 == REAL_NHANES_PROFILE_SHA256
+        assert question.dimension == profile.dimension
+        assert question.step == answered
+        assert tuple(option.raw_value for option in question.response_options) == (
+            0,
+            1,
+            2,
+            3,
+        )
+
+        pending_snapshot = session.save_state(signer)
+        resumed_pending = ResearchCATSession.restore(
+            profile, config, pending_snapshot, authenticator=signer
+        )
+        resumed_question = resumed_pending.next_item()
+        assert resumed_question is not None
+        assert resumed_question.item_id == question.item_id
+        assert resumed_question.step == answered
+
+        # Virtual ordinal responses exercise the interface; no source respondent rows are read.
+        raw_category = answered % 4
+        progress = session.answer(question.item_id, raw_category)
+        assert progress.items_answered == answered + 1
+        answered += 1
+
+        answer_snapshot = session.save_state(signer)
+        resumed = ResearchCATSession.restore(
+            profile, config, answer_snapshot, authenticator=signer
+        )
+        assert resumed.status == session.status
+        assert resumed.items_answered == session.items_answered == answered
+        assert resumed.stop_reason == session.stop_reason
+        next_original = session.next_item()
+        next_resumed = resumed.next_item()
+        assert (next_resumed.item_id if next_resumed else None) == (
+            next_original.item_id if next_original else None
+        )
+        assert config.to_dict() == original_config
+
+    assert answered == 9
+    completion = asdict(session.completion())
+    assert completion["status"] == "COMPLETED"
+    assert completion["items_answered"] == 9
+    assert completion["profile_sha256"] == REAL_NHANES_PROFILE_SHA256
+    assert completion["research_only"] is True
+    assert completion["psychological_interpretation_allowed"] is False
+    assert not (
+        {"theta", "se", "score", "ability", "response_pattern"} & set(completion)
+    )
+
+
+def test_nhanes_v2_candidate_bounds_do_not_override_explicit_caller_config() -> None:
+    profile = _load_nhanes_profile()
+    config = _config(min_items=1, max_items=1, version="caller-config-v1")
+    before = config.to_dict()
+    session = ResearchCATSession.start(
+        profile, config, session_id="nhanes-config-passthrough-session-01"
+    )
+    question = session.next_item()
+    assert question is not None
+    session.answer(question.item_id, 0)
+    assert session.status == "COMPLETED"
+    assert session.items_answered == 1
+    assert session.completion().config_sha256 == research_session._config_sha256(config)
+    assert config.to_dict() == before
+    assert (
+        json.loads(profile.raw_metadata_json)["candidate_cat_config"]["min_items"] == 9
+    )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_code"),
+    [
+        (lambda d: d.__setitem__("unrecognized", True), "profile_v2_schema_invalid"),
+        (
+            lambda d: d.__setitem__("instrument_family", "OTHER"),
+            "profile_status_invalid",
+        ),
+        (
+            lambda d: d.__setitem__("profile_id", "another-profile"),
+            "profile_identity_invalid",
+        ),
+        (
+            lambda d: d.__setitem__("psychological_interpretation_allowed", True),
+            "profile_status_invalid",
+        ),
+        (
+            lambda d: d["candidate_cat_config"].__setitem__("min_items", 2),
+            "profile_candidate_config_invalid",
+        ),
+        (
+            lambda d: d["response_scale"].__setitem__("values", [0, 1, 2, 4]),
+            "profile_categories_invalid",
+        ),
+        (
+            lambda d: d["scoring"].__setitem__("reverse_key_transform", "3 - response"),
+            "profile_scoring_invalid",
+        ),
+        (
+            lambda d: d["items"][0].__setitem__("key_direction", "reverse"),
+            "profile_item_mapping_invalid",
+        ),
+        (
+            lambda d: d["items"][0]["source_locator"].__setitem__(
+                "url", "https://example.invalid/"
+            ),
+            "profile_item_locator_invalid",
+        ),
+        (
+            lambda d: d["items"][0]["fit_locator"].__setitem__("parameter_key", "fake"),
+            "profile_fit_locator_invalid",
+        ),
+        (
+            lambda d: d["items"][0]["fit_locator"].__setitem__("sha256", "a" * 64),
+            "profile_fit_locator_invalid",
+        ),
+        (
+            lambda d: d["model"].__setitem__("fit_sha256", "a" * 64),
+            "profile_model_provenance_invalid",
+        ),
+        (
+            lambda d: d["model"].__setitem__("log_likelihood", 0.0),
+            "profile_model_provenance_invalid",
+        ),
+        (
+            lambda d: d["provenance"].__setitem__("importer_sha256", "a" * 64),
+            "profile_provenance_invalid",
+        ),
+        (
+            lambda d: d["rights"]["profile"].__setitem__("operational_release", True),
+            "profile_rights_invalid",
+        ),
+        (
+            lambda d: d["items"][0].__setitem__("ipip100_code", "FAKE"),
+            "profile_v2_schema_invalid",
+        ),
+        (
+            lambda d: d["not_approved_for"].remove(
+                "crisis or suicide-risk determination"
+            ),
+            "profile_status_invalid",
+        ),
+    ],
+)
+def test_nhanes_v2_rejects_schema_mapping_rights_and_claim_promotions(
+    mutation, expected_code: str
+) -> None:
+    document = deepcopy(_nhanes_profile_document())
+    mutation(document)
+    raw = json.dumps(document, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    with pytest.raises(ResearchSessionError) as raised:
+        ResearchCATProfile.from_bytes(
+            raw, expected_file_sha256=hashlib.sha256(raw).hexdigest()
+        )
+    assert raised.value.code == expected_code
+
+
+def test_promis_pediatric_v3_loads_pinned_profile_and_manifest_without_claim_promotion() -> (
+    None
+):
+    profile = _load_promis_profile()
+    metadata = json.loads(profile.raw_metadata_json)
+
+    assert metadata["schema"] == PROMIS_PEDIATRIC_PROFILE_SCHEMA
+    assert metadata["instrument_family"] == "PROMIS_PEDIATRIC_ANXIETY_8_ITEM_SUBSET"
+    assert profile.profile_id == "promis-pediatric-anxiety-8-item-subset-20261014-r1"
+    assert profile.dimension == (
+        "Pediatric anxiety item-response research dimension; no psychological interpretation"
+    )
+    assert profile.source_categories == (1, 2, 3, 4, 5)
+    assert profile.category_labels == (
+        "Never",
+        "Almost Never",
+        "Sometimes",
+        "Often",
+        "Almost Always",
+    )
+    assert [item.item_id for item in profile.items] == [
+        "Q227BR1",
+        "Q2230R1",
+        "Q3150BR2",
+        "Q5044R1",
+        "Q2220R2",
+        "Q3459BR1",
+        "Q713R1",
+        "Q3462R1",
+    ]
+    assert all(item.key_direction == "positive" for item in profile.items)
+    assert all(len(item.thresholds) == 4 for item in profile.items)
+    assert profile.raw_profile_bytes == REAL_PROMIS_PROFILE_PATH.read_bytes()
+    assert (
+        hashlib.sha256(profile.raw_profile_bytes).hexdigest()
+        == REAL_PROMIS_PROFILE_SHA256
+    )
+    assert profile.manifest_sha256 == REAL_PROMIS_MANIFEST_SHA256
+    assert profile.human_curated is False
+    assert profile.research_only is True
+    assert profile.publication_status == "not_approved"
+    assert profile.psychological_interpretation_allowed is False
+    assert (
+        metadata["model"]["parameter_origin"]
+        == "published item bank parameters; no refit"
+    )
+    assert "1.7" not in metadata["model"]["parameter_metric"]
+    assert metadata["scoring"]["theta_included"] is False
+
+
+def _independent_promis_probabilities(
+    theta: float, a: float, thresholds: tuple[float, ...]
+) -> tuple[float, ...]:
+    def logistic(value: float) -> float:
+        if value >= 0:
+            return 1.0 / (1.0 + math.exp(-value))
+        exp_value = math.exp(value)
+        return exp_value / (1.0 + exp_value)
+
+    survival = [1.0]
+    survival.extend(logistic(a * (theta - threshold)) for threshold in thresholds)
+    survival.append(0.0)
+    return tuple(survival[index] - survival[index + 1] for index in range(5))
+
+
+def _independent_promis_eap(
+    a: float, thresholds: tuple[float, ...], category: int
+) -> tuple[float, float]:
+    steps = 10_000
+    mass = first = second = 0.0
+    for index in range(steps + 1):
+        theta = -4.0 + 8.0 * index / steps
+        probability = _independent_promis_probabilities(theta, a, thresholds)[category]
+        weight = math.exp(-0.5 * theta * theta) * probability
+        if index == 0 or index == steps:
+            weight *= 0.5
+        mass += weight
+        first += theta * weight
+        second += theta * theta * weight
+    mean = first / mass
+    return mean, math.sqrt(max(0.0, second / mass - mean * mean))
+
+
+def test_promis_five_category_probabilities_and_eap_match_independent_reference() -> (
+    None
+):
+    profile = _load_promis_profile()
+    for item in profile.items:
+        for theta in (-3.0, -1.0, 0.0, 1.0, 3.0):
+            expected = _independent_promis_probabilities(theta, item.a, item.thresholds)
+            actual = research_session._category_probabilities(theta, item)
+            assert len(actual) == 5
+            assert sum(actual) == pytest.approx(1.0, abs=1e-12)
+            assert actual == pytest.approx(expected, abs=1e-12)
+            assert all(math.isfinite(value) and 0.0 <= value <= 1.0 for value in actual)
+
+        engine_item = research_session.adt.TestItem()
+        engine_item.id = item.item_id
+        engine_item.a = item.a
+        engine_item.b = list(item.thresholds)
+        for category in range(5):
+            expected_mean, expected_se = _independent_promis_eap(
+                item.a, item.thresholds, category
+            )
+            public_eap = research_session.adt.ExpectedAPosteriori(
+                [category],
+                [engine_item],
+                prior=research_session.adt.NormalPrior(0.0, 1.0),
+                optimization_interval=(-4.0, 4.0),
+                model="GRM",
+            )
+            actual_mean = float(public_eap.get_estimation())
+            actual_se = float(public_eap.get_standard_error(actual_mean))
+            assert actual_mean == pytest.approx(expected_mean, abs=1e-3)
+            assert actual_se == pytest.approx(expected_se, abs=1e-3)
+
+
+def test_promis_v3_five_category_mid_session_snapshot_restores_and_returns_l1_only() -> (
+    None
+):
+    profile = _load_promis_profile()
+    config = _config(min_items=8, max_items=8, version="promis-v3-research-8-item")
+    signer = _TestAuthenticator()
+    session = ResearchCATSession.start(
+        profile, config, session_id="promis-virtual-five-category-session-01"
+    )
+    answers = (1, 3, 5)
+    for category in answers:
+        question = session.next_item()
+        assert question is not None
+        assert tuple(option.raw_value for option in question.response_options) == (
+            1,
+            2,
+            3,
+            4,
+            5,
+        )
+        assert (
+            tuple(option.label for option in question.response_options)
+            == profile.category_labels
+        )
+        assert question.stem == next(
+            item.stem for item in profile.items if item.item_id == question.item_id
+        )
+        progress = session.answer(question.item_id, category)
+        assert progress.items_answered <= 3
+        assert not ({"theta", "se", "score", "ability"} & set(asdict(progress)))
+
+    snapshot = session.save_state(signer)
+    resumed = ResearchCATSession.restore(
+        profile, config, snapshot, authenticator=signer
+    )
+    original_next = session.next_item()
+    restored_next = resumed.next_item()
+    assert original_next is not None and restored_next is not None
+    assert restored_next.item_id == original_next.item_id
+    assert restored_next.step == original_next.step == 3
+    assert resumed.items_answered == session.items_answered == 3
+    assert restored_next.profile_sha256 == REAL_PROMIS_PROFILE_SHA256
+
+    while True:
+        question = resumed.next_item()
+        if question is None:
+            break
+        resumed.answer(question.item_id, 1 + (resumed.items_answered % 5))
+    completion = asdict(resumed.completion())
+    assert completion["status"] == "COMPLETED"
+    assert completion["items_answered"] == 8
+    assert completion["research_only"] is True
+    assert completion["psychological_interpretation_allowed"] is False
+    assert not (
+        {"theta", "se", "score", "ability", "response_pattern"} & set(completion)
+    )
+
+
+def test_promis_v3_requires_independent_manifest_hash_and_rejects_manifest_drift() -> (
+    None
+):
+    profile_bytes = REAL_PROMIS_PROFILE_PATH.read_bytes()
+    manifest_bytes = REAL_PROMIS_PROFILE_PATH.with_name("manifest.json").read_bytes()
+    with pytest.raises(ResearchSessionError) as missing_manifest:
+        ResearchCATProfile.from_bytes(
+            profile_bytes, expected_file_sha256=REAL_PROMIS_PROFILE_SHA256
+        )
+    assert missing_manifest.value.code == "profile_manifest_hash_invalid"
+
+    for expected_hash, supplied in (
+        ("0" * 64, manifest_bytes),
+        (REAL_PROMIS_MANIFEST_SHA256, manifest_bytes + b" "),
+    ):
+        with pytest.raises(ResearchSessionError) as raised:
+            ResearchCATProfile.from_bytes(
+                profile_bytes,
+                expected_file_sha256=REAL_PROMIS_PROFILE_SHA256,
+                manifest_bytes=supplied,
+                expected_manifest_sha256=expected_hash,
+            )
+        assert raised.value.code == "profile_manifest_hash_invalid"
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_code"),
+    [
+        (
+            lambda d: d.__setitem__("publication_status", "approved"),
+            "profile_identity_invalid",
+        ),
+        (lambda d: d.__setitem__("human_curated", True), "profile_identity_invalid"),
+        (
+            lambda d: d["response_scale"].__setitem__(
+                "source_raw_codes", [0, 1, 2, 3, 4]
+            ),
+            "profile_identity_invalid",
+        ),
+        (
+            lambda d: d["response_scale"].__setitem__(
+                "engine_category_indices", [1, 2, 3, 4, 5]
+            ),
+            "profile_identity_invalid",
+        ),
+        (
+            lambda d: d["items"][0]["parameters"].__setitem__("a", 0.0),
+            "profile_identity_invalid",
+        ),
+        (
+            lambda d: d["items"][0]["parameters"].__setitem__(
+                "thresholds", [-0.2, 0.7, 0.6, 2.5]
+            ),
+            "profile_identity_invalid",
+        ),
+        (
+            lambda d: d["items"][0].__setitem__("key_direction", "reverse"),
+            "profile_identity_invalid",
+        ),
+    ],
+)
+def test_promis_v3_rejects_modified_approval_categories_and_parameters(
+    mutation, expected_code: str
+) -> None:
+    document = json.loads(REAL_PROMIS_PROFILE_PATH.read_text(encoding="utf-8"))
+    mutation(document)
+    mutated = json.dumps(document, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    with pytest.raises(ResearchSessionError) as raised:
+        ResearchCATProfile.from_bytes(
+            mutated, expected_file_sha256=hashlib.sha256(mutated).hexdigest()
+        )
+    assert raised.value.code == expected_code
+
+
+def test_v1_schema_does_not_expand_to_five_categories_for_v3() -> None:
+    document = _test_profile_document(categories=(1, 2, 3, 4, 5))
+    raw = json.dumps(document, sort_keys=True).encode("utf-8")
+    with pytest.raises(ResearchSessionError) as raised:
+        ResearchCATProfile.from_bytes(
+            raw, expected_file_sha256=hashlib.sha256(raw).hexdigest()
+        )
+    assert raised.value.code == "profile_categories_invalid"
 
 
 def test_profile_hash_mismatch_and_publication_promotion_fail_closed() -> None:

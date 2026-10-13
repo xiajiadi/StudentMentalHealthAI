@@ -8,8 +8,14 @@ This document records the persistence boundary for a school-scoped,
 research-purpose CAT lane. The additive ORM/migration and ordinary-start guard
 are implemented. Additive DDL has run in NEW isolated J3318 after populated
 I0011 backup restoration; native strict current-schema verification passed.
-No research profile was imported or enabled. The encrypted repository slice
-is implemented with focused tests and remains under independent review;
+One exact pinned NHANES v2 profile was then stored encrypted as PENDING /
+CANDIDATE_RESEARCH_ONLY; no profile was enabled. Native decrypt recovered the
+original UTF-8 bytes and SHA exactly. Duplicate version, wrong registry hash
+and cross-school loads were denied with UOW rollback. Evidence:
+J/logs/native-research-profile-764252fe8e9b4bc0b567fca432ae1f48.json.
+This directly tests repository persistence, not the missing authenticated API.
+The encrypted repository slice is implemented with ten focused tests and an
+independent follow-up review of strict flags and consistent lock ordering;
 Backend research routes and actor authorization are not yet implemented.
 The public SAPA/IPIP profile remains
 research-only and not approved for operational use or psychological

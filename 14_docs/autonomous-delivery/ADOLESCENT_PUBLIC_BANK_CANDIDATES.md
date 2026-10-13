@@ -56,3 +56,34 @@ D 盘 [candidate-source-metadata.json](D:/Dev/datasets/psynova-public-research/s
 - **当前版本路线：**若要采用 v3 GenPop，应先取得其参数及明确许可，再确认 Dataverse 里确有相应原始 response file；在这些条件满足前，v3 不是可直接训练/载入的资源。
 
 本次不把任何成人 SAPA 或 NHANES 数据用于高中测量校准，也没有修改既有 profile、在线题库、服务或数据库。未取得任何心理量表批准或真实高中效度证据。
+
+## PROMIS GenPop 原始焦虑响应获取（2026-10-14）
+
+按本轮限定获取了该公开记录的 child self-report Anxiety 原始题项列，数据文件保留在 Git 外部研究 staging，不进入账户档案或产品题库。官方 Dataverse DOI 记录的当前版本为 V2（2021-07-30），许可标记 CC0-1.0，数据文件 unrestricted、无 file-access request，dataset 无 guestbook。原始文件的官方 MD5 `c9b9f7f99a8cab82321d42638fc4d210` 与下载文件一致；SHA-256 为 `993a388937dda48078f52d37691fd7571b2460d33b8e49566f6702a6c4659903`。获取只走 Dataverse 的公开 original-file endpoint，未登录、未提交 guestbook、未付费。
+
+外部产物目录：`D:\Dev\datasets\psynova-public-research\staging\promis-pediatric-genpop2014-anxiety-response-only-20261014-r1`。响应文件为 `data/anxiety-child-response-only.csv`，SHA-256 `c833b0614e74d40aca54b64fcbb5d8983a83638d66d9e7da642147fe9603834a`；清单 `response-only-manifest.json` 保存数据源版本、许可、哈希、逐题编码、筛选和聚合计数。其 8 列为 `Q227BR1`, `Q2230R1`, `Q3150BR2`, `Q5044R1`, `Q2220R2`, `Q3459BR1`, `Q713R1`, `Q3462R1`，仅保留英文原始选项文字和空值，没有写入任何 ID、proxy 条目、人口变量、权重或 theta。
+
+Codebook 将 `AGE` 标注为 “What is your age?”，值标签 1–10 对应 8–17；original CSV 以 `age` 列直接呈现标签 `8`–`17`。5,206 行源记录中，3,973 行年龄在 8–17；1,201 行年龄空缺、32 行拒答而排除。八个焦虑项的非空类别都严格属于 codebook 明列的 `Never / Almost Never / Sometimes / Often / Almost Always`。筛选后 1,005 行至少有一项作答，958 行八项均非空；逐项类别与空值数在外部 manifest 中。原 CSV 将拒答码 `-1` 与系统缺失都呈现为空，因此不能区分，输出一律保留为空，没有推断拒答类型，也没有按缺失筛除个案以凑数。
+
+这些题面与 PROMIS Pediatric Anxiety Short Form 8a 的八项题集一致；HealthMeasures 手册说明 Pediatric Anxiety v1.0/v1.1/v2.0 校准一致，但 GenPop v3.0 量尺不可直接与旧版本比较。该项目论文描述 anxiety domain 采用短表分组抽样，并在方法中提及 10-item anxiety measure，而公开 codebook 中可识别的 child self-report anxiety 列为上述八项。因此本次仅确认 item-set 相符；没有足够来源证据证明每一行在该调查中被明确按名为 8a 的版本施测，也不把 958 条声称为完整 10 项、参数校准或已发表常模样本。未评分、未重新拟合参数、未计算 theta、未做诊断或效度判断。
+
+数据许可与题目权利分开处理：Dataverse 对数据标记 CC0-1.0；HealthMeasures 的非商业电子研究条件另行适用。本产物只保留未翻译英文原题与反应类别，不构成学校管理、商业管理或量表使用授权；不代表中国高中人群验证或专业批准。暂存输入原 CSV 含有本次排除的其他字段；本地策略拒绝删除尝试，因此原件仅留在上述 Git 外部 `temporary` 目录，未尝试绕过策略，未打印行内容。
+
+来源： [Dataverse 数据记录](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/UXH6DH)；[Carle et al., 2020 原文](https://pmc.ncbi.nlm.nih.gov/articles/PMC8005418/)；[Irwin et al., 2010 pediatric item calibration paper](https://pmc.ncbi.nlm.nih.gov/articles/PMC3158603/)；[HealthMeasures Anxiety Scoring Manual](https://healthmeasures.net/wp-content/uploads/2026/05/PROMIS-Anxiety-Scoring-Manual_08Sept2023.pdf)。
+
+补充：本机策略拒绝清理尝试后，外部 `temporary` 目录同时保留已验证的 original CSV 与一份未用于处理的默认 Dataverse tab 响应文件；两者都在 Git 工作树外，未绕过策略删除。
+提取器：外部 `scripts/prepare_response_only.py`（SHA-256 `5d28c541ca8120e3459866b0de336cc429e2638be8cbbc168fb9446fa1e6a6ba`）；执行 `python D:\Dev\datasets\psynova-public-research\staging\promis-pediatric-genpop2014-anxiety-response-only-20261014-r1\scripts\prepare_response_only.py` 可按原始文件校验和重建 CSV，并只打印聚合计数。
+
+## PROMIS Anxiety 8a item参数逐题交叉核对（2026-10-14）
+
+新增外部产物：`D:\Dev\datasets\psynova-public-research\staging\promis-anxiety-irwin2010-parameter-crosswalk-20261014-r1\parameter-crosswalk.json`，SHA-256 `2176b6cbf7498d8ef912f2902a22c31cb7b229ac82d988d54567cfe615c9066c`。其中逐项记录 codebook ID/stem、Irwin et al. 2010 Table 5 行定位、参数版本、GRM `a` 与 `b1..b4`、类别映射和来源文件哈希。基于 public codebook 八个 child self-report Anxiety 字段，八项均与 Table 5 的参数条目词句对应（8/8；统一移除共同的“过去 7 天”前缀并忽略末尾标点差异；其中 Q3459BR1 的 codebook stem 没有句点，论文行有句点），无反向计分；参数本身来自论文，不是用前述 958 条重拟合或从 theta 反推。
+
+论文说明 Table 5 是 Pediatric Anxiety item calibration；`a` 为区分度，四个 `b` 为五类别 GRM 阈值，参考 North Carolina 人群的 theta 标准化为均值 0、方差 1。这些 `b` 是模型类别阈值，不是临床界值。HealthMeasures 官方手册说明 pediatric Anxiety v1.0/v1.1/v2.0 校准相同，v1.1 8b 与 v2.0 8a 使用同一组条目，但原始响应编码分别为 0–4 和 1–5；GenPop v3.0 与旧版本不可直接比较。来源数据以英文类别标签存储，codebook 标签 1–5 映射到相同类别顺序；交叉表没有将响应转换为整数或产生任何分数。
+
+可供后续隔离研究回放的方向是：将题集标识为 Pediatric Anxiety v2.0 Short Form 8a item-set，引用 Irwin 2010 v1.0 bank 的逐项 GRM 参数，并保留源响应文字类别；若实现层必须用整数类别，另设经审核的显式类别索引映射。这里仅建立文献参数与来源题项的对应，不是可上线题库、得分器或批准使用的 profile。
+
+施测证据仍有限：Carle 2020 的常模论文描述 anxiety 为 10-item measure，而 public codebook 可识别的 child anxiety 响应列为上述八项。故“8/8匹配”只表示题项与 Table 5/v2.0 8a item-set 对应，不证明该数据集每条记录按名为 8a 的表单施测，也不补成完整 10 项响应。前一产物中 958 是八列完整数，不应称为论文参数的校准样本数。
+
+哈希与来源定位：codebook SHA-256 `00344836cabd71ca2ab247dedd04b5a2b759b574874dd3296db06699d132f786`；source response-only CSV SHA-256 `c833b0614e74d40aca54b64fcbb5d8983a83638d66d9e7da642147fe9603834a`；题项 crosswalk 文件 SHA 在外部目录及清单中记录。论文参数读取自 PMC 正文的 Table 5（DOI `10.1007/s11136-010-9619-3`）；该环境未能取得论文二进制文件，因此未声明论文文件哈希。题目文本和表单的再使用权仍单独受 HealthMeasures 条款约束。
+
+来源：[Irwin et al. 2010, Table 5](https://pmc.ncbi.nlm.nih.gov/articles/PMC3158603/)；[HealthMeasures PROMIS Anxiety Scoring Manual](https://healthmeasures.net/wp-content/uploads/2026/05/PROMIS-Anxiety-Scoring-Manual_08Sept2023.pdf)；[Carle et al. 2020 pediatric GenPop study](https://pmc.ncbi.nlm.nih.gov/articles/PMC8005418/)。

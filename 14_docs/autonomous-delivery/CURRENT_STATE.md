@@ -53,6 +53,33 @@ human_curated import and locking defects repaired with10 focused tests, both
 independent follow-up and native persistence checks remain pending.
 Goal ACTIVE; real-source RAG content remains human-review pending and unindexed.
 
+2026-10-14 04:55 research persistence: native J repository imported one pinned
+NHANES v2 encrypted candidate only (rightsPENDING/executionCANDIDATE_RESEARCH_ONLY),
+original bytes decrypt/hash exact, duplicate/wrong-hash/cross-school denied and
+rolled back. Evidence J/logs/native-research-profile-764252fe8e9b4bc0b567fca432ae1f48.json.
+Initial helper failed before any insert: Database venv lacks Backend pwdlib;
+fixed helper to use Database's same WindowsDpapi/Fernet provider directly,
+without global dependency install or crypto change; failure artifact preserved.
+No profile enable/task/session/response insert or authenticated API acceptance.
+Independent repository follow-up10tests finds prior two defects corrected;
+native concurrent lock test pending. CAT v3 cannot yet persist in v1/v2-only
+repository: published parameter provenance needs an explicit extension, not
+invented fit/calibration artifacts. Dedicated branch pushed2e313cb, remoteSHA
+verified; remaining research adapter/repository increment under review locally.
+
+PROMIS pediatric actual observed800 coverage PASS at
+D:\Dev\datasets\psynova-public-research\research-runs\promis-observed800-coverage-20261013T205037Z\summary.json,
+SHA 0b38fbb9daea9109338e9b92be7d6470a588dd2d7514880342d37f799cdaf677.
+800completed/6400answers/800signed-restores;8items each exposure800, source1..5
+all observed. AdapterSHA41406177713b192cb2647d38a1472b127ebdb0ba10cef0ff2b9a3ced4a5a784b
+unchanged before/after and independently rechecked. CPU session time290.34s,
+notAI throughput. First run preserved FAIL solely on unrelatedGitHEAD change;
+r2 captures Git separately and requires relevant source/resource hash stability.
+Whole8 baseline uses published rounded parameters, US8–17panel/complete-casebias;
+no approvedshortCAT, individual result output, Chinese-school applicability or
+clinical claim. Next Backend registry/MAC/rights provenance design, dedicated
+routes/live permissions and research persistence native/session integration.
+
 ## Prior milestones — 2026-10-13 23:25 Beijing onward
 
 2026-10-14 00:48 Beijing update (supersedes pending statements below):
