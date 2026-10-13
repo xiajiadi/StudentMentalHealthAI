@@ -240,10 +240,12 @@ class MySqlBackendAdapter:
             if (
                 task.instrument_id != D3_IDENTITY.instrument_id
                 or task.instrument_version != D3_IDENTITY.instrument_version
+                or task.item_bank_version is not None
+                or task.config_version is not None
             ):
                 raise error(
                     ErrorCode.WORKFLOW_CONFLICT,
-                    detail="fixture task CAT identity is unsupported",
+                    detail="fixture task CAT metadata is unsupported",
                 )
             unexpected = await uow.session.scalar(
                 self._select(m.SchoolCatTaskBinding).where(
@@ -338,6 +340,8 @@ class MySqlBackendAdapter:
             if (
                 task.instrument_id != D3_IDENTITY.instrument_id
                 or task.instrument_version != D3_IDENTITY.instrument_version
+                or task.item_bank_version is not None
+                or task.config_version is not None
                 or task_binding is not None
                 or session_binding is not None
             ):
@@ -2469,6 +2473,10 @@ class MySqlBackendAdapter:
                 lock_bindings=True,
             )
             instrument = record.assessment.get("instrument", {})
+            saved_version_changed = binding_context["cat_binding_mode"] == "SAVED_VERSION" and (
+                record.cat_item_bank_version != task.item_bank_version
+                or record.cat_config_version != task.config_version
+            )
             if (
                 record.cat_binding_mode != binding_context["cat_binding_mode"]
                 or record.saved_binding != binding_context["saved_binding"]
@@ -2476,8 +2484,7 @@ class MySqlBackendAdapter:
                 or record.saved_config_document != binding_context["saved_config_document"]
                 or instrument.get("instrument_id") != task.instrument_id
                 or instrument.get("version") != task.instrument_version
-                or record.cat_item_bank_version != task.item_bank_version
-                or record.cat_config_version != task.config_version
+                or saved_version_changed
             ):
                 raise error(ErrorCode.WORKFLOW_CONFLICT, detail="assessment CAT binding changed")
             next_status = self._status_upper(str(record.assessment.get("status", "created")))

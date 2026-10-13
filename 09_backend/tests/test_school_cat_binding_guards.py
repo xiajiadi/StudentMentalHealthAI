@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from smhai_backend.adapters.database import MySqlBackendAdapter
 from smhai_backend.core.errors import BackendError, ErrorCode
+from smhai_backend.domains.assessment.binding import D3_IDENTITY
 from smhai_backend.domains.assessment.schemas import AssessmentDto
 from smhai_backend.domains.assessment.service import AssessmentService
 from smhai_backend.domains.cat_assets.schemas import ActivationListDto
@@ -53,6 +54,12 @@ class _UnitOfWork:
     def __init__(self, rows):
         self.session = _Session(rows)
 
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_args):
+        return False
+
 
 class _TaskBinding:
     school_id = _Column()
@@ -90,6 +97,13 @@ class _Bank:
     school_id = _Column()
 
 
+class _AssessmentSession:
+    id = _Column()
+    assessment_ref = _Column()
+    subject_id = _Column()
+    task_enrollment_id = _Column()
+
+
 def _adapter(rows):
     adapter = MySqlBackendAdapter.__new__(MySqlBackendAdapter)
     adapter._db_models = SimpleNamespace(
@@ -100,6 +114,7 @@ def _adapter(rows):
         SchoolCatPlan=_Plan,
         SchoolCatItemBankVersion=_BankVersion,
         SchoolCatItemBank=_Bank,
+        AssessmentSession=_AssessmentSession,
     )
     adapter._select = _Query
     adapter._decrypt_school_cat_document = lambda _uow, row, _schema: row.document
@@ -111,10 +126,14 @@ def _task(*, mode="SAVED_VERSION"):
         id=30,
         school_id=7,
         cat_binding_mode=mode,
-        instrument_id="SYNTHETIC_CAT",
-        instrument_version="synthetic_item_bank.v1 / demo.v1",
-        item_bank_version="demo.v1",
-        config_version="config.synthetic.v3",
+        instrument_id=(D3_IDENTITY.instrument_id if mode == "FIXTURE" else "SYNTHETIC_CAT"),
+        instrument_version=(
+            D3_IDENTITY.instrument_version
+            if mode == "FIXTURE"
+            else "synthetic_item_bank.v1 / demo.v1"
+        ),
+        item_bank_version="demo.v1" if mode == "SAVED_VERSION" else None,
+        config_version="config.synthetic.v3" if mode == "SAVED_VERSION" else None,
     )
 
 
@@ -204,6 +223,83 @@ def _binding_rows(*, session_status="IN_PROGRESS", activation_status="REVOKED"):
     }, task_binding, session_binding, session_status
 
 
+def _writer_fixture(*, mode="FIXTURE"):
+    task = _task(mode=mode)
+    db_record = SimpleNamespace(
+        id=80,
+        assessment_ref="ASSESS_synthetic_task",
+        subject_id=100,
+        task_enrollment_id=90,
+        status="IN_PROGRESS",
+        cat_binding_mode=mode,
+    )
+    enrollment = SimpleNamespace(id=90, school_id=7, subject_id=100)
+    subject = SimpleNamespace(subject_ref="SUBJECT_synthetic")
+    rows = {_AssessmentSession: db_record, _TaskBinding: None, _SessionBinding: None}
+    saved_binding = saved_bank_document = saved_config_document = None
+    if mode == "SAVED_VERSION":
+        binding_rows, _task_binding, session_binding, _status = _binding_rows()
+        rows.update(binding_rows)
+        rows[_AssessmentSession] = db_record
+        saved_binding = {
+            "binding_ref": f"CSBIND_{session_binding.public_id}",
+            "activation_ref": f"CACT_{rows[_Activation].public_id}",
+            "plan_version_ref": f"CPVER_{rows[_PlanVersion].public_id}",
+            "bank_version_ref": f"CBVER_{rows[_BankVersion].public_id}",
+        }
+        saved_bank_document = rows[_BankVersion].document
+        saved_config_document = rows[_PlanVersion].document
+
+    adapter, uow = _adapter(rows)
+
+    async def get_session(_assessment_id):
+        return db_record
+
+    async def active_enrollment(**_kwargs):
+        return enrollment
+
+    uow.assessments = SimpleNamespace(get_session=get_session)
+    uow.school_operations = SimpleNamespace(active_enrollment_for_assessment=active_enrollment)
+    adapter.identity_profile = "school_tenant"
+    adapter._db_not_found = LookupError
+    adapter._uow = lambda: uow
+
+    async def actor_role(_uow, _actor, role_code, _at, *, lock=False):
+        assert role_code == "student" and lock is True
+        return 1, 2
+
+    async def lock_scope(_uow, _actor, _account_id, active, *, at):
+        return active, task, subject
+
+    saves = []
+
+    async def save(*_args, **_kwargs):
+        saves.append("saved")
+
+    adapter._school_actor_role = actor_role
+    adapter._lock_school_assessment_write_scope = lock_scope
+    adapter._save_assessment_in_uow = save
+    record = AssessmentRecord(
+        assessment_id="ASSESS_synthetic_task",
+        subject_id="SUBJECT_synthetic",
+        assessment={
+            "instrument": {
+                "instrument_id": task.instrument_id,
+                "version": task.instrument_version,
+            },
+            "status": "in_progress",
+        },
+        task_enrollment_id=90,
+        cat_binding_mode=mode,
+        cat_item_bank_version=("demo.v1" if mode == "SAVED_VERSION" else None),
+        cat_config_version=("config.synthetic.v3" if mode == "SAVED_VERSION" else None),
+        saved_binding=saved_binding,
+        saved_bank_document=saved_bank_document,
+        saved_config_document=saved_config_document,
+    )
+    return adapter, record, task, db_record, saves
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("missing", ["task", "session"])
 async def test_saved_task_session_binding_missing_fails_closed(missing):
@@ -254,6 +350,161 @@ async def test_fixture_task_with_unexpected_saved_binding_fails_closed():
         )
 
     assert caught.value.code is ErrorCode.WORKFLOW_CONFLICT
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("field_name", "unexpected_version"),
+    [
+        ("item_bank_version", "unexpected-bank"),
+        ("config_version", "unexpected-config"),
+    ],
+)
+async def test_fixture_task_projection_rejects_pinned_version_columns(
+    field_name, unexpected_version
+):
+    task = _task(mode="FIXTURE")
+    setattr(task, field_name, unexpected_version)
+    adapter, uow = _adapter({_TaskBinding: None})
+
+    with pytest.raises(BackendError) as caught:
+        await adapter._task_cat_binding_fields(uow, SimpleNamespace(school_id=7), task)
+
+    assert caught.value.code is ErrorCode.WORKFLOW_CONFLICT
+
+
+@pytest.mark.asyncio
+async def test_fixture_write_keeps_cat_runtime_versions_without_binding_them_to_task_columns():
+    adapter, record, _task_row, _db_record, saves = _writer_fixture()
+    session = CatStart(
+        assessment_id=record.assessment_id,
+        subject_id=record.subject_id,
+        instrument_id=D3_IDENTITY.instrument_id,
+        instrument_version=D3_IDENTITY.instrument_version,
+        started_at="2026-10-13T00:00:00Z",
+        current_item={"item_id": "ITEM_synthetic_2"},
+        current_index=1,
+        answered_count=1,
+        administered_count=1,
+        item_bank_version="demo.v1",
+        config_version="demo.cat.v1",
+        provider_version="synthetic-cat",
+        cat_binding_mode="FIXTURE",
+    )
+    AssessmentService._apply_state(record, session)
+
+    await adapter.school_save_assessment_for_actor(
+        _actor(BackendRole.STUDENT),
+        record,
+        at=None,
+        trace_id="TRACE_fixture_save",
+    )
+
+    assert record.cat_item_bank_version == "demo.v1"
+    assert record.cat_config_version == "demo.cat.v1"
+    assert record.cat_provider_version == "synthetic-cat"
+    assert saves == ["saved"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("field_name", "unexpected_version"),
+    [
+        ("item_bank_version", "unexpected-bank"),
+        ("config_version", "unexpected-config"),
+    ],
+)
+async def test_fixture_task_rejects_pinned_database_version_columns(field_name, unexpected_version):
+    adapter, record, task, _db_record, saves = _writer_fixture()
+    setattr(task, field_name, unexpected_version)
+
+    with pytest.raises(BackendError) as caught:
+        await adapter.school_save_assessment_for_actor(
+            _actor(BackendRole.STUDENT),
+            record,
+            at=None,
+            trace_id="TRACE_fixture_pinned_version",
+        )
+
+    assert caught.value.code is ErrorCode.WORKFLOW_CONFLICT
+    assert saves == []
+
+
+@pytest.mark.asyncio
+async def test_saved_version_write_requires_exact_pinned_item_and_config_versions():
+    adapter, record, _task_row, _db_record, saves = _writer_fixture(mode="SAVED_VERSION")
+    await adapter.school_save_assessment_for_actor(
+        _actor(BackendRole.STUDENT),
+        record,
+        at=None,
+        trace_id="TRACE_saved_versions_match",
+    )
+    assert saves == ["saved"]
+
+    for field_name, wrong_version in (
+        ("cat_item_bank_version", "other-bank"),
+        ("cat_config_version", "other-config"),
+    ):
+        adapter, mismatched, _task_row, _db_record, rejected_saves = _writer_fixture(
+            mode="SAVED_VERSION"
+        )
+        setattr(mismatched, field_name, wrong_version)
+        with pytest.raises(BackendError) as caught:
+            await adapter.school_save_assessment_for_actor(
+                _actor(BackendRole.STUDENT),
+                mismatched,
+                at=None,
+                trace_id=f"TRACE_saved_{field_name}",
+            )
+        assert caught.value.code is ErrorCode.WORKFLOW_CONFLICT
+        assert rejected_saves == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("field_name", "changed_value"),
+    [
+        ("saved_bank_document", {"version": "other"}),
+        ("saved_config_document", {"config_version": "other"}),
+    ],
+)
+async def test_saved_version_write_rejects_changed_documents_mode_and_unknown_mode(
+    field_name, changed_value
+):
+    adapter, record, _task_row, _db_record, saves = _writer_fixture(mode="SAVED_VERSION")
+    setattr(record, field_name, changed_value)
+    with pytest.raises(BackendError) as caught:
+        await adapter.school_save_assessment_for_actor(
+            _actor(BackendRole.STUDENT),
+            record,
+            at=None,
+            trace_id="TRACE_saved_document_changed",
+        )
+    assert caught.value.code is ErrorCode.WORKFLOW_CONFLICT
+    assert saves == []
+
+    adapter, changed_mode, _task_row, db_record, mode_saves = _writer_fixture(mode="SAVED_VERSION")
+    db_record.cat_binding_mode = "FIXTURE"
+    with pytest.raises(BackendError) as caught:
+        await adapter.school_save_assessment_for_actor(
+            _actor(BackendRole.STUDENT),
+            changed_mode,
+            at=None,
+            trace_id="TRACE_saved_mode_changed",
+        )
+    assert caught.value.code is ErrorCode.WORKFLOW_CONFLICT
+    assert mode_saves == []
+
+    adapter, unknown_mode, _task_row, _db_record, unknown_saves = _writer_fixture(mode="UNKNOWN")
+    with pytest.raises(BackendError) as caught:
+        await adapter.school_save_assessment_for_actor(
+            _actor(BackendRole.STUDENT),
+            unknown_mode,
+            at=None,
+            trace_id="TRACE_unknown_cat_mode",
+        )
+    assert caught.value.code is ErrorCode.WORKFLOW_CONFLICT
+    assert unknown_saves == []
 
 
 @pytest.mark.asyncio
