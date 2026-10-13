@@ -351,6 +351,54 @@
         "当前静态源码对账后按Runner流程补齐当前提交证据与独立复核；不覆盖0009项目整体状态。"
       ],
       "author": "root"
+    },
+    {
+      "id": "public_empirical_resources",
+      "title": "真实公开题库、匿名响应和三层来源研究验证",
+      "priority": 101,
+      "depends_on": [
+        "foundation_audit"
+      ],
+      "status": "READY",
+      "owner": null,
+      "attempts": 0,
+      "acceptance": [
+        "一手来源与复用许可、版本和实际下载哈希明确，响应列脱敏并保留缺失与原人群。",
+        "真实校准和独立heldout验证可重现，数值/计分/拟合问题如实解决，不制造参数或临床标签。",
+        "三层真实来源已取得并隔离核验；研究资格与专业/生产发布状态明确分开。"
+      ],
+      "evidence": [],
+      "commits": [],
+      "next_action": "SAPA已取得并分离10000/800；单域pilot数值独立QA与mirt对照正在执行；儿少来源继续核验。",
+      "checkpoint_references": [
+        "14_docs/autonomous-delivery/EMPIRICAL_SCHOOL_SIMULATION.md",
+        "14_docs/autonomous-delivery/GRM_RESEARCH_PLAN.md",
+        "14_docs/autonomous-delivery/CURRENT_STATE.md"
+      ]
+    },
+    {
+      "id": "empirical_school_800",
+      "title": "800独立账号的公开数据驱动学校全链路仿真",
+      "priority": 100,
+      "depends_on": [
+        "public_empirical_resources"
+      ],
+      "status": "BACKLOG",
+      "owner": null,
+      "attempts": 0,
+      "acceptance": [
+        "新隔离学校工作区导入800虚构身份、班级及独立账号；真实研究来源不冒充学校代表样本。",
+        "真实题库导入、CAT保存恢复完成、任务汇总及800会话与数据库对账，缺失不能填造成真实回答。",
+        "批量本地AI/RAG引用、安全熔断、人工审核/发布撤回、越权拒绝及重启恢复有完整证据。",
+        "容量、失败、延迟、误差和来源局限量化，不能用仿真PASS替代专业或生产批准。"
+      ],
+      "evidence": [],
+      "commits": [],
+      "next_action": "准备兼容现有100行批次导入的800虚构名单；校准和回放协议核验后在新工作区实施。",
+      "checkpoint_references": [
+        "14_docs/autonomous-delivery/EMPIRICAL_SCHOOL_SIMULATION.md",
+        "14_docs/autonomous-delivery/CURRENT_STATE.md"
+      ]
     }
   ],
   "source_reconciliation": {

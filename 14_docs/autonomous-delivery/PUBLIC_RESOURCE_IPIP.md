@@ -63,6 +63,10 @@ if ((Get-FileHash -LiteralPath $raw -Algorithm MD5).Hash -ine '8e34f3f2cb9a7f309
 
 本次已运行 staging 转换脚本 `build_sapa_response_only.py`，以 `sapa-ItemInfo373.tab` 与官方 Big Five key 建立 99 题 exact-key allowlist，验证 376 字段架构、1–6 作答域及 128,464 行，再仅写响应矩阵、题目 crosswalk 和 JSON source manifest。脚本没有抽样；后续抽样由 `01_cat-engine/src/cat_engine/research/import_responses.py` 执行时须传入响应列、空值策略、source SHA-256、CC0/来源人群、seed、calibration 与 evaluation 数，并输出互斥样本。不要提交原始 CSV、临时下载、缓存或行级答卷。
 
+Controller 随后使用该 importer 生成 `D:\Dev\datasets\psynova-public-research\derived\sapa-ipip99-20261013-v1`，校验源 SHA-256 与 missing 保留，采用 seed `20261013` 分为 10,000 calibration 与 800 evaluation，无 source ID 输出。来源人口仍为 SAPA 在线自选样本；分层样本不代表学校或大学总体。单域 Extraversion GIRTH pilot 及限制另见 `GRM_RESEARCH_PLAN.md`；未拟合其他四域，也未产生发布用/操作性参数。
+
+任务下载的原始 CSV 与 TSV 校验副本仍留在 `_work` 临时目录。精确文件 `Remove-Item -LiteralPath` 清理被执行策略拒绝；不得将其误报为已删除。
+
 ## 尚未确认
 
 PsychArchives 300 题 ZIP 当前官方 bitstream 仍返回 HTTP 502，因此没有真实取得。OpenPsych 2018 数据页公开，但该数据未明确采用再分发许可，且需要包内 codebook 与字段逐项复核；本次没有下载。SAPA 99 题响应矩阵虽已隔离，但未执行 CAT/GRM 参数校准、heldout 回放或测量学验证。
