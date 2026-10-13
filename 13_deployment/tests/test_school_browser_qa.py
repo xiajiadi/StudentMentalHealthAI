@@ -343,6 +343,58 @@ def test_task_failure_diagnostic_is_allowlisted_and_may_include_fixed_masked_scr
     assert "cat_substage" not in unsafe_substage["failure"]
     assert secret not in json.dumps(unsafe_substage)
 
+    # CAT completion occurs after the student has left the initial start phase.
+    child["stages"] = {**_passed_task_stages(), "cat_completed": "FAIL"}
+    child["failure"] = {
+        "stage": "cat_completed",
+        "error_class": "TimeoutError",
+        "diagnostics": {"cat_substage": "complete", "question_text": secret},
+    }
+    completed = qa.sanitize_task_child_output(
+        json.dumps(child), artifact_dir=tmp_path, child_exit_code=2
+    )
+    assert completed["failure"]["cat_substage"] == "complete"
+    assert "question_text" not in completed["failure"]
+    assert secret not in json.dumps(completed)
+
+    child["failure"] = {
+        "stage": "cat_completed",
+        "error_class": "TimeoutError",
+        "diagnostics": "invalid diagnostics shape",
+        "cat_substage": "progress",
+    }
+    malformed_nested = qa.sanitize_task_child_output(
+        json.dumps(child), artifact_dir=tmp_path, child_exit_code=2
+    )
+    assert "cat_substage" not in malformed_nested["failure"]
+
+    # Older Node output flattened diagnostics into failure; retain the safe fields.
+    child["failure"] = {
+        "stage": "cat_completed",
+        "error_class": "TimeoutError",
+        "cat_substage": "progress",
+        "route_mode": "student_assessment_session",
+        "selectors": {key: key == "assessment_loading" for key in qa.FAILURE_SELECTOR_KEYS},
+        "responses": [{
+            "method": "POST",
+            "status": 200,
+            "endpoint": "/api/v1/assessments/{assessment_id}/responses",
+            "answer": secret,
+            "url": f"/api/v1/assessments/{secret}/responses",
+        }],
+        "answer": secret,
+    }
+    legacy_flat = qa.sanitize_task_child_output(
+        json.dumps(child), artifact_dir=tmp_path, child_exit_code=2
+    )
+    assert legacy_flat["failure"]["cat_substage"] == "progress"
+    assert legacy_flat["failure"]["responses"] == [{
+        "method": "POST",
+        "status": 200,
+        "endpoint": "/api/v1/assessments/{assessment_id}/responses",
+    }]
+    assert secret not in json.dumps(legacy_flat)
+
     child["failure"]["stage"] = "not-an-allowlisted-stage"
     invalid = qa.sanitize_task_child_output(
         json.dumps(child), artifact_dir=tmp_path, child_exit_code=2

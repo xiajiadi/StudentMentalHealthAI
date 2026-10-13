@@ -7,6 +7,7 @@ import {
   REQUIRED_SCREENSHOTS,
   FAILURE_SCREENSHOT_NAME,
   CAT_FAILURE_SUBSTAGES,
+  fallbackPageDiagnostics,
   CAT_CARD_COMPLETION_SELECTOR,
   CAT_QUESTION_COMPLETION_SELECTOR,
   CAT_COMPLETION_BUTTON_SELECTOR,
@@ -85,12 +86,14 @@ test('PASS requires every workflow stage and all five actual screenshots', async
     assert.equal(partial.stages.admin_revoke, 'FAIL');
     assert.deepEqual(partial.failure, {
       stage: 'admin_revoke', error_class: 'TimeoutError', screenshot: FAILURE_SCREENSHOT_NAME,
-      route_mode: 'student_assessment_session',
-      selectors: {
-        assessment_page: false, assessment_loading: true, question_title: false,
-        question_card: false, assessment_complete_card: false, assessment_error: false, assigned_task: false,
+      diagnostics: {
+        route_mode: 'student_assessment_session',
+        selectors: {
+          assessment_page: false, assessment_loading: true, question_title: false,
+          question_card: false, assessment_complete_card: false, assessment_error: false, assigned_task: false,
+        },
+        responses: [{ method: 'GET', status: 200, endpoint: '/api/v1/assessments/{assessment_id}/state' }],
       },
-      responses: [{ method: 'GET', status: 200, endpoint: '/api/v1/assessments/{assessment_id}/state' }],
     });
 
     const catFailureStages = { ...stages, cat_started: 'FAIL' };
@@ -110,11 +113,17 @@ test('PASS requires every workflow stage and all five actual screenshots', async
         }],
       },
     });
-    assert.equal(catFailure.failure.cat_substage, 'question_ready');
-    assert.equal(catFailure.failure.route_mode, 'student_assessment_session');
-    assert.equal(catFailure.failure.responses[0].status, 200);
+    assert.equal(catFailure.failure.diagnostics.cat_substage, 'question_ready');
+    assert.equal(catFailure.failure.diagnostics.route_mode, 'student_assessment_session');
+    assert.equal(catFailure.failure.diagnostics.responses[0].status, 200);
     assert.equal(JSON.stringify(catFailure).includes('sentinel'), false);
     assert.equal(JSON.stringify(catFailure).includes('private-id'), false);
+    assert.equal(Object.hasOwn(catFailure.failure, 'responses'), false);
+    const postAnswerFailure = summarizeTaskWorkflow(
+      { ...stages, cat_completed: 'FAIL' }, [], artifactDir, 2,
+      { stage: 'cat_completed', error_class: 'TimeoutError', diagnostics: { cat_substage: 'complete' } },
+    );
+    assert.equal(postAnswerFailure.failure.diagnostics.cat_substage, 'complete');
     const invalidSubstage = summarizeTaskWorkflow(catFailureStages, [], artifactDir, 2, {
       stage: 'cat_started', error_class: 'TimeoutError',
       diagnostics: { cat_substage: 'question_ready / private detail' },
@@ -123,6 +132,40 @@ test('PASS requires every workflow stage and all five actual screenshots', async
     assert.deepEqual(CAT_FAILURE_SUBSTAGES, [
       'task_row', 'task_click', 'task_route', 'question_ready', 'progress', 'submit', 'complete',
     ]);
+    assert.deepEqual(fallbackPageDiagnostics('complete'), { cat_substage: 'complete' });
+    assert.equal(fallbackPageDiagnostics('untrusted details'), null);
+    const fallbackWithResponses = fallbackPageDiagnostics('progress', [
+      {
+        method: 'POST',
+        status: 200,
+        endpoint: '/api/v1/assessments/{assessment_id}/responses',
+        url: '/api/v1/assessments/ASSESS_private/responses?token=private',
+        request: { body: 'answer private' },
+        response: { json: { item: 'question private' } },
+        extra: 'must not escape',
+      },
+      {
+        method: 'POST',
+        status: 200,
+        endpoint: '/api/v1/assessments/ASSESS_private/responses',
+      },
+      {
+        method: 'DELETE',
+        status: 200,
+        endpoint: '/api/v1/assessments/{assessment_id}/responses',
+      },
+    ]);
+    assert.deepEqual(fallbackWithResponses, {
+      cat_substage: 'progress',
+      responses: [{
+        method: 'POST',
+        status: 200,
+        endpoint: '/api/v1/assessments/{assessment_id}/responses',
+      }],
+    });
+    assert.equal(JSON.stringify(fallbackWithResponses).includes('private'), false);
+    assert.equal(Object.hasOwn(fallbackWithResponses, 'selectors'), false);
+    assert.equal(Object.hasOwn(fallbackWithResponses, 'route_mode'), false);
     const unsafeFailure = summarizeTaskWorkflow(missingStage, REQUIRED_SCREENSHOTS, artifactDir, 0, {
       stage: 'admin_revoke', error_class: 'TimeoutError', screenshot: FAILURE_SCREENSHOT_NAME,
       message: 'private error sentinel', password: 'credential sentinel',

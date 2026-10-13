@@ -64,6 +64,13 @@ export const SAFE_DIAGNOSTIC_ENDPOINTS = [
   '/api/v1/assessments/{assessment_id}/complete',
 ];
 
+export function fallbackPageDiagnostics(catSubstage, responses = []) {
+  const source = { cat_substage: catSubstage };
+  if (Array.isArray(responses) && responses.length > 0) source.responses = responses;
+  const diagnostics = sanitizePageDiagnostics(source);
+  return Object.keys(diagnostics).length > 0 ? diagnostics : null;
+}
+
 const failResult = () => ({
   workflow: WORKFLOW,
   status: 'FAIL',
@@ -107,15 +114,18 @@ export function summarizeTaskWorkflow(stages, screenshotFiles, artifactDir, runn
   });
   const safeFailure = failure && TASK_STAGE_KEYS.includes(failure.stage)
     && SAFE_FAILURE_CLASSES.includes(failure.error_class)
-    ? {
-      stage: failure.stage,
-      error_class: failure.error_class,
-      ...(failure.screenshot === FAILURE_SCREENSHOT_NAME
-        && require('node:fs').existsSync(path.join(artifactDir, FAILURE_SCREENSHOT_NAME))
-        ? { screenshot: FAILURE_SCREENSHOT_NAME }
-        : {}),
-      ...sanitizePageDiagnostics(failure.diagnostics),
-    }
+    ? (() => {
+      const diagnostics = sanitizePageDiagnostics(failure.diagnostics);
+      return {
+        stage: failure.stage,
+        error_class: failure.error_class,
+        ...(failure.screenshot === FAILURE_SCREENSHOT_NAME
+          && require('node:fs').existsSync(path.join(artifactDir, FAILURE_SCREENSHOT_NAME))
+          ? { screenshot: FAILURE_SCREENSHOT_NAME }
+          : {}),
+        ...(Object.keys(diagnostics).length > 0 ? { diagnostics } : {}),
+      };
+    })()
     : null;
   const passed = runnerExitCode === 0 && exactStages && filesExist;
   return {
@@ -286,7 +296,7 @@ async function withRoleSession(browser, payload, slot, task, onLogin) {
         diagnostics = await readPageDiagnostics(page, responseDiagnostics, catSubstage);
       } catch {
         // Diagnostics must never replace the fixed failure class from the actual workflow error.
-        diagnostics = null;
+        diagnostics = fallbackPageDiagnostics(catSubstage, responseDiagnostics);
       }
     }
     if (slot === 'alpha.admin' && page && loginSubmitted) {

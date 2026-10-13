@@ -235,10 +235,27 @@ def sanitize_task_child_output(
                 and error_class in SAFE_FAILURE_CLASSES
             ):
                 safe_failure: dict[str, Any] = {"stage": stage, "error_class": error_class}
-                diagnostics = child_failure.get("diagnostics")
+                if "diagnostics" in child_failure:
+                    diagnostics = child_failure.get("diagnostics")
+                    if not isinstance(diagnostics, dict):
+                        diagnostics = {}
+                else:
+                    # Compatibility with older Node summaries that flattened
+                    # the same allowlisted diagnostics into `failure`.
+                    diagnostics = {
+                        key: child_failure[key]
+                        for key in (
+                            "route_mode",
+                            "cat_substage",
+                            "selectors",
+                            "responses",
+                        )
+                        if key in child_failure
+                    }
                 if (
-                    stage == "cat_started"
+                    stage in {"cat_started", "cat_completed"}
                     and isinstance(diagnostics, dict)
+                    and isinstance(diagnostics.get("cat_substage"), str)
                     and diagnostics.get("cat_substage") in CAT_FAILURE_SUBSTAGES
                 ):
                     safe_failure["cat_substage"] = diagnostics["cat_substage"]
