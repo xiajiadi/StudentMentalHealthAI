@@ -390,7 +390,7 @@ async def test_independent_llm_posts_fixed_server_identity_and_returns_strict_re
         body
     )
     assert body["config"] == {
-        "max_output_tokens": 256,
+        "max_output_tokens": 768,
         "temperature": 0.1,
         "top_p": 0.9,
         "context_length": 8192,

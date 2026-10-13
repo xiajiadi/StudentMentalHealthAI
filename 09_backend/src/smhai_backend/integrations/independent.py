@@ -39,7 +39,9 @@ _SCHOOL_CONTRACT_MODEL_ID = "MODEL_local_primary"
 _SCHOOL_PROVIDER_ID = "ollama"
 _SCHOOL_PROVIDER_MODEL_ID = "qwen2.5:7b-instruct-q4_K_M"
 _SCHOOL_MODEL_DIGEST = "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e"
-_MAX_OUTPUT_TOKENS = 256
+# A complete cited GenerationContent object needs room for all required fields.
+# Native 7B retrieval-context verification exhausted the previous 256-token cap.
+_MAX_OUTPUT_TOKENS = 768
 _CONTEXT_LENGTH = 8192
 _GENERATION_TIMEOUT_SECONDS = 60.0
 _MIN_LLM_HTTP_READ_TIMEOUT_SECONDS = 65.0
