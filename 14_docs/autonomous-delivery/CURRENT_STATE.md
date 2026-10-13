@@ -1,3 +1,33 @@
+## 2026-10-13 11:40 Beijing shutdown checkpoint
+
+User requested shutdown at11:40; Controller stopped new dispatch immediately.
+Owned original Backend8088/Frontend4178 foreground sessions stopped; managed F
+Backend8089/Frontend4179 stopped via strict school_app_lifecycle owner validation.
+Original3308 and F3314 identities/datadirs and zero active transactions verified,
+then graceful SQL SHUTDOWN completed and guardians/listeners verified absent.
+Receipt: D:\Projects\.StudentMentalHealthAI-school-workspace-20261011\logs\owned-shutdown-20261013-307f0bb9d5f343969c01a2845f1a4c65.json.
+Other historical restore databases remain stopped/preserved. No reset or reseed.
+Runner stopped=true; psynova heartbeat PAUSED verified through app and config.
+All direct Workers completed; no live implementation Worker remains.
+
+Reviewed remote source remains7cee35a5ab0c08ff4808cec4d235c80bcccd1dd6.
+Dependency preparation three-file WIP is saved locally as REVIEW_REQUESTED,
+not install acceptance and not pushed. Root freshly reran5 fake tests:5 passed;
+Worker reports read-only plan and syntax checks. No actual uv/npm installation,
+new source checkout, new database or service was created for this increment.
+Full source/security review and actual clean install are pending. The tool does
+not enforce whole-target Git cleanliness; verify this before any install.
+Preserve baseline untracked10_frontend/output/ and login-mark-v2.png unstaged.
+
+Resume only after explicit user Continue: inspect clock/branch/HEAD/current
+AGENTS/state and manifests; noRTX3060 unless user says otherwise and verified.
+Review school_prepare_dependencies.py/tests/SCHOOL_DEPENDENCIES.md first, resolve
+clean-target/integrity safeguards, create isolated D-drive source checkout, then
+plan and actual locked offline dependency preparation. Do not use current venvs
+as install targets. Start existing0010 databases only by owned resume, never reset
+or blindly migrate/reseed. University rights/AI/full installer/business acceptance
+remain pending; this shutdown is not ENGINEERING_DEMO_READY.
+Goal pause is executed after the checkpoint commit; wait for human Continue.
 # Current autonomous delivery state
 
 Updated: 2026-10-13, Beijing, explicit user Continue. Goal ACTIVE after explicit user Continue at09:08 Beijing; current environment has no RTX3060. ENGINEERING_DEMO_READY is not yet achieved.
@@ -627,3 +657,4 @@ the reviewed checkpoint above and final evidence within each entry take preceden
 - Native recovery is now verified for one new isolated target: D:\Projects\.StudentMentalHealthAI-school-restore-20261012-a, MySQL3309. Trusted0005 migrations,27 business tables/668 stored-value-verified rows,2 revoked old sessions,55 readable encrypted fields and new restricted runtime identity passed. Restored backend8089/frontend4179 passed4/4 role browser authentication/route/denial/logout checks plus student metadata history/feedback. Root inspected student/admin screenshots at target browser-qa/20261012T025829Z-7cd8f5744c724a66b81280e2c3a7c23c. Original3308 preflight still passes. Earlier cache-missing browser failure is retained; explicit existing D:\Dev\caches\ms-playwright resolved it. Fresh focused tests76 passed; Ruff passed. See SCHOOL_RECOVERY.md for exact limits: no cross-user portability, reboot cycle, restored full task workflow or actual old-cookie negative request claimed.
 - Additional owned restore listeners:3309 PID12560,8089 PID33860 (exec4915),4179 PID39628 (exec54360). Exact listener executable/creation/parent/argv are recorded privately in restored-target restore-processes.json; database guardian is recorded in workspace.json. Revalidate identities before lifecycle operations. Both original and restored application stacks remain running on separate loopback ports; RAG/Runtime/Safety/Ollama were not started.
 - Next work: direct Worker is auditing named school/class/account and synthetic-only bulk configuration gaps from source without DB/credential access. Root retains schema/API/privacy decisions and final review. Restoration is one verified CPU milestone; complete four-role business and installer/AI/professional-publication requirements remain open.
+

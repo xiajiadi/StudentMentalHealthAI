@@ -1,3 +1,36 @@
+## 2026-10-13 11:40 Beijing shutdown checkpoint
+
+User requested shutdown at11:40; Controller stopped new dispatch immediately.
+Owned original Backend8088/Frontend4178 foreground sessions stopped; managed F
+Backend8089/Frontend4179 stopped via strict school_app_lifecycle owner validation.
+Original3308 and F3314 identities/datadirs and zero active transactions verified,
+then graceful SQL SHUTDOWN completed and guardians/listeners verified absent.
+Receipt: D:\Projects\.StudentMentalHealthAI-school-workspace-20261011\logs\owned-shutdown-20261013-307f0bb9d5f343969c01a2845f1a4c65.json.
+Other historical restore databases remain stopped/preserved. No reset or reseed.
+Runner stopped=true; psynova heartbeat PAUSED verified through app and config.
+All direct Workers completed; no live implementation Worker remains.
+
+Reviewed remote source remains7cee35a5ab0c08ff4808cec4d235c80bcccd1dd6.
+Dependency preparation three-file WIP is saved locally as REVIEW_REQUESTED,
+not install acceptance and not pushed. Root freshly reran5 fake tests:5 passed;
+Worker reports read-only plan and syntax checks. No actual uv/npm installation,
+new source checkout, new database or service was created for this increment.
+Full source/security review and actual clean install are pending. The tool does
+not enforce whole-target Git cleanliness; verify this before any install.
+Preserve baseline untracked10_frontend/output/ and login-mark-v2.png unstaged.
+
+Resume only after explicit user Continue: inspect clock/branch/HEAD/current
+AGENTS/state and manifests; noRTX3060 unless user says otherwise and verified.
+Review school_prepare_dependencies.py/tests/SCHOOL_DEPENDENCIES.md first, resolve
+clean-target/integrity safeguards, create isolated D-drive source checkout, then
+plan and actual locked offline dependency preparation. Do not use current venvs
+as install targets. Start existing0010 databases only by owned resume, never reset
+or blindly migrate/reseed. University rights/AI/full installer/business acceptance
+remain pending; this shutdown is not ENGINEERING_DEMO_READY.
+Goal pause is executed after the checkpoint commit; wait for human Continue.
+
+## Historical checkpoints (superseded by latest record)
+
 # Planned shutdown and resume checkpoint
 
 Latest user instruction received: 2026-10-12, Beijing time.
@@ -90,3 +123,4 @@ On2026-10-12 Beijing late morning the user explicitly said: save work and pause 
 The in-progress directory/account increment is preserved in a local WIP commit; remote83a40cb remains the last reviewed/pushed checkpoint. Frontend implementation was interrupted, Backend write-path/native checks are pending, and databases remain0005 while WIP source now expects school runtime0006. Resume must finish review/migration before starting current school code; never interpret the checkpoint as ENGINEERING_DEMO_READY. Goal pause is explicitly authorized and must remain in force until human Continue.
 
 The reminder was observed after the deadline at UTC2026-10-12 00:09 (Beijing08:09). Both expired heartbeats were set PAUSED. A scheduled pause by06:35 is not verified and must not be claimed. The user then explicitly resumed while away without RTX3060; the goal is now ACTIVE. Existing data/credentials were preserved and missing CPU school services were recovered after fresh ownership checks. See CURRENT_STATE.md for actual service identities, working tree and next actions. The old deadline is historical; do not revive its expired automations automatically.
+
