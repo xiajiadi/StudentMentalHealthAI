@@ -1,3 +1,63 @@
+## 2026-10-13 19:48 Beijing native install checkpoint — ACTIVE until tonight pause
+
+Latest deadline remains21:00 tonight: stopdispatch20:40, wrapup20:50, paused20:55.
+NoRTX3060. Source HEAD e956ee3; root reviewed local89b4f9d CHECK representations,
+c594ce2 fresh/prepared install recovery,05fd066 occupied-bind test,e956ee3 safe
+CAT failure diagnostics. Remote still729716d; latest increments notyetpushed.
+Root focused177 tests passed; expanded deployment598passed/2deprecationwarnings
+after using existing Backend+Database+LLM dependency paths. Initial DB-only test
+collection lacked Backend deps; next combination lackedpsutil; noinstallation.
+One failed occupied-port test was stale create_connection mock, while creator now
+uses exclusive bind. Root reproduced and reran598 after targeted test correction.
+
+Targetc D:\Dev\projects\psynova-school-install-20261013-c remains installed at
+c594ce2; four QA source/test files were edited there by Worker then hash-base
+checked and copied into Root integration. Preserve its trackedQA edits and
+untracked dependency-state/npm config/build evidence; don't reset. Root will
+synchronize it to the reviewed source once native CAT correction is ready.
+G D:\Projects\.StudentMentalHealthAI-school-install-20261013-g ID
+137ffe3243201bf34130b6585764edcf port3315 resumed existingdata via fresh-mode.
+Real strict migrate command returned ALREADY_CURRENT0010/side_effects=[] (noDDL).
+Runtime account creation/grants passed; prepared-mode ALREADY_RUNNING passed;
+new school seed2schools/2subjects/8roleaccounts/no specialist/admin subjectgrants.
+Managedapps fromTargetc preview/backend8089/frontend4179 RUNNING/whole_readyfalse.
+Do not adopt historicalrestore processes; use G/school-app-lifecycle.json ownership.
+Fresh CPU CAT8180 foreground Root exec84846 (server PID7804 discovery only), from
+Targetc virtualenv. Explicit D:\Dev\caches\matplotlib-psynova-cat configcache.
+NoLLM/RAG/Safety/GPU service launched. Original3308 and alloldrestores remain stopped.
+Use current ownershipchecks, not these historical PIDs, before shutdown.
+
+G/browser-qa/20261013T111642Z-1bb848347ab6420abe6fd59b3377eac4/
+school-managed-resume-browser.json: real fourroles4/4, login/routes/auth/forbidden
+API+route/logout passed; Root viewed maskedstudent/admin screenshots. This is
+login/permission proof, not whole business or professional content acceptance.
+Native taskworkflow first failed pre-action because old harness pins original
+workspace/ports; external adapter then pinned exactG/app ports/Targetc packages,
+retaining all checks. Failed runs retained; nofakePASS. Latest artifact:
+G/browser-qa/20261013T113950Z-8ce88e9f4a8045998b273411b524dbb3/
+school-fresh-task-browser.json: admincreate/assign/publish +studentCATstart PASS;
+firstresponse409, cat_completedFAIL/progress; allharnesssessionscleanedPASS.
+Node/Python diagnosticshape loss fixed; fallback now retains only observed safe
+method/template/status. Resultdetail blocking remains onlybrowser interception,
+not backend authorization proof. Teacheraggregate/revoke notyettestedonG.
+
+Root independent read-only probe existing-cat-state-probe-e6eefde47b854c9e855ff31b4c351782.json:
+login200/state404, probeFAIL; no businessproof and no repeated API repair. Its
+failed assertion occurred beforelogout, so server-side probe session may remain;
+never claim zeroauthsessions from this helper. Preserve audit; do notreset/revoke
+unrelated identities. Nativebrowser helpers cleaned their own sessions.
+
+Source trace +real adapter synthetic reproduction confirmed fixture conflict:
+school_publish_task FIXTURE item/config columnsNone; CAT state supplies runtime
+versions; writer compared runtimeprovenance to taskNone =>409. Root authorized
+bounded Worker correction of database.py +school bindingtests: FIXTURE task
+columns mustremainNone, runtimeprovenance preserved; SAVED_VERSION exactpinned
+versions and all authorization/instrument/doc checks retained. NofrozenD3/Contract
+changes. Next review +targetedtests, synchronizeTargetc and restart exactowned
+Backend, then rerun trueG taskCAT/teacher/revoke chain once. No further blind rerun.
+Shutdown helper D:\Dev\temp\psynova-owned-shutdown-20261013-1600.py has exactoriginal
++G ID/ports, preflight+SQL shutdown; apps/CAT must stop first. It preserves data.
+
 ## ACTIVE — 2026-10-13 evening CPU-only resume; pause before21:00 Beijing
 
 User explicitly confirmed tonight21:00 (not tomorrow09:00); noRTX3060. At18:56
