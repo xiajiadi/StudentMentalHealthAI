@@ -65,6 +65,42 @@ def test_m0_demo_population_scope_survives_embedding_ready_export(tmp_path: Path
     assert all(row["metadata"]["target_population"] == ["university_freshman"] for row in rows)
 
 
+def test_university_student_demo_preserves_population_and_demo_eligibility(tmp_path: Path) -> None:
+    fixture = MODULE_ROOT / "fixtures/m0_demo/university_study_task_planning.md"
+    output = tmp_path / "m0_university_student_demo"
+    run = KnowledgePipeline(schema_root=PROJECT_ROOT).run(
+        [SourceRequest(fixture, input_mode="raw")],
+        output_dir=output,
+        timestamp="2026-10-13T00:00:00Z",
+        run_id="RUN_m0_university_student_demo",
+    )
+
+    embedding_rows = [
+        json.loads(line)
+        for line in (output / "embedding_ready.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    contract_rows = [
+        json.loads(line)
+        for line in (output / "knowledge_chunks.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+
+    assert run.export is not None
+    assert embedding_rows
+    assert all(row["metadata"]["target_population"] == ["university_student"] for row in embedding_rows)
+    assert all(row["metadata"]["role_scope"] == ["student"] for row in embedding_rows)
+    assert all(row["metadata"]["rights_status"] == "verified" for row in embedding_rows)
+    assert all(row["metadata"]["review_status"] == "approved" for row in embedding_rows)
+    assert all(row["metadata"]["human_curated"] is False for row in embedding_rows)
+    assert all(
+        row["metadata"]["review_semantics"]
+        == "M0_DEMO_ELIGIBILITY_ONLY_NOT_HUMAN_OR_SPECIALIST_REVIEW"
+        for row in embedding_rows
+    )
+    # Demo-only eligibility metadata stays in the embedding export; the frozen
+    # knowledge.v1 chunk projection remains unchanged.
+    assert all("review_semantics" not in row for row in contract_rows)
+
+
 def test_repeat_run_has_stable_ids_and_hashes(tmp_path: Path) -> None:
     config = PipelineConfig(chunk=ChunkConfig(min_tokens=4, target_tokens=40, max_tokens=160))
     requests = [SourceRequest(MODULE_ROOT / "fixtures/policy/policy.md", input_mode="curated")]

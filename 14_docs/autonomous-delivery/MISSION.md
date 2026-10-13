@@ -15,6 +15,21 @@ Required work: organization/accounts/imports/tasks; synthetic item banks, tested
 
 ## Authority and limits
 
+### 2026-10-13 operator extension: public research resources
+
+The operator explicitly requires real, publicly available item banks and response
+datasets for development simulation and verification, beyond university-only
+populations. Collect and use resources with verified reuse terms; record primary
+source, version, acquisition tool and transformations. Remove identifying and
+unneeded demographic fields before analysis. Keep public research responses in
+an isolated research workspace, separate from school identities and the existing
+synthetic Demo database. Published/simulated calibration parameters must retain
+their provenance and research-only status. This authorization permits public
+research-data engineering; it does not grant source-owner licensing rights,
+professional approval, real-school deployment or changes to frozen evidence.
+Existing synthetic fixtures remain useful for deterministic failure/edge tests;
+they alone cannot satisfy the requested empirical simulation verification.
+
 The operator delegates ordinary synthetic engineering, additive interfaces, tests, local commits, integration and pushes to NEW dedicated development branches, draft PRs and local packaging. Never force-push, overwrite protected/default branches, merge protected D4, alter frozen evidence, or create production release tags. Preserve untracked user artifacts.
 
 Root acts as Autonomous Controller, retaining the user's UI-selected main model. Root owns direction, design, architecture, decomposition, integration and final review, and directly dispatches one or more explicit Luna/high Workers with the current catalog/profile settings and delegation depth 0. No intermediate Execution Lead. Each worker owns disjoint files or an isolated worktree. Independent review must inspect actual changes and fresh evidence.

@@ -774,6 +774,31 @@ class IndependentConversationService:
         citations = json.dumps(
             list(bundle.prompt_citations()), ensure_ascii=False, separators=(",", ":")
         )
+        synthetic_demo_chunk_ids = [
+            item.chunk_id
+            for item in bundle.items
+            if isinstance(item.observed.get("source_url"), str)
+            and item.observed["source_url"].lower().startswith("synthetic://")
+        ]
+        if synthetic_demo_chunk_ids:
+            synthetic_chunk_ids_json = json.dumps(
+                synthetic_demo_chunk_ids, ensure_ascii=False, separators=(",", ":")
+            )
+            source_guidance = (
+                "仅依据本次检索中通过现有资格检查的资料回答；资格和来源边界按 chunk_id 逐项判断，"
+                "不得把一条资料的来源、审核状态或适用范围套用给其他资料。"
+                "以下来源属于 Synthetic Demo（合成演示材料），未经人工或专业审核，"
+                "不是真实教育证据，"
+                "也不能描述为已审核的教育依据；不得用它们断言真实教育效果、事实或人群适用性。"
+                "其余资料仍须各自满足现有审核、使用权和适用范围限制。"
+                "需要引用时只引用对应的 chunk_id。Synthetic Demo chunk_id："
+                f"{synthetic_chunk_ids_json}。"
+            )
+        else:
+            source_guidance = (
+                "仅依据下列已审核资料回答，并在建议中引用其 chunk_id；"
+                "资料不足时明确说无法基于资料回答。"
+            )
         history_block = ""
         if history:
             history_json = json.dumps(list(history), ensure_ascii=False, separators=(",", ":"))
@@ -785,10 +810,9 @@ class IndependentConversationService:
         return (
             "你是面向大学生的教育支持助手。只提供一般性、可执行的学习与生活教育支持；"
             "不得推断、描述或暗示测评结果、theta、风险等级、诊断、临床判断或治疗。"
-            "仅依据下列已审核资料回答，并在建议中引用其 chunk_id；"
-            "资料不足时明确说无法基于资料回答。"
+            f"{source_guidance}"
             "不要编造来源、热线、联系人或本地服务。严格输出符合给定 JSON Schema 的对象。\n"
-            f"已审核资料：{citations}{history_block}"
+            f"检索引用：{citations}{history_block}"
         )
 
     @staticmethod

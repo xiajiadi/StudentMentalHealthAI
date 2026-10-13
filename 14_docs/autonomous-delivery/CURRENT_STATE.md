@@ -1,3 +1,50 @@
+## ACTIVE — 2026-10-13 22:28 Beijing, explicit user resume with RTX 3060
+
+Latest operator extension: real publicly reusable item banks and de-identified
+research responses are required for empirical simulation, not limited to
+university populations. No shutdown deadline. Resource workstreams: IPIP/OSPP
+item-response acquisition; PROMIS/CAT/DASS primary-source investigation.
+Exa and Firecrawl skills, Consensus and Parallel Search connectors are available.
+Keep acquired research data on D: outside Git and separate from G school Demo;
+response-only allowlists, provenance and reuse terms precede analysis. Old
+synthetic-only research scope is superseded for this explicit public-data scope;
+real school/student identities and professional/frozen boundaries stay closed.
+
+Fresh crisis API passed with permission/CSRF/tenant and replay checks, G receipt
+logs/independent-public-api-55829f52843448a4bfeb7d7503198ac1.json. Normal conversation
+failed503 at generation (not input Safety or retrieval), safely persisted failed
+turn without generated answer/citations; receipt81584313e045418ba5c337a5f03dd0ae.
+Root must diagnose generation before rerun. All Safety components nowready with
+ownedOPA8181; Safety exec3075, CATexec65385, isolatedsyntheticRAGexec65864;
+G Backend8089/Frontend4179 ownership manifest ready with school-gpu-7b profile.
+New boot encrypted DB9responses+1result decrypt passed at
+fresh-cat-encryption-proof-b439efc7c6384654baee127c2cf3be2c.json.
+
+User confirms no new shutdown deadline. Previous 21:00 deadline is expired.
+New host boot: 2026-10-13 22:00:14 Beijing. Fresh GPU observation: RTX 3060,
+12288 MiB, driver 596.36. Source/remote dedicated branch both bbd4ec6 at recovery;
+the two user untracked frontend artifacts remain preserved. Goal and existing
+psynova heartbeat resumed; Runner leases are unowned. Scheduling alone does not
+prove uninterrupted execution.
+
+Fresh G prepared-install-mode recovery returned STARTED with expected workspace
+137ffe3243201bf34130b6585764edcf, port3315, unchanged data/runtime/revision0010.
+Dedicated 7B Runtime foreground exec47445 owns8160 and managed Ollama11437;
+original database3308 remains stopped. Runtime native independent HTTP transport
+passed once: structured JSON, fixed MODEL_local_primary and 7B digest, exactly
+one attempt, no fallback, context8192; provider resident size_vram=5133943438.
+Evidence: D:\Dev\tools\StudentMentalHealthAI\gpu-acceptance\logs\school-independent-http-qa-d55e670c7ec24a06aea0ee81db72cd02\evidence.json.
+This is transport/GPU evidence only, not grounded Backend/Safety acceptance.
+
+Direct Luna/high workers: university synthetic fixture (04_knowledge-pipeline
+only) and read-only professional-review next-path audit. KPU remains pending
+review; OpenStax remains excluded. Existing freshman fixture is not relabeled.
+Controller authorized a separate original university_student Synthetic Demo
+fixture with human_curated=false and explicit demo-only review semantics for
+isolated engineering verification. No professional approval or production
+knowledge qualification is granted. Full independent AI/Safety/citation and
+fresh professional-review paths remain pending.
+
 ## PAUSED — 2026-10-13 20:58 Beijing, before user21:00 shutdown deadline
 
 All direct Workers completed. Owned G Backend8089/Frontend4179 stopped through

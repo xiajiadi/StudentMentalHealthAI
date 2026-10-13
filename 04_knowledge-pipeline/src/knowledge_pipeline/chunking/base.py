@@ -186,7 +186,7 @@ class ChunkStrategy(ABC):
                 "practice_guidance": "medium",
                 "referral": "high",
             }.get(doc_meta.category, "unknown")
-        return {
+        metadata = {
             "document_id": document.document_id,
             "chunk_id": chunk_id,
             "layer": "knowledge",
@@ -219,3 +219,7 @@ class ChunkStrategy(ABC):
             "token_count": token_count,
             "embedding_status": "not_indexed",
         }
+        review_semantics = doc_meta.extra.get("review_semantics")
+        if review_semantics is not None:
+            metadata["review_semantics"] = str(review_semantics)
+        return metadata

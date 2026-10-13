@@ -15,6 +15,7 @@ from smhai_backend.domains.conversations.schemas import (
 )
 from smhai_backend.domains.conversations.service import IndependentConversationService
 from smhai_backend.domains.models import Actor, BackendRole
+from smhai_backend.integrations.evidence import EligibilityPolicy, build_retrieval_evidence_bundle
 from smhai_backend.integrations.independent import GenerationResult
 from smhai_backend.integrations.rag import KnowledgeChunk, RetrievalResult
 from smhai_backend.integrations.safety import SafetyCheckView, SafetyDecisionView
@@ -295,6 +296,29 @@ def _service(
     return service, store, safety_client, rag_client, runtime_client
 
 
+def _prompt_for_source_metadata(*source_metadata: Mapping[str, Any]) -> str:
+    chunks = []
+    for index, metadata in enumerate(source_metadata, start=1):
+        chunk = _chunk().model_dump(mode="json")
+        chunk["chunk_id"] = f"CHUNK_prompt_{index}"
+        chunk["document_id"] = f"KB_prompt_{index}"
+        chunk.update(metadata)
+        chunks.append(chunk)
+    bundle = build_retrieval_evidence_bundle(
+        RetrievalResult(
+            retrieval_id="RETR_prompt_sources",
+            chunks=tuple(chunks),  # type: ignore[arg-type]
+            label="FAKE_RAG",
+        ),
+        policy=EligibilityPolicy(
+            target_population="university_student",
+            target_role="student",
+            risk_level=None,
+        ),
+    )
+    return IndependentConversationService._system_prompt(bundle)
+
+
 async def _submit(service: IndependentConversationService, message: str = "如何安排学习？"):
     return await service.submit_message(
         ACTOR,
@@ -303,6 +327,44 @@ async def _submit(service: IndependentConversationService, message: str = "如�
         idempotency_key="key-test",
         context=CONTEXT,
     )
+
+
+def test_prompt_scopes_synthetic_demo_labels_by_source_not_curated_flag() -> None:
+    prompt = _prompt_for_source_metadata(
+        {
+            "source_url": "synthetic://StudentMentalHealthAI/M0/demo",
+            "human_curated": False,
+            "review_semantics": "M0_DEMO_ELIGIBILITY_ONLY_NOT_HUMAN_OR_SPECIALIST_REVIEW",
+        },
+        {
+            "source_url": "https://example.edu/learning-resource",
+            "human_curated": False,
+        },
+    )
+
+    assert "Synthetic Demo（合成演示材料）" in prompt
+    assert "未经人工或专业审核" in prompt
+    assert "不是真实教育证据" in prompt
+    assert "CHUNK_prompt_1" in prompt
+    assert "其余资料仍须各自满足现有审核、使用权和适用范围限制" in prompt
+    synthetic_listing = (
+        prompt.split("Synthetic Demo chunk_id：", maxsplit=1)[1].split(
+            "。", maxsplit=1
+        )[0]
+    )
+    assert json.loads(synthetic_listing) == ["CHUNK_prompt_1"]
+
+
+def test_system_prompt_does_not_call_non_synthetic_human_curated_false_material_synthetic() -> None:
+    prompt = _prompt_for_source_metadata(
+        {
+            "source_url": "https://example.edu/learning-resource",
+            "human_curated": False,
+        }
+    )
+
+    assert "已审核资料" in prompt
+    assert "Synthetic Demo" not in prompt
 
 
 @pytest.mark.asyncio
