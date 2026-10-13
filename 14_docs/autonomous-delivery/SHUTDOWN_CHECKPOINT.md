@@ -1,3 +1,17 @@
+## Active shutdown window — 2026-10-13 16:05:55 Beijing
+
+Latest human instruction received at UTC07:15:55 / Beijing15:15:55: shutdown in50minutes.
+Deadline UTC08:05:55 / Beijing16:05:55. Stop dispatch at07:50:55 /15:50:55;
+begin safe wrap-up07:55:55 /15:55:55; save and pause no later than08:00:55 /16:00:55.
+Five-minute psynova heartbeat updated through app; scheduling is not pause proof.
+Do not revive or reuse prior11:40/07:30 windows. After this window no auto recovery;
+only explicit humanContinue restores engineering. Preserve source+G3315+all restores,
+Targeta/b partial andTargetc successful dependencies. Verify everyliveprocess identity.
+Current fresh CPU CAT is Rootforegroundexec29960 at8180, listener16792/launcher9536,
+sourceTargetc; these are discovery hints, not kill permission. ManagedOriginal8088/4178
+uses school_app_lifecycle.json; originalDB3308 andNEWG3315 both require graceful owned
+shutdown. F3314/oldrestores remainstopped. Migration3files still reviewrequested;
+localRoot null-role grant guard awaits test. GoalACTIVE until actual pause.
 ## 2026-10-13 13:00 Beijing explicit resume
 
 User explicitly Continue after the11:40 safe shutdown; prior deadline is expired.
