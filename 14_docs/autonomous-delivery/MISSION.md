@@ -30,6 +30,37 @@ professional approval, real-school deployment or changes to frozen evidence.
 Existing synthetic fixtures remain useful for deterministic failure/edge tests;
 they alone cannot satisfy the requested empirical simulation verification.
 
+### 2026-10-14 operator extension: realistic800-student school simulation
+
+The operator requires a complete grade-level scenario with800 accounts, an
+age-relevant public item bank/observed response resource, real three-layer RAG,
+local-model feedback, professional review and crisis circuit-breaking. Follow
+the full provision → specialist import/version → assignment → authenticated
+measurement/save-resume → durable AI work → held/reviewed publication → student
+visibility/revocation/recovery path. Validate API, database, permissions and
+representative browsers, not only offline CAT or roster capacity.
+
+School identities and credentials remain fictional. Public research responses
+retain their actual population, missingness, source labels and provenance;
+experimental replay must be explicitly labeled and must not imply that an
+identified real student supplied those responses. Data-source version and
+parameter provenance differ from professional approval. Published parameters,
+local research fits and model-generated responses must remain distinguishable.
+No imputation, substitute responses or synthetic RAG evidence may quietly
+replace a failed empirical experiment. Preserve deterministic synthetic edge
+cases as a separate lane for events without public current-risk ground truth.
+
+Record measurable completion criteria and limits:800 actual authenticated
+flows, persistence and recovery, queue failures/retries, privacy denials,
+review/publication gates, and sampled full browser journeys. Full-item adaptive
+ordering is a baseline, not approved CAT shortening; CPU replay timing is not
+GPU serving throughput. Simulation cannot establish100-percent real-world
+fidelity, psychometric validity or production approval. Population suitability,
+measurement validation, security/operations and independent professional review
+remain completion requirements for their respective claims, not only later
+ethical adjustments. Continue authorized engineering until its defined scope
+is complete while keeping those external approval boundaries explicit.
+
 The operator delegates ordinary synthetic engineering, additive interfaces, tests, local commits, integration and pushes to NEW dedicated development branches, draft PRs and local packaging. Never force-push, overwrite protected/default branches, merge protected D4, alter frozen evidence, or create production release tags. Preserve untracked user artifacts.
 
 Root acts as Autonomous Controller, retaining the user's UI-selected main model. Root owns direction, design, architecture, decomposition, integration and final review, and directly dispatches one or more explicit Luna/high Workers with the current catalog/profile settings and delegation depth 0. No intermediate Execution Lead. Each worker owns disjoint files or an isolated worktree. Independent review must inspect actual changes and fresh evidence.

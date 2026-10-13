@@ -80,6 +80,17 @@ no approvedshortCAT, individual result output, Chinese-school applicability or
 clinical claim. Next Backend registry/MAC/rights provenance design, dedicated
 routes/live permissions and research persistence native/session integration.
 
+2026-10-14 realRAG expansion: Firecrawl acquired officialWHO/UNICEF2021 Helping
+Adolescents Thrive172-page PDF parser text and rights page, external D staging.
+Adolescent10–19 programme guidance fills the candidate youth practice layer;
+university-only Worsley evidence is not relabeled as high-school evidence.
+CC BY-NC-SA3.0IGO noncommercial/sharealike/attribution conditions retained;
+commercial deployment permission unresolved. See PUBLIC_RESOURCE_WHO_ADOLESCENT_GUIDANCE.md.
+Allcontent remains pendinghumanreview/unindexed, no live RAG orprofessionalgate
+modified. Dedicated research registry/HMAC Backend foundation now in Worker
+owned newdomain files, no newroutes or DPAPIkey configuration active yet.
+Code pushedf2d2fb5, remoteSHA verified; Runnercheckpoint renewed, goal ACTIVE.
+
 ## Prior milestones — 2026-10-13 23:25 Beijing onward
 
 2026-10-14 00:48 Beijing update (supersedes pending statements below):
