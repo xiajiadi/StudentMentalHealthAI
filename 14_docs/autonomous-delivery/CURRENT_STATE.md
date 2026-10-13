@@ -696,3 +696,20 @@ D:\Dev\projects\psynova-school-install-20261013-a, no environments/user artifact
 copied. Before installation checkout the reviewed increment and revalidate.
 Separate fresh-only migration tool is under Root review, not in this dependency
 commit. Full mandate remains active and no new shutdown deadline exists.
+
+Native dependency install attempt at1f5b19f: isolated Targeta
+D:\Dev\projects\psynova-school-install-20261013-a ran locked offline UV sync.
+CAT and Backend installed and public imports/version checks passed. Database sync
+returned0 but clean-env aiomysql import failed; Frontend not attempted. Durable
+.school-dependency-preparation-state.json sayspartial, manifest integrity passed,
+all lock hashes retained. Do not reuse/erase this partially prepared target.
+Root bounded diagnostic(no DB/candidate text) proved aiomysql.connection DEFAULT_USER
+calls getpass.getuser(); sanitized Windows env had removedUSERNAME and Python3.12
+fell through to unavailablepwd. Same installed target imported successfully with
+inherited env and with only realUSERNAME restored to otherwise identical clean env.
+Both dependency and fresh-migration owners instructed to preserve that OS variable
+without emitting its value; no fake user/model/dependency workaround or global
+installation. Next after reviewed fix: newclean Targetb at reviewed sourceSHA,
+actual locked offline full4module preparation, then fresh migration/seed/app/CAT QA.
+Pending fresh migration tool adds shared workspace lock and private-memory cleanup;
+no native DDL/newworkspace yet. Full objective remainsACTIVE/incomplete.

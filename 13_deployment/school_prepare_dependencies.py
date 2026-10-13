@@ -67,7 +67,7 @@ SAFE_CACHE_ENV = (
     "TRANSFORMERS_CACHE",
     "TORCH_HOME",
 )
-BASE_ENV = ("PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP")
+BASE_ENV = ("PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "USERNAME")
 ERROR_EXIT = 2
 STATE_FILENAME = ".school-dependency-preparation-state.json"
 ACTIVE_INSTALL_STATE_ROOT: Path | None = None

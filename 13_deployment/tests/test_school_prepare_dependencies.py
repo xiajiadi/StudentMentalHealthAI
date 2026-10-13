@@ -612,6 +612,7 @@ def test_clean_child_environment_drops_redirects_and_preserves_d_cache(
         monkeypatch.setenv(name, "synthetic-value")
     monkeypatch.setenv("UV_CACHE_DIR", r"D:\Dev\cache\uv")
     monkeypatch.setenv("PIP_CACHE_DIR", str(source / "cache"))
+    monkeypatch.setenv("USERNAME", "synthetic-current-user")
 
     env = prepare._child_environment(
         root=target,
@@ -623,6 +624,11 @@ def test_clean_child_environment_drops_redirects_and_preserves_d_cache(
     assert Path(env["UV_CACHE_DIR"]).resolve() == Path(r"D:\Dev\cache\uv").resolve()
     assert "PIP_CACHE_DIR" not in env
     assert env["UV_PROJECT_ENVIRONMENT"].endswith(".venv")
+    assert env["USERNAME"] == "synthetic-current-user"
+
+    monkeypatch.delenv("USERNAME")
+    env_without_username = prepare._child_environment(root=target)
+    assert "USERNAME" not in env_without_username
 
 
 def test_run_step_never_includes_child_output_in_report(tmp_path, monkeypatch):

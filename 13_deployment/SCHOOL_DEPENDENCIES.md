@@ -45,4 +45,4 @@ python .\13_deployment\school_prepare_dependencies.py plan `
 
 ## 范围限制
 
-当前只覆盖上述四个依赖根。Safety、RAG、Runtime、Knowledge Pipeline、MySQL 服务、向量库、Embedding 和模型均不在本流程中。该流程不读取应用凭据，不继承数据库/SMHAI/Vite/Python/Node 执行覆写或 uv 配置变量；仅保留系统运行所需路径、临时目录和位于 D 盘且不与 Source 或 Target 重叠的依赖缓存路径。
+当前只覆盖上述四个依赖根。Safety、RAG、Runtime、Knowledge Pipeline、MySQL 服务、向量库、Embedding 和模型均不在本流程中。该流程不读取应用凭据，不继承数据库/SMHAI/Vite/Python/Node 执行覆写或 uv 配置变量；仅保留系统运行所需路径、临时目录、主机提供的 Windows `USERNAME`，以及位于 D 盘且不与 Source 或 Target 重叠的依赖缓存路径。`USERNAME` 只传给子进程用于 Windows 用户名解析，不会写入结果或日志；主机未提供时不伪造该变量。
