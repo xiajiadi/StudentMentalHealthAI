@@ -1,3 +1,16 @@
+## 2026-10-13 13:00 Beijing explicit resume
+
+User explicitly Continue after the11:40 safe shutdown; prior deadline is expired.
+Goal ACTIVE, Runner recovered/resumed(stopped=false), psynova heartbeat ACTIVE.
+Source HEAD912b0ee saved WIP; remote reviewed7cee35a. Two baseline user files
+remain untracked and preserved. Current environment still treated as noRTX3060.
+Original3308 resumed through owned existing-data helper, statusSTARTED; no reset,
+reseed or migration. RestoreF remains stopped. Root owns service recovery and
+native installation; direct implementation Worker owns dependency tool/test/doc,
+independent read-only Worker audits it. No Lead or recursive delegation.
+Next: review full clean-target/reparse/lock/source/environment/install failure
+safeguards; create new isolated D-drive checkout at reviewed commit, then actual
+locked offline install and native business evidence. No model download/fallback.
 ## 2026-10-13 11:40 Beijing shutdown checkpoint
 
 User requested shutdown at11:40; Controller stopped new dispatch immediately.
@@ -123,4 +136,3 @@ On2026-10-12 Beijing late morning the user explicitly said: save work and pause 
 The in-progress directory/account increment is preserved in a local WIP commit; remote83a40cb remains the last reviewed/pushed checkpoint. Frontend implementation was interrupted, Backend write-path/native checks are pending, and databases remain0005 while WIP source now expects school runtime0006. Resume must finish review/migration before starting current school code; never interpret the checkpoint as ENGINEERING_DEMO_READY. Goal pause is explicitly authorized and must remain in force until human Continue.
 
 The reminder was observed after the deadline at UTC2026-10-12 00:09 (Beijing08:09). Both expired heartbeats were set PAUSED. A scheduled pause by06:35 is not verified and must not be claimed. The user then explicitly resumed while away without RTX3060; the goal is now ACTIVE. Existing data/credentials were preserved and missing CPU school services were recovered after fresh ownership checks. See CURRENT_STATE.md for actual service identities, working tree and next actions. The old deadline is historical; do not revive its expired automations automatically.
-

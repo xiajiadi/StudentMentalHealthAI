@@ -1,3 +1,16 @@
+## 2026-10-13 13:00 Beijing explicit resume
+
+User explicitly Continue after the11:40 safe shutdown; prior deadline is expired.
+Goal ACTIVE, Runner recovered/resumed(stopped=false), psynova heartbeat ACTIVE.
+Source HEAD912b0ee saved WIP; remote reviewed7cee35a. Two baseline user files
+remain untracked and preserved. Current environment still treated as noRTX3060.
+Original3308 resumed through owned existing-data helper, statusSTARTED; no reset,
+reseed or migration. RestoreF remains stopped. Root owns service recovery and
+native installation; direct implementation Worker owns dependency tool/test/doc,
+independent read-only Worker audits it. No Lead or recursive delegation.
+Next: review full clean-target/reparse/lock/source/environment/install failure
+safeguards; create new isolated D-drive checkout at reviewed commit, then actual
+locked offline install and native business evidence. No model download/fallback.
 ## 2026-10-13 11:40 Beijing shutdown checkpoint
 
 User requested shutdown at11:40; Controller stopped new dispatch immediately.
@@ -658,3 +671,28 @@ the reviewed checkpoint above and final evidence within each entry take preceden
 - Additional owned restore listeners:3309 PID12560,8089 PID33860 (exec4915),4179 PID39628 (exec54360). Exact listener executable/creation/parent/argv are recorded privately in restored-target restore-processes.json; database guardian is recorded in workspace.json. Revalidate identities before lifecycle operations. Both original and restored application stacks remain running on separate loopback ports; RAG/Runtime/Safety/Ollama were not started.
 - Next work: direct Worker is auditing named school/class/account and synthetic-only bulk configuration gaps from source without DB/credential access. Root retains schema/API/privacy decisions and final review. Restoration is one verified CPU milestone; complete four-role business and installer/AI/professional-publication requirements remain open.
 
+Fresh resume evidence: original managed Backend8088 launcher10376/listener31128,
+Frontend4178 PID14452; owner school_app_lifecycle.json. Discovery IDs are not
+permission to terminate; verify current manifest before every process action.
+Root fresh lifecycle/backend/ports/resume tests108 passed after correcting one
+mistyped test path(no tests ran in that first command). Native four-role auth,
+route, forbidden-route/API and logout proof4/4 at browser-qa/20261013T050943Z-9fcee6e3df28420abd9f74f7ecc231e8/school-managed-resume-browser.json.
+Root inspected masked admin screenshot. Earlier browser run050633Z-58d0229fc93441779abb50ed051708d1 had4/4 browser actions but overall FAIL because external
+helper used restored-target-only writer on original workspace; preserved run and
+corrected external writer only. No product authorization guard weakened.
+Current OS LastBootUtc01:03:19.5000000Z is unchanged; this resume is not another
+observed reboot. RestoreF and all earlier restores remain stopped. AI/CAT modules
+are not started. Full mandate remains incomplete.
+
+Dependency preparation reviewed increment: direct implementation plus independent
+read-only QA closed root.git reparse and source/target cache-overlap gaps. Root
+reviewed diff, actual PATH binaries and local versions: uv.exe under Hermes,
+node.exe under D:\Software\Node.js with paired npm-cli.js; base3.14 C:\Python314
+only feeds an isolated new venv, base3.12 uses explicit D-drive real version path.
+Fresh Root22 fake tests and Ruff/format pass; native read-only plan from isolated
+912b0ee source succeeds, records3.14.6/3.12.13 and source lock hashes. No actual
+installation is claimed yet. Clean detached QA checkout exists at
+D:\Dev\projects\psynova-school-install-20261013-a, no environments/user artifacts
+copied. Before installation checkout the reviewed increment and revalidate.
+Separate fresh-only migration tool is under Root review, not in this dependency
+commit. Full mandate remains active and no new shutdown deadline exists.
