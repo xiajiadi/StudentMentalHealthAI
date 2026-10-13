@@ -227,6 +227,10 @@ class BackendSettings(BaseSettings):
         default_factory=PostAssessmentWorkerSettings
     )
     m0_claim_boundary_observer_enabled: bool = False
+    school_research_enabled: bool = False
+    school_research_runtime_file: str | None = Field(default=None, repr=False)
+    school_research_runtime_sha256: str | None = None
+    school_research_base_url: str | None = Field(default=None, repr=False)
     cat: ModuleClientSettings = Field(
         default_factory=lambda: ModuleClientSettings(
             mode="contract_fake", base_url="http://127.0.0.1:8180"
@@ -265,6 +269,17 @@ class BackendSettings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_security(self) -> BackendSettings:
+        if self.school_research_enabled:
+            if (
+                self.environment == "production" or self.identity_profile != "school_tenant"
+                or self.persistence_mode != "mysql"
+                or not self.school_research_runtime_file
+                or not self.school_research_runtime_sha256
+                or not self.school_research_base_url
+            ):
+                raise ValueError(
+                    "research CAT requires explicit nonproduction school configuration"
+                )
         if self.identity_profile == "school_tenant":
             if self.school_csrf_secret is None:
                 raise ValueError("school_tenant requires SMHAI_SCHOOL_CSRF_SECRET")

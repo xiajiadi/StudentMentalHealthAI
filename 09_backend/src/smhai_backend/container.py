@@ -99,6 +99,7 @@ class BackendContainer:
     cat_assets_client: HttpCatAssetsClient | None = None
     cat_saved_simulation_client: HttpCatSavedSimulationClient | None = None
     post_assessment_worker_manager: SchoolPostAssessmentWorkerManager | None = None
+    school_research: Any | None = None
 
     async def start(self) -> None:
         try:
@@ -241,6 +242,9 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         audits = InMemoryAuditRepository()
         idempotency = InMemoryIdempotencyStore()
     authorization = NativeAuthorizationProvider()
+    from smhai_backend.domains.school_research.bootstrap import build_school_research_service
+
+    school_research = build_school_research_service(settings, persistence)
     audit = AuditService(audits)
     auth = AuthService(
         users=users,
@@ -390,6 +394,7 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         teacher_dashboard=teacher_dashboard,
         school_tasks=school_tasks,
         school_directory=school_directory,
+        school_research=school_research,
         professional_reviews=professional_reviews,
         school_feedback=school_feedback,
         cat_management=cat_management,

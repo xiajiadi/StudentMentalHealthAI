@@ -1,4 +1,26 @@
-## ACTIVE — 2026-10-14, private research HTTP and recovery integration
+## ACTIVE — 2026-10-14 07:50 Beijing, research Backend integration
+
+Research student start/resume/answer routes now compose live actor scope,
+locked SELF/roster/task-window checks, MAC-verified encrypted snapshot storage,
+CAS and reauthenticated idempotency receipts. HTTP executes outside database
+transactions. Explicit pinned runtime configuration wires this research lane;
+default remains disabled, production configuration is rejected, and the frozen
+OpenAPI document excludes these additive school routes. Source profiles/tasks
+are not automatically enabled. Root174 focused Backend tests and Ruff passed;
+independent58 bootstrap/runtime/API/frozen-OpenAPI tests and review found no
+conclusion-changing defect. These tests do not prove native DB persistence,
+online800 school completion, deployed processes, or production readiness.
+
+Operator confirms school-affiliated noncommercial research; institution name
+and study end date remain requested for the PROMIS use-scope record. No DB rights
+or execution status has been changed. Three-layer school RAG review packet is
+indexed in SCHOOL_RAG_REVIEW_PACKAGE.md; all excerpts remain pending human review,
+not indexed into the live corpus. Current ordinary K API processes still run
+older code. Next: actual-model authorization negatives, a pinned CAT3.14 serve
+entrypoint with complete config and derived-key-only stdin handshake, then
+owned service lifecycle and native actor/DB/recovery flows. Goal remains active.
+
+## Prior checkpoint — private research HTTP and recovery integration
 
 Latest local code7a77667 adds read-only live-scope resolution, locked
 principal/SELF/roster/task-window rechecks before config decrypt, and explicit
