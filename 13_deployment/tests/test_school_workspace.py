@@ -5,7 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 spec = importlib.util.spec_from_file_location("school_workspace", Path(__file__).parents[1] / "create_school_workspace.py")
@@ -31,8 +31,22 @@ class WorkspaceBoundaryTests(unittest.TestCase):
     def test_occupied_port_is_not_adopted(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            with patch.object(module.socket, "create_connection"), self.assertRaises(module.WorkspaceError):
+            probe = MagicMock()
+            probe.__enter__.return_value = probe
+            probe.bind.side_effect = OSError("synthetic occupied port")
+            exclusive = getattr(module.socket, "SO_EXCLUSIVEADDRUSE", 0x100)
+            with (
+                patch.object(
+                    module.socket, "SO_EXCLUSIVEADDRUSE", exclusive, create=True
+                ),
+                patch.object(module.socket, "socket", return_value=probe),
+                self.assertRaises(module.WorkspaceError),
+            ):
                 module.validate_target(root / "new", root / "repo", 3308)
+            probe.setsockopt.assert_called_once_with(
+                module.socket.SOL_SOCKET, exclusive, 1
+            )
+            probe.bind.assert_called_once_with(("127.0.0.1", 3308))
 
     def test_sql_is_only_for_generated_identity_and_new_schema(self):
         sql = module.setup_sql(secrets.token_hex(32), secrets.token_hex(32))
