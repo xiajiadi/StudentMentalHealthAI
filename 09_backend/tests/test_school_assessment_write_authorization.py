@@ -234,6 +234,76 @@ async def test_cached_school_response_replay_rechecks_current_authorization(
 
 
 @pytest.mark.asyncio
+async def test_successful_school_completion_replay_does_not_enqueue_twice(app, client):
+    actor = _actor()
+    assessment_id = "ASSESS_synthetic_task"
+    completion = _record("completed")
+    completion.assessment.update(
+        {
+            "schema_version": "assessment.v1",
+            "assessment_id": assessment_id,
+            "subject_id": "SUBJECT_synthetic",
+            "population_scope": "SYNTHETIC_STUDENT_DEMO",
+            "dimensions": {},
+            "risk": {
+                "level": "normal",
+                "need_human_review": False,
+                "reason_codes": [],
+                "ruleset_id": "synthetic-test",
+            },
+            "response_summary": {"items_answered": 0, "duration_seconds": None},
+            "provenance": {
+                "source_adapter": "synthetic",
+                "adapter_version": "test",
+                "cat_engine_version": "synthetic-cat",
+                "item_bank_version": "synthetic-bank-v1",
+            },
+        }
+    )
+    completion.assessment["timestamps"]["completed_at"] = "2026-10-14T00:00:00Z"
+
+    class Assessments:
+        def __init__(self):
+            self.authorized_reads = []
+            self.completion_calls = 0
+            self.job_enqueues = []
+
+        async def get_for_actor(self, _actor, requested_id, *, action, **_kwargs):
+            self.authorized_reads.append((requested_id, action))
+            return deepcopy(completion)
+
+        async def complete(self, _actor, requested_id, **_kwargs):
+            assert requested_id == assessment_id
+            self.completion_calls += 1
+            self.job_enqueues.append(requested_id)
+            return deepcopy(completion)
+
+    assessments = Assessments()
+    app.state.container.assessments = assessments
+
+    async def current_school_actor():
+        return actor
+
+    app.dependency_overrides[csrf_protected] = current_school_actor
+    headers = {"Idempotency-Key": "school-complete-replay"}
+    try:
+        first = await client.post(
+            f"/api/v1/assessments/{assessment_id}/complete", json={}, headers=headers
+        )
+        replay = await client.post(
+            f"/api/v1/assessments/{assessment_id}/complete", json={}, headers=headers
+        )
+    finally:
+        app.dependency_overrides.pop(csrf_protected, None)
+
+    assert first.status_code == replay.status_code == 200
+    assert replay.json() == first.json()
+    assert assessments.completion_calls == 1
+    assert assessments.job_enqueues == [assessment_id]
+    assert assessments.authorized_reads == [(assessment_id, "assessment:complete")]
+
+
+@pytest.mark.asyncio
 async def test_cached_school_generic_create_is_denied_before_idempotency_replay(app, client):
     actor = _actor()
     payload = {

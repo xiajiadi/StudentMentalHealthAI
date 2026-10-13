@@ -45,6 +45,9 @@ class _Query:
 class _Session:
     def __init__(self, rows):
         self.rows = rows
+        self.pending = []
+        self.committed = []
+        self.rollback_count = 0
 
     async def scalar(self, query):
         return self.rows.get(query.model)
@@ -58,6 +61,12 @@ class _UnitOfWork:
         return self
 
     async def __aexit__(self, *_args):
+        exc_type = _args[0] if _args else None
+        if exc_type is None:
+            self.session.committed.extend(self.session.pending)
+        else:
+            self.session.pending.clear()
+            self.session.rollback_count += 1
         return False
 
 
@@ -223,18 +232,23 @@ def _binding_rows(*, session_status="IN_PROGRESS", activation_status="REVOKED"):
     }, task_binding, session_binding, session_status
 
 
-def _writer_fixture(*, mode="FIXTURE"):
+def _writer_fixture(
+    *, mode="FIXTURE", db_status="IN_PROGRESS", next_status="in_progress",
+    fail_enqueue=False, missing_job_repository=False,
+):
     task = _task(mode=mode)
     db_record = SimpleNamespace(
         id=80,
         assessment_ref="ASSESS_synthetic_task",
         subject_id=100,
         task_enrollment_id=90,
-        status="IN_PROGRESS",
+        status=db_status,
         cat_binding_mode=mode,
     )
-    enrollment = SimpleNamespace(id=90, school_id=7, subject_id=100)
-    subject = SimpleNamespace(subject_ref="SUBJECT_synthetic")
+    enrollment = SimpleNamespace(
+        id=90, school_id=7, subject_id=100, class_id=44, class_student_id=110
+    )
+    subject = SimpleNamespace(id=100, school_id=7, subject_ref="SUBJECT_synthetic")
     rows = {_AssessmentSession: db_record, _TaskBinding: None, _SessionBinding: None}
     saved_binding = saved_bank_document = saved_config_document = None
     if mode == "SAVED_VERSION":
@@ -273,8 +287,22 @@ def _writer_fixture(*, mode="FIXTURE"):
 
     saves = []
 
-    async def save(*_args, **_kwargs):
+    async def save(_uow, _record, *, db_record=None, **_kwargs):
         saves.append("saved")
+        uow.session.pending.append("assessment")
+        if db_record is not None:
+            db_record.status = str(next_status).upper()
+
+    jobs = []
+
+    class _Jobs:
+        async def enqueue(self, **kwargs):
+            jobs.append(kwargs)
+            uow.session.pending.append("outbox")
+            if fail_enqueue:
+                raise RuntimeError("synthetic enqueue failure")
+
+    uow.post_assessment_jobs = None if missing_job_repository else _Jobs()
 
     adapter._school_actor_role = actor_role
     adapter._lock_school_assessment_write_scope = lock_scope
@@ -287,7 +315,7 @@ def _writer_fixture(*, mode="FIXTURE"):
                 "instrument_id": task.instrument_id,
                 "version": task.instrument_version,
             },
-            "status": "in_progress",
+            "status": next_status,
         },
         task_enrollment_id=90,
         cat_binding_mode=mode,
@@ -297,7 +325,7 @@ def _writer_fixture(*, mode="FIXTURE"):
         saved_bank_document=saved_bank_document,
         saved_config_document=saved_config_document,
     )
-    return adapter, record, task, db_record, saves
+    return adapter, record, task, db_record, saves, jobs, uow
 
 
 @pytest.mark.asyncio
@@ -374,8 +402,86 @@ async def test_fixture_task_projection_rejects_pinned_version_columns(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("previous_status", ["CREATED", "IN_PROGRESS"])
+async def test_task_completion_enqueues_content_free_job_in_same_uow(previous_status):
+    adapter, record, _task, db_record, saves, jobs, uow = _writer_fixture(
+        db_status=previous_status,
+        next_status="completed",
+    )
+    record.responses = {"ITEM_synthetic_private": "A"}
+
+    await adapter.school_save_assessment_for_actor(
+        _actor(BackendRole.STUDENT), record, at=None, trace_id="TRACE_complete_enqueue"
+    )
+
+    assert saves == ["saved"]
+    assert db_record.status == "COMPLETED"
+    assert len(jobs) == 1
+    assert jobs[0] == {
+        "school_id": 7,
+        "task_id": 30,
+        "class_id": 44,
+        "class_student_id": 110,
+        "task_enrollment_id": 90,
+        "subject_id": 100,
+        "assessment_session_id": 80,
+        "policy_version": "NO_PERSONALIZED_POLICY_V1",
+    }
+    assert "ITEM_synthetic_private" not in repr(jobs)
+    assert "source_snapshot_ref" not in jobs[0]
+    assert "source_qualification_status" not in jobs[0]
+    assert uow.session.committed == ["assessment", "outbox"]
+    assert uow.session.rollback_count == 0
+
+
+@pytest.mark.asyncio
+async def test_in_progress_and_standalone_saves_do_not_enqueue_jobs():
+    adapter, record, _task, _db_record, saves, jobs, uow = _writer_fixture()
+    await adapter.school_save_assessment_for_actor(
+        _actor(BackendRole.STUDENT), record, at=None, trace_id="TRACE_progress_no_enqueue"
+    )
+    assert saves == ["saved"]
+    assert jobs == []
+    assert uow.session.committed == ["assessment"]
+
+    adapter, standalone, _task, _db_record, saves, jobs, uow = _writer_fixture(
+        next_status="completed"
+    )
+    standalone.task_enrollment_id = None
+    with pytest.raises(BackendError) as caught:
+        await adapter.school_save_assessment_for_actor(
+            _actor(BackendRole.STUDENT), standalone, at=None, trace_id="TRACE_standalone_denied"
+        )
+    assert caught.value.code is ErrorCode.RESOURCE_NOT_FOUND
+    assert saves == []
+    assert jobs == []
+    assert uow.session.committed == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("missing_repository", [False, True])
+async def test_completion_enqueue_failure_aborts_assessment_transaction(missing_repository):
+    adapter, record, _task, _db_record, saves, jobs, uow = _writer_fixture(
+        next_status="completed",
+        fail_enqueue=not missing_repository,
+        missing_job_repository=missing_repository,
+    )
+
+    with pytest.raises(RuntimeError):
+        await adapter.school_save_assessment_for_actor(
+            _actor(BackendRole.STUDENT), record, at=None, trace_id="TRACE_enqueue_failure"
+        )
+
+    assert saves == ["saved"]
+    assert (len(jobs) == 0) if missing_repository else (len(jobs) == 1)
+    assert uow.session.pending == []
+    assert uow.session.committed == []
+    assert uow.session.rollback_count == 1
+
+
+@pytest.mark.asyncio
 async def test_fixture_write_keeps_cat_runtime_versions_without_binding_them_to_task_columns():
-    adapter, record, _task_row, _db_record, saves = _writer_fixture()
+    adapter, record, _task_row, _db_record, saves, _jobs, _uow = _writer_fixture()
     session = CatStart(
         assessment_id=record.assessment_id,
         subject_id=record.subject_id,
@@ -409,7 +515,7 @@ async def test_fixture_write_keeps_cat_runtime_versions_without_binding_them_to_
 @pytest.mark.asyncio
 @pytest.mark.parametrize("error_code", [ErrorCode.FORBIDDEN, ErrorCode.RESOURCE_NOT_FOUND])
 async def test_write_scope_lock_failure_is_propagated_without_saving(error_code):
-    adapter, record, _task_row, _db_record, saves = _writer_fixture()
+    adapter, record, _task_row, _db_record, saves, jobs, _uow = _writer_fixture()
     lock_calls = []
 
     async def reject_scope(*_args, **_kwargs):
@@ -429,6 +535,7 @@ async def test_write_scope_lock_failure_is_propagated_without_saving(error_code)
     assert caught.value.code is error_code
     assert lock_calls == ["called"]
     assert saves == []
+    assert jobs == []
 
 
 @pytest.mark.asyncio
@@ -440,7 +547,7 @@ async def test_write_scope_lock_failure_is_propagated_without_saving(error_code)
     ],
 )
 async def test_fixture_task_rejects_pinned_database_version_columns(field_name, unexpected_version):
-    adapter, record, task, _db_record, saves = _writer_fixture()
+    adapter, record, task, _db_record, saves, jobs, _uow = _writer_fixture()
     setattr(task, field_name, unexpected_version)
 
     with pytest.raises(BackendError) as caught:
@@ -453,11 +560,14 @@ async def test_fixture_task_rejects_pinned_database_version_columns(field_name, 
 
     assert caught.value.code is ErrorCode.WORKFLOW_CONFLICT
     assert saves == []
+    assert jobs == []
 
 
 @pytest.mark.asyncio
 async def test_saved_version_write_requires_exact_pinned_item_and_config_versions():
-    adapter, record, _task_row, _db_record, saves = _writer_fixture(mode="SAVED_VERSION")
+    adapter, record, _task_row, _db_record, saves, _jobs, _uow = _writer_fixture(
+        mode="SAVED_VERSION"
+    )
     await adapter.school_save_assessment_for_actor(
         _actor(BackendRole.STUDENT),
         record,
@@ -470,7 +580,7 @@ async def test_saved_version_write_requires_exact_pinned_item_and_config_version
         ("cat_item_bank_version", "other-bank"),
         ("cat_config_version", "other-config"),
     ):
-        adapter, mismatched, _task_row, _db_record, rejected_saves = _writer_fixture(
+        adapter, mismatched, _task_row, _db_record, rejected_saves, _jobs, _uow = _writer_fixture(
             mode="SAVED_VERSION"
         )
         setattr(mismatched, field_name, wrong_version)
@@ -496,7 +606,9 @@ async def test_saved_version_write_requires_exact_pinned_item_and_config_version
 async def test_saved_version_write_rejects_changed_documents_mode_and_unknown_mode(
     field_name, changed_value
 ):
-    adapter, record, _task_row, _db_record, saves = _writer_fixture(mode="SAVED_VERSION")
+    adapter, record, _task_row, _db_record, saves, _jobs, _uow = _writer_fixture(
+        mode="SAVED_VERSION"
+    )
     setattr(record, field_name, changed_value)
     with pytest.raises(BackendError) as caught:
         await adapter.school_save_assessment_for_actor(
@@ -508,7 +620,9 @@ async def test_saved_version_write_rejects_changed_documents_mode_and_unknown_mo
     assert caught.value.code is ErrorCode.WORKFLOW_CONFLICT
     assert saves == []
 
-    adapter, changed_mode, _task_row, db_record, mode_saves = _writer_fixture(mode="SAVED_VERSION")
+    adapter, changed_mode, _task_row, db_record, mode_saves, _jobs, _uow = _writer_fixture(
+        mode="SAVED_VERSION"
+    )
     db_record.cat_binding_mode = "FIXTURE"
     with pytest.raises(BackendError) as caught:
         await adapter.school_save_assessment_for_actor(
@@ -520,7 +634,9 @@ async def test_saved_version_write_rejects_changed_documents_mode_and_unknown_mo
     assert caught.value.code is ErrorCode.WORKFLOW_CONFLICT
     assert mode_saves == []
 
-    adapter, unknown_mode, _task_row, _db_record, unknown_saves = _writer_fixture(mode="UNKNOWN")
+    adapter, unknown_mode, _task_row, _db_record, unknown_saves, _jobs, _uow = _writer_fixture(
+        mode="UNKNOWN"
+    )
     with pytest.raises(BackendError) as caught:
         await adapter.school_save_assessment_for_actor(
             _actor(BackendRole.STUDENT),

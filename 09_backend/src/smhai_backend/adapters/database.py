@@ -41,9 +41,10 @@ from smhai_backend.domains.models import (
 )
 
 REQUIRED_DATABASE_REVISION = "20261011_0005"
-REQUIRED_SCHOOL_TENANT_DATABASE_REVISION = "20261013_0010"
+REQUIRED_SCHOOL_TENANT_DATABASE_REVISION = "20261014_0011"
 _SCHOOL_CAT_BANK_DOCUMENT_SCHEMA = "school_cat_bank_document.v1"
 _SCHOOL_CAT_CONFIG_DOCUMENT_SCHEMA = "school_cat_config_document.v1"
+_SCHOOL_POST_ASSESSMENT_POLICY_VERSION = "NO_PERSONALIZED_POLICY_V1"
 _LEGACY_CSRF_SECRET = b"smhai-round1-synthetic-csrf-secret"
 
 
@@ -2490,12 +2491,29 @@ class MySqlBackendAdapter:
             next_status = self._status_upper(str(record.assessment.get("status", "created")))
             if next_status not in {"IN_PROGRESS", "COMPLETED"}:
                 raise error(ErrorCode.WORKFLOW_CONFLICT, detail="assessment status is not writable")
+            previous_status = db_record.status
             await self._save_assessment_in_uow(
                 uow,
                 record,
                 db_record=db_record,
                 trace_id=trace_id,
             )
+            if (
+                previous_status in {"CREATED", "IN_PROGRESS"}
+                and next_status == "COMPLETED"
+            ):
+                if uow.post_assessment_jobs is None:
+                    raise RuntimeError("post-assessment job repository is unavailable")
+                await uow.post_assessment_jobs.enqueue(
+                    school_id=enrollment.school_id,
+                    task_id=task.id,
+                    class_id=enrollment.class_id,
+                    class_student_id=enrollment.class_student_id,
+                    task_enrollment_id=enrollment.id,
+                    subject_id=enrollment.subject_id,
+                    assessment_session_id=db_record.id,
+                    policy_version=_SCHOOL_POST_ASSESSMENT_POLICY_VERSION,
+                )
 
     async def get_assessment(
         self, assessment_id: str, *, actor: Any = None, at: datetime | None = None
