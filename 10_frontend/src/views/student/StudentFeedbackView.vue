@@ -245,9 +245,9 @@ onMounted(() => {
         <div class="feedback-row__copy">
           <strong>已完成的合成测评</strong>
           <span>{{ formatDate(assessment.completed_at) }}</span>
-          <small>当前没有获准发布的反馈。可在“我的记录”中查看这项测评的保存状态。</small>
+          <small>这项测评尚未提供可查看的测量报告。保存状态可在“我的记录”中查看。</small>
         </div>
-        <AppBadge tone="neutral" dot>暂无反馈</AppBadge>
+        <AppBadge tone="neutral" dot>暂无测量报告</AppBadge>
       </AppCard>
     </section>
 

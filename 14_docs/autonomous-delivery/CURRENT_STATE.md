@@ -1,6 +1,69 @@
 # Current autonomous delivery state
 
-Updated: 2026-10-13, Beijing, explicit user Continue. Execution stopped for user-authorized shutdown; ENGINEERING_DEMO_READY is not yet achieved.
+Updated: 2026-10-13, Beijing, explicit user Continue. Goal ACTIVE after explicit user Continue at09:08 Beijing; current environment has no RTX3060. ENGINEERING_DEMO_READY is not yet achieved.
+
+## 2026-10-13 CPU resume and0010 recovery
+
+The07:30 shutdown was completed and is historical. User explicitly resumed at09:08
+Beijing without RTX3060. Original3308 was started from existing initialized data;
+no reset/reseed/revision change. Runner stopped=false, no active owner leases at
+resume. Old shutdown heartbeat remains PAUSED; never reuse its expired deadline.
+No new shutdown time has been supplied. Keep7B model routing and frozen GPU proof;
+RAG/Runtime/Safety/Ollama are not running and no AI/GPU-readiness claim is made.
+
+Root completed fresh original0010 feedback HTTP16 checks, then sealed a42-table
+backup20261013-011530-50e88c33d5714eaea9c4d3a4102edcc9.private.dpapi. Root restored
+that backup into previously nonexistent external targetF3314, workspace ID
+aba1aa70819ebdacf010dd261453aeb0. Native import41 business tables/3851 rows,
+8 imported sessions revoked,230 encrypted fields verified. Source/old targets
+preserved. Evidence original/feedback-restore-614987b580e947889b7c2947332cfdec.json.
+
+TargetF fresh evidence (all paths external target unless marked source):
+- Imported published plaintext matches the restored encrypted content in memory;
+  REVOKED detail404/list-hidden, role denials403, fresh login/logout:6 checks at
+  feedback-import-read-c5fd4dac286143198a138632e5a78776.json.
+- Explicit publish/read/revoke browser12 stages at browser-qa/
+  20261013T012210Z-8f14be96ae5d491d9e3f607914a72c5d/school-feedback-browser.json.
+  Root inspected masked desktop/mobile screenshots. First attempt failed at case
+  selection and remains20261013T012010Z-ca88deba75dd4e7284b1dbe972f1b966. Added
+  metadata-only selection diagnostics; subsequent run passes. The initial failure
+  cause is not conclusively isolated; the external helper lacks per-request selection
+  waits and should be hardened before repeated acceptance runs. No product fix or
+  suppressed result is claimed for that intermittent helper failure.
+- Fresh persisted authorization11 checks at browser-qa/
+  20261013T012438Z-05809c7af0c741bf8494490f8fb467fd/school-feedback-revocation-qa.json:
+  actual admin API assignment revoke denies history and prior create/publish keys.
+  One existing synthetic SELF grant was temporarily revoked in F only; list/detail
+  denied, exact original status/revoked_at restored and read back. Root supplied
+  second-precision timestamp and persisted opaque grant recovery metadata before
+  mutation. No source grant was changed; the F assignment remains revoked.
+- Four-role real browser routes/login/denials/logout4/4 at browser-qa/
+  20261013T012852Z-4c9ccef56b6543a68b53706f93338283/school-restore-browser-qa.json.
+- Normal verified F-only SQL SHUTDOWN and actual STARTED resume preserve41 business
+  tables/3940 current rows exactly; new guardian/source untouched:restart-checkpoint.json.
+  Post-restart existing feedback/API denials again pass6 checks:
+  feedback-import-read-896675e5856647c2bc350e75ed9b78b1.json.
+
+Root corrected completion-row text to distinguish missing measurement reports
+from independently published feedback. Humanizer-zh applied to changed text;
+36 focused frontend tests, scoped ESLint and vue-tsc pass. Read-only native browser
+7 stages,2 visible published rows/0 feedback writes, Root-inspected mobile screenshot:
+20261013T014526Z-572e733a2bd04da598e461639e3a902f/school-feedback-report-wording.json.
+No Vale PASS claimed. Independent Luna/high source audit found no clear blocker,
+but correctly separated mocked call-order tests from the native grant evidence.
+
+Current owned apps: original Backend8088 exec36871, Frontend4178 exec28296;
+F Backend8089 exec35622, Frontend4179 exec96609. CAT8180/8181 is currently OFF.
+Current guardians in workspace.json:original16992/F27312 are hints only; verify
+creation/executable/datadir/listener before lifecycle actions. A/B/C/D/E remain
+stopped and preserved. Baseline untracked user paths remain intact and unstaged.
+
+Next active increment: direct Luna/high Worker cpu_delivery_gap_audit owns
+school_app_lifecycle.py, its focused test, and SCHOOL_WORKSPACE.md. Backend/Frontend
+plan/start/status/stop only, prepared0010 workspace, exact owned process identity,
+no DB lifecycle/model fallback. Root owns integration and native proof. This is
+not a full installer or whole-stack readiness. Subsequent work remains approved
+university corpus/grounded independent AI, wider business/installation acceptance.
 
 ## Shutdown handoff: 2026-10-13 07:15 Beijing
 

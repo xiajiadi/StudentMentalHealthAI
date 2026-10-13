@@ -14,11 +14,25 @@ Validate version, project, synthetic scope, supported schema revision, source id
 
 Only a previously nonexistent external workspace/datadir and a free loopback port may become a restore target. Reject source/target overlap, existing content, reparse points and foreign process ownership. Never DROP, reset, truncate or overwrite an existing schema. Failure preserves the new target and a non-sensitive phase marker for inspection.
 
-Use trusted repository migrations to build the snapshot's explicitly supported revision (0005 through0009). Match its exact table/column manifest before importing; upgrade to the current runtime revision only after old-layout import succeeds. MySQL DDL is not transactional, so a failed migration cannot be described as rolled back. Keep foreign-key checks enabled and use the reviewed parent-first dependency order, including composite constraints. Import data transactionally and verify stored values and references before publishing readiness.
+Use trusted repository migrations to build the snapshot's explicitly supported revision (0005 through0010). Match its exact table/column manifest before importing; upgrade to the current runtime revision only after old-layout import succeeds. MySQL DDL is not transactional, so a failed migration cannot be described as rolled back. Keep foreign-key checks enabled and use the reviewed parent-first dependency order, including composite constraints. Import data transactionally and verify stored values and references before publishing readiness.
 
 Restore the original sealed application-key container exclusively to the new private target. Generate new target database/runtime identities and CSRF configuration; never reuse source administrative credentials. Revoke all imported authentication sessions in the target and require fresh login. This is a deliberate recovery transformation; record it in the recovery summary without changing the source snapshot.
 
 ## Evidence and current limits
+
+### Current0010 feedback recovery evidence
+
+After explicit CPU-only resume, Root restored original0010 sealed backup into new
+F3314:41 business tables/3851 exact stored-value rows,8 revoked imported sessions,
+230 readable encrypted fields. Actual published feedback read matches ciphertext;
+revoked feedback remains hidden and role denials hold. Fresh assignment/SELF
+revocation checks and12-stage publish/read/revoke browser evidence pass. F was
+then gracefully stopped and resumed, preserving41 tables/3940 current rows exactly;
+post-restart feedback read/denial checks pass. CURRENT_STATE.md indexes artifacts.
+This proves bounded CurrentUser0010 feedback recovery and authorization. It does
+not establish portable install, OS reboot, complete role matrix or grounded AI.
+One initial external browser selection failure is retained with unresolved exact
+cause; subsequent metadata-instrumented run passes without a product change.
 
 ### Current0009 recovery evidence
 
