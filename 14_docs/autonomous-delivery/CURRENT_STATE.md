@@ -1,5 +1,33 @@
 ## ACTIVE — 2026-10-14, private research HTTP and recovery integration
 
+Latest local code7a77667 adds read-only live-scope resolution, locked
+principal/SELF/roster/task-window rechecks before config decrypt, and explicit
+MAC-verified snapshot persistence/restore codec. Root78client,25scope and52
+repository tests passed; actual task/session SQL compiles against current ORM
+for MySQL. Two-phase Backend adapter is being implemented; no HTTP call may
+hold a DB transaction. Normal school processes have not yet been restarted onto
+these changes: direct helpers load current source, not the existing API process.
+
+Native MySQL scope contention PASS, two independent connections and actual
+roster-revoke repository bulk UPDATE; temporary roster/enrollment revocations
+rolled back and existing row hashes unchanged. Retained one2099-open scope-only
+task/enrollment in the existing professional-QA fixture class, no binding/session.
+Evidence D:\Dev\temp\psynova-research-scope-lock-k-20261014-r2.json,
+SHA9aaea341b5263d1935650f51c5b0f950dbb382d18e8668b28e8b2622f7095938.
+This covers the prior scope locking conflict, not global deadlock or actor API.
+
+Actual retainedDPAPI keyring+persisted-codec HTTP flow PASS separately:
+D:\Dev\temp\psynova-research-http-persisted-k-native-20261014T070208+0800.json,
+SHAbfd9f91c1158d75f72d88b8d8601ba97eab458beab4531f086fe8b8d09d8a07c.
+Two provider/client objects, observed4+restore+4, wrongscope/version/tamper
+denied beforeHTTP; only derivedkeys sentchildstdin, noDBwrites/masterkeytransfer.
+Mapping remains in memory: this is not ciphertext persistence, process/poweroff
+recovery or school-account acceptance. Earlier failed import-environment and
+CSVhash-constant preflights retained; final artifact never overwrites priorruns.
+RTX3060 currently detected,12288MiB/0MiB used; no fresh7B run in this slice.
+
+## Earlier private-bridge checkpoint
+
 Committed4a6f86c private CAT bridge andeca1484 strict Backend client plus scoped
 research key primitives. Root104 CATresearch tests,56 Backendclient tests,
 20key tests; independent64 CATbridge/session tests and client/key code review.
@@ -24,7 +52,7 @@ Cross-path deadlock risk found: research enrollment→roster opposed normal
 revoke roster→enrollment. Updated research scope to nonlocking candidate→
 lockedroster→freshlocked enrollment with identity-map refresh; ordinary start
 SQLfilters onlyFIXTURE/SAVED_VERSION before locking. Root33repository and45
-Backend targeted tests passed; native MySQL scope contention proof in progress.
+Backend targeted tests passed; native MySQL scope contention proof now recorded above.
 School research routes/auth/CSRF/idempotency/persisted HTTP resume, installed
 keyring wiring, online800 and realRAG/AI review remain unfinished. GoalACTIVE,
 no shutdown deadline. PrimaryK below is retained; no production approval.
