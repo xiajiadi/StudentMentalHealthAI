@@ -22,9 +22,10 @@ from school_schema import (
     CAT_TASK_BINDING_REVISION,
     CURRENT_SCHOOL_REVISION,
     DIRECTORY_SCHOOL_REVISION,
-    PROFESSIONAL_REVIEW_REVISION,
-    SCHOOL_FEEDBACK_PUBLICATION_REVISION,
     POST_ASSESSMENT_JOB_OUTBOX_REVISION,
+    PROFESSIONAL_REVIEW_REVISION,
+    RESEARCH_CAT_SESSIONS_REVISION,
+    SCHOOL_FEEDBACK_PUBLICATION_REVISION,
     SCHOOL_REVISION_CHAIN,
     SUPPORTED_SNAPSHOT_REVISIONS,
 )
@@ -56,7 +57,7 @@ def test_current_snapshot_requires_its_exact_table_layout_and_revision():
     package["tables"][restore_plan.REVISION_TABLE]["rows"] = [[CURRENT_SCHOOL_REVISION]]
     plan = restore_plan.plan_restore(package, restored_at=RESTORED_AT)
     assert plan["revision"] == CURRENT_SCHOOL_REVISION
-    assert len(plan["table_order"]) == 42
+    assert len(plan["table_order"]) == 45
     package["revision"] = SUPPORTED_REVISION
     with pytest.raises(ValueError, match="manifest mismatch"):
         restore_plan.plan_restore(package, restored_at=RESTORED_AT)
@@ -149,7 +150,7 @@ def test_task_binding_manifest_preserves_exact_previous_columns_and_scope_chain(
 
 
 def test_feedback_publication_revision_adds_only_feedback_tables_and_preserves_0009():
-    assert SCHOOL_REVISION_CHAIN[-2] == SCHOOL_FEEDBACK_PUBLICATION_REVISION
+    assert SCHOOL_REVISION_CHAIN[-3] == SCHOOL_FEEDBACK_PUBLICATION_REVISION
     assert SCHOOL_FEEDBACK_PUBLICATION_REVISION in SUPPORTED_SNAPSHOT_REVISIONS
     previous = restore_plan.trusted_manifest(CAT_TASK_BINDING_REVISION)
     current = restore_plan.trusted_manifest(SCHOOL_FEEDBACK_PUBLICATION_REVISION)
@@ -211,8 +212,7 @@ def test_feedback_publication_revision_adds_only_feedback_tables_and_preserves_0
 
 
 def test_post_assessment_outbox_revision_adds_one_table_and_preserves_0010():
-    assert CURRENT_SCHOOL_REVISION == POST_ASSESSMENT_JOB_OUTBOX_REVISION
-    assert SCHOOL_REVISION_CHAIN[-1] == POST_ASSESSMENT_JOB_OUTBOX_REVISION
+    assert POST_ASSESSMENT_JOB_OUTBOX_REVISION in SCHOOL_REVISION_CHAIN
     assert POST_ASSESSMENT_JOB_OUTBOX_REVISION in SUPPORTED_SNAPSHOT_REVISIONS
     previous = restore_plan.trusted_manifest(SCHOOL_FEEDBACK_PUBLICATION_REVISION)
     current = restore_plan.trusted_manifest(POST_ASSESSMENT_JOB_OUTBOX_REVISION)
@@ -256,6 +256,38 @@ def test_post_assessment_outbox_revision_adds_one_table_and_preserves_0010():
     ]
     older_plan = restore_plan.plan_restore(package, restored_at=RESTORED_AT)
     assert "school_post_assessment_jobs" not in older_plan["tables"]
+
+
+def test_research_revision_adds_three_isolated_tables_and_preserves_0011_layout():
+    assert CURRENT_SCHOOL_REVISION == RESEARCH_CAT_SESSIONS_REVISION
+    assert SCHOOL_REVISION_CHAIN[-1] == RESEARCH_CAT_SESSIONS_REVISION
+    previous = restore_plan.trusted_manifest(POST_ASSESSMENT_JOB_OUTBOX_REVISION)
+    current = restore_plan.trusted_manifest(RESEARCH_CAT_SESSIONS_REVISION)
+    assert len(previous) == 43 and len(current) == 46
+    assert set(current) - set(previous) == restore_plan.RESEARCH_CAT_TABLES
+    assert all(current[name] == columns for name, columns in previous.items())
+
+    specs = restore_plan._load_trusted_tables(RESEARCH_CAT_SESSIONS_REVISION)
+    session = specs["school_research_sessions"]
+    assert any(
+        fk.remote_table == "task_enrollments"
+        and fk.local_columns == ("task_enrollment_id", "task_id", "school_id", "subject_id")
+        for fk in session.foreign_keys
+    )
+
+    package = empty_package()
+    package["revision"] = RESEARCH_CAT_SESSIONS_REVISION
+    package["tables"] = {
+        name: {"create_sql": "opaque archived DDL", "columns": columns, "rows": []}
+        for name, columns in current.items()
+    }
+    package["tables"][restore_plan.REVISION_TABLE]["rows"] = [
+        [RESEARCH_CAT_SESSIONS_REVISION]
+    ]
+    plan = restore_plan.plan_restore(package, restored_at=RESTORED_AT)
+    assert len(plan["table_order"]) == 45
+    assert plan["table_order"].index("school_research_profile_versions") < plan["table_order"].index("school_research_task_bindings")
+    assert plan["table_order"].index("school_research_task_bindings") < plan["table_order"].index("school_research_sessions")
 
 
 def empty_package():

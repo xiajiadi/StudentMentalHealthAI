@@ -41,7 +41,7 @@ from smhai_backend.domains.models import (
 )
 
 REQUIRED_DATABASE_REVISION = "20261011_0005"
-REQUIRED_SCHOOL_TENANT_DATABASE_REVISION = "20261014_0011"
+REQUIRED_SCHOOL_TENANT_DATABASE_REVISION = "20261014_0012"
 _SCHOOL_CAT_BANK_DOCUMENT_SCHEMA = "school_cat_bank_document.v1"
 _SCHOOL_CAT_CONFIG_DOCUMENT_SCHEMA = "school_cat_config_document.v1"
 _SCHOOL_POST_ASSESSMENT_POLICY_VERSION = "NO_PERSONALIZED_POLICY_V1"
@@ -1624,6 +1624,11 @@ class MySqlBackendAdapter:
             enrollment, task, _subject = await self._lock_school_assessment_write_scope(
                 uow, actor, account_id, enrollment, at=at
             )
+            if task.cat_binding_mode not in {"FIXTURE", "SAVED_VERSION"}:
+                raise error(
+                    ErrorCode.WORKFLOW_CONFLICT,
+                    detail="task requires a different CAT session workflow",
+                )
             existing_session = await uow.session.scalar(
                 self._select(m.AssessmentSession).where(
                     m.AssessmentSession.task_enrollment_id == enrollment.id,

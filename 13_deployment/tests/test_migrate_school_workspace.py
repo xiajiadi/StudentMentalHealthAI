@@ -304,7 +304,7 @@ def prepared(tmp_path, monkeypatch):
         database_root
         / "migrations"
         / "versions"
-        / f"{migration.CURRENT_SCHOOL_REVISION}_post_assessment_job_outbox.py"
+        / f"{migration.CURRENT_SCHOOL_REVISION}_research_cat_sessions.py"
     ).write_text("# synthetic revision marker\n", encoding="utf-8")
     mysql_bin.mkdir(parents=True)
     executable = mysql_bin / "mysqld.exe"
@@ -421,7 +421,7 @@ def test_empty_owned_schema_migrates_only_to_pinned_revision(prepared):
     _repo, workspace, _marker, db, ops, service, _settings, _reads = prepared
     result = service.upgrade(workspace, expected_port=PORT, workspace_id=WORKSPACE_ID)
     assert result["status"] == "MIGRATED"
-    assert result["revision"] == "20261014_0011"
+    assert result["revision"] == "20261014_0012"
     assert ops.migrations[0][2].startswith("mysql+aiomysql://psynova_builder:")
     assert ops.migrations[0][2].endswith(
         "@127.0.0.1:3315/smhai_school_demo?charset=utf8mb4"
@@ -1309,7 +1309,7 @@ def test_child_environment_and_argv_never_contain_builder_secret(prepared, monke
         + "@127.0.0.1:3315/smhai_school_demo?charset=utf8mb4",
     )
     assert result == 0
-    assert observed["argv"][-2:] == ["upgrade", "20261014_0011"]
+    assert observed["argv"][-2:] == ["upgrade", "20261014_0012"]
     assert BUILDER_PASSWORD not in " ".join(observed["argv"])
     assert observed["env"]["DATABASE_URL"].endswith(
         "@127.0.0.1:3315/smhai_school_demo?charset=utf8mb4"
@@ -1358,7 +1358,7 @@ def test_console_result_never_contains_secret_values(capsys, monkeypatch, prepar
         lambda _repo: SimpleNamespace(
             upgrade=lambda *_args, **_kwargs: {
                 "status": "MIGRATED",
-                "revision": "20261014_0011",
+                "revision": "20261014_0012",
             }
         ),
     )

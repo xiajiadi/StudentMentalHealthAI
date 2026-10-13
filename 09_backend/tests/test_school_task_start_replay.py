@@ -37,7 +37,11 @@ class _Query:
 
 
 class _Session:
+    def __init__(self):
+        self.scalar_models = []
+
     async def scalar(self, _query):
+        self.scalar_models.append(_query.model)
         if _query.model is _TaskEnrollment:
             return SimpleNamespace(id=51, task_id=61, subject_id=71)
         if _query.model is _AssessmentSession or _query.model is _SchoolCatSessionBinding:
@@ -133,7 +137,7 @@ class _SchoolOperations:
         )
 
 
-def _replay_adapter(*, failure=None, scope_failure=None):
+def _replay_adapter(*, failure=None, scope_failure=None, cat_binding_mode="FIXTURE"):
     operations = _SchoolOperations(failure=failure)
     uow = _UnitOfWork(operations)
     adapter = MySqlBackendAdapter.__new__(MySqlBackendAdapter)
@@ -176,7 +180,7 @@ def _replay_adapter(*, failure=None, scope_failure=None):
             raise scope_failure
         return (
             enrollment,
-            SimpleNamespace(task_ref="TASK_SYNTHETIC", cat_binding_mode="FIXTURE"),
+            SimpleNamespace(task_ref="TASK_SYNTHETIC", cat_binding_mode=cat_binding_mode),
             SimpleNamespace(subject_ref="SUBJECT_SYNTHETIC"),
         )
 
@@ -187,6 +191,25 @@ def _replay_adapter(*, failure=None, scope_failure=None):
 
     adapter._school_task_assessment_binding = fixture_binding
     return adapter, operations
+
+
+@pytest.mark.asyncio
+async def test_normal_task_start_rejects_research_mode_before_assessment_session_write():
+    adapter, operations = _replay_adapter(cat_binding_mode="RESEARCH_PROFILE")
+
+    with pytest.raises(BackendError) as caught:
+        await adapter.school_prepare_task_session(
+            SimpleNamespace(school_id=8),
+            "TASK_SYNTHETIC",
+            "ASSESS_UNUSED",
+            at=datetime(2026, 10, 11, 12, tzinfo=UTC),
+            trace_id="trace-synthetic",
+            idempotency=("key", "f" * 64, "scope"),
+        )
+
+    assert caught.value.code is ErrorCode.WORKFLOW_CONFLICT
+    assert operations.calls == []
+    assert adapter._uow().session.scalar_models == [_TaskEnrollment]
 
 
 @pytest.mark.asyncio

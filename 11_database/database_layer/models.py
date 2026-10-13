@@ -496,7 +496,7 @@ class MeasurementTask(ResourceIdentityMixin, TimestampMixin, Base):
         ),
         CheckConstraint("status IN ('PUBLISHED', 'CLOSED', 'CANCELLED')", name="status_allowed"),
         CheckConstraint(
-            "cat_binding_mode IN ('FIXTURE', 'SAVED_VERSION')",
+            "cat_binding_mode IN ('FIXTURE', 'SAVED_VERSION', 'RESEARCH_PROFILE')",
             name="cat_binding_mode_allowed",
         ),
         CheckConstraint("due_at IS NULL OR due_at >= opens_at", name="task_window_ordered"),
@@ -1612,6 +1612,328 @@ class SchoolCatSessionBinding(ResourceIdentityMixin, TimestampMixin, Base):
     plan_version_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
 
 
+class SchoolResearchProfileVersion(ResourceIdentityMixin, TimestampMixin, Base):
+    """Immutable encrypted public-source research profile version."""
+
+    __tablename__ = "school_research_profile_versions"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint(
+            "school_id", "profile_ref", "version_number",
+            name="school_research_profile_version_unique",
+        ),
+        UniqueConstraint(
+            "id", "school_id", "profile_ref", "version_number", "profile_sha256",
+            name="school_research_profile_exact_scope_unique",
+        ),
+        CheckConstraint("version_number >= 1", name="version_positive"),
+        CheckConstraint(
+            "rights_status IN ('PENDING', 'VERIFIED', 'REVOKED')",
+            name="rights_status_allowed",
+        ),
+        CheckConstraint(
+            "execution_status IN ('CANDIDATE_RESEARCH_ONLY', 'SIMULATION_ENABLED', 'DISABLED')",
+            name="execution_status_allowed",
+        ),
+        CheckConstraint(
+            "execution_status <> 'SIMULATION_ENABLED' OR rights_status = 'VERIFIED'",
+            name="sim_rights_verified",
+        ),
+        CheckConstraint(
+            "rights_status <> 'REVOKED' OR execution_status = 'DISABLED'",
+            name="revoked_disables",
+        ),
+        CheckConstraint("research_only = 1", name="research_only_locked"),
+        CheckConstraint("human_curated = 0", name="human_curated_false"),
+        CheckConstraint(
+            "psychological_interpretation_allowed = 0",
+            name="interpretation_forbidden",
+        ),
+        CheckConstraint(
+            "purpose = 'RESEARCH_SIMULATION'", name="purpose_research_only"
+        ),
+        CheckConstraint(
+            "publication_status = 'not_approved_for_publication_or_operational_use'",
+            name="publication_unapproved",
+        ),
+        ForeignKeyConstraint(
+            ["school_id"], ["schools.id"],
+            name="fk_school_research_profile_versions_school", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["created_by_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_school_research_profiles_creator_school", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["status_changed_by_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_school_research_profiles_status_actor_school", ondelete="RESTRICT",
+        ),
+        Index(
+            "ix_school_research_profiles_school_status",
+            "school_id", "execution_status", "rights_status",
+        ),
+    )
+
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    profile_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    instrument_id: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    dimension: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    source_population_scope: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    profile_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    manifest_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    fit_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    calibration_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    rights_status: Mapped[str] = mapped_column(String(16), nullable=False)
+    execution_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    purpose: Mapped[str] = mapped_column(
+        ascii_id(32), nullable=False, default="RESEARCH_SIMULATION",
+        server_default="RESEARCH_SIMULATION",
+    )
+    research_only: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="1"
+    )
+    human_curated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    psychological_interpretation_allowed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    publication_status: Mapped[str] = mapped_column(
+        ascii_id(64), nullable=False,
+        default="not_approved_for_publication_or_operational_use",
+        server_default="not_approved_for_publication_or_operational_use",
+    )
+    payload_ciphertext: Mapped[bytes] = mapped_column(mysql.MEDIUMBLOB, nullable=False)
+    cipher_format_version: Mapped[str] = mapped_column(ascii_id(32), nullable=False)
+    key_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    payload_schema_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    created_by_membership_role_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    status_changed_by_membership_role_id: Mapped[int | None] = mapped_column(
+        unsigned_id(), nullable=True
+    )
+    simulation_enabled_at: Mapped[datetime | None] = mapped_column(
+        utc_datetime(), nullable=True
+    )
+    rights_revoked_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    disabled_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+
+
+class SchoolResearchTaskBinding(ResourceIdentityMixin, TimestampMixin, Base):
+    """Immutable research profile/config binding for one measurement task."""
+
+    __tablename__ = "school_research_task_bindings"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("task_id", name="school_research_task_binding_task_unique"),
+        UniqueConstraint(
+            "id", "school_id", "task_id", "class_id", "profile_version_id",
+            "profile_ref", "profile_version_number", "profile_sha256", "response_origin",
+            name="school_research_binding_exact_scope_unique",
+        ),
+        CheckConstraint(
+            "response_origin IN ('PUBLIC_OBSERVED', 'MODEL_GENERATED')",
+            name="response_origin_allowed",
+        ),
+        CheckConstraint("status IN ('ACTIVE', 'REVOKED')", name="status_allowed"),
+        CheckConstraint(
+            "revoked_at IS NULL OR status = 'REVOKED'",
+            name="revocation_matches_status",
+        ),
+        CheckConstraint("research_only = 1", name="research_only_locked"),
+        CheckConstraint(
+            "purpose = 'RESEARCH_SIMULATION'", name="purpose_research_only"
+        ),
+        ForeignKeyConstraint(
+            ["school_id"], ["schools.id"],
+            name="fk_school_research_bindings_school", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["task_id", "school_id", "class_id"],
+            ["measurement_tasks.id", "measurement_tasks.school_id", "measurement_tasks.class_id"],
+            name="fk_school_research_bindings_task_scope", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            [
+                "profile_version_id", "school_id", "profile_ref",
+                "profile_version_number", "profile_sha256",
+            ],
+            [
+                "school_research_profile_versions.id",
+                "school_research_profile_versions.school_id",
+                "school_research_profile_versions.profile_ref",
+                "school_research_profile_versions.version_number",
+                "school_research_profile_versions.profile_sha256",
+            ],
+            name="fk_school_research_bindings_profile_exact", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["created_by_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_school_research_bindings_creator_school", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["revoked_by_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_school_research_bindings_revoker_school", ondelete="RESTRICT",
+        ),
+        Index("ix_school_research_bindings_school_task", "school_id", "task_id"),
+    )
+
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    task_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    class_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    profile_version_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    profile_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    profile_version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    profile_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    response_origin: Mapped[str] = mapped_column(ascii_id(32), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="ACTIVE", server_default="ACTIVE"
+    )
+    purpose: Mapped[str] = mapped_column(
+        ascii_id(32), nullable=False, default="RESEARCH_SIMULATION",
+        server_default="RESEARCH_SIMULATION",
+    )
+    research_only: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="1"
+    )
+    config_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    config_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    config_ciphertext: Mapped[bytes] = mapped_column(mysql.MEDIUMBLOB, nullable=False)
+    cipher_format_version: Mapped[str] = mapped_column(ascii_id(32), nullable=False)
+    key_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    payload_schema_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    created_by_membership_role_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    revoked_by_membership_role_id: Mapped[int | None] = mapped_column(
+        unsigned_id(), nullable=True
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+
+
+class SchoolResearchSession(ResourceIdentityMixin, TimestampMixin, Base):
+    """Encrypted CAT state for a research task; never an AssessmentSession."""
+
+    __tablename__ = "school_research_sessions"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("session_ref", name="school_research_session_ref_unique"),
+        UniqueConstraint("task_enrollment_id", name="school_research_session_enrollment_unique"),
+        UniqueConstraint(
+            "id", "school_id", "task_id", "class_id", "task_enrollment_id", "subject_id",
+            "task_binding_id", "profile_version_id", "profile_ref", "profile_version_number",
+            "profile_sha256", "response_origin",
+            name="school_research_session_exact_scope_unique",
+        ),
+        CheckConstraint(
+            "status IN ('IN_PROGRESS', 'COMPLETED', 'ABANDONED', 'FAILED')",
+            name="status_allowed",
+        ),
+        CheckConstraint("state_version >= 1", name="state_version_positive"),
+        CheckConstraint("items_answered >= 0", name="items_answered_nonnegative"),
+        CheckConstraint("research_only = 1", name="research_only_locked"),
+        CheckConstraint(
+            "purpose = 'RESEARCH_SIMULATION'", name="purpose_research_only"
+        ),
+        CheckConstraint(
+            "response_origin IN ('PUBLIC_OBSERVED', 'MODEL_GENERATED')",
+            name="response_origin_allowed",
+        ),
+        CheckConstraint(
+            "(status = 'IN_PROGRESS' AND completed_at IS NULL) OR "
+            "(status = 'COMPLETED' AND completed_at IS NOT NULL) OR "
+            "(status IN ('ABANDONED', 'FAILED') AND completed_at IS NULL)",
+            name="status_timestamps_match",
+        ),
+        ForeignKeyConstraint(
+            ["school_id"], ["schools.id"],
+            name="fk_school_research_sessions_school", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["task_id", "school_id", "class_id"],
+            ["measurement_tasks.id", "measurement_tasks.school_id", "measurement_tasks.class_id"],
+            name="fk_school_research_sessions_task_scope", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["task_enrollment_id", "task_id", "school_id", "subject_id"],
+            [
+                "task_enrollments.id", "task_enrollments.task_id",
+                "task_enrollments.school_id", "task_enrollments.subject_id",
+            ],
+            name="fk_school_research_sessions_enrollment_scope", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            [
+                "task_binding_id", "school_id", "task_id", "class_id",
+                "profile_version_id", "profile_ref", "profile_version_number",
+                "profile_sha256", "response_origin",
+            ],
+            [
+                "school_research_task_bindings.id", "school_research_task_bindings.school_id",
+                "school_research_task_bindings.task_id", "school_research_task_bindings.class_id",
+                "school_research_task_bindings.profile_version_id",
+                "school_research_task_bindings.profile_ref",
+                "school_research_task_bindings.profile_version_number",
+                "school_research_task_bindings.profile_sha256",
+                "school_research_task_bindings.response_origin",
+            ],
+            name="fk_school_research_sessions_binding_exact", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["subject_id", "school_id"], ["subjects.id", "subjects.school_id"],
+            name="fk_school_research_sessions_subject_scope", ondelete="RESTRICT",
+        ),
+        Index(
+            "ix_school_research_sessions_school_task_status",
+            "school_id", "task_id", "status",
+        ),
+        Index(
+            "ix_school_research_sessions_school_subject_status",
+            "school_id", "subject_id", "status",
+        ),
+    )
+
+    session_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    task_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    class_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    task_enrollment_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    subject_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    task_binding_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    profile_version_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    profile_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    profile_version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    profile_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    response_origin: Mapped[str] = mapped_column(ascii_id(32), nullable=False)
+    config_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    config_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    purpose: Mapped[str] = mapped_column(
+        ascii_id(32), nullable=False, default="RESEARCH_SIMULATION",
+        server_default="RESEARCH_SIMULATION",
+    )
+    research_only: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="1"
+    )
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="IN_PROGRESS", server_default="IN_PROGRESS"
+    )
+    state_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    items_answered: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    stop_reason: Mapped[str | None] = mapped_column(ascii_id(64), nullable=True)
+    snapshot_ciphertext: Mapped[bytes] = mapped_column(mysql.MEDIUMBLOB, nullable=False)
+    snapshot_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    cipher_format_version: Mapped[str] = mapped_column(ascii_id(32), nullable=False)
+    key_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    payload_schema_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(utc_datetime(), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    trace_id: Mapped[str | None] = mapped_column(ascii_id(128), nullable=True)
+    retention_due_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+
+
 class SchoolPostAssessmentJob(ResourceIdentityMixin, TimestampMixin, Base):
     """Content-free durable work envelope for post-assessment education support."""
 
@@ -1709,7 +2031,9 @@ class SchoolPostAssessmentJob(ResourceIdentityMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(
         String(24), nullable=False, default="QUEUED", server_default="QUEUED"
     )
-    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    attempt_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     next_attempt_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
     lease_owner: Mapped[str | None] = mapped_column(ascii_id(128), nullable=True)
     lease_expires_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)

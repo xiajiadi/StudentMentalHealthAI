@@ -20,9 +20,10 @@ from school_backup import (
 from school_schema import (
     CAT_ASSETS_REVISION,
     CAT_TASK_BINDING_REVISION,
-    PROFESSIONAL_REVIEW_REVISION,
-    SCHOOL_FEEDBACK_PUBLICATION_REVISION,
     POST_ASSESSMENT_JOB_OUTBOX_REVISION,
+    PROFESSIONAL_REVIEW_REVISION,
+    RESEARCH_CAT_SESSIONS_REVISION,
+    SCHOOL_FEEDBACK_PUBLICATION_REVISION,
 )
 
 REVISION_TABLE = "database_alembic_version"
@@ -75,6 +76,12 @@ CAT_TASK_BINDING_TABLES = frozenset({
 CAT_TASK_BINDING_MODE_TABLES = frozenset({"measurement_tasks", "assessment_sessions"})
 SCHOOL_FEEDBACK_TABLES = frozenset({"school_feedback_records", "school_feedback_events"})
 POST_ASSESSMENT_JOB_TABLES = frozenset({"school_post_assessment_jobs"})
+RESEARCH_PROFILE_TABLES = frozenset({"school_research_profile_versions"})
+RESEARCH_BINDING_TABLES = frozenset({"school_research_task_bindings"})
+RESEARCH_SESSION_TABLES = frozenset({"school_research_sessions"})
+RESEARCH_CAT_TABLES = (
+    RESEARCH_PROFILE_TABLES | RESEARCH_BINDING_TABLES | RESEARCH_SESSION_TABLES
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,7 +128,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
     expected_current = (
         EXPECTED_MODEL_TABLES | DIRECTORY_TABLES | PROFESSIONAL_REVIEW_TABLES
         | CAT_ASSET_TABLES | CAT_TASK_BINDING_TABLES | SCHOOL_FEEDBACK_TABLES
-        | POST_ASSESSMENT_JOB_TABLES
+        | POST_ASSESSMENT_JOB_TABLES | RESEARCH_CAT_TABLES
     )
     if revision not in SUPPORTED_BACKUP_REVISIONS:
         raise ValueError("Unsupported restore revision")
@@ -137,22 +144,29 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
         if (
             revision not in {
                 CAT_TASK_BINDING_REVISION, SCHOOL_FEEDBACK_PUBLICATION_REVISION,
-                POST_ASSESSMENT_JOB_OUTBOX_REVISION,
+                POST_ASSESSMENT_JOB_OUTBOX_REVISION, RESEARCH_CAT_SESSIONS_REVISION,
             }
             and table_name in CAT_TASK_BINDING_TABLES
         ):
             continue
         if (
-            revision not in {SCHOOL_FEEDBACK_PUBLICATION_REVISION, POST_ASSESSMENT_JOB_OUTBOX_REVISION}
+            revision not in {
+                SCHOOL_FEEDBACK_PUBLICATION_REVISION,
+                POST_ASSESSMENT_JOB_OUTBOX_REVISION,
+                RESEARCH_CAT_SESSIONS_REVISION,
+            }
             and table_name in SCHOOL_FEEDBACK_TABLES
         ):
             continue
-        if revision != POST_ASSESSMENT_JOB_OUTBOX_REVISION and table_name in POST_ASSESSMENT_JOB_TABLES:
+        if revision not in {POST_ASSESSMENT_JOB_OUTBOX_REVISION, RESEARCH_CAT_SESSIONS_REVISION} and table_name in POST_ASSESSMENT_JOB_TABLES:
+            continue
+        if revision != RESEARCH_CAT_SESSIONS_REVISION and table_name in RESEARCH_CAT_TABLES:
             continue
         if (
             revision not in {
                 CAT_ASSETS_REVISION, CAT_TASK_BINDING_REVISION,
                 SCHOOL_FEEDBACK_PUBLICATION_REVISION, POST_ASSESSMENT_JOB_OUTBOX_REVISION,
+                RESEARCH_CAT_SESSIONS_REVISION,
             }
             and table_name in CAT_ASSET_TABLES
         ):
@@ -161,6 +175,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
             revision not in {
                 PROFESSIONAL_REVIEW_REVISION, CAT_ASSETS_REVISION, CAT_TASK_BINDING_REVISION,
                 SCHOOL_FEEDBACK_PUBLICATION_REVISION, POST_ASSESSMENT_JOB_OUTBOX_REVISION,
+                RESEARCH_CAT_SESSIONS_REVISION,
             }
             and table_name in PROFESSIONAL_REVIEW_TABLES
         ):
@@ -172,7 +187,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
         if (
             revision not in {
                 CAT_TASK_BINDING_REVISION, SCHOOL_FEEDBACK_PUBLICATION_REVISION,
-                POST_ASSESSMENT_JOB_OUTBOX_REVISION,
+                POST_ASSESSMENT_JOB_OUTBOX_REVISION, RESEARCH_CAT_SESSIONS_REVISION,
             }
             and table_name in CAT_TASK_BINDING_MODE_TABLES
         ):

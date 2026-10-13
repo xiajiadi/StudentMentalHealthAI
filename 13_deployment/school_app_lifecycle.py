@@ -19,13 +19,15 @@ import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from uuid import UUID, uuid4
 
 from resume_school_workspace import _utc_timestamp
 from school_backend import DEFAULT_BACKEND_PORT, DEFAULT_FRONTEND_PORT, LLM_PROFILES
-from school_schema import CURRENT_SCHOOL_REVISION
+from school_schema import CURRENT_SCHOOL_REVISION, SUPPORTED_SNAPSHOT_REVISIONS
 
 SCHEMA = "psynova.school-app-lifecycle.v1"
 MANIFEST_NAME = "school-app-lifecycle.json"
+PREVIEW_ARTIFACTS_DIR = ".school-app-preview"
 SERVICES = ("backend", "frontend")
 SECRET_ENV_NAMES = {
     "DATABASE_URL",
@@ -153,6 +155,83 @@ def _reject_reparse_path(path: Path) -> None:
             raise LifecycleError("Workspace path could not be verified") from None
         if getattr(info, "st_file_attributes", 0) & 0x400:
             raise LifecycleError("Reparse points are not allowed in lifecycle paths")
+
+
+def _reject_existing_reparse_components(path: Path) -> None:
+    """Reject reparse points while allowing a removed preview artifact path."""
+    if not path.is_absolute() or ".." in path.parts:
+        raise LifecycleError("Absolute normalized paths are required")
+    cursor = Path(path.anchor)
+    for part in path.parts[1:]:
+        cursor /= part
+        try:
+            info = cursor.lstat()
+        except FileNotFoundError:
+            # Missing preview output must not prevent verifying or stopping its owner.
+            break
+        except OSError:
+            raise LifecycleError("Lifecycle path could not be verified") from None
+        if getattr(info, "st_file_attributes", 0) & FILE_ATTRIBUTE_REPARSE_POINT:
+            raise LifecycleError("Reparse points are not allowed in lifecycle paths")
+
+
+def _new_preview_output_dir(target: Path) -> Path:
+    root = target / PREVIEW_ARTIFACTS_DIR
+    try:
+        _reject_reparse_path(root)
+        root.mkdir(exist_ok=True)
+        _reject_reparse_path(root)
+        output = root / uuid4().hex
+        _reject_reparse_path(output)
+        output.mkdir()
+        _reject_reparse_path(output)
+        return output.resolve(strict=True)
+    except (OSError, LifecycleError):
+        raise LifecycleError(
+            "Workspace preview output directory is unavailable"
+        ) from None
+
+
+def _validated_preview_output_dir(value: object, target: Path) -> Path:
+    if not isinstance(value, str):
+        raise LifecycleError("Lifecycle preview output directory is invalid")
+    path = Path(value)
+    if not path.is_absolute() or ".." in path.parts:
+        raise LifecycleError("Lifecycle preview output directory is invalid")
+    root = target / PREVIEW_ARTIFACTS_DIR
+    token = path.name
+    try:
+        token_uuid = UUID(hex=token)
+        token_matches = (
+            len(token) == 32 and token_uuid.hex == token and token_uuid.version == 4
+        )
+        _reject_existing_reparse_components(root)
+        _reject_existing_reparse_components(path)
+        expected = root / token
+        exact = _path_key(path) == _path_key(expected)
+    except (OSError, ValueError):
+        token_matches = False
+        exact = False
+    if not token_matches or not exact:
+        raise LifecycleError(
+            "Lifecycle preview output directory is outside its workspace"
+        )
+    return expected
+
+
+def _verify_preview_output_dir(value: object, target: Path) -> Path:
+    output = _validated_preview_output_dir(value, target)
+    try:
+        _reject_reparse_path(output)
+        index_path = output / "index.html"
+        _reject_reparse_path(index_path)
+        if not output.is_dir() or not index_path.is_file():
+            raise LifecycleError("Workspace preview build output is unavailable")
+    except OSError:
+        raise LifecycleError(
+            "Workspace preview build output could not be verified"
+        ) from None
+    return output
 
 
 def _read_manifest(path: Path) -> dict[str, Any]:
@@ -319,7 +398,12 @@ if ($null -eq $p) { 'null'; exit 0 }
             ) from None
 
     def build_frontend(
-        self, repo: Path, backend_port: int, *, timeout: float = 360.0
+        self,
+        repo: Path,
+        backend_port: int,
+        preview_output_dir: Path,
+        *,
+        timeout: float = 360.0,
     ) -> None:
         node = shutil.which("node")
         vue_tsc = (
@@ -330,6 +414,12 @@ if ($null -eq $p) { 'null'; exit 0 }
             raise LifecycleError(
                 "Existing Node and frontend project dependencies are required"
             )
+        try:
+            _reject_reparse_path(preview_output_dir)
+            if not preview_output_dir.is_dir() or any(preview_output_dir.iterdir()):
+                raise LifecycleError("Workspace preview output directory is not empty")
+        except OSError:
+            raise LifecycleError("Workspace preview output directory is unavailable") from None
         env = _sanitize_environment()
         env.update(
             {
@@ -337,7 +427,11 @@ if ($null -eq $p) { 'null'; exit 0 }
                 "VITE_API_BASE_URL": f"http://127.0.0.1:{backend_port}",
             }
         )
-        for argv in ([node, str(vue_tsc), "--noEmit"], [node, str(vite), "build"]):
+        commands = (
+            [node, str(vue_tsc), "--noEmit"],
+            [node, str(vite), "build", "--outDir", str(preview_output_dir)],
+        )
+        for argv in commands:
             try:
                 subprocess.run(
                     _safe_argv(list(argv)),
@@ -354,6 +448,14 @@ if ($null -eq $p) { 'null'; exit 0 }
                 raise LifecycleError(
                     f"Frontend build failed ({type(exc).__name__})"
                 ) from None
+        try:
+            _reject_reparse_path(preview_output_dir)
+            index_path = preview_output_dir / "index.html"
+            _reject_reparse_path(index_path)
+            if not index_path.is_file():
+                raise LifecycleError("Frontend preview build did not create index.html")
+        except OSError:
+            raise LifecycleError("Workspace preview build output could not be verified") from None
 
     def http_ready(self, port: int, path: str) -> bool:
         try:
@@ -627,8 +729,15 @@ class SchoolAppLifecycle:
                 )
         if previous_manifest is not None:
             self._archive_stopped_manifest(target, manifest_path, previous_manifest)
+        preview_output_dir = (
+            _new_preview_output_dir(target) if frontend_mode == "preview" else None
+        )
         if frontend_mode == "preview":
-            self.ops.build_frontend(self.repo, backend_port)
+            assert preview_output_dir is not None
+            self.ops.build_frontend(self.repo, backend_port, preview_output_dir)
+            preview_output_dir = _verify_preview_output_dir(
+                str(preview_output_dir), target
+            )
 
         parent_identity = self.ops.inspect_process(os.getpid())
         if not parent_identity:
@@ -658,6 +767,8 @@ class SchoolAppLifecycle:
             },
             "whole_ready": False,
         }
+        if preview_output_dir is not None:
+            manifest["frontend_preview_dir"] = str(preview_output_dir)
         _atomic_write(manifest_path, manifest)
         try:
             backend_argv = self._backend_argv(
@@ -690,7 +801,11 @@ class SchoolAppLifecycle:
                 _atomic_write(manifest_path, manifest)
                 return _public_status(manifest)
 
-            frontend_argv = self._frontend_argv(frontend_mode, frontend_port)
+            if preview_output_dir is not None:
+                _verify_preview_output_dir(str(preview_output_dir), target)
+            frontend_argv = self._frontend_argv(
+                frontend_mode, frontend_port, preview_output_dir
+            )
             frontend = self.ops.spawn(
                 frontend_argv,
                 cwd=self.repo / "10_frontend",
@@ -818,6 +933,17 @@ class SchoolAppLifecycle:
             "status": manifest.get("state"),
             "workspace": str(target),
             "workspace_id": manifest.get("workspace_id"),
+            "manifest_revision": manifest.get("required_revision"),
+            "manifest_is_current_revision": (
+                manifest.get("required_revision") == CURRENT_SCHOOL_REVISION
+            ),
+            "frontend_artifact_scope": (
+                "DEV_SERVER"
+                if manifest.get("frontend_mode") != "preview"
+                else "TARGET_OWNED"
+                if isinstance(manifest.get("frontend_preview_dir"), str)
+                else "LEGACY_SHARED_DIST"
+            ),
             "services": listeners,
             "database": database_status,
             "external_modules": {
@@ -827,6 +953,7 @@ class SchoolAppLifecycle:
                 "safety": "UNVERIFIED",
             },
             "whole_ready": False,
+            "current_ready_proof": False,
             "manifest_validated": True,
         }
 
@@ -1161,13 +1288,28 @@ class SchoolAppLifecycle:
             ]
         )
 
-    def _frontend_argv(self, mode: str, port: int) -> list[str]:
+    def _frontend_argv(
+        self, mode: str, port: int, preview_output_dir: Path | None = None
+    ) -> list[str]:
         node = shutil.which("node")
         vite = self.repo / "10_frontend" / "node_modules" / "vite" / "bin" / "vite.js"
         if not node or not vite.is_file():
             raise LifecycleError("Existing Node and Vite installation are required")
         command = "preview" if mode == "preview" else "--host"
         if mode == "preview":
+            if preview_output_dir is None:
+                return _safe_argv(
+                    [
+                        node,
+                        str(vite),
+                        command,
+                        "--host",
+                        "127.0.0.1",
+                        "--port",
+                        str(port),
+                        "--strictPort",
+                    ]
+                )
             return _safe_argv(
                 [
                     node,
@@ -1178,8 +1320,12 @@ class SchoolAppLifecycle:
                     "--port",
                     str(port),
                     "--strictPort",
+                    "--outDir",
+                    str(preview_output_dir),
                 ]
             )
+        if preview_output_dir is not None:
+            raise LifecycleError("Dev frontend cannot use a preview output directory")
         return _safe_argv(
             [
                 node,
@@ -1325,7 +1471,7 @@ class SchoolAppLifecycle:
             or _path_key(repository_value) != _path_key(self.repo)
             or not isinstance(manifest.get("workspace_id"), str)
             or manifest.get("database") != "smhai_school_demo"
-            or manifest.get("required_revision") != CURRENT_SCHOOL_REVISION
+            or manifest.get("required_revision") not in SUPPORTED_SNAPSHOT_REVISIONS
             or manifest.get("state")
             not in {
                 "STARTING",
@@ -1425,28 +1571,21 @@ class SchoolAppLifecycle:
                 has_expected_vite = len(argv) > 1 and _path_key(argv[1]) == _path_key(
                     expected_vite
                 )
-                if expected_mode:
-                    expected_argv = [
-                        argv[0],
-                        expected_vite,
-                        "preview",
-                        "--host",
-                        "127.0.0.1",
-                        "--port",
-                        str(manifest["frontend_port"]),
-                        "--strictPort",
-                    ]
-                else:
-                    expected_argv = [
-                        argv[0],
-                        expected_vite,
-                        "--host",
-                        "127.0.0.1",
-                        "--port",
-                        str(manifest["frontend_port"]),
-                        "--strictPort",
-                    ]
-                expected_argv[0] = expected_node
+                preview_output_dir = None
+                has_preview_dir = "frontend_preview_dir" in manifest
+                if expected_mode and has_preview_dir:
+                    preview_output_dir = _validated_preview_output_dir(
+                        manifest.get("frontend_preview_dir"), target
+                    )
+                elif not expected_mode and has_preview_dir:
+                    raise LifecycleError(
+                        "Dev frontend manifest has an unexpected preview artifact"
+                    )
+                expected_argv = self._frontend_argv(
+                    manifest["frontend_mode"],
+                    manifest["frontend_port"],
+                    preview_output_dir,
+                )
                 expected_executable = expected_node
                 if service.get("base_executable") is not None:
                     raise LifecycleError(

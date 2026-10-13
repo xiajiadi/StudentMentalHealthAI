@@ -1,4 +1,59 @@
-## ACTIVE — 2026-10-13 23:25 Beijing, public empirical-data extension
+## ACTIVE — 2026-10-14 04:38 Beijing, public empirical-data extension
+
+Latest recovery / research milestone (supersedes older pending statements):
+NEW J workspace D:\Projects\.StudentMentalHealthAI-school-install-20261014-j,
+ID c7fe228041221f8ba4e5c34d626062f7, DB3318 / API8092 / UI4182.
+Restored the populated I0011 sealed backup (13244 rows /42 application tables),
+verified41 encrypted payloads with retained keys, then additive-migrated0012.
+Native strict schema/type/FK/check verification returns ALREADY_CURRENT with no
+additional DDL. Original G/H/I databases and failed preparation artifacts retained.
+Current startup/restore/model gates include three research tables; normal CAT
+rejects RESEARCH_PROFILE before creating an ordinary assessment session.
+Root fresh schema tests24 and Backend startup/start tests22 passed.
+
+J800/800 restored synthetic accounts reauthenticated, own tasks/history/context
+checked, sessions logged out. QA initially expected exactly8 total classes;
+restored I also contains4 known single-student native edge-test classes. Helper
+now verifies exactly8 cohort classes of100 plus those4 known fixture classes;
+none deleted or hidden. Browser admin/student PASS, actualAPI origin8092 asserted,
+802 directory members=800 imported+2 original seed members. Root inspected both
+screenshots in J/browser-qa/empirical800-20261013T203353Z. This does not prove800
+online research CAT completions, AI throughput or production readiness.
+
+NHANES complete observed800 offline research sessions completed7200 responses and
+800 signed midway restore checks, all9 items exposed800 times. Aggregate evidence
+D:\Dev\datasets\psynova-public-research\research-runs\nhanes-observed-session-coverage-20261013T194416Z\summary.json,
+SHA fa57769089cba99c397665736ac06b85c4a1ea248d019b8eb2d245b86772b9ff.
+Complete-case selection bias is explicit; original missing-data evaluation rows
+were retained. This full9-item baseline is not an approved shortened CAT.
+Runtime358.186s is CPU research math, not7B school capacity. Run predates the
+later original-profile-bytes preservation change; final-adapter800 rerun pending.
+
+Public PROMIS pediatric GenPop child self-report data now supplies1005 observed
+8-item records (958 complete/47 partial), including a separate800 complete-case
+engineering sample. Published rounded Irwin2010 parameters matched8/8 item codes.
+Primary-source GRM review supports no extra1.7 multiplier; approximate official
+lookup parity does not prove exact original scores. External v3 profile remains
+research-only, not professionally approved. See PROMIS_PEDIATRIC_RESEARCH_PROFILE.md.
+Five-category adapter implementation and independent repository review underway.
+
+Preview diagnosis: I and J legacy frontends shared RootRepo/dist; J build changed
+I's bundle API target. Do not treat old I frontend as currently functional.
+Reviewed source fix uses workspace-owned UUID build directories and permits safe
+status/stop of supported older manifest revisions without granting current-ready
+proof. Native owner-verified stop of I and J apps succeeded; both DBs retained.
+J restarted with target-owned .school-app-preview/67573ab96d934b8fb7e6e720859bcbd8;
+status reports TARGET_OWNED, DB VERIFIED, backend44168/frontend47664 owned/ready.
+I apps intentionally stopped; do not restart0011 using current0012 startup gate.
+Post-restart representative browser PASS against8092, evidence and inspected
+screenshots J/browser-qa/empirical800-20261013T204134Z. Root141 deployment tests
+and lifecycle Ruff pass. Whole-platform readiness remains false/unverified.
+Research adapter v3 now implemented with86 research tests passed; repository
+human_curated import and locking defects repaired with10 focused tests, both
+independent follow-up and native persistence checks remain pending.
+Goal ACTIVE; real-source RAG content remains human-review pending and unindexed.
+
+## Prior milestones — 2026-10-13 23:25 Beijing onward
 
 2026-10-14 00:48 Beijing update (supersedes pending statements below):
 H3316/8090/4180 owned apps RUNNING. Eight classes created through authorized API;

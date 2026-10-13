@@ -96,8 +96,9 @@ class FakeOperations:
     def http_ready(self, port, path):
         return self.ready.get(port, False)
 
-    def build_frontend(self, repo, backend_port, *, timeout=360.0):
-        self.builds.append((repo, backend_port))
+    def build_frontend(self, repo, backend_port, preview_output_dir, *, timeout=360.0):
+        self.builds.append((repo, backend_port, preview_output_dir))
+        (preview_output_dir / "index.html").write_text("synthetic", encoding="utf-8")
 
     def terminate_verified(self, service, process_identity):
         pid = process_identity["pid"]
@@ -181,6 +182,29 @@ def prepared(tmp_path, monkeypatch):
     return repo, workspace, ops, app
 
 
+def _rewrite_preview_manifest_as_legacy_0011(app, workspace, ops):
+    path = workspace / lifecycle.MANIFEST_NAME
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    manifest["required_revision"] = "20261014_0011"
+    manifest.pop("frontend_preview_dir", None)
+    service = next(item for item in manifest["services"] if item["name"] == "frontend")
+    argv = app._frontend_argv("preview", service["port"])
+    command_line = subprocess.list2cmdline(argv)
+    service["argv"] = argv
+    service["command_line"] = command_line
+    for process_identity in service["processes"]:
+        process_identity["argv"] = argv
+        process_identity["command_line"] = command_line
+    for record_key in ("listener", "listener_candidate"):
+        record = service.get(record_key)
+        if isinstance(record, dict):
+            record["argv"] = argv
+            record["command_line"] = command_line
+    ops.processes[service["pid"]]["CommandLine"] = command_line
+    lifecycle._atomic_write(path, manifest)
+    return manifest
+
+
 def test_atomic_write_preserves_file_won_by_exclusive_create_race(
     tmp_path, monkeypatch
 ):
@@ -231,7 +255,7 @@ def test_plan_is_read_only_and_keeps_cpu_gpu_profile_explicit(prepared):
     _repo, workspace, ops, app = prepared
     result = app.plan(workspace, llm_profile="school-gpu-7b", frontend_mode="preview")
     assert result["status"] == "PLAN_ONLY"
-    assert result["required_revision"] == "20261014_0011"
+    assert result["required_revision"] == "20261014_0012"
     assert result["llm_profile"] == "school-gpu-7b"
     assert result["whole_ready"] is False
     assert all(value == "UNVERIFIED" for value in result["external_modules"].values())
@@ -253,7 +277,7 @@ def test_start_dev_records_only_owned_backend_frontend_and_stop(prepared):
     manifest = json.loads(
         (workspace / lifecycle.MANIFEST_NAME).read_text(encoding="utf-8")
     )
-    assert manifest["required_revision"] == "20261014_0011"
+    assert manifest["required_revision"] == "20261014_0012"
     assert {service["port"] for service in manifest["services"]} == {8088, 4178}
     assert all(
         service["creation_time"] and service["argv"] and service["parent"]
@@ -282,12 +306,211 @@ def test_preview_build_is_real_api_and_uses_selected_backend_port(prepared):
         frontend_mode="preview",
         llm_profile="school-gpu-7b",
     )
-    assert ops.builds == [(app.repo, 8098)]
+    assert len(ops.builds) == 1
+    assert ops.builds[0][0:2] == (app.repo, 8098)
     backend_argv = ops.spawned[0][0]
     assert backend_argv[backend_argv.index("--llm-profile") + 1] == "school-gpu-7b"
     _node, vite, mode, *options = ops.spawned[1][0]
     assert Path(vite).name == "vite.js" and mode == "preview"
     assert "--strictPort" in options
+    manifest = json.loads(
+        (workspace / lifecycle.MANIFEST_NAME).read_text(encoding="utf-8")
+    )
+    preview_dir = Path(manifest["frontend_preview_dir"])
+    assert preview_dir == ops.builds[0][2]
+    assert preview_dir.is_relative_to(workspace / lifecycle.PREVIEW_ARTIFACTS_DIR)
+    assert options[options.index("--outDir") + 1] == str(preview_dir)
+
+
+def test_preview_artifacts_are_isolated_per_workspace(prepared):
+    repo, first_workspace, ops, first_app = prepared
+    second_workspace = first_workspace.parent / "workspace-second"
+    second_workspace.mkdir()
+    (second_workspace / "workspace.json").write_text(
+        json.dumps({"workspace_id": "ws-synthetic-2"}), encoding="utf-8"
+    )
+    (second_workspace / "runtime-ready.json").write_text("{}", encoding="utf-8")
+    second_app = lifecycle.SchoolAppLifecycle(repo, ops)
+    second_app._validate_prepared_database = lambda *args, **kwargs: {
+        "workspace_id": "ws-synthetic-2",
+        "database": "smhai_school_demo",
+        "port": 3314,
+    }
+
+    first_app.start(workspace=first_workspace, frontend_mode="preview")
+    second_app.start(
+        workspace=second_workspace,
+        backend_port=8089,
+        frontend_port=4179,
+        frontend_mode="preview",
+    )
+
+    first_manifest = json.loads(
+        (first_workspace / lifecycle.MANIFEST_NAME).read_text(encoding="utf-8")
+    )
+    second_manifest = json.loads(
+        (second_workspace / lifecycle.MANIFEST_NAME).read_text(encoding="utf-8")
+    )
+    first_output = Path(first_manifest["frontend_preview_dir"])
+    second_output = Path(second_manifest["frontend_preview_dir"])
+    assert first_output != second_output
+    assert first_output.is_relative_to(
+        first_workspace / lifecycle.PREVIEW_ARTIFACTS_DIR
+    )
+    assert second_output.is_relative_to(
+        second_workspace / lifecycle.PREVIEW_ARTIFACTS_DIR
+    )
+    assert ops.builds[0][2] == first_output
+    assert ops.builds[1][2] == second_output
+    assert not (repo / "10_frontend" / "dist").exists()
+
+
+def test_legacy_0011_preview_can_be_statused_stopped_but_not_adopted(prepared):
+    _repo, workspace, ops, app = prepared
+    app.start(workspace, frontend_mode="preview")
+    _rewrite_preview_manifest_as_legacy_0011(app, workspace, ops)
+    original_spawn_count = len(ops.spawned)
+    original_build_count = len(ops.builds)
+
+    with pytest.raises(lifecycle.LifecycleError, match="not a completed stop"):
+        app.start(
+            workspace,
+            backend_port=8089,
+            frontend_port=4179,
+            frontend_mode="preview",
+        )
+    assert len(ops.spawned) == original_spawn_count
+    assert len(ops.builds) == original_build_count
+
+    status = app.status(workspace)
+    assert status["manifest_revision"] == "20261014_0011"
+    assert status["manifest_is_current_revision"] is False
+    assert status["frontend_artifact_scope"] == "LEGACY_SHARED_DIST"
+    assert status["current_ready_proof"] is False
+    assert status["whole_ready"] is False
+    assert app.stop(workspace)["status"] == "STOPPED"
+
+    app.start(
+        workspace,
+        backend_port=8089,
+        frontend_port=4179,
+        frontend_mode="preview",
+    )
+    current_manifest = json.loads(
+        (workspace / lifecycle.MANIFEST_NAME).read_text(encoding="utf-8")
+    )
+    assert current_manifest["required_revision"] == lifecycle.CURRENT_SCHOOL_REVISION
+    assert Path(current_manifest["frontend_preview_dir"]) != ops.builds[0][2]
+    assert len(list(workspace.glob("school-app-lifecycle.stopped-*.json"))) == 1
+
+
+def test_old_revision_target_owned_preview_can_be_statused_and_stopped_not_adopted(
+    prepared,
+):
+    _repo, workspace, ops, app = prepared
+    app.start(workspace, frontend_mode="preview")
+    path = workspace / lifecycle.MANIFEST_NAME
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    manifest["required_revision"] = "20261014_0011"
+    lifecycle._atomic_write(path, manifest)
+    original_spawn_count = len(ops.spawned)
+    original_build_count = len(ops.builds)
+
+    with pytest.raises(lifecycle.LifecycleError, match="not a completed stop"):
+        app.start(
+            workspace,
+            backend_port=8089,
+            frontend_port=4179,
+            frontend_mode="preview",
+        )
+    assert len(ops.spawned) == original_spawn_count
+    assert len(ops.builds) == original_build_count
+
+    status = app.status(workspace)
+    assert status["manifest_revision"] == "20261014_0011"
+    assert status["manifest_is_current_revision"] is False
+    assert status["frontend_artifact_scope"] == "TARGET_OWNED"
+    assert status["current_ready_proof"] is False
+    assert status["whole_ready"] is False
+    assert app.stop(workspace)["status"] == "STOPPED"
+    assert ops.terminated == [502, 501]
+
+
+def test_preview_manifest_output_path_outside_workspace_is_rejected(prepared):
+    _repo, workspace, _ops, app = prepared
+    app.start(workspace, frontend_mode="preview")
+    path = workspace / lifecycle.MANIFEST_NAME
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    manifest["frontend_preview_dir"] = str(app.repo / "outside-preview")
+    lifecycle._atomic_write(path, manifest)
+    with pytest.raises(lifecycle.LifecycleError, match="outside its workspace"):
+        app.status(workspace)
+
+
+def test_manifest_revision_must_be_in_static_supported_catalog(prepared):
+    _repo, workspace, _ops, app = prepared
+    app.start(workspace, frontend_mode="dev")
+    path = workspace / lifecycle.MANIFEST_NAME
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    manifest["required_revision"] = "20269999_9999"
+    lifecycle._atomic_write(path, manifest)
+    with pytest.raises(lifecycle.LifecycleError, match="stale or belongs"):
+        app.status(workspace)
+
+
+def test_preview_manifest_reparse_output_parent_is_rejected(prepared, monkeypatch):
+    _repo, workspace, _ops, app = prepared
+    app.start(workspace, frontend_mode="preview")
+    root = workspace / lifecycle.PREVIEW_ARTIFACTS_DIR
+    path_type = type(root)
+    original_lstat = path_type.lstat
+
+    def fake_lstat(path):
+        if path == root:
+            return SimpleNamespace(
+                st_file_attributes=lifecycle.FILE_ATTRIBUTE_REPARSE_POINT,
+                st_reparse_tag=lifecycle.IO_REPARSE_TAG_MOUNT_POINT,
+            )
+        return original_lstat(path)
+
+    monkeypatch.setattr(path_type, "lstat", fake_lstat)
+    with pytest.raises(lifecycle.LifecycleError, match="Reparse points"):
+        app.status(workspace)
+
+
+def test_frontend_build_passes_target_outdir_without_cleaning_other_output(
+    tmp_path, monkeypatch
+):
+    repo = tmp_path / "repo"
+    frontend = repo / "10_frontend"
+    vue_tsc = frontend / "node_modules" / "vue-tsc" / "bin" / "vue-tsc.js"
+    vite = frontend / "node_modules" / "vite" / "bin" / "vite.js"
+    vue_tsc.parent.mkdir(parents=True)
+    vite.parent.mkdir(parents=True)
+    vue_tsc.touch()
+    vite.touch()
+    output = tmp_path / "workspace" / lifecycle.PREVIEW_ARTIFACTS_DIR / ("a" * 32)
+    output.mkdir(parents=True)
+    calls = []
+    monkeypatch.setattr(lifecycle.shutil, "which", lambda name: "node.exe")
+
+    def fake_run(argv, **kwargs):
+        calls.append((argv, kwargs))
+        if argv[1] == str(vite):
+            (output / "index.html").write_text("synthetic", encoding="utf-8")
+
+    monkeypatch.setattr(lifecycle.subprocess, "run", fake_run)
+    lifecycle.LifecycleOperations().build_frontend(repo, 8091, output)
+
+    assert calls[0][0] == ["node.exe", str(vue_tsc), "--noEmit"]
+    assert calls[1][0] == [
+        "node.exe",
+        str(vite),
+        "build",
+        "--outDir",
+        str(output),
+    ]
+    assert "--emptyOutDir" not in calls[1][0]
 
 
 def test_foreign_port_blocks_before_spawn(prepared):

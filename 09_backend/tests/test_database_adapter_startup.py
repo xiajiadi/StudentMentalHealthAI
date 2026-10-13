@@ -125,10 +125,10 @@ def _required_revision(profile: str) -> str:
 
 
 @pytest.mark.parametrize(
-    "old_revision", ["20261012_0008", "20261013_0009", "20261013_0010"]
+    "old_revision", ["20261012_0008", "20261013_0009", "20261013_0010", "20261014_0011"]
 )
-async def test_school_tenant_startup_requires_post_assessment_outbox_revision(old_revision):
-    assert REQUIRED_SCHOOL_TENANT_DATABASE_REVISION == "20261014_0011"
+async def test_school_tenant_startup_requires_research_session_revision(old_revision):
+    assert REQUIRED_SCHOOL_TENANT_DATABASE_REVISION == "20261014_0012"
     adapter = _adapter([old_revision], "school_tenant")
 
     async def no_bootstrap():
@@ -136,7 +136,7 @@ async def test_school_tenant_startup_requires_post_assessment_outbox_revision(ol
 
     adapter._ensure_synthetic_fixtures = no_bootstrap
 
-    with pytest.raises(RuntimeError, match="20261014_0011"):
+    with pytest.raises(RuntimeError, match="20261014_0012"):
         await adapter.start()
 
 
