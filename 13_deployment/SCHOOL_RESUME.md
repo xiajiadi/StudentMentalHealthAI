@@ -10,7 +10,7 @@
 Both install modes require an absolute workspace path, its port, and the exact workspace ID supplied by the trusted install handoff. Replace these placeholders with the values from that handoff:
 
 ```powershell
-python 13_deployment/resume_school_workspace.py `
+.\11_database\.venv\Scripts\python.exe .\13_deployment\resume_school_workspace.py `
   --fresh-mode `
   --workspace '<INSTALL_WORKSPACE>' `
   --port <INSTALL_PORT> `
