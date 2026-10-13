@@ -102,6 +102,8 @@ teacher completion-only aggregates, cross-school denial and later revocation.
 One job claimed once, terminal ABSTAINED/POLICY_UNAVAILABLE, lease cleared;
 same completion request-key replay did not add jobs, a new key returned409.
 Evidence I/logs/native-outbox-task-378b5200f8274e0d999bacdb8cab6b89.json.
+Actual DPAPI decrypt verified16 encrypted responses and2 encrypted results in I:
+fresh-cat-encryption-proof-cbbbd635cbbb443fa47723999a06324e.json. No bodies emitted.
 Initial harness used a new completion key after completion, received409 and
 failed; failure retained. Its completed task/job remain intact. This is a
 synthetic edge check of the real durable queue, not public-bank/800 acceptance,
@@ -116,6 +118,32 @@ existing published-bank and frozen assessment.v1 gates. Worker implements pure
 start/answer/snapshot/restore adapter; another prepares exact official IPIP20-item
 candidate profile. No research session has yet entered school DB/backend.
 Goal ACTIVE; no shutdown deadline, RTX3060 available; full delivery incomplete.
+
+2026-10-14 03:05 research review: Root verified the actual20-item IPIP/SAPA profile
+SHA cf49329d2848f5fc4ba38f29e39144b79e7363e0725a3381d0b0273bab235f10.
+Numeric source categories1..6 retained, wording labels unconfirmed/null, no
+translation invented. First adapter tests33pass freshly run by Root; strict JSON,
+signer failure and bounded rollback fixes plus independent source QA underway.
+No online/Backend research admission or800 research CAT proof yet.
+NHANES independent QA hash a4e9ed820191057ee119ecd474e8257b7bea666aa10e3e3d50eb9981d2d37c7c
+matches actual evidence; source/split/fit/runtime hashes pass. In-memory replay
+reproduced6000/800 disjoint rows, no source IDs persisted. High-order independent
+GH calibration LL differs by~0.00028; low-order41 GH differs0.499 and is not the
+same quadrature rule as mirt41. Engineering numerical reproducibility only.
+
+2026-10-14 03:15 adapter source reviewed: strict duplicate-key/nonfinite JSON
+guards, trusted expected profile hash, snapshot bounded signature/ASCII digest,
+transactional answer rollback with terminal FAILED on recovery failure, research
+completion metadata only. Independent QA exercised20 virtual responses/40 save-
+restore checkpoints on actual public profile and found nonASCII snapshot digest
+TypeError; fixed with regression tests. Root final whole research suite53pass,
+Ruff check/format check pass. No Backend research route/database session yet.
+Source-scale historical evidence corroborates six SAPA labels, but target dataset
+DDI has no labels; immutable profile staysnull. Adolescent-bank primary-source
+investigation active. Separate NHANES COMPLETE_OBSERVED engineering cohort800 is
+being prepared after excluding calibration positions; original evaluation800 and
+fit unchanged, no missing-value fill or unbiased-cohort claim. Preserve that
+distinction when wiring the full school scenario. Goal remains ACTIVE.
 
 2026-10-14 00:05 nextscenario: Root created newH workspace
 D:\Projects\.StudentMentalHealthAI-school-install-20261013-h,
