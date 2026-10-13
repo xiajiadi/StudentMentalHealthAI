@@ -1,5 +1,41 @@
 ## ACTIVE — 2026-10-13 23:25 Beijing, public empirical-data extension
 
+2026-10-14 00:48 Beijing update (supersedes pending statements below):
+H3316/8090/4180 owned apps RUNNING. Eight classes created through authorized API;
+800 fictitious student accounts imported in eight 100-row batches, each identical
+idempotency-key replay checked; all800 activated through business API. Credentials
+remain current-user DPAPI outside Git. Full800 login/context/history/permission
+verification running; no CAT task or response has yet been submitted in H.
+Evidence: H/logs/empirical-h-import-checkpoint.json. Root corrected external QA
+helper's active-context contract: returned data IS ActorDto, not data.actor.
+No backend schema/authorization weakening, direct SQL seeding or old DB reset.
+
+Isolated official R4.6.1 extraction/mirt1.47 completed without installer execution,
+system PATH or registry changes. Five independent one-dimensional research fits
+completed, not a five-dimensional model or approved school/clinical parameters.
+Conscientiousness retains19 exact-key items; other domains20. All fits preserve
+partial missingness and all-empty warnings. Independent QA recomputed four-domain
+held-out marginal likelihood/probabilities/hashes; thresholds finite/ordered,
+41-vs81 quadrature differences <=0.02345 nats for those four domains. Extraversion
+crosscheck separately retained. QA path:
+D:\Dev\datasets\psynova-public-research\qa\sapa-ipip99-20261013-v1\mirt-remaining-domains-independent-qa-20261014-final.json.
+These numerical checks do not establish high-school applicability, validity,
+local-independence approval or publication eligibility. Real-source RAG excerpts
+remain review-pending and outside active index. Missing-data replay protocol and
+durable post-assessment AI delivery design are current independent workstreams.
+Goal remains ACTIVE; no full-system or production acceptance claimed.
+
+2026-10-14 00:57 H milestone: actual800/800 unique student logins, school contexts,
+auth/me and own empty tasks/history verified, admin directory access denied for
+the first student. Eight classes each100 active students. All sessions logged out.
+Browser representative admin/student workflow PASS; DOM shows802 same-school
+student/teacher members (800 new +2 original seed members), not802 new imports.
+Root inspected both screenshots at H/browser-qa/empirical800-20261013T165629Z.
+First browser QA failed because it counted pending-activation rows after every
+account was active; corrected to actual member-name input DOM, retained failure.
+This proves account provisioning/access and representative UI only, not800 CAT,
+AI generation, full concurrency/performance or professional/production readiness.
+
 2026-10-14 00:05 nextscenario: Root created newH workspace
 D:\Projects\.StudentMentalHealthAI-school-install-20261013-h,
 ID28823cc1dcd2d8a4d41991eac1e045b0/DB3316. Fresh additive migration0010 MIGRATED;
