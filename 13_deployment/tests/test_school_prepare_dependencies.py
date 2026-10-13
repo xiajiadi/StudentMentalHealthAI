@@ -537,13 +537,12 @@ def test_target_venv_python_version_is_checked_after_sync(tmp_path, monkeypatch)
     python = target / "01_cat-engine" / ".venv" / "Scripts" / "python.exe"
     python.parent.mkdir(parents=True)
     python.write_bytes(b"fake interpreter marker")
-    monkeypatch.setattr(
-        prepare.subprocess,
-        "run",
-        lambda args, **kwargs: subprocess.CompletedProcess(
-            args, 0, stdout="", stderr=""
-        ),
-    )
+
+    def fake_subprocess_run(args, **kwargs):
+        assert "text" not in kwargs
+        return subprocess.CompletedProcess(args, 0, stdout=b"\xff", stderr=b"\xfe")
+
+    monkeypatch.setattr(prepare.subprocess, "run", fake_subprocess_run)
     monkeypatch.setattr(prepare, "_python_version", lambda path: (3, 12, 13))
 
     with pytest.raises(prepare.PreparationError, match="PythonVersionMismatch"):
@@ -718,8 +717,12 @@ def test_clean_child_environment_drops_redirects_and_preserves_d_cache(
 
 def test_run_step_never_includes_child_output_in_report(tmp_path, monkeypatch):
     def fake_subprocess_run(*args, **kwargs):
+        assert "text" not in kwargs
         return subprocess.CompletedProcess(
-            args[0], 17, stdout="token-like-private-output", stderr="private error"
+            args[0],
+            17,
+            stdout=b"\xfftoken-like-private-output",
+            stderr=b"\xfep rivate error",
         )
 
     monkeypatch.setattr(prepare.subprocess, "run", fake_subprocess_run)
@@ -734,3 +737,35 @@ def test_run_step_never_includes_child_output_in_report(tmp_path, monkeypatch):
         "error_class": "CommandFailed",
     }
     assert "private" not in json.dumps(stage)
+
+
+def test_frontend_check_ignores_non_utf8_child_output(tmp_path, monkeypatch):
+    def fake_subprocess_run(args, **kwargs):
+        assert "text" not in kwargs
+        return subprocess.CompletedProcess(args, 0, stdout=b"\xff", stderr=b"\xfe")
+
+    monkeypatch.setattr(prepare.subprocess, "run", fake_subprocess_run)
+
+    prepare._frontend_check(tmp_path, "node.exe")
+
+
+@pytest.mark.parametrize(
+    ("probe", "expected_error"),
+    [
+        (lambda: prepare._git(Path.cwd(), ["status"]), "GitInspectionFailed"),
+        (
+            lambda: prepare._python_version(Path(sys.executable)),
+            "InterpreterProbeFailed",
+        ),
+    ],
+)
+def test_utf8_probe_decode_error_is_returned_as_fixed_preparation_error(
+    monkeypatch, probe, expected_error
+):
+    def decode_failure(*args, **kwargs):
+        raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+
+    monkeypatch.setattr(prepare.subprocess, "run", decode_failure)
+
+    with pytest.raises(prepare.PreparationError, match=expected_error):
+        probe()

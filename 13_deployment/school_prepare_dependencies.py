@@ -183,11 +183,12 @@ def _git(root: Path, args: list[str]) -> str:
             _git_command(root, args),
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=15,
             env=_git_env(root),
             check=False,
         )
-    except (OSError, subprocess.SubprocessError) as exc:
+    except (OSError, subprocess.SubprocessError, UnicodeError) as exc:
         raise PreparationError("GitInspectionFailed") from exc
     if result.returncode != 0:
         raise PreparationError("GitInspectionFailed")
@@ -487,11 +488,12 @@ def _python_version(interpreter: Path) -> tuple[int, int, int]:
             [str(interpreter), "-I", "-S", "-c", source],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=10,
             env=_child_environment(),
             check=False,
         )
-    except (OSError, subprocess.SubprocessError) as exc:
+    except (OSError, subprocess.SubprocessError, UnicodeError) as exc:
         raise PreparationError("InterpreterProbeFailed") from exc
     if result.returncode != 0:
         raise PreparationError("InterpreterProbeFailed")
@@ -630,7 +632,6 @@ def _public_import_check(
         result = subprocess.run(
             [str(executable), "-I", "-c", source],
             capture_output=True,
-            text=True,
             timeout=30,
             env=_child_environment(root=root, protected_roots=protected_roots),
             cwd=root / module,
@@ -666,7 +667,6 @@ for (const name of names) {
         result = subprocess.run(
             [node, "-e", source],
             capture_output=True,
-            text=True,
             timeout=15,
             env=_child_environment(root=root, protected_roots=protected_roots),
             cwd=root / FRONTEND_MODULE,
@@ -702,7 +702,6 @@ def _run_step(
             cwd=cwd,
             env=env,
             capture_output=True,
-            text=True,
             timeout=60 * 60,
             check=False,
         )

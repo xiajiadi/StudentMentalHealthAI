@@ -726,3 +726,26 @@ and rejects table/column-onlyALREADY_CURRENT as too weak. Controller chose model
 derived fulltype/null/PK/unique/FK/check comparison before native acceptance; fresh
 and current validation reuse it. Newmigration remainsuntracked/reviewrequested,
 no real DDL/new DB or source-model/Contract changes. GoalACTIVE, CPUonly.
+
+Native Targetc d2553c2 clean locked offline dependency preparation COMPLETED:
+CAT3.14/Backend3.12/Database3.12 and Frontend all actual commandexit0 and targeted
+imports/package/version checks pass; all locked source hashes unchanged. Evidence
+D:\Dev\projects\psynova-school-install-20261013-c\.school-dependency-preparation-state.json.
+Fresh frontend typecheck/build with real API8089 passes and dist/index.html exists:
+fresh-frontend-build-qa-67c986d0439f44e5bbb922a7f43db9ab.json. Initial externalbuild
+helper capturedUTF8 asGBK and got readerthreadUnicodeDecodeError despite command0;
+preserved that attempt, fixed helper to capture unusedbytes, reran successfully.
+Dependency owner likewise fixed unusedoutputbytes and UTF8 probes; Root29fake tests,
+Ruff/format pass. No model/download/service proof is implied by dependency/buildPASS.
+
+Root used new Targetc Databasevenv and current vendorMySQL explicit bin to create
+NEW externalG D:\Projects\.StudentMentalHealthAI-school-install-20261013-g,
+port3315, workspace137ffe3243201bf34130b6585764edcf, READY_FOR_MIGRATION.
+Createhelper actualowned initialization returns success; no formal migration/runtime
+seed/apps/CAT started onG yet. Preserve itsdatadir/DPAPIsettings/marker. Original3308
+and managed8088/4178 remainrunning; priorrestoreF3314 remainsstopped. All previous
+restore and failedTargeta/b preserved, no reset/reseed/globalPython/model fallback.
+Fresh migrationnew3files remainunderreview: metadata schema/current gates are being
+verified against actualdriver interface and exactlistener parent/child ownership.
+Next finish thatsourceQA, nativeexistingCurrent readonlycheck and freshG0010migration,
+then targetenvruntime/seed/app/CAT/browser/install recovery. GoalACTIVE/incomplete.
