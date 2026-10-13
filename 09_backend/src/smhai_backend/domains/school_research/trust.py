@@ -395,7 +395,11 @@ class ResearchProfileRegistry:
             parameter_origin=entry.parameter_origin,
             publication_status_projection=publication_projection,
             repository_schema_compatible=entry.profile_schema
-            in {"psynova.research-profile.v1", "psynova.research-profile.v2"},
+            in {
+                "psynova.research-profile.v1",
+                "psynova.research-profile.v2",
+                "psynova.research-profile.v3",
+            },
             raw_profile_bytes=profile_bytes,
             raw_manifest_bytes=manifest_bytes,
         )

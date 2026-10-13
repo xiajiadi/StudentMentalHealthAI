@@ -444,7 +444,9 @@ def test_registry_v3_preserves_negative_status_and_published_parameter_origin(
     assert verified.raw_profile_bytes == profile_bytes
     assert verified.parameter_origin is ParameterOrigin.PUBLISHED_ROUNDED_REFERENCE
     assert verified.publication_status_projection is PublicationStatusProjection.NOT_APPROVED
-    assert verified.repository_schema_compatible is False
+    # Schema 0013 can store published reference parameters without inventing
+    # local fit/calibration hashes. Compatibility does not enable execution.
+    assert verified.repository_schema_compatible is True
     assert b'"publication_status":"not_approved"' in verified.raw_profile_bytes
     assert b"fit_sha256" not in verified.raw_profile_bytes
     assert b"calibration_sha256" not in verified.raw_profile_bytes
