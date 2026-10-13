@@ -41,6 +41,11 @@ _RESTORE_TARGET_NAME = re.compile(
     r"^\.StudentMentalHealthAI-school-restore-\d{8}-[a-z0-9][a-z0-9-]{0,31}$",
     re.IGNORECASE,
 )
+_FRESH_TARGET_NAME = re.compile(
+    r"^\.StudentMentalHealthAI-school-install-\d{8}-[a-z0-9][a-z0-9-]{0,31}$",
+    re.IGNORECASE,
+)
+_WORKSPACE_ID = re.compile(r"^[a-f0-9]{32}$")
 
 
 class ResumeError(RuntimeError):
@@ -257,6 +262,150 @@ def validate_restored_workspace(
     ):
         raise ResumeError("Restore evidence does not match the isolated target")
     return source_marker, target_marker
+
+
+def _validate_install_target_identity(
+    workspace: Path,
+    repo: Path,
+    *,
+    expected_workspace: Path,
+    expected_port: int,
+    expected_workspace_id: str,
+) -> dict[str, Any]:
+    """Pin an install target to its operator-supplied path and ID.
+
+    The JSON marker is not a cryptographic attestation. The explicit path and
+    ID bind this invocation to one existing target; later DPAPI/process/database
+    checks provide runtime evidence.
+    """
+    _validate_expected_port(expected_port)
+    if not isinstance(expected_workspace_id, str) or not _WORKSPACE_ID.fullmatch(
+        expected_workspace_id
+    ):
+        raise ResumeError("Explicit install workspace ID is required")
+    target = Path(workspace)
+    if not target.is_absolute():
+        raise ResumeError("Absolute install workspace path required")
+    _reject_reparse_path(target)
+    root = target.resolve(strict=True)
+    repository = Path(repo).resolve(strict=True)
+    if (
+        root == repository
+        or root.is_relative_to(repository)
+        or root == Path(DEFAULT_WORKSPACE).resolve(strict=False)
+        or not _FRESH_TARGET_NAME.fullmatch(root.name)
+        or root != Path(expected_workspace).resolve(strict=False)
+    ):
+        raise ResumeError("Target path is not an explicitly named install workspace")
+    marker = validate_existing_workspace(
+        root, repository, expected_workspace=root, expected_port=expected_port
+    )
+    if (
+        marker.get("workspace_id") != expected_workspace_id
+        or marker.get("state") != "READY_FOR_MIGRATION"
+        or marker.get("host") != HOST
+        or marker.get("synthetic_only") is not True
+    ):
+        raise ResumeError("Install workspace marker does not match the expected target")
+    return marker
+
+
+def _workspace_artifacts(workspace: Path) -> dict[str, Path]:
+    names = (
+        "database.private.dpapi",
+        "database-keys.private.dpapi",
+        "runtime.private.dpapi",
+        "school-auth.private.dpapi",
+        "runtime-ready.json",
+        "restore-state.json",
+    )
+    artifacts: dict[str, Path] = {}
+    for name in names:
+        entry = workspace / name
+        try:
+            entry.lstat()
+        except FileNotFoundError:
+            continue
+        _reject_reparse_path(entry)
+        if not entry.is_file():
+            raise ResumeError("Workspace settings artifact is invalid")
+        artifacts[name] = entry
+    return artifacts
+
+
+def validate_fresh_workspace(
+    workspace: Path,
+    repo: Path,
+    *,
+    expected_workspace: Path,
+    expected_port: int,
+    expected_workspace_id: str,
+) -> dict[str, Any]:
+    """Validate an install target before runtime provisioning has occurred."""
+    marker = _validate_install_target_identity(
+        workspace,
+        repo,
+        expected_workspace=expected_workspace,
+        expected_port=expected_port,
+        expected_workspace_id=expected_workspace_id,
+    )
+    artifacts = _workspace_artifacts(Path(workspace))
+    if any(
+        name in artifacts
+        for name in (
+            "runtime.private.dpapi",
+            "school-auth.private.dpapi",
+            "runtime-ready.json",
+            "restore-state.json",
+        )
+    ):
+        raise ResumeError("Fresh target contains runtime or restore state")
+    for name in ("database.private.dpapi", "database-keys.private.dpapi"):
+        if name not in artifacts:
+            raise ResumeError("Fresh workspace DPAPI settings are incomplete")
+    return marker
+
+
+def validate_prepared_install_workspace(
+    workspace: Path,
+    repo: Path,
+    *,
+    expected_workspace: Path,
+    expected_port: int,
+    expected_workspace_id: str,
+) -> dict[str, Any]:
+    """Validate a completely runtime-prepared install target, never a partial one."""
+    marker = _validate_install_target_identity(
+        workspace,
+        repo,
+        expected_workspace=expected_workspace,
+        expected_port=expected_port,
+        expected_workspace_id=expected_workspace_id,
+    )
+    artifacts = _workspace_artifacts(Path(workspace))
+    required = {
+        "database.private.dpapi",
+        "database-keys.private.dpapi",
+        "runtime.private.dpapi",
+        "school-auth.private.dpapi",
+        "runtime-ready.json",
+    }
+    if "restore-state.json" in artifacts or not required.issubset(artifacts):
+        raise ResumeError("Prepared install runtime artifacts are incomplete or misclassified")
+    try:
+        ready = json.loads(artifacts["runtime-ready.json"].read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        raise ResumeError("Prepared install readiness marker is invalid") from None
+    if (
+        not isinstance(ready, dict)
+        or ready.get("workspace_id") != marker["workspace_id"]
+        or ready.get("state") != "VERIFIED"
+        or ready.get("database") != DATABASE
+        or type(ready.get("port")) is not int
+        or ready.get("port") != expected_port
+    ):
+        raise ResumeError("Prepared install readiness marker does not match target")
+    return marker
 
 
 def atomic_write_marker(workspace: Path, marker: dict[str, Any]) -> None:
@@ -489,6 +638,87 @@ $values | ConvertTo-Json -Depth 3 -Compress
             raise ResumeError(f"Runtime validation failed ({type(exc).__name__})") from None
 
     @staticmethod
+    def verify_fresh_dpapi(workspace: Path, port: int) -> None:
+        """Unseal existing current-user settings without exposing values."""
+        try:
+            import base64
+
+            from private_settings import read_private
+
+            database = read_private(workspace / "database.private.dpapi")
+            keys = read_private(workspace / "database-keys.private.dpapi")
+            root_password = database.get("root_password")
+            active = keys.get("active_version")
+            key_values = keys.get("keys")
+            if (
+                not isinstance(root_password, str)
+                or not re.fullmatch(r"[a-f0-9]{64}", root_password)
+                or database.get("DB_NAME") != DATABASE
+                or database.get("DB_HOST") != HOST
+                or str(database.get("DB_PORT")) != str(port)
+                or not isinstance(active, str)
+                or not isinstance(key_values, dict)
+                or not isinstance(key_values.get(active), str)
+                or not key_values[active]
+            ):
+                raise ValueError("settings mismatch")
+            if len(base64.b64decode(key_values[active], altchars=b"-_", validate=True)) != 32:
+                raise ValueError("key length mismatch")
+        except Exception as exc:  # noqa: BLE001 - redact DPAPI/parser details.
+            raise ResumeError(
+                f"Fresh workspace DPAPI validation failed ({type(exc).__name__})"
+            ) from None
+
+    @staticmethod
+    def verify_fresh_database(workspace: Path, port: int, repo: Path) -> None:
+        """Read-only verification of the already migrated fresh target."""
+        for entry in (
+            repo / "11_database" / ".venv" / "Lib" / "site-packages",
+            repo / "11_database",
+        ):
+            if str(entry) not in sys.path:
+                sys.path.insert(0, str(entry))
+        try:
+            import pymysql
+            from private_settings import read_private
+            from school_schema import CURRENT_SCHOOL_REVISION
+
+            settings = read_private(workspace / "database.private.dpapi")
+            connection = pymysql.connect(
+                host=HOST,
+                port=port,
+                user="root",
+                password=settings["root_password"],
+                database=DATABASE,
+                connect_timeout=5,
+                read_timeout=5,
+                write_timeout=5,
+                autocommit=True,
+            )
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT @@port, @@datadir, DATABASE()")
+                    actual_port, actual_directory, database = cursor.fetchone()
+                    if (
+                        actual_port != port
+                        or Path(actual_directory).resolve(strict=True)
+                        != (workspace / "mysql-data").resolve(strict=True)
+                        or database != DATABASE
+                    ):
+                        raise ResumeError("Connected database identity does not match target")
+                    cursor.execute("SELECT version_num FROM database_alembic_version")
+                    if cursor.fetchall() != ((CURRENT_SCHOOL_REVISION,),):
+                        raise ResumeError("Fresh database migration version is not current")
+            finally:
+                connection.close()
+        except ResumeError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - redact DB details and credentials.
+            raise ResumeError(
+                f"Fresh database validation failed ({type(exc).__name__})"
+            ) from None
+
+    @staticmethod
     def start_guardian(executable: Path, workspace: Path, data_directory: Path, port: int):
         if os.name != "nt":
             raise ResumeError("Workspace resume requires Windows")
@@ -623,7 +853,33 @@ def _validate_resume_scope(
     expected_workspace: Path,
     expected_port: int,
     restore_source_workspace: Path | None,
+    fresh_expected_workspace_id: str | None,
+    prepared_expected_workspace_id: str | None,
 ) -> dict[str, Any]:
+    if prepared_expected_workspace_id is not None:
+        if restore_source_workspace is not None or fresh_expected_workspace_id is not None:
+            raise ResumeError("Prepared, fresh, and restore classifications cannot be combined")
+        if expected_port == PORT:
+            raise ResumeError("Prepared install requires a port separate from legacy 3308")
+        return validate_prepared_install_workspace(
+            workspace,
+            repo,
+            expected_workspace=expected_workspace,
+            expected_port=expected_port,
+            expected_workspace_id=prepared_expected_workspace_id,
+        )
+    if fresh_expected_workspace_id is not None:
+        if restore_source_workspace is not None:
+            raise ResumeError("Fresh and restore classifications cannot be combined")
+        if expected_port == PORT:
+            raise ResumeError("Fresh workspace requires a port separate from legacy 3308")
+        return validate_fresh_workspace(
+            workspace,
+            repo,
+            expected_workspace=expected_workspace,
+            expected_port=expected_port,
+            expected_workspace_id=fresh_expected_workspace_id,
+        )
     if restore_source_workspace is not None:
         _, marker = validate_restored_workspace(
             workspace,
@@ -652,6 +908,8 @@ def resume_workspace(
     expected_workspace: Path = DEFAULT_WORKSPACE,
     expected_port: int = PORT,
     _restore_source_workspace: Path | None = None,
+    _fresh_expected_workspace_id: str | None = None,
+    _prepared_expected_workspace_id: str | None = None,
 ) -> dict[str, Any]:
     """Verify the running instance or start the existing initialized data once."""
     _validate_expected_port(expected_port)
@@ -659,7 +917,25 @@ def resume_workspace(
         raise ResumeError("Readiness observation must be bounded to 60 seconds")
     if _restore_source_workspace is not None and expected_port == PORT:
         raise ResumeError("A restored target must use a separate database port")
-    if expected_port != PORT and _restore_source_workspace is None:
+    if _fresh_expected_workspace_id is not None and expected_port == PORT:
+        raise ResumeError("A fresh target must use a separate database port")
+    if _prepared_expected_workspace_id is not None and expected_port == PORT:
+        raise ResumeError("Prepared install requires a port separate from legacy 3308")
+    if sum(
+        value is not None
+        for value in (
+            _restore_source_workspace,
+            _fresh_expected_workspace_id,
+            _prepared_expected_workspace_id,
+        )
+    ) > 1:
+        raise ResumeError("Prepared, fresh, and restore classifications cannot be combined")
+    if (
+        expected_port != PORT
+        and _restore_source_workspace is None
+        and _fresh_expected_workspace_id is None
+        and _prepared_expected_workspace_id is None
+    ):
         raise ResumeError("Non-default database ports require explicit restore mode")
     if (
         _restore_source_workspace is not None
@@ -681,8 +957,12 @@ def resume_workspace(
         expected_workspace=Path(expected_workspace),
         expected_port=expected_port,
         restore_source_workspace=_restore_source_workspace,
+        fresh_expected_workspace_id=_fresh_expected_workspace_id,
+        prepared_expected_workspace_id=_prepared_expected_workspace_id,
     )
     operations.verify_acl(workspace_path)
+    if _fresh_expected_workspace_id is not None:
+        operations.verify_fresh_dpapi(workspace_path, expected_port)
     with lock_factory(Path(workspace)):
         marker = _validate_resume_scope(
             workspace_path,
@@ -690,8 +970,12 @@ def resume_workspace(
             expected_workspace=Path(expected_workspace),
             expected_port=expected_port,
             restore_source_workspace=_restore_source_workspace,
+            fresh_expected_workspace_id=_fresh_expected_workspace_id,
+            prepared_expected_workspace_id=_prepared_expected_workspace_id,
         )
         operations.verify_acl(Path(workspace))
+        if _fresh_expected_workspace_id is not None:
+            operations.verify_fresh_dpapi(workspace_path, expected_port)
         pid_value = marker.get("parent_pid")
         process = operations.inspect_process(int(pid_value)) if isinstance(pid_value, int) else None
         listeners = operations.listeners(expected_port)
@@ -702,7 +986,10 @@ def resume_workspace(
             _require_loopback_listeners(listeners, expected_port)
             operations.verify_running_process(marker)
             try:
-                _load_verified_runtime(operations, workspace_path, Path(repo), expected_port)
+                if _fresh_expected_workspace_id is not None:
+                    operations.verify_fresh_database(workspace_path, expected_port, Path(repo))
+                else:
+                    _load_verified_runtime(operations, workspace_path, Path(repo), expected_port)
             except Exception as exc:
                 marker["resume_state"] = f"RUNTIME_VALIDATION_FAILED_{type(exc).__name__}"
                 atomic_write_marker(Path(workspace), marker)
@@ -758,7 +1045,10 @@ def resume_workspace(
                 raise ResumeError("Started guardian identity changed; preserve it for recovery")
             _require_loopback_listeners(operations.listeners(expected_port), expected_port)
             operations.verify_running_process(marker)
-            _load_verified_runtime(operations, workspace_path, Path(repo), expected_port)
+            if _fresh_expected_workspace_id is not None:
+                operations.verify_fresh_database(workspace_path, expected_port, Path(repo))
+            else:
+                _load_verified_runtime(operations, workspace_path, Path(repo), expected_port)
         except Exception as exc:
             if marker.get("resume_state") == "STARTING":
                 marker["resume_state"] = f"VALIDATION_FAILED_{type(exc).__name__}"
@@ -793,11 +1083,62 @@ def resume_restored_workspace(
     )
 
 
+def resume_fresh_workspace(
+    workspace: Path,
+    repo: Path = DEFAULT_REPO,
+    *,
+    expected_port: int,
+    expected_workspace_id: str,
+    ops: Any | None = None,
+    timeout: float = 45.0,
+    lock_factory=workspace_lock,
+) -> dict[str, Any]:
+    """Resume an explicitly named, already initialized and migrated install target."""
+    target = Path(workspace)
+    return resume_workspace(
+        target,
+        repo,
+        ops=ops,
+        timeout=timeout,
+        lock_factory=lock_factory,
+        expected_workspace=target,
+        expected_port=expected_port,
+        _fresh_expected_workspace_id=expected_workspace_id,
+    )
+
+
+def resume_prepared_install_workspace(
+    workspace: Path,
+    repo: Path = DEFAULT_REPO,
+    *,
+    expected_port: int,
+    expected_workspace_id: str,
+    ops: Any | None = None,
+    timeout: float = 45.0,
+    lock_factory=workspace_lock,
+) -> dict[str, Any]:
+    """Resume an install whose runtime identity was fully provisioned earlier."""
+    target = Path(workspace)
+    return resume_workspace(
+        target,
+        repo,
+        ops=ops,
+        timeout=timeout,
+        lock_factory=lock_factory,
+        expected_workspace=target,
+        expected_port=expected_port,
+        _prepared_expected_workspace_id=expected_workspace_id,
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workspace", type=Path)
     parser.add_argument("--restore-mode", action="store_true")
+    parser.add_argument("--fresh-mode", action="store_true")
+    parser.add_argument("--prepared-install-mode", action="store_true")
     parser.add_argument("--port", type=int)
+    parser.add_argument("--expected-workspace-id")
     parser.add_argument("--timeout", type=float, default=45.0)
     return parser
 
@@ -805,19 +1146,51 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
+    modes = (args.restore_mode, args.fresh_mode, args.prepared_install_mode)
+    if sum(modes) > 1:
+        parser.error("--restore-mode, --fresh-mode, and --prepared-install-mode are mutually exclusive")
+    if (
+        args.expected_workspace_id is not None
+        and not args.fresh_mode
+        and not args.prepared_install_mode
+    ):
+        parser.error("--expected-workspace-id requires --fresh-mode or --prepared-install-mode")
+    if args.fresh_mode or args.prepared_install_mode:
+        if args.workspace is None or args.port is None or args.expected_workspace_id is None:
+            parser.error("Install mode requires explicit --workspace, --port, and --expected-workspace-id")
+        if args.port <= PORT:
+            parser.error("Install mode requires a port separate from the legacy workspace")
+    elif not args.restore_mode and args.port is not None and args.port != PORT:
+        parser.error("--port changes require --restore-mode or --fresh-mode")
     if args.restore_mode:
         if args.workspace is None or args.port is None:
             parser.error("--restore-mode requires explicit --workspace and --port")
         if args.port == PORT:
             parser.error("--restore-mode requires a separate database port")
-    elif args.port is not None and args.port != PORT:
-        parser.error("--port changes require --restore-mode")
+    elif not (args.fresh_mode or args.prepared_install_mode) and args.port is not None and args.port != PORT:
+        parser.error("--port changes require --restore-mode or --fresh-mode")
     try:
         if args.restore_mode:
             result = resume_restored_workspace(
                 args.workspace,
                 DEFAULT_REPO,
                 expected_port=args.port,
+                timeout=args.timeout,
+            )
+        elif args.fresh_mode:
+            result = resume_fresh_workspace(
+                args.workspace,
+                DEFAULT_REPO,
+                expected_port=args.port,
+                expected_workspace_id=args.expected_workspace_id,
+                timeout=args.timeout,
+            )
+        elif args.prepared_install_mode:
+            result = resume_prepared_install_workspace(
+                args.workspace,
+                DEFAULT_REPO,
+                expected_port=args.port,
+                expected_workspace_id=args.expected_workspace_id,
                 timeout=args.timeout,
             )
         else:

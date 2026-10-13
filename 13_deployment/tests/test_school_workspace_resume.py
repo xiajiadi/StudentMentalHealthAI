@@ -98,6 +98,19 @@ class FakeOperations:
         }
 
 
+class FreshFakeOperations(FakeOperations):
+    def __init__(self):
+        super().__init__()
+        self.dpapi_calls = 0
+        self.fresh_database_calls = 0
+
+    def verify_fresh_dpapi(self, _workspace, _port):
+        self.dpapi_calls += 1
+
+    def verify_fresh_database(self, _workspace, _port, _repo):
+        self.fresh_database_calls += 1
+
+
 @pytest.fixture
 def owned_workspace(tmp_path):
     repo = tmp_path / "repo"
@@ -192,6 +205,67 @@ def run_restore_resume(pair, ops, *, expected_port=3310, **kwargs):
         lock_factory=lambda _path: nullcontext(),
         **kwargs,
     )
+
+
+@pytest.fixture
+def fresh_workspace(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    workspace = tmp_path / ".StudentMentalHealthAI-school-install-20261013-g"
+    data = workspace / "mysql-data"
+    (data / "mysql").mkdir(parents=True)
+    (data / "auto.cnf").write_text("synthetic", encoding="utf-8")
+    (data / "ibdata1").write_bytes(b"existing synthetic fresh data")
+    executable = workspace / "vendor" / "mysqld.exe"
+    executable.parent.mkdir()
+    executable.write_bytes(b"synthetic executable fixture")
+    marker = {
+        "schema_version": "psynova.synthetic-workspace.v1",
+        "project": "StudentMentalHealthAI",
+        "workspace_id": "137ffe3243201bf34130b6585764edcf",
+        "state": "READY_FOR_MIGRATION",
+        "host": "127.0.0.1",
+        "port": 3315,
+        "database": "smhai_school_demo",
+        "synthetic_only": True,
+        "data_directory": str(data),
+        "executable": str(executable),
+        "parent_pid": 11180,
+        "parent_creation_time": CREATION_UTC,
+    }
+    (workspace / "workspace.json").write_text(json.dumps(marker), encoding="utf-8")
+    (workspace / "database.private.dpapi").write_bytes(b"sealed-fixture")
+    (workspace / "database-keys.private.dpapi").write_bytes(b"sealed-fixture")
+    return workspace, repo, marker
+
+
+def run_fresh_resume(workspace, repo, marker, ops, **kwargs):
+    return resume.resume_fresh_workspace(
+        workspace,
+        repo,
+        expected_port=marker["port"],
+        expected_workspace_id=marker["workspace_id"],
+        ops=ops,
+        lock_factory=lambda _path: nullcontext(),
+        **kwargs,
+    )
+
+
+def prepare_runtime_artifacts(workspace, marker, *, include_all=True):
+    (workspace / "runtime.private.dpapi").write_bytes(b"sealed-runtime-fixture")
+    if include_all:
+        (workspace / "school-auth.private.dpapi").write_bytes(b"sealed-auth-fixture")
+        (workspace / "runtime-ready.json").write_text(
+            json.dumps(
+                {
+                    "workspace_id": marker["workspace_id"],
+                    "state": "VERIFIED",
+                    "database": marker["database"],
+                    "port": marker["port"],
+                }
+            ),
+            encoding="utf-8",
+        )
 
 
 def test_exact_running_guardian_is_verified_and_not_started_again(owned_workspace):
@@ -415,6 +489,198 @@ def test_successful_resume_atomically_records_guardian_then_verifies_runtime(own
     assert (workspace / "mysql-data" / "ibdata1").read_bytes() == b"existing synthetic data"
 
 
+def test_fresh_resume_starts_existing_target_and_uses_dpapi_and_readonly_database_checks(
+    fresh_workspace,
+):
+    workspace, repo, marker = fresh_workspace
+    data_before = (workspace / "mysql-data" / "ibdata1").read_bytes()
+    ops = FreshFakeOperations()
+
+    result = run_fresh_resume(workspace, repo, marker, ops, timeout=5)
+
+    assert result == {"status": "STARTED", "database": "smhai_school_demo", "port": 3315}
+    assert ops.started == (
+        Path(marker["executable"]), workspace, Path(marker["data_directory"]), 3315
+    )
+    assert ops.dpapi_calls == 2
+    assert ops.fresh_database_calls == 1
+    assert ops.runtime_calls == 0
+    assert (workspace / "mysql-data" / "ibdata1").read_bytes() == data_before
+    saved = json.loads((workspace / "workspace.json").read_text(encoding="utf-8"))
+    assert saved["resume_state"] == "READY"
+
+
+def test_prepared_install_resume_uses_full_runtime_verification(fresh_workspace):
+    workspace, repo, marker = fresh_workspace
+    prepare_runtime_artifacts(workspace, marker)
+    ops = FakeOperations()
+
+    result = resume.resume_prepared_install_workspace(
+        workspace,
+        repo,
+        expected_port=3315,
+        expected_workspace_id=marker["workspace_id"],
+        ops=ops,
+        lock_factory=lambda _path: nullcontext(),
+        timeout=5,
+    )
+
+    assert result == {"status": "STARTED", "database": "smhai_school_demo", "port": 3315}
+    assert ops.runtime_calls == 1
+    assert ops.verify_calls == 1
+
+
+def test_fresh_mode_rejects_prepared_artifacts_and_prepared_mode_rejects_partial_state(
+    fresh_workspace,
+):
+    workspace, repo, marker = fresh_workspace
+    prepare_runtime_artifacts(workspace, marker, include_all=False)
+    fresh_ops = FreshFakeOperations()
+    with pytest.raises(resume.ResumeError, match="runtime"):
+        run_fresh_resume(workspace, repo, marker, fresh_ops)
+    assert fresh_ops.acl_calls == 0 and fresh_ops.started is None
+
+    prepared_ops = FakeOperations()
+    with pytest.raises(resume.ResumeError, match="incomplete"):
+        resume.resume_prepared_install_workspace(
+            workspace,
+            repo,
+            expected_port=3315,
+            expected_workspace_id=marker["workspace_id"],
+            ops=prepared_ops,
+            lock_factory=lambda _path: nullcontext(),
+        )
+    assert prepared_ops.acl_calls == 0 and prepared_ops.started is None
+
+
+def test_prepared_install_rejects_reparse_runtime_artifact_before_acl(
+    fresh_workspace, monkeypatch
+):
+    workspace, repo, marker = fresh_workspace
+    prepare_runtime_artifacts(workspace, marker)
+    runtime_file = workspace / "runtime.private.dpapi"
+
+    def reject_runtime_reparse(path):
+        if path == runtime_file:
+            raise resume.ResumeError("runtime reparse")
+        return original_reject(path)
+
+    original_reject = resume._reject_reparse_path
+    monkeypatch.setattr(resume, "_reject_reparse_path", reject_runtime_reparse)
+    ops = FakeOperations()
+    with pytest.raises(resume.ResumeError, match="runtime reparse"):
+        resume.resume_prepared_install_workspace(
+            workspace,
+            repo,
+            expected_port=3315,
+            expected_workspace_id=marker["workspace_id"],
+            ops=ops,
+            lock_factory=lambda _path: nullcontext(),
+        )
+    assert ops.acl_calls == 0 and ops.started is None
+
+
+def test_prepared_install_runtime_authority_rejection_fails_closed(fresh_workspace):
+    class WrongRuntimeOperations(FakeOperations):
+        def load_runtime(self, _workspace, _repo):
+            self.runtime_calls += 1
+            raise resume.ResumeError("Unexpected runtime privileges")
+
+    workspace, repo, marker = fresh_workspace
+    prepare_runtime_artifacts(workspace, marker)
+    ops = WrongRuntimeOperations()
+    with pytest.raises(resume.ResumeError, match="privileges"):
+        resume.resume_prepared_install_workspace(
+            workspace,
+            repo,
+            expected_port=3315,
+            expected_workspace_id=marker["workspace_id"],
+            ops=ops,
+            lock_factory=lambda _path: nullcontext(),
+            timeout=5,
+        )
+    assert ops.runtime_calls == 1
+    assert ops.started is not None
+    saved = json.loads((workspace / "workspace.json").read_text(encoding="utf-8"))
+    assert saved["resume_state"] == "VALIDATION_FAILED_ResumeError"
+
+
+@pytest.mark.parametrize("bad_id", ["unknown", "137ffe3243201bf34130b6585764edce"])
+def test_fresh_resume_rejects_unknown_or_mismatched_workspace_id_before_acl(
+    fresh_workspace, bad_id
+):
+    workspace, repo, _marker = fresh_workspace
+    ops = FreshFakeOperations()
+    with pytest.raises(resume.ResumeError):
+        resume.resume_fresh_workspace(
+            workspace,
+            repo,
+            expected_port=3315,
+            expected_workspace_id=bad_id,
+            ops=ops,
+            lock_factory=lambda _path: nullcontext(),
+        )
+    assert ops.acl_calls == 0 and ops.started is None
+
+
+@pytest.mark.parametrize("port", [3306, 3307, 3308, 3314, 3316, True, 3315.0])
+def test_fresh_resume_rejects_wrong_port_or_port_type_before_acl(fresh_workspace, port):
+    workspace, repo, marker = fresh_workspace
+    ops = FreshFakeOperations()
+    with pytest.raises(resume.ResumeError):
+        resume.resume_fresh_workspace(
+            workspace,
+            repo,
+            expected_port=port,
+            expected_workspace_id=marker["workspace_id"],
+            ops=ops,
+            lock_factory=lambda _path: nullcontext(),
+        )
+    assert ops.acl_calls == 0 and ops.started is None
+
+
+@pytest.mark.parametrize("bad_state", ["RESTORED", "UNKNOWN", "READY"])
+def test_fresh_resume_rejects_restore_or_unknown_marker_classification_before_acl(
+    fresh_workspace, bad_state
+):
+    workspace, repo, marker = fresh_workspace
+    marker["state"] = bad_state
+    (workspace / "workspace.json").write_text(json.dumps(marker), encoding="utf-8")
+    ops = FreshFakeOperations()
+    with pytest.raises(resume.ResumeError):
+        run_fresh_resume(workspace, repo, marker, ops)
+    assert ops.acl_calls == 0 and ops.started is None
+
+
+def test_fresh_resume_rejects_reparse_path_before_acl(fresh_workspace, monkeypatch):
+    workspace, repo, marker = fresh_workspace
+    monkeypatch.setattr(
+        resume,
+        "_reject_reparse_path",
+        lambda path: (_ for _ in ()).throw(resume.ResumeError("reparse path"))
+        if path == workspace
+        else None,
+    )
+    ops = FreshFakeOperations()
+    with pytest.raises(resume.ResumeError, match="reparse path"):
+        run_fresh_resume(workspace, repo, marker, ops)
+    assert ops.acl_calls == 0 and ops.started is None
+
+
+def test_fresh_resume_refuses_unverified_existing_guardian(fresh_workspace):
+    workspace, repo, marker = fresh_workspace
+    ops = FreshFakeOperations()
+    ops.process = {
+        "ProcessId": marker["parent_pid"],
+        "ExecutablePath": marker["executable"],
+        "CommandLine": "wrong guardian arguments",
+        "CreationUtc": CREATION_UTC,
+    }
+    with pytest.raises(resume.ResumeError, match="guardian identity"):
+        run_fresh_resume(workspace, repo, marker, ops)
+    assert ops.started is None and ops.fresh_database_calls == 0
+
+
 def test_verified_restore_resume_uses_target_port_and_existing_runtime_checks(
     restored_workspace_pair,
 ):
@@ -627,6 +893,115 @@ def test_default_cli_resumes_only_registered_workspace_on_3308(monkeypatch, caps
         ((resume.DEFAULT_WORKSPACE, resume.DEFAULT_REPO), {"expected_port": 3308, "timeout": 45.0})
     ]
     assert json.loads(capsys.readouterr().out) == {"status": "ALREADY_RUNNING"}
+
+
+def test_fresh_cli_requires_explicit_target_port_and_expected_id(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        resume,
+        "resume_fresh_workspace",
+        lambda *args, **kwargs: calls.append((args, kwargs)) or {"status": "STARTED"},
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["resume_school_workspace.py", "--fresh-mode", "--workspace", r"D:\Projects\.StudentMentalHealthAI-school-install-20261013-g", "--port", "3315"],
+    )
+    with pytest.raises(SystemExit) as caught:
+        resume.main()
+    assert caught.value.code == 2
+    assert calls == []
+
+
+def test_fresh_cli_passes_explicit_target_port_and_expected_id(monkeypatch, capsys):
+    calls = []
+    target = Path(r"D:\Projects\.StudentMentalHealthAI-school-install-20261013-g")
+    workspace_id = "137ffe3243201bf34130b6585764edcf"
+    monkeypatch.setattr(
+        resume,
+        "resume_fresh_workspace",
+        lambda *args, **kwargs: calls.append((args, kwargs)) or {"status": "STARTED"},
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "resume_school_workspace.py",
+            "--fresh-mode",
+            "--workspace",
+            str(target),
+            "--port",
+            "3315",
+            "--expected-workspace-id",
+            workspace_id,
+        ],
+    )
+
+    assert resume.main() == 0
+    assert calls == [
+        (
+            (target, resume.DEFAULT_REPO),
+            {"expected_port": 3315, "expected_workspace_id": workspace_id, "timeout": 45.0},
+        )
+    ]
+    assert json.loads(capsys.readouterr().out) == {"status": "STARTED"}
+
+
+def test_fresh_cli_rejects_combined_restore_classification(monkeypatch):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["resume_school_workspace.py", "--fresh-mode", "--restore-mode"],
+    )
+    with pytest.raises(SystemExit) as caught:
+        resume.main()
+    assert caught.value.code == 2
+
+
+def test_prepared_cli_requires_explicit_identity_and_dispatches_separate_mode(
+    monkeypatch, capsys
+):
+    calls = []
+    target = Path(r"D:\Projects\.StudentMentalHealthAI-school-install-20261013-g")
+    workspace_id = "137ffe3243201bf34130b6585764edcf"
+    monkeypatch.setattr(
+        resume,
+        "resume_prepared_install_workspace",
+        lambda *args, **kwargs: calls.append((args, kwargs)) or {"status": "STARTED"},
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "resume_school_workspace.py",
+            "--prepared-install-mode",
+            "--workspace",
+            str(target),
+            "--port",
+            "3315",
+            "--expected-workspace-id",
+            workspace_id,
+        ],
+    )
+    assert resume.main() == 0
+    assert calls == [
+        (
+            (target, resume.DEFAULT_REPO),
+            {"expected_port": 3315, "expected_workspace_id": workspace_id, "timeout": 45.0},
+        )
+    ]
+    assert json.loads(capsys.readouterr().out) == {"status": "STARTED"}
+
+
+def test_prepared_cli_rejects_combined_restore_classification(monkeypatch):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["resume_school_workspace.py", "--prepared-install-mode", "--restore-mode"],
+    )
+    with pytest.raises(SystemExit) as caught:
+        resume.main()
+    assert caught.value.code == 2
 
 
 def test_marker_update_is_atomic_and_preserves_unknown_fields(owned_workspace):
