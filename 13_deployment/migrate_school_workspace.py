@@ -1155,7 +1155,7 @@ $values | ConvertTo-Json -Depth 3 -Compress
             database_root
             / "migrations"
             / "versions"
-            / f"{CURRENT_SCHOOL_REVISION}_school_feedback_publication.py"
+            / f"{CURRENT_SCHOOL_REVISION}_post_assessment_job_outbox.py"
         )
         if not migration_file.is_file():
             raise MigrationError("PINNED_MIGRATION_UNAVAILABLE")

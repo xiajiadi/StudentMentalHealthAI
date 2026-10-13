@@ -21,6 +21,7 @@ from .repositories import (
     SubjectRepository,
     SupportRepository,
 )
+from .school_post_assessment_jobs import SchoolPostAssessmentJobRepository
 
 
 class SqlAlchemyUnitOfWork:
@@ -45,6 +46,7 @@ class SqlAlchemyUnitOfWork:
         self.reviews: ReviewRepository | None = None
         self.idempotency: IdempotencyStore | None = None
         self.audit: AuditRepository | None = None
+        self.post_assessment_jobs: SchoolPostAssessmentJobRepository | None = None
 
     async def __aenter__(self) -> Self:
         self.session = self.session_factory()
@@ -60,6 +62,7 @@ class SqlAlchemyUnitOfWork:
         self.reviews = ReviewRepository(self.session, self.protection)
         self.idempotency = IdempotencyStore(self.session)
         self.audit = AuditRepository(self.session)
+        self.post_assessment_jobs = SchoolPostAssessmentJobRepository(self.session)
         return self
 
     def _require_session(self) -> AsyncSession:

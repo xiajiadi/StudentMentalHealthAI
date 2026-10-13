@@ -24,6 +24,7 @@ from school_schema import (
     DIRECTORY_SCHOOL_REVISION,
     PROFESSIONAL_REVIEW_REVISION,
     SCHOOL_FEEDBACK_PUBLICATION_REVISION,
+    POST_ASSESSMENT_JOB_OUTBOX_REVISION,
     SCHOOL_REVISION_CHAIN,
     SUPPORTED_SNAPSHOT_REVISIONS,
 )
@@ -55,7 +56,7 @@ def test_current_snapshot_requires_its_exact_table_layout_and_revision():
     package["tables"][restore_plan.REVISION_TABLE]["rows"] = [[CURRENT_SCHOOL_REVISION]]
     plan = restore_plan.plan_restore(package, restored_at=RESTORED_AT)
     assert plan["revision"] == CURRENT_SCHOOL_REVISION
-    assert len(plan["table_order"]) == 41
+    assert len(plan["table_order"]) == 42
     package["revision"] = SUPPORTED_REVISION
     with pytest.raises(ValueError, match="manifest mismatch"):
         restore_plan.plan_restore(package, restored_at=RESTORED_AT)
@@ -148,8 +149,7 @@ def test_task_binding_manifest_preserves_exact_previous_columns_and_scope_chain(
 
 
 def test_feedback_publication_revision_adds_only_feedback_tables_and_preserves_0009():
-    assert CURRENT_SCHOOL_REVISION == SCHOOL_FEEDBACK_PUBLICATION_REVISION
-    assert SCHOOL_REVISION_CHAIN[-1] == SCHOOL_FEEDBACK_PUBLICATION_REVISION
+    assert SCHOOL_REVISION_CHAIN[-2] == SCHOOL_FEEDBACK_PUBLICATION_REVISION
     assert SCHOOL_FEEDBACK_PUBLICATION_REVISION in SUPPORTED_SNAPSHOT_REVISIONS
     previous = restore_plan.trusted_manifest(CAT_TASK_BINDING_REVISION)
     current = restore_plan.trusted_manifest(SCHOOL_FEEDBACK_PUBLICATION_REVISION)
@@ -208,6 +208,54 @@ def test_feedback_publication_revision_adds_only_feedback_tables_and_preserves_0
     assert order.index("school_feedback_records") < order.index(
         "school_feedback_events"
     )
+
+
+def test_post_assessment_outbox_revision_adds_one_table_and_preserves_0010():
+    assert CURRENT_SCHOOL_REVISION == POST_ASSESSMENT_JOB_OUTBOX_REVISION
+    assert SCHOOL_REVISION_CHAIN[-1] == POST_ASSESSMENT_JOB_OUTBOX_REVISION
+    assert POST_ASSESSMENT_JOB_OUTBOX_REVISION in SUPPORTED_SNAPSHOT_REVISIONS
+    previous = restore_plan.trusted_manifest(SCHOOL_FEEDBACK_PUBLICATION_REVISION)
+    current = restore_plan.trusted_manifest(POST_ASSESSMENT_JOB_OUTBOX_REVISION)
+    assert len(previous) == 42
+    assert len(current) == 43
+    assert set(previous).issubset(current)
+    assert set(current) - set(previous) == restore_plan.POST_ASSESSMENT_JOB_TABLES
+    assert all(current[name] == columns for name, columns in previous.items())
+
+    specs = restore_plan._load_trusted_tables(POST_ASSESSMENT_JOB_OUTBOX_REVISION)
+    job = specs["school_post_assessment_jobs"]
+    expected_fk_targets = {
+        "schools",
+        "measurement_tasks",
+        "school_class_students",
+        "task_enrollments",
+        "assessment_sessions",
+        "subjects",
+    }
+    assert {fk.remote_table for fk in job.foreign_keys} == expected_fk_targets
+
+    package = empty_package()
+    package["revision"] = POST_ASSESSMENT_JOB_OUTBOX_REVISION
+    package["tables"] = {
+        name: {"create_sql": "opaque archived DDL", "columns": columns, "rows": []}
+        for name, columns in current.items()
+    }
+    package["tables"][restore_plan.REVISION_TABLE]["rows"] = [
+        [POST_ASSESSMENT_JOB_OUTBOX_REVISION]
+    ]
+    plan = restore_plan.plan_restore(package, restored_at=RESTORED_AT)
+    order = plan["table_order"]
+    assert len(order) == 42
+    for parent in expected_fk_targets:
+        assert order.index(parent) < order.index("school_post_assessment_jobs")
+
+    package["revision"] = SCHOOL_FEEDBACK_PUBLICATION_REVISION
+    package["tables"].pop("school_post_assessment_jobs")
+    package["tables"][restore_plan.REVISION_TABLE]["rows"] = [
+        [SCHOOL_FEEDBACK_PUBLICATION_REVISION]
+    ]
+    older_plan = restore_plan.plan_restore(package, restored_at=RESTORED_AT)
+    assert "school_post_assessment_jobs" not in older_plan["tables"]
 
 
 def empty_package():

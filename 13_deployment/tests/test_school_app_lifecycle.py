@@ -231,7 +231,7 @@ def test_plan_is_read_only_and_keeps_cpu_gpu_profile_explicit(prepared):
     _repo, workspace, ops, app = prepared
     result = app.plan(workspace, llm_profile="school-gpu-7b", frontend_mode="preview")
     assert result["status"] == "PLAN_ONLY"
-    assert result["required_revision"] == "20261013_0010"
+    assert result["required_revision"] == "20261014_0011"
     assert result["llm_profile"] == "school-gpu-7b"
     assert result["whole_ready"] is False
     assert all(value == "UNVERIFIED" for value in result["external_modules"].values())
@@ -253,7 +253,7 @@ def test_start_dev_records_only_owned_backend_frontend_and_stop(prepared):
     manifest = json.loads(
         (workspace / lifecycle.MANIFEST_NAME).read_text(encoding="utf-8")
     )
-    assert manifest["required_revision"] == "20261013_0010"
+    assert manifest["required_revision"] == "20261014_0011"
     assert {service["port"] for service in manifest["services"]} == {8088, 4178}
     assert all(
         service["creation_time"] and service["argv"] and service["parent"]

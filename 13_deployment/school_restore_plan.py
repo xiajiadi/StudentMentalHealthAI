@@ -22,6 +22,7 @@ from school_schema import (
     CAT_TASK_BINDING_REVISION,
     PROFESSIONAL_REVIEW_REVISION,
     SCHOOL_FEEDBACK_PUBLICATION_REVISION,
+    POST_ASSESSMENT_JOB_OUTBOX_REVISION,
 )
 
 REVISION_TABLE = "database_alembic_version"
@@ -73,6 +74,7 @@ CAT_TASK_BINDING_TABLES = frozenset({
 })
 CAT_TASK_BINDING_MODE_TABLES = frozenset({"measurement_tasks", "assessment_sessions"})
 SCHOOL_FEEDBACK_TABLES = frozenset({"school_feedback_records", "school_feedback_events"})
+POST_ASSESSMENT_JOB_TABLES = frozenset({"school_post_assessment_jobs"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,7 +93,7 @@ class TableSpec:
 
 
 def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableSpec]:
-    """Load and completeness-check the local revision's 27 ORM mappings."""
+    """Load and completeness-check the local revision's ORM mappings."""
     repository = Path(__file__).resolve().parents[1]
     database_root = (repository / "11_database").resolve()
     database_root_text = str(database_root)
@@ -119,6 +121,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
     expected_current = (
         EXPECTED_MODEL_TABLES | DIRECTORY_TABLES | PROFESSIONAL_REVIEW_TABLES
         | CAT_ASSET_TABLES | CAT_TASK_BINDING_TABLES | SCHOOL_FEEDBACK_TABLES
+        | POST_ASSESSMENT_JOB_TABLES
     )
     if revision not in SUPPORTED_BACKUP_REVISIONS:
         raise ValueError("Unsupported restore revision")
@@ -132,24 +135,32 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
     tables: dict[str, TableSpec] = {}
     for table_name, table in metadata_tables.items():
         if (
-            revision not in {CAT_TASK_BINDING_REVISION, SCHOOL_FEEDBACK_PUBLICATION_REVISION}
+            revision not in {
+                CAT_TASK_BINDING_REVISION, SCHOOL_FEEDBACK_PUBLICATION_REVISION,
+                POST_ASSESSMENT_JOB_OUTBOX_REVISION,
+            }
             and table_name in CAT_TASK_BINDING_TABLES
         ):
             continue
         if (
-            revision != SCHOOL_FEEDBACK_PUBLICATION_REVISION
+            revision not in {SCHOOL_FEEDBACK_PUBLICATION_REVISION, POST_ASSESSMENT_JOB_OUTBOX_REVISION}
             and table_name in SCHOOL_FEEDBACK_TABLES
         ):
             continue
+        if revision != POST_ASSESSMENT_JOB_OUTBOX_REVISION and table_name in POST_ASSESSMENT_JOB_TABLES:
+            continue
         if (
-            revision not in {CAT_ASSETS_REVISION, CAT_TASK_BINDING_REVISION, SCHOOL_FEEDBACK_PUBLICATION_REVISION}
+            revision not in {
+                CAT_ASSETS_REVISION, CAT_TASK_BINDING_REVISION,
+                SCHOOL_FEEDBACK_PUBLICATION_REVISION, POST_ASSESSMENT_JOB_OUTBOX_REVISION,
+            }
             and table_name in CAT_ASSET_TABLES
         ):
             continue
         if (
             revision not in {
                 PROFESSIONAL_REVIEW_REVISION, CAT_ASSETS_REVISION, CAT_TASK_BINDING_REVISION,
-                SCHOOL_FEEDBACK_PUBLICATION_REVISION,
+                SCHOOL_FEEDBACK_PUBLICATION_REVISION, POST_ASSESSMENT_JOB_OUTBOX_REVISION,
             }
             and table_name in PROFESSIONAL_REVIEW_TABLES
         ):
@@ -159,7 +170,10 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
         columns = tuple(column.name for column in table.columns)
         nullable = frozenset(column.name for column in table.columns if column.nullable)
         if (
-            revision not in {CAT_TASK_BINDING_REVISION, SCHOOL_FEEDBACK_PUBLICATION_REVISION}
+            revision not in {
+                CAT_TASK_BINDING_REVISION, SCHOOL_FEEDBACK_PUBLICATION_REVISION,
+                POST_ASSESSMENT_JOB_OUTBOX_REVISION,
+            }
             and table_name in CAT_TASK_BINDING_MODE_TABLES
         ):
             columns = tuple(column for column in columns if column != "cat_binding_mode")

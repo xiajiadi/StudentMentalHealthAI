@@ -1612,6 +1612,119 @@ class SchoolCatSessionBinding(ResourceIdentityMixin, TimestampMixin, Base):
     plan_version_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
 
 
+class SchoolPostAssessmentJob(ResourceIdentityMixin, TimestampMixin, Base):
+    """Content-free durable work envelope for post-assessment education support."""
+
+    __tablename__ = "school_post_assessment_jobs"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint(
+            "school_id",
+            "assessment_session_id",
+            "job_kind",
+            "policy_version",
+            name="school_post_assessment_job_idempotency_unique",
+        ),
+        CheckConstraint("job_kind = 'EDUCATION_SUPPORT'", name="job_kind_allowed"),
+        CheckConstraint(
+            "status IN ('QUEUED', 'LEASED', 'RETRY', 'HELD', 'ABSTAINED', "
+            "'REVIEW_REQUIRED', 'CRISIS_ROUTED', 'FAILED', 'CANCELLED')",
+            name="status_allowed",
+        ),
+        CheckConstraint("attempt_count >= 0", name="attempt_count_nonnegative"),
+        CheckConstraint(
+            "(status = 'LEASED' AND lease_owner IS NOT NULL "
+            "AND lease_expires_at IS NOT NULL AND lease_token IS NOT NULL) OR "
+            "(status <> 'LEASED' AND lease_owner IS NULL "
+            "AND lease_expires_at IS NULL AND lease_token IS NULL)",
+            name="lease_matches_status",
+        ),
+        CheckConstraint(
+            "status <> 'RETRY' OR next_attempt_at IS NOT NULL",
+            name="retry_has_next_attempt",
+        ),
+        Index(
+            "ix_school_post_assessment_jobs_claim",
+            "status",
+            "next_attempt_at",
+            "lease_expires_at",
+            "created_at",
+        ),
+        Index(
+            "ix_school_post_assessment_jobs_student_status",
+            "school_id",
+            "subject_id",
+            "status",
+            "created_at",
+        ),
+        ForeignKeyConstraint(
+            ["school_id"], ["schools.id"],
+            name="fk_school_post_assessment_jobs_school", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["task_id", "school_id", "class_id"],
+            ["measurement_tasks.id", "measurement_tasks.school_id", "measurement_tasks.class_id"],
+            name="fk_school_post_assessment_jobs_task_scope", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["class_student_id", "subject_id", "class_id", "school_id"],
+            [
+                "school_class_students.id", "school_class_students.subject_id",
+                "school_class_students.class_id", "school_class_students.school_id",
+            ],
+            name="fk_school_post_assessment_jobs_roster_scope", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["task_enrollment_id", "task_id", "school_id", "subject_id"],
+            [
+                "task_enrollments.id", "task_enrollments.task_id",
+                "task_enrollments.school_id", "task_enrollments.subject_id",
+            ],
+            name="fk_school_post_assessment_jobs_enrollment_scope", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["assessment_session_id", "task_enrollment_id", "subject_id"],
+            [
+                "assessment_sessions.id", "assessment_sessions.task_enrollment_id",
+                "assessment_sessions.subject_id",
+            ],
+            name="fk_school_post_assessment_jobs_assessment_scope", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["subject_id", "school_id"], ["subjects.id", "subjects.school_id"],
+            name="fk_school_post_assessment_jobs_subject_scope", ondelete="RESTRICT",
+        ),
+    )
+
+    job_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False, unique=True)
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    task_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    class_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    class_student_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    task_enrollment_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    subject_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    assessment_session_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    job_kind: Mapped[str] = mapped_column(ascii_id(32), nullable=False)
+    policy_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    policy_hash: Mapped[str | None] = mapped_column(ascii_id(64), nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="QUEUED", server_default="QUEUED"
+    )
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    next_attempt_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    lease_owner: Mapped[str | None] = mapped_column(ascii_id(128), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    lease_token: Mapped[str | None] = mapped_column(ascii_id(128), nullable=True)
+    source_snapshot_ref: Mapped[str | None] = mapped_column(ascii_id(128), nullable=True)
+    source_snapshot_sha256: Mapped[str | None] = mapped_column(ascii_id(64), nullable=True)
+    source_qualification_status: Mapped[str | None] = mapped_column(ascii_id(32), nullable=True)
+    source_population: Mapped[str | None] = mapped_column(ascii_id(64), nullable=True)
+    source_layer: Mapped[str | None] = mapped_column(ascii_id(32), nullable=True)
+    source_rights_status: Mapped[str | None] = mapped_column(ascii_id(32), nullable=True)
+    source_review_status: Mapped[str | None] = mapped_column(ascii_id(32), nullable=True)
+    source_qualified_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    last_error_code: Mapped[str | None] = mapped_column(ascii_id(128), nullable=True)
+
+
 class IdempotencyRecord(ResourceIdentityMixin, TimestampMixin, Base):
     __tablename__ = "idempotency_records"
     __table_args__ = mysql_table_args(
