@@ -145,6 +145,36 @@ being prepared after excluding calibration positions; original evaluation800 and
 fit unchanged, no missing-value fill or unbiased-cohort claim. Preserve that
 distinction when wiring the full school scenario. Goal remains ACTIVE.
 
+2026-10-14 03:28 native L3 synthetic edge workflow through I8091: task/CAT,
+assigned case/open/simulated decision, draft hidden, stale review-version draft
+publish409, current-version draft publish/replay, minimal student projection,
+cross-role/school denials, revoke then student404 all verified through APIs.
+Evidence I/logs/native-feedback-l3-3268b6669b5246548446fc8bb5ce3246.json.
+Initial attempt tried to publish an earlier case-version draft andfailed409;
+failure c37af004a6764faf8816950e4d51dc19 retained, data never reset. This is a
+synthetic role workflow, not human professional approval, UI screenshot proof,
+clinical publication or public-research report acceptance.
+I now has32 response/4result/2case-note/3feedback ciphertexts; actual same-user
+DPAPI decrypt PASS with no content emitted, evidence
+fresh-cat-encryption-proof-fafd819dcc674f14b56a83c29d3fb331.json.
+Sealed0011 backup/readback43tables includingrevision at
+I/backups/20261013-192739-a84d2beac77542909375c7817b2ddf73.private.dpapi.
+Restore of this populated backup not yet run.
+
+Research schema slice under implementation: three separate profile/task-binding/
+encrypted-session tables, additive MeasurementTask RESEARCH_PROFILE mode and
+ordinary start denial before standard Session creation. Existing assessment.v1,
+normal AssessmentSession, case and0011outbox admission unchanged. Disabled
+profile/binding or revoked rights stops future writes/resume; history onlyL1.
+No native0012DDL authorized to Workers; Root will use NEW target after review.
+NHANES exact nine-item v2 candidate acquired with official wording/0..3labels and
+PHQ reuse statement, research-only adult profile; v2 adapter is active work.
+Completeobserved coverage800 source chosen without replacement after excluding
+both originalcal6000/eval800, pool2002; response CSV
+SHA5dbbd84a4841f43ae090135ebd225b8e1d84ff3089326410d8bc4012a03cbc6d.
+No imputation/no bias-free/highschool claim. PROMIS Pediatric publicly accessible
+GenPop source acquisition underway; mixed forms/version/rights still to verify.
+
 2026-10-14 00:05 nextscenario: Root created newH workspace
 D:\Projects\.StudentMentalHealthAI-school-install-20261013-h,
 ID28823cc1dcd2d8a4d41991eac1e045b0/DB3316. Fresh additive migration0010 MIGRATED;
