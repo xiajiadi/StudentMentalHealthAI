@@ -66,5 +66,3 @@ if ((Get-FileHash -LiteralPath $raw -Algorithm MD5).Hash -ine '8e34f3f2cb9a7f309
 ## 尚未确认
 
 PsychArchives 300 题 ZIP 当前官方 bitstream 仍返回 HTTP 502，因此没有真实取得。OpenPsych 2018 数据页公开，但该数据未明确采用再分发许可，且需要包内 codebook 与字段逐项复核；本次没有下载。SAPA 99 题响应矩阵虽已隔离，但未执行 CAT/GRM 参数校准、heldout 回放或测量学验证。
-
-

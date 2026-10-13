@@ -1,6 +1,31 @@
 ## ACTIVE — 2026-10-13 23:25 Beijing, public empirical-data extension
 
-23:33 milestone: G professional browser allstages PASS at browser-qa/
+23:44 researchpilot: isolatedresearch-env Python3.12.13/GIRTH0.8.0/numpy1.26.4/
+scipy1.13.1; missingGRMMML source path confirmed via valid mask and neutral
+likelihood contribution, not2PL README inference. Extraversion20exact-keyitems,
+7 reversed7-x,10000cal rows including212no-domain-observation; pilot5/100iter,
+finiteorderedthresholds but4 invalid-log trialwarnings; library AIC/BIC kparams0
+unusable. Independent QA on source/keys/likelihood required before otherdomains.
+No onlineparameter or frozenstack change. Root assigned empirical800 roster tool
+Worker task only; no800-schoolaccount import or capacity claim yet.
+
+Worker cleanup of its two ownraw download tempfiles was blocked byplatformpolicy;
+no alternative delete attempted. Files remain in
+D:\Dev\datasets\psynova-public-research\staging\_work\sapa-original-format.tmp and
+sapa-full-tab-unfiltered.tmp. Not used in schoolDB, not committed/uploaded;
+response-only deriveddata and originalhash receipt retained.
+
+23:33 professional review milestone.
+
+23:37 durable increment:3475cf3285223b8cb031d4ae52880b5f1da83b64 pushed only to
+dedicated branch and ls-remote verified. Public response matrices/rawdata remain
+outsideGit; only importer/tests/source inventories/checkpoint committed. Root
+changed synthetic test fixture metadata and its matching expected-version assertion;
+one initial stale assertion failed, then focused16tests passed. Commit whitespace
+check found3 formatting issues (newEOF blanks/Markdown break spaces), fixed in
+subsequent cleanup rather than claiming clean check. No default/protected changes.
+
+G professional browser allstages PASS at browser-qa/
 20261013T152606Z-bda5a64435df4e4d9703acbe1f02b0a1; Root inspected masked desktop
 screenshot. Native storage proof PASS: logs/professional-review-storage-
 425c4e48300b41cab401addb841e963e.json, ciphertext nonplaintext,3 actor/versioned
