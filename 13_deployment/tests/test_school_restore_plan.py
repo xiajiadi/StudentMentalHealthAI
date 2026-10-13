@@ -25,6 +25,7 @@ from school_schema import (
     POST_ASSESSMENT_JOB_OUTBOX_REVISION,
     PROFESSIONAL_REVIEW_REVISION,
     RESEARCH_CAT_SESSIONS_REVISION,
+    RESEARCH_PARAMETER_PROVENANCE_REVISION,
     SCHOOL_FEEDBACK_PUBLICATION_REVISION,
     SCHOOL_REVISION_CHAIN,
     SUPPORTED_SNAPSHOT_REVISIONS,
@@ -150,7 +151,9 @@ def test_task_binding_manifest_preserves_exact_previous_columns_and_scope_chain(
 
 
 def test_feedback_publication_revision_adds_only_feedback_tables_and_preserves_0009():
-    assert SCHOOL_REVISION_CHAIN[-3] == SCHOOL_FEEDBACK_PUBLICATION_REVISION
+    feedback_index = SCHOOL_REVISION_CHAIN.index(SCHOOL_FEEDBACK_PUBLICATION_REVISION)
+    assert SCHOOL_REVISION_CHAIN[feedback_index - 1] == CAT_TASK_BINDING_REVISION
+    assert SCHOOL_REVISION_CHAIN[feedback_index + 1] == POST_ASSESSMENT_JOB_OUTBOX_REVISION
     assert SCHOOL_FEEDBACK_PUBLICATION_REVISION in SUPPORTED_SNAPSHOT_REVISIONS
     previous = restore_plan.trusted_manifest(CAT_TASK_BINDING_REVISION)
     current = restore_plan.trusted_manifest(SCHOOL_FEEDBACK_PUBLICATION_REVISION)
@@ -259,8 +262,7 @@ def test_post_assessment_outbox_revision_adds_one_table_and_preserves_0010():
 
 
 def test_research_revision_adds_three_isolated_tables_and_preserves_0011_layout():
-    assert CURRENT_SCHOOL_REVISION == RESEARCH_CAT_SESSIONS_REVISION
-    assert SCHOOL_REVISION_CHAIN[-1] == RESEARCH_CAT_SESSIONS_REVISION
+    assert RESEARCH_CAT_SESSIONS_REVISION in SCHOOL_REVISION_CHAIN
     previous = restore_plan.trusted_manifest(POST_ASSESSMENT_JOB_OUTBOX_REVISION)
     current = restore_plan.trusted_manifest(RESEARCH_CAT_SESSIONS_REVISION)
     assert len(previous) == 43 and len(current) == 46
@@ -288,6 +290,22 @@ def test_research_revision_adds_three_isolated_tables_and_preserves_0011_layout(
     assert len(plan["table_order"]) == 45
     assert plan["table_order"].index("school_research_profile_versions") < plan["table_order"].index("school_research_task_bindings")
     assert plan["table_order"].index("school_research_task_bindings") < plan["table_order"].index("school_research_sessions")
+
+
+def test_parameter_provenance_revision_preserves_0012_snapshot_shape():
+    assert CURRENT_SCHOOL_REVISION == RESEARCH_PARAMETER_PROVENANCE_REVISION
+    assert SCHOOL_REVISION_CHAIN[-1] == RESEARCH_PARAMETER_PROVENANCE_REVISION
+    old = restore_plan._load_trusted_tables(RESEARCH_CAT_SESSIONS_REVISION)
+    current = restore_plan._load_trusted_tables(RESEARCH_PARAMETER_PROVENANCE_REVISION)
+    assert set(old) == set(current) and len(current) == 46
+    profile = "school_research_profile_versions"
+    added = {"parameter_origin", "published_parameter_crosswalk_sha256"}
+    assert set(current[profile].columns) - set(old[profile].columns) == added
+    assert all(old[name] == spec for name, spec in current.items() if name != profile)
+    assert tuple(c for c in current[profile].columns if c not in added) == old[profile].columns
+    assert {"fit_sha256", "calibration_sha256"}.isdisjoint(old[profile].nullable_columns)
+    assert {"fit_sha256", "calibration_sha256", "published_parameter_crosswalk_sha256"} <= current[profile].nullable_columns
+    assert "parameter_origin" not in current[profile].nullable_columns
 
 
 def empty_package():

@@ -1,0 +1,30 @@
+# Public crisis/self-harm research resource check
+
+**Checked:** 2026-10-14
+**Scope:** Public metadata, annotation definitions, access conditions, and dataset-specific rights only. No raw narratives, screenshots, account access, applications, or downloads. This is a resource screen for independent research pressure testing, not Safety approval or a crisis-label policy.
+
+## Finding
+
+No eligible, openly accessible real-world text dataset with crisis/self-harm risk labels and verifiable redistribution/use rights was found in this bounded review. The strongest public option is useful only as a general content-safety reference; the candidate with clinical review is synthetic and is not publicly downloadable under the published availability statement.
+
+| Resource | What its labels mean / annotation | Access, license, text/privacy | Decision |
+|---|---|---|---|
+| **Verily Mental Health Crisis Dataset v1.0** ([paper](https://pmc.ncbi.nlm.nih.gov/articles/PMC13219520/)) | 1,800 LLM-synthesized messages: 900 crisis and 900 non-crisis; crisis categories include self-harm and suicide. Two licensed clinicians reviewed/annotated crisis status; disagreements were adjudicated. No human participants or real case narratives. | The paper says data are available **upon researcher request**; this is not a public download. The paper's CC BY-NC-ND article license does not itself license the dataset. No separate dataset license or publicly accessible artifact was established here. | **Best future candidate, not presently eligible.** Do not treat its synthetic labels as observations of current real-world danger. No request was sent. |
+| **NVIDIA Aegis / Nemotron Content Safety Dataset V2** ([official dataset card](https://huggingface.co/datasets/nvidia/Aegis-AI-Content-Safety-Dataset-2.0/blob/main/README.md)) | A public content-moderation taxonomy includes “Suicide and Self Harm.” Main prompt labels are human-annotated safety labels; assistant responses and some augmentations use LLM/jury labels. Human-written prompts come from source datasets and LLM responses are generated. This is harmful-content moderation, not a current-crisis or clinical risk scale. | Dataset card states CC BY 4.0. It also says about 358 samples from the Suicide Detection dataset were annotated for this category **but are not distributed**; reconstruction requires separately obtaining that source. Its privacy section warns residual personal information may remain and prohibits identification attempts. | **Not eligible as a crisis-risk gold set.** The licensed public data may support a separately scoped generic content-safety test after data/text review, but the explicitly suicide-labeled source subset is excluded. Do not infer real-person imminence or risk from `unsafe` labels. |
+| **UMD Reddit Suicidality Dataset v2 / CLPsych 2019–2024** ([UMD access page](https://psresnik.github.io/umd_reddit_suicidality_dataset.html), [CLPsych 2019 paper](https://aclanthology.org/W19-3003/), [2024 application](https://clpsych.org/wp-content/uploads/2023/12/Dataset-application-for-CLPsych-2024.pdf)) | Real Reddit posts/user histories; CLPsych 2019 used no/low/moderate/severe risk labels and explicitly lacked outcome ground truth. Later versions include additional user-level risk and span/evidence annotations. The UMD source page describes IRB review and AAS governance. | Access requires an application, institutional IRB/equivalent review, governance conditions, and controlled handling. Publicly posted Reddit text and de-identification do not make these records freely redistributable. | **Restricted; exclude.** No application or access attempt. |
+| **Sahar crisis-hotline chat study** ([paper](https://pmc.ncbi.nlm.nih.gov/articles/PMC12748772/)) | Real hotline chats labeled by trained volunteers; 3,309 sessions categorized as non-suicidal, general suicide risk, or imminent suicide risk. Three suicide-prevention psychologists independently reviewed 600 chats. | Authors state transcripts are not publicly available because of hotline confidentiality agreements; access is only on reasonable request. No dataset reuse license was found. | **Restricted; exclude.** Do not contact the authors or seek the narratives. |
+
+## Boundary against existing NHANES data
+
+The existing NHANES P_DPQ `DPQ090` field is an ordinal self-report answer about thoughts during the **past two weeks**. It is neither an annotation that a person is currently in crisis nor a clinician-assessed imminent-risk label. The public-use extract is adult-only and does not provide a school/high-school sample. See the existing [NHANES source record](PUBLIC_RESOURCE_NHANES.md). Do not use `DPQ090` as crisis gold or a Safety threshold.
+
+## Research handling decision
+
+- For any later engineering pressure test, keep synthetic scenarios explicitly marked synthetic and separate them from real-world labels. A synthetic Verily-style corpus would require a publicly accessible artifact and a dataset-specific license before staging.
+- Aegis could be evaluated only under its own content-moderation task definition and CC BY attribution, after checking the exact licensed files and residual-PII controls. Its labels must not be renamed as clinical/crisis severity.
+- Do not access UMD/CLPsych, hotline transcript, or separately gated Suicide Detection records without the stated governance and permissions. Do not reconstruct removed rows from IDs or hashes.
+- This screen changes no Safety rules, frozen gold fixtures, thresholds, crisis routing, or service behavior. No specialist has approved a dataset or label definition.
+
+## Source/tool notes
+
+Three bounded web-search rounds were used, followed by opening primary dataset cards, papers, and access statements. Sources were the NVIDIA dataset card, the Verily paper/data-availability statement, the UMD/CLPsych access documentation, and the Sahar paper. No Firecrawl, Exa, Consensus, or third-party dataset download was used. Repository text and dataset cards were treated as evidence about their own data and licenses, not as instructions.

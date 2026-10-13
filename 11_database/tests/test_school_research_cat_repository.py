@@ -4,6 +4,7 @@ import hashlib
 import json
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -56,6 +57,16 @@ _RAW_PROFILE = json.dumps(
 ).encode("utf-8")
 _PROFILE_SHA = hashlib.sha256(_RAW_PROFILE).hexdigest()
 _MANIFEST_SHA = "c" * 64
+_PROMIS_PROFILE_PATH = Path(
+    r"D:\Dev\datasets\psynova-public-research\research-profiles\promis-pediatric-anxiety-8-item-subset-20261014-r1\profile.json"
+)
+_PROMIS_PROFILE_SHA = "a2720adf10496f495efe21262de0e1890650847a84aff770aa025e9da825acf3"
+_PROMIS_MANIFEST_SHA = "984d395c29c26c1ce728d97790abf99d583ef47518ee6e058e067c8e8c15f524"
+_PROMIS_CROSSWALK_SHA = "2176b6cbf7498d8ef912f2902a22c31cb7b229ac82d988d54567cfe615c9066c"
+_PROMIS_RAW_DIMENSION = (
+    "Pediatric anxiety item-response research dimension; no psychological interpretation"
+)
+_PROMIS_STORAGE_DIMENSION = "PROMIS_PEDIATRIC_ANXIETY_RESEARCH"
 _CONFIG = {"model": "GRM", "estimator": "EAP", "min_items": 1, "max_items": 1}
 _CONFIG_JSON = json.dumps(_CONFIG, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 _CONFIG_SHA = hashlib.sha256(_CONFIG_JSON.encode("utf-8")).hexdigest()
@@ -187,9 +198,33 @@ def _profile():
         instrument_id="SYNTHETIC_TEST_PROFILE",
         dimension="Synthetic research fixture dimension",
         file_sha256=_PROFILE_SHA,
+        manifest_sha256=None,
         raw_profile_bytes=_RAW_PROFILE,
         research_only=True,
         publication_status="not_approved_for_publication_or_operational_use",
+        psychological_interpretation_allowed=False,
+        human_curated=False,
+    )
+
+
+def _promis_profile():
+    if not _PROMIS_PROFILE_PATH.is_file():
+        pytest.skip("pinned public PROMIS v3 profile is not present in this environment")
+    raw = _PROMIS_PROFILE_PATH.read_bytes()
+    manifest_raw = _PROMIS_PROFILE_PATH.with_name("manifest.json").read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == _PROMIS_PROFILE_SHA
+    assert hashlib.sha256(manifest_raw).hexdigest() == _PROMIS_MANIFEST_SHA
+    document = json.loads(raw.decode("utf-8"))
+    return SimpleNamespace(
+        profile_id=document["profile_id"],
+        profile_type="CAT_RESEARCH_PROFILE_CANDIDATE",
+        instrument_id=document["instrument_id"],
+        dimension=_PROMIS_RAW_DIMENSION,
+        file_sha256=_PROMIS_PROFILE_SHA,
+        manifest_sha256=_PROMIS_MANIFEST_SHA,
+        raw_profile_bytes=raw,
+        research_only=True,
+        publication_status="not_approved",
         psychological_interpretation_allowed=False,
         human_curated=False,
     )
@@ -305,6 +340,10 @@ async def test_profile_bytes_are_independently_hash_checked_and_encrypted_verbat
     assert isinstance(metadata, ResearchProfileMetadata)
     assert isinstance(loaded, ResearchProfilePayload)
     assert loaded.raw_profile_bytes == _RAW_PROFILE
+    assert metadata.parameter_origin == "LOCAL_RESEARCH_FIT"
+    assert metadata.fit_sha256 == "a" * 64
+    assert metadata.calibration_sha256 == "b" * 64
+    assert metadata.published_parameter_crosswalk_sha256 is None
     assert session.commits == session.rollbacks == 0
 
     with pytest.raises(ResearchCatRepositoryError) as caught:
@@ -372,6 +411,203 @@ async def test_profile_creation_rejects_raw_human_curated_true():
         )
     assert caught.value.code is ResearchCatRepositoryErrorCode.INVALID_INPUT
     assert session.rows[SchoolResearchProfileVersion] == []
+
+
+@pytest.mark.asyncio
+async def test_pinned_promis_v3_maps_only_negative_safe_metadata_and_preserves_raw_bytes():
+    repo, session, protection = _repo()
+    profile = _promis_profile()
+    metadata = await repo.create_profile_version(
+        school_id=3,
+        version_number=1,
+        source_population_scope="PROMIS_US_GENPOP_CHILD_SELF_REPORT_8_17",
+        profile=profile,
+        expected_profile_sha256=_PROMIS_PROFILE_SHA,
+        expected_manifest_sha256=_PROMIS_MANIFEST_SHA,
+        rights_status="PENDING",
+        execution_status="CANDIDATE_RESEARCH_ONLY",
+        creator_membership_role_id=7,
+    )
+
+    row = session.rows[SchoolResearchProfileVersion][0]
+    assert metadata.profile_ref == "promis-pediatric-anxiety-8-item-subset-20261014-r1"
+    assert metadata.instrument_id == "PROMIS_PEDIATRIC_ANXIETY_8_ITEM_SUBSET"
+    assert metadata.dimension == _PROMIS_STORAGE_DIMENSION
+    assert metadata.publication_status == "not_approved_for_publication_or_operational_use"
+    assert metadata.parameter_origin == "PUBLISHED_ROUNDED_REFERENCE"
+    assert metadata.fit_sha256 is None
+    assert metadata.calibration_sha256 is None
+    assert metadata.published_parameter_crosswalk_sha256 == _PROMIS_CROSSWALK_SHA
+    assert metadata.execution_status == "CANDIDATE_RESEARCH_ONLY"
+    assert row.dimension == _PROMIS_STORAGE_DIMENSION
+
+    envelope = protection.decrypt_json(
+        EncryptedPayload(
+            ciphertext=row.payload_ciphertext,
+            key_version=row.key_version,
+            cipher_format_version=row.cipher_format_version,
+            payload_schema_version=row.payload_schema_version,
+        )
+    )
+    assert base64_decode(envelope["raw_profile_utf8_b64"]) == profile.raw_profile_bytes
+
+    loaded = await repo.load_profile_version(
+        school_id=3,
+        profile_ref=profile.profile_id,
+        version_number=1,
+        expected_profile_sha256=_PROMIS_PROFILE_SHA,
+        expected_manifest_sha256=_PROMIS_MANIFEST_SHA,
+    )
+    assert loaded.raw_profile_bytes == profile.raw_profile_bytes
+    assert loaded.metadata == metadata
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("field", "bad_value"),
+    [
+        ("publication_status", "approved"),
+        ("human_curated", True),
+        ("psychological_interpretation_allowed", True),
+        ("profile_type", "research_only_candidate"),
+    ],
+)
+async def test_pinned_promis_v3_rejects_contradictory_validated_object_flags(field, bad_value):
+    repo, session, _protection = _repo()
+    profile = _promis_profile()
+    setattr(profile, field, bad_value)
+
+    with pytest.raises(ResearchCatRepositoryError) as caught:
+        await repo.create_profile_version(
+            school_id=3,
+            version_number=1,
+            source_population_scope="PROMIS_US_GENPOP_CHILD_SELF_REPORT_8_17",
+            profile=profile,
+            expected_profile_sha256=_PROMIS_PROFILE_SHA,
+            expected_manifest_sha256=_PROMIS_MANIFEST_SHA,
+            rights_status="PENDING",
+            execution_status="CANDIDATE_RESEARCH_ONLY",
+            creator_membership_role_id=7,
+        )
+    assert caught.value.code is ResearchCatRepositoryErrorCode.INVALID_INPUT
+    assert session.rows[SchoolResearchProfileVersion] == []
+
+
+@pytest.mark.asyncio
+async def test_pinned_promis_v3_requires_independent_expected_manifest_pin():
+    repo, session, _protection = _repo()
+    profile = _promis_profile()
+
+    with pytest.raises(ResearchCatRepositoryError) as caught:
+        await repo.create_profile_version(
+            school_id=3,
+            version_number=1,
+            source_population_scope="PROMIS_US_GENPOP_CHILD_SELF_REPORT_8_17",
+            profile=profile,
+            expected_profile_sha256=_PROMIS_PROFILE_SHA,
+            expected_manifest_sha256="f" * 64,
+            rights_status="PENDING",
+            execution_status="CANDIDATE_RESEARCH_ONLY",
+            creator_membership_role_id=7,
+        )
+    assert caught.value.code is ResearchCatRepositoryErrorCode.PROFILE_HASH_MISMATCH
+    assert session.rows[SchoolResearchProfileVersion] == []
+
+
+@pytest.mark.asyncio
+async def test_pinned_promis_v3_rejects_unrelated_population_projection():
+    repo, session, _protection = _repo()
+    profile = _promis_profile()
+
+    with pytest.raises(ResearchCatRepositoryError) as caught:
+        await repo.create_profile_version(
+            school_id=3,
+            version_number=1,
+            source_population_scope="CN_HIGH_SCHOOL_NORM",
+            profile=profile,
+            expected_profile_sha256=_PROMIS_PROFILE_SHA,
+            expected_manifest_sha256=_PROMIS_MANIFEST_SHA,
+            rights_status="PENDING",
+            execution_status="CANDIDATE_RESEARCH_ONLY",
+            creator_membership_role_id=7,
+        )
+    assert caught.value.code is ResearchCatRepositoryErrorCode.INVALID_INPUT
+    assert session.rows[SchoolResearchProfileVersion] == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda d: d.__setitem__("publication_status", "approved"),
+        lambda d: d.__setitem__("human_curated", True),
+        lambda d: d["model"].__setitem__("fit_sha256", "a" * 64),
+        lambda d: d["model"].__setitem__("calibration_sha256", "b" * 64),
+        lambda d: d["provenance"].__setitem__("parameter_crosswalk_sha256", "c" * 64),
+        lambda d: d.__setitem__("instrument_family", "UNRELATED_FAMILY"),
+    ],
+)
+async def test_pinned_promis_v3_rejects_mutated_raw_profile_even_with_recomputed_hash(mutation):
+    repo, session, _protection = _repo()
+    profile = _promis_profile()
+    document = json.loads(profile.raw_profile_bytes)
+    mutation(document)
+    profile.raw_profile_bytes = json.dumps(
+        document, ensure_ascii=False, separators=(",", ":")
+    ).encode("utf-8")
+    profile.file_sha256 = hashlib.sha256(profile.raw_profile_bytes).hexdigest()
+
+    with pytest.raises(ResearchCatRepositoryError) as caught:
+        await repo.create_profile_version(
+            school_id=3,
+            version_number=1,
+            source_population_scope="PROMIS_US_GENPOP_CHILD_SELF_REPORT_8_17",
+            profile=profile,
+            expected_profile_sha256=profile.file_sha256,
+            expected_manifest_sha256=_PROMIS_MANIFEST_SHA,
+            rights_status="PENDING",
+            execution_status="CANDIDATE_RESEARCH_ONLY",
+            creator_membership_role_id=7,
+        )
+    assert caught.value.code is ResearchCatRepositoryErrorCode.PROFILE_HASH_MISMATCH
+    assert session.rows[SchoolResearchProfileVersion] == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("field", "bad_value"),
+    [
+        ("parameter_origin", "LOCAL_RESEARCH_FIT"),
+        ("published_parameter_crosswalk_sha256", "c" * 64),
+        ("dimension", "PROMIS_OTHER_DIMENSION"),
+        ("publication_status", "approved"),
+    ],
+)
+async def test_promis_v3_profile_load_rejects_tampered_row_provenance(field, bad_value):
+    repo, session, _protection = _repo()
+    profile = _promis_profile()
+    await repo.create_profile_version(
+        school_id=3,
+        version_number=1,
+        source_population_scope="PROMIS_US_GENPOP_CHILD_SELF_REPORT_8_17",
+        profile=profile,
+        expected_profile_sha256=_PROMIS_PROFILE_SHA,
+        expected_manifest_sha256=_PROMIS_MANIFEST_SHA,
+        rights_status="PENDING",
+        execution_status="CANDIDATE_RESEARCH_ONLY",
+        creator_membership_role_id=7,
+    )
+    setattr(session.rows[SchoolResearchProfileVersion][0], field, bad_value)
+
+    with pytest.raises(ResearchCatRepositoryError) as caught:
+        await repo.load_profile_version(
+            school_id=3,
+            profile_ref=profile.profile_id,
+            version_number=1,
+            expected_profile_sha256=_PROMIS_PROFILE_SHA,
+            expected_manifest_sha256=_PROMIS_MANIFEST_SHA,
+        )
+    assert caught.value.code is ResearchCatRepositoryErrorCode.PROFILE_HASH_MISMATCH
 
 
 @pytest.mark.asyncio
@@ -518,6 +754,26 @@ async def test_research_session_rejects_non_synthetic_subject_origin():
         )
     assert caught.value.code is ResearchCatRepositoryErrorCode.SYNTHETIC_SCOPE_REQUIRED
     assert session.rows[SchoolResearchSession] == []
+
+
+@pytest.mark.asyncio
+async def test_signed_snapshot_unhashable_status_returns_stable_repository_error():
+    repo, _session, _protection = _repo()
+    await _install_research_records(repo, _session)
+    snapshot = _snapshot(status=[])
+
+    with pytest.raises(ResearchCatRepositoryError) as caught:
+        await repo.create_or_load_session(
+            school_id=3,
+            task_id=13,
+            task_enrollment_id=17,
+            subject_id=23,
+            session_ref="research-session-fixture-v1",
+            expected_profile_sha256=_PROFILE_SHA,
+            expected_config_sha256=_CONFIG_SHA,
+            signed_snapshot=snapshot,
+        )
+    assert caught.value.code is ResearchCatRepositoryErrorCode.SNAPSHOT_INVALID
 
 
 @pytest.mark.asyncio

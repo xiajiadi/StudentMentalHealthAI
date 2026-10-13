@@ -1655,6 +1655,19 @@ class SchoolResearchProfileVersion(ResourceIdentityMixin, TimestampMixin, Base):
             "publication_status = 'not_approved_for_publication_or_operational_use'",
             name="publication_unapproved",
         ),
+        CheckConstraint(
+            "parameter_origin IN ('LOCAL_RESEARCH_FIT', 'PUBLISHED_ROUNDED_REFERENCE')",
+            name="parameter_origin_allowed",
+        ),
+        CheckConstraint(
+            "(parameter_origin = 'LOCAL_RESEARCH_FIT' "
+            "AND fit_sha256 IS NOT NULL AND calibration_sha256 IS NOT NULL "
+            "AND published_parameter_crosswalk_sha256 IS NULL) OR "
+            "(parameter_origin = 'PUBLISHED_ROUNDED_REFERENCE' "
+            "AND fit_sha256 IS NULL AND calibration_sha256 IS NULL "
+            "AND published_parameter_crosswalk_sha256 IS NOT NULL)",
+            name="parameter_provenance_shape",
+        ),
         ForeignKeyConstraint(
             ["school_id"], ["schools.id"],
             name="fk_school_research_profile_versions_school", ondelete="RESTRICT",
@@ -1683,8 +1696,8 @@ class SchoolResearchProfileVersion(ResourceIdentityMixin, TimestampMixin, Base):
     source_population_scope: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
     profile_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
     manifest_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
-    fit_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
-    calibration_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    fit_sha256: Mapped[str | None] = mapped_column(ascii_id(64), nullable=True)
+    calibration_sha256: Mapped[str | None] = mapped_column(ascii_id(64), nullable=True)
     rights_status: Mapped[str] = mapped_column(String(16), nullable=False)
     execution_status: Mapped[str] = mapped_column(String(32), nullable=False)
     purpose: Mapped[str] = mapped_column(
@@ -1718,6 +1731,15 @@ class SchoolResearchProfileVersion(ResourceIdentityMixin, TimestampMixin, Base):
     )
     rights_revoked_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
     disabled_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    parameter_origin: Mapped[str] = mapped_column(
+        ascii_id(32),
+        nullable=False,
+        default="LOCAL_RESEARCH_FIT",
+        server_default="LOCAL_RESEARCH_FIT",
+    )
+    published_parameter_crosswalk_sha256: Mapped[str | None] = mapped_column(
+        ascii_id(64), nullable=True
+    )
 
 
 class SchoolResearchTaskBinding(ResourceIdentityMixin, TimestampMixin, Base):

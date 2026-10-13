@@ -53,7 +53,54 @@ _RESEARCH_PURPOSE = "RESEARCH_SIMULATION"
 _RESEARCH_PUBLICATION_STATUS = "not_approved_for_publication_or_operational_use"
 _PROFILE_SCHEMA_V1 = "psynova.research-profile.v1"
 _PROFILE_SCHEMA_V2 = "psynova.research-profile.v2"
+_PROFILE_SCHEMA_V3 = "psynova.research-profile.v3"
 _SNAPSHOT_SCHEMA = "psynova.research-cat-snapshot.v1"
+_PROMIS_V3_PROFILE_ID = "promis-pediatric-anxiety-8-item-subset-20261014-r1"
+_PROMIS_V3_PROFILE_SHA256 = "a2720adf10496f495efe21262de0e1890650847a84aff770aa025e9da825acf3"
+_PROMIS_V3_MANIFEST_SHA256 = "984d395c29c26c1ce728d97790abf99d583ef47518ee6e058e067c8e8c15f524"
+_PROMIS_V3_CROSSWALK_SHA256 = "2176b6cbf7498d8ef912f2902a22c31cb7b229ac82d988d54567cfe615c9066c"
+_PROMIS_V3_RAW_DIMENSION = (
+    "Pediatric anxiety item-response research dimension; no psychological interpretation"
+)
+_PROMIS_V3_STORAGE_DIMENSION = "PROMIS_PEDIATRIC_ANXIETY_RESEARCH"
+_PROMIS_V3_SOURCE_POPULATION_SCOPE = "PROMIS_US_GENPOP_CHILD_SELF_REPORT_8_17"
+_PROMIS_V3_RAW_PUBLICATION_STATUS = "not_approved"
+_LOCAL_RESEARCH_FIT = "LOCAL_RESEARCH_FIT"
+_PUBLISHED_ROUNDED_REFERENCE = "PUBLISHED_ROUNDED_REFERENCE"
+_PROMIS_V3_ROOT_FIELDS = frozenset(
+    {
+        "schema",
+        "profile_id",
+        "profile_type",
+        "instrument_id",
+        "instrument_family",
+        "dimension",
+        "research_only",
+        "publication_status",
+        "human_curated",
+        "psychological_interpretation_allowed",
+        "loader_compatibility",
+        "response_scale",
+        "model",
+        "scoring",
+        "candidate_cat_config",
+        "items",
+        "source_data",
+        "rights",
+        "provenance",
+        "not_approved_for",
+    }
+)
+_PROMIS_V3_MODEL_FIELDS = frozenset(
+    {
+        "family",
+        "parameter_origin",
+        "parameter_version",
+        "parameter_metric",
+        "precision",
+        "version_compatibility",
+    }
+)
 
 
 class ResearchCatRepositoryErrorCode(StrEnum):
@@ -94,6 +141,7 @@ class ResearchProfileLike(Protocol):
     instrument_id: str
     dimension: str
     file_sha256: str
+    manifest_sha256: str | None
     raw_profile_bytes: bytes
     research_only: bool
     publication_status: str
@@ -112,8 +160,10 @@ class ResearchProfileMetadata:
     source_population_scope: str
     profile_sha256: str
     manifest_sha256: str
-    fit_sha256: str
-    calibration_sha256: str
+    fit_sha256: str | None
+    calibration_sha256: str | None
+    parameter_origin: str
+    published_parameter_crosswalk_sha256: str | None
     rights_status: str
     execution_status: str
     research_only: bool
@@ -132,6 +182,17 @@ class ResearchProfilePayload:
 
     metadata: ResearchProfileMetadata
     raw_profile_bytes: bytes = field(repr=False)
+
+
+@dataclass(frozen=True, slots=True)
+class _ProfileStorageProjection:
+    profile_ref: str
+    instrument_id: str
+    dimension: str
+    fit_sha256: str | None
+    calibration_sha256: str | None
+    parameter_origin: str
+    published_parameter_crosswalk_sha256: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -257,9 +318,19 @@ class SchoolResearchCatRepository:
             source_population_scope, "source_population_scope", 64
         )
         rights_status, execution_status = _profile_states(rights_status, execution_status)
-        profile_ref, instrument_id, dimension, fit_sha256, calibration_sha256 = (
-            _validate_profile_input(profile, expected_profile_sha256)
+        projection = _validate_profile_input(
+            profile,
+            expected_profile_sha256,
+            expected_manifest_sha256,
         )
+        if (
+            projection.parameter_origin == _PUBLISHED_ROUNDED_REFERENCE
+            and source_population_scope != _PROMIS_V3_SOURCE_POPULATION_SCOPE
+        ):
+            _raise(
+                ResearchCatRepositoryErrorCode.INVALID_INPUT,
+                "PROMIS v3 source population projection is fixed to the pinned profile",
+            )
         if rights_status == "REVOKED" and execution_status != "DISABLED":
             _raise(
                 ResearchCatRepositoryErrorCode.PROFILE_NOT_ELIGIBLE,
@@ -276,7 +347,7 @@ class SchoolResearchCatRepository:
         existing = await self._one(
             SchoolResearchProfileVersion,
             SchoolResearchProfileVersion.school_id == school_id,
-            SchoolResearchProfileVersion.profile_ref == profile_ref,
+            SchoolResearchProfileVersion.profile_ref == projection.profile_ref,
             SchoolResearchProfileVersion.version_number == version_number,
             lock=True,
         )
@@ -289,7 +360,7 @@ class SchoolResearchCatRepository:
         envelope = {
             "schema": _PROFILE_ENVELOPE_SCHEMA,
             "profile_sha256": expected_profile_sha256,
-            "profile_id": profile_ref,
+            "profile_id": projection.profile_ref,
             "profile_schema": _profile_document_schema(profile.raw_profile_bytes),
             "raw_profile_utf8_b64": base64.b64encode(profile.raw_profile_bytes).decode("ascii"),
         }
@@ -299,15 +370,19 @@ class SchoolResearchCatRepository:
         disabled_at = utc_now() if execution_status == "DISABLED" else None
         row = SchoolResearchProfileVersion(
             school_id=school_id,
-            profile_ref=profile_ref,
+            profile_ref=projection.profile_ref,
             version_number=version_number,
-            instrument_id=instrument_id,
-            dimension=dimension,
+            instrument_id=projection.instrument_id,
+            dimension=projection.dimension,
             source_population_scope=source_population_scope,
             profile_sha256=expected_profile_sha256,
             manifest_sha256=expected_manifest_sha256,
-            fit_sha256=fit_sha256,
-            calibration_sha256=calibration_sha256,
+            fit_sha256=projection.fit_sha256,
+            calibration_sha256=projection.calibration_sha256,
+            parameter_origin=projection.parameter_origin,
+            published_parameter_crosswalk_sha256=(
+                projection.published_parameter_crosswalk_sha256
+            ),
             rights_status=rights_status,
             execution_status=execution_status,
             purpose=_RESEARCH_PURPOSE,
@@ -1539,6 +1614,8 @@ def _profile_metadata(row: SchoolResearchProfileVersion) -> ResearchProfileMetad
         manifest_sha256=row.manifest_sha256,
         fit_sha256=row.fit_sha256,
         calibration_sha256=row.calibration_sha256,
+        parameter_origin=row.parameter_origin,
+        published_parameter_crosswalk_sha256=row.published_parameter_crosswalk_sha256,
         rights_status=row.rights_status,
         execution_status=row.execution_status,
         research_only=row.research_only,
@@ -1601,14 +1678,17 @@ def _session_metadata(row: SchoolResearchSession) -> ResearchSessionMetadata:
 
 
 def _validate_profile_input(
-    profile: ResearchProfileLike, expected_profile_sha256: str
-) -> tuple[str, str, str, str, str]:
+    profile: ResearchProfileLike,
+    expected_profile_sha256: str,
+    expected_manifest_sha256: str,
+) -> _ProfileStorageProjection:
     try:
         raw = profile.raw_profile_bytes
         file_sha = profile.file_sha256
         profile_id = profile.profile_id
         instrument_id = profile.instrument_id
         dimension = profile.dimension
+        manifest_sha256 = getattr(profile, "manifest_sha256", None)
         flags = (
             profile.research_only,
             profile.human_curated,
@@ -1622,14 +1702,53 @@ def _validate_profile_input(
             "validated research profile is missing required immutable fields",
             cause=exc,
         )
+    if type(raw) is not bytes or hashlib.sha256(raw).hexdigest() != expected_profile_sha256:
+        _raise(
+            ResearchCatRepositoryErrorCode.PROFILE_HASH_MISMATCH,
+            "research profile bytes differ from the independently supplied trusted hash",
+        )
+    if type(file_sha) is not str or file_sha != expected_profile_sha256:
+        _raise(
+            ResearchCatRepositoryErrorCode.PROFILE_HASH_MISMATCH,
+            "research profile object hash differs from its original source bytes",
+        )
+    _require_sha256(expected_manifest_sha256, "expected_manifest_sha256")
+    profile_id = _require_token(profile_id, "profile_id", 128)
+    document = _parse_json_object(raw)
+    schema = document.get("schema")
+    if schema == _PROFILE_SCHEMA_V3:
+        projection = _promis_v3_storage_projection(
+            document,
+            profile_ref=profile_id,
+            expected_profile_sha256=expected_profile_sha256,
+            expected_manifest_sha256=expected_manifest_sha256,
+        )
+        if (
+            type(instrument_id) is not str
+            or instrument_id != document.get("instrument_id")
+            or dimension != _PROMIS_V3_RAW_DIMENSION
+            or flags[0] is not True
+            or flags[1] is not False
+            or flags[2] is not False
+            or flags[3] != _PROMIS_V3_RAW_PUBLICATION_STATUS
+            or flags[4] != "CAT_RESEARCH_PROFILE_CANDIDATE"
+            or manifest_sha256 != expected_manifest_sha256
+        ):
+            _raise(
+                ResearchCatRepositoryErrorCode.INVALID_INPUT,
+                "validated PROMIS v3 object differs from its pinned source projection",
+            )
+        return projection
+
+    if schema not in {_PROFILE_SCHEMA_V1, _PROFILE_SCHEMA_V2}:
+        _raise(
+            ResearchCatRepositoryErrorCode.INVALID_INPUT,
+            "research profile schema is unsupported by this persistence slice",
+        )
     if (
-        type(raw) is not bytes
-        or hashlib.sha256(raw).hexdigest() != expected_profile_sha256
-        or file_sha != expected_profile_sha256
-        or profile_id != _require_token(profile_id, "profile_id", 128)
-        or not isinstance(instrument_id, str)
+        type(instrument_id) is not str
         or not instrument_id
-        or not isinstance(dimension, str)
+        or type(dimension) is not str
         or not dimension
         or flags[0] is not True
         or flags[1] is not False
@@ -1641,10 +1760,8 @@ def _validate_profile_input(
             ResearchCatRepositoryErrorCode.PROFILE_HASH_MISMATCH,
             "research profile object differs from its expected hash or locked research flags",
         )
-    document = _parse_json_object(raw)
     if (
-        document.get("schema") not in {_PROFILE_SCHEMA_V1, _PROFILE_SCHEMA_V2}
-        or document.get("profile_id") != profile_id
+        document.get("profile_id") != profile_id
         or document.get("instrument_id") != instrument_id
         or document.get("dimension") != dimension
         or document.get("research_only") is not True
@@ -1668,7 +1785,82 @@ def _validate_profile_input(
     _require_sha256(calibration_sha, "model.calibration_sha256")
     _require_ascii_text(instrument_id, "instrument_id", 128)
     _require_ascii_text(dimension, "dimension", 64)
-    return profile_id, instrument_id, dimension, fit_sha, calibration_sha
+    return _ProfileStorageProjection(
+        profile_ref=profile_id,
+        instrument_id=instrument_id,
+        dimension=dimension,
+        fit_sha256=fit_sha,
+        calibration_sha256=calibration_sha,
+        parameter_origin=_LOCAL_RESEARCH_FIT,
+        published_parameter_crosswalk_sha256=None,
+    )
+
+
+def _promis_v3_storage_projection(
+    document: Mapping[str, object],
+    *,
+    profile_ref: str,
+    expected_profile_sha256: str,
+    expected_manifest_sha256: str,
+) -> _ProfileStorageProjection:
+    """Map the one pinned PROMIS v3 source to safe DB metadata without rewriting it."""
+
+    if (
+        expected_profile_sha256 != _PROMIS_V3_PROFILE_SHA256
+        or expected_manifest_sha256 != _PROMIS_V3_MANIFEST_SHA256
+        or profile_ref != _PROMIS_V3_PROFILE_ID
+        or set(document) != _PROMIS_V3_ROOT_FIELDS
+        or document.get("schema") != _PROFILE_SCHEMA_V3
+        or document.get("profile_id") != _PROMIS_V3_PROFILE_ID
+        or document.get("profile_type") != "research_only_candidate"
+        or document.get("instrument_id") != "PROMIS_PEDIATRIC_ANXIETY_8_ITEM_SUBSET"
+        or document.get("instrument_family") != "PROMIS_PEDIATRIC_ANXIETY_8_ITEM_SUBSET"
+        or document.get("dimension") != _PROMIS_V3_RAW_DIMENSION
+        or type(document.get("research_only")) is not bool
+        or document.get("research_only") is not True
+        or document.get("publication_status") != _PROMIS_V3_RAW_PUBLICATION_STATUS
+        or type(document.get("human_curated")) is not bool
+        or document.get("human_curated") is not False
+        or type(document.get("psychological_interpretation_allowed")) is not bool
+        or document.get("psychological_interpretation_allowed") is not False
+    ):
+        _raise(
+            ResearchCatRepositoryErrorCode.PROFILE_HASH_MISMATCH,
+            "PROMIS v3 source identity or locked research flags differ from the pinned profile",
+        )
+    model = document.get("model")
+    provenance = document.get("provenance")
+    if (
+        not isinstance(model, Mapping)
+        or set(model) != _PROMIS_V3_MODEL_FIELDS
+        or model.get("parameter_origin") != "published item bank parameters; no refit"
+        or "fit_sha256" in model
+        or "calibration_sha256" in model
+        or not isinstance(provenance, Mapping)
+    ):
+        _raise(
+            ResearchCatRepositoryErrorCode.PROFILE_HASH_MISMATCH,
+            "PROMIS v3 must retain published rounded parameters without local fit hashes",
+        )
+    crosswalk_sha256 = provenance.get("parameter_crosswalk_sha256")
+    if (
+        type(crosswalk_sha256) is not str
+        or not _SHA256.fullmatch(crosswalk_sha256)
+        or crosswalk_sha256 != _PROMIS_V3_CROSSWALK_SHA256
+    ):
+        _raise(
+            ResearchCatRepositoryErrorCode.PROFILE_HASH_MISMATCH,
+            "PROMIS v3 published-parameter crosswalk differs from its pinned provenance",
+        )
+    return _ProfileStorageProjection(
+        profile_ref=_PROMIS_V3_PROFILE_ID,
+        instrument_id="PROMIS_PEDIATRIC_ANXIETY_8_ITEM_SUBSET",
+        dimension=_PROMIS_V3_STORAGE_DIMENSION,
+        fit_sha256=None,
+        calibration_sha256=None,
+        parameter_origin=_PUBLISHED_ROUNDED_REFERENCE,
+        published_parameter_crosswalk_sha256=crosswalk_sha256,
+    )
 
 
 def _decode_profile_envelope(
@@ -1732,6 +1924,34 @@ def _verify_profile_row_metadata(
     raw_profile_bytes: bytes, row: SchoolResearchProfileVersion
 ) -> None:
     document = _parse_json_object(raw_profile_bytes)
+    if document.get("schema") == _PROFILE_SCHEMA_V3:
+        projection = _promis_v3_storage_projection(
+            document,
+            profile_ref=row.profile_ref,
+            expected_profile_sha256=row.profile_sha256,
+            expected_manifest_sha256=row.manifest_sha256,
+        )
+        if (
+            row.profile_sha256 != _PROMIS_V3_PROFILE_SHA256
+            or row.manifest_sha256 != _PROMIS_V3_MANIFEST_SHA256
+            or row.instrument_id != projection.instrument_id
+            or row.dimension != projection.dimension
+            or row.fit_sha256 is not None
+            or row.calibration_sha256 is not None
+            or row.parameter_origin != projection.parameter_origin
+            or row.published_parameter_crosswalk_sha256
+            != projection.published_parameter_crosswalk_sha256
+            or row.publication_status != _RESEARCH_PUBLICATION_STATUS
+            or row.research_only is not True
+            or row.human_curated is not False
+            or row.psychological_interpretation_allowed is not False
+        ):
+            _raise(
+                ResearchCatRepositoryErrorCode.PROFILE_HASH_MISMATCH,
+                "decrypted PROMIS v3 source differs from its safe immutable row projection",
+            )
+        return
+
     model = document.get("model")
     if not isinstance(model, dict):
         _raise(
@@ -1743,6 +1963,8 @@ def _verify_profile_row_metadata(
         or document.get("dimension") != row.dimension
         or model.get("fit_sha256") != row.fit_sha256
         or model.get("calibration_sha256") != row.calibration_sha256
+        or row.parameter_origin != _LOCAL_RESEARCH_FIT
+        or row.published_parameter_crosswalk_sha256 is not None
         or document.get("research_only") is not True
         or document.get("publication_status") != _RESEARCH_PUBLICATION_STATUS
         or document.get("psychological_interpretation_allowed") is not False
@@ -1864,7 +2086,12 @@ def _validate_signed_snapshot(
             "research CAT snapshot scope or answer count differs from its binding",
         )
     status = payload.get("status")
-    if status not in {"ACTIVE", "COMPLETED", "INCOMPLETE", "FAILED"}:
+    if type(status) is not str or status not in {
+        "ACTIVE",
+        "COMPLETED",
+        "INCOMPLETE",
+        "FAILED",
+    }:
         _raise(
             ResearchCatRepositoryErrorCode.SNAPSHOT_INVALID,
             "research CAT snapshot has an unsupported lifecycle status",
@@ -1996,7 +2223,7 @@ def _parse_json_object(raw: bytes) -> dict[str, object]:
 def _profile_document_schema(raw: bytes) -> str:
     document = _parse_json_object(raw)
     schema = document.get("schema")
-    if schema not in {_PROFILE_SCHEMA_V1, _PROFILE_SCHEMA_V2}:
+    if schema not in {_PROFILE_SCHEMA_V1, _PROFILE_SCHEMA_V2, _PROFILE_SCHEMA_V3}:
         _raise(
             ResearchCatRepositoryErrorCode.INVALID_INPUT,
             "research profile schema is unsupported",

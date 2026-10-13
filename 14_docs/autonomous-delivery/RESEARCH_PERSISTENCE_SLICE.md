@@ -238,7 +238,15 @@ Remaining implementation and verification slices:
 
 ## Migration and restore compatibility
 
-Current school revision chain ends at `20261014_0012`. Preserve
+The historical three-table slice below targets `20261014_0012`; current source
+chain ends at `20261014_0013`. 0013 adds parameter-origin/crosswalk metadata and
+strict fitted-versus-published nullability checks while preserving original
+encrypted bytes and all negative research flags. An isolated J0012 backup has
+restored into NEW K3319 and forward-upgraded0013; native strict schema verification
+passed without further DDL. K stored the pinned PROMIS candidate as published
+rounded reference with no fabricated fit/calibration hash, recovered original
+bytes exactly, and denied duplicate/hash/cross-school attempts. No profile is
+enabled and no research route is active. Preserve
 `20261014_0011` byte-for-byte and leave its `down_revision` chain intact. The
 new revision may alter only the
 `measurement_tasks.cat_binding_mode` CHECK and create the three research tables.

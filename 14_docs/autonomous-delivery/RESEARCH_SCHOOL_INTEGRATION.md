@@ -1,6 +1,15 @@
 # Research-purpose school CAT integration
 
 Date: 2026-10-14. Status: `SOURCE SURVEY / DESIGN ONLY`.
+
+Later-source update: the SAPA missing-data limitation below remains valid for
+that split, but complete observed NHANES adult800 and PROMIS pediatric800
+resources now exist and have separate offline replay evidence. Do not treat
+the older model-generated-only suggestion as a requirement to replace observed
+responses. Schema0012/research repository and isolated loader now exist;
+the authenticated school research API and durable research AI lane remain
+unimplemented. See CURRENT_STATE.md, RESEARCH_PERSISTENCE_SLICE.md and
+PROMIS_PEDIATRIC_RESEARCH_PROFILE.md for current evidence and compatibility.
 Source checkout: `xiajiadi/autonomous-delivery-20261011`, HEAD
 `eeeba189c90aca4091396080cd54a3dd85959d33`.
 

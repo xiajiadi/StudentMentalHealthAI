@@ -1,4 +1,58 @@
-## ACTIVE — 2026-10-14 04:38 Beijing, public empirical-data extension
+## ACTIVE — 2026-10-14 05:55 Beijing, public empirical school integration
+
+Current primary target is NEW K:
+D:\Projects\.StudentMentalHealthAI-school-install-20261014-k,
+ID4e457e6b05ce7c457de2ba7f099a8902, DB3319/schema0013, API8093/UI4183.
+Owner-verified apps RUNNING: backendlauncher35704/listener43432/frontend43772.
+Frontend uses target-owned .school-app-preview/f3c36d5ee0bf4f3f8320134a3e0737d2.
+G/H retained; I/J apps stopped, their original databases/keys retained.
+
+J0012 migration-before-backup issue fixed with explicit backup-only preflight:
+supported known revision allowed for backup, application still exactCURRENT;
+second connection rechecks marker/guardian/DPAPI target, grants/current-role,
+db/port/datadir/isolation and exact preflight revision before reading tables.
+Independent94tests/Ruff pass; native sealed/readback J backup:
+J/backups/20261013-213500-bc16d541fca34ddebea93d73d3023025.private.dpapi.
+Attempted inplace migration rejected UNSUPPORTED_SCHEMA_REVISION beforeDDL:
+migrate_school_workspace intentionally supports EMPTY/current only. Do not relax
+its unknown-schema gate. Root used supported NEW-target restoration instead:
+45 applicationtables/16473rows imported0012,42ciphertexts really decrypted,
+forward-upgraded0013 and prepared runtime; strict native schema CURRENT check
+returns ALREADY_CURRENT/side_effects[]. J remains0012, intact/stopped apps.
+
+K800/800 restored accounts freshly reauthenticated/own scope/history verified,
+all sessions logged out;8cohort classes each100 plus4known native fixture classes
+retained. Browser admin/student PASS and Root inspected screenshots at
+K/browser-qa/empirical800-20261013T215331Z; allAPI traffic asserted8093.
+Directory802members includes2original seed members, not802newimports.
+First transfer helper lacked newlogs directory after copying2sealed files;
+fixed by owned path creation and verified same-content reuse, no overwrite.
+Initial auth QA used Databaseenv without httpx and failed; located missingmodule,
+ran with existing Backendenv plus configured DB imports, no global install.
+
+Native PROMIS v3 candidate storage PASS:
+K/logs/native-research-profile-59b3e817de0341718eec182dcb90c1b6.json.
+Original UTF8 bytes/hash retained; source publication_status not_approved stays
+unchanged in encrypted payload, DB projection negativecanonical; dimensionID
+PROMIS_PEDIATRIC_ANXIETY_RESEARCH/source PROMIS_US_GENPOP_CHILD_SELF_REPORT_8_17.
+Published crosswalk hash stored, fit/calibration NULL, PUBLISHED_ROUNDED_REFERENCE;
+duplicate/hash/cross-school requests denied with rollback. PENDING/candidate,
+no enable, no research task/session/response or actorAPI acceptance yet.
+Current source0013/refit-vs-published checks preserve45ORMtables and0012 snapshots.
+Root198schema/repository/deploymenttests,42Backendtests/1symlinkskip; follow-up
+152focusedtests/Ruff pass. Registry/HMAC primitives24pass/1symlinkskip, no active
+key injection/rotation or routes. CAT3.14/Backend3.12 require separate research
+HTTPbridge: Workerowns new CATresearch/http_app.py +test, currently implementing;
+ordinaryCAT8180 and frozen Contract/Safety/GPU stacks unchanged.
+Next stable bridge review → private deployment/key-recovery design → Backend
+research profile/task/session APIs/live permissions/CSRF/idempotency →800actual
+school research completions →researchAI/review gates. Offline800replay+800account
+proof are separate, not800online CAT/AI acceptance. RealRAG pendinghumanreview;
+bounded crisis dataset search found no eligible openly licensed current-danger
+gold; preserve restricted-source/no-download boundary and synthetic edge lane.
+Goal ACTIVE; no shutdown deadline, no full-system/production approval claimed.
+
+## Prior milestones — 2026-10-14 04:38 onward
 
 Latest recovery / research milestone (supersedes older pending statements):
 NEW J workspace D:\Projects\.StudentMentalHealthAI-school-install-20261014-j,
@@ -90,6 +144,20 @@ Allcontent remains pendinghumanreview/unindexed, no live RAG orprofessionalgate
 modified. Dedicated research registry/HMAC Backend foundation now in Worker
 owned newdomain files, no newroutes or DPAPIkey configuration active yet.
 Code pushedf2d2fb5, remoteSHA verified; Runnercheckpoint renewed, goal ACTIVE.
+
+In-progress0013 increment (NOT native-applied): source models/migration/repository
+now distinguish LOCAL_RESEARCH_FIT vs PUBLISHED_ROUNDED_REFERENCE, retain PROMIS
+rawbytes/not_approved, and project a stable safe dimension/source-population ID.
+Current source revision/gates advanced0013 with0012 restore manifests preserved;
+J database and its already-running app are still0012. Do not claim new schema
+or restart readiness before native migration. Source-focused review underway.
+Migration-before-backup exposed a real issue: school_backup's load_runtime call
+requires source CURRENT, blocking a supported old0012 backup. First backup attempt
+failed PreparationError before snapshot; no DB mutation. Owner implementing a
+strict backup-only known-revision preflight; application startup remains exact
+CURRENT and all ownership/privilege/DPAPI checks stay enforced. Next native J
+backup→owned apps stop→0013 additive migration→runtime/preflight→isolated preview
+start→representative browser→actual PROMIS encrypted candidate storage, then API.
 
 ## Prior milestones — 2026-10-13 23:25 Beijing onward
 

@@ -6,6 +6,7 @@ import base64
 import binascii
 import json
 import math
+import os
 import re
 import sys
 from datetime import UTC, date, datetime
@@ -13,8 +14,17 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from uuid import uuid4
 
+from prepare_school_runtime import (
+    validate_marker,
+    verify_process,
+    verify_runtime_grants,
+)
 from private_settings import MAGIC, read_private, write_private
-from school_backend import load_runtime
+from school_backend import (
+    BACKUP_NOT_APPLICATION_READY,
+    RUNTIME_PURPOSE_BACKUP,
+    load_runtime,
+)
 from school_schema import LEGACY_SCHOOL_SNAPSHOT_REVISION, SUPPORTED_SNAPSHOT_REVISIONS
 
 NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
@@ -210,18 +220,106 @@ def validate_backup_package(package: dict) -> dict:
     return package
 
 
-def snapshot(connection, marker: dict) -> dict:
+def _same_directory(left: object, right: object) -> bool:
+    return (
+        type(left) is str
+        and type(right) is str
+        and os.path.normcase(os.path.normpath(left))
+        == os.path.normcase(os.path.normpath(right))
+    )
+
+
+def _marker_binding(marker: object) -> dict:
+    if type(marker) is not dict:
+        raise TypeError("Verified backup workspace identity required")
+    workspace_id = marker.get("workspace_id")
+    database = marker.get("database")
+    port = marker.get("port")
+    data_directory = marker.get("data_directory")
+    if (
+        type(workspace_id) is not str
+        or not workspace_id
+        or type(database) is not str
+        or type(port) is not int
+        or not 3308 <= port <= 3399
+        or type(data_directory) is not str
+        or not data_directory
+    ):
+        raise ValueError("Verified backup workspace identity required")
+    return {
+        "workspace_id": workspace_id,
+        "database": database,
+        "port": port,
+        "data_directory": data_directory,
+    }
+
+
+def snapshot(
+    connection,
+    marker: dict,
+    *,
+    expected_revision: str | None = None,
+    expected_binding: dict | None = None,
+) -> dict:
     """Read SQL values as stored; never decrypt private application payloads."""
+    if expected_revision is not None and (
+        type(expected_revision) is not str or expected_revision not in SUPPORTED_BACKUP_REVISIONS
+    ):
+        raise ValueError("Unsupported backup schema revision")
+    binding = _marker_binding(marker)
+    if expected_binding is None or type(expected_binding) is not dict:
+        raise ValueError("Verified backup preflight binding required")
+    if binding != expected_binding:
+        raise ValueError("Backup workspace identity changed")
     tables = {}
     try:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT DATABASE(), @@port, @@transaction_isolation")
-            if cursor.fetchone() != (marker["database"], marker["port"], "REPEATABLE-READ"):
-                raise ValueError("Owned consistent snapshot target required")
+            cursor.execute("SHOW GRANTS FOR CURRENT_USER()")
+            grant_rows = cursor.fetchall()
+            if (
+                type(grant_rows) is not tuple
+                or any(type(row) is not tuple or len(row) != 1 or type(row[0]) is not str for row in grant_rows)
+            ):
+                raise ValueError("Owned runtime privileges required")
+            cursor.execute("SELECT CURRENT_ROLE()")
+            role_row = cursor.fetchone()
+            if type(role_row) is not tuple or len(role_row) != 1 or type(role_row[0]) is not str:
+                raise ValueError("Owned runtime privileges required")
+            try:
+                verify_runtime_grants([row[0] for row in grant_rows], role_row[0])
+            except Exception as exc:
+                raise ValueError("Owned runtime privileges required") from exc
+
             cursor.execute("START TRANSACTION WITH CONSISTENT SNAPSHOT")
+            cursor.execute(
+                "SELECT DATABASE(), @@port, @@datadir, @@transaction_isolation"
+            )
+            target = cursor.fetchone()
+            if (
+                type(target) is not tuple
+                or len(target) != 4
+                or target[0] != binding["database"]
+                or type(target[1]) is not int
+                or target[1] != binding["port"]
+                or not _same_directory(target[2], binding["data_directory"])
+                or target[3] != "REPEATABLE-READ"
+            ):
+                raise ValueError("Owned consistent snapshot target required")
             cursor.execute("SELECT version_num FROM database_alembic_version")
-            revision = cursor.fetchone()[0]
-            if revision not in SUPPORTED_BACKUP_REVISIONS:
+            revision_rows = cursor.fetchall()
+            if (
+                type(revision_rows) is not tuple
+                or len(revision_rows) != 1
+                or type(revision_rows[0]) is not tuple
+                or len(revision_rows[0]) != 1
+                or type(revision_rows[0][0]) is not str
+            ):
+                raise ValueError("Unsupported backup schema revision")
+            revision = revision_rows[0][0]
+            if (
+                revision not in SUPPORTED_BACKUP_REVISIONS
+                or (expected_revision is not None and revision != expected_revision)
+            ):
                 raise ValueError("Unsupported backup schema revision")
             cursor.execute(
                 "SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES "
@@ -254,21 +352,56 @@ def snapshot(connection, marker: dict) -> dict:
 
 
 def backup(workspace: Path, repo: Path) -> dict:
-    load_runtime(workspace, repo)
-    marker = json.loads((workspace / "workspace.json").read_text(encoding="utf-8"))
+    runtime = load_runtime(workspace, repo, purpose=RUNTIME_PURPOSE_BACKUP)
+    revision = runtime.get("schema_revision") if isinstance(runtime, dict) else None
+    if (
+        not isinstance(runtime, dict)
+        or runtime.get("purpose") != RUNTIME_PURPOSE_BACKUP
+        or runtime.get("scope") != BACKUP_NOT_APPLICATION_READY
+        or type(revision) is not str
+        or revision not in SUPPORTED_BACKUP_REVISIONS
+    ):
+        raise ValueError("Verified backup preflight metadata required")
+    binding = {
+        "workspace_id": runtime.get("workspace_id"),
+        "database": runtime.get("database"),
+        "port": runtime.get("port"),
+        "data_directory": runtime.get("data_directory"),
+    }
+    if _marker_binding(binding) != binding:
+        raise ValueError("Verified backup workspace identity required")
+    marker = validate_marker(workspace, repo)
+    verify_process(marker)
+    if _marker_binding(marker) != binding:
+        raise ValueError("Backup workspace identity changed")
+    private = read_private(workspace / "runtime.private.dpapi")
+    if not isinstance(private, dict) or any(
+        type(private.get(name)) is not str
+        or type(os.environ.get(name)) is not str
+        or private[name] != os.environ[name]
+        for name in ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD")
+    ):
+        raise ValueError("Sealed runtime settings changed after preflight")
     key_container = (workspace / "database-keys.private.dpapi").read_bytes()
     if not _valid_key_container(key_container):
         raise ValueError("DPAPI key-container header required")
-    private = read_private(workspace / "runtime.private.dpapi")
     import pymysql
 
     connection = pymysql.connect(
-        host="127.0.0.1", port=marker["port"], database=marker["database"],
+        host="127.0.0.1", port=binding["port"], database=binding["database"],
         user=private["DB_USER"], password=private["DB_PASSWORD"],
         autocommit=False, connect_timeout=10, read_timeout=30,
     )
     try:
-        content = package_snapshot(snapshot(connection, marker), key_container)
+        content = package_snapshot(
+            snapshot(
+                connection,
+                marker,
+                expected_revision=revision,
+                expected_binding=binding,
+            ),
+            key_container,
+        )
     finally:
         connection.close()
     target_dir = workspace / "backups"
@@ -282,12 +415,19 @@ def backup(workspace: Path, repo: Path) -> dict:
     validate_backup_package(restored)
     if restored != content:
         raise ValueError("Sealed backup readback failed")
-    return {"backup": "SEALED_AND_READBACK_VERIFIED", "revision": content["revision"],
-            "table_count": len(content["tables"]), "path": str(target),
-            "recovery_scope": RECOVERY_SCOPE,
-            "target_policy": TARGET_POLICY,
-            "auth_session_policy": AUTH_SESSION_POLICY,
-            "restore_workflow": "not yet verified"}
+    return {
+        "backup": "SEALED_AND_READBACK_VERIFIED",
+        "revision": content["revision"],
+        "schema_revision": content["revision"],
+        "purpose": RUNTIME_PURPOSE_BACKUP,
+        "scope": BACKUP_NOT_APPLICATION_READY,
+        "table_count": len(content["tables"]),
+        "path": str(target),
+        "recovery_scope": RECOVERY_SCOPE,
+        "target_policy": TARGET_POLICY,
+        "auth_session_policy": AUTH_SESSION_POLICY,
+        "restore_workflow": "not yet verified",
+    }
 
 
 def main() -> int:

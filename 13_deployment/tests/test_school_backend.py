@@ -8,9 +8,99 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import school_backend as backend
 
 
+def _known_old_snapshot_revision():
+    return next(
+        revision
+        for revision in backend.SUPPORTED_SNAPSHOT_REVISIONS
+        if revision != backend.CURRENT_SCHOOL_REVISION
+    )
+
+
+def _configure_runtime_preflight(
+    monkeypatch,
+    tmp_path,
+    revision_rows,
+    *,
+    grants=None,
+    current_role="NONE",
+):
+    marker = {
+        "workspace_id": "expected", "database": "smhai_school_demo", "port": 3308,
+        "data_directory": str(tmp_path / "mysql-data"),
+    }
+    monkeypatch.setattr(backend, "validate_marker", lambda *_: marker)
+    monkeypatch.setattr(backend, "verify_process", lambda *_: None)
+    (tmp_path / "runtime-ready.json").write_text(
+        json.dumps(dict(marker, state="VERIFIED")), encoding="utf-8"
+    )
+    private = {
+        "DB_HOST": "127.0.0.1",
+        "DB_PORT": "3308",
+        "DB_NAME": "smhai_school_demo",
+        "DB_USER": "psynova_runtime_test",
+        "DB_PASSWORD": "synthetic-only",
+    }
+    reads = []
+
+    def read(path):
+        reads.append(path.name)
+        return (
+            private
+            if path.name == "runtime.private.dpapi"
+            else {"SMHAI_SCHOOL_CSRF_SECRET": "a" * 64}
+        )
+
+    monkeypatch.setattr(backend, "read_private", read)
+    environment = {"DATABASE_URL": "preserved-on-failure", "KEEP": "preserved"}
+    monkeypatch.setattr(backend.os, "environ", environment)
+
+    class Cursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def execute(self, sql):
+            self.sql = sql
+
+        def fetchone(self):
+            return (current_role,)
+
+        def fetchall(self):
+            if self.sql == "SHOW GRANTS FOR CURRENT_USER()":
+                return grants or (
+                    ("GRANT USAGE ON *.* TO 'runtime'",),
+                    (
+                        "GRANT SELECT, INSERT, UPDATE, DELETE ON `smhai_school_demo`.* TO 'runtime'",
+                    ),
+                )
+            return revision_rows
+
+    class Connection:
+        def cursor(self):
+            return Cursor()
+
+        def close(self):
+            pass
+
+    class Driver:
+        @staticmethod
+        def connect(**kwargs):
+            assert kwargs["password"] == private["DB_PASSWORD"]
+            assert kwargs["port"] == 3308
+            return Connection()
+
+    monkeypatch.setitem(sys.modules, "pymysql", Driver)
+    return reads, environment
+
+
 @pytest.mark.parametrize("state", ["UNVERIFIED", "VERIFIED"])
 def test_runtime_readiness_must_match_workspace(tmp_path, monkeypatch, state):
-    marker = {"workspace_id":"expected", "database":"smhai_school_demo", "port":3308}
+    marker = {
+        "workspace_id":"expected", "database":"smhai_school_demo", "port":3308,
+        "data_directory": str(tmp_path / "mysql-data"),
+    }
     monkeypatch.setattr(backend, "validate_marker", lambda *args: marker)
     monkeypatch.setattr(backend, "verify_process", lambda *args: None)
     monkeypatch.setattr(backend, "read_private", lambda *args: pytest.fail("mismatched readiness must not decrypt"))
@@ -79,10 +169,20 @@ def test_cat_port_rejects_backend_frontend_and_fixed_module_collisions(cat_port)
 
 @pytest.mark.parametrize(
     "revision",
-    [backend.CURRENT_SCHOOL_REVISION, "20261012_0008", "20261012_0007"],
+    [
+        backend.CURRENT_SCHOOL_REVISION,
+        *tuple(
+            revision
+            for revision in sorted(backend.SUPPORTED_SNAPSHOT_REVISIONS)
+            if revision != backend.CURRENT_SCHOOL_REVISION
+        )[:2],
+    ],
 )
 def test_configuration_uses_only_verified_sealed_target(tmp_path, monkeypatch, revision):
-    marker = {"workspace_id":"expected", "database":"smhai_school_demo", "port":3308}
+    marker = {
+        "workspace_id":"expected", "database":"smhai_school_demo", "port":3308,
+        "data_directory": str(tmp_path / "mysql-data"),
+    }
     monkeypatch.setattr(backend, "validate_marker", lambda *args: marker)
     monkeypatch.setattr(backend, "verify_process", lambda *args: None)
     (tmp_path / "runtime-ready.json").write_text(json.dumps(dict(marker,state="VERIFIED")))
@@ -150,8 +250,98 @@ def test_configuration_uses_only_verified_sealed_target(tmp_path, monkeypatch, r
     else:
         result = backend.load_runtime(tmp_path, tmp_path / "repo")
         assert result["identity_profile"] == "school_tenant"
+        assert result["schema_revision"] == backend.CURRENT_SCHOOL_REVISION
+        assert result["workspace_id"] == "expected"
+        assert result["data_directory"] == str(tmp_path / "mysql-data")
+        assert result["purpose"] == backend.RUNTIME_PURPOSE_APPLICATION
+        assert result["scope"] == backend.APPLICATION_CURRENT_REVISION
         assert reads == ["runtime.private.dpapi", "school-auth.private.dpapi"]
         assert all(environment[key] == value for key,value in private.items())
         assert environment["KEEP"] == "preserved"
         assert not {"DATABASE_URL", "MYSQL_PWD", "SMHAI_IDENTITY_PROFILE"} & environment.keys()
         assert environment["DATABASE_KEY_FILE"] == str(tmp_path / "database-keys.private.dpapi")
+
+
+def test_backup_purpose_allows_one_known_old_revision_without_claiming_application_ready(
+    tmp_path, monkeypatch
+):
+    old_revision = _known_old_snapshot_revision()
+    reads, environment = _configure_runtime_preflight(
+        monkeypatch, tmp_path, ((old_revision,),)
+    )
+
+    result = backend.load_runtime(
+        tmp_path, tmp_path / "repo", purpose=backend.RUNTIME_PURPOSE_BACKUP
+    )
+
+    assert result["schema_revision"] == old_revision
+    assert result["purpose"] == backend.RUNTIME_PURPOSE_BACKUP
+    assert result["scope"] == backend.BACKUP_NOT_APPLICATION_READY
+    assert reads == ["runtime.private.dpapi", "school-auth.private.dpapi"]
+    assert environment["KEEP"] == "preserved"
+
+
+@pytest.mark.parametrize(
+    "revision_rows",
+    [
+        (("future_revision",),),
+        ((_known_old_snapshot_revision(),), (backend.CURRENT_SCHOOL_REVISION,)),
+    ],
+    ids=["unknown-revision", "multiple-revisions"],
+)
+def test_backup_purpose_rejects_unknown_or_multiple_revisions_before_auth_load(
+    tmp_path, monkeypatch, revision_rows
+):
+    reads, environment = _configure_runtime_preflight(
+        monkeypatch, tmp_path, revision_rows
+    )
+
+    with pytest.raises(backend.PreparationError, match="Required school revision unavailable"):
+        backend.load_runtime(tmp_path, tmp_path / "repo", purpose=backend.RUNTIME_PURPOSE_BACKUP)
+
+    assert reads == ["runtime.private.dpapi"]
+    assert environment["DATABASE_URL"] == "preserved-on-failure"
+
+
+def test_runtime_preflight_rejects_invalid_purpose_before_workspace_access(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        backend,
+        "validate_marker",
+        lambda *_: pytest.fail("invalid purpose must fail before workspace validation"),
+    )
+
+    with pytest.raises(
+        backend.PreparationError, match="Unsupported runtime preflight purpose"
+    ):
+        backend.load_runtime(tmp_path, tmp_path / "repo", purpose="backup-ish")
+
+
+def test_application_cli_does_not_expose_backup_purpose_override():
+    with pytest.raises(SystemExit):
+        backend.build_parser().parse_args(
+            ["--workspace", "C:/synthetic/workspace", "--purpose", "backup"]
+        )
+
+
+@pytest.mark.parametrize(
+    "purpose", [backend.RUNTIME_PURPOSE_APPLICATION, backend.RUNTIME_PURPOSE_BACKUP]
+)
+def test_backup_and_application_purpose_both_require_exact_runtime_grants(
+    tmp_path, monkeypatch, purpose
+):
+    reads, environment = _configure_runtime_preflight(
+        monkeypatch,
+        tmp_path,
+        ((backend.CURRENT_SCHOOL_REVISION,),),
+        grants=(("GRANT USAGE ON *.* TO 'runtime'",),),
+    )
+
+    with pytest.raises(
+        backend.PreparationError, match="Unexpected runtime privileges or active roles"
+    ):
+        backend.load_runtime(tmp_path, tmp_path / "repo", purpose=purpose)
+
+    assert reads == ["runtime.private.dpapi"]
+    assert environment["DATABASE_URL"] == "preserved-on-failure"

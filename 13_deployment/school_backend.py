@@ -19,7 +19,7 @@ from prepare_school_runtime import (
     verify_runtime_grants,
 )
 from private_settings import read_private
-from school_schema import CURRENT_SCHOOL_REVISION
+from school_schema import CURRENT_SCHOOL_REVISION, SUPPORTED_SNAPSHOT_REVISIONS
 
 DEFAULT_BACKEND_PORT = 8088
 DEFAULT_FRONTEND_PORT = 4178
@@ -35,6 +35,10 @@ MODULE_ENDPOINTS = {
 LLM_PROFILES = ("default", "school-gpu-7b")
 SCHOOL_GPU_7B_LOGICAL_MODEL_ID = "qwen2.5-7b-instruct-school-demo"
 SCHOOL_GPU_7B_CONTEXT_LENGTH = 8192
+RUNTIME_PURPOSE_APPLICATION = "application"
+RUNTIME_PURPOSE_BACKUP = "backup"
+BACKUP_NOT_APPLICATION_READY = "BACKUP_NOT_APPLICATION_READY"
+APPLICATION_CURRENT_REVISION = "APPLICATION_CURRENT_REVISION"
 
 
 def build_school_settings_kwargs(
@@ -97,7 +101,17 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def load_runtime(workspace: Path, repo: Path) -> dict:
+def load_runtime(
+    workspace: Path,
+    repo: Path,
+    *,
+    purpose: str = RUNTIME_PURPOSE_APPLICATION,
+) -> dict:
+    if type(purpose) is not str or purpose not in {
+        RUNTIME_PURPOSE_APPLICATION,
+        RUNTIME_PURPOSE_BACKUP,
+    }:
+        raise PreparationError("Unsupported runtime preflight purpose")
     marker = validate_marker(workspace, repo)
     verify_process(marker)
     ready = json.loads((workspace / "runtime-ready.json").read_text(encoding="utf-8"))
@@ -118,7 +132,20 @@ def load_runtime(workspace: Path, repo: Path) -> dict:
             cursor.execute("SELECT CURRENT_ROLE()")
             verify_runtime_grants(grants, cursor.fetchone()[0])
             cursor.execute("SELECT version_num FROM database_alembic_version")
-            if cursor.fetchall() != ((CURRENT_SCHOOL_REVISION,),):
+            revisions = cursor.fetchall()
+            if (
+                type(revisions) is not tuple
+                or len(revisions) != 1
+                or type(revisions[0]) is not tuple
+                or len(revisions[0]) != 1
+                or type(revisions[0][0]) is not str
+            ):
+                raise PreparationError("Required school revision unavailable")
+            revision = revisions[0][0]
+            if purpose == RUNTIME_PURPOSE_APPLICATION:
+                if revision != CURRENT_SCHOOL_REVISION:
+                    raise PreparationError("Required school revision unavailable")
+            elif revision not in SUPPORTED_SNAPSHOT_REVISIONS:
                 raise PreparationError("Required school revision unavailable")
     finally:
         connection.close()
@@ -140,7 +167,20 @@ def load_runtime(workspace: Path, repo: Path) -> dict:
         os.environ[name] = str(private[name])
     os.environ["DATABASE_KEY_FILE"] = str(workspace / "database-keys.private.dpapi")
     os.environ["SMHAI_SCHOOL_CSRF_SECRET"] = secret
-    return {"database": marker["database"], "port": marker["port"], "identity_profile": "school_tenant"}
+    return {
+        "database": marker["database"],
+        "port": marker["port"],
+        "workspace_id": marker["workspace_id"],
+        "data_directory": marker["data_directory"],
+        "identity_profile": "school_tenant",
+        "schema_revision": revision,
+        "purpose": purpose,
+        "scope": (
+            BACKUP_NOT_APPLICATION_READY
+            if purpose == RUNTIME_PURPOSE_BACKUP
+            else APPLICATION_CURRENT_REVISION
+        ),
+    }
 
 
 def main() -> int:

@@ -1,6 +1,6 @@
 # PROMIS Pediatric Anxiety 8-item research profile candidate
 
-核查日期：2026-10-14。状态：外部隔离研究候选；未进入学校在线题库或数据库。独立研究 loader 已增量支持这一份固定 profile/manifest 哈希的 v3 五类别候选，Root 运行研究测试 86 项通过；在线 CAT 未改。原始 profile 中的 loader_compatibility 是生成时的历史记录，原文件及哈希保持不变。0012 仓储仍只支持 v1/v2 拟合来源：此 v3 的已发表参数来源、长维度说明及否定发布状态需要明确兼容设计，不能伪造本项目拟合文件或修改原 profile 来绕过。
+核查日期：2026-10-14。状态：独立研究候选，未进入学校在线题库或启用。研究 loader 已支持这一份固定 profile/manifest 哈希的 v3 五类别候选，Root 运行研究测试 86 项通过；在线 CAT 未改。原始 profile 中的 loader_compatibility 是生成时的历史记录，原文件及哈希保持不变。0013 仓储现已明确支持已发表参数来源：在新隔离 K3319 保存了加密候选，原文回读哈希一致，fit/calibration 为空，保存真实 crosswalk 哈希。原始否定发布状态与长维度说明保持在原文，仅数据库安全投影采用稳定维度 ID 和规范否定状态。证据见 K/logs/native-research-profile-59b3e817de0341718eec182dcb90c1b6.json；不是专业批准或已接通学生测评 API。
 
 ## Profile
 

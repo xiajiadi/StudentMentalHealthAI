@@ -172,9 +172,22 @@ def test_upgrade_table_shapes_match_the_orm_metadata(monkeypatch):
     ):
         expected = Base.metadata.tables[table_name]
         actual = created[table_name]
-        assert tuple(actual.c.keys()) == tuple(expected.c.keys())
-        for column_name in expected.c.keys():
-            assert actual.c[column_name].nullable is expected.c[column_name].nullable
+        # This migration test pins the 0012 baseline. The current ORM includes
+        # 0013 parameter provenance, so compare its explicit 0012 projection.
+        revision_0012_columns = tuple(
+            name
+            for name in expected.c.keys()
+            if name not in {"parameter_origin", "published_parameter_crosswalk_sha256"}
+        )
+        assert tuple(actual.c.keys()) == revision_0012_columns
+        for column_name in revision_0012_columns:
+            expected_nullable = expected.c[column_name].nullable
+            if table_name == "school_research_profile_versions" and column_name in {
+                "fit_sha256",
+                "calibration_sha256",
+            }:
+                expected_nullable = False
+            assert actual.c[column_name].nullable is expected_nullable
             assert actual.c[column_name].type.compile(dialect=mysql.dialect()) == expected.c[
                 column_name
             ].type.compile(dialect=mysql.dialect())
@@ -211,6 +224,15 @@ def test_upgrade_table_shapes_match_the_orm_metadata(monkeypatch):
             )
             for constraint in expected.constraints
             if isinstance(constraint, CheckConstraint)
+            and not (
+                table_name == "school_research_profile_versions"
+                and constraint.name.endswith(
+                    (
+                        "_parameter_origin_allowed",
+                        "_parameter_provenance_shape",
+                    )
+                )
+            )
         }
         actual_checks = {
             (constraint.name, str(constraint.sqltext))
