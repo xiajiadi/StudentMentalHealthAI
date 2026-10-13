@@ -1,8 +1,10 @@
 # SAPA observed-answer CAT replay protocol
 
-Date: 2026-10-14. Status: `DESIGN_ONLY`. This protocol describes two offline
-research experiments. It does not authorize item-bank publication, school
-activation, database writes, student assessment, or interpretation of traits.
+Date: 2026-10-14. Status: `RESEARCH TOOL IMPLEMENTED; RUN COMPLETED; CONTROLLER REVIEW PENDING`.
+The offline runner and targeted tests exist under `01_cat-engine`; the completed
+run remains research-only evidence. This protocol does not authorize item-bank
+publication, school activation, database writes, student assessment, or trait
+interpretation.
 
 ## Decision summary
 
@@ -15,10 +17,10 @@ source respondent never received.
 Separately, use the five mirt one-dimensional fits to drive an **800-case-per-domain
 model-generated forward simulation**. Those responses are generated from the
 fitted item curves and a declared synthetic theta distribution. They are virtual
-cases, not the 800 evaluation respondents. The two experiment results must remain
-separate in files, manifests, metrics, and conclusions.
-The proposed forward design is five independent domain runs (800 virtual cases
-each; 4,000 scalar trajectories total), not 800 joint five-domain profiles.
+cases, not the 800 evaluation respondents. Keep the experiment results separate
+in files, manifests, metrics, and conclusions. The forward design is five
+independent domain runs (800 virtual cases each; 4,000 scalar trajectories
+total), not 800 joint five-domain profiles.
 
 Do not load either research bundle through the school bank/plan API. The current
 CAT provider and session state machine reject banks whose status is not
@@ -92,21 +94,29 @@ label to the contiguous scoring map, then pass the resulting index to the
 provider. Passing raw `1..6` as the provider index is wrong: the provider accepts
 only indexes `0..5`, so raw `6` is invalid and raw `1..5` would be mis-scored.
 
-Before using mirt parameters in the CAT provider, require a direct probability
-parity check for every item at a fixed theta grid and all six categories. The
-provider maps `a` and thresholds directly into `adaptivetesting` GRM items; the
-installed `adaptivetesting` source computes category probabilities with a
-logistic graded-response form. Correlated mirt/GIRTH parameter estimates do not
-prove mirt/`adaptivetesting` probability parity. If the parity check fails, stop
-and resolve the link/parameterization mapping; do not silently multiply slopes
-or thresholds by a guessed scale constant.
+Before using mirt parameters in the research adapter, verify the installed
+`adaptivetesting==1.2.1` GRM source and compare public EAP posterior means and
+SEs with the same mirt graded-logistic likelihood. The tool checks every fitted
+item at 17 theta points from -4 to 4, then checks all six response categories
+for one item in each domain against the library's public EAP interface. The
+observed maximum mean and SE differences are recorded in each run summary. The
+verified link is `P(Y>=k)=logistic(a*(theta-b_k))`; the slope scale is 1.0, with
+no D=1.7 conversion.
+
+Source review found that the library's `generate_response_pattern` applies
+softmax to the vector of GRM category probabilities. That changes the modeled
+probabilities, so this research forward run does not call that generator. It
+samples categories from the six cumulative-logit differences directly. The CAT
+adapter still uses `adaptivetesting` for MFI item selection and EAP estimation.
+If the pinned source or EAP likelihood check changes or fails, the research run
+must stop before replay or simulation.
 
 ## Evidence semantics
 
 | Experiment | Responses and item selection | Supported evidence | Not supported |
 |---|---|---|---|
 | Observed-answer replay | For each held-out record, the full domain bank is eligible. Run MFI from the start and submit only the actual observed answer for the selected item. If the selected item is NA, censor that replay immediately. | Selection mechanics on a subset of actual recorded answers; source-coverage, censoring, stop and item-exposure counts. | What the respondent would have answered to an unobserved item; estimation bias/RMSE against a true theta; prospective adaptive-test effectiveness. |
-| Model-generated forward simulation | Draw theta from the predeclared synthetic range and generate each selected answer from the mirt parameterized GRM. The recommendation is 800 independent virtual cases **per domain**, seed `20261014`, theta Uniform(-2.5, 2.5) to match `SimulationRunner`'s current default range. This range is an engineering stress range; it differs from the calibration fit's Gaussian N(0,1) prior and must not be called an empirical population distribution. | Software/model recovery metrics relative to generated theta; stopping and item-exposure summaries under this generator. | Empirical SAPA accuracy, student norms, school representativeness, or independent validation. The response generator and estimator share the fitted model, so this is a model-consistency simulation. |
+| Model-generated forward simulation | Draw theta from Gaussian N(0,1) and sample each selected answer from the verified mirt graded-logistic probabilities. Run 800 independent virtual cases **per domain**, seed `20261014`; derive and record a deterministic sub-seed for each domain. | Software/model recovery metrics relative to generated theta; stopping and item-exposure summaries under this generator. | Empirical SAPA accuracy, student norms, school representativeness, or independent validation. The response generator and estimator use the same fitted item curves, so this is a model-consistency simulation. |
 
 Observed replay must retain all 800 as the accounting denominator, including
 all-missing records and those censored at a selected-but-unobserved item. An
@@ -125,13 +135,12 @@ summary, report the coverage/censoring result and stop. Any minimum effective-N
 threshold for comparisons must be declared by the Controller before a run; it is
 not inferred from the observed data after the fact.
 
-The forward run is different: theta is generated, not observed. `SimulationRunner`
-currently samples `Uniform(-2.5, 2.5)` and its `SimulationSummary.results` and
-`write_reports()` contain per-case IDs, true theta, estimates, SEs and stop
-reasons. A research report may retain aggregate bias/RMSE/MAE, length, mean SE,
-stop distribution and item-exposure counts only. Do not serialize the per-case
-result tuple or write its CSV/JSON reports. Keep one run per independent domain;
-do not imply a joint five-trait score.
+The forward run generates theta and answers; it does not use SAPA response rows.
+`SimulationRunner` remains unchanged, and its per-case export is not used. The
+research tool streams bias/RMSE/MAE, length, mean SE, stop distribution and
+item-exposure aggregates without writing case IDs, theta values or answer rows.
+Each domain is a separate scalar run; the output does not form a joint five-trait
+score.
 
 ## Existing CAT and bank interfaces
 
@@ -160,37 +169,79 @@ documents. A plan binds an exact bank version. Saved-version simulation accepts
 import path; this protocol performs no HTTP calls or database writes
 (`SCHOOL_CAT_ASSET_MANAGEMENT.md`, `SAVED_CAT_VERSION_EXECUTION.md`).
 
-## Minimum research-only runner needed
+## Implemented research-only runner
 
-No current interface can truthfully run this research bank through the CAT
-session/provider path. Do not weaken or reinterpret `assert_runtime_ready()`.
-If the Controller later authorizes implementation, the smallest safe increment
-is an **offline `CATResearchRunner` plus a typed `ResearchBank`/provenance
-bundle** in the CAT research package:
+The low-level library API is sufficient without constructing an online
+`ItemBank`: the research adapter builds `adaptivetesting.TestItem` and
+`TestAssembler` objects from one validated fit at a time. It uses the public
+library MFI selection and EAP estimation methods, plus a research-local GRM
+categorical sampler for the probability-preserving forward responses. It does
+not import or construct `Session`, `ItemBank`, `CATResult`, or `assessment.v1`.
+The production `AdaptiveTestingProvider.start_session()` and
+`ItemBank.assert_runtime_ready()` remain unchanged.
 
-1. Load one mirt domain result, the exact-key crosswalk and one split manifest;
-   verify all SHA-256 values, item count, per-item six-category support,
-   finite/ordered thresholds, positive finite slopes and response-key maps.
-2. Provide a separate `start_research_session()` adapter entry that shares the
-   existing provider session-construction/selection/estimation math, but accepts
-   only the explicit research bundle. Keep `start_session()`, `Session`'s
-   published check, CATService, HTTP routes, schemas and bank statuses unchanged.
-   The research runner should drive provider methods directly and emit its own
-   research trace; it must not construct `CATResult`/`assessment.v1` objects.
-3. Represent an unobserved source answer as a research event
-   `SOURCE_RESPONSE_UNAVAILABLE` that censors the replay before any response
-   submission. Do not map it to `ResponseStatus`, since no item was presented.
-4. Add an aggregate-only forward-run result type. Keep `SimulationRunner`'s
-   current synthetic output semantics unchanged; do not call
-   `SimulationSummary.to_dict()` or `write_reports()` for the research bundle.
-5. First expose a local CLI or test harness, not an API route, activation,
-   school task, school plan, registry write, or database resource.
+`01_cat-engine/src/cat_engine/research/empirical_cat_replay.py` validates the
+response manifest, exact 99-item crosswalk, 10,000/800 split hashes, source and
+fit provenance, per-domain item sets, directions, categories, missing counts,
+positive slopes, ordered finite thresholds and convergence. It then runs each
+of the five independent domains. For observed replay, a selected source NA
+increments the exposure count and stops that path as
+`source_response_unavailable`; it is never submitted as a score and MFI does
+not select a replacement. For forward simulation, it generates 800 Gaussian
+N(0,1) virtual cases per domain using a fixed seed and the fitted six-category
+GRM probabilities.
 
-If using a separate implementation would duplicate provider math, first extract
-only a private shared construction helper without changing its normal published
-gate. The explicit research admission must not be usable by CATService or any
-Backend/session route. A future implementation needs independent code review of
-that boundary before execution.
+Before either mode runs, the adapter checks the pinned library GRM source and
+compares 30 public EAP posterior mean/SE results (six categories in each
+domain) with independent numerical integration of the declared logistic
+likelihood. It also verifies probability-vector normalization for each of the
+99 item parameters at 17 theta points from -4 to 4. A mismatch blocks the run.
+Source review found the library's response generator softmaxes already-normalized
+GRM category probabilities; the research adapter records that source/hash and
+uses its direct cumulative-logit sampler instead. MFI and EAP still come from
+`adaptivetesting`.
+
+Each new external run directory contains `run_manifest.json`, one aggregate
+checkpoint per completed domain, and `summary.json`. Checkpoints contain only
+domain-level counts/metrics and a canonical result hash. No source row ID,
+individual theta, selected item sequence, raw answer, per-case estimate, or
+response-row dump is written. The command is local only; it makes no HTTP calls,
+database writes, school activation or published-bank changes.
+
+### Completed run evidence
+
+The first attempted command used run ID `cat-replay-20261014-990d2c97` before
+the probability-parity gate was added. It was stopped, created no output
+directory, and is not a completed run. The parity-gated run is
+`D:\Dev\datasets\psynova-public-research\research-runs\cat-replay-20261014-v2-c7991d38\summary.json`;
+its SHA-256 is
+`7fcdce40d7de57354479d9e05e688c690508ff0ce7e0ce1c2dd7ba58397ab3cd`.
+That run directory contains only `summary.json` and reports
+`research_only_completed`, with `publication_status=not_approved_for_publication_or_operational_use`
+and `psychological_interpretation_allowed=false`.
+
+The parity evidence checked 1,683 probability vectors (99 items × 17 theta
+points) and 30 public EAP likelihood cases. Maximum probability-sum error was
+`1.11e-16`; maximum EAP mean and SE differences were `3.08e-7` and `2.95e-7`,
+below the declared `1e-3` tolerance. The pinned GRM, EAP and response-generator
+source hashes are recorded in the run summary.
+
+| Domain | Evaluation records | Completed observed paths | Censored before minimum | Censored after minimum | All-missing | Forward paths completed |
+|---|---:|---:|---:|---:|---:|---:|
+| Agreeableness | 800 | 1 | 793 | 0 | 6 | 800 |
+| Conscientiousness | 800 | 1 | 788 | 4 | 7 | 800 |
+| Emotional Stability | 800 | 8 | 773 | 1 | 18 | 800 |
+| Extraversion | 800 | 59 | 724 | 0 | 17 | 800 |
+| Intellect / Imagination | 800 | 29 | 733 | 28 | 10 | 800 |
+
+The observed replay mostly stopped when MFI selected a blank source response.
+Those counts are coverage and censoring diagnostics only. Completed-path counts
+are low, respondents have no reference theta, and this replay supplies no
+bias/RMSE or CAT-effectiveness evidence. All five model-generated runs completed
+800 paths with no recorded simulation errors; these are model-consistency
+results because their responses and estimator use the same fitted item curves.
+The forward aggregate metrics are retained in the external summary, not
+interpreted as evidence about SAPA respondents or students.
 
 ## Next-stage isolated research-profile and task path
 
@@ -235,34 +286,67 @@ simulation population is the declared generator only. Any later real-person
 interactive research would be a separate authorization and consent design, not
 part of this protocol.
 
-Proposed CLI shape (not implemented):
+Implemented CLI. It requires an explicit candidate config; there is no implicit
+demo fixture or default seed. This example runs 16 virtual Extraversion cases.
+Observed replay still consumes exactly 800 evaluation records per selected
+domain; `both` and `model-forward` require an explicit `--forward-cases` value.
 
 ```text
-uv run --project 01_cat-engine python -m cat_engine.research.empirical_cat_replay \
-  --mode observed-replay --manifest <response-split-manifest> \
-  --fit-dir <mirt-fit-directory> --domain <one-exact-domain> \
-  --config <research-config.json> --output <aggregate-output.json>
-
-uv run --project 01_cat-engine python -m cat_engine.research.empirical_cat_replay \
-  --mode model-forward --fit-dir <mirt-fit-directory> --domain <one-exact-domain> \
-  --n-examinees 800 --seed 20261014 --theta-uniform -2.5 2.5 \
-  --config <research-config.json> --output <aggregate-output.json>
+uv run --project 01_cat-engine python -m cat_engine.research.empirical_cat_replay `
+  --artifact-root 'D:\Dev\datasets\psynova-public-research' `
+  --config 'D:\Dev\datasets\psynova-public-research\research-runs\configs\research-cat-sapa-candidate-20261014.json' `
+  --output-root 'D:\Dev\datasets\psynova-public-research\research-runs' `
+  --run-id '<new-unique-run-id>' --mode model-forward `
+  --domain Extraversion --forward-cases 16
 ```
 
-The `research-config.json` must copy and hash the exact estimator, MFI,
-prior/initial theta, min/max length and SE stop settings used. A copy of
-`demo_cat_config.v1.json` is a useful engineering baseline (`EAP`, `MFI`,
-min 3/max 8, SE 0.55, N(0,1) prior), but those stop/prior settings remain demo
-settings with no psychometric endorsement. Do not change the shared fixture to
-make a research run.
+The config carries candidate-only metadata and an exact source-population match.
+Run identity binds raw config-file and canonical-content hashes, source/split/
+crosswalk hashes, all fit hashes, parity evidence, adapter source hash, runtime
+versions, selected domains, mode and case count. `--resume` is accepted only
+when every identity field matches. Aggregate checkpoints are atomically written
+per domain and validated before reuse; mismatches and incomplete claimed
+checkpoints fail closed.
 
-## Acceptance criteria for a future authorized run
+The adapter honors GRM/EAP/MFI, declared min/max, SE threshold, initial theta,
+Gaussian prior, optimization interval and seed. Unsupported estimator/model,
+selector, prior, initial-theta, interval, exposure-control or content-balancing
+values fail closed. There is no silent item-count cap; `max_items` cannot exceed
+the smallest selected domain (19 for all five). The seed is config-bound with
+deterministic domain sub-seeds. `--forward-cases` is required for both/forward
+modes and rejected for observed-only mode; `--domain` may be repeated.
+
+The candidate file `D:\Dev\datasets\psynova-public-research\research-runs\configs\research-cat-sapa-candidate-20261014.json`
+uses min 3/max 8 and SE 0.55 as engineering candidates only. It is not
+professionally endorsed, psychometrically validated, or approved for school or
+clinical use. The existing production demo config remains unchanged.
+
+### Small candidate-config trial
+
+The 16-case isolated forward trial completed for Extraversion using the
+candidate config. Run ID:
+`candidate-forward-extraversion-20261014-16f`; summary:
+`D:\Dev\datasets\psynova-public-research\research-runs\candidate-forward-extraversion-20261014-16f\summary.json`.
+Config raw-file SHA-256:
+`8813e7e52468949dc9d975fb2d5eac9ab223ff10cb488bb1b68afb99fc796ed2`;
+canonical-content SHA-256:
+`9412302ebd834c2107f1c6190c4a6018120f2dae27eae699cf9c3f316f6995b0`;
+run identity SHA-256:
+`e96ca4a369dafd989bdae39245177a6c1e4be76427c4f3e98566c511e16f51e5`;
+summary SHA-256:
+`a45a7733c2490f15cb19e3c24de7347177610488e2ad75bf161b5891620a4aa7`.
+All 16 virtual paths stopped at three items under the candidate SE setting, with
+no recorded error and no individual theta/response rows. This checks config
+loading, provenance and small-run execution only; it does not validate the stop
+threshold or approve a CAT configuration.
+
+## Research-run criteria and future profile/task boundaries
 
 | Gate | Required evidence |
 |---|---|
 | Provenance | Calibration/evaluation hashes match the split manifest; 10,000 and 800 counts match; split is disjoint; mirt result records calibration hash; evaluation is never used to refit or choose item parameters. |
 | Domain bundle | Exactly one domain per run; 20 items except the 19-item Conscientiousness exact subset; qids equal the crosswalk; no `q_1483`; every scoring map is a permutation of `0..5`; all five mirt fits stay separate. |
-| Model compatibility | Every item has `a>0`, five finite strictly increasing thresholds and six supported categories; category-probability parity against the installed `adaptivetesting` GRM is within predeclared tolerance on the fixed theta/category grid. Any mismatch blocks both replay and forward simulation. |
+| Model compatibility | Every item has `a>0`, five finite strictly increasing thresholds and six supported categories; pinned GRM source check, 99-item probability-vector normalization over the theta grid and 30 public EAP likelihood comparisons stay within `1e-3`. The package response-generator softmax finding is recorded; the research sampler uses direct graded-logistic probabilities. Any mismatch blocks both replay and forward simulation. |
 | Observed replay | Exactly 800 input records accounted for per domain; unobserved selected item causes censor-before-score; no selected-source NA is converted to a non-answer or score; aggregate counts reconcile `started = completed + censored + no-domain-response`; report actual effective path count and item-exposure counts. |
 | Forward simulation | 800 cases per domain; fixed seed, theta generator, fit hash and config hash recorded; repeated same run reproduces aggregate metrics; true theta and response rows are not persisted; result labels `model_generated_forward`. |
 | Output boundary | JSON contains only provenance, aggregate counts/metrics, warnings and domain-level item exposure; no respondent/source row ID, item-response sequence, per-case theta, estimate, score or CSV. Logs follow the same rule. |
@@ -285,7 +369,17 @@ decisions remain separate.
 - mirt item parameters and domain fit counts:
   `D:\Dev\datasets\psynova-public-research\R-runtime\mirt-crosscheck\domains-20261014-final\`,
   `mirt-extraversion.json`, and
-  `mirt-remaining-domains-20261014-final.json`.
+  `mirt-remaining-domains-20261014-final.json`; calibration approach and
+  research boundaries are documented in `GRM_RESEARCH_PLAN.md`.
+- Implemented research runner and targeted tests:
+  `01_cat-engine/src/cat_engine/research/empirical_cat_replay.py` and
+  `01_cat-engine/tests/research/test_empirical_cat_replay.py`.
+- Completed aggregate-only run:
+  `D:\Dev\datasets\psynova-public-research\research-runs\cat-replay-20261014-v2-c7991d38\summary.json`
+  (SHA-256 `7fcdce40d7de57354479d9e05e688c690508ff0ce7e0ce1c2dd7ba58397ab3cd`).
+- Parity source evidence is the pinned package's `math/estimators/__functions/__poly/__grm.py`,
+  `math/estimators/__expect_a_posteriori.py`, and `math/__gen_response_pattern.py`;
+  their source SHA-256 values are preserved in the run summary.
 - Scalar provider, scoring and runtime gate:
   `01_cat-engine/src/cat_engine/providers/adaptivetesting_provider.py:57`,
   `:75`, `:128`, `:149`, `:229`; `domain/item.py:72`, `:108`;
