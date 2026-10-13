@@ -96,6 +96,27 @@ readiness only:0jobs/0assessments, no800CAT→AI pipeline acceptance yet.
 Old G/H remainuntouched on0010/C3c72. Current goalACTIVE; Chinesepolicy research,
 reviewqualification and integrated realbank/800 postcompletion validation remain.
 
+2026-10-14 02:58 native outbox milestone: Root ran an append-only synthetic edge
+task through I business APIs (no direct SQL writes), actual CAT completion,
+teacher completion-only aggregates, cross-school denial and later revocation.
+One job claimed once, terminal ABSTAINED/POLICY_UNAVAILABLE, lease cleared;
+same completion request-key replay did not add jobs, a new key returned409.
+Evidence I/logs/native-outbox-task-378b5200f8274e0d999bacdb8cab6b89.json.
+Initial harness used a new completion key after completion, received409 and
+failed; failure retained. Its completed task/job remain intact. This is a
+synthetic edge check of the real durable queue, not public-bank/800 acceptance,
+real-source RAG generation, restart recovery or clinical publication proof.
+
+NHANES calibration6000/evaluation800 split and nine-item mirt baseline converged;
+evaluation745 complete/1 partial/54 empty retained, no replacements or imputation.
+Independent QA is active. Chinese MOE policy body candidates staged with rights
+and content still pending, no index activation. Integrated research-school design
+reviewed: independent public-research CAT session/profile lane will preserve the
+existing published-bank and frozen assessment.v1 gates. Worker implements pure
+start/answer/snapshot/restore adapter; another prepares exact official IPIP20-item
+candidate profile. No research session has yet entered school DB/backend.
+Goal ACTIVE; no shutdown deadline, RTX3060 available; full delivery incomplete.
+
 2026-10-14 00:05 nextscenario: Root created newH workspace
 D:\Projects\.StudentMentalHealthAI-school-install-20261013-h,
 ID28823cc1dcd2d8a4d41991eac1e045b0/DB3316. Fresh additive migration0010 MIGRATED;
