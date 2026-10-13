@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 from typing import Any, Literal
 from urllib.parse import urlparse
@@ -115,6 +116,54 @@ class ObservabilitySettings(BaseModel):
     enable_otel: bool = False
 
 
+class PostAssessmentWorkerSettings(BaseModel):
+    """Bounded local worker settings; publication and model clients are absent."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool | None = Field(default=None, strict=True)
+    policy_version: str = Field(
+        default="NO_PERSONALIZED_POLICY_V1",
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+    )
+    poll_interval_seconds: float = Field(default=1.0, ge=0.01, le=60, strict=True)
+    lease_seconds: int = Field(default=60, ge=5, le=3600, strict=True)
+    heartbeat_interval_seconds: float | None = Field(
+        default=None, gt=0, le=1200, strict=True
+    )
+    max_attempts: int = Field(default=5, ge=1, le=20, strict=True)
+    shutdown_drain_seconds: float = Field(default=10.0, gt=0, le=120, strict=True)
+
+    @field_validator(
+        "poll_interval_seconds",
+        "lease_seconds",
+        "heartbeat_interval_seconds",
+        "max_attempts",
+        "shutdown_drain_seconds",
+        mode="before",
+    )
+    @classmethod
+    def validate_finite_numeric_settings(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("post-assessment numeric settings must be JSON numbers")
+        if not math.isfinite(float(value)):
+            raise ValueError("post-assessment numeric settings must be finite")
+        return value
+
+    @model_validator(mode="after")
+    def validate_heartbeat(self) -> PostAssessmentWorkerSettings:
+        if (
+            self.heartbeat_interval_seconds is not None
+            and self.heartbeat_interval_seconds >= self.lease_seconds
+        ):
+            raise ValueError("post-assessment heartbeat must be shorter than its lease")
+        return self
+
+
 class BackendSettings(BaseSettings):
     """Backend-local settings; the frozen config.v1 remains unchanged."""
 
@@ -174,6 +223,9 @@ class BackendSettings(BaseSettings):
     auth: AuthSettings = Field(default_factory=AuthSettings)
     rate_limit: RateLimitSettings = Field(default_factory=RateLimitSettings)
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
+    post_assessment_worker: PostAssessmentWorkerSettings = Field(
+        default_factory=PostAssessmentWorkerSettings
+    )
     m0_claim_boundary_observer_enabled: bool = False
     cat: ModuleClientSettings = Field(
         default_factory=lambda: ModuleClientSettings(
@@ -224,6 +276,12 @@ class BackendSettings(BaseSettings):
                 ) from None
         else:
             self.school_csrf_secret = None
+        if self.post_assessment_worker.enabled is True and (
+            self.identity_profile != "school_tenant" or self.persistence_mode != "mysql"
+        ):
+            raise ValueError(
+                "post-assessment worker requires school_tenant MySQL persistence"
+            )
         if self.environment == "production":
             if self.identity_profile != "school_tenant":
                 raise ValueError("production requires the school_tenant identity profile")
@@ -248,3 +306,9 @@ class BackendSettings(BaseSettings):
     @property
     def trust_env_for_local_clients(self) -> bool:
         return False
+
+    @property
+    def post_assessment_worker_enabled(self) -> bool:
+        if self.post_assessment_worker.enabled is not None:
+            return self.post_assessment_worker.enabled
+        return self.identity_profile == "school_tenant" and self.persistence_mode == "mysql"

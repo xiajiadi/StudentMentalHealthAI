@@ -1,6 +1,6 @@
 # NHANES P_DPQ public-use response extract
 
-**核查与提取日期：2026-10-14**  
+**核查与提取日期：2026-10-14**
 **范围：**CDC/NCHS 官方公开发布的 NHANES 2017–March 2020 pre-pandemic P_DPQ 成人答卷；只用于隔离研究数据工程，不进入产品、冻结题库、正式评估或学校个案工作流。
 
 ## 来源、版本与访问范围

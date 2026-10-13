@@ -33,6 +33,31 @@ SCOPE = {
 }
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("first_character", ["-", "_"])
+async def test_generated_lease_capability_is_accepted_by_renewal(monkeypatch, first_character):
+    monkeypatch.setattr(
+        "database_layer.school_post_assessment_jobs.secrets.token_urlsafe",
+        lambda _size: first_character + "x" * 42,
+    )
+    job = _live_job(
+        status="QUEUED", attempt_count=0, lease_owner=None, lease_token=None,
+        lease_expires_at=None,
+    )
+    session = _FakeSession(scalar_rows=[[job]], scalar_values=[job])
+    repository = SchoolPostAssessmentJobRepository(cast(Any, session))
+    claims = await repository.claim_ready(
+        school_id=job.school_id, lease_owner="worker-a", now=NOW,
+    )
+    renewed = await repository.extend_lease(
+        school_id=job.school_id, subject_id=job.subject_id, job_id=job.id,
+        lease_owner=claims[0].lease_owner, lease_token=claims[0].lease_token,
+        now=NOW + timedelta(seconds=1),
+    )
+    assert renewed.lease_token == claims[0].lease_token
+    assert renewed.lease_token.startswith("lease_")
+
+
 class _Rows:
     def __init__(self, values):
         self.values = values

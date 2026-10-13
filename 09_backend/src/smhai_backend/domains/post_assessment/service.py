@@ -133,6 +133,13 @@ class PostAssessmentPersistenceFailure(RuntimeError):
         super().__init__(f"post-assessment persistence failed during {stage.value.lower()}")
 
 
+class PostAssessmentAuthorizationFailure(RuntimeError):
+    """Fixed failure for an unavailable/invalid live authorization decision."""
+
+    def __init__(self) -> None:
+        super().__init__("post-assessment authorization check failed")
+
+
 @dataclass(frozen=True, slots=True)
 class DatabasePersistenceErrorMapper:
     """Explicit bridge to the optional database module's enums and errors."""
@@ -196,6 +203,7 @@ class PostAssessmentWorker:
         authorization: AuthorizationCheck,
         persistence_errors: PersistenceErrorMapper,
         processor: EducationProcessor | None = None,
+        concurrency_lock: asyncio.Lock | None = None,
         worker_id: str = "post-assessment-worker",
         policy_version: str = NO_PERSONALIZED_POLICY_VERSION,
         poll_interval_seconds: float = 1.0,
@@ -264,7 +272,7 @@ class PostAssessmentWorker:
         self.max_attempts = max_attempts
         self.clock = clock
         self._stop_event = asyncio.Event()
-        self._run_lock = asyncio.Lock()
+        self._run_lock = concurrency_lock or asyncio.Lock()
         self._run_task: asyncio.Task[None] | None = None
 
     def start(self) -> asyncio.Task[None]:
@@ -511,9 +519,14 @@ class PostAssessmentWorker:
 
     async def _reauthorized(self, scope: PostAssessmentAuthorizationScope) -> bool:
         try:
-            return await self.authorization.is_authorized(scope) is True
+            decision = await self.authorization.is_authorized(scope)
         except Exception:
+            raise PostAssessmentAuthorizationFailure() from None
+        if decision is True:
+            return True
+        if decision is False:
             return False
+        raise PostAssessmentAuthorizationFailure()
 
     def _is_stale_lease_error(self, error: BaseException) -> bool:
         try:

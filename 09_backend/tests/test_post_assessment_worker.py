@@ -11,6 +11,7 @@ from smhai_backend.domains.post_assessment.service import (
     NO_PERSONALIZED_POLICY_VERSION,
     EducationJobInput,
     PersistenceStage,
+    PostAssessmentAuthorizationFailure,
     PostAssessmentAuthorizationScope,
     PostAssessmentErrorCode,
     PostAssessmentJobOutcome,
@@ -416,6 +417,39 @@ async def test_authorization_failure_before_processing_fails_closed():
 
     assert processor.calls == []
     assert repository.calls[-1][1]["status"] == "CANCELLED"
+
+
+@pytest.mark.asyncio
+async def test_authorization_lookup_failure_is_not_misclassified_as_revocation():
+    repository = _Repository([_Claim()])
+    processor = _Processor(PostAssessmentJobOutcome(PostAssessmentJobStatus.HELD))
+
+    class _DatabaseFailure:
+        async def is_authorized(self, _scope):
+            raise RuntimeError("private database connection detail")
+
+    worker, _, _ = _worker(repository, processor=processor, authorization=_DatabaseFailure())
+    with pytest.raises(PostAssessmentAuthorizationFailure) as captured:
+        await worker.run_once()
+
+    assert processor.calls == []
+    assert [name for name, _ in repository.calls] == ["claim"]
+    assert "private database connection detail" not in str(captured.value)
+
+
+@pytest.mark.asyncio
+async def test_non_boolean_authorization_decision_is_a_visible_contract_failure():
+    repository = _Repository([_Claim()])
+    processor = _Processor(PostAssessmentJobOutcome(PostAssessmentJobStatus.HELD))
+    worker, _, _ = _worker(
+        repository, processor=processor, authorization=_Authorization((None,))
+    )
+
+    with pytest.raises(PostAssessmentAuthorizationFailure):
+        await worker.run_once()
+
+    assert processor.calls == []
+    assert [name for name, _ in repository.calls] == ["claim"]
 
 
 @pytest.mark.asyncio

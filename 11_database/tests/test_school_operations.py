@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -552,7 +552,7 @@ async def test_revocation_retains_enrollment_row_and_progress_is_task_only():
     assert "review" not in compiled.lower()
 
 
-async def test_active_enrollment_lookup_is_account_and_revocation_scoped():
+async def test_student_active_enrollment_lookup_keeps_current_task_window_gate():
     expected = SimpleNamespace(id=71, school_id=7, subject_id=61, status="ACTIVE")
     session = _Session(scalar_values=[expected])
     found = await SchoolOperationsRepository(cast(Any, session)).active_enrollment_for_assessment(
@@ -577,6 +577,48 @@ async def test_active_enrollment_lookup_is_account_and_revocation_scoped():
     params = session.statements[0].compile(dialect=mysql.dialect()).params
     assert params["opens_at_1"] == _at()
     assert params["due_at_1"] == _at()
+
+
+async def test_post_assessment_scope_uses_completion_time_but_current_authorization():
+    expected = SimpleNamespace(id=71, school_id=7, subject_id=61, status="ACTIVE")
+    completed_at = _at() + timedelta(days=1)
+    now = completed_at + timedelta(days=2)
+    session = _Session(scalar_values=[expected])
+    found = await SchoolOperationsRepository(
+        cast(Any, session)
+    ).completed_enrollment_for_post_assessment(
+        assessment_ref="ASSESS_synthetic_task", student_account_id=91, at=now
+    )
+    assert found is expected
+
+    statement = session.statements[0]
+    compiled = str(
+        statement.compile(dialect=mysql.dialect(), compile_kwargs={"literal_binds": True})
+    ).lower()
+    now_literal = now.strftime("%Y-%m-%d %H:%M:%S")
+    assert "assessment_sessions.status = 'completed'" in compiled
+    assert "assessment_sessions.completed_at is not null" in compiled
+    assert f"assessment_sessions.completed_at <= '{now_literal}'" in compiled
+    assert "measurement_tasks.opens_at <= assessment_sessions.completed_at" in compiled
+    assert (
+        "assessment_sessions.completed_at <= measurement_tasks.due_at" in compiled
+    )
+    assert "measurement_tasks.status = 'published'" in compiled
+    assert "measurement_tasks.due_at is null" in compiled
+    assert "task_enrollments.revoked_at is null" in compiled
+    assert "principal_account_id = 91" in compiled
+    assert "relationship_type = 'self'" in compiled
+    assert "subject_access_grants.status = 'active'" in compiled
+    assert "accounts.status = 'active'" in compiled
+    assert "account_school_memberships.status = 'active'" in compiled
+    assert "membership_roles.role_code = 'student'" in compiled
+    assert "membership_roles.status = 'active'" in compiled
+    assert "school_class_students.status = 'active'" in compiled
+    assert "school_classes.status = 'active'" in compiled
+    assert "schools.status = 'active'" in compiled
+    # The current time is used for active identity/consent windows, not for the
+    # task due-time check; that check is against the immutable completion time.
+    assert f"measurement_tasks.due_at >= '{now_literal}'" not in compiled
 
 
 async def test_missing_progress_task_fails_closed():

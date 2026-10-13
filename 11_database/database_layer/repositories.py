@@ -901,6 +901,23 @@ class SchoolOperationsRepository:
             )
         )
 
+    async def completed_enrollment_for_post_assessment(
+        self,
+        *,
+        assessment_ref: str,
+        student_account_id: int,
+        at: datetime,
+    ) -> TaskEnrollment | None:
+        """Reauthorize completed work using its completion time, not task read window."""
+        return await self.session.scalar(
+            self._active_enrollment_statement(
+                student_account_id=student_account_id,
+                at=at,
+                assessment_ref=assessment_ref,
+                completed_assessment=True,
+            )
+        )
+
     async def _require_active_enrollment(
         self,
         *,
@@ -927,6 +944,7 @@ class SchoolOperationsRepository:
         at: datetime,
         enrollment_id: int | None = None,
         assessment_ref: str | None = None,
+        completed_assessment: bool = False,
     ):
         statement = (
             select(TaskEnrollment)
@@ -968,9 +986,8 @@ class SchoolOperationsRepository:
             .join(School, School.id == TaskEnrollment.school_id)
             .where(
                 TaskEnrollment.status == "ACTIVE",
+                TaskEnrollment.revoked_at.is_(None),
                 MeasurementTask.status == "PUBLISHED",
-                MeasurementTask.opens_at <= at,
-                (MeasurementTask.due_at.is_(None)) | (MeasurementTask.due_at >= at),
                 SchoolClassStudent.status == "ACTIVE",
                 SchoolClassStudent.revoked_at.is_(None),
                 SchoolClassStudent.valid_from <= at,
@@ -1011,6 +1028,22 @@ class SchoolOperationsRepository:
                 (AssessmentSession.task_enrollment_id == TaskEnrollment.id)
                 & (AssessmentSession.subject_id == TaskEnrollment.subject_id),
             ).where(AssessmentSession.assessment_ref == assessment_ref)
+        if completed_assessment:
+            if assessment_ref is None:
+                raise ValueError("completed assessment scope requires an assessment reference")
+            statement = statement.where(
+                AssessmentSession.status == "COMPLETED",
+                AssessmentSession.completed_at.is_not(None),
+                AssessmentSession.completed_at <= at,
+                MeasurementTask.opens_at <= AssessmentSession.completed_at,
+                (MeasurementTask.due_at.is_(None))
+                | (AssessmentSession.completed_at <= MeasurementTask.due_at),
+            )
+        else:
+            statement = statement.where(
+                MeasurementTask.opens_at <= at,
+                (MeasurementTask.due_at.is_(None)) | (MeasurementTask.due_at >= at),
+            )
         return statement.distinct()
 
     async def _linked_session_for_enrollment(

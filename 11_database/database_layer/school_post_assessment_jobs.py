@@ -362,7 +362,9 @@ class SchoolPostAssessmentJobRepository:
             job.next_attempt_at = None
             job.lease_owner = lease_owner
             job.lease_expires_at = clock + timedelta(seconds=lease_seconds)
-            job.lease_token = secrets.token_urlsafe(32)
+            # URL-safe entropy may begin with '-' or '_'; the capability
+            # validator requires an alphanumeric first character.
+            job.lease_token = "lease_" + secrets.token_urlsafe(32)
             claims.append(_claim(job))
         if jobs:
             await self.session.flush()

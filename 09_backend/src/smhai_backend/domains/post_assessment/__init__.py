@@ -4,6 +4,7 @@ from smhai_backend.domains.post_assessment.service import (
     DatabasePersistenceErrorMapper,
     EducationJobInput,
     PersistenceStage,
+    PostAssessmentAuthorizationFailure,
     PostAssessmentAuthorizationScope,
     PostAssessmentJobOutcome,
     PostAssessmentJobStatus,
@@ -17,6 +18,7 @@ from smhai_backend.domains.post_assessment.service import (
 __all__ = [
     "DatabasePersistenceErrorMapper",
     "EducationJobInput",
+    "PostAssessmentAuthorizationFailure",
     "PostAssessmentAuthorizationScope",
     "PostAssessmentJobOutcome",
     "PostAssessmentJobStatus",

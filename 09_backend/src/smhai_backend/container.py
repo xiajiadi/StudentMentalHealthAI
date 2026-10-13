@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,10 @@ from smhai_backend.adapters.school_cat_management import SchoolCatManagementPers
 from smhai_backend.adapters.school_conversations import SchoolConversationsPersistenceAdapter
 from smhai_backend.adapters.school_directory import SchoolDirectoryPersistenceAdapter
 from smhai_backend.adapters.school_feedback import SchoolFeedbackPersistenceAdapter
+from smhai_backend.adapters.school_post_assessment import (
+    SchoolPostAssessmentPersistenceAdapter,
+    SchoolPostAssessmentWorkerManager,
+)
 from smhai_backend.adapters.school_professional_reviews import (
     SchoolProfessionalReviewPersistenceAdapter,
 )
@@ -54,6 +59,8 @@ from smhai_backend.integrations.safety import (
     HttpSafetyClient,
     SafetyClient,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -91,29 +98,81 @@ class BackendContainer:
     cat_assets: SchoolCatAssetService | None = None
     cat_assets_client: HttpCatAssetsClient | None = None
     cat_saved_simulation_client: HttpCatSavedSimulationClient | None = None
+    post_assessment_worker_manager: SchoolPostAssessmentWorkerManager | None = None
 
     async def start(self) -> None:
-        if self.persistence is not None:
-            await self.persistence.start()
-        await self.safety.start()
+        try:
+            if self.persistence is not None:
+                await self.persistence.start()
+            await self.safety.start()
+            if self.post_assessment_worker_manager is not None:
+                await self.post_assessment_worker_manager.start()
+        except Exception:
+            worker_shutdown_failed = False
+            if self.post_assessment_worker_manager is not None:
+                try:
+                    await self.post_assessment_worker_manager.close()
+                except Exception:
+                    worker_shutdown_failed = True
+                    _LOGGER.error(
+                        "post-assessment worker cleanup failed during startup",
+                        extra={"failure_code": "WORKER_CLEANUP_FAILURE"},
+                    )
+            await self._close_clients()
+            if self.persistence is not None and not worker_shutdown_failed:
+                await self.persistence.close()
+            raise
 
     async def close(self) -> None:
-        await self.safety.close()
-        for client in (
-            self.cat,
-            self.cat_management_client,
-            self.cat_assets_client,
-            self.cat_saved_simulation_client,
-            self.rag,
-            self.llm,
-            self.independent_rag,
-            self.independent_llm,
-        ):
+        worker_shutdown_failed = False
+        if self.post_assessment_worker_manager is not None:
+            try:
+                await self.post_assessment_worker_manager.close()
+            except Exception:
+                worker_shutdown_failed = True
+                _LOGGER.error(
+                    "post-assessment worker cleanup failed during shutdown",
+                    extra={"failure_code": "WORKER_CLEANUP_FAILURE"},
+                )
+        clients_failed = await self._close_clients()
+        if self.persistence is not None and not worker_shutdown_failed:
+            await self.persistence.close()
+        if worker_shutdown_failed:
+            raise RuntimeError("post-assessment worker shutdown did not complete")
+        if clients_failed:
+            raise RuntimeError("Backend dependency shutdown did not complete")
+
+    async def _close_clients(self) -> bool:
+        failures: list[str] = []
+        clients = (
+            ("safety", self.safety),
+            ("cat", self.cat),
+            ("cat_management", self.cat_management_client),
+            ("cat_assets", self.cat_assets_client),
+            ("cat_saved_simulation", self.cat_saved_simulation_client),
+            ("rag", self.rag),
+            ("llm", self.llm),
+            ("independent_rag", self.independent_rag),
+            ("independent_llm", self.independent_llm),
+        )
+        for name, client in clients:
+            if client is None:
+                continue
             close = getattr(client, "close", None)
             if close is not None:
-                await maybe_await(close())
-        if self.persistence is not None:
-            await self.persistence.close()
+                try:
+                    await maybe_await(close())
+                except Exception:
+                    failures.append(name)
+        if failures:
+            _LOGGER.error(
+                "Backend dependency cleanup failed",
+                extra={
+                    "failure_code": "CLIENT_CLOSE_FAILURE",
+                    "dependencies": failures,
+                },
+            )
+        return bool(failures)
 
     async def dependency_matrix(self, context) -> dict[str, dict[str, Any]]:
         statuses: dict[str, dict[str, Any]] = {}
@@ -137,6 +196,11 @@ class BackendContainer:
                     "status": "UNAVAILABLE",
                     "integration": getattr(client, "label", "DEFERRED"),
                 }
+        statuses["post_assessment_worker"] = (
+            self.post_assessment_worker_manager.dependency_status()
+            if self.post_assessment_worker_manager is not None
+            else {"status": "DISABLED", "integration": "LOCAL_OUTBOX"}
+        )
         return statuses
 
 
@@ -255,6 +319,14 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
             else None
         )
     )
+    post_assessment_worker_manager = (
+        SchoolPostAssessmentWorkerManager(
+            SchoolPostAssessmentPersistenceAdapter(persistence),
+            settings.post_assessment_worker,
+        )
+        if settings.post_assessment_worker_enabled and persistence is not None
+        else None
+    )
     independent_rag = independent_llm = independent_conversations = None
     if (
         persistence is not None
@@ -325,6 +397,7 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         cat_assets=cat_assets,
         cat_assets_client=cat_assets_client,
         cat_saved_simulation_client=cat_saved_simulation_client,
+        post_assessment_worker_manager=post_assessment_worker_manager,
         independent_conversations=independent_conversations,
         independent_rag=independent_rag,
         independent_llm=independent_llm,

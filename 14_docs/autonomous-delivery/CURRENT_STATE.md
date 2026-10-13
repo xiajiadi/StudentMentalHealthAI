@@ -69,6 +69,33 @@ Root52focusedtests pass. Worker queue framework25focusedtests pass after Root
 required strict source review/rights checks and rollback/visible persistence errors;
 container authorization/lifecycle wiring is underway, not yet runtime-verified.
 
+2026-10-14 02:23 source/runtime increment: realSAPA research run completed
+research-runs/cat-replay-20261014-v2-c7991d38/summary.json SHA7fcdce40d7de57354479d9e05e688c690508ff0ce7e0ce1c2dd7ba58397ab3cd.
+Observed800/domain complete counts1/1/8/59/29; selected missing answers cause
+explicit censoring. Model-generated800/domain complete, but in-model recovery
+is not observed accuracy/validity. Independent QA hash80af2fee666938bc101cdf77d73eca3db627a1440b83774c29afee1c161fca5c.
+GRM/EAP parity verified; library probability-softmax distortion documented and
+research categorical sampler corrected without changing frozen online math.
+New explicitconfig/checkpoint version Root40researchtests pass, 16-case final
+candidate-forward-extraversion-20261014-16f retained; thresholds not approved.
+
+NHANES officialpublic adult P_DPQ acquired in memory, response-only9items8965rows,
+8276complete0..3rows, noSEQN/demographics/score/clinicalgold. Refused7/unknown9/NA
+preserved; no restricted youth access. CSV SHA1a050397dc420e8eb685a43a5a7b481bb3ff61c38e3b5f4d6fb00988a15a2091.
+Fixed artifact supports repeat downstream; random extraction order not bitwise
+reproducible. Public-use research access, not asserted unrestrictedredistribution.
+
+Queue current authorization uses completed_at within original task window,
+current rights still checked; studentcurrent deadline unchanged. Safety starts
+before worker, unexpectedcancel/authcheckfailure healthUNAVAILABLE; unknown auth
+failure no longer convertedto CANCELLED. Rootfound URLsafe lease may start '-'/'_'
+and failrenewal validator; prefixed capability and2regressiontests. Root59new
+Backendtests/36DBfocusedtests pass; nativeI8091/4181 restartedowned and health
+20261013T182256Z reports all5dependencyREADY, including LOCAL_OUTBOX. Emptyqueue
+readiness only:0jobs/0assessments, no800CAT→AI pipeline acceptance yet.
+Old G/H remainuntouched on0010/C3c72. Current goalACTIVE; Chinesepolicy research,
+reviewqualification and integrated realbank/800 postcompletion validation remain.
+
 2026-10-14 00:05 nextscenario: Root created newH workspace
 D:\Projects\.StudentMentalHealthAI-school-install-20261013-h,
 ID28823cc1dcd2d8a4d41991eac1e045b0/DB3316. Fresh additive migration0010 MIGRATED;
