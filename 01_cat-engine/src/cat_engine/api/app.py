@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -30,6 +31,7 @@ from cat_engine.api.assets import (
 )
 from cat_engine.api.management import create_management_router
 from cat_engine.domain.config import CATConfig
+from cat_engine.domain.enums import ResponseStatus, SessionStatus
 from cat_engine.domain.errors import ValidationError as CATValidationError
 from cat_engine.domain.item_bank import ItemBank
 from cat_engine.domain.result import RiskSnapshot
@@ -99,6 +101,25 @@ class ResponseRequest(BaseModel):
 
     item_id: str = Field(pattern=r"^ITEM_[A-Za-z0-9][A-Za-z0-9_.-]*$")
     response: str | int | float | bool
+
+
+def _same_json_value(left: Any, right: Any) -> bool:
+    """Compare JSON values without Python's bool/int or int/float coercions."""
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, dict):
+        return all(type(key) is str for key in left) and left.keys() == right.keys() and all(
+            _same_json_value(left[key], right[key]) for key in left
+        )
+    if isinstance(left, list):
+        return len(left) == len(right) and all(
+            _same_json_value(a, b) for a, b in zip(left, right)
+        )
+    if type(left) is float:
+        return math.isfinite(left) and left == right
+    if left is None or type(left) in (str, int, bool):
+        return left == right
+    return False
 
 
 class CompleteRequest(BaseModel):
@@ -226,6 +247,8 @@ class CatRuntime:
     def submit(self, assessment_id: str, request: ResponseRequest) -> dict[str, Any]:
         session = self._session(assessment_id)
         if session.selected_item_id != request.item_id:
+            if self._is_exact_last_response_retry(assessment_id, session, request):
+                return self.state(session)
             raise HTTPException(
                 status_code=409,
                 detail="response item does not match the currently presented item",
@@ -238,6 +261,46 @@ class CatRuntime:
         except Exception as exc:
             raise _domain_error(exc) from exc
         return self.state(session)
+
+    def _is_exact_last_response_retry(
+        self, assessment_id: str, session: Session, request: ResponseRequest
+    ) -> bool:
+        if (
+            session.assessment_id != assessment_id
+            or self.sessions.get(assessment_id) is not session
+            or session.status is not SessionStatus.IN_PROGRESS
+            or session.provider_session is None
+            or session.selected_item_id == request.item_id
+            or not session.traces
+        ):
+            return False
+
+        binding = self.session_bindings.get(assessment_id)
+        if binding is None:
+            return False
+        binding_fields = (
+            binding.binding_ref,
+            binding.activation_ref,
+            binding.plan_version_ref,
+            binding.bank_version_ref,
+            binding.bank_document_digest,
+            binding.config_document_digest,
+        )
+        if binding.mode == "FIXTURE":
+            if any(value is not None for value in binding_fields):
+                return False
+        elif binding.mode == "SAVED_VERSION":
+            if any(not isinstance(value, str) or not value for value in binding_fields):
+                return False
+        else:
+            return False
+
+        last_trace = session.traces[-1]
+        return (
+            last_trace.response_status is ResponseStatus.ANSWERED
+            and last_trace.item_id == request.item_id
+            and _same_json_value(last_trace.response, request.response)
+        )
 
     def complete(self, assessment_id: str, request: CompleteRequest) -> dict[str, Any]:
         session = self._session(assessment_id)

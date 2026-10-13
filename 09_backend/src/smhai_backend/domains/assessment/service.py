@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
 from smhai_backend.core.async_utils import maybe_await
@@ -15,6 +17,49 @@ from smhai_backend.domains.ports import AssessmentRepository
 from smhai_backend.integrations.cat import CatClient, CatStart
 
 from .schemas import AssessmentStartRequest, ResponseEvent
+
+
+def _same_json_value(left: Any, right: Any) -> bool:
+    """Compare JSON values recursively without Python's bool/int coercion."""
+
+    if type(left) is not type(right):
+        return False
+    if left is None:
+        return True
+    if type(left) in {str, bool, int}:
+        return left == right
+    if type(left) is float:
+        return math.isfinite(left) and math.isfinite(right) and left == right
+    if type(left) is list:
+        return len(left) == len(right) and all(
+            _same_json_value(left_item, right_item)
+            for left_item, right_item in zip(left, right, strict=True)
+        )
+    if type(left) is dict:
+        return (
+            all(type(key) is str for key in left)
+            and all(type(key) is str for key in right)
+            and left.keys() == right.keys()
+            and all(_same_json_value(left[key], right[key]) for key in left)
+        )
+    return False
+
+
+def _same_response_history(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    return left.keys() == right.keys() and all(
+        _same_json_value(left[item_id], right[item_id]) for item_id in left
+    )
+
+
+def _is_commit_outcome_uncertain(exc: Exception) -> bool:
+    """Recognize domain, transport, and SQLAlchemy persistence failures only."""
+
+    if isinstance(exc, (BackendError, OSError)):
+        return True
+    return any(
+        base.__name__ == "SQLAlchemyError" and base.__module__.startswith("sqlalchemy.")
+        for base in type(exc).__mro__
+    )
 
 
 class AssessmentService:
@@ -135,6 +180,35 @@ class AssessmentService:
         )
         if record.assessment["status"] not in {"created", "in_progress"}:
             raise error(ErrorCode.WORKFLOW_CONFLICT, detail="assessment is not accepting responses")
+        if payload.item_id in record.responses:
+            if not _same_json_value(record.responses[payload.item_id], payload.response):
+                raise error(
+                    ErrorCode.WORKFLOW_CONFLICT,
+                    detail="assessment response does not match persisted history",
+                )
+            prior_responses = record.responses.copy()
+            session = await self._cat_session(record, request_id=request_id, trace_id=trace_id)
+            if session.administered_count != len(record.responses):
+                raise error(
+                    ErrorCode.WORKFLOW_CONFLICT,
+                    detail="CAT state does not match persisted response history",
+                )
+            record = await self._fresh_authorized_record(
+                actor, record, action="assessment:write", request_id=request_id, trace_id=trace_id
+            )
+            if (
+                record.assessment["status"] not in {"created", "in_progress"}
+                or not _same_response_history(record.responses, prior_responses)
+                or payload.item_id not in record.responses
+                or not _same_json_value(record.responses[payload.item_id], payload.response)
+                or session.administered_count != len(record.responses)
+            ):
+                raise error(
+                    ErrorCode.WORKFLOW_CONFLICT,
+                    detail="assessment response history changed",
+                )
+            self._apply_state(record, session)
+            return record
         session = await self._cat_session(record, request_id=request_id, trace_id=trace_id)
         await self.cat.submit_response(
             session,
@@ -157,7 +231,42 @@ class AssessmentService:
             if isinstance(first_dimension, dict):
                 first_dimension["items_answered"] = len(record.responses)
         self._apply_state(record, session)
-        await self._save_for_actor(actor, record, trace_id=trace_id)
+        try:
+            await self._save_for_actor(actor, record, trace_id=trace_id)
+        except Exception as save_error:
+            if not _is_commit_outcome_uncertain(save_error):
+                raise
+            if actor.scope_profile == "school_tenant":
+                try:
+                    persisted = await self._get_for_actor(
+                        actor,
+                        assessment_id,
+                        "assessment:write",
+                        request_id=request_id,
+                        trace_id=trace_id,
+                    )
+                except Exception:
+                    raise save_error from None
+                if (
+                    persisted.assessment["status"] in {"created", "in_progress"}
+                    and persisted.subject_id == record.subject_id
+                    and persisted.task_enrollment_id == record.task_enrollment_id
+                    and persisted.cat_binding_mode == record.cat_binding_mode
+                    and persisted.saved_binding == record.saved_binding
+                    and persisted.saved_bank_document == record.saved_bank_document
+                    and persisted.saved_config_document == record.saved_config_document
+                    and payload.item_id in persisted.responses
+                    and _same_json_value(
+                        persisted.responses[payload.item_id], payload.response
+                    )
+                    and session.administered_count == len(persisted.responses)
+                ):
+                    self._apply_state(persisted, session)
+                    record = persisted
+                else:
+                    raise save_error
+            else:
+                raise
         await maybe_await(
             self.audit.record(
                 event="ASSESSMENT_RESPONSE_ACCEPTED",
@@ -313,6 +422,8 @@ class AssessmentService:
             or fresh.task_enrollment_id != original.task_enrollment_id
             or fresh.cat_binding_mode != original.cat_binding_mode
             or fresh.saved_binding != original.saved_binding
+            or fresh.saved_bank_document != original.saved_bank_document
+            or fresh.saved_config_document != original.saved_config_document
         ):
             raise error(ErrorCode.WORKFLOW_CONFLICT, detail="assessment session binding changed")
         return fresh
