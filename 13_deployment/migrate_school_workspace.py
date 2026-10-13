@@ -35,6 +35,7 @@ from resume_school_workspace import (
 from resume_school_workspace import (
     PORT as SOURCE_DATABASE_PORT,
 )
+from school_check_names import legacy_school_check_names
 from school_schema import CURRENT_SCHOOL_REVISION
 
 BUILDER_USER = "psynova_builder"
@@ -581,7 +582,7 @@ def _trusted_current_schema(database_root: Path) -> dict[str, Any]:
                 )
             checks = {
                 (
-                    str(constraint.name).casefold(),
+                    str(constraint.name),
                     _normalize_check_sql(constraint.sqltext),
                     True,
                 )
@@ -748,7 +749,7 @@ def _inspect_actual_schema(cursor: Any, table_names: set[str]) -> dict[str, Any]
         if table_key in schema:
             schema[table_key]["checks"].add(
                 (
-                    str(name).casefold(),
+                    str(name),
                     _normalize_check_sql(clause),
                     str(enforced).upper() in {"YES", "1", "TRUE"},
                 )
@@ -790,6 +791,7 @@ def _verify_current_schema(
         raise
     except Exception:  # noqa: BLE001 - metadata query exceptions may contain connection data.
         raise MigrationError("CURRENT_SCHEMA_INSPECTION_FAILED") from None
+    _verify_school_check_name_representations(actual, expected)
     for table_name, observed in actual.items():
         expected_table = expected.get(table_name, {})
         expected_columns = expected_table.get("columns", {})
@@ -822,6 +824,52 @@ def _verify_current_schema(
         or actual != expected
     ):
         raise MigrationError("CURRENT_SCHEMA_DRIFT")
+
+
+def _verify_school_check_name_representations(
+    actual: dict[str, dict[str, Any]], expected: dict[str, Any]
+) -> None:
+    """Map only source-derived legacy CHECK names to their model names.
+
+    This is a bounded representation adapter for the historical Alembic name
+    expansion. It preserves exact expression/enforcement checks and requires
+    each modeled CHECK to occur exactly once; it does not admit arbitrary names
+    or duplicate constraints.
+    """
+
+    try:
+        aliases = legacy_school_check_names()
+        for table_name, table_aliases in aliases.items():
+            observed_table = actual.get(table_name)
+            expected_table = expected.get(table_name)
+            if observed_table is None or expected_table is None:
+                continue
+            expected_checks = expected_table.get("checks", set())
+            expected_by_name = {item[0]: item for item in expected_checks}
+            if len(expected_by_name) != len(expected_checks):
+                raise MigrationError("CURRENT_SCHEMA_DRIFT")
+            counts = dict.fromkeys(expected_by_name, 0)
+            normalized_checks = set()
+            for check in observed_table.get("checks", set()):
+                name, expression, enforced = check
+                canonical_name = table_aliases.get(name, name)
+                canonical_check = expected_by_name.get(canonical_name)
+                if canonical_check is None or canonical_check[1:] != (
+                    expression,
+                    enforced,
+                ):
+                    raise MigrationError("CURRENT_SCHEMA_DRIFT")
+                counts[canonical_name] += 1
+                if counts[canonical_name] != 1:
+                    raise MigrationError("CURRENT_SCHEMA_DRIFT")
+                normalized_checks.add(canonical_check)
+            if any(count != 1 for count in counts.values()):
+                raise MigrationError("CURRENT_SCHEMA_DRIFT")
+            observed_table["checks"] = normalized_checks
+    except MigrationError:
+        raise
+    except Exception:  # noqa: BLE001 - metadata derivation stays fail-closed.
+        raise MigrationError("CURRENT_SCHEMA_INSPECTION_FAILED") from None
 
 
 def _database_state(

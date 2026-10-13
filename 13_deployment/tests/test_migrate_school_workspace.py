@@ -12,6 +12,10 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import migrate_school_workspace as migration
 import resume_school_workspace as resume
+from school_check_names import (
+    LEGACY_CHECK_NAME_DECLARATIONS,
+    legacy_school_check_names,
+)
 
 BUILDER_PASSWORD = "a" * 64
 WORKSPACE_ID = "b" * 32
@@ -508,6 +512,100 @@ def test_exact_current_schema_is_read_only(prepared):
     result = service.upgrade(workspace, expected_port=PORT, workspace_id=WORKSPACE_ID)
     assert result["status"] == "ALREADY_CURRENT"
     assert result["side_effects"] == []
+    assert ops.migrations == []
+
+
+def test_legacy_check_names_are_deterministic_mysql_compiler_outputs():
+    first = legacy_school_check_names()
+    second = legacy_school_check_names()
+    assert first == second
+    assert first["account_school_memberships"] == {
+        "ck_account_school_memberships_ck_account_school_membersh_d859": "ck_account_school_memberships_status_allowed",
+        "ck_account_school_memberships_ck_account_school_membersh_11e7": "ck_account_school_memberships_validity_ordered",
+    }
+    assert all(len(name) <= 64 for aliases in first.values() for name in aliases)
+
+
+def test_legacy_check_name_allowlist_is_present_in_trusted_migrations():
+    root = Path(__file__).resolve().parents[2]
+    sources = "\n".join(
+        (root / "11_database" / "migrations" / "versions" / name).read_text(
+            encoding="utf-8"
+        )
+        for name in (
+            "20261011_0003_school_membership_context.py",
+            "20261011_0004_school_seed_provenance.py",
+        )
+    )
+    for declarations in LEGACY_CHECK_NAME_DECLARATIONS.values():
+        for declaration in declarations:
+            assert declaration in sources
+
+
+def test_current_accepts_only_source_derived_legacy_check_names(prepared):
+    _repo, workspace, _marker, db, ops, service, _settings, _reads = prepared
+    set_current_schema(db)
+    aliases = legacy_school_check_names()
+    alias_by_canonical = {
+        table: {canonical: legacy for legacy, canonical in values.items()}
+        for table, values in aliases.items()
+    }
+    for table_name, contract in db.schema.items():
+        if table_name not in alias_by_canonical:
+            continue
+        assert set(alias_by_canonical[table_name]) == {
+            name
+            for name, _expression, _enforced in db.expected_schema[table_name]["checks"]
+        }
+        converted = set()
+        for index, (name, expression, enforced) in enumerate(
+            sorted(contract["checks"])
+        ):
+            legacy_name = alias_by_canonical[table_name].get(name)
+            physical_name = legacy_name if index % 2 == 0 and legacy_name else name
+            converted.add((physical_name, expression, enforced))
+        contract["checks"] = converted
+
+    result = service.upgrade(workspace, expected_port=PORT, workspace_id=WORKSPACE_ID)
+    assert result["status"] == "ALREADY_CURRENT"
+    assert ops.migrations == []
+
+
+@pytest.mark.parametrize(
+    "drift", ["unknown_name", "case", "duplicate", "expression", "unenforced"]
+)
+def test_legacy_check_compatibility_rejects_unknown_duplicate_or_semantic_drift(
+    prepared, drift
+):
+    _repo, workspace, _marker, db, ops, service, _settings, _reads = prepared
+    set_current_schema(db)
+    table_name = "account_school_memberships"
+    contract = db.schema[table_name]
+    name, expression, enforced = next(
+        item for item in contract["checks"] if item[0].endswith("status_allowed")
+    )
+    legacy_name = next(
+        legacy
+        for legacy, canonical in legacy_school_check_names()[table_name].items()
+        if canonical == name
+    )
+    contract["checks"].remove((name, expression, enforced))
+    if drift == "unknown_name":
+        contract["checks"].add(("ck_untrusted_status_allowed", expression, enforced))
+    elif drift == "case":
+        contract["checks"].add((legacy_name.upper(), expression, enforced))
+    elif drift == "duplicate":
+        contract["checks"].add((name, expression, enforced))
+        contract["checks"].add((legacy_name, expression, enforced))
+    elif drift == "expression":
+        contract["checks"].add(
+            (legacy_name, expression.replace("REVOKED", "DISABLED"), enforced)
+        )
+    else:
+        contract["checks"].add((legacy_name, expression, False))
+
+    with pytest.raises(migration.MigrationError, match="CURRENT_SCHEMA_DRIFT"):
+        service.upgrade(workspace, expected_port=PORT, workspace_id=WORKSPACE_ID)
     assert ops.migrations == []
 
 
