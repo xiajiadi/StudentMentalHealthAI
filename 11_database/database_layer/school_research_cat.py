@@ -1,11 +1,13 @@
 """School-scoped research CAT persistence over the caller's transaction.
 
-This repository does not perform actor authorization or verify snapshot
-signatures. Backend callers must resolve the active SELF grant, account and
-roster scope, then verify the signed snapshot with their trusted authenticator.
-Only the immutable encrypted research envelope is persisted here.
-Account rows have no synthetic-origin field in the current schema; Backend must
-prove the actor from authenticated account/SELF-grant and synthetic seed scope.
+This repository does not authenticate actors or verify snapshot signatures.
+``lock_student_task_scope`` rechecks the persisted scope for a Backend-supplied
+principal account inside the caller's UOW; Backend remains responsible for
+resolving and authenticating that account before passing its ID. Other
+repository methods retain their caller-owned authorization boundary. Snapshot
+signatures must be verified by Backend, and only the encrypted research
+envelope is persisted. Account rows have no synthetic-origin field in the
+current schema.
 """
 
 from __future__ import annotations
@@ -16,7 +18,7 @@ import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Protocol
 
@@ -26,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .base import utc_now
 from .crypto import EncryptedPayload, FernetDataProtectionProvider
+from .enums import DataOrigin, GrantStatus, RelationshipType, SubjectStatus
 from .errors import EncryptionFailure, EncryptionKeyUnavailable
 from .models import (
     MeasurementTask,
@@ -37,6 +40,7 @@ from .models import (
     SchoolResearchSession,
     SchoolResearchTaskBinding,
     Subject,
+    SubjectAccessGrant,
     TaskEnrollment,
 )
 
@@ -218,6 +222,23 @@ class ResearchTaskBindingMetadata:
 class ResearchTaskBindingExecution:
     metadata: ResearchTaskBindingMetadata
     config_json: str = field(repr=False)
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class ResearchLockedStudentScope:
+    """Locked, content-free school scope plus its private binding execution."""
+
+    school_id: int
+    task_id: int
+    class_id: int
+    task_enrollment_id: int
+    subject_id: int
+    principal_account_id: int
+    task_ref: str
+    class_ref: str
+    enrollment_ref: str
+    subject_ref: str
+    binding: ResearchTaskBindingExecution = field(repr=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -678,41 +699,11 @@ class SchoolResearchCatRepository:
     ) -> ResearchTaskBindingExecution:
         _require_sha256(expected_profile_sha256, "expected_profile_sha256")
         _require_sha256(expected_config_sha256, "expected_config_sha256")
-        binding = await self._one(
-            SchoolResearchTaskBinding,
-            SchoolResearchTaskBinding.school_id == _positive_int(school_id, "school_id"),
-            SchoolResearchTaskBinding.task_id == _positive_int(task_id, "task_id"),
+        binding, _profile, _task = await self._lock_active_task_binding(
+            school_id=school_id,
+            task_id=task_id,
+            check_active_class=True,
         )
-        if binding is None:
-            _raise(
-                ResearchCatRepositoryErrorCode.BINDING_NOT_FOUND,
-                "research task binding was not found",
-            )
-        profile = await self._binding_profile(binding, lock=True)
-        task = await self._one(
-            MeasurementTask,
-            MeasurementTask.id == binding.task_id,
-            MeasurementTask.school_id == binding.school_id,
-            MeasurementTask.class_id == binding.class_id,
-            MeasurementTask.status == "PUBLISHED",
-            MeasurementTask.cat_binding_mode == "RESEARCH_PROFILE",
-            lock=True,
-        )
-        if (
-            task is None
-            or task.status != "PUBLISHED"
-            or task.cat_binding_mode != "RESEARCH_PROFILE"
-            or task.school_id != binding.school_id
-            or task.class_id != binding.class_id
-        ):
-            _raise(
-                ResearchCatRepositoryErrorCode.TASK_MODE_MISMATCH,
-                "active research binding no longer matches a published research task",
-            )
-        binding = await self._lock_binding(binding)
-        await self._require_synthetic_school(binding.school_id)
-        await self._require_active_class(binding.school_id, binding.class_id)
-        self._require_binding_enabled(binding, profile)
         if (
             binding.profile_sha256 != expected_profile_sha256
             or binding.config_sha256 != expected_config_sha256
@@ -721,14 +712,209 @@ class SchoolResearchCatRepository:
                 ResearchCatRepositoryErrorCode.PROFILE_HASH_MISMATCH,
                 "binding profile or config hash differs from the trusted registry",
             )
+        config_json = self._decrypt_binding_config(binding, expected_config_sha256)
+        return ResearchTaskBindingExecution(_binding_metadata(binding), config_json)
+
+    async def _lock_active_task_binding(
+        self,
+        *,
+        school_id: int,
+        task_id: int,
+        at: datetime | None = None,
+        check_active_class: bool,
+    ) -> tuple[SchoolResearchTaskBinding, SchoolResearchProfileVersion, MeasurementTask]:
+        """Lock profile → task → binding and validate current task eligibility."""
+
+        school_id = _positive_int(school_id, "school_id")
+        task_id = _positive_int(task_id, "task_id")
+        binding = await self._one(
+            SchoolResearchTaskBinding,
+            SchoolResearchTaskBinding.school_id == school_id,
+            SchoolResearchTaskBinding.task_id == task_id,
+        )
+        if (
+            binding is None
+            or binding.school_id != school_id
+            or binding.task_id != task_id
+        ):
+            _raise(
+                ResearchCatRepositoryErrorCode.BINDING_NOT_FOUND,
+                "research task binding was not found",
+            )
+        profile = await self._binding_profile(binding, lock=True)
+        at_utc = _utc_naive(at) if at is not None else None
+        task_conditions = [
+            MeasurementTask.id == binding.task_id,
+            MeasurementTask.school_id == binding.school_id,
+            MeasurementTask.class_id == binding.class_id,
+            MeasurementTask.status == "PUBLISHED",
+            MeasurementTask.cat_binding_mode == "RESEARCH_PROFILE",
+        ]
+        if at_utc is not None:
+            task_conditions.extend(
+                (
+                    MeasurementTask.opens_at <= at_utc,
+                    (MeasurementTask.due_at.is_(None)) | (MeasurementTask.due_at >= at_utc),
+                )
+            )
+        task = await self._one(
+            MeasurementTask,
+            *task_conditions,
+            lock=True,
+        )
+        if (
+            task is None
+            or task.status != "PUBLISHED"
+            or task.cat_binding_mode != "RESEARCH_PROFILE"
+            or task.school_id != binding.school_id
+            or task.class_id != binding.class_id
+            or (at_utc is not None and task.opens_at > at_utc)
+            or (at_utc is not None and task.due_at is not None and task.due_at < at_utc)
+        ):
+            _raise(
+                ResearchCatRepositoryErrorCode.TASK_MODE_MISMATCH,
+                "active research binding no longer matches a published research task",
+            )
+        binding = await self._lock_binding(binding)
+        await self._require_synthetic_school(binding.school_id)
+        if check_active_class:
+            await self._require_active_class(binding.school_id, binding.class_id)
+        self._require_binding_enabled(binding, profile)
+
+        return binding, profile, task
+
+    def _decrypt_binding_config(
+        self, binding: SchoolResearchTaskBinding, expected_config_sha256: str
+    ) -> str:
         payload = self._decrypt(
             binding.config_ciphertext,
             binding.key_version,
             binding.cipher_format_version,
             binding.payload_schema_version,
         )
-        config_json = _decode_config_envelope(payload, expected_config_sha256)
-        return ResearchTaskBindingExecution(_binding_metadata(binding), config_json)
+        return _decode_config_envelope(payload, expected_config_sha256)
+
+    async def lock_student_task_scope(
+        self,
+        *,
+        school_id: int,
+        task_id: int,
+        task_enrollment_id: int,
+        subject_id: int,
+        principal_account_id: int,
+        at: datetime,
+    ) -> ResearchLockedStudentScope:
+        """Lock current student scope after Backend resolved/authenticated account.
+
+        ``principal_account_id`` is an assertion supplied by the trusted
+        Backend role resolver; this repository method does not authenticate an
+        actor or prove that this ID belongs to a logged-in user. The caller
+        owns this UOW and must roll it back on any failure.
+        """
+
+        school_id = _positive_int(school_id, "school_id")
+        task_id = _positive_int(task_id, "task_id")
+        task_enrollment_id = _positive_int(task_enrollment_id, "task_enrollment_id")
+        subject_id = _positive_int(subject_id, "subject_id")
+        principal_account_id = _positive_int(principal_account_id, "principal_account_id")
+        if not isinstance(at, datetime):
+            _raise(
+                ResearchCatRepositoryErrorCode.INVALID_INPUT,
+                "scope authorization time is invalid",
+            )
+        at_utc = _utc_naive(at)
+
+        binding, _profile, task = await self._lock_active_task_binding(
+            school_id=school_id,
+            task_id=task_id,
+            at=at_utc,
+            check_active_class=False,
+        )
+        enrollment, _task, class_student, subject, school_class = await self._require_session_scope(
+            school_id=school_id,
+            task_id=task_id,
+            task_enrollment_id=task_enrollment_id,
+            subject_id=subject_id,
+            lock_task=False,
+            at=at_utc,
+            lock_class=True,
+        )
+        if enrollment.class_id != binding.class_id or task.class_id != class_student.class_id:
+            _raise(
+                ResearchCatRepositoryErrorCode.SCOPE_MISMATCH,
+                "task enrollment does not match its research binding class",
+            )
+        grant = await self._require_active_self_grant(
+            school_id=school_id,
+            subject_id=subject.id,
+            principal_account_id=principal_account_id,
+            at=at_utc,
+        )
+        if (
+            grant.school_id != school_id
+            or grant.subject_id != subject.id
+            or grant.principal_account_id != principal_account_id
+            or grant.relationship_type != RelationshipType.SELF.value
+            or grant.status != GrantStatus.ACTIVE.value
+            or grant.revoked_at is not None
+            or grant.valid_from > at_utc
+            or (grant.valid_until is not None and grant.valid_until < at_utc)
+        ):
+            _raise(
+                ResearchCatRepositoryErrorCode.SCOPE_MISMATCH,
+                "active self grant does not match the requested student scope",
+            )
+
+        # Decrypt only after all current account-principal/roster/task rows
+        # have been locked and revalidated in this caller-owned transaction.
+        config_json = self._decrypt_binding_config(binding, binding.config_sha256)
+        return ResearchLockedStudentScope(
+            school_id=school_id,
+            task_id=task_id,
+            class_id=class_student.class_id,
+            task_enrollment_id=enrollment.id,
+            subject_id=subject.id,
+            principal_account_id=principal_account_id,
+            task_ref=task.task_ref,
+            class_ref=school_class.class_ref,
+            enrollment_ref=enrollment.public_id,
+            subject_ref=subject.subject_ref,
+            binding=ResearchTaskBindingExecution(_binding_metadata(binding), config_json),
+        )
+
+    async def _require_active_self_grant(
+        self,
+        *,
+        school_id: int,
+        subject_id: int,
+        principal_account_id: int,
+        at: datetime,
+    ) -> SubjectAccessGrant:
+        statement = (
+            select(SubjectAccessGrant)
+            .where(
+                SubjectAccessGrant.school_id == school_id,
+                SubjectAccessGrant.subject_id == subject_id,
+                SubjectAccessGrant.principal_account_id == principal_account_id,
+                SubjectAccessGrant.relationship_type == RelationshipType.SELF.value,
+                SubjectAccessGrant.status == GrantStatus.ACTIVE.value,
+                SubjectAccessGrant.revoked_at.is_(None),
+                SubjectAccessGrant.valid_from <= at,
+                (SubjectAccessGrant.valid_until.is_(None))
+                | (SubjectAccessGrant.valid_until >= at),
+            )
+            .order_by(SubjectAccessGrant.id)
+            .limit(2)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        rows = list((await self.session.scalars(statement)).all())
+        if len(rows) != 1:
+            _raise(
+                ResearchCatRepositoryErrorCode.SCOPE_MISMATCH,
+                "active self grant was not uniquely found in the requested scope",
+            )
+        return rows[0]
 
     async def revoke_task_binding(
         self,
@@ -815,7 +1001,7 @@ class SchoolResearchCatRepository:
             )
         binding = await self._lock_binding(binding)
         self._require_binding_enabled(binding, profile)
-        enrollment, task, class_student, subject = await self._require_session_scope(
+        enrollment, task, class_student, subject, _school_class = await self._require_session_scope(
             school_id=school_id,
             task_id=task_id,
             task_enrollment_id=enrollment_id,
@@ -1284,12 +1470,14 @@ class SchoolResearchCatRepository:
                 "published research CAT task is unavailable in this session scope",
             )
         binding = await self._lock_binding(binding)
-        enrollment, _task, _class_student, subject = await self._require_session_scope(
-            school_id=row.school_id,
-            task_id=row.task_id,
-            task_enrollment_id=row.task_enrollment_id,
-            subject_id=row.subject_id,
-            lock_task=False,
+        enrollment, _task, _class_student, subject, _school_class = (
+            await self._require_session_scope(
+                school_id=row.school_id,
+                task_id=row.task_id,
+                task_enrollment_id=row.task_enrollment_id,
+                subject_id=row.subject_id,
+                lock_task=False,
+            )
         )
         if (
             binding.config_version != row.config_version
@@ -1366,13 +1554,26 @@ class SchoolResearchCatRepository:
         task_enrollment_id: int,
         subject_id: int,
         lock_task: bool = True,
-    ) -> tuple[TaskEnrollment, MeasurementTask, SchoolClassStudent, Subject]:
-        task = await self._one(
-            MeasurementTask,
+        at: datetime | None = None,
+        lock_class: bool = False,
+    ) -> tuple[TaskEnrollment, MeasurementTask, SchoolClassStudent, Subject, SchoolClass]:
+        task_conditions = [
             MeasurementTask.id == task_id,
             MeasurementTask.school_id == school_id,
             MeasurementTask.cat_binding_mode == "RESEARCH_PROFILE",
             MeasurementTask.status == "PUBLISHED",
+        ]
+        if at is not None:
+            at = _utc_naive(at)
+            task_conditions.extend(
+                (
+                    MeasurementTask.opens_at <= at,
+                    (MeasurementTask.due_at.is_(None)) | (MeasurementTask.due_at >= at),
+                )
+            )
+        task = await self._one(
+            MeasurementTask,
+            *task_conditions,
             lock=lock_task,
         )
         if (
@@ -1381,6 +1582,8 @@ class SchoolResearchCatRepository:
             or task.school_id != school_id
             or task.status != "PUBLISHED"
             or task.cat_binding_mode != "RESEARCH_PROFILE"
+            or (at is not None and task.opens_at > at)
+            or (at is not None and task.due_at is not None and task.due_at < at)
         ):
             _raise(
                 ResearchCatRepositoryErrorCode.TASK_MODE_MISMATCH,
@@ -1389,14 +1592,19 @@ class SchoolResearchCatRepository:
         # Enrollment is first read without a lock only to discover the roster
         # row to lock. Re-read it under lock after the roster lock is held so
         # this path follows the same roster → enrollment order as revocation.
-        candidate = await self._one(
-            TaskEnrollment,
+        candidate_conditions = [
             TaskEnrollment.id == task_enrollment_id,
             TaskEnrollment.task_id == task_id,
             TaskEnrollment.school_id == school_id,
             TaskEnrollment.subject_id == subject_id,
             TaskEnrollment.class_id == task.class_id,
             TaskEnrollment.status == "ACTIVE",
+        ]
+        if at is not None:
+            candidate_conditions.append(TaskEnrollment.revoked_at.is_(None))
+        candidate = await self._one(
+            TaskEnrollment,
+            *candidate_conditions,
         )
         if (
             candidate is None
@@ -1406,6 +1614,7 @@ class SchoolResearchCatRepository:
             or candidate.subject_id != subject_id
             or candidate.class_id != task.class_id
             or candidate.status != "ACTIVE"
+            or (at is not None and candidate.revoked_at is not None)
             or not isinstance(candidate.class_student_id, int)
             or isinstance(candidate.class_student_id, bool)
             or candidate.class_student_id < 1
@@ -1415,13 +1624,25 @@ class SchoolResearchCatRepository:
                 "active task enrollment does not match the requested school and subject",
             )
         candidate_class_student_id = candidate.class_student_id
-        class_student = await self._one(
-            SchoolClassStudent,
+        roster_conditions = [
             SchoolClassStudent.id == candidate_class_student_id,
             SchoolClassStudent.subject_id == subject_id,
             SchoolClassStudent.class_id == candidate.class_id,
             SchoolClassStudent.school_id == school_id,
             SchoolClassStudent.status == "ACTIVE",
+        ]
+        if at is not None:
+            roster_conditions.extend(
+                (
+                    SchoolClassStudent.revoked_at.is_(None),
+                    SchoolClassStudent.valid_from <= at,
+                    (SchoolClassStudent.valid_until.is_(None))
+                    | (SchoolClassStudent.valid_until >= at),
+                )
+            )
+        class_student = await self._one(
+            SchoolClassStudent,
+            *roster_conditions,
             lock=True,
         )
         if (
@@ -1431,13 +1652,19 @@ class SchoolResearchCatRepository:
             or class_student.class_id != candidate.class_id
             or class_student.school_id != school_id
             or class_student.status != "ACTIVE"
+            or (at is not None and class_student.revoked_at is not None)
+            or (at is not None and class_student.valid_from > at)
+            or (
+                at is not None
+                and class_student.valid_until is not None
+                and class_student.valid_until < at
+            )
         ):
             _raise(
                 ResearchCatRepositoryErrorCode.SCOPE_MISMATCH,
                 "active class roster row does not match the enrollment subject",
             )
-        enrollment = await self._one(
-            TaskEnrollment,
+        locked_enrollment_conditions = [
             TaskEnrollment.id == task_enrollment_id,
             TaskEnrollment.task_id == task_id,
             TaskEnrollment.school_id == school_id,
@@ -1445,6 +1672,12 @@ class SchoolResearchCatRepository:
             TaskEnrollment.class_id == task.class_id,
             TaskEnrollment.class_student_id == candidate_class_student_id,
             TaskEnrollment.status == "ACTIVE",
+        ]
+        if at is not None:
+            locked_enrollment_conditions.append(TaskEnrollment.revoked_at.is_(None))
+        enrollment = await self._one(
+            TaskEnrollment,
+            *locked_enrollment_conditions,
             lock=True,
         )
         if (
@@ -1456,19 +1689,22 @@ class SchoolResearchCatRepository:
             or enrollment.class_id != task.class_id
             or enrollment.class_student_id != candidate_class_student_id
             or enrollment.status != "ACTIVE"
+            or (at is not None and enrollment.revoked_at is not None)
         ):
             _raise(
                 ResearchCatRepositoryErrorCode.SCOPE_MISMATCH,
                 "active task enrollment changed while its roster scope was being locked",
             )
-        await self._require_active_class(school_id, enrollment.class_id)
+        school_class = await self._require_active_class(
+            school_id, enrollment.class_id, lock=lock_class
+        )
         await self._require_synthetic_school(school_id)
         subject = await self._one(
             Subject,
             Subject.id == subject_id,
             Subject.school_id == school_id,
-            Subject.status == "ACTIVE",
-            Subject.data_origin == "SYNTHETIC",
+            Subject.status == SubjectStatus.ACTIVE.value,
+            Subject.data_origin == DataOrigin.SYNTHETIC.value,
             lock=True,
         )
         if subject is None:
@@ -1477,7 +1713,7 @@ class SchoolResearchCatRepository:
                 "research sessions require an active synthetic subject in a synthetic school",
             )
         self._require_synthetic_subject(subject, school_id)
-        return enrollment, task, class_student, subject
+        return enrollment, task, class_student, subject, school_class
 
     async def _require_synthetic_school(self, school_id: int) -> School:
         row = await self._one(
@@ -1501,20 +1737,23 @@ class SchoolResearchCatRepository:
     def _require_synthetic_subject(self, subject: Subject, school_id: int) -> None:
         if (
             subject.school_id != school_id
-            or subject.status != "ACTIVE"
-            or subject.data_origin != "SYNTHETIC"
+            or subject.status != SubjectStatus.ACTIVE.value
+            or subject.data_origin != DataOrigin.SYNTHETIC.value
         ):
             _raise(
                 ResearchCatRepositoryErrorCode.SYNTHETIC_SCOPE_REQUIRED,
                 "research session requires an active synthetic subject in this school",
             )
 
-    async def _require_active_class(self, school_id: int, class_id: int) -> SchoolClass:
+    async def _require_active_class(
+        self, school_id: int, class_id: int, *, lock: bool = False
+    ) -> SchoolClass:
         row = await self._one(
             SchoolClass,
             SchoolClass.id == class_id,
             SchoolClass.school_id == school_id,
             SchoolClass.status == "ACTIVE",
+            lock=lock,
         )
         if (
             row is None
@@ -2319,6 +2558,14 @@ def _positive_int(value: object, name: str) -> int:
             f"{name} must be a positive integer",
         )
     return value
+
+
+def _utc_naive(value: datetime) -> datetime:
+    """Normalize the trusted comparison time to the Database UTC convention."""
+
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(UTC).replace(tzinfo=None)
 
 
 def _require_token(value: object, name: str, limit: int) -> str:

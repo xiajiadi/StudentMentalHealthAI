@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 from typing import Any
 
@@ -19,6 +20,23 @@ TOKEN = b"synthetic-private-research-token-length-is-valid"
 BINDING = "promis-ped-anx-r1"
 PROFILE_SHA = "a" * 64
 CONFIG_SHA = "b" * 64
+SNAPSHOT_KEY = b"test-only-snapshot-verifier-key-32-bytes-long"
+
+
+class _TestSnapshotVerifier:
+    def __init__(self, keys: dict[str, bytes] | None = None):
+        self._keys = keys or {"v1": SNAPSHOT_KEY}
+
+    def verify(self, payload: bytes, signature: str) -> bool:
+        if signature.startswith("rk1."):
+            parts = signature.split(".")
+            if len(parts) != 3 or parts[1] not in self._keys:
+                return False
+            version, supplied = parts[1], parts[2]
+        else:
+            version, supplied = "v1", signature
+        expected = hmac.new(self._keys[version], payload, hashlib.sha256).hexdigest()
+        return hmac.compare_digest(expected, supplied)
 
 
 def _client(transport: httpx.AsyncBaseTransport, **overrides: Any) -> ResearchCATHttpClient:
@@ -110,6 +128,31 @@ def _response(
     }
     response.update(overrides)
     return response
+
+
+def _resign_response(response: dict[str, Any], verifier_key: bytes = SNAPSHOT_KEY) -> None:
+    payload = response["signed_snapshot"]["payload"]
+    payload_bytes = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    response["signed_snapshot"]["payload_sha256"] = hashlib.sha256(payload_bytes).hexdigest()
+    response["signed_snapshot"]["signature"] = (
+        "rk1.v1." + hmac.new(verifier_key, payload_bytes, hashlib.sha256).hexdigest()
+    )
+
+
+def _repository_json(document: dict[str, Any]) -> str:
+    return json.dumps(
+        document,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
 
 
 @pytest.mark.asyncio
@@ -515,5 +558,370 @@ async def test_answer_rejects_coherently_valid_but_unexpected_session_transition
         state = await client.start()
         with pytest.raises(ResearchCATClientError, match="response_operation_invalid"):
             await client.answer(state, item_id="ITEM_1", raw_value=1)
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_snapshot_for_persistence_requires_verifier_and_returns_fresh_repo_mapping() -> None:
+    verifier = _TestSnapshotVerifier()
+    response = _response()
+    _resign_response(response)
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=response)
+
+    client = _client(httpx.MockTransport(handler), snapshot_verifier=verifier)
+    try:
+        state = await client.start()
+        persisted = client.snapshot_for_persistence(state)
+        first = persisted.to_repository_mapping()
+        second = persisted.to_repository_mapping()
+
+        assert first == response["signed_snapshot"]
+        assert first is not second
+        assert first["payload"] is not second["payload"]
+        assert "signature" not in repr(persisted)
+        first["payload"]["answers"].append({"item_id": "MUTATION", "raw_value": 0})
+        assert second == response["signed_snapshot"]
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_snapshot_persistence_rejects_missing_or_wrong_verifier_without_http() -> None:
+    requests = 0
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal requests
+        requests += 1
+        response = _response()
+        _resign_response(response)
+        return httpx.Response(200, json=response)
+
+    client = _client(httpx.MockTransport(handler))
+    try:
+        state = await client.start()
+        with pytest.raises(ResearchCATClientError, match="snapshot_verifier_unavailable"):
+            client.snapshot_for_persistence(state)
+    finally:
+        await client.aclose()
+
+    bad_verifier = _TestSnapshotVerifier({"v1": b"different-key-material-for-test-only"})
+    client = _client(httpx.MockTransport(handler), snapshot_verifier=bad_verifier)
+    try:
+        state = await client.start()
+        with pytest.raises(ResearchCATClientError, match="snapshot_verification_failed"):
+            client.snapshot_for_persistence(state)
+    finally:
+        await client.aclose()
+    assert requests == 2
+
+
+@pytest.mark.asyncio
+async def test_snapshot_verifier_exception_is_sanitized() -> None:
+    class RaisingVerifier:
+        def verify(self, _payload: bytes, _signature: str) -> bool:
+            raise RuntimeError("VERIFIER_SECRET_SENTINEL")
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        response = _response()
+        _resign_response(response)
+        return httpx.Response(200, json=response)
+
+    client = _client(
+        httpx.MockTransport(handler), snapshot_verifier=RaisingVerifier()
+    )
+    try:
+        state = await client.start()
+        with pytest.raises(
+            ResearchCATClientError, match="snapshot_verification_failed"
+        ) as exc_info:
+            client.snapshot_for_persistence(state)
+        assert "VERIFIER_SECRET_SENTINEL" not in str(exc_info.value)
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_resume_from_persisted_verifies_then_posts_and_revalidates_binding() -> None:
+    verifier = _TestSnapshotVerifier()
+    document = _response()["signed_snapshot"]
+    _resign_response({"signed_snapshot": document})
+    requests: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        assert request.url.path == "/v1/sessions/resume"
+        request_body = json.loads(request.content)
+        assert request_body["session_ref"] == "SESSION_demo_01"
+        assert request_body["signed_snapshot"] == document
+        response = _response()
+        _resign_response(response)
+        return httpx.Response(200, json=response)
+
+    client = _client(httpx.MockTransport(handler), snapshot_verifier=verifier)
+    try:
+        resumed = await client.resume_from_persisted(
+            _repository_json(document),
+            expected_session_ref="SESSION_demo_01",
+            expected_profile_id="PROFILE_demo_01",
+            expected_config_version="research-test-v1",
+            expected_status="ACTIVE",
+            expected_items_answered=0,
+        )
+        assert resumed.session_ref == "SESSION_demo_01"
+        assert resumed.config_version == "research-test-v1"
+        assert len(requests) == 1
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("mutation", "expected"),
+    [
+        (
+            lambda payload: payload.update(session_id="SESSION_other"),
+            {"expected_session_ref": "SESSION_demo_01"},
+        ),
+        (
+            lambda payload: payload.update(profile_id="PROFILE_other"),
+            {"expected_profile_id": "PROFILE_demo_01"},
+        ),
+        (
+            lambda payload: payload.update(config_version="other-config"),
+            {"expected_config_version": "research-test-v1"},
+        ),
+        (
+            lambda payload: payload.update(status="COMPLETED"),
+            {"expected_status": "ACTIVE"},
+        ),
+        (lambda payload: payload.update(step=1), {"expected_items_answered": 0}),
+    ],
+)
+async def test_resume_from_persisted_rejects_scope_or_progress_before_http(mutation, expected):
+    verifier = _TestSnapshotVerifier()
+    document = _response()["signed_snapshot"]
+    mutation(document["payload"])
+    _resign_response({"signed_snapshot": document})
+    requests = 0
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal requests
+        requests += 1
+        return httpx.Response(200, json=_response())
+
+    args = {
+        "expected_session_ref": "SESSION_demo_01",
+        "expected_profile_id": "PROFILE_demo_01",
+        "expected_config_version": "research-test-v1",
+        "expected_status": "ACTIVE",
+        "expected_items_answered": 0,
+    }
+    args.update(expected)
+    client = _client(httpx.MockTransport(handler), snapshot_verifier=verifier)
+    try:
+        with pytest.raises(ResearchCATClientError):
+            await client.resume_from_persisted(_repository_json(document), **args)
+        assert requests == 0
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_resume_from_persisted_rejects_bad_hmac_before_http() -> None:
+    verifier = _TestSnapshotVerifier()
+    document = _response()["signed_snapshot"]
+    _resign_response({"signed_snapshot": document})
+    signature = document["signature"]
+    document["signature"] = signature[:-1] + ("0" if signature[-1] != "0" else "1")
+    requests = 0
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal requests
+        requests += 1
+        return httpx.Response(200, json=_response())
+
+    client = _client(httpx.MockTransport(handler), snapshot_verifier=verifier)
+    try:
+        with pytest.raises(ResearchCATClientError, match="snapshot_verification_failed"):
+            await client.resume_from_persisted(
+                _repository_json(document),
+                expected_session_ref="SESSION_demo_01",
+                expected_profile_id="PROFILE_demo_01",
+                expected_config_version="research-test-v1",
+                expected_status="ACTIVE",
+                expected_items_answered=0,
+            )
+        assert requests == 0
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_resume_from_persisted_rejects_unknown_signature_key_version_before_http() -> None:
+    document = _response()["signed_snapshot"]
+    _resign_response({"signed_snapshot": document})
+    document["signature"] = "rk1.unknown-v99." + document["signature"].rsplit(".", 1)[1]
+    requests = 0
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal requests
+        requests += 1
+        return httpx.Response(200, json=_response())
+
+    client = _client(
+        httpx.MockTransport(handler), snapshot_verifier=_TestSnapshotVerifier()
+    )
+    try:
+        with pytest.raises(ResearchCATClientError, match="snapshot_verification_failed"):
+            await client.resume_from_persisted(
+                _repository_json(document),
+                expected_session_ref="SESSION_demo_01",
+                expected_profile_id="PROFILE_demo_01",
+                expected_config_version="research-test-v1",
+                expected_status="ACTIVE",
+                expected_items_answered=0,
+            )
+        assert requests == 0
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mutation", ["session", "profile", "config", "status", "count"])
+async def test_resume_from_persisted_rejects_coherent_response_metadata_drift(
+    mutation: str,
+) -> None:
+    verifier = _TestSnapshotVerifier()
+    stored = _response()["signed_snapshot"]
+    _resign_response({"signed_snapshot": stored})
+    requests = 0
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal requests
+        requests += 1
+        if mutation == "status":
+            result = _response(answered=1, completed=True)
+            _resign_response(result)
+            return httpx.Response(200, json=result)
+        if mutation == "count":
+            result = _response(answered=1)
+            _resign_response(result)
+            return httpx.Response(200, json=result)
+        result = _response()
+        if mutation == "session":
+            result["session_ref"] = "SESSION_other"
+            result["signed_snapshot"]["payload"]["session_id"] = "SESSION_other"
+        elif mutation == "profile":
+            result["profile_id"] = "PROFILE_other"
+            result["signed_snapshot"]["payload"]["profile_id"] = "PROFILE_other"
+        elif mutation == "config":
+            result["signed_snapshot"]["payload"]["config_version"] = "other-config"
+        _resign_response(result)
+        return httpx.Response(200, json=result)
+
+    client = _client(httpx.MockTransport(handler), snapshot_verifier=verifier)
+    try:
+        with pytest.raises(ResearchCATClientError, match="response_operation_invalid"):
+            await client.resume_from_persisted(
+                _repository_json(stored),
+                expected_session_ref="SESSION_demo_01",
+                expected_profile_id="PROFILE_demo_01",
+                expected_config_version="research-test-v1",
+                expected_status="ACTIVE",
+                expected_items_answered=0,
+            )
+        assert requests == 1
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("mutation", "expected_error"),
+    [
+        ("pending-item", "response_operation_invalid"),
+        ("stop-reason", "response_operation_invalid"),
+        ("output-signature", "snapshot_verification_failed"),
+    ],
+)
+async def test_resume_from_persisted_verifies_returned_snapshot_and_exact_payload(
+    mutation: str, expected_error: str
+) -> None:
+    verifier = _TestSnapshotVerifier()
+    is_completed = mutation == "stop-reason"
+    stored = _response(answered=1, completed=True) if is_completed else _response()
+    _resign_response(stored)
+    stored_snapshot = stored["signed_snapshot"]
+    requests = 0
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal requests
+        requests += 1
+        result = _response(answered=1, completed=True) if is_completed else _response()
+        _resign_response(result)
+        if mutation == "pending-item":
+            result["question"]["item_id"] = "ITEM_OTHER"
+            result["signed_snapshot"]["payload"]["pending_item_id"] = "ITEM_OTHER"
+            _resign_response(result)
+        elif mutation == "stop-reason":
+            result["completion"]["stop_reason"] = "item_bank_exhausted"
+            result["signed_snapshot"]["payload"]["stop_reason"] = "item_bank_exhausted"
+            _resign_response(result)
+        elif mutation == "output-signature":
+            signature = result["signed_snapshot"]["signature"]
+            result["signed_snapshot"]["signature"] = signature[:-1] + (
+                "0" if signature[-1] != "0" else "1"
+            )
+        return httpx.Response(200, json=result)
+
+    client = _client(httpx.MockTransport(handler), snapshot_verifier=verifier)
+    try:
+        with pytest.raises(ResearchCATClientError, match=expected_error):
+            await client.resume_from_persisted(
+                _repository_json(stored_snapshot),
+                expected_session_ref="SESSION_demo_01",
+                expected_profile_id="PROFILE_demo_01",
+                expected_config_version="research-test-v1",
+                expected_status="COMPLETED" if is_completed else "ACTIVE",
+                expected_items_answered=1 if is_completed else 0,
+            )
+        assert requests == 1
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "stored_json",
+    [
+        "{\"payload\":{},\"payload\":{}}",
+        '{"payload":{"x":NaN}}',
+        "x" * (1_048_576 + 1),
+    ],
+    ids=["duplicate-keys", "nonfinite", "oversized"],
+)
+async def test_resume_from_persisted_rejects_malformed_stored_json_before_http(stored_json):
+    requests = 0
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal requests
+        requests += 1
+        return httpx.Response(200, json=_response())
+
+    client = _client(httpx.MockTransport(handler), snapshot_verifier=_TestSnapshotVerifier())
+    try:
+        with pytest.raises(ResearchCATClientError):
+            await client.resume_from_persisted(
+                stored_json,
+                expected_session_ref="SESSION_demo_01",
+                expected_profile_id="PROFILE_demo_01",
+                expected_config_version="research-test-v1",
+                expected_status="ACTIVE",
+                expected_items_answered=0,
+            )
+        assert requests == 0
     finally:
         await client.aclose()

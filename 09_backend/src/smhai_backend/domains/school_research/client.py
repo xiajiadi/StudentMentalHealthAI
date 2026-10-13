@@ -14,7 +14,7 @@ import json
 import math
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol
 from urllib.parse import urlsplit
 
 import httpx
@@ -84,6 +84,12 @@ class ResearchCATClientError(Exception):
         self.status_code = status_code
 
 
+class SnapshotVerifier(Protocol):
+    """Application-injected verifier; the client never owns or derives its key."""
+
+    def verify(self, payload: bytes, signature: str) -> bool: ...
+
+
 @dataclass(frozen=True, slots=True)
 class ResearchCATResponseOption:
     value: int
@@ -108,13 +114,27 @@ class ResearchCATCompletion:
 
 
 @dataclass(frozen=True, slots=True)
+class ResearchCATSnapshotForPersistence:
+    """Verified CAT envelope for an explicit, trusted repository handoff."""
+
+    _document_json: bytes = field(repr=False, compare=False)
+
+    def to_repository_mapping(self) -> dict[str, object]:
+        """Return a fresh envelope mapping for the repository contract."""
+
+        return _decode_snapshot(self._document_json)
+
+
+@dataclass(frozen=True, slots=True)
 class _SignedResearchSnapshot:
     """Opaque signed CAT state; raw answers stay out of repr and public DTOs."""
 
     binding_ref: str
     session_ref: str
+    profile_id: str = field(repr=False)
     profile_sha256: str
     config_sha256: str
+    config_version: str
     status: str
     items_answered: int
     document_json: bytes = field(repr=False, compare=False)
@@ -129,6 +149,7 @@ class ResearchCATSessionState:
     profile_id: str = field(repr=False)
     profile_sha256: str
     config_sha256: str
+    config_version: str
     research_only: bool
     human_curated: bool
     publication_status: str
@@ -151,6 +172,7 @@ class ResearchCATHttpClient:
         binding_ref: str,
         expected_profile_sha256: str,
         expected_config_sha256: str,
+        snapshot_verifier: SnapshotVerifier | None = None,
         timeout: float = 5.0,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
@@ -163,6 +185,11 @@ class ResearchCATHttpClient:
         self._config_sha256 = _validate_digest(
             expected_config_sha256, "config_hash_invalid"
         )
+        if snapshot_verifier is not None and not callable(
+            getattr(snapshot_verifier, "verify", None)
+        ):
+            raise ResearchCATClientError("snapshot_verifier_invalid")
+        self._snapshot_verifier = snapshot_verifier
         if isinstance(timeout, bool) or not isinstance(timeout, (int, float)):
             raise ResearchCATClientError("timeout_invalid")
         if not math.isfinite(timeout) or timeout <= 0:
@@ -206,6 +233,7 @@ class ResearchCATHttpClient:
         if (
             resumed.session_ref != state.session_ref
             or resumed.profile_id != state.profile_id
+            or resumed.config_version != state.config_version
             or resumed.status != state.status
             or resumed.items_answered != state.items_answered
             or resumed.publication_status != state.publication_status
@@ -243,11 +271,97 @@ class ResearchCATHttpClient:
         if (
             advanced.session_ref != state.session_ref
             or advanced.profile_id != state.profile_id
+            or advanced.config_version != state.config_version
             or advanced.items_answered != state.items_answered + 1
             or advanced.publication_status != state.publication_status
         ):
             raise ResearchCATClientError("response_operation_invalid")
         return advanced
+
+    def snapshot_for_persistence(
+        self, state: ResearchCATSessionState
+    ) -> ResearchCATSnapshotForPersistence:
+        """Verify and wrap a snapshot for explicit encrypted repository storage."""
+
+        snapshot = self._snapshot_for_state(state)
+        self._verify_snapshot(snapshot)
+        return ResearchCATSnapshotForPersistence(snapshot.document_json)
+
+    async def resume_from_persisted(
+        self,
+        signed_snapshot_json: str,
+        *,
+        expected_session_ref: str,
+        expected_profile_id: str,
+        expected_config_version: str,
+        expected_status: str,
+        expected_items_answered: int,
+    ) -> ResearchCATSessionState:
+        """Verify a server-resolved persisted envelope before making any HTTP call.
+
+        The caller remains responsible for actor/SELF authorization, tenant
+        scope, repository CAS, and encrypted storage of the snapshot wrapper.
+        """
+
+        session_ref = _validate_ref(expected_session_ref, "snapshot_scope_invalid")
+        profile_id = _validate_ref(expected_profile_id, "snapshot_scope_invalid")
+        if (
+            type(expected_config_version) is not str
+            or not expected_config_version.strip()
+            or len(expected_config_version) > 256
+            or type(expected_status) is not str
+            or expected_status not in {"ACTIVE", "COMPLETED"}
+            or not _is_nonnegative_int(expected_items_answered)
+        ):
+            raise ResearchCATClientError("snapshot_scope_invalid")
+        document = _load_persisted_snapshot_json(signed_snapshot_json)
+        payload = document.get("payload")
+        if type(payload) is not dict:
+            raise ResearchCATClientError("response_snapshot_invalid")
+        pending_item_id = payload.get("pending_item_id")
+        stop_reason = payload.get("stop_reason")
+        snapshot = _parse_snapshot(
+            document,
+            binding_ref=self._binding_ref,
+            session_ref=session_ref,
+            profile_id=profile_id,
+            profile_sha256=self._profile_sha256,
+            config_sha256=self._config_sha256,
+            expected_config_version=expected_config_version,
+            status=expected_status,
+            items_answered=expected_items_answered,
+            expected_pending_item_id=(pending_item_id if type(pending_item_id) is str else None),
+            expected_stop_reason=(stop_reason if type(stop_reason) is str else None),
+        )
+        if _canonical_json(document).encode("utf-8") != signed_snapshot_json.encode("utf-8"):
+            raise ResearchCATClientError("response_snapshot_invalid")
+        self._verify_snapshot(snapshot)
+        value = await self._post(
+            "/v1/sessions/resume",
+            {
+                "schema": WIRE_SCHEMA,
+                "binding_ref": self._binding_ref,
+                "session_ref": session_ref,
+                "signed_snapshot": _decode_snapshot(snapshot.document_json),
+            },
+        )
+        resumed = self._parse_state(value)
+        if (
+            resumed.session_ref != session_ref
+            or resumed.profile_id != profile_id
+            or resumed.profile_sha256 != self._profile_sha256
+            or resumed.config_sha256 != self._config_sha256
+            or resumed.config_version != expected_config_version
+            or resumed.status != expected_status
+            or resumed.items_answered != expected_items_answered
+        ):
+            raise ResearchCATClientError("response_operation_invalid")
+        resumed_snapshot = self._snapshot_for_state(resumed)
+        self._verify_snapshot(resumed_snapshot)
+        resumed_document = _decode_snapshot(resumed_snapshot.document_json)
+        if _canonical_json(resumed_document["payload"]) != _canonical_json(payload):
+            raise ResearchCATClientError("response_operation_invalid")
+        return resumed
 
     async def aclose(self) -> None:
         await self._client.aclose()
@@ -263,13 +377,29 @@ class ResearchCATHttpClient:
             or state.config_sha256 != self._config_sha256
             or snapshot.binding_ref != self._binding_ref
             or snapshot.session_ref != state.session_ref
+            or snapshot.profile_id != state.profile_id
             or snapshot.profile_sha256 != self._profile_sha256
             or snapshot.config_sha256 != self._config_sha256
+            or snapshot.config_version != state.config_version
             or snapshot.status != state.status
             or snapshot.items_answered != state.items_answered
         ):
             raise ResearchCATClientError("session_state_invalid")
         return snapshot
+
+    def _verify_snapshot(self, snapshot: _SignedResearchSnapshot) -> None:
+        verifier = self._snapshot_verifier
+        if verifier is None:
+            raise ResearchCATClientError("snapshot_verifier_unavailable")
+        document = _decode_snapshot(snapshot.document_json)
+        payload = document["payload"]
+        payload_bytes = _canonical_json(payload).encode("utf-8")
+        try:
+            verified = verifier.verify(payload_bytes, document["signature"])
+        except Exception:
+            raise ResearchCATClientError("snapshot_verification_failed") from None
+        if type(verified) is not bool or not verified:
+            raise ResearchCATClientError("snapshot_verification_failed")
 
     async def _post(self, path: str, payload: dict[str, object]) -> dict[str, Any]:
         try:
@@ -336,6 +466,7 @@ class ResearchCATHttpClient:
             profile_id=value["profile_id"],
             profile_sha256=self._profile_sha256,
             config_sha256=self._config_sha256,
+            expected_config_version=None,
             status=value["status"],
             items_answered=value["items_answered"],
             expected_pending_item_id=(question.item_id if question is not None else None),
@@ -362,6 +493,7 @@ class ResearchCATHttpClient:
             profile_id=value["profile_id"],
             profile_sha256=self._profile_sha256,
             config_sha256=self._config_sha256,
+            config_version=snapshot.config_version,
             research_only=True,
             human_curated=False,
             publication_status=value["publication_status"],
@@ -511,6 +643,7 @@ def _parse_snapshot(
     profile_id: str,
     profile_sha256: str,
     config_sha256: str,
+    expected_config_version: str | None,
     status: str,
     items_answered: int,
     expected_pending_item_id: str | None,
@@ -531,6 +664,7 @@ def _parse_snapshot(
     answers = payload.get("answers")
     stop_reason = payload.get("stop_reason")
     pending_item_id = payload.get("pending_item_id")
+    config_version = payload.get("config_version")
     if type(answers) is not list or len(answers) != items_answered:
         raise ResearchCATClientError("response_snapshot_invalid")
     answer_ids: list[str] = []
@@ -550,8 +684,13 @@ def _parse_snapshot(
         or payload.get("profile_id") != profile_id
         or payload.get("profile_sha256") != profile_sha256
         or payload.get("config_sha256") != config_sha256
-        or type(payload.get("config_version")) is not str
-        or not payload["config_version"].strip()
+        or type(config_version) is not str
+        or not config_version.strip()
+        or len(config_version) > 256
+        or (
+            expected_config_version is not None
+            and config_version != expected_config_version
+        )
         or payload.get("step") != items_answered
         or type(payload.get("step")) is not int
         or payload.get("status") != status
@@ -596,8 +735,10 @@ def _parse_snapshot(
     return _SignedResearchSnapshot(
         binding_ref=binding_ref,
         session_ref=session_ref,
+        profile_id=profile_id,
         profile_sha256=profile_sha256,
         config_sha256=config_sha256,
+        config_version=config_version,
         status=status,
         items_answered=items_answered,
         document_json=encoded,
@@ -606,12 +747,56 @@ def _parse_snapshot(
 
 def _decode_snapshot(value: bytes) -> dict[str, object]:
     try:
-        decoded = json.loads(value.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        decoded = json.loads(
+            value.decode("utf-8"),
+            object_pairs_hook=_reject_duplicate_keys,
+            parse_constant=_reject_nonfinite,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError, RecursionError):
         raise ResearchCATClientError("session_state_invalid") from None
     if type(decoded) is not dict:
         raise ResearchCATClientError("session_state_invalid")
     return decoded
+
+
+def _load_persisted_snapshot_json(value: object) -> dict[str, Any]:
+    if type(value) is not str or not value or len(value) > _MAX_RESPONSE_BYTES:
+        raise ResearchCATClientError("response_snapshot_invalid")
+    try:
+        encoded = value.encode("utf-8")
+        if len(encoded) > _MAX_RESPONSE_BYTES:
+            raise ResearchCATClientError("response_snapshot_invalid")
+        decoded = json.loads(
+            encoded.decode("utf-8"),
+            object_pairs_hook=_reject_duplicate_keys,
+            parse_constant=_reject_nonfinite,
+        )
+    except ResearchCATClientError:
+        raise
+    except (
+        UnicodeEncodeError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        ValueError,
+        RecursionError,
+    ):
+        raise ResearchCATClientError("response_snapshot_invalid") from None
+    if type(decoded) is not dict:
+        raise ResearchCATClientError("response_snapshot_invalid")
+    return decoded
+
+
+def _canonical_json(value: object) -> str:
+    try:
+        return json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+    except (TypeError, ValueError, UnicodeEncodeError):
+        raise ResearchCATClientError("response_snapshot_invalid") from None
 
 
 def _is_nonnegative_int(value: object) -> bool:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -24,11 +24,13 @@ from database_layer.models import (
     SchoolResearchSession,
     SchoolResearchTaskBinding,
     Subject,
+    SubjectAccessGrant,
     TaskEnrollment,
 )
 from database_layer.school_research_cat import (
     ResearchCatRepositoryError,
     ResearchCatRepositoryErrorCode,
+    ResearchLockedStudentScope,
     ResearchProfileMetadata,
     ResearchProfilePayload,
     ResearchSessionForResume,
@@ -80,6 +82,9 @@ class _ScalarResult:
         assert len(self.rows) <= 1
         return self.rows[0] if self.rows else None
 
+    def all(self):
+        return list(self.rows)
+
 
 class _ExecuteResult:
     rowcount = 1
@@ -91,25 +96,37 @@ class _FakeSession:
         self.rows = {
             School: [SimpleNamespace(id=3, status="ACTIVE", data_origin="SYNTHETIC")],
             MembershipRole: [SimpleNamespace(id=7, school_id=3, status="ACTIVE")],
-            SchoolClass: [SimpleNamespace(id=11, school_id=3, status="ACTIVE")],
+            SchoolClass: [
+                SimpleNamespace(
+                    id=11,
+                    school_id=3,
+                    class_ref="synthetic-class-11",
+                    status="ACTIVE",
+                )
+            ],
             MeasurementTask: [
                 SimpleNamespace(
                     id=13,
                     school_id=3,
                     class_id=11,
+                    task_ref="synthetic-task-13",
                     status="PUBLISHED",
                     cat_binding_mode="RESEARCH_PROFILE",
+                    opens_at=now - timedelta(days=1),
+                    due_at=now + timedelta(days=1),
                 )
             ],
             TaskEnrollment: [
                 SimpleNamespace(
                     id=17,
+                    public_id="synthetic-enrollment-17",
                     school_id=3,
                     task_id=13,
                     class_id=11,
                     class_student_id=19,
                     subject_id=23,
                     status="ACTIVE",
+                    revoked_at=None,
                 )
             ],
             SchoolClassStudent: [
@@ -119,14 +136,31 @@ class _FakeSession:
                     class_id=11,
                     subject_id=23,
                     status="ACTIVE",
+                    revoked_at=None,
+                    valid_from=now - timedelta(days=1),
+                    valid_until=now + timedelta(days=1),
                 )
             ],
             Subject: [
                 SimpleNamespace(
                     id=23,
                     school_id=3,
+                    subject_ref="synthetic-subject-23",
                     status="ACTIVE",
                     data_origin="SYNTHETIC",
+                )
+            ],
+            SubjectAccessGrant: [
+                SimpleNamespace(
+                    id=29,
+                    school_id=3,
+                    subject_id=23,
+                    principal_account_id=31,
+                    relationship_type="SELF",
+                    status="ACTIVE",
+                    revoked_at=None,
+                    valid_from=now - timedelta(days=1),
+                    valid_until=now + timedelta(days=1),
                 )
             ],
             SchoolResearchProfileVersion: [],
@@ -137,6 +171,7 @@ class _FakeSession:
         self._next_id = 100
         self._now = now
         self.executed = []
+        self.statements = []
         self.locked_models = []
         self.held_lock_rows = set()
         self.query_events = []
@@ -145,6 +180,7 @@ class _FakeSession:
         self.rollbacks = 0
 
     async def scalars(self, statement):
+        self.statements.append(statement)
         model = statement.column_descriptions[0]["entity"]
         rows = self.rows.get(model, [])
         locked = statement._for_update_arg is not None
@@ -259,8 +295,10 @@ def _assert_research_lock_order(session):
         SchoolResearchTaskBinding: 2,
         SchoolClassStudent: 3,
         TaskEnrollment: 4,
-        Subject: 5,
-        SchoolResearchSession: 6,
+        SchoolClass: 5,
+        Subject: 6,
+        SubjectAccessGrant: 7,
+        SchoolResearchSession: 8,
     }
     observed = [ranks[model] for model in session.locked_models]
     assert observed == sorted(observed), [model.__name__ for model in session.locked_models]
@@ -288,6 +326,172 @@ def _snapshot(session_ref="research-session-fixture-v1", *, status="ACTIVE", ans
         "payload_sha256": hashlib.sha256(encoded).hexdigest(),
         "signature": "unit-test-signature",
     }
+
+
+@pytest.mark.asyncio
+async def test_lock_student_task_scope_rechecks_self_grant_under_ordered_locks_before_decrypt():
+    repo, session, _protection = _repo()
+    await _install_research_records(repo, session)
+    original_decrypt = repo._decrypt
+    decrypt_lock_orders = []
+
+    def require_scope_before_decrypt(*args, **kwargs):
+        decrypt_lock_orders.append(tuple(session.locked_models))
+        assert session.locked_models[-1] is SubjectAccessGrant
+        return original_decrypt(*args, **kwargs)
+
+    repo._decrypt = require_scope_before_decrypt
+    scope = await repo.lock_student_task_scope(
+        school_id=3,
+        task_id=13,
+        task_enrollment_id=17,
+        subject_id=23,
+        principal_account_id=31,
+        at=session._now.replace(tzinfo=UTC),
+    )
+
+    assert isinstance(scope, ResearchLockedStudentScope)
+    assert (
+        scope.school_id,
+        scope.task_id,
+        scope.class_id,
+        scope.task_enrollment_id,
+        scope.subject_id,
+        scope.principal_account_id,
+    ) == (3, 13, 11, 17, 23, 31)
+    assert (
+        scope.task_ref,
+        scope.class_ref,
+        scope.enrollment_ref,
+        scope.subject_ref,
+    ) == (
+        "synthetic-task-13",
+        "synthetic-class-11",
+        "synthetic-enrollment-17",
+        "synthetic-subject-23",
+    )
+    assert scope.binding.config_json == _CONFIG_JSON
+    assert "snapshot" not in repr(scope).lower()
+    assert "principal_account_id" not in repr(scope.binding)
+    assert len(decrypt_lock_orders) == 1
+    assert session.commits == 0
+    _assert_research_lock_order(session)
+
+    grant_statement = next(
+        statement
+        for statement in session.statements
+        if statement.column_descriptions[0]["entity"] is SubjectAccessGrant
+    )
+    assert grant_statement._for_update_arg is not None
+    assert grant_statement.get_execution_options().get("populate_existing") is True
+    compiled = grant_statement.compile()
+    assert 31 in compiled.params.values()
+    assert "SELF" in compiled.params.values()
+
+
+@pytest.mark.parametrize(
+    ("mutation", "overrides"),
+    [
+        ("cross_school", {"school_id": 99}),
+        ("wrong_task", {"task_id": 99}),
+        ("wrong_enrollment", {"task_enrollment_id": 99}),
+        ("wrong_subject", {"subject_id": 99}),
+        ("wrong_principal", {"principal_account_id": 32}),
+        ("revoked_enrollment", {}),
+        ("revoked_roster", {}),
+        ("revoked_grant", {}),
+        ("grant_not_self", {}),
+        ("grant_for_other_subject", {}),
+        ("grant_expired", {}),
+        ("grant_not_yet_valid", {}),
+        ("roster_expired", {}),
+        ("roster_not_yet_valid", {}),
+        ("task_not_open", {}),
+        ("task_expired", {}),
+        ("task_wrong_mode", {}),
+    ],
+)
+@pytest.mark.asyncio
+async def test_lock_student_task_scope_rejects_revoked_expired_or_mismatched_scope(
+    mutation, overrides
+):
+    repo, session, _protection = _repo()
+    await _install_research_records(repo, session)
+    if mutation == "revoked_enrollment":
+        session.rows[TaskEnrollment][0].status = "REVOKED"
+        session.rows[TaskEnrollment][0].revoked_at = session._now
+    elif mutation == "revoked_roster":
+        session.rows[SchoolClassStudent][0].status = "REVOKED"
+        session.rows[SchoolClassStudent][0].revoked_at = session._now
+    elif mutation == "revoked_grant":
+        session.rows[SubjectAccessGrant][0].status = "REVOKED"
+        session.rows[SubjectAccessGrant][0].revoked_at = session._now
+    elif mutation == "grant_not_self":
+        session.rows[SubjectAccessGrant][0].relationship_type = "TEACHER_OF"
+    elif mutation == "grant_for_other_subject":
+        session.rows[SubjectAccessGrant][0].subject_id = 24
+    elif mutation == "grant_expired":
+        session.rows[SubjectAccessGrant][0].valid_until = session._now - timedelta(seconds=1)
+    elif mutation == "grant_not_yet_valid":
+        session.rows[SubjectAccessGrant][0].valid_from = session._now + timedelta(seconds=1)
+    elif mutation == "roster_expired":
+        session.rows[SchoolClassStudent][0].valid_until = session._now - timedelta(seconds=1)
+    elif mutation == "roster_not_yet_valid":
+        session.rows[SchoolClassStudent][0].valid_from = session._now + timedelta(seconds=1)
+    elif mutation == "task_not_open":
+        session.rows[MeasurementTask][0].opens_at = session._now + timedelta(seconds=1)
+    elif mutation == "task_expired":
+        session.rows[MeasurementTask][0].due_at = session._now - timedelta(seconds=1)
+    elif mutation == "task_wrong_mode":
+        session.rows[MeasurementTask][0].cat_binding_mode = "SAVED_VERSION"
+
+    decrypt_calls = []
+    original_decrypt = repo._decrypt
+
+    def track_decrypt(*args, **kwargs):
+        decrypt_calls.append(True)
+        return original_decrypt(*args, **kwargs)
+
+    repo._decrypt = track_decrypt
+    with pytest.raises(ResearchCatRepositoryError) as caught:
+        scope_args = {
+            "school_id": 3,
+            "task_id": 13,
+            "task_enrollment_id": 17,
+            "subject_id": 23,
+            "principal_account_id": 31,
+            "at": session._now,
+        }
+        scope_args.update(overrides)
+        await repo.lock_student_task_scope(**scope_args)
+    assert caught.value.code in {
+        ResearchCatRepositoryErrorCode.BINDING_NOT_FOUND,
+        ResearchCatRepositoryErrorCode.TASK_MODE_MISMATCH,
+        ResearchCatRepositoryErrorCode.SCOPE_MISMATCH,
+    }
+    assert decrypt_calls == []
+    assert session.commits == 0
+
+
+@pytest.mark.asyncio
+async def test_lock_student_task_scope_rejects_ambiguous_self_grants():
+    repo, session, _protection = _repo()
+    await _install_research_records(repo, session)
+    duplicate = SimpleNamespace(**vars(session.rows[SubjectAccessGrant][0]))
+    duplicate.id = 30
+    session.rows[SubjectAccessGrant].append(duplicate)
+
+    with pytest.raises(ResearchCatRepositoryError) as caught:
+        await repo.lock_student_task_scope(
+            school_id=3,
+            task_id=13,
+            task_enrollment_id=17,
+            subject_id=23,
+            principal_account_id=31,
+            at=session._now,
+        )
+    assert caught.value.code is ResearchCatRepositoryErrorCode.SCOPE_MISMATCH
+    assert session.rows[SchoolResearchSession] == []
 
 
 async def _install_research_records(repo, session):
