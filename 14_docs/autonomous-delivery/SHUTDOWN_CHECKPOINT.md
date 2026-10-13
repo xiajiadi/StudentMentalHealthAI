@@ -1,3 +1,38 @@
+## PAUSED — 2026-10-13 16:04 Beijing shutdown checkpoint
+
+Latest user shutdown deadline: 2026-10-13 16:05:55 Beijing. New dispatch stopped;
+all Workers completed. Managed original Backend8088/Frontend4178 stopped through
+school_app_lifecycle; fresh CPU CAT8180 foreground stopped. Final listener check
+found none on 3308,3315,8088,4178,8180,8089,4179,8181.
+Original3308 and freshG3315 passed exact identity and zero-transaction preflight,
+then graceful SQL shutdown: STOPPED_VERIFIED for both; data preserved.
+Receipt: D:\Projects\.StudentMentalHealthAI-school-workspace-20261011\logs\owned-shutdown-20261013-633cd90232de4fd88badab00c8899016.json.
+Runner stopped=true; psynova automation PAUSED. Explicit user Continue is required
+for recovery. Preserve all databases, sealed keys/backups, failed Targets a/b,
+successful dependency Targetc, and the two baseline untracked user paths.
+
+Reviewed remote source: 729716d5b9b4eccbef09463c34859a278e9925cb.
+Local migration work saved at 6df9051a605ab99502ac48d384240d76b3d8142e; NOT pushed.
+Fresh locked offline dependencies completed; frontend build and CPU CAT readiness
+verified. Root focused dependency tests29 and migration tests77 passed. These do
+not establish full installer, four-role acceptance or AI readiness.
+FreshG D:\Projects\.StudentMentalHealthAI-school-install-20261013-g, ID
+137ffe3243201bf34130b6585764edcf, port3315, revision20261013_0010, remains BLOCKED
+by strict CURRENT_SCHEMA_DRIFT. Latest readonly comparison isolates four tables'
+CHECK names; expressions, enforcement, columns and indexes match. No runtime,
+auth prep or seed was applied to G. Diagnostic: fresh-migration-four-check-differences.json
+inside G. Preserve this failure; do not reset, drop checks or blindly retry DDL.
+
+Resume: verify clock/branch/HEAD, automation and goal state, process ownership and
+markers. Treat environment as noRTX3060 until updated by user. Implement owned
+freshG existing-data resume support (current generic resume is original/restore
+specific). Trace trusted migration0003 naming-convention duplication/truncation
+against ORM names; choose deterministic compatible validation or additive repair
+with evidence. Then finish strict migration checks, runtime/seed and real four-role
+browser/database flows. University approved retrieval corpus and genuine local
+AI generation/citation remain incomplete. No GPU/cloud fallback or frozen evidence
+changes. Overall ENGINEERING_DEMO_READY is not claimed.
+
 ## Active shutdown window — 2026-10-13 16:05:55 Beijing
 
 Latest human instruction received at UTC07:15:55 / Beijing15:15:55: shutdown in50minutes.
