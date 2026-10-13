@@ -57,6 +57,7 @@ class FakeCursor:
                     table,
                     name,
                     value["type"],
+                    value.get("collation"),
                     "YES" if value["nullable"] else "NO",
                     "auto_increment" if value["auto_increment"] else "",
                 )
@@ -683,6 +684,63 @@ def test_metadata_normalizers_preserve_string_literal_semantics():
     assert migration._normalized_type(
         FakeType("INT(11)"), None
     ) == migration._normalized_type(FakeType("INTEGER"), None)
+    assert (
+        migration._normalized_type(FakeType("VARCHAR(36) COLLATE ASCII_BIN"), None)
+        == "VARCHAR(36)"
+    )
+
+
+def test_check_normalizer_matches_mysql_metadata_transport_and_parentheses():
+    expected = (
+        "(status = 'DRAFT' AND published_at IS NULL AND revoked_at IS NULL) OR "
+        "(status = 'PUBLISHED' AND published_at IS NOT NULL AND revoked_at IS NULL) OR "
+        "(status = 'REVOKED' AND published_at IS NOT NULL AND revoked_at IS NOT NULL)"
+    )
+    actual = (
+        "((((`status` = _utf8mb4\\'DRAFT\\') AND (`published_at` IS NULL) "
+        "AND (`revoked_at` IS NULL))) OR (((`status` = _utf8mb4\\'PUBLISHED\\') "
+        "AND (`published_at` IS NOT NULL) AND (`revoked_at` IS NULL))) OR "
+        "(((`status` = _utf8mb4\\'REVOKED\\') AND (`published_at` IS NOT NULL) "
+        "AND (`revoked_at` IS NOT NULL))))"
+    )
+    assert migration._normalize_check_sql(actual) == migration._normalize_check_sql(
+        expected
+    )
+
+
+@pytest.mark.parametrize(
+    "left,right",
+    [
+        ("level = 'L3'", "level = _ascii\\'l3\\'"),
+        (
+            "left_flag = 1 OR right_flag = 1 AND enabled = 1",
+            "(left_flag = 1 OR right_flag = 1) AND enabled = 1",
+        ),
+        ("row_count BETWEEN 1 AND 100", "row_count >= 1 AND row_count <= 100"),
+        ("value = 1", "value <> 1"),
+    ],
+)
+def test_check_normalizer_preserves_literals_operators_and_precedence(left, right):
+    assert migration._normalize_check_sql(left) != migration._normalize_check_sql(right)
+
+
+def test_check_normalizer_rejects_unknown_expression_syntax():
+    with pytest.raises(ValueError, match="unsupported CHECK syntax"):
+        migration._normalize_check_sql("status IN (SELECT status FROM roles)")
+
+
+def test_current_schema_rejects_explicit_collation_drift(prepared):
+    _repo, workspace, _marker, db, ops, service, _settings, _reads = prepared
+    set_current_schema(db)
+    expected_collation = db.schema["accounts"]["columns"]["public_id"]["collation"]
+    assert expected_collation == "ascii_bin"
+    db.schema["accounts"]["columns"]["public_id"]["collation"] = "ascii_general_ci"
+
+    with pytest.raises(migration.MigrationError) as exc:
+        service.upgrade(workspace, expected_port=PORT, workspace_id=WORKSPACE_ID)
+
+    assert exc.value.code == "CURRENT_SCHEMA_DRIFT"
+    assert ops.migrations == []
 
 
 def test_empty_tables_with_untracked_routine_is_not_a_fresh_schema(prepared):
@@ -960,7 +1018,7 @@ def test_process_inspection_returns_parent_identity(monkeypatch):
                     "CommandLine": "C:\\synthetic\\mysqld.exe --port=3315",
                     "CreationUtc": "2026-10-13T00:00:02.0000000Z",
                 }
-            )
+            ).encode("utf-8")
         )
 
     monkeypatch.setattr(migration.subprocess, "run", fake_run)
@@ -969,6 +1027,22 @@ def test_process_inspection_returns_parent_identity(monkeypatch):
     assert result["ParentProcessId"] == 7001
     assert observed["pid"] == "7002"
     assert "ParentProcessId = $p.ParentProcessId" in observed["argv"][3]
+
+
+def test_process_inspection_rejects_non_utf8_metadata_without_leaking_output(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        migration.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(stdout=b"\xffprivate"),
+    )
+
+    with pytest.raises(migration.MigrationError) as exc:
+        migration.MigrationOperations().inspect_process(7002)
+
+    assert exc.value.code == "PROCESS_IDENTITY_UNAVAILABLE"
+    assert str(exc.value) == "PROCESS_IDENTITY_UNAVAILABLE"
 
 
 def test_metadata_powershell_uses_redacted_environment_for_all_identity_checks(
@@ -1033,7 +1107,7 @@ def test_metadata_powershell_uses_redacted_environment_for_all_identity_checks(
                     }
                 ]
             )
-        return SimpleNamespace(stdout=output)
+        return SimpleNamespace(stdout=output.encode("utf-8"))
 
     monkeypatch.setattr(migration.subprocess, "run", fake_run)
     ops = migration.MigrationOperations()
@@ -1149,7 +1223,7 @@ def test_child_environment_and_argv_never_contain_builder_secret(prepared, monke
         "DATABASE_URL",
     }
     assert observed["capture_output"] is True
-    assert observed["text"] is True
+    assert observed["text"] is False
     assert observed["stdin"] is subprocess.DEVNULL
 
 

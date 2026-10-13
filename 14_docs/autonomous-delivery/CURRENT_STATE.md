@@ -763,3 +763,25 @@ Fresh migrationnew3files remainunderreview: metadata schema/current gates are be
 verified against actualdriver interface and exactlistener parent/child ownership.
 Next finish thatsourceQA, nativeexistingCurrent readonlycheck and freshG0010migration,
 then targetenvruntime/seed/app/CAT/browser/install recovery. GoalACTIVE/incomplete.
+
+2026-10-13 shutdown-window work: migration3files committedLOCAL4ac1b65,
+Root69fake tests pass (includes missingCURRENT_ROLE=None denial), Ruff passes.
+Targetc source advanced fromd2553c2 to4ac1b65; existing installedlocks unchanged.
+NEWG3315 nativeplan passes; actualpinnedDDL reaches0010 but strictpost-schema check
+returnsPARTIAL_FAILURE. Rootconfirmedrevision0010 readonly and preservedG; no runtime
+or seed started. Diagnosticfiles fresh-migration-readonly-diagnosis.json and
+fresh-migration-readonly-structure-detail.json contain onlyschema metadata, no payloads.
+Main mismatches are explicitASCIIcollation missingfromCOLUMN_TYPE comparison and
+MySQLescaped/parenthesizedCHECK_CLAUSE representation; unique/FK backing index raw
+counts also differ but should be handledby existingexactfilter. Workerowns bounded
+3filefix, noDB/DDLpermission, stabledeadline07:50:55 stopdispatch/07:55:55 wrap.
+NeverdropCHECK, ignorecollation, resetG or rerunDDL togreen. NewCurrentverification
+mustsucceedwithcorrectmetadata semantics before runtime/seed/businessQA.
+
+FreshCPU CAT at8180 has actualTargetcvenvlauncher9536/base16792, foregroundexec29960;
+rootverifiedloopback/exe/argv/creation/parent andhealthstatusREADY. Gcat-process artifact
+recordsobservedidentities, revalidatebeforeactions. Firstexternalos.execve launcher
+terminatedwithoutlistener; rootconfirmedabsence, usedforegroundsubprocess, APIimport
+andlivehealthpass. Matplotlibtemp-cache warning is preserved; onnextlaunch useapproved
+D-drivecacheexplicitly, no globalsettingschange. CATstartup isnot actualCATcompletion,
+GPU/LLM/RAG/Safety orfullplatformreadiness. Stopit withownedhandle atwrap.

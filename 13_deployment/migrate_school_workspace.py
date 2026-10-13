@@ -283,6 +283,9 @@ def _verify_builder_grants(grants: list[str], current_role: object) -> None:
 def _normalized_type(value: Any, dialect: Any) -> str:
     compiler = getattr(value, "compile", None)
     source = str(compiler(dialect=dialect) if compiler else value).strip()
+    source = re.sub(
+        r"\s+COLLATE\s+[A-Za-z_][\w$]*\s*$", "", source, flags=re.IGNORECASE
+    )
     token_pattern = re.compile(
         r"'(?:''|\\.|[^'])*'|\"(?:\"\"|\\.|[^\"])*\"|"
         r"[A-Za-z_][\w$]*|\d+(?:\.\d+)?|\s+|."
@@ -326,67 +329,177 @@ def _normalized_type(value: Any, dialect: Any) -> str:
     return re.sub(r"\s+", " ", "".join(normalized)).strip()
 
 
+def _normalized_collation(value: Any) -> str | None:
+    collation = getattr(value, "collation", None)
+    if collation is None:
+        return None
+    if not isinstance(collation, str) or not re.fullmatch(r"[A-Za-z0-9_]+", collation):
+        raise ValueError("unsupported collation metadata")
+    return collation.casefold()
+
+
 def _normalize_check_sql(value: Any) -> str:
+    source = str(value).strip().replace("\\'", "'")
+    source = re.sub(r"(?i)\b_(?:utf8mb[0-9]+|ascii)(?=')", "", source)
     token_pattern = re.compile(
-        r"'(?:''|\\.|[^'])*'|\"(?:\"\"|\\.|[^\"])*\"|"
-        r"`(?:``|[^`])*`|[A-Za-z_$][\w$]*|\d+(?:\.\d+)?|"
-        r"<=|>=|<>|!=|:=|\s+|."
+        r"\s+|'(?:''|\\.|[^'\\])*'|\"(?:\"\"|\\.|[^\"\\])*\"|"
+        r"`(?:``|[^`])*`|<=|>=|<>|!=|=|<|>|\(|\)|,|"
+        r"[A-Za-z_$][\w$]*|\d+(?:\.\d+)?"
     )
-    raw_tokens = token_pattern.findall(str(value).strip())
-    tokens: list[str] = []
-    index = 0
-    while index < len(raw_tokens):
-        token = raw_tokens[index]
+    tokens: list[tuple[str, str]] = []
+    position = 0
+    while position < len(source):
+        match = token_pattern.match(source, position)
+        if match is None:
+            raise ValueError("unsupported CHECK syntax")
+        token = match.group(0)
+        position = match.end()
         if token.isspace():
-            index += 1
             continue
-        if re.fullmatch(r"_utf8mb[0-9]+", token, flags=re.IGNORECASE):
-            lookahead = index + 1
-            while lookahead < len(raw_tokens) and raw_tokens[lookahead].isspace():
-                lookahead += 1
-            if lookahead < len(raw_tokens) and raw_tokens[lookahead].startswith(
-                ("'", '"')
-            ):
-                index += 1
-                continue
         if token.startswith("`"):
-            tokens.append(token[1:-1].replace("``", "`").casefold())
+            tokens.append(("identifier", token[1:-1].replace("``", "`").casefold()))
         elif token.startswith(("'", '"')):
-            tokens.append(token)
+            tokens.append(("literal", token))
+        elif re.fullmatch(r"\d+(?:\.\d+)?", token):
+            tokens.append(("number", token))
+        elif token in {"(", ")", ",", "=", "<", ">", "<=", ">=", "<>", "!="}:
+            tokens.append(("symbol", token))
         else:
-            tokens.append(token.casefold())
-        index += 1
+            tokens.append(("word", token.casefold()))
 
-    def strip_outer_parentheses(parts: list[str]) -> list[str]:
-        while parts and parts[0] == "(" and parts[-1] == ")":
-            depth = 0
-            wraps_all = True
-            for position, token in enumerate(parts):
-                if token == "(":
-                    depth += 1
-                elif token == ")":
-                    depth -= 1
-                    if depth == 0 and position != len(parts) - 1:
-                        wraps_all = False
-                        break
-            if not wraps_all or depth != 0:
-                break
-            parts = parts[1:-1]
-        return parts
+    class Parser:
+        def __init__(self, items: list[tuple[str, str]]):
+            self.items = items
+            self.index = 0
 
-    tokens = strip_outer_parentheses(tokens)
-    normalized: list[str] = []
-    previous_word = False
-    for token in tokens:
-        is_literal = token.startswith(("'", '"'))
-        is_word = is_literal or bool(
-            re.fullmatch(r"[A-Za-z_$][\w$]*|\d+(?:\.\d+)?", token)
-        )
-        if normalized and previous_word and is_word:
-            normalized.append(" ")
-        normalized.append(token)
-        previous_word = is_word
-    return "".join(normalized)
+        def peek(self, value: str | None = None) -> bool:
+            if self.index >= len(self.items):
+                return False
+            return value is None or self.items[self.index][1] == value
+
+        def take(self, value: str | None = None) -> tuple[str, str]:
+            if not self.peek(value):
+                raise ValueError("unsupported CHECK syntax")
+            item = self.items[self.index]
+            self.index += 1
+            return item
+
+        def parse(self) -> tuple[Any, ...]:
+            expression = self.parse_or()
+            if self.index != len(self.items):
+                raise ValueError("unsupported CHECK syntax")
+            return expression
+
+        def parse_or(self) -> tuple[Any, ...]:
+            left = self.parse_and()
+            while self.peek("or"):
+                self.take("or")
+                left = ("or", left, self.parse_and())
+            return left
+
+        def parse_and(self) -> tuple[Any, ...]:
+            left = self.parse_not()
+            while self.peek("and"):
+                self.take("and")
+                left = ("and", left, self.parse_not())
+            return left
+
+        def parse_not(self) -> tuple[Any, ...]:
+            if self.peek("not"):
+                self.take("not")
+                return ("not", self.parse_not())
+            return self.parse_predicate()
+
+        def parse_predicate(self) -> tuple[Any, ...]:
+            left = self.parse_primary()
+            if self.peek("is"):
+                self.take("is")
+                negate = False
+                if self.peek("not"):
+                    self.take("not")
+                    negate = True
+                self.take("null")
+                return ("is-null", negate, left)
+            if self.peek("in"):
+                self.take("in")
+                self.take("(")
+                values = [self.parse_or()]
+                while self.peek(","):
+                    self.take(",")
+                    values.append(self.parse_or())
+                self.take(")")
+                return ("in", left, tuple(values))
+            if self.peek("between"):
+                self.take("between")
+                lower = self.parse_primary()
+                self.take("and")
+                upper = self.parse_primary()
+                return ("between", left, lower, upper)
+            if self.peek() and self.items[self.index][1] in {
+                "=",
+                "<>",
+                "!=",
+                "<",
+                "<=",
+                ">",
+                ">=",
+            }:
+                operator = self.take()[1]
+                return ("compare", operator, left, self.parse_primary())
+            return left
+
+        def parse_primary(self) -> tuple[Any, ...]:
+            kind, token = self.take()
+            if token == "(":
+                expression = self.parse_or()
+                self.take(")")
+                return expression
+            if kind == "identifier":
+                return ("identifier", token)
+            if kind == "literal":
+                return ("literal", token)
+            if kind == "number":
+                return ("number", token)
+            if kind == "word" and token == "null":
+                return ("null",)
+            if kind == "word" and token in {"true", "false"}:
+                return ("boolean", token)
+            if kind == "word" and token not in {
+                "and",
+                "or",
+                "not",
+                "is",
+                "in",
+                "between",
+            }:
+                return ("identifier", token)
+            raise ValueError("unsupported CHECK syntax")
+
+    expression = Parser(tokens).parse()
+
+    def render(node: tuple[Any, ...]) -> str:
+        kind = node[0]
+        if kind in {"identifier", "literal", "number", "null", "boolean"}:
+            return str(node[1]) if len(node) > 1 else "null"
+        if kind == "is-null":
+            return f"({render(node[2])} is {'not ' if node[1] else ''}null)"
+        if kind == "compare":
+            return f"({render(node[2])}{node[1]}{render(node[3])})"
+        if kind == "between":
+            return (
+                f"({render(node[1])} between {render(node[2])} and {render(node[3])})"
+            )
+        if kind == "in":
+            return (
+                f"({render(node[1])} in ({','.join(render(item) for item in node[2])}))"
+            )
+        if kind in {"and", "or"}:
+            return f"({render(node[1])} {kind} {render(node[2])})"
+        if kind == "not":
+            return f"(not {render(node[1])})"
+        raise ValueError("unsupported CHECK syntax")
+
+    return render(expression)
 
 
 def _trusted_current_schema(database_root: Path) -> dict[str, Any]:
@@ -430,6 +543,7 @@ def _trusted_current_schema(database_root: Path) -> dict[str, Any]:
                     raise ValueError
                 columns[key] = {
                     "type": _normalized_type(column.type, dialect),
+                    "collation": _normalized_collation(column.type),
                     "nullable": bool(column.nullable),
                     "auto_increment": table.autoincrement_column is column,
                 }
@@ -498,6 +612,7 @@ def _trusted_current_schema(database_root: Path) -> dict[str, Any]:
             "columns": {
                 "version_num": {
                     "type": "VARCHAR(32)",
+                    "collation": None,
                     "nullable": False,
                     "auto_increment": False,
                 }
@@ -543,16 +658,17 @@ def _inspect_actual_schema(cursor: Any, table_names: set[str]) -> dict[str, Any]
     }
 
     cursor.execute(
-        "SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, EXTRA "
+        "SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, COLLATION_NAME, IS_NULLABLE, EXTRA "
         "FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = %s "
         "ORDER BY TABLE_NAME, ORDINAL_POSITION",
         (DATABASE,),
     )
-    for table, name, column_type, nullable, extra in cursor.fetchall():
+    for table, name, column_type, collation, nullable, extra in cursor.fetchall():
         table_key = str(table).casefold()
         if table_key in schema:
             schema[table_key]["columns"][str(name).casefold()] = {
                 "type": _normalized_type(column_type, dialect),
+                "collation": str(collation).casefold() if collation else None,
                 "nullable": str(nullable).upper() == "YES",
                 "auto_increment": "auto_increment" in str(extra).casefold().split(),
             }
@@ -676,6 +792,11 @@ def _verify_current_schema(
         raise MigrationError("CURRENT_SCHEMA_INSPECTION_FAILED") from None
     for table_name, observed in actual.items():
         expected_table = expected.get(table_name, {})
+        expected_columns = expected_table.get("columns", {})
+        for column_name, column in observed.get("columns", {}).items():
+            expected_column = expected_columns.get(column_name)
+            if expected_column is not None and expected_column.get("collation") is None:
+                column["collation"] = None
         expected_indexes = expected_table.get("indexes", set())
         mirrored_unique_indexes = {
             (name, columns, True) for name, columns in observed.get("uniques", set())
@@ -839,11 +960,15 @@ class MigrationOperations(ResumeOperations):
                 ["pwsh", "-NoProfile", "-Command", script],
                 env=environment,
                 capture_output=True,
-                text=True,
+                text=False,
                 check=True,
                 timeout=15,
             )
-            return result.stdout
+            if not isinstance(result.stdout, bytes):
+                raise MigrationError(error_code)
+            return result.stdout.decode("utf-8-sig")
+        except MigrationError:
+            raise
         except Exception:  # noqa: BLE001 - metadata subprocess output remains private.
             raise MigrationError(error_code) from None
 
@@ -1001,7 +1126,7 @@ $values | ConvertTo-Json -Depth 3 -Compress
             "env": environment,
             "stdin": subprocess.DEVNULL,
             "capture_output": True,
-            "text": True,
+            "text": False,
             "timeout": MIGRATION_TIMEOUT_SECONDS,
             "shell": False,
             "close_fds": True,
