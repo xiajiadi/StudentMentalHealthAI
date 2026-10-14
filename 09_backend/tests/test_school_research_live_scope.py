@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from dataclasses import replace
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 
@@ -186,6 +187,48 @@ def live_scope(monkeypatch):
     )
     session.close()
     engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("case", [
+    "teacher", "admin", "disabled_account", "revoked_membership", "expired_role", "wrong_context",
+])
+async def test_current_identity_denials_precede_scope_and_decryption(live_scope, case):
+    actor = _actor()
+    if case == "teacher":
+        actor = replace(actor, role=BackendRole.TEACHER)
+    elif case == "admin":
+        actor = replace(actor, role=BackendRole.ADMIN)
+    elif case == "disabled_account":
+        live_scope.session.get(db_models.Account, 201).status = "DISABLED"
+    elif case == "revoked_membership":
+        membership = live_scope.session.get(db_models.AccountSchoolMembership, 301)
+        membership.status = "REVOKED"
+        membership.revoked_at = NOW - timedelta(minutes=1)
+    elif case == "expired_role":
+        live_scope.session.get(db_models.MembershipRole, 302).valid_until = (
+            NOW - timedelta(minutes=1)
+        )
+    else:
+        actor = replace(actor, school_contexts=(
+            replace(actor.school_contexts[0], context_id="wrong-context"),
+        ))
+    live_scope.session.flush()
+    live_scope.statements.clear()
+    with pytest.raises(BackendError) as raised:
+        await live_scope.persistence.prepare_start(
+            actor, "task-demo-1", at=NOW, idempotency=IDEMPOTENCY,
+        )
+    # The scope resolver intentionally conceals task existence for a nonstudent;
+    # a revoked persisted identity is rejected by the current-role provider.
+    expected_code = (
+        ErrorCode.RESOURCE_NOT_FOUND if case in {"teacher", "admin"} else ErrorCode.FORBIDDEN
+    )
+    assert raised.value.code == expected_code
+    assert not any("measurement_tasks" in query for query in live_scope.statements)
+    assert live_scope.repo.scope_lock_calls == 0
+    assert live_scope.repo.decrypt_calls == 0
+    assert live_scope.factory.calls == 0
 
 
 @pytest.mark.asyncio

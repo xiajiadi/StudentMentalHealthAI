@@ -8,6 +8,7 @@ from database_layer.research_keys import (
     ResearchKeyError,
     ResearchSnapshotKeyring,
     derive_research_service_bearer,
+    derive_research_snapshot_mac_key,
 )
 
 
@@ -54,6 +55,22 @@ def test_service_and_snapshot_material_use_distinct_contexts():
     forged = "rk1.v1." + hmac.new(token, b"state", hashlib.sha256).hexdigest()
     assert not ring().verify(b"state", forged)
     assert token.decode() not in repr(ring())
+
+
+def test_trusted_child_mac_handoff_matches_retained_keyring_without_master_key():
+    key = derive_research_snapshot_mac_key(
+        provider(), key_version="v1", school_scope="school:1"
+    )
+    assert type(key) is bytes and len(key) == 32
+    signature = "rk1.v1." + hmac.new(key, b"state", hashlib.sha256).hexdigest()
+    assert ring().verify(b"state", signature)
+    assert key != base64.urlsafe_b64decode(provider().get_key("v1"))
+    assert key != derive_research_snapshot_mac_key(
+        provider(), key_version="v1", school_scope="school:2"
+    )
+    assert key != derive_research_snapshot_mac_key(
+        provider(), key_version="v2", school_scope="school:1"
+    )
 
 
 @pytest.mark.parametrize("signature", [None, True, "", "v1", "rk1.v3." + "a" * 64,

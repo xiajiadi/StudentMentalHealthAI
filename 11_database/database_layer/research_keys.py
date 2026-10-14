@@ -58,6 +58,17 @@ def derive_research_service_bearer(
     return base64.urlsafe_b64encode(key).rstrip(b"=")
 
 
+def derive_research_snapshot_mac_key(
+    provider: KeyProvider, *, key_version: str, school_scope: str
+) -> bytes:
+    """Derive MAC material for a trusted child handoff, never the master key.
+
+    Callers must keep these bytes in memory and send them only over the owned
+    private process pipe. This API is not a credential or HTTP projection.
+    """
+    return _derive(provider, key_version, school_scope, "research-snapshot-mac")
+
+
 @dataclass(frozen=True, slots=True, init=False)
 class ResearchSnapshotKeyring:
     """Versioned signer compatible with the CAT SnapshotAuthenticator protocol.
@@ -83,7 +94,9 @@ class ResearchSnapshotKeyring:
         ):
             raise ResearchKeyError("research_key_versions_invalid")
         keys = {
-            version: _derive(provider, version, school_scope, "research-snapshot-mac")
+            version: derive_research_snapshot_mac_key(
+                provider, key_version=version, school_scope=school_scope
+            )
             for version in accepted_versions
         }
         object.__setattr__(self, "signing_version", signing_version)

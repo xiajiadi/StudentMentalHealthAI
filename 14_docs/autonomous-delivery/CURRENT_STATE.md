@@ -19,14 +19,38 @@ the test; fixture-local monkeypatch now restores the original compiler. Root
 combined authorization/API/persistence43tests and frozen-OpenAPI4tests passed.
 These SQLite tests do not establish native MySQL row-lock semantics.
 
-Operator confirms school-affiliated noncommercial research; institution name
-and study end date remain requested for the PROMIS use-scope record. No DB rights
-or execution status has been changed. Three-layer school RAG review packet is
+Operator confirms noncommercial research affiliated with Hunan Normal University
+Affiliated High School (湖南师范大学附属中学), planned through June2027. This is
+operator-provided use-scope information, not a school ethics approval or source-
+owner permission letter. PROMIS digital use must remain within the source-owner
+noncommercial/time-limited study conditions. No DB rights or execution status
+has yet been changed. Three-layer school RAG review packet is
 indexed in SCHOOL_RAG_REVIEW_PACKAGE.md; all excerpts remain pending human review,
 not indexed into the live corpus. Current ordinary K API processes still run
-older code. Next: actual-model authorization negatives, a pinned CAT3.14 serve
-entrypoint with complete config and derived-key-only stdin handshake, then
-owned service lifecycle and native actor/DB/recovery flows. Goal remains active.
+older code. Standalone CAT3.14 serve entrypoint and Backend-owned process manager
+are now implemented and reviewed. Root83 CAT tests and20 process tests passed.
+Root found/fixed the readiness route's wrong FastAPI request annotation; real
+ASGI requests now prove401/401/200. Independent review found failure-cleanup
+cancellation leakage and descendant-PID shutdown mismatch; regression tests now
+cover shielded failure cleanup and ownership is restricted to exact Popen PID.
+Launch uses verified basePython3.14 with-S and explicit CAT project dependency
+path, without global package installation. One-shot derived-key handshake is
+cleared from manager state; no master key is sent to CAT. Reparse paths rejected.
+
+Native owned-process flow PASS: external aggregate
+D:\Dev\temp\psynova-research-owned-process-native-20261014T0812.json.
+Aggregate SHA0b030d7db8c40395145b1e25603717b850663b66b3068d7c1e44f277966c86c4.
+Actual listener58540 owned by exact PopenPID5240, bounded authenticated ready,
+missing bearer401, one real observed row8answers plus signed in-memory restore,
+STOPPED and no listener after close; resource/code hashes unchanged. This adds
+native process lifecycle proof, not DB snapshot writes or an800-account journey.
+Live ORM negative scope suite now13passed, including disabled account, revoked
+membership, expired role, wrong context, teacher/admin denial before task lookup.
+Next: integrate manager into installed Backend lifecycle, then native actor/DB
+session persistence/recovery, specialist import/task UI and online800. Goal active.
+Trusted child MAC derivation now has an explicit purpose-scoped API; Root21
+retained-key tests pass and preserve the existing signing bytes. Installed
+managed-service configuration and native probes are still being implemented.
 
 ## Prior checkpoint — private research HTTP and recovery integration
 
