@@ -125,10 +125,18 @@ def _required_revision(profile: str) -> str:
 
 
 @pytest.mark.parametrize(
-    "old_revision", ["20261012_0008", "20261013_0009", "20261013_0010", "20261014_0011"]
+    "old_revision",
+    [
+        "20261012_0008",
+        "20261013_0009",
+        "20261013_0010",
+        "20261014_0011",
+        "20261014_0012",
+        "20261014_0013",
+    ],
 )
 async def test_school_tenant_startup_requires_research_session_revision(old_revision):
-    assert REQUIRED_SCHOOL_TENANT_DATABASE_REVISION == "20261014_0013"
+    assert REQUIRED_SCHOOL_TENANT_DATABASE_REVISION == "20261014_0014"
     adapter = _adapter([old_revision], "school_tenant")
 
     async def no_bootstrap():
@@ -136,7 +144,7 @@ async def test_school_tenant_startup_requires_research_session_revision(old_revi
 
     adapter._ensure_synthetic_fixtures = no_bootstrap
 
-    with pytest.raises(RuntimeError, match="20261014_0013"):
+    with pytest.raises(RuntimeError, match="20261014_0014"):
         await adapter.start()
 
 
@@ -158,9 +166,7 @@ async def test_start_requires_exact_schema_revision_before_fixture_bootstrap(pro
     adapter._ensure_synthetic_fixtures = ensure_fixtures
     await adapter.start()
 
-    assert adapter.engine.connection.queries == [
-        "SELECT version_num FROM database_alembic_version"
-    ]
+    assert adapter.engine.connection.queries == ["SELECT version_num FROM database_alembic_version"]
     assert bootstraps == [True]
     assert adapter._started is True
 
@@ -338,3 +344,12 @@ def test_unknown_profile_does_not_fall_back_to_legacy_provider():
             "SYNTHETIC_UNKNOWN_PROFILE_SENTINEL",
             Path("SYNTHETIC_REPOSITORY_ROOT_SENTINEL"),
         )
+
+
+def test_backend_school_revision_matches_installed_revision_chain():
+    import runpy
+    from pathlib import Path
+
+    deployment = Path(__file__).resolve().parents[2] / "13_deployment/school_schema.py"
+    schema = runpy.run_path(str(deployment))
+    assert REQUIRED_SCHOOL_TENANT_DATABASE_REVISION == schema["CURRENT_SCHOOL_REVISION"]
