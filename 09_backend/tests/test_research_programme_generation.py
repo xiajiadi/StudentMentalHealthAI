@@ -732,8 +732,11 @@ async def test_runtime_http_client_sends_fixed_nonstudent_route_and_validates_re
     assert result.retrieval_id == "RETR_test_001"
     assert result.prompt_id == "PROMPT_staff_school_programme_research_v1"
     assert result.prompt_version == PROMPT_VERSION
-    assert PROMPT_VERSION == "1.1.0"
-    assert "including in negative disclaimers" in captured[0]["messages"][0]["content"]
+    assert PROMPT_VERSION == "1.1.1"
+    assert "250 characters per passage" in captured[0]["messages"][0]["content"]
+    assert "also apply to caveats, limitations, and negative statements" in (
+        captured[0]["messages"][0]["content"]
+    )
     assert result.prompt_sha256 == hashlib.sha256(
         json.dumps(
             captured[0]["messages"],
@@ -780,3 +783,17 @@ async def test_runtime_http_client_sends_fixed_nonstudent_route_and_validates_re
     payload_text = json.dumps(captured[0])
     for forbidden in ("assessment_id", "subject_id", "student_answers"):
         assert forbidden not in payload_text
+
+
+def test_prompt_v111_lists_the_complete_claim_guard_terms() -> None:
+    from smhai_backend.domains.research_programme_generation.service import _CLAIM_BOUNDARY
+    from smhai_backend.integrations.research_programme import (
+        _PROMPT_FORBIDDEN_TERMS,
+        _SYSTEM_MESSAGE,
+    )
+
+    assert all(term in _SYSTEM_MESSAGE for term in _PROMPT_FORBIDDEN_TERMS)
+    assert all(_CLAIM_BOUNDARY.search(term) for term in _PROMPT_FORBIDDEN_TERMS)
+    assert {"improving", "outcomes", "achieve"}.issubset(
+        set(_PROMPT_FORBIDDEN_TERMS)
+    )

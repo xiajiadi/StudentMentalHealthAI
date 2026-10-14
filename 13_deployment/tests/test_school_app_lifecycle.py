@@ -386,7 +386,7 @@ def test_research_programme_worker_manifest_argv_restore_and_live_status(
     manifest = json.loads((workspace / lifecycle.MANIFEST_NAME).read_text(encoding="utf-8"))
     stored_programme = manifest["research_config"][lifecycle.RESEARCH_PROGRAMME_WORKER_CONFIG_KEY]
     assert stored_programme["runtime_url"] == "http://127.0.0.1:8161"
-    assert stored_programme["prompt_version"] == "1.1.0"
+    assert stored_programme["prompt_version"] == "1.1.1"
     restored = lifecycle._research_config_from_manifest(
         manifest, workspace, manifest["backend_port"], manifest["frontend_port"]
     )
@@ -412,7 +412,7 @@ def test_research_programme_worker_manifest_rejects_prompt_pin_drift(
         "model_ref": lifecycle.RESEARCH_PROGRAMME_MODEL_REF,
         "model_digest_sha256": lifecycle.RESEARCH_PROGRAMME_MODEL_DIGEST_SHA256,
         "prompt_ref": lifecycle.RESEARCH_PROGRAMME_PROMPT_REF,
-        "prompt_version": "1.0.3",
+        "prompt_version": "1.1.0",
         "poll_interval_seconds": 1.0,
         "lease_seconds": 180,
         "max_attempts": 5,
