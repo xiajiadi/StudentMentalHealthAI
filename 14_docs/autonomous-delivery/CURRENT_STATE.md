@@ -1,3 +1,55 @@
+## ACTIVE — 2026-10-15 00:20 CST, native source-selection HELD; installed upgrade pending
+
+Latest canonical source HEAD783441ac5c8b83be6839bd30be8ab3b156b16037.
+Dedicated remote is b5b1bf1; newer reviewed increments are local, not yet pushed.
+No whole-project/production readiness is declared. New shutdown deadline remains
+2026-10-15 06:30 CST /2026-10-14 22:30 UTC: stopdispatch06:15, save/drain06:20,
+finish owned-service/Runner/automation/goal pause by06:25; do not auto-resume later.
+
+Verified source-selection mode1.2.0 uses actual local7B only to select sourceIDs;
+body is rendered from verified source metadata, expressly marked as such in
+ciphertext/API/UI. No free-form model statement is relabelled as verified metadata.
+Original freeform attempts remain ABSTAINED/error. Source/Safety/claim/trace/pin/
+HELD guards unchanged. New prompt origin and legacy model-authored origin differ.
+Runtime invalid structured responses now terminate REVIEW_REQUIRED without repeated
+model generation; transport/timeouts retain bounded retry. No DDL needed.
+Root29 generation tests PASS after integration; owners145 bounded tests and9UI tests
+/typecheck PASS. Locked Backend bm25s0.3.11 dependency installed offline from lock;
+actual managed CLI cold import/BM25 module provenance verified, no global install.
+
+Native r16 actual1.2.0 result HELD: one real Ollama chat POST, Runtime200,4 public
+WHO/Raniti retrieved excerpts, Input/Retrieval/Output Safety allPROCEED,2 bound source
+citations,0 claim matches. Not yet DB-stored/published/adopted; no studentfeedback.
+D:/Dev/temp/psynova-research-programme-native-proof-20261015-r16.json,
+sourceaggregate64adfa743e5635a1ed4a640011f701c512eba7e6bbe4785bc70c0b5d02e616c2.
+Temporary proof Runtime8162 closed; separate research host8161 remainsownedREADY:
+launcher42428/listener41956; EXTERNAL provider11437, shutdown does not own Ollama.
+Owner proof D:/Dev/temp/psynova-research-runtime-host-20261014-r1.json.
+
+O→NEW P0018 native restore/start r4 COMPLETE at prior sourceab2cb55 (prompt1.1.1).
+P D:/Projects/.StudentMentalHealthAI-school-install-20261014-p,
+workspace7d9eeefbb52a00c93e069904e98081b4; DB3324/API8098/UI4188.
+Preserved33924rows/54 modeltables plusrevision bookkeeping and verified864ciphertexts.
+Both research workers READY, database VERIFIED/current0018; whole_ready=false,
+externalmodules and nativeCAT ownership not independently accepted. No800 replay.
+Evidence D:/Dev/temp/psynova-o0017-p0018-restore-start-20261014-r4.json.
+Old O owned-stopped, DB/data/keys preserved. Source0017 official sealed backup:
+O/backups/20261014-153944-c0f8778eb61f45a39eaff18ccf43dc44.private.dpapi,
+SHA7afcf0f8158d95d2637925db3a6b2eddbb052558fd39701cc3a7c20037e3fe99.
+Failuresr1/r3 preserved: old-app current0018 preflight cannot be used to declare
+historical0017 offline; backup55tables includes separate revision table while pure
+modelrestore plan54 excludes it. Full exact schema/FK/rows revalidated beforestop.
+
+P then owned-stopped before upgrading source1.2.0; Backend30948/listener17276,
+UI28136 confirmed stopped; managed researchCAT57419 absent afterstop. DB kept intact.
+Current start r1 BLOCKED atLifecycleError school_app_lifecycle.py:778: stoppedmanifest
+pins1.1.1 differ from current1.2.0. No manual manifest edit/delete/reseed workaround.
+D:/Dev/temp/psynova-p0018-cli-start-20261015-r1.stdout.json and .argv.json retained.
+Professional directworker owns minimal explicit stopped-instance prompt upgrade with
+knownhistory/owner/pin checks and recoverable originalmanifest; Root review pending.
+QA prepares one true assignedspecialist queue/persist/metadata-mode/adopt ordiscard
+API/browser path plus rolescope denials. No fakecandidate/extra800 replay permitted.
+
 ## ACTIVE — 2026-10-14 23:05 CST, staff programme queue integrated; generation blocked
 
 Canonical development branch xiajiadi/autonomous-delivery-20261011 is at ad4920b.
