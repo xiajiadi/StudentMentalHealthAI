@@ -198,7 +198,11 @@ def preflight(
 
 
 def build_service(
-    settings: HostSettings, *, hardware: Any, log_directory: Path | None = None
+    settings: HostSettings,
+    *,
+    hardware: Any,
+    log_directory: Path | None = None,
+    provider_mode: str = "MANAGED",
 ) -> Any:
     from llm_runtime.domain.models import (
         Capabilities,
@@ -246,21 +250,29 @@ def build_service(
         "OLLAMA_MAX_LOADED_MODELS": "1",
         "OLLAMA_NO_CLOUD": "1",
     }
-    binding = ExternalProcessBinding(
-        mode=ProcessMode.MANAGED,
-        command=(str(settings.ollama_executable), "serve"),
-        cwd=str(settings.ollama_root),
-        env=environment,
-        endpoint=settings.ollama_endpoint,
-        stdout_path=(str(log_directory / "ollama.stdout.log") if log_directory else None),
-        stderr_path=(str(log_directory / "ollama.stderr.log") if log_directory else None),
-    )
+    if type(provider_mode) is not str or provider_mode not in {
+        ProcessMode.MANAGED.value,
+        ProcessMode.EXTERNAL.value,
+    }:
+        raise HostError("PROVIDER_MODE_INVALID")
+    selected_mode = ProcessMode(provider_mode)
+    binding = None
+    if selected_mode is ProcessMode.MANAGED:
+        binding = ExternalProcessBinding(
+            mode=selected_mode,
+            command=(str(settings.ollama_executable), "serve"),
+            cwd=str(settings.ollama_root),
+            env=environment,
+            endpoint=settings.ollama_endpoint,
+            stdout_path=(str(log_directory / "ollama.stdout.log") if log_directory else None),
+            stderr_path=(str(log_directory / "ollama.stderr.log") if log_directory else None),
+        )
     provider = OllamaProvider(settings.ollama_endpoint, timeout_seconds=3.0)
     definition = ProviderDefinition(
         provider_id="ollama",
         provider_type="OllamaProvider",
         endpoint=settings.ollama_endpoint,
-        mode=ProcessMode.MANAGED,
+        mode=selected_mode,
         enabled=True,
         local_only=True,
         process_binding=binding,
