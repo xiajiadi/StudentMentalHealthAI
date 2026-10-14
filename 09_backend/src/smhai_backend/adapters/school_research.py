@@ -665,6 +665,18 @@ class SchoolResearchPersistenceAdapter:
             if not callable(factory):
                 raise _dependency_error()
             corpus = factory(binding_metadata)
+            cohort_study = {}
+            if getattr(binding_metadata, "cohort_id", None) is not None:
+                # A new policy with the same profile pins must not silently
+                # adopt a cohort sealed for a different research study.
+                policy = self._require_study_policy_configured()
+                study_ref = getattr(policy, "study_ref", None)
+                if (
+                    type(study_ref) is not str
+                    or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}", study_ref) is None
+                ):
+                    raise _study_policy_unavailable()
+                cohort_study = {"expected_study_ref": study_ref}
             assignment = await uow.research_cat.require_public_observed_case_assignment(
                 profile=profile_metadata,
                 binding=binding_metadata,
@@ -672,6 +684,7 @@ class SchoolResearchPersistenceAdapter:
                 subject_id=candidate.subject_id,
                 expected_profile_sha256=corpus.profile_sha256,
                 expected_corpus_sha256=corpus.response_csv_sha256,
+                **cohort_study,
             )
             if observed_response is not None and not corpus.matches(
                 assignment.case_index, observed_response[0], observed_response[1]

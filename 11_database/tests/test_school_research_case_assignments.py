@@ -656,6 +656,7 @@ async def test_cohort_student_assignment_matches_locked_roster_identity_before_r
 
     async def sealed_scope(**kwargs):
         assert kwargs["cohort_id"] == 900
+        assert kwargs["expected_study_ref"] == "study-fixture-v1"
         assert kwargs["verify_seal"] is False
         return SimpleNamespace(id=900)
 
@@ -683,6 +684,7 @@ async def test_cohort_student_assignment_matches_locked_roster_identity_before_r
         subject_id=40,
         expected_profile_sha256=_SHA_A,
         expected_corpus_sha256=_SHA_C,
+        expected_study_ref="study-fixture-v1",
     )
     assert len(scalar_calls) == 1
     assert "class_student_id" in str(scalar_calls[0])
@@ -691,6 +693,17 @@ async def test_cohort_student_assignment_matches_locked_roster_identity_before_r
     assert result.cohort_assignment_id == 5077
     assert "cohort_assignment_id" not in repr(result)
     assert "case_index" not in repr(result)
+
+    with pytest.raises(ResearchCatRepositoryError) as caught:
+        await repo.require_public_observed_case_assignment(
+            profile=profile,
+            binding=binding,
+            task_enrollment_id=30,
+            subject_id=40,
+            expected_profile_sha256=_SHA_A,
+            expected_corpus_sha256=_SHA_C,
+        )
+    assert caught.value.code is ResearchCatRepositoryErrorCode.CORPUS_PIN_UNAVAILABLE
 
 
 @pytest.mark.asyncio

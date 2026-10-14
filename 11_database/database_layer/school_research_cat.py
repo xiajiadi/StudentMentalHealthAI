@@ -758,6 +758,7 @@ class SchoolResearchCatRepository:
         profile: SchoolResearchProfileVersion | ResearchProfileMetadata,
         expected_profile_sha256: str,
         expected_corpus_sha256: str,
+        expected_study_ref: str | None = None,
         verify_seal: bool = True,
     ) -> SchoolResearchCohort:
         """Read and validate immutable cohort pins without taking cohort locks."""
@@ -787,6 +788,10 @@ class SchoolResearchCatRepository:
             or cohort.profile_sha256 != profile.profile_sha256
             or cohort.manifest_sha256 != profile.manifest_sha256
             or cohort.corpus_sha256 != expected_corpus_sha256
+            or (
+                expected_study_ref is not None
+                and cohort.study_ref != expected_study_ref
+            )
         ):
             _raise(
                 ResearchCatRepositoryErrorCode.CORPUS_PIN_UNAVAILABLE,
@@ -1128,6 +1133,7 @@ class SchoolResearchCatRepository:
         subject_id: int,
         expected_profile_sha256: str,
         expected_corpus_sha256: str,
+        expected_study_ref: str | None = None,
     ) -> ResearchPublicCaseAssignment:
         """Read one assignment under the already locked student scope.
 
@@ -1160,6 +1166,14 @@ class SchoolResearchCatRepository:
         cohort_id = binding.cohort_id
         cohort_assignment_id: int | None = None
         if cohort_id is not None:
+            if (
+                not isinstance(expected_study_ref, str)
+                or _TOKEN.fullmatch(expected_study_ref) is None
+            ):
+                _raise(
+                    ResearchCatRepositoryErrorCode.CORPUS_PIN_UNAVAILABLE,
+                    "trusted study scope is unavailable for the sealed cohort",
+                )
             cohort_id = _positive_int(cohort_id, "cohort_id")
             await self._require_sealed_cohort_scope(
                 cohort_id=cohort_id,
@@ -1168,6 +1182,7 @@ class SchoolResearchCatRepository:
                 profile=profile,
                 expected_profile_sha256=expected_profile_sha256,
                 expected_corpus_sha256=expected_corpus_sha256,
+                expected_study_ref=expected_study_ref,
                 verify_seal=False,
             )
             # lock_student_task_scope has already locked and checked the

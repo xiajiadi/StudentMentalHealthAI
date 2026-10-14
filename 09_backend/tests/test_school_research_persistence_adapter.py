@@ -883,3 +883,45 @@ async def test_unconfigured_observed_guard_denies_before_any_decrypt(monkeypatch
     assert not repo.load_calls and not repo.create_calls and not repo.save_calls
     assert "observed-assignment-check" not in repo.operations
     assert not client.calls
+
+
+@pytest.mark.asyncio
+async def test_cohort_guard_forwards_current_trusted_study_before_loading_state(monkeypatch):
+    _install_scope(monkeypatch)
+    repo = _Repo()
+    repo.binding.cohort_id = 701
+    owner = _Owner(repo)
+    adapter, _client, factory_calls = _adapter(owner)
+    adapter._study_use_policy.study_ref = "STUDY_current_replay"
+    original = repo.require_public_observed_case_assignment
+
+    async def require_study(**kwargs):
+        assert kwargs["expected_study_ref"] == "STUDY_current_replay"
+        assert not repo.load_calls and not factory_calls
+        return await original(**kwargs)
+
+    repo.require_public_observed_case_assignment = require_study
+    await adapter.prepare_answer(
+        _actor(), "session-ref", expected_state_version=1,
+        item_id="item-1", raw_value=1, at=NOW, idempotency=IDEMPOTENCY,
+    )
+    assert len(repo.load_calls) == 1
+    assert len(factory_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_cohort_without_current_study_identifier_never_decrypts_or_builds_client(monkeypatch):
+    _install_scope(monkeypatch)
+    repo = _Repo()
+    repo.binding.cohort_id = 701
+    owner = _Owner(repo)
+    adapter, _client, factory_calls = _adapter(owner)
+    with pytest.raises(BackendError) as caught:
+        await adapter.prepare_answer(
+            _actor(), "session-ref", expected_state_version=1,
+            item_id="item-1", raw_value=1, at=NOW, idempotency=IDEMPOTENCY,
+        )
+    assert caught.value.code is ErrorCode.DEPENDENCY_UNAVAILABLE
+    assert not repo.load_calls and not factory_calls
+    assert "observed-assignment-check" not in repo.operations
+    assert owner.events == ["enter", "rollback"]

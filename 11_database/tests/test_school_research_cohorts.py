@@ -657,6 +657,7 @@ def test_cat_binding_requires_actual_sealed_cohort_profile_corpus_and_class(sqli
                 profile=profile,
                 expected_profile_sha256=_PROFILE_SHA,
                 expected_corpus_sha256=_CORPUS_SHA,
+                expected_study_ref="study-fixture-v1",
             )
         )
         assert cohort.id == metadata.cohort_id
@@ -668,6 +669,9 @@ def test_cat_binding_requires_actual_sealed_cohort_profile_corpus_and_class(sqli
              "expected_corpus_sha256": _CORPUS_SHA},
             {"class_id": 100, "expected_profile_sha256": _PROFILE_SHA,
              "expected_corpus_sha256": "f" * 64},
+            {"class_id": 100, "expected_profile_sha256": _PROFILE_SHA,
+             "expected_corpus_sha256": _CORPUS_SHA,
+             "expected_study_ref": "another-trusted-study"},
         ):
             with pytest.raises(ResearchCatRepositoryError) as error:
                 asyncio.run(
