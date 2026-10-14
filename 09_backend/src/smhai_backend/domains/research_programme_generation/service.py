@@ -434,6 +434,8 @@ def _valid_runtime_generation(
             or generated.prompt_id != PROMPT_ID
             or generated.prompt_version != PROMPT_VERSION
             or _SHA256.fullmatch(generated.prompt_sha256) is None
+            or generated.content_origin != "VERIFIED_SOURCE_METADATA"
+            or generated.generation_mode != "MODEL_SOURCE_SELECTION"
             or generated.target_role != "psychological_specialist"
             or generated.purpose != "staff_school_programme_research"
             or generated.status != "HOLD_FOR_REVIEW"

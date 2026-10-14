@@ -26,7 +26,7 @@ from smhai_backend.domains.school_research_programme_candidates.service import (
 _MODEL_REF = "qwen2.5-7b-instruct-school-demo"
 _MODEL_DIGEST = "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e"
 _PROMPT_REF = "PROMPT_staff_school_programme_research_v1"
-_PROMPT_VERSION = "1.0.1"
+_PROMPT_VERSION = "1.2.0"
 
 
 def actor(role: BackendRole) -> Actor:
@@ -73,6 +73,8 @@ class FakePersistence:
             "output_boundary": "STAFF_REFERENCE_ONLY",
             "content": {
                 "programme_ref": "staff-programme-r1",
+                "content_origin": "VERIFIED_SOURCE_METADATA",
+                "generation_mode": "MODEL_SOURCE_SELECTION",
                 "title": "教职工项目资料摘要",
                 "body": "这是一般项目资料，不关联个人测评信息。[S1]",
                 "citations": [
@@ -163,6 +165,8 @@ async def test_specialist_can_review_and_adopt_only_to_staff_material_state():
     assert listed["items"][0]["output_boundary"] == "STAFF_REFERENCE_ONLY"
     assert detail["student_feedback_eligible"] is False
     assert detail["output_boundary"] == "STAFF_REFERENCE_ONLY"
+    assert detail["content"]["content_origin"] == "VERIFIED_SOURCE_METADATA"
+    assert detail["content"]["generation_mode"] == "MODEL_SOURCE_SELECTION"
     assert detail["content"]["citations"][0]["citation_id"] == "S1"
     assert adopted["status"] == "ADOPTED"
     assert adopted["student_feedback_eligible"] is False
@@ -173,6 +177,8 @@ async def test_specialist_can_review_and_adopt_only_to_staff_material_state():
 def _generated_candidate_input():
     content = {
         "programme_ref": "staff-programme-r1",
+        "content_origin": "VERIFIED_SOURCE_METADATA",
+        "generation_mode": "MODEL_SOURCE_SELECTION",
         "title": "一般项目摘要",
         "body": "通用教职工项目资料内容。[S1]",
         "citations": [
@@ -233,6 +239,15 @@ def _generated_candidate_input():
         "content": content,
     }
     return valid
+
+
+def test_worker_candidate_schema_rejects_legacy_or_model_authored_content_origin():
+    invalid = _generated_candidate_input()
+    invalid["content"]["content_origin"] = "LEGACY_MODEL_TEXT"
+    invalid["content"]["generation_mode"] = "LEGACY_MODEL_AUTHORED_PASSAGES"
+
+    with pytest.raises(ValidationError):
+        GeneratedProgrammeCandidate.model_validate(invalid, strict=True)
 
 
 def test_generated_candidate_type_is_closed_and_requires_safety_and_staff_boundary():

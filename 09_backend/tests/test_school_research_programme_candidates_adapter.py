@@ -8,6 +8,7 @@ from smhai_backend.adapters.school_research_programme_candidates import (
     SchoolResearchProgrammeCandidatePersistenceAdapter,
 )
 from smhai_backend.core.errors import BackendError, ErrorCode
+from smhai_backend.domains.research_programme_generation.schemas import STUDY_REF
 from smhai_backend.domains.school_research_programme_candidates.schemas import (
     GeneratedProgrammeCandidate,
 )
@@ -59,6 +60,83 @@ def test_candidate_detail_rejects_source_manifest_mismatch_before_decrypting():
         adapter._detail(SimpleNamespace(source_manifest_sha256="0" * 64))
 
     assert raised.value.code is ErrorCode.WORKFLOW_CONFLICT
+
+
+def _candidate_content_payload(*, origin_fields=False):
+    content = {
+        "programme_ref": "staff-programme-r1",
+        "title": "Source catalogue",
+        "body": "Publisher: Source title [CHUNK_SOURCE]",
+        "citations": [
+            {
+                "citation_id": "S1",
+                "source_title": "Source title",
+                "source_organization": "Publisher",
+                "source_url": "https://example.org/source",
+                "source_locator": "Section 1",
+            }
+        ],
+    }
+    if origin_fields:
+        content.update(
+            {
+                "content_origin": "VERIFIED_SOURCE_METADATA",
+                "generation_mode": "MODEL_SOURCE_SELECTION",
+            }
+        )
+    return {
+        "candidate_ref": "RPCAND_synthetic_1",
+        "programme_ref": "staff-programme-r1",
+        "content_revision": 1,
+        "content": content,
+    }
+
+
+def _decrypt_row(*, prompt_version, payload_schema_version):
+    return SimpleNamespace(
+        candidate_ref="RPCAND_synthetic_1",
+        programme_ref="staff-programme-r1",
+        study_ref=STUDY_REF,
+        prompt_version=prompt_version,
+        payload_ciphertext=b"ciphertext",
+        cipher_format_version="enc.v1",
+        key_version="key-v1",
+        payload_schema_version=payload_schema_version,
+    )
+
+
+def test_candidate_detail_labels_old_encrypted_passages_as_legacy_model_text():
+    adapter = _adapter()
+    adapter.protection = SimpleNamespace(
+        decrypt_json=lambda _payload: _candidate_content_payload(origin_fields=False)
+    )
+
+    result = adapter._decrypt_content(
+        _decrypt_row(
+            prompt_version="1.1.1",
+            payload_schema_version="school_research_programme_candidate.v1",
+        )
+    )
+
+    assert result["content_origin"] == "LEGACY_MODEL_TEXT"
+    assert result["generation_mode"] == "LEGACY_MODEL_AUTHORED_PASSAGES"
+
+
+def test_candidate_detail_requires_explicit_origin_for_v120_ciphertext():
+    adapter = _adapter()
+    adapter.protection = SimpleNamespace(
+        decrypt_json=lambda _payload: _candidate_content_payload(origin_fields=False)
+    )
+
+    with pytest.raises(BackendError) as raised:
+        adapter._decrypt_content(
+            _decrypt_row(
+                prompt_version="1.2.0",
+                payload_schema_version="school_research_programme_candidate.v2",
+            )
+        )
+
+    assert raised.value.code is ErrorCode.DEPENDENCY_INVALID_RESPONSE
 
 
 async def test_candidate_store_requires_a_configured_source_manifest_pin():

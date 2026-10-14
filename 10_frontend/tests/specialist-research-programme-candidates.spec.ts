@@ -33,7 +33,8 @@ const detail = {
   psychological_interpretation_allowed: false as const,
   publication_status: 'not_approved_for_publication_or_operational_use' as const,
   content: {
-    programme_ref: candidate.programme_ref, title: '合成校园联结参考框架',
+    programme_ref: candidate.programme_ref, content_origin: 'VERIFIED_SOURCE_METADATA',
+    generation_mode: 'MODEL_SOURCE_SELECTION', title: '合成校园联结参考框架',
     body: '仅用于教职工研究模拟参考；资料未构成个体化建议或经验证的效果结论。',
     citations: [{ citation_id: 'S1', source_title: '公开来源标题', source_organization: '公开机构', source_url: 'https://example.org/source', source_locator: '第 2 节' }],
   },
@@ -82,6 +83,8 @@ describe('specialist research programme candidates', () => {
     await flushPromises()
     expect(service.get).toHaveBeenCalledWith(task.task_ref, candidate.candidate_ref)
     expect(wrapper.text()).toContain(detail.content.title)
+    expect(wrapper.text()).toContain('来源索引 · 模型仅选择来源')
+    expect(wrapper.text()).not.toContain('旧版模型撰写文本')
     expect(wrapper.text()).toContain('公开来源标题')
 
     const adopt = wrapper.findAll('button').find((button) => button.text().includes('采纳为参考'))!
@@ -96,6 +99,28 @@ describe('specialist research programme candidates', () => {
       'programme-candidate-synthetic-key',
     )
     expect(service.list).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+
+  it('labels legacy candidates as model-authored text instead of the source-index mode', async () => {
+    const { pinia } = specialistSession()
+    service.get.mockResolvedValue({
+      ...detail,
+      content: {
+        ...detail.content,
+        content_origin: 'LEGACY_MODEL_TEXT',
+        generation_mode: 'LEGACY_MODEL_AUTHORED_PASSAGES',
+      },
+    })
+    const wrapper = mount(SpecialistResearchProgrammeCandidates, { global: { plugins: [pinia] } })
+    await flushPromises()
+    await wrapper.find('button.programme-candidates__task').trigger('click')
+    await flushPromises()
+    await wrapper.find('button.programme-candidates__row').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('旧版模型撰写文本')
+    expect(wrapper.text()).not.toContain('来源索引 · 模型仅选择来源')
     wrapper.unmount()
   })
 

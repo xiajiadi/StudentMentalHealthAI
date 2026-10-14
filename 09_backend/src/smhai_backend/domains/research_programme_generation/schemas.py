@@ -96,6 +96,8 @@ class ResearchProgrammeCandidate:
     publication_eligible: bool = field(default=False, init=False)
     production_use: bool = field(default=False, init=False)
     student_feedback_eligible: bool = field(default=False, init=False)
+    content_origin: str = field(default="VERIFIED_SOURCE_METADATA", init=False)
+    generation_mode: str = field(default="MODEL_SOURCE_SELECTION", init=False)
     report: bool = field(default=False, init=False)
     model_id: str = field(default="qwen2.5-7b-instruct-school-demo", init=False)
     model_version: str = ""

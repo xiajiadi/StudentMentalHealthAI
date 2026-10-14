@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 from database_layer.school_research_education_jobs import ResearchEducationJobErrorCode
 
+from smhai_backend.core.errors import BackendError, ErrorCode
 from smhai_backend.domains.research_programme_generation.schemas import (
     CLAIM_BOUNDARY_VERSION,
     STUDY_REF,
@@ -123,7 +124,7 @@ def _held_outcome():
         study_ref=STUDY_REF,
         valid_through_month="2027-06",
         prompt_id="PROMPT_staff_school_programme_research_v1",
-        prompt_version="1.0.1",
+        prompt_version="1.2.0",
         prompt_sha256="1" * 64,
         retrieval_bundle_sha256="2" * 64,
         chunk_set_sha256="3" * 64,
@@ -193,3 +194,94 @@ def test_no_evidence_abstains_and_crisis_action_never_generates_candidate():
     assert worker._disposition(crisis) == (
         "CRISIS_ROUTED", ResearchEducationJobErrorCode.SAFETY_BLOCKED
     )
+
+
+@pytest.mark.asyncio
+async def test_invalid_runtime_response_finishes_for_review_without_retry_or_regeneration():
+    class _InvalidResponseGeneration:
+        calls = 0
+
+        async def generate(self, **_kwargs):
+            self.calls += 1
+            raise BackendError(
+                ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                detail="invalid structured research response",
+            )
+
+    class _FinalizingAdapter(_PersistenceAdapter):
+        def __init__(self):
+            self.finalized = []
+            self.retries = []
+
+        async def finalize_programme_job(self, claim, *, status, error_code=None):
+            self.finalized.append((claim, status, error_code))
+            return status
+
+        async def retry_programme_job(self, claim, *, error_code):
+            self.retries.append((claim, error_code))
+
+    worker = _worker()
+    generation = _InvalidResponseGeneration()
+    persistence_adapter = _FinalizingAdapter()
+    claim = _claim()
+
+    async def claim_once():
+        return [claim]
+
+    worker._claim_one = claim_once
+    worker.generation_service = generation
+    worker.persistence_adapter = persistence_adapter
+
+    result = await worker.run_once()
+
+    assert result is ResearchProgrammeWorkerResult.REVIEW_REQUIRED
+    assert generation.calls == 1
+    assert len(persistence_adapter.finalized) == 1
+    assert persistence_adapter.finalized[0][1:] == (
+        "REVIEW_REQUIRED",
+        ResearchEducationJobErrorCode.DEPENDENCY_INVALID_RESPONSE,
+    )
+    assert persistence_adapter.retries == []
+
+
+@pytest.mark.asyncio
+async def test_transient_runtime_timeout_still_uses_bounded_retry_classification():
+    class _TimeoutGeneration:
+        calls = 0
+
+        async def generate(self, **_kwargs):
+            self.calls += 1
+            raise BackendError(ErrorCode.DEPENDENCY_TIMEOUT, detail="upstream timeout")
+
+    class _RetryingAdapter(_PersistenceAdapter):
+        def __init__(self):
+            self.retries = []
+            self.finalized = []
+
+        async def retry_programme_job(self, claim, *, error_code):
+            self.retries.append((claim, error_code))
+
+        async def finalize_programme_job(self, claim, *, status, error_code=None):
+            self.finalized.append((claim, status, error_code))
+            return status
+
+    worker = _worker()
+    generation = _TimeoutGeneration()
+    persistence_adapter = _RetryingAdapter()
+    claim = _claim()
+
+    async def claim_once():
+        return [claim]
+
+    worker._claim_one = claim_once
+    worker.generation_service = generation
+    worker.persistence_adapter = persistence_adapter
+
+    result = await worker.run_once()
+
+    assert result is ResearchProgrammeWorkerResult.RETRY
+    assert generation.calls == 1
+    assert persistence_adapter.retries == [
+        (claim, ResearchEducationJobErrorCode.UPSTREAM_TIMEOUT)
+    ]
+    assert persistence_adapter.finalized == []

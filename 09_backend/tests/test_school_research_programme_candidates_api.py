@@ -124,6 +124,8 @@ async def test_specialist_candidate_review_has_closed_scope_and_staff_only_adopt
     detail_row = detail.json()["data"]
     assert detail_row["output_boundary"] == "STAFF_REFERENCE_ONLY"
     assert detail_row["student_feedback_eligible"] is False
+    assert detail_row["content"]["content_origin"] == "VERIFIED_SOURCE_METADATA"
+    assert detail_row["content"]["generation_mode"] == "MODEL_SOURCE_SELECTION"
     assert detail_row["content"]["citations"][0]["citation_id"] == "S1"
     assert bad_adopt.status_code == 422
     assert missing_csrf.status_code == 403

@@ -61,6 +61,12 @@ class ProgrammeCitation(_StrictModel):
 
 class ProgrammeCandidateContent(_StrictModel):
     programme_ref: StrictStr = Field(min_length=1, max_length=128)
+    content_origin: Literal["VERIFIED_SOURCE_METADATA", "LEGACY_MODEL_TEXT"] = (
+        "LEGACY_MODEL_TEXT"
+    )
+    generation_mode: Literal["MODEL_SOURCE_SELECTION", "LEGACY_MODEL_AUTHORED_PASSAGES"] = (
+        "LEGACY_MODEL_AUTHORED_PASSAGES"
+    )
     title: StrictStr = Field(min_length=1, max_length=120, repr=False)
     body: StrictStr = Field(min_length=1, max_length=3600, repr=False)
     citations: list[ProgrammeCitation] = Field(min_length=1, max_length=12, repr=False)
@@ -140,6 +146,11 @@ class GeneratedProgrammeCandidate(_StrictModel):
     def processor_policy_matches_lease(self):
         if self.job.policy_hash != self.processor_policy_sha256:
             raise ValueError("processor policy pin does not match lease")
+        if (
+            self.content.content_origin != "VERIFIED_SOURCE_METADATA"
+            or self.content.generation_mode != "MODEL_SOURCE_SELECTION"
+        ):
+            raise ValueError("candidate content origin is invalid")
         return self
 
 

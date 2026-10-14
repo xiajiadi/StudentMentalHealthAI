@@ -493,6 +493,49 @@ def test_lease_owner_token_expiry_retry_and_attempt_limit(session):
     assert final.last_error_code == ResearchEducationJobErrorCode.LEASE_EXPIRED_MAX_ATTEMPTS.value
 
 
+def test_invalid_dependency_response_can_finish_as_review_required(session):
+    repo = _repo(session)
+    queued = _enqueue(
+        repo,
+        policy_version=STAFF_PROGRAMME_POLICY_VERSION,
+        policy_hash="9" * 64,
+    )
+    claim = asyncio.run(
+        repo.claim_next(
+            school_id=1,
+            lease_owner="staff-worker",
+            limit=1,
+            lease_seconds=30,
+            max_attempts=5,
+            policy_version=STAFF_PROGRAMME_POLICY_VERSION,
+            now=_NOW,
+        )
+    )[0]
+
+    finished = asyncio.run(
+        repo.finish(
+            school_id=1,
+            research_session_id=1,
+            job_id=queued.id,
+            lease_owner=claim.lease_owner,
+            lease_token=claim.lease_token,
+            status="REVIEW_REQUIRED",
+            error_code=ResearchEducationJobErrorCode.DEPENDENCY_INVALID_RESPONSE,
+            now=_NOW + timedelta(seconds=1),
+        )
+    )
+
+    assert finished.status == "REVIEW_REQUIRED"
+    assert (
+        finished.last_error_code
+        == ResearchEducationJobErrorCode.DEPENDENCY_INVALID_RESPONSE.value
+    )
+    assert finished.lease_expires_at is None
+    persisted = session.get(SchoolResearchEducationJob, queued.id)
+    assert persisted.lease_owner is None
+    assert persisted.lease_token is None
+
+
 def test_replay_scope_and_error_codes_are_closed(session):
     repo = _repo(session)
     _enqueue(repo, policy_hash="a" * 64)
