@@ -652,7 +652,12 @@ def _validated_research_config(
 
 
 def _research_config_from_manifest(
-    manifest: Mapping[str, object], target: Path, backend_port: int, frontend_port: int
+    manifest: Mapping[str, object],
+    target: Path,
+    backend_port: int,
+    frontend_port: int,
+    *,
+    allow_legacy_prompt: bool = False,
 ) -> ResearchProcessConfig | None:
     has_config = "research_config" in manifest
     has_port = "research_cat_port" in manifest
@@ -769,8 +774,24 @@ def _research_config_from_manifest(
             if type(expected_programme) is dict and type(expected_runtime) is dict
             else None
         )
+        expected_legacy_programme = (
+            {**expected_manifest_programme, "prompt_version": "1.1.1"}
+            if type(expected_manifest_programme) is dict
+            else None
+        )
+        legacy_prompt_match = (
+            allow_legacy_prompt
+            and manifest.get("state") in {
+                "STARTING", "RUNNING", "PARTIAL_READINESS_UNOBSERVED", "PARTIAL_FAILURE",
+                "STOP_BLOCKED_FOREIGN_LISTENER", "STOP_BLOCKED_IDENTITY_CHANGED",
+                "STOP_BLOCKED_IDENTITY_UNAVAILABLE", "STOP_INCOMPLETE", "STOPPING",
+                "STOP_PARTIAL", "STOPPED",
+            }
+            and type(expected_legacy_programme) is dict
+            and expected_legacy_programme == programme_raw
+        )
         if (
-            expected_manifest_programme != programme_raw
+            (expected_manifest_programme != programme_raw and not legacy_prompt_match)
             or type(expected_runtime) is not dict
             or expected_runtime.get("mode") != "http"
             or expected_runtime.get("base_url") != RESEARCH_PROGRAMME_RUNTIME_URL
@@ -784,7 +805,7 @@ def _research_config_from_manifest(
             model_ref=expected_programme["model_ref"],
             model_digest_sha256=expected_programme["model_digest_sha256"],
             prompt_ref=expected_programme["prompt_ref"],
-            prompt_version=expected_programme["prompt_version"],
+            prompt_version=programme_raw["prompt_version"],
             poll_interval_seconds=expected_programme["poll_interval_seconds"],
             lease_seconds=expected_programme["lease_seconds"],
             max_attempts=expected_programme["max_attempts"],
@@ -810,6 +831,31 @@ def _research_config_from_manifest(
         programme_worker=programme_config,
         **study_values,
     )
+
+
+def _require_legacy_programme_upgrade_config_match(
+    legacy_config: ResearchProcessConfig | None,
+    current_config: ResearchProcessConfig | None,
+) -> None:
+    """Permit only the known prompt-pin transition for a stopped worker."""
+    if (
+        legacy_config is None
+        or current_config is None
+        or legacy_config.programme_worker is None
+        or current_config.programme_worker is None
+        or legacy_config.programme_worker.prompt_version != "1.1.1"
+        or current_config.programme_worker.prompt_version
+        != RESEARCH_PROGRAMME_PROMPT_VERSION
+    ):
+        raise LifecycleError("Stopped legacy research programme pins changed")
+
+    expected = legacy_config.manifest_value()
+    expected_programme = expected.get(RESEARCH_PROGRAMME_WORKER_CONFIG_KEY)
+    if type(expected_programme) is not dict:
+        raise LifecycleError("Stopped legacy research programme pins changed")
+    expected_programme["prompt_version"] = RESEARCH_PROGRAMME_PROMPT_VERSION
+    if expected != current_config.manifest_value():
+        raise LifecycleError("Stopped legacy research programme pins changed")
 
 
 def _utc_creation(process: dict[str, Any]) -> str | None:
@@ -1255,12 +1301,53 @@ class SchoolAppLifecycle:
         if manifest_path.exists():
             previous_manifest = _read_manifest(manifest_path)
             self._validate_manifest_scope(previous_manifest, target)
-            self._validate_manifest_services(previous_manifest, target)
+            stored_research = previous_manifest.get("research_config")
+            stored_programme = (
+                stored_research.get(RESEARCH_PROGRAMME_WORKER_CONFIG_KEY)
+                if isinstance(stored_research, dict)
+                else None
+            )
+            has_legacy_programme_prompt = (
+                isinstance(stored_programme, dict)
+                and stored_programme.get("prompt_version") == "1.1.1"
+            )
+            allow_legacy_programme_upgrade = (
+                has_legacy_programme_prompt
+                and previous_manifest.get("state") == "STOPPED"
+                and research_config is not None
+                and research_config.programme_worker is not None
+                and research_config.programme_worker.prompt_version
+                == RESEARCH_PROGRAMME_PROMPT_VERSION
+            )
+            if has_legacy_programme_prompt and not allow_legacy_programme_upgrade:
+                raise LifecycleError(
+                    "Stopped 1.1.1 research programme requires explicit current pinned configuration"
+                )
+            self._validate_manifest_services(
+                previous_manifest,
+                target,
+                allow_legacy_prompt=allow_legacy_programme_upgrade,
+            )
             if previous_manifest.get("state") != "STOPPED":
                 raise LifecycleError(
                     "Existing lifecycle manifest is not a completed stop"
                 )
-            self._require_stopped_manifest(previous_manifest)
+            self._require_stopped_manifest(
+                previous_manifest,
+                allow_legacy_prompt=allow_legacy_programme_upgrade,
+            )
+            if allow_legacy_programme_upgrade:
+                previous_research_config = _research_config_from_manifest(
+                    previous_manifest,
+                    target,
+                    backend_port,
+                    frontend_port,
+                    allow_legacy_prompt=True,
+                )
+                _require_legacy_programme_upgrade_config_match(
+                    previous_research_config,
+                    research_config,
+                )
         marker = self._validate_prepared_database(
             target,
             backend_port=backend_port,
@@ -1414,12 +1501,13 @@ class SchoolAppLifecycle:
         target = self._workspace(workspace)
         manifest = _read_manifest(target / MANIFEST_NAME)
         self._validate_manifest_scope(manifest, target)
-        self._validate_manifest_services(manifest, target)
+        self._validate_manifest_services(manifest, target, allow_legacy_prompt=True)
         research_config = _research_config_from_manifest(
             manifest,
             target,
             int(manifest["backend_port"]),
             int(manifest["frontend_port"]),
+            allow_legacy_prompt=True,
         )
         listeners: dict[str, Any] = {}
         for service in manifest.get("services", []):
@@ -1600,6 +1688,16 @@ class SchoolAppLifecycle:
                     "status": "DISABLED",
                     "integration": "RESEARCH_STAFF_PROGRAMME_OUTBOX",
                 }
+            elif (
+                research_config.programme_worker.prompt_version
+                != RESEARCH_PROGRAMME_PROMPT_VERSION
+            ):
+                result["research_programme_worker"] = {
+                    "enabled": True,
+                    "status": "UNAVAILABLE",
+                    "integration": "RESEARCH_STAFF_PROGRAMME_OUTBOX",
+                    "reason": "LEGACY_PROMPT_PIN",
+                }
             else:
                 backend_state = listeners.get("backend", {})
                 result["research_programme_worker"] = self._worker_dependency_status(
@@ -1651,7 +1749,7 @@ class SchoolAppLifecycle:
         manifest_path = target / MANIFEST_NAME
         manifest = _read_manifest(manifest_path)
         self._validate_manifest_scope(manifest, target)
-        self._validate_manifest_services(manifest, target)
+        self._validate_manifest_services(manifest, target, allow_legacy_prompt=True)
         services = manifest.get("services")
         if not isinstance(services, list):
             raise LifecycleError("Lifecycle manifest service list is invalid")
@@ -1851,6 +1949,7 @@ class SchoolAppLifecycle:
             target,
             int(manifest["backend_port"]),
             int(manifest["frontend_port"]),
+            allow_legacy_prompt=True,
         )
         if research_config is not None:
             try:
@@ -1898,7 +1997,9 @@ class SchoolAppLifecycle:
         manifest["updated_at"] = _utc_now()
         _atomic_write(path, manifest)
 
-    def _require_stopped_manifest(self, manifest: dict[str, Any]) -> None:
+    def _require_stopped_manifest(
+        self, manifest: dict[str, Any], *, allow_legacy_prompt: bool = False
+    ) -> None:
         for service in manifest["services"]:
             if self.ops.listeners(service["port"]):
                 raise LifecycleError(
@@ -1914,6 +2015,7 @@ class SchoolAppLifecycle:
             Path(manifest["workspace"]),
             int(manifest["backend_port"]),
             int(manifest["frontend_port"]),
+            allow_legacy_prompt=allow_legacy_prompt,
         )
         if research_config is not None and self.ops.listeners(research_config.port):
             raise LifecycleError(
@@ -2291,7 +2393,11 @@ class SchoolAppLifecycle:
             raise LifecycleError("Lifecycle manifest workspace identity changed")
 
     def _validate_manifest_services(
-        self, manifest: dict[str, Any], target: Path
+        self,
+        manifest: dict[str, Any],
+        target: Path,
+        *,
+        allow_legacy_prompt: bool = False,
     ) -> None:
         if any(
             key.startswith("research_")
@@ -2309,6 +2415,7 @@ class SchoolAppLifecycle:
             target,
             manifest["backend_port"],
             manifest["frontend_port"],
+            allow_legacy_prompt=allow_legacy_prompt,
         )
         expected_ports = {
             "backend": manifest["backend_port"],
