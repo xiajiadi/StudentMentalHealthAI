@@ -1,9 +1,54 @@
-## ACTIVE — 2026-10-14, O0017 native research feedback closure
+## ACTIVE — 2026-10-14 23:05 CST, staff programme queue integrated; generation blocked
 
-Canonical branch xiajiadi/autonomous-delivery-20261011 is at53e96b2.
-Remote is at96ac171; a1b62d0 (research review/feedback),626b93e
-(MySQL DISTINCT projection/order fix), and53e96b2 (explicit worker lifecycle)
-are locally integrated, not yet pushed.
+Canonical development branch xiajiadi/autonomous-delivery-20261011 is at ad4920b.
+Remote remains3390aab. Local reviewed source includes encrypted candidate schema0018,
+isolated real-source lexical research RAG and real local7B route, strict claim/Safety
+checks, specialist candidate/queue/adopt/discard UI, default-off persistent staff
+queue, explicit CLI/lifecycle source/model/study pins, and research Runtime host8161.
+O still runs53e96b2/schema0017. Source0018 is not native migration evidence.
+User confirms no shutdown deadline; RTX3060 is connected. Goal ACTIVE/incomplete.
+
+Direct workers only; no Lead. professional_g_harness implemented queue/CLI plus
+49 worker checks and197 bounded Backend/DB/deployment checks (1 symlink skip).
+gpu_resume_audit implemented actual queue API UI,5 component checks/typecheck/lint;
+no current native browser proof. research_repository_qa ran real06venv host builder/
+preflight and4 host tests without mocks, no8161 persistent serve/discovery yet.
+Root read/integrated source and independently ran17 generation checks and Ruff.
+Source commits928cdea/771327c/e096520/ad4920b are local, not pushed.
+
+Trusted staff-only RAG source package remains:
+D:/Dev/datasets/psynova-public-research/research-packages/school-rag-ai-engineering-20261014-v1/manifest.json
+SHA f8af1a33487f175b02400fbfcf5f655cd93b40c7a5a35e0582dc363b11401a45.
+Four WHO/Raniti excerpts span policy/theory/environment framework; no student
+feedback use or intervention efficacy approval. School study ref and corpus source
+study ref are distinct and bound into job policy; licences/attribution remain encrypted.
+Original pending packet, frozen corpus/Runtime/Safety/evidence remain unchanged.
+
+Actual native generation evidence: r5/r6 each retrieved4 public excerpts, received
+real Ollama HTTP200 with1 actual chat POST, Input/RetrievalSafety PROCEED, then
+ABSTAINED on effect/outcome claim terms. No HELD/published result. Prompt1.0.1
+r7/r8 failed candidate body citation validation; r9 counted6 paragraphs,4 valid
+markers and2 uncited paragraphs. Root51b2d44 fixes stale1.0.0 service pin and adds
+closed content-free validation stage diagnostics;17 checks pass. Prompt1.0.2 r10
+was single paragraph but contained0 inline markers despite4 listed sourceIDs.
+Prompt1.0.3 uses source-enum/schema constraints; r11/r12/r13 return Runtime422
+INVALID_STRUCTURED_OUTPUT. r13 confirms json_schema/body field. Generated bodies,
+raw errors/prompts/responses were not emitted or saved; only hashes/counts/static
+codes. All failures retained under D:/Dev/temp/psynova-research-programme-native-proof-20261014-r*.json.
+Temporary8161 host stopped after each call; external Ollama11437 and8160 untouched.
+No generation candidate or queue/native success may be claimed from these runs.
+
+Next bounded change authorized by Root: private structured passages DTO, each
+passage carries nonempty text and explicit enum-constrained real sourceIDs. Strict
+parse first; deterministic rendering to existing cited body only after all passages
+validate, no invalid-JSON repair, invented citations, dropped text or retry. Prompt
+version1.1.0. Preserve all source/claim/Safety/trace/HELD guards and frozenContracts.
+Worker professional owns this narrow patch; Root review before real generation.
+Independent QA prepares official O sealed backup and NEW P0018 restore/start,
+D:/Projects/.StudentMentalHealthAI-school-install-20261014-p, proposed3324/8098/4188,
+confirmed absent/free; no native actions yet. Do not repeat800 replay/reset oldDB.
+Final native staff queue/candidate/adoption/browser and installed recovery remain
+pending; existing student research feedback closure below is a separate bounded proof.
 
 O install: D:/Projects/.StudentMentalHealthAI-school-install-20261014-o,
 workspace070d3dd487356cce042bfbae497af217, DB3323/schema0017/API8097/UI4187.
