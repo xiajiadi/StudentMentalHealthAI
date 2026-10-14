@@ -27,6 +27,7 @@ from llm_runtime.domain.models import (
 )
 from llm_runtime.domain.registry import ModelRegistry
 from llm_runtime.providers.mock import MockProvider
+from llm_runtime.providers.ollama import OllamaProvider
 from llm_runtime.runtime.service import RuntimeService
 
 
@@ -111,6 +112,32 @@ def _request_payload() -> dict[str, Any]:
         },
         "config": {"max_output_tokens": 64, "temperature": 0.1, "timeout_seconds": 2.0},
     }
+
+
+def test_research_runtime_request_builds_actual_ollama_chat_payload_without_network() -> None:
+    from types import SimpleNamespace
+
+    payload = research_programme.ResearchProgrammeGenerationDto.model_validate(
+        _request_payload(), strict=True
+    )
+    model = SimpleNamespace(
+        contract_model_id=school_host.EXPECTED_CONTRACT_MODEL_ID,
+        logical_model_id=school_host.EXPECTED_MODEL_ID,
+        provider_model_id=school_host.EXPECTED_PROVIDER_MODEL_ID,
+    )
+    request = research_programme._to_runtime_request(payload, model)
+    provider = OllamaProvider("http://127.0.0.1:11437")
+    try:
+        ollama_payload = provider._generation_payload(request, stream=False)
+    finally:
+        provider.close()
+
+    assert request.system_prompt is None
+    assert ollama_payload["model"] == school_host.EXPECTED_PROVIDER_MODEL_ID
+    assert ollama_payload["stream"] is False
+    assert ollama_payload["messages"] == request.effective_messages
+    assert "system" not in ollama_payload
+    assert ollama_payload["format"] == request.structured_schema
 
 
 def test_research_programme_route_returns_hold_candidate_without_student_identity(

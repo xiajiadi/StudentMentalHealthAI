@@ -176,6 +176,7 @@ class ResearchProgrammeRuntimeRequest:
     messages: tuple[Mapping[str, str], ...]
     structured_schema: dict[str, Any]
     config: Any
+    system_prompt: str | None = None
     provider_model_id: str | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
     target_role: str = TARGET_ROLE
