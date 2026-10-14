@@ -10,6 +10,8 @@ import type { ReportSummary } from '@/api/client'
 import { frontendApi } from '@/services/mock-api'
 import {
   independentConversations,
+  researchConversations,
+  researchConversationCapability,
   newConversationIdempotencyKey,
   type IndependentConversation,
   type IndependentConversationDetail,
@@ -18,6 +20,9 @@ import {
   type IndependentTurnReceipt,
 } from '@/services/independent-conversations'
 
+const props = withDefaults(defineProps<{ researchMode?: boolean }>(), { researchMode: false })
+const conversationApi = props.researchMode ? researchConversations : independentConversations
+const researchAvailable = ref(false)
 const router = useRouter()
 const conversations = ref<IndependentConversation[]>([])
 const selectedConversationId = ref('')
@@ -109,7 +114,7 @@ const loadConversations = async (append = false) => {
   listError.value = ''
   try {
     const offset = append ? conversationOffset : 0
-    const page = await independentConversations.list(offset, 20)
+    const page = await conversationApi.list(offset, 20)
     if (append) {
       const existingIds = new Set(conversations.value.map((item) => item.conversationId))
       conversations.value = [...conversations.value, ...page.items.filter((item) => !existingIds.has(item.conversationId))]
@@ -137,7 +142,7 @@ const openConversation = async (conversationId: string, offset = 0) => {
   if (!sameConversation) receipt.value = null
   loadingDetail.value = true
   try {
-    const result = await independentConversations.detail(conversationId, offset)
+    const result = await conversationApi.detail(conversationId, offset)
     if (requestSequence === detailRequestSequence && selectedConversationId.value === conversationId) {
       detail.value = result
       const receiptTurn = receipt.value && result.messages.find((message) => message.turnId === receipt.value?.turnId)
@@ -166,7 +171,7 @@ const loadMoreMessages = async (direction: 'earlier' | 'later') => {
   loadingMore.value = true
   detailError.value = ''
   try {
-    const page = await independentConversations.detail(conversationId, offset, currentDetail.limit)
+    const page = await conversationApi.detail(conversationId, offset, currentDetail.limit)
     if (requestSequence !== messagePageRequestSequence || selectedConversationId.value !== conversationId || detail.value !== currentDetail) return
     const messagesById = new Map([...currentDetail.messages, ...page.messages].map((message) => [message.messageId, message]))
     detail.value = { ...page, offset: Math.min(currentDetail.offset, page.offset), messages: [...messagesById.values()].sort((a, b) => a.sequence - b.sequence) }
@@ -185,7 +190,7 @@ const createConversation = async () => {
   createError.value = ''
   try {
     if (!pendingCreateKey) pendingCreateKey = newConversationIdempotencyKey()
-    const created = await independentConversations.create(pendingCreateKey)
+    const created = await conversationApi.create(pendingCreateKey)
     pendingCreateKey = ''
     selectedConversationId.value = created.conversationId
     receipt.value = null
@@ -213,7 +218,7 @@ const handleSend = async () => {
       ? failedSubmission
       : { conversationId, text, key: newConversationIdempotencyKey() }
     failedSubmission = submission
-    receipt.value = await independentConversations.send(
+    receipt.value = await conversationApi.send(
       conversationId,
       submission.text,
       submission.key,
@@ -253,7 +258,12 @@ const openReport = (reportId: string) => void router.push(`/student/reports/${en
 
 onMounted(() => {
   void loadConversations()
-  void loadLegacyRecords()
+  if (!props.researchMode) {
+    void loadLegacyRecords()
+    void researchConversationCapability().then((enabled) => { researchAvailable.value = enabled }).catch(() => {
+      researchAvailable.value = false
+    })
+  }
 })
 </script>
 
@@ -262,17 +272,21 @@ onMounted(() => {
     <header class="support-heading">
       <div>
         <span class="support-kicker">学生空间 · 教育支持</span>
-        <h1>教育支持</h1>
+        <h1>{{ props.researchMode ? '高中场景教育支持' : '教育支持' }}</h1>
         <p>围绕学习和日常生活中的问题，查看已保存的私密对话。</p>
       </div>
-      <AppBadge tone="support" dot>独立会话</AppBadge>
+      <div>
+        <AppBadge tone="support" dot>{{ props.researchMode ? '研究演示' : '独立会话' }}</AppBadge>
+        <RouterLink v-if="researchAvailable" class="support-back" to="/student/research-support">进入高中场景研究演示</RouterLink>
+        <RouterLink v-if="props.researchMode" class="support-back" to="/student/support">返回教育支持</RouterLink>
+      </div>
     </header>
 
     <AppStatusCallout
       class="support-boundary"
       tone="info"
-      title="这是一般教育支持"
-      body="对话不会读取测评答案，也不提供测评解释、诊断或治疗建议。"
+      :title="props.researchMode ? '14–17 岁虚构校园场景研究演示' : '这是一般教育支持'"
+      :body="props.researchMode ? '基于公开资料提供一般学习与生活信息。资料已做工程核验，尚未经过心理专业审核；不会读取测评答案，也不用于诊断或治疗。' : '对话不会读取测评答案，也不提供测评解释、诊断或治疗建议。'"
     />
 
     <AppStatusCallout
@@ -506,7 +520,7 @@ onMounted(() => {
       </AppCard>
     </div>
 
-    <section class="support-records" aria-labelledby="support-records-title">
+    <section v-if="!props.researchMode" class="support-records" aria-labelledby="support-records-title">
       <div class="support-records__heading">
         <div><span class="support-kicker">已有记录</span><h2 id="support-records-title">测评关联支持记录</h2></div>
       </div>

@@ -1206,11 +1206,12 @@ export class RealApiProvider implements FrontendApi {
   }
 
   async requestIndependentConversation<T>(input: IndependentConversationRequest): Promise<ApiEnvelope<T>> {
-    const base = '/api/v1/student/conversations'
-    const isCollection = input.path === base
-    const isDetail = /^\/api\/v1\/student\/conversations\/CONV_[A-Za-z0-9][A-Za-z0-9_.-]{0,122}$/.test(input.path)
-    const isMessages = /^\/api\/v1\/student\/conversations\/CONV_[A-Za-z0-9][A-Za-z0-9_.-]{0,122}\/messages$/.test(input.path)
-    if (!(input.method === 'GET' ? isCollection || isDetail : isCollection || isMessages)) {
+    const match = /^\/api\/v1\/student\/(conversations|research-conversations)(?:\/(CONV_[A-Za-z0-9][A-Za-z0-9_.-]{0,122})(\/messages)?|\/capability)?$/.exec(input.path)
+    const isCapability = input.path === '/api/v1/student/research-conversations/capability'
+    const isCollection = Boolean(match && !match[2] && !input.path.endsWith('/capability'))
+    const isDetail = Boolean(match?.[2] && !match[3])
+    const isMessages = Boolean(match?.[2] && match[3])
+    if (!(input.method === 'GET' ? isCollection || isDetail || isCapability : isCollection || isMessages)) {
       throw new RealApiError('API_INVALID_REQUEST', '教育支持请求地址无效。')
     }
     if (input.method === 'POST' && !input.idempotencyKey?.trim()) {

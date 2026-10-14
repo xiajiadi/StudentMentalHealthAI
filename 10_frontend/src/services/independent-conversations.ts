@@ -2,6 +2,7 @@ import type { ApiEnvelope } from '@/types/contracts'
 import { RealApiError, requestIndependentConversation, type IndependentConversationRequest } from '@/services/real-api'
 
 const basePath = '/api/v1/student/conversations'
+const researchBasePath = '/api/v1/student/research-conversations'
 
 export type ConversationStatus = 'open' | 'active' | 'closed' | 'archived'
 export type ConversationTurnStatus = 'requested' | 'completed' | 'blocked' | 'failed'
@@ -295,7 +296,10 @@ const defaultTransport: IndependentConversationTransport = {
 }
 
 export class IndependentConversationsService {
-  constructor(private readonly transport: IndependentConversationTransport = defaultTransport) {}
+  constructor(
+    private readonly transport: IndependentConversationTransport = defaultTransport,
+    private readonly collectionPath: typeof basePath | typeof researchBasePath = basePath,
+  ) {}
 
   async list(offset = 0, limit = 20): Promise<IndependentConversationPage> {
     if (!Number.isInteger(offset) || offset < 0 || !Number.isInteger(limit) || limit < 1 || limit > 50) {
@@ -303,7 +307,7 @@ export class IndependentConversationsService {
     }
     const response = await this.transport.requestIndependentConversation<unknown>({
       method: 'GET',
-      path: basePath,
+      path: this.collectionPath,
       query: { offset, limit },
     })
     const data = response.data
@@ -316,7 +320,7 @@ export class IndependentConversationsService {
 
   async create(idempotencyKey: string): Promise<IndependentConversation> {
     const response = await this.transport.requestIndependentConversation<unknown>({
-      method: 'POST', path: basePath, body: {}, idempotencyKey,
+      method: 'POST', path: this.collectionPath, body: {}, idempotencyKey,
     })
     return mapConversation(response.data)
   }
@@ -328,7 +332,7 @@ export class IndependentConversationsService {
     }
     const response = await this.transport.requestIndependentConversation<unknown>({
       method: 'GET',
-      path: `${basePath}/${encodeURIComponent(id)}`,
+      path: `${this.collectionPath}/${encodeURIComponent(id)}`,
       query: { offset, limit },
     })
     const data = response.data
@@ -366,7 +370,7 @@ export class IndependentConversationsService {
     if (!idempotencyKey.trim() || idempotencyKey.length > 200) throw new RealApiError('VALIDATION_FAILED', '消息请求标识无效。')
     const response = await this.transport.requestIndependentConversation<unknown>({
       method: 'POST',
-      path: `${basePath}/${encodeURIComponent(id)}/messages`,
+      path: `${this.collectionPath}/${encodeURIComponent(id)}/messages`,
       body: { text: message },
       idempotencyKey,
     })
@@ -375,6 +379,17 @@ export class IndependentConversationsService {
 }
 
 export const independentConversations = new IndependentConversationsService()
+export const researchConversations = new IndependentConversationsService(defaultTransport, researchBasePath)
+
+export const researchConversationCapability = async (): Promise<boolean> => {
+  const response = await defaultTransport.requestIndependentConversation<unknown>({
+    method: 'GET', path: `${researchBasePath}/capability`,
+  })
+  if (!isRecord(response.data)) return invalidResponse('研究通道状态无法识别。')
+  expectKeys(response.data, ['enabled'])
+  if (typeof response.data.enabled !== 'boolean') return invalidResponse('研究通道状态无法识别。')
+  return response.data.enabled
+}
 
 export const newConversationIdempotencyKey = (): string => {
   if (typeof crypto === 'undefined' || typeof crypto.randomUUID !== 'function') {

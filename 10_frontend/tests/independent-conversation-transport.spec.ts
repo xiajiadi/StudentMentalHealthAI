@@ -97,6 +97,24 @@ describe('independent conversation API transport', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it('allows only the fixed research collection and read-only capability', async () => {
+    const { RealApiProvider, fetchMock } = await loadTransport(() => envelope({ enabled: true }))
+    const provider = new RealApiProvider()
+    await provider.requestIndependentConversation({ method: 'GET', path: '/api/v1/student/research-conversations/capability' })
+    await provider.requestIndependentConversation({ method: 'GET', path: '/api/v1/student/research-conversations' })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    await expect(provider.requestIndependentConversation({
+      method: 'POST', path: '/api/v1/student/research-conversations/capability', idempotencyKey: 'synthetic-key',
+    })).rejects.toMatchObject({ code: 'API_INVALID_REQUEST' })
+    await expect(provider.requestIndependentConversation({
+      method: 'GET', path: '/api/v1/student/conversations/capability',
+    })).rejects.toMatchObject({ code: 'API_INVALID_REQUEST' })
+    await expect(provider.requestIndependentConversation({
+      method: 'GET', path: '/api/v1/student/research-conversations/../conversations',
+    })).rejects.toMatchObject({ code: 'API_INVALID_REQUEST' })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
   it('propagates a network failure without retrying or falling back', async () => {
     const networkFailure = new TypeError('synthetic network failure')
     const { RealApiProvider, fetchMock } = await loadTransport(() => Promise.reject(networkFailure))

@@ -27,6 +27,7 @@ const router = createRouter({
     { path: '/student/research/tasks/:taskRef', name: 'student-research-task-start', component: () => import('@/views/student/ResearchAssessmentView.vue'), meta: { roles: ['student'], layout: 'focus' } },
     { path: '/student/research/sessions/:sessionRef', name: 'student-research-session-resume', component: () => import('@/views/student/ResearchAssessmentView.vue'), meta: { roles: ['student'], layout: 'focus' } },
     { path: '/student/support', name: 'student-support', component: () => import('@/views/student/SupportChatView.vue'), meta: { roles: ['student'], layout: 'workspace' } },
+    { path: '/student/research-support', name: 'student-research-support', component: () => import('@/views/student/ResearchSupportChatView.vue'), meta: { roles: ['student'], layout: 'workspace' } },
     { path: '/student/history', name: 'student-history', component: () => import('@/views/student/StudentHomeView.vue'), meta: { roles: ['student'], layout: 'workspace' } },
     { path: '/student/reports/:id', name: 'student-report-detail', component: () => import('@/views/student/StudentResultView.vue'), meta: { roles: ['student'], layout: 'workspace' } },
     { path: '/student/result/:id', name: 'student-result', component: () => import('@/views/student/StudentResultView.vue'), meta: { roles: ['student'], layout: 'workspace' } },
