@@ -455,6 +455,17 @@ def _normalize_check_sql(value: Any) -> str:
                 expression = self.parse_or()
                 self.take(")")
                 return expression
+            if kind == "word" and token == "length":
+                self.take("(")
+                argument_kind, argument = self.take()
+                if argument_kind not in {"identifier", "word"}:
+                    raise ValueError("unsupported CHECK syntax")
+                if argument in {
+                    "and", "or", "not", "is", "in", "between", "null", "true", "false"
+                }:
+                    raise ValueError("unsupported CHECK syntax")
+                self.take(")")
+                return ("length", argument.casefold())
             if kind == "identifier":
                 return ("identifier", token)
             if kind == "literal":
@@ -482,6 +493,8 @@ def _normalize_check_sql(value: Any) -> str:
         kind = node[0]
         if kind in {"identifier", "literal", "number", "null", "boolean"}:
             return str(node[1]) if len(node) > 1 else "null"
+        if kind == "length":
+            return f"length({node[1]})"
         if kind == "is-null":
             return f"({render(node[2])} is {'not ' if node[1] else ''}null)"
         if kind == "compare":

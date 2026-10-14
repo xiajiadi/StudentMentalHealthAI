@@ -806,6 +806,12 @@ def test_check_normalizer_matches_mysql_metadata_transport_and_parentheses():
     )
 
 
+def test_check_normalizer_accepts_only_single_column_length_shape_checks():
+    assert migration._normalize_check_sql("length(profile_sha256) = 64") == (
+        migration._normalize_check_sql("((LENGTH(`profile_sha256`) = 64))")
+    )
+
+
 @pytest.mark.parametrize(
     "left,right",
     [
@@ -822,9 +828,19 @@ def test_check_normalizer_preserves_literals_operators_and_precedence(left, righ
     assert migration._normalize_check_sql(left) != migration._normalize_check_sql(right)
 
 
-def test_check_normalizer_rejects_unknown_expression_syntax():
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "status IN (SELECT status FROM roles)",
+        "length(profile_sha256, other_column) = 64",
+        "length('profile_sha256') = 64",
+        "char_length(profile_sha256) = 64",
+        "length(profile_sha256 + 1) = 64",
+    ],
+)
+def test_check_normalizer_rejects_unknown_expression_syntax(expression):
     with pytest.raises(ValueError, match="unsupported CHECK syntax"):
-        migration._normalize_check_sql("status IN (SELECT status FROM roles)")
+        migration._normalize_check_sql(expression)
 
 
 def test_current_schema_rejects_explicit_collation_drift(prepared):
