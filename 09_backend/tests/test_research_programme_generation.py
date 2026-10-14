@@ -27,13 +27,13 @@ from smhai_backend.integrations.research_programme import (
     EXPECTED_MODEL_DIGEST,
     EXPECTED_MODEL_ID,
     EXPECTED_PROVIDER_MODEL_ID,
+    PROMPT_VERSION,
     ROUTE_PATH,
     HttpResearchProgrammeRuntimeClient,
     RuntimeGeneration,
     RuntimeSource,
 )
 from smhai_backend.integrations.safety import SafetyCheckView, SafetyDecisionView
-
 
 MANIFEST_SHA = "a" * 64
 NOW = datetime(2026, 10, 14, tzinfo=UTC)
@@ -589,7 +589,9 @@ async def test_runtime_http_client_sends_fixed_nonstudent_route_and_validates_re
     assert result.title == "Staff reference"
     assert result.retrieval_id == "RETR_test_001"
     assert result.prompt_id == "PROMPT_staff_school_programme_research_v1"
-    assert result.prompt_version == "1.0.0"
+    assert result.prompt_version == PROMPT_VERSION
+    assert PROMPT_VERSION == "1.0.1"
+    assert "including in negative disclaimers" in captured[0]["messages"][0]["content"]
     assert result.prompt_sha256 == hashlib.sha256(
         json.dumps(
             captured[0]["messages"],

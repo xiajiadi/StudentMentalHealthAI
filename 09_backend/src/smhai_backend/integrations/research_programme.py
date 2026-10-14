@@ -39,7 +39,7 @@ SCHEMA_VERSION = "research_programme_generation.v1"
 PURPOSE = "staff_school_programme_research"
 TARGET_ROLE = "psychological_specialist"
 PROMPT_ID = "PROMPT_staff_school_programme_research_v1"
-PROMPT_VERSION = "1.0.0"
+PROMPT_VERSION = "1.0.1"
 
 EXPECTED_MODEL_ID = "qwen2.5-7b-instruct-school-demo"
 EXPECTED_CONTRACT_MODEL_ID = "MODEL_local_primary"
@@ -78,6 +78,12 @@ _SYSTEM_MESSAGE = (
     "risk inferences, or guarantees of effectiveness. Do not address a student. "
     "Return only the requested JSON object. Every body paragraph must end with "
     "one or more exact source chunk markers such as [CHUNK_RESEARCH_ID]."
+    " Write a neutral inventory of source frameworks and their limitations, "
+    "not an action plan or an evaluation. Use neutral words such as framework, "
+    "context, reference, and limitation. Do not use the words effectiveness, "
+    "effective, outcomes, results, effects, improve, improvement, benefits, "
+    "success, or report in the title or body, including in negative disclaimers. "
+    "Describe uncertainty as a limitation in what these passages establish."
 )
 
 
