@@ -34,6 +34,7 @@ class ResearchProgrammeWorkerResult(StrEnum):
     IDLE = "IDLE"
     HELD = "HELD"
     ABSTAINED = "ABSTAINED"
+    REVIEW_REQUIRED = "REVIEW_REQUIRED"
     CANCELLED = "CANCELLED"
     RETRY = "RETRY"
     STALE_LEASE = "STALE_LEASE"
@@ -205,6 +206,26 @@ class ResearchProgrammeWorker:
                         return (
                             ResearchProgrammeWorkerResult.CANCELLED
                             if result == "CANCELLED"
+                            else ResearchProgrammeWorkerResult.STALE_LEASE
+                        )
+                    except Exception:
+                        return ResearchProgrammeWorkerResult.RETRY
+                if exc.code is ErrorCode.DEPENDENCY_INVALID_RESPONSE:
+                    try:
+                        from database_layer.school_research_education_jobs import (
+                            ResearchEducationJobErrorCode,
+                        )
+
+                        result = await self.persistence_adapter.finalize_programme_job(
+                            claim,
+                            status="REVIEW_REQUIRED",
+                            error_code=ResearchEducationJobErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                        )
+                        return (
+                            ResearchProgrammeWorkerResult.CANCELLED
+                            if result == "CANCELLED"
+                            else ResearchProgrammeWorkerResult.REVIEW_REQUIRED
+                            if result == "REVIEW_REQUIRED"
                             else ResearchProgrammeWorkerResult.STALE_LEASE
                         )
                     except Exception:
