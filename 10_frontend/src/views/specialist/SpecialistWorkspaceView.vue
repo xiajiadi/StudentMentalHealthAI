@@ -7,6 +7,7 @@ import AppPageHeader from '@/components/app/AppPageHeader.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import SpecialistTaskReviews from '@/components/school/SpecialistTaskReviews.vue'
 import SpecialistResearchFeedback from '@/components/school/SpecialistResearchFeedback.vue'
+import SpecialistResearchProgrammeCandidates from '@/components/school/SpecialistResearchProgrammeCandidates.vue'
 import SpecialistCatManagement from '@/components/school/SpecialistCatManagement.vue'
 import SchoolResearchManagement from '@/components/school/SchoolResearchManagement.vue'
 
@@ -64,6 +65,7 @@ const page = computed(() => ({
     <template v-else-if="section === 'tasks'">
       <SpecialistTaskReviews />
       <SpecialistResearchFeedback />
+      <SpecialistResearchProgrammeCandidates />
     </template>
     <SpecialistCatManagement v-else-if="section === 'cat'" />
   </main>
