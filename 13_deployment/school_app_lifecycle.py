@@ -40,6 +40,12 @@ from school_backend import (
     _parse_study_end,
     build_research_settings_kwargs,
 )
+from school_research_student_config import (
+    StudentResearchConfig,
+    StudentResearchConfigError,
+    load_student_research_config,
+    restore_student_research_config,
+)
 from school_schema import CURRENT_SCHOOL_REVISION, SUPPORTED_SNAPSHOT_REVISIONS
 
 SCHEMA = "psynova.school-app-lifecycle.v1"
@@ -104,6 +110,50 @@ RESEARCH_PROGRAMME_MANIFEST_FLAGS = {
 }
 RESEARCH_PROGRAMME_WORKER_FLAG = "--enable-research-programme-worker"
 RESEARCH_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+STUDENT_RESEARCH_CONFIG_ARGUMENTS = (
+    "research_student_config_file",
+    "research_student_config_sha256",
+)
+STUDENT_RESEARCH_CONFIG_FLAGS = {
+    "research_student_config_file": "--research-student-config-file",
+    "research_student_config_sha256": "--research-student-config-sha256",
+}
+
+
+def _validated_student_research_config(
+    value: Mapping[str, object] | None,
+) -> StudentResearchProcessConfig | None:
+    if value is None:
+        return None
+    if (
+        not isinstance(value, Mapping)
+        or set(value) != set(STUDENT_RESEARCH_CONFIG_ARGUMENTS)
+    ):
+        raise LifecycleError("Student research config pair is incomplete")
+    config_file = value.get("research_student_config_file")
+    expected_sha = value.get("research_student_config_sha256")
+    if isinstance(config_file, str):
+        config_file = Path(config_file)
+    if not isinstance(config_file, Path) or type(expected_sha) is not str:
+        raise LifecycleError("Student research config pair is incomplete")
+    try:
+        return StudentResearchProcessConfig(
+            load_student_research_config(config_file, expected_sha)
+        )
+    except StudentResearchConfigError:
+        raise LifecycleError("Student research config failed pinned preflight") from None
+
+
+def _student_research_config_from_manifest(
+    manifest: Mapping[str, object],
+) -> StudentResearchProcessConfig | None:
+    try:
+        restored = restore_student_research_config(
+            manifest.get("research_student_config")
+        )
+        return StudentResearchProcessConfig(restored) if restored is not None else None
+    except StudentResearchConfigError:
+        raise LifecycleError("Lifecycle student research config is invalid") from None
 
 
 @dataclass(frozen=True, slots=True)
@@ -232,6 +282,24 @@ class ResearchProcessConfig:
 
 class LifecycleError(RuntimeError):
     """A safe lifecycle error that never carries child output or credentials."""
+
+
+@dataclass(frozen=True, slots=True)
+class StudentResearchProcessConfig:
+    """Lifecycle-owned identity for the independent student-conversation lane."""
+
+    deployment: StudentResearchConfig
+
+    def cli_arguments(self) -> list[str]:
+        return [
+            STUDENT_RESEARCH_CONFIG_FLAGS["research_student_config_file"],
+            self.deployment.config_file,
+            STUDENT_RESEARCH_CONFIG_FLAGS["research_student_config_sha256"],
+            self.deployment.config_sha256,
+        ]
+
+    def manifest_value(self) -> dict[str, object]:
+        return self.deployment.manifest_value()
 
 
 def _utc_now() -> str:
@@ -1287,6 +1355,7 @@ class SchoolAppLifecycle:
         frontend_mode: str,
         timeout: float = START_TIMEOUT_SECONDS,
         research_config: Mapping[str, object] | None = None,
+        student_research_config: Mapping[str, object] | None = None,
     ) -> dict[str, Any]:
         if not IS_WINDOWS:
             raise LifecycleError("Native school application lifecycle requires Windows")
@@ -1294,6 +1363,9 @@ class SchoolAppLifecycle:
         _validate_ports(backend_port, frontend_port)
         _validate_options(llm_profile, frontend_mode)
         research_config = _validated_research_config(research_config, target)
+        student_research_config = _validated_student_research_config(
+            student_research_config
+        )
         if research_config is not None:
             _validate_research_port(research_config.port, backend_port, frontend_port)
         manifest_path = target / MANIFEST_NAME
@@ -1354,6 +1426,7 @@ class SchoolAppLifecycle:
             frontend_port=frontend_port,
             llm_profile=llm_profile,
             research_config=research_config,
+            student_research_config=student_research_config,
         )
         ports_to_check = (backend_port, frontend_port) + (
             (research_config.port,) if research_config is not None else ()
@@ -1406,6 +1479,8 @@ class SchoolAppLifecycle:
         if research_config is not None:
             manifest["research_config"] = research_config.manifest_value()
             manifest["research_cat_port"] = research_config.port
+        if student_research_config is not None:
+            manifest["research_student_config"] = student_research_config.manifest_value()
         if preview_output_dir is not None:
             manifest["frontend_preview_dir"] = str(preview_output_dir)
         _atomic_write(manifest_path, manifest)
@@ -1416,6 +1491,7 @@ class SchoolAppLifecycle:
                 frontend_port,
                 llm_profile,
                 research_config=research_config,
+                student_research_config=student_research_config,
             )
             backend = self.ops.spawn(
                 backend_argv, cwd=self.repo, env=_sanitize_environment()
@@ -1633,6 +1709,15 @@ class SchoolAppLifecycle:
             "current_ready_proof": False,
             "manifest_validated": True,
         }
+        student_research_config = _student_research_config_from_manifest(manifest)
+        if student_research_config is not None:
+            # There is no capability-specific readiness signal yet. A healthy
+            # Backend alone cannot promote this optional lane to READY.
+            result["research_student_conversation"] = {
+                "enabled": True,
+                "status": "UNVERIFIED",
+                "integration": "SCHOOL_RESEARCH_STUDENT_CONVERSATION",
+            }
         if research_config is not None:
             try:
                 research_listeners = self.ops.listeners(research_config.port)
@@ -2049,6 +2134,7 @@ class SchoolAppLifecycle:
         frontend_port: int,
         llm_profile: str,
         research_config: ResearchProcessConfig | None = None,
+        student_research_config: StudentResearchProcessConfig | None = None,
     ) -> dict[str, Any]:
         try:
             from prepare_school_runtime import validate_marker, verify_process
@@ -2091,6 +2177,8 @@ class SchoolAppLifecycle:
         ]
         if research_config is not None:
             argv.extend(research_config.cli_arguments())
+        if student_research_config is not None:
+            argv.extend(student_research_config.cli_arguments())
         try:
             result = subprocess.run(
                 _safe_argv(argv),
@@ -2129,6 +2217,7 @@ class SchoolAppLifecycle:
         profile: str,
         *,
         research_config: ResearchProcessConfig | None = None,
+        student_research_config: StudentResearchProcessConfig | None = None,
     ) -> list[str]:
         python, _base_python = _backend_python_paths(self.repo)
         argv = [
@@ -2145,6 +2234,8 @@ class SchoolAppLifecycle:
             ]
         if research_config is not None:
             argv.extend(research_config.cli_arguments())
+        if student_research_config is not None:
+            argv.extend(student_research_config.cli_arguments())
         return _safe_argv(argv)
 
     def _frontend_argv(
@@ -2401,7 +2492,9 @@ class SchoolAppLifecycle:
     ) -> None:
         if any(
             key.startswith("research_")
-            and key not in {"research_config", "research_cat_port"}
+            and key not in {
+                "research_config", "research_cat_port", "research_student_config"
+            }
             for key in manifest
         ):
             raise LifecycleError("Lifecycle manifest has unknown research fields")
@@ -2417,6 +2510,7 @@ class SchoolAppLifecycle:
             manifest["frontend_port"],
             allow_legacy_prompt=allow_legacy_prompt,
         )
+        student_research_config = _student_research_config_from_manifest(manifest)
         expected_ports = {
             "backend": manifest["backend_port"],
             "frontend": manifest["frontend_port"],
@@ -2454,6 +2548,8 @@ class SchoolAppLifecycle:
                 ]
                 if research_config is not None:
                     expected_argv.extend(research_config.cli_arguments())
+                if student_research_config is not None:
+                    expected_argv.extend(student_research_config.cli_arguments())
                 expected_executable = expected_argv[0]
                 if not isinstance(service.get("base_executable"), str) or _path_key(
                     service["base_executable"]
@@ -2855,6 +2951,12 @@ def _public_status(manifest: dict[str, Any]) -> dict[str, Any]:
             "status": "UNVERIFIED" if programme_enabled else "DISABLED",
             "integration": "RESEARCH_STAFF_PROGRAMME_OUTBOX",
         }
+    if "research_student_config" in manifest:
+        result["research_student_conversation"] = {
+            "enabled": True,
+            "status": "UNVERIFIED",
+            "integration": "SCHOOL_RESEARCH_STUDENT_CONVERSATION",
+        }
     return result
 
 
@@ -2900,6 +3002,8 @@ def build_parser() -> argparse.ArgumentParser:
             dest=name,
             type=Path if name.endswith("_file") else str,
         )
+    start.add_argument("--research-student-config-file", type=Path)
+    start.add_argument("--research-student-config-sha256")
     return parser
 
 
@@ -2963,6 +3067,17 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 else None
             )
+            student_research_config = (
+                {
+                    name: getattr(args, name)
+                    for name in STUDENT_RESEARCH_CONFIG_ARGUMENTS
+                }
+                if any(
+                    getattr(args, name) is not None
+                    for name in STUDENT_RESEARCH_CONFIG_ARGUMENTS
+                )
+                else None
+            )
             result = lifecycle.start(
                 args.workspace,
                 backend_port=args.backend_port,
@@ -2971,6 +3086,7 @@ def main(argv: list[str] | None = None) -> int:
                 frontend_mode=args.frontend_mode,
                 timeout=args.timeout,
                 research_config=research_config,
+                student_research_config=student_research_config,
             )
         elif args.command == "status":
             result = lifecycle.status(args.workspace)

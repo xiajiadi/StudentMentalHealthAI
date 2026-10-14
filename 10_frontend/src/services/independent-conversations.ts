@@ -386,9 +386,15 @@ export const researchConversationCapability = async (): Promise<boolean> => {
     method: 'GET', path: `${researchBasePath}/capability`,
   })
   if (!isRecord(response.data)) return invalidResponse('研究通道状态无法识别。')
-  expectKeys(response.data, ['enabled'])
-  if (typeof response.data.enabled !== 'boolean') return invalidResponse('研究通道状态无法识别。')
-  return response.data.enabled
+  if (response.data.enabled === false) {
+    expectKeys(response.data, ['enabled'])
+    return false
+  }
+  expectKeys(response.data, ['enabled', 'purpose', 'consumer_age_min', 'consumer_age_max', 'professional_approval'])
+  if (response.data.enabled !== true || response.data.purpose !== 'RESEARCH_SIMULATION'
+    || response.data.consumer_age_min !== 14 || response.data.consumer_age_max !== 17
+    || response.data.professional_approval !== false) return invalidResponse('研究通道状态无法识别。')
+  return true
 }
 
 export const newConversationIdempotencyKey = (): string => {

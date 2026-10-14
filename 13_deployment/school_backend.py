@@ -24,6 +24,10 @@ from prepare_school_runtime import (
     verify_runtime_grants,
 )
 from private_settings import read_private
+from school_research_student_config import (
+    StudentResearchConfigError,
+    load_student_research_config,
+)
 from school_schema import CURRENT_SCHOOL_REVISION, SUPPORTED_SNAPSHOT_REVISIONS
 
 DEFAULT_BACKEND_PORT = 8088
@@ -111,6 +115,9 @@ class ResearchCLIConfigError(PreparationError):
             "research_programme_config_invalid",
             "research_programme_worker_requires_pinned_study_use",
             "research_programme_dependencies_unavailable",
+            "student_research_config_incomplete",
+            "student_research_config_invalid",
+            "student_research_config_source_invalid",
         }
         self.code = code if code in allowed else "research_config_invalid"
         super().__init__(self.code)
@@ -188,7 +195,24 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--enable-research-programme-worker", action="store_true")
     parser.add_argument("--research-programme-manifest-file", type=Path)
     parser.add_argument("--research-programme-manifest-sha256")
+    parser.add_argument("--research-student-config-file", type=Path)
+    parser.add_argument("--research-student-config-sha256")
     return parser
+
+
+def build_research_student_settings_kwargs(args: argparse.Namespace) -> dict[str, object]:
+    """Map one independently pinned student-research config or force the lane off."""
+    config_file = getattr(args, "research_student_config_file", None)
+    config_sha256 = getattr(args, "research_student_config_sha256", None)
+    if config_file is None and config_sha256 is None:
+        return {"school_research_student_conversation": {"enabled": False}}
+    if config_file is None or config_sha256 is None:
+        raise ResearchCLIConfigError("student_research_config_incomplete")
+    try:
+        config = load_student_research_config(config_file, config_sha256)
+    except StudentResearchConfigError as exc:
+        raise ResearchCLIConfigError(exc.code) from None
+    return {"school_research_student_conversation": config.core_settings()}
 
 
 def build_research_settings_kwargs(args: argparse.Namespace, workspace: Path) -> dict[str, object]:
@@ -602,6 +626,7 @@ def build_cli_settings_kwargs(
     )
     research_kwargs = build_research_settings_kwargs(args, args.workspace)
     settings_kwargs.update(research_kwargs)
+    settings_kwargs.update(build_research_student_settings_kwargs(args))
     settings_kwargs["research_education_worker"] = {
         "enabled": args.enable_research_education_worker
     }
@@ -676,7 +701,12 @@ def main() -> int:
     try:
         settings_kwargs, research_kwargs = build_cli_settings_kwargs(args)
         programme_worker = settings_kwargs.get("research_programme_worker")
-        if type(programme_worker) is dict and programme_worker.get("enabled") is True:
+        student_lane = settings_kwargs.get("school_research_student_conversation")
+        if (
+            type(programme_worker) is dict and programme_worker.get("enabled") is True
+        ) or (
+            type(student_lane) is dict and student_lane.get("enabled") is True
+        ):
             _prepare_research_programme_rag_import(repo)
         if research_kwargs:
             try:

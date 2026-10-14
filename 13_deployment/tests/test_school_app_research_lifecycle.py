@@ -10,6 +10,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import school_app_lifecycle as lifecycle
+from school_research_student_config import MANIFEST_SHA256, StudentResearchConfig
 
 
 class FakeProcess:
@@ -609,7 +610,12 @@ def test_lifecycle_cli_rejects_partial_research_flag_set_without_echoing_path(
 
     output = capsys.readouterr().out
     assert code == 2
-    assert json.loads(output) == {"error_type": "LifecycleError", "status": "BLOCKED"}
+    error = json.loads(output)
+    assert error["error_type"] == "LifecycleError"
+    assert error["status"] == "BLOCKED"
+    assert error["diagnostic_stage"] == "cli_exception_boundary"
+    assert error["failure_location"]["file"] == "school_app_lifecycle.py"
+    assert type(error["failure_location"]["line"]) is int
     assert str(tmp_path) not in output
 
 
@@ -744,3 +750,56 @@ def test_unverified_backend_spawn_is_readable_but_never_adopted_or_stopped(
     assert 901 in ops.processes
     assert 8088 in ops.bound and 58540 in ops.bound
     assert app.status(workspace)["manifest_validated"] is True
+
+
+def test_student_config_manifest_owns_backend_argv_and_stop_needs_no_source_file(
+    prepared, monkeypatch,
+):
+    _repo, workspace, ops, app = prepared
+    config_file = workspace.parent / "student-research-config.json"
+    source_manifest = workspace / "pinned-source-manifest.json"
+    config_raw = b"opaque fixture bytes for lifecycle argv ownership"
+    config_file.write_bytes(config_raw)
+    config_sha = hashlib.sha256(config_raw).hexdigest()
+
+    def load_fixture(path, expected_sha):
+        assert path == config_file and expected_sha == config_sha
+        return StudentResearchConfig(
+            config_file=str(config_file),
+            config_sha256=config_sha,
+            school_id=41,
+            manifest_file=str(source_manifest),
+            manifest_sha256=MANIFEST_SHA256,
+        )
+
+    monkeypatch.setattr(lifecycle, "load_student_research_config", load_fixture)
+    result = app.start(
+        workspace,
+        frontend_mode="dev",
+        student_research_config={
+            "research_student_config_file": config_file,
+            "research_student_config_sha256": config_sha,
+        },
+    )
+    backend_argv = ops.spawned[0][0]
+    assert backend_argv[backend_argv.index("--research-student-config-file") + 1] == str(
+        config_file
+    )
+    assert backend_argv[
+        backend_argv.index("--research-student-config-sha256") + 1
+    ] == config_sha
+    assert result["research_student_conversation"]["status"] == "UNVERIFIED"
+
+    manifest = json.loads(
+        (workspace / lifecycle.MANIFEST_NAME).read_text(encoding="utf-8")
+    )
+    assert manifest["research_student_config"]["config_sha256"] == config_sha
+    assert manifest["research_student_config"]["school_id"] == 41
+    config_file.unlink()
+    status = app.status(workspace)
+    assert status["research_student_conversation"] == {
+        "enabled": True,
+        "status": "UNVERIFIED",
+        "integration": "SCHOOL_RESEARCH_STUDENT_CONVERSATION",
+    }
+    assert app.stop(workspace)["status"] == "STOPPED"
