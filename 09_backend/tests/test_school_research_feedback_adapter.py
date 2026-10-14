@@ -159,7 +159,7 @@ async def test_repository_conflict_is_safe_and_does_not_echo_storage_details(mon
 async def test_case_and_student_list_candidates_exclude_revoked_scopes():
     sqlalchemy = pytest.importorskip("sqlalchemy")
     from database_layer import models
-    from sqlalchemy.dialects import sqlite
+    from sqlalchemy.dialects import mysql, sqlite
 
     scope = SimpleNamespace(research_session_id=500)
 
@@ -252,13 +252,26 @@ async def test_case_and_student_list_candidates_exclude_revoked_scopes():
     assert "subject_access_grants.status" in sql
     assert "subject_access_grants.revoked_at IS NULL" in sql
 
-    student_sql = str(
-        adapter._student_candidate_query(
-            SimpleNamespace(school_id=17),
-            501,
-            datetime(2026, 10, 14, tzinfo=UTC),
-        ).compile(dialect=sqlite.dialect())
+    student_query = adapter._student_candidate_query(
+        SimpleNamespace(school_id=17),
+        501,
+        datetime(2026, 10, 14, tzinfo=UTC),
     )
+    assert [column.key for column in student_query.selected_columns] == [
+        "feedback_ref",
+        "created_at",
+    ]
+    assert student_query._distinct is True
+    student_mysql = str(
+        student_query.order_by(
+            models.SchoolResearchFeedbackRecord.created_at.desc(),
+            models.SchoolResearchFeedbackRecord.feedback_ref.asc(),
+        ).compile(dialect=mysql.dialect())
+    )
+    assert "SELECT DISTINCT" in student_mysql
+    assert "school_research_feedback_records.created_at DESC" in student_mysql
+    assert "school_research_feedback_records.feedback_ref ASC" in student_mysql
+    student_sql = str(student_query.compile(dialect=sqlite.dialect()))
     assert "task_enrollments.revoked_at IS NULL" in student_sql
     assert "school_class_students.revoked_at IS NULL" in student_sql
     assert "subject_access_grants.revoked_at IS NULL" in student_sql

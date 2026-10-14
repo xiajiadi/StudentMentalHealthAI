@@ -1328,7 +1328,10 @@ class SchoolResearchFeedbackPersistenceAdapter(SchoolProfessionalReviewPersisten
             )
             feedback_refs = (
                 await uow.session.scalars(
-                    base.order_by(m.SchoolResearchFeedbackRecord.created_at.desc())
+                    base.order_by(
+                        m.SchoolResearchFeedbackRecord.created_at.desc(),
+                        m.SchoolResearchFeedbackRecord.feedback_ref.asc(),
+                    )
                     .offset(offset)
                     .limit(limit)
                 )
@@ -1358,7 +1361,10 @@ class SchoolResearchFeedbackPersistenceAdapter(SchoolProfessionalReviewPersisten
     def _student_candidate_query(self, actor, account_id, now):
         m = self._db_models
         return (
-            self._select(m.SchoolResearchFeedbackRecord.feedback_ref)
+            self._select(
+                m.SchoolResearchFeedbackRecord.feedback_ref,
+                m.SchoolResearchFeedbackRecord.created_at,
+            )
             .join(
                 m.SchoolResearchReviewCase,
                 m.SchoolResearchReviewCase.id == m.SchoolResearchFeedbackRecord.review_case_id,
