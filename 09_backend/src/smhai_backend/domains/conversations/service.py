@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from smhai_backend.adapters.school_conversations import SchoolConversationsPersistenceAdapter
 from smhai_backend.core.errors import BackendError, ErrorCode, error
 from smhai_backend.core.request_context import RequestContext
+from smhai_backend.domains.school_conversation_safety.contracts import SafetyCaseSeed
 from smhai_backend.domains.models import Actor, BackendRole
 from smhai_backend.domains.support.schemas import GenerationContent, SupportCitation
 from smhai_backend.domains.support.service import (
@@ -397,6 +398,7 @@ class IndependentConversationService:
                 status="BLOCKED",
                 action="CRISIS_ROUTE",
                 approved_content=crisis_content,
+                safety_case=self._safety_case_seed(input_check),
                 safe_metadata=metadata,
                 trace_id=context.trace_id,
             )
@@ -408,6 +410,9 @@ class IndependentConversationService:
                 turn_id,
                 status="BLOCKED",
                 action=action,
+                safety_case=(
+                    self._safety_case_seed(input_check) if action == "REVIEW_REQUIRED" else None
+                ),
                 safe_metadata=metadata,
                 trace_id=context.trace_id,
             )
@@ -1203,10 +1208,26 @@ class IndependentConversationService:
             status=status,
             action=action,
             approved_content=content,
+            safety_case=(
+                self._safety_case_seed(check)
+                if action in {"REVIEW_REQUIRED", "CRISIS_ROUTE"}
+                else None
+            ),
             safe_metadata=metadata,
             trace_id=context.trace_id,
         )
         return self._turn_result(finished, content=content)
+
+    @staticmethod
+    def _safety_case_seed(check: SafetyCheckView) -> SafetyCaseSeed:
+        action = check.decision.action
+        if action not in {"REVIEW_REQUIRED", "CRISIS_ROUTE"}:
+            raise error(ErrorCode.WORKFLOW_CONFLICT, detail="safety review metadata is unavailable")
+        return SafetyCaseSeed(
+            action=action,
+            reason_codes=tuple(check.decision.reason_codes),
+            review_reference=check.review_reference,
+        )
 
     async def _finish_invalid(
         self,

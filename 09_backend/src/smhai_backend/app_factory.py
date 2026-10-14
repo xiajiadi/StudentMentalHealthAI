@@ -22,20 +22,20 @@ from smhai_backend.domains.assessment.router import router as assessment_router
 from smhai_backend.domains.auth.router import router as auth_router
 from smhai_backend.domains.cat_assets.router import router as cat_assets_router
 from smhai_backend.domains.cat_management.router import router as cat_management_router
-from smhai_backend.domains.conversations.router import router as conversations_router
 from smhai_backend.domains.conversations.research_router import (
     router as research_conversations_router,
 )
+from smhai_backend.domains.conversations.router import router as conversations_router
 from smhai_backend.domains.health.router import router as health_router
 from smhai_backend.domains.professional_reviews.router import router as professional_reviews_router
+from smhai_backend.domains.school_conversation_safety.router import (
+    router as school_conversation_safety_router,
+)
+from smhai_backend.domains.school_conversation_safety.router import (
+    student_router as student_conversation_safety_router,
+)
 from smhai_backend.domains.school_directory.router import router as school_directory_router
 from smhai_backend.domains.school_feedback.router import router as school_feedback_router
-from smhai_backend.domains.school_research_feedback.router import (
-    router as school_research_feedback_router,
-)
-from smhai_backend.domains.school_research_programme_candidates.router import (
-    router as school_research_programme_candidates_router,
-)
 from smhai_backend.domains.school_research.router import router as school_research_router
 from smhai_backend.domains.school_research_cohorts.router import (
     router as school_research_cohorts_router,
@@ -43,8 +43,14 @@ from smhai_backend.domains.school_research_cohorts.router import (
 from smhai_backend.domains.school_research_discovery.router import (
     router as school_research_discovery_router,
 )
+from smhai_backend.domains.school_research_feedback.router import (
+    router as school_research_feedback_router,
+)
 from smhai_backend.domains.school_research_profiles.router import (
     router as school_research_profiles_router,
+)
+from smhai_backend.domains.school_research_programme_candidates.router import (
+    router as school_research_programme_candidates_router,
 )
 from smhai_backend.domains.school_research_tasks.router import (
     router as school_research_tasks_router,
@@ -84,7 +90,7 @@ def create_app(
         CORSMiddleware,
         allow_origins=settings.allowed_origins,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "HEAD", "OPTIONS"],
+        allow_methods=["GET", "POST", "PUT", "HEAD", "OPTIONS"],
         allow_headers=[
             "Accept",
             "Content-Type",
@@ -119,6 +125,16 @@ def create_app(
         school_research_discovery_router, prefix=settings.api_prefix, include_in_schema=False
     )
     app.include_router(school_feedback_router, prefix=settings.api_prefix, include_in_schema=False)
+    app.include_router(
+        school_conversation_safety_router,
+        prefix=settings.api_prefix,
+        include_in_schema=False,
+    )
+    app.include_router(
+        student_conversation_safety_router,
+        prefix=settings.api_prefix,
+        include_in_schema=False,
+    )
     app.include_router(
         school_research_feedback_router, prefix=settings.api_prefix, include_in_schema=False
     )

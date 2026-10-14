@@ -53,6 +53,12 @@ from .school_research_review_feedback import (
     SchoolResearchFeedbackRepository,
     SchoolResearchReviewRepository,
 )
+from .school_conversation_safety import (
+    ConversationSafetyCaseDTO,
+    ConversationSafetyEventDTO,
+    SchoolConversationSafetyError,
+    SchoolConversationSafetyRepository,
+)
 from .school_seed import (
     SCHOOL_SEED_SLOTS,
     SYNTHETIC_SCHOOL_RECIPES,
@@ -110,6 +116,10 @@ __all__ = [
     "ResearchProgrammeCandidateError",
     "ResearchProgrammeCandidateScope",
     "SchoolResearchProgrammeCandidateRepository",
+    "ConversationSafetyCaseDTO",
+    "ConversationSafetyEventDTO",
+    "SchoolConversationSafetyError",
+    "SchoolConversationSafetyRepository",
     "WindowsDpapiKeyProvider",
     "create_engine",
     "create_session_factory",

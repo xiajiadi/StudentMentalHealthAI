@@ -748,6 +748,7 @@ class AssessmentResult(ResourceIdentityMixin, TimestampMixin, Base):
 class SupportSession(ResourceIdentityMixin, TimestampMixin, Base):
     __tablename__ = "support_sessions"
     __table_args__ = mysql_table_args(
+        UniqueConstraint("id", "subject_id", name="support_session_id_subject_unique"),
         CheckConstraint(
             "status IN ('OPEN', 'ACTIVE', 'CLOSED', 'ARCHIVED')", name="status_allowed"
         ),
@@ -809,6 +810,7 @@ class SupportMessage(ResourceIdentityMixin, TimestampMixin, Base):
 class SupportRun(ResourceIdentityMixin, TimestampMixin, Base):
     __tablename__ = "support_runs"
     __table_args__ = mysql_table_args(
+        UniqueConstraint("id", "support_session_id", name="support_run_id_session_unique"),
         CheckConstraint(
             "status IN ('REQUESTED', 'COMPLETED', 'BLOCKED', 'FAILED')", name="status_allowed"
         ),
@@ -870,6 +872,7 @@ class SupportEvidence(ResourceIdentityMixin, TimestampMixin, Base):
 class SafetyDecision(ResourceIdentityMixin, TimestampMixin, Base):
     __tablename__ = "safety_decisions"
     __table_args__ = mysql_table_args(
+        UniqueConstraint("id", "support_run_id", name="safety_decision_id_run_unique"),
         CheckConstraint(
             "action IN ("
             "'PROCEED', 'PROCEED_WITH_BOUNDARY', 'BLOCK', 'REVIEW_REQUIRED', 'CRISIS_ROUTE'"
@@ -3199,6 +3202,199 @@ class SchoolResearchProgrammeCandidate(ResourceIdentityMixin, TimestampMixin, Ba
     resolved_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
 
 
+class SchoolConversationSafetyCase(ResourceIdentityMixin, TimestampMixin, Base):
+    """Metadata-only school case linked to a blocked independent conversation turn."""
+
+    __tablename__ = "school_conversation_safety_cases"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("case_ref", name="school_conversation_safety_case_ref_unique"),
+        UniqueConstraint("safety_decision_id", name="school_conversation_safety_decision_unique"),
+        UniqueConstraint("id", "school_id", name="conversation_safety_case_id_school_unique"),
+        CheckConstraint("action IN ('REVIEW_REQUIRED', 'CRISIS_ROUTE')", name="action_allowed"),
+        CheckConstraint(
+            "status IN ('UNASSIGNED_PENDING', 'ASSIGNED', 'IN_REVIEW', 'REVIEWED', "
+            "'ESCALATION_NEEDED', 'CLOSED', 'REVOKED')",
+            name="status_allowed",
+        ),
+        CheckConstraint("state_version >= 1", name="state_version_positive"),
+        CheckConstraint(
+            "(class_id IS NULL AND class_student_id IS NULL) OR "
+            "(class_id IS NOT NULL AND class_student_id IS NOT NULL)",
+            name="class_binding_shape",
+        ),
+        CheckConstraint(
+            "(status = 'UNASSIGNED_PENDING' AND assigned_membership_role_id IS NULL) OR "
+            "(status = 'REVOKED' AND "
+            "((assigned_membership_role_id IS NULL AND class_id IS NULL) OR "
+            "(assigned_membership_role_id IS NOT NULL AND class_id IS NOT NULL))) OR "
+            "(status NOT IN ('UNASSIGNED_PENDING', 'REVOKED') "
+            "AND assigned_membership_role_id IS NOT NULL "
+            "AND class_id IS NOT NULL AND class_student_id IS NOT NULL)",
+            name="assignment_matches_state",
+        ),
+        CheckConstraint(
+            "(status IN ('REVIEWED', 'ESCALATION_NEEDED', 'CLOSED') "
+            "AND decision_code IS NOT NULL "
+            "AND decision_code = 'UNRESOLVED_NEEDS_CONTEXT') OR "
+            "(status NOT IN ('REVIEWED', 'ESCALATION_NEEDED', 'CLOSED') AND decision_code IS NULL)",
+            name="decision_code_matches_state",
+        ),
+        CheckConstraint(
+            "(review_note_ciphertext IS NULL AND review_note_cipher_format_version IS NULL "
+            "AND review_note_key_version IS NULL AND review_note_payload_schema_version IS NULL) "
+            "OR (review_note_ciphertext IS NOT NULL AND "
+            "review_note_cipher_format_version IS NOT NULL AND review_note_key_version IS NOT NULL "
+            "AND review_note_payload_schema_version IS NOT NULL)",
+            name="note_cipher_envelope",
+        ),
+        ForeignKeyConstraint(
+            ["support_session_id", "subject_id"],
+            ["support_sessions.id", "support_sessions.subject_id"],
+            name="fk_conversation_safety_session_subject",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["support_run_id", "support_session_id"],
+            ["support_runs.id", "support_runs.support_session_id"],
+            name="fk_conversation_safety_run_session",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["safety_decision_id", "support_run_id"],
+            ["safety_decisions.id", "safety_decisions.support_run_id"],
+            name="fk_conversation_safety_decision_run",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["subject_id", "school_id"],
+            ["subjects.id", "subjects.school_id"],
+            name="fk_conversation_safety_subject_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["class_student_id", "subject_id", "class_id", "school_id"],
+            [
+                "school_class_students.id",
+                "school_class_students.subject_id",
+                "school_class_students.class_id",
+                "school_class_students.school_id",
+            ],
+            name="fk_conversation_safety_roster_scope",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["assigned_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_conversation_safety_assignee_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["school_id"], ["schools.id"], name="fk_conversation_safety_school", ondelete="RESTRICT"
+        ),
+        Index(
+            "ix_conversation_safety_school_status_created",
+            "school_id",
+            "status",
+            "created_at",
+        ),
+        Index(
+            "ix_conversation_safety_assignee_status",
+            "school_id",
+            "assigned_membership_role_id",
+            "status",
+            "created_at",
+        ),
+    )
+
+    case_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    subject_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    support_session_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    support_run_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    safety_decision_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    class_id: Mapped[int | None] = mapped_column(unsigned_id(), nullable=True)
+    class_student_id: Mapped[int | None] = mapped_column(unsigned_id(), nullable=True)
+    action: Mapped[str] = mapped_column(ascii_id(32), nullable=False)
+    reason_codes: Mapped[list[str]] = mapped_column(mysql.JSON, nullable=False)
+    safety_review_reference: Mapped[str | None] = mapped_column(ascii_id(128), nullable=True)
+    status: Mapped[str] = mapped_column(
+        ascii_id(24),
+        nullable=False,
+        default="UNASSIGNED_PENDING",
+        server_default="UNASSIGNED_PENDING",
+    )
+    state_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    decision_code: Mapped[str | None] = mapped_column(ascii_id(40), nullable=True)
+    assigned_membership_role_id: Mapped[int | None] = mapped_column(unsigned_id(), nullable=True)
+    review_note_ciphertext: Mapped[bytes | None] = mapped_column(mysql.MEDIUMBLOB, nullable=True)
+    review_note_cipher_format_version: Mapped[str | None] = mapped_column(
+        ascii_id(32), nullable=True
+    )
+    review_note_key_version: Mapped[str | None] = mapped_column(ascii_id(64), nullable=True)
+    review_note_payload_schema_version: Mapped[str | None] = mapped_column(
+        ascii_id(64), nullable=True
+    )
+    trace_id: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    assigned_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    closed_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    retention_due_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+
+
+class SchoolConversationSafetyEvent(ResourceIdentityMixin, Base):
+    """Content-free state and assignment history for conversation safety cases."""
+
+    __tablename__ = "school_conversation_safety_events"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint(
+            "case_id", "state_version", name="school_conversation_safety_event_version_unique"
+        ),
+        CheckConstraint(
+            "event_type IN ('CREATED', 'ASSIGNED', 'REASSIGNED', 'UNASSIGNED', "
+            "'NOTE_DRAFTED', 'TRANSITIONED', 'REVOKED')",
+            name="event_type_allowed",
+        ),
+        CheckConstraint("state_version >= 1", name="state_version_positive"),
+        ForeignKeyConstraint(
+            ["case_id", "school_id"],
+            ["school_conversation_safety_cases.id", "school_conversation_safety_cases.school_id"],
+            name="fk_conversation_safety_event_case_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["actor_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_conversation_safety_event_actor_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["assigned_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_conversation_safety_event_assignee_school",
+            ondelete="RESTRICT",
+        ),
+        Index("ix_conversation_safety_events_case_created", "case_id", "created_at"),
+    )
+
+    case_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    actor_membership_role_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    assigned_membership_role_id: Mapped[int | None] = mapped_column(unsigned_id(), nullable=True)
+    class_id: Mapped[int | None] = mapped_column(unsigned_id(), nullable=True)
+    class_student_id: Mapped[int | None] = mapped_column(unsigned_id(), nullable=True)
+    event_type: Mapped[str] = mapped_column(ascii_id(24), nullable=False)
+    from_status: Mapped[str | None] = mapped_column(ascii_id(24), nullable=True)
+    to_status: Mapped[str] = mapped_column(ascii_id(24), nullable=False)
+    decision_code: Mapped[str | None] = mapped_column(ascii_id(40), nullable=True)
+    state_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    trace_id: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    retention_due_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(utc_datetime(), nullable=False, default=utc_now)
+
+
 class AuditEvent(ResourceIdentityMixin, Base):
     __tablename__ = "audit_events"
     __table_args__ = mysql_table_args(
@@ -3257,4 +3453,6 @@ __all__ = [
     "SchoolResearchCohortAssignment",
     "SchoolResearchCohortBatch",
     "SchoolResearchProgrammeCandidate",
+    "SchoolConversationSafetyCase",
+    "SchoolConversationSafetyEvent",
 ]

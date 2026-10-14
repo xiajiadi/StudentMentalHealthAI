@@ -14,6 +14,7 @@ from smhai_backend.adapters.school_conversations import (
 )
 from smhai_backend.core.errors import BackendError, ErrorCode
 from smhai_backend.core.idempotency import fingerprint
+from smhai_backend.domains.school_conversation_safety.contracts import SafetyCaseSeed
 
 
 def test_pagination_is_bounded_and_rejects_boolean_values() -> None:
@@ -187,6 +188,7 @@ class _FakeSupport:
         self.evidence_calls = []
         self.session_calls = []
         self.created_sessions = []
+        self.safety_decision_calls = []
 
     async def create_session(self, **kwargs):
         self.session_calls.append(kwargs)
@@ -219,11 +221,25 @@ class _FakeSupport:
         self.evidence_calls.append(kwargs)
         return SimpleNamespace(id=903)
 
+    async def create_safety_decision(self, **kwargs):
+        self.safety_decision_calls.append(kwargs)
+        return SimpleNamespace(id=904)
+
+
+class _FakeConversationSafety:
+    def __init__(self):
+        self.created = []
+
+    async def create_from_safety_decision(self, **kwargs):
+        self.created.append(kwargs)
+        return SimpleNamespace(case_ref="SCS_synthetic_1", status="UNASSIGNED_PENDING")
+
 
 class _FakeUow:
     def __init__(self, session):
         self.session = session
         self.support = _FakeSupport()
+        self.conversation_safety = _FakeConversationSafety()
         self.audit = SimpleNamespace(append=self._audit)
         self.audit_calls = []
         self.entered = False
@@ -562,6 +578,11 @@ async def test_blocked_crisis_route_keeps_approved_response_path(monkeypatch):
     session = _FakeSession(run, 1)
     adapter, uow = _fake_adapter(monkeypatch, session)
 
+    async def current_student_role(_uow, _actor, _role, _now):
+        return 17, 19
+
+    adapter._school_actor_role = current_student_role
+
     result = await adapter.finish_turn(
         ACTOR,
         SESSION.support_ref,
@@ -570,6 +591,11 @@ async def test_blocked_crisis_route_keeps_approved_response_path(monkeypatch):
         action="CRISIS_ROUTE",
         approved_content={"summary": "approved synthetic safety response"},
         citations=(),
+        safety_case=SafetyCaseSeed(
+            action="CRISIS_ROUTE",
+            reason_codes=("SYNTHETIC_TEST_CODE",),
+            review_reference=None,
+        ),
         trace_id="TRACE_synthetic",
     )
 
@@ -580,6 +606,13 @@ async def test_blocked_crisis_route_keeps_approved_response_path(monkeypatch):
         "summary": "approved synthetic safety response"
     }
     assert uow.support.evidence_calls == []
+    assert uow.support.safety_decision_calls[0]["policy_version"] == (
+        "safety-port-unversioned.v1"
+    )
+    assert uow.conversation_safety.created[0]["reason_codes"] == (
+        "SYNTHETIC_TEST_CODE",
+    )
+    assert uow.conversation_safety.created[0]["safety_review_reference"] is None
 
 
 @pytest.mark.asyncio

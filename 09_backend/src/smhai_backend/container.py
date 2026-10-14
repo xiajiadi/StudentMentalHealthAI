@@ -21,6 +21,9 @@ from smhai_backend.adapters.memory.repositories import (
 )
 from smhai_backend.adapters.school_cat_assets import SchoolCatAssetsPersistenceAdapter
 from smhai_backend.adapters.school_cat_management import SchoolCatManagementPersistenceAdapter
+from smhai_backend.adapters.school_conversation_safety import (
+    SchoolConversationSafetyPersistenceAdapter,
+)
 from smhai_backend.adapters.school_conversations import SchoolConversationsPersistenceAdapter
 from smhai_backend.adapters.school_directory import SchoolDirectoryPersistenceAdapter
 from smhai_backend.adapters.school_feedback import SchoolFeedbackPersistenceAdapter
@@ -111,6 +114,7 @@ class BackendContainer:
     rate_limiter: InMemoryRateLimiter
     professional_reviews: SchoolProfessionalReviewService | None = None
     school_feedback: SchoolFeedbackService | None = None
+    school_conversation_safety: Any | None = None
     school_research_feedback: Any | None = None
     school_research_programme_candidates: Any | None = None
     independent_conversations: IndependentConversationService | None = None
@@ -467,6 +471,17 @@ def build_container(
         if persistence is not None and settings.identity_profile == "school_tenant"
         else None
     )
+    from smhai_backend.domains.school_conversation_safety.service import (
+        SchoolConversationSafetyService,
+    )
+
+    school_conversation_safety = SchoolConversationSafetyService(
+        persistence=(
+            SchoolConversationSafetyPersistenceAdapter(persistence)
+            if persistence is not None and settings.identity_profile == "school_tenant"
+            else None
+        )
+    )
     school_research_feedback = None
     school_research_programme_candidates = None
     school_research_programme_candidate_adapter = None
@@ -761,6 +776,7 @@ def build_container(
         school_research_process_factory=research_process_factory,
         professional_reviews=professional_reviews,
         school_feedback=school_feedback,
+        school_conversation_safety=school_conversation_safety,
         school_research_feedback=school_research_feedback,
         school_research_programme_candidates=school_research_programme_candidates,
         cat_management=cat_management,

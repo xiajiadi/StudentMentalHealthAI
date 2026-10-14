@@ -21,6 +21,7 @@ from .repositories import (
     SubjectRepository,
     SupportRepository,
 )
+from .school_conversation_safety import SchoolConversationSafetyRepository
 from .school_post_assessment_jobs import SchoolPostAssessmentJobRepository
 from .school_research_cat import SchoolResearchCatRepository
 from .school_research_cohorts import SchoolResearchCohortRepository
@@ -61,6 +62,7 @@ class SqlAlchemyUnitOfWork:
         self.research_reviews: SchoolResearchReviewRepository | None = None
         self.research_feedback: SchoolResearchFeedbackRepository | None = None
         self.research_programme_candidates: SchoolResearchProgrammeCandidateRepository | None = None
+        self.conversation_safety: SchoolConversationSafetyRepository | None = None
 
     async def __aenter__(self) -> Self:
         self.session = self.session_factory()
@@ -85,6 +87,7 @@ class SqlAlchemyUnitOfWork:
         self.research_programme_candidates = SchoolResearchProgrammeCandidateRepository(
             self.session
         )
+        self.conversation_safety = SchoolConversationSafetyRepository(self.session)
         return self
 
     def _require_session(self) -> AsyncSession:

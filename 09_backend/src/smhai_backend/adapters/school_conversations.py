@@ -16,11 +16,13 @@ from uuid import uuid4
 from smhai_backend.core.errors import BackendError, ErrorCode, error
 from smhai_backend.core.idempotency import fingerprint
 from smhai_backend.core.request_context import get_request_context
+from smhai_backend.domains.school_conversation_safety.contracts import SafetyCaseSeed
 
 _IDEMPOTENCY_KEY_MAX = 200
 _MESSAGE_MAX = 20_000
 _PAGE_MAX = 50
 _TURN_MAX_AGE = timedelta(seconds=120)
+_SAFETY_METADATA_POLICY_VERSION = "safety-port-unversioned.v1"
 _TURN_FAILURE_ACTIONS = frozenset(
     {"DEPENDENCY_FAILURE", "INVALID_OUTPUT", "CLAIM_REJECTED", "INTERRUPTED"}
 )
@@ -988,6 +990,7 @@ class SchoolConversationsPersistenceAdapter:
         approved_content: Any = None,
         citations: Sequence[Any] = (),
         safe_metadata: Mapping[str, Any] | None = None,
+        safety_case: SafetyCaseSeed | None = None,
         trace_id: str,
     ) -> dict[str, Any]:
         conversation_id = _safe_id(conversation_id, "CONV")
@@ -1020,6 +1023,19 @@ class SchoolConversationsPersistenceAdapter:
         elif content is not None or citations:
             # Do not persist unapproved model candidates through a failure/block path.
             raise error(ErrorCode.VALIDATION_FAILED, detail="terminal turn has no approved content")
+        if action in {"REVIEW_REQUIRED", "CRISIS_ROUTE"}:
+            if (
+                status != "BLOCKED"
+                or not isinstance(safety_case, SafetyCaseSeed)
+                or safety_case.action != action
+            ):
+                raise error(
+                    ErrorCode.WORKFLOW_CONFLICT,
+                    detail="safety review metadata is unavailable",
+                )
+        elif safety_case is not None:
+            raise error(ErrorCode.VALIDATION_FAILED, detail="invalid safety review metadata")
+        student_role_id: int | None = None
         clean_metadata = _safe_component_metadata(safe_metadata)
         now = self._utc_now()
         m = self._db_models
@@ -1149,6 +1165,45 @@ class SchoolConversationsPersistenceAdapter:
                 "assistant_message_sequence": output_sequence,
                 "safe_metadata": clean_metadata,
             }
+            if safety_case is not None:
+                _student_account_id, student_role_id = await self._school_actor_role(
+                    uow, actor, "student", now
+                )
+                safety_action = next(
+                    item
+                    for item in self._db_enums.SafetyAction
+                    if item.value == safety_case.action
+                )
+                decision = await uow.support.create_safety_decision(
+                    decision_ref=f"SAFE_{uuid4().hex}",
+                    support_run_id=run.id,
+                    action=safety_action,
+                    policy_version=_SAFETY_METADATA_POLICY_VERSION,
+                    guard_model_revision=None,
+                    trace_id=trace_id,
+                    detail=None,
+                    retention_due_at=session.retention_due_at,
+                )
+                if uow.conversation_safety is None or student_role_id is None:
+                    raise error(
+                        ErrorCode.DEPENDENCY_UNAVAILABLE,
+                        detail="conversation safety persistence is unavailable",
+                        retryable=True,
+                    )
+                await uow.conversation_safety.create_from_safety_decision(
+                    support_session_id=session.id,
+                    support_run_id=run.id,
+                    safety_decision_id=decision.id,
+                    school_id=actor.school_id,
+                    subject_id=subject.id,
+                    action=safety_case.action,
+                    reason_codes=safety_case.reason_codes,
+                    safety_review_reference=safety_case.review_reference,
+                    actor_membership_role_id=student_role_id,
+                    trace_id=trace_id,
+                    retention_due_at=session.retention_due_at,
+                    now=now,
+                )
             session.trace_id = trace_id
             await self._audit(
                 uow,
