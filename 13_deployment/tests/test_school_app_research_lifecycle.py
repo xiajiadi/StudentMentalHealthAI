@@ -29,6 +29,7 @@ class FakeOperations:
         self.next_pid = 901
         self.research_port = None
         self.cleanup_research_on_backend_stop = True
+        self.research_worker_status = None
 
     def port_is_free(self, port):
         return port not in self.bound
@@ -74,6 +75,10 @@ class FakeOperations:
 
     def http_ready(self, _port, _path):
         return True
+
+    def dependency_status(self, _port, dependency):
+        assert dependency == "research_education_worker"
+        return self.research_worker_status
 
     def terminate_verified(self, service, process_identity):
         pid = process_identity["pid"]
@@ -227,6 +232,64 @@ def test_study_use_start_adds_exact_flags_and_manifest_nonsecret_fields(
     )
     assert manifest["research_config"]["research_source_rights_verified"] is True
     assert result["status"] == "RUNNING"
+
+
+def test_research_education_worker_flag_is_pinned_in_manifest_and_rebuilt(
+    prepared, monkeypatch
+):
+    _repo, workspace, ops, app = prepared
+    import school_backend
+
+    monkeypatch.setattr(school_backend, "_validate_study_use_policy", lambda **_kwargs: None)
+    config = _with_study_use(workspace, _research_config(workspace))
+    config[lifecycle.RESEARCH_EDUCATION_WORKER_CONFIG_KEY] = True
+    invalid_config = dict(config)
+    invalid_config[lifecycle.RESEARCH_EDUCATION_WORKER_CONFIG_KEY] = 1
+    with pytest.raises(lifecycle.LifecycleError, match="education worker configuration"):
+        lifecycle._validated_research_config(invalid_config, workspace)
+    worker_only = {
+        **{name: None for name in lifecycle.RESEARCH_CONFIG_ARGUMENTS},
+        **{
+            name: False if name == "research_source_rights_verified" else None
+            for name in lifecycle.RESEARCH_STUDY_USE_ARGUMENTS
+        },
+        lifecycle.RESEARCH_EDUCATION_WORKER_CONFIG_KEY: True,
+    }
+    with pytest.raises(lifecycle.LifecycleError, match="requires pinned study-use"):
+        lifecycle._validated_research_config(worker_only, workspace)
+
+    started = app.start(workspace, frontend_mode="dev", research_config=config)
+    manifest_path = workspace / lifecycle.MANIFEST_NAME
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert started["research_education_worker"] == {
+        "enabled": True,
+        "status": "UNVERIFIED",
+        "integration": "RESEARCH_OUTBOX",
+    }
+    assert manifest["research_config"][lifecycle.RESEARCH_EDUCATION_WORKER_CONFIG_KEY] is True
+    assert lifecycle.RESEARCH_EDUCATION_WORKER_FLAG in ops.spawned[0][0]
+
+    ops.research_worker_status = {
+        "status": "READY",
+        "integration": "RESEARCH_OUTBOX",
+    }
+    status = app.status(workspace)
+    assert status["research_education_worker"] == {
+        "enabled": True,
+        "status": "READY",
+        "integration": "RESEARCH_OUTBOX",
+    }
+    app.stop(workspace)
+
+    rebuilt = lifecycle._research_config_from_manifest(
+        json.loads(manifest_path.read_text(encoding="utf-8")),
+        workspace,
+        8088,
+        4178,
+    )
+    assert rebuilt is not None and rebuilt.education_worker_enabled is True
+    app.start(workspace, frontend_mode="dev", research_config=config)
+    assert lifecycle.RESEARCH_EDUCATION_WORKER_FLAG in ops.spawned[2][0]
 
 
 def test_research_lifecycle_stop_checks_backend_manager_listener_without_killing_it(
@@ -455,6 +518,59 @@ def test_start_parser_accepts_four_study_use_flags_as_one_complete_set(tmp_path)
     )
     assert args.research_source_rights_verified is True
     assert args.research_latest_study_end == "2027-06-30T15:59:59Z"
+
+
+def test_start_parser_accepts_research_education_worker_switch(tmp_path):
+    args = lifecycle.build_parser().parse_args(
+        [
+            "start", "--workspace", str(tmp_path), "--frontend-mode", "dev",
+            lifecycle.RESEARCH_EDUCATION_WORKER_FLAG,
+        ]
+    )
+    assert args.enable_research_education_worker is True
+
+
+def test_dependency_status_reads_and_sanitizes_existing_worker_matrix(monkeypatch):
+    class Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, limit):
+            assert limit == 64 * 1024 + 1
+            return json.dumps(
+                {
+                    "data": {
+                        "research_education_worker": {
+                            "status": "READY",
+                            "integration": "RESEARCH_OUTBOX",
+                        }
+                    }
+                }
+            ).encode()
+
+    class Opener:
+        def open(self, url, *, timeout):
+            assert url == "http://127.0.0.1:8088/health/dependencies"
+            assert timeout == 2.0
+            return Response()
+
+    monkeypatch.setattr(
+        lifecycle.urllib.request,
+        "build_opener",
+        lambda *_args: Opener(),
+    )
+
+    assert lifecycle.LifecycleOperations().dependency_status(
+        8088, "research_education_worker"
+    ) == {
+        "status": "READY",
+        "integration": "RESEARCH_OUTBOX",
+    }
 
 
 def test_lifecycle_rejects_partial_or_false_study_use_before_spawn(prepared, monkeypatch):

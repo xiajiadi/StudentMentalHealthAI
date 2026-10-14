@@ -67,13 +67,18 @@ def test_no_research_cli_preserves_existing_disabled_defaults(tmp_path, monkeypa
 
     assert backend.build_research_settings_kwargs(args, tmp_path) == {}
     monkeypatch.setenv("SMHAI_SCHOOL_CSRF_SECRET", "a" * 64)
+    monkeypatch.setenv("SMHAI_RESEARCH_EDUCATION_WORKER__ENABLED", "true")
     from smhai_backend.core.config import BackendSettings
 
+    cli_settings, research = backend.build_cli_settings_kwargs(args)
+    assert research == {}
+    assert cli_settings["research_education_worker"] == {"enabled": False}
     settings = BackendSettings(
-        _env_file=None, **backend.build_school_settings_kwargs(8088, 4178)
+        _env_file=None, **cli_settings
     )
     assert settings.school_research_enabled is False
     assert settings.school_research_managed_enabled is False
+    assert settings.research_education_worker_enabled is False
 
 
 def test_complete_research_cli_maps_only_explicit_nonsecret_settings(
@@ -148,6 +153,52 @@ def test_backend_parser_accepts_all_four_study_use_flags(tmp_path):
     assert args.research_study_use_file == tmp_path / "policy.json"
     assert args.research_source_rights_verified is True
     assert args.research_latest_study_end == "2027-06-30T15:59:59Z"
+
+
+def test_research_education_worker_is_opt_in_and_requires_pinned_study_use(
+    tmp_path, monkeypatch
+):
+    missing_policy = backend.build_parser().parse_args(
+        [
+            "--workspace", str(tmp_path),
+            "--enable-research-education-worker",
+        ]
+    )
+    with pytest.raises(backend.ResearchCLIConfigError) as exc:
+        backend.build_research_settings_kwargs(missing_policy, tmp_path)
+    assert exc.value.code == "research_worker_requires_pinned_study_use"
+    missing_policy.enable_research_education_worker = 1
+    with pytest.raises(backend.ResearchCLIConfigError) as exc:
+        backend.build_research_settings_kwargs(missing_policy, tmp_path)
+    assert exc.value.code == "research_worker_config_invalid"
+
+    configured_root = tmp_path / "configured"
+    configured_root.mkdir()
+    workspace, args, _service, _sha = _fixture(configured_root)
+    _attach_study_use(args, workspace)
+    args.enable_research_education_worker = True
+    validated = []
+    monkeypatch.setattr(
+        backend,
+        "_validate_study_use_policy",
+        lambda **kwargs: validated.append(kwargs),
+    )
+    cli_settings, research = backend.build_cli_settings_kwargs(args)
+
+    assert research["research_education_worker"] == {"enabled": True}
+    assert cli_settings["research_education_worker"] == {"enabled": True}
+    assert len(validated) == 1
+    assert validated[0]["study_sha256"] == args.research_study_use_sha256
+    assert validated[0]["latest_end"] == research["school_research_latest_study_end"]
+
+    monkeypatch.setenv("SMHAI_SCHOOL_CSRF_SECRET", "a" * 64)
+    from smhai_backend.core.config import BackendSettings
+
+    backend_settings = BackendSettings(
+        _env_file=None,
+        **cli_settings,
+    )
+    assert backend_settings.research_education_worker.enabled is True
 
 
 def test_study_use_cli_maps_only_verified_policy_metadata(tmp_path, monkeypatch):

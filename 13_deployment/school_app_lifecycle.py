@@ -83,6 +83,8 @@ RESEARCH_STUDY_USE_FLAGS = {
     "research_source_rights_verified": "--research-source-rights-verified",
     "research_latest_study_end": "--research-latest-study-end",
 }
+RESEARCH_EDUCATION_WORKER_CONFIG_KEY = "research_education_worker_enabled"
+RESEARCH_EDUCATION_WORKER_FLAG = "--enable-research-education-worker"
 RESEARCH_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 
 
@@ -102,6 +104,7 @@ class ResearchProcessConfig:
     study_use_sha256: str | None = None
     source_rights_verified: bool = False
     latest_study_end: str | None = None
+    education_worker_enabled: bool = False
 
     def cli_arguments(self) -> list[str]:
         values = {
@@ -133,9 +136,13 @@ class ResearchProcessConfig:
                     arguments.append(flag)
                 else:
                     arguments.extend((flag, str(study_values[name])))
+        if self.education_worker_enabled:
+            if self.study_use_file is None or self.source_rights_verified is not True:
+                raise LifecycleError("Research education worker requires pinned study-use")
+            arguments.append(RESEARCH_EDUCATION_WORKER_FLAG)
         return arguments
 
-    def manifest_value(self) -> dict[str, str]:
+    def manifest_value(self) -> dict[str, object]:
         value = {
             "research_runtime_file": self.runtime_file,
             "research_runtime_sha256": self.runtime_sha256,
@@ -154,6 +161,8 @@ class ResearchProcessConfig:
                     "research_latest_study_end": self.latest_study_end,
                 }
             )
+        if self.education_worker_enabled:
+            value[RESEARCH_EDUCATION_WORKER_CONFIG_KEY] = True
         return value
 
 
@@ -420,13 +429,26 @@ def _validated_research_config(
 ) -> ResearchProcessConfig | None:
     if value is None:
         return None
+    base_keys = set(RESEARCH_CONFIG_ARGUMENTS)
+    study_keys = set(RESEARCH_CONFIG_ARGUMENTS + RESEARCH_STUDY_USE_ARGUMENTS)
+    worker_keys = study_keys | {RESEARCH_EDUCATION_WORKER_CONFIG_KEY}
     if not isinstance(value, Mapping) or frozenset(value) not in {
-        frozenset(RESEARCH_CONFIG_ARGUMENTS),
-        frozenset(RESEARCH_CONFIG_ARGUMENTS + RESEARCH_STUDY_USE_ARGUMENTS),
+        frozenset(base_keys),
+        frozenset(study_keys),
+        frozenset(worker_keys),
     }:
         raise LifecycleError("Research process configuration must provide all pinned fields")
+    supplied_keys = set(value)
+    has_study = set(RESEARCH_STUDY_USE_ARGUMENTS).issubset(supplied_keys)
+    worker_enabled = value.get(RESEARCH_EDUCATION_WORKER_CONFIG_KEY, False)
+    if type(worker_enabled) is not bool:
+        raise LifecycleError("Research education worker configuration is invalid")
+    if worker_enabled and not has_study:
+        raise LifecycleError("Research education worker requires pinned study-use")
     if all(value[name] is None for name in RESEARCH_CONFIG_ARGUMENTS):
-        if set(value) == set(RESEARCH_CONFIG_ARGUMENTS + RESEARCH_STUDY_USE_ARGUMENTS) and any(
+        if worker_enabled:
+            raise LifecycleError("Research education worker requires pinned study-use")
+        if has_study and any(
             value[name] is not None
             and (name != "research_source_rights_verified" or value[name] is True)
             for name in RESEARCH_STUDY_USE_ARGUMENTS
@@ -447,7 +469,7 @@ def _validated_research_config(
             if not isinstance(item, Path):
                 raise LifecycleError("Research process configuration is invalid")
         args_values[name] = item
-    if set(value) == set(RESEARCH_CONFIG_ARGUMENTS + RESEARCH_STUDY_USE_ARGUMENTS):
+    if has_study:
         for name in RESEARCH_STUDY_USE_ARGUMENTS:
             item = value[name]
             if name == "research_study_use_file" and isinstance(item, str):
@@ -455,6 +477,7 @@ def _validated_research_config(
             if name == "research_study_use_file" and item is not None and not isinstance(item, Path):
                 raise LifecycleError("Research study-use configuration is invalid")
             args_values[name] = item
+    args_values["enable_research_education_worker"] = worker_enabled
 
     try:
         settings = build_research_settings_kwargs(
@@ -488,6 +511,7 @@ def _validated_research_config(
             str(args_values["research_latest_study_end"])
             if args_values.get("research_latest_study_end") is not None else None
         ),
+        education_worker_enabled=worker_enabled,
     )
 
 
@@ -502,10 +526,19 @@ def _research_config_from_manifest(
         raise LifecycleError("Lifecycle research configuration is incomplete")
     raw = manifest.get("research_config")
     raw_keys = set(raw) if type(raw) is dict else set()
-    has_study = raw_keys == set(RESEARCH_CONFIG_ARGUMENTS + RESEARCH_STUDY_USE_ARGUMENTS)
+    base_keys = set(RESEARCH_CONFIG_ARGUMENTS)
+    study_keys = set(RESEARCH_CONFIG_ARGUMENTS + RESEARCH_STUDY_USE_ARGUMENTS)
+    worker_keys = study_keys | {RESEARCH_EDUCATION_WORKER_CONFIG_KEY}
+    has_study = study_keys.issubset(raw_keys)
+    worker_enabled = False
+    if RESEARCH_EDUCATION_WORKER_CONFIG_KEY in raw_keys:
+        worker_enabled = raw.get(RESEARCH_EDUCATION_WORKER_CONFIG_KEY)
+        if type(worker_enabled) is not bool or worker_enabled is not True or not has_study:
+            raise LifecycleError("Lifecycle research education-worker configuration is invalid")
     if type(raw) is not dict or frozenset(raw_keys) not in {
-        frozenset(RESEARCH_CONFIG_ARGUMENTS),
-        frozenset(RESEARCH_CONFIG_ARGUMENTS + RESEARCH_STUDY_USE_ARGUMENTS),
+        frozenset(base_keys),
+        frozenset(study_keys),
+        frozenset(worker_keys),
     }:
         raise LifecycleError("Lifecycle research configuration is invalid")
     for name in RESEARCH_CONFIG_ARGUMENTS:
@@ -569,6 +602,7 @@ def _research_config_from_manifest(
         cat_source=raw["research_cat_source"],
         cat_dependencies=raw["research_cat_dependencies"],
         port=port,
+        education_worker_enabled=worker_enabled,
         **study_values,
     )
 
@@ -750,6 +784,33 @@ if ($null -eq $p) { 'null'; exit 0 }
                 return True
         except (OSError, urllib.error.URLError, urllib.error.HTTPError, ValueError):
             return False
+
+    def dependency_status(self, port: int, dependency: str) -> dict[str, str] | None:
+        if dependency != "research_education_worker":
+            return None
+        try:
+            url = f"http://127.0.0.1:{port}/health/dependencies"
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            with opener.open(url, timeout=2.0) as response:
+                if not 200 <= response.status < 300:
+                    return None
+                raw = response.read(64 * 1024 + 1)
+            if len(raw) > 64 * 1024:
+                return None
+            envelope = json.loads(raw)
+            data = envelope.get("data") if isinstance(envelope, dict) else None
+            value = data.get(dependency) if isinstance(data, dict) else None
+            if (
+                not isinstance(value, dict)
+                or set(value) != {"status", "integration"}
+                or type(value.get("status")) is not str
+                or re.fullmatch(r"[A-Z][A-Z_]{0,31}", value["status"]) is None
+                or value.get("integration") != "RESEARCH_OUTBOX"
+            ):
+                return None
+            return {"status": value["status"], "integration": "RESEARCH_OUTBOX"}
+        except (OSError, urllib.error.URLError, urllib.error.HTTPError, ValueError):
+            return None
 
     def wait_ready(
         self, process: subprocess.Popen, port: int, path: str, timeout: float
@@ -1282,6 +1343,38 @@ class SchoolAppLifecycle:
                 "listener": research_listener_state,
                 "native_pid": None,
             }
+            if not research_config.education_worker_enabled:
+                worker_state = {
+                    "enabled": False,
+                    "status": "DISABLED",
+                    "integration": "RESEARCH_OUTBOX",
+                }
+            else:
+                backend_state = listeners.get("backend", {})
+                observed = None
+                if (
+                    backend_state.get("owned_process") is True
+                    and backend_state.get("listener") == "OWNED"
+                    and backend_state.get("ready") is True
+                ):
+                    dependency_status = getattr(self.ops, "dependency_status", None)
+                    if callable(dependency_status):
+                        try:
+                            observed = dependency_status(
+                                int(manifest["backend_port"]),
+                                "research_education_worker",
+                            )
+                        except Exception:  # noqa: BLE001 - report unavailable without propagating details.
+                            observed = None
+                worker_state = {
+                    "enabled": True,
+                    "status": observed.get("status", "UNVERIFIED")
+                    if isinstance(observed, dict)
+                    and observed.get("integration") == "RESEARCH_OUTBOX"
+                    else "UNVERIFIED",
+                    "integration": "RESEARCH_OUTBOX",
+                }
+            result["research_education_worker"] = worker_state
         return result
 
     def stop(self, workspace: Path) -> dict[str, Any]:
@@ -2370,6 +2463,16 @@ def _public_status(manifest: dict[str, Any]) -> dict[str, Any]:
             "listener": "NOT_INDEPENDENTLY_OBSERVED",
             "native_pid": None,
         }
+        research_config = manifest.get("research_config")
+        worker_enabled = (
+            isinstance(research_config, dict)
+            and research_config.get(RESEARCH_EDUCATION_WORKER_CONFIG_KEY) is True
+        )
+        result["research_education_worker"] = {
+            "enabled": worker_enabled,
+            "status": "UNVERIFIED" if worker_enabled else "DISABLED",
+            "integration": "RESEARCH_OUTBOX",
+        }
     return result
 
 
@@ -2407,6 +2510,7 @@ def build_parser() -> argparse.ArgumentParser:
         else:
             value_type = Path if name == "research_study_use_file" else str
             start.add_argument(RESEARCH_STUDY_USE_FLAGS[name], dest=name, type=value_type)
+    start.add_argument(RESEARCH_EDUCATION_WORKER_FLAG, action="store_true")
     return parser
 
 
@@ -2436,11 +2540,18 @@ def main(argv: list[str] | None = None) -> int:
                     for name in RESEARCH_STUDY_USE_ARGUMENTS
                 }
             )
+            if args.enable_research_education_worker:
+                supplied_research[RESEARCH_EDUCATION_WORKER_CONFIG_KEY] = True
             research_config = (
                 supplied_research
                 if any(
                     value is not None
-                    and (name != "research_source_rights_verified" or value is True)
+                    and (
+                        name != "research_source_rights_verified" or value is True
+                    )
+                    and (
+                        name != RESEARCH_EDUCATION_WORKER_CONFIG_KEY or value is True
+                    )
                     for name, value in supplied_research.items()
                 )
                 else None

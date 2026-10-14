@@ -83,6 +83,8 @@ class ResearchCLIConfigError(PreparationError):
             "research_config_pair_mismatch",
             "study_use_config_incomplete",
             "study_use_config_invalid",
+            "research_worker_requires_pinned_study_use",
+            "research_worker_config_invalid",
         }
         self.code = code if code in allowed else "research_config_invalid"
         super().__init__(self.code)
@@ -156,6 +158,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--research-study-use-sha256")
     parser.add_argument("--research-source-rights-verified", action="store_true")
     parser.add_argument("--research-latest-study-end")
+    parser.add_argument("--enable-research-education-worker", action="store_true")
     return parser
 
 
@@ -175,7 +178,12 @@ def build_research_settings_kwargs(args: argparse.Namespace, workspace: Path) ->
         value is not None and (name != "research_source_rights_verified" or value is True)
         for name, value in study_values.items()
     )
+    worker_enabled = getattr(args, "enable_research_education_worker", False)
+    if type(worker_enabled) is not bool:
+        raise ResearchCLIConfigError("research_worker_config_invalid")
     if not any(supplied) and not study_present:
+        if worker_enabled:
+            raise ResearchCLIConfigError("research_worker_requires_pinned_study_use")
         return {}
     if not all(supplied):
         raise ResearchCLIConfigError("research_config_incomplete")
@@ -185,6 +193,8 @@ def build_research_settings_kwargs(args: argparse.Namespace, workspace: Path) ->
     )
     if any(study_supplied) and not all(study_supplied):
         raise ResearchCLIConfigError("study_use_config_incomplete")
+    if worker_enabled and not all(study_supplied):
+        raise ResearchCLIConfigError("research_worker_requires_pinned_study_use")
 
     try:
         root = _validated_absolute_path(workspace, kind="directory")
@@ -245,6 +255,10 @@ def build_research_settings_kwargs(args: argparse.Namespace, workspace: Path) ->
         "school_research_cat_python": str(cat_python),
         "school_research_cat_source": str(cat_source),
         "school_research_cat_dependencies": str(cat_dependencies),
+        **(
+            {"research_education_worker": {"enabled": True}}
+            if worker_enabled else {}
+        ),
         **study_settings,
     }
 
@@ -498,6 +512,21 @@ def load_runtime(
     }
 
 
+def build_cli_settings_kwargs(
+    args: argparse.Namespace,
+) -> tuple[dict[str, object], dict[str, object]]:
+    """Map CLI options and explicitly override worker environment defaults."""
+    settings_kwargs = build_school_settings_kwargs(
+        args.port, args.frontend_port, args.llm_profile, cat_port=args.cat_port
+    )
+    research_kwargs = build_research_settings_kwargs(args, args.workspace)
+    settings_kwargs.update(research_kwargs)
+    settings_kwargs["research_education_worker"] = {
+        "enabled": args.enable_research_education_worker
+    }
+    return settings_kwargs, research_kwargs
+
+
 def main() -> int:
     args = build_parser().parse_args()
     repo = Path(__file__).resolve().parents[1]
@@ -505,11 +534,7 @@ def main() -> int:
     sys.path.insert(0, str(repo / "11_database"))
     sys.path.insert(0, str(repo / "09_backend" / "src"))
     try:
-        settings_kwargs = build_school_settings_kwargs(
-            args.port, args.frontend_port, args.llm_profile, cat_port=args.cat_port
-        )
-        research_kwargs = build_research_settings_kwargs(args, args.workspace)
-        settings_kwargs.update(research_kwargs)
+        settings_kwargs, research_kwargs = build_cli_settings_kwargs(args)
         if research_kwargs:
             try:
                 from smhai_backend.domains.school_research.managed import (
