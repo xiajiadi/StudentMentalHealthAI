@@ -21,6 +21,7 @@ for _candidate in (
 from smhai_backend.domains.school_research.managed import (  # noqa: E402
     ManagedResearchProcessError,
     build_managed_research_process,
+    validate_managed_research_config_pair,
 )
 from smhai_backend.domains.school_research.process import ResearchCATProcessManager  # noqa: E402
 
@@ -209,6 +210,15 @@ def _factory(
     )
 
 
+def _validate_pair(runtime_file: Path, runtime_sha: str, service_file: Path, service_sha: str):
+    return validate_managed_research_config_pair(
+        runtime_config_file=runtime_file,
+        expected_runtime_config_sha256=runtime_sha,
+        service_config_file=service_file,
+        expected_service_config_sha256=service_sha,
+    )
+
+
 def test_module_import_does_not_load_cat_or_database_packages() -> None:
     source = (
         Path(__file__).resolve().parents[1]
@@ -350,6 +360,111 @@ def test_config_file_hash_and_json_are_closed_and_bounded(tmp_path: Path) -> Non
     oversized_sha = hashlib.sha256(service_file.read_bytes()).hexdigest()
     with pytest.raises(ManagedResearchProcessError, match="config_size_invalid"):
         _factory(runtime_file, runtime_sha, service_file, oversized_sha, tmp_path)
+
+
+def test_public_pair_preflight_is_pure_and_accepts_matching_documents(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime_file, runtime_sha, service_file, service_sha, *_ = _write_config_pair(tmp_path)
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("runtime loading/key lookup must not occur in pure preflight")
+
+    monkeypatch.setattr(
+        "smhai_backend.domains.school_research.managed.load_research_runtime", forbidden
+    )
+    monkeypatch.setattr(
+        "smhai_backend.domains.school_research.managed._make_derived_handoff", forbidden
+    )
+    assert _validate_pair(runtime_file, runtime_sha, service_file, service_sha) is None
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected"),
+    [
+        ("school", "backend_cat_config_mismatch"),
+        ("profile", "backend_cat_config_mismatch"),
+        ("binding", "backend_cat_config_mismatch"),
+        ("config", "backend_cat_config_mismatch"),
+    ],
+)
+def test_public_pair_preflight_rejects_school_profile_binding_and_config_mismatch(
+    tmp_path: Path, mutation: str, expected: str
+) -> None:
+    runtime_file, runtime_sha, service_file, _service_sha, _runtime, service = _write_config_pair(
+        tmp_path
+    )
+    if mutation == "school":
+        service["school_scope"]["school_id"] += 1
+        service["school_scope"]["scope"] = f"school:{service['school_scope']['school_id']}"
+    elif mutation == "profile":
+        service["profiles"][0]["profile_sha256"] = "c" * 64
+    elif mutation == "binding":
+        service["bindings"][0]["binding_ref"] = "other-binding"
+    else:
+        service["bindings"][0]["cat_config"]["seed"] += 1
+        service["bindings"][0]["config_sha256"] = hashlib.sha256(
+            _canonical(service["bindings"][0]["cat_config"])
+        ).hexdigest()
+    service_raw = _canonical(service)
+    service_file.write_bytes(service_raw)
+    service_sha = hashlib.sha256(service_raw).hexdigest()
+    with pytest.raises(ManagedResearchProcessError, match=expected):
+        _validate_pair(runtime_file, runtime_sha, service_file, service_sha)
+
+
+@pytest.mark.parametrize("which", ["runtime", "service"])
+def test_public_pair_preflight_rejects_pinned_hash_mismatch(
+    tmp_path: Path, which: str
+) -> None:
+    runtime_file, runtime_sha, service_file, service_sha, *_ = _write_config_pair(tmp_path)
+    if which == "runtime":
+        runtime_sha = "0" * 64
+    else:
+        service_sha = "0" * 64
+    with pytest.raises(ManagedResearchProcessError, match="config_hash_mismatch"):
+        _validate_pair(runtime_file, runtime_sha, service_file, service_sha)
+
+
+def test_public_pair_preflight_rejects_oversized_document(tmp_path: Path) -> None:
+    runtime_file, runtime_sha, service_file, _service_sha, *_ = _write_config_pair(tmp_path)
+    oversized = b"x" * (1024 * 1024 + 1)
+    service_file.write_bytes(oversized)
+    service_sha = hashlib.sha256(oversized).hexdigest()
+    with pytest.raises(ManagedResearchProcessError, match="config_size_invalid"):
+        _validate_pair(runtime_file, runtime_sha, service_file, service_sha)
+
+
+def test_process_factory_uses_same_pair_validation_helper(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import smhai_backend.domains.school_research.managed as managed
+
+    runtime_file, runtime_sha, service_file, service_sha, *_ = _write_config_pair(tmp_path)
+    original = managed._validate_managed_research_config_pair
+    calls = 0
+
+    def observed(**kwargs):
+        nonlocal calls
+        calls += 1
+        return original(**kwargs)
+
+    monkeypatch.setattr(managed, "_validate_managed_research_config_pair", observed)
+    with pytest.raises(ManagedResearchProcessError, match="cat_source_invalid"):
+        managed.build_managed_research_process(
+            runtime_config_file=runtime_file,
+            expected_runtime_config_sha256=runtime_sha,
+            service_config_file=service_file,
+            expected_service_config_sha256=service_sha,
+            cat_source=tmp_path / "missing-cat-source",
+            cat_dependency_path=None,
+            base_executable=tmp_path / "missing-python.exe",
+            base_executable_probe=lambda _path: True,
+            retained_key_provider=object(),
+            readiness_probe=lambda _port, _bearer, _timeout: {},
+            listener_owner_probe=lambda _pid, _port: False,
+        )
+    assert calls == 1
 
 
 def test_base_executable_probe_is_required_and_fail_closed(tmp_path: Path) -> None:

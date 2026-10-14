@@ -117,6 +117,53 @@ class ManagedResearchProcessError(ValueError):
         super().__init__(code)
 
 
+def validate_managed_research_config_pair(
+    *,
+    runtime_config_file: Path,
+    expected_runtime_config_sha256: str,
+    service_config_file: Path,
+    expected_service_config_sha256: str,
+) -> None:
+    """Validate both pinned documents without loading resources or secrets.
+
+    This is the launcher preflight surface. It deliberately performs only
+    bounded file reads, strict parsing, local schema validation, and exact
+    Backend/CAT registry matching. The process factory uses the same private
+    implementation and then continues with runtime, key, and process checks.
+    """
+
+    _validate_managed_research_config_pair(
+        runtime_config_file=runtime_config_file,
+        expected_runtime_config_sha256=expected_runtime_config_sha256,
+        service_config_file=service_config_file,
+        expected_service_config_sha256=expected_service_config_sha256,
+    )
+
+
+def _validate_managed_research_config_pair(
+    *,
+    runtime_config_file: Path,
+    expected_runtime_config_sha256: str,
+    service_config_file: Path,
+    expected_service_config_sha256: str,
+) -> tuple[Path, Path, _RuntimeView, _ServiceView]:
+    try:
+        runtime_path = _resolve_existing(runtime_config_file, "runtime_config_invalid")
+        service_path = _resolve_existing(service_config_file, "service_config_invalid")
+        runtime_raw = _read_config(runtime_path, expected_runtime_config_sha256)
+        service_raw = _read_config(service_path, expected_service_config_sha256)
+        runtime_doc = _parse_document(runtime_raw, "runtime_config_invalid")
+        service_doc = _parse_document(service_raw, "service_config_invalid")
+        runtime_view = _validate_runtime_document(runtime_doc)
+        service_view = _validate_service_document(service_doc)
+        _require_config_match(runtime_view, service_view)
+        return runtime_path, service_path, runtime_view, service_view
+    except ManagedResearchProcessError:
+        raise
+    except Exception:
+        raise ManagedResearchProcessError("managed_process_invalid") from None
+
+
 def build_managed_research_process(
     *,
     runtime_config_file: Path,
@@ -142,15 +189,14 @@ def build_managed_research_process(
     """
 
     try:
-        runtime_path = _resolve_existing(runtime_config_file, "runtime_config_invalid")
-        service_path = _resolve_existing(service_config_file, "service_config_invalid")
-        runtime_raw = _read_config(runtime_path, expected_runtime_config_sha256)
-        service_raw = _read_config(service_path, expected_service_config_sha256)
-        runtime_doc = _parse_document(runtime_raw, "runtime_config_invalid")
-        service_doc = _parse_document(service_raw, "service_config_invalid")
-        runtime_view = _validate_runtime_document(runtime_doc)
-        service_view = _validate_service_document(service_doc)
-        _require_config_match(runtime_view, service_view)
+        runtime_path, service_path, runtime_view, service_view = (
+            _validate_managed_research_config_pair(
+                runtime_config_file=runtime_config_file,
+                expected_runtime_config_sha256=expected_runtime_config_sha256,
+                service_config_file=service_config_file,
+                expected_service_config_sha256=expected_service_config_sha256,
+            )
+        )
 
         cat_source_path = _resolve_existing(cat_source, "cat_source_invalid")
         if not cat_source_path.is_dir():

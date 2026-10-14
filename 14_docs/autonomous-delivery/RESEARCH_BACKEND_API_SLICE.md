@@ -1,8 +1,18 @@
 # Research CAT Backend API slice
 
-Status: **design proposal; routes and Backend authorization are not implemented**
+Status: **student research routes and Backend authorization implemented;
+specialist/admin provisioning and installed school acceptance remain pending**.
 
 ## Implementation delta — 2026-10-14
+
+Current source e5acb18 includes authenticated student start/resume/answer routes,
+live actor/SELF/roster checks, two-phase persistence, retained-key MAC verification,
+strict private CAT HTTP clients and an explicitly configured owned child lifecycle.
+Root native checks prove private CAT HTTP and owned process start/stop, including
+the real school-tenant MySQL adapter's read-only startup before the lazy factory.
+They do not prove school-account session persistence, online800 or browser paths.
+See CURRENT_STATE.md for scoped artifacts and test results. Remaining survey
+sections below describe the earlier source and must not override current code.
 
 The historical inspection below predates schema0013. Research persistence is
 now committed, including v3 published-reference parameter provenance; it no

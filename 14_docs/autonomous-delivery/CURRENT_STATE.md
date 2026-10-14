@@ -1,4 +1,31 @@
-## ACTIVE — 2026-10-14, managed research lifecycle integration
+## ACTIVE — 2026-10-14, research provisioning and install configuration
+
+Immutable server catalog now binds trusted profile/manifest bytes and full CAT
+config to exact school selectors. Candidate import defaults remain PENDING /
+CANDIDATE_RESEARCH_ONLY; public projections omit raw data, paths, parameters
+and configuration hashes. No profile eligibility or task was changed.
+Root40 catalog/managed tests and53 launcher tests (1 Windows symlink capability
+skip) passed; independent review led to hiding the public binding config hash.
+
+Installed Backend launcher accepts an all-or-none set of seven non-secret
+research options. Config files must reside inside the owned target workspace;
+bounded reads/SHA/no-reparse checks and one shared pure validator compare both
+registries before app construction in normal and preflight paths. This fixes
+the reviewed case where individually pinned but inconsistent configs passed
+preflight. Native K launcher preflight passed matching configs and rejected
+the mismatched-school negative with research_config_pair_mismatch:
+D:\Dev\temp\psynova-research-launcher-preflight-20261014-r1.json,
+SHAa62fe51165bca0d0aba9fc1a0d9b85ee4539ae97284da4a4527ba70cdbe0b3d1.
+This is native grant/schema/config preflight, not service or student acceptance.
+Target-owned public configs are retained in K/research-config/
+launcher-preflight-20261014-r1, including the named negative fixture.
+
+Next: psychologist candidate import API, rights/use registration gate, atomic
+admin research task publish, dedicated student discovery and real actor/DB
+save-resume; install lifecycle argv remains to integrate. Four-role online800
+and real RAG/local7B/report-review acceptance remain incomplete. Goal active.
+
+## Prior checkpoint — managed research lifecycle integration
 
 Managed lifecycle now composes the pinned Backend registry and CAT service
 config, verifies isolated basePython3.14 with-S/-P, then derives child keys only

@@ -7,8 +7,11 @@ required; an unavailable dependency is an error, never a fake response fallback.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import re
+import stat
 import sys
 from pathlib import Path
 
@@ -39,6 +42,38 @@ RUNTIME_PURPOSE_APPLICATION = "application"
 RUNTIME_PURPOSE_BACKUP = "backup"
 BACKUP_NOT_APPLICATION_READY = "BACKUP_NOT_APPLICATION_READY"
 APPLICATION_CURRENT_REVISION = "APPLICATION_CURRENT_REVISION"
+_RESEARCH_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+_RESEARCH_SERVICE_SCHEMA = "psynova.research-cat-service.v1"
+_RESEARCH_SERVICE_FIELDS = frozenset(
+    {
+        "schema", "school_scope", "resource_root", "listener", "signing",
+        "profiles", "bindings",
+    }
+)
+_RESEARCH_SERVICE_MAX_BYTES = 1024 * 1024
+_RESEARCH_CONFIG_ARGUMENTS = (
+    "research_runtime_file",
+    "research_runtime_sha256",
+    "research_service_file",
+    "research_service_sha256",
+    "research_cat_python",
+    "research_cat_source",
+    "research_cat_dependencies",
+)
+
+
+class ResearchCLIConfigError(PreparationError):
+    """Sanitized launcher error for the optional research process configuration."""
+
+    def __init__(self, code: str) -> None:
+        allowed = {
+            "research_config_incomplete",
+            "research_config_invalid",
+            "research_service_config_invalid",
+            "research_config_pair_mismatch",
+        }
+        self.code = code if code in allowed else "research_config_invalid"
+        super().__init__(self.code)
 
 
 def build_school_settings_kwargs(
@@ -98,7 +133,137 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--frontend-port", type=int, default=DEFAULT_FRONTEND_PORT)
     parser.add_argument("--cat-port", type=int, default=DEFAULT_CAT_PORT)
     parser.add_argument("--llm-profile", choices=LLM_PROFILES, default="default")
+    parser.add_argument("--research-runtime-file", type=Path)
+    parser.add_argument("--research-runtime-sha256")
+    parser.add_argument("--research-service-file", type=Path)
+    parser.add_argument("--research-service-sha256")
+    parser.add_argument("--research-cat-python", type=Path)
+    parser.add_argument("--research-cat-source", type=Path)
+    parser.add_argument("--research-cat-dependencies", type=Path)
     return parser
+
+
+def build_research_settings_kwargs(args: argparse.Namespace, workspace: Path) -> dict[str, object]:
+    """Validate explicit, non-secret research paths and map them to Core settings.
+
+    This only reads the two public configuration files. It never reads profile
+    response data, provisions eligibility, or creates/starts the CAT process.
+    """
+    values = {name: getattr(args, name, None) for name in _RESEARCH_CONFIG_ARGUMENTS}
+    supplied = tuple(value is not None for value in values.values())
+    if not any(supplied):
+        return {}
+    if not all(supplied):
+        raise ResearchCLIConfigError("research_config_incomplete")
+
+    try:
+        root = _validated_absolute_path(workspace, kind="directory")
+        runtime_file = _validated_absolute_path(values["research_runtime_file"], kind="file")
+        service_file = _validated_absolute_path(values["research_service_file"], kind="file")
+        if not runtime_file.is_relative_to(root) or not service_file.is_relative_to(root):
+            raise ValueError
+        runtime_sha256 = _validated_sha256(values["research_runtime_sha256"])
+        service_sha256 = _validated_sha256(values["research_service_sha256"])
+        cat_python = _validated_absolute_path(values["research_cat_python"], kind="file")
+        cat_source = _validated_absolute_path(values["research_cat_source"], kind="directory")
+        cat_dependencies = _validated_absolute_path(
+            values["research_cat_dependencies"], kind="directory"
+        )
+        base_url = _research_service_base_url(service_file, service_sha256)
+    except ResearchCLIConfigError:
+        raise
+    except (OSError, ValueError, TypeError):
+        raise ResearchCLIConfigError("research_config_invalid") from None
+
+    return {
+        "school_research_enabled": True,
+        "school_research_runtime_file": str(runtime_file),
+        "school_research_runtime_sha256": runtime_sha256,
+        "school_research_base_url": base_url,
+        "school_research_managed_enabled": True,
+        "school_research_service_file": str(service_file),
+        "school_research_service_sha256": service_sha256,
+        "school_research_cat_python": str(cat_python),
+        "school_research_cat_source": str(cat_source),
+        "school_research_cat_dependencies": str(cat_dependencies),
+    }
+
+
+def _validated_sha256(value: object) -> str:
+    if type(value) is not str or _RESEARCH_SHA256.fullmatch(value) is None:
+        raise ValueError
+    return value
+
+
+def _validated_absolute_path(value: object, *, kind: str) -> Path:
+    if not isinstance(value, Path) or not value.is_absolute() or ".." in value.parts:
+        raise ValueError
+    _assert_no_reparse_components(value)
+    resolved = value.resolve(strict=True)
+    mode = resolved.stat().st_mode
+    if kind == "file" and not stat.S_ISREG(mode):
+        raise ValueError
+    if kind == "directory" and not stat.S_ISDIR(mode):
+        raise ValueError
+    return resolved
+
+
+def _assert_no_reparse_components(path: Path) -> None:
+    """Reject symlinks/junctions in every existing component, including parents."""
+    absolute = Path(os.path.abspath(path))
+    current = Path(absolute.anchor)
+    for part in absolute.parts[1:]:
+        current = current / part
+        info = current.lstat()
+        if stat.S_ISLNK(info.st_mode) or (
+            getattr(info, "st_file_attributes", 0)
+            & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        ):
+            raise ValueError
+        if hasattr(current, "is_junction") and current.is_junction():
+            raise ValueError
+
+
+def _research_service_base_url(service_file: Path, expected_sha256: str) -> str:
+    with service_file.open("rb") as stream:
+        raw = stream.read(_RESEARCH_SERVICE_MAX_BYTES + 1)
+    if not raw or len(raw) > _RESEARCH_SERVICE_MAX_BYTES:
+        raise ResearchCLIConfigError("research_service_config_invalid")
+    if not hashlib.sha256(raw).hexdigest() == expected_sha256:
+        raise ResearchCLIConfigError("research_service_config_invalid")
+
+    def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError
+            result[key] = value
+        return result
+
+    def reject_constant(_value: str) -> None:
+        raise ValueError
+
+    try:
+        document = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=unique_object,
+            parse_constant=reject_constant,
+        )
+        listener = document["listener"]
+        if (
+            type(document) is not dict
+            or set(document) != _RESEARCH_SERVICE_FIELDS
+            or document.get("schema") != _RESEARCH_SERVICE_SCHEMA
+            or type(listener) is not dict
+            or set(listener) != {"host", "port"}
+            or listener.get("host") != "127.0.0.1"
+            or type(listener.get("port")) is not int
+            or not 1024 <= listener["port"] <= 65535
+        ):
+            raise ValueError
+    except (OSError, UnicodeError, ValueError, TypeError, KeyError):
+        raise ResearchCLIConfigError("research_service_config_invalid") from None
+    return f"http://127.0.0.1:{listener['port']}"
 
 
 def load_runtime(
@@ -194,6 +359,30 @@ def main() -> int:
             args.port, args.frontend_port, args.llm_profile, cat_port=args.cat_port
         )
         result = load_runtime(args.workspace, repo)
+        research_kwargs = build_research_settings_kwargs(args, args.workspace)
+        settings_kwargs.update(research_kwargs)
+        if research_kwargs:
+            try:
+                from smhai_backend.domains.school_research.managed import (
+                    validate_managed_research_config_pair,
+                )
+
+                validate_managed_research_config_pair(
+                    runtime_config_file=Path(
+                        research_kwargs["school_research_runtime_file"]
+                    ),
+                    expected_runtime_config_sha256=research_kwargs[
+                        "school_research_runtime_sha256"
+                    ],
+                    service_config_file=Path(
+                        research_kwargs["school_research_service_file"]
+                    ),
+                    expected_service_config_sha256=research_kwargs[
+                        "school_research_service_sha256"
+                    ],
+                )
+            except Exception:  # noqa: BLE001 - suppress config paths and low-level details.
+                raise ResearchCLIConfigError("research_config_pair_mismatch") from None
         from smhai_backend.app_factory import create_app
         from smhai_backend.core.config import BackendSettings
         settings = BackendSettings(_env_file=None, **settings_kwargs)
@@ -204,6 +393,9 @@ def main() -> int:
         import uvicorn
         uvicorn.run(app, host="127.0.0.1", port=args.port, access_log=False)
         return 0
+    except ResearchCLIConfigError as exc:
+        print(json.dumps({"school_backend": "BLOCKED", "error_code": exc.code}))
+        return 2
     except Exception as exc:  # noqa: BLE001 - only emit error type; details may contain credentials.
         print(json.dumps({"school_backend": "BLOCKED", "error_type": type(exc).__name__}))
         return 2
