@@ -8,6 +8,7 @@ import AppPageHeader from '@/components/app/AppPageHeader.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import AdminSchoolDirectory from '@/components/school/AdminSchoolDirectory.vue'
 import AdminSchoolOperations from '@/components/school/AdminSchoolOperations.vue'
+import SchoolResearchManagement from '@/components/school/SchoolResearchManagement.vue'
 import { readDependencyHealth } from '@/views/admin/health'
 import { useSessionStore } from '@/stores/session'
 
@@ -69,6 +70,7 @@ watch(section, (value) => {
         <AppCard class="admin-feature"><span class="admin-feature__icon admin-feature__icon--teal"><Settings2 :size="19" aria-hidden="true" /></span><span class="admin-feature__state">只读状态</span><h2>服务能力</h2><p>仅读取公开的依赖健康端点，不提供配置变更操作。</p><RouterLink to="/admin/settings">查看服务状态 <ArrowRight :size="15" aria-hidden="true" /></RouterLink></AppCard>
       </section>
       <AdminSchoolOperations :key="schoolScopeKey" />
+      <SchoolResearchManagement :key="schoolScopeKey" mode="admin" />
     </template>
 
     <template v-else-if="section === 'users'">

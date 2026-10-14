@@ -8,7 +8,11 @@ import httpx
 import pytest
 from fastapi import FastAPI, Request
 
-from smhai_backend.adapters.school_research_profiles import SchoolResearchProfileView
+from smhai_backend.adapters.school_research_profiles import (
+    SchoolResearchProfileVersionPage,
+    SchoolResearchProfileVersionView,
+    SchoolResearchProfileView,
+)
 from smhai_backend.core.errors import (
     BackendError,
     ErrorCode,
@@ -80,6 +84,29 @@ class _FakeService:
     async def list_profiles(self, actor):
         self.calls.append(("list", actor))
         return [_candidate(version_number=None, catalog_state="REGISTRY_CANDIDATE")]
+
+    async def list_profile_versions(self, actor, profile_ref, *, limit, offset):
+        self.calls.append(("versions", actor, profile_ref, limit, offset))
+        return SchoolResearchProfileVersionPage(
+            items=(
+                SchoolResearchProfileVersionView(
+                    profile_ref=PROFILE_REF,
+                    version_number=3,
+                    source_population_scope="PROMIS_US_GENPOP_CHILD_SELF_REPORT_8_17",
+                    instrument_id="PROMIS_PEDIATRIC_ANXIETY_8_ITEM_SUBSET",
+                    research_only=True,
+                    publication_status="not_approved_for_publication_or_operational_use",
+                    rights_status="VERIFIED",
+                    execution_status="SIMULATION_ENABLED",
+                    created_at=NOW,
+                ),
+            ),
+            total=1,
+            limit=limit,
+            offset=offset,
+            has_more=False,
+            next_offset=None,
+        )
 
     async def import_profile(self, actor, profile_ref, version_number, *, idempotency):
         self.calls.append(("import", actor, profile_ref, version_number, idempotency))
@@ -357,6 +384,66 @@ async def test_get_and_post_return_only_candidate_metadata_and_canonical_envelop
             "operation": "school_research_profiles:import",
         }
     )
+
+
+@pytest.mark.asyncio
+async def test_versions_get_returns_persisted_page_without_csrf_or_private_fields() -> None:
+    service = _FakeService()
+    app = _mounted_app(_actor(), service)
+
+    response = await _request(
+        app,
+        "GET",
+        f"{_BASE}/versions?profile_ref={PROFILE_REF}&limit=1&offset=0",
+    )
+
+    assert response.status_code == 200, response.text
+    result = response.json()["data"]
+    assert result["total"] == 1
+    assert result["limit"] == 1
+    assert result["items"][0]["version_number"] == 3
+    assert result["items"][0]["execution_status"] == "SIMULATION_ENABLED"
+    assert result["items"][0]["use_eligibility"] == "RECHECK_REQUIRED"
+    for forbidden in (
+        "profile_sha256",
+        "manifest_sha256",
+        "payload_ciphertext",
+        "raw_profile_bytes",
+        "cat_config",
+        "case_index",
+        "subject_id",
+        "student_id",
+    ):
+        assert forbidden not in response.text
+    assert service.calls == [("versions", _actor(), PROFILE_REF, 1, 0)]
+
+
+@pytest.mark.asyncio
+async def test_versions_query_is_closed_bounded_and_specialist_only() -> None:
+    service = _FakeService()
+    app = _mounted_app(_actor(), service)
+    invalid = await _request(
+        app, "GET", f"{_BASE}/versions?profile_ref={PROFILE_REF}&limit=31"
+    )
+    unknown = await _request(
+        app, "GET", f"{_BASE}/versions?profile_ref={PROFILE_REF}&debug=1"
+    )
+    duplicate = await _request(
+        app,
+        "GET",
+        f"{_BASE}/versions?profile_ref={PROFILE_REF}&offset=0&offset=1",
+    )
+    teacher = await _request(
+        _mounted_app(_actor(BackendRole.TEACHER), service),
+        "GET",
+        f"{_BASE}/versions?profile_ref={PROFILE_REF}",
+    )
+
+    assert invalid.status_code == 422
+    assert unknown.status_code == 422
+    assert duplicate.status_code == 422
+    assert teacher.status_code == 403
+    assert service.calls == []
 
 
 @pytest.mark.asyncio

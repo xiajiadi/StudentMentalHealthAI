@@ -20,6 +20,14 @@ class SchoolResearchProfilesService:
         _require_specialist(actor)
         return await self.persistence.list_profiles(actor)
 
+    async def list_profile_versions(
+        self, actor: Actor, profile_ref: str, *, limit: int, offset: int
+    ):
+        _require_specialist(actor)
+        return await self.persistence.list_profile_versions(
+            actor, profile_ref, limit=limit, offset=offset
+        )
+
     async def import_profile(
         self,
         actor: Actor,

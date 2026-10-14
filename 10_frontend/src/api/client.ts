@@ -1,3 +1,5 @@
+/* global AbortSignal */
+
 import type {
   ApiEnvelope,
   Assessment,
@@ -253,6 +255,95 @@ export interface ResearchAnswerInput {
   expected_state_version: number
 }
 
+/** Server-owned candidate metadata only; no profile bytes or trust hashes. */
+export interface ResearchProfileCandidate {
+  profile_ref: string
+  version_number: number | null
+  source_population_scope: string | null
+  instrument_id: string
+  research_only: true
+  publication_status: 'not_approved_for_publication_or_operational_use'
+  rights_status: string
+  execution_status: string
+  created_at: string | null
+  catalog_state: 'REGISTRY_CANDIDATE' | 'IMPORTED_CANDIDATE' | 'EXISTING_CANDIDATE' | 'IDEMPOTENT_REPLAY'
+}
+
+/** Persisted version metadata only; actual use must be rechecked by the server. */
+export interface ResearchProfileVersion {
+  profile_ref: string
+  version_number: number
+  source_population_scope: string
+  instrument_id: string
+  research_only: true
+  publication_status: 'not_approved_for_publication_or_operational_use'
+  rights_status: 'PENDING' | 'VERIFIED' | 'REVOKED'
+  execution_status: 'CANDIDATE_RESEARCH_ONLY' | 'SIMULATION_ENABLED' | 'DISABLED'
+  created_at: string
+  use_eligibility: 'RECHECK_REQUIRED'
+}
+
+export interface ResearchProfileVersionPage {
+  items: ResearchProfileVersion[]
+  total: number
+  limit: number
+  offset: number
+  has_more: boolean
+  next_offset: number | null
+}
+
+/** Simulation-only eligibility receipt; it does not imply professional approval. */
+export interface ResearchProfileSimulationReceipt {
+  profile_ref: string
+  version_number: number
+  research_only: true
+  human_curated: false
+  publication_status: 'not_approved_for_publication_or_operational_use'
+  rights_status: 'VERIFIED'
+  execution_status: 'SIMULATION_ENABLED'
+  simulation_only: true
+  clinical_approval: false
+  ethics_approval: false
+  psychometric_approval: false
+  study_ref: string
+  policy_expires_at: string
+  catalog_state: 'SIMULATION_ENABLED' | 'IDEMPOTENT_REPLAY'
+}
+
+/** Safe server selector for a currently eligible public-observed binding. */
+export interface ResearchTaskBindingOption {
+  binding_ref: string
+  profile_ref: string
+  profile_version_number: number
+  source_population_scope: string
+  instrument_id: string
+  instrument_version: string
+  research_only: true
+  publication_status: 'not_approved_for_publication_or_operational_use'
+}
+
+export interface ResearchTaskPublishInput {
+  class_ref: string
+  task_ref: string
+  binding_ref: string
+  profile_version_number: number
+  opens_at: string
+  due_at: string
+}
+
+export interface ResearchTaskPublicationReceipt extends ResearchTaskPublishInput {
+  profile_ref: string
+  source_population_scope: string
+  instrument_id: string
+  instrument_version: string
+  status: 'PUBLISHED'
+  published_at: string
+  published_enrollment_count: number
+  response_origin: 'PUBLIC_OBSERVED'
+  research_only: true
+  publication_status: 'not_approved_for_publication_or_operational_use'
+}
+
 export interface SchoolTaskStart {
   task_ref: string
   assessment_id: string
@@ -309,7 +400,7 @@ export interface FrontendApi {
   getReviewQueue(): Promise<ApiEnvelope<ReviewQueueViewModel>>
   getReviewDetail(reviewCaseId: string): Promise<ApiEnvelope<ReviewDetailViewModel>>
   submitReview(reportId: string, input: ReviewSubmission): Promise<ApiEnvelope<ReviewCase>>
-  listSchoolClasses?(): Promise<ApiEnvelope<SchoolClass[]>>
+  listSchoolClasses?(params?: { signal?: AbortSignal }): Promise<ApiEnvelope<SchoolClass[]>>
   listSchoolMembers?(role: SchoolMemberRole): Promise<ApiEnvelope<SchoolMember[]>>
   getSchoolAdminDirectory?(): Promise<ApiEnvelope<SchoolDirectory>>
   updateSchoolDisplayName?(displayName: string): Promise<ApiEnvelope<unknown>>
@@ -332,6 +423,12 @@ export interface FrontendApi {
   startStudentResearchTask?(taskRef: string, idempotencyKey: string): Promise<ApiEnvelope<ResearchL1Session>>
   resumeStudentResearchSession?(sessionRef: string): Promise<ApiEnvelope<ResearchL1Session>>
   answerStudentResearchSession?(sessionRef: string, input: ResearchAnswerInput, idempotencyKey: string): Promise<ApiEnvelope<ResearchL1Session>>
+  listResearchProfileCatalog?(params?: { signal?: AbortSignal }): Promise<ApiEnvelope<ResearchProfileCandidate[]>>
+  listResearchProfileVersions?(profileRef: string, params?: { limit?: number; offset?: number; signal?: AbortSignal }): Promise<ApiEnvelope<ResearchProfileVersionPage>>
+  importResearchProfile?(profileRef: string, versionNumber: number, idempotencyKey: string): Promise<ApiEnvelope<ResearchProfileCandidate>>
+  enableResearchProfileSimulation?(profileRef: string, versionNumber: number, idempotencyKey: string): Promise<ApiEnvelope<ResearchProfileSimulationReceipt>>
+  listResearchTaskCatalog?(params?: { signal?: AbortSignal }): Promise<ApiEnvelope<ResearchTaskBindingOption[]>>
+  publishResearchTask?(input: ResearchTaskPublishInput, idempotencyKey: string): Promise<ApiEnvelope<ResearchTaskPublicationReceipt>>
   listTeacherSchoolTaskProgress?(): Promise<ApiEnvelope<TeacherTaskProgress[]>>
   listSchoolTaskEnrollments?(taskRef: string): Promise<ApiEnvelope<SchoolTaskEnrollment[]>>
   revokeSchoolTaskEnrollment?(taskRef: string, enrollmentRef: string): Promise<ApiEnvelope<SchoolTaskEnrollment>>

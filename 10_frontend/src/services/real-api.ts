@@ -1,3 +1,5 @@
+/* global AbortSignal */
+
 import {
   createAssessment,
   createSupport,
@@ -28,6 +30,13 @@ import type {
   AssessmentState,
   AssessmentListEntry,
   AssessmentListParams,
+  ResearchProfileCandidate,
+  ResearchProfileVersion,
+  ResearchProfileVersionPage,
+  ResearchProfileSimulationReceipt,
+  ResearchTaskBindingOption,
+  ResearchTaskPublishInput,
+  ResearchTaskPublicationReceipt,
   ResearchAnswerInput,
   ResearchCompletion,
   ResearchDiscoveryPage,
@@ -206,6 +215,203 @@ const mapResearchSessionDiscovery = (value: unknown): ResearchSessionDiscoveryEn
     items_answered: requiredCount(value, 'items_answered'),
     completed_at: requiredTimestamp(value, 'completed_at', true),
     research_only: true,
+  }
+}
+
+const mapResearchProfileCandidate = (value: unknown): ResearchProfileCandidate => {
+  const keys = [
+    'profile_ref', 'version_number', 'source_population_scope', 'instrument_id',
+    'research_only', 'publication_status', 'rights_status', 'execution_status',
+    'created_at', 'catalog_state',
+  ] as const
+  if (!isRecord(value) || Array.isArray(value)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '研究资料候选格式无法识别。')
+  }
+  requireExactKeys(value, keys, '研究资料目录包含不支持的信息。')
+  const version = value.version_number
+  const population = value.source_population_scope
+  const created = value.created_at
+  if ((version !== null && (typeof version !== 'number' || !Number.isSafeInteger(version) || version < 1))
+    || (population !== null && typeof population !== 'string')
+    || (created !== null && typeof created !== 'string')
+    || value.research_only !== true
+    || value.publication_status !== 'not_approved_for_publication_or_operational_use'
+    || !['VERIFIED', 'PENDING', 'REVOKED'].includes(String(value.rights_status))
+    || !['CANDIDATE_RESEARCH_ONLY', 'SIMULATION_ENABLED', 'DISABLED'].includes(String(value.execution_status))
+    || !['REGISTRY_CANDIDATE', 'IMPORTED_CANDIDATE', 'EXISTING_CANDIDATE', 'IDEMPOTENT_REPLAY'].includes(String(value.catalog_state))) {
+    throw new RealApiError('API_INVALID_RESPONSE', '研究资料候选状态格式无法识别。')
+  }
+  return {
+    profile_ref: requiredString(value, 'profile_ref'),
+    version_number: version as number | null,
+    source_population_scope: population as string | null,
+    instrument_id: requiredString(value, 'instrument_id'),
+    research_only: true,
+    publication_status: 'not_approved_for_publication_or_operational_use',
+    rights_status: value.rights_status as string,
+    execution_status: value.execution_status as string,
+    created_at: created === null ? null : requiredTimestamp(value, 'created_at', true),
+    catalog_state: value.catalog_state as ResearchProfileCandidate['catalog_state'],
+  }
+}
+
+const mapResearchProfileVersion = (value: unknown): ResearchProfileVersion => {
+  const keys = [
+    'profile_ref', 'version_number', 'source_population_scope', 'instrument_id',
+    'research_only', 'publication_status', 'rights_status', 'execution_status',
+    'created_at', 'use_eligibility',
+  ] as const
+  if (!isRecord(value) || Array.isArray(value)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '已登记资料版本格式无法识别。')
+  }
+  requireExactKeys(value, keys, '已登记资料版本包含不支持的信息。')
+  if (value.research_only !== true
+    || value.publication_status !== 'not_approved_for_publication_or_operational_use'
+    || !['PENDING', 'VERIFIED', 'REVOKED'].includes(String(value.rights_status))
+    || !['CANDIDATE_RESEARCH_ONLY', 'SIMULATION_ENABLED', 'DISABLED'].includes(String(value.execution_status))
+    || value.use_eligibility !== 'RECHECK_REQUIRED') {
+    throw new RealApiError('API_INVALID_RESPONSE', '已登记资料版本状态格式无法识别。')
+  }
+  return {
+    profile_ref: requiredString(value, 'profile_ref'),
+    version_number: requiredPositiveCount(value, 'version_number'),
+    source_population_scope: requiredString(value, 'source_population_scope'),
+    instrument_id: requiredString(value, 'instrument_id'),
+    research_only: true,
+    publication_status: 'not_approved_for_publication_or_operational_use',
+    rights_status: value.rights_status as ResearchProfileVersion['rights_status'],
+    execution_status: value.execution_status as ResearchProfileVersion['execution_status'],
+    created_at: requiredTimestamp(value, 'created_at')!,
+    use_eligibility: 'RECHECK_REQUIRED',
+  }
+}
+
+const mapResearchProfileVersionPage = (value: unknown): ResearchProfileVersionPage => {
+  const keys = ['items', 'total', 'limit', 'offset', 'has_more', 'next_offset'] as const
+  if (!isRecord(value) || Array.isArray(value) || !Array.isArray(value.items)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '资料版本列表格式无法识别。')
+  }
+  requireExactKeys(value, keys, '资料版本列表包含不支持的信息。')
+  const total = requiredCount(value, 'total')
+  const limit = requiredPositiveCount(value, 'limit')
+  const offset = requiredCount(value, 'offset')
+  const nextOffset = value.next_offset
+  if (limit > 30 || offset > 10_000 || value.items.length > limit
+    || typeof value.has_more !== 'boolean'
+    || (nextOffset !== null && (typeof nextOffset !== 'number' || !Number.isSafeInteger(nextOffset) || nextOffset < 0))
+    || value.has_more !== (nextOffset !== null)
+    || (value.items.length > 0 && total < offset + value.items.length)
+    || value.has_more !== (offset + value.items.length < total)
+    || (value.has_more && (value.items.length === 0 || nextOffset !== offset + value.items.length))) {
+    throw new RealApiError('API_INVALID_RESPONSE', '资料版本分页信息无法识别。')
+  }
+  return {
+    items: value.items.map(mapResearchProfileVersion),
+    total,
+    limit,
+    offset,
+    has_more: value.has_more,
+    next_offset: nextOffset as number | null,
+  }
+}
+
+const mapResearchProfileSimulationReceipt = (value: unknown): ResearchProfileSimulationReceipt => {
+  const keys = [
+    'profile_ref', 'version_number', 'research_only', 'human_curated',
+    'publication_status', 'rights_status', 'execution_status', 'simulation_only',
+    'clinical_approval', 'ethics_approval', 'psychometric_approval', 'study_ref',
+    'policy_expires_at', 'catalog_state',
+  ] as const
+  if (!isRecord(value) || Array.isArray(value)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '研究资格回执格式无法识别。')
+  }
+  requireExactKeys(value, keys, '研究资格回执包含不支持的信息。')
+  if (value.research_only !== true || value.human_curated !== false
+    || value.publication_status !== 'not_approved_for_publication_or_operational_use'
+    || value.rights_status !== 'VERIFIED' || value.execution_status !== 'SIMULATION_ENABLED'
+    || value.simulation_only !== true || value.clinical_approval !== false
+    || value.ethics_approval !== false || value.psychometric_approval !== false
+    || !['SIMULATION_ENABLED', 'IDEMPOTENT_REPLAY'].includes(String(value.catalog_state))) {
+    throw new RealApiError('API_INVALID_RESPONSE', '研究资格状态格式无法识别。')
+  }
+  const version = requiredPositiveCount(value, 'version_number')
+  const expiry = requiredTimestamp(value, 'policy_expires_at')
+  return {
+    profile_ref: requiredString(value, 'profile_ref'),
+    version_number: version,
+    research_only: true,
+    human_curated: false,
+    publication_status: 'not_approved_for_publication_or_operational_use',
+    rights_status: 'VERIFIED',
+    execution_status: 'SIMULATION_ENABLED',
+    simulation_only: true,
+    clinical_approval: false,
+    ethics_approval: false,
+    psychometric_approval: false,
+    study_ref: requiredString(value, 'study_ref'),
+    policy_expires_at: expiry!,
+    catalog_state: value.catalog_state as ResearchProfileSimulationReceipt['catalog_state'],
+  }
+}
+
+const mapResearchTaskBindingOption = (value: unknown): ResearchTaskBindingOption => {
+  const keys = [
+    'binding_ref', 'profile_ref', 'profile_version_number', 'source_population_scope',
+    'instrument_id', 'instrument_version', 'research_only', 'publication_status',
+  ] as const
+  if (!isRecord(value) || Array.isArray(value)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '研究任务候选格式无法识别。')
+  }
+  requireExactKeys(value, keys, '研究任务候选包含不支持的信息。')
+  if (value.research_only !== true
+    || value.publication_status !== 'not_approved_for_publication_or_operational_use') {
+    throw new RealApiError('API_INVALID_RESPONSE', '研究任务候选状态格式无法识别。')
+  }
+  return {
+    binding_ref: requiredString(value, 'binding_ref'),
+    profile_ref: requiredString(value, 'profile_ref'),
+    profile_version_number: requiredPositiveCount(value, 'profile_version_number'),
+    source_population_scope: requiredString(value, 'source_population_scope'),
+    instrument_id: requiredString(value, 'instrument_id'),
+    instrument_version: requiredString(value, 'instrument_version'),
+    research_only: true,
+    publication_status: 'not_approved_for_publication_or_operational_use',
+  }
+}
+
+const mapResearchTaskPublication = (value: unknown): ResearchTaskPublicationReceipt => {
+  const keys = [
+    'task_ref', 'class_ref', 'binding_ref', 'profile_ref', 'profile_version_number',
+    'source_population_scope', 'instrument_id', 'instrument_version', 'status',
+    'opens_at', 'due_at', 'published_at', 'published_enrollment_count',
+    'response_origin', 'research_only', 'publication_status',
+  ] as const
+  if (!isRecord(value) || Array.isArray(value)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '研究任务发布回执格式无法识别。')
+  }
+  requireExactKeys(value, keys, '研究任务发布回执包含不支持的信息。')
+  if (value.status !== 'PUBLISHED' || value.response_origin !== 'PUBLIC_OBSERVED'
+    || value.research_only !== true
+    || value.publication_status !== 'not_approved_for_publication_or_operational_use') {
+    throw new RealApiError('API_INVALID_RESPONSE', '研究任务发布状态格式无法识别。')
+  }
+  return {
+    task_ref: requiredString(value, 'task_ref'),
+    class_ref: requiredString(value, 'class_ref'),
+    binding_ref: requiredString(value, 'binding_ref'),
+    profile_ref: requiredString(value, 'profile_ref'),
+    profile_version_number: requiredPositiveCount(value, 'profile_version_number'),
+    source_population_scope: requiredString(value, 'source_population_scope'),
+    instrument_id: requiredString(value, 'instrument_id'),
+    instrument_version: requiredString(value, 'instrument_version'),
+    status: 'PUBLISHED',
+    opens_at: requiredTimestamp(value, 'opens_at')!,
+    due_at: requiredTimestamp(value, 'due_at')!,
+    published_at: requiredTimestamp(value, 'published_at')!,
+    published_enrollment_count: requiredCount(value, 'published_enrollment_count'),
+    response_origin: 'PUBLIC_OBSERVED',
+    research_only: true,
+    publication_status: 'not_approved_for_publication_or_operational_use',
   }
 }
 
@@ -1374,9 +1580,9 @@ export class RealApiProvider implements FrontendApi {
     }))
   }
 
-  async listSchoolClasses(): Promise<ApiEnvelope<SchoolClass[]>> {
+  async listSchoolClasses(params: { signal?: AbortSignal } = {}): Promise<ApiEnvelope<SchoolClass[]>> {
     const response = await unwrap<unknown>(() => apiClient.request({
-      method: 'GET', url: '/api/v1/school/classes', parseAs: 'json',
+      method: 'GET', url: '/api/v1/school/classes', signal: params.signal, parseAs: 'json',
     }))
     if (!Array.isArray(response.data)) throw new RealApiError('API_INVALID_RESPONSE', '班级列表格式无法识别。')
     return { ...response, data: response.data.map(mapSchoolClass) }
@@ -1516,6 +1722,109 @@ export class RealApiProvider implements FrontendApi {
       `task-${taskRef}-revoke`,
     )
     return { ...response, data: mapSchoolTaskEnrollment(response.data) }
+  }
+
+  async listResearchProfileCatalog(params: { signal?: AbortSignal } = {}): Promise<ApiEnvelope<ResearchProfileCandidate[]>> {
+    const response = await unwrap<unknown>(() => apiClient.request({
+      method: 'GET', url: '/api/v1/school/research-profiles/catalog', signal: params.signal, parseAs: 'json',
+    }))
+    if (!Array.isArray(response.data)) throw new RealApiError('API_INVALID_RESPONSE', '研究资料目录格式无法识别。')
+    return { ...response, data: response.data.map(mapResearchProfileCandidate) }
+  }
+
+  async listResearchProfileVersions(
+    profileRef: string,
+    params: { limit?: number; offset?: number; signal?: AbortSignal } = {},
+  ): Promise<ApiEnvelope<ResearchProfileVersionPage>> {
+    const limit = params.limit ?? 30
+    const offset = params.offset ?? 0
+    if (!profileRef.trim() || !Number.isSafeInteger(limit) || limit < 1 || limit > 30
+      || !Number.isSafeInteger(offset) || offset < 0 || offset > 10_000) {
+      throw new RealApiError('API_INVALID_REQUEST', '资料版本查询范围无效。')
+    }
+    const query = new URLSearchParams({ profile_ref: profileRef, limit: String(limit), offset: String(offset) })
+    const response = await unwrap<unknown>(() => apiClient.request({
+      method: 'GET',
+      url: `/api/v1/school/research-profiles/versions?${query.toString()}`,
+      signal: params.signal,
+      parseAs: 'json',
+    }))
+    const data = mapResearchProfileVersionPage(response.data)
+    if (data.items.some((item) => item.profile_ref !== profileRef)
+      || new Set(data.items.map((item) => item.version_number)).size !== data.items.length
+      || data.offset !== offset || data.limit !== limit) {
+      throw new RealApiError('API_INVALID_RESPONSE', '资料版本列表与当前查询不匹配。')
+    }
+    return { ...response, data }
+  }
+
+  async importResearchProfile(
+    profileRef: string,
+    versionNumber: number,
+    idempotencyKey: string,
+  ): Promise<ApiEnvelope<ResearchProfileCandidate>> {
+    if (!Number.isSafeInteger(versionNumber) || versionNumber < 1 || !profileRef.trim()) {
+      throw new RealApiError('API_INVALID_REQUEST', '研究资料版本信息无效。')
+    }
+    const response = await this.schoolWrite(
+      '/api/v1/school/research-profiles/import',
+      { profile_ref: profileRef, version_number: versionNumber },
+      'research-profile-import',
+      idempotencyKey,
+    )
+    return { ...response, data: mapResearchProfileCandidate(response.data) }
+  }
+
+  async enableResearchProfileSimulation(
+    profileRef: string,
+    versionNumber: number,
+    idempotencyKey: string,
+  ): Promise<ApiEnvelope<ResearchProfileSimulationReceipt>> {
+    if (!Number.isSafeInteger(versionNumber) || versionNumber < 1 || !profileRef.trim()) {
+      throw new RealApiError('API_INVALID_REQUEST', '研究资料版本信息无效。')
+    }
+    const response = await this.schoolWrite(
+      '/api/v1/school/research-profiles/enable-simulation',
+      { profile_ref: profileRef, version_number: versionNumber },
+      'research-profile-enable-simulation',
+      idempotencyKey,
+    )
+    return { ...response, data: mapResearchProfileSimulationReceipt(response.data) }
+  }
+
+  async listResearchTaskCatalog(params: { signal?: AbortSignal } = {}): Promise<ApiEnvelope<ResearchTaskBindingOption[]>> {
+    const response = await unwrap<unknown>(() => apiClient.request({
+      method: 'GET', url: '/api/v1/school/research-tasks/catalog', signal: params.signal, parseAs: 'json',
+    }))
+    if (!Array.isArray(response.data)) throw new RealApiError('API_INVALID_RESPONSE', '研究任务目录格式无法识别。')
+    return { ...response, data: response.data.map(mapResearchTaskBindingOption) }
+  }
+
+  async publishResearchTask(
+    input: ResearchTaskPublishInput,
+    idempotencyKey: string,
+  ): Promise<ApiEnvelope<ResearchTaskPublicationReceipt>> {
+    const opensAt = Date.parse(input.opens_at)
+    const dueAt = Date.parse(input.due_at)
+    if (!input.class_ref.trim() || !input.task_ref.trim() || !input.binding_ref.trim()
+      || !Number.isSafeInteger(input.profile_version_number) || input.profile_version_number < 1
+      || !Number.isFinite(opensAt) || !Number.isFinite(dueAt) || dueAt <= opensAt) {
+      throw new RealApiError('API_INVALID_REQUEST', '研究任务发布信息无效。')
+    }
+    const response = await this.schoolWrite(
+      '/api/v1/school/research-tasks/publish',
+      {
+        class_ref: input.class_ref,
+        task_ref: input.task_ref,
+        binding_ref: input.binding_ref,
+        profile_version_number: input.profile_version_number,
+        opens_at: input.opens_at,
+        due_at: input.due_at,
+      },
+      `research-task-${input.task_ref}-publish`,
+      idempotencyKey,
+    )
+    return { ...response, data: mapResearchTaskPublication(response.data) }
   }
 
   async listStudentResearchTasks(params: { limit?: number; offset?: number; signal?: AbortSignal } = {}): Promise<ApiEnvelope<ResearchDiscoveryPage<ResearchTaskDiscoveryEntry>>> {

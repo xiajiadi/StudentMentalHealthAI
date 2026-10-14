@@ -7,6 +7,7 @@ import AppPageHeader from '@/components/app/AppPageHeader.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import SpecialistTaskReviews from '@/components/school/SpecialistTaskReviews.vue'
 import SpecialistCatManagement from '@/components/school/SpecialistCatManagement.vue'
+import SchoolResearchManagement from '@/components/school/SchoolResearchManagement.vue'
 
 const route = useRoute()
 const section = computed(() => String(route.params.section ?? 'overview'))
@@ -56,8 +57,7 @@ const page = computed(() => ({
     </template>
 
     <template v-else-if="section === 'resources'">
-      <AppCard class="specialist-status-card"><span class="specialist-card__icon specialist-card__icon--teal"><BookOpenCheck :size="19" aria-hidden="true" /></span><div><span class="specialist-card__state">尚未接入</span><h2>资料目录当前不可读取</h2><p>前端尚无可用的专业资料查询接口。内容的来源、权利状态和专业审核状态未在此确认，因此此处不展示资料条目或建议。</p></div></AppCard>
-      <section class="specialist-resource-note" aria-label="资料审阅提示"><div><span class="specialist-kicker">开始提供资料前</span><h2>先确认来源与适用范围</h2><p>资料需经过相应的权利、内容和角色范围审核后再决定是否接入。工程展示不等于专业批准或可用于真实个案。</p></div><img :src="'/assets/heartbridge/card-specialist-original.png'" alt="" aria-hidden="true"></section>
+      <SchoolResearchManagement mode="specialist" />
     </template>
 
     <SpecialistTaskReviews v-else-if="section === 'tasks'" />

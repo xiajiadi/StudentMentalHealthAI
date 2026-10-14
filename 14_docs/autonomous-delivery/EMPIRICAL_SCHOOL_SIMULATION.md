@@ -81,3 +81,29 @@ Next increment: acquire the first correctly keyed public item/response resource;
 build a response-only validated importer and held-out CAT replay; qualify an
 adolescent bank separately; then run the 800-account workflow in a new isolated
 scenario workspace with source-specific evidence.
+
+
+## Cohort-wide observed replay assignment (Controller direction, 2026-10-14)
+
+Task-level case uniqueness is insufficient for the8-class/800-student mandate.
+Introduce an explicitly server-owned research cohort with pinned school/study/profile/
+manifest/corpus identity, selected existing import batches and an immutable sealed
+membership snapshot. Seal verifies actual synthetic subjects, unique current SELF
+relations and roster/batch provenance in one transaction. The800-person acceptance
+cohort must own800 distinct subjects and a complete one-to-one0..799 case mapping;
+never infer this from a file's scenario_id or client assertions.
+
+The cohort's private subject/case mapping persists independently of each task.
+Task publication joins existing sealed members and copies/references their mapping,
+rather than sampling again for each class. Repeated tasks for the same subject refer
+to the same case. Revocation stops future use but does not recycle/reassign the case;
+new members require a new cohort. Legacy task mappings are not retroactively stamped
+as cohort-verified. Assignment indices/source rows stay out of public DTOs/logs/UI.
+
+Enforce cross-school isolation, immutable study pins and stable lock order. Seal and
+publish are atomic; uniqueness/FK constraints enforce subject/case correspondence.
+Report separate counts for unique assigned, started, answered and completed source
+cases from persisted server data;800 actions/allocations alone do not prove800
+observed completed cases. Professional/ethics/clinical approvals remain false.
+This is the next additive engineering increment after native0014 verification;
+no cohort schema, API or online800 execution has yet been implemented or accepted.
