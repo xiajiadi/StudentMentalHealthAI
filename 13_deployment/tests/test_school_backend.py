@@ -222,7 +222,7 @@ def test_programme_worker_cli_uses_fixed_8161_without_retargeting_normal_llm(
     worker = settings["research_programme_worker"]
     assert worker["enabled"] is True
     assert worker["package_manifest_sha256"] == manifest_sha
-    assert worker["prompt_version"] == "1.1.1"
+    assert worker["prompt_version"] == "1.2.0"
     assert worker["model_ref"] == "qwen2.5-7b-instruct-school-demo"
     assert worker["lease_seconds"] == 180
     assert settings["research_education_worker"]["enabled"] is False

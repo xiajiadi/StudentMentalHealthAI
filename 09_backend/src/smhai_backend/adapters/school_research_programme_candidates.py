@@ -22,11 +22,13 @@ from smhai_backend.domains.school_research_programme_candidates.schemas import (
     GeneratedProgrammeCandidate,
     ProgrammeCandidateContent,
 )
+from smhai_backend.integrations.research_programme import PROMPT_VERSION
 
 RESEARCH_STAFF_PROGRAMME_POLICY_VERSION = "RESEARCH_STAFF_PROGRAMME_POLICY_V1"
 _RESOURCE = "school_research_programme_candidate"
 _JOB_RESOURCE = "school_research_programme_generation_job"
-_CONTENT_SCHEMA = "school_research_programme_candidate.v1"
+_CONTENT_SCHEMA = "school_research_programme_candidate.v2"
+_LEGACY_CONTENT_SCHEMA = "school_research_programme_candidate.v1"
 _PUBLICATION_STATUS = "not_approved_for_publication_or_operational_use"
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
@@ -389,7 +391,34 @@ class SchoolResearchProgrammeCandidatePersistenceAdapter(SchoolResearchFeedbackP
                 )
             ):
                 raise ValueError
-            content = ProgrammeCandidateContent.model_validate(value["content"], strict=True)
+            content_value = value["content"]
+            if not isinstance(content_value, dict):
+                raise ValueError
+            origin_fields = {"content_origin", "generation_mode"}
+            supplied_origin_fields = origin_fields.intersection(content_value)
+            if supplied_origin_fields and supplied_origin_fields != origin_fields:
+                raise ValueError
+            has_origin_fields = supplied_origin_fields == origin_fields
+            if row.payload_schema_version == _CONTENT_SCHEMA:
+                if row.prompt_version != PROMPT_VERSION or not has_origin_fields:
+                    raise ValueError
+            elif row.payload_schema_version == _LEGACY_CONTENT_SCHEMA:
+                if row.prompt_version == PROMPT_VERSION or has_origin_fields:
+                    raise ValueError
+            else:
+                raise ValueError
+            if not has_origin_fields:
+                content_value = {
+                    **content_value,
+                    "content_origin": "LEGACY_MODEL_TEXT",
+                    "generation_mode": "LEGACY_MODEL_AUTHORED_PASSAGES",
+                }
+            content = ProgrammeCandidateContent.model_validate(content_value, strict=True)
+            if has_origin_fields and (
+                content.content_origin != "VERIFIED_SOURCE_METADATA"
+                or content.generation_mode != "MODEL_SOURCE_SELECTION"
+            ):
+                raise ValueError
             if content.programme_ref != row.programme_ref:
                 raise ValueError
             return content.model_dump(mode="python")

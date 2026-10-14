@@ -363,6 +363,8 @@ class ResearchProgrammeWorker:
             output_boundary="STAFF_REFERENCE_ONLY",
             content=ProgrammeCandidateContent(
                 programme_ref=candidate.programme_ref,
+                content_origin=candidate.content_origin,
+                generation_mode=candidate.generation_mode,
                 title=candidate.title,
                 body=candidate.body,
                 citations=citations,

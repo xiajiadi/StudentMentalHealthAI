@@ -124,7 +124,7 @@ def _held_outcome():
         study_ref=STUDY_REF,
         valid_through_month="2027-06",
         prompt_id="PROMPT_staff_school_programme_research_v1",
-        prompt_version="1.0.1",
+        prompt_version="1.2.0",
         prompt_sha256="1" * 64,
         retrieval_bundle_sha256="2" * 64,
         chunk_set_sha256="3" * 64,

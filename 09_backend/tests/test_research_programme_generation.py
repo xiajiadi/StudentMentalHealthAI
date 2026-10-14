@@ -563,14 +563,61 @@ async def test_forged_citation_or_claim_boundary_abstains_without_output_safety(
 def test_candidate_projection_diagnostics_never_include_generated_text(payload, code) -> None:
     from smhai_backend.integrations.research_programme import (
         ResearchProgrammeRuntimeError,
-        _parse_candidate_text,
+        _parse_legacy_passage_payload,
     )
 
     with pytest.raises(ResearchProgrammeRuntimeError) as caught:
-        _parse_candidate_text(payload, allowed_chunk_ids=("CHUNK_SOURCE",))
+        _parse_legacy_passage_payload(payload, allowed_chunk_ids=("CHUNK_SOURCE",))
     assert caught.value.code == code
     assert str(caught.value) == code
     assert "private draft" not in str(caught.value)
+
+
+def test_v120_source_selection_rejects_legacy_freeform_protocol():
+    from smhai_backend.integrations.research_programme import (
+        ResearchProgrammeRuntimeError,
+        _parse_source_selection,
+    )
+
+    source = RuntimeSource(
+        chunk_id="CHUNK_SOURCE",
+        text="Public excerpt text",
+        citation_label="Publisher: Verified title",
+        locator="Section 2",
+    )
+    with pytest.raises(ResearchProgrammeRuntimeError) as caught:
+        _parse_source_selection(
+            json.dumps(
+                {
+                    "title": "Model-written title",
+                    "passages": [
+                        {"text": "Freeform sentence", "source_chunk_ids": ["CHUNK_SOURCE"]}
+                    ],
+                }
+            ),
+            sources=(source,),
+        )
+    assert caught.value.code == "candidate_schema"
+
+
+def test_v120_source_selection_renders_verified_metadata_and_citations():
+    from smhai_backend.integrations.research_programme import _parse_source_selection
+
+    sources = (
+        RuntimeSource("CHUNK_SOURCE_A", "excerpt a", "Publisher A: Title A", "Section 1"),
+        RuntimeSource("CHUNK_SOURCE_B", "excerpt b", "Publisher B: Title B", "Section 2"),
+    )
+    title, body, chunk_ids = _parse_source_selection(
+        json.dumps({"selected_source_chunk_ids": ["CHUNK_SOURCE_B", "CHUNK_SOURCE_A"]}),
+        sources=sources,
+    )
+
+    assert title == "Retrieved source catalogue"
+    assert body == (
+        "Publisher B: Title B [CHUNK_SOURCE_B]\n\n"
+        "Publisher A: Title A [CHUNK_SOURCE_A]"
+    )
+    assert chunk_ids == ("CHUNK_SOURCE_B", "CHUNK_SOURCE_A")
 
 
 def test_runtime_http_client_rejects_non_loopback_origins() -> None:
@@ -585,18 +632,8 @@ async def test_runtime_http_client_sends_fixed_nonstudent_route_and_validates_re
     captured: list[dict[str, Any]] = []
     paths: list[str] = []
     source_ids = [f"CHUNK_RESEARCH_{record_id}" for record_id, _layer, _source_id in _SOURCE_ROWS]
-    candidate = {
-        "title": "Staff reference",
-        "passages": [
-            {
-                "text": "Use a school-wide planning discussion.",
-                "source_chunk_ids": [source_ids[0]],
-            },
-            {
-                "text": "Keep the framework bounded to the supplied context.",
-                "source_chunk_ids": [source_ids[1]],
-            },
-        ],
+    selected = {
+        "selected_source_chunk_ids": [source_ids[0], source_ids[1]],
     }
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -621,7 +658,7 @@ async def test_runtime_http_client_sends_fixed_nonstudent_route_and_validates_re
                 "publication_eligible": False,
                 "status": "HOLD_FOR_REVIEW",
                 "data": {
-                    "text": json.dumps(candidate),
+                    "text": json.dumps(selected),
                     "model_id": EXPECTED_CONTRACT_MODEL_ID,
                     "logical_model_id": EXPECTED_MODEL_ID,
                     "model_version": "qwen2.5:7b-instruct-q4_K_M",
@@ -712,10 +749,10 @@ async def test_runtime_http_client_sends_fixed_nonstudent_route_and_validates_re
         RuntimeSource(
             chunk_id=chunk_id,
             text="Pinned source excerpt",
-            citation_label="Source",
-            locator="Section",
+            citation_label=f"Publisher {index}: Verified title {index}",
+            locator=f"Section {index}",
         )
-        for chunk_id in source_ids
+        for index, chunk_id in enumerate(source_ids, start=1)
     )
     try:
         result = await client.generate_programme(
@@ -728,15 +765,15 @@ async def test_runtime_http_client_sends_fixed_nonstudent_route_and_validates_re
     finally:
         await client.close()
 
-    assert result.title == "Staff reference"
+    assert result.title == "Retrieved source catalogue"
     assert result.retrieval_id == "RETR_test_001"
     assert result.prompt_id == "PROMPT_staff_school_programme_research_v1"
     assert result.prompt_version == PROMPT_VERSION
-    assert PROMPT_VERSION == "1.1.1"
-    assert "250 characters per passage" in captured[0]["messages"][0]["content"]
-    assert "also apply to caveats, limitations, and negative statements" in (
-        captured[0]["messages"][0]["content"]
-    )
+    assert PROMPT_VERSION == "1.2.0"
+    assert result.content_origin == "VERIFIED_SOURCE_METADATA"
+    assert result.generation_mode == "MODEL_SOURCE_SELECTION"
+    assert "source selection only" in captured[0]["messages"][0]["content"]
+    assert "do not write or summarize any text" in captured[0]["messages"][0]["content"]
     assert result.prompt_sha256 == hashlib.sha256(
         json.dumps(
             captured[0]["messages"],
@@ -747,8 +784,8 @@ async def test_runtime_http_client_sends_fixed_nonstudent_route_and_validates_re
         ).encode("utf-8")
     ).hexdigest()
     assert result.body == (
-        f"Use a school-wide planning discussion. [{source_ids[0]}]\n\n"
-        f"Keep the framework bounded to the supplied context. [{source_ids[1]}]"
+        f"Publisher 1: Verified title 1 [{source_ids[0]}]\n\n"
+        f"Publisher 2: Verified title 2 [{source_ids[1]}]"
     )
     assert result.citation_chunk_ids == (source_ids[0], source_ids[1])
     assert paths == [ROUTE_PATH]
@@ -760,40 +797,31 @@ async def test_runtime_http_client_sends_fixed_nonstudent_route_and_validates_re
     assert captured[0]["chunk_ids"] == source_ids
     schema = captured[0]["structured_schema"]
     properties = schema["properties"]
-    assert schema["$id"] == "urn:psynova:research-programme-draft:1.1.0"
+    assert schema["$id"] == "urn:psynova:research-programme-source-selection:1.2.0"
     assert schema["additionalProperties"] is False
-    assert schema["required"] == ["title", "passages"]
-    assert set(properties) == {"title", "passages"}
-    passage_schema = properties["passages"]
-    assert passage_schema["minItems"] == 1
-    assert passage_schema["maxItems"] == 3
-    passage_item = passage_schema["items"]
-    assert passage_item["additionalProperties"] is False
-    assert passage_item["required"] == ["text", "source_chunk_ids"]
-    assert passage_item["properties"]["text"]["maxLength"] == 600
-    assert passage_item["properties"]["text"]["pattern"] == "^[^\\r\\n]+$"
-    selected_ids_schema = passage_item["properties"]["source_chunk_ids"]
+    assert schema["required"] == ["selected_source_chunk_ids"]
+    assert set(properties) == {"selected_source_chunk_ids"}
+    selected_ids_schema = properties["selected_source_chunk_ids"]
     assert selected_ids_schema["minItems"] == 1
     assert selected_ids_schema["maxItems"] == 4
     assert selected_ids_schema["uniqueItems"] is True
     assert selected_ids_schema["items"]["enum"] == source_ids
-    assert "citation_chunk_ids" not in properties
-    assert "body" not in properties
     assert {message["role"] for message in captured[0]["messages"]} == {"system", "user"}
     payload_text = json.dumps(captured[0])
     for forbidden in ("assessment_id", "subject_id", "student_answers"):
         assert forbidden not in payload_text
 
 
-def test_prompt_v111_lists_the_complete_claim_guard_terms() -> None:
-    from smhai_backend.domains.research_programme_generation.service import _CLAIM_BOUNDARY
-    from smhai_backend.integrations.research_programme import (
-        _PROMPT_FORBIDDEN_TERMS,
-        _SYSTEM_MESSAGE,
-    )
+def test_source_selection_schema_does_not_accept_passages_or_freeform_fields():
+    from pydantic import ValidationError
 
-    assert all(term in _SYSTEM_MESSAGE for term in _PROMPT_FORBIDDEN_TERMS)
-    assert all(_CLAIM_BOUNDARY.search(term) for term in _PROMPT_FORBIDDEN_TERMS)
-    assert {"improving", "outcomes", "achieve"}.issubset(
-        set(_PROMPT_FORBIDDEN_TERMS)
-    )
+    from smhai_backend.integrations.research_programme import _ProgrammeSourceSelectionPayload
+
+    with pytest.raises(ValidationError):
+        _ProgrammeSourceSelectionPayload.model_validate(
+            {
+                "selected_source_chunk_ids": ["CHUNK_SOURCE"],
+                "text": "model-authored passage",
+            },
+            strict=True,
+        )

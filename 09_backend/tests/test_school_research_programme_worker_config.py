@@ -26,7 +26,7 @@ def _enabled_settings(**overrides):
         "model_ref": "qwen2.5-7b-instruct-school-demo",
         "model_digest_sha256": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
         "prompt_ref": "PROMPT_staff_school_programme_research_v1",
-        "prompt_version": "1.1.1",
+        "prompt_version": "1.2.0",
     }
     values.update(overrides)
     return values
@@ -77,7 +77,7 @@ def test_staff_programme_prompt_pin_matches_generation_runtime():
     config = ResearchProgrammeWorkerSettings(**_enabled_settings())
 
     assert config.prompt_ref == PROMPT_ID
-    assert config.prompt_version == PROMPT_VERSION == "1.1.1"
+    assert config.prompt_version == PROMPT_VERSION == "1.2.0"
 
 
 @pytest.mark.parametrize(
@@ -89,6 +89,7 @@ def test_staff_programme_prompt_pin_matches_generation_runtime():
         {"prompt_version": "1.0.2"},
         {"prompt_version": "1.0.3"},
         {"prompt_version": "1.1.0"},
+        {"prompt_version": "1.1.1"},
         {"prompt_version": "latest"},
         {"processor_policy_sha256": "a" * 64},
         {"package_manifest_file": "relative/package.json"},
