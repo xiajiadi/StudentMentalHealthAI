@@ -833,6 +833,31 @@ def _research_config_from_manifest(
     )
 
 
+def _require_legacy_programme_upgrade_config_match(
+    legacy_config: ResearchProcessConfig | None,
+    current_config: ResearchProcessConfig | None,
+) -> None:
+    """Permit only the known prompt-pin transition for a stopped worker."""
+    if (
+        legacy_config is None
+        or current_config is None
+        or legacy_config.programme_worker is None
+        or current_config.programme_worker is None
+        or legacy_config.programme_worker.prompt_version != "1.1.1"
+        or current_config.programme_worker.prompt_version
+        != RESEARCH_PROGRAMME_PROMPT_VERSION
+    ):
+        raise LifecycleError("Stopped legacy research programme pins changed")
+
+    expected = legacy_config.manifest_value()
+    expected_programme = expected.get(RESEARCH_PROGRAMME_WORKER_CONFIG_KEY)
+    if type(expected_programme) is not dict:
+        raise LifecycleError("Stopped legacy research programme pins changed")
+    expected_programme["prompt_version"] = RESEARCH_PROGRAMME_PROMPT_VERSION
+    if expected != current_config.manifest_value():
+        raise LifecycleError("Stopped legacy research programme pins changed")
+
+
 def _utc_creation(process: dict[str, Any]) -> str | None:
     value = process.get("CreationUtc") if isinstance(process, dict) else None
     return _utc_timestamp(str(value)) if value else None
@@ -1311,6 +1336,18 @@ class SchoolAppLifecycle:
                 previous_manifest,
                 allow_legacy_prompt=allow_legacy_programme_upgrade,
             )
+            if allow_legacy_programme_upgrade:
+                previous_research_config = _research_config_from_manifest(
+                    previous_manifest,
+                    target,
+                    backend_port,
+                    frontend_port,
+                    allow_legacy_prompt=True,
+                )
+                _require_legacy_programme_upgrade_config_match(
+                    previous_research_config,
+                    research_config,
+                )
         marker = self._validate_prepared_database(
             target,
             backend_port=backend_port,

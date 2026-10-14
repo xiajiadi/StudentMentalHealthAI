@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -523,6 +524,43 @@ def test_stopped_111_manifest_upgrades_only_with_current_pins_and_keeps_archive(
         "integration": "RESEARCH_STAFF_PROGRAMME_OUTBOX",
         "reason": "LEGACY_PROMPT_PIN",
     }
+
+    old_config = lifecycle._research_config_from_manifest(
+        original,
+        workspace,
+        8088,
+        4178,
+        allow_legacy_prompt=True,
+    )
+    new_config = lifecycle._validated_research_config(input_config, workspace)
+    lifecycle._require_legacy_programme_upgrade_config_match(old_config, new_config)
+    assert new_config is not None and new_config.programme_worker is not None
+    lifecycle._require_legacy_programme_upgrade_config_match(
+        old_config,
+        replace(new_config, port=new_config.port + 1),
+    )
+    changed_model = replace(
+        new_config,
+        programme_worker=replace(new_config.programme_worker, model_ref="other-model"),
+    )
+    changed_source = replace(
+        new_config,
+        programme_worker=replace(
+            new_config.programme_worker,
+            manifest_sha256="9" * 64,
+        ),
+    )
+    changed_study = replace(new_config, study_use_sha256="8" * 64)
+    changed_runtime = replace(new_config, runtime_sha256="7" * 64)
+    for changed_config in (changed_model, changed_source, changed_study, changed_runtime):
+        with pytest.raises(
+            lifecycle.LifecycleError,
+            match="Stopped legacy research programme pins changed",
+        ):
+            lifecycle._require_legacy_programme_upgrade_config_match(
+                old_config,
+                changed_config,
+            )
 
     tampered = json.loads(json.dumps(original))
     tampered["research_config"][lifecycle.RESEARCH_PROGRAMME_WORKER_CONFIG_KEY][
