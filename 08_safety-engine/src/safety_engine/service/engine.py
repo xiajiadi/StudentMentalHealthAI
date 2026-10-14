@@ -59,6 +59,7 @@ class SafetyService:
         config: SafetyEngineConfig | None = None,
         clinical_boundary: ClinicalBoundaryGuard | None = None,
         disclosure: DisclosureMatrix | None = None,
+        retrieval: RetrievalSafetyAdapter | None = None,
     ) -> None:
         self.privacy = privacy
         self.nemo = nemo
@@ -71,7 +72,7 @@ class SafetyService:
         )
         self.clinical_boundary = clinical_boundary or ClinicalBoundaryGuard()
         self.disclosure = disclosure or DisclosureMatrix()
-        self.retrieval = RetrievalSafetyAdapter(privacy)
+        self.retrieval = retrieval or RetrievalSafetyAdapter(privacy)
 
     async def precheck(self, context: SafetyContext) -> SafetyCheckResult:
         trace = TraceBuilder(

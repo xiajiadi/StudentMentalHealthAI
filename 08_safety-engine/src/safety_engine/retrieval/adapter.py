@@ -9,6 +9,7 @@ RAG or silently claiming a NeMo retrieval rail.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from safety_engine.adapters.base import AdapterResult
@@ -35,8 +36,14 @@ class RetrievalSafetyAdapter:
         re.compile(r"绕过(?:安全|系统)规则|忽略之前的指令", re.I),
     )
 
-    def __init__(self, privacy: PresidioPrivacyAdapter) -> None:
+    def __init__(
+        self,
+        privacy: PresidioPrivacyAdapter,
+        *,
+        source_eligibility: Callable[[str, Mapping[str, Any]], bool] | None = None,
+    ) -> None:
         self.privacy = privacy
+        self._source_eligibility = source_eligibility
 
     def check_retrieval(
         self,
@@ -57,7 +64,15 @@ class RetrievalSafetyAdapter:
                 )
             review_status = str(metadata.get("review_status", "")).lower()
             rights_status = str(metadata.get("rights_status", "")).lower()
-            if review_status != "approved" or rights_status != "verified":
+            try:
+                eligible = (
+                    self._source_eligibility(content, metadata) is True
+                    if self._source_eligibility is not None
+                    else review_status == "approved" and rights_status == "verified"
+                )
+            except Exception:
+                eligible = False
+            if not eligible:
                 ineligible_count += 1
                 signals.append(
                     SafetySignal(

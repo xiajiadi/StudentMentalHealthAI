@@ -68,6 +68,8 @@ def create_app(
         bundle = build_default_bundle()
     if service is None:
         service = bundle.service  # type: ignore[union-attr]
+    if getattr(getattr(service, "retrieval", None), "integration_status", None) == "RESEARCH_ONLY":
+        raise ValueError("research-only retrieval must use its isolated host")
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
