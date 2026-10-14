@@ -1,12 +1,16 @@
 ## ACTIVE — 2026-10-14 23:05 CST, staff programme queue integrated; generation blocked
 
 Canonical development branch xiajiadi/autonomous-delivery-20261011 is at ad4920b.
-Remote remains3390aab. Local reviewed source includes encrypted candidate schema0018,
+Remote was pushed through a7888c3. Reviewed source includes encrypted candidate schema0018,
 isolated real-source lexical research RAG and real local7B route, strict claim/Safety
 checks, specialist candidate/queue/adopt/discard UI, default-off persistent staff
 queue, explicit CLI/lifecycle source/model/study pins, and research Runtime host8161.
 O still runs53e96b2/schema0017. Source0018 is not native migration evidence.
-User confirms no shutdown deadline; RTX3060 is connected. Goal ACTIVE/incomplete.
+User set NEW shutdown deadline:2026-10-15 06:30 Asia/Shanghai (2026-10-14 22:30 UTC).
+Stop dispatch06:15; drain/save/owned-stop06:20; complete checkpoint and pause
+Runner/automation/goal by06:25. Do not resume after deadline without user instruction.
+Heartbeat cadence temporarily15minutes for this deadline; configuration alone is
+not a guaranteed timer or continuous execution. RTX3060 connected; goal ACTIVE/incomplete.
 
 Direct workers only; no Lead. professional_g_harness implemented queue/CLI plus
 49 worker checks and197 bounded Backend/DB/deployment checks (1 symlink skip).
@@ -14,7 +18,11 @@ gpu_resume_audit implemented actual queue API UI,5 component checks/typecheck/li
 no current native browser proof. research_repository_qa ran real06venv host builder/
 preflight and4 host tests without mocks, no8161 persistent serve/discovery yet.
 Root read/integrated source and independently ran17 generation checks and Ruff.
-Source commits928cdea/771327c/e096520/ad4920b are local, not pushed.
+Source commits928cdea/771327c/e096520/ad4920b are included in remote a7888c3.
+Private passages1.1.0 and locked bm25s Backend dependency are in progress, uncommitted;
+Root found installed launcher could not import new research retriever in the fresh
+Backend environment. Fix must use managed locked dependencies and repository source,
+not global installation or arbitrary inherited PYTHONPATH.
 
 Trusted staff-only RAG source package remains:
 D:/Dev/datasets/psynova-public-research/research-packages/school-rag-ai-engineering-20261014-v1/manifest.json
