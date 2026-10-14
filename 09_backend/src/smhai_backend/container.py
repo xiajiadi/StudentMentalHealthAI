@@ -101,6 +101,7 @@ class BackendContainer:
     professional_reviews: SchoolProfessionalReviewService | None = None
     school_feedback: SchoolFeedbackService | None = None
     school_research_feedback: Any | None = None
+    school_research_programme_candidates: Any | None = None
     independent_conversations: IndependentConversationService | None = None
     independent_rag: IndependentRagClient | None = None
     independent_llm: IndependentLLMRuntimeClient | None = None
@@ -410,6 +411,7 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         else None
     )
     school_research_feedback = None
+    school_research_programme_candidates = None
     if (
         persistence is not None
         and settings.identity_profile == "school_tenant"
@@ -429,6 +431,21 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         school_research_feedback = SchoolResearchFeedbackService(
             persistence=SchoolResearchFeedbackPersistenceAdapter(
                 persistence, study_use_policy=build_school_research_study_policy(settings)
+            )
+        )
+        from smhai_backend.adapters.school_research_programme_candidates import (
+            SchoolResearchProgrammeCandidatePersistenceAdapter,
+        )
+        from smhai_backend.domains.school_research_programme_candidates.service import (
+            SchoolResearchProgrammeCandidateService,
+        )
+
+        school_research_programme_candidates = SchoolResearchProgrammeCandidateService(
+            persistence=SchoolResearchProgrammeCandidatePersistenceAdapter(
+                persistence,
+                study_use_policy=build_school_research_study_policy(settings),
+                study_use_policy_sha256=settings.school_research_study_use_sha256,
+                enabled=settings.school_research_enabled and settings.environment != "production",
             )
         )
     cat_management = SchoolCatManagementService(
@@ -546,6 +563,7 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         professional_reviews=professional_reviews,
         school_feedback=school_feedback,
         school_research_feedback=school_research_feedback,
+        school_research_programme_candidates=school_research_programme_candidates,
         cat_management=cat_management,
         cat_management_client=cat_management_client,
         cat_assets=cat_assets,

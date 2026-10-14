@@ -37,6 +37,12 @@ from .school_research_education_jobs import (
     ResearchEducationJobErrorCode,
     SchoolResearchEducationJobRepository,
 )
+from .school_research_programme_candidates import (
+    ResearchProgrammeCandidateDTO,
+    ResearchProgrammeCandidateError,
+    ResearchProgrammeCandidateScope,
+    SchoolResearchProgrammeCandidateRepository,
+)
 from .school_research_review_feedback import (
     ResearchFeedbackEventDTO,
     ResearchFeedbackRecordDTO,
@@ -100,6 +106,10 @@ __all__ = [
     "ResearchSessionScope",
     "SchoolResearchFeedbackRepository",
     "SchoolResearchReviewRepository",
+    "ResearchProgrammeCandidateDTO",
+    "ResearchProgrammeCandidateError",
+    "ResearchProgrammeCandidateScope",
+    "SchoolResearchProgrammeCandidateRepository",
     "WindowsDpapiKeyProvider",
     "create_engine",
     "create_session_factory",

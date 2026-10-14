@@ -25,6 +25,7 @@ from .school_post_assessment_jobs import SchoolPostAssessmentJobRepository
 from .school_research_cat import SchoolResearchCatRepository
 from .school_research_cohorts import SchoolResearchCohortRepository
 from .school_research_education_jobs import SchoolResearchEducationJobRepository
+from .school_research_programme_candidates import SchoolResearchProgrammeCandidateRepository
 from .school_research_review_feedback import (
     SchoolResearchFeedbackRepository,
     SchoolResearchReviewRepository,
@@ -59,6 +60,7 @@ class SqlAlchemyUnitOfWork:
         self.research_education_jobs: SchoolResearchEducationJobRepository | None = None
         self.research_reviews: SchoolResearchReviewRepository | None = None
         self.research_feedback: SchoolResearchFeedbackRepository | None = None
+        self.research_programme_candidates: SchoolResearchProgrammeCandidateRepository | None = None
 
     async def __aenter__(self) -> Self:
         self.session = self.session_factory()
@@ -80,6 +82,9 @@ class SqlAlchemyUnitOfWork:
         self.research_education_jobs = SchoolResearchEducationJobRepository(self.session)
         self.research_reviews = SchoolResearchReviewRepository(self.session)
         self.research_feedback = SchoolResearchFeedbackRepository(self.session)
+        self.research_programme_candidates = SchoolResearchProgrammeCandidateRepository(
+            self.session
+        )
         return self
 
     def _require_session(self) -> AsyncSession:

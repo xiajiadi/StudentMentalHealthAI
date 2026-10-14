@@ -16,6 +16,7 @@ from school_schema import (
     CURRENT_SCHOOL_REVISION,
     PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
     RESEARCH_EDUCATION_JOBS_REVISION,
+    RESEARCH_REVIEW_FEEDBACK_REVISION,
 )
 
 
@@ -259,7 +260,7 @@ def test_ciphertext_verification_checks_review_note_for_0007_snapshot(tmp_path, 
 
 
 def test_0017_ciphertext_verification_uses_new_review_and_feedback_metadata(tmp_path, monkeypatch):
-    manifest = trusted_manifest(CURRENT_SCHOOL_REVISION)
+    manifest = trusted_manifest(RESEARCH_REVIEW_FEEDBACK_REVISION)
     new_tables = {
         "school_research_review_cases",
         "school_research_review_events",
@@ -282,7 +283,7 @@ def test_0017_ciphertext_verification_uses_new_review_and_feedback_metadata(tmp_
     install_fake_crypto(monkeypatch, decrypted)
 
     checked = restore_module._verify_ciphertexts(
-        connection, tmp_path, tmp_path, CURRENT_SCHOOL_REVISION
+        connection, tmp_path, tmp_path, RESEARCH_REVIEW_FEEDBACK_REVISION
     )
 
     assert checked == 2
@@ -300,6 +301,38 @@ def test_0017_ciphertext_verification_uses_new_review_and_feedback_metadata(tmp_
         "SELECT `payload_ciphertext`,`key_version`,`cipher_format_version`,"
         "`payload_schema_version`" in sql
         and "FROM `school_research_feedback_records`" in sql
+        for sql in connection.fake_cursor.queries
+    )
+
+
+def test_0018_ciphertext_verification_includes_held_programme_candidate(tmp_path, monkeypatch):
+    manifest = trusted_manifest(CURRENT_SCHOOL_REVISION)
+    table_name = "school_research_programme_candidates"
+    assert table_name in manifest
+    connection = CiphertextConnection(
+        set(manifest),
+        {
+            (table_name, "payload_ciphertext"): [
+                (
+                    b"synthetic-held-candidate-cipher",
+                    "school-key-v1",
+                    "fernet.v1",
+                    "school_research_programme_candidate.v1",
+                )
+            ],
+        },
+    )
+    decrypted = []
+    install_fake_crypto(monkeypatch, decrypted)
+    checked = restore_module._verify_ciphertexts(
+        connection, tmp_path, tmp_path, CURRENT_SCHOOL_REVISION
+    )
+
+    assert checked == 1
+    assert decrypted == [b"synthetic-held-candidate-cipher"]
+    assert any(
+        "SELECT `payload_ciphertext`,`key_version`,`cipher_format_version`,`payload_schema_version`" in sql
+        and f"FROM `{table_name}`" in sql
         for sql in connection.fake_cursor.queries
     )
 

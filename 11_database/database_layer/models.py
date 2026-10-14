@@ -3050,6 +3050,155 @@ class IdempotencyRecord(ResourceIdentityMixin, TimestampMixin, Base):
     expires_at: Mapped[datetime] = mapped_column(utc_datetime(), nullable=False)
 
 
+class SchoolResearchProgrammeCandidate(ResourceIdentityMixin, TimestampMixin, Base):
+    """Encrypted, task-level generic programme draft held for specialist review."""
+
+    __tablename__ = "school_research_programme_candidates"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("candidate_ref", name="school_research_programme_candidate_ref_unique"),
+        UniqueConstraint(
+            "school_id",
+            "task_id",
+            "task_binding_id",
+            "study_ref",
+            "study_policy_sha256",
+            "processor_policy_sha256",
+            "programme_ref",
+            "source_manifest_sha256",
+            "prompt_ref",
+            "prompt_version",
+            "prompt_sha256",
+            "model_ref",
+            "model_digest_sha256",
+            "runtime_version",
+            "safety_policy_version",
+            "claim_boundary_version",
+            name="school_research_programme_candidate_pin_unique",
+        ),
+        CheckConstraint("status IN ('HELD', 'ADOPTED', 'DISCARDED')", name="status_allowed"),
+        CheckConstraint("state_version IN (1, 2)", name="state_version_allowed"),
+        CheckConstraint("purpose = 'RESEARCH_SIMULATION'", name="purpose_research_only"),
+        CheckConstraint("research_only = 1", name="research_only_locked"),
+        CheckConstraint(
+            "psychological_interpretation_allowed = 0", name="interpretation_disabled"
+        ),
+        CheckConstraint(
+            "output_boundary = 'STAFF_REFERENCE_ONLY'",
+            name="output_staff_only",
+        ),
+        CheckConstraint(
+            "publication_status = 'not_approved_for_publication_or_operational_use'",
+            name="publication_not_approved",
+        ),
+        CheckConstraint(
+            "input_safety_action IN ('PROCEED', 'PROCEED_WITH_BOUNDARY') AND "
+            "retrieval_safety_action IN ('PROCEED', 'PROCEED_WITH_BOUNDARY') AND "
+            "output_safety_action IN ('PROCEED', 'PROCEED_WITH_BOUNDARY')",
+            name="safety_actions_allowed",
+        ),
+        CheckConstraint("claim_boundary_status = 'ACCEPTED'", name="claim_boundary_accepted"),
+        CheckConstraint(
+            "(status = 'HELD' AND state_version = 1 AND resolved_at IS NULL "
+            "AND resolved_by_membership_role_id IS NULL) OR "
+            "(status = 'ADOPTED' AND state_version = 2 AND resolved_at IS NOT NULL "
+            "AND resolved_by_membership_role_id IS NOT NULL) OR "
+            "(status = 'DISCARDED' AND state_version = 2 AND resolved_at IS NOT NULL "
+            "AND resolved_by_membership_role_id IS NOT NULL)",
+            name="resolution_state",
+        ),
+        ForeignKeyConstraint(
+            [
+                "task_binding_id", "school_id", "task_id", "class_id", "profile_version_id",
+                "profile_ref", "profile_version_number", "profile_sha256", "response_origin",
+            ],
+            [
+                "school_research_task_bindings.id", "school_research_task_bindings.school_id",
+                "school_research_task_bindings.task_id", "school_research_task_bindings.class_id",
+                "school_research_task_bindings.profile_version_id",
+                "school_research_task_bindings.profile_ref",
+                "school_research_task_bindings.profile_version_number",
+                "school_research_task_bindings.profile_sha256",
+                "school_research_task_bindings.response_origin",
+            ],
+            name="fk_school_research_programme_candidate_binding_scope",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["resolved_by_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_school_research_programme_candidate_resolver_school",
+            ondelete="RESTRICT",
+        ),
+        Index(
+            "ix_school_research_programme_candidate_task_status",
+            "school_id", "task_id", "status", "created_at",
+        ),
+    )
+
+    candidate_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    task_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    class_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    task_binding_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    profile_version_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    profile_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    profile_version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    profile_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    response_origin: Mapped[str] = mapped_column(ascii_id(32), nullable=False)
+    study_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    study_policy_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    processor_policy_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    programme_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    source_manifest_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    source_set_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    retrieval_id: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    retrieval_bundle_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    chunk_set_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    prompt_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    prompt_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    model_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    model_digest_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    runtime_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    safety_policy_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    input_safety_action: Mapped[str] = mapped_column(ascii_id(32), nullable=False)
+    retrieval_safety_action: Mapped[str] = mapped_column(ascii_id(32), nullable=False)
+    output_safety_action: Mapped[str] = mapped_column(ascii_id(32), nullable=False)
+    claim_boundary_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    claim_boundary_status: Mapped[str] = mapped_column(ascii_id(16), nullable=False)
+    purpose: Mapped[str] = mapped_column(
+        ascii_id(32), nullable=False, default="RESEARCH_SIMULATION",
+        server_default="RESEARCH_SIMULATION",
+    )
+    research_only: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="1"
+    )
+    psychological_interpretation_allowed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    publication_status: Mapped[str] = mapped_column(
+        ascii_id(64), nullable=False,
+        default="not_approved_for_publication_or_operational_use",
+        server_default="not_approved_for_publication_or_operational_use",
+    )
+    output_boundary: Mapped[str] = mapped_column(
+        ascii_id(32), nullable=False,
+        default="STAFF_REFERENCE_ONLY", server_default="STAFF_REFERENCE_ONLY",
+    )
+    status: Mapped[str] = mapped_column(
+        ascii_id(16), nullable=False, default="HELD", server_default="HELD"
+    )
+    state_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    payload_ciphertext: Mapped[bytes] = mapped_column(mysql.MEDIUMBLOB, nullable=False)
+    cipher_format_version: Mapped[str] = mapped_column(ascii_id(32), nullable=False)
+    key_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    payload_schema_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    resolved_by_membership_role_id: Mapped[int | None] = mapped_column(unsigned_id(), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+
+
 class AuditEvent(ResourceIdentityMixin, Base):
     __tablename__ = "audit_events"
     __table_args__ = mysql_table_args(
@@ -3107,4 +3256,5 @@ __all__ = [
     "SchoolResearchCohort",
     "SchoolResearchCohortAssignment",
     "SchoolResearchCohortBatch",
+    "SchoolResearchProgrammeCandidate",
 ]
