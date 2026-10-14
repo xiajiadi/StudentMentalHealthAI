@@ -369,7 +369,7 @@
       ],
       "evidence": [],
       "commits": [],
-      "next_action": "SAPA已取得并分离10000/800；单域pilot数值独立QA与mirt对照正在执行；儿少来源继续核验。",
+      "next_action": "公开响应与儿少来源已在隔离研究工作区核验，800账号回放已完成。继续学生三层真实RAG的本地生成故障定位与安全事项恢复验证；许可及专业批准边界见CURRENT_STATE。",
       "checkpoint_references": [
         "14_docs/autonomous-delivery/EMPIRICAL_SCHOOL_SIMULATION.md",
         "14_docs/autonomous-delivery/GRM_RESEARCH_PLAN.md",
@@ -394,7 +394,7 @@
       ],
       "evidence": [],
       "commits": [],
-      "next_action": "准备兼容现有100行批次导入的800虚构名单；校准和回放协议核验后在新工作区实施。",
+      "next_action": "800独立账号、800完成会话及6400已答项目已核对，不重复导入或重跑。保留原始回放/四角色证据，补齐新0019安全事项与加密备注备份恢复，以及当前研究学生生成失败的诊断；整体验收仍未完成。",
       "checkpoint_references": [
         "14_docs/autonomous-delivery/EMPIRICAL_SCHOOL_SIMULATION.md",
         "14_docs/autonomous-delivery/CURRENT_STATE.md"
@@ -403,10 +403,10 @@
   ],
   "source_reconciliation": {
     "kind": "source_only",
-    "as_of": "2026-10-13",
+    "as_of": "2026-10-15",
     "source": "14_docs/autonomous-delivery/CURRENT_STATE.md",
-    "reviewed_head": "ab2eb3e4e3ef28fe8d132972389b7ce3b1ce00b5",
+    "reviewed_head": "c6692c0830db6e3e9f2b933d302dba6a3272c2d4",
     "runtime_mutated": false,
-    "note": "Task status/owner fields were reconciled from recorded project evidence only. Existing .autonomous state and leases were read-only; Root must verify/backup and explicitly sync after resolving any active lease."
+    "note": "Next actions reflect preserved cohort and current0019 evidence. Status fields remain acceptance-gated; BACKLOG does not mean the completed800 cohort should be regenerated. Runtime leases and task acceptance require separate reconciliation, not source-summary edits."
   }
 }
