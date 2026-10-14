@@ -166,6 +166,37 @@ class PostAssessmentWorkerSettings(BaseModel):
         return self
 
 
+class ResearchEducationWorkerSettings(BaseModel):
+    """Explicitly enabled, single-slot research outbox consumer settings."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Unlike the legacy school post-assessment worker, this lane is never
+    # inferred from the presence of MySQL or a school identity profile.
+    enabled: StrictBool = False
+    poll_interval_seconds: float = Field(default=1.0, ge=0.01, le=60, strict=True)
+    lease_seconds: int = Field(default=60, ge=5, le=3600, strict=True)
+    max_attempts: int = Field(default=5, ge=1, le=20, strict=True)
+    shutdown_drain_seconds: float = Field(default=10.0, gt=0, le=120, strict=True)
+
+    @field_validator(
+        "poll_interval_seconds",
+        "lease_seconds",
+        "max_attempts",
+        "shutdown_drain_seconds",
+        mode="before",
+    )
+    @classmethod
+    def validate_finite_numeric_settings(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("research education numeric settings must be JSON numbers")
+        if not math.isfinite(float(value)):
+            raise ValueError("research education numeric settings must be finite")
+        return value
+
+
 class BackendSettings(BaseSettings):
     """Backend-local settings; the frozen config.v1 remains unchanged."""
 
@@ -227,6 +258,9 @@ class BackendSettings(BaseSettings):
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
     post_assessment_worker: PostAssessmentWorkerSettings = Field(
         default_factory=PostAssessmentWorkerSettings
+    )
+    research_education_worker: ResearchEducationWorkerSettings = Field(
+        default_factory=ResearchEducationWorkerSettings
     )
     m0_claim_boundary_observer_enabled: bool = False
     school_research_enabled: bool = False
@@ -340,6 +374,18 @@ class BackendSettings(BaseSettings):
             raise ValueError(
                 "post-assessment worker requires school_tenant MySQL persistence"
             )
+        if self.research_education_worker.enabled and (
+            self.environment == "production"
+            or self.identity_profile != "school_tenant"
+            or self.persistence_mode != "mysql"
+            or not self.school_research_enabled
+            or not self.school_research_managed_enabled
+            or not self.school_research_study_use_file
+        ):
+            raise ValueError(
+                "research education worker requires nonproduction managed school research "
+                "with MySQL and a pinned study-use policy"
+            )
         if self.environment == "production":
             if self.identity_profile != "school_tenant":
                 raise ValueError("production requires the school_tenant identity profile")
@@ -370,3 +416,7 @@ class BackendSettings(BaseSettings):
         if self.post_assessment_worker.enabled is not None:
             return self.post_assessment_worker.enabled
         return self.identity_profile == "school_tenant" and self.persistence_mode == "mysql"
+
+    @property
+    def research_education_worker_enabled(self) -> bool:
+        return self.research_education_worker.enabled

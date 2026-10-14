@@ -179,6 +179,11 @@ class SchoolPostAssessmentWorkerManager:
         self._closing = False
         self._closed = False
 
+    @property
+    def concurrency_lock(self) -> asyncio.Lock:
+        """Expose the shared single-slot lock for other local worker lanes."""
+        return self._global_lock
+
     async def start(self) -> None:
         if self._closing or self._closed:
             raise RuntimeError("school post-assessment worker manager cannot be restarted")

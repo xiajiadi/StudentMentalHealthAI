@@ -65,6 +65,14 @@ from smhai_backend.integrations.safety import (
 _LOGGER = logging.getLogger(__name__)
 
 
+def _shared_worker_concurrency_lock(
+    post_assessment_worker_manager: SchoolPostAssessmentWorkerManager | None,
+) -> asyncio.Lock:
+    if post_assessment_worker_manager is not None:
+        return post_assessment_worker_manager.concurrency_lock
+    return asyncio.Lock()
+
+
 @dataclass(slots=True)
 class BackendContainer:
     settings: BackendSettings
@@ -101,6 +109,7 @@ class BackendContainer:
     cat_assets_client: HttpCatAssetsClient | None = None
     cat_saved_simulation_client: HttpCatSavedSimulationClient | None = None
     post_assessment_worker_manager: SchoolPostAssessmentWorkerManager | None = None
+    research_education_worker_manager: Any | None = None
     school_research: Any | None = None
     school_research_profiles: Any | None = None
     school_research_tasks: Any | None = None
@@ -119,8 +128,20 @@ class BackendContainer:
             await self.safety.start()
             if self.post_assessment_worker_manager is not None:
                 await self.post_assessment_worker_manager.start()
+            if self.research_education_worker_manager is not None:
+                await self.research_education_worker_manager.start()
         except (Exception, asyncio.CancelledError):
             research_shutdown_failed = await self._close_research_process()
+            research_education_shutdown_failed = False
+            if self.research_education_worker_manager is not None:
+                try:
+                    await self.research_education_worker_manager.close()
+                except Exception:
+                    research_education_shutdown_failed = True
+                    _LOGGER.error(
+                        "research education worker cleanup failed during startup",
+                        extra={"failure_code": "RESEARCH_EDUCATION_WORKER_CLEANUP_FAILURE"},
+                    )
             worker_shutdown_failed = False
             if self.post_assessment_worker_manager is not None:
                 try:
@@ -134,13 +155,25 @@ class BackendContainer:
             await self._close_clients()
             if (
                 self.persistence is not None
-                and not worker_shutdown_failed and not research_shutdown_failed
+                and not worker_shutdown_failed
+                and not research_education_shutdown_failed
+                and not research_shutdown_failed
             ):
                 await self.persistence.close()
             raise
 
     async def close(self) -> None:
         research_shutdown_failed = await self._close_research_process()
+        research_education_shutdown_failed = False
+        if self.research_education_worker_manager is not None:
+            try:
+                await self.research_education_worker_manager.close()
+            except Exception:
+                research_education_shutdown_failed = True
+                _LOGGER.error(
+                    "research education worker cleanup failed during shutdown",
+                    extra={"failure_code": "RESEARCH_EDUCATION_WORKER_CLEANUP_FAILURE"},
+                )
         worker_shutdown_failed = False
         if self.post_assessment_worker_manager is not None:
             try:
@@ -154,11 +187,15 @@ class BackendContainer:
         clients_failed = await self._close_clients()
         if (
             self.persistence is not None
-            and not worker_shutdown_failed and not research_shutdown_failed
+            and not worker_shutdown_failed
+            and not research_education_shutdown_failed
+            and not research_shutdown_failed
         ):
             await self.persistence.close()
         if research_shutdown_failed:
             raise RuntimeError("research CAT process shutdown did not complete")
+        if research_education_shutdown_failed:
+            raise RuntimeError("research education worker shutdown did not complete")
         if worker_shutdown_failed:
             raise RuntimeError("post-assessment worker shutdown did not complete")
         if clients_failed:
@@ -245,6 +282,11 @@ class BackendContainer:
             self.post_assessment_worker_manager.dependency_status()
             if self.post_assessment_worker_manager is not None
             else {"status": "DISABLED", "integration": "LOCAL_OUTBOX"}
+        )
+        statuses["research_education_worker"] = (
+            self.research_education_worker_manager.dependency_status()
+            if self.research_education_worker_manager is not None
+            else {"status": "DISABLED", "integration": "RESEARCH_OUTBOX"}
         )
         return statuses
 
@@ -390,6 +432,25 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         if settings.post_assessment_worker_enabled and persistence is not None
         else None
     )
+    research_education_worker_manager = None
+    if settings.research_education_worker_enabled and persistence is not None:
+        from smhai_backend.adapters.school_research_education import (
+            SchoolResearchEducationPersistenceAdapter,
+            SchoolResearchEducationWorkerManager,
+        )
+        from smhai_backend.domains.school_research.bootstrap import (
+            build_school_research_study_policy,
+        )
+
+        study_use_policy = build_school_research_study_policy(settings)
+        concurrency_lock = _shared_worker_concurrency_lock(post_assessment_worker_manager)
+        research_education_worker_manager = SchoolResearchEducationWorkerManager(
+            SchoolResearchEducationPersistenceAdapter(
+                persistence, study_use_policy=study_use_policy
+            ),
+            settings=settings.research_education_worker,
+            concurrency_lock=concurrency_lock,
+        )
     independent_rag = independent_llm = independent_conversations = None
     if (
         persistence is not None
@@ -467,6 +528,7 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         cat_assets_client=cat_assets_client,
         cat_saved_simulation_client=cat_saved_simulation_client,
         post_assessment_worker_manager=post_assessment_worker_manager,
+        research_education_worker_manager=research_education_worker_manager,
         independent_conversations=independent_conversations,
         independent_rag=independent_rag,
         independent_llm=independent_llm,
