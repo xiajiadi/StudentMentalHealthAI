@@ -37,6 +37,23 @@ class SchoolResearchProfilesService:
             idempotency=idempotency,
         )
 
+    async def enable_simulation(
+        self,
+        actor: Actor,
+        profile_ref: str,
+        version_number: int,
+        *,
+        idempotency: tuple[str, str, str],
+    ):
+        _require_specialist(actor)
+        return await self.persistence.enable_simulation(
+            actor,
+            profile_ref,
+            version_number,
+            at=self._clock(),
+            idempotency=idempotency,
+        )
+
 
 def _require_specialist(actor: Actor) -> None:
     if (

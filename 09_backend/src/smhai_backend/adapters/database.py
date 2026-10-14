@@ -1307,6 +1307,7 @@ class MySqlBackendAdapter:
                     .where(
                         m.MeasurementTask.school_id == actor.school_id,
                         m.MeasurementTask.class_id == school_class.id,
+                        m.MeasurementTask.cat_binding_mode.in_(("FIXTURE", "SAVED_VERSION")),
                     )
                     .order_by(m.MeasurementTask.published_at.desc())
                 )
@@ -1394,6 +1395,7 @@ class MySqlBackendAdapter:
                 statement.where(
                     m.TaskEnrollment.school_id == actor.school_id,
                     m.TaskEnrollment.status == "ACTIVE",
+                    m.MeasurementTask.cat_binding_mode.in_(("FIXTURE", "SAVED_VERSION")),
                     m.SchoolClassStudent.status == "ACTIVE",
                     m.SchoolClassStudent.revoked_at.is_(None),
                     m.SchoolClassStudent.valid_from <= at,

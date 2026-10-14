@@ -1,4 +1,33 @@
-## ACTIVE — 2026-10-14, installed research lifecycle and atomic task work
+## ACTIVE — 2026-10-14, bounded study use and atomic research task publishing
+
+Research study-use policy now loads closed SHA-pinned server configuration with
+explicit source-rights registry verification and UTC expiry upper bound. It is
+restricted to isolated historical public-response replay and keeps clinical,
+ethics and psychometric approval false; no HTTP input supplies policy or rights.
+Specialist enable-simulation only transitions an exact untouched imported candidate
+and records scoped policy provenance in the same UOW. Admin research task publishing
+checks that eligibility, exact source/config/crosswalk pins and contained time window,
+then atomically creates task/roster snapshot/binding/receipt/audit. Publication does
+not grant eligibility. Ordinary task lists exclude research mode until dedicated
+research discovery is integrated. Default unconfigured research operations deny.
+
+Student prepare/commit/resume/replay all recheck current policy. The repository's
+optional pure callback receives fresh locked profile/binding metadata before config
+decryption, preserving the existing lock order; Backend always injects that guard.
+Root129 combined policy/profile/tasks/bootstrap/container tests, Root43 guard/settings/
+read-isolation/Contract tests, actual ORM live-scope13 tests, and DB repository53 tests
+pass. Read-isolation SQL compilation ran with explicit local SQLAlchemy dependencies.
+Independent QA reviewed transaction rollback/replay and before-decrypt callback.
+Targeted Ruff passes. These are unit/ASGI-fake/SQLite checks, not native task acceptance.
+
+Next actual native helper is being prepared outside Git for K: new profile v3 import,
+policy-limited eligibility, a small fixture-class task, authenticated observed8
+save/resume and safe lifecycle metadata. It has not run; no new profile eligibility,
+task, binding or student research session is claimed here. Existing K app services
+still run older source. Online800, dedicated research discovery/browser journeys,
+real RAG/local7B/report-review and full mandate remain incomplete. No deadline.
+
+## Prior checkpoint — installed research lifecycle and atomic task work
 
 Operator explicitly requires continued autonomous work when unavailable; questions
 must not pause unrelated authorized engineering. No shutdown deadline is active.

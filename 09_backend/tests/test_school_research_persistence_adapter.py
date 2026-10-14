@@ -16,6 +16,10 @@ from smhai_backend.core.errors import BackendError, ErrorCode
 from smhai_backend.domains.models import Actor, BackendRole, SchoolRoleContext
 from smhai_backend.domains.school_research import authorization
 from smhai_backend.domains.school_research.client import ResearchCATSnapshotForPersistence
+from smhai_backend.domains.school_research.study_use import (
+    ResearchStudyProfilePin,
+    ResearchStudyUseError,
+)
 
 NOW = datetime(2026, 10, 14, 12, 0, tzinfo=UTC)
 IDEMPOTENCY = ("key-1", "a" * 64, "b" * 64)
@@ -90,7 +94,7 @@ def _binding():
         profile_ref="profile-v1",
         profile_version_number=1,
         profile_sha256="c" * 64,
-        response_origin="MODEL_GENERATED",
+        response_origin="PUBLIC_OBSERVED",
         status="ACTIVE",
         config_version="config-v1",
         config_sha256="d" * 64,
@@ -206,6 +210,27 @@ class _Repo:
     def __init__(self, *, metadata=None, loaded=None, saved=None, binding=None):
         self.metadata = metadata or _metadata()
         self.binding = binding or _binding()
+        self.profile_metadata = SimpleNamespace(
+            school_id=10,
+            profile_ref=self.binding.profile_ref,
+            profile_version_id=self.binding.profile_version_id,
+            version_number=self.binding.profile_version_number,
+            profile_sha256=self.binding.profile_sha256,
+            manifest_sha256="a" * 64,
+            parameter_origin="PUBLISHED_ROUNDED_REFERENCE",
+            published_parameter_crosswalk_sha256="b" * 64,
+            fit_sha256=None,
+            calibration_sha256=None,
+            rights_status="VERIFIED",
+            execution_status="SIMULATION_ENABLED",
+            rights_revoked_at=None,
+            disabled_at=None,
+            simulation_enabled_at=NOW,
+            research_only=True,
+            human_curated=False,
+            psychological_interpretation_allowed=False,
+            publication_status="not_approved_for_publication_or_operational_use",
+        )
         self.loaded = loaded or SimpleNamespace(
             metadata=self.metadata,
             signed_snapshot_json='{"payload":{"answers":[]},"signature":"opaque"}',
@@ -231,6 +256,7 @@ class _Repo:
     async def lock_student_task_scope(self, **kwargs):
         self.guard_calls.append(kwargs)
         self.operations.append("scope-lock")
+        kwargs["require_study_scope"](self.profile_metadata, self.binding)
         return _locked(
             _candidate(
                 task_ref="task-ref",
@@ -293,6 +319,25 @@ class _Owner:
         return (60, 70)
 
 
+class _TrustedStudyPolicy:
+    source_rights_verified = True
+
+    def __init__(self, *, error_code=None):
+        self.error_code = error_code
+        self.calls = []
+
+    def require_scope(self, **kwargs):
+        self.calls.append(kwargs)
+        if self.error_code:
+            raise ResearchStudyUseError(self.error_code)
+        return ResearchStudyProfilePin(
+            profile_ref="profile-v1",
+            profile_sha256="c" * 64,
+            manifest_sha256="a" * 64,
+            published_crosswalk_sha256="b" * 64,
+        )
+
+
 def _claim(*, replayed=False, result_ref="session-ref", resource_type="research_session"):
     return SimpleNamespace(
         record=SimpleNamespace(
@@ -328,7 +373,11 @@ def _adapter(owner, client=None):
         return client
 
     return (
-        SchoolResearchPersistenceAdapter(owner, client_for_binding=factory),
+        SchoolResearchPersistenceAdapter(
+            owner,
+            client_for_binding=factory,
+            study_use_policy=_TrustedStudyPolicy(),
+        ),
         client,
         factory_calls,
     )
@@ -367,7 +416,10 @@ async def test_prepare_start_rolls_back_tentative_receipt_and_returns_private_pl
     assert owner.events == ["enter", "rollback"]
     assert repo.operations == ["scope-lock", "idempotency-begin"]
     assert owner.role_calls[0][1:] == ("student", owner.role_calls[0][2], True)
-    assert repo.guard_calls == [
+    assert [
+        {key: value for key, value in call.items() if key != "require_study_scope"}
+        for call in repo.guard_calls
+    ] == [
         {
             "school_id": 10,
             "task_id": 20,
@@ -377,6 +429,7 @@ async def test_prepare_start_rolls_back_tentative_receipt_and_returns_private_pl
             "at": NOW,
         }
     ]
+    assert callable(repo.guard_calls[0]["require_study_scope"])
     assert "must-not-escape" not in repr(result)
     assert owner.factory_events == [("enter", "rollback")]
 
@@ -706,7 +759,11 @@ async def test_client_factory_failure_is_private_and_leaves_no_claim(monkeypatch
     def fail_factory(_binding):
         raise RuntimeError("untrusted-credential-detail")
 
-    adapter = SchoolResearchPersistenceAdapter(owner, client_for_binding=fail_factory)
+    adapter = SchoolResearchPersistenceAdapter(
+        owner,
+        client_for_binding=fail_factory,
+        study_use_policy=_TrustedStudyPolicy(),
+    )
     with pytest.raises(BackendError) as exc_info:
         await adapter.prepare_start(_actor(), "task-ref", at=NOW, idempotency=IDEMPOTENCY)
 

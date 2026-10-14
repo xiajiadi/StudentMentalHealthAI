@@ -85,6 +85,27 @@ class _FakeService:
         self.calls.append(("import", actor, profile_ref, version_number, idempotency))
         return _candidate(version_number=version_number)
 
+    async def enable_simulation(self, actor, profile_ref, version_number, *, idempotency):
+        self.calls.append(
+            ("enable_simulation", actor, profile_ref, version_number, idempotency)
+        )
+        return {
+            "profile_ref": profile_ref,
+            "version_number": version_number,
+            "research_only": True,
+            "human_curated": False,
+            "publication_status": "not_approved_for_publication_or_operational_use",
+            "rights_status": "VERIFIED",
+            "execution_status": "SIMULATION_ENABLED",
+            "simulation_only": True,
+            "clinical_approval": False,
+            "ethics_approval": False,
+            "psychometric_approval": False,
+            "study_ref": "study:synthetic-replay",
+            "policy_expires_at": NOW,
+            "catalog_state": "SIMULATION_ENABLED",
+        }
+
 
 class _DataclassService(_FakeService):
     async def list_profiles(self, actor):
@@ -361,6 +382,128 @@ async def test_asgi_projects_real_frozen_adapter_dataclasses_and_normalizes_db_t
     assert "raw_profile_bytes" not in imported.text
 
 
+@pytest.mark.asyncio
+async def test_activation_auth_csrf_idempotency_and_disabled_service() -> None:
+    service = _FakeService()
+    payload = {"profile_ref": PROFILE_REF, "version_number": 3}
+    disabled = _mounted_app(_actor())
+
+    missing_csrf = await _request(
+        disabled,
+        "POST",
+        f"{_BASE}/enable-simulation",
+        payload=payload,
+        headers={"Idempotency-Key": "activation-key"},
+    )
+    assert missing_csrf.status_code == 403
+    assert missing_csrf.json()["code"] == "csrf_failed"
+
+    missing_idempotency = await _request(
+        disabled,
+        "POST",
+        f"{_BASE}/enable-simulation",
+        payload=payload,
+        headers={"X-CSRF-Token": "synthetic-csrf"},
+    )
+    assert missing_idempotency.status_code == 422
+    assert missing_idempotency.json()["code"] == "validation_failed"
+
+    # The API delegates only when explicitly configured. A server without the
+    # profile service cannot accidentally fall back to catalog/import behavior.
+    app_unconfigured = _mounted_app(_actor())
+    unavailable = await _request(
+        app_unconfigured,
+        "POST",
+        f"{_BASE}/enable-simulation",
+        payload=payload,
+        headers=_csrf_headers(**{"Idempotency-Key": "activation-key"}),
+    )
+    assert unavailable.status_code == 503
+    assert unavailable.json()["code"] == "dependency_unavailable"
+
+    teacher = await _request(
+        _mounted_app(_actor(BackendRole.TEACHER), service),
+        "POST",
+        f"{_BASE}/enable-simulation",
+        payload=payload,
+        headers=_csrf_headers(**{"Idempotency-Key": "activation-key"}),
+    )
+    assert teacher.status_code == 403
+    assert service.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"profile_ref": PROFILE_REF, "version_number": 3, "rights_status": "VERIFIED"},
+        {"profile_ref": PROFILE_REF, "version_number": True},
+        {"profile_ref": PROFILE_REF, "version_number": 3, "policy_sha256": "a" * 64},
+    ],
+)
+async def test_activation_request_rejects_client_policy_and_approval_fields(payload) -> None:
+    service = _FakeService()
+    app = _mounted_app(_actor(), service)
+    response = await _request(
+        app,
+        "POST",
+        f"{_BASE}/enable-simulation",
+        payload=payload,
+        headers=_csrf_headers(**{"Idempotency-Key": "activation-key"}),
+    )
+    assert response.status_code == 422
+    assert service.calls == []
+    assert "VERIFIED" not in response.text
+    assert "a" * 64 not in response.text
+
+
+@pytest.mark.asyncio
+async def test_activation_is_idempotency_scoped_and_returns_nonapproval_projection() -> None:
+    service = _FakeService()
+    app = _mounted_app(_actor(), service)
+    response = await _request(
+        app,
+        "POST",
+        f"{_BASE}/enable-simulation",
+        payload={"profile_ref": PROFILE_REF, "version_number": 3},
+        headers=_csrf_headers(
+            **{"Idempotency-Key": "activation-key", "X-Trace-ID": "TRACE_enable"}
+        ),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["trace_id"] == "TRACE_enable"
+    assert response.json()["data"] == {
+        "profile_ref": PROFILE_REF,
+        "version_number": 3,
+        "research_only": True,
+        "human_curated": False,
+        "publication_status": "not_approved_for_publication_or_operational_use",
+        "rights_status": "VERIFIED",
+        "execution_status": "SIMULATION_ENABLED",
+        "simulation_only": True,
+        "clinical_approval": False,
+        "ethics_approval": False,
+        "psychometric_approval": False,
+        "study_ref": "study:synthetic-replay",
+        "policy_expires_at": "2026-10-14T12:00:00Z",
+        "catalog_state": "SIMULATION_ENABLED",
+    }
+    assert "profile_sha256" not in response.text
+    assert "manifest_sha256" not in response.text
+    assert "rights_basis" not in response.text
+    call = service.calls[0]
+    assert call[:4] == ("enable_simulation", _actor(), PROFILE_REF, 3)
+    assert call[4][0] == "activation-key"
+    assert call[4][1] == fingerprint({"profile_ref": PROFILE_REF, "version_number": 3})
+    assert call[4][2] == fingerprint({
+        "actor": _actor().user_id,
+        "school_id": _actor().school_id,
+        "school_ref": _actor().school_ref,
+        "role": _actor().role.value,
+        "operation": "school_research_profiles:enable_simulation",
+    })
+
+
 def test_response_dto_rejects_adapter_extra_fields() -> None:
     with pytest.raises(ValueError):
         ResearchProfileCandidateDto.model_validate(
@@ -380,6 +523,14 @@ class _FakePersistence:
         self.calls.append(("import", actor, profile_ref, version_number, at, idempotency))
         return _candidate(version_number=version_number)
 
+    async def enable_simulation(
+        self, actor, profile_ref, version_number, *, at, idempotency
+    ):
+        self.calls.append(
+            ("enable_simulation", actor, profile_ref, version_number, at, idempotency)
+        )
+        return {"profile_ref": profile_ref, "version_number": version_number}
+
 
 @pytest.mark.asyncio
 async def test_service_uses_clock_guard_and_delegates_only_list_and_import() -> None:
@@ -398,3 +549,37 @@ async def test_service_uses_clock_guard_and_delegates_only_list_and_import() -> 
         await service.list_profiles(_actor(BackendRole.TEACHER))
     assert denied.value.code is ErrorCode.FORBIDDEN
     assert len(persistence.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_service_activation_delegates_clock_and_specialist_guard() -> None:
+    persistence = _FakePersistence()
+    service = SchoolResearchProfilesService(persistence=persistence, clock=lambda: NOW)
+    request_hash = fingerprint({"profile_ref": PROFILE_REF, "version_number": 3})
+    idempotency = ("activation", request_hash, "b" * 64)
+    result = await service.enable_simulation(
+        _actor(),
+        PROFILE_REF,
+        3,
+        idempotency=idempotency,
+    )
+    assert result == {"profile_ref": PROFILE_REF, "version_number": 3}
+    assert persistence.calls == [
+        (
+            "enable_simulation",
+            _actor(),
+            PROFILE_REF,
+            3,
+            NOW,
+            idempotency,
+        )
+    ]
+    with pytest.raises(BackendError) as denied:
+        await service.enable_simulation(
+            _actor(BackendRole.TEACHER),
+            PROFILE_REF,
+            3,
+            idempotency=("activation", "a" * 64, "b" * 64),
+        )
+    assert denied.value.code is ErrorCode.FORBIDDEN
+    assert len(persistence.calls) == 1

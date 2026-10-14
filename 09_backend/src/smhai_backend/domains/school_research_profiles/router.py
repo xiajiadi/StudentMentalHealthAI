@@ -19,7 +19,12 @@ from smhai_backend.domains.auth.dependencies import (
 )
 from smhai_backend.domains.models import Actor, BackendRole
 
-from .schemas import ResearchProfileCandidateDto, ResearchProfileImportRequest
+from .schemas import (
+    ResearchProfileCandidateDto,
+    ResearchProfileImportRequest,
+    ResearchProfileSimulationEligibilityDto,
+    ResearchProfileSimulationEligibilityRequest,
+)
 
 router = APIRouter(prefix="/school/research-profiles", tags=["school-research-profiles"])
 SpecialistCsrfActor = Annotated[
@@ -54,6 +59,20 @@ def _response(request: Request, value: Any, *, many: bool = False) -> JSONRespon
     )
 
 
+def _eligibility_response(request: Request, value: Any) -> JSONResponse:
+    data = ResearchProfileSimulationEligibilityDto.model_validate(value).model_dump(
+        mode="json"
+    )
+    context = current_request_context(request)
+    return JSONResponse(
+        {
+            "request_id": context.request_id,
+            "trace_id": context.trace_id,
+            "data": jsonable_encoder(data),
+        }
+    )
+
+
 def _require_specialist(actor: Actor) -> None:
     if (
         actor.scope_profile != "school_tenant"
@@ -78,7 +97,13 @@ def _configured_service(request: Request) -> Any:
     return service
 
 
-def _idempotency(actor: Actor, request: Request, payload: ResearchProfileImportRequest):
+def _idempotency(
+    actor: Actor,
+    request: Request,
+    payload: ResearchProfileImportRequest,
+    *,
+    operation: str,
+):
     key = request_key(request)
     if key is None:
         raise error(ErrorCode.VALIDATION_FAILED, detail="Idempotency-Key is required")
@@ -88,7 +113,7 @@ def _idempotency(actor: Actor, request: Request, payload: ResearchProfileImportR
             "school_id": actor.school_id,
             "school_ref": actor.school_ref,
             "role": actor.role.value,
-            "operation": "school_research_profiles:import",
+            "operation": operation,
         }
     )
     body = {"profile_ref": payload.profile_ref, "version_number": payload.version_number}
@@ -118,7 +143,12 @@ async def import_research_profile(
     payload: ResearchProfileImportRequest,
 ):
     _require_specialist(actor)
-    idempotency = _idempotency(actor, request, payload)
+    idempotency = _idempotency(
+        actor,
+        request,
+        payload,
+        operation="school_research_profiles:import",
+    )
     service = _configured_service(request)
     result = await service.import_profile(
         actor,
@@ -127,3 +157,31 @@ async def import_research_profile(
         idempotency=idempotency,
     )
     return _response(request, result)
+
+
+@router.post(
+    "/enable-simulation",
+    response_model=ApiEnvelope[ResearchProfileSimulationEligibilityDto],
+    openapi_extra=CSRF_SECURITY_OPENAPI_EXTRA,
+    responses=_ERRORS,
+)
+async def enable_research_profile_simulation(
+    request: Request,
+    actor: SpecialistCsrfActor,
+    payload: ResearchProfileSimulationEligibilityRequest,
+):
+    _require_specialist(actor)
+    idempotency = _idempotency(
+        actor,
+        request,
+        payload,
+        operation="school_research_profiles:enable_simulation",
+    )
+    service = _configured_service(request)
+    result = await service.enable_simulation(
+        actor,
+        payload.profile_ref,
+        payload.version_number,
+        idempotency=idempotency,
+    )
+    return _eligibility_response(request, result)

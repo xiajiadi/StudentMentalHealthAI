@@ -13,12 +13,17 @@ from datetime import UTC, datetime
 from typing import Any
 
 from smhai_backend.core.errors import BackendError, ErrorCode, error
+from smhai_backend.core.idempotency import fingerprint
 from smhai_backend.core.request_context import get_request_context
 from smhai_backend.domains.models import Actor, BackendRole
 from smhai_backend.domains.school_research.catalog import (
     ResearchProfileSelection,
     SchoolResearchCatalog,
     SchoolResearchCatalogError,
+)
+from smhai_backend.domains.school_research.study_use import (
+    ResearchStudyUseError,
+    ResearchStudyUsePolicy,
 )
 
 _RESOURCE_TYPE = "school_research_profile_version"
@@ -48,16 +53,47 @@ class SchoolResearchProfileView:
     catalog_state: str
 
 
+@dataclass(frozen=True, slots=True)
+class SchoolResearchProfileEligibilityView:
+    """Safe simulation-only eligibility receipt; never an approval result."""
+
+    profile_ref: str
+    version_number: int
+    research_only: bool
+    human_curated: bool
+    publication_status: str
+    rights_status: str
+    execution_status: str
+    simulation_only: bool
+    clinical_approval: bool
+    ethics_approval: bool
+    psychometric_approval: bool
+    study_ref: str
+    policy_expires_at: datetime
+    catalog_state: str
+
+
 class SchoolResearchProfilesPersistenceAdapter:
     """School-local researcher profile catalog and candidate persistence."""
 
-    def __init__(self, owner: Any, catalog: SchoolResearchCatalog) -> None:
+    def __init__(
+        self,
+        owner: Any,
+        catalog: SchoolResearchCatalog,
+        *,
+        study_use_policy: ResearchStudyUsePolicy | None = None,
+        study_use_policy_sha256: str | None = None,
+    ) -> None:
         if not callable(getattr(owner, "_uow", None)):
             raise TypeError("owner must provide database units of work")
         if type(catalog) is not SchoolResearchCatalog:
             raise TypeError("catalog must be an immutable SchoolResearchCatalog")
         self._owner = owner
         self._catalog = catalog
+        # This is optional so a missing or unconfigured policy disables only
+        # activation; candidate listing and import remain available.
+        self._study_use_policy = study_use_policy
+        self._study_use_policy_sha256 = study_use_policy_sha256
 
     async def list_profiles(self, actor: Actor) -> tuple[SchoolResearchProfileView, ...]:
         _require_actor(actor)
@@ -184,6 +220,178 @@ class SchoolResearchProfilesPersistenceAdapter:
             if code in _CONFLICTS:
                 raise _conflict() from None
             raise _dependency_error() from None
+
+    async def enable_simulation(
+        self,
+        actor: Actor,
+        profile_ref: str,
+        version_number: int,
+        *,
+        at: datetime,
+        idempotency: tuple[str, str, str],
+    ) -> SchoolResearchProfileEligibilityView:
+        """Record a policy-bounded research replay eligibility decision.
+
+        The operation changes only the existing research eligibility state.
+        It does not enable publication, interpretation, clinical use, or
+        professional approval.
+        """
+
+        _require_actor(actor)
+        _validate_at(at)
+        database_at = _database_utc(at)
+        _validate_version(version_number)
+        if type(profile_ref) is not str or not profile_ref:
+            raise error(ErrorCode.VALIDATION_FAILED, detail="research profile reference is invalid")
+        _validate_idempotency(idempotency)
+        try:
+            async with self._owner._uow() as uow:
+                actor_account_id, role_id = await self._authorize(uow, actor, database_at)
+                if actor.school_id != self._catalog.school_id:
+                    raise _not_found()
+
+                # The trusted role check and durable idempotency claim happen
+                # before catalog or study-policy selection.
+                claim = await self._owner._school_idempotency_begin(
+                    uow,
+                    _bind_idempotency_to_policy(
+                        idempotency, self._study_use_policy_sha256
+                    ),
+                )
+                selection = self._catalog.select_profile(
+                    profile_ref, school_id=actor.school_id
+                )
+                if type(selection) is not ResearchProfileSelection:
+                    raise _not_found()
+                policy = self._require_study_policy()
+                public = selection.public
+                repository = selection.repository
+                _expected_fit, _expected_calibration, expected_crosswalk = _parameter_pins(
+                    selection
+                )
+                # A policy is pinned to the source metadata and cannot grant
+                # rights or approvals beyond the trusted catalog projection.
+                if expected_crosswalk is None:
+                    raise _conflict()
+                policy_pin = policy.require_scope(
+                    school_id=actor.school_id,
+                    profile_ref=public.profile_ref,
+                    profile_sha256=repository.expected_profile_sha256,
+                    manifest_sha256=repository.expected_manifest_sha256,
+                    at=at,
+                )
+                if (
+                    policy_pin.published_crosswalk_sha256 != expected_crosswalk
+                    or type(self._study_use_policy_sha256) is not str
+                    or len(self._study_use_policy_sha256) != 64
+                    or any(char not in "0123456789abcdef" for char in self._study_use_policy_sha256)
+                ):
+                    raise _conflict()
+
+                metadata = await _existing_metadata(
+                    uow,
+                    school_id=actor.school_id,
+                    profile_ref=profile_ref,
+                    version_number=version_number,
+                )
+                if metadata is None:
+                    raise _not_found()
+                _require_exact_pins(metadata, selection, version_number)
+                if claim.replayed:
+                    record = getattr(claim, "record", None)
+                    if (
+                        record is None
+                        or getattr(record, "result_resource_type", None) != _RESOURCE_TYPE
+                        or getattr(record, "result_public_id", None) != profile_ref
+                    ):
+                        raise _conflict()
+                    _require_enabled_profile(metadata)
+                    return _eligibility_view(
+                        metadata,
+                        study_ref=policy.study_ref,
+                        policy_expires_at=policy.ends_at,
+                        catalog_state="IDEMPOTENT_REPLAY",
+                    )
+
+                # Only an untouched candidate can transition. Revoked,
+                # disabled, or already-enabled immutable versions never get
+                # silently reactivated/re-authorized.
+                if (
+                    metadata.rights_status != "PENDING"
+                    or metadata.execution_status != "CANDIDATE_RESEARCH_ONLY"
+                    or metadata.rights_revoked_at is not None
+                    or metadata.disabled_at is not None
+                ):
+                    raise _conflict()
+                updated = await uow.research_cat.change_profile_eligibility(
+                    school_id=actor.school_id,
+                    profile_ref=profile_ref,
+                    version_number=version_number,
+                    expected_profile_sha256=repository.expected_profile_sha256,
+                    status_actor_membership_role_id=role_id,
+                    rights_status="VERIFIED",
+                    execution_status="SIMULATION_ENABLED",
+                )
+                _require_exact_pins(updated, selection, version_number)
+                _require_enabled_profile(updated)
+                await self._owner._school_idempotency_complete(
+                    uow,
+                    claim,
+                    resource_type=_RESOURCE_TYPE,
+                    result_ref=profile_ref,
+                )
+                await uow.audit.append(
+                    action="school_research_profiles.enable_simulation",
+                    resource_type=_RESOURCE_TYPE,
+                    resource_public_id=profile_ref,
+                    result=self._owner._db_enums.AuditResult.SUCCESS,
+                    trace_id=get_request_context().trace_id,
+                    actor_account_id=actor_account_id,
+                    safe_metadata={
+                        "source": "school_research_profiles",
+                        "state": "SIMULATION_ENABLED",
+                        "study_ref": policy.study_ref,
+                        "policy_sha256": self._study_use_policy_sha256,
+                        "rights_basis": policy.rights_basis,
+                        "policy_expires_at": policy.ends_at.isoformat().replace(
+                            "+00:00", "Z"
+                        ),
+                        "use_scope": policy.use_scope,
+                        "historical_replay_only": policy.historical_replay_only,
+                        "clinical_approval": False,
+                        "ethics_approval": False,
+                        "psychometric_approval": False,
+                    },
+                )
+                return _eligibility_view(
+                    updated,
+                    study_ref=policy.study_ref,
+                    policy_expires_at=policy.ends_at,
+                    catalog_state="SIMULATION_ENABLED",
+                )
+        except BackendError:
+            raise
+        except ResearchStudyUseError:
+            raise _conflict() from None
+        except SchoolResearchCatalogError:
+            raise _not_found() from None
+        except Exception as exc:
+            code = _exception_code(exc)
+            if code == _NOT_FOUND:
+                raise _not_found() from None
+            if code in _CONFLICTS or code == "RESEARCH_PROFILE_NOT_ELIGIBLE":
+                raise _conflict() from None
+            raise _dependency_error() from None
+
+    def _require_study_policy(self) -> ResearchStudyUsePolicy:
+        if (
+            type(self._study_use_policy) is not ResearchStudyUsePolicy
+            or type(self._study_use_policy_sha256) is not str
+            or len(self._study_use_policy_sha256) != 64
+            or any(char not in "0123456789abcdef" for char in self._study_use_policy_sha256)
+        ):
+            raise _dependency_error()
+        return self._study_use_policy
 
     async def _authorize(self, uow: Any, actor: Actor, at: datetime) -> tuple[int, int]:
         return await self._owner._school_actor_role(
@@ -339,6 +547,47 @@ def _persisted_view(metadata: Any, catalog_state: str) -> SchoolResearchProfileV
     )
 
 
+def _require_enabled_profile(metadata: Any) -> None:
+    if (
+        getattr(metadata, "rights_status", None) != "VERIFIED"
+        or getattr(metadata, "execution_status", None) != "SIMULATION_ENABLED"
+        or getattr(metadata, "research_only", None) is not True
+        or getattr(metadata, "human_curated", None) is not False
+        or getattr(metadata, "psychological_interpretation_allowed", None) is not False
+        or getattr(metadata, "publication_status", None)
+        != _PUBLICATION_NOT_APPROVED
+        or getattr(metadata, "rights_revoked_at", None) is not None
+        or getattr(metadata, "disabled_at", None) is not None
+        or not isinstance(getattr(metadata, "simulation_enabled_at", None), datetime)
+    ):
+        raise _conflict()
+
+
+def _eligibility_view(
+    metadata: Any,
+    *,
+    study_ref: str,
+    policy_expires_at: datetime,
+    catalog_state: str,
+) -> SchoolResearchProfileEligibilityView:
+    return SchoolResearchProfileEligibilityView(
+        profile_ref=metadata.profile_ref,
+        version_number=metadata.version_number,
+        research_only=True,
+        human_curated=False,
+        publication_status=_PUBLICATION_NOT_APPROVED,
+        rights_status="VERIFIED",
+        execution_status="SIMULATION_ENABLED",
+        simulation_only=True,
+        clinical_approval=False,
+        ethics_approval=False,
+        psychometric_approval=False,
+        study_ref=study_ref,
+        policy_expires_at=policy_expires_at,
+        catalog_state=catalog_state,
+    )
+
+
 async def _audit(
     uow: Any,
     *,
@@ -406,6 +655,30 @@ def _validate_idempotency(value: object) -> None:
         or any(char not in "0123456789abcdef" for char in value[2])
     ):
         raise error(ErrorCode.VALIDATION_FAILED, detail="research idempotency is invalid")
+
+
+def _bind_idempotency_to_policy(
+    value: tuple[str, str, str], policy_sha256: str | None
+) -> tuple[str, str, str]:
+    """Make retries conflict when the trusted study policy pin has changed."""
+
+    trusted_pin = (
+        policy_sha256
+        if type(policy_sha256) is str
+        and len(policy_sha256) == 64
+        and all(char in "0123456789abcdef" for char in policy_sha256)
+        else "UNCONFIGURED"
+    )
+    return (
+        value[0],
+        fingerprint(
+            {
+                "request_fingerprint": value[1],
+                "study_policy_sha256": trusted_pin,
+            }
+        ),
+        value[2],
+    )
 
 
 def _exception_code(exc: BaseException) -> str | None:

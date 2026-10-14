@@ -389,6 +389,65 @@ async def test_lock_student_task_scope_rechecks_self_grant_under_ordered_locks_b
     assert "SELF" in compiled.params.values()
 
 
+@pytest.mark.asyncio
+async def test_locked_study_scope_callback_runs_before_binding_config_decrypt():
+    repo, session, _protection = _repo()
+    await _install_research_records(repo, session)
+    events = []
+    original_decrypt_binding = repo._decrypt_binding_config
+
+    def guard(profile_metadata, binding_metadata):
+        events.append("study-scope")
+        assert isinstance(profile_metadata, ResearchProfileMetadata)
+        assert profile_metadata.school_id == 3
+        assert profile_metadata.profile_sha256 == _PROFILE_SHA
+        assert binding_metadata.school_id == 3
+        assert binding_metadata.task_id == 13
+        assert session.locked_models[-1] is SubjectAccessGrant
+
+    def decrypt_binding(*args, **kwargs):
+        events.append("decrypt-config")
+        return original_decrypt_binding(*args, **kwargs)
+
+    repo._decrypt_binding_config = decrypt_binding
+    scope = await repo.lock_student_task_scope(
+        school_id=3,
+        task_id=13,
+        task_enrollment_id=17,
+        subject_id=23,
+        principal_account_id=31,
+        at=session._now.replace(tzinfo=UTC),
+        require_study_scope=guard,
+    )
+    assert events == ["study-scope", "decrypt-config"]
+    assert scope.binding.config_json == _CONFIG_JSON
+
+    repo, session, _protection = _repo()
+    await _install_research_records(repo, session)
+    denied_decrypts = []
+
+    def reject_binding(*_args, **_kwargs):
+        denied_decrypts.append(True)
+        return original_decrypt_binding(*_args, **_kwargs)
+
+    def deny_study_scope(_profile_metadata, _binding_metadata):
+        raise RuntimeError("fixed study scope denial")
+
+    repo._decrypt_binding_config = reject_binding
+    with pytest.raises(RuntimeError, match="fixed study scope denial"):
+        await repo.lock_student_task_scope(
+            school_id=3,
+            task_id=13,
+            task_enrollment_id=17,
+            subject_id=23,
+            principal_account_id=31,
+            at=session._now.replace(tzinfo=UTC),
+            require_study_scope=deny_study_scope,
+        )
+    assert denied_decrypts == []
+    assert session.commits == 0
+
+
 @pytest.mark.parametrize(
     ("mutation", "overrides"),
     [

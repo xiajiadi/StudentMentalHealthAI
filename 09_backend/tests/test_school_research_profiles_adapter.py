@@ -18,6 +18,7 @@ from smhai_backend.adapters.school_research_profiles import (
     SchoolResearchProfileView,
 )
 from smhai_backend.core.errors import BackendError, ErrorCode, error
+from smhai_backend.core.idempotency import fingerprint
 from smhai_backend.domains.models import Actor, BackendRole, SchoolRoleContext
 from smhai_backend.domains.school_research.catalog import (
     RepositoryResearchProfileInput,
@@ -25,6 +26,9 @@ from smhai_backend.domains.school_research.catalog import (
     ResearchProfileRepositoryProjection,
     ResearchProfileSelection,
     SchoolResearchCatalog,
+)
+from smhai_backend.domains.school_research.study_use import (
+    load_research_study_use_policy,
 )
 
 SCHOOL_ID = 71
@@ -69,6 +73,8 @@ class _ResearchRepo:
         self.metadata: dict[tuple[int, str, int], Any] = {}
         self.created: list[dict[str, Any]] = []
         self.fail_code: str | None = None
+        self.eligibility_fail_code: str | None = None
+        self.eligibility_changes: list[dict[str, Any]] = []
         self.concurrent_winner: Any | None = None
 
     async def get_profile_metadata(
@@ -106,6 +112,17 @@ class _ResearchRepo:
         ] = metadata
         return metadata
 
+    async def change_profile_eligibility(self, **kwargs: Any) -> Any:
+        self.eligibility_changes.append(kwargs)
+        if self.eligibility_fail_code:
+            raise _RepoError(self.eligibility_fail_code)
+        key = (kwargs["school_id"], kwargs["profile_ref"], kwargs["version_number"])
+        metadata = self.metadata[key]
+        metadata.rights_status = kwargs["rights_status"]
+        metadata.execution_status = kwargs["execution_status"]
+        metadata.simulation_enabled_at = NOW
+        return metadata
+
 
 class _Uow:
     def __init__(self, repo: _ResearchRepo) -> None:
@@ -126,6 +143,7 @@ class _Owner:
         self.role_times: list[datetime] = []
         self.claim: _Claim | None = None
         self.completed: list[dict[str, Any]] = []
+        self.idempotency_calls: list[tuple[str, str, str]] = []
         self._db_enums = SimpleNamespace(AuditResult=_AuditResult)
         self.active_uow = False
 
@@ -154,6 +172,7 @@ class _Owner:
     async def _school_idempotency_begin(self, uow, idempotency):
         assert uow is self.uow
         self.events.append("claim")
+        self.idempotency_calls.append(idempotency)
         self.claim = _Claim(replayed=self.replay, result_ref=self.result_ref)
         return self.claim
 
@@ -291,8 +310,58 @@ def _metadata(
     )
 
 
-def _adapter(owner: _Owner | None = None, catalog: SchoolResearchCatalog | None = None):
-    return SchoolResearchProfilesPersistenceAdapter(owner or _Owner(), catalog or _catalog())
+def _adapter(
+    owner: _Owner | None = None,
+    catalog: SchoolResearchCatalog | None = None,
+    *,
+    study_use_policy=None,
+    study_use_policy_sha256: str | None = None,
+):
+    return SchoolResearchProfilesPersistenceAdapter(
+        owner or _Owner(),
+        catalog or _catalog(),
+        study_use_policy=study_use_policy,
+        study_use_policy_sha256=study_use_policy_sha256,
+    )
+
+
+def _study_use_policy(tmp_path: Path, *, school_id: int = SCHOOL_ID):
+    document = {
+        "schema": "psynova.research-study-use.v1",
+        "study_ref": "study:replay-01",
+        "school_id": school_id,
+        "institution": "Synthetic institution declaration",
+        "use_scope": "ISOLATED_HISTORICAL_REPLAY",
+        "noncommercial": True,
+        "historical_replay_only": True,
+        "english_unchanged": True,
+        "starts_at": "2026-10-14T00:00:00Z",
+        "ends_at": "2027-06-30T23:59:59Z",
+        "profiles": [{
+            "profile_ref": PROFILE_REF,
+            "profile_sha256": PROFILE_SHA,
+            "manifest_sha256": MANIFEST_SHA,
+            "published_crosswalk_sha256": CROSSWALK_SHA,
+        }],
+        "rights_basis": "Synthetic scoped research-use record for historical replay.",
+        "rights_source_urls": ["https://example.org/research-rights"],
+        "recorded_by": "operator:synthetic-review",
+        "recorded_at": "2026-10-14T00:00:00Z",
+        "operator_declaration": "Server-pinned test policy; not an external approval.",
+        "clinical_approval": False,
+        "ethics_approval": False,
+        "psychometric_approval": False,
+    }
+    path = tmp_path / "trusted-study-use.json"
+    path.write_text(json.dumps(document, separators=(",", ":")), encoding="utf-8")
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    policy = load_research_study_use_policy(
+        path,
+        expected_sha256=digest,
+        source_rights_verified=True,
+        latest_allowed_ends_at=datetime(2027, 6, 30, 23, 59, 59, tzinfo=UTC),
+    )
+    return policy, digest
 
 
 def _idempotency() -> tuple[str, str, str]:
@@ -609,3 +678,289 @@ def test_view_dataclass_is_immutable_and_repr_omits_hashes_and_source_bytes() ->
     assert MANIFEST_SHA not in repr(view)
     with pytest.raises(FrozenInstanceError):
         view.version_number = 4
+
+
+@pytest.mark.asyncio
+async def test_enable_simulation_uses_policy_pins_repository_transition_receipt_and_audit(
+    tmp_path: Path,
+) -> None:
+    owner = _Owner()
+    owner.repo.metadata[(SCHOOL_ID, PROFILE_REF, VERSION)] = _metadata()
+    policy, policy_sha = _study_use_policy(tmp_path)
+    adapter = _adapter(
+        owner,
+        _catalog(),
+        study_use_policy=policy,
+        study_use_policy_sha256=policy_sha,
+    )
+
+    receipt = await adapter.enable_simulation(
+        _actor(), PROFILE_REF, VERSION, at=NOW, idempotency=_idempotency()
+    )
+
+    assert owner.events == ["role", "claim"]
+    assert owner.idempotency_calls == [
+        (
+            "opaque-key-01",
+            fingerprint(
+                {
+                    "request_fingerprint": hashlib.sha256(b"request").hexdigest(),
+                    "study_policy_sha256": policy_sha,
+                }
+            ),
+            hashlib.sha256(b"scope").hexdigest(),
+        )
+    ]
+    assert owner.repo.eligibility_changes == [{
+        "school_id": SCHOOL_ID,
+        "profile_ref": PROFILE_REF,
+        "version_number": VERSION,
+        "expected_profile_sha256": PROFILE_SHA,
+        "status_actor_membership_role_id": 9002,
+        "rights_status": "VERIFIED",
+        "execution_status": "SIMULATION_ENABLED",
+    }]
+    assert owner.completed == [{
+        "resource_type": "school_research_profile_version",
+        "result_ref": PROFILE_REF,
+    }]
+    assert receipt.study_ref == "study:replay-01"
+    assert receipt.policy_expires_at == datetime(2027, 6, 30, 23, 59, 59, tzinfo=UTC)
+    assert receipt.research_only is True
+    assert receipt.human_curated is False
+    assert receipt.rights_status == "VERIFIED"
+    assert receipt.execution_status == "SIMULATION_ENABLED"
+    assert receipt.simulation_only is True
+    assert receipt.clinical_approval is False
+    assert receipt.ethics_approval is False
+    assert receipt.psychometric_approval is False
+    assert owner.repo.metadata[(SCHOOL_ID, PROFILE_REF, VERSION)].publication_status == (
+        "not_approved_for_publication_or_operational_use"
+    )
+    audit = owner.uow.audit.entries[0]
+    assert audit["action"] == "school_research_profiles.enable_simulation"
+    assert audit["safe_metadata"] == {
+        "source": "school_research_profiles",
+        "state": "SIMULATION_ENABLED",
+        "study_ref": policy.study_ref,
+        "policy_sha256": policy_sha,
+        "rights_basis": policy.rights_basis,
+        "policy_expires_at": "2027-06-30T23:59:59Z",
+        "use_scope": "ISOLATED_HISTORICAL_REPLAY",
+        "historical_replay_only": True,
+        "clinical_approval": False,
+        "ethics_approval": False,
+        "psychometric_approval": False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_activation_defaults_deny_without_policy_without_affecting_import(
+    tmp_path: Path,
+) -> None:
+    owner = _Owner()
+    owner.repo.metadata[(SCHOOL_ID, PROFILE_REF, VERSION)] = _metadata()
+    adapter = _adapter(owner)
+
+    with pytest.raises(BackendError) as denied:
+        await adapter.enable_simulation(
+            _actor(), PROFILE_REF, VERSION, at=NOW, idempotency=_idempotency()
+        )
+    assert denied.value.code is ErrorCode.DEPENDENCY_UNAVAILABLE
+    assert owner.events == ["role", "claim"]
+    assert owner.repo.eligibility_changes == []
+    assert owner.completed == []
+    assert owner.uow.audit.entries == []
+
+    import_adapter = _adapter(_Owner(), _catalog())
+    imported = await import_adapter.import_profile(
+        _actor(), PROFILE_REF, VERSION, at=NOW, idempotency=_idempotency()
+    )
+    assert imported.execution_status == "CANDIDATE_RESEARCH_ONLY"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "rights, execution, revoked, disabled",
+    [
+        ("REVOKED", "DISABLED", NOW, NOW),
+        ("PENDING", "DISABLED", None, NOW),
+        ("VERIFIED", "SIMULATION_ENABLED", None, None),
+    ],
+)
+async def test_activation_does_not_reactivate_revoked_disabled_or_already_enabled_version(
+    tmp_path: Path, rights, execution, revoked, disabled
+) -> None:
+    owner = _Owner()
+    owner.repo.metadata[(SCHOOL_ID, PROFILE_REF, VERSION)] = _metadata(
+        rights_status=rights,
+        execution_status=execution,
+    )
+    existing = owner.repo.metadata[(SCHOOL_ID, PROFILE_REF, VERSION)]
+    existing.rights_revoked_at = revoked
+    existing.disabled_at = disabled
+    policy, policy_sha = _study_use_policy(tmp_path)
+    adapter = _adapter(
+        owner,
+        _catalog(),
+        study_use_policy=policy,
+        study_use_policy_sha256=policy_sha,
+    )
+
+    with pytest.raises(BackendError) as denied:
+        await adapter.enable_simulation(
+            _actor(), PROFILE_REF, VERSION, at=NOW, idempotency=_idempotency()
+        )
+    assert denied.value.code is ErrorCode.WORKFLOW_CONFLICT
+    assert owner.repo.eligibility_changes == []
+    assert owner.completed == []
+    assert owner.uow.audit.entries == []
+
+
+@pytest.mark.asyncio
+async def test_activation_requires_exact_policy_school_profile_hash_and_crosswalk(
+    tmp_path: Path,
+) -> None:
+    for school_id, policy_profile_sha, policy_crosswalk in (
+        (SCHOOL_ID + 1, PROFILE_SHA, CROSSWALK_SHA),
+        (SCHOOL_ID, "d" * 64, CROSSWALK_SHA),
+        (SCHOOL_ID, PROFILE_SHA, "d" * 64),
+    ):
+        owner = _Owner()
+        owner.repo.metadata[(SCHOOL_ID, PROFILE_REF, VERSION)] = _metadata()
+        altered = {
+                "schema": "psynova.research-study-use.v1",
+                "study_ref": "study:replay-01",
+                "school_id": school_id,
+                "institution": "Synthetic institution declaration",
+                "use_scope": "ISOLATED_HISTORICAL_REPLAY",
+                "noncommercial": True,
+                "historical_replay_only": True,
+                "english_unchanged": True,
+                "starts_at": "2026-10-14T00:00:00Z",
+                "ends_at": "2027-06-30T23:59:59Z",
+                "profiles": [{
+                    "profile_ref": PROFILE_REF,
+                    "profile_sha256": policy_profile_sha,
+                    "manifest_sha256": MANIFEST_SHA,
+                    "published_crosswalk_sha256": policy_crosswalk,
+                }],
+                "rights_basis": "Synthetic scoped research-use record.",
+                "rights_source_urls": ["https://example.org/research-rights"],
+                "recorded_by": "operator:synthetic-review",
+                "recorded_at": "2026-10-14T00:00:00Z",
+                "operator_declaration": "Server-pinned test policy.",
+                "clinical_approval": False,
+                "ethics_approval": False,
+                "psychometric_approval": False,
+        }
+        path = tmp_path / f"policy-{school_id}-{policy_profile_sha[0]}-{policy_crosswalk[0]}.json"
+        path.write_text(json.dumps(altered, separators=(",", ":")), encoding="utf-8")
+        policy_sha = hashlib.sha256(path.read_bytes()).hexdigest()
+        policy = load_research_study_use_policy(
+            path,
+            expected_sha256=policy_sha,
+            source_rights_verified=True,
+            latest_allowed_ends_at=datetime(2027, 6, 30, 23, 59, 59, tzinfo=UTC),
+        )
+        adapter = _adapter(
+            owner,
+            _catalog(),
+            study_use_policy=policy,
+            study_use_policy_sha256=policy_sha,
+        )
+        with pytest.raises(BackendError) as denied:
+            await adapter.enable_simulation(
+                _actor(), PROFILE_REF, VERSION, at=NOW, idempotency=_idempotency()
+            )
+        assert denied.value.code in {ErrorCode.RESOURCE_NOT_FOUND, ErrorCode.WORKFLOW_CONFLICT}
+        assert owner.repo.eligibility_changes == []
+        assert owner.completed == []
+        assert owner.uow.audit.entries == []
+
+
+@pytest.mark.asyncio
+async def test_expired_policy_and_repository_rejection_do_not_create_receipts_or_audit(
+    tmp_path: Path,
+) -> None:
+    policy, policy_sha = _study_use_policy(tmp_path)
+    expired_owner = _Owner()
+    expired_owner.repo.metadata[(SCHOOL_ID, PROFILE_REF, VERSION)] = _metadata()
+    expired_adapter = _adapter(
+        expired_owner,
+        _catalog(),
+        study_use_policy=policy,
+        study_use_policy_sha256=policy_sha,
+    )
+    with pytest.raises(BackendError) as expired:
+        await expired_adapter.enable_simulation(
+            _actor(),
+            PROFILE_REF,
+            VERSION,
+            at=datetime(2028, 1, 1, tzinfo=UTC),
+            idempotency=_idempotency(),
+        )
+    assert expired.value.code is ErrorCode.WORKFLOW_CONFLICT
+    assert expired_owner.repo.eligibility_changes == []
+    assert expired_owner.completed == []
+    assert expired_owner.uow.audit.entries == []
+
+    rejected_owner = _Owner()
+    rejected_owner.repo.metadata[(SCHOOL_ID, PROFILE_REF, VERSION)] = _metadata()
+    rejected_owner.repo.eligibility_fail_code = "RESEARCH_PROFILE_NOT_ELIGIBLE"
+    rejected_adapter = _adapter(
+        rejected_owner,
+        _catalog(),
+        study_use_policy=policy,
+        study_use_policy_sha256=policy_sha,
+    )
+    with pytest.raises(BackendError) as rejected:
+        await rejected_adapter.enable_simulation(
+            _actor(), PROFILE_REF, VERSION, at=NOW, idempotency=_idempotency()
+        )
+    assert rejected.value.code is ErrorCode.WORKFLOW_CONFLICT
+    assert len(rejected_owner.repo.eligibility_changes) == 1
+    assert rejected_owner.completed == []
+    assert rejected_owner.uow.audit.entries == []
+
+
+@pytest.mark.asyncio
+async def test_activation_replay_reauthorizes_and_never_mutates_again(tmp_path: Path) -> None:
+    owner = _Owner(replay=True, result_ref=PROFILE_REF)
+    metadata = _metadata(
+        rights_status="VERIFIED",
+        execution_status="SIMULATION_ENABLED",
+    )
+    metadata.simulation_enabled_at = NOW
+    owner.repo.metadata[(SCHOOL_ID, PROFILE_REF, VERSION)] = metadata
+    policy, policy_sha = _study_use_policy(tmp_path)
+    adapter = _adapter(
+        owner,
+        _catalog(),
+        study_use_policy=policy,
+        study_use_policy_sha256=policy_sha,
+    )
+
+    receipt = await adapter.enable_simulation(
+        _actor(), PROFILE_REF, VERSION, at=NOW, idempotency=_idempotency()
+    )
+
+    assert owner.events == ["role", "claim"]
+    assert owner.repo.eligibility_changes == []
+    assert owner.completed == []
+    assert owner.uow.audit.entries == []
+    assert receipt.catalog_state == "IDEMPOTENT_REPLAY"
+
+    denied_owner = _Owner(denied=True, replay=True, result_ref=PROFILE_REF)
+    denied_adapter = _adapter(
+        denied_owner,
+        _catalog(),
+        study_use_policy=policy,
+        study_use_policy_sha256=policy_sha,
+    )
+    with pytest.raises(BackendError) as denied:
+        await denied_adapter.enable_simulation(
+            _actor(), PROFILE_REF, VERSION, at=NOW, idempotency=_idempotency()
+        )
+    assert denied.value.code is ErrorCode.FORBIDDEN
+    assert denied_owner.events == ["role"]

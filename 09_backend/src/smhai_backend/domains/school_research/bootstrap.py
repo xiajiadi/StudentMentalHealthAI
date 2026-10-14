@@ -137,7 +137,8 @@ def build_school_research_service(settings: Any, persistence: Any) -> Any | None
         from smhai_backend.domains.school_research.service import SchoolResearchService
 
         adapter = SchoolResearchPersistenceAdapter(
-            persistence, client_for_binding=runtime.client_for_binding
+            persistence, client_for_binding=runtime.client_for_binding,
+            study_use_policy=build_school_research_study_policy(settings),
         )
         return SchoolResearchService(persistence=adapter)
     except Exception:
@@ -177,7 +178,69 @@ def build_school_research_profiles_service(settings: Any, persistence: Any) -> A
             retained_key_provider=persistence.protection.key_provider,
         )
         return SchoolResearchProfilesService(
-            persistence=SchoolResearchProfilesPersistenceAdapter(persistence, catalog)
+            persistence=SchoolResearchProfilesPersistenceAdapter(
+                persistence, catalog,
+                study_use_policy=build_school_research_study_policy(settings),
+                study_use_policy_sha256=getattr(settings, "school_research_study_use_sha256", None),
+            )
         )
+    except Exception:
+        raise ResearchCATRuntimeError("runtime_configuration_invalid") from None
+
+
+def build_school_research_study_policy(settings: Any) -> Any | None:
+    """Load only server-pinned, limited historical replay scope; no approval grant."""
+    path = getattr(settings, "school_research_study_use_file", None)
+    if path is None:
+        return None
+    try:
+        from .study_use import load_research_study_use_policy
+
+        return load_research_study_use_policy(
+            Path(path),
+            expected_sha256=settings.school_research_study_use_sha256,
+            source_rights_verified=settings.school_research_source_rights_verified,
+            latest_allowed_ends_at=settings.school_research_latest_study_end,
+        )
+    except Exception:
+        raise ResearchCATRuntimeError("study_use_configuration_invalid") from None
+
+
+def build_school_research_tasks_service(settings: Any, persistence: Any) -> Any | None:
+    """Compose administrator publishing without modifying profile eligibility."""
+    if (
+        settings.school_research_enabled is not True
+        or getattr(settings, "school_research_managed_enabled", False) is not True
+    ):
+        return None
+    try:
+        if persistence is None or settings.identity_profile != "school_tenant":
+            raise ValueError
+        from smhai_backend.adapters.school_research_tasks import (
+            SchoolResearchTasksPersistenceAdapter,
+        )
+        from smhai_backend.domains.school_research_tasks.service import SchoolResearchTasksService
+
+        from .catalog import build_school_research_catalog
+
+        runtime = load_research_runtime(
+            configuration_file=Path(settings.school_research_runtime_file),
+            expected_sha256=settings.school_research_runtime_sha256,
+            loopback_base_url=settings.school_research_base_url,
+            retained_key_provider=persistence.protection.key_provider,
+        )
+        catalog = build_school_research_catalog(
+            runtime_config_file=Path(settings.school_research_runtime_file),
+            expected_runtime_config_sha256=settings.school_research_runtime_sha256,
+            service_config_file=Path(settings.school_research_service_file),
+            expected_service_config_sha256=settings.school_research_service_sha256,
+            school_id=runtime.school_id,
+            retained_key_provider=persistence.protection.key_provider,
+        )
+        return SchoolResearchTasksService(persistence=SchoolResearchTasksPersistenceAdapter(
+            persistence, catalog,
+            study_use_policy=build_school_research_study_policy(settings),
+            study_use_policy_sha256=getattr(settings, "school_research_study_use_sha256", None),
+        ))
     except Exception:
         raise ResearchCATRuntimeError("runtime_configuration_invalid") from None

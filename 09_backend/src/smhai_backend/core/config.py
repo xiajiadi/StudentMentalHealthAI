@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import re
+from datetime import datetime, timedelta
 from typing import Any, Literal
 from urllib.parse import urlparse
 
@@ -12,6 +13,7 @@ from pydantic import (
     ConfigDict,
     Field,
     SecretStr,
+    StrictBool,
     ValidationError,
     field_validator,
     model_validator,
@@ -237,6 +239,10 @@ class BackendSettings(BaseSettings):
     school_research_cat_python: str | None = Field(default=None, repr=False)
     school_research_cat_source: str | None = Field(default=None, repr=False)
     school_research_cat_dependencies: str | None = Field(default=None, repr=False)
+    school_research_study_use_file: str | None = Field(default=None, repr=False)
+    school_research_study_use_sha256: str | None = None
+    school_research_source_rights_verified: StrictBool = False
+    school_research_latest_study_end: datetime | None = None
     cat: ModuleClientSettings = Field(
         default_factory=lambda: ModuleClientSettings(
             mode="contract_fake", base_url="http://127.0.0.1:8180"
@@ -275,6 +281,26 @@ class BackendSettings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_security(self) -> BackendSettings:
+        study_configured = (
+            self.school_research_study_use_file is not None
+            or self.school_research_study_use_sha256 is not None
+            or self.school_research_source_rights_verified
+            or self.school_research_latest_study_end is not None
+        )
+        if study_configured:
+            end = self.school_research_latest_study_end
+            if (
+                not self.school_research_enabled
+                or not self.school_research_managed_enabled
+                or not self.school_research_study_use_file
+                or not self.school_research_study_use_sha256
+                or not re.fullmatch(r"[0-9a-f]{64}", self.school_research_study_use_sha256)
+                or self.school_research_source_rights_verified is not True
+                or end is None
+                or end.tzinfo is None
+                or end.utcoffset() != timedelta(0)
+            ):
+                raise ValueError("research study use requires explicit verified UTC server pins")
         if self.school_research_managed_enabled and (
             not self.school_research_enabled
             or not self.school_research_service_file

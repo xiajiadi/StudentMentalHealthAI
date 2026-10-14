@@ -16,7 +16,7 @@ import base64
 import hashlib
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -803,6 +803,8 @@ class SchoolResearchCatRepository:
         subject_id: int,
         principal_account_id: int,
         at: datetime,
+        require_study_scope: Callable[[ResearchProfileMetadata, ResearchTaskBindingMetadata], None]
+        | None = None,
     ) -> ResearchLockedStudentScope:
         """Lock current student scope after Backend resolved/authenticated account.
 
@@ -864,6 +866,17 @@ class SchoolResearchCatRepository:
                 ResearchCatRepositoryErrorCode.SCOPE_MISMATCH,
                 "active self grant does not match the requested student scope",
             )
+
+        if require_study_scope is not None:
+            if not callable(require_study_scope):
+                _raise(
+                    ResearchCatRepositoryErrorCode.INVALID_INPUT,
+                    "study scope verifier is invalid",
+                )
+            # The caller's pure trusted-policy guard runs against the exact
+            # locked profile and binding metadata before config decryption.
+            # Do not catch its exception: Backend maps its fixed denial safely.
+            require_study_scope(_profile_metadata(_profile), _binding_metadata(binding))
 
         # Decrypt only after all current account-principal/roster/task rows
         # have been locked and revalidated in this caller-owned transaction.

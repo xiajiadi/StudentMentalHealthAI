@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from smhai_backend.adapters.database import SchoolIdempotencyClaim
@@ -26,6 +26,11 @@ from smhai_backend.domains.school_research.authorization import (
 from smhai_backend.domains.school_research.client import (
     ResearchCATClientError,
     ResearchCATSnapshotForPersistence,
+)
+from smhai_backend.domains.school_research.study_use import (
+    ResearchStudyProfilePin,
+    ResearchStudyUseError,
+    ResearchStudyUsePolicy,
 )
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
@@ -52,6 +57,9 @@ _CONFLICT_CODES = frozenset(
         "RESEARCH_CONCURRENCY_CONFLICT",
         "RESEARCH_PERSISTENCE_CONFLICT",
     }
+)
+_POLICY_DENIAL_CODES = frozenset(
+    {"scope_denied", "task_window_invalid", "task_window_outside_policy"}
 )
 
 
@@ -184,6 +192,7 @@ class SchoolResearchPersistenceAdapter:
         owner: Any,
         *,
         client_for_binding: Callable[[Any], Any],
+        study_use_policy: ResearchStudyUsePolicy | None = None,
     ) -> None:
         if not callable(getattr(owner, "_uow", None)):
             raise TypeError("owner must provide short-lived database units of work")
@@ -191,6 +200,7 @@ class SchoolResearchPersistenceAdapter:
             raise TypeError("client_for_binding must be injected")
         self._owner = owner
         self._client_for_binding = client_for_binding
+        self._study_use_policy = study_use_policy
 
     def client_for_binding(self, binding_metadata: Any) -> Any:
         """Create the injected, server-pinned client outside any UOW."""
@@ -622,6 +632,11 @@ class SchoolResearchPersistenceAdapter:
             task_ref=task_ref,
             session_ref=session_ref,
         )
+        self._require_study_policy_configured()
+
+        def require_study_scope(profile_metadata: Any, binding_metadata: Any) -> None:
+            self._require_trusted_study_scope(candidate, profile_metadata, binding_metadata, at=at)
+
         locked = await uow.research_cat.lock_student_task_scope(
             school_id=candidate.school_id,
             task_id=candidate.task_id,
@@ -629,6 +644,7 @@ class SchoolResearchPersistenceAdapter:
             subject_id=candidate.subject_id,
             principal_account_id=candidate.account_id,
             at=at,
+            require_study_scope=require_study_scope,
         )
         if (
             locked.school_id != candidate.school_id
@@ -644,7 +660,87 @@ class SchoolResearchPersistenceAdapter:
         ):
             raise _not_found_error()
         _validate_binding_metadata(locked.binding.metadata)
-        return _ResolvedLockedScope(candidate=candidate, locked=locked)
+        scope = _ResolvedLockedScope(candidate=candidate, locked=locked)
+        return scope
+
+    def _require_study_policy_configured(self) -> ResearchStudyUsePolicy:
+        policy = self._study_use_policy
+        if (
+            policy is None
+            or getattr(policy, "source_rights_verified", None) is not True
+            or not callable(getattr(policy, "require_scope", None))
+        ):
+            raise _study_policy_unavailable()
+        return policy
+
+    def _require_trusted_study_scope(
+        self,
+        candidate: ResearchStudentScope,
+        profile_metadata: Any,
+        binding: Any,
+        *,
+        at: datetime,
+    ) -> None:
+        policy = self._require_study_policy_configured()
+        if (
+            type(getattr(profile_metadata, "school_id", None)) is not int
+            or getattr(profile_metadata, "school_id", None) != candidate.school_id
+            or getattr(profile_metadata, "profile_ref", None) != binding.profile_ref
+            or type(getattr(profile_metadata, "profile_version_id", None)) is not int
+            or getattr(profile_metadata, "profile_version_id", None) != binding.profile_version_id
+            or type(getattr(profile_metadata, "version_number", None)) is not int
+            or getattr(profile_metadata, "version_number", None) != binding.profile_version_number
+            or getattr(profile_metadata, "profile_sha256", None) != binding.profile_sha256
+            or type(getattr(profile_metadata, "manifest_sha256", None)) is not str
+            or _SHA256.fullmatch(profile_metadata.manifest_sha256) is None
+        ):
+            raise _conflict_error()
+
+        try:
+            policy_pin = policy.require_scope(
+                school_id=candidate.school_id,
+                profile_ref=binding.profile_ref,
+                profile_sha256=binding.profile_sha256,
+                manifest_sha256=profile_metadata.manifest_sha256,
+                at=_aware_utc(at),
+            )
+        except BackendError:
+            raise
+        except ResearchStudyUseError as exc:
+            if exc.code in _POLICY_DENIAL_CODES:
+                raise _study_policy_denied() from None
+            if exc.code == "profile_pin_mismatch":
+                raise _conflict_error() from None
+            raise _study_policy_unavailable() from None
+        except Exception:
+            raise _study_policy_unavailable() from None
+
+        if (
+            type(policy_pin) is not ResearchStudyProfilePin
+            or policy_pin.profile_ref != binding.profile_ref
+            or policy_pin.profile_sha256 != binding.profile_sha256
+            or policy_pin.manifest_sha256 != getattr(profile_metadata, "manifest_sha256", None)
+            or policy_pin.published_crosswalk_sha256
+            != getattr(profile_metadata, "published_parameter_crosswalk_sha256", None)
+            or getattr(profile_metadata, "parameter_origin", None) != "PUBLISHED_ROUNDED_REFERENCE"
+            or getattr(profile_metadata, "fit_sha256", None) is not None
+            or getattr(profile_metadata, "calibration_sha256", None) is not None
+            or getattr(profile_metadata, "rights_status", None) != "VERIFIED"
+            or getattr(profile_metadata, "execution_status", None) != "SIMULATION_ENABLED"
+            or getattr(profile_metadata, "rights_revoked_at", None) is not None
+            or getattr(profile_metadata, "disabled_at", None) is not None
+            or getattr(profile_metadata, "simulation_enabled_at", None) is None
+            or getattr(profile_metadata, "research_only", None) is not True
+            or getattr(profile_metadata, "human_curated", None) is not False
+            or getattr(profile_metadata, "psychological_interpretation_allowed", None) is not False
+            or getattr(profile_metadata, "publication_status", None)
+            != "not_approved_for_publication_or_operational_use"
+            or getattr(binding, "response_origin", None) != "PUBLIC_OBSERVED"
+            or getattr(binding, "research_only", None) is not True
+            or getattr(binding, "status", None) != "ACTIVE"
+            or getattr(binding, "revoked_at", None) is not None
+        ):
+            raise _conflict_error()
 
     async def _resolve_session_and_lock(
         self, uow: Any, actor: Actor, *, at: datetime, metadata: Any
@@ -977,6 +1073,18 @@ def _not_found_error() -> BackendError:
     return error(ErrorCode.RESOURCE_NOT_FOUND, detail="research session is unavailable")
 
 
+def _study_policy_denied() -> BackendError:
+    return error(ErrorCode.FORBIDDEN, detail="trusted study policy does not authorize this use")
+
+
+def _study_policy_unavailable() -> BackendError:
+    return error(
+        ErrorCode.DEPENDENCY_UNAVAILABLE,
+        detail="trusted study policy is unavailable",
+        retryable=True,
+    )
+
+
 def _conflict_error() -> BackendError:
     return error(ErrorCode.WORKFLOW_CONFLICT, detail="research session changed or is unavailable")
 
@@ -987,6 +1095,17 @@ def _dependency_error() -> BackendError:
         detail="research CAT persistence is unavailable",
         retryable=True,
     )
+
+
+def _aware_utc(value: object) -> datetime:
+    if not isinstance(value, datetime):
+        raise ResearchStudyUseError("task_window_invalid")
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    try:
+        return value.astimezone(UTC)
+    except (OverflowError, ValueError):
+        raise ResearchStudyUseError("task_window_invalid") from None
 
 
 def _translate_error(exc: Exception) -> BackendError:

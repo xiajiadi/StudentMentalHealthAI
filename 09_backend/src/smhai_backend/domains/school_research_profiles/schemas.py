@@ -21,6 +21,10 @@ class ResearchProfileImportRequest(ResearchProfileRequest):
     version_number: StrictInt = Field(ge=1, le=2_147_483_647)
 
 
+class ResearchProfileSimulationEligibilityRequest(ResearchProfileImportRequest):
+    """Closed request; rights, hashes, policy, and approvals stay server-owned."""
+
+
 class ResearchProfileOutput(BaseModel):
     model_config = ConfigDict(extra="forbid", from_attributes=True, strict=True)
 
@@ -50,3 +54,20 @@ class ResearchProfileCandidateDto(ResearchProfileOutput):
         "EXISTING_CANDIDATE",
         "IDEMPOTENT_REPLAY",
     ]
+
+
+class ResearchProfileSimulationEligibilityDto(ResearchProfileOutput):
+    profile_ref: StrictStr = Field(min_length=1, max_length=128)
+    version_number: StrictInt = Field(ge=1, le=2_147_483_647)
+    research_only: Literal[True]
+    human_curated: Literal[False]
+    publication_status: Literal["not_approved_for_publication_or_operational_use"]
+    rights_status: Literal["VERIFIED"]
+    execution_status: Literal["SIMULATION_ENABLED"]
+    simulation_only: Literal[True]
+    clinical_approval: Literal[False]
+    ethics_approval: Literal[False]
+    psychometric_approval: Literal[False]
+    study_ref: StrictStr = Field(min_length=1, max_length=128)
+    policy_expires_at: datetime
+    catalog_state: Literal["SIMULATION_ENABLED", "IDEMPOTENT_REPLAY"]
