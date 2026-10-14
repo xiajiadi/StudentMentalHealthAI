@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from contextlib import AbstractAsyncContextManager
+from dataclasses import replace
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
@@ -21,7 +22,10 @@ from smhai_backend.domains.school_research.catalog import (
     ResearchProfileSelection,
     SchoolResearchCatalog,
 )
-from smhai_backend.domains.school_research.study_use import ResearchStudyProfilePin
+from smhai_backend.domains.school_research.study_use import (
+    ResearchStudyProfilePin,
+    ResearchStudyUsePolicy,
+)
 
 SCHOOL_ID = 71
 PROFILE_REF = "promis-pediatric-anxiety-8-item-subset-20261014-r1"
@@ -43,6 +47,15 @@ class _Field:
     def __eq__(self, other):
         return (self.name, "eq", other)
 
+    def in_(self, values):
+        return (self.name, "in", tuple(values))
+
+    def is_(self, value):
+        return (self.name, "is", value)
+
+    def is_not(self, value):
+        return (self.name, "is_not", value)
+
 
 class _SchoolClass:
     school_id = _Field("SchoolClass.school_id")
@@ -57,10 +70,42 @@ class _MeasurementTask:
     class_id = _Field("MeasurementTask.class_id")
 
 
+class _SchoolResearchProfileVersion:
+    id = _Field("SchoolResearchProfileVersion.id")
+    school_id = _Field("SchoolResearchProfileVersion.school_id")
+    profile_ref = _Field("SchoolResearchProfileVersion.profile_ref")
+    version_number = _Field("SchoolResearchProfileVersion.version_number")
+    instrument_id = _Field("SchoolResearchProfileVersion.instrument_id")
+    source_population_scope = _Field("SchoolResearchProfileVersion.source_population_scope")
+    profile_sha256 = _Field("SchoolResearchProfileVersion.profile_sha256")
+    manifest_sha256 = _Field("SchoolResearchProfileVersion.manifest_sha256")
+    fit_sha256 = _Field("SchoolResearchProfileVersion.fit_sha256")
+    calibration_sha256 = _Field("SchoolResearchProfileVersion.calibration_sha256")
+    parameter_origin = _Field("SchoolResearchProfileVersion.parameter_origin")
+    published_parameter_crosswalk_sha256 = _Field(
+        "SchoolResearchProfileVersion.published_parameter_crosswalk_sha256"
+    )
+    research_only = _Field("SchoolResearchProfileVersion.research_only")
+    human_curated = _Field("SchoolResearchProfileVersion.human_curated")
+    psychological_interpretation_allowed = _Field(
+        "SchoolResearchProfileVersion.psychological_interpretation_allowed"
+    )
+    publication_status = _Field("SchoolResearchProfileVersion.publication_status")
+    rights_status = _Field("SchoolResearchProfileVersion.rights_status")
+    execution_status = _Field("SchoolResearchProfileVersion.execution_status")
+    rights_revoked_at = _Field("SchoolResearchProfileVersion.rights_revoked_at")
+    disabled_at = _Field("SchoolResearchProfileVersion.disabled_at")
+    simulation_enabled_at = _Field("SchoolResearchProfileVersion.simulation_enabled_at")
+    purpose = _Field("SchoolResearchProfileVersion.purpose")
+
+
 class _Query:
-    def __init__(self, entity):
-        self.entity = entity
+    def __init__(self, *columns):
+        self.entity = columns[0]
+        self.columns = columns
         self.conditions = ()
+        self.ordering = ()
+        self.row_limit = None
 
     def where(self, *conditions):
         self.conditions += conditions
@@ -69,11 +114,29 @@ class _Query:
     def scalar_subquery(self):
         return self
 
+    def order_by(self, *columns):
+        self.ordering = columns
+        return self
+
+    def limit(self, value):
+        self.row_limit = value
+        return self
+
+
+class _Rows:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def all(self):
+        return list(self._rows)
+
 
 class _Session:
-    def __init__(self, *, school_class=None, task=None):
+    def __init__(self, *, school_class=None, task=None, catalog_rows=()):
         self.school_class = school_class
         self.task = task
+        self.catalog_rows = list(catalog_rows)
+        self.executed_queries = []
         self.flush_count = 0
 
     async def scalar(self, query):
@@ -83,16 +146,21 @@ class _Session:
             return self.task
         raise AssertionError("unexpected scoped query")
 
+    async def execute(self, query):
+        self.executed_queries.append(query)
+        return _Rows(self.catalog_rows)
+
     async def flush(self):
         self.flush_count += 1
 
 
 class _Uow(AbstractAsyncContextManager):
-    def __init__(self, *, school_class=None, task=None, profile_metadata=None):
+    def __init__(self, *, school_class=None, task=None, profile_metadata=None, catalog_rows=()):
         self.school_operations = _Operations()
         self.session = _Session(
             school_class=school_class,
             task=self.school_operations.task if task is True else task,
+            catalog_rows=catalog_rows,
         )
         self.research_cat = _ResearchCat(profile_metadata)
         self.audit = _Audit()
@@ -171,6 +239,17 @@ class _Audit:
         self.calls = []
 
     async def append(self, **kwargs):
+        allowed = {
+            "schema_version",
+            "component_version",
+            "reason_code",
+            "count",
+            "source",
+            "state",
+        }
+        unknown = set(kwargs.get("safe_metadata", {})) - allowed
+        if unknown:
+            raise ValueError("audit metadata contains a non-whitelisted field")
         self.calls.append(kwargs)
 
 
@@ -194,16 +273,27 @@ class _StudyPolicy:
 
 
 class _Owner:
-    def __init__(self, *, profile_metadata=None, school_class=None, task=None, replay=False):
+    def __init__(
+        self,
+        *,
+        profile_metadata=None,
+        school_class=None,
+        task=None,
+        replay=False,
+        catalog_rows=(),
+    ):
         self.events = []
         self._db_models = SimpleNamespace(
-            SchoolClass=_SchoolClass, MeasurementTask=_MeasurementTask
+            SchoolClass=_SchoolClass,
+            MeasurementTask=_MeasurementTask,
+            SchoolResearchProfileVersion=_SchoolResearchProfileVersion,
         )
         self._db_enums = SimpleNamespace(AuditResult=SimpleNamespace(SUCCESS="SUCCESS"))
         self.uow = _Uow(
             school_class=school_class or SimpleNamespace(id=902),
             task=True if replay and task is None else task,
             profile_metadata=profile_metadata,
+            catalog_rows=catalog_rows,
         )
         self._uow = lambda: self.uow
         self._select = _Query
@@ -337,6 +427,61 @@ def _idempotency():
     return "synthetic-key", "e" * 64, "f" * 64
 
 
+def _trusted_policy():
+    return ResearchStudyUsePolicy(
+        study_ref="synthetic-study-replay",
+        school_id=SCHOOL_ID,
+        institution="Synthetic School",
+        use_scope="ISOLATED_HISTORICAL_REPLAY",
+        noncommercial=True,
+        historical_replay_only=True,
+        english_unchanged=True,
+        starts_at=datetime(2026, 10, 1, tzinfo=UTC),
+        ends_at=datetime(2026, 11, 1, tzinfo=UTC),
+        profiles=(
+            ResearchStudyProfilePin(
+                profile_ref=PROFILE_REF,
+                profile_sha256=PROFILE_SHA,
+                manifest_sha256=MANIFEST_SHA,
+                published_crosswalk_sha256=CROSSWALK_SHA,
+            ),
+        ),
+        rights_basis="synthetic test declaration",
+        rights_source_urls=("https://example.invalid/rights",),
+        recorded_by="synthetic-test-operator",
+        recorded_at=datetime(2026, 10, 13, tzinfo=UTC),
+        operator_declaration="synthetic test only",
+        source_rights_verified=True,
+    )
+
+
+def _catalog_row(metadata):
+    fields = (
+        "profile_version_id",
+        "school_id",
+        "profile_ref",
+        "version_number",
+        "instrument_id",
+        "source_population_scope",
+        "profile_sha256",
+        "manifest_sha256",
+        "fit_sha256",
+        "calibration_sha256",
+        "parameter_origin",
+        "published_parameter_crosswalk_sha256",
+        "research_only",
+        "human_curated",
+        "psychological_interpretation_allowed",
+        "publication_status",
+        "rights_status",
+        "execution_status",
+        "rights_revoked_at",
+        "disabled_at",
+        "simulation_enabled_at",
+    )
+    return tuple(getattr(metadata, name) for name in fields)
+
+
 def _publish(adapter, actor=None):
     return adapter.publish_task(
         actor or _actor(),
@@ -379,7 +524,13 @@ async def test_publish_is_atomic_and_binds_exact_profile_with_public_observed_or
     assert result.published_enrollment_count == 5
     assert owner.events[-1][0] == "idempotency_complete"
     assert owner.uow.audit.calls[0]["action"] == "school_research_tasks.task.published"
-    assert owner.uow.audit.calls[0]["safe_metadata"]["study_use_policy_sha256"] == POLICY_SHA
+    assert owner.uow.audit.calls[0]["safe_metadata"] == {
+        "schema_version": "psynova.research-study-use.v1",
+        "component_version": POLICY_SHA,
+        "reason_code": "ISOLATED_HISTORICAL_REPLAY",
+        "source": "school_research_tasks",
+        "state": "PUBLISHED",
+    }
     assert policy.calls[0]["task_opens_at"] == OPEN
     assert policy.calls[0]["task_due_at"] == DUE
 
@@ -550,3 +701,115 @@ async def test_policy_failure_never_changes_profile_eligibility_or_creates_a_tas
     assert owner.uow.research_cat.profile_metadata.rights_status == "PENDING"
     assert owner.uow.research_cat.profile_metadata.execution_status == "CANDIDATE_RESEARCH_ONLY"
     assert owner.uow.school_operations.calls == []
+
+
+@pytest.mark.asyncio
+async def test_admin_catalog_lists_exact_enabled_pair_without_encrypted_columns():
+    owner = _Owner(catalog_rows=[_catalog_row(_metadata())])
+    adapter = SchoolResearchTasksPersistenceAdapter(
+        owner,
+        _catalog(),
+        study_use_policy=_trusted_policy(),
+        study_use_policy_sha256=POLICY_SHA,
+    )
+
+    result = await adapter.list_catalog_options(_actor(), at=NOW)
+
+    assert len(result) == 1
+    item = result[0]
+    assert item.binding_ref == BINDING_REF
+    assert item.profile_ref == PROFILE_REF
+    assert item.profile_version_number == 2
+    assert item.source_population_scope == "PROMIS_US_GENPOP_CHILD_SELF_REPORT_8_17"
+    assert item.instrument_id == "PROMIS_PEDIATRIC_ANXIETY_8_ITEM_SUBSET"
+    assert item.instrument_version == "research-v2"
+    assert item.research_only is True
+    assert item.publication_status == "not_approved_for_publication_or_operational_use"
+    assert owner.events[0][0:2] == ("authorize", "admin")
+    query = owner.uow.session.executed_queries[0]
+    selected = {column.name for column in query.columns}
+    assert all(not name.endswith(("payload_ciphertext", "config_ciphertext")) for name in selected)
+    predicates = {
+        condition[0]: condition[1:]
+        for condition in query.conditions
+        if isinstance(condition, tuple) and len(condition) == 3
+    }
+    assert predicates["SchoolResearchProfileVersion.school_id"] == ("eq", SCHOOL_ID)
+    assert predicates["SchoolResearchProfileVersion.rights_status"] == ("eq", "VERIFIED")
+    assert predicates["SchoolResearchProfileVersion.execution_status"] == (
+        "eq",
+        "SIMULATION_ENABLED",
+    )
+    assert predicates["SchoolResearchProfileVersion.profile_ref"][0] == "in"
+    assert predicates["SchoolResearchProfileVersion.rights_revoked_at"] == ("is", None)
+    assert predicates["SchoolResearchProfileVersion.disabled_at"] == ("is", None)
+    assert query.row_limit == 101
+    assert owner.uow.audit.calls[0]["action"] == "school_research_tasks.catalog.list"
+    assert owner.uow.audit.calls[0]["safe_metadata"] == {
+        "source": "school_research_tasks",
+        "state": "READ",
+        "count": 1,
+    }
+
+
+@pytest.mark.asyncio
+async def test_admin_catalog_authorizes_before_policy_and_profile_query():
+    owner = _Owner(catalog_rows=[_catalog_row(_metadata())])
+    adapter = SchoolResearchTasksPersistenceAdapter(owner, _catalog())
+
+    with pytest.raises(BackendError) as no_policy:
+        await adapter.list_catalog_options(_actor(), at=NOW)
+    assert no_policy.value.code is ErrorCode.DEPENDENCY_UNAVAILABLE
+    assert owner.events[0][0:2] == ("authorize", "admin")
+    assert owner.uow.session.executed_queries == []
+
+    owner.events.clear()
+    with pytest.raises(BackendError) as role_denied:
+        await adapter.list_catalog_options(_actor(BackendRole.TEACHER), at=NOW)
+    assert role_denied.value.code is ErrorCode.FORBIDDEN
+    assert owner.events == []
+    assert owner.uow.session.executed_queries == []
+
+
+@pytest.mark.asyncio
+async def test_admin_catalog_rejects_profile_pin_mismatch_and_expired_policy():
+    metadata = _metadata()
+    metadata.profile_sha256 = "f" * 64
+    owner = _Owner(catalog_rows=[_catalog_row(metadata)])
+    adapter = SchoolResearchTasksPersistenceAdapter(
+        owner,
+        _catalog(),
+        study_use_policy=_trusted_policy(),
+        study_use_policy_sha256=POLICY_SHA,
+    )
+    with pytest.raises(BackendError) as mismatched:
+        await adapter.list_catalog_options(_actor(), at=NOW)
+    assert mismatched.value.code is ErrorCode.WORKFLOW_CONFLICT
+
+    expired_policy = replace(
+        _trusted_policy(),
+        ends_at=datetime(2026, 10, 13, 23, 59, tzinfo=UTC),
+    )
+    expired_adapter = SchoolResearchTasksPersistenceAdapter(
+        _Owner(catalog_rows=[]),
+        _catalog(),
+        study_use_policy=expired_policy,
+        study_use_policy_sha256=POLICY_SHA,
+    )
+    with pytest.raises(BackendError) as expired:
+        await expired_adapter.list_catalog_options(_actor(), at=NOW)
+    assert expired.value.code is ErrorCode.FORBIDDEN
+
+    wrong_school_policy = replace(_trusted_policy(), school_id=SCHOOL_ID + 1)
+    wrong_school_owner = _Owner(catalog_rows=[])
+    wrong_school_adapter = SchoolResearchTasksPersistenceAdapter(
+        wrong_school_owner,
+        _catalog(),
+        study_use_policy=wrong_school_policy,
+        study_use_policy_sha256=POLICY_SHA,
+    )
+    with pytest.raises(BackendError) as wrong_school:
+        await wrong_school_adapter.list_catalog_options(_actor(), at=NOW)
+    assert wrong_school.value.code is ErrorCode.DEPENDENCY_UNAVAILABLE
+    assert wrong_school_owner.events[0][0:2] == ("authorize", "admin")
+    assert wrong_school_owner.uow.session.executed_queries == []

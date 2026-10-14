@@ -347,21 +347,9 @@ class SchoolResearchProfilesPersistenceAdapter:
                     result=self._owner._db_enums.AuditResult.SUCCESS,
                     trace_id=get_request_context().trace_id,
                     actor_account_id=actor_account_id,
-                    safe_metadata={
-                        "source": "school_research_profiles",
-                        "state": "SIMULATION_ENABLED",
-                        "study_ref": policy.study_ref,
-                        "policy_sha256": self._study_use_policy_sha256,
-                        "rights_basis": policy.rights_basis,
-                        "policy_expires_at": policy.ends_at.isoformat().replace(
-                            "+00:00", "Z"
-                        ),
-                        "use_scope": policy.use_scope,
-                        "historical_replay_only": policy.historical_replay_only,
-                        "clinical_approval": False,
-                        "ethics_approval": False,
-                        "psychometric_approval": False,
-                    },
+                    safe_metadata=_simulation_audit_metadata(
+                        self._study_use_policy_sha256
+                    ),
                 )
                 return _eligibility_view(
                     updated,
@@ -466,6 +454,18 @@ def _require_exact_pins(
         or not isinstance(getattr(metadata, "created_at", None), datetime)
     ):
         raise _conflict()
+
+
+def _simulation_audit_metadata(policy_sha256: str) -> dict[str, str]:
+    """Return only the fields accepted by the shared audit metadata contract."""
+
+    return {
+        "schema_version": "psynova.research-study-use.v1",
+        "component_version": policy_sha256,
+        "reason_code": "ISOLATED_HISTORICAL_REPLAY",
+        "source": "school_research_profiles",
+        "state": "SIMULATION_ENABLED",
+    }
 
 
 def _parameter_pins(

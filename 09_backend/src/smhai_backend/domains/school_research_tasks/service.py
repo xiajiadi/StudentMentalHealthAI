@@ -16,6 +16,10 @@ class SchoolResearchTasksService:
         self.persistence = persistence
         self._clock = clock or (lambda: datetime.now(UTC))
 
+    async def list_catalog(self, actor: Actor):
+        _require_admin(actor)
+        return await self.persistence.list_catalog_options(actor, at=self._clock())
+
     async def publish_task(
         self,
         actor: Actor,

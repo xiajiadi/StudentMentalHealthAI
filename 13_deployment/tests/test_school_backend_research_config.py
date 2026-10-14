@@ -108,6 +108,245 @@ def test_complete_research_cli_maps_only_explicit_nonsecret_settings(
     assert settings.school_research_base_url == "http://127.0.0.1:58540"
 
 
+def _attach_study_use(args, workspace: Path, *, rights: bool = True) -> Path:
+    policy_file = workspace / "study-use.json"
+    policy_file.write_text("{}", encoding="utf-8")
+    args.research_study_use_file = policy_file
+    args.research_study_use_sha256 = hashlib.sha256(policy_file.read_bytes()).hexdigest()
+    args.research_source_rights_verified = rights
+    args.research_latest_study_end = "2027-06-30T15:59:59Z"
+    return policy_file
+
+
+def test_study_use_cli_requires_all_four_flags_and_explicit_true_rights(tmp_path):
+    workspace, args, _service, _sha = _fixture(tmp_path)
+    _attach_study_use(args, workspace)
+    args.research_latest_study_end = None
+    with pytest.raises(backend.ResearchCLIConfigError) as exc:
+        backend.build_research_settings_kwargs(args, workspace)
+    assert exc.value.code == "study_use_config_incomplete"
+
+    second = tmp_path / "second"
+    second.mkdir()
+    workspace, args, _service, _sha = _fixture(second)
+    _attach_study_use(args, workspace, rights=False)
+    with pytest.raises(backend.ResearchCLIConfigError) as exc:
+        backend.build_research_settings_kwargs(args, workspace)
+    assert exc.value.code == "study_use_config_incomplete"
+
+
+def test_backend_parser_accepts_all_four_study_use_flags(tmp_path):
+    args = backend.build_parser().parse_args(
+        [
+            "--workspace", str(tmp_path),
+            "--research-study-use-file", str(tmp_path / "policy.json"),
+            "--research-study-use-sha256", "a" * 64,
+            "--research-source-rights-verified",
+            "--research-latest-study-end", "2027-06-30T15:59:59Z",
+        ]
+    )
+    assert args.research_study_use_file == tmp_path / "policy.json"
+    assert args.research_source_rights_verified is True
+    assert args.research_latest_study_end == "2027-06-30T15:59:59Z"
+
+
+def test_study_use_cli_maps_only_verified_policy_metadata(tmp_path, monkeypatch):
+    workspace, args, _service, _sha = _fixture(tmp_path)
+    policy_file = _attach_study_use(args, workspace)
+    checked = []
+    monkeypatch.setattr(
+        backend,
+        "_validate_study_use_policy",
+        lambda **kwargs: checked.append(kwargs),
+    )
+
+    result = backend.build_research_settings_kwargs(args, workspace)
+
+    assert result["school_research_study_use_file"] == str(policy_file)
+    assert result["school_research_study_use_sha256"] == hashlib.sha256(
+        policy_file.read_bytes()
+    ).hexdigest()
+    assert result["school_research_source_rights_verified"] is True
+    assert result["school_research_latest_study_end"].isoformat() == (
+        "2027-06-30T15:59:59+00:00"
+    )
+    assert checked[0]["latest_end"] == result["school_research_latest_study_end"]
+    monkeypatch.setenv("SMHAI_SCHOOL_CSRF_SECRET", "a" * 64)
+    from smhai_backend.core.config import BackendSettings
+
+    settings = BackendSettings(
+        _env_file=None,
+        **backend.build_school_settings_kwargs(8088, 4178),
+        **result,
+    )
+    assert settings.school_research_source_rights_verified is True
+    assert settings.school_research_latest_study_end == result[
+        "school_research_latest_study_end"
+    ]
+
+
+@pytest.mark.parametrize(
+    "value", ["2027-06-30T23:59:59+08:00", "2027-06-30T15:59:59", "2027-13-01T00:00:00Z"]
+)
+def test_study_latest_end_requires_valid_utc_timestamp(value):
+    with pytest.raises(backend.ResearchCLIConfigError) as exc:
+        backend._parse_study_end(value)
+    assert exc.value.code == "study_use_config_invalid"
+
+
+def test_study_use_policy_rejects_wrong_school_profile_or_crosswalk(
+    tmp_path, monkeypatch
+):
+    from types import SimpleNamespace
+
+    from smhai_backend.domains.school_research import bootstrap, managed, study_use
+
+    runtime_file = tmp_path / "runtime.json"
+    runtime_file.write_text(json.dumps({"profiles": [{"profile_ref": "profile-a"}]}))
+    trusted = SimpleNamespace(
+        raw_manifest_bytes=json.dumps(
+            {"parameter_crosswalk_sha256": "c" * 64}
+        ).encode(),
+        profile_sha256="a" * 64,
+        manifest_sha256="b" * 64,
+    )
+    runtime = SimpleNamespace(
+        school_id=701,
+        _registry=SimpleNamespace(load=lambda _ref: trusted),
+    )
+    pin = SimpleNamespace(
+        profile_ref="profile-a",
+        published_crosswalk_sha256="c" * 64,
+    )
+
+    class FakePolicy:
+        source_rights_verified = True
+        school_id = 701
+        profiles = (pin,)
+
+        def require_scope(self, **_kwargs):
+            return pin
+
+    monkeypatch.setattr(bootstrap, "load_research_runtime", lambda **_kwargs: runtime)
+    monkeypatch.setattr(
+        managed, "validate_managed_research_config_pair", lambda **_kwargs: None
+    )
+    monkeypatch.setattr(
+        study_use, "load_research_study_use_policy", lambda *_args, **_kwargs: FakePolicy()
+    )
+    common = {
+        "study_file": tmp_path / "policy.json",
+        "study_sha256": "d" * 64,
+        "latest_end": backend.datetime.now(backend.UTC),
+        "runtime_file": runtime_file,
+        "runtime_sha256": "e" * 64,
+        "service_file": tmp_path / "service.json",
+        "service_sha256": "f" * 64,
+        "base_url": "http://127.0.0.1:58540",
+    }
+    backend._validate_study_use_policy(**common)
+
+    runtime.school_id = 702
+    with pytest.raises(backend.ResearchCLIConfigError):
+        backend._validate_study_use_policy(**common)
+    runtime.school_id = 701
+    pin.published_crosswalk_sha256 = "1" * 64
+    with pytest.raises(backend.ResearchCLIConfigError):
+        backend._validate_study_use_policy(**common)
+
+
+def test_study_policy_loader_enforces_hash_expiry_school_and_crosswalk(
+    tmp_path, monkeypatch
+):
+    from types import SimpleNamespace
+
+    from smhai_backend.domains.school_research import bootstrap, managed
+
+    runtime_file = tmp_path / "runtime.json"
+    runtime_file.write_text(json.dumps({"profiles": [{"profile_ref": "profile-a"}]}))
+    service_file = tmp_path / "service.json"
+    service_file.write_text("{}")
+    trusted = SimpleNamespace(
+        raw_manifest_bytes=json.dumps(
+            {"parameter_crosswalk_sha256": "c" * 64}
+        ).encode(),
+        profile_sha256="a" * 64,
+        manifest_sha256="b" * 64,
+    )
+    runtime = SimpleNamespace(
+        school_id=701,
+        _registry=SimpleNamespace(load=lambda _ref: trusted),
+    )
+    monkeypatch.setattr(bootstrap, "load_research_runtime", lambda **_kwargs: runtime)
+    monkeypatch.setattr(
+        managed, "validate_managed_research_config_pair", lambda **_kwargs: None
+    )
+
+    document = {
+        "schema": "psynova.research-study-use.v1",
+        "study_ref": "study:replay-01",
+        "school_id": 701,
+        "institution": "Synthetic institution declaration",
+        "use_scope": "ISOLATED_HISTORICAL_REPLAY",
+        "noncommercial": True,
+        "historical_replay_only": True,
+        "english_unchanged": True,
+        "starts_at": "2026-10-14T00:00:00Z",
+        "ends_at": "2027-06-30T23:59:59Z",
+        "profiles": [
+            {
+                "profile_ref": "profile-a",
+                "profile_sha256": "a" * 64,
+                "manifest_sha256": "b" * 64,
+                "published_crosswalk_sha256": "c" * 64,
+            }
+        ],
+        "rights_basis": "Recorded test-only research scope.",
+        "rights_source_urls": ["https://example.org/research-rights"],
+        "recorded_by": "operator:test",
+        "recorded_at": "2026-10-14T00:00:00Z",
+        "operator_declaration": "Synthetic test fixture only.",
+        "clinical_approval": False,
+        "ethics_approval": False,
+        "psychometric_approval": False,
+    }
+    policy_file = tmp_path / "policy.json"
+    base = {
+        "study_file": policy_file,
+        "study_sha256": "",
+        "latest_end": backend._parse_study_end("2027-06-30T15:59:59Z"),
+        "runtime_file": runtime_file,
+        "runtime_sha256": "e" * 64,
+        "service_file": service_file,
+        "service_sha256": "f" * 64,
+        "base_url": "http://127.0.0.1:58540",
+    }
+
+    def write_and_check(changes, *, wrong_hash=False):
+        value = dict(document)
+        value.update(changes)
+        raw = json.dumps(value, separators=(",", ":")).encode()
+        policy_file.write_bytes(raw)
+        base["study_sha256"] = "0" * 64 if wrong_hash else hashlib.sha256(raw).hexdigest()
+        with pytest.raises(backend.ResearchCLIConfigError) as exc:
+            backend._validate_study_use_policy(**base)
+        assert exc.value.code == "study_use_config_invalid"
+
+    write_and_check({}, wrong_hash=True)
+    write_and_check({})  # Policy expiry exceeds the trusted UTC upper bound.
+    write_and_check({"school_id": 702})
+    write_and_check(
+        {
+            "profiles": [
+                {
+                    **document["profiles"][0],
+                    "published_crosswalk_sha256": "d" * 64,
+                }
+            ]
+        }
+    )
+
+
 def test_partial_research_cli_fails_with_fixed_code_and_no_paths(tmp_path):
     args = backend.build_parser().parse_args(
         [
@@ -166,6 +405,17 @@ def _main_argv(args, *, preflight: bool = True) -> list[str]:
         value = getattr(args, name)
         if value is not None:
             values.extend((flag, str(value)))
+    policy_file = getattr(args, "research_study_use_file", None)
+    policy_sha = getattr(args, "research_study_use_sha256", None)
+    latest_end = getattr(args, "research_latest_study_end", None)
+    if policy_file is not None:
+        values.extend(("--research-study-use-file", str(policy_file)))
+    if policy_sha is not None:
+        values.extend(("--research-study-use-sha256", policy_sha))
+    if getattr(args, "research_source_rights_verified", False):
+        values.append("--research-source-rights-verified")
+    if latest_end is not None:
+        values.extend(("--research-latest-study-end", latest_end))
     return values
 
 
@@ -432,6 +682,58 @@ def test_normal_research_launch_validates_pair_before_app_and_uvicorn(
 
     assert backend.main() == 0
     assert events == ["validate", "create_app", "uvicorn"]
+
+
+def test_study_use_pure_validation_precedes_sealed_runtime_and_app(
+    tmp_path, monkeypatch
+):
+    from types import SimpleNamespace
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    argv, _service, _service_file = _write_valid_managed_pair(workspace)
+    policy_file = workspace / "study-use.json"
+    policy_file.write_text("{}", encoding="utf-8")
+    argv.extend(
+        [
+            "--research-study-use-file", str(policy_file),
+            "--research-study-use-sha256", hashlib.sha256(policy_file.read_bytes()).hexdigest(),
+            "--research-source-rights-verified",
+            "--research-latest-study-end", "2027-06-30T15:59:59Z",
+        ]
+    )
+    argv.remove("--preflight-only")
+    monkeypatch.setattr(sys, "argv", argv)
+    events = []
+    monkeypatch.setattr(
+        backend, "load_runtime", lambda *_args: events.append("sealed-runtime") or {}
+    )
+    monkeypatch.setattr(
+        backend,
+        "_validate_study_use_policy",
+        lambda **_kwargs: events.append("study-policy"),
+    )
+    monkeypatch.setenv("SMHAI_SCHOOL_CSRF_SECRET", "a" * 64)
+    from smhai_backend import app_factory
+    from smhai_backend.domains.school_research import managed
+
+    monkeypatch.setattr(
+        managed,
+        "validate_managed_research_config_pair",
+        lambda **_kwargs: events.append("config-pair"),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        app_factory, "create_app", lambda **_kwargs: events.append("create-app") or object()
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "uvicorn",
+        SimpleNamespace(run=lambda *_args, **_kwargs: events.append("uvicorn")),
+    )
+
+    assert backend.main() == 0
+    assert events == ["study-policy", "config-pair", "sealed-runtime", "create-app", "uvicorn"]
 
 
 @pytest.mark.parametrize(

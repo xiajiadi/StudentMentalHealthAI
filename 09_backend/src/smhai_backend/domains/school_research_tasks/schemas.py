@@ -63,6 +63,29 @@ class ResearchTaskPublishRequest(ResearchTaskRequest):
         return self
 
 
+class ResearchTaskBindingOptionDto(BaseModel):
+    """Safe admin selector; excludes profile hashes and CAT configuration."""
+
+    model_config = ConfigDict(extra="forbid", from_attributes=True, strict=True)
+
+    binding_ref: StrictStr = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
+    )
+    profile_ref: StrictStr = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
+    )
+    profile_version_number: StrictInt = Field(ge=1, le=2_147_483_647)
+    source_population_scope: StrictStr = Field(min_length=1, max_length=64)
+    instrument_id: StrictStr = Field(min_length=1, max_length=128)
+    instrument_version: StrictStr = Field(min_length=1, max_length=64)
+    research_only: Literal[True]
+    publication_status: Literal["not_approved_for_publication_or_operational_use"]
+
+
 class ResearchTaskOutput(BaseModel):
     model_config = ConfigDict(extra="forbid", from_attributes=True, strict=True)
 

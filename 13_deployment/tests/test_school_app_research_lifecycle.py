@@ -167,6 +167,20 @@ def _research_config(workspace: Path, *, port: int = 58540) -> dict[str, object]
     }
 
 
+def _with_study_use(workspace: Path, config: dict[str, object]) -> dict[str, object]:
+    policy_file = workspace / "study-use.json"
+    policy_file.write_text("{}", encoding="utf-8")
+    config.update(
+        {
+            "research_study_use_file": policy_file,
+            "research_study_use_sha256": hashlib.sha256(policy_file.read_bytes()).hexdigest(),
+            "research_source_rights_verified": True,
+            "research_latest_study_end": "2027-06-30T15:59:59Z",
+        }
+    )
+    return config
+
+
 def test_start_passes_exact_research_flags_and_manifest_keeps_only_config_metadata(
     prepared,
 ):
@@ -185,6 +199,34 @@ def test_start_passes_exact_research_flags_and_manifest_keeps_only_config_metada
     assert [entry["name"] for entry in manifest["services"]] == ["backend", "frontend"]
     assert result["research_cat"]["native_pid"] is None
     assert result["research_cat"]["listener"] == "NOT_INDEPENDENTLY_OBSERVED"
+
+
+def test_study_use_start_adds_exact_flags_and_manifest_nonsecret_fields(
+    prepared, monkeypatch
+):
+    _repo, workspace, ops, app = prepared
+    import school_backend
+
+    monkeypatch.setattr(school_backend, "_validate_study_use_policy", lambda **_kwargs: None)
+    config = _with_study_use(workspace, _research_config(workspace))
+
+    result = app.start(workspace, frontend_mode="dev", research_config=config)
+
+    argv = ops.spawned[0][0]
+    assert argv[argv.index("--research-study-use-file") + 1] == str(
+        config["research_study_use_file"]
+    )
+    assert argv[argv.index("--research-source-rights-verified")] == (
+        "--research-source-rights-verified"
+    )
+    rights_index = argv.index("--research-source-rights-verified")
+    assert argv[rights_index + 1] != "True"
+    manifest = json.loads((workspace / lifecycle.MANIFEST_NAME).read_text())
+    assert set(manifest["research_config"]) == set(
+        lifecycle.RESEARCH_CONFIG_ARGUMENTS + lifecycle.RESEARCH_STUDY_USE_ARGUMENTS
+    )
+    assert manifest["research_config"]["research_source_rights_verified"] is True
+    assert result["status"] == "RUNNING"
 
 
 def test_research_lifecycle_stop_checks_backend_manager_listener_without_killing_it(
@@ -284,6 +326,19 @@ def test_deleted_config_does_not_block_owned_stop_but_fresh_start_revalidates(pr
     assert not list(workspace.glob("school-app-lifecycle.stopped-*.json"))
 
 
+def test_deleted_study_policy_does_not_block_status_or_stop(prepared, monkeypatch):
+    _repo, workspace, _ops, app = prepared
+    import school_backend
+
+    monkeypatch.setattr(school_backend, "_validate_study_use_policy", lambda **_kwargs: None)
+    config = _with_study_use(workspace, _research_config(workspace))
+    app.start(workspace, frontend_mode="dev", research_config=config)
+    Path(config["research_study_use_file"]).unlink()
+
+    assert app.status(workspace)["status"] == "RUNNING"
+    assert app.stop(workspace)["status"] == "STOPPED"
+
+
 def test_manifest_rejects_partial_research_config_and_unapproved_backend_argv(prepared):
     _repo, workspace, _ops, app = prepared
     app.start(
@@ -294,6 +349,47 @@ def test_manifest_rejects_partial_research_config_and_unapproved_backend_argv(pr
     manifest["research_config"].pop("research_service_sha256")
     lifecycle._atomic_write(path, manifest)
     with pytest.raises(lifecycle.LifecycleError, match="configuration is invalid"):
+        app.status(workspace)
+
+
+def test_study_manifest_rejects_false_rights_or_invalid_expiry(prepared, monkeypatch):
+    _repo, workspace, _ops, app = prepared
+    import school_backend
+
+    monkeypatch.setattr(school_backend, "_validate_study_use_policy", lambda **_kwargs: None)
+    config = _with_study_use(workspace, _research_config(workspace))
+    app.start(workspace, frontend_mode="dev", research_config=config)
+    path = workspace / lifecycle.MANIFEST_NAME
+    original = json.loads(path.read_text())
+    original["research_config"]["research_source_rights_verified"] = False
+    lifecycle._atomic_write(path, original)
+    with pytest.raises(lifecycle.LifecycleError, match="study-use configuration"):
+        app.status(workspace)
+
+    original["research_config"]["research_source_rights_verified"] = True
+    original["research_config"]["research_latest_study_end"] = "2027-06-30T23:59:59+08:00"
+    lifecycle._atomic_write(path, original)
+    with pytest.raises(lifecycle.LifecycleError, match="study-use configuration"):
+        app.status(workspace)
+
+
+def test_study_backend_argv_flag_tampering_is_rejected(prepared, monkeypatch):
+    _repo, workspace, _ops, app = prepared
+    import school_backend
+
+    monkeypatch.setattr(school_backend, "_validate_study_use_policy", lambda **_kwargs: None)
+    app.start(
+        workspace,
+        frontend_mode="dev",
+        research_config=_with_study_use(workspace, _research_config(workspace)),
+    )
+    path = workspace / lifecycle.MANIFEST_NAME
+    manifest = json.loads(path.read_text())
+    backend_service = next(item for item in manifest["services"] if item["name"] == "backend")
+    argv = backend_service["argv"]
+    argv.remove("--research-source-rights-verified")
+    lifecycle._atomic_write(path, manifest)
+    with pytest.raises(lifecycle.LifecycleError, match="command identity changed"):
         app.status(workspace)
     manifest["research_config"] = _research_config(workspace)
     manifest["research_config"] = {
@@ -335,6 +431,47 @@ def test_start_parser_accepts_seven_cli_flags_as_one_complete_set(tmp_path):
     assert all(
         getattr(args, name) is not None for name in lifecycle.RESEARCH_CONFIG_ARGUMENTS
     )
+
+
+def test_start_parser_accepts_four_study_use_flags_as_one_complete_set(tmp_path):
+    args = lifecycle.build_parser().parse_args(
+        [
+            "start", "--workspace", str(tmp_path), "--frontend-mode", "dev",
+            "--research-runtime-file", str(tmp_path / "runtime.json"),
+            "--research-runtime-sha256", "a" * 64,
+            "--research-service-file", str(tmp_path / "service.json"),
+            "--research-service-sha256", "b" * 64,
+            "--research-cat-python", str(tmp_path / "python.exe"),
+            "--research-cat-source", str(tmp_path / "cat-source"),
+            "--research-cat-dependencies", str(tmp_path / "cat-deps"),
+            "--research-study-use-file", str(tmp_path / "policy.json"),
+            "--research-study-use-sha256", "c" * 64,
+            "--research-source-rights-verified",
+            "--research-latest-study-end", "2027-06-30T15:59:59Z",
+        ]
+    )
+    assert all(
+        getattr(args, name) is not None for name in lifecycle.RESEARCH_CONFIG_ARGUMENTS
+    )
+    assert args.research_source_rights_verified is True
+    assert args.research_latest_study_end == "2027-06-30T15:59:59Z"
+
+
+def test_lifecycle_rejects_partial_or_false_study_use_before_spawn(prepared, monkeypatch):
+    _repo, workspace, ops, _app = prepared
+    import school_backend
+
+    monkeypatch.setattr(school_backend, "_validate_study_use_policy", lambda **_kwargs: None)
+    partial = _with_study_use(workspace, _research_config(workspace))
+    partial.pop("research_latest_study_end")
+    with pytest.raises(lifecycle.LifecycleError, match="all pinned fields"):
+        lifecycle._validated_research_config(partial, workspace)
+
+    false_flag = _with_study_use(workspace, _research_config(workspace))
+    false_flag["research_source_rights_verified"] = False
+    with pytest.raises(lifecycle.LifecycleError, match="pinned preflight"):
+        lifecycle._validated_research_config(false_flag, workspace)
+    assert ops.spawned == []
 
 
 def test_lifecycle_cli_rejects_partial_research_flag_set_without_echoing_path(

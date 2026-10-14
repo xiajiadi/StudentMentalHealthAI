@@ -1,4 +1,44 @@
-## ACTIVE — 2026-10-14, bounded study use and atomic research task publishing
+## ACTIVE — 2026-10-14 11:45 Beijing, authenticated native research milestone
+
+No shutdown deadline. Operator requires autonomous continuation while unavailable;
+only genuinely dependent decisions may stop their affected scope.
+
+Root ran current-source authenticated ASGI with real K MySQL and an owned CAT:
+profile v3 import/eligibility, atomic one-enrollment research task publication,
+4 public observed answers, persisted resume, remaining 4 answers and L1 completion.
+The real audit contract rejected earlier metadata: adapters now use its unchanged
+allowlist; production AuditRepository bridge regression covers the fake-test gap.
+Native proof D:/Dev/temp/psynova-research-task-native-api-20261014-r4.json,
+SHA999273352c3f36563bcc7c5bbebd2a78451026e27bbe59e4578ee08b89420f12.
+Readback: one completed research session/8 answers; zero legacy sessions for task;
+all professional/publication approvals remain false. Failed r1-r3 retained.
+
+Root also ran five authenticated roles against current metadata discovery/catalog:
+unauth/role/school/query guards, own completed history, teacher ScopeA count1,
+expiry denial and 73 metadata SELECTs without protected payload columns.
+D:/Dev/temp/psynova-research-discovery-native-api-20261014-r2.json,
+SHA252bcfe7401c07674a533470b159cfe2e5c5235f42335fc03e714427a697faa3.
+GET routes now use authenticated read dependencies without POST CSRF requirements;
+mutation CSRF remains unchanged. All harness sessions logged out before persistence
+close, owned CAT children stopped; this is not TCP/browser/800-user acceptance.
+
+Student research discovery/history and frontend start/resume are implemented;
+frontend build passed, actual browser verification pending. Installed study-use
+four-option extension passed Root93 tests/one existing symlink skip, native launcher
+preflight/start pending. Canonical K8093/4183 still use older source at this checkpoint.
+
+Material source-provenance gap: external native driver genuinely used pinned CSV,
+but API presently accepts any valid raw choice under PUBLIC_OBSERVED binding.
+Before online800 provenance acceptance, enforce trusted corpus pins, private
+assignment and matching observed values on server. No source claim from manual UI.
+Workers: bounded provenance design, completed-session UI handling, pure installed
+preflight preparation. Root integrates/reviews; no lead or worker recursion.
+
+Online800, real three-layer RAG/local7B/reports/review, canonical browser and complete
+install/recovery mandate remain open. Preserve original databases/source/failed
+proofs/user untracked files; only dedicated development branch may be pushed.
+
+## Prior checkpoint — bounded study use and atomic research task publishing
 
 Research study-use policy now loads closed SHA-pinned server configuration with
 explicit source-rights registry verification and UTC expiry upper bound. It is

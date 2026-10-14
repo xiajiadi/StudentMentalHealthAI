@@ -13,6 +13,7 @@ import os
 import re
 import stat
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 from prepare_school_runtime import (
@@ -60,6 +61,15 @@ _RESEARCH_CONFIG_ARGUMENTS = (
     "research_cat_source",
     "research_cat_dependencies",
 )
+_RESEARCH_STUDY_USE_ARGUMENTS = (
+    "research_study_use_file",
+    "research_study_use_sha256",
+    "research_source_rights_verified",
+    "research_latest_study_end",
+)
+_RESEARCH_STUDY_END = re.compile(
+    r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|\+00:00)\Z"
+)
 
 
 class ResearchCLIConfigError(PreparationError):
@@ -71,6 +81,8 @@ class ResearchCLIConfigError(PreparationError):
             "research_config_invalid",
             "research_service_config_invalid",
             "research_config_pair_mismatch",
+            "study_use_config_incomplete",
+            "study_use_config_invalid",
         }
         self.code = code if code in allowed else "research_config_invalid"
         super().__init__(self.code)
@@ -140,6 +152,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--research-cat-python", type=Path)
     parser.add_argument("--research-cat-source", type=Path)
     parser.add_argument("--research-cat-dependencies", type=Path)
+    parser.add_argument("--research-study-use-file", type=Path)
+    parser.add_argument("--research-study-use-sha256")
+    parser.add_argument("--research-source-rights-verified", action="store_true")
+    parser.add_argument("--research-latest-study-end")
     return parser
 
 
@@ -151,10 +167,24 @@ def build_research_settings_kwargs(args: argparse.Namespace, workspace: Path) ->
     """
     values = {name: getattr(args, name, None) for name in _RESEARCH_CONFIG_ARGUMENTS}
     supplied = tuple(value is not None for value in values.values())
-    if not any(supplied):
+    study_values = {
+        name: getattr(args, name, False if name == "research_source_rights_verified" else None)
+        for name in _RESEARCH_STUDY_USE_ARGUMENTS
+    }
+    study_present = any(
+        value is not None and (name != "research_source_rights_verified" or value is True)
+        for name, value in study_values.items()
+    )
+    if not any(supplied) and not study_present:
         return {}
     if not all(supplied):
         raise ResearchCLIConfigError("research_config_incomplete")
+    study_supplied = tuple(
+        value is not None if name != "research_source_rights_verified" else value is True
+        for name, value in study_values.items()
+    )
+    if any(study_supplied) and not all(study_supplied):
+        raise ResearchCLIConfigError("study_use_config_incomplete")
 
     try:
         root = _validated_absolute_path(workspace, kind="directory")
@@ -170,6 +200,35 @@ def build_research_settings_kwargs(args: argparse.Namespace, workspace: Path) ->
             values["research_cat_dependencies"], kind="directory"
         )
         base_url = _research_service_base_url(service_file, service_sha256)
+        study_settings: dict[str, object] = {}
+        if all(study_supplied):
+            study_file = _validated_absolute_path(
+                study_values["research_study_use_file"], kind="file"
+            )
+            if not study_file.is_relative_to(root):
+                raise ValueError
+            study_sha256 = _validated_sha256(
+                study_values["research_study_use_sha256"]
+            )
+            if study_values["research_source_rights_verified"] is not True:
+                raise ResearchCLIConfigError("study_use_config_invalid")
+            study_end = _parse_study_end(study_values["research_latest_study_end"])
+            _validate_study_use_policy(
+                study_file=study_file,
+                study_sha256=study_sha256,
+                latest_end=study_end,
+                runtime_file=runtime_file,
+                runtime_sha256=runtime_sha256,
+                service_file=service_file,
+                service_sha256=service_sha256,
+                base_url=base_url,
+            )
+            study_settings = {
+                "school_research_study_use_file": str(study_file),
+                "school_research_study_use_sha256": study_sha256,
+                "school_research_source_rights_verified": True,
+                "school_research_latest_study_end": study_end,
+            }
     except ResearchCLIConfigError:
         raise
     except (OSError, ValueError, TypeError):
@@ -186,7 +245,98 @@ def build_research_settings_kwargs(args: argparse.Namespace, workspace: Path) ->
         "school_research_cat_python": str(cat_python),
         "school_research_cat_source": str(cat_source),
         "school_research_cat_dependencies": str(cat_dependencies),
+        **study_settings,
     }
+
+
+def _parse_study_end(value: object) -> datetime:
+    if type(value) is not str or _RESEARCH_STUDY_END.fullmatch(value) is None:
+        raise ResearchCLIConfigError("study_use_config_invalid")
+    try:
+        normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+        parsed = datetime.fromisoformat(normalized)
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            raise ValueError
+        return parsed.astimezone(UTC)
+    except (ValueError, OverflowError):
+        raise ResearchCLIConfigError("study_use_config_invalid") from None
+
+
+def _validate_study_use_policy(
+    *,
+    study_file: Path,
+    study_sha256: str,
+    latest_end: datetime,
+    runtime_file: Path,
+    runtime_sha256: str,
+    service_file: Path,
+    service_sha256: str,
+    base_url: str,
+) -> None:
+    """Validate policy rights and pins against the exact loaded profile registry."""
+    try:
+        from smhai_backend.domains.school_research.bootstrap import (
+            load_research_runtime,
+        )
+        from smhai_backend.domains.school_research.managed import (
+            validate_managed_research_config_pair,
+        )
+        from smhai_backend.domains.school_research.study_use import (
+            load_research_study_use_policy,
+        )
+
+        class _NoKeyMaterial:
+            @staticmethod
+            def get_key(*_args, **_kwargs):
+                raise RuntimeError
+
+            @staticmethod
+            def versions():
+                return ()
+
+        runtime = load_research_runtime(
+            configuration_file=runtime_file,
+            expected_sha256=runtime_sha256,
+            loopback_base_url=base_url,
+            retained_key_provider=_NoKeyMaterial(),
+        )
+        validate_managed_research_config_pair(
+            runtime_config_file=runtime_file,
+            expected_runtime_config_sha256=runtime_sha256,
+            service_config_file=service_file,
+            expected_service_config_sha256=service_sha256,
+        )
+        policy = load_research_study_use_policy(
+            study_file,
+            expected_sha256=study_sha256,
+            source_rights_verified=True,
+            latest_allowed_ends_at=latest_end,
+        )
+        if policy.source_rights_verified is not True or policy.school_id != runtime.school_id:
+            raise ValueError
+
+        runtime_document = json.loads(runtime_file.read_text(encoding="utf-8"))
+        runtime_refs = {
+            entry["profile_ref"]
+            for entry in runtime_document["profiles"]
+            if type(entry) is dict and type(entry.get("profile_ref")) is str
+        }
+        if not runtime_refs or any(pin.profile_ref not in runtime_refs for pin in policy.profiles):
+            raise ValueError
+        for pin in policy.profiles:
+            trusted = runtime._registry.load(pin.profile_ref)
+            manifest = json.loads(trusted.raw_manifest_bytes.decode("utf-8"))
+            if manifest.get("parameter_crosswalk_sha256") != pin.published_crosswalk_sha256:
+                raise ValueError
+            policy.require_scope(
+                school_id=runtime.school_id,
+                profile_ref=pin.profile_ref,
+                profile_sha256=trusted.profile_sha256,
+                manifest_sha256=trusted.manifest_sha256,
+                at=datetime.now(UTC),
+            )
+    except Exception:  # noqa: BLE001 - never expose policy/profile material.
+        raise ResearchCLIConfigError("study_use_config_invalid") from None
 
 
 def _validated_sha256(value: object) -> str:
@@ -358,7 +508,6 @@ def main() -> int:
         settings_kwargs = build_school_settings_kwargs(
             args.port, args.frontend_port, args.llm_profile, cat_port=args.cat_port
         )
-        result = load_runtime(args.workspace, repo)
         research_kwargs = build_research_settings_kwargs(args, args.workspace)
         settings_kwargs.update(research_kwargs)
         if research_kwargs:
@@ -383,6 +532,8 @@ def main() -> int:
                 )
             except Exception:  # noqa: BLE001 - suppress config paths and low-level details.
                 raise ResearchCLIConfigError("research_config_pair_mismatch") from None
+        # Configuration validation is pure and precedes sealed runtime/key access.
+        result = load_runtime(args.workspace, repo)
         from smhai_backend.app_factory import create_app
         from smhai_backend.core.config import BackendSettings
         settings = BackendSettings(_env_file=None, **settings_kwargs)

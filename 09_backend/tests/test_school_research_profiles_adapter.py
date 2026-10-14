@@ -65,6 +65,17 @@ class _Audit:
         self.entries: list[dict[str, Any]] = []
 
     async def append(self, **kwargs: Any) -> None:
+        allowed = {
+            "schema_version",
+            "component_version",
+            "reason_code",
+            "count",
+            "source",
+            "state",
+        }
+        unknown = set(kwargs.get("safe_metadata", {})) - allowed
+        if unknown:
+            raise ValueError("audit metadata contains a non-whitelisted field")
         self.entries.append(kwargs)
 
 
@@ -740,17 +751,11 @@ async def test_enable_simulation_uses_policy_pins_repository_transition_receipt_
     audit = owner.uow.audit.entries[0]
     assert audit["action"] == "school_research_profiles.enable_simulation"
     assert audit["safe_metadata"] == {
+        "schema_version": "psynova.research-study-use.v1",
+        "component_version": policy_sha,
+        "reason_code": "ISOLATED_HISTORICAL_REPLAY",
         "source": "school_research_profiles",
         "state": "SIMULATION_ENABLED",
-        "study_ref": policy.study_ref,
-        "policy_sha256": policy_sha,
-        "rights_basis": policy.rights_basis,
-        "policy_expires_at": "2027-06-30T23:59:59Z",
-        "use_scope": "ISOLATED_HISTORICAL_REPLAY",
-        "historical_replay_only": True,
-        "clinical_approval": False,
-        "ethics_approval": False,
-        "psychometric_approval": False,
     }
 
 

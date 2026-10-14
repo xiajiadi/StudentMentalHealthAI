@@ -33,6 +33,14 @@ parameters research estimates. Never overwrite frozen Demo or accepted evidence.
    completion. Reconcile 800-account/task/session counts with database facts.
    Compare adaptive estimates against an independently computed full-bank baseline
    on held-out data; report error, test length, exposure and failures.
+
+   Public-observed replay provenance must be enforced by the server: pin the
+   response matrix and deterministic enrollment-to-case assignment, and validate
+   each submitted raw value against the assigned observation. A client-selected
+   value or an operator-created example cannot acquire PUBLIC_OBSERVED provenance
+   merely because its task uses a public item bank. Keep manual synthetic examples
+   separate. Case mappings stay private; publish aggregate coverage, source hashes
+   and exclusions without research-participant identities or per-person hashes.
 4. Post-completion background education-support processing uses a durable queue,
    bounded concurrency, idempotency and restart recovery. RTX 3060 capacity is
    measured; 800 total users does not imply 800 simultaneous model generations.

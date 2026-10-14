@@ -244,3 +244,27 @@ def build_school_research_tasks_service(settings: Any, persistence: Any) -> Any 
         ))
     except Exception:
         raise ResearchCATRuntimeError("runtime_configuration_invalid") from None
+
+
+def build_school_research_discovery_service(settings: Any, persistence: Any) -> Any | None:
+    """Wire only the student's current, metadata-only research scope."""
+    if (
+        settings.school_research_enabled is not True
+        or getattr(settings, "school_research_managed_enabled", False) is not True
+    ):
+        return None
+    try:
+        if persistence is None or settings.identity_profile != "school_tenant":
+            raise ValueError
+        from smhai_backend.adapters.school_research_discovery import (
+            SchoolResearchDiscoveryPersistenceAdapter,
+        )
+        from smhai_backend.domains.school_research_discovery.service import (
+            SchoolResearchDiscoveryService,
+        )
+
+        return SchoolResearchDiscoveryService(persistence=SchoolResearchDiscoveryPersistenceAdapter(
+            persistence, study_use_policy=build_school_research_study_policy(settings),
+        ))
+    except Exception:
+        raise ResearchCATRuntimeError("runtime_configuration_invalid") from None

@@ -14,11 +14,16 @@ from smhai_backend.core.idempotency import fingerprint, request_key
 from smhai_backend.core.request_context import current_request_context
 from smhai_backend.domains.auth.dependencies import (
     CSRF_SECURITY_OPENAPI_EXTRA,
+    CurrentActor,
     require_role,
 )
 from smhai_backend.domains.models import Actor, BackendRole
 
-from .schemas import ResearchTaskPublicationDto, ResearchTaskPublishRequest
+from .schemas import (
+    ResearchTaskBindingOptionDto,
+    ResearchTaskPublicationDto,
+    ResearchTaskPublishRequest,
+)
 
 router = APIRouter(prefix="/school/research-tasks", tags=["school-research-tasks"])
 AdminCsrfActor = Annotated[Actor, Depends(require_role(BackendRole.ADMIN))]
@@ -83,6 +88,33 @@ def _envelope(request: Request, data: ResearchTaskPublicationDto) -> JSONRespons
             "data": jsonable_encoder(data.model_dump(mode="json")),
         },
         status_code=201,
+    )
+
+
+def _catalog_envelope(
+    request: Request, items: tuple[ResearchTaskBindingOptionDto, ...]
+) -> JSONResponse:
+    context = current_request_context(request)
+    return JSONResponse(
+        {
+            "request_id": context.request_id,
+            "trace_id": context.trace_id,
+            "data": jsonable_encoder([item.model_dump(mode="json") for item in items]),
+        }
+    )
+
+
+@router.get(
+    "/catalog",
+    response_model=ApiEnvelope[list[ResearchTaskBindingOptionDto]],
+    responses=_ERRORS,
+)
+async def list_research_task_catalog(request: Request, actor: CurrentActor):
+    _require_school_admin(actor)
+    result = await _service(request).list_catalog(actor)
+    return _catalog_envelope(
+        request,
+        tuple(ResearchTaskBindingOptionDto.model_validate(item) for item in result),
     )
 
 

@@ -11,6 +11,7 @@ import json
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 
 from smhai_backend.core.errors import BackendError, ErrorCode, error
@@ -23,6 +24,7 @@ from smhai_backend.domains.school_research.catalog import (
     SchoolResearchCatalogError,
 )
 from smhai_backend.domains.school_research.study_use import (
+    ResearchStudyProfilePin,
     ResearchStudyUseError,
     ResearchStudyUsePolicy,
 )
@@ -51,6 +53,7 @@ _CONFLICT_CODES = frozenset(
 _POLICY_DENIAL_CODES = frozenset(
     {"scope_denied", "task_window_invalid", "task_window_outside_policy"}
 )
+_CATALOG_PROFILE_LIMIT = 100
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +74,20 @@ class ResearchTaskPublicationView:
     published_at: datetime
     published_enrollment_count: int
     response_origin: str
+    research_only: bool
+    publication_status: str
+
+
+@dataclass(frozen=True, slots=True)
+class ResearchTaskBindingOptionView:
+    """Safe admin selector; profile/config bytes and hashes are never projected."""
+
+    binding_ref: str
+    profile_ref: str
+    profile_version_number: int
+    source_population_scope: str
+    instrument_id: str
+    instrument_version: str
     research_only: bool
     publication_status: str
 
@@ -106,6 +123,194 @@ class SchoolResearchTasksPersistenceAdapter:
         # Missing trusted study configuration is a deny-all state.
         self._study_use_policy = study_use_policy
         self._study_use_policy_sha256 = study_use_policy_sha256
+
+    async def list_catalog_options(
+        self, actor: Actor, *, at: datetime
+    ) -> tuple[ResearchTaskBindingOptionView, ...]:
+        """List only the pinned, currently usable binding/profile-version pairs."""
+
+        _require_admin_actor(actor)
+        _validate_at(at)
+        database_at = _database_utc(at)
+        try:
+            async with self._owner._uow() as uow:
+                actor_account_id, _role_id = await self._owner._school_actor_role(
+                    uow, actor, "admin", database_at
+                )
+                # Authenticate the persisted admin before reading any selector
+                # or exposing whether a binding exists in the trusted catalog.
+                if actor.school_id != self._catalog.school_id:
+                    raise _not_found()
+                policy = self._require_catalog_policy(at=at)
+                bindings = tuple(
+                    binding
+                    for binding in self._catalog.public_bindings
+                    if binding.school_id == actor.school_id
+                    and binding.research_only is True
+                    and binding.publication_status == _PUBLICATION_NOT_APPROVED
+                )
+                if not bindings:
+                    await _audit_catalog_list(
+                        uow,
+                        actor_account_id=actor_account_id,
+                        count=0,
+                        success_result=self._owner._db_enums.AuditResult.SUCCESS,
+                    )
+                    return ()
+
+                profile_refs = tuple(sorted({item.profile_ref for item in bindings}))
+                profile_model = self._owner._db_models.SchoolResearchProfileVersion
+                statement = (
+                    self._owner._select(
+                        profile_model.id,
+                        profile_model.school_id,
+                        profile_model.profile_ref,
+                        profile_model.version_number,
+                        profile_model.instrument_id,
+                        profile_model.source_population_scope,
+                        profile_model.profile_sha256,
+                        profile_model.manifest_sha256,
+                        profile_model.fit_sha256,
+                        profile_model.calibration_sha256,
+                        profile_model.parameter_origin,
+                        profile_model.published_parameter_crosswalk_sha256,
+                        profile_model.research_only,
+                        profile_model.human_curated,
+                        profile_model.psychological_interpretation_allowed,
+                        profile_model.publication_status,
+                        profile_model.rights_status,
+                        profile_model.execution_status,
+                        profile_model.rights_revoked_at,
+                        profile_model.disabled_at,
+                        profile_model.simulation_enabled_at,
+                    )
+                    .where(
+                        profile_model.school_id == actor.school_id,
+                        profile_model.profile_ref.in_(profile_refs),
+                        profile_model.rights_status == "VERIFIED",
+                        profile_model.execution_status == "SIMULATION_ENABLED",
+                        profile_model.rights_revoked_at.is_(None),
+                        profile_model.disabled_at.is_(None),
+                        profile_model.simulation_enabled_at.is_not(None),
+                        profile_model.research_only.is_(True),
+                        profile_model.human_curated.is_(False),
+                        profile_model.psychological_interpretation_allowed.is_(False),
+                        profile_model.publication_status == _PUBLICATION_NOT_APPROVED,
+                        profile_model.purpose == "RESEARCH_SIMULATION",
+                    )
+                    .order_by(profile_model.profile_ref, profile_model.version_number)
+                    .limit(_CATALOG_PROFILE_LIMIT + 1)
+                )
+                rows = list((await uow.session.execute(statement)).all())
+                if len(rows) > _CATALOG_PROFILE_LIMIT:
+                    raise _dependency_error()
+
+                profile_selections = {
+                    profile_ref: self._catalog.select_profile(
+                        profile_ref, school_id=actor.school_id
+                    )
+                    for profile_ref in profile_refs
+                }
+                options: list[ResearchTaskBindingOptionView] = []
+                for row in rows:
+                    metadata = _catalog_profile_metadata(row)
+                    profile = profile_selections[metadata.profile_ref]
+                    _require_profile_eligible(metadata, profile, metadata.version_number)
+                    self._require_current_catalog_profile_policy(
+                        policy, actor=actor, profile=profile, metadata=metadata, at=at
+                    )
+                    for binding in bindings:
+                        if binding.profile_ref != metadata.profile_ref:
+                            continue
+                        selection = self._catalog.select_binding(
+                            binding.binding_ref, school_id=actor.school_id
+                        )
+                        _require_catalog_binding(profile, selection)
+                        options.append(
+                            ResearchTaskBindingOptionView(
+                                binding_ref=selection.public.binding_ref,
+                                profile_ref=metadata.profile_ref,
+                                profile_version_number=metadata.version_number,
+                                source_population_scope=metadata.source_population_scope,
+                                instrument_id=metadata.instrument_id,
+                                instrument_version=f"research-v{metadata.version_number}",
+                                research_only=True,
+                                publication_status=_PUBLICATION_NOT_APPROVED,
+                            )
+                        )
+                options.sort(
+                    key=lambda item: (
+                        item.profile_ref,
+                        item.profile_version_number,
+                        item.binding_ref,
+                    )
+                )
+                await _audit_catalog_list(
+                    uow,
+                    actor_account_id=actor_account_id,
+                    count=len(options),
+                    success_result=self._owner._db_enums.AuditResult.SUCCESS,
+                )
+                return tuple(options)
+        except BackendError:
+            raise
+        except ResearchStudyUseError as exc:
+            if exc.code in _POLICY_DENIAL_CODES:
+                raise _policy_denied() from None
+            if exc.code == "profile_pin_mismatch":
+                raise _conflict() from None
+            raise _policy_unavailable() from None
+        except SchoolResearchCatalogError:
+            raise _not_found() from None
+        except Exception:
+            raise _dependency_error() from None
+
+    def _require_catalog_policy(self, *, at: datetime) -> ResearchStudyUsePolicy:
+        policy = self._study_use_policy
+        if (
+            type(policy) is not ResearchStudyUsePolicy
+            or type(self._study_use_policy_sha256) is not str
+            or _SHA256.fullmatch(self._study_use_policy_sha256) is None
+            or policy.school_id != self._catalog.school_id
+            or policy.source_rights_verified is not True
+            or policy.use_scope != "ISOLATED_HISTORICAL_REPLAY"
+            or policy.noncommercial is not True
+            or policy.historical_replay_only is not True
+            or policy.english_unchanged is not True
+            or policy.clinical_approval is not False
+            or policy.ethics_approval is not False
+            or policy.psychometric_approval is not False
+        ):
+            raise _policy_unavailable()
+        instant = _aware_utc(at)
+        if not policy.starts_at <= instant <= policy.ends_at:
+            raise _policy_denied()
+        return policy
+
+    def _require_current_catalog_profile_policy(
+        self,
+        policy: ResearchStudyUsePolicy,
+        *,
+        actor: Actor,
+        profile: ResearchProfileSelection,
+        metadata: Any,
+        at: datetime,
+    ) -> None:
+        pin = policy.require_scope(
+            school_id=actor.school_id,
+            profile_ref=profile.public.profile_ref,
+            profile_sha256=profile.repository.expected_profile_sha256,
+            manifest_sha256=profile.repository.expected_manifest_sha256,
+            at=_aware_utc(at),
+        )
+        if (
+            type(pin) is not ResearchStudyProfilePin
+            or pin.profile_ref != metadata.profile_ref
+            or pin.profile_sha256 != metadata.profile_sha256
+            or pin.manifest_sha256 != metadata.manifest_sha256
+            or pin.published_crosswalk_sha256 != metadata.published_parameter_crosswalk_sha256
+        ):
+            raise _policy_denied()
 
     async def publish_task(
         self,
@@ -258,9 +463,6 @@ class SchoolResearchTasksPersistenceAdapter:
                     action="school_research_tasks.task.published",
                     success_result=self._owner._db_enums.AuditResult.SUCCESS,
                     study_use_policy_sha256=self._study_use_policy_sha256,
-                    binding_ref=binding.public.binding_ref,
-                    profile_ref=profile.public.profile_ref,
-                    profile_version_number=profile_version_number,
                 )
                 return _view(
                     task=task,
@@ -457,6 +659,71 @@ def _require_profile_eligible(
         raise _conflict()
 
 
+def _catalog_profile_metadata(row: Any) -> Any:
+    fields = (
+        "profile_version_id",
+        "school_id",
+        "profile_ref",
+        "version_number",
+        "instrument_id",
+        "source_population_scope",
+        "profile_sha256",
+        "manifest_sha256",
+        "fit_sha256",
+        "calibration_sha256",
+        "parameter_origin",
+        "published_parameter_crosswalk_sha256",
+        "research_only",
+        "human_curated",
+        "psychological_interpretation_allowed",
+        "publication_status",
+        "rights_status",
+        "execution_status",
+        "rights_revoked_at",
+        "disabled_at",
+        "simulation_enabled_at",
+    )
+    try:
+        values = tuple(row)
+        if len(values) != len(fields):
+            raise ValueError
+        metadata = SimpleNamespace(**dict(zip(fields, values, strict=True)))
+        if (
+            type(metadata.profile_version_id) is not int
+            or type(metadata.school_id) is not int
+            or type(metadata.version_number) is not int
+            or metadata.version_number < 1
+            or type(metadata.source_population_scope) is not str
+            or not 1 <= len(metadata.source_population_scope) <= 64
+        ):
+            raise ValueError
+        return metadata
+    except Exception:
+        raise _dependency_error() from None
+
+
+async def _audit_catalog_list(
+    uow: Any,
+    *,
+    actor_account_id: int,
+    count: int,
+    success_result: Any,
+) -> None:
+    await uow.audit.append(
+        action="school_research_tasks.catalog.list",
+        resource_type=_RESOURCE_TYPE,
+        resource_public_id=None,
+        result=success_result,
+        trace_id=get_request_context().trace_id,
+        actor_account_id=actor_account_id,
+        safe_metadata={
+            "source": "school_research_tasks",
+            "state": "READ",
+            "count": count,
+        },
+    )
+
+
 def _parameter_pins(
     profile: ResearchProfileSelection,
 ) -> tuple[str | None, str | None, str | None]:
@@ -557,9 +824,6 @@ async def _audit(
     action: str,
     success_result: Any,
     study_use_policy_sha256: str,
-    binding_ref: str,
-    profile_ref: str,
-    profile_version_number: int,
 ) -> None:
     await uow.audit.append(
         action=action,
@@ -569,13 +833,11 @@ async def _audit(
         trace_id=trace_id,
         actor_account_id=actor_account_id,
         safe_metadata={
+            "schema_version": "psynova.research-study-use.v1",
+            "component_version": study_use_policy_sha256,
+            "reason_code": "ISOLATED_HISTORICAL_REPLAY",
             "source": "school_research_tasks",
-            "response_origin": _RESPONSE_ORIGIN,
             "state": "PUBLISHED",
-            "study_use_policy_sha256": study_use_policy_sha256,
-            "binding_ref": binding_ref,
-            "profile_ref": profile_ref,
-            "profile_version_number": profile_version_number,
         },
     )
 

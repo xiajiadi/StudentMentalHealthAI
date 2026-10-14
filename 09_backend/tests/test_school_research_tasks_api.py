@@ -9,6 +9,7 @@ import pytest
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 
+from smhai_backend.adapters.school_research_tasks import ResearchTaskBindingOptionView
 from smhai_backend.core.errors import (
     BackendError,
     ErrorCode,
@@ -22,7 +23,10 @@ from smhai_backend.core.request_context import make_context
 from smhai_backend.domains.auth.dependencies import current_actor
 from smhai_backend.domains.models import Actor, BackendRole, SchoolRoleContext
 from smhai_backend.domains.school_research_tasks.router import router
-from smhai_backend.domains.school_research_tasks.schemas import ResearchTaskPublicationDto
+from smhai_backend.domains.school_research_tasks.schemas import (
+    ResearchTaskBindingOptionDto,
+    ResearchTaskPublicationDto,
+)
 from smhai_backend.domains.school_research_tasks.service import SchoolResearchTasksService
 
 NOW = datetime(2026, 10, 14, 12, 0, tzinfo=UTC)
@@ -77,6 +81,21 @@ def _publication() -> dict[str, Any]:
 class _FakeService:
     def __init__(self):
         self.calls = []
+
+    async def list_catalog(self, actor):
+        self.calls.append(("list_catalog", actor))
+        return [
+            ResearchTaskBindingOptionView(
+                binding_ref=BINDING_REF,
+                profile_ref=PROFILE_REF,
+                profile_version_number=2,
+                source_population_scope="PROMIS_US_GENPOP_CHILD_SELF_REPORT_8_17",
+                instrument_id="PROMIS_PEDIATRIC_ANXIETY_8_ITEM_SUBSET",
+                instrument_version="research-v2",
+                research_only=True,
+                publication_status="not_approved_for_publication_or_operational_use",
+            )
+        ]
 
     async def publish_task(self, actor, **kwargs):
         self.calls.append((actor, kwargs))
@@ -159,6 +178,65 @@ async def test_unauthenticated_and_non_admin_requests_are_rejected():
     )
     assert denied.status_code == 403
     assert denied.json()["code"] == "forbidden"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "role",
+    [BackendRole.TEACHER, BackendRole.STUDENT, BackendRole.PSYCHOLOGICAL_SPECIALIST],
+)
+async def test_catalog_is_admin_only_and_returns_closed_nonsecret_binding_options(role):
+    service = _FakeService()
+    response = await _request(_app(_actor(), service), "GET", f"{BASE}/catalog")
+    assert response.status_code == 200
+    assert response.json()["data"] == [
+        {
+            "binding_ref": BINDING_REF,
+            "profile_ref": PROFILE_REF,
+            "profile_version_number": 2,
+            "source_population_scope": "PROMIS_US_GENPOP_CHILD_SELF_REPORT_8_17",
+            "instrument_id": "PROMIS_PEDIATRIC_ANXIETY_8_ITEM_SUBSET",
+            "instrument_version": "research-v2",
+            "research_only": True,
+            "publication_status": "not_approved_for_publication_or_operational_use",
+        }
+    ]
+    assert service.calls == [("list_catalog", _actor())]
+    for secretish in (
+        "profile_sha256",
+        "manifest_sha256",
+        "config_sha256",
+        "config_version",
+        "cat_config",
+        "parameter_values",
+    ):
+        assert secretish not in response.text
+
+    denied_service = _FakeService()
+    denied = await _request(
+        _app(_actor(role), denied_service),
+        "GET",
+        f"{BASE}/catalog",
+    )
+    assert denied.status_code == 403
+    assert denied_service.calls == []
+
+
+def test_binding_option_dto_rejects_hashes_and_config_payload():
+    valid = {
+        "binding_ref": BINDING_REF,
+        "profile_ref": PROFILE_REF,
+        "profile_version_number": 2,
+        "source_population_scope": "PROMIS_US_GENPOP_CHILD_SELF_REPORT_8_17",
+        "instrument_id": "PROMIS_PEDIATRIC_ANXIETY_8_ITEM_SUBSET",
+        "instrument_version": "research-v2",
+        "research_only": True,
+        "publication_status": "not_approved_for_publication_or_operational_use",
+    }
+    assert ResearchTaskBindingOptionDto.model_validate(valid)
+    for field in ("profile_sha256", "config_sha256", "cat_config"):
+        with pytest.raises(ValueError):
+            ResearchTaskBindingOptionDto.model_validate({**valid, field: "forbidden"})
 
 
 @pytest.mark.asyncio
@@ -270,6 +348,10 @@ class _FakePersistence:
     def __init__(self):
         self.calls = []
 
+    async def list_catalog_options(self, actor, *, at):
+        self.calls.append(("list_catalog", actor, at))
+        return ()
+
     async def publish_task(self, actor, **kwargs):
         self.calls.append((actor, kwargs))
         return _publication()
@@ -280,6 +362,8 @@ async def test_service_requires_school_admin_and_passes_injected_clock():
     persistence = _FakePersistence()
     service = SchoolResearchTasksService(persistence=persistence, clock=lambda: NOW)
     admin = _actor()
+    assert await service.list_catalog(admin) == ()
+    assert persistence.calls[0] == ("list_catalog", admin, NOW)
     result = await service.publish_task(
         admin,
         class_ref="CLASS_demo_01",
@@ -291,7 +375,11 @@ async def test_service_requires_school_admin_and_passes_injected_clock():
         idempotency=("key", "a" * 64, "b" * 64),
     )
     assert result["response_origin"] == "PUBLIC_OBSERVED"
-    assert persistence.calls[0][1]["at"] == NOW
+    assert persistence.calls[1][1]["at"] == NOW
+
+    with pytest.raises(BackendError) as denied:
+        await service.list_catalog(_actor(BackendRole.TEACHER))
+    assert denied.value.code is ErrorCode.FORBIDDEN
 
     with pytest.raises(BackendError) as denied:
         await service.publish_task(
@@ -305,4 +393,4 @@ async def test_service_requires_school_admin_and_passes_injected_clock():
             idempotency=("key", "a" * 64, "b" * 64),
         )
     assert denied.value.code is ErrorCode.FORBIDDEN
-    assert len(persistence.calls) == 1
+    assert len(persistence.calls) == 2

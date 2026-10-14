@@ -29,6 +29,8 @@ from school_backend import (
     DEFAULT_BACKEND_PORT,
     DEFAULT_FRONTEND_PORT,
     LLM_PROFILES,
+    ResearchCLIConfigError,
+    _parse_study_end,
     build_research_settings_kwargs,
 )
 from school_schema import CURRENT_SCHOOL_REVISION, SUPPORTED_SNAPSHOT_REVISIONS
@@ -69,6 +71,18 @@ RESEARCH_CONFIG_FLAGS = {
     "research_cat_source": "--research-cat-source",
     "research_cat_dependencies": "--research-cat-dependencies",
 }
+RESEARCH_STUDY_USE_ARGUMENTS = (
+    "research_study_use_file",
+    "research_study_use_sha256",
+    "research_source_rights_verified",
+    "research_latest_study_end",
+)
+RESEARCH_STUDY_USE_FLAGS = {
+    "research_study_use_file": "--research-study-use-file",
+    "research_study_use_sha256": "--research-study-use-sha256",
+    "research_source_rights_verified": "--research-source-rights-verified",
+    "research_latest_study_end": "--research-latest-study-end",
+}
 RESEARCH_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 
 
@@ -84,6 +98,10 @@ class ResearchProcessConfig:
     cat_source: str
     cat_dependencies: str
     port: int
+    study_use_file: str | None = None
+    study_use_sha256: str | None = None
+    source_rights_verified: bool = False
+    latest_study_end: str | None = None
 
     def cli_arguments(self) -> list[str]:
         values = {
@@ -95,14 +113,30 @@ class ResearchProcessConfig:
             "research_cat_source": self.cat_source,
             "research_cat_dependencies": self.cat_dependencies,
         }
-        return [
+        arguments = [
             argument
             for name in RESEARCH_CONFIG_ARGUMENTS
             for argument in (RESEARCH_CONFIG_FLAGS[name], values[name])
         ]
+        if self.study_use_file is not None:
+            study_values: dict[str, object] = {
+                "research_study_use_file": self.study_use_file,
+                "research_study_use_sha256": self.study_use_sha256,
+                "research_source_rights_verified": self.source_rights_verified,
+                "research_latest_study_end": self.latest_study_end,
+            }
+            for name in RESEARCH_STUDY_USE_ARGUMENTS:
+                flag = RESEARCH_STUDY_USE_FLAGS[name]
+                if name == "research_source_rights_verified":
+                    if study_values[name] is not True:
+                        raise LifecycleError("Research study-use flag is invalid")
+                    arguments.append(flag)
+                else:
+                    arguments.extend((flag, str(study_values[name])))
+        return arguments
 
     def manifest_value(self) -> dict[str, str]:
-        return {
+        value = {
             "research_runtime_file": self.runtime_file,
             "research_runtime_sha256": self.runtime_sha256,
             "research_service_file": self.service_file,
@@ -111,6 +145,16 @@ class ResearchProcessConfig:
             "research_cat_source": self.cat_source,
             "research_cat_dependencies": self.cat_dependencies,
         }
+        if self.study_use_file is not None:
+            value.update(
+                {
+                    "research_study_use_file": self.study_use_file,
+                    "research_study_use_sha256": self.study_use_sha256,
+                    "research_source_rights_verified": self.source_rights_verified,
+                    "research_latest_study_end": self.latest_study_end,
+                }
+            )
+        return value
 
 
 class LifecycleError(RuntimeError):
@@ -376,9 +420,18 @@ def _validated_research_config(
 ) -> ResearchProcessConfig | None:
     if value is None:
         return None
-    if not isinstance(value, Mapping) or set(value) != set(RESEARCH_CONFIG_ARGUMENTS):
+    if not isinstance(value, Mapping) or frozenset(value) not in {
+        frozenset(RESEARCH_CONFIG_ARGUMENTS),
+        frozenset(RESEARCH_CONFIG_ARGUMENTS + RESEARCH_STUDY_USE_ARGUMENTS),
+    }:
         raise LifecycleError("Research process configuration must provide all pinned fields")
     if all(value[name] is None for name in RESEARCH_CONFIG_ARGUMENTS):
+        if set(value) == set(RESEARCH_CONFIG_ARGUMENTS + RESEARCH_STUDY_USE_ARGUMENTS) and any(
+            value[name] is not None
+            and (name != "research_source_rights_verified" or value[name] is True)
+            for name in RESEARCH_STUDY_USE_ARGUMENTS
+        ):
+            raise LifecycleError("Research study-use requires the CAT configuration")
         return None
 
     args_values: dict[str, object] = {}
@@ -394,6 +447,14 @@ def _validated_research_config(
             if not isinstance(item, Path):
                 raise LifecycleError("Research process configuration is invalid")
         args_values[name] = item
+    if set(value) == set(RESEARCH_CONFIG_ARGUMENTS + RESEARCH_STUDY_USE_ARGUMENTS):
+        for name in RESEARCH_STUDY_USE_ARGUMENTS:
+            item = value[name]
+            if name == "research_study_use_file" and isinstance(item, str):
+                item = Path(item)
+            if name == "research_study_use_file" and item is not None and not isinstance(item, Path):
+                raise LifecycleError("Research study-use configuration is invalid")
+            args_values[name] = item
 
     try:
         settings = build_research_settings_kwargs(
@@ -417,6 +478,16 @@ def _validated_research_config(
         cat_source=str(settings["school_research_cat_source"]),
         cat_dependencies=str(settings["school_research_cat_dependencies"]),
         port=int(match.group(1)),
+        study_use_file=(
+            str(settings["school_research_study_use_file"])
+            if "school_research_study_use_file" in settings else None
+        ),
+        study_use_sha256=settings.get("school_research_study_use_sha256"),
+        source_rights_verified=settings.get("school_research_source_rights_verified", False),
+        latest_study_end=(
+            str(args_values["research_latest_study_end"])
+            if args_values.get("research_latest_study_end") is not None else None
+        ),
     )
 
 
@@ -430,7 +501,12 @@ def _research_config_from_manifest(
     if has_config != has_port:
         raise LifecycleError("Lifecycle research configuration is incomplete")
     raw = manifest.get("research_config")
-    if type(raw) is not dict or set(raw) != set(RESEARCH_CONFIG_ARGUMENTS):
+    raw_keys = set(raw) if type(raw) is dict else set()
+    has_study = raw_keys == set(RESEARCH_CONFIG_ARGUMENTS + RESEARCH_STUDY_USE_ARGUMENTS)
+    if type(raw) is not dict or frozenset(raw_keys) not in {
+        frozenset(RESEARCH_CONFIG_ARGUMENTS),
+        frozenset(RESEARCH_CONFIG_ARGUMENTS + RESEARCH_STUDY_USE_ARGUMENTS),
+    }:
         raise LifecycleError("Lifecycle research configuration is invalid")
     for name in RESEARCH_CONFIG_ARGUMENTS:
         value = raw.get(name)
@@ -448,6 +524,35 @@ def _research_config_from_manifest(
             value
         ).is_relative_to(target):
             raise LifecycleError("Lifecycle research configuration escaped its workspace")
+    study_values: dict[str, object] = {}
+    if has_study:
+        study_path = raw.get("research_study_use_file")
+        study_sha = raw.get("research_study_use_sha256")
+        rights_verified = raw.get("research_source_rights_verified")
+        latest_end = raw.get("research_latest_study_end")
+        if (
+            type(study_path) is not str
+            or not Path(study_path).is_absolute()
+            or ".." in Path(study_path).parts
+            or not Path(study_path).is_relative_to(target)
+            or type(study_sha) is not str
+            or RESEARCH_SHA256.fullmatch(study_sha) is None
+            or rights_verified is not True
+            or type(latest_end) is not str
+        ):
+            raise LifecycleError("Lifecycle research study-use configuration is invalid")
+        try:
+            _parse_study_end(latest_end)
+        except ResearchCLIConfigError:
+            raise LifecycleError("Lifecycle research study-use configuration is invalid") from None
+        study_values = {
+            "study_use_file": study_path,
+            "study_use_sha256": study_sha,
+            "source_rights_verified": rights_verified,
+            "latest_study_end": latest_end,
+        }
+    elif any(name.startswith("research_study_use") for name in raw_keys):
+        raise LifecycleError("Lifecycle research study-use configuration is incomplete")
     port = manifest.get("research_cat_port")
     if (
         type(port) is not int
@@ -464,6 +569,7 @@ def _research_config_from_manifest(
         cat_source=raw["research_cat_source"],
         cat_dependencies=raw["research_cat_dependencies"],
         port=port,
+        **study_values,
     )
 
 
@@ -2295,6 +2401,12 @@ def build_parser() -> argparse.ArgumentParser:
             else Path
         )
         start.add_argument(RESEARCH_CONFIG_FLAGS[name], dest=name, type=value_type)
+    for name in RESEARCH_STUDY_USE_ARGUMENTS:
+        if name == "research_source_rights_verified":
+            start.add_argument(RESEARCH_STUDY_USE_FLAGS[name], dest=name, action="store_true")
+        else:
+            value_type = Path if name == "research_study_use_file" else str
+            start.add_argument(RESEARCH_STUDY_USE_FLAGS[name], dest=name, type=value_type)
     return parser
 
 
@@ -2314,9 +2426,23 @@ def main(argv: list[str] | None = None) -> int:
             supplied_research = {
                 name: getattr(args, name, None) for name in RESEARCH_CONFIG_ARGUMENTS
             }
+            supplied_research.update(
+                {
+                    name: getattr(
+                        args,
+                        name,
+                        False if name == "research_source_rights_verified" else None,
+                    )
+                    for name in RESEARCH_STUDY_USE_ARGUMENTS
+                }
+            )
             research_config = (
                 supplied_research
-                if any(value is not None for value in supplied_research.values())
+                if any(
+                    value is not None
+                    and (name != "research_source_rights_verified" or value is True)
+                    for name, value in supplied_research.items()
+                )
                 else None
             )
             result = lifecycle.start(
