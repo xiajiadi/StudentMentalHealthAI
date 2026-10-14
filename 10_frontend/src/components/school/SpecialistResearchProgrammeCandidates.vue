@@ -132,7 +132,10 @@ async function loadTasks() {
   } catch (error) {
     if (sequence !== taskSequence || !isSpecialist.value) return
     const result = classify(error, '授权工作事项暂时无法加载。')
-    if (result.lost) clearTaskState()
+    if (result.lost) {
+      clearAll()
+      accessNotice.value = '当前授权列表不可用，已清除先前显示的任务与候选内容。'
+    }
     taskError.value = result.message
     taskState.value = 'error'
   }
@@ -235,7 +238,14 @@ async function queueGeneration(key = newProgrammeCandidateIdempotencyKey()) {
     await loadCandidates(0)
   } catch (error) {
     if (!mounted || selectedTaskRef.value !== taskRef) return
-    generationError.value = classify(error, '参考资料生成请求未完成。').message
+    const result = classify(error, '参考资料生成请求未完成。')
+    if (result.lost) {
+      clearAll()
+      accessNotice.value = '当前任务授权已变化，已清除此页任务、候选内容与排队状态。正在刷新授权列表。'
+      void loadTasks()
+      return
+    }
+    generationError.value = result.message
     generationRetry.value = () => queueGeneration(key)
   } finally {
     generationBusy.value = false
@@ -314,8 +324,8 @@ onBeforeUnmount(() => {
     <AppStatusCallout tone="info" title="教职工参考资料" body="候选内容仅供授权教职工在研究模拟中查看。采纳不代表专业审核或正式发布，也不会生成学生反馈。" />
 
     <div class="programme-candidates__toolbar">
-      <div><span class="programme-candidates__kicker">研究模拟 · 工作事项范围</span><h2>方案参考候选</h2><p>只显示服务端已保存的候选；此处不会生成或补造资料。</p></div>
-      <AppButton variant="quiet" size="sm" :disabled="taskState === 'loading' || mutationBusy" @click="loadTasks"><RotateCcw :size="15" aria-hidden="true" />刷新授权</AppButton>
+      <div><span class="programme-candidates__kicker">研究模拟 · 工作事项范围</span><h2>方案参考候选</h2><p>只显示服务端已保存的候选；排队完成后，新候选会显示在此处。</p></div>
+      <AppButton variant="quiet" size="sm" :disabled="taskState === 'loading' || mutationBusy || generationBusy" @click="loadTasks"><RotateCcw :size="15" aria-hidden="true" />刷新授权</AppButton>
     </div>
     <p v-if="accessNotice" class="programme-candidates__notice" role="status">{{ accessNotice }}</p>
     <p v-if="!isSpecialist" class="programme-candidates__empty">请切换到心理专业人员身份查看授权事项。</p>

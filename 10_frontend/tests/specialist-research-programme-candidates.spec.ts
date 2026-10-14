@@ -164,4 +164,75 @@ describe('specialist research programme candidates', () => {
     expect(service.list).toHaveBeenCalledTimes(2)
     wrapper.unmount()
   })
+
+  it('clears old task state when identity changes during an in-flight queue request', async () => {
+    const { pinia, session } = specialistSession()
+    let finishQueue: ((value: unknown) => void) | undefined
+    service.queueGeneration.mockImplementation(() => new Promise((resolve) => { finishQueue = resolve }))
+    const wrapper = mount(SpecialistResearchProgrammeCandidates, { global: { plugins: [pinia] } })
+    await flushPromises()
+    await wrapper.find('button.programme-candidates__task').trigger('click')
+    await flushPromises()
+    await wrapper.find('input[type="checkbox"]').setValue(true)
+    await wrapper.findAll('button').find((button) => button.text().includes('请求生成参考候选'))!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findAll('button').find((button) => button.text().includes('刷新授权'))!.attributes('disabled')).toBeDefined()
+    session.signIn({
+      userId: 'USER_synthetic_teacher', role: 'teacher', subjectId: null,
+      displayName: 'Synthetic Teacher', initials: 'T',
+      activeContext: { role: 'teacher', schoolRef: 'SCHOOL_other_synthetic' },
+    })
+    await flushPromises()
+    finishQueue?.({
+      job_ref: 'REJOB_private_synthetic', status: 'QUEUED', policy_version: 'RESEARCH_STAFF_PROGRAMME_POLICY_V1',
+      purpose: 'RESEARCH_SIMULATION', research_only: true,
+      publication_status: 'not_approved_for_publication_or_operational_use', student_feedback_eligible: false,
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('请求生成参考候选')
+    expect(wrapper.text()).not.toContain('已排队')
+    expect(wrapper.text()).not.toContain('合成教职工事项')
+    wrapper.unmount()
+  })
+
+  it('clears the selected task and candidate data when queueing is forbidden', async () => {
+    const { pinia } = specialistSession()
+    service.queueGeneration.mockRejectedValue({ code: 'FORBIDDEN' })
+    const wrapper = mount(SpecialistResearchProgrammeCandidates, { global: { plugins: [pinia] } })
+    await flushPromises()
+    await wrapper.find('button.programme-candidates__task').trigger('click')
+    await flushPromises()
+    await wrapper.find('input[type="checkbox"]').setValue(true)
+    await wrapper.findAll('button').find((button) => button.text().includes('请求生成参考候选'))!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('当前任务授权已变化')
+    expect(wrapper.text()).not.toContain('请求生成参考候选')
+    expect(wrapper.text()).not.toContain('已排队')
+    wrapper.unmount()
+  })
+
+  it('drops a same-key retry when refreshing authorization removes its task', async () => {
+    const { pinia } = specialistSession()
+    service.queueGeneration.mockRejectedValue({ code: 'NETWORK_UNAVAILABLE', retryable: true })
+    const wrapper = mount(SpecialistResearchProgrammeCandidates, { global: { plugins: [pinia] } })
+    await flushPromises()
+    await wrapper.find('button.programme-candidates__task').trigger('click')
+    await flushPromises()
+    await wrapper.find('input[type="checkbox"]').setValue(true)
+    await wrapper.findAll('button').find((button) => button.text().includes('请求生成参考候选'))!.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('使用相同请求重试')
+
+    service.listTasks.mockResolvedValue([])
+    await wrapper.findAll('button').find((button) => button.text().includes('刷新授权'))!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('当前任务授权已变化')
+    expect(wrapper.text()).not.toContain('使用相同请求重试')
+    expect(service.queueGeneration).toHaveBeenCalledOnce()
+    wrapper.unmount()
+  })
 })
