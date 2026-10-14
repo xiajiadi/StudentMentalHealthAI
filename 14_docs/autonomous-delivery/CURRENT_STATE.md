@@ -11,6 +11,14 @@ independent58 bootstrap/runtime/API/frozen-OpenAPI tests and review found no
 conclusion-changing defect. These tests do not prove native DB persistence,
 online800 school completion, deployed processes, or production readiness.
 
+Actual ORM/current-role/resolver negative tests additionally7passed: foreign
+school, non-SELF grant, revoked roster/enrollment, expired task, replay and
+resume after revocation are denied before decrypt/CAT client creation. Independent
+review found and Root fixed a process-global SQLite compiler registration in
+the test; fixture-local monkeypatch now restores the original compiler. Root
+combined authorization/API/persistence43tests and frozen-OpenAPI4tests passed.
+These SQLite tests do not establish native MySQL row-lock semantics.
+
 Operator confirms school-affiliated noncommercial research; institution name
 and study end date remain requested for the PROMIS use-scope record. No DB rights
 or execution status has been changed. Three-layer school RAG review packet is
