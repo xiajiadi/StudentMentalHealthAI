@@ -213,7 +213,7 @@ def _chunk(*, population: str = "university_student") -> KnowledgeChunk:
     )
 
 
-def _research_chunk() -> KnowledgeChunk:
+def _research_chunk(*, organization: str = "Example journal") -> KnowledgeChunk:
     return KnowledgeChunk(
         schema_version="knowledge.v1",
         chunk_id="CHUNK_SCHOOL_RESEARCH_THEORY_RECORD",
@@ -223,7 +223,7 @@ def _research_chunk() -> KnowledgeChunk:
         location={"section": "Abstract, background", "page_start": None, "page_end": None},
         citation={
             "title": "School connectedness concept",
-            "organization": "Example journal",
+            "organization": organization,
             "locator": "Abstract; ages 14-24; CC BY 4.0",
         },
         population_scope=["secondary_school_student"],
@@ -867,6 +867,145 @@ async def test_research_lane_no_source_abstains_and_never_calls_runtime() -> Non
     assert metadata["source_manifest_sha256"] == "a" * 64
     assert metadata["source_review_status"] == "pending"
     assert "14–17" in persistence.finish_calls[-1]["approved_content"].disclaimer
+
+
+@pytest.mark.parametrize(
+    ("generated_text", "organization", "field"),
+    [
+        ("DOI 10.1186/s12889-022-14364-6", "Example journal", "summary"),
+        ("Read https://example.org/resource for details", "Example journal", "summary"),
+        ("第22卷第2期，页码1512", "Example journal", "summary"),
+        ("Volume 22, Issue 2, pp. 1512–1520", "Example journal", "summary"),
+        ("BMC Public Health 22, 1512", "BMC Public Health", "summary"),
+        ("DOI 10.1186/s12889-022-14364-6", "Example journal", "disclaimer"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_research_lane_rejects_unbound_bibliography_after_output_safety(
+    generated_text: str,
+    organization: str,
+    field: str,
+) -> None:
+    candidate = json.dumps(
+        {
+            "summary": generated_text if field == "summary" else "一般校园教育信息。",
+            "observations": [],
+            "suggestions": [
+                {
+                    "text": "可以参加一项一般校园活动。",
+                    "source_chunk_ids": ["CHUNK_SCHOOL_RESEARCH_THEORY_RECORD"],
+                }
+            ],
+            "disclaimer": generated_text if field == "disclaimer" else "这是一般教育信息。",
+        },
+        ensure_ascii=False,
+    )
+    chunk = _research_chunk(organization=organization)
+    service, persistence, safety, _, runtime = _research_service(
+        chunks=(chunk,),
+        policy=_research_policy(),
+    )
+    runtime.candidate = candidate
+
+    result = await _submit(service)
+
+    assert safety.calls == ["safety_input", "safety_retrieval", "safety_output"]
+    assert len(runtime.calls) == 1
+    assert result.status == "failed"
+    assert result.action == "CLAIM_REJECTED"
+    finish = persistence.finish_calls[-1]
+    assert finish["safe_metadata"]["stage"] == "claim_boundary"
+    assert finish["safe_metadata"]["failure_code"] == "CLAIM_REJECTED"
+    assert finish.get("approved_content") is None
+    assert finish.get("citations", ()) == ()
+
+
+@pytest.mark.asyncio
+async def test_research_lane_allows_ordinary_year_and_duration_numbers() -> None:
+    candidate = json.dumps(
+        {
+            "summary": "2022年发布的一般资料提到，校园活动可以安排约60分钟。",
+            "observations": ["可按学校日程调整时长。"],
+            "suggestions": [
+                {
+                    "text": "可以尝试参加一次校园活动。",
+                    "source_chunk_ids": ["CHUNK_SCHOOL_RESEARCH_THEORY_RECORD"],
+                }
+            ],
+            "disclaimer": "这是一般教育信息。",
+        },
+        ensure_ascii=False,
+    )
+    service, persistence, safety, _, runtime = _research_service(
+        chunks=(_research_chunk(),),
+    )
+    runtime.candidate = candidate
+
+    result = await _submit(service)
+
+    assert safety.calls[-1] == "safety_output"
+    assert len(runtime.calls) == 1
+    assert result.status == "completed"
+    assert len(persistence.finish_calls[-1].get("citations", ())) == 1
+
+
+@pytest.mark.asyncio
+async def test_research_lane_output_safety_block_precedes_bibliography_detector() -> None:
+    candidate = json.dumps(
+        {
+            "summary": "DOI 10.1186/s12889-022-14364-6",
+            "observations": [],
+            "suggestions": [
+                {
+                    "text": "可以尝试参加一次校园活动。",
+                    "source_chunk_ids": ["CHUNK_SCHOOL_RESEARCH_THEORY_RECORD"],
+                }
+            ],
+            "disclaimer": "这是一般教育信息。",
+        },
+        ensure_ascii=False,
+    )
+    service, persistence, safety, _, runtime = _research_service(
+        chunks=(_research_chunk(),),
+    )
+    runtime.candidate = candidate
+    safety.output_action = "REVIEW_REQUIRED"
+
+    result = await _submit(service)
+
+    assert result.status == "blocked"
+    assert result.action == "REVIEW_REQUIRED"
+    assert persistence.finish_calls[-1]["safe_metadata"]["stage"] == "output_safety"
+    assert persistence.finish_calls[-1].get("approved_content") is None
+    assert persistence.finish_calls[-1].get("citations", ()) == ()
+
+
+def test_research_prompt_prohibits_model_authored_reference_fields_only_in_research_lane() -> None:
+    chunk = _research_chunk()
+    bundle = build_retrieval_evidence_bundle(
+        RetrievalResult(
+            retrieval_id="RETR_research_reference_prompt",
+            chunks=(chunk,),
+            label="SCHOOL_RESEARCH_STUDENT_SOURCE_PACKAGE",
+        ),
+        policy=EligibilityPolicy(
+            target_population="secondary_school_student",
+            target_role="student",
+            risk_level=None,
+            required_review_status="pending",
+        ),
+    )
+
+    research_prompt = IndependentConversationService._system_prompt(
+        bundle,
+        lane_policy=_research_policy(),
+    )
+    university_prompt = IndependentConversationService._system_prompt(bundle)
+
+    assert _research_policy().prompt_version == "1.1.0"
+    assert "不要自行编写作者、期刊、卷期、文章号、页码、DOI、URL或参考文献" in research_prompt
+    assert "完整来源由系统根据已核验的引用元数据单独显示" in research_prompt
+    assert "不要自行编写作者、期刊" not in university_prompt
 
 
 @pytest.mark.asyncio

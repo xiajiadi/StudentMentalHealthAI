@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -14,8 +15,8 @@ from pydantic import ValidationError
 from smhai_backend.adapters.school_conversations import SchoolConversationsPersistenceAdapter
 from smhai_backend.core.errors import BackendError, ErrorCode, error
 from smhai_backend.core.request_context import RequestContext
-from smhai_backend.domains.school_conversation_safety.contracts import SafetyCaseSeed
 from smhai_backend.domains.models import Actor, BackendRole
+from smhai_backend.domains.school_conversation_safety.contracts import SafetyCaseSeed
 from smhai_backend.domains.support.schemas import GenerationContent, SupportCitation
 from smhai_backend.domains.support.service import (
     SupportOrchestrator,
@@ -62,6 +63,49 @@ _RESEARCH_STUDENT_ABSTENTION = GenerationContent(
     suggestions=[],
     disclaimer="本功能仅为14–17岁虚构学生研究演示的一般教育信息，不提供测评解释、诊断或治疗建议。",
 )
+_BIBLIOGRAPHY_DOI_RE = re.compile(r"(?i)\b10\.\d{4,9}/[^\s<>\"']+")
+_BIBLIOGRAPHY_URL_RE = re.compile(r"(?i)\b(?:https?://|www\.)\S+")
+_BIBLIOGRAPHY_NUMBERED_FIELD_RES = (
+    re.compile(
+        r"(?i)\b(?:vol(?:ume)?\.?|issue|pages?|pp?\.?|article(?:\s*(?:no\.?|number|#))?)"
+        r"\s*[:#.]?\s*\d{1,5}\b"
+    ),
+    re.compile(r"\d{1,5}\s*(?:卷|期|页(?:码)?|文章号)"),
+    re.compile(r"(?:第\s*)?(?:卷|期|页(?:码)?|文章号)\s*[:：#.]?\s*\d{1,5}"),
+)
+
+
+def _contains_unsupported_bibliography(
+    content: GenerationContent,
+    bundle: RetrievalEvidenceBundle,
+    *,
+    original_disclaimer: str,
+) -> bool:
+    generated_text = (
+        content.summary,
+        *content.observations,
+        *(suggestion.text for suggestion in content.suggestions),
+        original_disclaimer,
+    )
+    if any(
+        _BIBLIOGRAPHY_DOI_RE.search(text)
+        or _BIBLIOGRAPHY_URL_RE.search(text)
+        or any(pattern.search(text) for pattern in _BIBLIOGRAPHY_NUMBERED_FIELD_RES)
+        for text in generated_text
+    ):
+        return True
+
+    for item in bundle.items:
+        organization = item.citation.get("organization")
+        if not isinstance(organization, str) or not organization.strip():
+            continue
+        organization_pattern = re.compile(
+            rf"(?i)(?<!\w){re.escape(organization.strip())}"
+            r"\s+\d{1,4}\s*[,：:]\s*(?:article\s*)?\d{1,5}(?!\d)"
+        )
+        if any(organization_pattern.search(text) for text in generated_text):
+            return True
+    return False
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,7 +144,7 @@ class ConversationLanePolicy:
             target_population="secondary_school_student",
             required_review_status="pending",
             prompt_id="PROMPT_school_research_student_general_education_v1",
-            prompt_version="1.0.0",
+            prompt_version="1.1.0",
             expected_school_id=school_id,
             research_only=True,
             purpose="RESEARCH_SIMULATION",
@@ -690,6 +734,7 @@ class IndependentConversationService:
                 generation_id=generation_id,
                 retrieval_id=retrieval_id,
             )
+        generated_disclaimer = content.disclaimer
         if self.lane_policy.research_only:
             content.disclaimer = "\n\n".join(
                 item
@@ -741,6 +786,20 @@ class IndependentConversationService:
                 metadata,
             )
         if _contains_forbidden_generated_claim(content):
+            return await self._finish_invalid(
+                actor,
+                conversation_id,
+                turn_id,
+                context,
+                stage="claim_boundary",
+                reason="CLAIM_REJECTED",
+                generation_id=generation_id,
+                retrieval_id=retrieval_id,
+                action="CLAIM_REJECTED",
+            )
+        if self.lane_policy.research_only and _contains_unsupported_bibliography(
+            content, bundle, original_disclaimer=generated_disclaimer
+        ):
             return await self._finish_invalid(
                 actor,
                 conversation_id,
@@ -1068,7 +1127,10 @@ class IndependentConversationService:
                 "这些资料仅是固定、工程复核的研究来源，review_status仍为pending，未获心理专业或临床批准。"
                 "逐条遵守引用中的来源年龄范围和限制；不得称其为已批准、权威适用于每名学生或个人证据。"
                 "只提供一般教育信息，不作个性化评价、测评解释、风险推断、诊断、治疗或危机处置；"
-                "证据不足或年龄范围不匹配时明确说明无法基于资料回答。需要引用时只引用对应chunk_id。"
+                "证据不足或年龄范围不匹配时明确说明无法基于资料回答。"
+                "不要自行编写作者、期刊、卷期、文章号、页码、DOI、URL或参考文献；"
+                "需要引用时只在suggestions.source_chunk_ids中引用本轮提供的chunk_id，"
+                "完整来源由系统根据已核验的引用元数据单独显示。"
             )
             audience = (
                 "你是面向14–17岁虚构中学生研究演示的一般教育资料助手。"
