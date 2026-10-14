@@ -260,7 +260,7 @@ async def test_normal_path_returns_only_held_staff_reference_and_safety_order() 
     assert result.candidate.report is False
     assert result.candidate.programme_ref == "PROGRAMME_SCHOOL_CONNECTEDNESS_REFERENCE_V1"
     assert result.candidate.prompt_id == "PROMPT_staff_school_programme_research_v1"
-    assert result.candidate.prompt_version == "1.0.0"
+    assert result.candidate.prompt_version == "1.0.1"
     assert len(result.candidate.prompt_sha256) == 64
     assert len(result.candidate.retrieval_bundle_sha256) == 64
     assert len(result.candidate.chunk_set_sha256) == 64
@@ -437,6 +437,28 @@ async def test_forged_citation_or_claim_boundary_abstains_without_output_safety(
     assert result.status == "ABSTAINED"
     assert result.reason_code == "RESEARCH_OUTPUT_OUT_OF_SCOPE"
     assert safety.calls == ["input", "retrieval"]
+
+
+@pytest.mark.parametrize(
+    ("payload", "code"),
+    [
+        ("not-json private draft", "candidate_json"),
+        (json.dumps({"title": "private draft"}), "candidate_schema"),
+        (json.dumps({"title": "Reference", "body": "private draft without citation",
+                     "citation_chunk_ids": ["CHUNK_SOURCE"]}), "candidate_citations"),
+    ],
+)
+def test_candidate_projection_diagnostics_never_include_generated_text(payload, code) -> None:
+    from smhai_backend.integrations.research_programme import (
+        ResearchProgrammeRuntimeError,
+        _parse_candidate_text,
+    )
+
+    with pytest.raises(ResearchProgrammeRuntimeError) as caught:
+        _parse_candidate_text(payload)
+    assert caught.value.code == code
+    assert str(caught.value) == code
+    assert "private draft" not in str(caught.value)
 
 
 def test_runtime_http_client_rejects_non_loopback_origins() -> None:

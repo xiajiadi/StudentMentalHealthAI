@@ -430,7 +430,7 @@ def _valid_runtime_generation(
             or generated.model_version != "qwen2.5:7b-instruct-q4_K_M"
             or generated.model_digest != EXPECTED_MODEL_DIGEST
             or generated.prompt_id != "PROMPT_staff_school_programme_research_v1"
-            or generated.prompt_version != "1.0.0"
+            or generated.prompt_version != "1.0.1"
             or _SHA256.fullmatch(generated.prompt_sha256) is None
             or generated.target_role != "psychological_specialist"
             or generated.purpose != "staff_school_programme_research"

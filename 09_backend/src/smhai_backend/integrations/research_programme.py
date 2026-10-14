@@ -327,9 +327,12 @@ class HttpResearchProgrammeRuntimeClient(LongLivedHttpClient):
                 status_code=response.status_code,
             )
             raise translate_upstream_error(upstream_error) from None
+        validation_stage = "response_json"
         try:
             outer = _strict_json_object(response.content)
+            validation_stage = "response_schema"
             result = _RuntimeResponse.model_validate(outer, strict=True)
+            validation_stage = "response_identity"
             _validate_runtime_identity(
                 result,
                 context=context,
@@ -340,15 +343,25 @@ class HttpResearchProgrammeRuntimeClient(LongLivedHttpClient):
                 prompt_ref=prompt_ref,
                 chunk_ids=tuple(source.chunk_id for source in sources),
             )
+            validation_stage = "candidate_text"
             title, body, citation_chunk_ids = _parse_candidate_text(result.data.text)
+            validation_stage = "runtime_trace"
             digest = _validate_trace(result.data.trace, context=context)
+            validation_stage = "runtime_version"
             if result.data.runtime_version != result.data.trace.runtime_version:
                 raise ValueError("runtime version projection mismatch")
-        except (ValueError, TypeError, ValidationError, ResearchProgrammeRuntimeError):
+        except (ValueError, TypeError, ValidationError, ResearchProgrammeRuntimeError) as exc:
+            # Only fixed diagnostic identifiers may cross this boundary. Pydantic
+            # messages and exception input can contain generated text or sources.
+            reason = "invalid"
+            if isinstance(exc, ResearchProgrammeRuntimeError) and exc.code in {
+                "candidate_json", "candidate_schema", "candidate_citations",
+            }:
+                reason = exc.code
             raise error(
                 ErrorCode.DEPENDENCY_INVALID_RESPONSE,
                 status_code=502,
-                detail="research Runtime returned an invalid held-candidate projection",
+                detail=f"research Runtime projection rejected: {validation_stage}/{reason}",
             ) from None
         return RuntimeGeneration(
             request_id=request_id,
@@ -490,11 +503,20 @@ def _validate_trace(trace: _RuntimeTrace, *, context: RequestContext) -> str:
 
 
 def _parse_candidate_text(raw: str) -> tuple[str, str, tuple[str, ...]]:
-    value = _strict_json_object(raw.encode("utf-8"))
+    try:
+        value = _strict_json_object(raw.encode("utf-8"))
+    except (ValueError, TypeError):
+        raise ResearchProgrammeRuntimeError("candidate_json") from None
     from smhai_backend.domains.research_programme_generation.schemas import (
         validate_source_bound_body,
     )
 
-    draft = _ProgrammeDraftPayload.model_validate(value, strict=True)
-    validate_source_bound_body(draft.body, draft.citation_chunk_ids)
+    try:
+        draft = _ProgrammeDraftPayload.model_validate(value, strict=True)
+    except ValidationError:
+        raise ResearchProgrammeRuntimeError("candidate_schema") from None
+    try:
+        validate_source_bound_body(draft.body, draft.citation_chunk_ids)
+    except ValueError:
+        raise ResearchProgrammeRuntimeError("candidate_citations") from None
     return draft.title, draft.body, tuple(draft.citation_chunk_ids)
