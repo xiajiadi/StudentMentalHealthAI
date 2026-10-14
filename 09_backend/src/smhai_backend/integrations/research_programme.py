@@ -12,6 +12,7 @@ import hashlib
 import json
 import re
 from collections.abc import Mapping, Sequence
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Literal
 from uuid import uuid4
@@ -39,7 +40,7 @@ SCHEMA_VERSION = "research_programme_generation.v1"
 PURPOSE = "staff_school_programme_research"
 TARGET_ROLE = "psychological_specialist"
 PROMPT_ID = "PROMPT_staff_school_programme_research_v1"
-PROMPT_VERSION = "1.0.2"
+PROMPT_VERSION = "1.0.3"
 
 EXPECTED_MODEL_ID = "qwen2.5-7b-instruct-school-demo"
 EXPECTED_CONTRACT_MODEL_ID = "MODEL_local_primary"
@@ -282,6 +283,17 @@ class HttpResearchProgrammeRuntimeClient(LongLivedHttpClient):
         # Hash the canonical UTF-8 JSON bytes of the exact role/content messages
         # sent to Runtime, independent of HTTP JSON whitespace serialization.
         prompt_sha256 = hashlib.sha256(_canonical_json_bytes(messages)).hexdigest()
+        structured_schema = deepcopy(_OUTPUT_SCHEMA)
+        source_ids = [source.chunk_id for source in sources]
+        structured_schema["properties"]["citation_chunk_ids"]["items"] = {
+            "type": "string", "enum": source_ids,
+        }
+        # Constrain generation before parsing; never insert or repair citations
+        # after generation. The source/paragraph validators still run below.
+        marker_choices = "|".join(re.escape(value) for value in source_ids)
+        structured_schema["properties"]["body"]["pattern"] = (
+            rf"^.*\[(?:{marker_choices})\].*$"
+        )
         payload = {
             "schema_version": SCHEMA_VERSION,
             "request_id": request_id,
@@ -293,7 +305,7 @@ class HttpResearchProgrammeRuntimeClient(LongLivedHttpClient):
             "prompt_ref": prompt_ref,
             "chunk_ids": [source.chunk_id for source in sources],
             "messages": messages,
-            "structured_schema": _OUTPUT_SCHEMA,
+            "structured_schema": structured_schema,
             "config": {
                 "max_output_tokens": 768,
                 "temperature": 0.1,

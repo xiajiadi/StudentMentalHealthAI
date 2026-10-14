@@ -612,7 +612,7 @@ async def test_runtime_http_client_sends_fixed_nonstudent_route_and_validates_re
     assert result.retrieval_id == "RETR_test_001"
     assert result.prompt_id == "PROMPT_staff_school_programme_research_v1"
     assert result.prompt_version == PROMPT_VERSION
-    assert PROMPT_VERSION == "1.0.2"
+    assert PROMPT_VERSION == "1.0.3"
     assert "including in negative disclaimers" in captured[0]["messages"][0]["content"]
     assert result.prompt_sha256 == hashlib.sha256(
         json.dumps(
@@ -631,6 +631,15 @@ async def test_runtime_http_client_sends_fixed_nonstudent_route_and_validates_re
         "structured_schema", "config",
     }
     assert captured[0]["chunk_ids"] == source_ids
+    properties = captured[0]["structured_schema"]["properties"]
+    assert properties["citation_chunk_ids"]["items"]["enum"] == source_ids
+    import re
+
+    assert re.fullmatch(properties["body"]["pattern"], candidate["body"])
+    assert not re.fullmatch(properties["body"]["pattern"], "Uncited reference")
+    assert not re.fullmatch(
+        properties["body"]["pattern"], "Reference. [CHUNK_FORGED]"
+    )
     assert {message["role"] for message in captured[0]["messages"]} == {"system", "user"}
     payload_text = json.dumps(captured[0])
     for forbidden in ("assessment_id", "subject_id", "student_answers"):
