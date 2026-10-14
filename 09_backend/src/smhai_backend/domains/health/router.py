@@ -43,13 +43,18 @@ async def live() -> dict[str, str]:
     summary="Check Backend core readiness",
 )
 async def ready(request: Request) -> dict[str, object]:
+    container = request.app.state.container
+    research_ready = await container.research_process_ready()
+    core = {"configuration": "READY", "session_store": "READY"}
+    if container.school_research_process_factory is not None:
+        core["research_cat"] = "READY" if research_ready else "UNAVAILABLE"
     return envelope(
         request,
         {
             "status": "ready"
-            if getattr(request.app.state, "lifecycle_started", False)
+            if getattr(request.app.state, "lifecycle_started", False) and research_ready
             else "starting",
-            "core": {"configuration": "READY", "session_store": "READY"},
+            "core": core,
             "optional_dependencies_not_used_for_core_readiness": True,
         },
     )

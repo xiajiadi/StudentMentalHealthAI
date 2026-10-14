@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -100,15 +102,21 @@ class BackendContainer:
     cat_saved_simulation_client: HttpCatSavedSimulationClient | None = None
     post_assessment_worker_manager: SchoolPostAssessmentWorkerManager | None = None
     school_research: Any | None = None
+    school_research_process: Any | None = None
+    school_research_process_factory: Callable[[], Any] | None = None
 
     async def start(self) -> None:
         try:
             if self.persistence is not None:
                 await self.persistence.start()
+            if self.school_research_process_factory is not None:
+                self.school_research_process = self.school_research_process_factory()
+                await self.school_research_process.start()
             await self.safety.start()
             if self.post_assessment_worker_manager is not None:
                 await self.post_assessment_worker_manager.start()
-        except Exception:
+        except (Exception, asyncio.CancelledError):
+            research_shutdown_failed = await self._close_research_process()
             worker_shutdown_failed = False
             if self.post_assessment_worker_manager is not None:
                 try:
@@ -120,11 +128,15 @@ class BackendContainer:
                         extra={"failure_code": "WORKER_CLEANUP_FAILURE"},
                     )
             await self._close_clients()
-            if self.persistence is not None and not worker_shutdown_failed:
+            if (
+                self.persistence is not None
+                and not worker_shutdown_failed and not research_shutdown_failed
+            ):
                 await self.persistence.close()
             raise
 
     async def close(self) -> None:
+        research_shutdown_failed = await self._close_research_process()
         worker_shutdown_failed = False
         if self.post_assessment_worker_manager is not None:
             try:
@@ -136,12 +148,40 @@ class BackendContainer:
                     extra={"failure_code": "WORKER_CLEANUP_FAILURE"},
                 )
         clients_failed = await self._close_clients()
-        if self.persistence is not None and not worker_shutdown_failed:
+        if (
+            self.persistence is not None
+            and not worker_shutdown_failed and not research_shutdown_failed
+        ):
             await self.persistence.close()
+        if research_shutdown_failed:
+            raise RuntimeError("research CAT process shutdown did not complete")
         if worker_shutdown_failed:
             raise RuntimeError("post-assessment worker shutdown did not complete")
         if clients_failed:
             raise RuntimeError("Backend dependency shutdown did not complete")
+
+    async def _close_research_process(self) -> bool:
+        if self.school_research_process is None:
+            return False
+        try:
+            await self.school_research_process.close()
+        except Exception:
+            _LOGGER.error(
+                "research CAT process cleanup failed",
+                extra={"failure_code": "RESEARCH_PROCESS_CLEANUP_FAILURE"},
+            )
+            return True
+        return False
+
+    async def research_process_ready(self) -> bool:
+        if self.school_research_process_factory is None:
+            return True
+        if self.school_research_process is None:
+            return False
+        try:
+            return (await self.school_research_process.health()).status == "READY"
+        except Exception:
+            return False
 
     async def _close_clients(self) -> bool:
         failures: list[str] = []
@@ -245,6 +285,11 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
     from smhai_backend.domains.school_research.bootstrap import build_school_research_service
 
     school_research = build_school_research_service(settings, persistence)
+    from smhai_backend.domains.school_research.lifecycle import (
+        build_school_research_process_factory,
+    )
+
+    research_process_factory = build_school_research_process_factory(settings, persistence)
     audit = AuditService(audits)
     auth = AuthService(
         users=users,
@@ -395,6 +440,7 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         school_tasks=school_tasks,
         school_directory=school_directory,
         school_research=school_research,
+        school_research_process_factory=research_process_factory,
         professional_reviews=professional_reviews,
         school_feedback=school_feedback,
         cat_management=cat_management,

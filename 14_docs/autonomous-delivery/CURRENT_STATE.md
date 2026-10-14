@@ -1,4 +1,33 @@
-## ACTIVE — 2026-10-14 07:50 Beijing, research Backend integration
+## ACTIVE — 2026-10-14, managed research lifecycle integration
+
+Managed lifecycle now composes the pinned Backend registry and CAT service
+config, verifies isolated basePython3.14 with-S/-P, then derives child keys only
+after actual persistence startup. Container starts/stops its owned manager and
+reports required child failure through existing readiness status; failed child
+cleanup preserves persistence for recovery. Independent review and Root68
+focused process/probe/managed/container/frozen-OpenAPI tests pass; final21
+container/lifecycle tests pass. Native probes and managed factory proof below
+do not replace installed app/browser/actor/session persistence acceptance.
+
+Native Windows API probe PASS at57718/exactPID37308, observed8+signed restore,
+stop/no listener, resource/code pins unchanged. Aggregate:
+D:\Dev\temp\psynova-research-native-probes-20261014T0840.json,
+SHA94866c3ec431b9ac67f8df3dd1f2c80584aa785b1d55b93c8e22f99ae92b2d5e.
+Native lazy factory + real school-tenant MySQL adapter startup PASS separately:
+D:\Dev\temp\psynova-research-native-managed-factory-20261014T0850.json,
+SHAebd58cb89da96f0b3b822a733de12061984c8fc5d43f1f8b0ccf3bc1f5d54930.
+Both pinned config files match; real readiness/owned manager, observed8+restore,
+child stopped/no listener, adapter closed, SQL DML/DDL guard saw zero writes.
+The latter aggregate does not record a PID (its process-tree array is empty);
+ownership is enforced by the injected production native probe, not an independently
+stored PID observation. No school research session was written or enabled.
+
+Next: installed launcher configuration, immutable specialist/admin catalog,
+atomic research profile/task publishing, dedicated student task discovery,
+native actor/DB save-resume and online800; real RAG remains pending human review.
+Goal active; no shutdown deadline; K running apps still precede these changes.
+
+## Prior checkpoint — research Backend integration
 
 Research student start/resume/answer routes now compose live actor scope,
 locked SELF/roster/task-window checks, MAC-verified encrypted snapshot storage,
