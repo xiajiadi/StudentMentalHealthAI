@@ -49,6 +49,25 @@ def test_metadata_allowlist_drops_free_text_and_sensitive_keys() -> None:
     }
 
 
+def test_dependency_error_diagnostic_allowlist_accepts_only_closed_codes() -> None:
+    assert _safe_component_metadata(
+        {
+            "dependency_error_code": "dependency_invalid_response",
+            "failure_code": "DEPENDENCY_FAILURE",
+        }
+    ) == {
+        "dependency_error_code": "dependency_invalid_response",
+        "failure_code": "DEPENDENCY_FAILURE",
+    }
+    assert _safe_component_metadata(
+        {
+            "dependency_error_code": "provider response contained private content",
+            "failure_code": "DEPENDENCY_FAILURE",
+        }
+    ) == {"failure_code": "DEPENDENCY_FAILURE"}
+    assert _safe_component_metadata({"dependency_error_code": {"message": "private"}}) == {}
+
+
 def test_key_and_timestamp_helpers_normalize_without_echoing_input() -> None:
     assert _required_key("  synthetic-key  ") == "synthetic-key"
     with pytest.raises(BackendError):

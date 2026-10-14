@@ -162,4 +162,3 @@ async def test_adapter_refuses_package_pin_or_source_eligibility_mismatch() -> N
             retrieval_id="RETR_student_research",
             context=RequestContext(request_id="REQ_research", trace_id="TRACE_research"),
         )
-

@@ -63,6 +63,13 @@ _RESEARCH_STUDENT_ABSTENTION = GenerationContent(
     suggestions=[],
     disclaimer="本功能仅为14–17岁虚构学生研究演示的一般教育信息，不提供测评解释、诊断或治疗建议。",
 )
+_SAFE_DEPENDENCY_ERROR_CODES = frozenset(
+    {
+        ErrorCode.DEPENDENCY_TIMEOUT,
+        ErrorCode.DEPENDENCY_UNAVAILABLE,
+        ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+    }
+)
 _BIBLIOGRAPHY_DOI_RE = re.compile(r"(?i)\b10\.\d{4,9}/[^\s<>\"']+")
 _BIBLIOGRAPHY_URL_RE = re.compile(r"(?i)\b(?:https?://|www\.)\S+")
 _BIBLIOGRAPHY_NUMBERED_FIELD_RES = (
@@ -399,7 +406,12 @@ class IndependentConversationService:
             )
         except Exception as exc:
             await self._finish_dependency_failure(
-                actor, conversation_id, turn_id, context, stage="history"
+                actor,
+                conversation_id,
+                turn_id,
+                context,
+                stage="history",
+                dependency_error=exc,
             )
             raise self._dependency_error(exc) from exc
         safety_context = self._safety_context(message, context)
@@ -408,7 +420,12 @@ class IndependentConversationService:
             input_check = await self.safety.check_input(safety_context, context)
         except Exception as exc:
             await self._finish_dependency_failure(
-                actor, conversation_id, turn_id, context, stage="input_safety"
+                actor,
+                conversation_id,
+                turn_id,
+                context,
+                stage="input_safety",
+                dependency_error=exc,
             )
             raise self._dependency_error(exc) from exc
         metadata["input_safety_action"] = input_check.decision.action
@@ -489,6 +506,7 @@ class IndependentConversationService:
                 context,
                 stage="retrieval",
                 retrieval_id=retrieval_id,
+                dependency_error=exc,
             )
             raise self._dependency_error(exc) from exc
         if not self._retrieval_matches_lane(retrieval):
@@ -636,6 +654,7 @@ class IndependentConversationService:
                 context,
                 stage="retrieval_safety",
                 retrieval_id=retrieval_id,
+                dependency_error=exc,
             )
             raise self._dependency_error(exc) from exc
         metadata["retrieval_safety_action"] = retrieval_check.decision.action
@@ -690,6 +709,7 @@ class IndependentConversationService:
                 stage="generation",
                 generation_id=generation_id,
                 retrieval_id=retrieval_id,
+                dependency_error=exc,
             )
             raise self._dependency_error(exc) from exc
         if not isinstance(candidate, GenerationResult):
@@ -773,6 +793,7 @@ class IndependentConversationService:
                 stage="output_safety",
                 generation_id=generation_id,
                 retrieval_id=retrieval_id,
+                dependency_error=exc,
             )
             raise self._dependency_error(exc) from exc
         metadata["output_safety_action"] = output_check.decision.action
@@ -1332,6 +1353,7 @@ class IndependentConversationService:
         context: RequestContext,
         *,
         stage: str,
+        dependency_error: Exception,
         generation_id: str | None = None,
         retrieval_id: str | None = None,
     ) -> None:
@@ -1339,6 +1361,7 @@ class IndependentConversationService:
             **self.lane_policy.safe_provenance(),
             "stage": stage,
             "failure_code": "DEPENDENCY_FAILURE",
+            "dependency_error_code": self._safe_dependency_error_code(dependency_error),
         }
         if generation_id:
             metadata["generation_id"] = generation_id
@@ -1353,6 +1376,16 @@ class IndependentConversationService:
             safe_metadata=metadata,
             trace_id=context.trace_id,
         )
+
+    @staticmethod
+    def _safe_dependency_error_code(exc: Exception) -> str:
+        if (
+            isinstance(exc, BackendError)
+            and type(exc.code) is ErrorCode
+            and exc.code in _SAFE_DEPENDENCY_ERROR_CODES
+        ):
+            return exc.code.value
+        return "UNKNOWN"
 
     @staticmethod
     def _dependency_error(exc: Exception) -> BackendError:

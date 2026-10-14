@@ -311,13 +311,22 @@ class FakeResearchRag(FakeRag):
 class FakeRuntime:
     label = "FAKE_RUNTIME"
 
-    def __init__(self, *, candidate: str | None = None, fail: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        candidate: str | None = None,
+        fail: bool = False,
+        error: Exception | None = None,
+    ) -> None:
         self.candidate = candidate
         self.fail = fail
+        self.error = error
         self.calls: list[dict[str, Any]] = []
 
     async def generate(self, **kwargs: Any) -> GenerationResult:
         self.calls.append(kwargs)
+        if self.error is not None:
+            raise self.error
         if self.fail:
             raise TimeoutError("synthetic runtime timeout")
         text = self.candidate or json.dumps(
@@ -736,7 +745,72 @@ async def test_runtime_timeout_marks_failed_dependency_and_does_not_store_candid
     assert finish["action"] == "DEPENDENCY_FAILURE"
     assert finish.get("approved_content") is None
     assert finish.get("citations", ()) == ()
+    assert finish["safe_metadata"]["dependency_error_code"] == "UNKNOWN"
     assert len(runtime.calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("runtime_error", "expected_error_code", "expected_api_code", "expected_status"),
+    [
+        (
+            BackendError(ErrorCode.DEPENDENCY_TIMEOUT),
+            "dependency_timeout",
+            ErrorCode.DEPENDENCY_TIMEOUT,
+            504,
+        ),
+        (
+            BackendError(ErrorCode.DEPENDENCY_UNAVAILABLE),
+            "dependency_unavailable",
+            ErrorCode.DEPENDENCY_UNAVAILABLE,
+            503,
+        ),
+        (
+            BackendError(
+                ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                detail="private-provider-body-must-not-persist",
+            ),
+            "dependency_invalid_response",
+            ErrorCode.DEPENDENCY_UNAVAILABLE,
+            503,
+        ),
+        (
+            RuntimeError("private-provider-body-must-not-persist"),
+            "UNKNOWN",
+            ErrorCode.DEPENDENCY_UNAVAILABLE,
+            503,
+        ),
+        (
+            BackendError(ErrorCode.FORBIDDEN, detail="private-provider-body-must-not-persist"),
+            "UNKNOWN",
+            ErrorCode.DEPENDENCY_UNAVAILABLE,
+            503,
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_generation_failure_persists_only_closed_dependency_error_code(
+    runtime_error: Exception,
+    expected_error_code: str,
+    expected_api_code: ErrorCode,
+    expected_status: int,
+) -> None:
+    service, persistence, _, _, runtime = _service(runtime=FakeRuntime(error=runtime_error))
+
+    with pytest.raises(BackendError) as exc:
+        await _submit(service)
+
+    assert exc.value.code == expected_api_code
+    assert exc.value.status_code == expected_status
+    assert len(runtime.calls) == 1
+    finish = persistence.finish_calls[0]
+    assert finish["status"] == "FAILED"
+    assert finish["action"] == "DEPENDENCY_FAILURE"
+    assert finish.get("approved_content") is None
+    assert finish.get("citations", ()) == ()
+    assert finish["safe_metadata"]["stage"] == "generation"
+    assert finish["safe_metadata"]["failure_code"] == "DEPENDENCY_FAILURE"
+    assert finish["safe_metadata"]["dependency_error_code"] == expected_error_code
+    assert "private-provider-body-must-not-persist" not in repr(finish["safe_metadata"])
 
 
 @pytest.mark.parametrize(
