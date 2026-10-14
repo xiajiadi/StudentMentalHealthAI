@@ -239,6 +239,48 @@ def fresh_workspace(tmp_path):
     return workspace, repo, marker
 
 
+@pytest.fixture
+def restored_install_pair(tmp_path, owned_workspace):
+    source, repo, source_marker = owned_workspace
+    source_marker["workspace_id"] = "a" * 32
+    source_marker["port"] = 3324
+    (source / "workspace.json").write_text(json.dumps(source_marker), encoding="utf-8")
+    target = source.parent / ".StudentMentalHealthAI-school-install-20261015-q"
+    data = target / "mysql-data"
+    (data / "mysql").mkdir(parents=True)
+    (data / "auto.cnf").write_text("restored-install", encoding="utf-8")
+    (data / "ibdata1").write_bytes(b"preserved restored install data")
+    executable = target / "vendor" / "mysqld.exe"
+    executable.parent.mkdir()
+    executable.write_bytes(b"synthetic target executable fixture")
+    target_marker = {
+        **source_marker,
+        "workspace_id": "b" * 32,
+        "port": 3325,
+        "data_directory": str(data),
+        "executable": str(executable),
+        "parent_pid": 33350,
+    }
+    (target / "workspace.json").write_text(json.dumps(target_marker), encoding="utf-8")
+    restore_state = {
+        "schema_version": resume.RESTORE_STATE_SCHEMA,
+        "synthetic_only": True,
+        "phase": resume.RESTORE_VERIFIED_PHASE,
+        "database": resume.DATABASE,
+        "host": resume.HOST,
+        "port": 3325,
+        "workspace_id": target_marker["workspace_id"],
+        "source_workspace_id": source_marker["workspace_id"],
+        "workspace": str(target),
+        "data_directory": str(data),
+        "snapshot_revision": "20261014_0018",
+        "runtime_revision": resume.CURRENT_SCHOOL_REVISION,
+    }
+    (target / "restore-state.json").write_text(json.dumps(restore_state), encoding="utf-8")
+    prepare_runtime_artifacts(target, target_marker)
+    return target, source, repo, target_marker, source_marker, restore_state
+
+
 def run_fresh_resume(workspace, repo, marker, ops, **kwargs):
     return resume.resume_fresh_workspace(
         workspace,
@@ -528,6 +570,120 @@ def test_prepared_install_resume_uses_full_runtime_verification(fresh_workspace)
     assert result == {"status": "STARTED", "database": "smhai_school_demo", "port": 3315}
     assert ops.runtime_calls == 1
     assert ops.verify_calls == 1
+
+
+def test_restored_install_resume_uses_explicit_source_target_pins_and_existing_guardian_flow(
+    restored_install_pair,
+):
+    target, source, repo, target_marker, source_marker, _state = restored_install_pair
+    data_before = (target / "mysql-data" / "ibdata1").read_bytes()
+    source_marker_before = (source / "workspace.json").read_bytes()
+    ops = FreshFakeOperations()
+
+    result = resume.resume_restored_install_workspace(
+        target,
+        repo,
+        expected_port=target_marker["port"],
+        expected_workspace_id=target_marker["workspace_id"],
+        source_workspace=source,
+        source_port=source_marker["port"],
+        expected_source_workspace_id=source_marker["workspace_id"],
+        ops=ops,
+        lock_factory=lambda _path: nullcontext(),
+        timeout=5,
+    )
+
+    assert result == {
+        "status": "STARTED", "database": resume.DATABASE, "port": target_marker["port"]
+    }
+    assert ops.started == (
+        Path(target_marker["executable"]), target,
+        Path(target_marker["data_directory"]), target_marker["port"],
+    )
+    assert ops.dpapi_calls == 2
+    assert ops.fresh_database_calls == 1
+    assert ops.runtime_calls == 0
+    assert (target / "mysql-data" / "ibdata1").read_bytes() == data_before
+    assert (source / "workspace.json").read_bytes() == source_marker_before
+    saved = json.loads((target / "workspace.json").read_text(encoding="utf-8"))
+    assert saved["resume_state"] == "READY"
+    restore = json.loads((target / "restore-state.json").read_text(encoding="utf-8"))
+    assert restore == _state
+
+
+@pytest.mark.parametrize(
+    ("bad_case", "expected_code"),
+    [
+        ("source_id", "Restored install source and target identities"),
+        ("same_id", "Restored install identity and distinct ports"),
+        ("snapshot_revision", "Restored install evidence"),
+        ("runtime_revision", "Restored install evidence"),
+        ("same_port", "Restored install identity and distinct ports"),
+        ("source_path", "Restored install source and target paths are not isolated"),
+    ],
+)
+def test_restored_install_resume_rejects_mismatched_source_or_restore_proof_before_acl(
+    restored_install_pair, bad_case, expected_code
+):
+    target, source, repo, target_marker, source_marker, state = restored_install_pair
+    if bad_case in {"snapshot_revision", "runtime_revision"}:
+        changed = dict(state)
+        changed[bad_case] = "99999999_9999"
+        (target / "restore-state.json").write_text(json.dumps(changed), encoding="utf-8")
+    ops = FreshFakeOperations()
+    kwargs = {
+        "expected_port": target_marker["port"],
+        "expected_workspace_id": target_marker["workspace_id"],
+        "source_workspace": source,
+        "source_port": source_marker["port"],
+        "expected_source_workspace_id": source_marker["workspace_id"],
+    }
+    if bad_case == "source_id":
+        kwargs["expected_source_workspace_id"] = "c" * 32
+    elif bad_case == "same_id":
+        kwargs["expected_source_workspace_id"] = target_marker["workspace_id"]
+    elif bad_case == "same_port":
+        kwargs["source_port"] = target_marker["port"]
+    elif bad_case == "source_path":
+        kwargs["source_workspace"] = repo
+    with pytest.raises(resume.ResumeError, match=expected_code):
+        resume.resume_restored_install_workspace(
+            target,
+            repo,
+            **kwargs,
+            ops=ops,
+            lock_factory=lambda _path: nullcontext(),
+        )
+    assert ops.acl_calls == 0
+    assert ops.started is None
+    assert ops.dpapi_calls == 0
+
+
+def test_restored_install_proof_is_revalidated_after_lock_acquisition(restored_install_pair):
+    target, source, repo, target_marker, source_marker, state = restored_install_pair
+    ops = FreshFakeOperations()
+
+    @contextmanager
+    def mutate_before_lock(_path):
+        changed = dict(state, source_workspace_id="c" * 32)
+        (target / "restore-state.json").write_text(json.dumps(changed), encoding="utf-8")
+        yield
+
+    with pytest.raises(resume.ResumeError, match="Restored install evidence"):
+        resume.resume_restored_install_workspace(
+            target,
+            repo,
+            expected_port=target_marker["port"],
+            expected_workspace_id=target_marker["workspace_id"],
+            source_workspace=source,
+            source_port=source_marker["port"],
+            expected_source_workspace_id=source_marker["workspace_id"],
+            ops=ops,
+            lock_factory=mutate_before_lock,
+        )
+    assert ops.acl_calls == 1
+    assert ops.dpapi_calls == 1
+    assert ops.started is None
 
 
 def test_fresh_mode_rejects_prepared_artifacts_and_prepared_mode_rejects_partial_state(
@@ -876,6 +1032,64 @@ def test_restore_resume_cli_passes_explicit_workspace_and_port(monkeypatch, caps
 
     assert calls == [((target, resume.DEFAULT_REPO), {"expected_port": 3310, "timeout": 45.0})]
     assert json.loads(capsys.readouterr().out) == {"status": "STARTED"}
+
+
+def test_restored_install_cli_requires_all_explicit_source_and_target_pins(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        resume,
+        "resume_restored_install_workspace",
+        lambda *args, **kwargs: calls.append((args, kwargs)) or {"status": "STARTED"},
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "resume_school_workspace.py", "--restored-install-mode",
+            "--workspace", r"D:\Projects\.StudentMentalHealthAI-school-install-20261015-q",
+            "--port", "3325", "--expected-workspace-id", "b" * 32,
+            "--source-workspace", r"D:\Projects\.StudentMentalHealthAI-school-install-20261014-p",
+            "--source-port", "3324", "--expected-source-workspace-id", "a" * 32,
+        ],
+    )
+
+    assert resume.main() == 0
+    assert calls == [
+        (
+            (Path(r"D:\Projects\.StudentMentalHealthAI-school-install-20261015-q"), resume.DEFAULT_REPO),
+            {
+                "expected_port": 3325,
+                "expected_workspace_id": "b" * 32,
+                "source_workspace": Path(r"D:\Projects\.StudentMentalHealthAI-school-install-20261014-p"),
+                "source_port": 3324,
+                "expected_source_workspace_id": "a" * 32,
+                "timeout": 45.0,
+            },
+        )
+    ]
+
+
+def test_restored_install_cli_rejects_missing_source_identity_before_resume(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        resume,
+        "resume_restored_install_workspace",
+        lambda *args, **kwargs: calls.append((args, kwargs)) or {"status": "STARTED"},
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "resume_school_workspace.py", "--restored-install-mode",
+            "--workspace", r"D:\Projects\.StudentMentalHealthAI-school-install-20261015-q",
+            "--port", "3325", "--expected-workspace-id", "b" * 32,
+        ],
+    )
+
+    with pytest.raises(SystemExit) as caught:
+        resume.main()
+    assert caught.value.code == 2
+    assert calls == []
 
 
 def test_default_cli_resumes_only_registered_workspace_on_3308(monkeypatch, capsys):

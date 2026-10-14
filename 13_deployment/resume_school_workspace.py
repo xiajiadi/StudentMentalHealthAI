@@ -264,6 +264,134 @@ def validate_restored_workspace(
     return source_marker, target_marker
 
 
+def validate_restored_install_workspace(
+    workspace: Path,
+    repo: Path,
+    *,
+    source_workspace: Path,
+    expected_port: int,
+    source_port: int,
+    expected_workspace_id: str,
+    expected_source_workspace_id: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Validate an explicitly pinned restored install before resuming its DB.
+
+    Unlike the legacy restore mode, this supports a restored target whose
+    directory uses the install naming scheme. Both source and target remain
+    explicit and are bound by workspace IDs, ports, restore-state, and data
+    directories; this does not trust the target filename or marker alone.
+    """
+    _validate_expected_port(expected_port)
+    _validate_expected_port(source_port)
+    if (
+        expected_port == source_port
+        or expected_port == PORT
+        or not isinstance(expected_workspace_id, str)
+        or not _WORKSPACE_ID.fullmatch(expected_workspace_id)
+        or not isinstance(expected_source_workspace_id, str)
+        or not _WORKSPACE_ID.fullmatch(expected_source_workspace_id)
+        or expected_workspace_id == expected_source_workspace_id
+    ):
+        raise ResumeError("Restored install identity and distinct ports are required")
+
+    target_path = Path(workspace)
+    source_path = Path(source_workspace)
+    repository = Path(repo)
+    _reject_reparse_path(target_path)
+    _reject_reparse_path(source_path)
+    target_root = target_path.resolve(strict=True)
+    source_root = source_path.resolve(strict=True)
+    repo_root = repository.resolve(strict=True)
+    if (
+        target_root == source_root
+        or target_root.parent != source_root.parent
+        or _paths_overlap(target_root, source_root)
+        or _paths_overlap(target_root, repo_root)
+        or _paths_overlap(source_root, repo_root)
+    ):
+        raise ResumeError("Restored install source and target paths are not isolated")
+
+    target_marker = _validate_install_target_identity(
+        target_root,
+        repo_root,
+        expected_workspace=target_root,
+        expected_port=expected_port,
+        expected_workspace_id=expected_workspace_id,
+    )
+    try:
+        source_marker = validate_existing_workspace(
+            source_root,
+            repo_root,
+            expected_workspace=source_root,
+            expected_port=source_port,
+        )
+    except (PreparationError, OSError, ValueError, TypeError, json.JSONDecodeError):
+        raise ResumeError("Explicit restore source marker is invalid") from None
+
+    source_data = Path(source_marker.get("data_directory", ""))
+    target_data = Path(target_marker.get("data_directory", ""))
+    if (
+        source_marker.get("workspace_id") != expected_source_workspace_id
+        or source_marker.get("host") != HOST
+        or target_marker.get("workspace_id") != expected_workspace_id
+        or target_marker.get("host") != HOST
+        or source_marker.get("database") != DATABASE
+        or target_marker.get("database") != DATABASE
+        or source_marker.get("synthetic_only") is not True
+        or target_marker.get("synthetic_only") is not True
+        or source_data.resolve(strict=True) == target_data.resolve(strict=True)
+        or _paths_overlap(source_data, target_data)
+    ):
+        raise ResumeError("Restored install source and target identities do not match")
+
+    restore_state_path = target_root / "restore-state.json"
+    _reject_reparse_path(restore_state_path)
+
+    def unique_pairs(items: list[tuple[str, Any]]) -> dict[str, Any]:
+        value: dict[str, Any] = {}
+        for key, item in items:
+            if key in value:
+                raise ResumeError("Restore state contains duplicate fields")
+            value[key] = item
+        return value
+
+    try:
+        restore_state = json.loads(
+            restore_state_path.read_text(encoding="utf-8"),
+            object_pairs_hook=unique_pairs,
+        )
+    except ResumeError:
+        raise
+    except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError):
+        raise ResumeError("Restored install proof is unavailable") from None
+    if not isinstance(restore_state, dict):
+        raise ResumeError("Restored install proof is invalid")
+    try:
+        recorded_workspace = Path(restore_state.get("workspace", ""))
+        recorded_data_directory = Path(restore_state.get("data_directory", ""))
+    except (TypeError, ValueError):
+        raise ResumeError("Restored install proof paths are invalid") from None
+    if (
+        restore_state.get("schema_version") != RESTORE_STATE_SCHEMA
+        or restore_state.get("phase") != RESTORE_VERIFIED_PHASE
+        or restore_state.get("synthetic_only") is not True
+        or restore_state.get("host") != HOST
+        or restore_state.get("database") != DATABASE
+        or type(restore_state.get("port")) is not int
+        or restore_state.get("port") != expected_port
+        or restore_state.get("workspace_id") != expected_workspace_id
+        or restore_state.get("source_workspace_id") != expected_source_workspace_id
+        or not recorded_workspace.is_absolute()
+        or recorded_workspace.resolve(strict=False) != target_root
+        or not recorded_data_directory.is_absolute()
+        or recorded_data_directory.resolve(strict=False) != target_data.resolve(strict=True)
+        or restore_state.get("snapshot_revision") not in SCHOOL_REVISION_CHAIN
+        or restore_state.get("runtime_revision") != CURRENT_SCHOOL_REVISION
+    ):
+        raise ResumeError("Restored install evidence does not match pinned source and target")
+    return source_marker, target_marker
+
+
 def _validate_install_target_identity(
     workspace: Path,
     repo: Path,
@@ -855,7 +983,31 @@ def _validate_resume_scope(
     restore_source_workspace: Path | None,
     fresh_expected_workspace_id: str | None,
     prepared_expected_workspace_id: str | None,
+    restored_install_source_workspace: Path | None,
+    restored_install_source_workspace_id: str | None,
+    restored_install_source_port: int | None,
+    restored_install_expected_workspace_id: str | None,
 ) -> dict[str, Any]:
+    if restored_install_source_workspace is not None:
+        if (
+            restore_source_workspace is not None
+            or fresh_expected_workspace_id is not None
+            or prepared_expected_workspace_id is not None
+            or restored_install_source_workspace_id is None
+            or restored_install_source_port is None
+            or restored_install_expected_workspace_id is None
+        ):
+            raise ResumeError("Restored-install, fresh, prepared, and legacy modes are exclusive")
+        _, marker = validate_restored_install_workspace(
+            workspace,
+            repo,
+            source_workspace=restored_install_source_workspace,
+            expected_port=expected_port,
+            source_port=restored_install_source_port,
+            expected_workspace_id=restored_install_expected_workspace_id,
+            expected_source_workspace_id=restored_install_source_workspace_id,
+        )
+        return marker
     if prepared_expected_workspace_id is not None:
         if restore_source_workspace is not None or fresh_expected_workspace_id is not None:
             raise ResumeError("Prepared, fresh, and restore classifications cannot be combined")
@@ -910,6 +1062,10 @@ def resume_workspace(
     _restore_source_workspace: Path | None = None,
     _fresh_expected_workspace_id: str | None = None,
     _prepared_expected_workspace_id: str | None = None,
+    _restored_install_source_workspace: Path | None = None,
+    _restored_install_source_workspace_id: str | None = None,
+    _restored_install_source_port: int | None = None,
+    _restored_install_expected_workspace_id: str | None = None,
 ) -> dict[str, Any]:
     """Verify the running instance or start the existing initialized data once."""
     _validate_expected_port(expected_port)
@@ -921,20 +1077,35 @@ def resume_workspace(
         raise ResumeError("A fresh target must use a separate database port")
     if _prepared_expected_workspace_id is not None and expected_port == PORT:
         raise ResumeError("Prepared install requires a port separate from legacy 3308")
+    restored_install_values = (
+        _restored_install_source_workspace,
+        _restored_install_source_workspace_id,
+        _restored_install_source_port,
+        _restored_install_expected_workspace_id,
+    )
+    restored_install_requested = any(value is not None for value in restored_install_values)
+    if restored_install_requested and not all(value is not None for value in restored_install_values):
+        raise ResumeError("Restored-install mode requires explicit source and target identity")
+    if restored_install_requested and expected_port == PORT:
+        raise ResumeError("Restored install requires a port separate from legacy 3308")
     if sum(
         value is not None
         for value in (
             _restore_source_workspace,
             _fresh_expected_workspace_id,
             _prepared_expected_workspace_id,
+            _restored_install_source_workspace,
         )
     ) > 1:
         raise ResumeError("Prepared, fresh, and restore classifications cannot be combined")
+    if restored_install_requested and _restored_install_source_port is None:
+        raise ResumeError("Restored-install source port is required")
     if (
         expected_port != PORT
         and _restore_source_workspace is None
         and _fresh_expected_workspace_id is None
         and _prepared_expected_workspace_id is None
+        and _restored_install_source_workspace is None
     ):
         raise ResumeError("Non-default database ports require explicit restore mode")
     if (
@@ -959,9 +1130,13 @@ def resume_workspace(
         restore_source_workspace=_restore_source_workspace,
         fresh_expected_workspace_id=_fresh_expected_workspace_id,
         prepared_expected_workspace_id=_prepared_expected_workspace_id,
+        restored_install_source_workspace=_restored_install_source_workspace,
+        restored_install_source_workspace_id=_restored_install_source_workspace_id,
+        restored_install_source_port=_restored_install_source_port,
+        restored_install_expected_workspace_id=_restored_install_expected_workspace_id,
     )
     operations.verify_acl(workspace_path)
-    if _fresh_expected_workspace_id is not None:
+    if _fresh_expected_workspace_id is not None or restored_install_requested:
         operations.verify_fresh_dpapi(workspace_path, expected_port)
     with lock_factory(Path(workspace)):
         marker = _validate_resume_scope(
@@ -972,9 +1147,13 @@ def resume_workspace(
             restore_source_workspace=_restore_source_workspace,
             fresh_expected_workspace_id=_fresh_expected_workspace_id,
             prepared_expected_workspace_id=_prepared_expected_workspace_id,
+            restored_install_source_workspace=_restored_install_source_workspace,
+            restored_install_source_workspace_id=_restored_install_source_workspace_id,
+            restored_install_source_port=_restored_install_source_port,
+            restored_install_expected_workspace_id=_restored_install_expected_workspace_id,
         )
         operations.verify_acl(Path(workspace))
-        if _fresh_expected_workspace_id is not None:
+        if _fresh_expected_workspace_id is not None or restored_install_requested:
             operations.verify_fresh_dpapi(workspace_path, expected_port)
         pid_value = marker.get("parent_pid")
         process = operations.inspect_process(int(pid_value)) if isinstance(pid_value, int) else None
@@ -986,7 +1165,7 @@ def resume_workspace(
             _require_loopback_listeners(listeners, expected_port)
             operations.verify_running_process(marker)
             try:
-                if _fresh_expected_workspace_id is not None:
+                if _fresh_expected_workspace_id is not None or restored_install_requested:
                     operations.verify_fresh_database(workspace_path, expected_port, Path(repo))
                 else:
                     _load_verified_runtime(operations, workspace_path, Path(repo), expected_port)
@@ -1045,7 +1224,7 @@ def resume_workspace(
                 raise ResumeError("Started guardian identity changed; preserve it for recovery")
             _require_loopback_listeners(operations.listeners(expected_port), expected_port)
             operations.verify_running_process(marker)
-            if _fresh_expected_workspace_id is not None:
+            if _fresh_expected_workspace_id is not None or restored_install_requested:
                 operations.verify_fresh_database(workspace_path, expected_port, Path(repo))
             else:
                 _load_verified_runtime(operations, workspace_path, Path(repo), expected_port)
@@ -1080,6 +1259,36 @@ def resume_restored_workspace(
         expected_workspace=target,
         expected_port=expected_port,
         _restore_source_workspace=Path(DEFAULT_WORKSPACE),
+    )
+
+
+def resume_restored_install_workspace(
+    workspace: Path,
+    repo: Path = DEFAULT_REPO,
+    *,
+    expected_port: int,
+    expected_workspace_id: str,
+    source_workspace: Path,
+    source_port: int,
+    expected_source_workspace_id: str,
+    ops: Any | None = None,
+    timeout: float = 45.0,
+    lock_factory=workspace_lock,
+) -> dict[str, Any]:
+    """Resume a restored install bound to an explicitly named source install."""
+    target = Path(workspace)
+    return resume_workspace(
+        target,
+        repo,
+        ops=ops,
+        timeout=timeout,
+        lock_factory=lock_factory,
+        expected_workspace=target,
+        expected_port=expected_port,
+        _restored_install_source_workspace=Path(source_workspace),
+        _restored_install_source_workspace_id=expected_source_workspace_id,
+        _restored_install_source_port=source_port,
+        _restored_install_expected_workspace_id=expected_workspace_id,
     )
 
 
@@ -1137,8 +1346,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--restore-mode", action="store_true")
     parser.add_argument("--fresh-mode", action="store_true")
     parser.add_argument("--prepared-install-mode", action="store_true")
+    parser.add_argument("--restored-install-mode", action="store_true")
     parser.add_argument("--port", type=int)
     parser.add_argument("--expected-workspace-id")
+    parser.add_argument("--source-workspace", type=Path)
+    parser.add_argument("--source-port", type=int)
+    parser.add_argument("--expected-source-workspace-id")
     parser.add_argument("--timeout", type=float, default=45.0)
     return parser
 
@@ -1146,28 +1359,53 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
-    modes = (args.restore_mode, args.fresh_mode, args.prepared_install_mode)
+    modes = (
+        args.restore_mode,
+        args.fresh_mode,
+        args.prepared_install_mode,
+        args.restored_install_mode,
+    )
     if sum(modes) > 1:
-        parser.error("--restore-mode, --fresh-mode, and --prepared-install-mode are mutually exclusive")
+        parser.error("Restore, fresh, prepared-install, and restored-install modes are mutually exclusive")
     if (
         args.expected_workspace_id is not None
         and not args.fresh_mode
         and not args.prepared_install_mode
+        and not args.restored_install_mode
     ):
-        parser.error("--expected-workspace-id requires --fresh-mode or --prepared-install-mode")
+        parser.error("--expected-workspace-id requires an explicit install resume mode")
+    if args.restored_install_mode:
+        if (
+            args.workspace is None
+            or args.port is None
+            or args.expected_workspace_id is None
+            or args.source_workspace is None
+            or args.source_port is None
+            or args.expected_source_workspace_id is None
+        ):
+            parser.error("--restored-install-mode requires explicit source and target path, ID, and port")
+        if args.port == args.source_port:
+            parser.error("Restored-install source and target ports must differ")
+        if args.port <= PORT:
+            parser.error("Restored-install target port must be separate from legacy 3308")
+    elif any(
+        value is not None
+        for value in (args.source_workspace, args.source_port, args.expected_source_workspace_id)
+    ):
+        parser.error("Source workspace arguments require --restored-install-mode")
     if args.fresh_mode or args.prepared_install_mode:
         if args.workspace is None or args.port is None or args.expected_workspace_id is None:
             parser.error("Install mode requires explicit --workspace, --port, and --expected-workspace-id")
         if args.port <= PORT:
             parser.error("Install mode requires a port separate from the legacy workspace")
-    elif not args.restore_mode and args.port is not None and args.port != PORT:
+    elif not (args.restore_mode or args.restored_install_mode) and args.port is not None and args.port != PORT:
         parser.error("--port changes require --restore-mode or --fresh-mode")
     if args.restore_mode:
         if args.workspace is None or args.port is None:
             parser.error("--restore-mode requires explicit --workspace and --port")
         if args.port == PORT:
             parser.error("--restore-mode requires a separate database port")
-    elif not (args.fresh_mode or args.prepared_install_mode) and args.port is not None and args.port != PORT:
+    elif not (args.fresh_mode or args.prepared_install_mode or args.restored_install_mode) and args.port is not None and args.port != PORT:
         parser.error("--port changes require --restore-mode or --fresh-mode")
     try:
         if args.restore_mode:
@@ -1191,6 +1429,17 @@ def main() -> int:
                 DEFAULT_REPO,
                 expected_port=args.port,
                 expected_workspace_id=args.expected_workspace_id,
+                timeout=args.timeout,
+            )
+        elif args.restored_install_mode:
+            result = resume_restored_install_workspace(
+                args.workspace,
+                DEFAULT_REPO,
+                expected_port=args.port,
+                expected_workspace_id=args.expected_workspace_id,
+                source_workspace=args.source_workspace,
+                source_port=args.source_port,
+                expected_source_workspace_id=args.expected_source_workspace_id,
                 timeout=args.timeout,
             )
         else:
