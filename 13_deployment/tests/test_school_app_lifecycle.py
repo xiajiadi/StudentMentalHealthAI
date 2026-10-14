@@ -443,6 +443,127 @@ def test_research_programme_worker_manifest_rejects_prompt_pin_drift(
         )
 
 
+def test_stopped_111_manifest_upgrades_only_with_current_pins_and_keeps_archive(
+    prepared, monkeypatch
+):
+    repo, workspace, ops, app = prepared
+    external_manifest = workspace.parent / "programme-manifest.json"
+    settings = {
+        "school_research_runtime_file": str(workspace / "runtime.json"),
+        "school_research_runtime_sha256": "d" * 64,
+        "school_research_service_file": str(workspace / "service.json"),
+        "school_research_service_sha256": "e" * 64,
+        "school_research_cat_python": str(repo / "cat-python.exe"),
+        "school_research_cat_source": str(repo / "cat-source"),
+        "school_research_cat_dependencies": str(repo / "cat-deps"),
+        "school_research_base_url": "http://127.0.0.1:8182",
+        "school_research_study_use_file": str(workspace / "study-use.json"),
+        "school_research_study_use_sha256": "b" * 64,
+        "school_research_source_rights_verified": True,
+        "research_programme_runtime": {
+            "mode": "http",
+            "base_url": lifecycle.RESEARCH_PROGRAMME_RUNTIME_URL,
+        },
+        "research_programme_worker": {
+            "enabled": True,
+            "package_manifest_file": str(external_manifest),
+            "package_manifest_sha256": lifecycle.RESEARCH_PROGRAMME_MANIFEST_SHA256,
+            "processor_policy_sha256": lifecycle.RESEARCH_PROGRAMME_PROCESSOR_POLICY_SHA256,
+            "model_ref": lifecycle.RESEARCH_PROGRAMME_MODEL_REF,
+            "model_digest_sha256": lifecycle.RESEARCH_PROGRAMME_MODEL_DIGEST_SHA256,
+            "prompt_ref": lifecycle.RESEARCH_PROGRAMME_PROMPT_REF,
+            "prompt_version": lifecycle.RESEARCH_PROGRAMME_PROMPT_VERSION,
+            "poll_interval_seconds": 1.0,
+            "lease_seconds": 180,
+            "max_attempts": 5,
+            "shutdown_drain_seconds": 10.0,
+        },
+    }
+    monkeypatch.setattr(
+        lifecycle,
+        "build_research_settings_kwargs",
+        lambda _args, _workspace: settings,
+    )
+    ops.dependency_status = lambda _port, _dependency: {
+        "status": "READY",
+        "integration": "RESEARCH_STAFF_PROGRAMME_OUTBOX",
+    }
+    input_config = {
+        name: str(workspace / f"{name}.json")
+        for name in lifecycle.RESEARCH_CONFIG_ARGUMENTS
+    }
+    input_config.update(
+        {
+            "research_runtime_sha256": "d" * 64,
+            "research_service_sha256": "e" * 64,
+            "research_study_use_file": workspace / "study-use.json",
+            "research_study_use_sha256": "b" * 64,
+            "research_source_rights_verified": True,
+            "research_latest_study_end": "2027-06-30T15:59:59Z",
+            lifecycle.RESEARCH_PROGRAMME_WORKER_ENABLED_INPUT_KEY: True,
+            "research_programme_manifest_file": external_manifest,
+            "research_programme_manifest_sha256": lifecycle.RESEARCH_PROGRAMME_MANIFEST_SHA256,
+        }
+    )
+
+    app.start(workspace, frontend_mode="dev", research_config=input_config)
+    app.stop(workspace)
+    manifest_path = workspace / lifecycle.MANIFEST_NAME
+    original = json.loads(manifest_path.read_text(encoding="utf-8"))
+    original["research_config"][lifecycle.RESEARCH_PROGRAMME_WORKER_CONFIG_KEY][
+        "prompt_version"
+    ] = "1.1.1"
+    lifecycle._atomic_write(manifest_path, original)
+
+    historical = app.status(workspace)
+    assert historical["status"] == "STOPPED"
+    assert historical["research_programme_worker"] == {
+        "enabled": True,
+        "status": "UNAVAILABLE",
+        "integration": "RESEARCH_STAFF_PROGRAMME_OUTBOX",
+        "reason": "LEGACY_PROMPT_PIN",
+    }
+
+    tampered = json.loads(json.dumps(original))
+    tampered["research_config"][lifecycle.RESEARCH_PROGRAMME_WORKER_CONFIG_KEY][
+        "processor_policy_sha256"
+    ] = "0" * 64
+    lifecycle._atomic_write(manifest_path, tampered)
+    with pytest.raises(lifecycle.LifecycleError, match="pins no longer validate|settings changed"):
+        app.status(workspace)
+    lifecycle._atomic_write(manifest_path, original)
+
+    ops.bound[8088] = [
+        {"OwningProcess": 9901, "LocalAddress": "127.0.0.1", "LocalPort": 8088}
+    ]
+    with pytest.raises(lifecycle.LifecycleError, match="still has an application listener"):
+        app.start(workspace, frontend_mode="dev", research_config=input_config)
+    assert json.loads(manifest_path.read_text(encoding="utf-8")) == original
+    assert list(workspace.glob("school-app-lifecycle.stopped-*.json")) == []
+    ops.bound.pop(8088)
+
+    with pytest.raises(lifecycle.LifecycleError, match="explicit current pinned configuration"):
+        app.start(workspace, frontend_mode="dev")
+    assert json.loads(manifest_path.read_text(encoding="utf-8")) == original
+
+    started = app.start(workspace, frontend_mode="dev", research_config=input_config)
+    assert started["status"] == "RUNNING"
+    current = json.loads(manifest_path.read_text(encoding="utf-8"))
+    current_programme = current["research_config"][
+        lifecycle.RESEARCH_PROGRAMME_WORKER_CONFIG_KEY
+    ]
+    assert current_programme["prompt_version"] == "1.2.0"
+    archives = list(workspace.glob("school-app-lifecycle.stopped-*.json"))
+    assert len(archives) == 1
+    archived = json.loads(archives[0].read_text(encoding="utf-8"))
+    assert (
+        archived["research_config"][lifecycle.RESEARCH_PROGRAMME_WORKER_CONFIG_KEY][
+            "prompt_version"
+        ]
+        == "1.1.1"
+    )
+
+
 def test_preview_build_is_real_api_and_uses_selected_backend_port(prepared):
     _repo, workspace, ops, app = prepared
     app.start(
