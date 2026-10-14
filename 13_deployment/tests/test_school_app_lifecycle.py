@@ -297,6 +297,152 @@ def test_start_dev_records_only_owned_backend_frontend_and_stop(prepared):
     assert ops.bound == {}
 
 
+def test_research_programme_worker_manifest_argv_restore_and_live_status(
+    prepared, monkeypatch
+):
+    repo, workspace, ops, app = prepared
+    external_manifest = workspace.parent / "programme-manifest.json"
+    manifest_sha = lifecycle.RESEARCH_PROGRAMME_MANIFEST_SHA256
+    programme_settings = {
+        "enabled": True,
+        "package_manifest_file": str(external_manifest),
+        "package_manifest_sha256": manifest_sha,
+        "processor_policy_sha256": lifecycle.RESEARCH_PROGRAMME_PROCESSOR_POLICY_SHA256,
+        "model_ref": lifecycle.RESEARCH_PROGRAMME_MODEL_REF,
+        "model_digest_sha256": lifecycle.RESEARCH_PROGRAMME_MODEL_DIGEST_SHA256,
+        "prompt_ref": lifecycle.RESEARCH_PROGRAMME_PROMPT_REF,
+        "prompt_version": lifecycle.RESEARCH_PROGRAMME_PROMPT_VERSION,
+        "poll_interval_seconds": 1.0,
+        "lease_seconds": 180,
+        "max_attempts": 5,
+        "shutdown_drain_seconds": 10.0,
+    }
+    settings = {
+        "school_research_runtime_file": str(workspace / "runtime.json"),
+        "school_research_runtime_sha256": "d" * 64,
+        "school_research_service_file": str(workspace / "service.json"),
+        "school_research_service_sha256": "e" * 64,
+        "school_research_cat_python": str(repo / "cat-python.exe"),
+        "school_research_cat_source": str(repo / "cat-source"),
+        "school_research_cat_dependencies": str(repo / "cat-deps"),
+        "school_research_base_url": "http://127.0.0.1:8182",
+        "school_research_study_use_file": str(workspace / "study-use.json"),
+        "school_research_study_use_sha256": "b" * 64,
+        "school_research_source_rights_verified": True,
+        "research_programme_runtime": {
+            "mode": "http",
+            "base_url": lifecycle.RESEARCH_PROGRAMME_RUNTIME_URL,
+        },
+        "research_programme_worker": programme_settings,
+    }
+    monkeypatch.setattr(
+        lifecycle,
+        "build_research_settings_kwargs",
+        lambda _args, _workspace: settings,
+    )
+    monkeypatch.setattr(
+        app,
+        "_validate_prepared_database",
+        lambda *args, **kwargs: {
+            "workspace_id": "ws-synthetic-1",
+            "database": "smhai_school_demo",
+            "port": 3314,
+        },
+    )
+    ops.dependency_status = lambda _port, _dependency: {
+        "status": "READY",
+        "integration": "RESEARCH_STAFF_PROGRAMME_OUTBOX",
+    }
+    input_config = {
+        name: str(workspace / f"{name}.json")
+        for name in lifecycle.RESEARCH_CONFIG_ARGUMENTS
+    }
+    input_config.update(
+        {
+            "research_runtime_sha256": "d" * 64,
+            "research_service_sha256": "e" * 64,
+            "research_study_use_file": workspace / "study-use.json",
+            "research_study_use_sha256": "b" * 64,
+            "research_source_rights_verified": True,
+            "research_latest_study_end": "2027-06-30T15:59:59Z",
+            lifecycle.RESEARCH_PROGRAMME_WORKER_ENABLED_INPUT_KEY: True,
+            "research_programme_manifest_file": external_manifest,
+            "research_programme_manifest_sha256": manifest_sha,
+        }
+    )
+
+    started = app.start(workspace, frontend_mode="dev", research_config=input_config)
+    backend_argv = ops.spawned[0][0]
+    assert started["research_programme_worker"] == {
+        "enabled": True,
+        "status": "READY",
+        "integration": "RESEARCH_STAFF_PROGRAMME_OUTBOX",
+    }
+    assert lifecycle.RESEARCH_PROGRAMME_WORKER_FLAG in backend_argv
+    assert backend_argv[
+        backend_argv.index("--research-programme-manifest-sha256") + 1
+    ] == manifest_sha
+
+    manifest = json.loads((workspace / lifecycle.MANIFEST_NAME).read_text(encoding="utf-8"))
+    stored_programme = manifest["research_config"][lifecycle.RESEARCH_PROGRAMME_WORKER_CONFIG_KEY]
+    assert stored_programme["runtime_url"] == "http://127.0.0.1:8161"
+    assert stored_programme["prompt_version"] == "1.0.3"
+    restored = lifecycle._research_config_from_manifest(
+        manifest, workspace, manifest["backend_port"], manifest["frontend_port"]
+    )
+    assert restored is not None and restored.programme_worker is not None
+    assert restored.programme_worker.manifest_sha256 == manifest_sha
+
+    status = app.status(workspace)
+    assert status["research_programme_worker"]["status"] == "READY"
+    stopped = app.stop(workspace)
+    assert stopped["status"] == "STOPPED"
+
+
+def test_research_programme_worker_manifest_rejects_prompt_pin_drift(
+    prepared, monkeypatch
+):
+    _repo, workspace, _ops, _app = prepared
+    program = {
+        "enabled": True,
+        "package_manifest_file": str(workspace.parent / "programme-manifest.json"),
+        "package_manifest_sha256": lifecycle.RESEARCH_PROGRAMME_MANIFEST_SHA256,
+        "runtime_url": lifecycle.RESEARCH_PROGRAMME_RUNTIME_URL,
+        "processor_policy_sha256": lifecycle.RESEARCH_PROGRAMME_PROCESSOR_POLICY_SHA256,
+        "model_ref": lifecycle.RESEARCH_PROGRAMME_MODEL_REF,
+        "model_digest_sha256": lifecycle.RESEARCH_PROGRAMME_MODEL_DIGEST_SHA256,
+        "prompt_ref": lifecycle.RESEARCH_PROGRAMME_PROMPT_REF,
+        "prompt_version": "1.0.2",
+        "poll_interval_seconds": 1.0,
+        "lease_seconds": 180,
+        "max_attempts": 5,
+        "shutdown_drain_seconds": 10.0,
+    }
+    config = {
+        name: str(workspace / f"{name}.json")
+        for name in lifecycle.RESEARCH_CONFIG_ARGUMENTS
+    }
+    config.update(
+        {
+            "research_runtime_sha256": "d" * 64,
+            "research_service_sha256": "e" * 64,
+            "research_study_use_file": str(workspace / "study-use.json"),
+            "research_study_use_sha256": "b" * 64,
+            "research_source_rights_verified": True,
+            "research_latest_study_end": "2027-06-30T15:59:59Z",
+            lifecycle.RESEARCH_PROGRAMME_WORKER_CONFIG_KEY: program,
+        }
+    )
+    manifest = {
+        "research_config": config,
+        "research_cat_port": 8182,
+    }
+    with pytest.raises(lifecycle.LifecycleError, match="pins no longer validate|settings changed"):
+        lifecycle._research_config_from_manifest(
+            manifest, workspace, 8088, 4178
+        )
+
+
 def test_preview_build_is_real_api_and_uses_selected_backend_port(prepared):
     _repo, workspace, ops, app = prepared
     app.start(

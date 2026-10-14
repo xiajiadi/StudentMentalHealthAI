@@ -52,6 +52,27 @@ _RESEARCH_SERVICE_FIELDS = frozenset(
     }
 )
 _RESEARCH_SERVICE_MAX_BYTES = 1024 * 1024
+_RESEARCH_PROGRAMME_MANIFEST_SHA256 = (
+    "f8af1a33487f175b02400fbfcf5f655cd93b40c7a5a35e0582dc363b11401a45"
+)
+_RESEARCH_PROGRAMME_PROCESSOR_POLICY_SHA256 = (
+    "70a71a65a2dad7b862ba792762069ef7ed4c02152f33dc87d0689cbc5aff1689"
+)
+_RESEARCH_PROGRAMME_MODEL_REF = "qwen2.5-7b-instruct-school-demo"
+_RESEARCH_PROGRAMME_MODEL_DIGEST_SHA256 = (
+    "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e"
+)
+_RESEARCH_PROGRAMME_PROMPT_REF = "PROMPT_staff_school_programme_research_v1"
+_RESEARCH_PROGRAMME_PROMPT_VERSION = "1.0.3"
+_RESEARCH_PROGRAMME_RUNTIME_URL = "http://127.0.0.1:8161"
+_RESEARCH_PROGRAMME_MANIFEST_MAX_BYTES = 4 * 1024 * 1024
+RESEARCH_PROGRAMME_MANIFEST_SHA256 = _RESEARCH_PROGRAMME_MANIFEST_SHA256
+RESEARCH_PROGRAMME_PROCESSOR_POLICY_SHA256 = _RESEARCH_PROGRAMME_PROCESSOR_POLICY_SHA256
+RESEARCH_PROGRAMME_MODEL_REF = _RESEARCH_PROGRAMME_MODEL_REF
+RESEARCH_PROGRAMME_MODEL_DIGEST_SHA256 = _RESEARCH_PROGRAMME_MODEL_DIGEST_SHA256
+RESEARCH_PROGRAMME_PROMPT_REF = _RESEARCH_PROGRAMME_PROMPT_REF
+RESEARCH_PROGRAMME_PROMPT_VERSION = _RESEARCH_PROGRAMME_PROMPT_VERSION
+RESEARCH_PROGRAMME_RUNTIME_URL = _RESEARCH_PROGRAMME_RUNTIME_URL
 _RESEARCH_CONFIG_ARGUMENTS = (
     "research_runtime_file",
     "research_runtime_sha256",
@@ -85,6 +106,9 @@ class ResearchCLIConfigError(PreparationError):
             "study_use_config_invalid",
             "research_worker_requires_pinned_study_use",
             "research_worker_config_invalid",
+            "research_programme_config_incomplete",
+            "research_programme_config_invalid",
+            "research_programme_worker_requires_pinned_study_use",
         }
         self.code = code if code in allowed else "research_config_invalid"
         super().__init__(self.code)
@@ -111,7 +135,7 @@ def build_school_settings_kwargs(
             raise ValueError(f"{name} must be between {MIN_SERVICE_PORT} and {MAX_SERVICE_PORT}")
     if llm_profile not in LLM_PROFILES:
         raise ValueError("unsupported LLM profile")
-    fixed_module_ports = {8170, 8160, 8190}
+    fixed_module_ports = {8170, 8160, 8161, 8190}
     if cat_port in {port, frontend_port} | fixed_module_ports:
         raise ValueError("cat_port conflicts with another service port")
     cat_settings = dict(MODULE_ENDPOINTS["cat"])
@@ -159,6 +183,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--research-source-rights-verified", action="store_true")
     parser.add_argument("--research-latest-study-end")
     parser.add_argument("--enable-research-education-worker", action="store_true")
+    parser.add_argument("--enable-research-programme-worker", action="store_true")
+    parser.add_argument("--research-programme-manifest-file", type=Path)
+    parser.add_argument("--research-programme-manifest-sha256")
     return parser
 
 
@@ -179,11 +206,24 @@ def build_research_settings_kwargs(args: argparse.Namespace, workspace: Path) ->
         for name, value in study_values.items()
     )
     worker_enabled = getattr(args, "enable_research_education_worker", False)
-    if type(worker_enabled) is not bool:
+    programme_worker_enabled = getattr(args, "enable_research_programme_worker", False)
+    programme_manifest_file = getattr(args, "research_programme_manifest_file", None)
+    programme_manifest_sha256 = getattr(args, "research_programme_manifest_sha256", None)
+    if type(worker_enabled) is not bool or type(programme_worker_enabled) is not bool:
         raise ResearchCLIConfigError("research_worker_config_invalid")
+    if not programme_worker_enabled and (
+        programme_manifest_file is not None or programme_manifest_sha256 is not None
+    ):
+        raise ResearchCLIConfigError("research_programme_config_invalid")
+    if programme_worker_enabled and (
+        programme_manifest_file is None or programme_manifest_sha256 is None
+    ):
+        raise ResearchCLIConfigError("research_programme_config_incomplete")
     if not any(supplied) and not study_present:
         if worker_enabled:
             raise ResearchCLIConfigError("research_worker_requires_pinned_study_use")
+        if programme_worker_enabled:
+            raise ResearchCLIConfigError("research_programme_worker_requires_pinned_study_use")
         return {}
     if not all(supplied):
         raise ResearchCLIConfigError("research_config_incomplete")
@@ -195,6 +235,8 @@ def build_research_settings_kwargs(args: argparse.Namespace, workspace: Path) ->
         raise ResearchCLIConfigError("study_use_config_incomplete")
     if worker_enabled and not all(study_supplied):
         raise ResearchCLIConfigError("research_worker_requires_pinned_study_use")
+    if programme_worker_enabled and not all(study_supplied):
+        raise ResearchCLIConfigError("research_programme_worker_requires_pinned_study_use")
 
     try:
         root = _validated_absolute_path(workspace, kind="directory")
@@ -239,6 +281,42 @@ def build_research_settings_kwargs(args: argparse.Namespace, workspace: Path) ->
                 "school_research_source_rights_verified": True,
                 "school_research_latest_study_end": study_end,
             }
+        programme_settings: dict[str, object] = {}
+        if programme_worker_enabled:
+            manifest_file = _validated_absolute_path(
+                programme_manifest_file, kind="file"
+            )
+            manifest_sha256 = _validated_sha256(programme_manifest_sha256)
+            if manifest_sha256 != _RESEARCH_PROGRAMME_MANIFEST_SHA256:
+                raise ResearchCLIConfigError("research_programme_config_invalid")
+            with manifest_file.open("rb") as stream:
+                manifest_bytes = stream.read(_RESEARCH_PROGRAMME_MANIFEST_MAX_BYTES + 1)
+            if (
+                not manifest_bytes
+                or len(manifest_bytes) > _RESEARCH_PROGRAMME_MANIFEST_MAX_BYTES
+                or hashlib.sha256(manifest_bytes).hexdigest() != manifest_sha256
+            ):
+                raise ResearchCLIConfigError("research_programme_config_invalid")
+            programme_settings = {
+                "research_programme_runtime": {
+                    "mode": "http",
+                    "base_url": _RESEARCH_PROGRAMME_RUNTIME_URL,
+                },
+                "research_programme_worker": {
+                    "enabled": True,
+                    "package_manifest_file": str(manifest_file),
+                    "package_manifest_sha256": manifest_sha256,
+                    "processor_policy_sha256": _RESEARCH_PROGRAMME_PROCESSOR_POLICY_SHA256,
+                    "model_ref": _RESEARCH_PROGRAMME_MODEL_REF,
+                    "model_digest_sha256": _RESEARCH_PROGRAMME_MODEL_DIGEST_SHA256,
+                    "prompt_ref": _RESEARCH_PROGRAMME_PROMPT_REF,
+                    "prompt_version": _RESEARCH_PROGRAMME_PROMPT_VERSION,
+                    "poll_interval_seconds": 1.0,
+                    "lease_seconds": 180,
+                    "max_attempts": 5,
+                    "shutdown_drain_seconds": 10.0,
+                },
+            }
     except ResearchCLIConfigError:
         raise
     except (OSError, ValueError, TypeError):
@@ -259,6 +337,7 @@ def build_research_settings_kwargs(args: argparse.Namespace, workspace: Path) ->
             {"research_education_worker": {"enabled": True}}
             if worker_enabled else {}
         ),
+        **programme_settings,
         **study_settings,
     }
 
@@ -524,6 +603,10 @@ def build_cli_settings_kwargs(
     settings_kwargs["research_education_worker"] = {
         "enabled": args.enable_research_education_worker
     }
+    if "research_programme_worker" not in research_kwargs:
+        settings_kwargs["research_programme_worker"] = {
+            "enabled": args.enable_research_programme_worker
+        }
     return settings_kwargs, research_kwargs
 
 

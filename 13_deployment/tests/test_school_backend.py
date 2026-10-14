@@ -155,6 +155,94 @@ def test_cat_port_keeps_the_selected_llm_profile_unchanged():
     }
 
 
+def test_programme_worker_cli_uses_fixed_8161_without_retargeting_normal_llm(
+    tmp_path, monkeypatch
+):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    runtime_file = workspace / "runtime.json"
+    runtime_file.write_text("{}", encoding="utf-8")
+    service_file = workspace / "service.json"
+    service_file.write_text(
+        json.dumps(
+            {
+                "schema": backend._RESEARCH_SERVICE_SCHEMA,
+                "school_scope": "school:1",
+                "resource_root": str(tmp_path),
+                "listener": {"host": "127.0.0.1", "port": 8182},
+                "signing": {},
+                "profiles": [],
+                "bindings": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    study_file = workspace / "study-use.json"
+    study_file.write_text("{}", encoding="utf-8")
+    cat_python = tmp_path / "cat-python.exe"
+    cat_python.touch()
+    cat_source = tmp_path / "cat-source"
+    cat_source.mkdir()
+    cat_dependencies = tmp_path / "cat-dependencies"
+    cat_dependencies.mkdir()
+    programme_manifest = tmp_path / "programme-manifest.json"
+    programme_manifest.write_text('{"synthetic":true}', encoding="utf-8")
+    manifest_sha = backend.hashlib.sha256(programme_manifest.read_bytes()).hexdigest()
+    monkeypatch.setattr(backend, "_RESEARCH_PROGRAMME_MANIFEST_SHA256", manifest_sha)
+    monkeypatch.setattr(backend, "RESEARCH_PROGRAMME_MANIFEST_SHA256", manifest_sha)
+    monkeypatch.setattr(backend, "_validate_study_use_policy", lambda **_kwargs: None)
+
+    args = backend.build_parser().parse_args(
+        [
+            "--workspace", str(workspace),
+            "--research-runtime-file", str(runtime_file),
+            "--research-runtime-sha256", backend.hashlib.sha256(runtime_file.read_bytes()).hexdigest(),
+            "--research-service-file", str(service_file),
+            "--research-service-sha256", backend.hashlib.sha256(service_file.read_bytes()).hexdigest(),
+            "--research-cat-python", str(cat_python),
+            "--research-cat-source", str(cat_source),
+            "--research-cat-dependencies", str(cat_dependencies),
+            "--research-study-use-file", str(study_file),
+            "--research-study-use-sha256", backend.hashlib.sha256(study_file.read_bytes()).hexdigest(),
+            "--research-source-rights-verified",
+            "--research-latest-study-end", "2027-06-30T15:59:59Z",
+            "--enable-research-programme-worker",
+            "--research-programme-manifest-file", str(programme_manifest),
+            "--research-programme-manifest-sha256", manifest_sha,
+        ]
+    )
+    settings, research = backend.build_cli_settings_kwargs(args)
+
+    assert settings["llm"]["base_url"] == "http://127.0.0.1:8160"
+    assert settings["research_programme_runtime"] == {
+        "mode": "http", "base_url": "http://127.0.0.1:8161"
+    }
+    worker = settings["research_programme_worker"]
+    assert worker["enabled"] is True
+    assert worker["package_manifest_sha256"] == manifest_sha
+    assert worker["prompt_version"] == "1.0.3"
+    assert worker["model_ref"] == "qwen2.5-7b-instruct-school-demo"
+    assert worker["lease_seconds"] == 180
+    assert settings["research_education_worker"]["enabled"] is False
+    assert research["school_research_study_use_sha256"] == backend.hashlib.sha256(
+        study_file.read_bytes()
+    ).hexdigest()
+
+
+def test_programme_worker_cli_requires_study_and_manifest_before_mapping(tmp_path):
+    args = backend.build_parser().parse_args(
+        [
+            "--workspace", str(tmp_path),
+            "--enable-research-programme-worker",
+            "--research-programme-manifest-file", str(tmp_path / "manifest.json"),
+            "--research-programme-manifest-sha256", "f" * 64,
+        ]
+    )
+    with pytest.raises(backend.ResearchCLIConfigError) as raised:
+        backend.build_research_settings_kwargs(args, tmp_path)
+    assert raised.value.code == "research_programme_worker_requires_pinned_study_use"
+
+
 @pytest.mark.parametrize("cat_port", [True, False, 8181.0, "8181", 1023, 65536])
 def test_cat_port_requires_a_tcp_port_integer_in_range(cat_port):
     with pytest.raises(ValueError, match="cat_port must be between 1024 and 65535"):

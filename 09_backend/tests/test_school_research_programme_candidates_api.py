@@ -134,3 +134,46 @@ async def test_specialist_candidate_review_has_closed_scope_and_staff_only_adopt
     assert forged_student_route.status_code == 404
     assert public_create_route.status_code == 405
     assert [call[0] for call in persistence.calls] == ["list", "get", "adopt"]
+
+
+async def test_generation_queue_is_specialist_csrf_idempotency_and_policy_closed():
+    app, persistence = mounted_app(BackendRole.STUDENT)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        root = "/api/v1/school/research-programme-candidates/tasks/TASK_demo/queue-generation"
+        denied = await client.post(root, json={})
+    assert denied.status_code == 403
+    assert persistence.calls == []
+
+    app, persistence = mounted_app(BackendRole.PSYCHOLOGICAL_SPECIALIST)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        root = "/api/v1/school/research-programme-candidates/tasks/TASK_demo/queue-generation"
+        no_idempotency = await client.post(
+            root, json={}, headers={"X-CSRF-Token": "synthetic-csrf-token"}
+        )
+        no_csrf = await client.post(root, json={}, headers={"Idempotency-Key": "queue-key"})
+        queued = await client.post(
+            root,
+            json={},
+            headers={
+                "Idempotency-Key": "queue-key",
+                "X-CSRF-Token": "synthetic-csrf-token",
+            },
+        )
+        extra = await client.post(
+            root,
+            json={"session_ref": "client-cannot-select-session"},
+            headers={
+                "Idempotency-Key": "queue-extra",
+                "X-CSRF-Token": "synthetic-csrf-token",
+            },
+        )
+    assert no_idempotency.status_code == 422
+    assert no_csrf.status_code == 403
+    assert queued.status_code == 200
+    assert queued.json()["data"]["status"] == "QUEUED"
+    assert queued.json()["data"]["student_feedback_eligible"] is False
+    assert "policy_hash" not in queued.json()["data"]
+    assert extra.status_code == 422
+    assert [call[0] for call in persistence.calls] == ["queue"]

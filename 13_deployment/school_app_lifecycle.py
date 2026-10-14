@@ -29,6 +29,13 @@ from school_backend import (
     DEFAULT_BACKEND_PORT,
     DEFAULT_FRONTEND_PORT,
     LLM_PROFILES,
+    RESEARCH_PROGRAMME_MANIFEST_SHA256,
+    RESEARCH_PROGRAMME_MODEL_DIGEST_SHA256,
+    RESEARCH_PROGRAMME_MODEL_REF,
+    RESEARCH_PROGRAMME_PROCESSOR_POLICY_SHA256,
+    RESEARCH_PROGRAMME_PROMPT_REF,
+    RESEARCH_PROGRAMME_PROMPT_VERSION,
+    RESEARCH_PROGRAMME_RUNTIME_URL,
     ResearchCLIConfigError,
     _parse_study_end,
     build_research_settings_kwargs,
@@ -85,7 +92,51 @@ RESEARCH_STUDY_USE_FLAGS = {
 }
 RESEARCH_EDUCATION_WORKER_CONFIG_KEY = "research_education_worker_enabled"
 RESEARCH_EDUCATION_WORKER_FLAG = "--enable-research-education-worker"
+RESEARCH_PROGRAMME_WORKER_CONFIG_KEY = "research_programme_worker"
+RESEARCH_PROGRAMME_WORKER_ENABLED_INPUT_KEY = "research_programme_worker_enabled"
+RESEARCH_PROGRAMME_MANIFEST_ARGUMENTS = (
+    "research_programme_manifest_file",
+    "research_programme_manifest_sha256",
+)
+RESEARCH_PROGRAMME_MANIFEST_FLAGS = {
+    "research_programme_manifest_file": "--research-programme-manifest-file",
+    "research_programme_manifest_sha256": "--research-programme-manifest-sha256",
+}
+RESEARCH_PROGRAMME_WORKER_FLAG = "--enable-research-programme-worker"
 RESEARCH_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+
+
+@dataclass(frozen=True, slots=True)
+class ResearchProgrammeProcessConfig:
+    manifest_file: str
+    manifest_sha256: str
+    runtime_url: str
+    processor_policy_sha256: str
+    model_ref: str
+    model_digest_sha256: str
+    prompt_ref: str
+    prompt_version: str
+    poll_interval_seconds: float
+    lease_seconds: int
+    max_attempts: int
+    shutdown_drain_seconds: float
+
+    def manifest_value(self) -> dict[str, object]:
+        return {
+            "enabled": True,
+            "package_manifest_file": self.manifest_file,
+            "package_manifest_sha256": self.manifest_sha256,
+            "runtime_url": self.runtime_url,
+            "processor_policy_sha256": self.processor_policy_sha256,
+            "model_ref": self.model_ref,
+            "model_digest_sha256": self.model_digest_sha256,
+            "prompt_ref": self.prompt_ref,
+            "prompt_version": self.prompt_version,
+            "poll_interval_seconds": self.poll_interval_seconds,
+            "lease_seconds": self.lease_seconds,
+            "max_attempts": self.max_attempts,
+            "shutdown_drain_seconds": self.shutdown_drain_seconds,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,6 +156,7 @@ class ResearchProcessConfig:
     source_rights_verified: bool = False
     latest_study_end: str | None = None
     education_worker_enabled: bool = False
+    programme_worker: ResearchProgrammeProcessConfig | None = None
 
     def cli_arguments(self) -> list[str]:
         values = {
@@ -140,6 +192,16 @@ class ResearchProcessConfig:
             if self.study_use_file is None or self.source_rights_verified is not True:
                 raise LifecycleError("Research education worker requires pinned study-use")
             arguments.append(RESEARCH_EDUCATION_WORKER_FLAG)
+        if self.programme_worker is not None:
+            arguments.extend(
+                (
+                    RESEARCH_PROGRAMME_WORKER_FLAG,
+                    RESEARCH_PROGRAMME_MANIFEST_FLAGS["research_programme_manifest_file"],
+                    self.programme_worker.manifest_file,
+                    RESEARCH_PROGRAMME_MANIFEST_FLAGS["research_programme_manifest_sha256"],
+                    self.programme_worker.manifest_sha256,
+                )
+            )
         return arguments
 
     def manifest_value(self) -> dict[str, object]:
@@ -163,6 +225,8 @@ class ResearchProcessConfig:
             )
         if self.education_worker_enabled:
             value[RESEARCH_EDUCATION_WORKER_CONFIG_KEY] = True
+        if self.programme_worker is not None:
+            value[RESEARCH_PROGRAMME_WORKER_CONFIG_KEY] = self.programme_worker.manifest_value()
         return value
 
 
@@ -431,22 +495,37 @@ def _validated_research_config(
         return None
     base_keys = set(RESEARCH_CONFIG_ARGUMENTS)
     study_keys = set(RESEARCH_CONFIG_ARGUMENTS + RESEARCH_STUDY_USE_ARGUMENTS)
-    worker_keys = study_keys | {RESEARCH_EDUCATION_WORKER_CONFIG_KEY}
+    education_keys = study_keys | {RESEARCH_EDUCATION_WORKER_CONFIG_KEY}
+    programme_input_keys = study_keys | {
+        RESEARCH_PROGRAMME_WORKER_ENABLED_INPUT_KEY,
+        *RESEARCH_PROGRAMME_MANIFEST_ARGUMENTS,
+    }
+    both_input_keys = programme_input_keys | {RESEARCH_EDUCATION_WORKER_CONFIG_KEY}
     if not isinstance(value, Mapping) or frozenset(value) not in {
         frozenset(base_keys),
         frozenset(study_keys),
-        frozenset(worker_keys),
+        frozenset(education_keys),
+        frozenset(programme_input_keys),
+        frozenset(both_input_keys),
     }:
         raise LifecycleError("Research process configuration must provide all pinned fields")
     supplied_keys = set(value)
     has_study = set(RESEARCH_STUDY_USE_ARGUMENTS).issubset(supplied_keys)
     worker_enabled = value.get(RESEARCH_EDUCATION_WORKER_CONFIG_KEY, False)
-    if type(worker_enabled) is not bool:
+    programme_enabled = value.get(RESEARCH_PROGRAMME_WORKER_ENABLED_INPUT_KEY, False)
+    programme_manifest_supplied = set(RESEARCH_PROGRAMME_MANIFEST_ARGUMENTS).issubset(
+        supplied_keys
+    )
+    if type(worker_enabled) is not bool or type(programme_enabled) is not bool:
         raise LifecycleError("Research education worker configuration is invalid")
     if worker_enabled and not has_study:
         raise LifecycleError("Research education worker requires pinned study-use")
+    if programme_enabled and (not has_study or not programme_manifest_supplied):
+        raise LifecycleError("Research programme worker requires pinned study-use and manifest")
+    if not programme_enabled and set(RESEARCH_PROGRAMME_MANIFEST_ARGUMENTS) & supplied_keys:
+        raise LifecycleError("Research programme manifest requires explicit enablement")
     if all(value[name] is None for name in RESEARCH_CONFIG_ARGUMENTS):
-        if worker_enabled:
+        if worker_enabled or programme_enabled:
             raise LifecycleError("Research education worker requires pinned study-use")
         if has_study and any(
             value[name] is not None
@@ -478,6 +557,17 @@ def _validated_research_config(
                 raise LifecycleError("Research study-use configuration is invalid")
             args_values[name] = item
     args_values["enable_research_education_worker"] = worker_enabled
+    args_values["enable_research_programme_worker"] = programme_enabled
+    if programme_enabled:
+        manifest_file = value["research_programme_manifest_file"]
+        if isinstance(manifest_file, str):
+            manifest_file = Path(manifest_file)
+        if not isinstance(manifest_file, Path):
+            raise LifecycleError("Research programme manifest path is invalid")
+        args_values["research_programme_manifest_file"] = manifest_file
+        args_values["research_programme_manifest_sha256"] = value[
+            "research_programme_manifest_sha256"
+        ]
 
     try:
         settings = build_research_settings_kwargs(
@@ -491,6 +581,51 @@ def _validated_research_config(
     match = re.fullmatch(r"http://127\.0\.0\.1:([0-9]{1,5})", str(base_url))
     if match is None:
         raise LifecycleError("Research service must use its pinned loopback listener")
+    programme_config = settings.get("research_programme_worker")
+    if programme_enabled:
+        expected_programme_fields = {
+            "enabled", "package_manifest_file", "package_manifest_sha256",
+            "processor_policy_sha256", "model_ref", "model_digest_sha256",
+            "prompt_ref", "prompt_version", "poll_interval_seconds", "lease_seconds",
+            "max_attempts", "shutdown_drain_seconds",
+        }
+        if type(programme_config) is not dict or set(programme_config) != expected_programme_fields:
+            raise LifecycleError("Research programme worker pins are incomplete")
+        programme_runtime = settings.get("research_programme_runtime")
+        if (
+            type(programme_runtime) is not dict
+            or programme_runtime.get("mode") != "http"
+            or programme_runtime.get("base_url") != RESEARCH_PROGRAMME_RUNTIME_URL
+            or programme_config.get("enabled") is not True
+            or programme_config.get("package_manifest_sha256")
+            != RESEARCH_PROGRAMME_MANIFEST_SHA256
+            or programme_config.get("processor_policy_sha256")
+            != RESEARCH_PROGRAMME_PROCESSOR_POLICY_SHA256
+            or programme_config.get("model_ref") != RESEARCH_PROGRAMME_MODEL_REF
+            or programme_config.get("model_digest_sha256")
+            != RESEARCH_PROGRAMME_MODEL_DIGEST_SHA256
+            or programme_config.get("prompt_ref") != RESEARCH_PROGRAMME_PROMPT_REF
+            or programme_config.get("prompt_version") != RESEARCH_PROGRAMME_PROMPT_VERSION
+        ):
+            raise LifecycleError("Research programme worker pins differ from trusted policy")
+        programme_process_config = ResearchProgrammeProcessConfig(
+            manifest_file=str(programme_config["package_manifest_file"]),
+            manifest_sha256=str(programme_config["package_manifest_sha256"]),
+            runtime_url=programme_runtime["base_url"],
+            processor_policy_sha256=programme_config["processor_policy_sha256"],
+            model_ref=programme_config["model_ref"],
+            model_digest_sha256=programme_config["model_digest_sha256"],
+            prompt_ref=programme_config["prompt_ref"],
+            prompt_version=programme_config["prompt_version"],
+            poll_interval_seconds=programme_config["poll_interval_seconds"],
+            lease_seconds=programme_config["lease_seconds"],
+            max_attempts=programme_config["max_attempts"],
+            shutdown_drain_seconds=programme_config["shutdown_drain_seconds"],
+        )
+    else:
+        if programme_config is not None:
+            raise LifecycleError("Disabled research programme settings are unexpected")
+        programme_process_config = None
 
     return ResearchProcessConfig(
         runtime_file=str(settings["school_research_runtime_file"]),
@@ -512,6 +647,7 @@ def _validated_research_config(
             if args_values.get("research_latest_study_end") is not None else None
         ),
         education_worker_enabled=worker_enabled,
+        programme_worker=programme_process_config,
     )
 
 
@@ -528,17 +664,25 @@ def _research_config_from_manifest(
     raw_keys = set(raw) if type(raw) is dict else set()
     base_keys = set(RESEARCH_CONFIG_ARGUMENTS)
     study_keys = set(RESEARCH_CONFIG_ARGUMENTS + RESEARCH_STUDY_USE_ARGUMENTS)
-    worker_keys = study_keys | {RESEARCH_EDUCATION_WORKER_CONFIG_KEY}
+    education_keys = study_keys | {RESEARCH_EDUCATION_WORKER_CONFIG_KEY}
+    programme_keys = study_keys | {RESEARCH_PROGRAMME_WORKER_CONFIG_KEY}
+    both_keys = programme_keys | {RESEARCH_EDUCATION_WORKER_CONFIG_KEY}
     has_study = study_keys.issubset(raw_keys)
     worker_enabled = False
     if RESEARCH_EDUCATION_WORKER_CONFIG_KEY in raw_keys:
         worker_enabled = raw.get(RESEARCH_EDUCATION_WORKER_CONFIG_KEY)
         if type(worker_enabled) is not bool or worker_enabled is not True or not has_study:
             raise LifecycleError("Lifecycle research education-worker configuration is invalid")
+    programme_enabled = RESEARCH_PROGRAMME_WORKER_CONFIG_KEY in raw_keys
+    programme_raw = raw.get(RESEARCH_PROGRAMME_WORKER_CONFIG_KEY) if programme_enabled else None
+    if programme_enabled and (not has_study or type(programme_raw) is not dict):
+        raise LifecycleError("Lifecycle research programme worker configuration is invalid")
     if type(raw) is not dict or frozenset(raw_keys) not in {
         frozenset(base_keys),
         frozenset(study_keys),
-        frozenset(worker_keys),
+        frozenset(education_keys),
+        frozenset(programme_keys),
+        frozenset(both_keys),
     }:
         raise LifecycleError("Lifecycle research configuration is invalid")
     for name in RESEARCH_CONFIG_ARGUMENTS:
@@ -586,11 +730,71 @@ def _research_config_from_manifest(
         }
     elif any(name.startswith("research_study_use") for name in raw_keys):
         raise LifecycleError("Lifecycle research study-use configuration is incomplete")
+    programme_config = None
+    if programme_enabled:
+        program_manifest_path = programme_raw.get("package_manifest_file")
+        program_manifest_sha = programme_raw.get("package_manifest_sha256")
+        if (
+            type(program_manifest_path) is not str
+            or not Path(program_manifest_path).is_absolute()
+            or ".." in Path(program_manifest_path).parts
+            or type(program_manifest_sha) is not str
+            or RESEARCH_SHA256.fullmatch(program_manifest_sha) is None
+        ):
+            raise LifecycleError("Lifecycle research programme manifest pin is invalid")
+        args_values: dict[str, object] = {
+            name: Path(raw[name])
+            if name in {"research_runtime_file", "research_service_file", "research_cat_python", "research_cat_source", "research_cat_dependencies"}
+            else raw[name]
+            for name in RESEARCH_CONFIG_ARGUMENTS
+        }
+        args_values.update(study_values)
+        if "study_use_file" in args_values:
+            args_values["research_study_use_file"] = Path(args_values.pop("study_use_file"))
+            args_values["research_study_use_sha256"] = args_values.pop("study_use_sha256")
+            args_values["research_source_rights_verified"] = args_values.pop("source_rights_verified")
+            args_values["research_latest_study_end"] = args_values.pop("latest_study_end")
+        args_values["enable_research_education_worker"] = worker_enabled
+        args_values["enable_research_programme_worker"] = True
+        args_values["research_programme_manifest_file"] = Path(program_manifest_path)
+        args_values["research_programme_manifest_sha256"] = program_manifest_sha
+        try:
+            rebuilt = build_research_settings_kwargs(argparse.Namespace(**args_values), target)
+        except Exception:  # noqa: BLE001 - stored config must be revalidated against current pins.
+            raise LifecycleError("Lifecycle research programme pins no longer validate") from None
+        expected_programme = rebuilt.get("research_programme_worker")
+        expected_runtime = rebuilt.get("research_programme_runtime")
+        expected_manifest_programme = (
+            {**expected_programme, "runtime_url": expected_runtime.get("base_url")}
+            if type(expected_programme) is dict and type(expected_runtime) is dict
+            else None
+        )
+        if (
+            expected_manifest_programme != programme_raw
+            or type(expected_runtime) is not dict
+            or expected_runtime.get("mode") != "http"
+            or expected_runtime.get("base_url") != RESEARCH_PROGRAMME_RUNTIME_URL
+        ):
+            raise LifecycleError("Lifecycle research programme settings changed")
+        programme_config = ResearchProgrammeProcessConfig(
+            manifest_file=expected_programme["package_manifest_file"],
+            manifest_sha256=expected_programme["package_manifest_sha256"],
+            runtime_url=expected_runtime["base_url"],
+            processor_policy_sha256=expected_programme["processor_policy_sha256"],
+            model_ref=expected_programme["model_ref"],
+            model_digest_sha256=expected_programme["model_digest_sha256"],
+            prompt_ref=expected_programme["prompt_ref"],
+            prompt_version=expected_programme["prompt_version"],
+            poll_interval_seconds=expected_programme["poll_interval_seconds"],
+            lease_seconds=expected_programme["lease_seconds"],
+            max_attempts=expected_programme["max_attempts"],
+            shutdown_drain_seconds=expected_programme["shutdown_drain_seconds"],
+        )
     port = manifest.get("research_cat_port")
     if (
         type(port) is not int
         or not 1024 <= port <= 65535
-        or port in {backend_port, frontend_port, 8160, 8170, 8180, 8190}
+        or port in {backend_port, frontend_port, 8160, 8161, 8170, 8180, 8190}
     ):
         raise LifecycleError("Lifecycle research CAT port is invalid")
     return ResearchProcessConfig(
@@ -603,6 +807,7 @@ def _research_config_from_manifest(
         cat_dependencies=raw["research_cat_dependencies"],
         port=port,
         education_worker_enabled=worker_enabled,
+        programme_worker=programme_config,
         **study_values,
     )
 
@@ -786,7 +991,12 @@ if ($null -eq $p) { 'null'; exit 0 }
             return False
 
     def dependency_status(self, port: int, dependency: str) -> dict[str, str] | None:
-        if dependency != "research_education_worker":
+        integrations = {
+            "research_education_worker": "RESEARCH_OUTBOX",
+            "research_programme_worker": "RESEARCH_STAFF_PROGRAMME_OUTBOX",
+        }
+        expected_integration = integrations.get(dependency)
+        if expected_integration is None:
             return None
         try:
             url = f"http://127.0.0.1:{port}/health/dependencies"
@@ -805,10 +1015,10 @@ if ($null -eq $p) { 'null'; exit 0 }
                 or set(value) != {"status", "integration"}
                 or type(value.get("status")) is not str
                 or re.fullmatch(r"[A-Z][A-Z_]{0,31}", value["status"]) is None
-                or value.get("integration") != "RESEARCH_OUTBOX"
+                or value.get("integration") != expected_integration
             ):
                 return None
-            return {"status": value["status"], "integration": "RESEARCH_OUTBOX"}
+            return {"status": value["status"], "integration": expected_integration}
         except (OSError, urllib.error.URLError, urllib.error.HTTPError, ValueError):
             return None
 
@@ -1181,7 +1391,16 @@ class SchoolAppLifecycle:
             )
             manifest["updated_at"] = _utc_now()
             _atomic_write(manifest_path, manifest)
-            return _public_status(manifest)
+            result = _public_status(manifest)
+            if research_config is not None and research_config.programme_worker is not None:
+                result["research_programme_worker"] = self._worker_dependency_status(
+                    int(manifest["backend_port"]),
+                    "research_programme_worker",
+                    "RESEARCH_STAFF_PROGRAMME_OUTBOX",
+                    enabled=True,
+                    backend_ready=True,
+                )
+            return result
         except Exception as exc:  # noqa: BLE001 - preserve started processes and redact details.
             manifest["state"] = "PARTIAL_FAILURE"
             manifest["failure_type"] = type(exc).__name__
@@ -1375,7 +1594,53 @@ class SchoolAppLifecycle:
                     "integration": "RESEARCH_OUTBOX",
                 }
             result["research_education_worker"] = worker_state
+            if research_config.programme_worker is None:
+                result["research_programme_worker"] = {
+                    "enabled": False,
+                    "status": "DISABLED",
+                    "integration": "RESEARCH_STAFF_PROGRAMME_OUTBOX",
+                }
+            else:
+                backend_state = listeners.get("backend", {})
+                result["research_programme_worker"] = self._worker_dependency_status(
+                    int(manifest["backend_port"]),
+                    "research_programme_worker",
+                    "RESEARCH_STAFF_PROGRAMME_OUTBOX",
+                    enabled=True,
+                    backend_ready=(
+                        backend_state.get("owned_process") is True
+                        and backend_state.get("listener") == "OWNED"
+                        and backend_state.get("ready") is True
+                    ),
+                )
         return result
+
+    def _worker_dependency_status(
+        self,
+        backend_port: int,
+        dependency: str,
+        integration: str,
+        *,
+        enabled: bool,
+        backend_ready: bool,
+    ) -> dict[str, str | bool]:
+        if not enabled:
+            return {"enabled": False, "status": "DISABLED", "integration": integration}
+        observed = None
+        if backend_ready:
+            probe = getattr(self.ops, "dependency_status", None)
+            if callable(probe):
+                try:
+                    observed = probe(backend_port, dependency)
+                except Exception:  # noqa: BLE001 - lifecycle status must not echo diagnostics.
+                    observed = None
+        return {
+            "enabled": True,
+            "status": observed.get("status", "UNVERIFIED")
+            if isinstance(observed, dict) and observed.get("integration") == integration
+            else "UNVERIFIED",
+            "integration": integration,
+        }
 
     def stop(self, workspace: Path) -> dict[str, Any]:
         if not IS_WINDOWS:
@@ -2473,6 +2738,16 @@ def _public_status(manifest: dict[str, Any]) -> dict[str, Any]:
             "status": "UNVERIFIED" if worker_enabled else "DISABLED",
             "integration": "RESEARCH_OUTBOX",
         }
+        programme_enabled = (
+            isinstance(research_config, dict)
+            and type(research_config.get(RESEARCH_PROGRAMME_WORKER_CONFIG_KEY)) is dict
+            and research_config[RESEARCH_PROGRAMME_WORKER_CONFIG_KEY].get("enabled") is True
+        )
+        result["research_programme_worker"] = {
+            "enabled": programme_enabled,
+            "status": "UNVERIFIED" if programme_enabled else "DISABLED",
+            "integration": "RESEARCH_STAFF_PROGRAMME_OUTBOX",
+        }
     return result
 
 
@@ -2511,6 +2786,13 @@ def build_parser() -> argparse.ArgumentParser:
             value_type = Path if name == "research_study_use_file" else str
             start.add_argument(RESEARCH_STUDY_USE_FLAGS[name], dest=name, type=value_type)
     start.add_argument(RESEARCH_EDUCATION_WORKER_FLAG, action="store_true")
+    start.add_argument(RESEARCH_PROGRAMME_WORKER_FLAG, action="store_true")
+    for name in RESEARCH_PROGRAMME_MANIFEST_ARGUMENTS:
+        start.add_argument(
+            RESEARCH_PROGRAMME_MANIFEST_FLAGS[name],
+            dest=name,
+            type=Path if name.endswith("_file") else str,
+        )
     return parser
 
 
@@ -2542,6 +2824,20 @@ def main(argv: list[str] | None = None) -> int:
             )
             if args.enable_research_education_worker:
                 supplied_research[RESEARCH_EDUCATION_WORKER_CONFIG_KEY] = True
+            programme_inputs_supplied = (
+                args.enable_research_programme_worker
+                or args.research_programme_manifest_file is not None
+                or args.research_programme_manifest_sha256 is not None
+            )
+            if programme_inputs_supplied:
+                supplied_research.update(
+                    {
+                        RESEARCH_PROGRAMME_WORKER_ENABLED_INPUT_KEY:
+                            args.enable_research_programme_worker,
+                        "research_programme_manifest_file": args.research_programme_manifest_file,
+                        "research_programme_manifest_sha256": args.research_programme_manifest_sha256,
+                    }
+                )
             research_config = (
                 supplied_research
                 if any(
@@ -2550,7 +2846,11 @@ def main(argv: list[str] | None = None) -> int:
                         name != "research_source_rights_verified" or value is True
                     )
                     and (
-                        name != RESEARCH_EDUCATION_WORKER_CONFIG_KEY or value is True
+                        name not in {
+                            RESEARCH_EDUCATION_WORKER_CONFIG_KEY,
+                            RESEARCH_PROGRAMME_WORKER_ENABLED_INPUT_KEY,
+                        }
+                        or value is True
                     )
                     for name, value in supplied_research.items()
                 )

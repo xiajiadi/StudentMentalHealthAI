@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 import re
 from datetime import datetime, timedelta
+from pathlib import Path, PureWindowsPath
 from typing import Any, Literal
 from urllib.parse import urlparse
 
@@ -25,6 +28,14 @@ ClientMode = Literal["http", "contract_fake"]
 PersistenceMode = Literal["memory", "mysql"]
 IdentityProfile = Literal["legacy_demo", "school_tenant"]
 _SCHOOL_CSRF_SECRET_PATTERN = re.compile(r"[0-9a-fA-F]{64}\Z")
+_SHA256_PATTERN = re.compile(r"[0-9a-f]{64}\Z")
+_RESEARCH_PROGRAMME_MANIFEST_SHA256 = (
+    "f8af1a33487f175b02400fbfcf5f655cd93b40c7a5a35e0582dc363b11401a45"
+)
+_RESEARCH_PROGRAMME_SOURCE_STUDY_REF = "school-noncommercial-rag-research-2027-06"
+RESEARCH_PROGRAMME_PROCESSOR_POLICY_SHA256 = (
+    "70a71a65a2dad7b862ba792762069ef7ed4c02152f33dc87d0689cbc5aff1689"
+)
 
 
 def school_csrf_secret_bytes(secret: str | SecretStr | None) -> bytes:
@@ -197,6 +208,70 @@ class ResearchEducationWorkerSettings(BaseModel):
         return value
 
 
+class ResearchProgrammeWorkerSettings(BaseModel):
+    """Explicit, non-production staff-programme generation lane."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: StrictBool = False
+    package_manifest_file: str | None = Field(default=None, repr=False)
+    package_manifest_sha256: str | None = None
+    processor_policy_sha256: str | None = None
+    model_ref: str | None = None
+    model_digest_sha256: str | None = None
+    prompt_ref: str | None = None
+    prompt_version: str | None = None
+    poll_interval_seconds: float = Field(default=1.0, ge=0.01, le=60, strict=True)
+    lease_seconds: int = Field(default=180, ge=5, le=3600, strict=True)
+    max_attempts: int = Field(default=5, ge=1, le=20, strict=True)
+    shutdown_drain_seconds: float = Field(default=10.0, gt=0, le=120, strict=True)
+
+    @field_validator(
+        "poll_interval_seconds", "lease_seconds", "max_attempts", "shutdown_drain_seconds",
+        mode="before",
+    )
+    @classmethod
+    def validate_finite_numeric_settings(cls, value: Any) -> Any:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("research programme numeric settings must be JSON numbers")
+        if not math.isfinite(float(value)):
+            raise ValueError("research programme numeric settings must be finite")
+        return value
+
+    @field_validator(
+        "package_manifest_sha256", "processor_policy_sha256", "model_digest_sha256"
+    )
+    @classmethod
+    def validate_optional_hash(cls, value: str | None) -> str | None:
+        if value is not None and (type(value) is not str or not _SHA256_PATTERN.fullmatch(value)):
+            raise ValueError("research programme pins must be lowercase SHA-256 values")
+        return value
+
+    @model_validator(mode="after")
+    def validate_enabled_pins(self) -> ResearchProgrammeWorkerSettings:
+        if not self.enabled:
+            return self
+        if (
+            not isinstance(self.package_manifest_file, str)
+            or not self.package_manifest_file
+            or not (
+                Path(self.package_manifest_file).is_absolute()
+                or PureWindowsPath(self.package_manifest_file).is_absolute()
+            )
+            or any(part == ".." for part in re.split(r"[\\/]", self.package_manifest_file))
+            or not self.package_manifest_sha256
+            or self.package_manifest_sha256 != _RESEARCH_PROGRAMME_MANIFEST_SHA256
+            or self.processor_policy_sha256 != RESEARCH_PROGRAMME_PROCESSOR_POLICY_SHA256
+            or self.model_ref != "qwen2.5-7b-instruct-school-demo"
+            or self.model_digest_sha256
+            != "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e"
+            or self.prompt_ref != "PROMPT_staff_school_programme_research_v1"
+            or self.prompt_version != "1.0.3"
+        ):
+            raise ValueError("research programme generation requires explicit server pins")
+        return self
+
+
 class BackendSettings(BaseSettings):
     """Backend-local settings; the frozen config.v1 remains unchanged."""
 
@@ -262,6 +337,9 @@ class BackendSettings(BaseSettings):
     research_education_worker: ResearchEducationWorkerSettings = Field(
         default_factory=ResearchEducationWorkerSettings
     )
+    research_programme_worker: ResearchProgrammeWorkerSettings = Field(
+        default_factory=ResearchProgrammeWorkerSettings
+    )
     m0_claim_boundary_observer_enabled: bool = False
     school_research_enabled: bool = False
     school_research_runtime_file: str | None = Field(default=None, repr=False)
@@ -292,6 +370,12 @@ class BackendSettings(BaseSettings):
             mode="contract_fake",
             base_url="http://127.0.0.1:8160",
         )
+    )
+    research_programme_runtime: LLMModuleClientSettings = Field(
+        default_factory=lambda: LLMModuleClientSettings(
+            mode="contract_fake", base_url="http://127.0.0.1:8161"
+        ),
+        repr=False,
     )
     safety: ModuleClientSettings = Field(default_factory=ModuleClientSettings)
 
@@ -386,6 +470,37 @@ class BackendSettings(BaseSettings):
                 "research education worker requires nonproduction managed school research "
                 "with MySQL and a pinned study-use policy"
             )
+        if self.research_programme_worker.enabled and (
+            self.environment == "production"
+            or self.identity_profile != "school_tenant"
+            or self.persistence_mode != "mysql"
+            or not self.school_research_enabled
+            or not self.school_research_managed_enabled
+            or not self.school_research_study_use_file
+            or self.school_research_source_rights_verified is not True
+            or self.safety.mode != "http"
+            or self.research_programme_runtime.mode != "http"
+            or self.research_programme_runtime.base_url != "http://127.0.0.1:8161"
+            or urlparse(self.safety.base_url).scheme != "http"
+            or urlparse(self.safety.base_url).hostname not in {"127.0.0.1", "localhost"}
+            or urlparse(self.safety.base_url).path not in {"", "/"}
+            or urlparse(self.safety.base_url).query
+            or urlparse(self.safety.base_url).fragment
+        ):
+            raise ValueError(
+                "research programme worker requires nonproduction managed school research, "
+                "verified study scope and real local Safety/Runtime dependencies"
+            )
+        if self.research_programme_worker.enabled:
+            bounded_runtime_window = (
+                min(float(self.research_programme_runtime.timeout.read), 120.0)
+                + 3.0 * float(self.safety.timeout.read)
+                + 15.0
+            )
+            if self.research_programme_worker.lease_seconds < bounded_runtime_window:
+                raise ValueError(
+                    "research programme lease must exceed the bounded Safety and Runtime window"
+                )
         if self.environment == "production":
             if self.identity_profile != "school_tenant":
                 raise ValueError("production requires the school_tenant identity profile")
@@ -420,3 +535,45 @@ class BackendSettings(BaseSettings):
     @property
     def research_education_worker_enabled(self) -> bool:
         return self.research_education_worker.enabled
+
+    def research_programme_job_policy_sha256_for(
+        self, *, school_study_ref: str
+    ) -> str | None:
+        """Bind school-use and source-use references to the outbox policy identity."""
+        worker = self.research_programme_worker
+        if (
+            type(school_study_ref) is not str
+            or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}", school_study_ref) is None
+        ):
+            return None
+        values = (
+            worker.processor_policy_sha256,
+            worker.package_manifest_sha256,
+            worker.model_ref,
+            worker.model_digest_sha256,
+            worker.prompt_ref,
+            worker.prompt_version,
+            self.school_research_study_use_sha256,
+            self.research_programme_runtime.base_url,
+        )
+        if not worker.enabled or any(value is None for value in values):
+            return None
+        payload = {
+            "schema": "psynova.research-staff-programme-job-policy.v1",
+            "policy_version": "RESEARCH_STAFF_PROGRAMME_POLICY_V1",
+            "processor_policy_sha256": worker.processor_policy_sha256,
+            "source_manifest_sha256": worker.package_manifest_sha256,
+            "source_study_ref": _RESEARCH_PROGRAMME_SOURCE_STUDY_REF,
+            "study_policy_sha256": self.school_research_study_use_sha256,
+            "school_study_ref": school_study_ref,
+            "programme_runtime": self.research_programme_runtime.base_url,
+            "programme_ref": "PROGRAMME_SCHOOL_CONNECTEDNESS_REFERENCE_V1",
+            "model_ref": worker.model_ref,
+            "model_digest_sha256": worker.model_digest_sha256,
+            "prompt_ref": worker.prompt_ref,
+            "prompt_version": worker.prompt_version,
+        }
+        canonical = json.dumps(
+            payload, ensure_ascii=True, sort_keys=True, separators=(",", ":")
+        ).encode("ascii")
+        return hashlib.sha256(canonical).hexdigest()

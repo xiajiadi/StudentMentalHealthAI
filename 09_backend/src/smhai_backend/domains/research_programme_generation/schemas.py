@@ -19,6 +19,7 @@ RISK_SCOPE = "general_education_only"
 SAFETY_GATE_VERSION = "backend-research-programme-safety-gates.v1"
 STUDY_END_UTC = datetime(2027, 6, 30, 15, 59, 59, tzinfo=UTC)
 EVIDENCE_LIMIT = "POTENTIAL_SCHOOL_PROGRAMME_FRAMEWORKS_ONLY_OUTCOMES_NOT_ESTABLISHED"
+CLAIM_BOUNDARY_VERSION = "backend-research-programme-claim-boundary.v1"
 _CHUNK_ID = re.compile(r"^CHUNK_[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$")
 _INLINE_CITATION = re.compile(r"\[(CHUNK_[A-Za-z0-9][A-Za-z0-9_.-]{0,159})\]")
 
@@ -65,6 +66,7 @@ class ResearchProgrammeCandidate:
     retrieval_id: str
     source_manifest_sha256: str
     study_ref: str
+    claim_boundary_version: str = field(default=CLAIM_BOUNDARY_VERSION, init=False)
     valid_through_month: str
     prompt_id: str
     prompt_version: str

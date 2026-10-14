@@ -24,6 +24,8 @@ from .models import SchoolResearchEducationJob, SchoolResearchSession
 _TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _POLICY_VERSION = "NO_RESEARCH_PERSONALIZED_POLICY_V1"
+STAFF_PROGRAMME_POLICY_VERSION = "RESEARCH_STAFF_PROGRAMME_POLICY_V1"
+_POLICY_VERSIONS = frozenset({_POLICY_VERSION, STAFF_PROGRAMME_POLICY_VERSION})
 _TERMINAL_STATES = frozenset(
     {"HELD", "ABSTAINED", "REVIEW_REQUIRED", "CRISIS_ROUTED", "FAILED", "CANCELLED"}
 )
@@ -210,13 +212,20 @@ class SchoolResearchEducationJobRepository:
             or profile_version_number <= 0
         ):
             raise ValueError("profile_version_number must be positive")
-        if policy_version != _POLICY_VERSION:
+        if type(policy_version) is not str or policy_version not in _POLICY_VERSIONS:
             raise ValueError("policy_version is not enabled for research sessions")
+        if policy_version == STAFF_PROGRAMME_POLICY_VERSION and policy_hash is None:
+            raise ValueError("staff programme policy requires a pinned policy hash")
         if not isinstance(response_origin, str) or response_origin not in {
             "PUBLIC_OBSERVED",
             "MODEL_GENERATED",
         }:
             raise ValueError("response_origin is not supported")
+        if (
+            policy_version == STAFF_PROGRAMME_POLICY_VERSION
+            and response_origin != "PUBLIC_OBSERVED"
+        ):
+            raise ValueError("staff programme jobs require public observed sessions")
         _utc_naive(now)  # validate the caller's timestamp even though enqueue stores no clock field
         scope = {
             **ids,
@@ -247,7 +256,11 @@ class SchoolResearchEducationJobRepository:
         ):
             raise OptimisticConcurrencyConflict("research session is not completed")
 
-        lookup = self._key_query(school_id=school_id, research_session_id=research_session_id)
+        lookup = self._key_query(
+            school_id=school_id,
+            research_session_id=research_session_id,
+            policy_version=policy_version,
+        )
         existing = await self.session.scalar(lookup.with_for_update())
         if existing is not None:
             self._ensure_replay(existing, scope, policy_version, policy_hash)
@@ -286,6 +299,7 @@ class SchoolResearchEducationJobRepository:
         limit: int = 1,
         lease_seconds: int = 60,
         max_attempts: int = 5,
+        policy_version: str = _POLICY_VERSION,
         now: datetime | None = None,
     ) -> list[ResearchEducationJobClaim]:
         school_id = _require_id(school_id, "school_id")
@@ -293,6 +307,8 @@ class SchoolResearchEducationJobRepository:
         _bounded_int(limit, "limit", 1, 100)
         _bounded_int(lease_seconds, "lease_seconds", 5, 3600)
         _bounded_int(max_attempts, "max_attempts", 1, 20)
+        if type(policy_version) is not str or policy_version not in _POLICY_VERSIONS:
+            raise ValueError("policy_version is not enabled for research sessions")
         clock = _utc_naive(now)
         eligible = or_(
             SchoolResearchEducationJob.status == "QUEUED",
@@ -305,9 +321,19 @@ class SchoolResearchEducationJobRepository:
                 SchoolResearchEducationJob.lease_expires_at <= clock,
             ),
         )
+        policy_scope = (
+            SchoolResearchEducationJob.response_origin == "PUBLIC_OBSERVED"
+            if policy_version == STAFF_PROGRAMME_POLICY_VERSION
+            else True
+        )
         result = await self.session.scalars(
             select(SchoolResearchEducationJob)
-            .where(SchoolResearchEducationJob.school_id == school_id, eligible)
+            .where(
+                SchoolResearchEducationJob.school_id == school_id,
+                SchoolResearchEducationJob.policy_version == policy_version,
+                policy_scope,
+                eligible,
+            )
             .order_by(SchoolResearchEducationJob.created_at, SchoolResearchEducationJob.id)
             .limit(limit)
             .with_for_update(skip_locked=True)
@@ -442,12 +468,12 @@ class SchoolResearchEducationJobRepository:
         return job
 
     @staticmethod
-    def _key_query(*, school_id: int, research_session_id: int):
+    def _key_query(*, school_id: int, research_session_id: int, policy_version: str):
         return select(SchoolResearchEducationJob).where(
             SchoolResearchEducationJob.school_id == school_id,
             SchoolResearchEducationJob.research_session_id == research_session_id,
             SchoolResearchEducationJob.job_kind == SchoolResearchEducationJobRepository.JOB_KIND,
-            SchoolResearchEducationJob.policy_version == _POLICY_VERSION,
+            SchoolResearchEducationJob.policy_version == policy_version,
         )
 
     @staticmethod

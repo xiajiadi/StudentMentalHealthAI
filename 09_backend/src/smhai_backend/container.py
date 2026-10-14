@@ -67,10 +67,15 @@ _LOGGER = logging.getLogger(__name__)
 
 def _shared_worker_concurrency_lock(
     post_assessment_worker_manager: SchoolPostAssessmentWorkerManager | None,
+    research_education_worker_manager: Any | None = None,
+    *,
+    fallback: asyncio.Lock | None = None,
 ) -> asyncio.Lock:
     if post_assessment_worker_manager is not None:
         return post_assessment_worker_manager.concurrency_lock
-    return asyncio.Lock()
+    if research_education_worker_manager is not None:
+        return research_education_worker_manager.concurrency_lock
+    return fallback if fallback is not None else asyncio.Lock()
 
 
 @dataclass(slots=True)
@@ -112,6 +117,8 @@ class BackendContainer:
     cat_saved_simulation_client: HttpCatSavedSimulationClient | None = None
     post_assessment_worker_manager: SchoolPostAssessmentWorkerManager | None = None
     research_education_worker_manager: Any | None = None
+    research_programme_worker_manager: Any | None = None
+    research_programme_runtime_client: Any | None = None
     school_research: Any | None = None
     school_research_profiles: Any | None = None
     school_research_tasks: Any | None = None
@@ -132,8 +139,20 @@ class BackendContainer:
                 await self.post_assessment_worker_manager.start()
             if self.research_education_worker_manager is not None:
                 await self.research_education_worker_manager.start()
+            if self.research_programme_worker_manager is not None:
+                await self.research_programme_worker_manager.start()
         except (Exception, asyncio.CancelledError):
             research_shutdown_failed = await self._close_research_process()
+            research_programme_shutdown_failed = False
+            if self.research_programme_worker_manager is not None:
+                try:
+                    await self.research_programme_worker_manager.close()
+                except Exception:
+                    research_programme_shutdown_failed = True
+                    _LOGGER.error(
+                        "staff programme worker cleanup failed during startup",
+                        extra={"failure_code": "RESEARCH_PROGRAMME_WORKER_CLEANUP_FAILURE"},
+                    )
             research_education_shutdown_failed = False
             if self.research_education_worker_manager is not None:
                 try:
@@ -159,6 +178,7 @@ class BackendContainer:
                 self.persistence is not None
                 and not worker_shutdown_failed
                 and not research_education_shutdown_failed
+                and not research_programme_shutdown_failed
                 and not research_shutdown_failed
             ):
                 await self.persistence.close()
@@ -166,6 +186,16 @@ class BackendContainer:
 
     async def close(self) -> None:
         research_shutdown_failed = await self._close_research_process()
+        research_programme_shutdown_failed = False
+        if self.research_programme_worker_manager is not None:
+            try:
+                await self.research_programme_worker_manager.close()
+            except Exception:
+                research_programme_shutdown_failed = True
+                _LOGGER.error(
+                    "staff programme worker cleanup failed during shutdown",
+                    extra={"failure_code": "RESEARCH_PROGRAMME_WORKER_CLEANUP_FAILURE"},
+                )
         research_education_shutdown_failed = False
         if self.research_education_worker_manager is not None:
             try:
@@ -191,6 +221,7 @@ class BackendContainer:
             self.persistence is not None
             and not worker_shutdown_failed
             and not research_education_shutdown_failed
+            and not research_programme_shutdown_failed
             and not research_shutdown_failed
         ):
             await self.persistence.close()
@@ -198,6 +229,8 @@ class BackendContainer:
             raise RuntimeError("research CAT process shutdown did not complete")
         if research_education_shutdown_failed:
             raise RuntimeError("research education worker shutdown did not complete")
+        if research_programme_shutdown_failed:
+            raise RuntimeError("staff programme worker shutdown did not complete")
         if worker_shutdown_failed:
             raise RuntimeError("post-assessment worker shutdown did not complete")
         if clients_failed:
@@ -238,6 +271,7 @@ class BackendContainer:
             ("llm", self.llm),
             ("independent_rag", self.independent_rag),
             ("independent_llm", self.independent_llm),
+            ("research_programme_runtime", self.research_programme_runtime_client),
         )
         for name, client in clients:
             if client is None:
@@ -289,6 +323,11 @@ class BackendContainer:
             self.research_education_worker_manager.dependency_status()
             if self.research_education_worker_manager is not None
             else {"status": "DISABLED", "integration": "RESEARCH_OUTBOX"}
+        )
+        statuses["research_programme_worker"] = (
+            self.research_programme_worker_manager.dependency_status()
+            if self.research_programme_worker_manager is not None
+            else {"status": "DISABLED", "integration": "RESEARCH_STAFF_PROGRAMME_OUTBOX"}
         )
         return statuses
 
@@ -412,6 +451,9 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
     )
     school_research_feedback = None
     school_research_programme_candidates = None
+    school_research_programme_candidate_adapter = None
+    programme_study_policy = None
+    programme_job_policy_sha256 = None
     if (
         persistence is not None
         and settings.identity_profile == "school_tenant"
@@ -428,9 +470,24 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
             SchoolResearchFeedbackService,
         )
 
+        programme_study_policy = build_school_research_study_policy(settings)
+        if settings.research_programme_worker.enabled:
+            school_study_ref = getattr(programme_study_policy, "study_ref", None)
+            if type(school_study_ref) is not str or not school_study_ref:
+                raise ValueError(
+                    "staff programme worker requires a pinned school/source study pair"
+                )
+            programme_job_policy_sha256 = settings.research_programme_job_policy_sha256_for(
+                school_study_ref=school_study_ref
+            )
+            if programme_job_policy_sha256 is None:
+                raise ValueError(
+                    "staff programme worker requires a pinned school/source study pair"
+                )
+
         school_research_feedback = SchoolResearchFeedbackService(
             persistence=SchoolResearchFeedbackPersistenceAdapter(
-                persistence, study_use_policy=build_school_research_study_policy(settings)
+                persistence, study_use_policy=programme_study_policy
             )
         )
         from smhai_backend.adapters.school_research_programme_candidates import (
@@ -440,13 +497,28 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
             SchoolResearchProgrammeCandidateService,
         )
 
-        school_research_programme_candidates = SchoolResearchProgrammeCandidateService(
-            persistence=SchoolResearchProgrammeCandidatePersistenceAdapter(
+        programme_settings = settings.research_programme_worker
+        school_research_programme_candidate_adapter = (
+            SchoolResearchProgrammeCandidatePersistenceAdapter(
                 persistence,
-                study_use_policy=build_school_research_study_policy(settings),
+                study_use_policy=programme_study_policy,
                 study_use_policy_sha256=settings.school_research_study_use_sha256,
-                enabled=settings.school_research_enabled and settings.environment != "production",
+                enabled=settings.school_research_enabled
+                and settings.environment != "production",
+                expected_source_manifest_sha256=programme_settings.package_manifest_sha256,
+                expected_processor_policy_sha256=programme_job_policy_sha256,
+                expected_model_ref=programme_settings.model_ref,
+                expected_model_digest_sha256=programme_settings.model_digest_sha256,
+                expected_prompt_ref=programme_settings.prompt_ref,
+                expected_prompt_version=programme_settings.prompt_version,
             )
+        )
+        school_research_programme_candidate_adapter.configure_generation(
+            enabled=programme_settings.enabled,
+            processor_policy_sha256=programme_job_policy_sha256,
+        )
+        school_research_programme_candidates = SchoolResearchProgrammeCandidateService(
+            persistence=school_research_programme_candidate_adapter
         )
     cat_management = SchoolCatManagementService(
         persistence=(
@@ -472,6 +544,7 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         if settings.post_assessment_worker_enabled and persistence is not None
         else None
     )
+    research_worker_lock = _shared_worker_concurrency_lock(post_assessment_worker_manager)
     research_education_worker_manager = None
     if settings.research_education_worker_enabled and persistence is not None:
         from smhai_backend.adapters.school_research_education import (
@@ -483,13 +556,58 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         )
 
         study_use_policy = build_school_research_study_policy(settings)
-        concurrency_lock = _shared_worker_concurrency_lock(post_assessment_worker_manager)
         research_education_worker_manager = SchoolResearchEducationWorkerManager(
             SchoolResearchEducationPersistenceAdapter(
                 persistence, study_use_policy=study_use_policy
             ),
             settings=settings.research_education_worker,
+            concurrency_lock=research_worker_lock,
+        )
+    research_programme_worker_manager = None
+    research_programme_runtime_client = None
+    if settings.research_programme_worker.enabled and persistence is not None:
+        from rag_engine.research import ResearchOnlyRetriever
+
+        from smhai_backend.domains.research_programme_generation.service import (
+            ResearchProgrammeGenerationService,
+        )
+        from smhai_backend.domains.school_research_programme_generation.worker import (
+            ResearchProgrammeWorkerManager,
+        )
+        from smhai_backend.integrations.research_programme import (
+            HttpResearchProgrammeRuntimeClient,
+        )
+        programme_settings = settings.research_programme_worker
+        retriever = ResearchOnlyRetriever.from_manifest(
+            Path(programme_settings.package_manifest_file),
+            expected_manifest_sha256=programme_settings.package_manifest_sha256,
+        )
+        research_programme_runtime_client = HttpResearchProgrammeRuntimeClient(
+            settings.research_programme_runtime
+        )
+        generation_service = ResearchProgrammeGenerationService(
+            safety=safety,
+            retriever=retriever,
+            runtime=research_programme_runtime_client,
+            expected_manifest_sha256=programme_settings.package_manifest_sha256,
+        )
+        concurrency_lock = _shared_worker_concurrency_lock(
+            post_assessment_worker_manager,
+            research_education_worker_manager,
+            fallback=research_worker_lock,
+        )
+        study_policy = programme_study_policy
+        if study_policy is None or programme_job_policy_sha256 is None:
+            raise ValueError("staff programme worker requires a pinned study-use policy")
+        research_programme_worker_manager = ResearchProgrammeWorkerManager(
+            persistence=persistence,
+            persistence_adapter=school_research_programme_candidate_adapter,
+            generation_service=generation_service,
+            settings=programme_settings,
             concurrency_lock=concurrency_lock,
+            study_policy_sha256=settings.school_research_study_use_sha256,
+            school_study_ref=study_policy.study_ref,
+            processor_policy_sha256=programme_job_policy_sha256,
         )
     independent_rag = independent_llm = independent_conversations = None
     if (
@@ -571,6 +689,8 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         cat_saved_simulation_client=cat_saved_simulation_client,
         post_assessment_worker_manager=post_assessment_worker_manager,
         research_education_worker_manager=research_education_worker_manager,
+        research_programme_worker_manager=research_programme_worker_manager,
+        research_programme_runtime_client=research_programme_runtime_client,
         independent_conversations=independent_conversations,
         independent_rag=independent_rag,
         independent_llm=independent_llm,

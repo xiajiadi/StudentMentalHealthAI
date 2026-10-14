@@ -30,6 +30,7 @@ from database_layer.models import (
 )
 from database_layer.provenance import SYNTHETIC_SCHOOL_SEED_PROVENANCE_REF
 from database_layer.school_research_education_jobs import (
+    STAFF_PROGRAMME_POLICY_VERSION,
     ResearchEducationJobErrorCode,
     SchoolResearchEducationJobRepository,
 )
@@ -239,7 +240,7 @@ def _seed(db: Session) -> None:
             profile_ref="research-profile",
             profile_version_number=3,
             profile_sha256=_PROFILE_SHA,
-            response_origin="MODEL_GENERATED",
+            response_origin="PUBLIC_OBSERVED",
             status="ACTIVE",
             purpose="RESEARCH_SIMULATION",
             research_only=True,
@@ -284,7 +285,7 @@ def _seed(db: Session) -> None:
             profile_ref="research-profile",
             profile_version_number=3,
             profile_sha256=_PROFILE_SHA,
-            response_origin="MODEL_GENERATED",
+            response_origin="PUBLIC_OBSERVED",
             config_version="cfg-v1",
             config_sha256="e" * 64,
             purpose="RESEARCH_SIMULATION",
@@ -325,7 +326,7 @@ def _enqueue(repo, **overrides):
         profile_ref="research-profile",
         profile_version_number=3,
         profile_sha256=_PROFILE_SHA,
-        response_origin="MODEL_GENERATED",
+        response_origin="PUBLIC_OBSERVED",
         now=_NOW,
     )
     values.update(overrides)
@@ -519,6 +520,53 @@ def test_replay_scope_and_error_codes_are_closed(session):
         )
         is None
     )
+
+
+def test_no_policy_worker_cannot_claim_staff_programme_job(session):
+    repo = _repo(session)
+    staff_job = _enqueue(
+        repo,
+        policy_version=STAFF_PROGRAMME_POLICY_VERSION,
+        policy_hash="9" * 64,
+    )
+    assert _enqueue(
+        repo,
+        policy_version=STAFF_PROGRAMME_POLICY_VERSION,
+        policy_hash="9" * 64,
+    ).id == staff_job.id
+    with pytest.raises(UniqueConflict):
+        _enqueue(
+            repo,
+            policy_version=STAFF_PROGRAMME_POLICY_VERSION,
+            policy_hash="8" * 64,
+        )
+    with pytest.raises(ValueError):
+        _enqueue(
+            repo,
+            policy_version=STAFF_PROGRAMME_POLICY_VERSION,
+            policy_hash="9" * 64,
+            response_origin="MODEL_GENERATED",
+        )
+    old_lane = asyncio.run(
+        repo.claim_next(school_id=1, lease_owner="old-no-policy-worker", now=_NOW)
+    )
+    assert old_lane == []
+
+    staff_lane = asyncio.run(
+        repo.claim_next(
+            school_id=1,
+            lease_owner="staff-programme-worker",
+            policy_version=STAFF_PROGRAMME_POLICY_VERSION,
+            now=_NOW,
+        )
+    )
+    assert len(staff_lane) == 1
+    assert staff_lane[0].id == staff_job.id
+    assert staff_lane[0].policy_version == STAFF_PROGRAMME_POLICY_VERSION
+    assert staff_lane[0].policy_hash == "9" * 64
+
+    with pytest.raises(ValueError):
+        _enqueue(repo, policy_version=STAFF_PROGRAMME_POLICY_VERSION)
 
 
 def test_0016_migration_has_exact_model_columns_and_composite_session_fk(monkeypatch):

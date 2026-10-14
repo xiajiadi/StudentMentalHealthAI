@@ -13,7 +13,13 @@ from smhai_backend.domains.school_research_programme_candidates.schemas import (
 )
 
 from .test_school_research_feedback_adapter import _policy
-from .test_school_research_programme_candidates_service import _generated_candidate_input
+from .test_school_research_programme_candidates_service import (
+    _MODEL_DIGEST,
+    _MODEL_REF,
+    _PROMPT_REF,
+    _PROMPT_VERSION,
+    _generated_candidate_input,
+)
 
 _TRUSTED_SOURCE_MANIFEST_SHA256 = "f8af1a33487f175b02400fbfcf5f655cd93b40c7a5a35e0582dc363b11401a45"
 
@@ -25,6 +31,11 @@ def _adapter(*, expected_source_manifest_sha256=None):
         study_use_policy_sha256=None,
         enabled=True,
         expected_source_manifest_sha256=expected_source_manifest_sha256,
+        expected_processor_policy_sha256="3" * 64,
+        expected_model_ref=_MODEL_REF,
+        expected_model_digest_sha256=_MODEL_DIGEST,
+        expected_prompt_ref=_PROMPT_REF,
+        expected_prompt_version=_PROMPT_VERSION,
     )
 
 
@@ -56,10 +67,16 @@ async def test_candidate_store_requires_a_configured_source_manifest_pin():
         study_use_policy=_policy(),
         study_use_policy_sha256="a" * 64,
         enabled=True,
+        expected_processor_policy_sha256="3" * 64,
+        expected_model_ref=_MODEL_REF,
+        expected_model_digest_sha256=_MODEL_DIGEST,
+        expected_prompt_ref=_PROMPT_REF,
+        expected_prompt_version=_PROMPT_VERSION,
     )
     generated = GeneratedProgrammeCandidate.model_validate(
         _generated_candidate_input(), strict=True
     )
+    adapter.configure_generation(enabled=True, processor_policy_sha256="3" * 64)
 
     with pytest.raises(BackendError) as raised:
         await adapter.store_generated_candidate(generated)
@@ -74,10 +91,16 @@ async def test_candidate_store_rejects_a_different_source_manifest_pin():
         study_use_policy_sha256="a" * 64,
         enabled=True,
         expected_source_manifest_sha256=_TRUSTED_SOURCE_MANIFEST_SHA256,
+        expected_processor_policy_sha256="3" * 64,
+        expected_model_ref=_MODEL_REF,
+        expected_model_digest_sha256=_MODEL_DIGEST,
+        expected_prompt_ref=_PROMPT_REF,
+        expected_prompt_version=_PROMPT_VERSION,
     )
     generated = GeneratedProgrammeCandidate.model_validate(
         _generated_candidate_input(), strict=True
     )
+    adapter.configure_generation(enabled=True, processor_policy_sha256="3" * 64)
 
     with pytest.raises(BackendError) as raised:
         await adapter.store_generated_candidate(generated)

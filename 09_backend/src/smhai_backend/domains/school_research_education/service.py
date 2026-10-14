@@ -177,6 +177,7 @@ class ResearchEducationWorker:
                 limit=1,
                 lease_seconds=self.lease_seconds,
                 max_attempts=self.max_attempts,
+                policy_version=RESEARCH_EDUCATION_POLICY_VERSION,
                 now=self._now(),
             )
             return list(claims)

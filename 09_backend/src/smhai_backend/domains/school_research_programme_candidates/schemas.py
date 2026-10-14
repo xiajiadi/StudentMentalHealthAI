@@ -90,6 +90,7 @@ class GeneratedProgrammeCandidate(_StrictModel):
     trace_id: StrictStr = Field(pattern=r"^TRACE_[A-Za-z0-9][A-Za-z0-9_.-]{0,122}$")
     task_scope: ProgrammeTaskScope
     study_ref: StrictStr = Field(min_length=1, max_length=128)
+    source_study_ref: StrictStr = Field(min_length=1, max_length=128)
     study_policy_sha256: StrictStr = Field(min_length=64, max_length=64)
     processor_policy_sha256: StrictStr = Field(min_length=64, max_length=64, repr=False)
     programme_ref: StrictStr = Field(min_length=1, max_length=128)
@@ -148,6 +149,23 @@ class CandidateAdoptRequest(_StrictModel):
 
 class CandidateDiscardRequest(_StrictModel):
     expected_state_version: StrictInt = Field(ge=1, le=2_147_483_647)
+
+
+class QueueProgrammeGenerationRequest(_StrictModel):
+    """Empty closed request; the server selects the completed session."""
+
+
+class ProgrammeGenerationQueuedDto(_StrictModel):
+    job_ref: StrictStr = Field(min_length=1, max_length=128)
+    status: Literal[
+        "QUEUED", "LEASED", "RETRY", "HELD", "ABSTAINED", "REVIEW_REQUIRED",
+        "CRISIS_ROUTED", "FAILED", "CANCELLED",
+    ]
+    policy_version: Literal["RESEARCH_STAFF_PROGRAMME_POLICY_V1"]
+    purpose: Literal["RESEARCH_SIMULATION"]
+    research_only: Literal[True]
+    publication_status: Literal[_PUBLICATION_STATUS]
+    student_feedback_eligible: Literal[False]
 
 
 class _Output(_StrictModel):

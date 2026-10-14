@@ -17,6 +17,7 @@ from .schemas import (
     ProgrammeCandidateDetailDto,
     ProgrammeCandidateListDto,
     ProgrammeCandidateSummaryDto,
+    ProgrammeGenerationQueuedDto,
 )
 
 
@@ -158,6 +159,16 @@ class SchoolResearchProgrammeCandidateService:
             trace_id=trace_id,
         )
         return self._summary(result)
+
+    async def queue_generation(
+        self, actor: Actor, task_ref: str, *, idempotency, trace_id: str
+    ):
+        """Queue one server-selected completed session for staff-only research."""
+        self._require_specialist(actor)
+        result = await self._port().school_research_programme_generation_queue(
+            actor, task_ref, idempotency=idempotency, trace_id=trace_id
+        )
+        return self._project(ProgrammeGenerationQueuedDto, result)
 
     async def store_generated_candidate(self, generated: GeneratedProgrammeCandidate):
         """Internal processor seam; deliberately has no HTTP route."""

@@ -22,6 +22,8 @@ from .schemas import (
     ProgrammeCandidateDetailDto,
     ProgrammeCandidateListDto,
     ProgrammeCandidateSummaryDto,
+    ProgrammeGenerationQueuedDto,
+    QueueProgrammeGenerationRequest,
 )
 
 router = APIRouter(
@@ -176,4 +178,29 @@ async def discard_candidate(
             trace_id=trace,
         ),
         ProgrammeCandidateSummaryDto,
+    )
+
+
+@router.post(
+    "/tasks/{task_ref}/queue-generation",
+    response_model=ApiEnvelope[ProgrammeGenerationQueuedDto],
+    openapi_extra=CSRF_SECURITY_OPENAPI_EXTRA,
+    responses=_ERRORS,
+)
+async def queue_programme_generation(
+    request: Request,
+    task_ref: str,
+    payload: QueueProgrammeGenerationRequest,
+    actor: CsrfActor,
+):
+    service = _service(request)
+    return await _write(
+        request,
+        actor,
+        f"research-programme-generation-queue:{task_ref}",
+        payload.model_dump(),
+        lambda idem, trace: service.queue_generation(
+            actor, task_ref, idempotency=idem, trace_id=trace
+        ),
+        ProgrammeGenerationQueuedDto,
     )

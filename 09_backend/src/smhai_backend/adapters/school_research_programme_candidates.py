@@ -10,7 +10,13 @@ from smhai_backend.adapters.school_research_feedback import (
     SchoolResearchFeedbackPersistenceAdapter,
     _repo_call,
 )
-from smhai_backend.core.errors import ErrorCode, error
+from smhai_backend.core.errors import BackendError, ErrorCode, error
+from smhai_backend.domains.research_programme_generation.schemas import (
+    CLAIM_BOUNDARY_VERSION,
+)
+from smhai_backend.domains.research_programme_generation.schemas import (
+    STUDY_REF as SOURCE_STUDY_REF,
+)
 from smhai_backend.domains.school_research.study_use import ResearchStudyUsePolicy
 from smhai_backend.domains.school_research_programme_candidates.schemas import (
     GeneratedProgrammeCandidate,
@@ -19,6 +25,7 @@ from smhai_backend.domains.school_research_programme_candidates.schemas import (
 
 RESEARCH_STAFF_PROGRAMME_POLICY_VERSION = "RESEARCH_STAFF_PROGRAMME_POLICY_V1"
 _RESOURCE = "school_research_programme_candidate"
+_JOB_RESOURCE = "school_research_programme_generation_job"
 _CONTENT_SCHEMA = "school_research_programme_candidate.v1"
 _PUBLICATION_STATUS = "not_approved_for_publication_or_operational_use"
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -108,6 +115,7 @@ class SchoolResearchProgrammeCandidatePersistenceAdapter(SchoolResearchFeedbackP
         study_use_policy_sha256: str | None,
         enabled: bool,
         expected_source_manifest_sha256: str | None = None,
+        expected_processor_policy_sha256: str | None = None,
         expected_model_ref: str | None = None,
         expected_model_digest_sha256: str | None = None,
         expected_prompt_ref: str | None = None,
@@ -139,11 +147,28 @@ class SchoolResearchProgrammeCandidatePersistenceAdapter(SchoolResearchFeedbackP
             raise ValueError("trusted research model digest pin is invalid")
         self.study_use_policy_sha256 = study_use_policy_sha256
         self.expected_source_manifest_sha256 = expected_source_manifest_sha256
+        if (
+            expected_processor_policy_sha256 is not None
+            and _SHA256.fullmatch(expected_processor_policy_sha256) is None
+        ):
+            raise ValueError("trusted research processor policy pin is invalid")
+        self.expected_processor_policy_sha256 = expected_processor_policy_sha256
         self.expected_model_ref = expected_model_ref
         self.expected_model_digest_sha256 = expected_model_digest_sha256
         self.expected_prompt_ref = expected_prompt_ref
         self.expected_prompt_version = expected_prompt_version
         self.enabled = enabled is True
+        self.generation_enabled = False
+
+    def configure_generation(self, *, enabled: bool, processor_policy_sha256: str | None) -> None:
+        if type(enabled) is not bool:
+            raise TypeError("research programme generation enablement must be boolean")
+        if enabled and (
+            processor_policy_sha256 is None
+            or processor_policy_sha256 != self.expected_processor_policy_sha256
+        ):
+            raise ValueError("research programme processor policy pin is unavailable")
+        self.generation_enabled = enabled
 
     def _require_enabled(self) -> None:
         if (
@@ -199,6 +224,14 @@ class SchoolResearchProgrammeCandidatePersistenceAdapter(SchoolResearchFeedbackP
             raise _conflict()
 
     def _require_generation_pins(self, generated: GeneratedProgrammeCandidate) -> None:
+        if (
+            generated.source_study_ref != SOURCE_STUDY_REF
+            or generated.claim_boundary_version != CLAIM_BOUNDARY_VERSION
+        ):
+            raise error(
+                ErrorCode.FORBIDDEN,
+                detail="research programme study references are unavailable",
+            )
         if any(
             value is None
             for value in (
@@ -222,6 +255,33 @@ class SchoolResearchProgrammeCandidatePersistenceAdapter(SchoolResearchFeedbackP
             raise error(
                 ErrorCode.FORBIDDEN,
                 detail="research programme generation pins are unavailable",
+            )
+        if generated.processor_policy_sha256 != self.expected_processor_policy_sha256:
+            raise error(
+                ErrorCode.FORBIDDEN,
+                detail="research programme processor policy pin is unavailable",
+            )
+
+    def _require_generation_enabled(self) -> None:
+        self._require_enabled()
+        if (
+            self.generation_enabled is not True
+            or self.expected_processor_policy_sha256 is None
+            or any(
+                value is None
+                for value in (
+                    self.expected_source_manifest_sha256,
+                    self.expected_model_ref,
+                    self.expected_model_digest_sha256,
+                    self.expected_prompt_ref,
+                    self.expected_prompt_version,
+                )
+            )
+        ):
+            raise error(
+                ErrorCode.DEPENDENCY_UNAVAILABLE,
+                detail="research programme generation policy is unavailable",
+                retryable=True,
             )
 
     async def _policy_binding_pin(
@@ -311,14 +371,22 @@ class SchoolResearchProgrammeCandidatePersistenceAdapter(SchoolResearchFeedbackP
                     payload_schema_version=row.payload_schema_version,
                 )
             )
-            if not isinstance(value, dict) or set(value) != {
-                "candidate_ref", "programme_ref", "content_revision", "content"
-            }:
+            base_fields = {"candidate_ref", "programme_ref", "content_revision", "content"}
+            fields = set(value) if isinstance(value, dict) else set()
+            if fields != base_fields and fields != base_fields | {"source_study_ref"}:
                 raise ValueError
             if (
                 value["candidate_ref"] != row.candidate_ref
                 or value["programme_ref"] != row.programme_ref
                 or value["content_revision"] != 1
+                or (
+                    "source_study_ref" in value
+                    and value["source_study_ref"] != SOURCE_STUDY_REF
+                )
+                or (
+                    "source_study_ref" not in value
+                    and row.study_ref != SOURCE_STUDY_REF
+                )
             ):
                 raise ValueError
             content = ProgrammeCandidateContent.model_validate(value["content"], strict=True)
@@ -345,7 +413,7 @@ class SchoolResearchProgrammeCandidatePersistenceAdapter(SchoolResearchFeedbackP
 
     async def store_generated_candidate(self, generated: GeneratedProgrammeCandidate) -> dict:
         """Internal processor write; claims the worker lease and stores no student payload."""
-        self._require_enabled()
+        self._require_generation_enabled()
         if type(generated) is not GeneratedProgrammeCandidate:
             raise error(ErrorCode.VALIDATION_FAILED, detail="generated candidate is invalid")
         self._require_source_manifest_pin(generated.source_manifest_sha256)
@@ -363,8 +431,8 @@ class SchoolResearchProgrammeCandidatePersistenceAdapter(SchoolResearchFeedbackP
             )
         now = _aware_utc(self._utc_now())
         async with self._uow() as uow:
-            task, binding, _profile, pin = await self._policy_binding_pin(
-                uow, school_id=scope.school_id, task_id=scope.task_id, at=now
+            task, binding, _profile, pin = await self._live_generation_scope(
+                uow, job, at=now
             )
             if (
                 task.class_id != scope.class_id
@@ -387,6 +455,7 @@ class SchoolResearchProgrammeCandidatePersistenceAdapter(SchoolResearchFeedbackP
                 {
                     "candidate_ref": candidate_ref,
                     "programme_ref": generated.programme_ref,
+                    "source_study_ref": generated.source_study_ref,
                     "content_revision": 1,
                     "content": generated.content.model_dump(mode="json"),
                 },
@@ -444,6 +513,304 @@ class SchoolResearchProgrammeCandidatePersistenceAdapter(SchoolResearchFeedbackP
                 safe_metadata={"source": _RESOURCE, "state": "HELD"},
             )
             return self._summary(dto)
+
+    async def school_research_programme_generation_queue(
+        self, actor, task_ref: str, *, idempotency, trace_id: str
+    ) -> dict:
+        """Queue one server-selected completed PUBLIC_OBSERVED session."""
+        self._require_generation_enabled()
+        from database_layer.school_research_education_jobs import (
+            STAFF_PROGRAMME_POLICY_VERSION,
+        )
+
+        now, db_now = self._now()
+        async with self._uow() as uow:
+            actor_account_id, role_id = await self._require_actor(
+                uow, actor, "psychological_specialist", db_now
+            )
+            task, binding, _profile, _pin = await self._active_task_for_actor(
+                uow, actor, task_ref, role_id=role_id, at=now
+            )
+            idem_claim = await self._school_idempotency_begin(uow, idempotency)
+            m = self._db_models
+            session_ref = await uow.session.scalar(
+                self._select(m.SchoolResearchSession.session_ref)
+                .where(
+                    m.SchoolResearchSession.school_id == actor.school_id,
+                    m.SchoolResearchSession.task_id == task.id,
+                    m.SchoolResearchSession.class_id == task.class_id,
+                    m.SchoolResearchSession.task_binding_id == binding.binding_id,
+                    m.SchoolResearchSession.profile_version_id == binding.profile_version_id,
+                    m.SchoolResearchSession.profile_ref == binding.profile_ref,
+                    m.SchoolResearchSession.profile_version_number
+                    == binding.profile_version_number,
+                    m.SchoolResearchSession.profile_sha256 == binding.profile_sha256,
+                    m.SchoolResearchSession.response_origin == "PUBLIC_OBSERVED",
+                    m.SchoolResearchSession.status == "COMPLETED",
+                    m.SchoolResearchSession.completed_at.is_not(None),
+                    m.SchoolResearchSession.purpose == "RESEARCH_SIMULATION",
+                    m.SchoolResearchSession.research_only.is_(True),
+                )
+                .order_by(m.SchoolResearchSession.completed_at, m.SchoolResearchSession.id)
+                .limit(1)
+                .with_for_update(skip_locked=True)
+            )
+            if session_ref is None:
+                raise _not_found()
+            scope, _metadata, _retention, _profile, _pin = await self._current_scope(
+                uow, actor, task, session_ref=session_ref, at=now, lock=True
+            )
+            job = await _repo_call(
+                uow.research_education_jobs.enqueue_completed_session(
+                    school_id=scope.school_id,
+                    research_session_id=scope.research_session_id,
+                    task_id=scope.task_id,
+                    class_id=scope.class_id,
+                    task_enrollment_id=scope.task_enrollment_id,
+                    subject_id=scope.subject_id,
+                    task_binding_id=scope.task_binding_id,
+                    profile_version_id=scope.profile_version_id,
+                    profile_ref=scope.profile_ref,
+                    profile_version_number=scope.profile_version_number,
+                    profile_sha256=scope.profile_sha256,
+                    response_origin=scope.response_origin,
+                    policy_version=STAFF_PROGRAMME_POLICY_VERSION,
+                    policy_hash=self.expected_processor_policy_sha256,
+                    now=now,
+                )
+            )
+            if idem_claim.replayed:
+                receipt = await self._receipt_resource(idem_claim, _JOB_RESOURCE)
+                if receipt != job.job_ref:
+                    raise _conflict()
+            else:
+                await self._audit_research(
+                    uow,
+                    actor_account_id=actor_account_id,
+                    action="school_research_programme_generation.queued",
+                    resource_type=_JOB_RESOURCE,
+                    resource_ref=job.job_ref,
+                    trace_id=trace_id,
+                    state=job.status,
+                )
+                await self._school_idempotency_complete(
+                    uow,
+                    idem_claim,
+                    resource_type=_JOB_RESOURCE,
+                    result_ref=job.job_ref,
+                )
+            return {
+                "job_ref": job.job_ref,
+                "status": job.status,
+                "policy_version": job.policy_version,
+                "purpose": job.purpose,
+                "research_only": job.research_only,
+                "publication_status": job.publication_status,
+                "student_feedback_eligible": False,
+            }
+
+    async def authorize_programme_claim(self, claim) -> bool:
+        self._require_generation_enabled()
+        now, _db_now = self._now()
+        try:
+            async with self._uow() as uow:
+                await self._live_generation_scope(uow, claim, at=now)
+            return True
+        except BackendError as exc:
+            if exc.code in {
+                ErrorCode.FORBIDDEN,
+                ErrorCode.RESOURCE_NOT_FOUND,
+                ErrorCode.WORKFLOW_CONFLICT,
+            }:
+                return False
+            raise
+
+    async def finalize_programme_job(self, claim, *, status: str, error_code=None) -> str:
+        self._require_generation_enabled()
+        from database_layer.school_research_education_jobs import (
+            ResearchEducationJobErrorCode,
+        )
+
+        now, _db_now = self._now()
+        if status not in {"ABSTAINED", "REVIEW_REQUIRED", "CRISIS_ROUTED", "FAILED"}:
+            raise ValueError("unsupported staff programme disposition")
+        if error_code is not None and not isinstance(error_code, ResearchEducationJobErrorCode):
+            raise ValueError("staff programme disposition code is invalid")
+        async with self._uow() as uow:
+            current = True
+            try:
+                await self._live_generation_scope(uow, claim, at=now)
+            except BackendError as exc:
+                if exc.code not in {
+                    ErrorCode.FORBIDDEN,
+                    ErrorCode.RESOURCE_NOT_FOUND,
+                    ErrorCode.WORKFLOW_CONFLICT,
+                }:
+                    raise
+                current = False
+            await _repo_call(
+                uow.research_education_jobs.finish(
+                    school_id=claim.school_id,
+                    research_session_id=claim.research_session_id,
+                    job_id=claim.id,
+                    lease_owner=claim.lease_owner,
+                    lease_token=claim.lease_token,
+                    status=status if current else "CANCELLED",
+                    error_code=error_code if current else None,
+                    now=now,
+                )
+            )
+            return status if current else "CANCELLED"
+
+    async def retry_programme_job(self, claim, *, error_code) -> None:
+        self._require_generation_enabled()
+        await _repo_call(
+            self._repo_retry(
+                claim,
+                error_code=error_code,
+            )
+        )
+
+    async def _repo_retry(self, claim, *, error_code):
+        from database_layer.school_research_education_jobs import (
+            ResearchEducationJobErrorCode,
+        )
+
+        if not isinstance(error_code, ResearchEducationJobErrorCode):
+            raise ValueError("staff programme retry code is invalid")
+        now, _db_now = self._now()
+        async with self._uow() as uow:
+            return await uow.research_education_jobs.retry(
+                school_id=claim.school_id,
+                research_session_id=claim.research_session_id,
+                job_id=claim.id,
+                lease_owner=claim.lease_owner,
+                lease_token=claim.lease_token,
+                error_code=error_code,
+                now=now,
+            )
+
+    async def _live_generation_scope(self, uow, claim, *, at):
+        from types import SimpleNamespace
+
+        from database_layer.school_research_education_jobs import (
+            STAFF_PROGRAMME_POLICY_VERSION,
+        )
+
+        if (
+            claim.policy_version != STAFF_PROGRAMME_POLICY_VERSION
+            or claim.policy_hash != self.expected_processor_policy_sha256
+            or claim.response_origin != "PUBLIC_OBSERVED"
+            or claim.school_id <= 0
+        ):
+            raise _conflict()
+        m = self._db_models
+        task = await uow.session.scalar(
+            self._select(m.MeasurementTask)
+            .join(m.School, m.School.id == m.MeasurementTask.school_id)
+            .where(
+                m.MeasurementTask.id == claim.task_id,
+                m.MeasurementTask.school_id == claim.school_id,
+                m.MeasurementTask.class_id == claim.class_id,
+                m.MeasurementTask.status.in_(("PUBLISHED", "CLOSED")),
+                m.MeasurementTask.cat_binding_mode == "RESEARCH_PROFILE",
+                m.School.status == "ACTIVE",
+                m.School.data_origin == self._db_enums.DataOrigin.SYNTHETIC.value,
+            )
+            .with_for_update()
+        )
+        if task is None:
+            raise _not_found()
+        assignment_id = await uow.session.scalar(
+            self._select(m.SchoolTaskSpecialistAssignment.id)
+            .join(
+                m.MembershipRole,
+                m.MembershipRole.id
+                == m.SchoolTaskSpecialistAssignment.specialist_membership_role_id,
+            )
+            .join(
+                m.AccountSchoolMembership,
+                m.AccountSchoolMembership.id == m.MembershipRole.membership_id,
+            )
+            .join(m.Account, m.Account.id == m.AccountSchoolMembership.account_id)
+            .where(
+                m.SchoolTaskSpecialistAssignment.school_id == claim.school_id,
+                m.SchoolTaskSpecialistAssignment.task_id == claim.task_id,
+                m.SchoolTaskSpecialistAssignment.class_id == claim.class_id,
+                m.SchoolTaskSpecialistAssignment.status == "ACTIVE",
+                m.SchoolTaskSpecialistAssignment.revoked_at.is_(None),
+                m.MembershipRole.school_id == claim.school_id,
+                m.MembershipRole.role_code == "psychological_specialist",
+                m.MembershipRole.status == "ACTIVE",
+                m.MembershipRole.revoked_at.is_(None),
+                m.MembershipRole.valid_from <= _naive_utc(at),
+                (m.MembershipRole.valid_until.is_(None))
+                | (m.MembershipRole.valid_until >= _naive_utc(at)),
+                m.AccountSchoolMembership.school_id == claim.school_id,
+                m.AccountSchoolMembership.status == "ACTIVE",
+                m.AccountSchoolMembership.revoked_at.is_(None),
+                m.AccountSchoolMembership.valid_from <= _naive_utc(at),
+                (m.AccountSchoolMembership.valid_until.is_(None))
+                | (m.AccountSchoolMembership.valid_until >= _naive_utc(at)),
+                m.Account.status == self._db_enums.AccountStatus.ACTIVE.value,
+            )
+            .limit(1)
+        )
+        if assignment_id is None:
+            raise _not_found()
+        _task, binding, profile, pin = await self._policy_binding_pin(
+            uow=uow,
+            school_id=claim.school_id,
+            task_id=claim.task_id,
+            at=at,
+            task=task,
+        )
+        session_ref = await uow.session.scalar(
+            self._select(m.SchoolResearchSession.session_ref).where(
+                m.SchoolResearchSession.id == claim.research_session_id,
+                m.SchoolResearchSession.school_id == claim.school_id,
+                m.SchoolResearchSession.task_id == claim.task_id,
+                m.SchoolResearchSession.class_id == claim.class_id,
+                m.SchoolResearchSession.task_enrollment_id == claim.task_enrollment_id,
+                m.SchoolResearchSession.subject_id == claim.subject_id,
+                m.SchoolResearchSession.task_binding_id == claim.task_binding_id,
+                m.SchoolResearchSession.profile_version_id == claim.profile_version_id,
+                m.SchoolResearchSession.profile_ref == claim.profile_ref,
+                m.SchoolResearchSession.profile_version_number == claim.profile_version_number,
+                m.SchoolResearchSession.profile_sha256 == claim.profile_sha256,
+                m.SchoolResearchSession.response_origin == claim.response_origin,
+                m.SchoolResearchSession.status == "COMPLETED",
+                m.SchoolResearchSession.completed_at.is_not(None),
+                m.SchoolResearchSession.purpose == "RESEARCH_SIMULATION",
+                m.SchoolResearchSession.research_only.is_(True),
+            )
+            .limit(1)
+        )
+        if session_ref is None:
+            raise _not_found()
+        task_actor = SimpleNamespace(school_id=claim.school_id)
+        scope, metadata, _retention, _profile, fresh_pin = await self._current_scope(
+            uow, task_actor, task, session_ref=session_ref, at=at, lock=False
+        )
+        if (
+            metadata.response_origin != "PUBLIC_OBSERVED"
+            or metadata.completed_at is None
+            or _aware_utc(metadata.completed_at) > _aware_utc(at)
+            or fresh_pin != pin
+            or scope.research_session_id != claim.research_session_id
+            or scope.school_id != claim.school_id
+            or scope.task_id != claim.task_id
+            or scope.class_id != claim.class_id
+            or scope.task_enrollment_id != claim.task_enrollment_id
+            or scope.subject_id != claim.subject_id
+            or scope.task_binding_id != claim.task_binding_id
+            or scope.profile_version_id != claim.profile_version_id
+            or scope.profile_ref != claim.profile_ref
+            or scope.profile_version_number != claim.profile_version_number
+            or scope.profile_sha256 != claim.profile_sha256
+        ):
+            raise _conflict()
+        return task, binding, profile, pin
 
     @staticmethod
     def _candidate_scope(scope):

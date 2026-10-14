@@ -12,6 +12,10 @@ from smhai_backend.adapters.school_research_programme_candidates import (
 )
 from smhai_backend.core.errors import BackendError
 from smhai_backend.domains.models import Actor, BackendRole
+from smhai_backend.domains.research_programme_generation.schemas import (
+    CLAIM_BOUNDARY_VERSION,
+    STUDY_REF,
+)
 from smhai_backend.domains.school_research_programme_candidates.schemas import (
     GeneratedProgrammeCandidate,
 )
@@ -22,7 +26,7 @@ from smhai_backend.domains.school_research_programme_candidates.service import (
 _MODEL_REF = "qwen2.5-7b-instruct-school-demo"
 _MODEL_DIGEST = "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e"
 _PROMPT_REF = "PROMPT_staff_school_programme_research_v1"
-_PROMPT_VERSION = "1.0.0"
+_PROMPT_VERSION = "1.0.1"
 
 
 def actor(role: BackendRole) -> Actor:
@@ -94,6 +98,20 @@ class FakePersistence:
     ):
         self.calls.append(("discard", actor_arg, task_ref, candidate_ref, expected_state_version))
         return summary(status="DISCARDED", state_version=2)
+
+    async def school_research_programme_generation_queue(
+        self, actor_arg, task_ref, *, idempotency, trace_id
+    ):
+        self.calls.append(("queue", actor_arg, task_ref, idempotency, trace_id))
+        return {
+            "job_ref": "REJ_synthetic_1",
+            "status": "QUEUED",
+            "policy_version": "RESEARCH_STAFF_PROGRAMME_POLICY_V1",
+            "purpose": "RESEARCH_SIMULATION",
+            "research_only": True,
+            "publication_status": "not_approved_for_publication_or_operational_use",
+            "student_feedback_eligible": False,
+        }
 
     async def store_generated_candidate(self, generated):
         self.calls.append(("store", generated))
@@ -190,6 +208,7 @@ def _generated_candidate_input():
             "response_origin": "PUBLIC_OBSERVED",
         },
         "study_ref": "study-r1",
+        "source_study_ref": STUDY_REF,
         "study_policy_sha256": "a" * 64,
         "processor_policy_sha256": "3" * 64,
         "programme_ref": "staff-programme-r1",
@@ -208,7 +227,7 @@ def _generated_candidate_input():
         "input_safety_action": "PROCEED",
         "retrieval_safety_action": "PROCEED",
         "output_safety_action": "PROCEED_WITH_BOUNDARY",
-        "claim_boundary_version": "claim-v1",
+        "claim_boundary_version": CLAIM_BOUNDARY_VERSION,
         "claim_boundary_status": "ACCEPTED",
         "output_boundary": "STAFF_REFERENCE_ONLY",
         "content": content,
@@ -224,12 +243,19 @@ def test_generated_candidate_type_is_closed_and_requires_safety_and_staff_bounda
         study_use_policy=None,
         study_use_policy_sha256=None,
         enabled=False,
+        expected_processor_policy_sha256="3" * 64,
         expected_model_ref=_MODEL_REF,
         expected_model_digest_sha256=_MODEL_DIGEST,
         expected_prompt_ref=_PROMPT_REF,
         expected_prompt_version=_PROMPT_VERSION,
     )
     candidate_adapter._require_generation_pins(parsed)
+    wrong_source = dict(valid)
+    wrong_source["source_study_ref"] = "untrusted-source-study"
+    with pytest.raises(BackendError):
+        candidate_adapter._require_generation_pins(
+            GeneratedProgrammeCandidate.model_validate(wrong_source, strict=True)
+        )
     finished_job = SimpleNamespace(
         school_id=1,
         task_id=1,
