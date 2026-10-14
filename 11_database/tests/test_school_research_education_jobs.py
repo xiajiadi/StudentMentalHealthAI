@@ -335,12 +335,26 @@ def _enqueue(repo, **overrides):
 
 def test_completed_session_outbox_is_idempotent_and_contains_no_content(session):
     repo = _repo(session)
-    first = _enqueue(repo)
-    again = _enqueue(repo)
+    first = _enqueue(repo, policy_version=STAFF_PROGRAMME_POLICY_VERSION, policy_hash="9" * 64)
+    again = _enqueue(repo, policy_version=STAFF_PROGRAMME_POLICY_VERSION, policy_hash="9" * 64)
     assert first.id == again.id
     assert first.status == "QUEUED"
+    assert first.purpose == "RESEARCH_SIMULATION"
+    assert first.research_only is True
+    assert first.publication_status == "not_approved_for_publication_or_operational_use"
     assert "do-not-read-this" not in repr(first)
     assert _PROFILE_SHA not in repr(first)
+    claim = asyncio.run(
+        repo.claim_next(
+            school_id=1,
+            lease_owner="staff-programme-worker",
+            policy_version=STAFF_PROGRAMME_POLICY_VERSION,
+            now=_NOW,
+        )
+    )[0]
+    assert claim.purpose == "RESEARCH_SIMULATION"
+    assert claim.research_only is True
+    assert claim.publication_status == "not_approved_for_publication_or_operational_use"
     assert set(SchoolResearchEducationJob.__table__.columns.keys()).isdisjoint(
         {
             "answers",

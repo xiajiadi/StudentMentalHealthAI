@@ -67,6 +67,9 @@ class ResearchEducationJobDTO:
     response_origin: str = field(repr=False)
     policy_version: str
     policy_hash: str | None = field(repr=False)
+    purpose: str
+    research_only: bool
+    publication_status: str
     status: str
     attempt_count: int
     next_attempt_at: datetime | None
@@ -140,6 +143,9 @@ def _dto(job: SchoolResearchEducationJob) -> ResearchEducationJobDTO:
         response_origin=job.response_origin,
         policy_version=job.policy_version,
         policy_hash=job.policy_hash,
+        purpose=job.purpose,
+        research_only=job.research_only,
+        publication_status=job.publication_status,
         status=job.status,
         attempt_count=job.attempt_count,
         next_attempt_at=_utc_aware(job.next_attempt_at),
