@@ -17,6 +17,7 @@ from pydantic import (
     Field,
     SecretStr,
     StrictBool,
+    StrictInt,
     ValidationError,
     field_validator,
     model_validator,
@@ -33,6 +34,10 @@ _RESEARCH_PROGRAMME_MANIFEST_SHA256 = (
     "f8af1a33487f175b02400fbfcf5f655cd93b40c7a5a35e0582dc363b11401a45"
 )
 _RESEARCH_PROGRAMME_SOURCE_STUDY_REF = "school-noncommercial-rag-research-2027-06"
+_SCHOOL_RESEARCH_STUDENT_STUDY_REF = "school-noncommercial-rag-research-2027-06"
+_SCHOOL_RESEARCH_STUDENT_MANIFEST_SHA256 = (
+    "70637b39cb11a34de91599a1a32e9e1a6edff6a76b19cc1b11895ee7170e9974"
+)
 RESEARCH_PROGRAMME_PROCESSOR_POLICY_SHA256 = (
     "70a71a65a2dad7b862ba792762069ef7ed4c02152f33dc87d0689cbc5aff1689"
 )
@@ -272,6 +277,55 @@ class ResearchProgrammeWorkerSettings(BaseModel):
         return self
 
 
+class SchoolResearchStudentConversationSettings(BaseModel):
+    """Server-pinned, opt-in secondary-school general-education lane."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: StrictBool = False
+    school_id: StrictInt | None = None
+    purpose: Literal["RESEARCH_SIMULATION"] = "RESEARCH_SIMULATION"
+    study_ref: str | None = None
+    manifest_file: str | None = Field(default=None, repr=False)
+    manifest_sha256: str | None = None
+    safety_base_url: Literal["http://127.0.0.1:8191"] | None = None
+    consumer_age_min: StrictInt = Field(default=14, ge=14, le=17)
+    consumer_age_max: StrictInt = Field(default=17, ge=14, le=17)
+
+    @field_validator("manifest_sha256")
+    @classmethod
+    def validate_student_manifest_hash(cls, value: str | None) -> str | None:
+        if value is not None and (
+            type(value) is not str or not _SHA256_PATTERN.fullmatch(value)
+        ):
+            raise ValueError("school student manifest pin must be lowercase SHA-256")
+        return value
+
+    @model_validator(mode="after")
+    def validate_enabled_lane(self) -> SchoolResearchStudentConversationSettings:
+        if not self.enabled:
+            return self
+        if (
+            isinstance(self.school_id, bool)
+            or not isinstance(self.school_id, int)
+            or self.school_id < 1
+            or self.study_ref != _SCHOOL_RESEARCH_STUDENT_STUDY_REF
+            or self.manifest_sha256 != _SCHOOL_RESEARCH_STUDENT_MANIFEST_SHA256
+            or not isinstance(self.manifest_file, str)
+            or not (
+                Path(self.manifest_file).is_absolute()
+                or PureWindowsPath(self.manifest_file).is_absolute()
+            )
+            or any(part == ".." for part in re.split(r"[\\/]", self.manifest_file))
+            or self.purpose != "RESEARCH_SIMULATION"
+            or self.safety_base_url != "http://127.0.0.1:8191"
+            or self.consumer_age_min != 14
+            or self.consumer_age_max != 17
+        ):
+            raise ValueError("school research student lane requires exact server pins")
+        return self
+
+
 class BackendSettings(BaseSettings):
     """Backend-local settings; the frozen config.v1 remains unchanged."""
 
@@ -339,6 +393,9 @@ class BackendSettings(BaseSettings):
     )
     research_programme_worker: ResearchProgrammeWorkerSettings = Field(
         default_factory=ResearchProgrammeWorkerSettings
+    )
+    school_research_student_conversation: SchoolResearchStudentConversationSettings = Field(
+        default_factory=SchoolResearchStudentConversationSettings
     )
     m0_claim_boundary_observer_enabled: bool = False
     school_research_enabled: bool = False
@@ -501,6 +558,19 @@ class BackendSettings(BaseSettings):
                 raise ValueError(
                     "research programme lease must exceed the bounded Safety and Runtime window"
                 )
+        if self.school_research_student_conversation.enabled and (
+            self.environment == "production"
+            or self.identity_profile != "school_tenant"
+            or self.persistence_mode != "mysql"
+            or self.safety.mode != "http"
+            or self.safety.base_url != "http://127.0.0.1:8190"
+            or self.llm.mode != "http"
+            or self.llm.base_url != "http://127.0.0.1:8160"
+        ):
+            raise ValueError(
+                "school research student lane requires nonproduction school MySQL "
+                "and local Safety/Runtime"
+            )
         if self.environment == "production":
             if self.identity_profile != "school_tenant":
                 raise ValueError("production requires the school_tenant identity profile")

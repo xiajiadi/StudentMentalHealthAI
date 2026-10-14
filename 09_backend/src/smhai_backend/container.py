@@ -32,7 +32,7 @@ from smhai_backend.adapters.school_professional_reviews import (
     SchoolProfessionalReviewPersistenceAdapter,
 )
 from smhai_backend.core.async_utils import maybe_await
-from smhai_backend.core.config import BackendSettings
+from smhai_backend.core.config import BackendSettings, ModuleClientSettings
 from smhai_backend.core.rate_limit import InMemoryRateLimiter
 from smhai_backend.domains.assessment.service import AssessmentService
 from smhai_backend.domains.audit import AuditService
@@ -40,7 +40,10 @@ from smhai_backend.domains.auth.service import AuthService
 from smhai_backend.domains.authorization import NativeAuthorizationProvider
 from smhai_backend.domains.cat_assets.service import SchoolCatAssetService
 from smhai_backend.domains.cat_management.service import SchoolCatManagementService
-from smhai_backend.domains.conversations.service import IndependentConversationService
+from smhai_backend.domains.conversations.service import (
+    ConversationLanePolicy,
+    IndependentConversationService,
+)
 from smhai_backend.domains.professional_reviews.service import SchoolProfessionalReviewService
 from smhai_backend.domains.school_directory.service import SchoolDirectoryService
 from smhai_backend.domains.school_feedback.service import SchoolFeedbackService
@@ -60,6 +63,9 @@ from smhai_backend.integrations.safety import (
     ContractFakeSafetyClient,
     HttpSafetyClient,
     SafetyClient,
+)
+from smhai_backend.integrations.student_research_safety import (
+    SchoolResearchStudentSafetyClient,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -108,6 +114,8 @@ class BackendContainer:
     school_research_feedback: Any | None = None
     school_research_programme_candidates: Any | None = None
     independent_conversations: IndependentConversationService | None = None
+    school_research_student_conversations: IndependentConversationService | None = None
+    school_research_student_safety: SafetyClient | None = None
     independent_rag: IndependentRagClient | None = None
     independent_llm: IndependentLLMRuntimeClient | None = None
     cat_management: SchoolCatManagementService | None = None
@@ -135,6 +143,11 @@ class BackendContainer:
                 self.school_research_process = self.school_research_process_factory()
                 await self.school_research_process.start()
             await self.safety.start()
+            if (
+                self.school_research_student_safety is not None
+                and self.school_research_student_safety is not self.safety
+            ):
+                await self.school_research_student_safety.start()
             if self.post_assessment_worker_manager is not None:
                 await self.post_assessment_worker_manager.start()
             if self.research_education_worker_manager is not None:
@@ -261,8 +274,10 @@ class BackendContainer:
 
     async def _close_clients(self) -> bool:
         failures: list[str] = []
+        seen: set[int] = set()
         clients = (
             ("safety", self.safety),
+            ("school_research_student_safety", self.school_research_student_safety),
             ("cat", self.cat),
             ("cat_management", self.cat_management_client),
             ("cat_assets", self.cat_assets_client),
@@ -274,8 +289,9 @@ class BackendContainer:
             ("research_programme_runtime", self.research_programme_runtime_client),
         )
         for name, client in clients:
-            if client is None:
+            if client is None or id(client) in seen:
                 continue
+            seen.add(id(client))
             close = getattr(client, "close", None)
             if close is not None:
                 try:
@@ -332,7 +348,9 @@ class BackendContainer:
         return statuses
 
 
-def build_container(settings: BackendSettings | None = None) -> BackendContainer:
+def build_container(
+    settings: BackendSettings | None = None,
+) -> BackendContainer:
     settings = settings or BackendSettings()
     persistence = None
     users: Any
@@ -627,6 +645,69 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
             rag=independent_rag,
             llm=independent_llm,
         )
+    school_research_student_conversations = None
+    active_research_student_safety = None
+    student_lane_settings = settings.school_research_student_conversation
+    if student_lane_settings.enabled:
+        if persistence is None:
+            raise ValueError("school research student conversations require persistence")
+        from rag_engine.research.student_education import (
+            SchoolStudentEducationRetriever,
+            SchoolStudentPackageError,
+            load_school_student_package,
+        )
+
+        from smhai_backend.integrations.student_research import (
+            SchoolResearchStudentRagAdapter,
+        )
+
+        try:
+            package = load_school_student_package(
+                Path(student_lane_settings.manifest_file),
+                expected_manifest_sha256=student_lane_settings.manifest_sha256,
+                expected_study_ref=student_lane_settings.study_ref,
+            )
+        except SchoolStudentPackageError as exc:
+            if exc.code != "STUDENT_PACKAGE_EXPIRED":
+                raise
+            package = None
+        if package is not None:
+            if independent_llm is None:
+                independent_llm = IndependentLLMRuntimeClient(settings.llm)
+            active_research_student_safety = SchoolResearchStudentSafetyClient(
+                standard_safety=safety,
+                settings=ModuleClientSettings(
+                    mode="http",
+                    base_url=student_lane_settings.safety_base_url,
+                ),
+                package=package,
+                expected_manifest_sha256=student_lane_settings.manifest_sha256,
+                expected_package_id=package.package_id,
+                expected_study_ref=student_lane_settings.study_ref,
+            )
+            student_retriever = SchoolStudentEducationRetriever(package)
+            student_rag = SchoolResearchStudentRagAdapter(
+                student_retriever,
+                expected_manifest_sha256=student_lane_settings.manifest_sha256,
+                expected_package_id=package.package_id,
+                expected_study_ref=student_lane_settings.study_ref,
+            )
+            student_lane_policy = ConversationLanePolicy.school_research_student(
+                school_id=student_lane_settings.school_id,
+                study_ref=student_lane_settings.study_ref,
+                package_id=package.package_id,
+                manifest_sha256=student_lane_settings.manifest_sha256,
+                valid_through=package.valid_through,
+            )
+            school_research_student_conversations = IndependentConversationService(
+                persistence=SchoolConversationsPersistenceAdapter(
+                    persistence, target_role="student_research"
+                ),
+                safety=active_research_student_safety,
+                rag=student_rag,
+                llm=independent_llm,
+                lane_policy=student_lane_policy,
+            )
     support = SupportOrchestrator(
         assessments=assessments,
         conversations=conversations,
@@ -692,6 +773,8 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         research_programme_worker_manager=research_programme_worker_manager,
         research_programme_runtime_client=research_programme_runtime_client,
         independent_conversations=independent_conversations,
+        school_research_student_conversations=school_research_student_conversations,
+        school_research_student_safety=active_research_student_safety,
         independent_rag=independent_rag,
         independent_llm=independent_llm,
         support=support,

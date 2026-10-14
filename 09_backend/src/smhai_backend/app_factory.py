@@ -23,6 +23,9 @@ from smhai_backend.domains.auth.router import router as auth_router
 from smhai_backend.domains.cat_assets.router import router as cat_assets_router
 from smhai_backend.domains.cat_management.router import router as cat_management_router
 from smhai_backend.domains.conversations.router import router as conversations_router
+from smhai_backend.domains.conversations.research_router import (
+    router as research_conversations_router,
+)
 from smhai_backend.domains.health.router import router as health_router
 from smhai_backend.domains.professional_reviews.router import router as professional_reviews_router
 from smhai_backend.domains.school_directory.router import router as school_directory_router
@@ -125,6 +128,9 @@ def create_app(
         include_in_schema=False,
     )
     app.include_router(conversations_router, prefix=settings.api_prefix, include_in_schema=False)
+    app.include_router(
+        research_conversations_router, prefix=settings.api_prefix, include_in_schema=False
+    )
     app.include_router(
         professional_reviews_router, prefix=settings.api_prefix, include_in_schema=False
     )

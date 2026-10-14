@@ -185,6 +185,19 @@ class _FakeSupport:
         self.run_calls = []
         self.message_calls = []
         self.evidence_calls = []
+        self.session_calls = []
+        self.created_sessions = []
+
+    async def create_session(self, **kwargs):
+        self.session_calls.append(kwargs)
+        row = SimpleNamespace(
+            support_ref=kwargs["support_ref"],
+            status="OPEN",
+            created_at=NOW,
+            updated_at=NOW,
+        )
+        self.created_sessions.append(row)
+        return row
 
     async def create_run(self, **kwargs):
         self.run_calls.append(kwargs)
@@ -248,7 +261,7 @@ SESSION = SimpleNamespace(
 )
 
 
-def _fake_adapter(monkeypatch, session):
+def _fake_adapter(monkeypatch, session, *, target_role="student"):
     _sqlalchemy_fake(monkeypatch)
     models = SimpleNamespace(
         SupportRun=_model(
@@ -270,7 +283,7 @@ def _fake_adapter(monkeypatch, session):
             AssertionError("message decrypt was not expected")
         )
     )
-    adapter = SchoolConversationsPersistenceAdapter(persistence)
+    adapter = SchoolConversationsPersistenceAdapter(persistence, target_role=target_role)
     adapter._db_models = models
     adapter._db_enums = _enums()
     adapter._select = _Query
@@ -291,6 +304,35 @@ def _fake_adapter(monkeypatch, session):
     adapter._student_subject = student_subject
     adapter._owned_session = owned_session
     return adapter, uow
+
+
+@pytest.mark.asyncio
+async def test_create_uses_explicit_research_storage_role(monkeypatch):
+    session = _FakeSession(None)
+    adapter, uow = _fake_adapter(monkeypatch, session, target_role="student_research")
+    claims = []
+
+    async def claim(_uow, value):
+        claims.append(value)
+        return SimpleNamespace(replayed=False, record=SimpleNamespace())
+
+    async def complete(_uow, claim_value, *, resource_type, result_ref):
+        return None
+
+    adapter._school_idempotency_begin = claim
+    adapter._school_idempotency_complete = complete
+
+    async def owned(_uow, _actor, _subject, conversation_id, *, lock):
+        assert conversation_id.startswith("CONV_")
+        assert lock is False
+        return uow.support.created_sessions[0]
+
+    adapter._owned_session = owned
+    result = await adapter.create(ACTOR, idempotency_key="research-create", trace_id="TRACE_test")
+
+    assert result["conversation_id"].startswith("CONV_")
+    assert uow.support.session_calls[0]["target_role"] == "student_research"
+    assert uow.committed is True
 
 
 @pytest.mark.asyncio

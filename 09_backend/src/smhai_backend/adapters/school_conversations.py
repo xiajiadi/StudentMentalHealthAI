@@ -51,8 +51,31 @@ _SAFE_COMPONENT_KEYS = frozenset(
         "prompt_version",
         "retrieval_id",
         "retrieval_safety_action",
+        "source_query_transform",
+        "source_layers_hit",
+        "source_layers_missing",
         "runtime_version",
         "stage",
+        "conversation_lane",
+        "consumer_age_min",
+        "consumer_age_max",
+        "consumer_population",
+        "engineering_review_status",
+        "reviewer_kind",
+        "human_curated",
+        "professional_approval",
+        "ethics_approval",
+        "clinical_approval",
+        "psychometric_approval",
+        "publication_eligible",
+        "production_use",
+        "package_id",
+        "purpose",
+        "source_manifest_sha256",
+        "source_rights_status",
+        "source_review_status",
+        "source_policy_expires_at",
+        "study_ref",
     }
 )
 _SAFE_ATOM = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:/+-]{0,127}$")
@@ -171,8 +194,11 @@ def _safe_evidence_projection(row: Any) -> dict[str, Any] | None:
 class SchoolConversationsPersistenceAdapter:
     """Persistence adapter for independent, owner-private student conversations."""
 
-    def __init__(self, persistence: Any) -> None:
+    def __init__(self, persistence: Any, *, target_role: str = "student") -> None:
+        if target_role not in {"student", "student_research"}:
+            raise ValueError("unsupported conversation storage lane")
         self._persistence = persistence
+        self._target_role = target_role
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._persistence, name)
@@ -254,7 +280,7 @@ class SchoolConversationsPersistenceAdapter:
                 m.SupportSession.support_ref == conversation_id,
                 m.SupportSession.subject_id == subject.id,
                 m.SupportSession.assessment_session_id.is_(None),
-                m.SupportSession.target_role == "student",
+                m.SupportSession.target_role == self._target_role,
                 m.Subject.id == subject.id,
                 m.Subject.school_id == actor.school_id,
                 m.Subject.subject_ref == actor.subject_id,
@@ -327,7 +353,7 @@ class SchoolConversationsPersistenceAdapter:
             row = await uow.support.create_session(
                 support_ref=conversation_id,
                 subject_id=subject.id,
-                target_role="student",
+                target_role=self._target_role,
                 assessment_session_id=None,
                 trace_id=trace_id,
                 retention_due_at=subject.retention_due_at,
@@ -356,14 +382,14 @@ class SchoolConversationsPersistenceAdapter:
             base = self._select(m.SupportSession).where(
                 m.SupportSession.subject_id == subject.id,
                 m.SupportSession.assessment_session_id.is_(None),
-                m.SupportSession.target_role == "student",
+                m.SupportSession.target_role == self._target_role,
             )
             total = int(
                 await uow.session.scalar(
                     self._select(func.count(m.SupportSession.id)).where(
                         m.SupportSession.subject_id == subject.id,
                         m.SupportSession.assessment_session_id.is_(None),
-                        m.SupportSession.target_role == "student",
+                        m.SupportSession.target_role == self._target_role,
                     )
                 )
                 or 0

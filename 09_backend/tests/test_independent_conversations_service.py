@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -13,7 +14,10 @@ from smhai_backend.domains.conversations.schemas import (
     ConversationCreateRequest,
     ConversationMessageRequest,
 )
-from smhai_backend.domains.conversations.service import IndependentConversationService
+from smhai_backend.domains.conversations.service import (
+    ConversationLanePolicy,
+    IndependentConversationService,
+)
 from smhai_backend.domains.models import Actor, BackendRole
 from smhai_backend.integrations.evidence import EligibilityPolicy, build_retrieval_evidence_bundle
 from smhai_backend.integrations.independent import GenerationResult
@@ -209,6 +213,28 @@ def _chunk(*, population: str = "university_student") -> KnowledgeChunk:
     )
 
 
+def _research_chunk() -> KnowledgeChunk:
+    return KnowledgeChunk(
+        schema_version="knowledge.v1",
+        chunk_id="CHUNK_SCHOOL_RESEARCH_THEORY_RECORD",
+        document_id="KB_STUDENT_RESEARCH_0123456789abcdef01234567",
+        text="School connectedness describes relationships in a learning environment.",
+        content_type="source_excerpt",
+        location={"section": "Abstract, background", "page_start": None, "page_end": None},
+        citation={
+            "title": "School connectedness concept",
+            "organization": "Example journal",
+            "locator": "Abstract; ages 14-24; CC BY 4.0",
+        },
+        population_scope=["secondary_school_student"],
+        role_scope=["student"],
+        risk_scope=["normal"],
+        review_status="pending",
+        rights_status="verified",
+        content_hash="sha256:" + "a" * 64,
+    )
+
+
 class FakeRag:
     label = "FAKE_RAG"
 
@@ -230,6 +256,54 @@ class FakeRag:
             trace={
                 "request_id": kwargs["context"].request_id,
                 "trace_id": kwargs["context"].trace_id,
+            },
+        )
+
+
+class FakeResearchRag(FakeRag):
+    label = "SCHOOL_RESEARCH_STUDENT_SOURCE_PACKAGE"
+    manifest_sha256 = "a" * 64
+    package_id = "student-package-v1"
+    study_ref = "school-noncommercial-rag-research-2027-06"
+
+    def __init__(self, *, chunks=None, bad_manifest: bool = False) -> None:
+        super().__init__(chunks=chunks)
+        self.bad_manifest = bad_manifest
+
+    async def retrieve(self, **kwargs: Any) -> RetrievalResult:
+        self.calls.append(kwargs)
+        layer_order = ("policy", "theory", "intervention")
+        matched_layers = ["theory"] if self.chunks else []
+        return RetrievalResult(
+            retrieval_id=kwargs["retrieval_id"],
+            chunks=self.chunks,
+            label=self.label,
+            trace={
+                "package_id": self.package_id,
+                "manifest_sha256": "b" * 64 if self.bad_manifest else self.manifest_sha256,
+                "study_ref": self.study_ref,
+                "purpose": "RESEARCH_SIMULATION",
+                "target_population": "secondary_school_student",
+                "target_role": "student",
+                "review_status": "pending",
+                "rights_status": "verified",
+                "source_rights_status": "VERIFIED_WITH_CONDITIONS",
+                "consumer_age_min": 14,
+                "consumer_age_max": 17,
+                "query_transform": "NONE",
+                "matched_layers": matched_layers,
+                "missing_layers": [
+                    layer for layer in layer_order if layer not in matched_layers
+                ],
+                "reviewer_kind": "AI_ENGINEERING",
+                "research_only": True,
+                "human_curated": False,
+                "professional_approval": False,
+                "ethics_approval": False,
+                "clinical_approval": False,
+                "psychometric_approval": False,
+                "publication_eligible": False,
+                "production_use": False,
             },
         )
 
@@ -294,6 +368,42 @@ def _service(
         llm=runtime_client,
     )
     return service, store, safety_client, rag_client, runtime_client
+
+
+def _research_policy(
+    *,
+    school_id: int = 1,
+    valid_through: datetime | None = None,
+) -> ConversationLanePolicy:
+    return ConversationLanePolicy.school_research_student(
+        school_id=school_id,
+        study_ref="school-noncommercial-rag-research-2027-06",
+        package_id="student-package-v1",
+        manifest_sha256="a" * 64,
+        valid_through=valid_through
+        or datetime(2027, 6, 30, 15, 59, 59, tzinfo=UTC),
+    )
+
+
+def _research_service(
+    *,
+    chunks=(),
+    retrieval_action: str = "PROCEED",
+    bad_manifest: bool = False,
+    policy: ConversationLanePolicy | None = None,
+):
+    persistence = FakePersistence()
+    safety = FakeSafety(retrieval_action=retrieval_action)
+    rag = FakeResearchRag(chunks=chunks, bad_manifest=bad_manifest)
+    llm = FakeRuntime()
+    service = IndependentConversationService(
+        persistence=persistence,
+        safety=safety,
+        rag=rag,
+        llm=llm,
+        lane_policy=policy or _research_policy(),
+    )
+    return service, persistence, safety, rag, llm
 
 
 def _prompt_for_source_metadata(*source_metadata: Mapping[str, Any]) -> str:
@@ -741,6 +851,98 @@ async def test_valid_json_without_evidence_citation_is_rejected_without_candidat
     assert persistence.finish_calls[0].get("citations", ()) == ()
 
 
+@pytest.mark.asyncio
+async def test_research_lane_no_source_abstains_and_never_calls_runtime() -> None:
+    service, persistence, safety, rag, runtime = _research_service(chunks=())
+
+    result = await _submit(service)
+
+    assert result.status == "completed"
+    assert result.action == "ABSTAIN"
+    assert safety.calls == ["safety_input"]
+    assert len(rag.calls) == 1
+    assert runtime.calls == []
+    metadata = persistence.finish_calls[-1]["safe_metadata"]
+    assert metadata["purpose"] == "RESEARCH_SIMULATION"
+    assert metadata["source_manifest_sha256"] == "a" * 64
+    assert metadata["source_review_status"] == "pending"
+    assert "14–17" in persistence.finish_calls[-1]["approved_content"].disclaimer
+
+
+@pytest.mark.asyncio
+async def test_research_lane_passes_pending_source_only_to_private_safety_gate() -> None:
+    service, persistence, safety, rag, runtime = _research_service(
+        chunks=(_research_chunk(),), retrieval_action="BLOCK"
+    )
+
+    result = await _submit(service)
+
+    assert rag.calls[0]["target_population"] == "secondary_school_student"
+    assert safety.calls == ["safety_input", "safety_retrieval"]
+    assert safety.retrieval_chunks[0][0]["review_status"] == "pending"
+    assert safety.retrieval_chunks[0][0]["rights_status"] == "verified"
+    assert runtime.calls == []
+    assert result.status == "blocked"
+    safe_metadata = persistence.finish_calls[-1]["safe_metadata"]
+    assert safe_metadata["source_review_status"] == "pending"
+    assert safe_metadata["source_query_transform"] == "NONE"
+    assert safe_metadata["source_layers_hit"] == "theory"
+    assert safe_metadata["source_layers_missing"] == "policy+intervention"
+
+
+@pytest.mark.asyncio
+async def test_research_lane_rejects_wrong_manifest_before_safety_or_runtime() -> None:
+    service, persistence, safety, rag, runtime = _research_service(
+        chunks=(_research_chunk(),), bad_manifest=True
+    )
+
+    result = await _submit(service)
+
+    assert result.status == "failed"
+    assert result.action == "INVALID_OUTPUT"
+    assert safety.calls == ["safety_input"]
+    assert rag.calls
+    assert runtime.calls == []
+    assert persistence.finish_calls[-1]["safe_metadata"]["failure_code"] == (
+        "RESEARCH_SOURCE_PIN_MISMATCH"
+    )
+
+
+@pytest.mark.asyncio
+async def test_research_lane_rejects_foreign_school_or_expired_policy_before_persistence() -> None:
+    service, persistence, safety, rag, runtime = _research_service()
+    foreign = Actor(
+        user_id="ACCOUNT_foreign",
+        username="synthetic_student",
+        role=BackendRole.STUDENT,
+        subject_id="SUBJ_foreign",
+        school_id=2,
+        school_ref="SCHOOL_other",
+    )
+    with pytest.raises(BackendError) as denied:
+        await service.create(
+            foreign,
+            idempotency_key="foreign-create",
+            context=CONTEXT,
+            payload=ConversationCreateRequest(),
+        )
+    assert denied.value.code == ErrorCode.FORBIDDEN
+    assert persistence.reserve_calls == []
+
+    expired_service, expired_store, *_ = _research_service(
+        policy=_research_policy(valid_through=datetime(2026, 10, 1, tzinfo=UTC))
+    )
+    with pytest.raises(BackendError) as expired:
+        await expired_service.create(
+            ACTOR,
+            idempotency_key="expired-create",
+            context=CONTEXT,
+            payload=ConversationCreateRequest(),
+        )
+    assert expired.value.code == ErrorCode.DEPENDENCY_UNAVAILABLE
+    assert expired_store.reserve_calls == []
+
+
 def test_request_dtos_reject_unknown_owner_ai_fields_and_coercion() -> None:
     with pytest.raises(ValidationError):
         ConversationMessageRequest.model_validate({"text": "help", "assessment_id": "ASSESS_fake"})
@@ -752,3 +954,22 @@ def test_request_dtos_reject_unknown_owner_ai_fields_and_coercion() -> None:
         })
     with pytest.raises(ValidationError):
         ConversationCreateRequest.model_validate({"owner_id": "SUBJ_other"})
+
+
+def test_research_user_prompt_reports_real_layer_coverage_and_missing_layers() -> None:
+    service, *_ = _research_service(chunks=(_research_chunk(),))
+    retrieval = RetrievalResult(
+        retrieval_id="RETR_layer_prompt",
+        chunks=(_research_chunk(),),
+        label="SCHOOL_RESEARCH_STUDENT_SOURCE_PACKAGE",
+        trace={
+            "matched_layers": ["theory", "intervention"],
+            "missing_layers": ["policy"],
+        },
+    )
+
+    prompt = service._user_message("校园活动、休息和归属", retrieval=retrieval)
+
+    assert "本轮实际命中的资料层：理论、干预" in prompt
+    assert "未命中资料层：政策" in prompt
+    assert "不要为凑齐层级引用无关来源" in prompt
