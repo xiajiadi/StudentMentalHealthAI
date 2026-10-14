@@ -19,6 +19,11 @@ from .managed import (
     _validate_runtime_document,
     _validate_service_document,
 )
+from .observed_corpus import (
+    ObservedCorpusError,
+    ObservedResponseCorpus,
+    load_observed_response_corpus,
+)
 from .trust import PublicationStatusProjection, TrustedResearchProfile
 
 _SOURCE_SCOPE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_:-]{0,63}\Z")
@@ -130,6 +135,31 @@ class ResearchBindingSelection:
     public: ResearchBindingPublicMetadata
     config_sha256: str = field(repr=False)
     _canonical_cat_config_json: str = field(repr=False)
+    observed_corpus: ObservedResponseCorpus | None = field(default=None, repr=False)
+    observed_corpus_sha256: str | None = field(default=None, repr=False)
+    observed_corpus_row_count: int | None = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        corpus = self.observed_corpus
+        if corpus is None:
+            if (
+                self.observed_corpus_sha256 is not None
+                or self.observed_corpus_row_count is not None
+            ):
+                raise SchoolResearchCatalogError("binding_corpus_metadata_invalid")
+            return
+        if (
+            type(corpus) is not ObservedResponseCorpus
+            or self.observed_corpus_sha256 != corpus.response_csv_sha256
+            or self.observed_corpus_row_count != corpus.row_count
+        ):
+            raise SchoolResearchCatalogError("binding_corpus_metadata_invalid")
+
+    @property
+    def observed_source_verified(self) -> bool:
+        """True only when the server registry loaded the exact response bytes."""
+
+        return self.observed_corpus is not None
 
     def cat_config_copy(self) -> dict[str, Any]:
         """Return a new mutable JSON object without exposing catalog storage."""
@@ -171,6 +201,18 @@ class SchoolResearchCatalog:
             raise SchoolResearchCatalogError("binding_catalog_invalid")
         if any(selection.public.profile_ref not in profiles for selection in bindings.values()):
             raise SchoolResearchCatalogError("binding_profile_missing")
+        for selection in bindings.values():
+            corpus = selection.observed_corpus
+            if corpus is None:
+                continue
+            profile = profiles[selection.public.profile_ref]
+            if (
+                profile.trusted_profile.profile_schema != "psynova.research-profile.v3"
+                or corpus.profile_ref != profile.trusted_profile.profile_ref
+                or corpus.profile_sha256 != profile.trusted_profile.profile_sha256
+                or corpus.manifest_sha256 != profile.trusted_profile.manifest_sha256
+            ):
+                raise SchoolResearchCatalogError("binding_corpus_profile_mismatch")
         object.__setattr__(self, "_profiles", MappingProxyType(profiles))
         object.__setattr__(self, "_bindings", MappingProxyType(bindings))
 
@@ -253,6 +295,7 @@ def build_school_research_catalog(
             retained_key_provider=retained_key_provider,
         )
         profiles: dict[str, ResearchProfileSelection] = {}
+        corpora: dict[str, ObservedResponseCorpus | None] = {}
         for profile_ref, pin in runtime_view.profiles.items():
             trusted = runtime._registry.load(profile_ref)
             if (
@@ -276,6 +319,16 @@ def build_school_research_catalog(
                 trusted_profile=trusted,
                 repository=repository,
             )
+            # Candidate profile ingestion must remain available when its
+            # response-only companion is absent. Such a profile is not marked
+            # verifiable and task publication must fail closed on None.
+            if trusted.profile_schema == "psynova.research-profile.v3":
+                try:
+                    corpora[profile_ref] = load_observed_response_corpus(trusted)
+                except ObservedCorpusError:
+                    corpora[profile_ref] = None
+            else:
+                corpora[profile_ref] = None
 
         raw_bindings = service_document.get("bindings")
         if type(raw_bindings) is not list:
@@ -291,6 +344,7 @@ def build_school_research_catalog(
             config_version = binding["config_version"]
             config_sha256 = binding["config_sha256"]
             canonical_config = _canonical_json(binding["cat_config"])
+            corpus = corpora.get(profile_ref)
             bindings[binding_ref] = ResearchBindingSelection(
                 public=ResearchBindingPublicMetadata(
                     school_id=school_id,
@@ -302,6 +356,9 @@ def build_school_research_catalog(
                 ),
                 config_sha256=config_sha256,
                 _canonical_cat_config_json=canonical_config,
+                observed_corpus=corpus,
+                observed_corpus_sha256=(corpus.response_csv_sha256 if corpus else None),
+                observed_corpus_row_count=(corpus.row_count if corpus else None),
             )
 
         return SchoolResearchCatalog(

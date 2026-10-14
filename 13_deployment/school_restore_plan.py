@@ -22,6 +22,7 @@ from school_schema import (
     CAT_TASK_BINDING_REVISION,
     POST_ASSESSMENT_JOB_OUTBOX_REVISION,
     PROFESSIONAL_REVIEW_REVISION,
+    PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
     RESEARCH_CAT_SESSIONS_REVISION,
     RESEARCH_PARAMETER_PROVENANCE_REVISION,
     SCHOOL_FEEDBACK_PUBLICATION_REVISION,
@@ -80,6 +81,7 @@ POST_ASSESSMENT_JOB_TABLES = frozenset({"school_post_assessment_jobs"})
 RESEARCH_PROFILE_TABLES = frozenset({"school_research_profile_versions"})
 RESEARCH_BINDING_TABLES = frozenset({"school_research_task_bindings"})
 RESEARCH_SESSION_TABLES = frozenset({"school_research_sessions"})
+PUBLIC_OBSERVED_CASE_ASSIGNMENT_TABLES = frozenset({"school_research_case_assignments"})
 RESEARCH_CAT_TABLES = (
     RESEARCH_PROFILE_TABLES | RESEARCH_BINDING_TABLES | RESEARCH_SESSION_TABLES
 )
@@ -130,6 +132,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
         EXPECTED_MODEL_TABLES | DIRECTORY_TABLES | PROFESSIONAL_REVIEW_TABLES
         | CAT_ASSET_TABLES | CAT_TASK_BINDING_TABLES | SCHOOL_FEEDBACK_TABLES
         | POST_ASSESSMENT_JOB_TABLES | RESEARCH_CAT_TABLES
+        | PUBLIC_OBSERVED_CASE_ASSIGNMENT_TABLES
     )
     if revision not in SUPPORTED_BACKUP_REVISIONS:
         raise ValueError("Unsupported restore revision")
@@ -145,7 +148,8 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
         if (
             revision not in {
                 CAT_TASK_BINDING_REVISION, SCHOOL_FEEDBACK_PUBLICATION_REVISION,
-                POST_ASSESSMENT_JOB_OUTBOX_REVISION, RESEARCH_CAT_SESSIONS_REVISION, RESEARCH_PARAMETER_PROVENANCE_REVISION,
+                POST_ASSESSMENT_JOB_OUTBOX_REVISION, RESEARCH_CAT_SESSIONS_REVISION,
+                RESEARCH_PARAMETER_PROVENANCE_REVISION, PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
             }
             and table_name in CAT_TASK_BINDING_TABLES
         ):
@@ -155,19 +159,35 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
                 SCHOOL_FEEDBACK_PUBLICATION_REVISION,
                 POST_ASSESSMENT_JOB_OUTBOX_REVISION,
                 RESEARCH_CAT_SESSIONS_REVISION, RESEARCH_PARAMETER_PROVENANCE_REVISION,
+                PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
             }
             and table_name in SCHOOL_FEEDBACK_TABLES
         ):
             continue
-        if revision not in {POST_ASSESSMENT_JOB_OUTBOX_REVISION, RESEARCH_CAT_SESSIONS_REVISION, RESEARCH_PARAMETER_PROVENANCE_REVISION} and table_name in POST_ASSESSMENT_JOB_TABLES:
+        if revision not in {
+            POST_ASSESSMENT_JOB_OUTBOX_REVISION,
+            RESEARCH_CAT_SESSIONS_REVISION,
+            RESEARCH_PARAMETER_PROVENANCE_REVISION,
+            PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
+        } and table_name in POST_ASSESSMENT_JOB_TABLES:
             continue
-        if revision not in {RESEARCH_CAT_SESSIONS_REVISION, RESEARCH_PARAMETER_PROVENANCE_REVISION} and table_name in RESEARCH_CAT_TABLES:
+        if revision not in {
+            RESEARCH_CAT_SESSIONS_REVISION,
+            RESEARCH_PARAMETER_PROVENANCE_REVISION,
+            PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
+        } and table_name in RESEARCH_CAT_TABLES:
+            continue
+        if (
+            revision != PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION
+            and table_name in PUBLIC_OBSERVED_CASE_ASSIGNMENT_TABLES
+        ):
             continue
         if (
             revision not in {
                 CAT_ASSETS_REVISION, CAT_TASK_BINDING_REVISION,
                 SCHOOL_FEEDBACK_PUBLICATION_REVISION, POST_ASSESSMENT_JOB_OUTBOX_REVISION,
                 RESEARCH_CAT_SESSIONS_REVISION, RESEARCH_PARAMETER_PROVENANCE_REVISION,
+                PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
             }
             and table_name in CAT_ASSET_TABLES
         ):
@@ -177,6 +197,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
                 PROFESSIONAL_REVIEW_REVISION, CAT_ASSETS_REVISION, CAT_TASK_BINDING_REVISION,
                 SCHOOL_FEEDBACK_PUBLICATION_REVISION, POST_ASSESSMENT_JOB_OUTBOX_REVISION,
                 RESEARCH_CAT_SESSIONS_REVISION, RESEARCH_PARAMETER_PROVENANCE_REVISION,
+                PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
             }
             and table_name in PROFESSIONAL_REVIEW_TABLES
         ):
@@ -189,10 +210,18 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
             provenance_columns = {"parameter_origin", "published_parameter_crosswalk_sha256"}
             columns = tuple(column for column in columns if column not in provenance_columns)
             nullable = nullable - provenance_columns - {"fit_sha256", "calibration_sha256"}
+        if revision in {
+            RESEARCH_CAT_SESSIONS_REVISION,
+            RESEARCH_PARAMETER_PROVENANCE_REVISION,
+        } and table_name in RESEARCH_BINDING_TABLES:
+            corpus_columns = {"corpus_sha256", "case_count"}
+            columns = tuple(column for column in columns if column not in corpus_columns)
+            nullable = nullable - corpus_columns
         if (
             revision not in {
                 CAT_TASK_BINDING_REVISION, SCHOOL_FEEDBACK_PUBLICATION_REVISION,
-                POST_ASSESSMENT_JOB_OUTBOX_REVISION, RESEARCH_CAT_SESSIONS_REVISION, RESEARCH_PARAMETER_PROVENANCE_REVISION,
+                POST_ASSESSMENT_JOB_OUTBOX_REVISION, RESEARCH_CAT_SESSIONS_REVISION,
+                RESEARCH_PARAMETER_PROVENANCE_REVISION, PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
             }
             and table_name in CAT_TASK_BINDING_MODE_TABLES
         ):

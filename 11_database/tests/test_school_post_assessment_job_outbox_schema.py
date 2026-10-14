@@ -29,7 +29,7 @@ def _load_migration():
 
 def test_job_outbox_is_content_free_idempotent_and_exactly_scoped():
     table = SchoolPostAssessmentJob.__table__
-    assert len(Base.metadata.tables) == 45
+    assert len(Base.metadata.tables) == 46
     assert table.name == "school_post_assessment_jobs"
     assert table.c.status.server_default.arg == "QUEUED"
     assert table.c.attempt_count.server_default.arg == "0"

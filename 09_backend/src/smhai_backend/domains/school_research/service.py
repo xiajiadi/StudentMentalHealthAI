@@ -121,6 +121,8 @@ class SchoolResearchService:
             actor,
             session_ref,
             expected_state_version=expected_state_version,
+            item_id=item_id,
+            raw_value=raw_value,
             at=self._clock(),
             idempotency=idempotency,
         )

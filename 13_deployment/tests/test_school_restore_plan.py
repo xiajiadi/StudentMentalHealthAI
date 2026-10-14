@@ -24,6 +24,7 @@ from school_schema import (
     DIRECTORY_SCHOOL_REVISION,
     POST_ASSESSMENT_JOB_OUTBOX_REVISION,
     PROFESSIONAL_REVIEW_REVISION,
+    PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
     RESEARCH_CAT_SESSIONS_REVISION,
     RESEARCH_PARAMETER_PROVENANCE_REVISION,
     SCHOOL_FEEDBACK_PUBLICATION_REVISION,
@@ -58,7 +59,7 @@ def test_current_snapshot_requires_its_exact_table_layout_and_revision():
     package["tables"][restore_plan.REVISION_TABLE]["rows"] = [[CURRENT_SCHOOL_REVISION]]
     plan = restore_plan.plan_restore(package, restored_at=RESTORED_AT)
     assert plan["revision"] == CURRENT_SCHOOL_REVISION
-    assert len(plan["table_order"]) == 45
+    assert len(plan["table_order"]) == 46
     package["revision"] = SUPPORTED_REVISION
     with pytest.raises(ValueError, match="manifest mismatch"):
         restore_plan.plan_restore(package, restored_at=RESTORED_AT)
@@ -293,8 +294,9 @@ def test_research_revision_adds_three_isolated_tables_and_preserves_0011_layout(
 
 
 def test_parameter_provenance_revision_preserves_0012_snapshot_shape():
-    assert CURRENT_SCHOOL_REVISION == RESEARCH_PARAMETER_PROVENANCE_REVISION
-    assert SCHOOL_REVISION_CHAIN[-1] == RESEARCH_PARAMETER_PROVENANCE_REVISION
+    assert RESEARCH_PARAMETER_PROVENANCE_REVISION in SCHOOL_REVISION_CHAIN
+    assert CURRENT_SCHOOL_REVISION == PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION
+    assert SCHOOL_REVISION_CHAIN[-1] == PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION
     old = restore_plan._load_trusted_tables(RESEARCH_CAT_SESSIONS_REVISION)
     current = restore_plan._load_trusted_tables(RESEARCH_PARAMETER_PROVENANCE_REVISION)
     assert set(old) == set(current) and len(current) == 46
@@ -306,6 +308,70 @@ def test_parameter_provenance_revision_preserves_0012_snapshot_shape():
     assert {"fit_sha256", "calibration_sha256"}.isdisjoint(old[profile].nullable_columns)
     assert {"fit_sha256", "calibration_sha256", "published_parameter_crosswalk_sha256"} <= current[profile].nullable_columns
     assert "parameter_origin" not in current[profile].nullable_columns
+
+
+def test_public_observed_revision_preserves_0013_snapshots_and_adds_exact_assignment_table():
+    assert RESEARCH_PARAMETER_PROVENANCE_REVISION in SUPPORTED_SNAPSHOT_REVISIONS
+    assert PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION in SUPPORTED_SNAPSHOT_REVISIONS
+    old = restore_plan._load_trusted_tables(RESEARCH_PARAMETER_PROVENANCE_REVISION)
+    current = restore_plan._load_trusted_tables(PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION)
+    assert len(old) == 46
+    assert len(current) == 47
+    assert set(current) - set(old) == restore_plan.PUBLIC_OBSERVED_CASE_ASSIGNMENT_TABLES
+    for name, old_spec in old.items():
+        if name == "school_research_task_bindings":
+            assert tuple(
+                column for column in current[name].columns
+                if column not in {"corpus_sha256", "case_count"}
+            ) == old_spec.columns
+            assert tuple(
+                column for column in current[name].columns
+                if column not in old_spec.columns
+            ) == ("corpus_sha256", "case_count")
+        else:
+            assert current[name] == old_spec
+
+    assignment = current["school_research_case_assignments"]
+    assert {
+        "task_enrollment_id", "task_binding_id", "profile_version_id",
+        "corpus_sha256", "case_count", "case_index", "purpose",
+    } <= set(assignment.columns)
+    assert any(
+        fk.remote_table == "school_research_task_bindings"
+        and fk.local_columns[-2:] == ("corpus_sha256", "case_count")
+        for fk in assignment.foreign_keys
+    )
+
+    package = empty_package()
+    package["revision"] = RESEARCH_PARAMETER_PROVENANCE_REVISION
+    package["tables"] = {
+        name: {"create_sql": "opaque archived DDL", "columns": list(spec.columns), "rows": []}
+        for name, spec in old.items()
+    }
+    package["tables"][restore_plan.REVISION_TABLE]["rows"] = [
+        [RESEARCH_PARAMETER_PROVENANCE_REVISION]
+    ]
+    old_plan = restore_plan.plan_restore(package, restored_at=RESTORED_AT)
+    assert old_plan["revision"] == RESEARCH_PARAMETER_PROVENANCE_REVISION
+    assert len(old_plan["table_order"]) == 45
+    assert "school_research_case_assignments" not in old_plan["tables"]
+
+    package["revision"] = PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION
+    package["tables"] = {
+        name: {"create_sql": "opaque archived DDL", "columns": list(spec.columns), "rows": []}
+        for name, spec in current.items()
+    }
+    package["tables"][restore_plan.REVISION_TABLE]["rows"] = [
+        [PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION]
+    ]
+    current_plan = restore_plan.plan_restore(package, restored_at=RESTORED_AT)
+    assert current_plan["revision"] == PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION
+    assert len(current_plan["table_order"]) == 46
+    order = current_plan["table_order"]
+    assert order.index("school_research_task_bindings") < order.index(
+        "school_research_case_assignments"
+    )
+    assert order.index("task_enrollments") < order.index("school_research_case_assignments")
 
 
 def empty_package():

@@ -64,8 +64,16 @@ class ResearchCATRuntime:
     """
 
     __slots__ = (
-        "_registry", "_pins", "_school_id", "_base_url", "_key_provider",
-        "_signing_version", "_accepted_versions", "_timeout", "_initialized",
+        "_registry",
+        "_pins",
+        "_school_id",
+        "_base_url",
+        "_key_provider",
+        "_signing_version",
+        "_accepted_versions",
+        "_timeout",
+        "_initialized",
+        "_observed_corpora",
     )
 
     def __init__(
@@ -82,8 +90,10 @@ class ResearchCATRuntime:
     ) -> None:
         if not callable(getattr(profile_registry, "load", None)):
             raise ResearchCATRuntimeError("profile_registry_invalid")
-        if type(binding_pins) is not tuple or not binding_pins or any(
-            type(pin) is not ResearchCATBindingPin for pin in binding_pins
+        if (
+            type(binding_pins) is not tuple
+            or not binding_pins
+            or any(type(pin) is not ResearchCATBindingPin for pin in binding_pins)
         ):
             raise ResearchCATRuntimeError("binding_pins_invalid")
         if len({pin.binding_ref for pin in binding_pins}) != len(binding_pins):
@@ -91,8 +101,7 @@ class ResearchCATRuntime:
         if type(school_id) is not int or school_id <= 0:
             raise ResearchCATRuntimeError("school_id_invalid")
         if retained_key_provider is None or not all(
-            callable(getattr(retained_key_provider, name, None))
-            for name in ("get_key", "versions")
+            callable(getattr(retained_key_provider, name, None)) for name in ("get_key", "versions")
         ):
             raise ResearchCATRuntimeError("key_provider_invalid")
         if (
@@ -100,8 +109,10 @@ class ResearchCATRuntime:
             or not _KEY_VERSION.fullmatch(signing_version)
             or type(accepted_key_versions) is not tuple
             or not accepted_key_versions
-            or any(type(version) is not str or not _KEY_VERSION.fullmatch(version)
-                   for version in accepted_key_versions)
+            or any(
+                type(version) is not str or not _KEY_VERSION.fullmatch(version)
+                for version in accepted_key_versions
+            )
             or len(set(accepted_key_versions)) != len(accepted_key_versions)
             or signing_version not in accepted_key_versions
         ):
@@ -125,6 +136,7 @@ class ResearchCATRuntime:
         object.__setattr__(self, "_signing_version", signing_version)
         object.__setattr__(self, "_accepted_versions", accepted_key_versions)
         object.__setattr__(self, "_timeout", float(timeout))
+        object.__setattr__(self, "_observed_corpora", {})
         object.__setattr__(self, "_initialized", True)
 
     def __setattr__(self, name: str, value: object) -> None:
@@ -143,6 +155,48 @@ class ResearchCATRuntime:
     def school_id(self) -> int:
         """Configured tenant identity; immutable and independent of a request."""
         return self._school_id
+
+    def observed_corpus_for_binding(self, database_metadata: object) -> Any:
+        """Resolve private observed responses without loading credentials or a client."""
+        from .observed_corpus import load_observed_response_corpus
+
+        profile_ref = _metadata_value(database_metadata, "profile_ref")
+        profile_sha = _metadata_value(database_metadata, "profile_sha256")
+        config_version = _metadata_value(database_metadata, "config_version")
+        config_sha = _metadata_value(database_metadata, "config_sha256")
+        school_id = _metadata_value(database_metadata, "school_id")
+        if type(school_id) is not int or school_id != self._school_id:
+            raise ResearchCATRuntimeError("binding_school_mismatch")
+        pins = tuple(
+            pin
+            for pin in self._pins.values()
+            if pin.profile_ref == profile_ref
+            and pin.config_version == config_version
+            and pin.config_sha256 == config_sha
+        )
+        if len(pins) != 1:
+            raise ResearchCATRuntimeError("binding_pin_ambiguous_or_missing")
+        if _metadata_has(database_metadata, "binding_ref") and (
+            _metadata_value(database_metadata, "binding_ref") != pins[0].binding_ref
+        ):
+            raise ResearchCATRuntimeError("binding_pin_mismatch")
+        try:
+            corpus = self._observed_corpora.get(profile_ref)
+            if corpus is None:
+                trusted = self._registry.load(profile_ref)
+                corpus = load_observed_response_corpus(trusted)
+                self._observed_corpora[profile_ref] = corpus
+            if (
+                corpus.profile_sha256 != profile_sha
+                or corpus.response_csv_sha256 != _metadata_value(database_metadata, "corpus_sha256")
+                or corpus.row_count != _metadata_value(database_metadata, "case_count")
+            ):
+                raise ResearchCATRuntimeError("observed_corpus_pin_mismatch")
+            return corpus
+        except ResearchCATRuntimeError:
+            raise
+        except Exception:
+            raise ResearchCATRuntimeError("observed_corpus_unavailable") from None
 
     def client_for_binding(self, database_metadata: object) -> Any:
         """Return a fresh client only when DB metadata matches explicit pins."""
@@ -166,9 +220,7 @@ class ResearchCATRuntime:
             raise ResearchCATRuntimeError("binding_metadata_invalid")
 
         has_binding_ref = _metadata_has(database_metadata, "binding_ref")
-        requested_binding_ref = _metadata_value(
-            database_metadata, "binding_ref", required=False
-        )
+        requested_binding_ref = _metadata_value(database_metadata, "binding_ref", required=False)
         if has_binding_ref:
             if type(requested_binding_ref) is not str:
                 raise ResearchCATRuntimeError("binding_metadata_invalid")
@@ -178,7 +230,8 @@ class ResearchCATRuntime:
             candidates = (pin,)
         else:
             candidates = tuple(
-                pin for pin in self._pins.values()
+                pin
+                for pin in self._pins.values()
                 if pin.profile_ref == profile_ref
                 and pin.config_version == config_version
                 and pin.config_sha256 == config_sha256
@@ -271,8 +324,10 @@ def _validate_loopback_base_url(value: object) -> str:
     except (ValueError, UnicodeError):
         raise ResearchCATRuntimeError("loopback_url_invalid") from None
     expected_host = (
-        f"[{address.compressed}]" if address is not None and address.version == 6
-        else address.compressed if address is not None
+        f"[{address.compressed}]"
+        if address is not None and address.version == 6
+        else address.compressed
+        if address is not None
         else ""
     )
     expected_netloc = f"{expected_host}:{port}" if port is not None else expected_host

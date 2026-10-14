@@ -1753,6 +1753,12 @@ class SchoolResearchTaskBinding(ResourceIdentityMixin, TimestampMixin, Base):
             "profile_ref", "profile_version_number", "profile_sha256", "response_origin",
             name="school_research_binding_exact_scope_unique",
         ),
+        UniqueConstraint(
+            "id", "school_id", "task_id", "class_id", "profile_version_id",
+            "profile_ref", "profile_version_number", "profile_sha256", "response_origin",
+            "corpus_sha256", "case_count",
+            name="school_research_binding_corpus_scope_unique",
+        ),
         CheckConstraint(
             "response_origin IN ('PUBLIC_OBSERVED', 'MODEL_GENERATED')",
             name="response_origin_allowed",
@@ -1761,6 +1767,11 @@ class SchoolResearchTaskBinding(ResourceIdentityMixin, TimestampMixin, Base):
         CheckConstraint(
             "revoked_at IS NULL OR status = 'REVOKED'",
             name="revocation_matches_status",
+        ),
+        CheckConstraint(
+            "(corpus_sha256 IS NULL AND case_count IS NULL) OR "
+            "(corpus_sha256 IS NOT NULL AND case_count IS NOT NULL AND case_count = 800)",
+            name="corpus_pin_shape",
         ),
         CheckConstraint("research_only = 1", name="research_only_locked"),
         CheckConstraint(
@@ -1831,6 +1842,98 @@ class SchoolResearchTaskBinding(ResourceIdentityMixin, TimestampMixin, Base):
         unsigned_id(), nullable=True
     )
     revoked_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    corpus_sha256: Mapped[str | None] = mapped_column(ascii_id(64), nullable=True)
+    case_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class SchoolResearchCaseAssignment(ResourceIdentityMixin, TimestampMixin, Base):
+    """Private content-free row mapping one task enrollment to one public case index."""
+
+    __tablename__ = "school_research_case_assignments"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint(
+            "task_enrollment_id", name="school_research_case_enrollment_unique"
+        ),
+        UniqueConstraint(
+            "task_id", "case_index", name="school_research_case_task_index_unique"
+        ),
+        CheckConstraint(
+            "response_origin = 'PUBLIC_OBSERVED'", name="response_origin_public_observed"
+        ),
+        CheckConstraint(
+            "case_index >= 0 AND case_index < 800", name="case_index_range"
+        ),
+        CheckConstraint("case_count = 800", name="case_count_fixed"),
+        CheckConstraint("purpose = 'RESEARCH_SIMULATION'", name="purpose_research_only"),
+        ForeignKeyConstraint(
+            ["school_id"], ["schools.id"],
+            name="fk_school_research_case_assignments_school", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["task_id", "school_id", "class_id"],
+            ["measurement_tasks.id", "measurement_tasks.school_id", "measurement_tasks.class_id"],
+            name="fk_school_research_case_assignments_task_scope", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["task_enrollment_id", "task_id", "school_id", "subject_id"],
+            ["task_enrollments.id", "task_enrollments.task_id", "task_enrollments.school_id",
+             "task_enrollments.subject_id"],
+            name="fk_school_research_case_assignments_enrollment_scope", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["subject_id", "school_id"], ["subjects.id", "subjects.school_id"],
+            name="fk_school_research_case_assignments_subject_scope", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["profile_version_id", "school_id", "profile_ref", "profile_version_number",
+             "profile_sha256"],
+            ["school_research_profile_versions.id", "school_research_profile_versions.school_id",
+             "school_research_profile_versions.profile_ref",
+             "school_research_profile_versions.version_number",
+             "school_research_profile_versions.profile_sha256"],
+            name="fk_school_research_case_assignments_profile_exact", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["task_binding_id", "school_id", "task_id", "class_id", "profile_version_id",
+             "profile_ref", "profile_version_number", "profile_sha256", "response_origin",
+             "corpus_sha256", "case_count"],
+            ["school_research_task_bindings.id", "school_research_task_bindings.school_id",
+             "school_research_task_bindings.task_id", "school_research_task_bindings.class_id",
+             "school_research_task_bindings.profile_version_id",
+             "school_research_task_bindings.profile_ref",
+             "school_research_task_bindings.profile_version_number",
+             "school_research_task_bindings.profile_sha256",
+             "school_research_task_bindings.response_origin",
+             "school_research_task_bindings.corpus_sha256",
+             "school_research_task_bindings.case_count"],
+            name="fk_school_research_case_assignments_binding_exact", ondelete="RESTRICT",
+        ),
+        Index(
+            "ix_school_research_case_assignments_scope",
+            "school_id", "task_id", "task_binding_id",
+        ),
+    )
+
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    task_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    class_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    task_enrollment_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    subject_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    task_binding_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    profile_version_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    profile_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    profile_version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    profile_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    response_origin: Mapped[str] = mapped_column(ascii_id(32), nullable=False)
+    corpus_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    case_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=800, server_default="800"
+    )
+    case_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    purpose: Mapped[str] = mapped_column(
+        ascii_id(32), nullable=False, default="RESEARCH_SIMULATION",
+        server_default="RESEARCH_SIMULATION",
+    )
 
 
 class SchoolResearchSession(ResourceIdentityMixin, TimestampMixin, Base):

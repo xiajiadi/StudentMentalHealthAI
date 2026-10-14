@@ -36,7 +36,7 @@ from resume_school_workspace import (
     PORT as SOURCE_DATABASE_PORT,
 )
 from school_check_names import legacy_school_check_names
-from school_schema import CURRENT_SCHOOL_REVISION
+from school_schema import CURRENT_SCHOOL_MIGRATION_FILE, CURRENT_SCHOOL_REVISION
 
 BUILDER_USER = "psynova_builder"
 MIGRATION_TIMEOUT_SECONDS = 900
@@ -1155,7 +1155,7 @@ $values | ConvertTo-Json -Depth 3 -Compress
             database_root
             / "migrations"
             / "versions"
-            / f"{CURRENT_SCHOOL_REVISION}_research_parameter_provenance.py"
+            / CURRENT_SCHOOL_MIGRATION_FILE
         )
         if not migration_file.is_file():
             raise MigrationError("PINNED_MIGRATION_UNAVAILABLE")

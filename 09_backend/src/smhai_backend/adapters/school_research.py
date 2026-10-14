@@ -151,6 +151,7 @@ class ResearchAnswerPlan:
     expected_state_version: int
     items_answered: int
     signed_snapshot_json: str = field(repr=False)
+    observed_response: tuple[str, int] | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -193,6 +194,7 @@ class SchoolResearchPersistenceAdapter:
         *,
         client_for_binding: Callable[[Any], Any],
         study_use_policy: ResearchStudyUsePolicy | None = None,
+        observed_corpus_for_binding: Callable[[Any], Any] | None = None,
     ) -> None:
         if not callable(getattr(owner, "_uow", None)):
             raise TypeError("owner must provide short-lived database units of work")
@@ -201,6 +203,7 @@ class SchoolResearchPersistenceAdapter:
         self._owner = owner
         self._client_for_binding = client_for_binding
         self._study_use_policy = study_use_policy
+        self._observed_corpus_for_binding = observed_corpus_for_binding
 
     def client_for_binding(self, binding_metadata: Any) -> Any:
         """Create the injected, server-pinned client outside any UOW."""
@@ -368,6 +371,8 @@ class SchoolResearchPersistenceAdapter:
         session_ref: str,
         *,
         expected_state_version: int,
+        item_id: str,
+        raw_value: int,
         at: datetime,
         idempotency: tuple[str, str, str],
     ) -> ResearchAnswerPlan | ResearchSessionPersistenceResult:
@@ -375,6 +380,9 @@ class SchoolResearchPersistenceAdapter:
 
         _validate_reference(session_ref)
         _validate_positive_int(expected_state_version, "state version")
+        _validate_reference(item_id)
+        if type(raw_value) is not int:
+            raise _conflict_error()
         _validate_idempotency(idempotency)
         school_id = _actor_school_id(actor)
         try:
@@ -384,7 +392,11 @@ class SchoolResearchPersistenceAdapter:
                         uow, school_id=school_id, session_ref=session_ref
                     )
                     scope = await self._resolve_session_and_lock(
-                        uow, actor, at=at, metadata=session_metadata
+                        uow,
+                        actor,
+                        at=at,
+                        metadata=session_metadata,
+                        observed_response=(item_id, raw_value),
                     )
                     self._require_metadata_scope(session_metadata, scope)
                     claim = await self._owner._school_idempotency_begin(uow, idempotency)
@@ -426,6 +438,7 @@ class SchoolResearchPersistenceAdapter:
                         expected_state_version=expected_state_version,
                         items_answered=repo_state.metadata.items_answered,
                         signed_snapshot_json=repo_state.signed_snapshot_json,
+                        observed_response=(item_id, raw_value),
                     )
                     raise _RollbackPrepared(plan)
             except _RollbackPrepared as prepared:
@@ -444,6 +457,7 @@ class SchoolResearchPersistenceAdapter:
                     expected_state_version=prepared.plan.expected_state_version,
                     items_answered=prepared.plan.items_answered,
                     signed_snapshot_json=prepared.plan.signed_snapshot_json,
+                    observed_response=prepared.plan.observed_response,
                 )
         except BackendError:
             raise
@@ -477,7 +491,15 @@ class SchoolResearchPersistenceAdapter:
                 current = await self._metadata_for_ref(
                     uow, school_id=school_id, session_ref=plan.session_ref
                 )
-                scope = await self._resolve_session_and_lock(uow, actor, at=at, metadata=current)
+                if plan.observed_response is None:
+                    raise _conflict_error()
+                scope = await self._resolve_session_and_lock(
+                    uow,
+                    actor,
+                    at=at,
+                    metadata=current,
+                    observed_response=plan.observed_response,
+                )
                 self._require_metadata_scope(current, scope)
                 _require_same_scope(plan.scope, scope)
                 claim = await self._owner._school_idempotency_begin(uow, idempotency)
@@ -615,6 +637,7 @@ class SchoolResearchPersistenceAdapter:
         at: datetime,
         task_ref: str | None = None,
         session_ref: str | None = None,
+        observed_response: tuple[str, int] | None = None,
     ) -> Any:
         owner = self._owner
 
@@ -637,6 +660,24 @@ class SchoolResearchPersistenceAdapter:
         def require_study_scope(profile_metadata: Any, binding_metadata: Any) -> None:
             self._require_trusted_study_scope(candidate, profile_metadata, binding_metadata, at=at)
 
+        async def require_observed_scope(profile_metadata: Any, binding_metadata: Any) -> None:
+            factory = self._observed_corpus_for_binding
+            if not callable(factory):
+                raise _dependency_error()
+            corpus = factory(binding_metadata)
+            assignment = await uow.research_cat.require_public_observed_case_assignment(
+                profile=profile_metadata,
+                binding=binding_metadata,
+                task_enrollment_id=candidate.task_enrollment_id,
+                subject_id=candidate.subject_id,
+                expected_profile_sha256=corpus.profile_sha256,
+                expected_corpus_sha256=corpus.response_csv_sha256,
+            )
+            if observed_response is not None and not corpus.matches(
+                assignment.case_index, observed_response[0], observed_response[1]
+            ):
+                raise _conflict_error()
+
         locked = await uow.research_cat.lock_student_task_scope(
             school_id=candidate.school_id,
             task_id=candidate.task_id,
@@ -645,6 +686,7 @@ class SchoolResearchPersistenceAdapter:
             principal_account_id=candidate.account_id,
             at=at,
             require_study_scope=require_study_scope,
+            require_observed_scope=require_observed_scope,
         )
         if (
             locked.school_id != candidate.school_id
@@ -743,10 +785,22 @@ class SchoolResearchPersistenceAdapter:
             raise _conflict_error()
 
     async def _resolve_session_and_lock(
-        self, uow: Any, actor: Actor, *, at: datetime, metadata: Any
+        self,
+        uow: Any,
+        actor: Actor,
+        *,
+        at: datetime,
+        metadata: Any,
+        observed_response: tuple[str, int] | None = None,
     ) -> Any:
         try:
-            return await self._resolve_and_lock(uow, actor, at=at, session_ref=metadata.session_ref)
+            return await self._resolve_and_lock(
+                uow,
+                actor,
+                at=at,
+                session_ref=metadata.session_ref,
+                observed_response=observed_response,
+            )
         except ResearchScopeResolutionError:
             # Completed sessions are intentionally excluded from the active
             # session candidate join. Resolve their owning task under the
@@ -762,7 +816,13 @@ class SchoolResearchPersistenceAdapter:
             )
             if type(task_ref) is not str or not task_ref:
                 raise ResearchScopeResolutionError() from None
-            return await self._resolve_and_lock(uow, actor, at=at, task_ref=task_ref)
+            return await self._resolve_and_lock(
+                uow,
+                actor,
+                at=at,
+                task_ref=task_ref,
+                observed_response=observed_response,
+            )
 
     async def _metadata_for_ref(self, uow: Any, *, school_id: int, session_ref: str) -> Any:
         return await uow.research_cat.get_session_l1_metadata(

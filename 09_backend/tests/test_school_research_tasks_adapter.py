@@ -10,6 +10,7 @@ import pytest
 
 from smhai_backend.adapters.school_research_tasks import (
     SchoolResearchTasksPersistenceAdapter,
+    _server_case_index_plan,
 )
 from smhai_backend.core.errors import BackendError, ErrorCode
 from smhai_backend.domains.models import Actor, BackendRole, SchoolRoleContext
@@ -22,6 +23,7 @@ from smhai_backend.domains.school_research.catalog import (
     ResearchProfileSelection,
     SchoolResearchCatalog,
 )
+from smhai_backend.domains.school_research.observed_corpus import ObservedResponseCorpus
 from smhai_backend.domains.school_research.study_use import (
     ResearchStudyProfilePin,
     ResearchStudyUsePolicy,
@@ -33,6 +35,7 @@ PROFILE_SHA = "a" * 64
 MANIFEST_SHA = "b" * 64
 CROSSWALK_SHA = "c" * 64
 CONFIG_SHA = "d" * 64
+CORPUS_SHA = "9" * 64
 POLICY_SHA = "e" * 64
 BINDING_REF = "promis-research-binding-r1"
 OPEN = datetime(2026, 10, 16, 0, 0, tzinfo=UTC)
@@ -177,6 +180,7 @@ class _Uow(AbstractAsyncContextManager):
 class _Operations:
     def __init__(self):
         self.calls = []
+        self.enrollment_count = 5
         self.task = SimpleNamespace(
             id=501,
             public_id="MEASTASK_syntheticpublic",
@@ -196,7 +200,7 @@ class _Operations:
     async def publish_task_with_snapshot(self, **kwargs):
         self.calls.append(("publish_snapshot", kwargs))
         self.task.cat_binding_mode = "RESEARCH_PROFILE"
-        return SimpleNamespace(task=self.task, enrollment_count=5)
+        return SimpleNamespace(task=self.task, enrollment_count=self.enrollment_count)
 
     async def task_progress_counts(self, **_kwargs):
         return SimpleNamespace(published_enrollment_count=5)
@@ -207,6 +211,7 @@ class _ResearchCat:
         self.profile_metadata = profile_metadata
         self.binding = None
         self.calls = []
+        self.assignment_verifications = []
 
     async def get_profile_metadata(self, **_kwargs):
         return self.profile_metadata
@@ -214,6 +219,7 @@ class _ResearchCat:
     async def create_task_binding(self, **kwargs):
         self.calls.append(("create_binding", kwargs))
         self.binding = SimpleNamespace(
+            binding_id=1001,
             school_id=kwargs["school_id"],
             task_id=kwargs["task_id"],
             class_id=kwargs["class_id"],
@@ -222,6 +228,8 @@ class _ResearchCat:
             profile_version_number=kwargs["profile_version_number"],
             profile_sha256=kwargs["expected_profile_sha256"],
             response_origin=kwargs["response_origin"],
+            corpus_sha256=kwargs.get("corpus_sha256"),
+            case_count=kwargs.get("case_count"),
             status="ACTIVE",
             config_version=kwargs["config_version"],
             config_sha256=kwargs["expected_config_sha256"],
@@ -229,6 +237,30 @@ class _ResearchCat:
             revoked_at=None,
         )
         return self.binding
+
+    async def create_public_observed_case_assignments(self, **kwargs):
+        self.calls.append(("create_assignments", kwargs))
+        return tuple(
+            SimpleNamespace(
+                school_id=kwargs["school_id"],
+                task_id=kwargs["task_id"],
+                class_id=kwargs["class_id"],
+                task_enrollment_id=2000 + index,
+                subject_id=3000 + index,
+                task_binding_id=kwargs["task_binding_id"],
+                profile_version_id=41,
+                profile_ref=PROFILE_REF,
+                profile_version_number=2,
+                profile_sha256=kwargs["expected_profile_sha256"],
+                corpus_sha256=kwargs["expected_corpus_sha256"],
+                case_count=800,
+                case_index=case_index,
+            )
+            for index, case_index in enumerate(kwargs["case_index_plan"])
+        )
+
+    async def require_public_observed_task_assignments(self, **kwargs):
+        self.assignment_verifications.append(kwargs)
 
     async def get_task_binding_metadata(self, **_kwargs):
         return self.binding
@@ -336,7 +368,7 @@ def _actor(role=BackendRole.ADMIN, school_id=SCHOOL_ID):
     )
 
 
-def _catalog():
+def _catalog(*, verified=True):
     raw = json.dumps(
         {
             "model": {"parameter_version": "published-v1"},
@@ -375,9 +407,16 @@ def _catalog():
             psychological_interpretation_allowed=False,
             publication_status="not_approved",
         ),
-        trusted_profile=SimpleNamespace(raw_profile_bytes=raw),
+        trusted_profile=SimpleNamespace(
+            profile_ref=PROFILE_REF,
+            profile_schema="psynova.research-profile.v3",
+            profile_sha256=PROFILE_SHA,
+            manifest_sha256=MANIFEST_SHA,
+            raw_profile_bytes=raw,
+        ),
         repository=repository,
     )
+    corpus = _observed_corpus() if verified else None
     binding = ResearchBindingSelection(
         public=ResearchBindingPublicMetadata(
             school_id=SCHOOL_ID,
@@ -389,6 +428,9 @@ def _catalog():
         ),
         config_sha256=CONFIG_SHA,
         _canonical_cat_config_json='{"max_items":8,"min_items":8}',
+        observed_corpus=corpus,
+        observed_corpus_sha256=CORPUS_SHA if corpus else None,
+        observed_corpus_row_count=800 if corpus else None,
     )
     return SchoolResearchCatalog(
         school_id=SCHOOL_ID,
@@ -420,6 +462,18 @@ def _metadata(*, rights="VERIFIED", execution="SIMULATION_ENABLED"):
         rights_revoked_at=None,
         disabled_at=None,
         simulation_enabled_at=datetime(2026, 10, 14),
+    )
+
+
+def _observed_corpus():
+    return ObservedResponseCorpus(
+        profile_ref=PROFILE_REF,
+        profile_sha256=PROFILE_SHA,
+        manifest_sha256=MANIFEST_SHA,
+        response_csv_sha256=CORPUS_SHA,
+        row_count=800,
+        _column_by_item={f"ITEM_{index}": index for index in range(8)},
+        _rows=tuple(tuple(1 for _ in range(8)) for _ in range(800)),
     )
 
 
@@ -517,7 +571,17 @@ async def test_publish_is_atomic_and_binds_exact_profile_with_public_observed_or
     assert binding_call["profile_ref"] == PROFILE_REF
     assert binding_call["expected_profile_sha256"] == PROFILE_SHA
     assert binding_call["response_origin"] == "PUBLIC_OBSERVED"
+    assert binding_call["corpus_sha256"] == CORPUS_SHA
+    assert binding_call["case_count"] == 800
     assert binding_call["config_payload"] == {"max_items": 8, "min_items": 8}
+    assignment_name, assignment_call = owner.uow.research_cat.calls[1]
+    assert assignment_name == "create_assignments"
+    assert assignment_call["case_index_plan"] == tuple(
+        dict.fromkeys(assignment_call["case_index_plan"])
+    )
+    assert len(assignment_call["case_index_plan"]) == result.published_enrollment_count
+    assert len(set(assignment_call["case_index_plan"])) == result.published_enrollment_count
+    assert all(0 <= index < 800 for index in assignment_call["case_index_plan"])
     assert result.response_origin == "PUBLIC_OBSERVED"
     assert result.research_only is True
     assert result.publication_status == "not_approved_for_publication_or_operational_use"
@@ -533,6 +597,128 @@ async def test_publish_is_atomic_and_binds_exact_profile_with_public_observed_or
     }
     assert policy.calls[0]["task_opens_at"] == OPEN
     assert policy.calls[0]["task_due_at"] == DUE
+
+
+def test_server_case_plan_is_stable_without_replacement_for_partial_and_full_cohorts():
+    plan = _server_case_index_plan(
+        school_id=SCHOOL_ID,
+        task_id=501,
+        profile_sha256=PROFILE_SHA,
+        corpus_sha256=CORPUS_SHA,
+        enrollment_count=23,
+    )
+    assert plan == _server_case_index_plan(
+        school_id=SCHOOL_ID,
+        task_id=501,
+        profile_sha256=PROFILE_SHA,
+        corpus_sha256=CORPUS_SHA,
+        enrollment_count=23,
+    )
+    assert len(plan) == 23
+    assert len(set(plan)) == 23
+    assert all(0 <= index < 800 for index in plan)
+    full_plan = _server_case_index_plan(
+        school_id=SCHOOL_ID,
+        task_id=501,
+        profile_sha256=PROFILE_SHA,
+        corpus_sha256=CORPUS_SHA,
+        enrollment_count=800,
+    )
+    assert len(full_plan) == 800
+    assert set(full_plan) == set(range(800))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("enrollment_count", [0, 801])
+async def test_out_of_range_enrollment_count_rolls_back_before_binding(enrollment_count):
+    owner = _Owner(profile_metadata=_metadata())
+    owner.uow.school_operations.enrollment_count = enrollment_count
+    adapter = SchoolResearchTasksPersistenceAdapter(
+        owner, _catalog(), study_use_policy=_StudyPolicy(), study_use_policy_sha256=POLICY_SHA
+    )
+
+    with pytest.raises(BackendError) as blocked:
+        await _publish(adapter)
+
+    assert blocked.value.code is ErrorCode.WORKFLOW_CONFLICT
+    assert owner.uow.school_operations.calls[0][0] == "publish_snapshot"
+    assert owner.uow.research_cat.calls == []
+    assert owner.uow.exception is not None
+    assert not any(event[0] == "idempotency_complete" for event in owner.events)
+    assert owner.uow.audit.calls == []
+
+
+@pytest.mark.asyncio
+async def test_assignment_creation_failure_rolls_back_task_binding_receipt_and_audit():
+    owner = _Owner(profile_metadata=_metadata())
+
+    async def fail_assignment(**_kwargs):
+        raise RuntimeError("synthetic assignment persistence fault")
+
+    owner.uow.research_cat.create_public_observed_case_assignments = fail_assignment
+    adapter = SchoolResearchTasksPersistenceAdapter(
+        owner, _catalog(), study_use_policy=_StudyPolicy(), study_use_policy_sha256=POLICY_SHA
+    )
+
+    with pytest.raises(BackendError) as failed:
+        await _publish(adapter)
+
+    assert failed.value.code is ErrorCode.DEPENDENCY_UNAVAILABLE
+    assert owner.uow.exception is not None
+    assert owner.uow.research_cat.binding is not None
+    assert not any(event[0] == "idempotency_complete" for event in owner.events)
+    assert owner.uow.audit.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure_point", ["receipt", "audit"])
+async def test_post_assignment_receipt_and_audit_failures_rollback_publication(failure_point):
+    owner = _Owner(profile_metadata=_metadata())
+    if failure_point == "receipt":
+        async def fail_receipt(*_args, **_kwargs):
+            raise RuntimeError("synthetic receipt persistence fault")
+
+        owner._school_idempotency_complete = fail_receipt
+    else:
+        async def fail_audit(**_kwargs):
+            raise RuntimeError("synthetic audit persistence fault")
+
+        owner.uow.audit.append = fail_audit
+    adapter = SchoolResearchTasksPersistenceAdapter(
+        owner, _catalog(), study_use_policy=_StudyPolicy(), study_use_policy_sha256=POLICY_SHA
+    )
+
+    with pytest.raises(BackendError) as failed:
+        await _publish(adapter)
+
+    assert failed.value.code is ErrorCode.DEPENDENCY_UNAVAILABLE
+    assert owner.uow.exception is not None
+    assert any(name == "create_assignments" for name, _ in owner.uow.research_cat.calls)
+    if failure_point == "receipt":
+        assert owner.uow.audit.calls == []
+    else:
+        assert owner.uow.audit.calls == []
+
+
+@pytest.mark.asyncio
+async def test_unverified_binding_is_hidden_from_admin_catalog_and_cannot_publish():
+    owner = _Owner(catalog_rows=[_catalog_row(_metadata())])
+    adapter = SchoolResearchTasksPersistenceAdapter(
+        owner,
+        _catalog(verified=False),
+        study_use_policy=_trusted_policy(),
+        study_use_policy_sha256=POLICY_SHA,
+    )
+
+    options = await adapter.list_catalog_options(_actor(), at=NOW)
+    assert options == ()
+    assert owner.uow.session.executed_queries == []
+    assert owner.uow.audit.calls[0]["safe_metadata"]["count"] == 0
+
+    with pytest.raises(BackendError) as blocked:
+        await _publish(adapter)
+    assert blocked.value.code is ErrorCode.WORKFLOW_CONFLICT
+    assert owner.uow.school_operations.calls == []
 
 
 @pytest.mark.asyncio
@@ -656,6 +842,7 @@ async def test_replay_reauthorizes_and_requires_exact_existing_task_and_binding(
     owner = _Owner(profile_metadata=_metadata(), replay=True)
     owner.uow.school_operations.task.cat_binding_mode = "RESEARCH_PROFILE"
     owner.uow.research_cat.binding = SimpleNamespace(
+        binding_id=1001,
         school_id=SCHOOL_ID,
         task_id=501,
         class_id=902,
@@ -664,6 +851,8 @@ async def test_replay_reauthorizes_and_requires_exact_existing_task_and_binding(
         profile_version_number=2,
         profile_sha256=PROFILE_SHA,
         response_origin="PUBLIC_OBSERVED",
+        corpus_sha256=CORPUS_SHA,
+        case_count=800,
         status="ACTIVE",
         config_version="promis_v3_research",
         config_sha256=CONFIG_SHA,
@@ -680,11 +869,97 @@ async def test_replay_reauthorizes_and_requires_exact_existing_task_and_binding(
     assert owner.events[0][0] == "authorize"
     assert len([event for event in owner.events if event[0] == "authorize"]) == 1
     assert result.response_origin == "PUBLIC_OBSERVED"
+    assert len(owner.uow.research_cat.assignment_verifications) == 1
+    assert owner.uow.research_cat.assignment_verifications[0] == {
+        "school_id": SCHOOL_ID,
+        "task_id": 501,
+        "class_id": 902,
+        "task_binding_id": 1001,
+        "expected_profile_sha256": PROFILE_SHA,
+        "expected_corpus_sha256": CORPUS_SHA,
+    }
 
     owner.uow.research_cat.binding.config_sha256 = "0" * 64
     with pytest.raises(BackendError) as mismatch:
         await _publish(adapter)
     assert mismatch.value.code is ErrorCode.WORKFLOW_CONFLICT
+
+
+@pytest.mark.asyncio
+async def test_legacy_public_observed_binding_replay_fails_closed_without_retroactive_assignment():
+    owner = _Owner(profile_metadata=_metadata(), replay=True)
+    owner.uow.school_operations.task.cat_binding_mode = "RESEARCH_PROFILE"
+    owner.uow.research_cat.binding = SimpleNamespace(
+        binding_id=1001,
+        school_id=SCHOOL_ID,
+        task_id=501,
+        class_id=902,
+        profile_version_id=41,
+        profile_ref=PROFILE_REF,
+        profile_version_number=2,
+        profile_sha256=PROFILE_SHA,
+        response_origin="PUBLIC_OBSERVED",
+        corpus_sha256=None,
+        case_count=None,
+        status="ACTIVE",
+        config_version="promis_v3_research",
+        config_sha256=CONFIG_SHA,
+        research_only=True,
+        revoked_at=None,
+    )
+    adapter = SchoolResearchTasksPersistenceAdapter(
+        owner, _catalog(), study_use_policy=_StudyPolicy(), study_use_policy_sha256=POLICY_SHA
+    )
+
+    with pytest.raises(BackendError) as blocked:
+        await _publish(adapter)
+
+    assert blocked.value.code is ErrorCode.WORKFLOW_CONFLICT
+    assert owner.uow.research_cat.assignment_verifications == []
+    assert owner.uow.research_cat.calls == []
+    assert owner.uow.audit.calls == []
+
+
+@pytest.mark.asyncio
+async def test_replay_rejects_pinned_binding_when_complete_assignment_map_is_missing():
+    owner = _Owner(profile_metadata=_metadata(), replay=True)
+    owner.uow.school_operations.task.cat_binding_mode = "RESEARCH_PROFILE"
+    owner.uow.research_cat.binding = SimpleNamespace(
+        binding_id=1001,
+        school_id=SCHOOL_ID,
+        task_id=501,
+        class_id=902,
+        profile_version_id=41,
+        profile_ref=PROFILE_REF,
+        profile_version_number=2,
+        profile_sha256=PROFILE_SHA,
+        response_origin="PUBLIC_OBSERVED",
+        corpus_sha256=CORPUS_SHA,
+        case_count=800,
+        status="ACTIVE",
+        config_version="promis_v3_research",
+        config_sha256=CONFIG_SHA,
+        research_only=True,
+        revoked_at=None,
+    )
+
+    async def missing_map(**_kwargs):
+        failure = RuntimeError("synthetic mapping unavailable")
+        failure.code = "RESEARCH_CASE_ASSIGNMENT_NOT_FOUND"
+        raise failure
+
+    owner.uow.research_cat.require_public_observed_task_assignments = missing_map
+    adapter = SchoolResearchTasksPersistenceAdapter(
+        owner, _catalog(), study_use_policy=_StudyPolicy(), study_use_policy_sha256=POLICY_SHA
+    )
+
+    with pytest.raises(BackendError) as blocked:
+        await _publish(adapter)
+
+    assert blocked.value.code is ErrorCode.WORKFLOW_CONFLICT
+    assert owner.uow.research_cat.calls == []
+    assert not any(event[0] == "idempotency_complete" for event in owner.events)
+    assert owner.uow.audit.calls == []
 
 
 @pytest.mark.asyncio

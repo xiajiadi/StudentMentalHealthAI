@@ -139,6 +139,7 @@ def build_school_research_service(settings: Any, persistence: Any) -> Any | None
         adapter = SchoolResearchPersistenceAdapter(
             persistence, client_for_binding=runtime.client_for_binding,
             study_use_policy=build_school_research_study_policy(settings),
+            observed_corpus_for_binding=runtime.observed_corpus_for_binding,
         )
         return SchoolResearchService(persistence=adapter)
     except Exception:

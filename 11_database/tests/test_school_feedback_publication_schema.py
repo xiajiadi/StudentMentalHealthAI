@@ -15,7 +15,7 @@ def _fk_targets(table, name: str) -> tuple[str, ...]:
 
 
 def test_feedback_schema_is_separate_encrypted_scoped_and_l3_only() -> None:
-    assert len(Base.metadata.tables) == 45
+    assert len(Base.metadata.tables) == 46
     records = Base.metadata.tables["school_feedback_records"]
     events = Base.metadata.tables["school_feedback_events"]
     assert isinstance(SchoolFeedbackRecord.__table__.c.synthetic_only.type, Boolean)

@@ -85,7 +85,8 @@ def _runtime(
 ) -> ResearchCATRuntime:
     return ResearchCATRuntime(
         profile_registry=registry or _public_registry(),
-        binding_pins=pins or (
+        binding_pins=pins
+        or (
             ResearchCATBindingPin(
                 binding_ref=BINDING_REF,
                 profile_ref=PROFILE_REF,
@@ -168,17 +169,17 @@ def test_binding_ref_must_be_pinned_and_ambiguous_implicit_match_fails() -> None
         config_version=CONFIG_VERSION,
         config_sha256=CONFIG_SHA256,
     )
-    runtime = _runtime(pins=(
-        ResearchCATBindingPin(BINDING_REF, PROFILE_REF, CONFIG_VERSION, CONFIG_SHA256),
-        duplicate_match,
-    ))
+    runtime = _runtime(
+        pins=(
+            ResearchCATBindingPin(BINDING_REF, PROFILE_REF, CONFIG_VERSION, CONFIG_SHA256),
+            duplicate_match,
+        )
+    )
     implicit = _metadata()
     delattr(implicit, "binding_ref")
     with pytest.raises(ResearchCATRuntimeError, match="binding_pin_ambiguous_or_missing"):
         runtime.client_for_binding(implicit)
-    explicit = runtime.client_for_binding(
-        _metadata(binding_ref=duplicate_match.binding_ref)
-    )
+    explicit = runtime.client_for_binding(_metadata(binding_ref=duplicate_match.binding_ref))
     assert explicit._binding_ref == duplicate_match.binding_ref
 
 
@@ -243,3 +244,34 @@ def test_binding_pin_schema_and_key_version_inputs_are_strict() -> None:
         _runtime(versions=("v1", "v1"))
     with pytest.raises(ResearchCATRuntimeError, match="key_versions_invalid"):
         _runtime(signing_version="v2", versions=("v1",))
+
+
+def test_observed_corpus_pin_resolution_uses_no_snapshot_key_material():
+    class NoKeyReads:
+        def get_key(self, *_args):
+            pytest.fail("observed source resolution must not read keys")
+
+        def versions(self):
+            pytest.fail("observed source resolution must not read key versions")
+
+    runtime = _runtime(provider=NoKeyReads())
+    metadata = _metadata(
+        corpus_sha256="7c723fbdb2590a24cc3fa33adb70c8affb323e3688ce3f0477620bd6507d7f32",
+        case_count=800,
+    )
+    corpus = runtime.observed_corpus_for_binding(metadata)
+    assert corpus.row_count == 800
+    assert runtime.observed_corpus_for_binding(metadata) is corpus
+    assert "_rows" not in repr(corpus)
+    with pytest.raises(ResearchCATRuntimeError) as failure:
+        runtime.observed_corpus_for_binding(_metadata(corpus_sha256="a" * 64, case_count=800))
+    assert failure.value.code == "observed_corpus_pin_mismatch"
+    with pytest.raises(ResearchCATRuntimeError):
+        runtime.observed_corpus_for_binding(_metadata(corpus_sha256=None, case_count=None))
+
+
+def test_observed_corpus_binding_rejects_bool_school_identity():
+    runtime = _runtime(school_id=1)
+    with pytest.raises(ResearchCATRuntimeError) as failure:
+        runtime.observed_corpus_for_binding(_metadata(school_id=True))
+    assert failure.value.code == "binding_school_mismatch"

@@ -7,6 +7,7 @@ changes a profile's rights or execution eligibility.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from dataclasses import dataclass
@@ -23,6 +24,7 @@ from smhai_backend.domains.school_research.catalog import (
     SchoolResearchCatalog,
     SchoolResearchCatalogError,
 )
+from smhai_backend.domains.school_research.observed_corpus import ObservedResponseCorpus
 from smhai_backend.domains.school_research.study_use import (
     ResearchStudyProfilePin,
     ResearchStudyUseError,
@@ -48,6 +50,9 @@ _CONFLICT_CODES = frozenset(
         "RESEARCH_TASK_NOT_FOUND",
         "RESEARCH_PERSISTENCE_CONFLICT",
         "RESEARCH_BINDING_NOT_FOUND",
+        "RESEARCH_CASE_ASSIGNMENT_INVALID",
+        "RESEARCH_CORPUS_PIN_UNAVAILABLE",
+        "RESEARCH_CASE_ASSIGNMENT_NOT_FOUND",
     }
 )
 _POLICY_DENIAL_CODES = frozenset(
@@ -142,12 +147,18 @@ class SchoolResearchTasksPersistenceAdapter:
                 if actor.school_id != self._catalog.school_id:
                     raise _not_found()
                 policy = self._require_catalog_policy(at=at)
+                configured_bindings = tuple(
+                    self._catalog.select_binding(
+                        public_binding.binding_ref, school_id=actor.school_id
+                    )
+                    for public_binding in self._catalog.public_bindings
+                    if public_binding.school_id == actor.school_id
+                    and public_binding.research_only is True
+                    and public_binding.publication_status == _PUBLICATION_NOT_APPROVED
+                )
                 bindings = tuple(
-                    binding
-                    for binding in self._catalog.public_bindings
-                    if binding.school_id == actor.school_id
-                    and binding.research_only is True
-                    and binding.publication_status == _PUBLICATION_NOT_APPROVED
+                    binding for binding in configured_bindings
+                    if binding.observed_source_verified is True
                 )
                 if not bindings:
                     await _audit_catalog_list(
@@ -158,7 +169,9 @@ class SchoolResearchTasksPersistenceAdapter:
                     )
                     return ()
 
-                profile_refs = tuple(sorted({item.profile_ref for item in bindings}))
+                profile_refs = tuple(
+                    sorted({item.public.profile_ref for item in bindings})
+                )
                 profile_model = self._owner._db_models.SchoolResearchProfileVersion
                 statement = (
                     self._owner._select(
@@ -220,15 +233,12 @@ class SchoolResearchTasksPersistenceAdapter:
                         policy, actor=actor, profile=profile, metadata=metadata, at=at
                     )
                     for binding in bindings:
-                        if binding.profile_ref != metadata.profile_ref:
+                        if binding.public.profile_ref != metadata.profile_ref:
                             continue
-                        selection = self._catalog.select_binding(
-                            binding.binding_ref, school_id=actor.school_id
-                        )
-                        _require_catalog_binding(profile, selection)
+                        _require_catalog_binding(profile, binding)
                         options.append(
                             ResearchTaskBindingOptionView(
-                                binding_ref=selection.public.binding_ref,
+                                binding_ref=binding.public.binding_ref,
                                 profile_ref=metadata.profile_ref,
                                 profile_version_number=metadata.version_number,
                                 source_population_scope=metadata.source_population_scope,
@@ -423,6 +433,13 @@ class SchoolResearchTasksPersistenceAdapter:
                 task = snapshot.task
                 task.cat_binding_mode = _RESEARCH_MODE
                 await uow.session.flush()
+                case_index_plan = _server_case_index_plan(
+                    school_id=actor.school_id,
+                    task_id=task.id,
+                    profile_sha256=profile.repository.expected_profile_sha256,
+                    corpus_sha256=binding.observed_corpus_sha256,
+                    enrollment_count=snapshot.enrollment_count,
+                )
 
                 created_binding = await uow.research_cat.create_task_binding(
                     school_id=actor.school_id,
@@ -437,6 +454,8 @@ class SchoolResearchTasksPersistenceAdapter:
                     config_payload=binding.cat_config_copy(),
                     expected_config_sha256=binding.config_sha256,
                     creator_membership_role_id=role_id,
+                    corpus_sha256=binding.observed_corpus_sha256,
+                    case_count=binding.observed_corpus_row_count,
                 )
                 _require_created_binding(
                     created_binding,
@@ -447,6 +466,29 @@ class SchoolResearchTasksPersistenceAdapter:
                     binding=binding,
                     profile_version_id=metadata.profile_version_id,
                     profile_version_number=profile_version_number,
+                )
+                assignments = await uow.research_cat.create_public_observed_case_assignments(
+                    school_id=actor.school_id,
+                    task_id=task.id,
+                    class_id=school_class.id,
+                    task_binding_id=created_binding.binding_id,
+                    expected_profile_sha256=profile.repository.expected_profile_sha256,
+                    expected_corpus_sha256=binding.observed_corpus_sha256,
+                    creator_membership_role_id=role_id,
+                    case_index_plan=case_index_plan,
+                )
+                _require_created_assignments(
+                    assignments,
+                    expected_count=snapshot.enrollment_count,
+                    school_id=actor.school_id,
+                    task_id=task.id,
+                    class_id=school_class.id,
+                    binding_id=created_binding.binding_id,
+                    profile_version_id=metadata.profile_version_id,
+                    profile_version_number=profile_version_number,
+                    profile=profile,
+                    binding=binding,
+                    case_index_plan=case_index_plan,
                 )
 
                 await self._owner._school_idempotency_complete(
@@ -587,6 +629,14 @@ class SchoolResearchTasksPersistenceAdapter:
             binding=binding,
             profile_version_id=metadata.profile_version_id,
             profile_version_number=profile_version_number,
+        )
+        await uow.research_cat.require_public_observed_task_assignments(
+            school_id=actor.school_id,
+            task_id=task.id,
+            class_id=task.class_id,
+            task_binding_id=persisted_binding.binding_id,
+            expected_profile_sha256=profile.repository.expected_profile_sha256,
+            expected_corpus_sha256=binding.observed_corpus_sha256,
         )
         _require_task_identity(task, profile, profile_version_number, binding)
         await self._require_trusted_study_window(
@@ -755,6 +805,7 @@ def _parameter_pins(
 def _require_catalog_binding(
     profile: ResearchProfileSelection, binding: ResearchBindingSelection
 ) -> None:
+    corpus = binding.observed_corpus
     if (
         binding.public.profile_ref != profile.public.profile_ref
         or binding.public.school_id != profile.public.school_id
@@ -763,6 +814,16 @@ def _require_catalog_binding(
         or not binding.public.config_version
         or len(binding.public.config_version) > 64
         or not binding.public.config_version.isascii()
+        or binding.observed_source_verified is not True
+        or type(corpus) is not ObservedResponseCorpus
+        or corpus.profile_ref != profile.public.profile_ref
+        or corpus.profile_sha256 != profile.repository.expected_profile_sha256
+        or corpus.manifest_sha256 != profile.repository.expected_manifest_sha256
+        or corpus.row_count != 800
+        or type(binding.observed_corpus_sha256) is not str
+        or _SHA256.fullmatch(binding.observed_corpus_sha256) is None
+        or binding.observed_corpus_sha256 != corpus.response_csv_sha256
+        or binding.observed_corpus_row_count != 800
     ):
         raise _conflict()
 
@@ -790,10 +851,111 @@ def _require_created_binding(
         or getattr(persisted, "status", None) != "ACTIVE"
         or getattr(persisted, "config_version", None) != binding.public.config_version
         or getattr(persisted, "config_sha256", None) != binding.config_sha256
+        or getattr(persisted, "corpus_sha256", None) != binding.observed_corpus_sha256
+        or getattr(persisted, "case_count", None) != binding.observed_corpus_row_count
         or getattr(persisted, "research_only", None) is not True
         or getattr(persisted, "revoked_at", None) is not None
     ):
         raise _conflict()
+
+
+def _require_created_assignments(
+    assignments: Any,
+    *,
+    expected_count: int,
+    school_id: int,
+    task_id: int,
+    class_id: int,
+    binding_id: int,
+    profile_version_id: int,
+    profile_version_number: int,
+    profile: ResearchProfileSelection,
+    binding: ResearchBindingSelection,
+    case_index_plan: tuple[int, ...],
+) -> None:
+    if (
+        type(assignments) is not tuple
+        or len(assignments) != expected_count
+        or type(case_index_plan) is not tuple
+        or len(case_index_plan) != expected_count
+    ):
+        raise _conflict()
+    enrollment_ids: set[int] = set()
+    case_indexes: set[int] = set()
+    for assignment in assignments:
+        enrollment_id = getattr(assignment, "task_enrollment_id", None)
+        subject_id = getattr(assignment, "subject_id", None)
+        case_index = getattr(assignment, "case_index", None)
+        if (
+            type(enrollment_id) is not int
+            or enrollment_id <= 0
+            or enrollment_id in enrollment_ids
+            or type(subject_id) is not int
+            or subject_id <= 0
+            or type(case_index) is not int
+            or not 0 <= case_index < 800
+            or case_index in case_indexes
+            or getattr(assignment, "school_id", None) != school_id
+            or getattr(assignment, "task_id", None) != task_id
+            or getattr(assignment, "class_id", None) != class_id
+            or getattr(assignment, "task_binding_id", None) != binding_id
+            or getattr(assignment, "profile_ref", None) != profile.public.profile_ref
+            or getattr(assignment, "profile_version_id", None) != profile_version_id
+            or getattr(assignment, "profile_version_number", None) != profile_version_number
+            or getattr(assignment, "profile_sha256", None)
+            != profile.repository.expected_profile_sha256
+            or getattr(assignment, "corpus_sha256", None) != binding.observed_corpus_sha256
+            or getattr(assignment, "case_count", None) != 800
+        ):
+            raise _conflict()
+        enrollment_ids.add(enrollment_id)
+        case_indexes.add(case_index)
+    if tuple(getattr(item, "case_index", None) for item in assignments) != case_index_plan:
+        raise _conflict()
+    if expected_count == 800 and case_indexes != set(range(800)):
+        raise _conflict()
+
+
+def _server_case_index_plan(
+    *,
+    school_id: int,
+    task_id: int,
+    profile_sha256: str,
+    corpus_sha256: str,
+    enrollment_count: int,
+) -> tuple[int, ...]:
+    """Build a stable without-replacement plan from server/task provenance only."""
+
+    if (
+        type(school_id) is not int
+        or school_id <= 0
+        or type(task_id) is not int
+        or task_id <= 0
+        or type(profile_sha256) is not str
+        or _SHA256.fullmatch(profile_sha256) is None
+        or type(corpus_sha256) is not str
+        or _SHA256.fullmatch(corpus_sha256) is None
+        or type(enrollment_count) is not int
+        or not 1 <= enrollment_count <= 800
+    ):
+        raise _conflict()
+    seed_material = b"psynova.public-observed-case-assignment.v1\0" + b"\0".join(
+        (
+            school_id.to_bytes(8, "big", signed=False),
+            task_id.to_bytes(8, "big", signed=False),
+            bytes.fromhex(profile_sha256),
+            bytes.fromhex(corpus_sha256),
+        )
+    )
+    seed = hashlib.sha256(seed_material).digest()
+    permutation = list(range(800))
+    counter = 0
+    for last in range(799, 0, -1):
+        draw = hashlib.sha256(seed + counter.to_bytes(8, "big")).digest()
+        swap = int.from_bytes(draw[:8], "big") % (last + 1)
+        permutation[last], permutation[swap] = permutation[swap], permutation[last]
+        counter += 1
+    return tuple(permutation[:enrollment_count])
 
 
 def _require_task_identity(task: Any, profile, version_number: int, binding) -> None:

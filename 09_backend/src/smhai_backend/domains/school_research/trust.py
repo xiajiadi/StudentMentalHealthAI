@@ -314,6 +314,7 @@ class TrustedResearchProfile:
     repository_schema_compatible: bool
     raw_profile_bytes: bytes = field(repr=False, compare=False)
     raw_manifest_bytes: bytes = field(repr=False, compare=False)
+    artifact_root: Path | None = field(default=None, repr=False, compare=False)
 
 
 class ResearchProfileRegistry:
@@ -402,6 +403,10 @@ class ResearchProfileRegistry:
             },
             raw_profile_bytes=profile_bytes,
             raw_manifest_bytes=manifest_bytes,
+            # The manifest path is an existing server-pinned registry field.
+            # Its parent anchors the fixed response-only filename; no caller
+            # or manifest value can supply an arbitrary path.
+            artifact_root=entry.manifest_path.parent,
         )
 
 

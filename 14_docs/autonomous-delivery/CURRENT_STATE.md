@@ -1,4 +1,41 @@
-## ACTIVE — 2026-10-14 11:45 Beijing, authenticated native research milestone
+## ACTIVE — 2026-10-14, installed services and browser receipt verified
+
+Root committed/pushed backend discovery and installed study configuration0095f55,
+then student research pages8339748; only the dedicated development branch changed.
+K owned old services were stopped through validated lifecycle and restarted using
+11 research options. Native preflight passed; current API8093 launcher34464 /
+listener38264, UI4183 PID43696. Root observed research CAT57419 listener45404.
+The lifecycle still reports whole_ready false/external modules UNVERIFIED.
+Safe external proofs: D:/Dev/temp/psynova-k-studyuse-stop-20261014-r1.json and
+psynova-k-studyuse-start-20261014-r1.json; no reset or shared service termination.
+
+Real Edge/Playwright student research task -> completed receipt -> refresh ->
+ordinary assessment list -> logout/auth401 PASS; no new task/session/answer writes.
+Root viewed cropped completion-card screenshot: only8 items/time/L1 disclaimer.
+D:/Dev/temp/psynova-research-discovery-browser-20261014-r1/browser-evidence.json.
+Initial helper used the stopped old workspace; exact K literal fixed, no guardian
+bypass. An ambiguous ordinary completion locator was narrowed to research section.
+This verifies completed metadata navigation, not browser start/answer/online800.
+
+Source provenance integration is in progress, not installed or accepted yet:
+trusted immutable800-row corpus loader; task-level private assignments; fresh
+student assignment/raw value checks before config/snapshot decrypt and CAT client,
+and again on commit. Root125 Backend focused tests pass after integration.
+DB0014 additive binding pins/assignment schema and installer forward-restore
+compatibility passed Root82 database and143 deployment focused tests. Root caught
+and fixed both the SQL half-null CHECK loophole and actual metadata binding_id
+lookup mismatch; production metadata bridge and SQLite regression now cover them.
+Independent QA reviewed fresh authorization, before-decrypt guards, CAS/replay and
+source matching; no conclusion-changing defect remained. No native0014 migration
+has run. Next is sealed K backup and restore into a new L, preserving K intact.
+
+Remaining design before online800: task-level independent permutations across
+8classes can reuse public cases; study/cohort-level one-to-one mapping and aggregate
+distinct-case proof must precede any800-distinct-observation claim. Existing public
+research session1/8 and offline800 remain separate evidence. Real RAG/local7B/report
+review/full production mandate still incomplete. No deadline; autonomous work active.
+
+## Prior checkpoint — authenticated native research milestone
 
 No shutdown deadline. Operator requires autonomous continuation while unavailable;
 only genuinely dependent decisions may stop their affected scope.

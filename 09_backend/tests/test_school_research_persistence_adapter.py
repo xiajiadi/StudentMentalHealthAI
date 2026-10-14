@@ -257,6 +257,7 @@ class _Repo:
         self.guard_calls.append(kwargs)
         self.operations.append("scope-lock")
         kwargs["require_study_scope"](self.profile_metadata, self.binding)
+        await kwargs["require_observed_scope"](self.profile_metadata, self.binding)
         return _locked(
             _candidate(
                 task_ref="task-ref",
@@ -265,6 +266,16 @@ class _Repo:
             ),
             binding=self.binding,
         )
+
+    async def require_public_observed_case_assignment(self, **kwargs):
+        assert kwargs["binding"] is self.binding
+        assert kwargs["profile"] is self.profile_metadata
+        if kwargs["task_enrollment_id"] != 50 or kwargs["subject_id"] != 80:
+            raise authorization.ResearchScopeResolutionError()
+        assert kwargs["expected_profile_sha256"] == "c" * 64
+        assert kwargs["expected_corpus_sha256"] == "1" * 64
+        self.operations.append("observed-assignment-check")
+        return SimpleNamespace(case_index=0)
 
     async def _create(self, **kwargs):
         self.create_calls.append(kwargs)
@@ -377,6 +388,11 @@ def _adapter(owner, client=None):
             owner,
             client_for_binding=factory,
             study_use_policy=_TrustedStudyPolicy(),
+            observed_corpus_for_binding=lambda binding: SimpleNamespace(
+                profile_sha256="c" * 64,
+                response_csv_sha256="1" * 64,
+                matches=lambda index, item, value: index == 0 and item == "item-1" and value == 1,
+            ),
         ),
         client,
         factory_calls,
@@ -414,10 +430,14 @@ async def test_prepare_start_rolls_back_tentative_receipt_and_returns_private_pl
 
     assert type(result) is ResearchStartPlan
     assert owner.events == ["enter", "rollback"]
-    assert repo.operations == ["scope-lock", "idempotency-begin"]
+    assert repo.operations == ["scope-lock", "observed-assignment-check", "idempotency-begin"]
     assert owner.role_calls[0][1:] == ("student", owner.role_calls[0][2], True)
     assert [
-        {key: value for key, value in call.items() if key != "require_study_scope"}
+        {
+            key: value
+            for key, value in call.items()
+            if key not in {"require_study_scope", "require_observed_scope"}
+        }
         for call in repo.guard_calls
     ] == [
         {
@@ -430,6 +450,7 @@ async def test_prepare_start_rolls_back_tentative_receipt_and_returns_private_pl
         }
     ]
     assert callable(repo.guard_calls[0]["require_study_scope"])
+    assert callable(repo.guard_calls[0]["require_observed_scope"])
     assert "must-not-escape" not in repr(result)
     assert owner.factory_events == [("enter", "rollback")]
 
@@ -512,6 +533,8 @@ async def test_prepare_answer_loads_only_after_scope_guard_and_checks_cas_versio
         _actor(),
         "session-ref",
         expected_state_version=4,
+        item_id="item-1",
+        raw_value=1,
         at=NOW,
         idempotency=IDEMPOTENCY,
     )
@@ -536,6 +559,8 @@ async def test_completed_answer_replay_returns_l1_without_decrypt_or_resume(monk
         _actor(),
         "session-ref",
         expected_state_version=5,
+        item_id="item-1",
+        raw_value=1,
         at=NOW,
         idempotency=IDEMPOTENCY,
     )
@@ -557,6 +582,8 @@ async def test_commit_answer_uses_expected_state_version_cas_and_one_receipt(mon
         _actor(),
         "session-ref",
         expected_state_version=4,
+        item_id="item-1",
+        raw_value=1,
         at=NOW,
         idempotency=IDEMPOTENCY,
     )
@@ -584,6 +611,8 @@ async def test_commit_answer_race_replay_reauthorizes_but_does_not_verify_or_sav
         _actor(),
         "session-ref",
         expected_state_version=4,
+        item_id="item-1",
+        raw_value=1,
         at=NOW,
         idempotency=IDEMPOTENCY,
     )
@@ -611,6 +640,8 @@ async def test_repository_cas_failure_rolls_back_receipt_and_maps_stable_conflic
         _actor(),
         "session-ref",
         expected_state_version=4,
+        item_id="item-1",
+        raw_value=1,
         at=NOW,
         idempotency=IDEMPOTENCY,
     )
@@ -642,6 +673,8 @@ async def test_prepare_answer_rejects_stale_expected_state_version_before_decryp
             _actor(),
             "session-ref",
             expected_state_version=3,
+            item_id="item-1",
+            raw_value=1,
             at=NOW,
             idempotency=IDEMPOTENCY,
         )
@@ -668,6 +701,8 @@ async def test_self_revocation_fails_closed_before_session_decryption(monkeypatc
             _actor(),
             "session-ref",
             expected_state_version=1,
+            item_id="item-1",
+            raw_value=1,
             at=NOW,
             idempotency=IDEMPOTENCY,
         )
@@ -786,7 +821,7 @@ async def test_prepare_resume_rechecks_scope_before_decrypt_and_builds_client_af
     assert plan.session_ref == "session-ref"
     assert plan.state_version == 4
     assert plan.items_answered == 3
-    assert repo.operations == ["scope-lock", "snapshot-decrypt"]
+    assert repo.operations == ["scope-lock", "observed-assignment-check", "snapshot-decrypt"]
     assert owner.events == ["enter", "commit"]
     assert owner.factory_events == [("enter", "commit")]
     assert not owner.completed
@@ -807,3 +842,44 @@ async def test_prepare_resume_rejects_terminal_session_without_decrypt_or_client
     assert not repo.load_calls
     assert not owner.factory_events
     assert owner.events == ["enter", "rollback"]
+
+
+@pytest.mark.asyncio
+async def test_observed_mismatch_denies_before_decrypt_or_client(monkeypatch):
+    _install_scope(monkeypatch)
+    repo = _Repo()
+    owner = _Owner(repo)
+    adapter, _client, factory_calls = _adapter(owner)
+    with pytest.raises(BackendError) as failure:
+        await adapter.prepare_answer(
+            _actor(),
+            "session-ref",
+            expected_state_version=1,
+            item_id="item-1",
+            raw_value=5,
+            at=NOW,
+            idempotency=IDEMPOTENCY,
+        )
+    assert failure.value.code is ErrorCode.WORKFLOW_CONFLICT
+    assert not repo.load_calls and not factory_calls
+    assert not repo.save_calls and not owner.completed
+    assert owner.events == ["enter", "rollback"]
+
+
+@pytest.mark.asyncio
+async def test_unconfigured_observed_guard_denies_before_any_decrypt(monkeypatch):
+    _install_scope(monkeypatch)
+    repo = _Repo()
+    owner = _Owner(repo)
+    client = _Client()
+    adapter = SchoolResearchPersistenceAdapter(
+        owner,
+        client_for_binding=lambda binding: client,
+        study_use_policy=_TrustedStudyPolicy(),
+    )
+    with pytest.raises(BackendError) as failure:
+        await adapter.prepare_start(_actor(), "task-ref", at=NOW, idempotency=IDEMPOTENCY)
+    assert failure.value.code is ErrorCode.DEPENDENCY_UNAVAILABLE
+    assert not repo.load_calls and not repo.create_calls and not repo.save_calls
+    assert "observed-assignment-check" not in repo.operations
+    assert not client.calls

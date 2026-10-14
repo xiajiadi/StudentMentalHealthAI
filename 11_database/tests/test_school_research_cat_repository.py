@@ -448,6 +448,69 @@ async def test_locked_study_scope_callback_runs_before_binding_config_decrypt():
     assert session.commits == 0
 
 
+@pytest.mark.asyncio
+async def test_locked_observed_scope_callback_runs_after_study_guard_before_decrypt():
+    repo, session, _protection = _repo()
+    await _install_research_records(repo, session)
+    events = []
+    original_decrypt_binding = repo._decrypt_binding_config
+
+    def study_guard(profile_metadata, binding_metadata):
+        events.append("study")
+        assert profile_metadata.school_id == 3
+        assert binding_metadata.task_id == 13
+
+    async def observed_guard(profile_metadata, binding_metadata):
+        events.append("observed")
+        assert profile_metadata.profile_version_id == binding_metadata.profile_version_id
+        assert session.locked_models[-1] is SubjectAccessGrant
+
+    def decrypt_binding(*args, **kwargs):
+        events.append("decrypt")
+        return original_decrypt_binding(*args, **kwargs)
+
+    repo._decrypt_binding_config = decrypt_binding
+    await repo.lock_student_task_scope(
+        school_id=3,
+        task_id=13,
+        task_enrollment_id=17,
+        subject_id=23,
+        principal_account_id=31,
+        at=session._now.replace(tzinfo=UTC),
+        require_study_scope=study_guard,
+        require_observed_scope=observed_guard,
+    )
+    assert events == ["study", "observed", "decrypt"]
+
+
+@pytest.mark.asyncio
+async def test_observed_scope_callback_denial_prevents_binding_decrypt():
+    repo, session, _protection = _repo()
+    await _install_research_records(repo, session)
+    decrypts = []
+
+    def decrypt_binding(*args, **kwargs):
+        decrypts.append(True)
+        return "{}"
+
+    async def deny_observed(*_args):
+        raise RuntimeError("fixed observed assignment denial")
+
+    repo._decrypt_binding_config = decrypt_binding
+    with pytest.raises(RuntimeError, match="fixed observed assignment denial"):
+        await repo.lock_student_task_scope(
+            school_id=3,
+            task_id=13,
+            task_enrollment_id=17,
+            subject_id=23,
+            principal_account_id=31,
+            at=session._now.replace(tzinfo=UTC),
+            require_observed_scope=deny_observed,
+        )
+    assert decrypts == []
+    assert session.commits == 0
+
+
 @pytest.mark.parametrize(
     ("mutation", "overrides"),
     [

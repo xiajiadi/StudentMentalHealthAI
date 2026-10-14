@@ -36,7 +36,7 @@ def _target_columns(constraint):
 
 
 def test_research_tables_are_separate_locked_and_mysql_compilable():
-    assert len(Base.metadata.tables) == 45
+    assert len(Base.metadata.tables) == 46
     assert MeasurementTask.__table__.c.cat_binding_mode.server_default.arg == "FIXTURE"
     task_mode_check = next(
         constraint
@@ -172,12 +172,18 @@ def test_upgrade_table_shapes_match_the_orm_metadata(monkeypatch):
     ):
         expected = Base.metadata.tables[table_name]
         actual = created[table_name]
-        # This migration test pins the 0012 baseline. The current ORM includes
-        # 0013 parameter provenance, so compare its explicit 0012 projection.
+        # This migration test pins the 0012 baseline. The current ORM also has
+        # 0013 parameter provenance and 0014 observed-corpus pins; compare the
+        # explicit 0012 projection and restore its original NOT NULL fit fields.
         revision_0012_columns = tuple(
             name
             for name in expected.c.keys()
-            if name not in {"parameter_origin", "published_parameter_crosswalk_sha256"}
+            if name not in {
+                "parameter_origin",
+                "published_parameter_crosswalk_sha256",
+                "corpus_sha256",
+                "case_count",
+            }
         )
         assert tuple(actual.c.keys()) == revision_0012_columns
         for column_name in revision_0012_columns:
@@ -210,6 +216,7 @@ def test_upgrade_table_shapes_match_the_orm_metadata(monkeypatch):
             tuple(column.name for column in constraint.columns)
             for constraint in expected.constraints
             if isinstance(constraint, UniqueConstraint)
+            and constraint.name != "school_research_binding_corpus_scope_unique"
         }
         actual_unique = {
             tuple(column.name for column in constraint.columns)
@@ -224,6 +231,7 @@ def test_upgrade_table_shapes_match_the_orm_metadata(monkeypatch):
             )
             for constraint in expected.constraints
             if isinstance(constraint, CheckConstraint)
+            and not constraint.name.endswith("_corpus_pin_shape")
             and not (
                 table_name == "school_research_profile_versions"
                 and constraint.name.endswith(

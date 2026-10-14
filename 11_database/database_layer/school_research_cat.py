@@ -16,7 +16,7 @@ import base64
 import hashlib
 import json
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -36,6 +36,7 @@ from .models import (
     School,
     SchoolClass,
     SchoolClassStudent,
+    SchoolResearchCaseAssignment,
     SchoolResearchProfileVersion,
     SchoolResearchSession,
     SchoolResearchTaskBinding,
@@ -127,6 +128,9 @@ class ResearchCatRepositoryErrorCode(StrEnum):
     CONCURRENCY_CONFLICT = "RESEARCH_CONCURRENCY_CONFLICT"
     PERSISTENCE_CONFLICT = "RESEARCH_PERSISTENCE_CONFLICT"
     CRYPTO_FAILURE = "RESEARCH_CRYPTO_FAILURE"
+    CORPUS_PIN_UNAVAILABLE = "RESEARCH_CORPUS_PIN_UNAVAILABLE"
+    CASE_ASSIGNMENT_INVALID = "RESEARCH_CASE_ASSIGNMENT_INVALID"
+    CASE_ASSIGNMENT_NOT_FOUND = "RESEARCH_CASE_ASSIGNMENT_NOT_FOUND"
 
 
 class ResearchCatRepositoryError(Exception):
@@ -216,6 +220,8 @@ class ResearchTaskBindingMetadata:
     research_only: bool
     created_at: datetime
     revoked_at: datetime | None
+    corpus_sha256: str | None = None
+    case_count: int | None = None
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -274,6 +280,25 @@ class ResearchSessionForResume:
 
     metadata: ResearchSessionMetadata
     signed_snapshot_json: str = field(repr=False)
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class ResearchPublicCaseAssignment:
+    """Private assignment projection; never use as an HTTP/student DTO."""
+
+    school_id: int
+    task_id: int
+    class_id: int
+    task_enrollment_id: int
+    subject_id: int
+    task_binding_id: int
+    profile_version_id: int
+    profile_ref: str
+    profile_version_number: int
+    profile_sha256: str
+    corpus_sha256: str
+    case_count: int
+    case_index: int
 
 
 def map_cat_status_to_storage(value: object) -> str:
@@ -566,6 +591,8 @@ class SchoolResearchCatRepository:
         profile_version_number: int,
         expected_profile_sha256: str,
         response_origin: str,
+        corpus_sha256: str | None = None,
+        case_count: int | None = None,
         config_version: str,
         config_payload: Mapping[str, object],
         expected_config_sha256: str,
@@ -585,6 +612,23 @@ class SchoolResearchCatRepository:
         response_origin = _require_choice(
             response_origin, {"PUBLIC_OBSERVED", "MODEL_GENERATED"}, "response_origin"
         )
+        if (corpus_sha256 is None) != (case_count is None):
+            _raise(
+                ResearchCatRepositoryErrorCode.INVALID_INPUT,
+                "public corpus pin fields must be supplied together",
+            )
+        if corpus_sha256 is not None:
+            _require_sha256(corpus_sha256, "corpus_sha256")
+            if response_origin != "PUBLIC_OBSERVED" or case_count != 800:
+                _raise(
+                    ResearchCatRepositoryErrorCode.INVALID_INPUT,
+                    "pinned public case corpora must use the fixed 800-case simulation scope",
+                )
+        if case_count is not None and (type(case_count) is not int or case_count != 800):
+            _raise(
+                ResearchCatRepositoryErrorCode.INVALID_INPUT,
+                "public case count is outside the fixed simulation scope",
+            )
         config_version = _require_token(config_version, "config_version", 64)
         config_json = _canonical_json(config_payload)
         config_sha256 = hashlib.sha256(config_json.encode("utf-8")).hexdigest()
@@ -660,6 +704,8 @@ class SchoolResearchCatRepository:
             profile_version_number=profile_version_number,
             profile_sha256=expected_profile_sha256,
             response_origin=response_origin,
+            corpus_sha256=corpus_sha256,
+            case_count=case_count,
             status="ACTIVE",
             purpose=_RESEARCH_PURPOSE,
             research_only=True,
@@ -673,6 +719,340 @@ class SchoolResearchCatRepository:
         )
         await self._insert(row, "research task binding already exists")
         return _binding_metadata(row)
+
+    async def create_public_observed_case_assignments(
+        self,
+        *,
+        school_id: int,
+        task_id: int,
+        class_id: int,
+        task_binding_id: int,
+        expected_profile_sha256: str,
+        expected_corpus_sha256: str,
+        creator_membership_role_id: int,
+        case_index_plan: tuple[int, ...],
+    ) -> tuple[ResearchPublicCaseAssignment, ...]:
+        """Create one private public-case assignment for every active enrollment.
+
+        The caller owns the task-publish transaction and supplies server-built
+        indices only. This method reads and verifies the complete active
+        enrollment set (1..800 rows), unique in-range case indexes, current
+        roster scope, exact profile/binding/corpus pins, and leaves
+        commit/rollback to the caller. An 800-enrollment task must use the full
+        0..799 permutation.
+        Student request data must never be used as ``case_index_plan``.
+        """
+
+        school_id = _positive_int(school_id, "school_id")
+        task_id = _positive_int(task_id, "task_id")
+        class_id = _positive_int(class_id, "class_id")
+        task_binding_id = _positive_int(task_binding_id, "task_binding_id")
+        creator_membership_role_id = _positive_int(
+            creator_membership_role_id, "creator_membership_role_id"
+        )
+        _require_sha256(expected_profile_sha256, "expected_profile_sha256")
+        _require_sha256(expected_corpus_sha256, "expected_corpus_sha256")
+        validated_plan = _validate_public_case_index_plan(case_index_plan)
+
+        await self._require_synthetic_school(school_id)
+        await self._require_active_membership_role(creator_membership_role_id, school_id)
+        binding, profile, task = await self._lock_active_task_binding(
+            school_id=school_id,
+            task_id=task_id,
+            check_active_class=True,
+        )
+        if (
+            binding.id != task_binding_id
+            or binding.school_id != school_id
+            or binding.task_id != task_id
+            or binding.class_id != class_id
+            or task.class_id != class_id
+            or binding.response_origin != "PUBLIC_OBSERVED"
+            or binding.profile_sha256 != expected_profile_sha256
+            or binding.corpus_sha256 != expected_corpus_sha256
+            or binding.case_count != 800
+            or profile.profile_sha256 != expected_profile_sha256
+        ):
+            _raise(
+                ResearchCatRepositoryErrorCode.CORPUS_PIN_UNAVAILABLE,
+                "verified public corpus pins do not match the active research binding",
+            )
+
+        candidates = list(
+            (
+                await self.session.scalars(
+                    select(TaskEnrollment)
+                    .where(
+                        TaskEnrollment.school_id == school_id,
+                        TaskEnrollment.task_id == task_id,
+                        TaskEnrollment.class_id == class_id,
+                        TaskEnrollment.status == "ACTIVE",
+                        TaskEnrollment.revoked_at.is_(None),
+                    )
+                    .order_by(TaskEnrollment.id)
+                )
+            ).all()
+        )
+        enrollment_ids = tuple(row.id for row in candidates)
+        if not 1 <= len(candidates) <= 800 or len(set(enrollment_ids)) != len(candidates):
+            _raise(
+                ResearchCatRepositoryErrorCode.CASE_ASSIGNMENT_INVALID,
+                "task active enrollment count is outside the public replay range",
+            )
+        if len(validated_plan) != len(candidates):
+            _raise(
+                ResearchCatRepositoryErrorCode.CASE_ASSIGNMENT_INVALID,
+                "case index plan does not match the active task enrollment count",
+            )
+
+        existing = await self._one(
+            SchoolResearchCaseAssignment,
+            SchoolResearchCaseAssignment.school_id == school_id,
+            SchoolResearchCaseAssignment.task_id == task_id,
+            lock=True,
+        )
+        if existing is not None:
+            _raise(
+                ResearchCatRepositoryErrorCode.PERSISTENCE_CONFLICT,
+                "public case assignments already exist for this task",
+            )
+
+        rows: list[SchoolResearchCaseAssignment] = []
+        locked_enrollment_ids: list[int] = []
+        for candidate, case_index in zip(candidates, validated_plan, strict=True):
+            enrollment, scoped_task, _roster, subject, scoped_class = (
+                await self._require_session_scope(
+                    school_id=school_id,
+                    task_id=task_id,
+                    task_enrollment_id=candidate.id,
+                    subject_id=candidate.subject_id,
+                    lock_task=False,
+                    lock_class=True,
+                )
+            )
+            if (
+                enrollment.id != candidate.id
+                or enrollment.task_id != task_id
+                or enrollment.school_id != school_id
+                or enrollment.class_id != class_id
+                or scoped_task.class_id != class_id
+                or scoped_class.id != class_id
+                or subject.id != enrollment.subject_id
+            ):
+                _raise(
+                    ResearchCatRepositoryErrorCode.SCOPE_MISMATCH,
+                    "task enrollment changed while public case assignments were locked",
+                )
+            locked_enrollment_ids.append(enrollment.id)
+            rows.append(
+                SchoolResearchCaseAssignment(
+                    school_id=school_id,
+                    task_id=task_id,
+                    class_id=class_id,
+                    task_enrollment_id=enrollment.id,
+                    subject_id=subject.id,
+                    task_binding_id=binding.id,
+                    profile_version_id=binding.profile_version_id,
+                    profile_ref=binding.profile_ref,
+                    profile_version_number=binding.profile_version_number,
+                    profile_sha256=binding.profile_sha256,
+                    response_origin="PUBLIC_OBSERVED",
+                    corpus_sha256=expected_corpus_sha256,
+                    case_count=800,
+                    case_index=case_index,
+                    purpose=_RESEARCH_PURPOSE,
+                )
+            )
+
+        # Detect enrollment-set changes that occurred after the initial
+        # ordered read. Individual scope rows above are locked in the existing
+        # roster -> enrollment order before this consistency check.
+        final_enrollment_ids = tuple(
+            (
+                await self.session.scalars(
+                    select(TaskEnrollment.id)
+                    .where(
+                        TaskEnrollment.school_id == school_id,
+                        TaskEnrollment.task_id == task_id,
+                        TaskEnrollment.class_id == class_id,
+                        TaskEnrollment.status == "ACTIVE",
+                        TaskEnrollment.revoked_at.is_(None),
+                    )
+                    .order_by(TaskEnrollment.id)
+                )
+            ).all()
+        )
+        if final_enrollment_ids != enrollment_ids or tuple(locked_enrollment_ids) != enrollment_ids:
+            _raise(
+                ResearchCatRepositoryErrorCode.CASE_ASSIGNMENT_INVALID,
+                "active task enrollment set changed while assignments were being prepared",
+            )
+
+        self.session.add_all(rows)
+        await self.session.flush()
+        return tuple(_case_assignment_metadata(row) for row in rows)
+
+    async def require_public_observed_case_assignment(
+        self,
+        *,
+        profile: ResearchProfileMetadata,
+        binding: ResearchTaskBindingMetadata,
+        task_enrollment_id: int,
+        subject_id: int,
+        expected_profile_sha256: str,
+        expected_corpus_sha256: str,
+    ) -> ResearchPublicCaseAssignment:
+        """Read one assignment under the already locked student scope.
+
+        It intentionally does not reacquire profile/task/binding/enrollment
+        locks. Call it only from ``require_observed_scope`` while
+        ``lock_student_task_scope`` holds the scope rows, before decryption.
+        """
+
+        task_enrollment_id = _positive_int(task_enrollment_id, "task_enrollment_id")
+        subject_id = _positive_int(subject_id, "subject_id")
+        _require_sha256(expected_profile_sha256, "expected_profile_sha256")
+        _require_sha256(expected_corpus_sha256, "expected_corpus_sha256")
+        if (
+            profile.school_id != binding.school_id
+            or profile.profile_version_id != binding.profile_version_id
+            or profile.profile_ref != binding.profile_ref
+            or profile.version_number != binding.profile_version_number
+            or profile.profile_sha256 != expected_profile_sha256
+            or binding.profile_sha256 != expected_profile_sha256
+            or binding.response_origin != "PUBLIC_OBSERVED"
+            or binding.status != "ACTIVE"
+            or binding.revoked_at is not None
+            or binding.corpus_sha256 != expected_corpus_sha256
+            or binding.case_count != 800
+        ):
+            _raise(
+                ResearchCatRepositoryErrorCode.CORPUS_PIN_UNAVAILABLE,
+                "verified public corpus pins do not match the active research binding",
+            )
+        row = await self._one(
+            SchoolResearchCaseAssignment,
+            SchoolResearchCaseAssignment.school_id == binding.school_id,
+            SchoolResearchCaseAssignment.task_id == binding.task_id,
+            SchoolResearchCaseAssignment.class_id == binding.class_id,
+            SchoolResearchCaseAssignment.task_enrollment_id == task_enrollment_id,
+            SchoolResearchCaseAssignment.subject_id == subject_id,
+            SchoolResearchCaseAssignment.task_binding_id == binding.binding_id,
+            SchoolResearchCaseAssignment.profile_version_id == binding.profile_version_id,
+            SchoolResearchCaseAssignment.profile_ref == binding.profile_ref,
+            SchoolResearchCaseAssignment.profile_version_number == binding.profile_version_number,
+            SchoolResearchCaseAssignment.profile_sha256 == expected_profile_sha256,
+            SchoolResearchCaseAssignment.response_origin == "PUBLIC_OBSERVED",
+            SchoolResearchCaseAssignment.corpus_sha256 == expected_corpus_sha256,
+            SchoolResearchCaseAssignment.case_count == 800,
+            lock=True,
+        )
+        if row is None or row.case_index < 0 or row.case_index >= 800:
+            _raise(
+                ResearchCatRepositoryErrorCode.CASE_ASSIGNMENT_NOT_FOUND,
+                "verified public case assignment was not found in this scope",
+            )
+        return _case_assignment_metadata(row)
+
+    async def require_public_observed_task_assignments(
+        self,
+        *,
+        school_id: int,
+        task_id: int,
+        class_id: int,
+        task_binding_id: int,
+        expected_profile_sha256: str,
+        expected_corpus_sha256: str,
+    ) -> None:
+        """Verify an existing complete mapping without repairing legacy rows.
+
+        The caller owns the transaction. This locks the exact profile/task/
+        binding first, then reads the immutable enrollment mapping without
+        taking roster/enrollment locks in reverse revocation order.
+        """
+
+        school_id = _positive_int(school_id, "school_id")
+        task_id = _positive_int(task_id, "task_id")
+        class_id = _positive_int(class_id, "class_id")
+        task_binding_id = _positive_int(task_binding_id, "task_binding_id")
+        _require_sha256(expected_profile_sha256, "expected_profile_sha256")
+        _require_sha256(expected_corpus_sha256, "expected_corpus_sha256")
+        binding, profile, task = await self._lock_active_task_binding(
+            school_id=school_id,
+            task_id=task_id,
+            check_active_class=True,
+        )
+        if (
+            binding.id != task_binding_id
+            or binding.class_id != class_id
+            or task.class_id != class_id
+            or binding.response_origin != "PUBLIC_OBSERVED"
+            or binding.corpus_sha256 != expected_corpus_sha256
+            or binding.case_count != 800
+            or binding.profile_sha256 != expected_profile_sha256
+            or profile.profile_sha256 != expected_profile_sha256
+        ):
+            _raise(
+                ResearchCatRepositoryErrorCode.CORPUS_PIN_UNAVAILABLE,
+                "verified public corpus pins do not match the active research binding",
+            )
+
+        enrollments = tuple(
+            (
+                await self.session.scalars(
+                    select(TaskEnrollment.id)
+                    .where(
+                        TaskEnrollment.school_id == school_id,
+                        TaskEnrollment.task_id == task_id,
+                        TaskEnrollment.class_id == class_id,
+                    )
+                    .order_by(TaskEnrollment.id)
+                )
+            ).all()
+        )
+        assignments = tuple(
+            (
+                await self.session.scalars(
+                    select(SchoolResearchCaseAssignment)
+                    .where(
+                        SchoolResearchCaseAssignment.school_id == school_id,
+                        SchoolResearchCaseAssignment.task_id == task_id,
+                        SchoolResearchCaseAssignment.class_id == class_id,
+                        SchoolResearchCaseAssignment.task_binding_id == binding.id,
+                    )
+                    .order_by(SchoolResearchCaseAssignment.task_enrollment_id)
+                )
+            ).all()
+        )
+        if not 1 <= len(enrollments) <= 800 or len(assignments) != len(enrollments):
+            _raise(
+                ResearchCatRepositoryErrorCode.CASE_ASSIGNMENT_NOT_FOUND,
+                "complete public case assignment mapping is unavailable",
+            )
+        assigned_enrollment_ids = tuple(row.task_enrollment_id for row in assignments)
+        indexes = tuple(row.case_index for row in assignments)
+        if (
+            assigned_enrollment_ids != enrollments
+            or any(not 0 <= index < 800 for index in indexes)
+            or len(set(indexes)) != len(indexes)
+            or (len(enrollments) == 800 and set(indexes) != set(range(800)))
+            or any(
+                row.profile_sha256 != expected_profile_sha256
+                or row.corpus_sha256 != expected_corpus_sha256
+                or row.case_count != 800
+                or row.response_origin != "PUBLIC_OBSERVED"
+                or row.purpose != _RESEARCH_PURPOSE
+                or row.task_binding_id != binding.id
+                or row.profile_version_id != binding.profile_version_id
+                or row.profile_ref != binding.profile_ref
+                or row.profile_version_number != binding.profile_version_number
+                for row in assignments
+            )
+        ):
+            _raise(
+                ResearchCatRepositoryErrorCode.CASE_ASSIGNMENT_NOT_FOUND,
+                "complete public case assignment mapping is unavailable",
+            )
 
     async def get_task_binding_metadata(
         self, *, school_id: int, task_id: int
@@ -805,6 +1185,10 @@ class SchoolResearchCatRepository:
         at: datetime,
         require_study_scope: Callable[[ResearchProfileMetadata, ResearchTaskBindingMetadata], None]
         | None = None,
+        require_observed_scope: Callable[
+            [ResearchProfileMetadata, ResearchTaskBindingMetadata], Awaitable[None]
+        ]
+        | None = None,
     ) -> ResearchLockedStudentScope:
         """Lock current student scope after Backend resolved/authenticated account.
 
@@ -877,6 +1261,18 @@ class SchoolResearchCatRepository:
             # locked profile and binding metadata before config decryption.
             # Do not catch its exception: Backend maps its fixed denial safely.
             require_study_scope(_profile_metadata(_profile), _binding_metadata(binding))
+
+        if require_observed_scope is not None:
+            if not callable(require_observed_scope):
+                _raise(
+                    ResearchCatRepositoryErrorCode.INVALID_INPUT,
+                    "observed scope verifier is invalid",
+                )
+            # Run after the exact scope locks and before reading protected CAT
+            # config, so an unassigned public case never causes decryption.
+            await require_observed_scope(
+                _profile_metadata(_profile), _binding_metadata(binding)
+            )
 
         # Decrypt only after all current account-principal/roster/task rows
         # have been locked and revalidated in this caller-owned transaction.
@@ -1875,6 +2271,32 @@ def _same_session_scope(row, enrollment, binding, subject) -> bool:
     )
 
 
+def _validate_public_case_index_plan(case_index_plan: tuple[int, ...]) -> tuple[int, ...]:
+    if type(case_index_plan) is not tuple or not 1 <= len(case_index_plan) <= 800:
+        _raise(
+            ResearchCatRepositoryErrorCode.CASE_ASSIGNMENT_INVALID,
+            "public case index plan must contain 1 to 800 indexes",
+        )
+    case_indexes: set[int] = set()
+    for case_index in case_index_plan:
+        if (
+            type(case_index) is not int
+            or not 0 <= case_index < 800
+            or case_index in case_indexes
+        ):
+            _raise(
+                ResearchCatRepositoryErrorCode.CASE_ASSIGNMENT_INVALID,
+                "public case index plan contains duplicate or out-of-range indexes",
+            )
+        case_indexes.add(case_index)
+    if len(case_index_plan) == 800 and case_indexes != set(range(800)):
+        _raise(
+            ResearchCatRepositoryErrorCode.CASE_ASSIGNMENT_INVALID,
+            "800-enrollment case index plans must cover the fixed case-index range",
+        )
+    return case_index_plan
+
+
 def _same_session_request(
     row,
     *,
@@ -1934,6 +2356,28 @@ def _binding_metadata(row: SchoolResearchTaskBinding) -> ResearchTaskBindingMeta
         research_only=row.research_only,
         created_at=row.created_at,
         revoked_at=row.revoked_at,
+        corpus_sha256=row.corpus_sha256,
+        case_count=row.case_count,
+    )
+
+
+def _case_assignment_metadata(
+    row: SchoolResearchCaseAssignment,
+) -> ResearchPublicCaseAssignment:
+    return ResearchPublicCaseAssignment(
+        school_id=row.school_id,
+        task_id=row.task_id,
+        class_id=row.class_id,
+        task_enrollment_id=row.task_enrollment_id,
+        subject_id=row.subject_id,
+        task_binding_id=row.task_binding_id,
+        profile_version_id=row.profile_version_id,
+        profile_ref=row.profile_ref,
+        profile_version_number=row.profile_version_number,
+        profile_sha256=row.profile_sha256,
+        corpus_sha256=row.corpus_sha256,
+        case_count=row.case_count,
+        case_index=row.case_index,
     )
 
 

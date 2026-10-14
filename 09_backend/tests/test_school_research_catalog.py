@@ -204,6 +204,8 @@ def test_catalog_selectors_return_pinned_unapproved_profile_and_safe_repo_projec
     assert selection.trusted_profile.profile_ref == PROFILE_REF
     assert selection.trusted_profile.profile_sha256 == PROFILE_SHA256
     assert selection.trusted_profile.manifest_sha256 == MANIFEST_SHA256
+    assert selection.trusted_profile.artifact_root == MANIFEST_PATH.parent
+    assert str(MANIFEST_PATH.parent) not in repr(selection.trusted_profile)
     assert selection.trusted_profile.raw_manifest_bytes == MANIFEST_PATH.read_bytes()
     assert selection.trusted_profile.raw_profile_bytes == PROFILE_PATH.read_bytes()
     assert selection.public.instrument_id == "PROMIS_PEDIATRIC_ANXIETY_8_ITEM_SUBSET"
@@ -234,6 +236,84 @@ def test_catalog_selectors_return_pinned_unapproved_profile_and_safe_repo_projec
     kwargs = repository.create_profile_version_kwargs()
     assert kwargs["rights_status"] == "PENDING"
     assert kwargs["execution_status"] == "CANDIDATE_RESEARCH_ONLY"
+
+
+def test_catalog_binding_has_internal_verified_corpus_and_safe_pins(
+    actual_catalog_inputs,
+) -> None:
+    runtime_file, runtime_sha, service_file, service_sha, _runtime, _service = actual_catalog_inputs
+    catalog = _build_catalog(runtime_file, runtime_sha, service_file, service_sha)
+    binding = catalog.select_binding(BINDING_REF)
+    manifest = json.loads(MANIFEST_PATH.read_bytes())
+
+    assert binding.observed_source_verified is True
+    assert binding.observed_corpus is not None
+    assert binding.observed_corpus_sha256 == manifest["complete_observed_800"]["sha256"]
+    assert binding.observed_corpus_row_count == 800
+    assert binding.observed_corpus.row_count == 800
+    assert binding.observed_corpus.profile_ref == PROFILE_REF
+    assert binding.observed_corpus.profile_sha256 == PROFILE_SHA256
+    assert binding.observed_corpus.manifest_sha256 == MANIFEST_SHA256
+    assert binding.observed_corpus_sha256 not in repr(binding)
+    assert "complete_observed_800.csv" not in repr(binding)
+    assert binding.public.__dataclass_fields__.keys() == {
+        "school_id",
+        "binding_ref",
+        "profile_ref",
+        "config_version",
+        "research_only",
+        "publication_status",
+    }
+
+
+def test_profile_catalog_remains_usable_but_unverified_without_response_file(
+    tmp_path: Path,
+    actual_catalog_inputs,
+) -> None:
+    runtime_file, _runtime_sha, service_file, _service_sha, runtime, service = actual_catalog_inputs
+    resource_root = tmp_path / "profile-only"
+    resource_root.mkdir()
+    profile_path = resource_root / "profile.json"
+    manifest_path = resource_root / "manifest.json"
+    profile_path.write_bytes(PROFILE_PATH.read_bytes())
+    manifest_path.write_bytes(MANIFEST_PATH.read_bytes())
+
+    runtime["resource_root"] = str(resource_root)
+    runtime["profiles"][0]["profile_path"] = str(profile_path)
+    runtime["profiles"][0]["manifest_path"] = str(manifest_path)
+    service["resource_root"] = str(resource_root)
+    service["profiles"][0]["profile_path"] = str(profile_path)
+    service["profiles"][0]["manifest_path"] = str(manifest_path)
+    runtime_bytes = _canonical(runtime)
+    service_bytes = _canonical(service)
+    runtime_file.write_bytes(runtime_bytes)
+    service_file.write_bytes(service_bytes)
+
+    catalog = _build_catalog(
+        runtime_file,
+        hashlib.sha256(runtime_bytes).hexdigest(),
+        service_file,
+        hashlib.sha256(service_bytes).hexdigest(),
+    )
+
+    assert catalog.select_profile(PROFILE_REF).public.profile_ref == PROFILE_REF
+    binding = catalog.select_binding(BINDING_REF)
+    assert binding.observed_source_verified is False
+    assert binding.observed_corpus is None
+    assert binding.observed_corpus_sha256 is None
+    assert binding.observed_corpus_row_count is None
+
+    (resource_root / "complete_observed_800.csv").write_bytes(b"changed response rows")
+    catalog = _build_catalog(
+        runtime_file,
+        hashlib.sha256(runtime_bytes).hexdigest(),
+        service_file,
+        hashlib.sha256(service_bytes).hexdigest(),
+    )
+    assert catalog.select_profile(PROFILE_REF).public.profile_ref == PROFILE_REF
+    binding = catalog.select_binding(BINDING_REF)
+    assert binding.observed_source_verified is False
+    assert binding.observed_corpus is None
 
 
 def test_real_pinned_profile_projection_passes_database_profile_validator_without_db(
