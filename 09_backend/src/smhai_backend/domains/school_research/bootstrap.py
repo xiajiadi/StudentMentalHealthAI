@@ -247,6 +247,30 @@ def build_school_research_tasks_service(settings: Any, persistence: Any) -> Any 
         raise ResearchCATRuntimeError("runtime_configuration_invalid") from None
 
 
+def build_school_research_cohorts_service(settings: Any, task_service: Any) -> Any | None:
+    """Reuse the configured trusted task guard; never infer a research policy."""
+    if (
+        settings.school_research_enabled is not True
+        or getattr(settings, "school_research_managed_enabled", False) is not True
+    ):
+        return None
+    try:
+        if task_service is None or settings.identity_profile != "school_tenant":
+            raise ValueError
+        from smhai_backend.adapters.school_research_cohorts import (
+            SchoolResearchCohortsPersistenceAdapter,
+        )
+        from smhai_backend.domains.school_research_cohorts.service import (
+            SchoolResearchCohortsService,
+        )
+
+        return SchoolResearchCohortsService(
+            persistence=SchoolResearchCohortsPersistenceAdapter(task_service.persistence)
+        )
+    except Exception:
+        raise ResearchCATRuntimeError("runtime_configuration_invalid") from None
+
+
 def build_school_research_discovery_service(settings: Any, persistence: Any) -> Any | None:
     """Wire only the student's current, metadata-only research scope."""
     if (

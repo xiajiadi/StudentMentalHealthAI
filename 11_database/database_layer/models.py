@@ -178,6 +178,9 @@ class SchoolAccountBatch(ResourceIdentityMixin, TimestampMixin, Base):
     __table_args__ = mysql_table_args(
         UniqueConstraint("batch_ref", name="school_account_batch_ref_unique"),
         UniqueConstraint("id", "school_id", name="school_account_batch_id_school_unique"),
+        UniqueConstraint(
+            "id", "school_id", "class_id", name="school_account_batch_id_school_class_unique"
+        ),
         ForeignKeyConstraint(
             ["created_by_membership_role_id", "school_id"],
             ["membership_roles.id", "membership_roles.school_id"],
@@ -211,6 +214,10 @@ class SchoolAccountProvision(ResourceIdentityMixin, TimestampMixin, Base):
         UniqueConstraint("account_id", name="school_account_provision_account_unique"),
         UniqueConstraint(
             "batch_id", "row_no", name="school_account_provision_batch_row_unique"
+        ),
+        UniqueConstraint(
+            "id", "batch_id", "account_id", "membership_id", "membership_role_id", "school_id",
+            name="school_account_provision_cohort_scope_unique",
         ),
         ForeignKeyConstraint(
             ["batch_id", "school_id"],
@@ -322,6 +329,8 @@ class SubjectAccessGrant(ResourceIdentityMixin, TimestampMixin, Base):
         CheckConstraint(
             "valid_until IS NULL OR valid_until >= valid_from", name="validity_ordered"
         ),
+        UniqueConstraint("id", "principal_account_id", "subject_id", "school_id",
+                        name="subject_grant_cohort_scope_unique"),
         Index(
             "ix_subject_access_grants_principal_subject_status",
             "principal_account_id",
@@ -1625,6 +1634,10 @@ class SchoolResearchProfileVersion(ResourceIdentityMixin, TimestampMixin, Base):
             "id", "school_id", "profile_ref", "version_number", "profile_sha256",
             name="school_research_profile_exact_scope_unique",
         ),
+        UniqueConstraint(
+            "id", "school_id", "profile_ref", "version_number", "profile_sha256",
+            "manifest_sha256", name="school_research_profile_manifest_scope_unique",
+        ),
         CheckConstraint("version_number >= 1", name="version_positive"),
         CheckConstraint(
             "rights_status IN ('PENDING', 'VERIFIED', 'REVOKED')",
@@ -1742,6 +1755,264 @@ class SchoolResearchProfileVersion(ResourceIdentityMixin, TimestampMixin, Base):
     )
 
 
+class SchoolResearchCohort(ResourceIdentityMixin, TimestampMixin, Base):
+    """Sealed server-derived 800-subject public-observation cohort metadata."""
+
+    __tablename__ = "school_research_cohorts"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("school_id", "cohort_ref", name="school_research_cohort_ref_unique"),
+        UniqueConstraint("id", "school_id", name="school_research_cohort_id_school_unique"),
+        UniqueConstraint(
+            "id",
+            "school_id",
+            "profile_version_id",
+            "profile_ref",
+            "profile_version_number",
+            "profile_sha256",
+            "manifest_sha256",
+            "corpus_sha256",
+            "case_count",
+            name="school_research_cohort_exact_pin_unique",
+        ),
+        UniqueConstraint(
+            "id",
+            "school_id",
+            "profile_version_id",
+            "profile_ref",
+            "profile_version_number",
+            "profile_sha256",
+            "corpus_sha256",
+            "case_count",
+            name="school_research_cohort_binding_exact_unique",
+        ),
+        CheckConstraint("status = 'SEALED'", name="status_sealed_only"),
+        CheckConstraint("case_count = 800", name="case_count_fixed"),
+        CheckConstraint("class_count = 8", name="class_count_fixed"),
+        CheckConstraint("subject_count = 800", name="subject_count_fixed"),
+        CheckConstraint("length(profile_sha256) = 64", name="profile_sha_shape"),
+        CheckConstraint("length(manifest_sha256) = 64", name="manifest_sha_shape"),
+        CheckConstraint("length(corpus_sha256) = 64", name="corpus_sha_shape"),
+        CheckConstraint("length(assignment_sha256) = 64", name="assignment_sha_shape"),
+        CheckConstraint("purpose = 'RESEARCH_SIMULATION'", name="purpose_research_only"),
+        CheckConstraint("research_only = 1", name="research_only_locked"),
+        CheckConstraint("human_curated = 0", name="human_curated_false"),
+        CheckConstraint(
+            "psychological_interpretation_allowed = 0", name="interpretation_forbidden"
+        ),
+        ForeignKeyConstraint(
+            ["school_id"],
+            ["schools.id"],
+            name="fk_school_research_cohorts_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            [
+                "profile_version_id",
+                "school_id",
+                "profile_ref",
+                "profile_version_number",
+                "profile_sha256",
+                "manifest_sha256",
+            ],
+            [
+                "school_research_profile_versions.id",
+                "school_research_profile_versions.school_id",
+                "school_research_profile_versions.profile_ref",
+                "school_research_profile_versions.version_number",
+                "school_research_profile_versions.profile_sha256",
+                "school_research_profile_versions.manifest_sha256",
+            ],
+            name="fk_school_research_cohorts_profile_exact",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["created_by_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_school_research_cohorts_creator_school",
+            ondelete="RESTRICT",
+        ),
+        Index("ix_school_research_cohorts_school_study", "school_id", "study_ref"),
+    )
+
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    cohort_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    study_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    profile_version_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    profile_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    profile_version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    profile_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    manifest_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    corpus_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    assignment_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    case_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=800, server_default="800"
+    )
+    class_count: Mapped[int] = mapped_column(Integer, nullable=False, default=8, server_default="8")
+    subject_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=800, server_default="800"
+    )
+    status: Mapped[str] = mapped_column(
+        ascii_id(16), nullable=False, default="SEALED", server_default="SEALED"
+    )
+    purpose: Mapped[str] = mapped_column(
+        ascii_id(32),
+        nullable=False,
+        default="RESEARCH_SIMULATION",
+        server_default="RESEARCH_SIMULATION",
+    )
+    research_only: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="1"
+    )
+    human_curated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    psychological_interpretation_allowed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    sealed_at: Mapped[datetime] = mapped_column(utc_datetime(), nullable=False)
+    created_by_membership_role_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+
+
+class SchoolResearchCohortBatch(ResourceIdentityMixin, TimestampMixin, Base):
+    """One exact 100-row school account batch captured by a sealed cohort."""
+
+    __tablename__ = "school_research_cohort_batches"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("cohort_id", "class_id", name="school_research_cohort_class_unique"),
+        UniqueConstraint("cohort_id", "batch_id", name="school_research_cohort_batch_unique"),
+        UniqueConstraint(
+            "id",
+            "cohort_id",
+            "school_id",
+            "class_id",
+            "batch_id",
+            name="school_research_cohort_batch_exact_unique",
+        ),
+        CheckConstraint("row_count = 100", name="row_count_fixed"),
+        ForeignKeyConstraint(
+            ["cohort_id", "school_id"],
+            ["school_research_cohorts.id", "school_research_cohorts.school_id"],
+            name="fk_school_research_cohort_batches_cohort",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["batch_id", "school_id", "class_id"],
+            [
+                "school_account_batches.id",
+                "school_account_batches.school_id",
+                "school_account_batches.class_id",
+            ],
+            name="fk_school_research_cohort_batches_batch_exact",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["class_id", "school_id"],
+            ["school_classes.id", "school_classes.school_id"],
+            name="fk_school_research_cohort_batches_class",
+            ondelete="RESTRICT",
+        ),
+        Index("ix_school_research_cohort_batches_cohort", "cohort_id", "class_id"),
+    )
+
+    cohort_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    class_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    batch_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    class_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    batch_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    row_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=100, server_default="100"
+    )
+
+
+class SchoolResearchCohortAssignment(ResourceIdentityMixin, TimestampMixin, Base):
+    """Private immutable link from one synthetic subject to one corpus case index."""
+
+    __tablename__ = "school_research_cohort_assignments"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("cohort_id", "case_index", name="school_research_cohort_case_unique"),
+        UniqueConstraint("cohort_id", "subject_id", name="school_research_cohort_subject_unique"),
+        UniqueConstraint(
+            "id",
+            "cohort_id",
+            "school_id",
+            "subject_id",
+            "case_index",
+            name="school_research_cohort_assignment_exact_unique",
+        ),
+        CheckConstraint("case_index >= 0 AND case_index < 800", name="case_index_range"),
+        ForeignKeyConstraint(
+            ["cohort_batch_id", "cohort_id", "school_id", "class_id", "batch_id"],
+            [
+                "school_research_cohort_batches.id",
+                "school_research_cohort_batches.cohort_id",
+                "school_research_cohort_batches.school_id",
+                "school_research_cohort_batches.class_id",
+                "school_research_cohort_batches.batch_id",
+            ],
+            name="fk_school_research_cohort_assignments_batch_exact",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            [
+                "provision_id",
+                "batch_id",
+                "account_id",
+                "membership_id",
+                "membership_role_id",
+                "school_id",
+            ],
+            [
+                "school_account_provisions.id",
+                "school_account_provisions.batch_id",
+                "school_account_provisions.account_id",
+                "school_account_provisions.membership_id",
+                "school_account_provisions.membership_role_id",
+                "school_account_provisions.school_id",
+            ],
+            name="fk_school_research_cohort_assignments_provision_exact",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["class_student_id", "subject_id", "class_id", "school_id"],
+            [
+                "school_class_students.id",
+                "school_class_students.subject_id",
+                "school_class_students.class_id",
+                "school_class_students.school_id",
+            ],
+            name="fk_school_research_cohort_assignments_roster_exact",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["self_grant_id", "account_id", "subject_id", "school_id"],
+            [
+                "subject_access_grants.id",
+                "subject_access_grants.principal_account_id",
+                "subject_access_grants.subject_id",
+                "subject_access_grants.school_id",
+            ],
+            name="fk_school_research_cohort_assignments_self_exact",
+            ondelete="RESTRICT",
+        ),
+        Index("ix_school_research_cohort_assignments_subject", "school_id", "subject_id"),
+    )
+
+    cohort_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    cohort_batch_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    batch_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    class_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    provision_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    account_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    membership_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    membership_role_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    class_student_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    subject_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    self_grant_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    case_index: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
 class SchoolResearchTaskBinding(ResourceIdentityMixin, TimestampMixin, Base):
     """Immutable research profile/config binding for one measurement task."""
 
@@ -1759,6 +2030,7 @@ class SchoolResearchTaskBinding(ResourceIdentityMixin, TimestampMixin, Base):
             "corpus_sha256", "case_count",
             name="school_research_binding_corpus_scope_unique",
         ),
+        UniqueConstraint("id", "cohort_id", name="school_research_binding_cohort_id_unique"),
         CheckConstraint(
             "response_origin IN ('PUBLIC_OBSERVED', 'MODEL_GENERATED')",
             name="response_origin_allowed",
@@ -1772,6 +2044,10 @@ class SchoolResearchTaskBinding(ResourceIdentityMixin, TimestampMixin, Base):
             "(corpus_sha256 IS NULL AND case_count IS NULL) OR "
             "(corpus_sha256 IS NOT NULL AND case_count IS NOT NULL AND case_count = 800)",
             name="corpus_pin_shape",
+        ),
+        CheckConstraint(
+            "cohort_id IS NULL OR (corpus_sha256 IS NOT NULL AND case_count = 800)",
+            name="cohort_requires_corpus_pin",
         ),
         CheckConstraint("research_only = 1", name="research_only_locked"),
         CheckConstraint(
@@ -1804,6 +2080,16 @@ class SchoolResearchTaskBinding(ResourceIdentityMixin, TimestampMixin, Base):
             ["created_by_membership_role_id", "school_id"],
             ["membership_roles.id", "membership_roles.school_id"],
             name="fk_school_research_bindings_creator_school", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["cohort_id", "school_id", "profile_version_id", "profile_ref",
+             "profile_version_number", "profile_sha256", "corpus_sha256", "case_count"],
+            ["school_research_cohorts.id", "school_research_cohorts.school_id",
+             "school_research_cohorts.profile_version_id", "school_research_cohorts.profile_ref",
+             "school_research_cohorts.profile_version_number",
+             "school_research_cohorts.profile_sha256", "school_research_cohorts.corpus_sha256",
+             "school_research_cohorts.case_count"],
+            name="fk_school_research_bindings_cohort_exact", ondelete="RESTRICT",
         ),
         ForeignKeyConstraint(
             ["revoked_by_membership_role_id", "school_id"],
@@ -1844,6 +2130,7 @@ class SchoolResearchTaskBinding(ResourceIdentityMixin, TimestampMixin, Base):
     revoked_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
     corpus_sha256: Mapped[str | None] = mapped_column(ascii_id(64), nullable=True)
     case_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cohort_id: Mapped[int | None] = mapped_column(unsigned_id(), nullable=True, sort_order=1000)
 
 
 class SchoolResearchCaseAssignment(ResourceIdentityMixin, TimestampMixin, Base):
@@ -1865,6 +2152,11 @@ class SchoolResearchCaseAssignment(ResourceIdentityMixin, TimestampMixin, Base):
         ),
         CheckConstraint("case_count = 800", name="case_count_fixed"),
         CheckConstraint("purpose = 'RESEARCH_SIMULATION'", name="purpose_research_only"),
+        CheckConstraint(
+            "(cohort_id IS NULL AND cohort_assignment_id IS NULL) OR "
+            "(cohort_id IS NOT NULL AND cohort_assignment_id IS NOT NULL)",
+            name="cohort_assignment_pair",
+        ),
         ForeignKeyConstraint(
             ["school_id"], ["schools.id"],
             name="fk_school_research_case_assignments_school", ondelete="RESTRICT",
@@ -1908,6 +2200,28 @@ class SchoolResearchCaseAssignment(ResourceIdentityMixin, TimestampMixin, Base):
              "school_research_task_bindings.case_count"],
             name="fk_school_research_case_assignments_binding_exact", ondelete="RESTRICT",
         ),
+        ForeignKeyConstraint(
+            ["task_binding_id", "cohort_id"],
+            ["school_research_task_bindings.id", "school_research_task_bindings.cohort_id"],
+            name="fk_school_research_case_assignments_binding_cohort", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            [
+                "cohort_assignment_id",
+                "cohort_id",
+                "school_id",
+                "subject_id",
+                "case_index",
+            ],
+            ["school_research_cohort_assignments.id",
+             "school_research_cohort_assignments.cohort_id",
+             "school_research_cohort_assignments.school_id",
+             "school_research_cohort_assignments.subject_id",
+             "school_research_cohort_assignments.case_index"],
+            name="fk_school_research_case_assignments_cohort_exact",
+            ondelete="RESTRICT",
+            onupdate="RESTRICT",
+        ),
         Index(
             "ix_school_research_case_assignments_scope",
             "school_id", "task_id", "task_binding_id",
@@ -1933,6 +2247,12 @@ class SchoolResearchCaseAssignment(ResourceIdentityMixin, TimestampMixin, Base):
     purpose: Mapped[str] = mapped_column(
         ascii_id(32), nullable=False, default="RESEARCH_SIMULATION",
         server_default="RESEARCH_SIMULATION",
+    )
+    cohort_id: Mapped[int | None] = mapped_column(
+        unsigned_id(), nullable=True, sort_order=1000
+    )
+    cohort_assignment_id: Mapped[int | None] = mapped_column(
+        unsigned_id(), nullable=True, sort_order=1001
     )
 
 
@@ -2248,4 +2568,7 @@ __all__ = [
     "SupportRun",
     "SupportSession",
     "TaskEnrollment",
+    "SchoolResearchCohort",
+    "SchoolResearchCohortAssignment",
+    "SchoolResearchCohortBatch",
 ]

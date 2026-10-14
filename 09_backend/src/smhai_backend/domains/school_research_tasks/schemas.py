@@ -39,6 +39,10 @@ class ResearchTaskPublishRequest(ResearchTaskRequest):
         pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
     )
     profile_version_number: StrictInt = Field(ge=1, le=2_147_483_647)
+    cohort_ref: StrictStr | None = Field(
+        default=None, min_length=1, max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
+    )
     opens_at: datetime
     due_at: datetime
 

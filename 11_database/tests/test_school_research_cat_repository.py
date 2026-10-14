@@ -59,6 +59,7 @@ _RAW_PROFILE = json.dumps(
 ).encode("utf-8")
 _PROFILE_SHA = hashlib.sha256(_RAW_PROFILE).hexdigest()
 _MANIFEST_SHA = "c" * 64
+_CORPUS_SHA = "d" * 64
 _PROMIS_PROFILE_PATH = Path(
     r"D:\Dev\datasets\psynova-public-research\research-profiles\promis-pediatric-anxiety-8-item-subset-20261014-r1\profile.json"
 )
@@ -644,6 +645,59 @@ async def _install_research_records(repo, session):
         creator_membership_role_id=7,
     )
     return profile_meta, profile_row, binding_meta
+
+
+@pytest.mark.asyncio
+async def test_task_binding_records_only_exact_verified_cohort_pin():
+    repo, session, _protection = _repo()
+    profile_meta = await repo.create_profile_version(
+        school_id=3,
+        version_number=1,
+        source_population_scope="SYNTHETIC_FIXTURE",
+        profile=_profile(),
+        expected_profile_sha256=_PROFILE_SHA,
+        expected_manifest_sha256=_MANIFEST_SHA,
+        rights_status="VERIFIED",
+        execution_status="SIMULATION_ENABLED",
+        creator_membership_role_id=7,
+    )
+    checked = []
+
+    async def require_cohort(**kwargs):
+        checked.append(kwargs)
+        return SimpleNamespace(id=91)
+
+    repo._require_sealed_cohort_scope = require_cohort
+    binding = await repo.create_task_binding(
+        school_id=3,
+        task_id=13,
+        class_id=11,
+        profile_version_id=profile_meta.profile_version_id,
+        profile_ref=profile_meta.profile_ref,
+        profile_version_number=1,
+        expected_profile_sha256=_PROFILE_SHA,
+        response_origin="PUBLIC_OBSERVED",
+        corpus_sha256=_CORPUS_SHA,
+        case_count=800,
+        config_version="config-fixture-v1",
+        config_payload=_CONFIG,
+        expected_config_sha256=_CONFIG_SHA,
+        creator_membership_role_id=7,
+        cohort_id=91,
+    )
+    row = session.rows[SchoolResearchTaskBinding][0]
+    assert checked == [
+        {
+            "cohort_id": 91,
+            "school_id": 3,
+            "class_id": 11,
+            "profile": session.rows[SchoolResearchProfileVersion][0],
+            "expected_profile_sha256": _PROFILE_SHA,
+            "expected_corpus_sha256": _CORPUS_SHA,
+        }
+    ]
+    assert row.cohort_id == binding.cohort_id == 91
+    assert binding.corpus_sha256 == _CORPUS_SHA and binding.case_count == 800
 
 
 @pytest.mark.asyncio

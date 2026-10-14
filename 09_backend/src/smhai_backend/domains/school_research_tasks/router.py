@@ -75,7 +75,7 @@ def _idempotency(actor: Actor, request: Request, payload: ResearchTaskPublishReq
             "operation": "school_research_tasks:publish",
         }
     )
-    body = payload.model_dump(mode="json")
+    body = payload.model_dump(mode="json", exclude_none=True)
     return key, fingerprint(body), scope
 
 
@@ -132,6 +132,7 @@ async def publish_research_task(
 ):
     _require_school_admin(actor)
     idempotency = _idempotency(actor, request, payload)
+    cohort = {} if payload.cohort_ref is None else {"cohort_ref": payload.cohort_ref}
     result = await _service(request).publish_task(
         actor,
         class_ref=payload.class_ref,
@@ -141,5 +142,6 @@ async def publish_research_task(
         opens_at=payload.opens_at,
         due_at=payload.due_at,
         idempotency=idempotency,
+        **cohort,
     )
     return _envelope(request, ResearchTaskPublicationDto.model_validate(result))

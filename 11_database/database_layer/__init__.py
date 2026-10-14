@@ -24,6 +24,13 @@ from .provenance import (
     SYNTHETIC_SCHOOL_SEED_PROVENANCE_REF,
     SYNTHETIC_SCHOOL_TEST_PROVENANCE_REF,
 )
+from .school_research_cohorts import (
+    ResearchCohortCaseAssignment,
+    ResearchCohortErrorCode,
+    ResearchCohortMetadata,
+    ResearchCohortRepositoryError,
+    SchoolResearchCohortRepository,
+)
 from .school_seed import (
     SCHOOL_SEED_SLOTS,
     SYNTHETIC_SCHOOL_RECIPES,
@@ -60,6 +67,11 @@ __all__ = [
     "SYNTHETIC_SCHOOL_RECIPES",
     "SYNTHETIC_SCHOOL_SEED_PROVENANCE_REF",
     "SYNTHETIC_SCHOOL_TEST_PROVENANCE_REF",
+    "ResearchCohortCaseAssignment",
+    "ResearchCohortErrorCode",
+    "ResearchCohortMetadata",
+    "ResearchCohortRepositoryError",
+    "SchoolResearchCohortRepository",
     "WindowsDpapiKeyProvider",
     "create_engine",
     "create_session_factory",

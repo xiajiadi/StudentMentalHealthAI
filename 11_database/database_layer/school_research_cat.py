@@ -20,9 +20,9 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Protocol
+from typing import NoReturn, Protocol
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,12 +37,20 @@ from .models import (
     SchoolClass,
     SchoolClassStudent,
     SchoolResearchCaseAssignment,
+    SchoolResearchCohort,
+    SchoolResearchCohortAssignment,
+    SchoolResearchCohortBatch,
     SchoolResearchProfileVersion,
     SchoolResearchSession,
     SchoolResearchTaskBinding,
     Subject,
     SubjectAccessGrant,
     TaskEnrollment,
+)
+from .school_research_cohorts import (
+    ResearchCohortCaseAssignment,
+    ResearchCohortRepositoryError,
+    SchoolResearchCohortRepository,
 )
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -222,6 +230,7 @@ class ResearchTaskBindingMetadata:
     revoked_at: datetime | None
     corpus_sha256: str | None = None
     case_count: int | None = None
+    cohort_id: int | None = None
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -299,6 +308,8 @@ class ResearchPublicCaseAssignment:
     corpus_sha256: str
     case_count: int
     case_index: int
+    cohort_id: int | None
+    cohort_assignment_id: int | None
 
 
 def map_cat_status_to_storage(value: object) -> str:
@@ -597,6 +608,7 @@ class SchoolResearchCatRepository:
         config_payload: Mapping[str, object],
         expected_config_sha256: str,
         creator_membership_role_id: int,
+        cohort_id: int | None = None,
     ) -> ResearchTaskBindingMetadata:
         _require_sha256(expected_profile_sha256, "expected_profile_sha256")
         _require_sha256(expected_config_sha256, "expected_config_sha256")
@@ -608,6 +620,8 @@ class SchoolResearchCatRepository:
         creator_membership_role_id = _positive_int(
             creator_membership_role_id, "creator_membership_role_id"
         )
+        if cohort_id is not None:
+            cohort_id = _positive_int(cohort_id, "cohort_id")
         profile_ref = _require_token(profile_ref, "profile_ref", 128)
         response_origin = _require_choice(
             response_origin, {"PUBLIC_OBSERVED", "MODEL_GENERATED"}, "response_origin"
@@ -677,6 +691,20 @@ class SchoolResearchCatRepository:
                 "task is not explicitly bound to the research CAT lane",
             )
         await self._require_active_class(school_id, class_id)
+        if cohort_id is not None:
+            if response_origin != "PUBLIC_OBSERVED" or corpus_sha256 is None or case_count != 800:
+                _raise(
+                    ResearchCatRepositoryErrorCode.CORPUS_PIN_UNAVAILABLE,
+                    "sealed cohort binding requires the pinned public observation source",
+                )
+            await self._require_sealed_cohort_scope(
+                cohort_id=cohort_id,
+                school_id=school_id,
+                class_id=class_id,
+                profile=profile,
+                expected_profile_sha256=expected_profile_sha256,
+                expected_corpus_sha256=corpus_sha256,
+            )
         existing = await self._one(
             SchoolResearchTaskBinding,
             SchoolResearchTaskBinding.task_id == task_id,
@@ -706,6 +734,7 @@ class SchoolResearchCatRepository:
             response_origin=response_origin,
             corpus_sha256=corpus_sha256,
             case_count=case_count,
+            cohort_id=cohort_id,
             status="ACTIVE",
             purpose=_RESEARCH_PURPOSE,
             research_only=True,
@@ -720,6 +749,121 @@ class SchoolResearchCatRepository:
         await self._insert(row, "research task binding already exists")
         return _binding_metadata(row)
 
+    async def _require_sealed_cohort_scope(
+        self,
+        *,
+        cohort_id: int,
+        school_id: int,
+        class_id: int,
+        profile: SchoolResearchProfileVersion | ResearchProfileMetadata,
+        expected_profile_sha256: str,
+        expected_corpus_sha256: str,
+        verify_seal: bool = True,
+    ) -> SchoolResearchCohort:
+        """Read and validate immutable cohort pins without taking cohort locks."""
+
+        profile_version_id = getattr(profile, "profile_version_id", getattr(profile, "id", None))
+        cohort = await self._one(
+            SchoolResearchCohort,
+            SchoolResearchCohort.id == cohort_id,
+            SchoolResearchCohort.school_id == school_id,
+        )
+        if (
+            cohort is None
+            or cohort.status != "SEALED"
+            or cohort.purpose != _RESEARCH_PURPOSE
+            or cohort.research_only is not True
+            or cohort.human_curated is not False
+            or cohort.psychological_interpretation_allowed is not False
+            or cohort.case_count != 800
+            or cohort.class_count != 8
+            or cohort.subject_count != 800
+            or not isinstance(cohort.assignment_sha256, str)
+            or _SHA256.fullmatch(cohort.assignment_sha256) is None
+            or cohort.profile_version_id != profile_version_id
+            or cohort.profile_ref != profile.profile_ref
+            or cohort.profile_version_number != profile.version_number
+            or cohort.profile_sha256 != expected_profile_sha256
+            or cohort.profile_sha256 != profile.profile_sha256
+            or cohort.manifest_sha256 != profile.manifest_sha256
+            or cohort.corpus_sha256 != expected_corpus_sha256
+        ):
+            _raise(
+                ResearchCatRepositoryErrorCode.CORPUS_PIN_UNAVAILABLE,
+                "sealed cohort does not match the current task profile and corpus pins",
+            )
+
+        if verify_seal:
+            # Full map verification runs at seal-use boundaries such as
+            # binding, task assignment, and replay. Student operations validate
+            # only the exact member below and do not scan all 800 rows.
+            try:
+                await SchoolResearchCohortRepository(self.session).get_cohort_metadata(
+                    school_id=school_id,
+                    cohort_ref=cohort.cohort_ref,
+                )
+            except ResearchCohortRepositoryError:
+                _raise(
+                    ResearchCatRepositoryErrorCode.CORPUS_PIN_UNAVAILABLE,
+                    "sealed cohort mapping is unavailable",
+                )
+
+        batch_id = await self.session.scalar(
+            select(SchoolResearchCohortBatch.id).where(
+                SchoolResearchCohortBatch.cohort_id == cohort_id,
+                SchoolResearchCohortBatch.school_id == school_id,
+                SchoolResearchCohortBatch.class_id == class_id,
+            )
+        )
+        if batch_id is None:
+            _raise(
+                ResearchCatRepositoryErrorCode.CORPUS_PIN_UNAVAILABLE,
+                "sealed cohort does not include the task class",
+            )
+        if verify_seal:
+            member_count, subject_count, case_count = (
+                await self.session.execute(
+                    select(
+                        func.count(SchoolResearchCohortAssignment.id),
+                        func.count(func.distinct(SchoolResearchCohortAssignment.subject_id)),
+                        func.count(func.distinct(SchoolResearchCohortAssignment.case_index)),
+                    ).where(
+                        SchoolResearchCohortAssignment.cohort_id == cohort_id,
+                        SchoolResearchCohortAssignment.school_id == school_id,
+                        SchoolResearchCohortAssignment.class_id == class_id,
+                    )
+                )
+            ).one()
+            if member_count != 100 or subject_count != 100 or case_count != 100:
+                _raise(
+                    ResearchCatRepositoryErrorCode.CORPUS_PIN_UNAVAILABLE,
+                    "sealed cohort class membership is incomplete",
+                )
+        return cohort
+
+    async def _require_cohort_case_assignment(
+        self,
+        *,
+        cohort_id: int,
+        school_id: int,
+        class_id: int,
+        class_student_id: int,
+        subject_id: int,
+    ) -> ResearchCohortCaseAssignment:
+        try:
+            return await SchoolResearchCohortRepository(self.session).require_subject_assignment(
+                cohort_id=cohort_id,
+                school_id=school_id,
+                class_id=class_id,
+                class_student_id=class_student_id,
+                subject_id=subject_id,
+            )
+        except ResearchCohortRepositoryError:
+            _raise(
+                ResearchCatRepositoryErrorCode.CASE_ASSIGNMENT_NOT_FOUND,
+                "sealed cohort member mapping is unavailable",
+            )
+
     async def create_public_observed_case_assignments(
         self,
         *,
@@ -730,16 +874,15 @@ class SchoolResearchCatRepository:
         expected_profile_sha256: str,
         expected_corpus_sha256: str,
         creator_membership_role_id: int,
-        case_index_plan: tuple[int, ...],
+        case_index_plan: tuple[int, ...] | None,
     ) -> tuple[ResearchPublicCaseAssignment, ...]:
         """Create one private public-case assignment for every active enrollment.
 
-        The caller owns the task-publish transaction and supplies server-built
-        indices only. This method reads and verifies the complete active
-        enrollment set (1..800 rows), unique in-range case indexes, current
-        roster scope, exact profile/binding/corpus pins, and leaves
-        commit/rollback to the caller. An 800-enrollment task must use the full
-        0..799 permutation.
+        The caller owns the task-publish transaction and supplies a server-built
+        index plan only for legacy non-cohort bindings. Cohort bindings reuse
+        the sealed subject map and reject any second plan. This method verifies
+        the complete active enrollment set, current roster scope, exact
+        profile/binding/corpus pins, and leaves commit/rollback to the caller.
         Student request data must never be used as ``case_index_plan``.
         """
 
@@ -752,8 +895,6 @@ class SchoolResearchCatRepository:
         )
         _require_sha256(expected_profile_sha256, "expected_profile_sha256")
         _require_sha256(expected_corpus_sha256, "expected_corpus_sha256")
-        validated_plan = _validate_public_case_index_plan(case_index_plan)
-
         await self._require_synthetic_school(school_id)
         await self._require_active_membership_role(creator_membership_role_id, school_id)
         binding, profile, task = await self._lock_active_task_binding(
@@ -778,6 +919,33 @@ class SchoolResearchCatRepository:
                 "verified public corpus pins do not match the active research binding",
             )
 
+        cohort_id = getattr(binding, "cohort_id", None)
+        cohort: SchoolResearchCohort | None = None
+        validated_plan: tuple[int, ...] | None
+        if cohort_id is None:
+            if case_index_plan is None:
+                _raise(
+                    ResearchCatRepositoryErrorCode.CASE_ASSIGNMENT_INVALID,
+                    "legacy case assignment requires its server-built index plan",
+                )
+            validated_plan = _validate_public_case_index_plan(case_index_plan)
+        else:
+            cohort_id = _positive_int(cohort_id, "cohort_id")
+            if case_index_plan is not None:
+                _raise(
+                    ResearchCatRepositoryErrorCode.CASE_ASSIGNMENT_INVALID,
+                    "sealed cohort assignments do not accept a second case-index plan",
+                )
+            cohort = await self._require_sealed_cohort_scope(
+                cohort_id=cohort_id,
+                school_id=school_id,
+                class_id=class_id,
+                profile=profile,
+                expected_profile_sha256=expected_profile_sha256,
+                expected_corpus_sha256=expected_corpus_sha256,
+            )
+            validated_plan = None
+
         candidates = list(
             (
                 await self.session.scalars(
@@ -794,12 +962,16 @@ class SchoolResearchCatRepository:
             ).all()
         )
         enrollment_ids = tuple(row.id for row in candidates)
-        if not 1 <= len(candidates) <= 800 or len(set(enrollment_ids)) != len(candidates):
+        if (
+            not 1 <= len(candidates) <= 800
+            or len(set(enrollment_ids)) != len(candidates)
+            or (cohort_id is not None and len(candidates) != 100)
+        ):
             _raise(
                 ResearchCatRepositoryErrorCode.CASE_ASSIGNMENT_INVALID,
-                "task active enrollment count is outside the public replay range",
+                "task active enrollment count does not match the permitted research scope",
             )
-        if len(validated_plan) != len(candidates):
+        if validated_plan is not None and len(validated_plan) != len(candidates):
             _raise(
                 ResearchCatRepositoryErrorCode.CASE_ASSIGNMENT_INVALID,
                 "case index plan does not match the active task enrollment count",
@@ -819,7 +991,15 @@ class SchoolResearchCatRepository:
 
         rows: list[SchoolResearchCaseAssignment] = []
         locked_enrollment_ids: list[int] = []
-        for candidate, case_index in zip(candidates, validated_plan, strict=True):
+        cohort_assignment_ids: set[int] = set()
+        cohort_case_indexes: set[int] = set()
+        cohort_subject_ids: set[int] = set()
+        assignment_inputs = (
+            zip(candidates, validated_plan, strict=True)
+            if validated_plan is not None
+            else ((candidate, None) for candidate in candidates)
+        )
+        for candidate, legacy_case_index in assignment_inputs:
             enrollment, scoped_task, _roster, subject, scoped_class = (
                 await self._require_session_scope(
                     school_id=school_id,
@@ -843,6 +1023,40 @@ class SchoolResearchCatRepository:
                     ResearchCatRepositoryErrorCode.SCOPE_MISMATCH,
                     "task enrollment changed while public case assignments were locked",
                 )
+            assigned_cohort_id: int | None = None
+            cohort_assignment_id: int | None = None
+            if cohort_id is None:
+                assert legacy_case_index is not None
+                case_index = legacy_case_index
+            else:
+                assert cohort is not None
+                cohort_assignment = await self._require_cohort_case_assignment(
+                    cohort_id=cohort_id,
+                    school_id=school_id,
+                    class_id=class_id,
+                    class_student_id=_roster.id,
+                    subject_id=subject.id,
+                )
+                if (
+                    cohort_assignment.cohort_id != cohort_id
+                    or cohort_assignment.school_id != school_id
+                    or cohort_assignment.class_id != class_id
+                    or cohort_assignment.class_student_id != _roster.id
+                    or cohort_assignment.subject_id != subject.id
+                    or cohort_assignment.assignment_id in cohort_assignment_ids
+                    or cohort_assignment.case_index in cohort_case_indexes
+                    or subject.id in cohort_subject_ids
+                ):
+                    _raise(
+                        ResearchCatRepositoryErrorCode.CASE_ASSIGNMENT_INVALID,
+                        "task enrollment set does not exactly match sealed cohort members",
+                    )
+                assigned_cohort_id = cohort_id
+                cohort_assignment_id = cohort_assignment.assignment_id
+                case_index = cohort_assignment.case_index
+                cohort_assignment_ids.add(cohort_assignment_id)
+                cohort_case_indexes.add(case_index)
+                cohort_subject_ids.add(subject.id)
             locked_enrollment_ids.append(enrollment.id)
             rows.append(
                 SchoolResearchCaseAssignment(
@@ -860,8 +1074,21 @@ class SchoolResearchCatRepository:
                     corpus_sha256=expected_corpus_sha256,
                     case_count=800,
                     case_index=case_index,
+                    cohort_id=assigned_cohort_id,
+                    cohort_assignment_id=cohort_assignment_id,
                     purpose=_RESEARCH_PURPOSE,
                 )
+            )
+
+        if cohort_id is not None and (
+            len(rows) != 100
+            or len(cohort_assignment_ids) != 100
+            or len(cohort_case_indexes) != 100
+            or len(cohort_subject_ids) != 100
+        ):
+            _raise(
+                ResearchCatRepositoryErrorCode.CASE_ASSIGNMENT_INVALID,
+                "task enrollment set is incomplete for its sealed cohort class",
             )
 
         # Detect enrollment-set changes that occurred after the initial
@@ -930,8 +1157,50 @@ class SchoolResearchCatRepository:
                 ResearchCatRepositoryErrorCode.CORPUS_PIN_UNAVAILABLE,
                 "verified public corpus pins do not match the active research binding",
             )
-        row = await self._one(
-            SchoolResearchCaseAssignment,
+        cohort_id = binding.cohort_id
+        cohort_assignment_id: int | None = None
+        if cohort_id is not None:
+            cohort_id = _positive_int(cohort_id, "cohort_id")
+            await self._require_sealed_cohort_scope(
+                cohort_id=cohort_id,
+                school_id=binding.school_id,
+                class_id=binding.class_id,
+                profile=profile,
+                expected_profile_sha256=expected_profile_sha256,
+                expected_corpus_sha256=expected_corpus_sha256,
+                verify_seal=False,
+            )
+            # lock_student_task_scope has already locked and checked the
+            # enrollment and its exact active roster row. Read its persisted
+            # roster identity without acquiring another lock.
+            class_student_id = await self.session.scalar(
+                select(TaskEnrollment.class_student_id).where(
+                    TaskEnrollment.id == task_enrollment_id,
+                    TaskEnrollment.school_id == binding.school_id,
+                    TaskEnrollment.task_id == binding.task_id,
+                    TaskEnrollment.class_id == binding.class_id,
+                    TaskEnrollment.subject_id == subject_id,
+                    TaskEnrollment.status == "ACTIVE",
+                    TaskEnrollment.revoked_at.is_(None),
+                )
+            )
+            if (
+                type(class_student_id) is not int
+                or class_student_id < 1
+            ):
+                _raise(
+                    ResearchCatRepositoryErrorCode.CASE_ASSIGNMENT_NOT_FOUND,
+                    "sealed cohort member mapping is unavailable",
+                )
+            cohort_assignment = await self._require_cohort_case_assignment(
+                cohort_id=cohort_id,
+                school_id=binding.school_id,
+                class_id=binding.class_id,
+                class_student_id=class_student_id,
+                subject_id=subject_id,
+            )
+            cohort_assignment_id = cohort_assignment.assignment_id
+        assignment_conditions = [
             SchoolResearchCaseAssignment.school_id == binding.school_id,
             SchoolResearchCaseAssignment.task_id == binding.task_id,
             SchoolResearchCaseAssignment.class_id == binding.class_id,
@@ -945,6 +1214,24 @@ class SchoolResearchCatRepository:
             SchoolResearchCaseAssignment.response_origin == "PUBLIC_OBSERVED",
             SchoolResearchCaseAssignment.corpus_sha256 == expected_corpus_sha256,
             SchoolResearchCaseAssignment.case_count == 800,
+        ]
+        if cohort_id is not None:
+            assignment_conditions.extend(
+                (
+                    SchoolResearchCaseAssignment.cohort_id == cohort_id,
+                    SchoolResearchCaseAssignment.cohort_assignment_id == cohort_assignment_id,
+                )
+            )
+        else:
+            assignment_conditions.extend(
+                (
+                    SchoolResearchCaseAssignment.cohort_id.is_(None),
+                    SchoolResearchCaseAssignment.cohort_assignment_id.is_(None),
+                )
+            )
+        row = await self._one(
+            SchoolResearchCaseAssignment,
+            *assignment_conditions,
             lock=True,
         )
         if row is None or row.case_index < 0 or row.case_index >= 800:
@@ -997,19 +1284,122 @@ class SchoolResearchCatRepository:
                 "verified public corpus pins do not match the active research binding",
             )
 
-        enrollments = tuple(
-            (
-                await self.session.scalars(
-                    select(TaskEnrollment.id)
-                    .where(
-                        TaskEnrollment.school_id == school_id,
-                        TaskEnrollment.task_id == task_id,
-                        TaskEnrollment.class_id == class_id,
+        cohort_id = binding.cohort_id
+        cohort_members: dict[int, ResearchCohortCaseAssignment] | None = None
+        if cohort_id is None:
+            enrollments = tuple(
+                (
+                    await self.session.scalars(
+                        select(TaskEnrollment.id)
+                        .where(
+                            TaskEnrollment.school_id == school_id,
+                            TaskEnrollment.task_id == task_id,
+                            TaskEnrollment.class_id == class_id,
+                        )
+                        .order_by(TaskEnrollment.id)
                     )
-                    .order_by(TaskEnrollment.id)
+                ).all()
+            )
+        else:
+            cohort_id = _positive_int(cohort_id, "cohort_id")
+            await self._require_sealed_cohort_scope(
+                cohort_id=cohort_id,
+                school_id=school_id,
+                class_id=class_id,
+                profile=profile,
+                expected_profile_sha256=expected_profile_sha256,
+                expected_corpus_sha256=expected_corpus_sha256,
+            )
+            candidates = list(
+                (
+                    await self.session.scalars(
+                        select(TaskEnrollment)
+                        .where(
+                            TaskEnrollment.school_id == school_id,
+                            TaskEnrollment.task_id == task_id,
+                            TaskEnrollment.class_id == class_id,
+                            TaskEnrollment.status == "ACTIVE",
+                            TaskEnrollment.revoked_at.is_(None),
+                        )
+                        .order_by(TaskEnrollment.id)
+                    )
+                ).all()
+            )
+            if len(candidates) != 100:
+                _raise(
+                    ResearchCatRepositoryErrorCode.CASE_ASSIGNMENT_NOT_FOUND,
+                    "current task membership does not match its sealed cohort class",
                 )
-            ).all()
-        )
+            enrollments = tuple(row.id for row in candidates)
+            cohort_members = {}
+            cohort_indexes: set[int] = set()
+            cohort_subjects: set[int] = set()
+            for candidate in candidates:
+                enrollment, scoped_task, roster, subject, scoped_class = (
+                    await self._require_session_scope(
+                        school_id=school_id,
+                        task_id=task_id,
+                        task_enrollment_id=candidate.id,
+                        subject_id=candidate.subject_id,
+                        lock_task=False,
+                        lock_class=True,
+                    )
+                )
+                if (
+                    enrollment.id != candidate.id
+                    or enrollment.class_student_id != roster.id
+                    or scoped_task.class_id != class_id
+                    or scoped_class.id != class_id
+                    or subject.id != candidate.subject_id
+                ):
+                    _raise(
+                        ResearchCatRepositoryErrorCode.CASE_ASSIGNMENT_NOT_FOUND,
+                        "current task roster does not match its sealed cohort class",
+                    )
+                mapped = await self._require_cohort_case_assignment(
+                    cohort_id=cohort_id,
+                    school_id=school_id,
+                    class_id=class_id,
+                    class_student_id=roster.id,
+                    subject_id=subject.id,
+                )
+                if (
+                    mapped.assignment_id in {item.assignment_id for item in cohort_members.values()}
+                    or mapped.case_index in cohort_indexes
+                    or subject.id in cohort_subjects
+                ):
+                    _raise(
+                        ResearchCatRepositoryErrorCode.CASE_ASSIGNMENT_NOT_FOUND,
+                        "current task membership duplicates a sealed cohort member",
+                    )
+                cohort_members[enrollment.id] = mapped
+                cohort_indexes.add(mapped.case_index)
+                cohort_subjects.add(subject.id)
+            final_active_ids = tuple(
+                (
+                    await self.session.scalars(
+                        select(TaskEnrollment.id)
+                        .where(
+                            TaskEnrollment.school_id == school_id,
+                            TaskEnrollment.task_id == task_id,
+                            TaskEnrollment.class_id == class_id,
+                            TaskEnrollment.status == "ACTIVE",
+                            TaskEnrollment.revoked_at.is_(None),
+                        )
+                        .order_by(TaskEnrollment.id)
+                    )
+                ).all()
+            )
+            if (
+                final_active_ids != enrollments
+                or len(cohort_members) != 100
+                or len(cohort_indexes) != 100
+                or len(cohort_subjects) != 100
+            ):
+                _raise(
+                    ResearchCatRepositoryErrorCode.CASE_ASSIGNMENT_NOT_FOUND,
+                    "current task membership changed from its sealed cohort class",
+                )
         assignments = tuple(
             (
                 await self.session.scalars(
@@ -1046,6 +1436,23 @@ class SchoolResearchCatRepository:
                 or row.profile_version_id != binding.profile_version_id
                 or row.profile_ref != binding.profile_ref
                 or row.profile_version_number != binding.profile_version_number
+                or (
+                    cohort_id is None
+                    and (
+                        getattr(row, "cohort_id", None) is not None
+                        or getattr(row, "cohort_assignment_id", None) is not None
+                    )
+                )
+                or (
+                    cohort_id is not None
+                    and (
+                        getattr(row, "cohort_id", None) != cohort_id
+                        or cohort_members is None
+                        or getattr(row, "cohort_assignment_id", None)
+                        != cohort_members[row.task_enrollment_id].assignment_id
+                        or row.case_index != cohort_members[row.task_enrollment_id].case_index
+                    )
+                )
                 for row in assignments
             )
         ):
@@ -2358,6 +2765,7 @@ def _binding_metadata(row: SchoolResearchTaskBinding) -> ResearchTaskBindingMeta
         revoked_at=row.revoked_at,
         corpus_sha256=row.corpus_sha256,
         case_count=row.case_count,
+        cohort_id=getattr(row, "cohort_id", None),
     )
 
 
@@ -2378,6 +2786,8 @@ def _case_assignment_metadata(
         corpus_sha256=row.corpus_sha256,
         case_count=row.case_count,
         case_index=row.case_index,
+        cohort_id=getattr(row, "cohort_id", None),
+        cohort_assignment_id=getattr(row, "cohort_assignment_id", None),
     )
 
 
@@ -3075,7 +3485,7 @@ def _raise(
     message: str,
     *,
     cause: BaseException | None = None,
-) -> None:
+) -> NoReturn:
     error = ResearchCatRepositoryError(code, message)
     if cause is None:
         raise error

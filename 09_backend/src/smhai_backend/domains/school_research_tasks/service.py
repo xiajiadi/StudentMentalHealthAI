@@ -31,8 +31,10 @@ class SchoolResearchTasksService:
         opens_at: datetime,
         due_at: datetime,
         idempotency: tuple[str, str, str],
+        cohort_ref: str | None = None,
     ):
         _require_admin(actor)
+        cohort = {} if cohort_ref is None else {"cohort_ref": cohort_ref}
         return await self.persistence.publish_task(
             actor,
             class_ref=class_ref,
@@ -43,6 +45,7 @@ class SchoolResearchTasksService:
             due_at=due_at,
             at=self._clock(),
             idempotency=idempotency,
+            **cohort,
         )
 
 

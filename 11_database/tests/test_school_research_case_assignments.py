@@ -56,7 +56,7 @@ def _load_migration():
 
 
 def test_assignment_schema_is_private_exactly_scoped_and_mysql_compilable():
-    assert len(Base.metadata.tables) == 46
+    assert len(Base.metadata.tables) == 49
     binding = SchoolResearchTaskBinding.__table__
     assignment = SchoolResearchCaseAssignment.__table__
     assert binding.c.corpus_sha256.nullable is True
@@ -166,16 +166,27 @@ def _sqlite_assignment_fixture(*, legacy_binding: bool = False):
         Column("response_origin", String(32, collation="ascii_bin"), nullable=False),
         Column("corpus_sha256", String(64, collation="ascii_bin"), nullable=True),
         Column("case_count", Integer, nullable=True),
+        Column("cohort_id", Integer, nullable=True),
         UniqueConstraint(
             "id", "school_id", "task_id", "class_id", "profile_version_id", "profile_ref",
             "profile_version_number", "profile_sha256", "response_origin", "corpus_sha256",
             "case_count",
         ),
+        UniqueConstraint("id", "cohort_id"),
         CheckConstraint(
             "(corpus_sha256 IS NULL AND case_count IS NULL) OR "
             "(corpus_sha256 IS NOT NULL AND case_count IS NOT NULL AND case_count = 800)",
             name="corpus_pin_shape",
         ),
+    )
+    Table(
+        "school_research_cohort_assignments", parents,
+        Column("id", Integer, primary_key=True),
+        Column("cohort_id", Integer, nullable=False),
+        Column("school_id", Integer, nullable=False),
+        Column("subject_id", Integer, nullable=False),
+        Column("case_index", Integer, nullable=False),
+        UniqueConstraint("id", "cohort_id", "school_id", "subject_id", "case_index"),
     )
     parents.create_all(engine)
     SchoolResearchCaseAssignment.__table__.create(engine)
@@ -344,12 +355,12 @@ class _FakeSession:
         self.flush_calls += 1
 
 
-def _binding(*, corpus_sha256=_SHA_C):
+def _binding(*, corpus_sha256=_SHA_C, cohort_id=None):
     return SimpleNamespace(
         id=60, school_id=1, task_id=10, class_id=20, profile_version_id=50,
         profile_ref="profile-a", profile_version_number=1, profile_sha256=_SHA_A,
         response_origin="PUBLIC_OBSERVED", corpus_sha256=corpus_sha256,
-        case_count=800,
+        case_count=800, cohort_id=cohort_id,
     )
 
 
@@ -400,6 +411,119 @@ async def test_repository_refuses_legacy_null_corpus_binding_before_enrollment_q
         )
     assert caught.value.code is ResearchCatRepositoryErrorCode.CORPUS_PIN_UNAVAILABLE
     assert session.scalars_calls == 0
+    assert session.added == []
+
+
+@pytest.mark.asyncio
+async def test_cohort_assignment_reuses_exact_sealed_mapping_and_rejects_new_plan():
+    candidates = [
+        SimpleNamespace(
+            id=30 + offset,
+            school_id=1,
+            task_id=10,
+            class_id=20,
+            class_student_id=1030 + offset,
+            subject_id=40 + offset,
+        )
+        for offset in range(100)
+    ]
+    session = _FakeSession(candidates, final_enrollment_ids=tuple(row.id for row in candidates))
+    repo = object.__new__(SchoolResearchCatRepository)
+    repo.session = session
+    repo._require_synthetic_school = _async_noop
+    repo._require_active_membership_role = _async_noop
+    repo._lock_active_task_binding = _async_binding_with_cohort
+    repo._require_session_scope = _async_scope
+    repo._require_sealed_cohort_scope = _async_cohort_scope
+    repo._one = _async_none
+
+    async def cohort_assignment(**scope):
+        offset = scope["subject_id"] - 40
+        assert scope["class_id"] == 20
+        assert scope["class_student_id"] == 1030 + offset
+        return SimpleNamespace(
+            cohort_id=900,
+            school_id=1,
+            class_id=20,
+            class_student_id=1030 + offset,
+            subject_id=40 + offset,
+            assignment_id=5000 + offset,
+            case_index=799 - offset,
+        )
+
+    repo._require_cohort_case_assignment = cohort_assignment
+    result = await repo.create_public_observed_case_assignments(
+        school_id=1,
+        task_id=10,
+        class_id=20,
+        task_binding_id=60,
+        expected_profile_sha256=_SHA_A,
+        expected_corpus_sha256=_SHA_C,
+        creator_membership_role_id=7,
+        case_index_plan=None,
+    )
+    assert len(result) == 100
+    assert [row.case_index for row in session.added] == list(range(799, 699, -1))
+    assert {row.cohort_id for row in session.added} == {900}
+    assert {row.cohort_assignment_id for row in session.added} == set(range(5000, 5100))
+    assert "case_index" not in repr(result[0])
+    assert "cohort_assignment_id" not in repr(result[0])
+
+    rejected_session = _FakeSession(candidates)
+    rejected = object.__new__(SchoolResearchCatRepository)
+    rejected.session = rejected_session
+    rejected._require_synthetic_school = _async_noop
+    rejected._require_active_membership_role = _async_noop
+    rejected._lock_active_task_binding = _async_binding_with_cohort
+    with pytest.raises(ResearchCatRepositoryError) as caught:
+        await rejected.create_public_observed_case_assignments(
+            school_id=1,
+            task_id=10,
+            class_id=20,
+            task_binding_id=60,
+            expected_profile_sha256=_SHA_A,
+            expected_corpus_sha256=_SHA_C,
+            creator_membership_role_id=7,
+            case_index_plan=(0,),
+        )
+    assert caught.value.code is ResearchCatRepositoryErrorCode.CASE_ASSIGNMENT_INVALID
+    assert rejected_session.scalars_calls == 0
+    assert rejected_session.added == []
+
+
+@pytest.mark.asyncio
+async def test_cohort_assignment_requires_exact_one_hundred_active_members():
+    candidates = [
+        SimpleNamespace(
+            id=30 + offset,
+            school_id=1,
+            task_id=10,
+            class_id=20,
+            class_student_id=1030 + offset,
+            subject_id=40 + offset,
+        )
+        for offset in range(99)
+    ]
+    session = _FakeSession(candidates, final_enrollment_ids=tuple(row.id for row in candidates))
+    repo = object.__new__(SchoolResearchCatRepository)
+    repo.session = session
+    repo._require_synthetic_school = _async_noop
+    repo._require_active_membership_role = _async_noop
+    repo._lock_active_task_binding = _async_binding_with_cohort
+    repo._require_sealed_cohort_scope = _async_cohort_scope
+
+    with pytest.raises(ResearchCatRepositoryError) as caught:
+        await repo.create_public_observed_case_assignments(
+            school_id=1,
+            task_id=10,
+            class_id=20,
+            task_binding_id=60,
+            expected_profile_sha256=_SHA_A,
+            expected_corpus_sha256=_SHA_C,
+            creator_membership_role_id=7,
+            case_index_plan=None,
+        )
+    assert caught.value.code is ResearchCatRepositoryErrorCode.CASE_ASSIGNMENT_INVALID
     assert session.added == []
 
 
@@ -470,6 +594,106 @@ async def test_assignment_lookup_locks_metadata_scope_before_return_and_never_de
 
 
 @pytest.mark.asyncio
+async def test_cohort_student_assignment_matches_locked_roster_identity_before_read():
+    session = _FakeSession()
+    scalar_calls = []
+
+    async def scalar(statement):
+        scalar_calls.append(statement)
+        return 1030
+
+    session.scalar = scalar
+    repo = object.__new__(SchoolResearchCatRepository)
+    repo.session = session
+    binding = _binding_metadata(
+        SimpleNamespace(
+            id=60,
+            school_id=1,
+            task_id=10,
+            class_id=20,
+            profile_version_id=50,
+            profile_ref="profile-a",
+            profile_version_number=1,
+            profile_sha256=_SHA_A,
+            response_origin="PUBLIC_OBSERVED",
+            status="ACTIVE",
+            config_version="config-v1",
+            config_sha256=_SHA_B,
+            research_only=True,
+            created_at=datetime.now(UTC).replace(tzinfo=None),
+            revoked_at=None,
+            corpus_sha256=_SHA_C,
+            case_count=800,
+            cohort_id=900,
+        )
+    )
+    profile = SimpleNamespace(
+        school_id=1,
+        profile_version_id=50,
+        profile_ref="profile-a",
+        version_number=1,
+        profile_sha256=_SHA_A,
+        manifest_sha256=_SHA_B,
+    )
+    row = SimpleNamespace(
+        school_id=1,
+        task_id=10,
+        class_id=20,
+        task_enrollment_id=30,
+        subject_id=40,
+        task_binding_id=60,
+        profile_version_id=50,
+        profile_ref="profile-a",
+        profile_version_number=1,
+        profile_sha256=_SHA_A,
+        corpus_sha256=_SHA_C,
+        case_count=800,
+        case_index=77,
+        cohort_id=900,
+        cohort_assignment_id=5077,
+    )
+    seen_conditions = []
+
+    async def sealed_scope(**kwargs):
+        assert kwargs["cohort_id"] == 900
+        assert kwargs["verify_seal"] is False
+        return SimpleNamespace(id=900)
+
+    async def member_assignment(**kwargs):
+        assert kwargs == {
+            "cohort_id": 900,
+            "school_id": 1,
+            "class_id": 20,
+            "class_student_id": 1030,
+            "subject_id": 40,
+        }
+        return SimpleNamespace(assignment_id=5077)
+
+    async def assignment_row(_model, *conditions, **_kwargs):
+        seen_conditions.extend(str(item) for item in conditions)
+        return row
+
+    repo._require_sealed_cohort_scope = sealed_scope
+    repo._require_cohort_case_assignment = member_assignment
+    repo._one = assignment_row
+    result = await repo.require_public_observed_case_assignment(
+        profile=profile,
+        binding=binding,
+        task_enrollment_id=30,
+        subject_id=40,
+        expected_profile_sha256=_SHA_A,
+        expected_corpus_sha256=_SHA_C,
+    )
+    assert len(scalar_calls) == 1
+    assert "class_student_id" in str(scalar_calls[0])
+    assert any("cohort_assignment_id" in item for item in seen_conditions)
+    assert result.cohort_id == 900
+    assert result.cohort_assignment_id == 5077
+    assert "cohort_assignment_id" not in repr(result)
+    assert "case_index" not in repr(result)
+
+
+@pytest.mark.asyncio
 async def test_task_assignment_replay_requires_full_exact_existing_mapping():
     session = _FakeSession()
     repo = object.__new__(SchoolResearchCatRepository)
@@ -522,6 +746,107 @@ async def test_task_assignment_replay_requires_full_exact_existing_mapping():
         )
     assert caught.value.code is ResearchCatRepositoryErrorCode.CASE_ASSIGNMENT_NOT_FOUND
 
+
+@pytest.mark.asyncio
+async def test_cohort_task_assignment_replay_rechecks_exact_active_members_and_map():
+    candidates = [
+        SimpleNamespace(
+            id=30 + offset,
+            school_id=1,
+            task_id=10,
+            class_id=20,
+            class_student_id=1030 + offset,
+            subject_id=40 + offset,
+        )
+        for offset in range(100)
+    ]
+    candidate_by_id = {row.id: row for row in candidates}
+    assignments = [
+        SimpleNamespace(
+            task_enrollment_id=row.id,
+            subject_id=row.subject_id,
+            case_index=offset,
+            profile_sha256=_SHA_A,
+            corpus_sha256=_SHA_C,
+            case_count=800,
+            response_origin="PUBLIC_OBSERVED",
+            purpose="RESEARCH_SIMULATION",
+            task_binding_id=60,
+            profile_version_id=50,
+            profile_ref="profile-a",
+            profile_version_number=1,
+            cohort_id=900,
+            cohort_assignment_id=5000 + offset,
+        )
+        for offset, row in enumerate(candidates)
+    ]
+
+    class _MappingSession:
+        def __init__(self, assignment_rows):
+            self.responses = iter(
+                (
+                    SimpleNamespace(all=lambda: candidates),
+                    SimpleNamespace(all=lambda: [row.id for row in candidates]),
+                    SimpleNamespace(all=lambda: assignment_rows),
+                )
+            )
+
+        async def scalars(self, _statement):
+            return next(self.responses)
+
+    repo = object.__new__(SchoolResearchCatRepository)
+    binding = _binding(cohort_id=900)
+
+    async def lock_binding(**_kwargs):
+        return binding, SimpleNamespace(profile_sha256=_SHA_A), SimpleNamespace(class_id=20)
+
+    async def sealed_scope(**_kwargs):
+        return SimpleNamespace(id=900)
+
+    async def locked_scope(**kwargs):
+        candidate = candidate_by_id[kwargs["task_enrollment_id"]]
+        enrollment = candidate
+        roster = SimpleNamespace(id=candidate.class_student_id)
+        return enrollment, SimpleNamespace(class_id=20), roster, SimpleNamespace(
+            id=candidate.subject_id
+        ), SimpleNamespace(id=20)
+
+    async def member_assignment(**kwargs):
+        offset = kwargs["subject_id"] - 40
+        assert kwargs["class_student_id"] == 1030 + offset
+        return SimpleNamespace(
+            assignment_id=5000 + offset,
+            case_index=offset,
+        )
+
+    repo._lock_active_task_binding = lock_binding
+    repo._require_sealed_cohort_scope = sealed_scope
+    repo._require_session_scope = locked_scope
+    repo._require_cohort_case_assignment = member_assignment
+    repo.session = _MappingSession(assignments)
+    assert await repo.require_public_observed_task_assignments(
+        school_id=1,
+        task_id=10,
+        class_id=20,
+        task_binding_id=60,
+        expected_profile_sha256=_SHA_A,
+        expected_corpus_sha256=_SHA_C,
+    ) is None
+
+    malformed = [SimpleNamespace(**vars(row)) for row in assignments]
+    malformed[0].cohort_assignment_id = 5999
+    repo.session = _MappingSession(malformed)
+    with pytest.raises(ResearchCatRepositoryError) as caught:
+        await repo.require_public_observed_task_assignments(
+            school_id=1,
+            task_id=10,
+            class_id=20,
+            task_binding_id=60,
+            expected_profile_sha256=_SHA_A,
+            expected_corpus_sha256=_SHA_C,
+        )
+    assert caught.value.code is ResearchCatRepositoryErrorCode.CASE_ASSIGNMENT_NOT_FOUND
+
     duplicate_index = dict(vars(assignments[1]))
     duplicate_index["case_index"] = 14
     malformed = [assignments[0], SimpleNamespace(**duplicate_index)]
@@ -566,15 +891,33 @@ def _async_scope(*_args, **kwargs):
         return (
             SimpleNamespace(
                 id=enrollment_id, school_id=1, task_id=10, class_id=20,
-                subject_id=subject_id,
+                class_student_id=enrollment_id + 1000, subject_id=subject_id,
             ),
             SimpleNamespace(class_id=20),
-            object(),
+            SimpleNamespace(id=enrollment_id + 1000),
             SimpleNamespace(id=subject_id),
             SimpleNamespace(id=20),
         )
 
     return _return_scope()
+
+
+def _async_binding_with_cohort(*_args, **_kwargs):
+    async def _return_binding():
+        return (
+            _binding(cohort_id=900),
+            SimpleNamespace(profile_sha256=_SHA_A),
+            SimpleNamespace(class_id=20),
+        )
+
+    return _return_binding()
+
+
+def _async_cohort_scope(*_args, **_kwargs):
+    async def _return_cohort():
+        return SimpleNamespace(id=900)
+
+    return _return_cohort()
 
 
 def _async_none(*_args, **_kwargs):
@@ -621,9 +964,13 @@ def test_assignment_migration_is_additive_and_preserves_existing_pins(monkeypatc
     migrated_columns = {
         column.name for column in migrated_assignment.c
     }
-    assert migrated_columns == set(SchoolResearchCaseAssignment.__table__.c.keys())
+    assert migrated_columns == (
+        set(SchoolResearchCaseAssignment.__table__.c.keys())
+        - {"cohort_id", "cohort_assignment_id"}
+    )
     assert tuple(migrated_assignment.c.keys()) == tuple(
-        SchoolResearchCaseAssignment.__table__.c.keys()
+        name for name in SchoolResearchCaseAssignment.__table__.c.keys()
+        if name not in {"cohort_id", "cohort_assignment_id"}
     )
     assert {"corpus_sha256", "case_count"} == {
         item[2].name for item in operations if item[0] == "add_column"
@@ -646,6 +993,10 @@ def test_assignment_migration_is_additive_and_preserves_existing_pins(monkeypatc
             tuple(element.target_fullname for element in constraint.elements),
         )
         for constraint in model_assignment.foreign_key_constraints
+        if constraint.name not in {
+            "fk_school_research_case_assignments_cohort_exact",
+            "fk_school_research_case_assignments_binding_cohort",
+        }
     }
     assert {
         (constraint.name, tuple(column.name for column in constraint.columns))
@@ -667,6 +1018,7 @@ def test_assignment_migration_is_additive_and_preserves_existing_pins(monkeypatc
         )
         for constraint in model_assignment.constraints
         if isinstance(constraint, CheckConstraint)
+        and constraint.name != "ck_school_research_case_assignments_cohort_assignment_pair"
     }
 
     operations.clear()

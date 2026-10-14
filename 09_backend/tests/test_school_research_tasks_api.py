@@ -344,6 +344,35 @@ def test_publication_dto_rejects_internal_hashes_or_config_fields():
         ResearchTaskPublicationDto.model_validate({**_publication(), "config_sha256": "a" * 64})
 
 
+@pytest.mark.asyncio
+async def test_cohort_is_only_a_server_resolved_selector_in_publish_fingerprint():
+    service = _FakeService()
+    payload = {**_payload(), "cohort_ref": "COHORT_R_synthetic"}
+    response = await _request(
+        _app(_actor(), service), "POST", f"{BASE}/publish", payload=payload,
+        headers=_headers(**{"Idempotency-Key": "synthetic-cohort-task"}),
+    )
+    assert response.status_code == 201
+    _, kwargs = service.calls[0]
+    assert kwargs["cohort_ref"] == payload["cohort_ref"]
+    assert kwargs["idempotency"][1] == fingerprint(payload)
+    assert "case_index" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_explicit_null_cohort_preserves_legacy_publish_fingerprint():
+    service = _FakeService()
+    response = await _request(
+        _app(_actor(), service), "POST", f"{BASE}/publish",
+        payload={**_payload(), "cohort_ref": None},
+        headers=_headers(**{"Idempotency-Key": "synthetic-old-task"}),
+    )
+    assert response.status_code == 201
+    _, kwargs = service.calls[0]
+    assert "cohort_ref" not in kwargs
+    assert kwargs["idempotency"][1] == fingerprint(_payload())
+
+
 class _FakePersistence:
     def __init__(self):
         self.calls = []

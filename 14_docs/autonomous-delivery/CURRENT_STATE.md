@@ -53,15 +53,42 @@ The class-switch receipt behavior has not been browser-tested; its source fix
 and existing task DB receipt are separate evidence, not an end-to-end assertion. Whole_ready
 and professional/publication approvals remain false.
 
-Next cohort increment must seal one server-owned subject/case map across actual
-account import batches/classes:800 distinct fictional subjects matched to all800
-public cases, reused across task creation without reshuffling. Task-level independent
-permutations do not establish800 distinct observations. Design is recorded in
-EMPIRICAL_SCHOOL_SIMULATION. Isolated implementation is in progress in
-D:/Dev/projects/psynova-research-cohort-20261014 at base8456d5f, branch
-xiajiadi/research-cohort-20261014. DB owner handles0015 sealed map, a separate owner
-handles revision/forward-restore compatibility; Root owns closed cohort API.
-No0015 runtime migration or online800 acceptance has been performed.
+Sealed cohort increment implemented and reviewed in the isolated worktree
+D:/Dev/projects/psynova-research-cohort-20261014, branch
+xiajiadi/research-cohort-20261014 (management baseline bd24ac9 merged).
+0015 adds three cohort tables and nullable exact links without backfilling0014.
+Server seal resolves8 actual100-row activated student batches, current fictional
+SELF subjects and class rosters; records one complete800-case permutation and
+private canonical map SHA. Read/replay verifies each batch100 and the unchanged
+map. Used assignment FK includes case index with ON UPDATE RESTRICT. This detects
+mapping corruption; it is not protection against a privileged DB administrator
+changing both map and digest. Study may contain multiple separate cohorts;
+distinct counts are never automatically added across cohorts.
+
+Admin seal API accepts only binding/version and8 unique batch selectors. Task
+publication optionally selects cohort_ref and delegates existing member/case
+mapping, never reshuffling; absent cohort keeps legacy request fingerprints.
+Current student before-decrypt guard keeps its original callback shape and
+checks the exact cohort/class/roster/subject/member/case. Internal hashes and
+identities stay out of public DTOs/repr/logs. The API receipt reports assignment
+counts, not800 completed observations. Professional approval flags stay false.
+
+Fresh Root checks:118 Backend cohort/task/bootstrap/lifecycle checks,100 research
+persistence/API/runtime/profile checks,110 DB cohort/case/repository/schema checks,
+and114 deployment restore/migration checks passed in supportedPython3.12 envs.
+Independent QA reviewed map integrity and task/student paths; its recommended
+positive/wrong-cohort publication replay regressions were added and pass. Initial
+Root test invocation used a nonexistent filename; a subsequent isolated env
+collection lacked cryptography. Correct file discovery/process-local DB dependency
+paths resolved both without source weakening or global installs. DB owner reports
+233 passed/15 skipped; skips are not MySQL evidence. No live MySQL contention proof.
+
+0015 has not been installed. A read-only L-to-new-M preparation helper exists at
+D:/Dev/temp/psynova-l-to-m-0015-forward-restore-prepare-20261014.py; it has executed
+no backup/restore/start actions. Source integration and owned L stop, sealed L
+backup, new M forward restore must precede actual source-cohort/online800 evidence.
+M candidate3321/8095/4185 was unoccupied during preparation; recheck at execution.
+L DB3320/K DB3319 and all old keys/backups remain preserved.
 
 No deadline. User requests autonomous continuation without routine confirmation.
 Online800, real reviewed three-layer RAG, local7B research-report/review workflow,

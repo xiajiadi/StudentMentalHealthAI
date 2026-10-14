@@ -36,7 +36,7 @@ def _target_columns(constraint):
 
 
 def test_research_tables_are_separate_locked_and_mysql_compilable():
-    assert len(Base.metadata.tables) == 46
+    assert len(Base.metadata.tables) == 49
     assert MeasurementTask.__table__.c.cat_binding_mode.server_default.arg == "FIXTURE"
     task_mode_check = next(
         constraint
@@ -178,11 +178,13 @@ def test_upgrade_table_shapes_match_the_orm_metadata(monkeypatch):
         revision_0012_columns = tuple(
             name
             for name in expected.c.keys()
-            if name not in {
+            if name
+            not in {
                 "parameter_origin",
                 "published_parameter_crosswalk_sha256",
                 "corpus_sha256",
                 "case_count",
+                "cohort_id",
             }
         )
         assert tuple(actual.c.keys()) == revision_0012_columns
@@ -203,6 +205,10 @@ def test_upgrade_table_shapes_match_the_orm_metadata(monkeypatch):
                 _target_columns(constraint),
             )
             for constraint in expected.foreign_key_constraints
+            if not (
+                table_name == "school_research_task_bindings"
+                and constraint.name == "fk_school_research_bindings_cohort_exact"
+            )
         }
         actual_fks = {
             (
@@ -216,7 +222,12 @@ def test_upgrade_table_shapes_match_the_orm_metadata(monkeypatch):
             tuple(column.name for column in constraint.columns)
             for constraint in expected.constraints
             if isinstance(constraint, UniqueConstraint)
-            and constraint.name != "school_research_binding_corpus_scope_unique"
+            and constraint.name
+            not in {
+                "school_research_binding_corpus_scope_unique",
+                "school_research_profile_manifest_scope_unique",
+                "school_research_binding_cohort_id_unique",
+            }
         }
         actual_unique = {
             tuple(column.name for column in constraint.columns)
@@ -232,6 +243,7 @@ def test_upgrade_table_shapes_match_the_orm_metadata(monkeypatch):
             for constraint in expected.constraints
             if isinstance(constraint, CheckConstraint)
             and not constraint.name.endswith("_corpus_pin_shape")
+            and not constraint.name.endswith("_cohort_requires_corpus_pin")
             and not (
                 table_name == "school_research_profile_versions"
                 and constraint.name.endswith(

@@ -334,6 +334,7 @@ class SchoolResearchTasksPersistenceAdapter:
         due_at: datetime,
         at: datetime,
         idempotency: tuple[str, str, str],
+        cohort_ref: str | None = None,
     ) -> ResearchTaskPublicationView:
         _require_admin_actor(actor)
         _validate_refs(class_ref, task_ref, binding_ref)
@@ -344,6 +345,11 @@ class SchoolResearchTasksPersistenceAdapter:
         opens = _database_utc(opens_at)
         due = _database_utc(due_at)
         _validate_idempotency(idempotency)
+        if cohort_ref is not None and (
+            type(cohort_ref) is not str
+            or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}", cohort_ref) is None
+        ):
+            raise error(ErrorCode.VALIDATION_FAILED, detail="research cohort selector is invalid")
 
         try:
             async with self._owner._uow() as uow:
@@ -371,6 +377,24 @@ class SchoolResearchTasksPersistenceAdapter:
                     at=at,
                 )
 
+                cohort_id = None
+                if cohort_ref is not None:
+                    cohort = await uow.research_cohorts.get_cohort_metadata(
+                        school_id=actor.school_id, cohort_ref=cohort_ref,
+                    )
+                    if (
+                        cohort.study_ref != self._study_use_policy.study_ref
+                        or cohort.profile_ref != profile.public.profile_ref
+                        or cohort.profile_version_number != profile_version_number
+                        or cohort.profile_sha256 != profile.repository.expected_profile_sha256
+                        or cohort.manifest_sha256 != profile.repository.expected_manifest_sha256
+                        or cohort.corpus_sha256 != binding.observed_corpus_sha256
+                        or cohort.subject_count != 800 or cohort.class_count != 8
+                        or cohort.case_count != 800
+                    ):
+                        raise _conflict()
+                    cohort_id = cohort.cohort_id
+
                 claim = await self._owner._school_idempotency_begin(uow, idempotency)
                 if claim.replayed:
                     return await self._replay(
@@ -385,6 +409,7 @@ class SchoolResearchTasksPersistenceAdapter:
                         opens_at=opens,
                         due_at=due,
                         at=database_at,
+                        cohort_id=cohort_id,
                     )
 
                 m = self._owner._db_models
@@ -433,7 +458,7 @@ class SchoolResearchTasksPersistenceAdapter:
                 task = snapshot.task
                 task.cat_binding_mode = _RESEARCH_MODE
                 await uow.session.flush()
-                case_index_plan = _server_case_index_plan(
+                case_index_plan = None if cohort_id is not None else _server_case_index_plan(
                     school_id=actor.school_id,
                     task_id=task.id,
                     profile_sha256=profile.repository.expected_profile_sha256,
@@ -456,6 +481,7 @@ class SchoolResearchTasksPersistenceAdapter:
                     creator_membership_role_id=role_id,
                     corpus_sha256=binding.observed_corpus_sha256,
                     case_count=binding.observed_corpus_row_count,
+                    **({} if cohort_id is None else {"cohort_id": cohort_id}),
                 )
                 _require_created_binding(
                     created_binding,
@@ -466,6 +492,7 @@ class SchoolResearchTasksPersistenceAdapter:
                     binding=binding,
                     profile_version_id=metadata.profile_version_id,
                     profile_version_number=profile_version_number,
+                    cohort_id=cohort_id,
                 )
                 assignments = await uow.research_cat.create_public_observed_case_assignments(
                     school_id=actor.school_id,
@@ -477,6 +504,18 @@ class SchoolResearchTasksPersistenceAdapter:
                     creator_membership_role_id=role_id,
                     case_index_plan=case_index_plan,
                 )
+                if cohort_id is not None:
+                    if snapshot.enrollment_count != 100 or any(
+                        getattr(item, "cohort_id", None) != cohort_id
+                        or type(getattr(item, "cohort_assignment_id", None)) is not int
+                        or item.cohort_assignment_id <= 0
+                        for item in assignments
+                    ):
+                        raise _conflict()
+                    # The repository has matched every current enrollment to
+                    # the immutable cohort. This checks its returned projection;
+                    # it does not generate or replace a private mapping.
+                    case_index_plan = tuple(item.case_index for item in assignments)
                 _require_created_assignments(
                     assignments,
                     expected_count=snapshot.enrollment_count,
@@ -521,9 +560,11 @@ class SchoolResearchTasksPersistenceAdapter:
             raise _not_found() from None
         except Exception as exc:
             code = _exception_code(exc)
-            if code in {_PROFILE_NOT_FOUND, _BINDING_NOT_FOUND}:
+            if code in {_PROFILE_NOT_FOUND, _BINDING_NOT_FOUND, "COHORT_NOT_FOUND"}:
                 raise _not_found() from None
-            if code in _CONFLICT_CODES:
+            if code in _CONFLICT_CODES or code in {
+                "COHORT_SCOPE_MISMATCH", "COHORT_MEMBERSHIP_INVALID", "COHORT_EXISTS",
+            }:
                 raise _conflict() from None
             raise _dependency_error() from None
 
@@ -579,6 +620,7 @@ class SchoolResearchTasksPersistenceAdapter:
         opens_at: datetime,
         due_at: datetime,
         at: datetime,
+        cohort_id: int | None = None,
     ) -> ResearchTaskPublicationView:
         record = getattr(claim, "record", None)
         if (
@@ -629,6 +671,7 @@ class SchoolResearchTasksPersistenceAdapter:
             binding=binding,
             profile_version_id=metadata.profile_version_id,
             profile_version_number=profile_version_number,
+            cohort_id=cohort_id,
         )
         await uow.research_cat.require_public_observed_task_assignments(
             school_id=actor.school_id,
@@ -838,6 +881,7 @@ def _require_created_binding(
     binding: ResearchBindingSelection,
     profile_version_id: int,
     profile_version_number: int,
+    cohort_id: int | None = None,
 ) -> None:
     if (
         getattr(persisted, "school_id", None) != school_id
@@ -855,6 +899,7 @@ def _require_created_binding(
         or getattr(persisted, "case_count", None) != binding.observed_corpus_row_count
         or getattr(persisted, "research_only", None) is not True
         or getattr(persisted, "revoked_at", None) is not None
+        or getattr(persisted, "cohort_id", None) != cohort_id
     ):
         raise _conflict()
 
