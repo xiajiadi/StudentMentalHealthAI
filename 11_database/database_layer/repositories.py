@@ -54,6 +54,7 @@ from .models import (
     SchoolClass,
     SchoolClassStudent,
     SchoolClassTeacher,
+    SchoolResearchSession,
     Subject,
     SubjectAccessGrant,
     SupportEvidence,
@@ -1061,6 +1062,12 @@ class SchoolOperationsRepository:
         self, *, task_id: int, school_id: int
     ) -> TaskProgressCounts:
         active = TaskEnrollment.status == "ACTIVE"
+        research_task = MeasurementTask.cat_binding_mode == "RESEARCH_PROFILE"
+        normal_task = MeasurementTask.cat_binding_mode != "RESEARCH_PROFILE"
+        session_missing = case(
+            (research_task, SchoolResearchSession.id.is_(None)),
+            else_=AssessmentSession.id.is_(None),
+        )
         statement = (
             select(
                 func.count(TaskEnrollment.id).label("published_enrollment_count"),
@@ -1070,23 +1077,44 @@ class SchoolOperationsRepository:
                 ),
                 func.sum(
                     case(
-                        (and_(active, AssessmentSession.id.is_(None)), 1),
+                        (and_(active, session_missing), 1),
                         else_=0,
                     )
                 ).label("not_started_count"),
                 *(
                     func.sum(
                         case(
-                            (and_(active, AssessmentSession.status == status), 1),
+                            (
+                                and_(
+                                    active,
+                                    case(
+                                        (
+                                            research_task,
+                                            (
+                                                SchoolResearchSession.status
+                                                == research_status
+                                                if research_status is not None
+                                                else False
+                                            ),
+                                        ),
+                                        else_=and_(
+                                            AssessmentSession.status == status,
+                                            AssessmentSession.cat_binding_mode
+                                            == MeasurementTask.cat_binding_mode,
+                                        ),
+                                    ),
+                                ),
+                                1,
+                            ),
                             else_=0,
                         )
                     ).label(label)
-                    for status, label in (
-                        ("CREATED", "created_count"),
-                        ("IN_PROGRESS", "in_progress_count"),
-                        ("COMPLETED", "completed_count"),
-                        ("ABANDONED", "abandoned_count"),
-                        ("INVALID", "invalid_count"),
+                    for status, label, research_status in (
+                        ("CREATED", "created_count", None),
+                        ("IN_PROGRESS", "in_progress_count", "IN_PROGRESS"),
+                        ("COMPLETED", "completed_count", "COMPLETED"),
+                        ("ABANDONED", "abandoned_count", "ABANDONED"),
+                        ("INVALID", "invalid_count", "FAILED"),
                     )
                 ),
             )
@@ -1098,8 +1126,22 @@ class SchoolOperationsRepository:
             )
             .outerjoin(
                 AssessmentSession,
-                (AssessmentSession.task_enrollment_id == TaskEnrollment.id)
-                & (AssessmentSession.subject_id == TaskEnrollment.subject_id),
+                normal_task
+                & (AssessmentSession.task_enrollment_id == TaskEnrollment.id)
+                & (AssessmentSession.subject_id == TaskEnrollment.subject_id)
+                & (
+                    AssessmentSession.cat_binding_mode
+                    == MeasurementTask.cat_binding_mode
+                ),
+            )
+            .outerjoin(
+                SchoolResearchSession,
+                research_task
+                & (SchoolResearchSession.task_enrollment_id == TaskEnrollment.id)
+                & (SchoolResearchSession.subject_id == TaskEnrollment.subject_id)
+                & (SchoolResearchSession.task_id == MeasurementTask.id)
+                & (SchoolResearchSession.school_id == MeasurementTask.school_id)
+                & (SchoolResearchSession.class_id == MeasurementTask.class_id),
             )
             .where(MeasurementTask.id == task_id, MeasurementTask.school_id == school_id)
             .group_by(MeasurementTask.id)

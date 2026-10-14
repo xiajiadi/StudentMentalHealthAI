@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 from dataclasses import FrozenInstanceError, asdict
 from pathlib import Path
 from typing import Any
@@ -223,6 +224,7 @@ def test_catalog_selectors_return_pinned_unapproved_profile_and_safe_repo_projec
     assert repository.expected_profile_sha256 == PROFILE_SHA256
     assert repository.expected_manifest_sha256 == MANIFEST_SHA256
     assert repository.profile.profile_id == PROFILE_REF
+    assert repository.profile.profile_type == "CAT_RESEARCH_PROFILE_CANDIDATE"
     assert repository.profile.file_sha256 == PROFILE_SHA256
     assert repository.profile.manifest_sha256 == MANIFEST_SHA256
     assert repository.profile.research_only is True
@@ -232,6 +234,91 @@ def test_catalog_selectors_return_pinned_unapproved_profile_and_safe_repo_projec
     kwargs = repository.create_profile_version_kwargs()
     assert kwargs["rights_status"] == "PENDING"
     assert kwargs["execution_status"] == "CANDIDATE_RESEARCH_ONLY"
+
+
+def test_real_pinned_profile_projection_passes_database_profile_validator_without_db(
+    actual_catalog_inputs,
+) -> None:
+    database_python = (
+        Path(__file__).resolve().parents[2]
+        / "11_database"
+        / ".venv"
+        / "Scripts"
+        / "python.exe"
+    )
+    if not database_python.is_file():
+        pytest.skip("isolated database Python runtime is not installed on this host")
+    runtime_file, runtime_sha, service_file, service_sha, _runtime, _service = actual_catalog_inputs
+    selection = _build_catalog(runtime_file, runtime_sha, service_file, service_sha).select_profile(
+        PROFILE_REF
+    )
+    profile = selection.repository.profile
+    script = r"""
+import json
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+from database_layer.school_research_cat import _validate_profile_input
+
+(path, file_sha, profile_id, instrument_id, dimension, manifest_sha,
+ publication_status, profile_type) = sys.argv[1:]
+candidate = SimpleNamespace(
+    raw_profile_bytes=Path(path).read_bytes(),
+    file_sha256=file_sha,
+    profile_id=profile_id,
+    instrument_id=instrument_id,
+    dimension=dimension,
+    manifest_sha256=manifest_sha,
+    research_only=True,
+    human_curated=False,
+    psychological_interpretation_allowed=False,
+    publication_status=publication_status,
+    profile_type=profile_type,
+)
+projection = _validate_profile_input(candidate, file_sha, manifest_sha)
+print(json.dumps({
+    "profile_ref": projection.profile_ref,
+    "instrument_id": projection.instrument_id,
+    "dimension": projection.dimension,
+    "parameter_origin": projection.parameter_origin,
+    "fit_sha256": projection.fit_sha256,
+    "calibration_sha256": projection.calibration_sha256,
+    "published_parameter_crosswalk_sha256": projection.published_parameter_crosswalk_sha256,
+}, sort_keys=True))
+"""
+    completed = subprocess.run(
+        [
+            str(database_python),
+            "-c",
+            script,
+            str(PROFILE_PATH),
+            profile.file_sha256,
+            profile.profile_id,
+            profile.instrument_id,
+            profile.dimension,
+            profile.manifest_sha256,
+            profile.publication_status,
+            profile.profile_type,
+        ],
+        cwd=Path(__file__).resolve().parents[2] / "11_database",
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(completed.stdout) == {
+        "profile_ref": PROFILE_REF,
+        "instrument_id": "PROMIS_PEDIATRIC_ANXIETY_8_ITEM_SUBSET",
+        "dimension": "PROMIS_PEDIATRIC_ANXIETY_RESEARCH",
+        "parameter_origin": "PUBLISHED_ROUNDED_REFERENCE",
+        "fit_sha256": None,
+        "calibration_sha256": None,
+        "published_parameter_crosswalk_sha256": (
+            "2176b6cbf7498d8ef912f2902a22c31cb7b229ac82d988d54567cfe615c9066c"
+        ),
+    }
 
 
 def test_catalog_public_dto_excludes_paths_hashes_raw_bytes_and_parameters(

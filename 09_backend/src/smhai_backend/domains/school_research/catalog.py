@@ -26,6 +26,7 @@ _PROMIS_V3_PROFILE_REF = "promis-pediatric-anxiety-8-item-subset-20261014-r1"
 _PROMIS_V3_SOURCE_SCOPE = "PROMIS_US_GENPOP_CHILD_SELF_REPORT_8_17"
 _REPOSITORY_RIGHTS_DEFAULT = "PENDING"
 _REPOSITORY_EXECUTION_DEFAULT = "CANDIDATE_RESEARCH_ONLY"
+_REPOSITORY_PROFILE_TYPE = "CAT_RESEARCH_PROFILE_CANDIDATE"
 
 
 class SchoolResearchCatalogError(ValueError):
@@ -325,7 +326,7 @@ def _profile_projections(
     if not document or document.get("profile_id") != trusted.profile_ref:
         raise SchoolResearchCatalogError("profile_projection_invalid")
     instrument_id = _bounded_text(document.get("instrument_id"), "profile_projection_invalid")
-    profile_type = _bounded_text(document.get("profile_type"), "profile_projection_invalid")
+    _bounded_text(document.get("profile_type"), "profile_projection_invalid")
     dimension = _bounded_text(document.get("dimension"), "profile_projection_invalid")
     publication_status = _bounded_text(
         document.get("publication_status"), "profile_projection_invalid"
@@ -367,7 +368,9 @@ def _profile_projections(
 
     repository_profile = RepositoryResearchProfileInput(
         profile_id=trusted.profile_ref,
-        profile_type=profile_type,
+        # The DB repository accepts the CAT engine's stable typed projection.
+        # Keep the source's original profile_type only in raw_profile_bytes.
+        profile_type=_REPOSITORY_PROFILE_TYPE,
         instrument_id=instrument_id,
         dimension=dimension,
         file_sha256=trusted.profile_sha256,

@@ -142,3 +142,42 @@ def build_school_research_service(settings: Any, persistence: Any) -> Any | None
         return SchoolResearchService(persistence=adapter)
     except Exception:
         raise ResearchCATRuntimeError("runtime_configuration_invalid") from None
+
+
+def build_school_research_profiles_service(settings: Any, persistence: Any) -> Any | None:
+    """Compose candidate import from the same pinned, managed server registry."""
+    if (
+        settings.school_research_enabled is not True
+        or getattr(settings, "school_research_managed_enabled", False) is not True
+    ):
+        return None
+    try:
+        if persistence is None or settings.identity_profile != "school_tenant":
+            raise ValueError
+        runtime = load_research_runtime(
+            configuration_file=Path(settings.school_research_runtime_file),
+            expected_sha256=settings.school_research_runtime_sha256,
+            loopback_base_url=settings.school_research_base_url,
+            retained_key_provider=persistence.protection.key_provider,
+        )
+        from smhai_backend.adapters.school_research_profiles import (
+            SchoolResearchProfilesPersistenceAdapter,
+        )
+        from smhai_backend.domains.school_research.catalog import build_school_research_catalog
+        from smhai_backend.domains.school_research_profiles.service import (
+            SchoolResearchProfilesService,
+        )
+
+        catalog = build_school_research_catalog(
+            runtime_config_file=Path(settings.school_research_runtime_file),
+            expected_runtime_config_sha256=settings.school_research_runtime_sha256,
+            service_config_file=Path(settings.school_research_service_file),
+            expected_service_config_sha256=settings.school_research_service_sha256,
+            school_id=runtime.school_id,
+            retained_key_provider=persistence.protection.key_provider,
+        )
+        return SchoolResearchProfilesService(
+            persistence=SchoolResearchProfilesPersistenceAdapter(persistence, catalog)
+        )
+    except Exception:
+        raise ResearchCATRuntimeError("runtime_configuration_invalid") from None

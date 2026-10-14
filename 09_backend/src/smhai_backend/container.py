@@ -102,6 +102,7 @@ class BackendContainer:
     cat_saved_simulation_client: HttpCatSavedSimulationClient | None = None
     post_assessment_worker_manager: SchoolPostAssessmentWorkerManager | None = None
     school_research: Any | None = None
+    school_research_profiles: Any | None = None
     school_research_process: Any | None = None
     school_research_process_factory: Callable[[], Any] | None = None
 
@@ -282,9 +283,13 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         audits = InMemoryAuditRepository()
         idempotency = InMemoryIdempotencyStore()
     authorization = NativeAuthorizationProvider()
-    from smhai_backend.domains.school_research.bootstrap import build_school_research_service
+    from smhai_backend.domains.school_research.bootstrap import (
+        build_school_research_profiles_service,
+        build_school_research_service,
+    )
 
     school_research = build_school_research_service(settings, persistence)
+    school_research_profiles = build_school_research_profiles_service(settings, persistence)
     from smhai_backend.domains.school_research.lifecycle import (
         build_school_research_process_factory,
     )
@@ -440,6 +445,7 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         school_tasks=school_tasks,
         school_directory=school_directory,
         school_research=school_research,
+        school_research_profiles=school_research_profiles,
         school_research_process_factory=research_process_factory,
         professional_reviews=professional_reviews,
         school_feedback=school_feedback,

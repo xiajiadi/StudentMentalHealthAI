@@ -139,6 +139,11 @@ class ResearchCATRuntime:
             f"signing_version={self._signing_version!r})"
         )
 
+    @property
+    def school_id(self) -> int:
+        """Configured tenant identity; immutable and independent of a request."""
+        return self._school_id
+
     def client_for_binding(self, database_metadata: object) -> Any:
         """Return a fresh client only when DB metadata matches explicit pins."""
 

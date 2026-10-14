@@ -1,4 +1,35 @@
-## ACTIVE — 2026-10-14, research provisioning and install configuration
+## ACTIVE — 2026-10-14, authenticated candidate import and research tasks
+
+Psychologist-only catalog/import APIs are wired with CSRF, scoped idempotency,
+current persisted role checks and immutable server selectors. Root58 relevant
+Backend tests pass, including frozen OpenAPI. Fixed real compatibility defects:
+DB naiveUTC clock handling, CAT_RESEARCH_PROFILE_CANDIDATE typed input while
+preserving raw source bytes, explicit PROMIS storage dimension mapping, and
+actual dataclass DTO/UTC timestamp conversion. The public-source-to-DB-validator
+test runs the real pure validator, not only fake metadata.
+
+Native authenticated ASGI + real K MySQL + actual owned CAT process PASS:
+D:\Dev\temp\psynova-research-profiles-native-api-20261014-r1.json,
+SHAe4b209f6fa235147663d62cc019b9dd35877a70643be0f89f023b4dd9f6c1be8.
+Five actual sealed-fixture accounts logged in/switched contexts; unauth401,
+student/teacher/admin403 and foreign-school specialist404. MissingCSRF403,
+request-side rights injection422, candidate profile v2 import200, same-key
+replay200 and changed-body409. New version2 retains PENDING/CANDIDATE status;
+actual encrypted readback matches raw profile SHA and published-reference
+provenance, with fit/calibration NULL. All sessions logged out; child45208 on
+57419 stopped/no listener, DB adapter closed. Original v1/source preserved.
+ASGI proof is not a TCP/browser test of the existing K8093 process, which still
+runs older source. No student research session/task/binding was created.
+
+ScopeA progress now selects ordinary/research lifecycle metadata by explicit
+task mode; research joins bind school/task/class/enrollment/subject and exclude
+revoked enrollment from active completion. Root22 SQLite/compiled-query tests
+pass; no answers/snapshots/results enter progress SQL. Native counter proof waits
+for real published research tasks. Next: controlled study-use eligibility,
+atomic admin publish, student discovery/save-resume and online800; installed
+lifecycle research argv integration is underway. Real RAG remains pending review.
+
+## Prior checkpoint — research provisioning and install configuration
 
 Immutable server catalog now binds trusted profile/manifest bytes and full CAT
 config to exact school selectors. Candidate import defaults remain PENDING /
