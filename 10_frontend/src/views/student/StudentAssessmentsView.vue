@@ -4,6 +4,7 @@ import { CalendarDays, ClipboardList, History, LayoutDashboard, Play, RotateCcw 
 import AppButton from '@/components/app/AppButton.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import StudentAssignedTasks from '@/components/school/StudentAssignedTasks.vue'
+import StudentResearchTasks from '@/components/school/StudentResearchTasks.vue'
 import { frontendApi } from '@/services/mock-api'
 import { userFacingApiError } from '@/utils/user-facing-errors'
 import type { Assessment } from '@/types/contracts'
@@ -202,6 +203,7 @@ onMounted(load)
     </header>
 
     <StudentAssignedTasks />
+    <StudentResearchTasks />
 
     <section class="assessment-library" aria-label="测评列表">
       <div class="assessment-toolbar">

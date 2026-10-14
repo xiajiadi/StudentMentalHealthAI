@@ -28,6 +28,14 @@ import type {
   AssessmentState,
   AssessmentListEntry,
   AssessmentListParams,
+  ResearchAnswerInput,
+  ResearchCompletion,
+  ResearchDiscoveryPage,
+  ResearchL1Session,
+  ResearchQuestion,
+  ResearchResponseOption,
+  ResearchSessionDiscoveryEntry,
+  ResearchTaskDiscoveryEntry,
   FrontendApi,
   LoginInput,
   LoginResult,
@@ -122,6 +130,184 @@ const requiredCount = (source: UnknownRecord, key: string): number => {
     throw new RealApiError('API_INVALID_RESPONSE', '学校任务统计格式无法识别。')
   }
   return value
+}
+const requiredPositiveCount = (source: UnknownRecord, key: string): number => {
+  const value = source[key]
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
+    throw new RealApiError('API_INVALID_RESPONSE', '研究会话响应格式无法识别。')
+  }
+  return value
+}
+const requireExactKeys = (value: UnknownRecord, keys: readonly string[], message: string) => {
+  if (Object.keys(value).length !== keys.length || keys.some((key) => !Object.hasOwn(value, key))) {
+    throw new RealApiError('API_INVALID_RESPONSE', message)
+  }
+}
+const researchStatus = (value: unknown): value is ResearchSessionDiscoveryEntry['status'] =>
+  value === 'IN_PROGRESS' || value === 'COMPLETED' || value === 'FAILED' || value === 'ABANDONED'
+
+const mapResearchTaskDiscovery = (value: unknown): ResearchTaskDiscoveryEntry => {
+  const keys = [
+    'task_ref', 'class_ref', 'profile_ref', 'source_population_scope', 'instrument_id', 'instrument_version',
+    'publication_status', 'research_only', 'opens_at', 'due_at', 'status', 'completion_count',
+    'session_ref', 'session_status', 'items_answered',
+  ] as const
+  if (!isRecord(value) || Array.isArray(value)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '研究任务列表格式无法识别。')
+  }
+  requireExactKeys(value, keys, '研究任务列表包含不支持的信息。')
+  const sessionRef = value.session_ref
+  const sessionStatus = value.session_status
+  if ((sessionRef !== null && typeof sessionRef !== 'string')
+    || (sessionStatus !== null && !researchStatus(sessionStatus))
+    || (value.publication_status !== 'not_approved_for_publication_or_operational_use')
+    || value.research_only !== true || value.status !== 'PUBLISHED'
+    || (sessionRef === null) !== (sessionStatus === null)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '研究任务状态格式无法识别。')
+  }
+  const completionCount = requiredCount(value, 'completion_count')
+  const itemsAnswered = requiredCount(value, 'items_answered')
+  if (completionCount > 1 || (sessionRef === null && (itemsAnswered !== 0 || completionCount !== 0))
+    || (sessionRef !== null && completionCount !== (sessionStatus === 'COMPLETED' ? 1 : 0))) {
+    throw new RealApiError('API_INVALID_RESPONSE', '研究任务进度格式无法识别。')
+  }
+  return {
+    task_ref: requiredString(value, 'task_ref'),
+    class_ref: requiredString(value, 'class_ref'),
+    profile_ref: requiredString(value, 'profile_ref'),
+    source_population_scope: requiredString(value, 'source_population_scope'),
+    instrument_id: requiredString(value, 'instrument_id'),
+    instrument_version: requiredString(value, 'instrument_version'),
+    publication_status: value.publication_status,
+    research_only: true,
+    opens_at: requiredTimestamp(value, 'opens_at')!,
+    due_at: requiredTimestamp(value, 'due_at', true),
+    status: 'PUBLISHED',
+    completion_count: completionCount,
+    session_ref: sessionRef as string | null,
+    session_status: sessionStatus as ResearchTaskDiscoveryEntry['session_status'],
+    items_answered: itemsAnswered,
+  }
+}
+
+const mapResearchSessionDiscovery = (value: unknown): ResearchSessionDiscoveryEntry => {
+  const keys = ['session_ref', 'task_ref', 'status', 'items_answered', 'completed_at', 'research_only'] as const
+  if (!isRecord(value) || Array.isArray(value)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '研究会话记录格式无法识别。')
+  }
+  requireExactKeys(value, keys, '研究会话记录包含不支持的信息。')
+  if (!researchStatus(value.status) || value.research_only !== true) {
+    throw new RealApiError('API_INVALID_RESPONSE', '研究会话记录状态格式无法识别。')
+  }
+  return {
+    session_ref: requiredString(value, 'session_ref'),
+    task_ref: requiredString(value, 'task_ref'),
+    status: value.status,
+    items_answered: requiredCount(value, 'items_answered'),
+    completed_at: requiredTimestamp(value, 'completed_at', true),
+    research_only: true,
+  }
+}
+
+const mapResearchPage = <T>(value: unknown, mapItem: (item: unknown) => T): ResearchDiscoveryPage<T> => {
+  const keys = ['items', 'total', 'limit', 'offset', 'has_more', 'next_offset'] as const
+  if (!isRecord(value) || Array.isArray(value) || !Array.isArray(value.items)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '研究任务分页格式无法识别。')
+  }
+  requireExactKeys(value, keys, '研究任务分页包含不支持的信息。')
+  const total = requiredCount(value, 'total')
+  const limit = requiredPositiveCount(value, 'limit')
+  const offset = requiredCount(value, 'offset')
+  const hasMore = value.has_more
+  const nextOffset = value.next_offset
+  if (typeof hasMore !== 'boolean'
+    || (nextOffset !== null && (typeof nextOffset !== 'number' || !Number.isInteger(nextOffset) || nextOffset < 0))
+    || hasMore !== (nextOffset !== null)
+    || value.items.length > limit) {
+    throw new RealApiError('API_INVALID_RESPONSE', '研究任务分页状态格式无法识别。')
+  }
+  return {
+    items: value.items.map(mapItem), total, limit, offset, has_more: hasMore,
+    next_offset: nextOffset as number | null,
+  }
+}
+
+const mapResearchOption = (value: unknown): ResearchResponseOption => {
+  const keys = ['value', 'label'] as const
+  if (!isRecord(value) || Array.isArray(value)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '研究题目选项格式无法识别。')
+  }
+  requireExactKeys(value, keys, '研究题目选项包含不支持的信息。')
+  if (typeof value.value !== 'number' || !Number.isSafeInteger(value.value)
+    || (value.label !== null && typeof value.label !== 'string')) {
+    throw new RealApiError('API_INVALID_RESPONSE', '研究题目选项格式无法识别。')
+  }
+  return { value: value.value, label: value.label as string | null }
+}
+
+const mapResearchQuestion = (value: unknown): ResearchQuestion => {
+  const keys = ['item_id', 'stem', 'step', 'response_options'] as const
+  if (!isRecord(value) || Array.isArray(value) || !Array.isArray(value.response_options)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '研究题目格式无法识别。')
+  }
+  requireExactKeys(value, keys, '研究题目包含不支持的信息。')
+  const responseOptions = value.response_options.map(mapResearchOption)
+  if (!responseOptions.length || new Set(responseOptions.map((item) => item.value)).size !== responseOptions.length) {
+    throw new RealApiError('API_INVALID_RESPONSE', '研究题目选项格式无法识别。')
+  }
+  return {
+    item_id: requiredString(value, 'item_id'),
+    stem: requiredString(value, 'stem'),
+    step: requiredCount(value, 'step'),
+    response_options: responseOptions,
+  }
+}
+
+const mapResearchCompletion = (value: unknown): ResearchCompletion => {
+  const keys = ['status', 'items_answered', 'stop_reason'] as const
+  const stopReasons = ['se_threshold_reached', 'max_items_reached', 'item_bank_exhausted', 'item_bank_exhausted_before_minimum']
+  if (!isRecord(value) || Array.isArray(value)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '研究完成记录格式无法识别。')
+  }
+  requireExactKeys(value, keys, '研究完成记录包含不支持的信息。')
+  if (value.status !== 'COMPLETED' || !stopReasons.includes(String(value.stop_reason))) {
+    throw new RealApiError('API_INVALID_RESPONSE', '研究完成记录格式无法识别。')
+  }
+  return { status: 'COMPLETED', items_answered: requiredCount(value, 'items_answered'), stop_reason: value.stop_reason as ResearchCompletion['stop_reason'] }
+}
+
+const mapResearchL1Session = (value: unknown): ResearchL1Session => {
+  const keys = ['session_ref', 'status', 'state_version', 'items_answered', 'research_only', 'resume_required', 'stop_reason', 'question', 'completion'] as const
+  const stopReasons = ['se_threshold_reached', 'max_items_reached', 'item_bank_exhausted', 'item_bank_exhausted_before_minimum']
+  if (!isRecord(value) || Array.isArray(value)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '研究会话响应格式无法识别。')
+  }
+  requireExactKeys(value, keys, '研究会话响应包含不支持的信息。')
+  if (!researchStatus(value.status) || value.research_only !== true || typeof value.resume_required !== 'boolean'
+    || (value.stop_reason !== null && !stopReasons.includes(String(value.stop_reason)))
+    || (value.question !== null && value.status !== 'IN_PROGRESS')
+    || (value.completion !== null && value.status !== 'COMPLETED')) {
+    throw new RealApiError('API_INVALID_RESPONSE', '研究会话状态格式无法识别。')
+  }
+  const question = value.question === null ? null : mapResearchQuestion(value.question)
+  const completion = value.completion === null ? null : mapResearchCompletion(value.completion)
+  if ((value.status === 'COMPLETED') !== (completion !== null)
+    || (completion && (completion.items_answered !== requiredCount(value, 'items_answered')
+      || completion.stop_reason !== value.stop_reason))
+    || (value.status === 'IN_PROGRESS' && question === null && value.resume_required !== true)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '研究会话完成状态无法识别。')
+  }
+  return {
+    session_ref: requiredString(value, 'session_ref'),
+    status: value.status,
+    state_version: requiredPositiveCount(value, 'state_version'),
+    items_answered: requiredCount(value, 'items_answered'),
+    research_only: true,
+    resume_required: value.resume_required,
+    stop_reason: value.stop_reason as ResearchL1Session['stop_reason'],
+    question,
+    completion,
+  }
 }
 const requiredTimestamp = (source: UnknownRecord, key: string, nullable = false): string | null => {
   const value = source[key]
@@ -1330,6 +1516,71 @@ export class RealApiProvider implements FrontendApi {
       `task-${taskRef}-revoke`,
     )
     return { ...response, data: mapSchoolTaskEnrollment(response.data) }
+  }
+
+  async listStudentResearchTasks(params: { limit?: number; offset?: number; signal?: AbortSignal } = {}): Promise<ApiEnvelope<ResearchDiscoveryPage<ResearchTaskDiscoveryEntry>>> {
+    const query = new URLSearchParams({
+      limit: String(params.limit ?? 30),
+      offset: String(params.offset ?? 0),
+    })
+    const response = await unwrap<unknown>(() => apiClient.request({
+      method: 'GET',
+      url: `/api/v1/school/research-discovery/tasks?${query.toString()}`,
+      signal: params.signal,
+      parseAs: 'json',
+    }))
+    return { ...response, data: mapResearchPage(response.data, mapResearchTaskDiscovery) }
+  }
+
+  async listStudentResearchSessions(params: { limit?: number; offset?: number; signal?: AbortSignal } = {}): Promise<ApiEnvelope<ResearchDiscoveryPage<ResearchSessionDiscoveryEntry>>> {
+    const query = new URLSearchParams({
+      limit: String(params.limit ?? 30),
+      offset: String(params.offset ?? 0),
+    })
+    const response = await unwrap<unknown>(() => apiClient.request({
+      method: 'GET',
+      url: `/api/v1/school/research-discovery/sessions?${query.toString()}`,
+      signal: params.signal,
+      parseAs: 'json',
+    }))
+    return { ...response, data: mapResearchPage(response.data, mapResearchSessionDiscovery) }
+  }
+
+  async startStudentResearchTask(taskRef: string, idempotencyKey: string): Promise<ApiEnvelope<ResearchL1Session>> {
+    const response = await this.schoolWrite(
+      `/api/v1/school/research/tasks/${encodeURIComponent(taskRef)}/start`,
+      {},
+      `research-task-${taskRef}-start`,
+      idempotencyKey,
+    )
+    return { ...response, data: mapResearchL1Session(response.data) }
+  }
+
+  async resumeStudentResearchSession(sessionRef: string): Promise<ApiEnvelope<ResearchL1Session>> {
+    const response = await this.schoolWrite(
+      `/api/v1/school/research/sessions/${encodeURIComponent(sessionRef)}/resume`,
+      {},
+      `research-session-${sessionRef}-resume`,
+    )
+    return { ...response, data: mapResearchL1Session(response.data) }
+  }
+
+  async answerStudentResearchSession(
+    sessionRef: string,
+    input: ResearchAnswerInput,
+    idempotencyKey: string,
+  ): Promise<ApiEnvelope<ResearchL1Session>> {
+    if (!Number.isSafeInteger(input.raw_value) || !Number.isSafeInteger(input.expected_state_version)
+      || input.expected_state_version < 1 || !input.item_id.trim()) {
+      throw new RealApiError('API_INVALID_REQUEST', '研究题目回答信息无效。')
+    }
+    const response = await this.schoolWrite(
+      `/api/v1/school/research/sessions/${encodeURIComponent(sessionRef)}/answers`,
+      input,
+      `research-session-${sessionRef}-answer-${input.expected_state_version}`,
+      idempotencyKey,
+    )
+    return { ...response, data: mapResearchL1Session(response.data) }
   }
 
   async createSupport(assessmentId: string, message: string): Promise<ApiEnvelope<SupportResult>> {

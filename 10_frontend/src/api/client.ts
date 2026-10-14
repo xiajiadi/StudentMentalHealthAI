@@ -179,6 +179,80 @@ export interface StudentSchoolTaskHistory {
   completed_at: string | null
 }
 
+/** Content-free discovery metadata for one assigned research-only CAT task. */
+export interface ResearchTaskDiscoveryEntry {
+  task_ref: string
+  class_ref: string
+  profile_ref: string
+  source_population_scope: string
+  instrument_id: string
+  instrument_version: string
+  publication_status: 'not_approved_for_publication_or_operational_use'
+  research_only: true
+  opens_at: string
+  due_at: string | null
+  status: 'PUBLISHED'
+  completion_count: number
+  session_ref: string | null
+  session_status: 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'ABANDONED' | null
+  items_answered: number
+}
+
+export interface ResearchSessionDiscoveryEntry {
+  session_ref: string
+  task_ref: string
+  status: 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'ABANDONED'
+  items_answered: number
+  completed_at: string | null
+  research_only: true
+}
+
+export interface ResearchDiscoveryPage<T> {
+  items: T[]
+  total: number
+  limit: number
+  offset: number
+  has_more: boolean
+  next_offset: number | null
+}
+
+export interface ResearchResponseOption {
+  value: number
+  label: string | null
+}
+
+export interface ResearchQuestion {
+  item_id: string
+  stem: string
+  step: number
+  response_options: ResearchResponseOption[]
+}
+
+export interface ResearchCompletion {
+  status: 'COMPLETED'
+  items_answered: number
+  stop_reason: 'se_threshold_reached' | 'max_items_reached' | 'item_bank_exhausted' | 'item_bank_exhausted_before_minimum'
+}
+
+/** L1-only CAT projection. It deliberately has no score, estimate, or answer history. */
+export interface ResearchL1Session {
+  session_ref: string
+  status: 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'ABANDONED'
+  state_version: number
+  items_answered: number
+  research_only: true
+  resume_required: boolean
+  stop_reason: ResearchCompletion['stop_reason'] | null
+  question: ResearchQuestion | null
+  completion: ResearchCompletion | null
+}
+
+export interface ResearchAnswerInput {
+  item_id: string
+  raw_value: number
+  expected_state_version: number
+}
+
 export interface SchoolTaskStart {
   task_ref: string
   assessment_id: string
@@ -253,6 +327,11 @@ export interface FrontendApi {
   listStudentSchoolTasks?(): Promise<ApiEnvelope<StudentSchoolTask[]>>
   listStudentSchoolTaskHistory?(): Promise<ApiEnvelope<StudentSchoolTaskHistory[]>>
   startStudentSchoolTask?(taskRef: string): Promise<ApiEnvelope<SchoolTaskStart>>
+  listStudentResearchTasks?(params?: { limit?: number; offset?: number; signal?: AbortSignal }): Promise<ApiEnvelope<ResearchDiscoveryPage<ResearchTaskDiscoveryEntry>>>
+  listStudentResearchSessions?(params?: { limit?: number; offset?: number; signal?: AbortSignal }): Promise<ApiEnvelope<ResearchDiscoveryPage<ResearchSessionDiscoveryEntry>>>
+  startStudentResearchTask?(taskRef: string, idempotencyKey: string): Promise<ApiEnvelope<ResearchL1Session>>
+  resumeStudentResearchSession?(sessionRef: string): Promise<ApiEnvelope<ResearchL1Session>>
+  answerStudentResearchSession?(sessionRef: string, input: ResearchAnswerInput, idempotencyKey: string): Promise<ApiEnvelope<ResearchL1Session>>
   listTeacherSchoolTaskProgress?(): Promise<ApiEnvelope<TeacherTaskProgress[]>>
   listSchoolTaskEnrollments?(taskRef: string): Promise<ApiEnvelope<SchoolTaskEnrollment[]>>
   revokeSchoolTaskEnrollment?(taskRef: string, enrollmentRef: string): Promise<ApiEnvelope<SchoolTaskEnrollment>>

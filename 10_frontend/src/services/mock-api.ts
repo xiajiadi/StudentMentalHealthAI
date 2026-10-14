@@ -18,6 +18,7 @@ import type {
 import type {
   AssessmentState,
   AssessmentListParams,
+  ResearchAnswerInput,
   FrontendApi,
   LoginInput,
   LoginResult,
@@ -150,6 +151,30 @@ export class MockApiProvider implements FrontendApi {
         question: clone(catQuestions[assessmentIndex]),
       },
     } as ApiEnvelope<AssessmentState>
+  }
+
+  async listStudentResearchTasks(): Promise<never> {
+    throw new MockApiError('RESEARCH_SERVICE_UNAVAILABLE', '当前演示环境没有研究任务数据；请连接已配置的本地服务。')
+  }
+
+  async listStudentResearchSessions(): Promise<never> {
+    throw new MockApiError('RESEARCH_SERVICE_UNAVAILABLE', '当前演示环境没有研究会话记录；请连接已配置的本地服务。')
+  }
+
+  async startStudentResearchTask(_taskRef: string, _idempotencyKey: string): Promise<never> {
+    throw new MockApiError('RESEARCH_SERVICE_UNAVAILABLE', '当前演示环境没有研究任务服务；不会使用合成记录代替公开研究数据。')
+  }
+
+  async resumeStudentResearchSession(_sessionRef: string): Promise<never> {
+    throw new MockApiError('RESEARCH_SERVICE_UNAVAILABLE', '当前演示环境没有研究会话服务；请连接已配置的本地服务。')
+  }
+
+  async answerStudentResearchSession(
+    _sessionRef: string,
+    _input: ResearchAnswerInput,
+    _idempotencyKey: string,
+  ): Promise<never> {
+    throw new MockApiError('RESEARCH_SERVICE_UNAVAILABLE', '当前演示环境没有研究会话服务；答案不会在本地模拟保存。')
   }
 
   async submitAssessmentResponse(assessmentId: string, itemId: string, response: string): Promise<ApiEnvelope<AssessmentState>> {
