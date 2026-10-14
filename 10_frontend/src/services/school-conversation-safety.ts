@@ -335,4 +335,3 @@ export const newConversationSafetyIdempotencyKey = (): string => {
   }
   return `conversation-safety-${crypto.randomUUID()}`
 }
-
