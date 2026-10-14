@@ -105,5 +105,12 @@ publish are atomic; uniqueness/FK constraints enforce subject/case correspondenc
 Report separate counts for unique assigned, started, answered and completed source
 cases from persisted server data;800 actions/allocations alone do not prove800
 observed completed cases. Professional/ethics/clinical approvals remain false.
-This is the next additive engineering increment after native0014 verification;
-no cohort schema, API or online800 execution has yet been implemented or accepted.
+Revision0015 now implements the sealed cohort schema, admin seal API and exact
+task reuse. Native M has one sealed800-case cohort and8 published100-person tasks;
+authenticated TCP replay completed800 distinct cases/6400 answer items. Native
+N0016 restore independently preserves those counts; a separate four-answer
+checkpoint restores and completes with one research outbox job. The consumer now
+supports bounded no-policy abstention; O0017 runs its explicit background worker.
+Native API and Edge browser prove research educational feedback review, explicit
+publish/student read/revoke. Qualified real RAG/local-model automatic candidates
+and final role acceptance remain pending. Current evidence is in CURRENT_STATE.md.

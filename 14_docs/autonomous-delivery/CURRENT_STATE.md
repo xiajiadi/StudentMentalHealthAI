@@ -1,4 +1,201 @@
-## ACTIVE — 2026-10-14, source-bound native research workflow verified
+## ACTIVE — 2026-10-14, O0017 native research feedback closure
+
+Canonical branch xiajiadi/autonomous-delivery-20261011 is at53e96b2.
+Remote is at96ac171; a1b62d0 (research review/feedback),626b93e
+(MySQL DISTINCT projection/order fix), and53e96b2 (explicit worker lifecycle)
+are locally integrated, not yet pushed.
+
+O install: D:/Projects/.StudentMentalHealthAI-school-install-20261014-o,
+workspace070d3dd487356cce042bfbae497af217, DB3323/schema0017/API8097/UI4187.
+Actual restore from sealed N0016 imported33782 rows/50 model tables and verified
+861 ciphertexts, preserving existing research sessions and keys. Snapshot0016
+forward-migrated to0017. Initial wrong-venv CLI attempt failed before target
+creation; correct database venv succeeded. No old database was reset.
+
+Actual native API flow approved one case and published/read/revoked one general
+educational feedback record. r6 records successful transitions but ended BLOCKED
+on a helper denial-code comparison; r7 recovered the revoked state, confirmed
+five sensitive403 denials and four logouts, and is truthfully PARTIAL.
+D:/Dev/temp/psynova-o0017-research-feedback-r6.json and r7.json are retained.
+The native student list exposed a genuine MySQL3065 DISTINCT/order bug;
+626b93e fixes the projection without weakening authorization.
+
+Fresh Edge browser r3 PASS: specialist creates a second draft, explicitly
+publishes, student refresh reads it, specialist revokes, student refresh removes
+it, and both sessions log out. Root inspected all three cropped screenshots.
+D:/Dev/temp/psynova-o0017-research-feedback-browser-r3.json;
+O/browser-qa/20261014T121217Z-e18d43c77c86413aa65229d1c3ccb8d0/.
+Earlier r2 failed because helper waited for tasks instead of role-home overview;
+product login succeeded and no business writes occurred in that failed attempt.
+
+Independent read-only native cipher check authenticated one case note and one
+feedback payload with exact schema/ref/revision/scope; no plaintext emitted,
+no answers/snapshots read, no DB writes. It observed the first revoked feedback
+before browser r3 created the second; it does not cover the later row.
+D:/Dev/temp/psynova-o0017-feedback-cipher-readback-r1.json,
+SHA1e806e4551b31a1d0ab6fb697149d251ba6f0aeadc4c1baff4dca991e9d11a17.
+
+After browser proof, O Backend/UI were owned-stopped and managed CAT was absent.
+The reviewed four-file53e96b2 deployment increment was then integrated. Official
+CLI restarted the same O with explicit --enable-research-education-worker;
+Backend38204/listener38716 and UI4300 are owned/ready. A separate live lifecycle
+status read observed research_education_worker enabled=true, integration
+RESEARCH_OUTBOX, status READY from the Backend dependency endpoint. Start output
+itself correctly reported UNVERIFIED until this observation. Whole_ready remains
+false; CAT ownership is not independently proven and external modules UNVERIFIED.
+D:/Dev/temp/psynova-o0017-cli-start-20261014-r3.stdout.json and
+D:/Dev/temp/psynova-o0017-cli-status-20261014-r3.stdout.json.
+Existing rows/keys preserved; no new800 replay or generation claim.
+
+Research sources cannot safely use frozen knowledge.v1 for specialist-only
+research: closed role/risk enums and missing purpose/approval fields lose that
+boundary. Worker is implementing an independent research-only loader/retrieval
+with explicit AI engineering review, professional/production flags false. Live
+production corpus, frozen Contract and Safety remain unchanged. This package
+is staff general programme research, not an800-person feedback policy.
+
+Original800/6400 replay remains complete as a historical response simulation;
+no repeated replay is needed. Real-source eligible generation/local7B feedback,
+full automatic path, final backup/install acceptance and whole-project delivery
+are still incomplete. No professional/clinical/psychometric/production approval.
+No deadline or routine user question; continue direct Controller/Workers.
+## Verified N0016 runtime and browser checkpoint before owned shutdown
+
+Last verified canonical install N: D:/Projects/.StudentMentalHealthAI-school-install-20261014-n,
+workspace_id037acc59ea4f44ed6fe6effe61c96401, database smhai_school_demo,
+DB3322/schema0016/API8096/UI4186, source ceb011a. Actual CLI start is RUNNING;
+Backend launcher46980/listener43980 and UI26664 are owned/ready. Whole_ready is
+false; independent external module acceptance is incomplete. M/L/K applications
+remain STOPPED, their DBs/keys/backups remain preserved.
+
+M native TCP replay completed all800 distinct cases:8 tasks each100 completed,
+6400 persisted answer items, zero legacy sessions for those8 tasks. Smoke1 and
+full799 authenticated and logged out; each completed a persisted midpoint resume.
+Final proof D:/Dev/temp/psynova-m0015-cohort-full-20261014-r1.json,
+SHAd121f227bdf9c8b0a7fd2c0b4b1c092836f9d243f4eb0e100dfb99dcc09d0143.
+These are historical US8–17 observed cases mapped to fictional accounts, not
+800 newly measured Chinese students or a psychometric/clinical approval.
+
+A separate single-fixture task saved4 exact observed answers in M. After owned
+M stop and sealed0015 backup, N forward restore imported33671 rows/49 tables,
+verified861 ciphertexts and revoked0 sessions. Snapshot0015 -> runtime0016,
+DATA_KEYS_RUNTIME_VERIFIED_REQUIRES_BROWSER; no existing research jobs backfilled.
+Same session/source/assignment restored4 answers and completed the remaining4
+via N TCP; same-UOW completion created exactly1 QUEUED research education job.
+D:/Dev/temp/psynova-m-to-n-partial-complete-20261014-r1.stdout.json,
+SHAf6cc5ab204845316e82ad10801f5a5d19045700702937f750386e573bf507323.
+Queue creation is not AI generation, report release or professional approval.
+
+N CLI R1 failed safely at school_app_lifecycle.py:464 before application startup.
+The operation-plan JSON was read with PowerShell's default date conversion,
+turning the ISO end-date argument into System.DateTime and a locale-formatted
+native argument. Reconstructing JSON hid that type distinction. R2 uses
+ConvertFrom-Json -DateKind String and verifies every argv item is a string;
+the real CLI succeeded with unchanged study pins and strict ISO validation.
+Both attempt files and argv artifacts remain outside Git. Old M CLI failures
+still lack original argv and remain UNKNOWN; this does not retroactively solve them.
+
+N read-only SQL independently verifies restored800/6400 and every task progress100:
+D:/Dev/temp/psynova-n0016-cohort-progress-readback-20261014-r1.json.
+The initial readback found0 teacher grants. Admin APIs subsequently created8
+Scope A grants; idempotent replays skipped all8. Fresh teacher API readback
+matched the original8 tasks at100 completed each, total800;5 additional existing
+authorized task rows remain separate. Research catalog/discovery both returned403.
+Proof D:/Dev/temp/psynova-n0016-teacher-grade800-20261014-r5.json;4 logouts succeeded.
+N four-role read-only Edge browser passed in r3: specialist versions, admin
+binding, completed student receipt/refresh and teacher13 rows with8 target tasks
+at100 completed each. Four screenshots were personally inspected by Controller;
+all4 sessions logged out, no import/enable/publish/resume/answer writes occurred.
+Proof N/browser-qa/20261014T103423Z-949124da6d384982951e54a5b4f65c93/browser-evidence.json.
+Earlier helper failures remain preserved: payload key mismatch before launch,
+then two-argument Playwright evaluate; target8/extra5 rows are not conflated.
+This proves those rendered states, not report generation or full role journeys.
+
+Priority is the complete delivery path, without repeating800 or broad test expansion.
+Direct workers are implementing research consumer/live-scope checks and explicit
+config/lifecycle wiring in the isolated research worktree. No-policy work must
+ABSTAIN without RAG/LLM; this does not satisfy real-source generation/review.
+
+Research worker/qualified real three-layer RAG/local7B report/review delivery,
+full role journeys and final engineering acceptance remain incomplete. All
+professional/publication flags stay false. No deadline or pending routine user
+question; goal/runner/heartbeat remain active. RTX3060 is freshly observed with
+12288MiB VRAM. CAT replay is CPU work, not GPU or model-generation throughput.
+
+## Prior checkpoint — M0015 replay in progress
+
+Current source HEAD98cca337 on xiajiadi/autonomous-delivery-20261011; remote
+last verified bd24ac9. Integration source stays frozen during the native replay.
+M: D:/Projects/.StudentMentalHealthAI-school-install-20261014-m,
+workspace_id c6f12d0641c40c39b9595e7462e3ec34, database smhai_school_demo,
+DB3321/schema0015, API8095/UI4185. Owned Backend/UI readiness is confirmed.
+CAT57419 listener48640 has observed parent40400 and executable pin match;
+lifecycle independently reports PRESENT_UNVERIFIED_OWNER, not ownership PASS.
+Whole_ready remains false. L applications are STOPPED; L DB3320 and K DB3319,
+their keys/backups and previous failed evidence remain preserved.
+
+The sealed L-to-new-M forward restore imported19988 rows from46 tables,
+verified51 ciphertexts and revoked0 sessions. Snapshot0014 -> runtime0015;
+restore phase remains DATA_KEYS_RUNTIME_VERIFIED_REQUIRES_BROWSER.
+Proof: D:/Dev/temp/psynova-l-to-m-0015-restore-20261014-r1.stdout.json,
+SHA576ade7b9b5ab9208c0b81fafed6a0b8c546f6191e4ae7e65497af8800980886.
+Two first CLI start attempts returned only generic LifecycleError/BLOCKED;
+original argv was not preserved, so their root cause remains UNKNOWN. The same
+public SchoolAppLifecycle.start entry later succeeded. That success does not
+resolve the prior failures or establish a repeatable CLI start. A nearby separate
+Backend preflight reported study_use_config_invalid, but its relationship to
+those failures is unproven. Safe CLI location diagnostics are being reviewed in
+the isolated cohort worktree; no live restart has been performed for that patch.
+
+Root executed the reviewed TCP helper against M: one sealed800-case cohort,
+8 published tasks and100 exact assignments per task. Setup proof:
+D:/Dev/temp/psynova-m0015-cohort-setup-20261014-r1.json,
+SHAc5fc0ceb22a8442d3b58e92148926b32e0d8dc00e6144de88dbdc694a73715b0.
+One real student login ->4 exact observed answers ->persisted resume ->4 answers
+->L1 completion ->logout passed. Smoke proof:
+D:/Dev/temp/psynova-m0015-cohort-smoke-20261014-r1.json,
+SHA206f6b3516f96e2348cad54d1825fbb210c96fe97549038ab75b2b79b7d778d8.
+The remaining799 run sequentially in Root exec session67345, helper
+SHAa3b56cf3ec6dea39f36fc3e269e3089fba0a6bc4270e17a57d244b61979a33fe.
+At the latest readback546 additional accounts completed/4368 answers sent;
+this is an in-progress checkpoint, not800 final verification. Current aggregate:
+D:/Dev/temp/psynova-m0015-cohort-tcp-replay-m0015-cohort-20261014-r1-summary.json.
+Do not alter helper/source pins or restart M while this run is active. Completed
+accounts are read-only on replay; credentials/case indices/answers are not output.
+
+Preparation failures were helper defects, not suppressed business failures:
+wrong runtime schema token, nonexistent guardian field, incorrect admin selector
+AST assumption, missing process-local Backend dependency path and local function
+shadowing. Root fixed the shadowing after safe basename/line diagnostics. The
+generated PENDING-phase checkpoint omitted midpoint_resumes required by its own
+validator; Root fixed the initializer, preserved the original checkpoint, then
+added only the two zero counters and the new helper hash, before any student
+login. Scope/task/source fields were unchanged; strict validation stayed enabled.
+Format-change proof is psynova-m0015-pending-phase-repair-20261014-r1.json.
+
+Actual Edge read-only M verification passed for specialist v3/v4 selection,
+admin class/binding selection and the first800-cohort student's completed8-item
+receipt/refresh. Zero import/enable/publish/resume/answer POSTs,3 logout/auth401
+checks. Root viewed all3 cropped screenshots: no accounts, answers or scores.
+M/browser-qa/20261014T085558Z-2e9f743aa4254fec9d7508f73009ea1f/browser-evidence.json,
+SHA89d39bbbf1f2af6cc95bb60a826700205939869c242fc9f399b7e251006f3d79.
+This is not four-role/full-generation/final restore acceptance.
+
+Source cohort increment includes immutable per-cohort800 map/8 actual100-student
+batches, exact task assignment reuse and current study_ref checks before decrypt.
+Root45 additional Backend study/task/cohort regressions pass. Research-specific
+content-free outbox + same-UOW completion enqueue +0016 projections and safe CLI
+location diagnostics are committed only in the isolated cohort worktree at
+ceb011a65525d84c1eeb8a7a859deb09935034f3, not installed or integrated into M.
+Root fresh47 Backend checks,76 scopedDB checks,241 fullDB checks/15 skipped and
+154 deployment checks pass. No native0016/worker/generation claim. Current policy
+is NO_RESEARCH_PERSONALIZED_POLICY_V1; job enqueue is not report approval.
+Online800, actual service restart/restore and representative
+browser flows, reviewed real three-layer RAG, local7B report/review and final
+engineering acceptance remain incomplete. Professional/publication flags remain
+false. No deadline or pending routine user question; goal/runner remain active.
+
+## Prior checkpoint — source-bound native research workflow verified
 
 Canonical isolated workspace L: D:/Projects/.StudentMentalHealthAI-school-install-20261014-l,
 workspace_id c928c99adc092f4511d671421aadf8bb, DB3320/schema0014. K applications

@@ -1,11 +1,15 @@
 # 测评后教育支持：现状、持久化交付与发布门禁
 
 日期：2026-10-14
-范围：只读源码架构调查；本文件是实现分解建议，不是心理内容批准、学校试点许可或 Controller 验收。
+范围：持久任务和后续教育支持设计；不代表心理内容批准、学校试点许可或完整工程验收。
 
 ## 结论
 
-当前服务已有 school-task CAT、加密作答/结果、Safety、三层 RAG 路由、7B Runtime 接口、独立 AI 对话、任务范围专业复核，以及独立的 L3 反馈草稿/发布门禁。缺失的是“CAT 完成事务与持久化后台教育任务同提交”的 outbox，以及可供自动个人化反馈使用的 L2 专业预批准政策/目录。
+原 school-task 测评已有 0011 outbox、完成事务内入队和带租约的 worker。默认策略是 `NO_PERSONALIZED_POLICY_V1`；未配置合格 processor 时以 `ABSTAINED/POLICY_UNAVAILABLE` 结束，不生成反馈。它的外键仍只指向 `assessment_sessions`，不接收研究会话。
+
+独立研究会话的 outbox、完成事务内入队和 0016 恢复投影已提交 `ceb011a`。实际 TCP 验证了一个会话在 M 保存 4 题、恢复到 N 后完成余下 4 题，并创建恰好 1 条 QUEUED 任务。新表精确关联 `school_research_sessions`，不回填旧会话、不存答案或分数，也不修改旧 outbox。研究 consumer 已在 `96ac171` 实现并做过原生单次消费，政策固定为 `NO_RESEARCH_PERSONALIZED_POLICY_V1`，无合格政策时实际 ABSTAIN。后台常驻启用的 CLI/lifecycle 开关已在 `53e96b2` 集成，正在 O 实例验证。
+
+0017 研究复核及加密教育反馈已在 O 实例完成实际 API 和浏览器发布、学生读取、撤回闭环。它是显式审核的一般教育内容路径，不能代替自动个性化生成。真实来源的研究专用检索、本地模型候选和自动生成仍未完成；L2 专业预批准政策/目录仍缺失。详情见 `RESEARCH_EDUCATION_FEEDBACK.md`。
 
 因此，可先实现一个只处理合成 task-bound CAT、可恢复、有界并发、不可越过 Safety 的后台管线；在没有精确适用人群、来源、政策版本和 L2 预批准内容前，输出只可作为加密候选、ABSTAIN 或专业复核事项，学生仍只看到 L1 完成信息。独立 AI 对话继续由学生主动发起，可不关联 CAT。
 
@@ -15,7 +19,7 @@
 
 | 能力 | 现有行为 | 关键边界 |
 |---|---|---|
-| School CAT 完成 | `POST /api/v1/assessments/{assessment_id}/complete` 调用 CAT `complete`，再保存 completed assessment；school 路径在 Backend transaction 中重新核验 student、school、enrollment、task 和 CAT binding。 | CAT 外部调用先于本地最终保存；没有与 completed 结果同事务创建的 post-assessment job。HTTP 幂等回执不等于可恢复工作队列。见 `09_backend/src/smhai_backend/domains/assessment/router.py`、`domains/assessment/service.py`、`adapters/database.py:2407`。 |
+| School CAT 完成 | `POST /api/v1/assessments/{assessment_id}/complete` 调用 CAT `complete`，再保存 completed assessment；school 路径重新核验 student、school、enrollment、task 和 CAT binding，并在完成保存的同一事务内创建 0011 post-assessment job。 | CAT 外部调用先于本地最终保存。队列默认拒绝未经批准的个性化生成；legacy job 不能代替研究会话的独立队列。见 `09_backend/src/smhai_backend/adapters/database.py`、`domains/post_assessment/service.py`。 |
 | 作答和结果加密 | 每个 response 和 assessment result 分别 Fernet 加密，记录 cipher format、key version、payload schema；result 和 completed 状态由 assessment persistence unit of work 保存。 | 加密解决 at-rest 内容保护，不会自动提供队列、租约、重试、发布门禁或最小化生成输入。见 `11_database/database_layer/repositories.py:1350`、`domains/assessment/service.py`。 |
 | L1 / L2 / L3 | 学生 CAT history 是完成/任务元数据 L1。`SCHOOL_FEEDBACK_PUBLICATION.md` 明确 L2 catalogue 不存在并应拒绝 L2；当前 `school_feedback` 只允许 L3。 | `school_feedback` 的 L3 `APPROVED`/`PUBLISHED` 是合成工作流状态，不证明心理测量有效性、真实适用性或专业内容已获批准。 |
 | Task 专业复核 | `school_professional_reviews` 使用当前任务分配、task/enrollment/assessment scope、加密 case note 和版本化决策；状态含 `OPEN/IN_REVIEW/APPROVED/REJECTED`，case 的 publication_status 固定 `NOT_PUBLISHED`。 | 审核决定与报告发布分离；现有 case 由专业人员工作流管理，不会因 CAT 完成或模型输出而自动获批。 |
