@@ -342,8 +342,10 @@ def run_server(settings: HostSettings, *, hardware: Any | None = None) -> None:
         _verify_discovery(service)
         app = create_app(runtime=runtime)
         from school_independent_runtime import attach_independent_routes
+        from school_research_programme_runtime import attach_research_programme_routes
 
         attach_independent_routes(app, runtime)
+        attach_research_programme_routes(app, runtime)
         run(
             app,
             host=settings.runtime_host,
