@@ -72,6 +72,36 @@ def _finished_job_matches_candidate_scope(
     )
 
 
+def _job_lease_matches_persisted_claim(job, claim) -> bool:
+    return all(
+        (
+            claim.id == job.job_id,
+            claim.school_id == job.school_id,
+            claim.research_session_id == job.research_session_id,
+            claim.lease_owner == job.lease_owner,
+            claim.lease_token == job.lease_token,
+            claim.policy_version == job.policy_version,
+            claim.policy_hash == job.policy_hash,
+        )
+    )
+
+
+def _task_scope_matches_persisted_claim(scope, claim) -> bool:
+    return all(
+        (
+            scope.school_id == claim.school_id,
+            scope.task_id == claim.task_id,
+            scope.class_id == claim.class_id,
+            scope.task_binding_id == claim.task_binding_id,
+            scope.profile_version_id == claim.profile_version_id,
+            scope.profile_ref == claim.profile_ref,
+            scope.profile_version_number == claim.profile_version_number,
+            scope.profile_sha256 == claim.profile_sha256,
+            scope.response_origin == claim.response_origin,
+        )
+    )
+
+
 async def _candidate_repo_call(awaitable):
     from database_layer.errors import (
         DatabaseUnavailable,
@@ -460,11 +490,33 @@ class SchoolResearchProgrammeCandidatePersistenceAdapter(SchoolResearchFeedbackP
             )
         now = _aware_utc(self._utc_now())
         async with self._uow() as uow:
-            task, binding, _profile, pin = await self._live_generation_scope(
-                uow, job, at=now
+            from database_layer.school_research_education_jobs import (
+                ResearchEducationJobClaim,
+            )
+
+            persisted_claim = await _repo_call(
+                uow.research_education_jobs.require_active_claim(
+                    school_id=job.school_id,
+                    research_session_id=job.research_session_id,
+                    job_id=job.job_id,
+                    lease_owner=job.lease_owner,
+                    lease_token=job.lease_token,
+                    now=now,
+                )
             )
             if (
-                task.class_id != scope.class_id
+                type(persisted_claim) is not ResearchEducationJobClaim
+                or not _job_lease_matches_persisted_claim(job, persisted_claim)
+                or persisted_claim.policy_hash != generated.processor_policy_sha256
+            ):
+                raise _conflict()
+            task, binding, _profile, pin = await self._live_generation_scope(
+                uow, persisted_claim, at=now
+            )
+            if (
+                not _task_scope_matches_persisted_claim(scope, persisted_claim)
+                or task.id != scope.task_id
+                or task.class_id != scope.class_id
                 or binding.binding_id != scope.task_binding_id
                 or binding.profile_version_id != scope.profile_version_id
                 or binding.profile_ref != scope.profile_ref
@@ -837,6 +889,7 @@ class SchoolResearchProgrammeCandidatePersistenceAdapter(SchoolResearchFeedbackP
             or scope.profile_ref != claim.profile_ref
             or scope.profile_version_number != claim.profile_version_number
             or scope.profile_sha256 != claim.profile_sha256
+            or scope.response_origin != claim.response_origin
         ):
             raise _conflict()
         return task, binding, profile, pin

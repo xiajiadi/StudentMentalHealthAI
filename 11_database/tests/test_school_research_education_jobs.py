@@ -31,6 +31,7 @@ from database_layer.models import (
 from database_layer.provenance import SYNTHETIC_SCHOOL_SEED_PROVENANCE_REF
 from database_layer.school_research_education_jobs import (
     STAFF_PROGRAMME_POLICY_VERSION,
+    ResearchEducationJobClaim,
     ResearchEducationJobErrorCode,
     SchoolResearchEducationJobRepository,
 )
@@ -371,6 +372,78 @@ def test_completed_session_outbox_is_idempotent_and_contains_no_content(session)
         ).publication_status
         == "not_approved_for_publication_or_operational_use"
     )
+
+
+def test_require_active_claim_returns_persisted_full_scope_and_rejects_stale_or_cross_school(
+    session,
+):
+    repo = _repo(session)
+    queued = _enqueue(
+        repo,
+        policy_version=STAFF_PROGRAMME_POLICY_VERSION,
+        policy_hash="9" * 64,
+    )
+    original = asyncio.run(
+        repo.claim_next(
+            school_id=1,
+            lease_owner="staff-programme-worker",
+            policy_version=STAFF_PROGRAMME_POLICY_VERSION,
+            now=_NOW,
+        )
+    )[0]
+
+    persisted = asyncio.run(
+        repo.require_active_claim(
+            school_id=original.school_id,
+            research_session_id=original.research_session_id,
+            job_id=original.id,
+            lease_owner=original.lease_owner,
+            lease_token=original.lease_token,
+            now=_NOW,
+        )
+    )
+
+    assert type(persisted) is ResearchEducationJobClaim
+    assert persisted.id == queued.id
+    assert persisted.task_id == 1
+    assert persisted.class_id == 1
+    assert persisted.task_enrollment_id == 1
+    assert persisted.subject_id == 1
+    assert persisted.task_binding_id == 1
+    assert persisted.profile_version_id == 1
+    assert persisted.profile_ref == "research-profile"
+    assert persisted.profile_version_number == 3
+    assert persisted.profile_sha256 == _PROFILE_SHA
+    assert persisted.response_origin == "PUBLIC_OBSERVED"
+    assert persisted.policy_hash == "9" * 64
+    assert persisted.lease_owner == original.lease_owner
+    assert persisted.lease_token == original.lease_token
+    assert persisted.status == "LEASED"
+    assert _PROFILE_SHA not in repr(persisted)
+    assert persisted.lease_token not in repr(persisted)
+
+    with pytest.raises(OptimisticConcurrencyConflict):
+        asyncio.run(
+            repo.require_active_claim(
+                school_id=2,
+                research_session_id=original.research_session_id,
+                job_id=original.id,
+                lease_owner=original.lease_owner,
+                lease_token=original.lease_token,
+                now=_NOW,
+            )
+        )
+    with pytest.raises(OptimisticConcurrencyConflict):
+        asyncio.run(
+            repo.require_active_claim(
+                school_id=original.school_id,
+                research_session_id=original.research_session_id,
+                job_id=original.id,
+                lease_owner=original.lease_owner,
+                lease_token=original.lease_token,
+                now=_NOW + timedelta(seconds=61),
+            )
+        )
 
 
 def test_enqueue_requires_completed_exact_scope_and_fixed_policy(session):

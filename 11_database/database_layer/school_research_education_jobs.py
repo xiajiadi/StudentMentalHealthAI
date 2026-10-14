@@ -451,6 +451,34 @@ class SchoolResearchEducationJobRepository:
         await self.session.flush()
         return _dto(job)
 
+    async def require_active_claim(
+        self,
+        *,
+        school_id: int,
+        research_session_id: int,
+        job_id: int,
+        lease_owner: str,
+        lease_token: str,
+        now: datetime | None = None,
+    ) -> ResearchEducationJobClaim:
+        """Load the persisted, full-scope claim while holding its live lease lock.
+
+        Callers may carry a deliberately smaller capability object. This method
+        resolves it back to the durable row in the current unit of work and only
+        returns a claim when the exact owner/token still holds an unexpired
+        LEASED row for the requested school, session, and job.
+        """
+        clock = _utc_naive(now)
+        job = await self._locked_lease(
+            school_id=school_id,
+            research_session_id=research_session_id,
+            job_id=job_id,
+            lease_owner=lease_owner,
+            lease_token=lease_token,
+            clock=clock,
+        )
+        return _claim(job)
+
     async def _locked_lease(
         self,
         *,
