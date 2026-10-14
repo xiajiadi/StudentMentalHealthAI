@@ -260,7 +260,7 @@ async def test_normal_path_returns_only_held_staff_reference_and_safety_order() 
     assert result.candidate.report is False
     assert result.candidate.programme_ref == "PROGRAMME_SCHOOL_CONNECTEDNESS_REFERENCE_V1"
     assert result.candidate.prompt_id == "PROMPT_staff_school_programme_research_v1"
-    assert result.candidate.prompt_version == "1.0.1"
+    assert result.candidate.prompt_version == PROMPT_VERSION
     assert len(result.candidate.prompt_sha256) == 64
     assert len(result.candidate.retrieval_bundle_sha256) == 64
     assert len(result.candidate.chunk_set_sha256) == 64
@@ -612,7 +612,7 @@ async def test_runtime_http_client_sends_fixed_nonstudent_route_and_validates_re
     assert result.retrieval_id == "RETR_test_001"
     assert result.prompt_id == "PROMPT_staff_school_programme_research_v1"
     assert result.prompt_version == PROMPT_VERSION
-    assert PROMPT_VERSION == "1.0.1"
+    assert PROMPT_VERSION == "1.0.2"
     assert "including in negative disclaimers" in captured[0]["messages"][0]["content"]
     assert result.prompt_sha256 == hashlib.sha256(
         json.dumps(

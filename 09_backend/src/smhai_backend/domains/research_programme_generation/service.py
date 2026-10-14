@@ -12,6 +12,8 @@ from smhai_backend.core.request_context import RequestContext
 from smhai_backend.domains.models import BackendRole
 from smhai_backend.integrations.research_programme import (
     EXPECTED_MODEL_DIGEST,
+    PROMPT_ID,
+    PROMPT_VERSION,
     RuntimeGeneration,
     RuntimeSource,
 )
@@ -429,8 +431,8 @@ def _valid_runtime_generation(
             or generated.model_id != "qwen2.5-7b-instruct-school-demo"
             or generated.model_version != "qwen2.5:7b-instruct-q4_K_M"
             or generated.model_digest != EXPECTED_MODEL_DIGEST
-            or generated.prompt_id != "PROMPT_staff_school_programme_research_v1"
-            or generated.prompt_version != "1.0.1"
+            or generated.prompt_id != PROMPT_ID
+            or generated.prompt_version != PROMPT_VERSION
             or _SHA256.fullmatch(generated.prompt_sha256) is None
             or generated.target_role != "psychological_specialist"
             or generated.purpose != "staff_school_programme_research"
