@@ -31,6 +31,12 @@ from .school_research_cohorts import (
     ResearchCohortRepositoryError,
     SchoolResearchCohortRepository,
 )
+from .school_research_education_jobs import (
+    ResearchEducationJobClaim,
+    ResearchEducationJobDTO,
+    ResearchEducationJobErrorCode,
+    SchoolResearchEducationJobRepository,
+)
 from .school_seed import (
     SCHOOL_SEED_SLOTS,
     SYNTHETIC_SCHOOL_RECIPES,
@@ -72,6 +78,10 @@ __all__ = [
     "ResearchCohortMetadata",
     "ResearchCohortRepositoryError",
     "SchoolResearchCohortRepository",
+    "ResearchEducationJobClaim",
+    "ResearchEducationJobDTO",
+    "ResearchEducationJobErrorCode",
+    "SchoolResearchEducationJobRepository",
     "WindowsDpapiKeyProvider",
     "create_engine",
     "create_session_factory",

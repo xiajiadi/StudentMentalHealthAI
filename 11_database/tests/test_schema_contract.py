@@ -52,7 +52,7 @@ from sqlalchemy.schema import CreateTable
 
 
 def test_domain_table_count_and_explicit_mysql_defaults() -> None:
-    assert len(Base.metadata.tables) == 49
+    assert len(Base.metadata.tables) == 50
     assert set(Base.metadata.tables) == {
         "accounts",
         "roles",
@@ -101,6 +101,7 @@ def test_domain_table_count_and_explicit_mysql_defaults() -> None:
         "school_research_cohorts",
         "school_research_cohort_batches",
         "school_research_cohort_assignments",
+        "school_research_education_jobs",
         "idempotency_records",
         "audit_events",
     }

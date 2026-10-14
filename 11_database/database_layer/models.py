@@ -2494,6 +2494,131 @@ class SchoolPostAssessmentJob(ResourceIdentityMixin, TimestampMixin, Base):
     last_error_code: Mapped[str | None] = mapped_column(ascii_id(128), nullable=True)
 
 
+class SchoolResearchEducationJob(ResourceIdentityMixin, TimestampMixin, Base):
+    """Content-free durable education-support work for a research CAT session.
+
+    This row deliberately references the exact research-session scope and has
+    no legacy assessment-session, response, snapshot, score, or case-index
+    field. Publication is permanently disabled at this persistence boundary.
+    """
+
+    __tablename__ = "school_research_education_jobs"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint(
+            "school_id",
+            "research_session_id",
+            "job_kind",
+            "policy_version",
+            name="school_research_education_job_idempotency_unique",
+        ),
+        CheckConstraint("job_kind = 'EDUCATION_SUPPORT'", name="job_kind_allowed"),
+        CheckConstraint(
+            "purpose = 'RESEARCH_SIMULATION'", name="purpose_research_only"
+        ),
+        CheckConstraint("research_only = 1", name="research_only_locked"),
+        CheckConstraint(
+            "publication_status = 'not_approved_for_publication_or_operational_use'",
+            name="publication_not_approved",
+        ),
+        CheckConstraint(
+            "response_origin IN ('PUBLIC_OBSERVED', 'MODEL_GENERATED')",
+            name="response_origin_allowed",
+        ),
+        CheckConstraint(
+            "status IN ('QUEUED', 'LEASED', 'RETRY', 'HELD', 'ABSTAINED', "
+            "'REVIEW_REQUIRED', 'CRISIS_ROUTED', 'FAILED', 'CANCELLED')",
+            name="status_allowed",
+        ),
+        CheckConstraint(
+            "attempt_count >= 0 AND attempt_count <= 20",
+            name="attempt_count_bounded",
+        ),
+        CheckConstraint(
+            "(status = 'LEASED' AND lease_owner IS NOT NULL "
+            "AND lease_expires_at IS NOT NULL AND lease_token IS NOT NULL) OR "
+            "(status <> 'LEASED' AND lease_owner IS NULL "
+            "AND lease_expires_at IS NULL AND lease_token IS NULL)",
+            name="lease_matches_status",
+        ),
+        CheckConstraint(
+            "status <> 'RETRY' OR next_attempt_at IS NOT NULL",
+            name="retry_has_next_attempt",
+        ),
+        Index(
+            "ix_school_research_education_jobs_claim",
+            "status",
+            "next_attempt_at",
+            "lease_expires_at",
+            "created_at",
+        ),
+        ForeignKeyConstraint(
+            [
+                "research_session_id", "school_id", "task_id", "class_id",
+                "task_enrollment_id", "subject_id", "task_binding_id",
+                "profile_version_id", "profile_ref", "profile_version_number",
+                "profile_sha256", "response_origin",
+            ],
+            [
+                "school_research_sessions.id", "school_research_sessions.school_id",
+                "school_research_sessions.task_id", "school_research_sessions.class_id",
+                "school_research_sessions.task_enrollment_id",
+                "school_research_sessions.subject_id",
+                "school_research_sessions.task_binding_id",
+                "school_research_sessions.profile_version_id",
+                "school_research_sessions.profile_ref",
+                "school_research_sessions.profile_version_number",
+                "school_research_sessions.profile_sha256",
+                "school_research_sessions.response_origin",
+            ],
+            name="fk_school_research_education_jobs_session_exact_scope",
+            ondelete="RESTRICT",
+        ),
+    )
+
+    job_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False, unique=True)
+    research_session_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    task_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    class_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    task_enrollment_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    subject_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    task_binding_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    profile_version_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    profile_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    profile_version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    profile_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    response_origin: Mapped[str] = mapped_column(ascii_id(32), nullable=False)
+    job_kind: Mapped[str] = mapped_column(
+        ascii_id(32), nullable=False, default="EDUCATION_SUPPORT",
+        server_default="EDUCATION_SUPPORT",
+    )
+    purpose: Mapped[str] = mapped_column(
+        ascii_id(32), nullable=False, default="RESEARCH_SIMULATION",
+        server_default="RESEARCH_SIMULATION",
+    )
+    research_only: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="1"
+    )
+    publication_status: Mapped[str] = mapped_column(
+        ascii_id(64), nullable=False,
+        default="not_approved_for_publication_or_operational_use",
+        server_default="not_approved_for_publication_or_operational_use",
+    )
+    policy_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    policy_hash: Mapped[str | None] = mapped_column(ascii_id(64), nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="QUEUED", server_default="QUEUED"
+    )
+    attempt_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    next_attempt_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    lease_owner: Mapped[str | None] = mapped_column(ascii_id(128), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    lease_token: Mapped[str | None] = mapped_column(ascii_id(128), nullable=True)
+    last_error_code: Mapped[str | None] = mapped_column(ascii_id(128), nullable=True)
+
+
 class IdempotencyRecord(ResourceIdentityMixin, TimestampMixin, Base):
     __tablename__ = "idempotency_records"
     __table_args__ = mysql_table_args(

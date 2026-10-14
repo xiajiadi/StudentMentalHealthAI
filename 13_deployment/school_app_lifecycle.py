@@ -2470,12 +2470,42 @@ def main(argv: list[str] | None = None) -> int:
             else 2
         )
     except Exception as exc:  # noqa: BLE001 - type-only diagnostics avoid secrets and child output.
+        failure_location = _safe_project_failure_location(exc)
         print(
             json.dumps(
-                {"status": "BLOCKED", "error_type": type(exc).__name__}, sort_keys=True
+                {
+                    "status": "BLOCKED",
+                    "error_type": type(exc).__name__,
+                    "diagnostic_stage": "cli_exception_boundary",
+                    "failure_location": failure_location,
+                },
+                sort_keys=True,
             )
         )
         return 2
+
+
+def _safe_project_failure_location(exc: BaseException) -> dict[str, str | int] | None:
+    """Project-only traceback location without messages, paths, or locals."""
+    try:
+        source_file = Path(__file__).resolve(strict=True)
+    except (OSError, RuntimeError, ValueError):
+        return None
+    selected_line: int | None = None
+    traceback = exc.__traceback__
+    while traceback is not None:
+        try:
+            frame_file = Path(traceback.tb_frame.f_code.co_filename).resolve(
+                strict=False
+            )
+        except (OSError, RuntimeError, ValueError):
+            frame_file = None
+        if frame_file == source_file and type(traceback.tb_lineno) is int:
+            selected_line = traceback.tb_lineno
+        traceback = traceback.tb_next
+    if selected_line is None:
+        return None
+    return {"file": Path(__file__).name, "line": selected_line}
 
 
 if __name__ == "__main__":

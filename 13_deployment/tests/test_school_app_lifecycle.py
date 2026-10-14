@@ -986,3 +986,112 @@ def test_backend_python_home_rejects_unknown_or_network_redirect(
         lifecycle.LifecycleError, match="local drive|cannot be verified"
     ):
         lifecycle._backend_python_paths(repo)
+
+
+def test_cli_failure_projection_reports_guard_location_without_changing_exit_code(
+    tmp_path, monkeypatch, capsys
+):
+    def fail_start(_self, *_args, **_kwargs):
+        lifecycle._validate_ports(8095, 8095)
+
+    monkeypatch.setattr(lifecycle.SchoolAppLifecycle, "start", fail_start)
+
+    result = lifecycle.main(
+        [
+            "start",
+            "--workspace",
+            str(tmp_path),
+            "--backend-port",
+            "8095",
+            "--frontend-port",
+            "8095",
+            "--frontend-mode",
+            "dev",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    location = payload["failure_location"]
+    assert result == 2
+    assert payload["status"] == "BLOCKED"
+    assert payload["error_type"] == "LifecycleError"
+    assert payload["diagnostic_stage"] == "cli_exception_boundary"
+    assert location["file"] == Path(lifecycle.__file__).name
+    assert lifecycle._validate_ports.__code__.co_firstlineno <= location["line"]
+    assert location["line"] < lifecycle._validate_research_port.__code__.co_firstlineno
+    assert "Distinct application ports" not in captured.out
+    assert str(tmp_path) not in captured.out
+    assert captured.err == ""
+
+
+def test_cli_failure_projection_never_emits_secret_exception_data(
+    tmp_path, monkeypatch, capsys
+):
+    secret = "synthetic-secret-error-text"
+
+    def fail_start(_self, *_args, **_kwargs):
+        raise RuntimeError(secret)
+
+    monkeypatch.setattr(lifecycle.SchoolAppLifecycle, "start", fail_start)
+    result = lifecycle.main(
+        [
+            "start",
+            "--workspace",
+            str(tmp_path),
+            "--frontend-mode",
+            "dev",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert result == 2
+    assert payload["status"] == "BLOCKED"
+    assert payload["error_type"] == "RuntimeError"
+    assert payload["diagnostic_stage"] == "cli_exception_boundary"
+    assert payload["failure_location"]["file"] == Path(lifecycle.__file__).name
+    assert secret not in captured.out
+    assert str(tmp_path) not in captured.out
+    assert captured.err == ""
+
+
+def test_safe_failure_location_omits_nonproject_traceback_paths():
+    try:
+        raise RuntimeError("synthetic external exception")
+    except RuntimeError as exc:
+        assert lifecycle._safe_project_failure_location(exc) is None
+
+
+def test_cli_failure_projection_survives_unresolvable_source_path(
+    tmp_path, monkeypatch, capsys
+):
+    path_type = type(Path(lifecycle.__file__))
+    original_resolve = path_type.resolve
+    source_path = Path(lifecycle.__file__)
+
+    def fail_source_resolve(path, *args, **kwargs):
+        if path == source_path:
+            raise OSError("synthetic secret source path")
+        return original_resolve(path, *args, **kwargs)
+
+    monkeypatch.setattr(path_type, "resolve", fail_source_resolve)
+    result = lifecycle.main(
+        [
+            "start",
+            "--workspace",
+            str(tmp_path),
+            "--frontend-mode",
+            "dev",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert result == 2
+    assert payload["status"] == "BLOCKED"
+    assert payload["error_type"] == "OSError"
+    assert payload["failure_location"] is None
+    assert "synthetic secret source path" not in captured.out
+    assert str(source_path) not in captured.out
+    assert captured.err == ""

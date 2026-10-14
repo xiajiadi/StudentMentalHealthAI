@@ -84,6 +84,19 @@ class _Uow:
         return False
 
 
+class _EducationJobs:
+    def __init__(self, transaction_order):
+        self.calls = []
+        self.transaction_order = transaction_order
+        self.failure = None
+
+    async def enqueue_completed_session(self, **kwargs):
+        self.calls.append(kwargs)
+        self.transaction_order.append("enqueue")
+        if self.failure is not None:
+            raise self.failure
+
+
 def _binding():
     return SimpleNamespace(
         binding_id=91,
@@ -305,6 +318,8 @@ class _Owner:
         self.completed = []
         self.role_calls = []
         self.factory_events = []
+        self.transaction_order = []
+        self.research_education_jobs = _EducationJobs(self.transaction_order)
         self._db_models = SimpleNamespace(
             SchoolResearchSession=_SessionRow,
             MeasurementTask=_MeasurementTask,
@@ -314,7 +329,9 @@ class _Owner:
 
     def _uow(self):
         existing = self.existing_rows.pop(0) if self.existing_rows else None
-        return _Uow(self.repo, existing=existing, events=self.events)
+        uow = _Uow(self.repo, existing=existing, events=self.events)
+        uow.research_education_jobs = self.research_education_jobs
+        return uow
 
     async def _school_idempotency_begin(self, _uow, _idempotency):
         self.repo.operations.append("idempotency-begin")
@@ -324,6 +341,7 @@ class _Owner:
 
     async def _school_idempotency_complete(self, _uow, claim, *, resource_type, result_ref):
         self.completed.append((claim, resource_type, result_ref))
+        self.transaction_order.append("idempotency_complete")
 
     async def _school_actor_role(self, _uow, actor, role_code, at, *, lock=False):
         self.role_calls.append((actor, role_code, at, lock))
@@ -595,8 +613,119 @@ async def test_commit_answer_uses_expected_state_version_cas_and_one_receipt(mon
     assert result.persisted and result.state_accepted and not result.replayed
     assert repo.save_calls[0]["expected_state_version"] == 4
     assert repo.save_calls[0]["signed_snapshot"]["signature"] == "f" * 64
+    assert owner.research_education_jobs.calls == [
+        {
+            "school_id": 10,
+            "research_session_id": 101,
+            "task_id": 20,
+            "class_id": 30,
+            "task_enrollment_id": 50,
+            "subject_id": 80,
+            "task_binding_id": 91,
+            "profile_version_id": 40,
+            "profile_ref": "profile-v1",
+            "profile_version_number": 1,
+            "profile_sha256": "c" * 64,
+            "response_origin": "PUBLIC_OBSERVED",
+            "policy_version": "NO_RESEARCH_PERSONALIZED_POLICY_V1",
+            "policy_hash": None,
+            "now": NOW,
+        }
+    ]
+    assert owner.transaction_order == ["enqueue", "idempotency_complete"]
     assert owner.completed[0][1:] == ("research_session", "session-ref")
     assert client.calls == [updated]
+
+
+@pytest.mark.asyncio
+async def test_commit_answer_intermediate_snapshot_does_not_enqueue_education_job(monkeypatch):
+    _install_scope(monkeypatch)
+    repo = _Repo(metadata=_metadata(state_version=4, items_answered=3))
+    repo.saved = _metadata(state_version=5, items_answered=4, status="IN_PROGRESS")
+    owner = _Owner(repo)
+    adapter, _client, _factory_calls = _adapter(owner)
+    plan = await adapter.prepare_answer(
+        _actor(),
+        "session-ref",
+        expected_state_version=4,
+        item_id="item-1",
+        raw_value=1,
+        at=NOW,
+        idempotency=IDEMPOTENCY,
+    )
+
+    result = await adapter.commit_answer(
+        _actor(), plan, _state(items_answered=4, status="ACTIVE"), at=NOW, idempotency=IDEMPOTENCY
+    )
+
+    assert result.metadata.status == "IN_PROGRESS"
+    assert not owner.research_education_jobs.calls
+    assert owner.transaction_order == ["idempotency_complete"]
+
+
+@pytest.mark.asyncio
+async def test_commit_answer_outbox_failure_rolls_back_completed_snapshot(monkeypatch):
+    _install_scope(monkeypatch)
+    repo = _Repo(metadata=_metadata(state_version=4, items_answered=3))
+    owner = _Owner(repo)
+    owner.research_education_jobs.failure = RuntimeError("private outbox detail")
+    adapter, _client, _factory_calls = _adapter(owner)
+    plan = await adapter.prepare_answer(
+        _actor(),
+        "session-ref",
+        expected_state_version=4,
+        item_id="item-1",
+        raw_value=1,
+        at=NOW,
+        idempotency=IDEMPOTENCY,
+    )
+
+    with pytest.raises(BackendError) as exc_info:
+        await adapter.commit_answer(
+            _actor(),
+            plan,
+            _state(items_answered=4, status="COMPLETED"),
+            at=NOW,
+            idempotency=IDEMPOTENCY,
+        )
+
+    assert exc_info.value.code is ErrorCode.DEPENDENCY_UNAVAILABLE
+    assert "private outbox detail" not in exc_info.value.detail
+    assert len(owner.research_education_jobs.calls) == 1
+    assert not owner.completed
+    assert owner.events[-1] == "rollback"
+    assert owner.transaction_order == ["enqueue"]
+
+
+@pytest.mark.asyncio
+async def test_commit_answer_missing_outbox_fails_closed_and_rolls_back(monkeypatch):
+    _install_scope(monkeypatch)
+    repo = _Repo(metadata=_metadata(state_version=4, items_answered=3))
+    owner = _Owner(repo)
+    owner.research_education_jobs = None
+    adapter, _client, _factory_calls = _adapter(owner)
+    plan = await adapter.prepare_answer(
+        _actor(),
+        "session-ref",
+        expected_state_version=4,
+        item_id="item-1",
+        raw_value=1,
+        at=NOW,
+        idempotency=IDEMPOTENCY,
+    )
+
+    with pytest.raises(BackendError) as exc_info:
+        await adapter.commit_answer(
+            _actor(),
+            plan,
+            _state(items_answered=4, status="COMPLETED"),
+            at=NOW,
+            idempotency=IDEMPOTENCY,
+        )
+
+    assert exc_info.value.code is ErrorCode.DEPENDENCY_UNAVAILABLE
+    assert not owner.completed
+    assert owner.events[-1] == "rollback"
 
 
 @pytest.mark.asyncio
@@ -627,6 +756,7 @@ async def test_commit_answer_race_replay_reauthorizes_but_does_not_verify_or_sav
     assert result.metadata.state_version == 5
     assert not client.calls
     assert not repo.save_calls
+    assert not owner.research_education_jobs.calls
     assert repo.guard_calls
 
 

@@ -27,6 +27,7 @@ from school_schema import (
     PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
     RESEARCH_CAT_SESSIONS_REVISION,
     RESEARCH_COHORTS_REVISION,
+    RESEARCH_EDUCATION_JOBS_REVISION,
     RESEARCH_PARAMETER_PROVENANCE_REVISION,
     SCHOOL_FEEDBACK_PUBLICATION_REVISION,
     SCHOOL_REVISION_CHAIN,
@@ -60,7 +61,7 @@ def test_current_snapshot_requires_its_exact_table_layout_and_revision():
     package["tables"][restore_plan.REVISION_TABLE]["rows"] = [[CURRENT_SCHOOL_REVISION]]
     plan = restore_plan.plan_restore(package, restored_at=RESTORED_AT)
     assert plan["revision"] == CURRENT_SCHOOL_REVISION
-    assert len(plan["table_order"]) == 49
+    assert len(plan["table_order"]) == 50
     package["revision"] = SUPPORTED_REVISION
     with pytest.raises(ValueError, match="manifest mismatch"):
         restore_plan.plan_restore(package, restored_at=RESTORED_AT)
@@ -296,8 +297,9 @@ def test_research_revision_adds_three_isolated_tables_and_preserves_0011_layout(
 
 def test_parameter_provenance_revision_preserves_0012_snapshot_shape():
     assert RESEARCH_PARAMETER_PROVENANCE_REVISION in SCHOOL_REVISION_CHAIN
-    assert CURRENT_SCHOOL_REVISION == RESEARCH_COHORTS_REVISION
-    assert SCHOOL_REVISION_CHAIN[-2] == PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION
+    assert CURRENT_SCHOOL_REVISION == RESEARCH_EDUCATION_JOBS_REVISION
+    assert SCHOOL_REVISION_CHAIN[-2] == RESEARCH_COHORTS_REVISION
+    assert SCHOOL_REVISION_CHAIN[-1] == RESEARCH_EDUCATION_JOBS_REVISION
     old = restore_plan._load_trusted_tables(RESEARCH_CAT_SESSIONS_REVISION)
     current = restore_plan._load_trusted_tables(RESEARCH_PARAMETER_PROVENANCE_REVISION)
     assert set(old) == set(current) and len(current) == 46
@@ -377,9 +379,9 @@ def test_public_observed_revision_preserves_0013_snapshots_and_adds_exact_assign
 
 def test_sealed_cohort_revision_preserves_0014_snapshot_and_adds_only_cohort_projection():
     assert RESEARCH_COHORTS_REVISION in SCHOOL_REVISION_CHAIN
-    assert CURRENT_SCHOOL_REVISION == RESEARCH_COHORTS_REVISION
-    assert SCHOOL_REVISION_CHAIN[-2] == PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION
-    assert SCHOOL_REVISION_CHAIN[-1] == RESEARCH_COHORTS_REVISION
+    assert CURRENT_SCHOOL_REVISION == RESEARCH_EDUCATION_JOBS_REVISION
+    assert SCHOOL_REVISION_CHAIN[-2] == RESEARCH_COHORTS_REVISION
+    assert SCHOOL_REVISION_CHAIN[-1] == RESEARCH_EDUCATION_JOBS_REVISION
 
     previous = restore_plan._load_trusted_tables(PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION)
     current = restore_plan._load_trusted_tables(RESEARCH_COHORTS_REVISION)
@@ -437,6 +439,112 @@ def test_sealed_cohort_revision_preserves_0014_snapshot_and_adds_only_cohort_pro
     assert order.index("school_research_cohort_assignments") < order.index(assignment_name)
     assert order.index("school_research_cohorts") < order.index(binding_name)
     assert order.index(binding_name) < order.index(assignment_name)
+
+
+def test_research_education_jobs_revision_adds_one_table_and_preserves_0015_rows():
+    assert RESEARCH_EDUCATION_JOBS_REVISION in SCHOOL_REVISION_CHAIN
+    assert RESEARCH_EDUCATION_JOBS_REVISION in SUPPORTED_SNAPSHOT_REVISIONS
+    assert CURRENT_SCHOOL_REVISION == RESEARCH_EDUCATION_JOBS_REVISION
+    assert SCHOOL_REVISION_CHAIN[-2] == RESEARCH_COHORTS_REVISION
+
+    previous = restore_plan._load_trusted_tables(RESEARCH_COHORTS_REVISION)
+    current = restore_plan._load_trusted_tables(RESEARCH_EDUCATION_JOBS_REVISION)
+    job_table = "school_research_education_jobs"
+    assert len(previous) == 50
+    assert len(current) == 51
+    assert set(current) - set(previous) == {job_table}
+    assert all(current[name] == spec for name, spec in previous.items())
+
+    job = current[job_table]
+    assert job.columns == (
+        "job_ref", "research_session_id", "school_id", "task_id", "class_id",
+        "task_enrollment_id", "subject_id", "task_binding_id", "profile_version_id",
+        "profile_ref", "profile_version_number", "profile_sha256", "response_origin",
+        "job_kind", "purpose", "research_only", "publication_status", "policy_version",
+        "policy_hash", "status", "attempt_count", "next_attempt_at", "lease_owner",
+        "lease_expires_at", "lease_token", "last_error_code", "id", "public_id",
+        "created_at", "updated_at",
+    )
+    assert job.primary_key == ("id",)
+    assert job.nullable_columns == frozenset(
+        {
+            "policy_hash", "next_attempt_at", "lease_owner", "lease_expires_at",
+            "lease_token", "last_error_code",
+        }
+    )
+    exact_scope = (
+        "research_session_id", "school_id", "task_id", "class_id",
+        "task_enrollment_id", "subject_id", "task_binding_id", "profile_version_id",
+        "profile_ref", "profile_version_number", "profile_sha256", "response_origin",
+    )
+    session_fk = next(fk for fk in job.foreign_keys if fk.remote_table == "school_research_sessions")
+    assert session_fk.local_columns == exact_scope
+    assert session_fk.remote_columns == ("id", *exact_scope[1:])
+
+    for older_revision in (
+        PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
+        RESEARCH_COHORTS_REVISION,
+    ):
+        assert job_table not in restore_plan._load_trusted_tables(older_revision)
+
+    old_package = empty_package()
+    old_package["revision"] = RESEARCH_COHORTS_REVISION
+    old_package["tables"] = {
+        name: {
+            "create_sql": "opaque archived DDL",
+            "columns": list(spec.columns),
+            "rows": [],
+        }
+        for name, spec in previous.items()
+    }
+    old_package["tables"][restore_plan.REVISION_TABLE]["rows"] = [
+        [RESEARCH_COHORTS_REVISION]
+    ]
+    school_spec = previous["schools"]
+    school_row = {
+        column: (
+            5001 if column == "id"
+            else STAMP if column in {"created_at", "updated_at"}
+            else None if column in school_spec.nullable_columns
+            else "synthetic-preserved"
+        )
+        for column in school_spec.columns
+    }
+    add_row(old_package, "schools", school_row)
+    original_school_rows = deepcopy(old_package["tables"]["schools"]["rows"])
+    old_plan = restore_plan.plan_restore(old_package, restored_at=RESTORED_AT)
+    assert old_package["tables"]["schools"]["rows"] == original_school_rows
+    assert old_plan["revision"] == RESEARCH_COHORTS_REVISION
+    assert len(old_plan["table_order"]) == 49
+    assert job_table not in old_plan["tables"]
+    restored_school_columns = old_plan["tables"]["schools"]["columns"]
+    restored_school_row = dict(
+        zip(restored_school_columns, old_plan["tables"]["schools"]["rows"][0])
+    )
+    assert restored_school_row == school_row
+
+    current_package = empty_package()
+    current_package["revision"] = RESEARCH_EDUCATION_JOBS_REVISION
+    current_package["tables"] = {
+        name: {
+            "create_sql": "opaque archived DDL",
+            "columns": list(spec.columns),
+            "rows": [],
+        }
+        for name, spec in current.items()
+    }
+    current_package["tables"][restore_plan.REVISION_TABLE]["rows"] = [
+        [RESEARCH_EDUCATION_JOBS_REVISION]
+    ]
+    current_plan = restore_plan.plan_restore(
+        current_package, restored_at=RESTORED_AT
+    )
+    assert current_plan["revision"] == RESEARCH_EDUCATION_JOBS_REVISION
+    assert len(current_plan["table_order"]) == 50
+    assert current_plan["row_counts"][job_table] == 0
+    assert current_plan["table_order"].index("school_research_sessions") < current_plan[
+        "table_order"
+    ].index(job_table)
 
 
 def empty_package():

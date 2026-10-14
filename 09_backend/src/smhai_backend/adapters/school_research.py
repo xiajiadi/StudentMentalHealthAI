@@ -35,6 +35,7 @@ from smhai_backend.domains.school_research.study_use import (
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _RESOURCE_TYPE = "research_session"
+_EDUCATION_JOB_POLICY_VERSION = "NO_RESEARCH_PERSONALIZED_POLICY_V1"
 _NOT_FOUND_CODES = frozenset(
     {
         "RESEARCH_PROFILE_NOT_FOUND",
@@ -539,6 +540,30 @@ class SchoolResearchPersistenceAdapter:
                     != ("COMPLETED" if state.status == "COMPLETED" else "IN_PROGRESS")
                 ):
                     raise _conflict_error()
+                if metadata.status == "COMPLETED":
+                    education_jobs = getattr(uow, "research_education_jobs", None)
+                    enqueue_completed_session = getattr(
+                        education_jobs, "enqueue_completed_session", None
+                    )
+                    if not callable(enqueue_completed_session):
+                        raise _dependency_error()
+                    await enqueue_completed_session(
+                        school_id=metadata.school_id,
+                        research_session_id=metadata.session_id,
+                        task_id=metadata.task_id,
+                        class_id=metadata.class_id,
+                        task_enrollment_id=metadata.task_enrollment_id,
+                        subject_id=metadata.subject_id,
+                        task_binding_id=metadata.task_binding_id,
+                        profile_version_id=metadata.profile_version_id,
+                        profile_ref=metadata.profile_ref,
+                        profile_version_number=metadata.profile_version_number,
+                        profile_sha256=metadata.profile_sha256,
+                        response_origin=metadata.response_origin,
+                        policy_version=_EDUCATION_JOB_POLICY_VERSION,
+                        policy_hash=None,
+                        now=at,
+                    )
                 await self._owner._school_idempotency_complete(
                     uow,
                     claim,

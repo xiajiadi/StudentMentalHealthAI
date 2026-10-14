@@ -41,7 +41,7 @@ def _load_0012_migration():
 
 
 def test_profile_parameter_provenance_schema_is_additive_locked_and_mysql_compilable():
-    assert len(Base.metadata.tables) == 49
+    assert len(Base.metadata.tables) == 50
     table = SchoolResearchProfileVersion.__table__
     assert table.c.fit_sha256.nullable is True
     assert table.c.calibration_sha256.nullable is True
