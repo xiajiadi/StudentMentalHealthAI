@@ -8,6 +8,7 @@ grants rights, enables execution, or publishes a profile.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -73,6 +74,32 @@ class SchoolResearchProfileEligibilityView:
     catalog_state: str
 
 
+@dataclass(frozen=True, slots=True)
+class SchoolResearchProfileVersionView:
+    """Persisted registration metadata only; use eligibility is always rechecked."""
+
+    profile_ref: str
+    version_number: int
+    source_population_scope: str
+    instrument_id: str
+    research_only: bool
+    publication_status: str
+    rights_status: str
+    execution_status: str
+    created_at: datetime
+    use_eligibility: str = "RECHECK_REQUIRED"
+
+
+@dataclass(frozen=True, slots=True)
+class SchoolResearchProfileVersionPage:
+    items: tuple[SchoolResearchProfileVersionView, ...]
+    total: int
+    limit: int
+    offset: int
+    has_more: bool
+    next_offset: int | None
+
+
 class SchoolResearchProfilesPersistenceAdapter:
     """School-local researcher profile catalog and candidate persistence."""
 
@@ -117,6 +144,98 @@ class SchoolResearchProfilesPersistenceAdapter:
                     success_result=self._owner._db_enums.AuditResult.SUCCESS,
                 )
                 return views
+        except BackendError:
+            raise
+        except SchoolResearchCatalogError:
+            raise _not_found() from None
+        except Exception:
+            raise _dependency_error() from None
+
+    async def list_profile_versions(
+        self, actor: Actor, profile_ref: str, *, limit: int, offset: int
+    ) -> SchoolResearchProfileVersionPage:
+        """List one registered profile's same-school versions without payload columns."""
+
+        _require_actor(actor)
+        at = _database_utc(self._owner._utc_now())
+        from sqlalchemy import func
+
+        try:
+            async with self._owner._uow() as uow:
+                actor_account_id, _role_id = await self._authorize(uow, actor, at)
+                # Authenticate the persisted specialist role before consulting
+                # the caller-selected registry reference or querying versions.
+                _validate_profile_page(profile_ref, limit, offset)
+                if actor.school_id != self._catalog.school_id:
+                    raise _not_found()
+                selection = self._catalog.select_profile(
+                    profile_ref, school_id=actor.school_id
+                )
+                if type(selection) is not ResearchProfileSelection:
+                    raise _not_found()
+
+                model = self._owner._db_models.SchoolResearchProfileVersion
+                scope = (
+                    model.school_id == actor.school_id,
+                    model.profile_ref == profile_ref,
+                )
+                total = int(
+                    await uow.session.scalar(
+                        self._owner._select(func.count())
+                        .select_from(model)
+                        .where(*scope)
+                    )
+                    or 0
+                )
+                result = await uow.session.execute(
+                    self._owner._select(
+                        model.profile_ref,
+                        model.version_number,
+                        model.source_population_scope,
+                        model.instrument_id,
+                        model.research_only,
+                        model.publication_status,
+                        model.rights_status,
+                        model.execution_status,
+                        model.created_at,
+                    )
+                    .where(*scope)
+                    .order_by(model.version_number.desc())
+                    .offset(offset)
+                    .limit(limit)
+                )
+                items = tuple(
+                    SchoolResearchProfileVersionView(
+                        profile_ref=row.profile_ref,
+                        version_number=row.version_number,
+                        source_population_scope=row.source_population_scope,
+                        instrument_id=row.instrument_id,
+                        research_only=row.research_only,
+                        publication_status=row.publication_status,
+                        rights_status=row.rights_status,
+                        execution_status=row.execution_status,
+                        created_at=row.created_at,
+                    )
+                    for row in result.all()
+                )
+                has_more = offset + len(items) < total
+                await _audit(
+                    uow,
+                    actor_account_id=actor_account_id,
+                    action="school_research_profiles.versions.list",
+                    resource_ref=profile_ref,
+                    trace_id=get_request_context().trace_id,
+                    state="READ",
+                    success_result=self._owner._db_enums.AuditResult.SUCCESS,
+                )
+                return SchoolResearchProfileVersionPage(
+                    items=items,
+                    total=total,
+                    limit=limit,
+                    offset=offset,
+                    has_more=has_more,
+                    next_offset=(offset + len(items) if has_more else None),
+                )
         except BackendError:
             raise
         except SchoolResearchCatalogError:
@@ -641,6 +760,18 @@ def _database_utc(value: datetime) -> datetime:
 def _validate_version(value: object) -> None:
     if type(value) is not int or not 1 <= value <= 2_147_483_647:
         raise error(ErrorCode.VALIDATION_FAILED, detail="profile version is invalid")
+
+
+def _validate_profile_page(profile_ref: object, limit: object, offset: object) -> None:
+    if (
+        type(profile_ref) is not str
+        or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}", profile_ref) is None
+        or type(limit) is not int
+        or not 1 <= limit <= 30
+        or type(offset) is not int
+        or not 0 <= offset <= 10_000
+    ):
+        raise error(ErrorCode.VALIDATION_FAILED, detail="research version query is invalid")
 
 
 def _validate_idempotency(value: object) -> None:

@@ -19,6 +19,7 @@ import type {
   AssessmentState,
   AssessmentListParams,
   ResearchAnswerInput,
+  ResearchTaskPublishInput,
   FrontendApi,
   LoginInput,
   LoginResult,
@@ -175,6 +176,43 @@ export class MockApiProvider implements FrontendApi {
     _idempotencyKey: string,
   ): Promise<never> {
     throw new MockApiError('RESEARCH_SERVICE_UNAVAILABLE', '当前演示环境没有研究会话服务；答案不会在本地模拟保存。')
+  }
+
+  async listResearchProfileCatalog(): Promise<never> {
+    throw new MockApiError('RESEARCH_SERVICE_UNAVAILABLE', '当前演示环境没有研究资料目录；不会用虚构资料代替服务端候选。')
+  }
+
+  async listResearchProfileVersions(
+    _profileRef: string,
+  ): Promise<never> {
+    throw new MockApiError('RESEARCH_SERVICE_UNAVAILABLE', '当前演示环境没有已登记资料版本目录；不会用虚构状态代替服务端记录。')
+  }
+
+  async importResearchProfile(
+    _profileRef: string,
+    _versionNumber: number,
+    _idempotencyKey: string,
+  ): Promise<never> {
+    throw new MockApiError('RESEARCH_SERVICE_UNAVAILABLE', '当前演示环境没有研究资料导入服务；不会创建模拟候选。')
+  }
+
+  async enableResearchProfileSimulation(
+    _profileRef: string,
+    _versionNumber: number,
+    _idempotencyKey: string,
+  ): Promise<never> {
+    throw new MockApiError('RESEARCH_SERVICE_UNAVAILABLE', '当前演示环境没有研究仿真资格服务；不会模拟资格回执。')
+  }
+
+  async listResearchTaskCatalog(): Promise<never> {
+    throw new MockApiError('RESEARCH_SERVICE_UNAVAILABLE', '当前演示环境没有研究任务目录；不会用虚构绑定代替服务端选择项。')
+  }
+
+  async publishResearchTask(
+    _input: ResearchTaskPublishInput,
+    _idempotencyKey: string,
+  ): Promise<never> {
+    throw new MockApiError('RESEARCH_SERVICE_UNAVAILABLE', '当前演示环境没有研究任务发布服务；不会创建模拟任务。')
   }
 
   async submitAssessmentResponse(assessmentId: string, itemId: string, response: string): Promise<ApiEnvelope<AssessmentState>> {

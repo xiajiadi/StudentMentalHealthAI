@@ -56,6 +56,37 @@ class ResearchProfileCandidateDto(ResearchProfileOutput):
     ]
 
 
+class ResearchProfileVersionDto(ResearchProfileOutput):
+    """Safe database registration metadata; it is not a live use authorization."""
+
+    profile_ref: StrictStr = Field(min_length=1, max_length=128)
+    version_number: StrictInt = Field(ge=1, le=2_147_483_647)
+    source_population_scope: StrictStr = Field(min_length=1, max_length=64)
+    instrument_id: StrictStr = Field(min_length=1, max_length=128)
+    research_only: Literal[True]
+    publication_status: Literal["not_approved_for_publication_or_operational_use"]
+    rights_status: Literal["PENDING", "VERIFIED", "REVOKED"]
+    execution_status: Literal[
+        "CANDIDATE_RESEARCH_ONLY", "SIMULATION_ENABLED", "DISABLED"
+    ]
+    created_at: datetime
+    use_eligibility: Literal["RECHECK_REQUIRED"] = Field(
+        description=(
+            "Persisted registration status only. Policy and current eligibility must be "
+            "rechecked before each use; SIMULATION_ENABLED alone does not authorize use."
+        )
+    )
+
+
+class ResearchProfileVersionPageDto(ResearchProfileOutput):
+    items: list[ResearchProfileVersionDto] = Field(max_length=30)
+    total: StrictInt = Field(ge=0)
+    limit: StrictInt = Field(ge=1, le=30)
+    offset: StrictInt = Field(ge=0, le=10_000)
+    has_more: bool
+    next_offset: StrictInt | None = Field(ge=0)
+
+
 class ResearchProfileSimulationEligibilityDto(ResearchProfileOutput):
     profile_ref: StrictStr = Field(min_length=1, max_length=128)
     version_number: StrictInt = Field(ge=1, le=2_147_483_647)

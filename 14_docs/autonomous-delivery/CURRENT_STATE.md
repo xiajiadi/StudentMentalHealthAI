@@ -1,4 +1,75 @@
-## ACTIVE — 2026-10-14, installed services and browser receipt verified
+## ACTIVE — 2026-10-14, source-bound native research workflow verified
+
+Canonical isolated workspace L: D:/Projects/.StudentMentalHealthAI-school-install-20261014-l,
+workspace_id c928c99adc092f4511d671421aadf8bb, DB3320/schema0014. K applications
+remain stopped; K DB3319, sealed backup and all earlier workspaces are preserved.
+L forward restore imported19850 rows/47 ciphertexts and revoked3 auth sessions.
+Restore phase remains DATA_KEYS_RUNTIME_VERIFIED_REQUIRES_BROWSER, not full acceptance.
+
+Source8456d5f is committed/pushed only to xiajiadi/autonomous-delivery-20261011.
+Actual current-source authenticated ASGI + L MySQL + owned CAT verified one newly
+assigned public-observed case: wrong valid-category answer rejected409 before
+binding decrypt/client construction; four exact observed answers, persisted resume,
+four remaining answers and L1 completion. Scoped readback: assignment1/session1/
+completed1/items8, encrypted snapshot present, zero legacy sessions for the new task.
+No raw responses, case indices, credentials or snapshots appear in proof output.
+D:/Dev/temp/psynova-research-task-native-api-20261014-l0014-r3.json,
+SHA225a865b26e090c5afbdbe3d8c1fa0c44f76f6c7bc009814f94a0e58f88a09e4.
+R1 startup revision mismatch was fixed in8456d5f; R2 helper user-reference mismatch
+was fixed before R3. Failed proofs remain intact. The harness child stopped and
+all harness sessions logged out inside application lifespan.
+
+L apps API8094/UI4184 were started from8456d5f. Read-only actual Edge management
+checks verified specialist catalog/admin choices and logout/auth401; zero profile
+import/enable/task publish mutations. Safe screenshots and aggregate are under
+L/browser-qa/20261014T050536Z-4f085cb1f8014277b625af1e49953dcc.
+Lifecycle whole_ready remains false; external modules remain UNVERIFIED.
+
+Research management increment: registered-version metadata API (specialist only,
+school-scoped, closed query, no protected payload columns), existing specialist/admin
+UI with fresh context/request handling, and completed-receipt lookup before resume.
+Root43 targeted API/adapter/audit tests plus frontend typecheck/lint passed.
+Actual Edge imported v4 once, enabled it once and published one small fixture task.
+The harness later hit incorrect UI locators, not failed mutation responses; failed
+proofs are preserved and no mutation was repeated to conceal them. Read-only L
+MySQL readback confirms v4 VERIFIED/SIMULATION_ENABLED, one published task, one
+active enrollment and one validated source-bound assignment, zero legacy sessions.
+D:/Dev/temp/psynova-l0014-research-task-readback-20261014-r2.json,
+SHA6a5b32d6c8b837988fc394b29f87cc352f1196200c8d30ecb6d6b493091b5180.
+
+Actual Edge read-only r6 verifies specialist v3/v4 version selection, admin existing
+class/binding selection, two completed student records and own L1 receipt refresh;
+zero resume/import/enable/publish POSTs in this separate read-only proof. Root viewed
+all three cropped screenshots, no answers/scores/credentials displayed. Artifact:
+L/browser-qa/20261014T060330Z-7d3af0d9144b4f82b448d039503b0142/browser-evidence.json.
+The old completed record has NULL corpus pins, not NULL session binding/profile
+references; receipt lookup remains valid without weakening current eligibility.
+Independent QA found and the frontend owner fixed the receipt class label to use
+its own class_ref, not a changed current selection. L controlled rebuild/restart
+includes the patch; actual post-restart Edge read-only verification passed at
+L/browser-qa/20261014T060651Z-ea6e31ba582a42ed85962b2105e401d5.
+Current Backend listener3160/launcher44560, UI18540, owned research CAT32984.
+The class-switch receipt behavior has not been browser-tested; its source fix
+and existing task DB receipt are separate evidence, not an end-to-end assertion. Whole_ready
+and professional/publication approvals remain false.
+
+Next cohort increment must seal one server-owned subject/case map across actual
+account import batches/classes:800 distinct fictional subjects matched to all800
+public cases, reused across task creation without reshuffling. Task-level independent
+permutations do not establish800 distinct observations. Design is recorded in
+EMPIRICAL_SCHOOL_SIMULATION. Isolated implementation is in progress in
+D:/Dev/projects/psynova-research-cohort-20261014 at base8456d5f, branch
+xiajiadi/research-cohort-20261014. DB owner handles0015 sealed map, a separate owner
+handles revision/forward-restore compatibility; Root owns closed cohort API.
+No0015 runtime migration or online800 acceptance has been performed.
+
+No deadline. User requests autonomous continuation without routine confirmation.
+Online800, real reviewed three-layer RAG, local7B research-report/review workflow,
+full browser restore and final engineering acceptance remain incomplete. Source
+rights/study-use checks are enforced; professional/ethics/publication approvals
+remain false. Goal and runner remain active.
+
+## Prior checkpoint — installed services and browser receipt verified
 
 Root committed/pushed backend discovery and installed study configuration0095f55,
 then student research pages8339748; only the dedicated development branch changed.

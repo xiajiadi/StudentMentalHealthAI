@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
@@ -24,6 +24,8 @@ from .schemas import (
     ResearchProfileImportRequest,
     ResearchProfileSimulationEligibilityDto,
     ResearchProfileSimulationEligibilityRequest,
+    ResearchProfileVersionDto,
+    ResearchProfileVersionPageDto,
 )
 
 router = APIRouter(prefix="/school/research-profiles", tags=["school-research-profiles"])
@@ -129,6 +131,57 @@ async def list_research_profile_catalog(request: Request, actor: CurrentActor):
     _require_specialist(actor)
     service = _configured_service(request)
     return _response(request, await service.list_profiles(actor), many=True)
+
+
+def _require_closed_version_query(request: Request) -> None:
+    parameters = request.query_params
+    allowed = {"profile_ref", "limit", "offset"}
+    if set(parameters) - allowed or any(
+        len(parameters.getlist(name)) != 1 for name in parameters
+    ):
+        raise error(ErrorCode.VALIDATION_FAILED, detail="research version query is invalid")
+
+
+@router.get(
+    "/versions",
+    response_model=ApiEnvelope[ResearchProfileVersionPageDto],
+    responses=_ERRORS,
+)
+async def list_research_profile_versions(
+    request: Request,
+    actor: CurrentActor,
+    profile_ref: str = Query(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
+    ),
+    limit: int = Query(default=30, ge=1, le=30),
+    offset: int = Query(default=0, ge=0, le=10_000),
+):
+    _require_specialist(actor)
+    _require_closed_version_query(request)
+    page = await _configured_service(request).list_profile_versions(
+        actor, profile_ref, limit=limit, offset=offset
+    )
+    projected_page = {
+        "items": [ResearchProfileVersionDto.model_validate(item) for item in page.items],
+        "total": page.total,
+        "limit": page.limit,
+        "offset": page.offset,
+        "has_more": page.has_more,
+        "next_offset": page.next_offset,
+    }
+    data = ResearchProfileVersionPageDto.model_validate(projected_page).model_dump(
+        mode="json"
+    )
+    context = current_request_context(request)
+    return JSONResponse(
+        {
+            "request_id": context.request_id,
+            "trace_id": context.trace_id,
+            "data": jsonable_encoder(data),
+        }
+    )
 
 
 @router.post(

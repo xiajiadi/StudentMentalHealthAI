@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
+import sys
 from contextlib import asynccontextmanager
 from dataclasses import FrozenInstanceError, asdict
 from datetime import UTC, datetime, timedelta, timezone
@@ -139,6 +140,87 @@ class _Uow:
     def __init__(self, repo: _ResearchRepo) -> None:
         self.research_cat = repo
         self.audit = _Audit()
+
+
+class _QueryExpression:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    def __eq__(self, value):
+        return (self.name, value)
+
+    def desc(self):
+        return (self.name, "DESC")
+
+
+class _QueryStatement:
+    def __init__(self, columns) -> None:
+        self.columns = columns
+        self.source = None
+        self.filters = ()
+        self.ordering = ()
+        self.page_offset = None
+        self.page_limit = None
+
+    def select_from(self, source):
+        self.source = source
+        return self
+
+    def where(self, *filters):
+        self.filters += filters
+        return self
+
+    def order_by(self, *ordering):
+        self.ordering = ordering
+        return self
+
+    def offset(self, value):
+        self.page_offset = value
+        return self
+
+    def limit(self, value):
+        self.page_limit = value
+        return self
+
+
+class _VersionModel:
+    __tablename__ = "school_research_profile_versions"
+
+    school_id = _QueryExpression("school_id")
+    profile_ref = _QueryExpression("profile_ref")
+    version_number = _QueryExpression("version_number")
+    source_population_scope = _QueryExpression("source_population_scope")
+    instrument_id = _QueryExpression("instrument_id")
+    research_only = _QueryExpression("research_only")
+    publication_status = _QueryExpression("publication_status")
+    rights_status = _QueryExpression("rights_status")
+    execution_status = _QueryExpression("execution_status")
+    created_at = _QueryExpression("created_at")
+    # These columns exist on the actual table and must not enter either SELECT.
+    profile_sha256 = _QueryExpression("profile_sha256")
+    manifest_sha256 = _QueryExpression("manifest_sha256")
+    payload_ciphertext = _QueryExpression("payload_ciphertext")
+    key_version = _QueryExpression("key_version")
+    cat_config = _QueryExpression("cat_config")
+    case_index = _QueryExpression("case_index")
+    subject_id = _QueryExpression("subject_id")
+
+
+class _VersionQuerySession:
+    def __init__(self, rows) -> None:
+        self.rows = rows
+        self.statements = []
+
+    async def scalar(self, statement):
+        self.statements.append(statement)
+        return len(self.rows)
+
+    async def execute(self, statement):
+        self.statements.append(statement)
+        start = statement.page_offset or 0
+        stop = start + statement.page_limit if statement.page_limit is not None else None
+        page = self.rows[start:stop]
+        return SimpleNamespace(all=lambda: page)
 
 
 class _Owner:
@@ -405,6 +487,115 @@ async def test_list_profiles_returns_catalog_candidates_after_specialist_authori
         {"profile_sha256", "manifest_sha256", "raw_profile_bytes", "school_id"}
         & set(asdict(candidate))
     )
+
+
+@pytest.mark.asyncio
+async def test_list_profile_versions_queries_only_safe_metadata_after_persisted_role(
+    monkeypatch,
+) -> None:
+    import types
+
+    rows = [
+        SimpleNamespace(
+            profile_ref=PROFILE_REF,
+            version_number=4,
+            source_population_scope="PROMIS_US_GENPOP_CHILD_SELF_REPORT_8_17",
+            instrument_id="PROMIS_PEDIATRIC_ANXIETY_8_ITEM_SUBSET",
+            research_only=True,
+            publication_status="not_approved_for_publication_or_operational_use",
+            rights_status="VERIFIED",
+            execution_status="SIMULATION_ENABLED",
+            created_at=NOW.replace(tzinfo=None),
+        ),
+        SimpleNamespace(
+            profile_ref=PROFILE_REF,
+            version_number=3,
+            source_population_scope="PROMIS_US_GENPOP_CHILD_SELF_REPORT_8_17",
+            instrument_id="PROMIS_PEDIATRIC_ANXIETY_8_ITEM_SUBSET",
+            research_only=True,
+            publication_status="not_approved_for_publication_or_operational_use",
+            rights_status="REVOKED",
+            execution_status="DISABLED",
+            created_at=NOW.replace(tzinfo=None),
+        ),
+    ]
+    session = _VersionQuerySession(rows)
+    owner = _Owner()
+    owner._db_models = SimpleNamespace(SchoolResearchProfileVersion=_VersionModel)
+    owner._select = lambda *columns: _QueryStatement(columns)
+    owner.uow.session = session
+    monkeypatch.setitem(
+        sys.modules,
+        "sqlalchemy",
+        types.SimpleNamespace(func=SimpleNamespace(count=lambda: _QueryExpression("COUNT"))),
+    )
+    adapter = _adapter(owner)
+
+    page = await adapter.list_profile_versions(
+        _actor(), PROFILE_REF, limit=1, offset=0
+    )
+
+    assert owner.events == ["role"]
+    assert page.total == 2
+    assert page.has_more is True
+    assert page.next_offset == 1
+    assert page.items[0].version_number == 4
+    assert page.items[0].rights_status == "VERIFIED"
+    assert page.items[0].execution_status == "SIMULATION_ENABLED"
+    assert page.items[0].use_eligibility == "RECHECK_REQUIRED"
+    assert len(session.statements) == 2
+    metadata_query = session.statements[1]
+    selected_names = {column.name for column in metadata_query.columns}
+    assert selected_names == {
+        "profile_ref",
+        "version_number",
+        "source_population_scope",
+        "instrument_id",
+        "research_only",
+        "publication_status",
+        "rights_status",
+        "execution_status",
+        "created_at",
+    }
+    assert metadata_query.page_limit == 1
+    assert metadata_query.page_offset == 0
+    assert metadata_query.ordering == (("version_number", "DESC"),)
+    assert metadata_query.filters == (("school_id", SCHOOL_ID), ("profile_ref", PROFILE_REF))
+    assert owner.uow.audit.entries[-1]["action"] == "school_research_profiles.versions.list"
+    assert owner.uow.audit.entries[-1]["safe_metadata"] == {
+        "source": "school_research_profiles",
+        "state": "READ",
+    }
+
+
+@pytest.mark.asyncio
+async def test_profile_version_selector_is_not_queried_before_role_or_registry_check(
+    monkeypatch,
+) -> None:
+    import types
+
+    owner = _Owner(denied=True)
+    owner._db_models = SimpleNamespace(SchoolResearchProfileVersion=_VersionModel)
+    owner._select = lambda *columns: _QueryStatement(columns)
+    owner.uow.session = _VersionQuerySession([])
+    monkeypatch.setitem(
+        sys.modules,
+        "sqlalchemy",
+        types.SimpleNamespace(func=SimpleNamespace(count=lambda: _QueryExpression("COUNT"))),
+    )
+    adapter = _adapter(owner)
+    with pytest.raises(BackendError) as denied:
+        await adapter.list_profile_versions(_actor(), "bad selector!", limit=30, offset=0)
+    assert denied.value.code is ErrorCode.FORBIDDEN
+    assert owner.events == ["role"]
+    assert owner.uow.session.statements == []
+
+    owner.denied = False
+    with pytest.raises(BackendError) as unknown:
+        await adapter.list_profile_versions(_actor(), "unregistered-ref", limit=30, offset=0)
+    assert unknown.value.code is ErrorCode.RESOURCE_NOT_FOUND
+    assert owner.events == ["role", "role"]
+    assert owner.uow.session.statements == []
 
 
 @pytest.mark.asyncio

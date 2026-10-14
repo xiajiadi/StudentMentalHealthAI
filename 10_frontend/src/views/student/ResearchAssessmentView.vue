@@ -231,6 +231,10 @@ const resume = async (requestGeneration = generation.value) => {
   pending.value = true
   errorMessage.value = ''
   try {
+    // A completed historical record is a read-only receipt. Do not attempt
+    // state restoration for legacy bindings that cannot accept new answers.
+    if (await findCompletedReceipt(sessionRef.value, requestGeneration)) return
+    if (requestGeneration !== generation.value) return
     const response = await frontendApi.resumeStudentResearchSession(sessionRef.value)
     if (requestGeneration !== generation.value) return
     acceptSession(response.data, sessionRef.value)
