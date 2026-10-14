@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.metadata
 import json
 import os
 import re
@@ -63,7 +64,7 @@ _RESEARCH_PROGRAMME_MODEL_DIGEST_SHA256 = (
     "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e"
 )
 _RESEARCH_PROGRAMME_PROMPT_REF = "PROMPT_staff_school_programme_research_v1"
-_RESEARCH_PROGRAMME_PROMPT_VERSION = "1.0.3"
+_RESEARCH_PROGRAMME_PROMPT_VERSION = "1.1.0"
 _RESEARCH_PROGRAMME_RUNTIME_URL = "http://127.0.0.1:8161"
 _RESEARCH_PROGRAMME_MANIFEST_MAX_BYTES = 4 * 1024 * 1024
 RESEARCH_PROGRAMME_MANIFEST_SHA256 = _RESEARCH_PROGRAMME_MANIFEST_SHA256
@@ -109,6 +110,7 @@ class ResearchCLIConfigError(PreparationError):
             "research_programme_config_incomplete",
             "research_programme_config_invalid",
             "research_programme_worker_requires_pinned_study_use",
+            "research_programme_dependencies_unavailable",
         }
         self.code = code if code in allowed else "research_config_invalid"
         super().__init__(self.code)
@@ -610,6 +612,61 @@ def build_cli_settings_kwargs(
     return settings_kwargs, research_kwargs
 
 
+def _prepare_research_programme_rag_import(repo: Path) -> None:
+    """Expose the project-owned RAG source only in its locked Backend venv."""
+    try:
+        if sys.version_info[:2] != (3, 12):
+            raise ValueError
+        backend_venv = _validated_absolute_path(
+            repo / "09_backend" / ".venv", kind="directory"
+        )
+        if Path(sys.prefix).resolve(strict=True) != backend_venv:
+            raise ValueError
+        expected_python = _validated_absolute_path(
+            backend_venv / "Scripts" / "python.exe", kind="file"
+        )
+        if Path(sys.executable).resolve(strict=True) != expected_python:
+            raise ValueError
+        site_packages = _validated_absolute_path(
+            backend_venv / "Lib" / "site-packages", kind="directory"
+        )
+        rag_source = _validated_absolute_path(
+            repo / "05_rag-engine" / "src", kind="directory"
+        )
+        research_package = rag_source / "rag_engine" / "research" / "__init__.py"
+        _assert_no_reparse_components(research_package)
+        if not research_package.is_file():
+            raise ValueError
+
+        # These explicit managed paths precede the database venv's shared
+        # dependencies; arbitrary inherited PYTHONPATH is never consulted.
+        for explicit_path in (site_packages, rag_source):
+            value = str(explicit_path)
+            if value in sys.path:
+                sys.path.remove(value)
+            sys.path.insert(0, value)
+        distribution = importlib.metadata.distribution("bm25s")
+        if distribution.version != "0.3.11":
+            raise ValueError
+        import bm25s
+        import numpy
+        from rag_engine.research import ResearchOnlyRetriever
+
+        for module in (bm25s, numpy):
+            module_path = Path(module.__file__).resolve(strict=True)
+            if not module_path.is_relative_to(site_packages):
+                raise ValueError
+        rag_module = sys.modules[ResearchOnlyRetriever.__module__]
+        if ResearchOnlyRetriever.__module__ != "rag_engine.research.retrieval" or not Path(
+            rag_module.__file__
+        ).resolve(strict=True).is_relative_to(rag_source):
+            raise ValueError
+    except Exception:  # noqa: BLE001 - never expose interpreter or local package paths.
+        raise ResearchCLIConfigError(
+            "research_programme_dependencies_unavailable"
+        ) from None
+
+
 def main() -> int:
     args = build_parser().parse_args()
     repo = Path(__file__).resolve().parents[1]
@@ -618,6 +675,9 @@ def main() -> int:
     sys.path.insert(0, str(repo / "09_backend" / "src"))
     try:
         settings_kwargs, research_kwargs = build_cli_settings_kwargs(args)
+        programme_worker = settings_kwargs.get("research_programme_worker")
+        if type(programme_worker) is dict and programme_worker.get("enabled") is True:
+            _prepare_research_programme_rag_import(repo)
         if research_kwargs:
             try:
                 from smhai_backend.domains.school_research.managed import (

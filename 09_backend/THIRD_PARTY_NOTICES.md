@@ -1,6 +1,6 @@
 # Backend Round 1 Third-Party Notices
 
-Date: 2026-09-05
+Date: 2026-10-14
 
 No source code was copied from the inspected reference repositories. The
 implementation uses their public patterns only. The table records the
@@ -9,6 +9,7 @@ that should be retained for release review.
 
 | Package | Resolved version | License / source |
 |---|---:|---|
+| bm25s | 0.3.11 | MIT; https://github.com/xhluca/bm25s |
 | fastapi | 0.141.1 | MIT; https://github.com/fastapi/fastapi |
 | starlette | 1.6.0 | BSD-3-Clause; https://github.com/encode/starlette |
 | uvicorn | 0.52.4 | BSD-3-Clause; https://github.com/encode/uvicorn |

@@ -444,8 +444,120 @@ async def test_forged_citation_or_claim_boundary_abstains_without_output_safety(
     [
         ("not-json private draft", "candidate_json"),
         (json.dumps({"title": "private draft"}), "candidate_schema"),
-        (json.dumps({"title": "Reference", "body": "private draft without citation",
-                     "citation_chunk_ids": ["CHUNK_SOURCE"]}), "candidate_citations"),
+        (
+            json.dumps({"title": "Reference", "passages": []}),
+            "candidate_schema",
+        ),
+        (
+            json.dumps(
+                {
+                    "title": "Reference",
+                    "passages": [
+                        {"text": "private draft without citation", "source_chunk_ids": []}
+                    ],
+                }
+            ),
+            "candidate_schema",
+        ),
+        (
+            json.dumps(
+                {
+                    "title": "Reference",
+                    "passages": [
+                        {"text": "Reference passage", "source_chunk_ids": ["CHUNK_UNKNOWN"]}
+                    ],
+                }
+            ),
+            "candidate_citations",
+        ),
+        (
+            json.dumps(
+                {
+                    "title": "Reference",
+                    "passages": [
+                        {
+                            "text": "Reference [CHUNK_SOURCE]",
+                            "source_chunk_ids": ["CHUNK_SOURCE"],
+                        }
+                    ],
+                }
+            ),
+            "candidate_citations",
+        ),
+        (
+            json.dumps(
+                {
+                    "title": "Reference",
+                    "passages": [
+                        {
+                            "text": "Reference passage",
+                            "source_chunk_ids": ["CHUNK_SOURCE", "CHUNK_SOURCE"],
+                        }
+                    ],
+                }
+            ),
+            "candidate_citations",
+        ),
+        (
+            json.dumps(
+                {
+                    "title": "Reference [CHUNK_SOURCE]",
+                    "passages": [
+                        {"text": "Reference passage", "source_chunk_ids": ["CHUNK_SOURCE"]}
+                    ],
+                }
+            ),
+            "candidate_citations",
+        ),
+        (
+            json.dumps(
+                {
+                    "title": "Reference",
+                    "passages": [
+                        {"text": "   ", "source_chunk_ids": ["CHUNK_SOURCE"]}
+                    ],
+                }
+            ),
+            "candidate_citations",
+        ),
+        (
+            json.dumps(
+                {
+                    "title": "Reference",
+                    "passages": [
+                        {"text": "Reference\ncontinued", "source_chunk_ids": ["CHUNK_SOURCE"]}
+                    ],
+                }
+            ),
+            "candidate_citations",
+        ),
+        (
+            json.dumps(
+                {
+                    "title": "Reference",
+                    "body": "Legacy body is forbidden",
+                    "passages": [
+                        {"text": "Reference passage", "source_chunk_ids": ["CHUNK_SOURCE"]}
+                    ],
+                }
+            ),
+            "candidate_schema",
+        ),
+        (
+            json.dumps(
+                {
+                    "title": "Reference",
+                    "passages": [
+                        {
+                            "text": "Reference passage",
+                            "source_chunk_ids": ["CHUNK_SOURCE"],
+                            "extra": True,
+                        }
+                    ],
+                }
+            ),
+            "candidate_schema",
+        ),
     ],
 )
 def test_candidate_projection_diagnostics_never_include_generated_text(payload, code) -> None:
@@ -455,7 +567,7 @@ def test_candidate_projection_diagnostics_never_include_generated_text(payload, 
     )
 
     with pytest.raises(ResearchProgrammeRuntimeError) as caught:
-        _parse_candidate_text(payload)
+        _parse_candidate_text(payload, allowed_chunk_ids=("CHUNK_SOURCE",))
     assert caught.value.code == code
     assert str(caught.value) == code
     assert "private draft" not in str(caught.value)
@@ -475,8 +587,16 @@ async def test_runtime_http_client_sends_fixed_nonstudent_route_and_validates_re
     source_ids = [f"CHUNK_RESEARCH_{record_id}" for record_id, _layer, _source_id in _SOURCE_ROWS]
     candidate = {
         "title": "Staff reference",
-        "body": f"Use a school-wide planning discussion. [{source_ids[0]}]",
-        "citation_chunk_ids": [source_ids[0]],
+        "passages": [
+            {
+                "text": "Use a school-wide planning discussion.",
+                "source_chunk_ids": [source_ids[0]],
+            },
+            {
+                "text": "Keep the framework bounded to the supplied context.",
+                "source_chunk_ids": [source_ids[1]],
+            },
+        ],
     }
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -612,7 +732,7 @@ async def test_runtime_http_client_sends_fixed_nonstudent_route_and_validates_re
     assert result.retrieval_id == "RETR_test_001"
     assert result.prompt_id == "PROMPT_staff_school_programme_research_v1"
     assert result.prompt_version == PROMPT_VERSION
-    assert PROMPT_VERSION == "1.0.3"
+    assert PROMPT_VERSION == "1.1.0"
     assert "including in negative disclaimers" in captured[0]["messages"][0]["content"]
     assert result.prompt_sha256 == hashlib.sha256(
         json.dumps(
@@ -623,7 +743,11 @@ async def test_runtime_http_client_sends_fixed_nonstudent_route_and_validates_re
             allow_nan=False,
         ).encode("utf-8")
     ).hexdigest()
-    assert result.citation_chunk_ids == (source_ids[0],)
+    assert result.body == (
+        f"Use a school-wide planning discussion. [{source_ids[0]}]\n\n"
+        f"Keep the framework bounded to the supplied context. [{source_ids[1]}]"
+    )
+    assert result.citation_chunk_ids == (source_ids[0], source_ids[1])
     assert paths == [ROUTE_PATH]
     assert set(captured[0]) == {
         "schema_version", "request_id", "trace_id", "generation_id", "retrieval_id",
@@ -631,15 +755,27 @@ async def test_runtime_http_client_sends_fixed_nonstudent_route_and_validates_re
         "structured_schema", "config",
     }
     assert captured[0]["chunk_ids"] == source_ids
-    properties = captured[0]["structured_schema"]["properties"]
-    assert properties["citation_chunk_ids"]["items"]["enum"] == source_ids
-    import re
-
-    assert re.fullmatch(properties["body"]["pattern"], candidate["body"])
-    assert not re.fullmatch(properties["body"]["pattern"], "Uncited reference")
-    assert not re.fullmatch(
-        properties["body"]["pattern"], "Reference. [CHUNK_FORGED]"
-    )
+    schema = captured[0]["structured_schema"]
+    properties = schema["properties"]
+    assert schema["$id"] == "urn:psynova:research-programme-draft:1.1.0"
+    assert schema["additionalProperties"] is False
+    assert schema["required"] == ["title", "passages"]
+    assert set(properties) == {"title", "passages"}
+    passage_schema = properties["passages"]
+    assert passage_schema["minItems"] == 1
+    assert passage_schema["maxItems"] == 3
+    passage_item = passage_schema["items"]
+    assert passage_item["additionalProperties"] is False
+    assert passage_item["required"] == ["text", "source_chunk_ids"]
+    assert passage_item["properties"]["text"]["maxLength"] == 600
+    assert passage_item["properties"]["text"]["pattern"] == "^[^\\r\\n]+$"
+    selected_ids_schema = passage_item["properties"]["source_chunk_ids"]
+    assert selected_ids_schema["minItems"] == 1
+    assert selected_ids_schema["maxItems"] == 4
+    assert selected_ids_schema["uniqueItems"] is True
+    assert selected_ids_schema["items"]["enum"] == source_ids
+    assert "citation_chunk_ids" not in properties
+    assert "body" not in properties
     assert {message["role"] for message in captured[0]["messages"]} == {"system", "user"}
     payload_text = json.dumps(captured[0])
     for forbidden in ("assessment_id", "subject_id", "student_answers"):

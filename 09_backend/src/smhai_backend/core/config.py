@@ -266,7 +266,7 @@ class ResearchProgrammeWorkerSettings(BaseModel):
             or self.model_digest_sha256
             != "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e"
             or self.prompt_ref != "PROMPT_staff_school_programme_research_v1"
-            or self.prompt_version != "1.0.3"
+            or self.prompt_version != "1.1.0"
         ):
             raise ValueError("research programme generation requires explicit server pins")
         return self
