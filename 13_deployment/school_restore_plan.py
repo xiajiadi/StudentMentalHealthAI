@@ -24,6 +24,7 @@ from school_schema import (
     PROFESSIONAL_REVIEW_REVISION,
     PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
     RESEARCH_CAT_SESSIONS_REVISION,
+    RESEARCH_COHORTS_REVISION,
     RESEARCH_PARAMETER_PROVENANCE_REVISION,
     SCHOOL_FEEDBACK_PUBLICATION_REVISION,
 )
@@ -82,6 +83,15 @@ RESEARCH_PROFILE_TABLES = frozenset({"school_research_profile_versions"})
 RESEARCH_BINDING_TABLES = frozenset({"school_research_task_bindings"})
 RESEARCH_SESSION_TABLES = frozenset({"school_research_sessions"})
 PUBLIC_OBSERVED_CASE_ASSIGNMENT_TABLES = frozenset({"school_research_case_assignments"})
+RESEARCH_COHORT_TABLES = frozenset({
+    "school_research_cohorts",
+    "school_research_cohort_batches",
+    "school_research_cohort_assignments",
+})
+RESEARCH_COHORT_REFERENCE_TABLES = frozenset({
+    "school_research_task_bindings",
+    "school_research_case_assignments",
+})
 RESEARCH_CAT_TABLES = (
     RESEARCH_PROFILE_TABLES | RESEARCH_BINDING_TABLES | RESEARCH_SESSION_TABLES
 )
@@ -133,6 +143,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
         | CAT_ASSET_TABLES | CAT_TASK_BINDING_TABLES | SCHOOL_FEEDBACK_TABLES
         | POST_ASSESSMENT_JOB_TABLES | RESEARCH_CAT_TABLES
         | PUBLIC_OBSERVED_CASE_ASSIGNMENT_TABLES
+        | RESEARCH_COHORT_TABLES
     )
     if revision not in SUPPORTED_BACKUP_REVISIONS:
         raise ValueError("Unsupported restore revision")
@@ -150,6 +161,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
                 CAT_TASK_BINDING_REVISION, SCHOOL_FEEDBACK_PUBLICATION_REVISION,
                 POST_ASSESSMENT_JOB_OUTBOX_REVISION, RESEARCH_CAT_SESSIONS_REVISION,
                 RESEARCH_PARAMETER_PROVENANCE_REVISION, PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
+                RESEARCH_COHORTS_REVISION,
             }
             and table_name in CAT_TASK_BINDING_TABLES
         ):
@@ -160,6 +172,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
                 POST_ASSESSMENT_JOB_OUTBOX_REVISION,
                 RESEARCH_CAT_SESSIONS_REVISION, RESEARCH_PARAMETER_PROVENANCE_REVISION,
                 PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
+                RESEARCH_COHORTS_REVISION,
             }
             and table_name in SCHOOL_FEEDBACK_TABLES
         ):
@@ -169,18 +182,22 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
             RESEARCH_CAT_SESSIONS_REVISION,
             RESEARCH_PARAMETER_PROVENANCE_REVISION,
             PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
+            RESEARCH_COHORTS_REVISION,
         } and table_name in POST_ASSESSMENT_JOB_TABLES:
             continue
         if revision not in {
             RESEARCH_CAT_SESSIONS_REVISION,
             RESEARCH_PARAMETER_PROVENANCE_REVISION,
             PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
+            RESEARCH_COHORTS_REVISION,
         } and table_name in RESEARCH_CAT_TABLES:
             continue
         if (
-            revision != PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION
+            revision not in {PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION, RESEARCH_COHORTS_REVISION}
             and table_name in PUBLIC_OBSERVED_CASE_ASSIGNMENT_TABLES
         ):
+            continue
+        if revision != RESEARCH_COHORTS_REVISION and table_name in RESEARCH_COHORT_TABLES:
             continue
         if (
             revision not in {
@@ -188,6 +205,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
                 SCHOOL_FEEDBACK_PUBLICATION_REVISION, POST_ASSESSMENT_JOB_OUTBOX_REVISION,
                 RESEARCH_CAT_SESSIONS_REVISION, RESEARCH_PARAMETER_PROVENANCE_REVISION,
                 PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
+                RESEARCH_COHORTS_REVISION,
             }
             and table_name in CAT_ASSET_TABLES
         ):
@@ -198,6 +216,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
                 SCHOOL_FEEDBACK_PUBLICATION_REVISION, POST_ASSESSMENT_JOB_OUTBOX_REVISION,
                 RESEARCH_CAT_SESSIONS_REVISION, RESEARCH_PARAMETER_PROVENANCE_REVISION,
                 PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
+                RESEARCH_COHORTS_REVISION,
             }
             and table_name in PROFESSIONAL_REVIEW_TABLES
         ):
@@ -217,11 +236,30 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
             corpus_columns = {"corpus_sha256", "case_count"}
             columns = tuple(column for column in columns if column not in corpus_columns)
             nullable = nullable - corpus_columns
+        if revision != RESEARCH_COHORTS_REVISION and table_name in RESEARCH_COHORT_REFERENCE_TABLES:
+            cohort_columns = (
+                {"cohort_id", "cohort_assignment_id"}
+                if table_name in PUBLIC_OBSERVED_CASE_ASSIGNMENT_TABLES
+                else {"cohort_id"}
+            )
+            columns = tuple(column for column in columns if column not in cohort_columns)
+            nullable = nullable - cohort_columns
+        elif table_name in RESEARCH_COHORT_REFERENCE_TABLES:
+            # Revision 0015 adds these columns with ALTER TABLE, so their physical
+            # order is after every column that existed in 0014, regardless of where
+            # the ORM declares the mapped attributes.
+            cohort_columns = (
+                ("cohort_id", "cohort_assignment_id")
+                if table_name in PUBLIC_OBSERVED_CASE_ASSIGNMENT_TABLES
+                else ("cohort_id",)
+            )
+            columns = tuple(column for column in columns if column not in cohort_columns) + cohort_columns
         if (
             revision not in {
                 CAT_TASK_BINDING_REVISION, SCHOOL_FEEDBACK_PUBLICATION_REVISION,
                 POST_ASSESSMENT_JOB_OUTBOX_REVISION, RESEARCH_CAT_SESSIONS_REVISION,
                 RESEARCH_PARAMETER_PROVENANCE_REVISION, PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
+                RESEARCH_COHORTS_REVISION,
             }
             and table_name in CAT_TASK_BINDING_MODE_TABLES
         ):
@@ -239,6 +277,18 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
             )
             for constraint in table.foreign_key_constraints
         )
+        if revision != RESEARCH_COHORTS_REVISION and table_name in RESEARCH_COHORT_REFERENCE_TABLES:
+            cohort_column_names = (
+                {"cohort_id", "cohort_assignment_id"}
+                if table_name in PUBLIC_OBSERVED_CASE_ASSIGNMENT_TABLES
+                else {"cohort_id"}
+            )
+            foreign_keys = tuple(
+                foreign_key
+                for foreign_key in foreign_keys
+                if foreign_key.remote_table not in RESEARCH_COHORT_TABLES
+                and not cohort_column_names.intersection(foreign_key.local_columns)
+            )
         tables[table_name] = TableSpec(columns, nullable, primary_key, foreign_keys)
 
     tables[REVISION_TABLE] = TableSpec(

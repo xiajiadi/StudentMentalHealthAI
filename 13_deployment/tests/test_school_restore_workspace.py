@@ -12,6 +12,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import prepare_school_runtime
 import restore_school_workspace as restore_module
 from school_restore_plan import trusted_manifest
+from school_schema import (
+    CURRENT_SCHOOL_REVISION,
+    PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
+)
 
 
 @pytest.fixture
@@ -80,6 +84,25 @@ def test_full_fake_restore_preserves_source_and_unused_generated_keys(scenario):
     assert scenario[-1].index("preflight") < scenario[-1].index("create")
     assert scenario[-1].index("verify-process") < scenario[-1].index("migrate")
     assert ("verify-ciphertexts", scenario[-2]["revision"]) in scenario[-1]
+
+
+def test_0014_backup_imports_at_source_revision_then_migrates_forward(scenario, monkeypatch):
+    package = scenario[-2]
+    package["revision"] = PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION
+    migrations = []
+    monkeypatch.setattr(
+        restore_module,
+        "_migrate",
+        lambda _target, _repository, _marker, revision: migrations.append(revision),
+    )
+
+    run(scenario)
+
+    assert migrations == [PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION, CURRENT_SCHOOL_REVISION]
+    state = json.loads((scenario[2] / "restore-state.json").read_text(encoding="utf-8"))
+    assert state["snapshot_revision"] == PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION
+    assert state["runtime_revision"] == CURRENT_SCHOOL_REVISION
+    assert ("verify-ciphertexts", PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION) in scenario[-1]
 
 
 def test_source_port_rejected_before_target_creation(scenario):
