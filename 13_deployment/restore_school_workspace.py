@@ -80,8 +80,26 @@ def _verify_ciphertexts(
         for table_name, columns in manifest.items():
             encrypted = [column for column in columns if column.endswith("_ciphertext")]
             for column in encrypted:
+                prefix = column.removesuffix("_ciphertext") + "_"
+                prefixed_metadata = (
+                    f"{prefix}key_version",
+                    f"{prefix}cipher_format_version",
+                    f"{prefix}payload_schema_version",
+                )
+                plain_metadata = (
+                    "key_version",
+                    "cipher_format_version",
+                    "payload_schema_version",
+                )
+                if all(name in columns for name in prefixed_metadata):
+                    key_version_column, cipher_format_column, schema_column = prefixed_metadata
+                elif all(name in columns for name in plain_metadata):
+                    key_version_column, cipher_format_column, schema_column = plain_metadata
+                else:
+                    raise RuntimeError("Trusted encrypted payload metadata is incomplete")
                 cursor.execute(
-                    f"SELECT `{column}`,key_version,cipher_format_version,payload_schema_version "
+                    f"SELECT `{column}`,`{key_version_column}`,`{cipher_format_column}`,"
+                    f"`{schema_column}` "
                     f"FROM `{table_name}` WHERE `{column}` IS NOT NULL"
                 )
                 for ciphertext, key_version, cipher_format, payload_schema in cursor.fetchall():

@@ -9,6 +9,7 @@ import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import { useSessionStore } from '@/stores/session'
 import { frontendApi } from '@/services/mock-api'
 import { schoolFeedback, type StudentSchoolFeedback } from '@/services/school-feedback'
+import StudentResearchFeedback from '@/components/school/StudentResearchFeedback.vue'
 import { userFacingApiError } from '@/utils/user-facing-errors'
 import type { AssessmentListEntry, ReportSummary } from '@/api/client'
 
@@ -201,6 +202,8 @@ onMounted(() => {
         <p class="published-feedback__time">发布于 {{ formatDate(item.published_at) }}</p>
       </AppCard>
     </section>
+
+    <StudentResearchFeedback />
 
     <section class="feedback-section" aria-labelledby="reports-title">
       <header class="feedback-section__heading">

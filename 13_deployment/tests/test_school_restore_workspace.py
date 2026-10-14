@@ -15,6 +15,7 @@ from school_restore_plan import trusted_manifest
 from school_schema import (
     CURRENT_SCHOOL_REVISION,
     PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
+    RESEARCH_EDUCATION_JOBS_REVISION,
 )
 
 
@@ -250,10 +251,79 @@ def test_ciphertext_verification_checks_review_note_for_0007_snapshot(tmp_path, 
     assert checked == 1
     assert decrypted == [b"synthetic-encrypted-note"]
     assert any(
-        "SELECT `case_note_ciphertext`" in sql
+        "SELECT `case_note_ciphertext`,`key_version`,`cipher_format_version`,"
+        "`payload_schema_version`" in sql
         and "FROM `school_professional_review_cases`" in sql
         for sql in connection.fake_cursor.queries
     )
+
+
+def test_0017_ciphertext_verification_uses_new_review_and_feedback_metadata(tmp_path, monkeypatch):
+    manifest = trusted_manifest(CURRENT_SCHOOL_REVISION)
+    new_tables = {
+        "school_research_review_cases",
+        "school_research_review_events",
+        "school_research_feedback_records",
+        "school_research_feedback_events",
+    }
+    assert new_tables <= set(manifest)
+    connection = CiphertextConnection(
+        set(manifest),
+        {
+            ("school_research_review_cases", "case_note_ciphertext"): [
+                (b"synthetic-review-note-cipher", "key-v1", "fernet.v1", "research-note.v1")
+            ],
+            ("school_research_feedback_records", "payload_ciphertext"): [
+                (b"synthetic-feedback-cipher", "key-v1", "fernet.v1", "research-feedback.v1")
+            ],
+        },
+    )
+    decrypted = []
+    install_fake_crypto(monkeypatch, decrypted)
+
+    checked = restore_module._verify_ciphertexts(
+        connection, tmp_path, tmp_path, CURRENT_SCHOOL_REVISION
+    )
+
+    assert checked == 2
+    assert set(decrypted) == {
+        b"synthetic-review-note-cipher",
+        b"synthetic-feedback-cipher",
+    }
+    assert any(
+        "`case_note_key_version`,`case_note_cipher_format_version`,"
+        "`case_note_payload_schema_version`" in sql
+        and "FROM `school_research_review_cases`" in sql
+        for sql in connection.fake_cursor.queries
+    )
+    assert any(
+        "SELECT `payload_ciphertext`,`key_version`,`cipher_format_version`,"
+        "`payload_schema_version`" in sql
+        and "FROM `school_research_feedback_records`" in sql
+        for sql in connection.fake_cursor.queries
+    )
+
+
+def test_0016_ciphertext_verification_excludes_0017_tables(tmp_path, monkeypatch):
+    manifest = trusted_manifest(RESEARCH_EDUCATION_JOBS_REVISION)
+    new_tables = {
+        "school_research_review_cases",
+        "school_research_review_events",
+        "school_research_feedback_records",
+        "school_research_feedback_events",
+    }
+    assert new_tables.isdisjoint(manifest)
+    connection = CiphertextConnection(set(manifest))
+    decrypted = []
+    install_fake_crypto(monkeypatch, decrypted)
+
+    checked = restore_module._verify_ciphertexts(
+        connection, tmp_path, tmp_path, RESEARCH_EDUCATION_JOBS_REVISION
+    )
+
+    assert checked == 0
+    assert decrypted == []
+    assert all(not any(table in sql for table in new_tables) for sql in connection.fake_cursor.queries)
 
 
 def test_ciphertext_verification_rejects_unknown_revision_before_query(tmp_path, monkeypatch):

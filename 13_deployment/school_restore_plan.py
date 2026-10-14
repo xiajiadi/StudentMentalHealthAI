@@ -27,6 +27,7 @@ from school_schema import (
     RESEARCH_COHORTS_REVISION,
     RESEARCH_EDUCATION_JOBS_REVISION,
     RESEARCH_PARAMETER_PROVENANCE_REVISION,
+    RESEARCH_REVIEW_FEEDBACK_REVISION,
     SCHOOL_FEEDBACK_PUBLICATION_REVISION,
 )
 
@@ -90,8 +91,20 @@ RESEARCH_COHORT_TABLES = frozenset({
     "school_research_cohort_assignments",
 })
 RESEARCH_EDUCATION_JOB_TABLES = frozenset({"school_research_education_jobs"})
+RESEARCH_REVIEW_FEEDBACK_TABLES = frozenset(
+    {
+        "school_research_review_cases",
+        "school_research_review_events",
+        "school_research_feedback_records",
+        "school_research_feedback_events",
+    }
+)
 COHORT_AND_EDUCATION_JOBS_REVISIONS = frozenset(
-    {RESEARCH_COHORTS_REVISION, RESEARCH_EDUCATION_JOBS_REVISION}
+    {
+        RESEARCH_COHORTS_REVISION,
+        RESEARCH_EDUCATION_JOBS_REVISION,
+        RESEARCH_REVIEW_FEEDBACK_REVISION,
+    }
 )
 RESEARCH_COHORT_REFERENCE_TABLES = frozenset({
     "school_research_task_bindings",
@@ -150,6 +163,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
         | PUBLIC_OBSERVED_CASE_ASSIGNMENT_TABLES
         | RESEARCH_COHORT_TABLES
         | RESEARCH_EDUCATION_JOB_TABLES
+        | RESEARCH_REVIEW_FEEDBACK_TABLES
     )
     if revision not in SUPPORTED_BACKUP_REVISIONS:
         raise ValueError("Unsupported restore revision")
@@ -169,6 +183,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
                 RESEARCH_PARAMETER_PROVENANCE_REVISION, PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
                 RESEARCH_COHORTS_REVISION,
                 RESEARCH_EDUCATION_JOBS_REVISION,
+                RESEARCH_REVIEW_FEEDBACK_REVISION,
             }
             and table_name in CAT_TASK_BINDING_TABLES
         ):
@@ -181,6 +196,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
                 PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
                 RESEARCH_COHORTS_REVISION,
                 RESEARCH_EDUCATION_JOBS_REVISION,
+                RESEARCH_REVIEW_FEEDBACK_REVISION,
             }
             and table_name in SCHOOL_FEEDBACK_TABLES
         ):
@@ -192,6 +208,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
             PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
             RESEARCH_COHORTS_REVISION,
             RESEARCH_EDUCATION_JOBS_REVISION,
+            RESEARCH_REVIEW_FEEDBACK_REVISION,
         } and table_name in POST_ASSESSMENT_JOB_TABLES:
             continue
         if revision not in {
@@ -200,6 +217,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
             PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
             RESEARCH_COHORTS_REVISION,
             RESEARCH_EDUCATION_JOBS_REVISION,
+            RESEARCH_REVIEW_FEEDBACK_REVISION,
         } and table_name in RESEARCH_CAT_TABLES:
             continue
         if (
@@ -207,6 +225,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
                 PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
                 RESEARCH_COHORTS_REVISION,
                 RESEARCH_EDUCATION_JOBS_REVISION,
+                RESEARCH_REVIEW_FEEDBACK_REVISION,
             }
             and table_name in PUBLIC_OBSERVED_CASE_ASSIGNMENT_TABLES
         ):
@@ -214,8 +233,13 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
         if revision not in COHORT_AND_EDUCATION_JOBS_REVISIONS and table_name in RESEARCH_COHORT_TABLES:
             continue
         if (
-            revision != RESEARCH_EDUCATION_JOBS_REVISION
+            revision not in {RESEARCH_EDUCATION_JOBS_REVISION, RESEARCH_REVIEW_FEEDBACK_REVISION}
             and table_name in RESEARCH_EDUCATION_JOB_TABLES
+        ):
+            continue
+        if (
+            revision != RESEARCH_REVIEW_FEEDBACK_REVISION
+            and table_name in RESEARCH_REVIEW_FEEDBACK_TABLES
         ):
             continue
         if (
@@ -226,6 +250,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
                 PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
                 RESEARCH_COHORTS_REVISION,
                 RESEARCH_EDUCATION_JOBS_REVISION,
+                RESEARCH_REVIEW_FEEDBACK_REVISION,
             }
             and table_name in CAT_ASSET_TABLES
         ):
@@ -238,6 +263,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
                 PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
                 RESEARCH_COHORTS_REVISION,
                 RESEARCH_EDUCATION_JOBS_REVISION,
+                RESEARCH_REVIEW_FEEDBACK_REVISION,
             }
             and table_name in PROFESSIONAL_REVIEW_TABLES
         ):
@@ -282,6 +308,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
                 RESEARCH_PARAMETER_PROVENANCE_REVISION, PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
                 RESEARCH_COHORTS_REVISION,
                 RESEARCH_EDUCATION_JOBS_REVISION,
+                RESEARCH_REVIEW_FEEDBACK_REVISION,
             }
             and table_name in CAT_TASK_BINDING_MODE_TABLES
         ):

@@ -20,6 +20,7 @@ from school_backup import (
 from school_schema import (
     CAT_ASSETS_REVISION,
     CAT_TASK_BINDING_REVISION,
+    CURRENT_SCHOOL_MIGRATION_FILE,
     CURRENT_SCHOOL_REVISION,
     DIRECTORY_SCHOOL_REVISION,
     POST_ASSESSMENT_JOB_OUTBOX_REVISION,
@@ -29,6 +30,7 @@ from school_schema import (
     RESEARCH_COHORTS_REVISION,
     RESEARCH_EDUCATION_JOBS_REVISION,
     RESEARCH_PARAMETER_PROVENANCE_REVISION,
+    RESEARCH_REVIEW_FEEDBACK_REVISION,
     SCHOOL_FEEDBACK_PUBLICATION_REVISION,
     SCHOOL_REVISION_CHAIN,
     SUPPORTED_SNAPSHOT_REVISIONS,
@@ -61,7 +63,7 @@ def test_current_snapshot_requires_its_exact_table_layout_and_revision():
     package["tables"][restore_plan.REVISION_TABLE]["rows"] = [[CURRENT_SCHOOL_REVISION]]
     plan = restore_plan.plan_restore(package, restored_at=RESTORED_AT)
     assert plan["revision"] == CURRENT_SCHOOL_REVISION
-    assert len(plan["table_order"]) == 50
+    assert len(plan["table_order"]) == 54
     package["revision"] = SUPPORTED_REVISION
     with pytest.raises(ValueError, match="manifest mismatch"):
         restore_plan.plan_restore(package, restored_at=RESTORED_AT)
@@ -297,9 +299,10 @@ def test_research_revision_adds_three_isolated_tables_and_preserves_0011_layout(
 
 def test_parameter_provenance_revision_preserves_0012_snapshot_shape():
     assert RESEARCH_PARAMETER_PROVENANCE_REVISION in SCHOOL_REVISION_CHAIN
-    assert CURRENT_SCHOOL_REVISION == RESEARCH_EDUCATION_JOBS_REVISION
-    assert SCHOOL_REVISION_CHAIN[-2] == RESEARCH_COHORTS_REVISION
-    assert SCHOOL_REVISION_CHAIN[-1] == RESEARCH_EDUCATION_JOBS_REVISION
+    assert CURRENT_SCHOOL_REVISION == RESEARCH_REVIEW_FEEDBACK_REVISION
+    assert SCHOOL_REVISION_CHAIN[-3] == RESEARCH_COHORTS_REVISION
+    assert SCHOOL_REVISION_CHAIN[-2] == RESEARCH_EDUCATION_JOBS_REVISION
+    assert SCHOOL_REVISION_CHAIN[-1] == RESEARCH_REVIEW_FEEDBACK_REVISION
     old = restore_plan._load_trusted_tables(RESEARCH_CAT_SESSIONS_REVISION)
     current = restore_plan._load_trusted_tables(RESEARCH_PARAMETER_PROVENANCE_REVISION)
     assert set(old) == set(current) and len(current) == 46
@@ -379,9 +382,10 @@ def test_public_observed_revision_preserves_0013_snapshots_and_adds_exact_assign
 
 def test_sealed_cohort_revision_preserves_0014_snapshot_and_adds_only_cohort_projection():
     assert RESEARCH_COHORTS_REVISION in SCHOOL_REVISION_CHAIN
-    assert CURRENT_SCHOOL_REVISION == RESEARCH_EDUCATION_JOBS_REVISION
-    assert SCHOOL_REVISION_CHAIN[-2] == RESEARCH_COHORTS_REVISION
-    assert SCHOOL_REVISION_CHAIN[-1] == RESEARCH_EDUCATION_JOBS_REVISION
+    assert CURRENT_SCHOOL_REVISION == RESEARCH_REVIEW_FEEDBACK_REVISION
+    assert SCHOOL_REVISION_CHAIN[-3] == RESEARCH_COHORTS_REVISION
+    assert SCHOOL_REVISION_CHAIN[-2] == RESEARCH_EDUCATION_JOBS_REVISION
+    assert SCHOOL_REVISION_CHAIN[-1] == RESEARCH_REVIEW_FEEDBACK_REVISION
 
     previous = restore_plan._load_trusted_tables(PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION)
     current = restore_plan._load_trusted_tables(RESEARCH_COHORTS_REVISION)
@@ -444,8 +448,10 @@ def test_sealed_cohort_revision_preserves_0014_snapshot_and_adds_only_cohort_pro
 def test_research_education_jobs_revision_adds_one_table_and_preserves_0015_rows():
     assert RESEARCH_EDUCATION_JOBS_REVISION in SCHOOL_REVISION_CHAIN
     assert RESEARCH_EDUCATION_JOBS_REVISION in SUPPORTED_SNAPSHOT_REVISIONS
-    assert CURRENT_SCHOOL_REVISION == RESEARCH_EDUCATION_JOBS_REVISION
-    assert SCHOOL_REVISION_CHAIN[-2] == RESEARCH_COHORTS_REVISION
+    assert CURRENT_SCHOOL_REVISION == RESEARCH_REVIEW_FEEDBACK_REVISION
+    assert SCHOOL_REVISION_CHAIN[-3] == RESEARCH_COHORTS_REVISION
+    assert SCHOOL_REVISION_CHAIN[-2] == RESEARCH_EDUCATION_JOBS_REVISION
+    assert SCHOOL_REVISION_CHAIN[-1] == RESEARCH_REVIEW_FEEDBACK_REVISION
 
     previous = restore_plan._load_trusted_tables(RESEARCH_COHORTS_REVISION)
     current = restore_plan._load_trusted_tables(RESEARCH_EDUCATION_JOBS_REVISION)
@@ -545,6 +551,47 @@ def test_research_education_jobs_revision_adds_one_table_and_preserves_0015_rows
     assert current_plan["table_order"].index("school_research_sessions") < current_plan[
         "table_order"
     ].index(job_table)
+
+
+def test_research_review_feedback_revision_adds_four_tables_and_preserves_0016():
+    assert RESEARCH_REVIEW_FEEDBACK_REVISION in SCHOOL_REVISION_CHAIN
+    assert RESEARCH_REVIEW_FEEDBACK_REVISION in SUPPORTED_SNAPSHOT_REVISIONS
+    assert CURRENT_SCHOOL_REVISION == RESEARCH_REVIEW_FEEDBACK_REVISION
+    assert CURRENT_SCHOOL_MIGRATION_FILE == "20261014_0017_research_review_feedback.py"
+
+    previous = restore_plan._load_trusted_tables(RESEARCH_EDUCATION_JOBS_REVISION)
+    current = restore_plan._load_trusted_tables(RESEARCH_REVIEW_FEEDBACK_REVISION)
+    assert len(previous) == 51
+    assert len(current) == 55
+    assert set(current) - set(previous) == restore_plan.RESEARCH_REVIEW_FEEDBACK_TABLES
+    assert all(current[name] == spec for name, spec in previous.items())
+    assert "case_note_ciphertext" in current["school_research_review_cases"].columns
+    assert "payload_ciphertext" in current["school_research_feedback_records"].columns
+    assert "case_note_ciphertext" not in current["school_research_review_events"].columns
+    assert "payload_ciphertext" not in current["school_research_feedback_events"].columns
+
+    for old_revision in (RESEARCH_EDUCATION_JOBS_REVISION, RESEARCH_COHORTS_REVISION):
+        assert set(restore_plan._load_trusted_tables(old_revision)).isdisjoint(
+            restore_plan.RESEARCH_REVIEW_FEEDBACK_TABLES
+        )
+
+    package = empty_package()
+    package["revision"] = RESEARCH_REVIEW_FEEDBACK_REVISION
+    package["tables"] = {
+        name: {"create_sql": "opaque archived DDL", "columns": list(spec.columns), "rows": []}
+        for name, spec in current.items()
+    }
+    package["tables"][restore_plan.REVISION_TABLE]["rows"] = [
+        [RESEARCH_REVIEW_FEEDBACK_REVISION]
+    ]
+    plan = restore_plan.plan_restore(package, restored_at=RESTORED_AT)
+    assert plan["revision"] == RESEARCH_REVIEW_FEEDBACK_REVISION
+    assert len(plan["table_order"]) == 54
+    order = plan["table_order"]
+    assert order.index("school_research_sessions") < order.index("school_research_review_cases")
+    assert order.index("school_research_review_cases") < order.index("school_research_review_events")
+    assert order.index("school_research_review_cases") < order.index("school_research_feedback_records")
+    assert order.index("school_research_feedback_records") < order.index("school_research_feedback_events")
 
 
 def empty_package():

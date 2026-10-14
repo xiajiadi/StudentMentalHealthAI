@@ -361,7 +361,7 @@ def _repo(session: Session) -> SchoolResearchCohortRepository:
 
 
 def test_cohort_model_schema_mysql_and_nullable_0014_compatibility():
-    assert len(Base.metadata.tables) == 50
+    assert len(Base.metadata.tables) == 54
     cohort = cast(Table, SchoolResearchCohort.__table__)
     batches = cast(Table, SchoolResearchCohortBatch.__table__)
     assignments = cast(Table, SchoolResearchCohortAssignment.__table__)

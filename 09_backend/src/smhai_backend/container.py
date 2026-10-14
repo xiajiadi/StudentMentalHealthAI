@@ -100,6 +100,7 @@ class BackendContainer:
     rate_limiter: InMemoryRateLimiter
     professional_reviews: SchoolProfessionalReviewService | None = None
     school_feedback: SchoolFeedbackService | None = None
+    school_research_feedback: Any | None = None
     independent_conversations: IndependentConversationService | None = None
     independent_rag: IndependentRagClient | None = None
     independent_llm: IndependentLLMRuntimeClient | None = None
@@ -408,6 +409,28 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         if persistence is not None and settings.identity_profile == "school_tenant"
         else None
     )
+    school_research_feedback = None
+    if (
+        persistence is not None
+        and settings.identity_profile == "school_tenant"
+        and settings.school_research_enabled
+        and settings.environment != "production"
+    ):
+        from smhai_backend.adapters.school_research_feedback import (
+            SchoolResearchFeedbackPersistenceAdapter,
+        )
+        from smhai_backend.domains.school_research.bootstrap import (
+            build_school_research_study_policy,
+        )
+        from smhai_backend.domains.school_research_feedback.service import (
+            SchoolResearchFeedbackService,
+        )
+
+        school_research_feedback = SchoolResearchFeedbackService(
+            persistence=SchoolResearchFeedbackPersistenceAdapter(
+                persistence, study_use_policy=build_school_research_study_policy(settings)
+            )
+        )
     cat_management = SchoolCatManagementService(
         persistence=(
             SchoolCatManagementPersistenceAdapter(persistence, cat_management_client)
@@ -522,6 +545,7 @@ def build_container(settings: BackendSettings | None = None) -> BackendContainer
         school_research_process_factory=research_process_factory,
         professional_reviews=professional_reviews,
         school_feedback=school_feedback,
+        school_research_feedback=school_research_feedback,
         cat_management=cat_management,
         cat_management_client=cat_management_client,
         cat_assets=cat_assets,
