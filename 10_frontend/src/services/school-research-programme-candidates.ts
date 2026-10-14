@@ -26,6 +26,8 @@ export type ProgrammeCandidateDetail = ProgrammeCandidateSummary & {
   publication_status: 'not_approved_for_publication_or_operational_use'
   content: {
     programme_ref: string
+    content_origin: 'VERIFIED_SOURCE_METADATA' | 'LEGACY_MODEL_TEXT'
+    generation_mode: 'MODEL_SOURCE_SELECTION' | 'LEGACY_MODEL_AUTHORED_PASSAGES'
     title: string
     body: string
     citations: ProgrammeCandidateCitation[]
@@ -46,7 +48,7 @@ const apiBaseUrl = new window.URL(import.meta.env.VITE_API_BASE_URL || '/', wind
 const publicationStatus = 'not_approved_for_publication_or_operational_use' as const
 const summaryFields = ['candidate_ref', 'programme_ref', 'status', 'state_version', 'student_feedback_eligible', 'output_boundary', 'created_at'].sort()
 const detailFields = [...summaryFields, 'purpose', 'research_only', 'psychological_interpretation_allowed', 'publication_status', 'content'].sort()
-const contentFields = ['programme_ref', 'title', 'body', 'citations'].sort()
+const contentFields = ['programme_ref', 'content_origin', 'generation_mode', 'title', 'body', 'citations'].sort()
 const citationFields = ['citation_id', 'source_title', 'source_organization', 'source_url', 'source_locator'].sort()
 const generationFields = ['job_ref', 'status', 'policy_version', 'purpose', 'research_only', 'publication_status', 'student_feedback_eligible'].sort()
 
@@ -97,6 +99,11 @@ function mapDetail(value: unknown): ProgrammeCandidateDetail {
   const summary = mapSummary(Object.fromEntries(Object.entries(source).filter(([key]) => summaryFields.includes(key))))
   const content = record(source.content, message)
   exact(content, contentFields, message)
+  const sourceMetadataPair = content.content_origin === 'VERIFIED_SOURCE_METADATA'
+    && content.generation_mode === 'MODEL_SOURCE_SELECTION'
+  const legacyAuthoredPair = content.content_origin === 'LEGACY_MODEL_TEXT'
+    && content.generation_mode === 'LEGACY_MODEL_AUTHORED_PASSAGES'
+  if (!sourceMetadataPair && !legacyAuthoredPair) throw new RealApiError('API_INVALID_RESPONSE', message)
   if (!Array.isArray(content.citations) || content.citations.length < 1 || content.citations.length > 12) {
     throw new RealApiError('API_INVALID_RESPONSE', message)
   }
@@ -131,7 +138,14 @@ function mapDetail(value: unknown): ProgrammeCandidateDetail {
     research_only: true,
     psychological_interpretation_allowed: false,
     publication_status: publicationStatus,
-    content: { programme_ref: programmeRef, title, body, citations },
+    content: {
+      programme_ref: programmeRef,
+      content_origin: content.content_origin as ProgrammeCandidateDetail['content']['content_origin'],
+      generation_mode: content.generation_mode as ProgrammeCandidateDetail['content']['generation_mode'],
+      title,
+      body,
+      citations,
+    },
   }
 }
 
