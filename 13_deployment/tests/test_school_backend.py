@@ -1,4 +1,6 @@
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -220,7 +222,7 @@ def test_programme_worker_cli_uses_fixed_8161_without_retargeting_normal_llm(
     worker = settings["research_programme_worker"]
     assert worker["enabled"] is True
     assert worker["package_manifest_sha256"] == manifest_sha
-    assert worker["prompt_version"] == "1.0.3"
+    assert worker["prompt_version"] == "1.1.0"
     assert worker["model_ref"] == "qwen2.5-7b-instruct-school-demo"
     assert worker["lease_seconds"] == 180
     assert settings["research_education_worker"]["enabled"] is False
@@ -241,6 +243,49 @@ def test_programme_worker_cli_requires_study_and_manifest_before_mapping(tmp_pat
     with pytest.raises(backend.ResearchCLIConfigError) as raised:
         backend.build_research_settings_kwargs(args, tmp_path)
     assert raised.value.code == "research_programme_worker_requires_pinned_study_use"
+
+
+def test_research_programme_rag_cold_import_and_bm25_build_use_locked_backend_venv():
+    repo = Path(__file__).resolve().parents[2]
+    backend_python = repo / "09_backend" / ".venv" / "Scripts" / "python.exe"
+    code = """
+import sys
+from pathlib import Path
+repo = Path(sys.argv[1])
+sys.path.insert(0, str(repo / "13_deployment"))
+import school_backend
+school_backend._prepare_research_programme_rag_import(repo)
+from rag_engine.domain import KnowledgeRecord
+from rag_engine.research import ResearchOnlyRetriever
+from rag_engine.sparse import BM25SRetriever
+record = KnowledgeRecord(
+    chunk_id="CHUNK_SYNTHETIC_01",
+    document_id="KB_SYNTHETIC_01",
+    text="synthetic public reference excerpt",
+    context_text="synthetic public reference excerpt",
+    metadata={},
+    citation={},
+    layer="policy",
+)
+BM25SRetriever([record]).build()
+assert ResearchOnlyRetriever.__module__ == "rag_engine.research.retrieval"
+"""
+    environment = {
+        name: os.environ[name]
+        for name in ("PATH", "SystemRoot", "WINDIR", "TEMP", "TMP")
+        if name in os.environ
+    }
+    completed = subprocess.run(
+        [str(backend_python), "-I", "-c", code, str(repo)],
+        cwd=repo,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert completed.returncode == 0
 
 
 @pytest.mark.parametrize("cat_port", [True, False, 8181.0, "8181", 1023, 65536])
