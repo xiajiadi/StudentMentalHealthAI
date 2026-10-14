@@ -9,6 +9,7 @@ import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import AdminSchoolDirectory from '@/components/school/AdminSchoolDirectory.vue'
 import AdminSchoolOperations from '@/components/school/AdminSchoolOperations.vue'
 import SchoolResearchManagement from '@/components/school/SchoolResearchManagement.vue'
+import SafetyAssignments from '@/components/school/SafetyAssignments.vue'
 import { readDependencyHealth } from '@/views/admin/health'
 import { useSessionStore } from '@/stores/session'
 
@@ -90,6 +91,7 @@ watch(section, (value) => {
         <div v-else class="health-message" role="status">端点未返回依赖条目；状态未知。</div>
       </AppCard>
       <AppCard class="health-disclosure"><Building2 :size="18" aria-hidden="true" /><p>组织设置、账号权限和系统配置的读写操作尚不可用。依赖状态属于工程能力信息，不含学生数据或心理判断。</p></AppCard>
+      <SafetyAssignments :key="schoolScopeKey" />
     </template>
   </main>
 </template>

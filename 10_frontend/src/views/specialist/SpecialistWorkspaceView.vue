@@ -10,6 +10,7 @@ import SpecialistResearchFeedback from '@/components/school/SpecialistResearchFe
 import SpecialistResearchProgrammeCandidates from '@/components/school/SpecialistResearchProgrammeCandidates.vue'
 import SpecialistCatManagement from '@/components/school/SpecialistCatManagement.vue'
 import SchoolResearchManagement from '@/components/school/SchoolResearchManagement.vue'
+import SchoolConversationSafetyReviews from '@/components/school/SchoolConversationSafetyReviews.vue'
 
 const route = useRoute()
 const section = computed(() => String(route.params.section ?? 'overview'))
@@ -54,7 +55,7 @@ const page = computed(() => ({
       </section>
       <AppCard class="specialist-boundary">
         <span class="specialist-boundary__icon"><ShieldCheck :size="19" aria-hidden="true" /></span>
-        <div><span class="specialist-kicker">角色边界</span><h2>专业协作与安全复核是不同权限</h2><p>安全复核由单独的“安全复核员（REVIEWER）”角色及其后端权限负责。本角色没有安全队列或审核结论权限；也不会据此显示任何个案。</p></div>
+        <div><span class="specialist-kicker">角色边界</span><h2>专业协作与安全复核是不同权限</h2><p>全局安全复核队列仍由“安全复核员（REVIEWER）”角色负责。心理老师只会看到后端当前指派给自己的对话安全流程摘要；流程标记不构成诊断或专业结论。</p></div>
       </AppCard>
     </template>
 
@@ -63,6 +64,7 @@ const page = computed(() => ({
     </template>
 
     <template v-else-if="section === 'tasks'">
+      <SchoolConversationSafetyReviews />
       <SpecialistTaskReviews />
       <SpecialistResearchFeedback />
       <SpecialistResearchProgrammeCandidates />
