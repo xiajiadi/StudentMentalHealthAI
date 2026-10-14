@@ -285,3 +285,108 @@ async def test_transient_runtime_timeout_still_uses_bounded_retry_classification
         (claim, ResearchEducationJobErrorCode.UPSTREAM_TIMEOUT)
     ]
     assert persistence_adapter.finalized == []
+
+
+@pytest.mark.asyncio
+async def test_unexpected_generation_failure_persists_only_fixed_stage_code():
+    class _UnexpectedGeneration:
+        async def generate(self, **_kwargs):
+            raise RuntimeError("sensitive candidate text must not be persisted")
+
+    class _RetryingAdapter(_PersistenceAdapter):
+        def __init__(self):
+            self.retries = []
+
+        async def retry_programme_job(self, claim, *, error_code):
+            self.retries.append((claim, error_code))
+
+    worker = _worker()
+    persistence_adapter = _RetryingAdapter()
+    claim = _claim()
+
+    async def claim_once():
+        return [claim]
+
+    worker._claim_one = claim_once
+    worker.generation_service = _UnexpectedGeneration()
+    worker.persistence_adapter = persistence_adapter
+
+    result = await worker.run_once()
+
+    assert result is ResearchProgrammeWorkerResult.RETRY
+    assert persistence_adapter.retries == [
+        (claim, ResearchEducationJobErrorCode.INTERNAL_FAILURE_GENERATION)
+    ]
+    assert "sensitive candidate text" not in repr(persistence_adapter.retries)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("failure_stage", "expected_code"),
+    (
+        ("projection", ResearchEducationJobErrorCode.INTERNAL_FAILURE_CANDIDATE_PROJECTION),
+        ("store", ResearchEducationJobErrorCode.INTERNAL_FAILURE_CANDIDATE_STORE),
+    ),
+)
+async def test_local_candidate_contract_failure_is_reviewed_without_retry(
+    failure_stage, expected_code
+):
+    class _HeldGeneration:
+        calls = 0
+
+        async def generate(self, **_kwargs):
+            self.calls += 1
+            return _held_outcome()
+
+    class _FinalizingAdapter(_PersistenceAdapter):
+        def __init__(self):
+            self.finalized = []
+            self.retries = []
+
+        async def store_generated_candidate(self, _candidate):
+            if failure_stage == "store":
+                raise BackendError(
+                    ErrorCode.VALIDATION_FAILED,
+                    detail="private candidate body must not enter diagnostics",
+                )
+            return {}
+
+        async def finalize_programme_job(self, claim, *, status, error_code=None):
+            self.finalized.append((claim, status, error_code))
+            return status
+
+        async def retry_programme_job(self, claim, *, error_code):
+            self.retries.append((claim, error_code))
+
+    worker = _worker()
+    generation = _HeldGeneration()
+    persistence_adapter = _FinalizingAdapter()
+    claim = _claim()
+
+    async def claim_once():
+        return [claim]
+
+    if failure_stage == "projection":
+        def invalid_projection(_claim, _outcome):
+            raise TypeError("generated body must not enter diagnostics")
+
+        worker._generated_candidate = invalid_projection
+
+    worker._claim_one = claim_once
+    worker.generation_service = generation
+    worker.persistence_adapter = persistence_adapter
+
+    result = await worker.run_once()
+
+    assert result is ResearchProgrammeWorkerResult.REVIEW_REQUIRED
+    assert generation.calls == 1
+    assert persistence_adapter.finalized == [
+        (
+            claim,
+            "REVIEW_REQUIRED",
+            expected_code,
+        )
+    ]
+    assert persistence_adapter.retries == []
+    assert "generated body" not in repr(persistence_adapter.finalized)
+    assert "private candidate body" not in repr(persistence_adapter.finalized)

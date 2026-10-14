@@ -163,6 +163,7 @@ class ResearchProgrammeWorker:
                         return ResearchProgrammeWorkerResult.RETRY
                 return ResearchProgrammeWorkerResult.STALE_LEASE
             try:
+                stage = "AUTHORIZATION"
                 if not await self.persistence_adapter.authorize_programme_claim(claim):
                     result = await self.persistence_adapter.finalize_programme_job(
                         claim, status="ABSTAINED"
@@ -172,17 +173,23 @@ class ResearchProgrammeWorker:
                         if result == "CANCELLED"
                         else ResearchProgrammeWorkerResult.STALE_LEASE
                     )
+                stage = "GENERATION"
                 outcome = await self.generation_service.generate(
                     actor_role=BackendRole.PSYCHOLOGICAL_SPECIALIST,
                     request_context=self._context(claim),
                 )
+                stage = "OUTCOME_VALIDATION"
                 if type(outcome) is not ResearchProgrammeOutcome:
                     raise ValueError("research generation result is invalid")
                 if outcome.status == "HELD":
+                    stage = "CANDIDATE_PROJECTION"
                     generated = self._generated_candidate(claim, outcome)
+                    stage = "CANDIDATE_STORE"
                     await self.persistence_adapter.store_generated_candidate(generated)
                     return ResearchProgrammeWorkerResult.HELD
+                stage = "DISPOSITION"
                 status, code = self._disposition(outcome)
+                stage = "FINALIZATION"
                 result = await self.persistence_adapter.finalize_programme_job(
                     claim, status=status, error_code=code
                 )
@@ -210,6 +217,8 @@ class ResearchProgrammeWorker:
                         )
                     except Exception:
                         return ResearchProgrammeWorkerResult.RETRY
+                if exc.code is ErrorCode.VALIDATION_FAILED:
+                    return await self._review_internal_failure(claim, stage)
                 if exc.code is ErrorCode.DEPENDENCY_INVALID_RESPONSE:
                     try:
                         from database_layer.school_research_education_jobs import (
@@ -231,8 +240,32 @@ class ResearchProgrammeWorker:
                     except Exception:
                         return ResearchProgrammeWorkerResult.RETRY
                 return await self._retry(claim, self._upstream_code(exc.code))
+            except (AssertionError, AttributeError, KeyError, RuntimeError, TypeError, ValueError):
+                return await self._review_internal_failure(claim, stage)
             except Exception:
-                return await self._retry(claim)
+                return await self._retry(claim, self._internal_failure_code(stage))
+
+    async def _review_internal_failure(self, claim, stage: str):
+        code = self._internal_failure_code(stage)
+        try:
+            result = await self.persistence_adapter.finalize_programme_job(
+                claim,
+                status="REVIEW_REQUIRED",
+                error_code=code,
+            )
+            return (
+                ResearchProgrammeWorkerResult.CANCELLED
+                if result == "CANCELLED"
+                else ResearchProgrammeWorkerResult.REVIEW_REQUIRED
+                if result == "REVIEW_REQUIRED"
+                else ResearchProgrammeWorkerResult.STALE_LEASE
+            )
+        except BackendError as finalize_error:
+            if finalize_error.code is ErrorCode.WORKFLOW_CONFLICT:
+                return ResearchProgrammeWorkerResult.STALE_LEASE
+            return await self._retry(claim, code)
+        except Exception:
+            return await self._retry(claim, code)
 
     async def _claim_one(self):
         from database_layer.school_research_education_jobs import STAFF_PROGRAMME_POLICY_VERSION
@@ -397,6 +430,25 @@ class ResearchProgrammeWorker:
         if code is ErrorCode.DEPENDENCY_UNAVAILABLE:
             return ResearchEducationJobErrorCode.UPSTREAM_TRANSIENT
         return ResearchEducationJobErrorCode.GENERATION_FAILED
+
+    @staticmethod
+    def _internal_failure_code(stage: str):
+        """Persist only a closed stage label; never exception text or inputs."""
+        from database_layer.school_research_education_jobs import ResearchEducationJobErrorCode
+
+        return {
+            "AUTHORIZATION": ResearchEducationJobErrorCode.INTERNAL_FAILURE_AUTHORIZATION,
+            "GENERATION": ResearchEducationJobErrorCode.INTERNAL_FAILURE_GENERATION,
+            "OUTCOME_VALIDATION": (
+                ResearchEducationJobErrorCode.INTERNAL_FAILURE_OUTCOME_VALIDATION
+            ),
+            "CANDIDATE_PROJECTION": (
+                ResearchEducationJobErrorCode.INTERNAL_FAILURE_CANDIDATE_PROJECTION
+            ),
+            "CANDIDATE_STORE": ResearchEducationJobErrorCode.INTERNAL_FAILURE_CANDIDATE_STORE,
+            "DISPOSITION": ResearchEducationJobErrorCode.INTERNAL_FAILURE_DISPOSITION,
+            "FINALIZATION": ResearchEducationJobErrorCode.INTERNAL_FAILURE_FINALIZATION,
+        }.get(stage, ResearchEducationJobErrorCode.INTERNAL_FAILURE)
 
     def _now(self) -> datetime:
         value = self.clock()

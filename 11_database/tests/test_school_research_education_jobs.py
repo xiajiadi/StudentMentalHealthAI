@@ -550,6 +550,42 @@ def test_invalid_dependency_response_can_finish_as_review_required(session):
     assert persisted.lease_token is None
 
 
+def test_fixed_internal_worker_stage_code_persists_without_schema_change(session):
+    repo = _repo(session)
+    queued = _enqueue(
+        repo,
+        policy_version=STAFF_PROGRAMME_POLICY_VERSION,
+        policy_hash="9" * 64,
+    )
+    claim = asyncio.run(
+        repo.claim_next(
+            school_id=1,
+            lease_owner="staff-worker",
+            policy_version=STAFF_PROGRAMME_POLICY_VERSION,
+            now=_NOW,
+        )
+    )[0]
+
+    reviewed = asyncio.run(
+        repo.finish(
+            school_id=1,
+            research_session_id=1,
+            job_id=queued.id,
+            lease_owner=claim.lease_owner,
+            lease_token=claim.lease_token,
+            status="REVIEW_REQUIRED",
+            error_code=ResearchEducationJobErrorCode.INTERNAL_FAILURE_CANDIDATE_PROJECTION,
+            now=_NOW,
+        )
+    )
+
+    assert reviewed.status == "REVIEW_REQUIRED"
+    assert reviewed.last_error_code == "INTERNAL_FAILURE_CANDIDATE_PROJECTION"
+    assert session.get(SchoolResearchEducationJob, queued.id).last_error_code == (
+        "INTERNAL_FAILURE_CANDIDATE_PROJECTION"
+    )
+
+
 def test_replay_scope_and_error_codes_are_closed(session):
     repo = _repo(session)
     _enqueue(repo, policy_hash="a" * 64)
