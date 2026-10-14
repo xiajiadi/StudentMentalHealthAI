@@ -1,4 +1,29 @@
-## ACTIVE — 2026-10-14, authenticated candidate import and research tasks
+## ACTIVE — 2026-10-14, installed research lifecycle and atomic task work
+
+Operator explicitly requires continued autonomous work when unavailable; questions
+must not pause unrelated authorized engineering. No shutdown deadline is active.
+Root reviewed seven pinned research CLI options in app lifecycle, exact manifest
+argv checks, non-adoption of occupied ports, and STOP_PARTIAL on residual CAT
+listeners. Independent QA found and fixed unreadable partial manifests when spawn
+identity is missing: explicit unverified records remain status-readable, while
+stop refuses all process operations without verified ownership. Root52 lifecycle
+tests and targeted Ruff pass. Existing frontend untracked artifacts are preserved.
+
+Actual isolated Windows parent-termination/child-EOF proof reviewed:
+D:\Dev\temp\psynova-backend-terminate-eof-native-20261014T0946+0800.json,
+SHAe785665db49f376fa0a39f7fdbfe766fec79d76f3ce93ac173761667793ed012.
+Production manager/probes observed exact parent47856/51430 and CAT44944/51428;
+production terminate_verified returned true, parent exit1, both ports absent.
+Five source hashes unchanged. This proves the termination primitive/EOF path,
+not full installed app manifest/stop or shared K services. Initial venv-parent
+attempt failed and its artifact remains; no definite root cause is claimed.
+
+Direct workers continue atomic admin research publish and immutable expiring
+study-use policy. No profile eligibility/task/session is changed by these tests;
+public candidate versions remain pending. Existing K API/UI run older source.
+Online800, real RAG/local7B/report-review and full product acceptance remain open.
+
+## Prior checkpoint — authenticated candidate import and research tasks
 
 Psychologist-only catalog/import APIs are wired with CSRF, scoped idempotency,
 current persisted role checks and immutable server selectors. Root58 relevant

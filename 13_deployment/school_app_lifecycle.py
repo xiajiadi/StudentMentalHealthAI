@@ -10,19 +10,27 @@ import argparse
 import ctypes
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
 from resume_school_workspace import _utc_timestamp
-from school_backend import DEFAULT_BACKEND_PORT, DEFAULT_FRONTEND_PORT, LLM_PROFILES
+from school_backend import (
+    DEFAULT_BACKEND_PORT,
+    DEFAULT_FRONTEND_PORT,
+    LLM_PROFILES,
+    build_research_settings_kwargs,
+)
 from school_schema import CURRENT_SCHOOL_REVISION, SUPPORTED_SNAPSHOT_REVISIONS
 
 SCHEMA = "psynova.school-app-lifecycle.v1"
@@ -43,6 +51,66 @@ START_TIMEOUT_SECONDS = 25.0
 IS_WINDOWS = os.name == "nt"
 FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 IO_REPARSE_TAG_MOUNT_POINT = 0xA0000003
+RESEARCH_CONFIG_ARGUMENTS = (
+    "research_runtime_file",
+    "research_runtime_sha256",
+    "research_service_file",
+    "research_service_sha256",
+    "research_cat_python",
+    "research_cat_source",
+    "research_cat_dependencies",
+)
+RESEARCH_CONFIG_FLAGS = {
+    "research_runtime_file": "--research-runtime-file",
+    "research_runtime_sha256": "--research-runtime-sha256",
+    "research_service_file": "--research-service-file",
+    "research_service_sha256": "--research-service-sha256",
+    "research_cat_python": "--research-cat-python",
+    "research_cat_source": "--research-cat-source",
+    "research_cat_dependencies": "--research-cat-dependencies",
+}
+RESEARCH_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+
+
+@dataclass(frozen=True, slots=True)
+class ResearchProcessConfig:
+    """Validated, immutable public paths and pins for the Backend-owned CAT."""
+
+    runtime_file: str
+    runtime_sha256: str
+    service_file: str
+    service_sha256: str
+    cat_python: str
+    cat_source: str
+    cat_dependencies: str
+    port: int
+
+    def cli_arguments(self) -> list[str]:
+        values = {
+            "research_runtime_file": self.runtime_file,
+            "research_runtime_sha256": self.runtime_sha256,
+            "research_service_file": self.service_file,
+            "research_service_sha256": self.service_sha256,
+            "research_cat_python": self.cat_python,
+            "research_cat_source": self.cat_source,
+            "research_cat_dependencies": self.cat_dependencies,
+        }
+        return [
+            argument
+            for name in RESEARCH_CONFIG_ARGUMENTS
+            for argument in (RESEARCH_CONFIG_FLAGS[name], values[name])
+        ]
+
+    def manifest_value(self) -> dict[str, str]:
+        return {
+            "research_runtime_file": self.runtime_file,
+            "research_runtime_sha256": self.runtime_sha256,
+            "research_service_file": self.service_file,
+            "research_service_sha256": self.service_sha256,
+            "research_cat_python": self.cat_python,
+            "research_cat_source": self.cat_source,
+            "research_cat_dependencies": self.cat_dependencies,
+        }
 
 
 class LifecycleError(RuntimeError):
@@ -301,6 +369,102 @@ def _safe_argv(argv: list[str]) -> list[str]:
     ):
         raise LifecycleError("Credential-like child arguments are not allowed")
     return argv
+
+
+def _validated_research_config(
+    value: Mapping[str, object] | None, target: Path
+) -> ResearchProcessConfig | None:
+    if value is None:
+        return None
+    if not isinstance(value, Mapping) or set(value) != set(RESEARCH_CONFIG_ARGUMENTS):
+        raise LifecycleError("Research process configuration must provide all pinned fields")
+    if all(value[name] is None for name in RESEARCH_CONFIG_ARGUMENTS):
+        return None
+
+    args_values: dict[str, object] = {}
+    for name in RESEARCH_CONFIG_ARGUMENTS:
+        item = value[name]
+        if name.endswith("_file") or name in {
+            "research_cat_python",
+            "research_cat_source",
+            "research_cat_dependencies",
+        }:
+            if isinstance(item, str):
+                item = Path(item)
+            if not isinstance(item, Path):
+                raise LifecycleError("Research process configuration is invalid")
+        args_values[name] = item
+
+    try:
+        settings = build_research_settings_kwargs(
+            argparse.Namespace(**args_values), target
+        )
+    except Exception:  # noqa: BLE001 - hide source paths and parser details.
+        raise LifecycleError("Research process configuration failed pinned preflight") from None
+    if not settings:
+        raise LifecycleError("Research process configuration is incomplete")
+    base_url = settings.get("school_research_base_url")
+    match = re.fullmatch(r"http://127\.0\.0\.1:([0-9]{1,5})", str(base_url))
+    if match is None:
+        raise LifecycleError("Research service must use its pinned loopback listener")
+
+    return ResearchProcessConfig(
+        runtime_file=str(settings["school_research_runtime_file"]),
+        runtime_sha256=str(settings["school_research_runtime_sha256"]),
+        service_file=str(settings["school_research_service_file"]),
+        service_sha256=str(settings["school_research_service_sha256"]),
+        cat_python=str(settings["school_research_cat_python"]),
+        cat_source=str(settings["school_research_cat_source"]),
+        cat_dependencies=str(settings["school_research_cat_dependencies"]),
+        port=int(match.group(1)),
+    )
+
+
+def _research_config_from_manifest(
+    manifest: Mapping[str, object], target: Path, backend_port: int, frontend_port: int
+) -> ResearchProcessConfig | None:
+    has_config = "research_config" in manifest
+    has_port = "research_cat_port" in manifest
+    if not has_config and not has_port:
+        return None
+    if has_config != has_port:
+        raise LifecycleError("Lifecycle research configuration is incomplete")
+    raw = manifest.get("research_config")
+    if type(raw) is not dict or set(raw) != set(RESEARCH_CONFIG_ARGUMENTS):
+        raise LifecycleError("Lifecycle research configuration is invalid")
+    for name in RESEARCH_CONFIG_ARGUMENTS:
+        value = raw.get(name)
+        if name.endswith("_sha256"):
+            if type(value) is not str or RESEARCH_SHA256.fullmatch(value) is None:
+                raise LifecycleError("Lifecycle research configuration is invalid")
+            continue
+        if (
+            type(value) is not str
+            or not Path(value).is_absolute()
+            or ".." in Path(value).parts
+        ):
+            raise LifecycleError("Lifecycle research configuration is invalid")
+        if name in {"research_runtime_file", "research_service_file"} and not Path(
+            value
+        ).is_relative_to(target):
+            raise LifecycleError("Lifecycle research configuration escaped its workspace")
+    port = manifest.get("research_cat_port")
+    if (
+        type(port) is not int
+        or not 1024 <= port <= 65535
+        or port in {backend_port, frontend_port, 8160, 8170, 8180, 8190}
+    ):
+        raise LifecycleError("Lifecycle research CAT port is invalid")
+    return ResearchProcessConfig(
+        runtime_file=raw["research_runtime_file"],
+        runtime_sha256=raw["research_runtime_sha256"],
+        service_file=raw["research_service_file"],
+        service_sha256=raw["research_service_sha256"],
+        cat_python=raw["research_cat_python"],
+        cat_source=raw["research_cat_source"],
+        cat_dependencies=raw["research_cat_dependencies"],
+        port=port,
+    )
 
 
 def _utc_creation(process: dict[str, Any]) -> str | None:
@@ -699,12 +863,16 @@ class SchoolAppLifecycle:
         llm_profile: str = "default",
         frontend_mode: str,
         timeout: float = START_TIMEOUT_SECONDS,
+        research_config: Mapping[str, object] | None = None,
     ) -> dict[str, Any]:
         if not IS_WINDOWS:
             raise LifecycleError("Native school application lifecycle requires Windows")
         target = self._workspace(workspace)
         _validate_ports(backend_port, frontend_port)
         _validate_options(llm_profile, frontend_mode)
+        research_config = _validated_research_config(research_config, target)
+        if research_config is not None:
+            _validate_research_port(research_config.port, backend_port, frontend_port)
         manifest_path = target / MANIFEST_NAME
         previous_manifest = None
         if manifest_path.exists():
@@ -721,8 +889,12 @@ class SchoolAppLifecycle:
             backend_port=backend_port,
             frontend_port=frontend_port,
             llm_profile=llm_profile,
+            research_config=research_config,
         )
-        for port in (backend_port, frontend_port):
+        ports_to_check = (backend_port, frontend_port) + (
+            (research_config.port,) if research_config is not None else ()
+        )
+        for port in ports_to_check:
             if not self.ops.port_is_free(port) or self.ops.listeners(port):
                 raise LifecycleError(
                     "Application port is occupied; refusing to adopt an existing listener"
@@ -767,12 +939,19 @@ class SchoolAppLifecycle:
             },
             "whole_ready": False,
         }
+        if research_config is not None:
+            manifest["research_config"] = research_config.manifest_value()
+            manifest["research_cat_port"] = research_config.port
         if preview_output_dir is not None:
             manifest["frontend_preview_dir"] = str(preview_output_dir)
         _atomic_write(manifest_path, manifest)
         try:
             backend_argv = self._backend_argv(
-                target, backend_port, frontend_port, llm_profile
+                target,
+                backend_port,
+                frontend_port,
+                llm_profile,
+                research_config=research_config,
             )
             backend = self.ops.spawn(
                 backend_argv, cwd=self.repo, env=_sanitize_environment()
@@ -850,11 +1029,35 @@ class SchoolAppLifecycle:
         manifest = _read_manifest(target / MANIFEST_NAME)
         self._validate_manifest_scope(manifest, target)
         self._validate_manifest_services(manifest, target)
+        research_config = _research_config_from_manifest(
+            manifest,
+            target,
+            int(manifest["backend_port"]),
+            int(manifest["frontend_port"]),
+        )
         listeners: dict[str, Any] = {}
         for service in manifest.get("services", []):
             if not isinstance(service, dict):
                 raise LifecycleError("Lifecycle manifest service entry is invalid")
             port = service.get("port")
+            if service.get("identity_state") == "UNAVAILABLE":
+                try:
+                    bound = self.ops.listeners(port)
+                    listener_state = (
+                        "PRESENT_UNVERIFIED_OWNER" if bound else "ABSENT"
+                    )
+                except LifecycleError:
+                    listener_state = "UNVERIFIED"
+                listeners[service.get("name", "unknown")] = {
+                    "port": port,
+                    "owned_process": False,
+                    "spawn_pid_candidate": service.get("pid"),
+                    "process_chain": [],
+                    "listener_pid": None,
+                    "listener": listener_state,
+                    "ready": False,
+                }
+                continue
             try:
                 bound = self.ops.listeners(port)
                 process_states = []
@@ -929,7 +1132,7 @@ class SchoolAppLifecycle:
             database_status = "VERIFIED"
         except (LifecycleError, TypeError, ValueError) as exc:
             database_status = f"UNAVAILABLE ({type(exc).__name__})"
-        return {
+        result = {
             "status": manifest.get("state"),
             "workspace": str(target),
             "workspace_id": manifest.get("workspace_id"),
@@ -956,6 +1159,24 @@ class SchoolAppLifecycle:
             "current_ready_proof": False,
             "manifest_validated": True,
         }
+        if research_config is not None:
+            try:
+                research_listeners = self.ops.listeners(research_config.port)
+                research_listener_state = (
+                    "PRESENT_UNVERIFIED_OWNER" if research_listeners else "ABSENT"
+                )
+            except LifecycleError:
+                research_listeners = None
+                research_listener_state = "UNVERIFIED"
+            if manifest.get("state") == "STOPPED" and research_listeners:
+                result["status"] = "STOP_PARTIAL"
+            result["research_cat"] = {
+                "port": research_config.port,
+                "owner": "backend_manager",
+                "listener": research_listener_state,
+                "native_pid": None,
+            }
+        return result
 
     def stop(self, workspace: Path) -> dict[str, Any]:
         if not IS_WINDOWS:
@@ -970,6 +1191,20 @@ class SchoolAppLifecycle:
         services = manifest.get("services")
         if not isinstance(services, list):
             raise LifecycleError("Lifecycle manifest service list is invalid")
+        if any(
+            isinstance(service, dict)
+            and service.get("identity_state") == "UNAVAILABLE"
+            for service in services
+        ):
+            self._mark_stop_blocked(
+                manifest,
+                manifest_path,
+                "STOP_BLOCKED_IDENTITY_UNAVAILABLE",
+                failure_type="SpawnedIdentityUnavailable",
+            )
+            raise LifecycleError(
+                "Spawned process identity is unavailable; no services were stopped"
+            )
         # First validate every owner and listener before changing any process.
         live: dict[tuple[str, int], bool] = {}
         for service in services:
@@ -1147,10 +1382,43 @@ class SchoolAppLifecycle:
                 )
                 raise LifecycleError("Listener remains after verified process stop")
             service["state"] = "STOPPED"
+        research_config = _research_config_from_manifest(
+            manifest,
+            target,
+            int(manifest["backend_port"]),
+            int(manifest["frontend_port"]),
+        )
+        if research_config is not None:
+            try:
+                research_listeners = self.ops.listeners(research_config.port)
+            except LifecycleError:
+                manifest["state"] = "STOP_PARTIAL"
+                manifest["failure_code"] = "RESEARCH_CAT_LISTENER_UNVERIFIED"
+                manifest["updated_at"] = _utc_now()
+                _atomic_write(manifest_path, manifest)
+                raise LifecycleError(
+                    "Research CAT listener state is unverified; stop is partial"
+                ) from None
+            if research_listeners:
+                manifest["state"] = "STOP_PARTIAL"
+                manifest["failure_code"] = "RESEARCH_CAT_LISTENER_REMAINS"
+                manifest["updated_at"] = _utc_now()
+                _atomic_write(manifest_path, manifest)
+                raise LifecycleError(
+                    "Research CAT listener remains after Backend stop; it is not lifecycle-owned"
+                )
         manifest["state"] = "STOPPED"
         manifest["updated_at"] = _utc_now()
         _atomic_write(manifest_path, manifest)
-        return _public_status(manifest)
+        result = _public_status(manifest)
+        if research_config is not None:
+            result["research_cat"] = {
+                "port": research_config.port,
+                "owner": "backend_manager",
+                "listener": "ABSENT_AFTER_BACKEND_STOP",
+                "native_pid": None,
+            }
+        return result
 
     def _mark_stop_blocked(
         self,
@@ -1177,6 +1445,16 @@ class SchoolAppLifecycle:
                     raise LifecycleError(
                         "Stopped manifest still has a live or reused process id"
                     )
+        research_config = _research_config_from_manifest(
+            manifest,
+            Path(manifest["workspace"]),
+            int(manifest["backend_port"]),
+            int(manifest["frontend_port"]),
+        )
+        if research_config is not None and self.ops.listeners(research_config.port):
+            raise LifecycleError(
+                "Stopped manifest still has a Backend-managed research CAT listener"
+            )
 
     def _archive_stopped_manifest(
         self, target: Path, manifest_path: Path, manifest: dict[str, Any]
@@ -1198,7 +1476,13 @@ class SchoolAppLifecycle:
             ) from None
 
     def _validate_prepared_database(
-        self, target: Path, *, backend_port: int, frontend_port: int, llm_profile: str
+        self,
+        target: Path,
+        *,
+        backend_port: int,
+        frontend_port: int,
+        llm_profile: str,
+        research_config: ResearchProcessConfig | None = None,
     ) -> dict[str, Any]:
         try:
             from prepare_school_runtime import validate_marker, verify_process
@@ -1239,6 +1523,8 @@ class SchoolAppLifecycle:
             llm_profile,
             "--preflight-only",
         ]
+        if research_config is not None:
+            argv.extend(research_config.cli_arguments())
         try:
             result = subprocess.run(
                 _safe_argv(argv),
@@ -1270,11 +1556,16 @@ class SchoolAppLifecycle:
         return marker
 
     def _backend_argv(
-        self, target: Path, backend_port: int, frontend_port: int, profile: str
+        self,
+        target: Path,
+        backend_port: int,
+        frontend_port: int,
+        profile: str,
+        *,
+        research_config: ResearchProcessConfig | None = None,
     ) -> list[str]:
         python, _base_python = _backend_python_paths(self.repo)
-        return _safe_argv(
-            [
+        argv = [
                 str(python),
                 str(self.repo / "13_deployment" / "school_backend.py"),
                 "--workspace",
@@ -1286,7 +1577,9 @@ class SchoolAppLifecycle:
                 "--llm-profile",
                 profile,
             ]
-        )
+        if research_config is not None:
+            argv.extend(research_config.cli_arguments())
+        return _safe_argv(argv)
 
     def _frontend_argv(
         self, mode: str, port: int, preview_output_dir: Path | None = None
@@ -1349,6 +1642,45 @@ class SchoolAppLifecycle:
         parent_identity: dict[str, Any],
     ) -> None:
         identity = self.ops.inspect_process(process.pid)
+        identity_complete = bool(
+            isinstance(identity, dict)
+            and type(identity.get("ProcessId")) is int
+            and identity.get("ProcessId") == process.pid
+            and identity.get("ParentProcessId")
+            == parent_identity.get("ProcessId")
+            and isinstance(identity.get("ExecutablePath"), str)
+            and Path(identity["ExecutablePath"]).is_absolute()
+            and _utc_creation(identity) is not None
+            and _same_command_line(identity.get("CommandLine"), argv)
+        )
+        if not identity_complete:
+            entry = {
+                "name": name,
+                "port": port,
+                "pid": int(process.pid),
+                "executable": argv[0],
+                "creation_time": None,
+                "argv": list(argv),
+                "command_line": None,
+                "parent": _identity(parent_identity),
+                "processes": [],
+                "listener": None,
+                "listener_candidate": None,
+                "base_executable": (
+                    str(_backend_python_paths(self.repo)[1])
+                    if name == "backend"
+                    else None
+                ),
+                "state": "IDENTITY_UNAVAILABLE",
+                "readiness": "NOT_OBSERVED",
+                "identity_state": "UNAVAILABLE",
+            }
+            manifest["services"].append(entry)
+            manifest["updated_at"] = _utc_now()
+            _atomic_write(manifest_path, manifest)
+            raise LifecycleError(
+                "Spawned process identity unavailable; preserving an unverified spawn record"
+            )
         launcher = _process_record("launcher", identity, argv, parent_identity)
         base_executable = (
             str(_backend_python_paths(self.repo)[1]) if name == "backend" else None
@@ -1372,10 +1704,6 @@ class SchoolAppLifecycle:
         manifest["services"].append(entry)
         manifest["updated_at"] = _utc_now()
         _atomic_write(manifest_path, manifest)
-        if not identity or not _utc_creation(identity):
-            raise LifecycleError(
-                "Spawned process identity unavailable; preserving partial manifest"
-            )
 
     def _confirm_service_listener(self, service: dict[str, Any]) -> bool:
         listeners = self.ops.listeners(service["port"])
@@ -1480,6 +1808,7 @@ class SchoolAppLifecycle:
                 "PARTIAL_FAILURE",
                 "STOP_BLOCKED_FOREIGN_LISTENER",
                 "STOP_BLOCKED_IDENTITY_CHANGED",
+                "STOP_BLOCKED_IDENTITY_UNAVAILABLE",
                 "STOP_INCOMPLETE",
                 "STOPPING",
                 "STOP_PARTIAL",
@@ -1500,11 +1829,23 @@ class SchoolAppLifecycle:
     def _validate_manifest_services(
         self, manifest: dict[str, Any], target: Path
     ) -> None:
+        if any(
+            key.startswith("research_")
+            and key not in {"research_config", "research_cat_port"}
+            for key in manifest
+        ):
+            raise LifecycleError("Lifecycle manifest has unknown research fields")
         services = manifest.get("services")
         if not isinstance(services, list) or len(services) > 2:
             raise LifecycleError("Lifecycle manifest service list is invalid")
         _validate_ports(manifest.get("backend_port"), manifest.get("frontend_port"))
         _validate_options(manifest.get("llm_profile"), manifest.get("frontend_mode"))
+        research_config = _research_config_from_manifest(
+            manifest,
+            target,
+            manifest["backend_port"],
+            manifest["frontend_port"],
+        )
         expected_ports = {
             "backend": manifest["backend_port"],
             "frontend": manifest["frontend_port"],
@@ -1520,13 +1861,8 @@ class SchoolAppLifecycle:
                 or service.get("port") != expected_ports[name]
                 or type(service.get("pid")) is not int
                 or service["pid"] <= 0
-                or not isinstance(service.get("executable"), str)
-                or not Path(service["executable"]).is_absolute()
-                or not isinstance(service.get("creation_time"), str)
-                or not _utc_timestamp(service["creation_time"])
                 or not isinstance(service.get("argv"), list)
                 or not all(isinstance(item, str) for item in service["argv"])
-                or not isinstance(service.get("parent"), dict)
             ):
                 raise LifecycleError(
                     "Lifecycle manifest service identity is incomplete"
@@ -1545,6 +1881,8 @@ class SchoolAppLifecycle:
                     "--llm-profile",
                     manifest["llm_profile"],
                 ]
+                if research_config is not None:
+                    expected_argv.extend(research_config.cli_arguments())
                 expected_executable = expected_argv[0]
                 if not isinstance(service.get("base_executable"), str) or _path_key(
                     service["base_executable"]
@@ -1597,8 +1935,61 @@ class SchoolAppLifecycle:
                     )
             if _normalized_argv(service["argv"]) != _normalized_argv(
                 expected_argv
-            ) or _path_key(service["executable"]) != _path_key(expected_executable):
+            ):
                 raise LifecycleError("Lifecycle manifest command identity changed")
+            if service.get("identity_state") == "UNAVAILABLE":
+                if (
+                    set(service)
+                    != {
+                        "name",
+                        "port",
+                        "pid",
+                        "executable",
+                        "creation_time",
+                        "argv",
+                        "command_line",
+                        "parent",
+                        "processes",
+                        "listener",
+                        "listener_candidate",
+                        "base_executable",
+                        "state",
+                        "readiness",
+                        "identity_state",
+                    }
+                    or not isinstance(service.get("executable"), str)
+                    or _path_key(service["executable"])
+                    != _path_key(expected_executable)
+                    or service.get("creation_time") is not None
+                    or service.get("command_line") is not None
+                    or not isinstance(service.get("parent"), dict)
+                    or service.get("processes") != []
+                    or service.get("listener") is not None
+                    or service.get("listener_candidate") is not None
+                    or service.get("state") != "IDENTITY_UNAVAILABLE"
+                    or service.get("readiness") != "NOT_OBSERVED"
+                    or service.get("base_executable")
+                    != (str(expected_base) if name == "backend" else None)
+                ):
+                    raise LifecycleError(
+                        "Lifecycle unverified spawn record is invalid"
+                    )
+                seen.add(name)
+                continue
+            if "identity_state" in service:
+                raise LifecycleError("Lifecycle service identity state is invalid")
+            if (
+                not isinstance(service.get("executable"), str)
+                or not Path(service["executable"]).is_absolute()
+                or _path_key(service["executable"])
+                != _path_key(expected_executable)
+                or not isinstance(service.get("creation_time"), str)
+                or not _utc_timestamp(service["creation_time"])
+                or not isinstance(service.get("parent"), dict)
+            ):
+                raise LifecycleError(
+                    "Lifecycle manifest service identity is incomplete"
+                )
             if not _same_command_line(service.get("command_line"), service["argv"]):
                 raise LifecycleError("Lifecycle launcher command line changed")
             processes = service.get("processes")
@@ -1809,6 +2200,17 @@ def _validate_ports(backend_port: int, frontend_port: int) -> None:
         )
 
 
+def _validate_research_port(port: int, backend_port: int, frontend_port: int) -> None:
+    if (
+        type(port) is not int
+        or not 1024 <= port <= 65535
+        or port in {backend_port, frontend_port, 8160, 8170, 8180, 8190}
+    ):
+        raise LifecycleError(
+            "Research CAT listener port must be distinct from application and module ports"
+        )
+
+
 def _validate_options(profile: str, frontend_mode: str) -> None:
     if profile not in LLM_PROFILES or frontend_mode not in {"dev", "preview"}:
         raise LifecycleError(
@@ -1817,7 +2219,7 @@ def _validate_options(profile: str, frontend_mode: str) -> None:
 
 
 def _public_status(manifest: dict[str, Any]) -> dict[str, Any]:
-    return {
+    result = {
         "status": manifest.get("state"),
         "workspace_id": manifest.get("workspace_id"),
         "backend_port": manifest.get("backend_port"),
@@ -1855,6 +2257,14 @@ def _public_status(manifest: dict[str, Any]) -> dict[str, Any]:
         "whole_ready": False,
         "manifest": MANIFEST_NAME,
     }
+    if "research_config" in manifest and "research_cat_port" in manifest:
+        result["research_cat"] = {
+            "port": manifest["research_cat_port"],
+            "owner": "backend_manager",
+            "listener": "NOT_INDEPENDENTLY_OBSERVED",
+            "native_pid": None,
+        }
+    return result
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1878,6 +2288,13 @@ def build_parser() -> argparse.ArgumentParser:
             "--frontend-mode", choices=("dev", "preview"), required=True
         )
     start.add_argument("--timeout", type=float, default=START_TIMEOUT_SECONDS)
+    for name in RESEARCH_CONFIG_ARGUMENTS:
+        value_type = (
+            str
+            if name.endswith("_sha256")
+            else Path
+        )
+        start.add_argument(RESEARCH_CONFIG_FLAGS[name], dest=name, type=value_type)
     return parser
 
 
@@ -1894,6 +2311,14 @@ def main(argv: list[str] | None = None) -> int:
                 frontend_mode=args.frontend_mode,
             )
         elif args.command == "start":
+            supplied_research = {
+                name: getattr(args, name, None) for name in RESEARCH_CONFIG_ARGUMENTS
+            }
+            research_config = (
+                supplied_research
+                if any(value is not None for value in supplied_research.values())
+                else None
+            )
             result = lifecycle.start(
                 args.workspace,
                 backend_port=args.backend_port,
@@ -1901,6 +2326,7 @@ def main(argv: list[str] | None = None) -> int:
                 llm_profile=args.llm_profile,
                 frontend_mode=args.frontend_mode,
                 timeout=args.timeout,
+                research_config=research_config,
             )
         elif args.command == "status":
             result = lifecycle.status(args.workspace)
@@ -1910,7 +2336,11 @@ def main(argv: list[str] | None = None) -> int:
         return (
             0
             if result.get("status")
-            not in {"PARTIAL_READINESS_UNOBSERVED", "PARTIAL_FAILURE"}
+            not in {
+                "PARTIAL_READINESS_UNOBSERVED",
+                "PARTIAL_FAILURE",
+                "STOP_PARTIAL",
+            }
             else 2
         )
     except Exception as exc:  # noqa: BLE001 - type-only diagnostics avoid secrets and child output.
