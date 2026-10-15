@@ -603,6 +603,8 @@ class SchoolResearchEducationCandidateRepository:
             resolved_at=None,
             trace_id=trace_id,
             retention_due_at=session_metadata.retention_due_at,
+            created_at=clock,
+            updated_at=clock,
         )
         try:
             async with self.session.begin_nested():
@@ -1137,11 +1139,11 @@ def _dto(row: SchoolResearchEducationCandidate) -> ResearchEducationCandidateDTO
         key_version=row.key_version,
         payload_schema_version=row.payload_schema_version,
         resolved_by_membership_role_id=row.resolved_by_membership_role_id,
-        resolved_at=row.resolved_at,
+        resolved_at=_utc_aware(row.resolved_at),
         trace_id=row.trace_id,
-        retention_due_at=row.retention_due_at,
-        created_at=row.created_at,
-        updated_at=row.updated_at,
+        retention_due_at=_utc_aware(row.retention_due_at),
+        created_at=_required_utc_aware(row.created_at),
+        updated_at=_required_utc_aware(row.updated_at),
         generation_round=row.generation_round,
         input_review_id=row.input_review_id,
         input_review_state=row.input_review_state,
@@ -1248,6 +1250,21 @@ def _stored_utc_naive(value: datetime) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         return value
     return value.astimezone(UTC).replace(tzinfo=None)
+
+
+def _utc_aware(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _required_utc_aware(value: datetime | None) -> datetime:
+    result = _utc_aware(value)
+    if result is None:
+        raise ResearchEducationCandidateError("PERSISTED_TIMESTAMP_INVALID")
+    return result
 
 
 __all__ = [

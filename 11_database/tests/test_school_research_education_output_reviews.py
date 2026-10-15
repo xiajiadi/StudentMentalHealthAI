@@ -368,6 +368,8 @@ def test_round0_output_review_candidate_consumes_one_receipt_and_keeps_job_termi
         )
     ).all()
     assert candidate.status == "HELD"
+    assert candidate.created_at.tzinfo is UTC and candidate.updated_at.tzinfo is UTC
+    assert candidate.resolved_at is None
     assert candidate.output_safety_action == "REVIEW_REQUIRED"
     assert candidate.output_review_id == review.id
     assert candidate.output_review_state == "CONSUMED"
@@ -459,9 +461,21 @@ def test_round1_terminal_candidate_atomically_consumes_authorized_input_review(s
     assert candidate.input_review_id == authorized.id
     assert candidate.input_review_state == "CONSUMED"
     assert candidate.output_review_id == output_review.id
+    assert candidate.created_at == input_persisted.consumed_at.replace(tzinfo=UTC)
+    assert candidate.created_at.tzinfo is UTC and candidate.updated_at.tzinfo is UTC
     assert input_persisted.status == "CONSUMED" and input_persisted.state_version == 3
     assert output_persisted.status == "CONSUMED" and output_persisted.state_version == 2
     assert job.status == "REVIEW_REQUIRED" and job.last_error_code == "SAFETY_BLOCKED"
+    candidate_repository = SchoolResearchEducationCandidateRepository(
+        _OutputReviewAsyncSessionAdapter(session)
+    )
+    readback = asyncio.run(candidate_repository.get_for_task(
+        school_id=claim1.school_id,
+        task_id=claim1.task_id,
+        candidate_ref=candidate.candidate_ref,
+    ))
+    assert readback is not None and readback.created_at == candidate.created_at
+    assert readback.created_at.tzinfo is UTC
 
 
 def test_output_review_resolve_is_expiry_and_state_version_guarded(session):

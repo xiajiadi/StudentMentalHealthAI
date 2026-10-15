@@ -23,6 +23,8 @@ from database_layer.school_research_education_candidates import (
     ResearchEducationCandidateError,
     ResearchEducationCandidateScope,
     SchoolResearchEducationCandidateRepository,
+    _required_utc_aware,
+    _utc_aware,
 )
 from database_layer.school_research_education_input_reviews import (
     SchoolResearchEducationInputReviewRepository,
@@ -393,6 +395,19 @@ def test_feedback_candidate_pair_check_preserves_legacy_nulls_and_rejects_partia
         engine.dispose()
 
 
+def test_candidate_datetime_projection_normalizes_naive_aware_and_nullable_values():
+    naive = datetime(2026, 10, 16, 12, 34, 56, 789123)
+    aware = naive.replace(tzinfo=UTC)
+
+    assert _utc_aware(naive) == aware
+    assert _utc_aware(aware) == aware
+    assert _utc_aware(None) is None
+    assert _required_utc_aware(naive) == aware
+    assert _required_utc_aware(aware) == aware
+    with pytest.raises(ResearchEducationCandidateError, match="PERSISTED_TIMESTAMP_INVALID"):
+        _required_utc_aware(None)
+
+
 def test_held_candidate_replay_resolve_and_append_only_events(session):
     claim = _claim(session)
     repository = SchoolResearchEducationCandidateRepository(
@@ -409,6 +424,8 @@ def test_held_candidate_replay_resolve_and_append_only_events(session):
     assert first.content_revision == 1
     assert first.generation_round == 0
     assert first.input_review_id is None and first.input_review_state is None
+    assert first.created_at.tzinfo is UTC and first.updated_at.tzinfo is UTC
+    assert first.resolved_at is None
     assert first.source_manifest_sha256 == _MANIFEST_HASH
     assert first.purpose == "RESEARCH_SIMULATION"
     assert first.research_only is True
@@ -542,6 +559,9 @@ def test_reviewed_candidate_requires_and_persists_consumed_round1_sidecar(sessio
     assert candidate.input_review_id == consumed.id
     assert candidate.input_review_state == "CONSUMED"
     assert candidate.input_safety_action == "REVIEW_REQUIRED"
+    assert candidate.created_at == consumed.consumed_at
+    assert candidate.updated_at == candidate.created_at
+    assert candidate.created_at.tzinfo is UTC
 
     stored_candidate = session.get(SchoolResearchEducationCandidate, candidate.id)
     assert stored_candidate is not None
