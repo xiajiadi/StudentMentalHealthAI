@@ -28,6 +28,8 @@ from smhai_backend.domains.research_general_education.schemas import (
     ResearchGeneralEducationBoundaryDiagnostic,
     ResearchGeneralEducationCandidatePayload,
     ResearchGeneralEducationInputReviewReceipt,
+    ResearchGeneralEducationOutcome,
+    ResearchGeneralEducationOutputSafetyDiagnostic,
     ResearchGeneralEducationReviewedInputAuthorization,
     ResearchGeneralEducationSourceCard,
 )
@@ -176,12 +178,16 @@ class _Safety:
         input_action="PROCEED",
         retrieval_action="PROCEED",
         output_action="PROCEED",
+        output_reason_codes=None,
+        output_requires_human=None,
     ):
         self.actions = {
             "INPUT": input_action,
             "RETRIEVAL": retrieval_action,
             "OUTPUT": output_action,
         }
+        self.output_reason_codes = output_reason_codes
+        self.output_requires_human = output_requires_human
         self.calls: list[tuple[str, dict[str, Any]]] = []
 
     async def check_input(self, context, request_context):
@@ -196,13 +202,23 @@ class _Safety:
     def _check(self, stage, context):
         self.calls.append((stage, context))
         action = self.actions[stage]
+        reason_codes = (
+            self.output_reason_codes
+            if stage == "OUTPUT" and self.output_reason_codes is not None
+            else [f"{stage}_PASS" if action == "PROCEED" else f"{stage}_{action}"]
+        )
+        requires_human = (
+            self.output_requires_human
+            if stage == "OUTPUT" and self.output_requires_human is not None
+            else action == "REVIEW_REQUIRED"
+        )
         return SafetyCheckView(
             operation=stage,
             trace_id=CONTEXT.trace_id,
             decision=SafetyDecisionView(
                 action=action,
-                reason_codes=[f"{stage}_PASS" if action == "PROCEED" else f"{stage}_{action}"],
-                requires_human=action == "REVIEW_REQUIRED",
+                reason_codes=reason_codes,
+                requires_human=requires_human,
                 trace_id=CONTEXT.trace_id,
             ),
         )
@@ -358,6 +374,89 @@ async def test_generation_returns_exact_cited_sources_held_and_pinned():
     assert retriever.call_args[0]["top_k"] == 3
     assert retriever.call_args[0]["required_layers"] == ("policy", "theory", "intervention")
     assert len(canonical_candidate_payload_sha256(result.candidate)) == 64
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("action", "requires_human", "status"),
+    [
+        ("BLOCK", False, "ABSTAINED"),
+        ("BLOCK", True, "REVIEW_REQUIRED"),
+        ("REVIEW_REQUIRED", False, "REVIEW_REQUIRED"),
+        ("REVIEW_REQUIRED", True, "REVIEW_REQUIRED"),
+        ("CRISIS_ROUTE", False, "CRISIS_ROUTED"),
+        ("CRISIS_ROUTE", True, "CRISIS_ROUTED"),
+        ("PROCEED", True, "REVIEW_REQUIRED"),
+    ],
+)
+async def test_output_safety_stop_keeps_closed_diagnostic_without_content(
+    action, requires_human, status
+):
+    service, _ = _service(
+        safety=_Safety(
+            output_action=action,
+            output_reason_codes=["CONTENT_UNSAFE", "PROMPT_INJECTION"],
+            output_requires_human=requires_human,
+        )
+    )
+
+    result = await service.generate(
+        caller_role="PSYCHOLOGICAL_SPECIALIST", request_context=CONTEXT
+    )
+
+    assert result.status == status
+    assert result.reason_code == "OUTPUT_SAFETY_STOP"
+    assert result.candidate is None
+    assert result.output_safety_diagnostic == ResearchGeneralEducationOutputSafetyDiagnostic(
+        action=action,
+        reason_codes=("CONTENT_UNSAFE", "PROMPT_INJECTION"),
+        requires_human=requires_human,
+    )
+
+
+@pytest.mark.asyncio
+async def test_unrecognized_output_reason_omits_diagnostic_without_changing_safety_stop():
+    service, _ = _service(
+        safety=_Safety(
+            output_action="REVIEW_REQUIRED",
+            output_reason_codes=["UNRECOGNIZED_OUTPUT_REASON"],
+            output_requires_human=True,
+        )
+    )
+
+    result = await service.generate(
+        caller_role="PSYCHOLOGICAL_SPECIALIST", request_context=CONTEXT
+    )
+
+    assert result.status == "REVIEW_REQUIRED"
+    assert result.reason_code == "OUTPUT_SAFETY_STOP"
+    assert result.output_safety_diagnostic is None
+    assert result.candidate is None
+
+
+def test_output_safety_diagnostic_rejects_unknown_reason_and_forged_outcome_pair():
+    with pytest.raises(ValueError):
+        ResearchGeneralEducationOutputSafetyDiagnostic(
+            action="REVIEW_REQUIRED",
+            reason_codes=("UNRECOGNIZED_OUTPUT_REASON",),
+            requires_human=True,
+        )
+
+    diagnostic = ResearchGeneralEducationOutputSafetyDiagnostic(
+        action="BLOCK", reason_codes=("CONTENT_UNSAFE",), requires_human=False
+    )
+    with pytest.raises(ValueError):
+        ResearchGeneralEducationOutcome(
+            status="REVIEW_REQUIRED",
+            reason_code="OUTPUT_SAFETY_STOP",
+            output_safety_diagnostic=diagnostic,
+        )
+    with pytest.raises(ValueError):
+        ResearchGeneralEducationOutcome(
+            status="ABSTAINED",
+            reason_code="RESEARCH_RUNTIME_FAILED",
+            output_safety_diagnostic=diagnostic,
+        )
 
 
 @pytest.mark.asyncio

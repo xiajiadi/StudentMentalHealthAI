@@ -21,6 +21,7 @@ from smhai_backend.domains.research_general_education.schemas import (
     ResearchGeneralEducationCandidatePayload,
     ResearchGeneralEducationInputReviewReceipt,
     ResearchGeneralEducationOutcome,
+    ResearchGeneralEducationOutputSafetyDiagnostic,
     ResearchGeneralEducationReviewedInputAuthorization,
 )
 from smhai_backend.domains.research_general_education.service import (
@@ -718,6 +719,87 @@ async def test_worker_passes_only_valid_input_review_receipt_and_legacy_outcome_
     assert legacy_adapter.finalize_kwargs == [
         {"reason_code": "OUTPUT_SAFETY_STOP"}
     ]
+
+
+@pytest.mark.asyncio
+async def test_worker_forwards_only_typed_output_safety_diagnostic():
+    claim = _claim()
+    adapter = _Adapter()
+    diagnostic = ResearchGeneralEducationOutputSafetyDiagnostic(
+        action="REVIEW_REQUIRED",
+        reason_codes=("CONTENT_UNSAFE",),
+        requires_human=True,
+    )
+    worker = _worker(
+        claim=claim,
+        adapter=adapter,
+        generation=_Generation(
+            ResearchGeneralEducationOutcome(
+                status="REVIEW_REQUIRED",
+                reason_code="OUTPUT_SAFETY_STOP",
+                output_safety_diagnostic=diagnostic,
+            )
+        ),
+    )
+
+    result = await worker.run_once()
+
+    assert result is ResearchGeneralEducationWorkerResult.REVIEW_REQUIRED
+    assert adapter.finalized == [
+        (claim, "REVIEW_REQUIRED", ResearchEducationJobErrorCode.SAFETY_BLOCKED)
+    ]
+    assert adapter.finalize_kwargs == [
+        {
+            "reason_code": "OUTPUT_SAFETY_STOP",
+            "output_safety_diagnostic": diagnostic,
+        }
+    ]
+    assert adapter.stored == []
+
+
+@pytest.mark.parametrize(
+    ("action", "requires_human", "status", "result"),
+    [
+        (
+            "BLOCK",
+            False,
+            "ABSTAINED",
+            ResearchGeneralEducationWorkerResult.ABSTAINED,
+        ),
+        (
+            "PROCEED",
+            True,
+            "REVIEW_REQUIRED",
+            ResearchGeneralEducationWorkerResult.REVIEW_REQUIRED,
+        ),
+        (
+            "CRISIS_ROUTE",
+            True,
+            "CRISIS_ROUTED",
+            ResearchGeneralEducationWorkerResult.CRISIS_ROUTED,
+        ),
+    ],
+)
+def test_output_safety_diagnostic_maps_to_existing_safety_blocked_error(
+    action, requires_human, status, result
+):
+    outcome = ResearchGeneralEducationOutcome(
+        status=status,
+        reason_code="OUTPUT_SAFETY_STOP",
+        output_safety_diagnostic=ResearchGeneralEducationOutputSafetyDiagnostic(
+            action=action,
+            reason_codes=("CONTENT_UNSAFE",),
+            requires_human=requires_human,
+        ),
+    )
+
+    actual_status, error_code, worker_result = ResearchGeneralEducationWorker._disposition(
+        outcome
+    )
+
+    assert actual_status == status
+    assert error_code is ResearchEducationJobErrorCode.SAFETY_BLOCKED
+    assert worker_result is result
 
 
 @pytest.mark.asyncio

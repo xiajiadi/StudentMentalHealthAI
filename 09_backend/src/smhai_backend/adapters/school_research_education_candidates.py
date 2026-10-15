@@ -24,6 +24,7 @@ from smhai_backend.adapters.school_research_feedback import (
 from smhai_backend.core.errors import BackendError, ErrorCode, error
 from smhai_backend.domains.research_general_education.schemas import (
     ResearchGeneralEducationCandidatePayload,
+    ResearchGeneralEducationOutputSafetyDiagnostic,
 )
 from smhai_backend.domains.school_research.study_use import ResearchStudyUsePolicy
 
@@ -1421,6 +1422,7 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
         input_review=None,
         reason_code=None,
         boundary_diagnostic=None,
+        output_safety_diagnostic=None,
     ) -> str:
         """Write a content-free terminal disposition only for the exact live lease."""
         self._require_enabled()
@@ -1568,6 +1570,35 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
                     trace_id=f"TRACE_{token}",
                     safe_metadata=boundary_metadata,
                 )
+            output_safety = self._safe_output_safety_diagnostic(
+                output_safety_diagnostic,
+                status=disposition,
+                error_code=error_code if current else None,
+                reason_code=reason_code,
+                scope_current=current,
+            )
+            if output_safety is not None:
+                token = hashlib.sha256(
+                    f"{persisted.job_ref}:{persisted.attempt_count}".encode("ascii")
+                ).hexdigest()[:32]
+                from database_layer.enums import AuditResult
+
+                for safety_reason_code in output_safety.reason_codes:
+                    await uow.audit.append(
+                        action="school_research_education_job.output_safety",
+                        resource_type=_JOB_AUDIT_RESOURCE,
+                        resource_public_id=persisted.job_ref,
+                        result=AuditResult.FAILURE,
+                        trace_id=f"TRACE_{token}",
+                        safe_metadata={
+                            "schema_version": "research-output-safety-diagnostic.v1",
+                            "source": _POLICY_VERSION,
+                            "state": output_safety.action,
+                            "reason_code": safety_reason_code,
+                            # For this versioned event, count encodes requires_human as 0/1.
+                            "count": int(output_safety.requires_human),
+                        },
+                    )
             return disposition
 
     @staticmethod
@@ -1629,6 +1660,32 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
             "reason_code": diagnostic.category,
             "count": diagnostic.match_count,
         }
+
+    @staticmethod
+    def _safe_output_safety_diagnostic(
+        diagnostic, *, status, error_code, reason_code, scope_current
+    ) -> ResearchGeneralEducationOutputSafetyDiagnostic | None:
+        from database_layer.school_research_education_jobs import (
+            ResearchEducationJobErrorCode,
+        )
+
+        if (
+            not scope_current
+            or status not in {"ABSTAINED", "REVIEW_REQUIRED", "CRISIS_ROUTED"}
+            or error_code is not ResearchEducationJobErrorCode.SAFETY_BLOCKED
+            or reason_code != "OUTPUT_SAFETY_STOP"
+            or type(diagnostic) is not ResearchGeneralEducationOutputSafetyDiagnostic
+        ):
+            return None
+        try:
+            validated = ResearchGeneralEducationOutputSafetyDiagnostic.model_validate(
+                diagnostic.model_dump(mode="python"), strict=True
+            )
+        except (TypeError, ValueError):
+            return None
+        if validated.stopped_status != status:
+            return None
+        return validated
 
     def _input_review_evidence(self, receipt, *, now, retention_due_at=None):
         """Rebind the actual stopped-input receipt to this server's trusted pins."""

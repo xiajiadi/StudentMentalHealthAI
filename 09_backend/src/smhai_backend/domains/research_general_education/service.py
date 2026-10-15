@@ -49,6 +49,7 @@ from .schemas import (
     ResearchGeneralEducationCandidatePayload,
     ResearchGeneralEducationInputReviewReceipt,
     ResearchGeneralEducationOutcome,
+    ResearchGeneralEducationOutputSafetyDiagnostic,
     ResearchGeneralEducationProvenance,
     ResearchGeneralEducationReviewedInputAuthorization,
     ResearchGeneralEducationSourceCard,
@@ -460,7 +461,15 @@ class ResearchGeneralEducationDraftService:
         output_action, output_reasons = output_codes
         stopped = _safety_stop(output_action, output_check.decision.requires_human)
         if stopped:
-            return _outcome(stopped, "OUTPUT_SAFETY_STOP")
+            return _outcome(
+                stopped,
+                "OUTPUT_SAFETY_STOP",
+                output_safety_diagnostic=_output_safety_diagnostic(
+                    output_check,
+                    output_reasons,
+                    expected_status=stopped,
+                ),
+            )
 
         if not _content_well_formed(content):
             return _outcome("ABSTAINED", "RESEARCH_CONTENT_EMPTY")
@@ -983,14 +992,34 @@ def _claim_boundary_diagnostic(
         return None
 
 
+def _output_safety_diagnostic(
+    check: SafetyCheckView,
+    reason_codes: list[str],
+    *,
+    expected_status: str,
+) -> ResearchGeneralEducationOutputSafetyDiagnostic | None:
+    """Retain only the closed Safety projection; absence never changes the stop."""
+    try:
+        diagnostic = ResearchGeneralEducationOutputSafetyDiagnostic(
+            action=check.decision.action,
+            reason_codes=tuple(reason_codes),
+            requires_human=check.decision.requires_human,
+        )
+        return diagnostic if diagnostic.stopped_status == expected_status else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _outcome(
     status: str,
     reason_code: str,
     *,
     boundary_diagnostic: ResearchGeneralEducationBoundaryDiagnostic | None = None,
+    output_safety_diagnostic: ResearchGeneralEducationOutputSafetyDiagnostic | None = None,
 ) -> ResearchGeneralEducationOutcome:
     return ResearchGeneralEducationOutcome(
         status=status,
         reason_code=reason_code,
         boundary_diagnostic=boundary_diagnostic,
+        output_safety_diagnostic=output_safety_diagnostic,
     )

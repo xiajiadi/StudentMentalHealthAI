@@ -27,6 +27,7 @@ from smhai_backend.domains.research_general_education.prompt import (
 from smhai_backend.domains.research_general_education.schemas import (
     ResearchGeneralEducationBoundaryDiagnostic,
     ResearchGeneralEducationInputReviewReceipt,
+    ResearchGeneralEducationOutputSafetyDiagnostic,
 )
 from smhai_backend.domains.research_general_education.service import (
     SAFETY_POLICY_VERSION,
@@ -589,6 +590,185 @@ async def test_boundary_diagnostic_audit_is_content_free_and_same_uow():
         "reason_code": "CLINICAL",
         "count": 3,
     }
+
+
+async def test_output_safety_diagnostic_audit_is_closed_content_free_and_trace_bound():
+    claim = _education_job_claim()
+    configured = adapter()
+    events = _finalize_harness(configured, claim)
+    diagnostic = ResearchGeneralEducationOutputSafetyDiagnostic(
+        action="REVIEW_REQUIRED",
+        reason_codes=("CONTENT_UNSAFE", "PROMPT_INJECTION"),
+        requires_human=True,
+    )
+
+    disposition = await configured.finalize_education_job(
+        claim,
+        status="REVIEW_REQUIRED",
+        error_code=ResearchEducationJobErrorCode.SAFETY_BLOCKED,
+        reason_code="OUTPUT_SAFETY_STOP",
+        output_safety_diagnostic=diagnostic,
+    )
+
+    assert disposition == "REVIEW_REQUIRED"
+    assert [event[0] for event in events] == ["finish", "audit", "audit", "audit"]
+    assert all(event[2] is events[0][2] for event in events)
+    token = hashlib.sha256(f"{claim.job_ref}:{claim.attempt_count}".encode("ascii")).hexdigest()[
+        :32
+    ]
+    assert events[1][1]["action"] == "school_research_education_job.terminal"
+    assert events[1][1]["safe_metadata"]["reason_code"] == "OUTPUT_SAFETY_STOP"
+    for event, code in zip(events[2:], diagnostic.reason_codes, strict=True):
+        audit = event[1]
+        assert audit["action"] == "school_research_education_job.output_safety"
+        assert audit["resource_type"] == "school_research_education_job"
+        assert audit["resource_public_id"] == claim.job_ref
+        assert audit["result"] is AuditResult.FAILURE
+        assert audit["trace_id"] == f"TRACE_{token}"
+        assert audit["safe_metadata"] == {
+            "schema_version": "research-output-safety-diagnostic.v1",
+            "source": GENERAL_EDUCATION_POLICY_VERSION,
+            "state": "REVIEW_REQUIRED",
+            "reason_code": code,
+            "count": 1,
+        }
+        assert set(audit["safe_metadata"]) == {
+            "schema_version", "source", "state", "reason_code", "count"
+        }
+
+
+async def test_real_audit_repository_accepts_schema_version_metadata_without_db_write():
+    from database_layer.repositories import AuditRepository
+
+    class NoWriteSession:
+        def __init__(self):
+            self.added = []
+
+        def add(self, record):
+            self.added.append(record)
+
+        async def flush(self):
+            return None
+
+    session = NoWriteSession()
+    repository = AuditRepository(session)
+    metadata = {
+        "schema_version": "research-output-safety-diagnostic.v1",
+        "source": GENERAL_EDUCATION_POLICY_VERSION,
+        "state": "REVIEW_REQUIRED",
+        "reason_code": "CONTENT_UNSAFE",
+        "count": 1,
+    }
+
+    await repository.append(
+        action="school_research_education_job.output_safety",
+        resource_type="school_research_education_job",
+        resource_public_id="REJ_synthetic_audit_fixture",
+        result=AuditResult.FAILURE,
+        trace_id="TRACE_synthetic_audit_fixture",
+        safe_metadata=metadata,
+    )
+
+    assert len(session.added) == 1
+    assert session.added[0].safe_metadata == metadata
+    with pytest.raises(ValueError, match="non-whitelisted field"):
+        await repository.append(
+            action="school_research_education_job.output_safety",
+            resource_type="school_research_education_job",
+            resource_public_id="REJ_synthetic_audit_fixture",
+            result=AuditResult.FAILURE,
+            trace_id="TRACE_synthetic_audit_fixture",
+            safe_metadata={**metadata, "unapproved": "value"},
+        )
+    assert len(session.added) == 1
+
+
+@pytest.mark.parametrize(
+    ("diagnostic", "status", "reason_code", "error_code", "revoked"),
+    [
+        (
+            ResearchGeneralEducationOutputSafetyDiagnostic(
+                action="REVIEW_REQUIRED",
+                reason_codes=("CONTENT_UNSAFE",),
+                requires_human=True,
+            ),
+            "REVIEW_REQUIRED",
+            "RESEARCH_RUNTIME_FAILED",
+            ResearchEducationJobErrorCode.SAFETY_BLOCKED,
+            False,
+        ),
+        (
+            ResearchGeneralEducationOutputSafetyDiagnostic(
+                action="BLOCK", reason_codes=("CONTENT_UNSAFE",), requires_human=False
+            ),
+            "REVIEW_REQUIRED",
+            "OUTPUT_SAFETY_STOP",
+            ResearchEducationJobErrorCode.SAFETY_BLOCKED,
+            False,
+        ),
+        (
+            SimpleNamespace(
+                action="REVIEW_REQUIRED",
+                reason_codes=("CONTENT_UNSAFE",),
+                requires_human=True,
+            ),
+            "REVIEW_REQUIRED",
+            "OUTPUT_SAFETY_STOP",
+            ResearchEducationJobErrorCode.SAFETY_BLOCKED,
+            False,
+        ),
+        (
+            ResearchGeneralEducationOutputSafetyDiagnostic.model_construct(
+                action="REVIEW_REQUIRED",
+                reason_codes=("UNSAFE_FREEFORM",),
+                requires_human=True,
+            ),
+            "REVIEW_REQUIRED",
+            "OUTPUT_SAFETY_STOP",
+            ResearchEducationJobErrorCode.SAFETY_BLOCKED,
+            False,
+        ),
+        (
+            None,
+            "REVIEW_REQUIRED",
+            "OUTPUT_SAFETY_STOP",
+            ResearchEducationJobErrorCode.SAFETY_BLOCKED,
+            False,
+        ),
+        (
+            ResearchGeneralEducationOutputSafetyDiagnostic(
+                action="REVIEW_REQUIRED",
+                reason_codes=("CONTENT_UNSAFE",),
+                requires_human=True,
+            ),
+            "REVIEW_REQUIRED",
+            "OUTPUT_SAFETY_STOP",
+            ResearchEducationJobErrorCode.SAFETY_BLOCKED,
+            True,
+        ),
+    ],
+)
+async def test_invalid_or_stale_output_diagnostic_does_not_change_terminal_outcome(
+    diagnostic, status, reason_code, error_code, revoked
+):
+    claim = _education_job_claim()
+    configured = adapter()
+    events = _finalize_harness(configured, claim, revoked=revoked)
+
+    disposition = await configured.finalize_education_job(
+        claim,
+        status=status,
+        error_code=error_code,
+        reason_code=reason_code,
+        output_safety_diagnostic=diagnostic,
+    )
+
+    assert disposition == ("CANCELLED" if revoked else status)
+    assert not any(
+        event[1].get("action") == "school_research_education_job.output_safety"
+        for event in events
+        if event[0] == "audit"
+    )
 
 
 @pytest.mark.parametrize(

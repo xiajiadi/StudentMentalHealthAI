@@ -7,7 +7,15 @@ from datetime import datetime
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StrictInt,
+    StrictStr,
+    field_validator,
+)
 
 from smhai_backend.domains.support.schemas import GenerationContent, SupportCitation
 from smhai_backend.integrations.safety import SafetyAction
@@ -220,12 +228,62 @@ class ResearchGeneralEducationBoundaryDiagnostic(_StrictModel):
     match_count: StrictInt = Field(ge=1, le=12_000)
 
 
+# Closed projection of `08_safety-engine/policies/output.rego` decisions plus
+# the current output-stage signal/failure tokens; unknown tokens omit diagnostics.
+OutputSafetyReasonCode = Literal[
+    "COMPONENT_UNAVAILABLE",
+    "CONTENT_CONTROVERSIAL",
+    "CONTENT_SAFE",
+    "CONTENT_TRANSFORMED",
+    "CONTENT_UNSAFE",
+    "CRISIS_TEMPLATE_UNAVAILABLE",
+    "DISCLOSURE_RESTRICTED",
+    "EXPLICIT_CRISIS_SIGNAL",
+    "JAILBREAK",
+    "NO_BLOCKING_SIGNAL",
+    "PII_DETECTED",
+    "POLICY_EVALUATION_FAILED",
+    "PROMPT_INJECTION",
+    "REVIEW_QUEUE_FAILED",
+    "SAFETY_SERVICE_UNAVAILABLE",
+    "CLINICAL_OVERREACH",
+]
+
+
+class ResearchGeneralEducationOutputSafetyDiagnostic(_StrictModel):
+    """Closed, content-free projection of an actual output Safety stop."""
+
+    action: SafetyAction
+    reason_codes: tuple[OutputSafetyReasonCode, ...] = Field(min_length=1, max_length=16)
+    requires_human: StrictBool
+
+    @field_validator("reason_codes")
+    @classmethod
+    def _unique_reason_codes(
+        cls, value: tuple[OutputSafetyReasonCode, ...]
+    ) -> tuple[OutputSafetyReasonCode, ...]:
+        if len(set(value)) != len(value):
+            raise ValueError("output Safety reason codes must be unique")
+        return value
+
+    @property
+    def stopped_status(self) -> str | None:
+        if self.action == "CRISIS_ROUTE":
+            return "CRISIS_ROUTED"
+        if self.action == "REVIEW_REQUIRED" or self.requires_human is True:
+            return "REVIEW_REQUIRED"
+        if self.action == "BLOCK":
+            return "ABSTAINED"
+        return None
+
+
 class ResearchGeneralEducationOutcome(_StrictModel):
     status: ResearchGeneralEducationStatus
     reason_code: StrictStr = Field(pattern=r"^[A-Z][A-Z0-9_]{0,95}$")
     candidate: ResearchGeneralEducationCandidatePayload | None = None
     input_review: ResearchGeneralEducationInputReviewReceipt | None = None
     boundary_diagnostic: ResearchGeneralEducationBoundaryDiagnostic | None = None
+    output_safety_diagnostic: ResearchGeneralEducationOutputSafetyDiagnostic | None = None
 
     def model_post_init(self, __context: object) -> None:
         if (self.status == "HELD") != (self.candidate is not None):
@@ -239,3 +297,10 @@ class ResearchGeneralEducationOutcome(_StrictModel):
             or self.reason_code != "RESEARCH_CLAIM_BOUNDARY_REJECTED"
         ):
             raise ValueError("boundary diagnostics are only valid for a boundary rejection")
+        if self.output_safety_diagnostic is not None and (
+            type(self.output_safety_diagnostic)
+            is not ResearchGeneralEducationOutputSafetyDiagnostic
+            or self.reason_code != "OUTPUT_SAFETY_STOP"
+            or self.output_safety_diagnostic.stopped_status != self.status
+        ):
+            raise ValueError("output Safety diagnostics must match the actual stop outcome")
