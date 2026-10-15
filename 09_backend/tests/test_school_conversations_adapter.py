@@ -87,6 +87,33 @@ def test_conversation_diagnostic_reason_allowlist_accepts_only_closed_codes() ->
     ) == {}
 
 
+def test_claim_boundary_metadata_accepts_only_closed_category_and_field_codes() -> None:
+    assert _safe_component_metadata(
+        {
+            "claim_boundary_category": "DIAGNOSIS",
+            "claim_boundary_field_kind": "SUMMARY",
+            "matched_text": "private candidate excerpt",
+        }
+    ) == {
+        "claim_boundary_category": "DIAGNOSIS",
+        "claim_boundary_field_kind": "SUMMARY",
+    }
+    for value in ("CLINICAL", "SEVERITY", "PSYCHOMETRIC_SCORE", "OTHER_ALLOWLISTED"):
+        assert _safe_component_metadata({"claim_boundary_category": value}) == {
+            "claim_boundary_category": value
+        }
+    for value in ("OBSERVATION", "SUGGESTION"):
+        assert _safe_component_metadata({"claim_boundary_field_kind": value}) == {
+            "claim_boundary_field_kind": value
+        }
+    assert _safe_component_metadata(
+        {
+            "claim_boundary_category": "diagnosis because ...",
+            "claim_boundary_field_kind": "candidate body",
+        }
+    ) == {}
+
+
 def test_key_and_timestamp_helpers_normalize_without_echoing_input() -> None:
     assert _required_key("  synthetic-key  ") == "synthetic-key"
     with pytest.raises(BackendError):
@@ -507,7 +534,11 @@ async def test_finish_turn_failure_actions_are_terminal_without_output(monkeypat
         safe_metadata={
             "failure_code": failure_action,
             **(
-                {"diagnostic_reason_code": "RESEARCH_BIBLIOGRAPHY_GUARD_REJECTED"}
+                {
+                    "diagnostic_reason_code": "STANDARD_CLAIM_BOUNDARY_REJECTED",
+                    "claim_boundary_category": "DIAGNOSIS",
+                    "claim_boundary_field_kind": "SUMMARY",
+                }
                 if failure_action == "CLAIM_REJECTED"
                 else {}
             ),
@@ -521,8 +552,10 @@ async def test_finish_turn_failure_actions_are_terminal_without_output(monkeypat
     assert run.workflow_action == failure_action
     if failure_action == "CLAIM_REJECTED":
         assert result["safe_metadata"]["diagnostic_reason_code"] == (
-            "RESEARCH_BIBLIOGRAPHY_GUARD_REJECTED"
+            "STANDARD_CLAIM_BOUNDARY_REJECTED"
         )
+        assert result["safe_metadata"]["claim_boundary_category"] == "DIAGNOSIS"
+        assert result["safe_metadata"]["claim_boundary_field_kind"] == "SUMMARY"
     assert uow.support.message_calls == []
     assert uow.support.evidence_calls == []
     assert uow.committed is True

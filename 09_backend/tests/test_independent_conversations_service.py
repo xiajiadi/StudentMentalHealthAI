@@ -855,6 +855,37 @@ async def test_invalid_or_forbidden_candidate_is_failed_without_persisted_conten
         assert finish["safe_metadata"]["diagnostic_reason_code"] == (
             "STANDARD_CLAIM_BOUNDARY_REJECTED"
         )
+        assert finish["safe_metadata"]["claim_boundary_category"] == "PSYCHOMETRIC_SCORE"
+        assert finish["safe_metadata"]["claim_boundary_field_kind"] == "SUMMARY"
+
+
+@pytest.mark.asyncio
+async def test_negated_diagnosis_claim_is_still_rejected_with_closed_boundary_metadata() -> None:
+    candidate = json.dumps(
+        {
+            "summary": "我无法诊断你，但可以尝试固定学习时间。",
+            "observations": [],
+            "suggestions": [
+                {"text": "每周回顾安排。", "source_chunk_ids": ["CHUNK_edu_001"]}
+            ],
+            "disclaimer": "这是一般教育支持信息。",
+        },
+        ensure_ascii=False,
+    )
+    service, persistence, _, _, _ = _service(runtime=FakeRuntime(candidate=candidate))
+
+    result = await _submit(service)
+
+    assert result.status == "failed"
+    assert result.action == "CLAIM_REJECTED"
+    finish = persistence.finish_calls[-1]
+    assert finish.get("approved_content") is None
+    assert finish.get("citations", ()) == ()
+    assert finish["safe_metadata"]["diagnostic_reason_code"] == (
+        "STANDARD_CLAIM_BOUNDARY_REJECTED"
+    )
+    assert finish["safe_metadata"]["claim_boundary_category"] == "DIAGNOSIS"
+    assert finish["safe_metadata"]["claim_boundary_field_kind"] == "SUMMARY"
 
 
 @pytest.mark.asyncio
@@ -1063,6 +1094,8 @@ async def test_research_lane_allows_ordinary_year_and_duration_numbers() -> None
     assert len(runtime.calls) == 1
     assert result.status == "completed"
     assert len(persistence.finish_calls[-1].get("citations", ())) == 1
+    assert "claim_boundary_category" not in persistence.finish_calls[-1]["safe_metadata"]
+    assert "claim_boundary_field_kind" not in persistence.finish_calls[-1]["safe_metadata"]
 
 
 @pytest.mark.asyncio
@@ -1118,10 +1151,20 @@ def test_research_prompt_prohibits_model_authored_reference_fields_only_in_resea
     )
     university_prompt = IndependentConversationService._system_prompt(bundle)
 
-    assert _research_policy().prompt_version == "1.1.0"
+    assert _research_policy().prompt_version == "1.2.0"
     assert "不要自行编写作者、期刊、卷期、文章号、页码、DOI、URL或参考文献" in research_prompt
     assert "完整来源由系统根据已核验的引用元数据单独显示" in research_prompt
+    assert (
+        "summary、observations和suggestions正文只写中性、来源支持的一般教育信息"
+        in research_prompt
+    )
+    assert "完整边界说明只写在disclaimer字段" in research_prompt
+    assert "不得夸大教育效果、因果关系或适用范围，也不得作个性化推断" in research_prompt
+    assert "来源年龄范围和限制" not in research_prompt
+    assert "review_status仍为pending" in research_prompt
     assert "不要自行编写作者、期刊" not in university_prompt
+    assert "完整边界说明只写在disclaimer字段" not in university_prompt
+    assert ConversationLanePolicy().prompt_version == "1.0"
 
 
 @pytest.mark.asyncio

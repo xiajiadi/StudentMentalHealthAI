@@ -21,6 +21,7 @@ from smhai_backend.domains.support.schemas import GenerationContent, SupportCita
 from smhai_backend.domains.support.service import (
     SupportOrchestrator,
     _contains_forbidden_generated_claim,
+    _first_boundary_match,
 )
 from smhai_backend.integrations.evidence import (
     CitationBindingError,
@@ -151,7 +152,7 @@ class ConversationLanePolicy:
             target_population="secondary_school_student",
             required_review_status="pending",
             prompt_id="PROMPT_school_research_student_general_education_v1",
-            prompt_version="1.1.0",
+            prompt_version="1.2.0",
             expected_school_id=school_id,
             research_only=True,
             purpose="RESEARCH_SIMULATION",
@@ -807,6 +808,7 @@ class IndependentConversationService:
                 metadata,
             )
         if _contains_forbidden_generated_claim(content):
+            field_kind, _field_index, category, _match_count = _first_boundary_match(content)
             return await self._finish_invalid(
                 actor,
                 conversation_id,
@@ -815,6 +817,8 @@ class IndependentConversationService:
                 stage="claim_boundary",
                 reason="CLAIM_REJECTED",
                 diagnostic_reason_code="STANDARD_CLAIM_BOUNDARY_REJECTED",
+                claim_boundary_category=category,
+                claim_boundary_field_kind=field_kind,
                 generation_id=generation_id,
                 retrieval_id=retrieval_id,
                 action="CLAIM_REJECTED",
@@ -1149,16 +1153,18 @@ class IndependentConversationService:
         if lane.research_only:
             source_guidance = (
                 "这些资料仅是固定、工程复核的研究来源，review_status仍为pending，未获心理专业或临床批准。"
-                "逐条遵守引用中的来源年龄范围和限制；不得称其为已批准、权威适用于每名学生或个人证据。"
-                "只提供一般教育信息，不作个性化评价、测评解释、风险推断、诊断、治疗或危机处置；"
-                "证据不足或年龄范围不匹配时明确说明无法基于资料回答。"
+                "逐条遵守引用中的原始适用人群、年龄、语言和研究局限；不得夸大教育效果、因果关系或适用范围，也不得作个性化推断。"
+                "summary、observations和suggestions正文只写中性、来源支持的一般教育信息；"
+                "不得在这些正文中复述助手能力、服务范围、审核状态、风险边界或免责声明。"
+                "完整边界说明只写在disclaimer字段，其中说明研究演示尚待专业复核、来源人群和证据局限，"
+                "以及内容不构成测评解释、诊断、治疗或个性化建议。"
+                "来源不足或年龄不匹配时，summary只简要说明缺少的资料，不复述服务范围或免责声明。"
                 "不要自行编写作者、期刊、卷期、文章号、页码、DOI、URL或参考文献；"
                 "需要引用时只在suggestions.source_chunk_ids中引用本轮提供的chunk_id，"
                 "完整来源由系统根据已核验的引用元数据单独显示。"
             )
             audience = (
-                "你是面向14–17岁虚构中学生研究演示的一般教育资料助手。"
-                "内容不是心理测评解释、诊断、治疗建议或专业人员意见。"
+                "你为14–17岁虚构中学生研究演示提供来源支持的一般教育信息。"
             )
         elif synthetic_demo_chunk_ids:
             synthetic_chunk_ids_json = json.dumps(
@@ -1325,6 +1331,8 @@ class IndependentConversationService:
         stage: str,
         reason: str,
         diagnostic_reason_code: str | None = None,
+        claim_boundary_category: str | None = None,
+        claim_boundary_field_kind: str | None = None,
         generation_id: str | None = None,
         retrieval_id: str | None = None,
         action: str = "INVALID_OUTPUT",
@@ -1336,6 +1344,10 @@ class IndependentConversationService:
         }
         if diagnostic_reason_code is not None:
             metadata["diagnostic_reason_code"] = diagnostic_reason_code
+        if claim_boundary_category is not None:
+            metadata["claim_boundary_category"] = claim_boundary_category
+        if claim_boundary_field_kind is not None:
+            metadata["claim_boundary_field_kind"] = claim_boundary_field_kind
         if generation_id:
             metadata["generation_id"] = generation_id
         if retrieval_id:

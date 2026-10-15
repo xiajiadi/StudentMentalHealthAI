@@ -42,6 +42,8 @@ _SAFE_COMPONENT_KEYS = frozenset(
         "abstention_reason_code",
         "attempt_count",
         "claim_boundary_status",
+        "claim_boundary_category",
+        "claim_boundary_field_kind",
         "dependency_error_code",
         "diagnostic_reason_code",
         "evidence_count",
@@ -97,6 +99,10 @@ _SAFE_DIAGNOSTIC_REASON_CODES = frozenset(
         "CITATION_BINDING_REJECTED",
     }
 )
+_SAFE_CLAIM_BOUNDARY_CATEGORIES = frozenset(
+    {"DIAGNOSIS", "CLINICAL", "SEVERITY", "PSYCHOMETRIC_SCORE", "OTHER_ALLOWLISTED"}
+)
+_SAFE_CLAIM_BOUNDARY_FIELDS = frozenset({"SUMMARY", "OBSERVATION", "SUGGESTION"})
 _SAFE_ATOM = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:/+-]{0,127}$")
 _OPAQUE_SUFFIX = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,126}$")
 
@@ -137,6 +143,14 @@ def _safe_component_metadata(value: Mapping[str, Any] | None) -> dict[str, Any]:
             continue
         if key == "diagnostic_reason_code":
             if type(item) is str and item in _SAFE_DIAGNOSTIC_REASON_CODES:
+                result[key] = item
+            continue
+        if key == "claim_boundary_category":
+            if type(item) is str and item in _SAFE_CLAIM_BOUNDARY_CATEGORIES:
+                result[key] = item
+            continue
+        if key == "claim_boundary_field_kind":
+            if type(item) is str and item in _SAFE_CLAIM_BOUNDARY_FIELDS:
                 result[key] = item
             continue
         if isinstance(item, str) and _SAFE_ATOM.fullmatch(item):
