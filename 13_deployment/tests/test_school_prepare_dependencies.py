@@ -206,19 +206,28 @@ def test_install_uses_only_offline_locked_commands_and_verifies_created_targets(
     report, status = prepare.execute(_args(source, target))
 
     assert status == 0
-    assert [stage["state"] for stage in report["stages"]] == ["succeeded"] * 4 + [
-        "succeeded"
-    ]
+    assert [stage["state"] for stage in report["stages"]] == ["succeeded"] * len(
+        prepare.MODULES
+    ) + ["succeeded"]
     assert all("--offline" in command for command in commands)
     assert all(
         "--frozen" in command
         and "--no-config" in command
         and "--no-python-downloads" in command
-        for command in commands[:3]
+        for command in commands[: len(prepare.PYTHON_MODULES)]
     )
-    assert all("--no-dev" in command for command in commands[:3])
-    assert "--no-install-project" in commands[2]
-    assert commands[3][-3:] == ["ci", "--offline", "--ignore-scripts"]
+    assert all(
+        "--no-dev" in command for command in commands[: len(prepare.PYTHON_MODULES)]
+    )
+    python_commands = {
+        Path(command[command.index("--project") + 1]).name: command
+        for command in commands[: len(prepare.PYTHON_MODULES)]
+    }
+    assert "--no-install-project" in python_commands["11_database"]
+    for module in ("05_rag-engine", "08_safety-engine"):
+        assert python_commands[module][-2:] == ["--extra", "runtime"]
+    assert "--extra" not in python_commands["06_llm-runtime"]
+    assert commands[-1][-3:] == ["ci", "--offline", "--ignore-scripts"]
     user_config = target / prepare.FRONTEND_MODULE / prepare.NPM_USER_CONFIG_FILENAME
     global_config = (
         target / prepare.FRONTEND_MODULE / prepare.NPM_GLOBAL_CONFIG_FILENAME
@@ -528,7 +537,11 @@ def test_failed_install_persists_stage_and_stops_following_modules(
     assert status == 1
     assert report["run_state"] == saved["run_state"] == "partial"
     assert saved["stages"][0]["error_class"] == "CommandFailed"
-    assert [stage["state"] for stage in saved["stages"][1:4]] == ["pending"] * 3
+    assert [stage["state"] for stage in saved["stages"][1 : len(prepare.MODULES)]] == [
+        "pending"
+    ] * (len(prepare.MODULES) - 1)
+    assert saved["stages"][-1]["name"] == "manifest_integrity"
+    assert saved["stages"][-1]["state"] == "succeeded"
     assert called == ["01_cat-engine"]
 
 

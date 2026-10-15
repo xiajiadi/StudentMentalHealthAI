@@ -1,7 +1,7 @@
 """Prepare locked, offline school-demo dependencies in a fresh worktree.
 
-The tool deliberately supports only the CAT, Backend, Database, and Frontend
-dependency roots. It is not a project installer and never starts services.
+The tool prepares selected Python and Frontend dependency roots. It is not a
+project installer and never starts services.
 """
 
 from __future__ import annotations
@@ -41,6 +41,32 @@ MODULES = {
         "imports": ("database_layer.models", "database_layer.crypto", "aiomysql"),
         "project_install": False,
     },
+    "05_rag-engine": {
+        "runtime": "python",
+        "python_minor": (3, 12),
+        "imports": ("rag_engine.api.app", "bm25s"),
+        "project_install": True,
+        "extras": ("runtime",),
+    },
+    "06_llm-runtime": {
+        "runtime": "python",
+        "python_minor": (3, 12),
+        "imports": ("llm_runtime.api.app",),
+        "project_install": True,
+    },
+    "08_safety-engine": {
+        "runtime": "python",
+        "python_minor": (3, 12),
+        "imports": (
+            "safety_engine.api.app",
+            "nemoguardrails",
+            "presidio_analyzer",
+            "torch",
+            "transformers",
+        ),
+        "project_install": True,
+        "extras": ("runtime",),
+    },
     "10_frontend": {
         "runtime": "node",
         "verify_packages": ("vue", "vite", "typescript"),
@@ -55,6 +81,9 @@ LOCK_FILES = {
     "01_cat-engine": ("pyproject.toml", "uv.lock"),
     "09_backend": ("pyproject.toml", "uv.lock"),
     "11_database": ("pyproject.toml", "uv.lock"),
+    "05_rag-engine": ("pyproject.toml", "uv.lock"),
+    "06_llm-runtime": ("pyproject.toml", "uv.lock"),
+    "08_safety-engine": ("pyproject.toml", "uv.lock"),
     "10_frontend": ("package.json", "package-lock.json"),
 }
 EXPECTED_HEAD_RE = re.compile(r"^[0-9a-f]{40,64}$")
@@ -88,6 +117,9 @@ ALLOWED_GIT_CONFIG_KEYS = {
 BUILD_BACKENDS = {
     "01_cat-engine": ("setuptools.build_meta", ("setuptools>=68",)),
     "09_backend": ("hatchling.build", ("hatchling>=1.27",)),
+    "05_rag-engine": ("setuptools.build_meta", ("setuptools>=68",)),
+    "06_llm-runtime": ("setuptools.build_meta", ("setuptools>=75",)),
+    "08_safety-engine": ("hatchling.build", ("hatchling>=1.27",)),
 }
 
 
@@ -881,6 +913,8 @@ def execute(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         ]
         if not MODULES[module]["project_install"]:
             command.append("--no-install-project")
+        for extra in MODULES[module].get("extras", ()):
+            command.extend(("--extra", extra))
         stage = _run_step(
             name=module,
             command=command,
