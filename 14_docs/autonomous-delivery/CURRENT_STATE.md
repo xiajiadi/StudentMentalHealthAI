@@ -1,5 +1,43 @@
 # PsyNova current execution state
 
+## Current checkpoint: 2026-10-16, installation recovery and actual Safety stop
+
+- Reviewed/pushed b6552b5: registered school-contexts-v1 seed is exactly2 schools,
+  2 subjects and8 role accounts, not the installer's old1/4 assumption. Root51
+  installer checks passed. Schema compatibility a03c91f retains exact expressions,
+  ENFORCED/count/FK validation and only source-derived MySQL names/indexes; Root143
+  deployment checks passed. Diagnostic e8dc37f passed Root138 Backend/Runtime checks.
+- T official stop/start/status each exit0 loaded e8dc37f; three app services
+  OWNED/READY. Lifecycle SHA6253c5f4f8ea123cf5cd706225d4189ef34e8acc37477519c37480b26aa182b9.
+  Proof D:/Dev/temp/psynova-t0022-lifecycle-reload-e8dc37f-20261016-execute-r1/09-final.json
+  SHA962cb74f3a85b7a6dd1bea9d24381edbc6879a203256e8dfcbef80ae489778d7.
+  An earlier status failure used the wrong base interpreter; canonical09venv
+  independently passed. No product pin compatibility change was required.
+- One offset5 diagnostic case plus one input continuation ran once. Round1
+  REJ_44fc4dd3a02d70a19f341aba09564b039d682bc63f394ad81dd156c0cb7df61a
+  ended REVIEW_REQUIRED/SAFETY_BLOCKED attempt1, terminal OUTPUT_SAFETY_STOP.
+  Review REIR_466111d86c644c6bad12475c829924fb remains AUTHv2, logout succeeded.
+  Total11 terminal general-education jobs/5 AUTH reviews/candidate0. Read actual
+  new content-free output Safety audit next; do not infer a reason or retry.
+  D:/Dev/temp/psynova-general-education-output-diagnostic-20261016-r1-result.json.
+- V unchanged. W fresh source/deps are pinned e8dc37f. W DB3331 id
+  68977c491e6fd33350ae4a0547c0f845 passed schema/runtime, then seed commit was
+  rejected by the old count check. Read-only registered-fixture verification
+  proved all8 password hashes, roles, memberships, SELF/TEACHER_OF grants and
+  specialist/admin zero grants. Root reviewed one exact checkpoint reconciliation:
+  archive SHA2415f1a849a9fdc79a0886eca65439fbbdfff669b8a03f8b88d05ede924721c9,
+  change only seed FAILED->PENDING_VERIFICATION. No reseed or DB write.
+- One official W resume exit2 then completed application: Backend8105/UI4195/
+  standardCAT8183 OWNED/READY; four_role_browser FAILED/FOUR_ROLE_BROWSER_CHECK_FAILED.
+  Browser run directory empty, no screenshot; sanitized child report was not
+  persisted by installer. Preserve W running target/checkpoint and original archive
+  D:/Dev/temp/psynova-w-seed-reconcile-20261016-r1/checkpoint-original-2415f1a849a9fdc79a0886eca65439fbbdfff669b8a03f8b88d05ede924721c9.json.
+  Diagnose actual browser/module/cache environment before any bounded rerun.
+- Estimate remains75%/25%. No whole-project, professional or production approval;
+  ACTIVE without shutdown deadline. Do not batch800 inference before a positive
+  held/reviewed/published/self-read/revoke path; fresh uninterrupted install and
+  role-browser acceptance remain incomplete.
+
 ## Current checkpoint: 2026-10-16, prompt reload and fresh install
 
 Engineering estimate remains about75% complete/25% remaining; not professional
