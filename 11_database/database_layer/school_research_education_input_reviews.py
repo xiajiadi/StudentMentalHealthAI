@@ -18,6 +18,7 @@ from .models import (
     SchoolResearchEducationInputReview,
     SchoolResearchEducationInputReviewEvent,
     SchoolResearchEducationJob,
+    SchoolResearchEducationOutputReview,
     SchoolResearchSession,
 )
 from .school_research_education_jobs import (
@@ -542,6 +543,177 @@ class SchoolResearchEducationInputReviewRepository:
         if job.input_review_id != review.id:
             raise ResearchEducationInputReviewError("CONTINUATION_REVIEW_NOT_CURRENT")
         trace_id = _require_token(trace_id, "trace_id", 128)
+        async with self.session.begin_nested():
+            review.status = "CONSUMED"
+            review.state_version = 3
+            review.consumed_at = clock
+            review.updated_at = clock
+            await self.session.flush()
+            self.session.add(
+                _event(
+                    review,
+                    actor_membership_role_id=None,
+                    event_type="CONSUMED",
+                    from_status="CONTINUATION_AUTHORIZED",
+                    to_status="CONSUMED",
+                    state_version=3,
+                    trace_id=trace_id,
+                )
+            )
+            await self.session.flush()
+        return _dto(review, source_job.job_ref)
+
+    async def consume_authorized_input_for_output_review_candidate(
+        self,
+        *,
+        output_review_ref: str,
+        scope: ResearchEducationInputReviewScope,
+        grant_policy_version: str,
+        grant_policy_hash: str,
+        source_package_ref: str,
+        source_study_ref: str,
+        source_manifest_sha256: str,
+        prompt_id: str,
+        prompt_version: str,
+        prompt_sha256: str,
+        canonical_input_sha256: str,
+        trace_id: str,
+        now: datetime | None = None,
+    ) -> ResearchEducationInputReviewDTO:
+        """Consume current AUTHv2 for a terminal safety-stopped output review."""
+        _validate_scope(scope)
+        output_review_ref = _require_token(output_review_ref, "output_review_ref", 128)
+        _require_token(grant_policy_version, "grant_policy_version", 64)
+        _require_sha256(grant_policy_hash, "grant_policy_hash")
+        _require_token(source_package_ref, "source_package_ref", 128)
+        _require_token(source_study_ref, "source_study_ref", 128)
+        _require_sha256(source_manifest_sha256, "source_manifest_sha256")
+        _require_token(prompt_id, "prompt_id", 128)
+        _require_token(prompt_version, "prompt_version", 64)
+        _require_sha256(prompt_sha256, "prompt_sha256")
+        _require_sha256(canonical_input_sha256, "canonical_input_sha256")
+        trace_id = _require_token(trace_id, "trace_id", 128)
+        clock = _utc_naive(now)
+
+        output_review = await self.session.scalar(
+            select(SchoolResearchEducationOutputReview).where(
+                SchoolResearchEducationOutputReview.output_review_ref == output_review_ref,
+                *[
+                    getattr(SchoolResearchEducationOutputReview, name) == getattr(scope, name)
+                    for name in _SCOPE_FIELDS
+                ],
+            )
+        )
+        if (
+            output_review is None
+            or output_review.generation_round != 1
+            or output_review.input_review_id is None
+            or output_review.status != "PENDING"
+            or output_review.state_version != 1
+            or output_review.expires_at <= clock
+            or output_review.safety_operation != "OUTPUT"
+            or output_review.safety_action != "REVIEW_REQUIRED"
+            or output_review.safety_reason_code != "CONTENT_CONTROVERSIAL"
+            or output_review.safety_requires_human is not True
+        ):
+            raise ResearchEducationInputReviewError("OUTPUT_REVIEW_NOT_CURRENT")
+
+        review = await self.session.scalar(
+            select(SchoolResearchEducationInputReview)
+            .where(
+                SchoolResearchEducationInputReview.id == output_review.input_review_id,
+                *[
+                    getattr(SchoolResearchEducationInputReview, name) == getattr(scope, name)
+                    for name in _SCOPE_FIELDS
+                ],
+            )
+            .with_for_update()
+        )
+        if review is None:
+            raise ForeignKeyConflict("authorized input review was not found")
+
+        job = await self.session.scalar(
+            select(SchoolResearchEducationJob)
+            .where(
+                SchoolResearchEducationJob.id == output_review.job_id,
+                SchoolResearchEducationJob.generation_round == 1,
+                SchoolResearchEducationJob.input_review_id == review.id,
+                SchoolResearchEducationJob.research_session_id == scope.research_session_id,
+                SchoolResearchEducationJob.school_id == scope.school_id,
+            )
+            .with_for_update()
+        )
+        if (
+            job is None
+            or job.status != "REVIEW_REQUIRED"
+            or job.last_error_code != "SAFETY_BLOCKED"
+            or job.attempt_count != 1
+            or job.lease_owner is not None
+            or job.lease_token is not None
+            or job.lease_expires_at is not None
+            or any(getattr(job, name) != getattr(scope, name) for name in _SCOPE_FIELDS)
+            or job.policy_version != review.policy_version
+            or job.policy_hash != review.policy_hash
+            or output_review.policy_version != review.policy_version
+            or output_review.policy_hash != review.policy_hash
+            or output_review.source_package_ref != source_package_ref
+            or output_review.source_study_ref != source_study_ref
+            or output_review.source_manifest_sha256 != source_manifest_sha256
+            or output_review.prompt_id != prompt_id
+            or output_review.prompt_version != prompt_version
+            or output_review.prompt_sha256 != prompt_sha256
+            or output_review.canonical_input_sha256 != canonical_input_sha256
+        ):
+            raise ResearchEducationInputReviewError("OUTPUT_REVIEW_JOB_NOT_CURRENT")
+
+        source_job = await self.session.scalar(
+            select(SchoolResearchEducationJob)
+            .where(
+                SchoolResearchEducationJob.id == review.job_id,
+                SchoolResearchEducationJob.generation_round == 0,
+                SchoolResearchEducationJob.input_review_id.is_(None),
+                SchoolResearchEducationJob.research_session_id == scope.research_session_id,
+                SchoolResearchEducationJob.school_id == scope.school_id,
+                SchoolResearchEducationJob.status == "REVIEW_REQUIRED",
+            )
+            .with_for_update()
+        )
+        expected_trace = f"TRACE_{hashlib.sha256(f'{job.job_ref}:{job.attempt_count}'.encode('ascii')).hexdigest()[:32]}"
+        if (
+            source_job is None
+            or source_job.last_error_code != "SAFETY_BLOCKED"
+            or source_job.attempt_count != 1
+            or source_job.lease_owner is not None
+            or source_job.lease_token is not None
+            or source_job.lease_expires_at is not None
+            or any(getattr(source_job, name) != getattr(scope, name) for name in _SCOPE_FIELDS)
+            or source_job.policy_version != review.policy_version
+            or source_job.policy_hash != review.policy_hash
+            or review.status != "CONTINUATION_AUTHORIZED"
+            or review.state_version != 2
+            or review.consumed_at is not None
+            or review.authorized_by_membership_role_id is None
+            or review.authorized_at is None
+            or review.grant_policy_version != grant_policy_version
+            or review.grant_policy_hash != grant_policy_hash
+            or review.canonical_input_sha256 != canonical_input_sha256
+            or review.source_package_ref != source_package_ref
+            or review.source_study_ref != source_study_ref
+            or review.source_manifest_sha256 != source_manifest_sha256
+            or review.prompt_id != prompt_id
+            or review.prompt_version != prompt_version
+            or review.prompt_sha256 != prompt_sha256
+            or review.safety_operation != "INPUT"
+            or review.safety_action != "REVIEW_REQUIRED"
+            or review.safety_reason_code != "CONTENT_CONTROVERSIAL"
+            or review.safety_requires_human is not True
+            or review.expires_at <= clock
+            or (review.retention_due_at is not None and review.retention_due_at <= clock)
+            or output_review.safety_trace_id != expected_trace
+            or output_review.trace_id != expected_trace
+        ):
+            raise ResearchEducationInputReviewError("CONTINUATION_GRANT_NOT_CURRENT")
+
         async with self.session.begin_nested():
             review.status = "CONSUMED"
             review.state_version = 3

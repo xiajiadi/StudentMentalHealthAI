@@ -18,6 +18,7 @@ from .models import (
     SchoolResearchEducationCandidateEvent,
     SchoolResearchEducationInputReview,
     SchoolResearchEducationJob,
+    SchoolResearchEducationOutputReview,
     SchoolResearchSession,
 )
 from .school_research_education_jobs import (
@@ -120,6 +121,8 @@ class ResearchEducationCandidateDTO:
     generation_round: int = field(default=0, kw_only=True)
     input_review_id: int | None = field(default=None, kw_only=True, repr=False)
     input_review_state: str | None = field(default=None, kw_only=True)
+    output_review_id: int | None = field(default=None, kw_only=True, repr=False)
+    output_review_state: str | None = field(default=None, kw_only=True)
 
 
 class SchoolResearchEducationCandidateRepository:
@@ -228,6 +231,11 @@ class SchoolResearchEducationCandidateRepository:
         )
         if job is None:
             raise ResearchEducationCandidateError("CANDIDATE_JOB_LINEAGE_INVALID")
+        if row.output_review_id is None:
+            if row.output_review_state is not None or row.output_safety_action not in _SAFE_SAFETY_ACTIONS:
+                raise ResearchEducationCandidateError("CANDIDATE_OUTPUT_REVIEW_LINEAGE_INVALID")
+        else:
+            await self._validate_consumed_output_review(row, job)
         if row.generation_round == 0:
             if (
                 row.input_review_id is not None
@@ -244,11 +252,13 @@ class SchoolResearchEducationCandidateRepository:
             or row.input_review_state != "CONSUMED"
             or row.input_safety_action != "REVIEW_REQUIRED"
             or row.retrieval_safety_action not in _SAFE_SAFETY_ACTIONS
-            or row.output_safety_action not in _SAFE_SAFETY_ACTIONS
             or job.generation_round != 1
             or job.input_review_id != row.input_review_id
             or job.attempt_count != 1
-            or row.trace_id != _continuation_trace_id(job.job_ref, job.attempt_count)
+            or (
+                row.output_review_id is None
+                and row.trace_id != _continuation_trace_id(job.job_ref, job.attempt_count)
+            )
         ):
             raise ResearchEducationCandidateError("CANDIDATE_CONTINUATION_LINEAGE_INVALID")
         review = await self.session.scalar(
@@ -302,6 +312,70 @@ class SchoolResearchEducationCandidateRepository:
             or source_job.policy_hash != review.policy_hash
         ):
             raise ResearchEducationCandidateError("CANDIDATE_SOURCE_JOB_INVALID")
+
+    async def _validate_consumed_output_review(
+        self,
+        candidate: SchoolResearchEducationCandidate,
+        job: SchoolResearchEducationJob,
+    ) -> None:
+        review = await self.session.scalar(
+            select(SchoolResearchEducationOutputReview).where(
+                SchoolResearchEducationOutputReview.id == candidate.output_review_id,
+                SchoolResearchEducationOutputReview.status == "CONSUMED",
+                SchoolResearchEducationOutputReview.state_version == 2,
+                SchoolResearchEducationOutputReview.research_session_id
+                == candidate.research_session_id,
+                SchoolResearchEducationOutputReview.school_id == candidate.school_id,
+                SchoolResearchEducationOutputReview.job_id == candidate.job_id,
+                SchoolResearchEducationOutputReview.generation_round
+                == candidate.generation_round,
+            )
+        )
+        if (
+            review is None
+            or candidate.output_review_state != "CONSUMED"
+            or candidate.output_safety_action != "REVIEW_REQUIRED"
+            or review.consumed_at is None
+            or review.resolved_at is None
+            or review.resolved_by_membership_role_id is None
+            or review.output_review_ref is None
+            or review.status != "CONSUMED"
+            or review.safety_operation != "OUTPUT"
+            or review.safety_action != "REVIEW_REQUIRED"
+            or review.safety_reason_code != "CONTENT_CONTROVERSIAL"
+            or review.safety_requires_human is not True
+            or review.content_sha256 is None
+            or review.candidate_content_sha256 != candidate.content_sha256
+            or review.candidate_payload_schema_version != candidate.payload_schema_version
+            or review.input_safety_action != candidate.input_safety_action
+            or review.retrieval_safety_action != candidate.retrieval_safety_action
+            or review.policy_version != candidate.policy_version
+            or review.policy_hash != candidate.policy_hash
+            or review.source_study_ref != candidate.study_ref
+            or review.source_manifest_sha256 != candidate.source_manifest_sha256
+            or review.retrieval_id != candidate.retrieval_id
+            or review.retrieval_bundle_sha256 != candidate.retrieval_bundle_sha256
+            or review.prompt_id != candidate.prompt_ref
+            or review.prompt_version != candidate.prompt_version
+            or review.prompt_sha256 != candidate.prompt_sha256
+            or review.model_ref != candidate.model_ref
+            or review.model_digest_sha256 != candidate.model_digest_sha256
+            or review.runtime_version != candidate.runtime_version
+            or review.safety_policy_version != candidate.safety_policy_version
+            or review.trace_id != _continuation_trace_id(job.job_ref, job.attempt_count)
+            or any(getattr(review, name) != getattr(candidate, name) for name in _SESSION_SCOPE_FIELDS)
+            or any(getattr(job, name) != getattr(candidate, name) for name in _SESSION_SCOPE_FIELDS)
+            or job.status != "REVIEW_REQUIRED"
+            or job.last_error_code != "SAFETY_BLOCKED"
+            or job.attempt_count != 1
+            or job.lease_owner is not None
+            or job.lease_token is not None
+            or job.lease_expires_at is not None
+            or job.policy_version != review.policy_version
+            or job.policy_hash != review.policy_hash
+            or not _TOKEN.fullmatch(candidate.trace_id)
+        ):
+            raise ResearchEducationCandidateError("CANDIDATE_CONSUMED_OUTPUT_REVIEW_INVALID")
 
     async def create_held(
         self,
@@ -586,6 +660,311 @@ class SchoolResearchEducationCandidateRepository:
             return _dto(existing)
         return _dto(row)
 
+    async def create_held_from_output_review(
+        self,
+        *,
+        scope: ResearchEducationCandidateScope,
+        output_review_ref: str,
+        candidate_ref: str,
+        content_sha256: str,
+        payload_ciphertext: bytes,
+        cipher_format_version: str,
+        key_version: str,
+        payload_schema_version: str = "school-research-general-education-candidate.v1",
+        actor_membership_role_id: int,
+        trace_id: str,
+        now: datetime | None = None,
+    ) -> ResearchEducationCandidateDTO:
+        """Atomically consume review sidecars and insert a candidate in one savepoint."""
+        async with self.session.begin_nested():
+            return await self._create_held_from_output_review_unchecked(
+                scope=scope,
+                output_review_ref=output_review_ref,
+                candidate_ref=candidate_ref,
+                content_sha256=content_sha256,
+                payload_ciphertext=payload_ciphertext,
+                cipher_format_version=cipher_format_version,
+                key_version=key_version,
+                payload_schema_version=payload_schema_version,
+                actor_membership_role_id=actor_membership_role_id,
+                trace_id=trace_id,
+                now=now,
+            )
+
+    async def _create_held_from_output_review_unchecked(
+        self,
+        *,
+        scope: ResearchEducationCandidateScope,
+        output_review_ref: str,
+        candidate_ref: str,
+        content_sha256: str,
+        payload_ciphertext: bytes,
+        cipher_format_version: str,
+        key_version: str,
+        payload_schema_version: str = "school-research-general-education-candidate.v1",
+        actor_membership_role_id: int,
+        trace_id: str,
+        now: datetime | None = None,
+    ) -> ResearchEducationCandidateDTO:
+        """Consume a reviewed safety stop and persist one immutable HELD candidate."""
+        _validate_scope(scope)
+        _require_token(output_review_ref, "output_review_ref")
+        _require_token(candidate_ref, "candidate_ref")
+        _require_id(actor_membership_role_id, "actor_membership_role_id")
+        _require_token(trace_id, "trace_id")
+        _require_sha256(content_sha256, "content_sha256")
+        _require_ciphertext(
+            payload_ciphertext, cipher_format_version, key_version, payload_schema_version
+        )
+        if payload_schema_version != "school-research-general-education-candidate.v1":
+            raise ResearchEducationCandidateError("INVALID_OUTPUT_REVIEW_CANDIDATE_SCHEMA")
+        from .school_research_education_output_reviews import (
+            OUTPUT_REVIEW_PAYLOAD_SCHEMA_VERSION,
+            ResearchEducationOutputReviewScope,
+            ResearchEducationOutputReviewStatus,
+            SchoolResearchEducationOutputReviewRepository,
+        )
+        from .school_research_education_input_reviews import (
+            ResearchEducationInputReviewScope,
+            SchoolResearchEducationInputReviewRepository,
+        )
+
+        review_scope = ResearchEducationOutputReviewScope(**_scope_values(scope))
+        output_reviews = SchoolResearchEducationOutputReviewRepository(self.session)
+        review_dto = await output_reviews.get_for_task(
+            scope=review_scope, output_review_ref=output_review_ref
+        )
+        if review_dto is None:
+            raise ForeignKeyConflict("output review was not found in this task scope")
+        if (
+            review_dto.payload_schema_version != OUTPUT_REVIEW_PAYLOAD_SCHEMA_VERSION
+            or (
+                review_dto.status == "PENDING"
+                and (
+                    review_dto.candidate_payload_schema_version is not None
+                    or review_dto.candidate_content_sha256 is not None
+                )
+            )
+            or (
+                review_dto.status == "CONSUMED"
+                and (
+                    review_dto.candidate_payload_schema_version != payload_schema_version
+                    or review_dto.candidate_content_sha256 != content_sha256
+                )
+            )
+            or review_dto.policy_version != GENERAL_EDUCATION_POLICY_VERSION
+            or review_dto.status not in {"PENDING", "CONSUMED"}
+        ):
+            raise ResearchEducationCandidateError("OUTPUT_REVIEW_CANDIDATE_PINS_INVALID")
+
+        job_stmt = select(SchoolResearchEducationJob).where(
+                SchoolResearchEducationJob.id == review_dto.job_id,
+                SchoolResearchEducationJob.job_ref == review_dto.job_ref,
+                SchoolResearchEducationJob.generation_round == review_dto.generation_round,
+                SchoolResearchEducationJob.input_review_id == review_dto.input_review_id,
+                SchoolResearchEducationJob.research_session_id == scope.research_session_id,
+                SchoolResearchEducationJob.school_id == scope.school_id,
+            )
+        if review_dto.generation_round == 0:
+            job_stmt = job_stmt.with_for_update()
+        job = await self.session.scalar(job_stmt)
+        if (
+            job is None
+            or job.status != "REVIEW_REQUIRED"
+            or job.last_error_code != "SAFETY_BLOCKED"
+            or job.attempt_count != 1
+            or job.lease_owner is not None
+            or job.lease_token is not None
+            or job.lease_expires_at is not None
+            or job.generation_round not in {0, 1}
+            or any(getattr(job, name) != getattr(scope, name) for name in _SESSION_SCOPE_FIELDS)
+            or job.policy_version != review_dto.policy_version
+            or job.policy_hash != review_dto.policy_hash
+            or review_dto.trace_id != _continuation_trace_id(job.job_ref, job.attempt_count)
+            or review_dto.safety_trace_id != review_dto.trace_id
+            or review_dto.safety_operation != "OUTPUT"
+            or review_dto.safety_action != "REVIEW_REQUIRED"
+            or review_dto.safety_reason_code != "CONTENT_CONTROVERSIAL"
+            or review_dto.safety_requires_human is not True
+            or review_dto.input_safety_action != (
+                "REVIEW_REQUIRED" if job.generation_round == 1 else review_dto.input_safety_action
+            )
+            or (job.generation_round == 0 and review_dto.input_safety_action not in _SAFE_SAFETY_ACTIONS)
+            or review_dto.retrieval_safety_action not in _SAFE_SAFETY_ACTIONS
+            or review_dto.policy_version != GENERAL_EDUCATION_POLICY_VERSION
+            or review_dto.expires_at.replace(tzinfo=None) <= _utc_naive(now)
+            or review_dto.retention_due_at is not None
+            and review_dto.retention_due_at.replace(tzinfo=None) <= _utc_naive(now)
+        ):
+            raise ResearchEducationCandidateError("OUTPUT_REVIEW_JOB_NOT_CURRENT")
+
+        existing = await self.session.scalar(
+            select(SchoolResearchEducationCandidate)
+            .where(SchoolResearchEducationCandidate.job_id == job.id)
+            .with_for_update()
+        )
+        if existing is not None:
+            await self._validate_persisted_lineage(existing)
+            if not _same_candidate(
+                existing,
+                scope=scope,
+                candidate_ref=candidate_ref,
+                study_ref=review_dto.source_study_ref,
+                policy_version=review_dto.policy_version,
+                policy_hash=review_dto.policy_hash,
+                source_manifest_sha256=review_dto.source_manifest_sha256,
+                retrieval_id=review_dto.retrieval_id,
+                retrieval_bundle_sha256=review_dto.retrieval_bundle_sha256,
+                prompt_ref=review_dto.prompt_id,
+                prompt_version=review_dto.prompt_version,
+                prompt_sha256=review_dto.prompt_sha256,
+                model_ref=review_dto.model_ref,
+                model_digest_sha256=review_dto.model_digest_sha256,
+                runtime_version=review_dto.runtime_version,
+                safety_policy_version=review_dto.safety_policy_version,
+                input_safety_action=review_dto.input_safety_action,
+                retrieval_safety_action=review_dto.retrieval_safety_action,
+                output_safety_action="REVIEW_REQUIRED",
+                content_sha256=content_sha256,
+                payload_schema_version=payload_schema_version,
+                generation_round=job.generation_round,
+                input_review_id=job.input_review_id,
+                input_review_state="CONSUMED" if job.generation_round == 1 else None,
+                output_review_id=review_dto.id,
+                output_review_state="CONSUMED",
+            ):
+                raise UniqueConflict("job already has a different output-review candidate")
+            return _dto(existing)
+
+        input_review = None
+        clock = _utc_naive(now)
+        if job.generation_round == 1:
+            if job.input_review_id is None or review_dto.canonical_input_sha256 is None:
+                raise ResearchEducationCandidateError("OUTPUT_REVIEW_INPUT_LINEAGE_INVALID")
+            persisted_input = await self.session.scalar(
+                select(SchoolResearchEducationInputReview)
+                .where(SchoolResearchEducationInputReview.id == job.input_review_id)
+                .with_for_update()
+            )
+            if (
+                persisted_input is None
+                or persisted_input.grant_policy_version is None
+                or persisted_input.grant_policy_hash is None
+            ):
+                raise ResearchEducationCandidateError("OUTPUT_REVIEW_INPUT_LINEAGE_INVALID")
+            input_reviews = SchoolResearchEducationInputReviewRepository(self.session)
+            input_review = await input_reviews.consume_authorized_input_for_output_review_candidate(
+                output_review_ref=output_review_ref,
+                scope=ResearchEducationInputReviewScope(**_scope_values(scope)),
+                grant_policy_version=persisted_input.grant_policy_version,
+                grant_policy_hash=persisted_input.grant_policy_hash,
+                source_package_ref=review_dto.source_package_ref,
+                source_study_ref=review_dto.source_study_ref,
+                source_manifest_sha256=review_dto.source_manifest_sha256,
+                prompt_id=review_dto.prompt_id,
+                prompt_version=review_dto.prompt_version,
+                prompt_sha256=review_dto.prompt_sha256,
+                canonical_input_sha256=review_dto.canonical_input_sha256,
+                trace_id=trace_id,
+                now=now,
+            )
+
+        async with self.session.begin_nested():
+            consumed_review = await output_reviews.consume_for_candidate(
+                scope=review_scope,
+                output_review_ref=output_review_ref,
+                actor_membership_role_id=actor_membership_role_id,
+                trace_id=trace_id,
+                candidate_content_sha256=content_sha256,
+                candidate_payload_schema_version=payload_schema_version,
+                now=now,
+            )
+            session_result = await self.session.execute(
+                select(SchoolResearchSession.id, SchoolResearchSession.retention_due_at)
+                .where(
+                    SchoolResearchSession.id == scope.research_session_id,
+                    *[
+                        getattr(SchoolResearchSession, name) == getattr(scope, name)
+                        for name in _SESSION_SCOPE_FIELDS[1:]
+                    ],
+                    SchoolResearchSession.status == "COMPLETED",
+                    SchoolResearchSession.completed_at.is_not(None),
+                )
+                .with_for_update()
+            )
+            session_row = session_result.first()
+            if session_row is None:
+                raise ForeignKeyConflict("completed research session scope was not found")
+            retention_due_at = session_row.retention_due_at
+            if (
+                retention_due_at is not None
+                and _stored_utc_naive(retention_due_at) <= clock
+            ):
+                raise ResearchEducationCandidateError("CANDIDATE_RETENTION_EXPIRED")
+            row = SchoolResearchEducationCandidate(
+                candidate_ref=candidate_ref,
+                job_id=job.id,
+                generation_round=job.generation_round,
+                input_review_id=input_review.id if input_review is not None else None,
+                input_review_state="CONSUMED" if input_review is not None else None,
+                output_review_id=consumed_review.id,
+                output_review_state="CONSUMED",
+                **_scope_values(scope),
+                study_ref=consumed_review.source_study_ref,
+                policy_version=consumed_review.policy_version,
+                policy_hash=consumed_review.policy_hash,
+                source_manifest_sha256=consumed_review.source_manifest_sha256,
+                retrieval_id=consumed_review.retrieval_id,
+                retrieval_bundle_sha256=consumed_review.retrieval_bundle_sha256,
+                prompt_ref=consumed_review.prompt_id,
+                prompt_version=consumed_review.prompt_version,
+                prompt_sha256=consumed_review.prompt_sha256,
+                model_ref=consumed_review.model_ref,
+                model_digest_sha256=consumed_review.model_digest_sha256,
+                runtime_version=consumed_review.runtime_version,
+                safety_policy_version=consumed_review.safety_policy_version,
+                input_safety_action=consumed_review.input_safety_action,
+                retrieval_safety_action=consumed_review.retrieval_safety_action,
+                output_safety_action="REVIEW_REQUIRED",
+                purpose="RESEARCH_SIMULATION",
+                research_only=True,
+                psychological_interpretation_allowed=False,
+                publication_status="not_approved_for_publication_or_operational_use",
+                content_revision=1,
+                content_sha256=content_sha256,
+                status="HELD",
+                state_version=1,
+                payload_ciphertext=payload_ciphertext,
+                cipher_format_version=cipher_format_version,
+                key_version=key_version,
+                payload_schema_version=payload_schema_version,
+                resolved_by_membership_role_id=None,
+                resolved_at=None,
+                trace_id=trace_id,
+                retention_due_at=retention_due_at,
+                created_at=clock,
+                updated_at=clock,
+            )
+            try:
+                self.session.add(row)
+                await self.session.flush()
+                self.session.add(
+                    _event(
+                        row,
+                        actor_membership_role_id=None,
+                        event_type="HELD",
+                        from_status=None,
+                        to_status="HELD",
+                        state_version=1,
+                        trace_id=trace_id,
+                        retention_due_at=retention_due_at,
+                    )
+                )
+                await self.session.flush()
+            except IntegrityError as exc:
+                raise UniqueConflict("output-review candidate conflicts with an existing row") from exc
+        return _dto(row)
+
     async def get_for_task(
         self, *, school_id: int, task_id: int, candidate_ref: str
     ) -> ResearchEducationCandidateDTO | None:
@@ -766,6 +1145,8 @@ def _dto(row: SchoolResearchEducationCandidate) -> ResearchEducationCandidateDTO
         generation_round=row.generation_round,
         input_review_id=row.input_review_id,
         input_review_state=row.input_review_state,
+        output_review_id=row.output_review_id,
+        output_review_state=row.output_review_state,
     )
 
 

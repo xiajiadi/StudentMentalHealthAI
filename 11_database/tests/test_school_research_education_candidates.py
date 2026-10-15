@@ -271,6 +271,8 @@ def test_candidate_round_safety_check_rejects_partial_review_and_keeps_normal_ro
         Column("generation_round", Integer, nullable=False),
         Column("input_review_id", Integer, nullable=True),
         Column("input_review_state", String(24), nullable=True),
+        Column("output_review_id", Integer, nullable=True),
+        Column("output_review_state", String(16), nullable=True),
         Column("input_safety_action", String(32), nullable=False),
         Column("retrieval_safety_action", String(32), nullable=False),
         Column("output_safety_action", String(32), nullable=False),
@@ -292,6 +294,18 @@ def test_candidate_round_safety_check_rejects_partial_review_and_keeps_normal_ro
             )
             connection.execute(
                 guard.insert().values(
+                    generation_round=0,
+                    input_review_id=None,
+                    input_review_state=None,
+                    output_review_id=11,
+                    output_review_state="CONSUMED",
+                    input_safety_action="PROCEED",
+                    retrieval_safety_action="PROCEED",
+                    output_safety_action="REVIEW_REQUIRED",
+                )
+            )
+            connection.execute(
+                guard.insert().values(
                     generation_round=1,
                     input_review_id=7,
                     input_review_state="CONSUMED",
@@ -309,6 +323,15 @@ def test_candidate_round_safety_check_rejects_partial_review_and_keeps_normal_ro
              "input_safety_action": "REVIEW_REQUIRED"},
             {"generation_round": 0, "input_review_id": None, "input_review_state": None,
              "input_safety_action": "REVIEW_REQUIRED"},
+            {"generation_round": 0, "input_review_id": None, "input_review_state": None,
+             "output_review_id": None, "output_review_state": None,
+             "input_safety_action": "PROCEED", "output_safety_action": "REVIEW_REQUIRED"},
+            {"generation_round": 0, "input_review_id": None, "input_review_state": None,
+             "output_review_id": 11, "output_review_state": None,
+             "input_safety_action": "PROCEED", "output_safety_action": "REVIEW_REQUIRED"},
+            {"generation_round": 0, "input_review_id": None, "input_review_state": None,
+             "output_review_id": 11, "output_review_state": "CONSUMED",
+             "input_safety_action": "PROCEED", "output_safety_action": "PROCEED"},
         ):
             with pytest.raises(IntegrityError):
                 with engine.begin() as connection:

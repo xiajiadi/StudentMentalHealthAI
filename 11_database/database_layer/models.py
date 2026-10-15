@@ -42,6 +42,7 @@ from .enums import (
     IdempotencyState,
     ReviewPriority,
     ReviewStatus,
+    ResearchEducationOutputReviewStatus,
     SubjectStatus,
     SupportRunStatus,
     SupportStatus,
@@ -3309,7 +3310,10 @@ class SchoolResearchEducationCandidate(ResourceIdentityMixin, TimestampMixin, Ba
             "AND input_review_state IS NOT NULL AND input_review_state = 'CONSUMED' "
             "AND input_safety_action = 'REVIEW_REQUIRED')) AND "
             "retrieval_safety_action IN ('PROCEED', 'PROCEED_WITH_BOUNDARY') AND "
-            "output_safety_action IN ('PROCEED', 'PROCEED_WITH_BOUNDARY')",
+            "(((output_safety_action IN ('PROCEED', 'PROCEED_WITH_BOUNDARY')) "
+            "AND output_review_id IS NULL AND output_review_state IS NULL) OR "
+            "(output_safety_action = 'REVIEW_REQUIRED' AND output_review_id IS NOT NULL "
+            "AND output_review_state IS NOT NULL AND output_review_state = 'CONSUMED'))",
             name="safety_actions_allowed",
         ),
         CheckConstraint(
@@ -3363,6 +3367,26 @@ class SchoolResearchEducationCandidate(ResourceIdentityMixin, TimestampMixin, Ba
             ondelete="RESTRICT",
         ),
         ForeignKeyConstraint(
+            [
+                "output_review_id",
+                "output_review_state",
+                "job_id",
+                "generation_round",
+                "research_session_id",
+                "school_id",
+            ],
+            [
+                "school_research_education_output_reviews.id",
+                "school_research_education_output_reviews.status",
+                "school_research_education_output_reviews.job_id",
+                "school_research_education_output_reviews.generation_round",
+                "school_research_education_output_reviews.research_session_id",
+                "school_research_education_output_reviews.school_id",
+            ],
+            name="fk_school_research_education_candidate_output_review",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
             list(_RESEARCH_SESSION_SCOPE),
             [
                 "school_research_sessions.id",
@@ -3393,6 +3417,8 @@ class SchoolResearchEducationCandidate(ResourceIdentityMixin, TimestampMixin, Ba
     )
     input_review_id: Mapped[int | None] = mapped_column(unsigned_id(), nullable=True)
     input_review_state: Mapped[str | None] = mapped_column(ascii_id(24), nullable=True)
+    output_review_id: Mapped[int | None] = mapped_column(unsigned_id(), nullable=True)
+    output_review_state: Mapped[str | None] = mapped_column(ascii_id(16), nullable=True)
     research_session_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
     school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
     task_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
@@ -3742,6 +3768,231 @@ class SchoolResearchEducationInputReviewEvent(ResourceIdentityMixin, TimestampMi
     event_type: Mapped[str] = mapped_column(ascii_id(24), nullable=False)
     from_status: Mapped[str | None] = mapped_column(ascii_id(24), nullable=True)
     to_status: Mapped[str] = mapped_column(ascii_id(24), nullable=False)
+    state_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    trace_id: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    retention_due_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+
+
+class SchoolResearchEducationOutputReview(ResourceIdentityMixin, TimestampMixin, Base):
+    """Encrypted, exact-scope payload for a future output-content review."""
+
+    __tablename__ = "school_research_education_output_reviews"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("output_review_ref", name="school_research_education_output_review_ref_unique"),
+        UniqueConstraint("job_id", name="school_research_education_output_review_job_unique"),
+        UniqueConstraint(
+            "id", "status", "job_id", "generation_round", "research_session_id", "school_id",
+            name="school_research_education_output_review_candidate_scope_unique",
+        ),
+        UniqueConstraint(
+            "id", "research_session_id", "school_id",
+            name="school_research_education_output_review_id_scope_unique",
+        ),
+        UniqueConstraint("id", *_RESEARCH_SESSION_SCOPE, name="school_research_education_output_review_exact_scope_unique"),
+        CheckConstraint("safety_operation = 'OUTPUT'", name="safety_op"),
+        CheckConstraint("safety_action = 'REVIEW_REQUIRED'", name="safety_action"),
+        CheckConstraint("safety_reason_code = 'CONTENT_CONTROVERSIAL'", name="safety_reason"),
+        CheckConstraint("safety_requires_human = 1", name="safety_human"),
+        CheckConstraint("generation_round IN (0, 1)", name="round_allowed"),
+        CheckConstraint(
+            "(generation_round = 0 AND input_review_id IS NULL AND canonical_input_sha256 IS NULL) OR "
+            "(generation_round = 1 AND input_review_id IS NOT NULL AND canonical_input_sha256 IS NOT NULL)",
+            name="round_input_pair",
+        ),
+        CheckConstraint(
+            "status IN ('PENDING', 'REJECTED', 'REVOKED', 'CONSUMED')",
+            name="status_allowed",
+        ),
+        CheckConstraint("state_version IN (1, 2)", name="state_ver"),
+        CheckConstraint("expires_at > created_at", name="expiry"),
+        CheckConstraint(
+            "((status IN ('PENDING', 'REJECTED', 'REVOKED') "
+            "AND candidate_content_sha256 IS NULL "
+            "AND candidate_payload_schema_version IS NULL) OR "
+            "(status = 'CONSUMED' AND candidate_content_sha256 IS NOT NULL "
+            "AND candidate_payload_schema_version = "
+            "'school-research-general-education-candidate.v1'))",
+            name="candidate_pins",
+        ),
+        CheckConstraint(
+            "(status = 'PENDING' AND state_version = 1 AND resolved_at IS NULL "
+            "AND resolved_by_membership_role_id IS NULL AND consumed_at IS NULL) OR "
+            "(status IN ('REJECTED', 'REVOKED') AND state_version = 2 "
+            "AND resolved_at IS NOT NULL AND resolved_by_membership_role_id IS NOT NULL "
+            "AND consumed_at IS NULL) OR "
+            "(status = 'CONSUMED' AND state_version = 2 AND resolved_at IS NOT NULL "
+            "AND resolved_by_membership_role_id IS NOT NULL AND consumed_at IS NOT NULL)",
+            name="resolution_shape",
+        ),
+        ForeignKeyConstraint(
+            ["job_id", "generation_round", "research_session_id", "school_id"],
+            [
+                "school_research_education_jobs.id",
+                "school_research_education_jobs.generation_round",
+                "school_research_education_jobs.research_session_id",
+                "school_research_education_jobs.school_id",
+            ],
+            name="fk_school_research_education_output_review_job_round_scope",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["job_id", "input_review_id", "research_session_id", "school_id"],
+            [
+                "school_research_education_jobs.id",
+                "school_research_education_jobs.input_review_id",
+                "school_research_education_jobs.research_session_id",
+                "school_research_education_jobs.school_id",
+            ],
+            name="fk_school_research_education_output_review_job_input_scope",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["input_review_id", "research_session_id", "school_id"],
+            [
+                "school_research_education_input_reviews.id",
+                "school_research_education_input_reviews.research_session_id",
+                "school_research_education_input_reviews.school_id",
+            ],
+            name="fk_school_research_education_output_review_input_scope",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            list(_RESEARCH_SESSION_SCOPE),
+            [
+                "school_research_sessions.id",
+                *[f"school_research_sessions.{name}" for name in _RESEARCH_SESSION_SCOPE[1:]],
+            ],
+            name="fk_school_research_education_output_review_session_scope",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["resolved_by_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_school_research_education_output_review_resolver_school",
+            ondelete="RESTRICT",
+        ),
+        Index(
+            "ix_school_research_education_output_review_task_status",
+            "school_id", "task_id", "status", "created_at",
+        ),
+    )
+
+    output_review_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    job_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    generation_round: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    input_review_id: Mapped[int | None] = mapped_column(unsigned_id(), nullable=True)
+    research_session_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    task_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    class_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    task_enrollment_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    subject_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    task_binding_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    profile_version_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    profile_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    profile_version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    profile_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    response_origin: Mapped[str] = mapped_column(ascii_id(32), nullable=False)
+    safety_decision_id: Mapped[str] = mapped_column(ascii_id(160), nullable=False)
+    safety_review_ref: Mapped[str] = mapped_column(ascii_id(160), nullable=False)
+    safety_trace_id: Mapped[str] = mapped_column(ascii_id(160), nullable=False)
+    safety_operation: Mapped[str] = mapped_column(ascii_id(16), nullable=False)
+    safety_action: Mapped[str] = mapped_column(ascii_id(24), nullable=False)
+    safety_reason_code: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    safety_requires_human: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    input_safety_action: Mapped[str] = mapped_column(ascii_id(32), nullable=False)
+    retrieval_safety_action: Mapped[str] = mapped_column(ascii_id(32), nullable=False)
+    canonical_input_sha256: Mapped[str | None] = mapped_column(ascii_id(64), nullable=True)
+    policy_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    policy_hash: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    source_package_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    source_study_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    source_manifest_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    retrieval_id: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    retrieval_bundle_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    prompt_id: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    prompt_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    model_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    model_digest_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    runtime_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    safety_policy_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    candidate_content_sha256: Mapped[str | None] = mapped_column(ascii_id(64), nullable=True)
+    candidate_payload_schema_version: Mapped[str | None] = mapped_column(ascii_id(64), nullable=True)
+    content_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    payload_ciphertext: Mapped[bytes] = mapped_column(mysql.MEDIUMBLOB, nullable=False)
+    cipher_format_version: Mapped[str] = mapped_column(ascii_id(32), nullable=False)
+    key_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    payload_schema_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    status: Mapped[str] = mapped_column(
+        ascii_id(16),
+        nullable=False,
+        default=ResearchEducationOutputReviewStatus.PENDING.value,
+        server_default=ResearchEducationOutputReviewStatus.PENDING.value,
+    )
+    state_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    expires_at: Mapped[datetime] = mapped_column(utc_datetime(), nullable=False)
+    resolved_by_membership_role_id: Mapped[int | None] = mapped_column(unsigned_id(), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    consumed_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    trace_id: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    retention_due_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+
+
+class SchoolResearchEducationOutputReviewEvent(ResourceIdentityMixin, TimestampMixin, Base):
+    """Append-only, content-free output-review lifecycle events."""
+
+    __tablename__ = "school_research_education_output_review_events"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint(
+            "output_review_id", "state_version",
+            name="school_research_education_output_review_event_version_unique",
+        ),
+        CheckConstraint(
+            "event_type IN ('PENDING', 'REJECTED', 'REVOKED', 'CONSUMED')", name="event_type"
+        ),
+        CheckConstraint(
+            "from_status IS NULL OR from_status IN ('PENDING', 'REJECTED', 'REVOKED', 'CONSUMED')",
+            name="from_status",
+        ),
+        CheckConstraint(
+            "to_status IN ('PENDING', 'REJECTED', 'REVOKED', 'CONSUMED')", name="to_status"
+        ),
+        CheckConstraint("state_version IN (1, 2)", name="state_ver"),
+        CheckConstraint(
+            "(event_type = 'PENDING' AND from_status IS NULL AND to_status = 'PENDING' "
+            "AND state_version = 1 AND actor_membership_role_id IS NULL) OR "
+            "(event_type IN ('REJECTED', 'REVOKED', 'CONSUMED') AND from_status = 'PENDING' "
+            "AND to_status = event_type AND state_version = 2 "
+            "AND actor_membership_role_id IS NOT NULL)",
+            name="event_shape",
+        ),
+        ForeignKeyConstraint(
+            ["output_review_id", "research_session_id", "school_id"],
+            [
+                "school_research_education_output_reviews.id",
+                "school_research_education_output_reviews.research_session_id",
+                "school_research_education_output_reviews.school_id",
+            ],
+            name="fk_school_research_education_output_review_event_scope",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["actor_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_school_research_education_output_review_event_actor_school",
+            ondelete="RESTRICT",
+        ),
+    )
+
+    output_review_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    research_session_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    output_review_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    actor_membership_role_id: Mapped[int | None] = mapped_column(unsigned_id(), nullable=True)
+    event_type: Mapped[str] = mapped_column(ascii_id(16), nullable=False)
+    from_status: Mapped[str | None] = mapped_column(ascii_id(16), nullable=True)
+    to_status: Mapped[str] = mapped_column(ascii_id(16), nullable=False)
     state_version: Mapped[int] = mapped_column(Integer, nullable=False)
     trace_id: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
     retention_due_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)

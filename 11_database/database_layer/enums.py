@@ -104,6 +104,13 @@ class ReviewEventType(StrEnum):
     CLOSED = "CLOSED"
 
 
+class ResearchEducationOutputReviewStatus(StrEnum):
+    PENDING = "PENDING"
+    REJECTED = "REJECTED"
+    REVOKED = "REVOKED"
+    CONSUMED = "CONSUMED"
+
+
 class IdempotencyState(StrEnum):
     IN_PROGRESS = "IN_PROGRESS"
     COMPLETED = "COMPLETED"

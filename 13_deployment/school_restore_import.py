@@ -16,6 +16,7 @@ from school_restore_plan import plan_restore, trusted_manifest
 from school_schema import (
     LEGACY_SCHOOL_SNAPSHOT_REVISION,
     RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION,
+    RESEARCH_EDUCATION_OUTPUT_REVIEW_REVISION,
 )
 
 SUPPORTED_REVISION = LEGACY_SCHOOL_SNAPSHOT_REVISION
@@ -29,7 +30,11 @@ def _ordered_snapshot_rows(plan: dict):
     """Yield 0022 rows in FK-safe order without disabling MySQL constraints."""
     round_one_jobs = []
     continuation_snapshot = (
-        plan.get("revision") == RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION
+        plan.get("revision")
+        in {
+            RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION,
+            RESEARCH_EDUCATION_OUTPUT_REVIEW_REVISION,
+        }
     )
     job_table = "school_research_education_jobs"
     review_table = "school_research_education_input_reviews"
