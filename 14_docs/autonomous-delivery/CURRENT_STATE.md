@@ -1,5 +1,45 @@
 # PsyNova current execution state
 
+## Current checkpoint: 2026-10-16, fresh installation verified and output review in progress
+
+- Engineering estimate is about80% complete/20% remaining, not professional or
+  school-production approval. ACTIVE with no current shutdown deadline.
+- Canonical a3f7f32 is pushed on xiajiadi/autonomous-delivery-20261011. Preserve
+  the existing untracked frontend output directory and login-mark-v2.png.
+- X is a new untouched-install target, source/dependencies pinned a3f7f32:
+  D:/Projects/.StudentMentalHealthAI-school-install-20261016-x,
+  workspace842bbf30554a6acc7231646ce5e72a1c, DB3332/API8106/UI4196/CAT8184.
+  One official install exited0, all7 stages COMPLETED, seed verified by role
+  login, APP_AND_ROLE_BROWSER_VERIFIED. No checkpoint repair or reseed.
+  D:/Dev/temp/psynova-x-fresh-install-20261016-r1.json
+  SHA29e3919c108d8a127e301fa073ffcb1c4c3603b962773af6ca0d9a5d92899b40.
+  Durable browser report4/4 PASS, separate fresh status exit0/three OWNED READY
+  app services/schema0022. LLM/RAG/Safety still UNVERIFIED; whole_ready=false.
+- W original failed installer checkpoint remains preserved. A separate official
+  four-role browser run exited0/PASS with all9 stages for4 roles after setting
+  only process-local PLAYWRIGHT_BROWSERS_PATH to the existing D-drive cache.
+  D:/Dev/temp/psynova-w-four-role-browser-20261016-root-r2.json
+  SHAdea77460cb74a6ef7c298f864850e22b25af05e20c6b23a744d531544637b682.
+  This does not rewrite the failed W installer checkpoint or prove whole AI readiness.
+- T's exact offset5 output audit is REVIEW_REQUIRED, requires_human=true,
+  sole CONTENT_CONTROVERSIAL, not an inferred content diagnosis. Content was
+  discarded by the old implementation; no retrofill/retry is authorized.
+  D:/Dev/temp/psynova-general-education-output-safety-exactjob-20261016-r1.json
+  SHA003b4064d04572465bcc23b8ef598db05b94cf7c180ddcd24b14bdae444b9fb0.
+  T remains11 terminal jobs/5 AUTH input reviews/0 candidates/0 active jobs.
+- Short spec RESEARCH_OUTPUT_CONTENT_REVIEW.md defines future-only encrypted
+  output review. Direct Luna/high peers own additive0023 DB, Backend, and FE;
+  no Lead or recursive delegation. FE8f274be awaits integration and native QA.
+  Pending review cannot require a valid candidate hash/schema: original output
+  and retrieval snapshot are encrypted first, all existing content/citation checks
+  run at explicit CREATE_HELD, and candidate hash/schema bind only on consumption.
+  Original Safety/job stay terminal; round1 input grant consumption is atomic.
+- Remaining priority: integrate/review0023 and API/FE, one actual reviewed output
+  through HELD/adoption/draft/publish/student-read/revoke, then bounded800-person
+  AI processing and recovery. Do not batch inference before this positive path.
+  Installer research profile connection is separate bounded work; fixed local
+  AI assets and three-layer research retrieval must retain explicit source/study pins.
+
 ## Current checkpoint: 2026-10-16, installation recovery and actual Safety stop
 
 - Reviewed/pushed b6552b5: registered school-contexts-v1 seed is exactly2 schools,
