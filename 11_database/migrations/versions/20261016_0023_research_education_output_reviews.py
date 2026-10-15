@@ -102,37 +102,72 @@ def upgrade() -> None:
         sa.Column("created_at", mysql.DATETIME(fsp=6), nullable=False),
         sa.Column("updated_at", mysql.DATETIME(fsp=6), nullable=False),
         sa.PrimaryKeyConstraint("id", name="pk_school_research_education_output_reviews"),
-        sa.UniqueConstraint("public_id", name="uq_school_research_education_output_reviews_public_id"),
-        sa.UniqueConstraint("output_review_ref", name="school_research_education_output_review_ref_unique"),
+        sa.UniqueConstraint(
+            "public_id", name="uq_school_research_education_output_reviews_public_id"
+        ),
+        sa.UniqueConstraint(
+            "output_review_ref", name="school_research_education_output_review_ref_unique"
+        ),
         sa.UniqueConstraint("job_id", name="school_research_education_output_review_job_unique"),
         sa.UniqueConstraint(
-            "id", "status", "job_id", "generation_round", "research_session_id", "school_id",
+            "id",
+            "status",
+            "job_id",
+            "generation_round",
+            "research_session_id",
+            "school_id",
             name="school_research_education_output_review_candidate_scope_unique",
         ),
         sa.UniqueConstraint(
-            "id", "research_session_id", "school_id",
+            "id",
+            "research_session_id",
+            "school_id",
             name="school_research_education_output_review_id_scope_unique",
         ),
         sa.UniqueConstraint(
-            "id", *_SCOPE,
+            "id",
+            *_SCOPE,
             name="school_research_education_output_review_exact_scope_unique",
         ),
-        sa.CheckConstraint("safety_operation = 'OUTPUT'", name=op.f("ck_school_research_education_output_reviews_safety_op")),
-        sa.CheckConstraint("safety_action = 'REVIEW_REQUIRED'", name=op.f("ck_school_research_education_output_reviews_safety_action")),
-        sa.CheckConstraint("safety_reason_code = 'CONTENT_CONTROVERSIAL'", name=op.f("ck_school_research_education_output_reviews_safety_reason")),
-        sa.CheckConstraint("safety_requires_human = 1", name=op.f("ck_school_research_education_output_reviews_safety_human")),
-        sa.CheckConstraint("generation_round IN (0, 1)", name=op.f("ck_school_research_education_output_reviews_round_allowed")),
         sa.CheckConstraint(
-            "(generation_round = 0 AND input_review_id IS NULL AND canonical_input_sha256 IS NULL) OR "
-            "(generation_round = 1 AND input_review_id IS NOT NULL AND canonical_input_sha256 IS NOT NULL)",
+            "safety_operation = 'OUTPUT'",
+            name=op.f("ck_school_research_education_output_reviews_safety_op"),
+        ),
+        sa.CheckConstraint(
+            "safety_action = 'REVIEW_REQUIRED'",
+            name=op.f("ck_school_research_education_output_reviews_safety_action"),
+        ),
+        sa.CheckConstraint(
+            "safety_reason_code = 'CONTENT_CONTROVERSIAL'",
+            name=op.f("ck_school_research_education_output_reviews_safety_reason"),
+        ),
+        sa.CheckConstraint(
+            "safety_requires_human = 1",
+            name=op.f("ck_school_research_education_output_reviews_safety_human"),
+        ),
+        sa.CheckConstraint(
+            "generation_round IN (0, 1)",
+            name=op.f("ck_school_research_education_output_reviews_round_allowed"),
+        ),
+        sa.CheckConstraint(
+            "(generation_round = 0 AND input_review_id IS NULL "
+            "AND canonical_input_sha256 IS NULL) OR "
+            "(generation_round = 1 AND input_review_id IS NOT NULL "
+            "AND canonical_input_sha256 IS NOT NULL)",
             name=op.f("ck_school_research_education_output_reviews_round_input_pair"),
         ),
         sa.CheckConstraint(
             "status IN ('PENDING', 'REJECTED', 'REVOKED', 'CONSUMED')",
             name=op.f("ck_school_research_education_output_reviews_status_allowed"),
         ),
-        sa.CheckConstraint("state_version IN (1, 2)", name=op.f("ck_school_research_education_output_reviews_state_ver")),
-        sa.CheckConstraint("expires_at > created_at", name=op.f("ck_school_research_education_output_reviews_expiry")),
+        sa.CheckConstraint(
+            "state_version IN (1, 2)",
+            name=op.f("ck_school_research_education_output_reviews_state_ver"),
+        ),
+        sa.CheckConstraint(
+            "expires_at > created_at",
+            name=op.f("ck_school_research_education_output_reviews_expiry"),
+        ),
         sa.CheckConstraint(
             "((status IN ('PENDING', 'REJECTED', 'REVOKED') "
             "AND candidate_content_sha256 IS NULL "
@@ -154,28 +189,42 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(
             ["job_id", "generation_round", "research_session_id", "school_id"],
-            ["school_research_education_jobs.id", "school_research_education_jobs.generation_round",
-             "school_research_education_jobs.research_session_id", "school_research_education_jobs.school_id"],
+            [
+                "school_research_education_jobs.id",
+                "school_research_education_jobs.generation_round",
+                "school_research_education_jobs.research_session_id",
+                "school_research_education_jobs.school_id",
+            ],
             name="fk_school_research_education_output_review_job_round_scope",
             ondelete="RESTRICT",
         ),
         sa.ForeignKeyConstraint(
             ["job_id", "input_review_id", "research_session_id", "school_id"],
-            ["school_research_education_jobs.id", "school_research_education_jobs.input_review_id",
-             "school_research_education_jobs.research_session_id", "school_research_education_jobs.school_id"],
+            [
+                "school_research_education_jobs.id",
+                "school_research_education_jobs.input_review_id",
+                "school_research_education_jobs.research_session_id",
+                "school_research_education_jobs.school_id",
+            ],
             name="fk_school_research_education_output_review_job_input_scope",
             ondelete="RESTRICT",
         ),
         sa.ForeignKeyConstraint(
             ["input_review_id", "research_session_id", "school_id"],
-            ["school_research_education_input_reviews.id", "school_research_education_input_reviews.research_session_id",
-             "school_research_education_input_reviews.school_id"],
+            [
+                "school_research_education_input_reviews.id",
+                "school_research_education_input_reviews.research_session_id",
+                "school_research_education_input_reviews.school_id",
+            ],
             name="fk_school_research_education_output_review_input_scope",
             ondelete="RESTRICT",
         ),
         sa.ForeignKeyConstraint(
             list(_SCOPE),
-            ["school_research_sessions.id", *[f"school_research_sessions.{name}" for name in _SCOPE[1:]]],
+            [
+                "school_research_sessions.id",
+                *[f"school_research_sessions.{name}" for name in _SCOPE[1:]],
+            ],
             name="fk_school_research_education_output_review_session_scope",
             ondelete="RESTRICT",
         ),
@@ -213,9 +262,12 @@ def upgrade() -> None:
         sa.Column("created_at", mysql.DATETIME(fsp=6), nullable=False),
         sa.Column("updated_at", mysql.DATETIME(fsp=6), nullable=False),
         sa.PrimaryKeyConstraint("id", name="pk_school_research_education_output_review_events"),
-        sa.UniqueConstraint("public_id", name="uq_school_research_education_output_review_events_public_id"),
         sa.UniqueConstraint(
-            "output_review_id", "state_version",
+            "public_id", name="uq_school_research_education_output_review_events_public_id"
+        ),
+        sa.UniqueConstraint(
+            "output_review_id",
+            "state_version",
             name="school_research_education_output_review_event_version_unique",
         ),
         sa.CheckConstraint(
@@ -230,7 +282,10 @@ def upgrade() -> None:
             "to_status IN ('PENDING', 'REJECTED', 'REVOKED', 'CONSUMED')",
             name=op.f("ck_school_research_education_output_review_events_to_status"),
         ),
-        sa.CheckConstraint("state_version IN (1, 2)", name=op.f("ck_school_research_education_output_review_events_state_ver")),
+        sa.CheckConstraint(
+            "state_version IN (1, 2)",
+            name=op.f("ck_school_research_education_output_review_events_state_ver"),
+        ),
         sa.CheckConstraint(
             "(event_type = 'PENDING' AND from_status IS NULL AND to_status = 'PENDING' "
             "AND state_version = 1 AND actor_membership_role_id IS NULL) OR "
@@ -241,8 +296,11 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(
             ["output_review_id", "research_session_id", "school_id"],
-            ["school_research_education_output_reviews.id", "school_research_education_output_reviews.research_session_id",
-             "school_research_education_output_reviews.school_id"],
+            [
+                "school_research_education_output_reviews.id",
+                "school_research_education_output_reviews.research_session_id",
+                "school_research_education_output_reviews.school_id",
+            ],
             name="fk_school_research_education_output_review_event_scope",
             ondelete="RESTRICT",
         ),
@@ -290,7 +348,14 @@ def upgrade() -> None:
         "fk_school_research_education_candidate_output_review",
         "school_research_education_candidates",
         "school_research_education_output_reviews",
-        ["output_review_id", "output_review_state", "job_id", "generation_round", "research_session_id", "school_id"],
+        [
+            "output_review_id",
+            "output_review_state",
+            "job_id",
+            "generation_round",
+            "research_session_id",
+            "school_id",
+        ],
         ["id", "status", "job_id", "generation_round", "research_session_id", "school_id"],
         ondelete="RESTRICT",
     )
@@ -298,10 +363,15 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     bind = op.get_bind()
-    if bind.execute(sa.text(
-        "SELECT 1 FROM school_research_education_candidates "
-        "WHERE output_review_id IS NOT NULL LIMIT 1"
-    )).first() is not None:
+    if (
+        bind.execute(
+            sa.text(
+                "SELECT 1 FROM school_research_education_candidates "
+                "WHERE output_review_id IS NOT NULL LIMIT 1"
+            )
+        ).first()
+        is not None
+    ):
         raise RuntimeError("refusing downgrade: output-review candidates exist")
     for table in (
         "school_research_education_output_review_events",

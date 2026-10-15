@@ -15,8 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .enums import ResearchEducationOutputReviewStatus
 from .errors import ForeignKeyConflict, OptimisticConcurrencyConflict, UniqueConflict
 from .models import (
-    SchoolResearchEducationJob,
     SchoolResearchEducationInputReview,
+    SchoolResearchEducationJob,
     SchoolResearchEducationOutputReview,
     SchoolResearchEducationOutputReviewEvent,
     SchoolResearchSession,
@@ -179,7 +179,15 @@ class SchoolResearchEducationOutputReviewRepository:
         now: datetime | None = None,
     ) -> ResearchEducationOutputReviewDTO:
         _validate_scope(scope)
-        _validate_evidence(claim, evidence, content_sha256, payload_ciphertext, cipher_format_version, key_version, payload_schema_version)
+        _validate_evidence(
+            claim,
+            evidence,
+            content_sha256,
+            payload_ciphertext,
+            cipher_format_version,
+            key_version,
+            payload_schema_version,
+        )
         clock = _utc_naive(now)
         expires = _utc_naive(evidence.expires_at)
         if expires <= clock or expires > clock + timedelta(hours=24):
@@ -296,7 +304,9 @@ class SchoolResearchEducationOutputReviewRepository:
             async with self.session.begin_nested():
                 self.session.add(row)
                 await self.session.flush()
-                self.session.add(_event(row, None, "PENDING", None, "PENDING", 1, evidence.trace_id))
+                self.session.add(
+                    _event(row, None, "PENDING", None, "PENDING", 1, evidence.trace_id)
+                )
                 await self.session.flush()
         except IntegrityError as exc:
             raise UniqueConflict("output review evidence conflicts with an existing row") from exc
@@ -321,9 +331,7 @@ class SchoolResearchEducationOutputReviewRepository:
         )
         if row is None:
             return None
-        _require_terminal_review_job(
-            await _load_job(self.session, row.job_id), row
-        )
+        _require_terminal_review_job(await _load_job(self.session, row.job_id), row)
         return await self._dto(row, await _job_ref(self.session, row.job_id))
 
     async def find_scope_for_task(
@@ -338,10 +346,9 @@ class SchoolResearchEducationOutputReviewRepository:
         _require_id(task_id, "task_id")
         output_review_ref = _require_token(output_review_ref, "output_review_ref", 128)
         result = await self.session.execute(
-            select(*[
-                getattr(SchoolResearchEducationOutputReview, name)
-                for name in _SCOPE_FIELDS
-            ]).where(
+            select(
+                *[getattr(SchoolResearchEducationOutputReview, name) for name in _SCOPE_FIELDS]
+            ).where(
                 SchoolResearchEducationOutputReview.school_id == school_id,
                 SchoolResearchEducationOutputReview.task_id == task_id,
                 SchoolResearchEducationOutputReview.output_review_ref == output_review_ref,
@@ -374,7 +381,10 @@ class SchoolResearchEducationOutputReviewRepository:
                 SchoolResearchEducationOutputReview.school_id == school_id,
                 SchoolResearchEducationOutputReview.task_id == task_id,
             )
-            .order_by(SchoolResearchEducationOutputReview.created_at, SchoolResearchEducationOutputReview.id)
+            .order_by(
+                SchoolResearchEducationOutputReview.created_at,
+                SchoolResearchEducationOutputReview.id,
+            )
             .offset(offset)
             .limit(limit)
         )
@@ -421,7 +431,10 @@ class SchoolResearchEducationOutputReviewRepository:
         )
         if row is None:
             raise ForeignKeyConflict("output review was not found in this task scope")
-        if row.status != ResearchEducationOutputReviewStatus.PENDING.value or row.state_version != 1:
+        if (
+            row.status != ResearchEducationOutputReviewStatus.PENDING.value
+            or row.state_version != 1
+        ):
             raise OptimisticConcurrencyConflict("output review state changed")
         _require_terminal_review_job(await _load_job(self.session, row.job_id), row)
         if _stored_utc_naive(row.expires_at) <= clock or (
@@ -436,7 +449,9 @@ class SchoolResearchEducationOutputReviewRepository:
             row.resolved_at = clock
             row.updated_at = clock
             await self.session.flush()
-            self.session.add(_event(row, actor_membership_role_id, status, previous, status, 2, trace_id))
+            self.session.add(
+                _event(row, actor_membership_role_id, status, previous, status, 2, trace_id)
+            )
             await self.session.flush()
         return _summary(row, await _job_ref(self.session, row.job_id))
 
@@ -473,7 +488,10 @@ class SchoolResearchEducationOutputReviewRepository:
         )
         if row is None:
             raise ForeignKeyConflict("output review was not found in this task scope")
-        if row.status != ResearchEducationOutputReviewStatus.PENDING.value or row.state_version != 1:
+        if (
+            row.status != ResearchEducationOutputReviewStatus.PENDING.value
+            or row.state_version != 1
+        ):
             raise OptimisticConcurrencyConflict("output review state changed")
         _require_terminal_review_job(await _load_job(self.session, row.job_id), row)
         if _stored_utc_naive(row.expires_at) <= clock or (
@@ -491,15 +509,17 @@ class SchoolResearchEducationOutputReviewRepository:
             row.consumed_at = clock
             row.updated_at = clock
             await self.session.flush()
-            self.session.add(_event(
-                row,
-                actor_membership_role_id,
-                ResearchEducationOutputReviewStatus.CONSUMED.value,
-                previous,
-                ResearchEducationOutputReviewStatus.CONSUMED.value,
-                2,
-                trace_id,
-            ))
+            self.session.add(
+                _event(
+                    row,
+                    actor_membership_role_id,
+                    ResearchEducationOutputReviewStatus.CONSUMED.value,
+                    previous,
+                    ResearchEducationOutputReviewStatus.CONSUMED.value,
+                    2,
+                    trace_id,
+                )
+            )
             await self.session.flush()
         return await self._dto(row, await _job_ref(self.session, row.job_id))
 
@@ -519,12 +539,14 @@ class SchoolResearchEducationOutputReviewRepository:
 
         review = await self.session.scalar(
             select(SchoolResearchEducationInputReview)
-            .where(
-                SchoolResearchEducationInputReview.id == job.input_review_id
-            )
+            .where(SchoolResearchEducationInputReview.id == job.input_review_id)
             .with_for_update()
         )
-        if review is None or review.grant_policy_version is None or review.grant_policy_hash is None:
+        if (
+            review is None
+            or review.grant_policy_version is None
+            or review.grant_policy_hash is None
+        ):
             raise ResearchEducationOutputReviewError("OUTPUT_REVIEW_INPUT_LINEAGE_INVALID")
         input_scope = ResearchEducationInputReviewScope(**_scope_values(scope))
         validator = SchoolResearchEducationInputReviewRepository(self.session)
@@ -558,7 +580,17 @@ class SchoolResearchEducationOutputReviewRepository:
 def _validate_scope(scope: ResearchEducationOutputReviewScope) -> None:
     if type(scope) is not ResearchEducationOutputReviewScope:
         raise ResearchEducationOutputReviewError("INVALID_SCOPE")
-    for name in ("research_session_id", "school_id", "task_id", "class_id", "task_enrollment_id", "subject_id", "task_binding_id", "profile_version_id", "profile_version_number"):
+    for name in (
+        "research_session_id",
+        "school_id",
+        "task_id",
+        "class_id",
+        "task_enrollment_id",
+        "subject_id",
+        "task_binding_id",
+        "profile_version_id",
+        "profile_version_number",
+    ):
         _require_id(getattr(scope, name), name)
     _require_token(scope.profile_ref, "profile_ref", 128)
     _require_sha256(scope.profile_sha256, "profile_sha256")
@@ -584,14 +616,8 @@ def _validate_evidence(
         or evidence.safety_requires_human is not True
         or evidence.policy_version != GENERAL_EDUCATION_POLICY_VERSION
         or evidence.policy_hash != claim.policy_hash
-        or (
-            claim.generation_round == 0
-            and evidence.input_safety_action not in _SAFE_ACTIONS
-        )
-        or (
-            claim.generation_round == 1
-            and evidence.input_safety_action != "REVIEW_REQUIRED"
-        )
+        or (claim.generation_round == 0 and evidence.input_safety_action not in _SAFE_ACTIONS)
+        or (claim.generation_round == 1 and evidence.input_safety_action != "REVIEW_REQUIRED")
         or evidence.retrieval_safety_action not in _SAFE_ACTIONS
         or type(claim.attempt_count) is not int
         or claim.attempt_count != 1
@@ -633,7 +659,10 @@ def _validate_evidence(
         _require_sha256(value, name)
     if evidence.canonical_input_sha256 is not None:
         _require_sha256(evidence.canonical_input_sha256, "canonical_input_sha256")
-    expected_trace = f"TRACE_{hashlib.sha256(f'{claim.job_ref}:{claim.attempt_count}'.encode('ascii')).hexdigest()[:32]}"
+    trace_digest = hashlib.sha256(
+        f"{claim.job_ref}:{claim.attempt_count}".encode("ascii")
+    ).hexdigest()[:32]
+    expected_trace = f"TRACE_{trace_digest}"
     if evidence.trace_id != expected_trace or evidence.safety_trace_id != expected_trace:
         raise ResearchEducationOutputReviewError("OUTPUT_REVIEW_TRACE_INVALID")
 
@@ -851,7 +880,9 @@ def _stored_utc_naive(value: datetime) -> datetime:
     return value.astimezone(UTC).replace(tzinfo=None)
 
 
-async def _job_claim(session: AsyncSession, job: SchoolResearchEducationJob) -> ResearchEducationJobClaim:
+async def _job_claim(
+    session: AsyncSession, job: SchoolResearchEducationJob
+) -> ResearchEducationJobClaim:
     from .school_research_education_jobs import _dto as _job_dto
 
     dto = _job_dto(job)
