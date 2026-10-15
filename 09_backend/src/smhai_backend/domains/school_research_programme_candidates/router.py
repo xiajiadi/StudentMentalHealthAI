@@ -22,7 +22,9 @@ from .schemas import (
     ProgrammeCandidateDetailDto,
     ProgrammeCandidateListDto,
     ProgrammeCandidateSummaryDto,
+    ProgrammeGenerationBatchQueuedDto,
     ProgrammeGenerationQueuedDto,
+    QueueProgrammeGenerationBatchRequest,
     QueueProgrammeGenerationRequest,
 )
 
@@ -203,4 +205,34 @@ async def queue_programme_generation(
             actor, task_ref, idempotency=idem, trace_id=trace
         ),
         ProgrammeGenerationQueuedDto,
+    )
+
+
+@router.post(
+    "/tasks/{task_ref}/queue-generation/batch",
+    response_model=ApiEnvelope[ProgrammeGenerationBatchQueuedDto],
+    openapi_extra=CSRF_SECURITY_OPENAPI_EXTRA,
+    responses=_ERRORS,
+)
+async def queue_programme_generation_batch(
+    request: Request,
+    task_ref: str,
+    payload: QueueProgrammeGenerationBatchRequest,
+    actor: CsrfActor,
+):
+    service = _service(request)
+    return await _write(
+        request,
+        actor,
+        f"research-programme-generation-batch-queue:{task_ref}",
+        payload.model_dump(),
+        lambda idem, trace: service.queue_generation_batch(
+            actor,
+            task_ref,
+            limit=payload.limit,
+            after_job_ref=payload.after_job_ref,
+            idempotency=idem,
+            trace_id=trace,
+        ),
+        ProgrammeGenerationBatchQueuedDto,
     )

@@ -166,6 +166,22 @@ class QueueProgrammeGenerationRequest(_StrictModel):
     """Empty closed request; the server selects the completed session."""
 
 
+class QueueProgrammeGenerationBatchRequest(_StrictModel):
+    """Bounded page of server-selected completed sessions for staff research."""
+
+    limit: StrictInt = Field(default=25, ge=1, le=100)
+    after_job_ref: StrictStr | None = Field(default=None, min_length=68, max_length=68)
+
+    @field_validator("after_job_ref")
+    @classmethod
+    def cursor_is_a_job_reference(cls, value: str | None) -> str | None:
+        if value is not None and not value.startswith("REJ_"):
+            raise ValueError("batch cursor is invalid")
+        if value is not None and any(char not in _HEX for char in value[4:]):
+            raise ValueError("batch cursor is invalid")
+        return value
+
+
 class ProgrammeGenerationQueuedDto(_StrictModel):
     job_ref: StrictStr = Field(min_length=1, max_length=128)
     status: Literal[
@@ -177,6 +193,43 @@ class ProgrammeGenerationQueuedDto(_StrictModel):
     research_only: Literal[True]
     publication_status: Literal[_PUBLICATION_STATUS]
     student_feedback_eligible: Literal[False]
+
+
+class ProgrammeGenerationBatchQueuedDto(_StrictModel):
+    """Stable, content-free receipt for one atomic batch of unique jobs."""
+
+    batch_ref: StrictStr = Field(pattern=r"^REJBATCH_[0-9a-f]{64}$", max_length=73)
+    job_refs: list[StrictStr] = Field(max_length=100)
+    job_count: StrictInt = Field(ge=0, le=100)
+    next_cursor: StrictStr | None = Field(default=None, min_length=68, max_length=68)
+    policy_version: Literal["RESEARCH_STAFF_PROGRAMME_POLICY_V1"]
+    purpose: Literal["RESEARCH_SIMULATION"]
+    research_only: Literal[True]
+    publication_status: Literal[_PUBLICATION_STATUS]
+    student_feedback_eligible: Literal[False]
+
+    @field_validator("job_refs", "next_cursor")
+    @classmethod
+    def references_are_job_ids(cls, value):
+        values = value if isinstance(value, list) else [value]
+        for ref in values:
+            if ref is None:
+                continue
+            if len(ref) != 68 or not ref.startswith("REJ_") or any(
+                char not in _HEX for char in ref[4:]
+            ):
+                raise ValueError("batch job reference is invalid")
+        return value
+
+    @model_validator(mode="after")
+    def count_and_cursor_match_jobs(self):
+        if self.job_count != len(self.job_refs):
+            raise ValueError("batch job count does not match references")
+        if self.next_cursor is not None and (
+            not self.job_refs or self.next_cursor != self.job_refs[-1]
+        ):
+            raise ValueError("batch cursor must refer to its last job")
+        return self
 
 
 class _Output(_StrictModel):

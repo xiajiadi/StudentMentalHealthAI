@@ -179,3 +179,59 @@ async def test_generation_queue_is_specialist_csrf_idempotency_and_policy_closed
     assert "policy_hash" not in queued.json()["data"]
     assert extra.status_code == 422
     assert [call[0] for call in persistence.calls] == ["queue"]
+
+
+async def test_generation_batch_is_specialist_csrf_idempotent_and_bounded():
+    app, persistence = mounted_app(BackendRole.STUDENT)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        root = "/api/v1/school/research-programme-candidates/tasks/TASK_demo/queue-generation/batch"
+        denied = await client.post(root, json={"limit": 2})
+    assert denied.status_code == 403
+    assert persistence.calls == []
+
+    app, persistence = mounted_app(BackendRole.PSYCHOLOGICAL_SPECIALIST)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        root = "/api/v1/school/research-programme-candidates/tasks/TASK_demo/queue-generation/batch"
+        missing_idempotency = await client.post(
+            root, json={"limit": 2}, headers={"X-CSRF-Token": "synthetic-csrf-token"}
+        )
+        missing_csrf = await client.post(
+            root, json={"limit": 2}, headers={"Idempotency-Key": "batch-key"}
+        )
+        queued = await client.post(
+            root,
+            json={"limit": 2},
+            headers={
+                "Idempotency-Key": "batch-key",
+                "X-CSRF-Token": "synthetic-csrf-token",
+            },
+        )
+        too_many = await client.post(
+            root,
+            json={"limit": 101},
+            headers={
+                "Idempotency-Key": "batch-too-many",
+                "X-CSRF-Token": "synthetic-csrf-token",
+            },
+        )
+        cursor = await client.post(
+            root,
+            json={"limit": 2, "after_job_ref": "REJ_" + "b" * 64},
+            headers={
+                "Idempotency-Key": "batch-cursor",
+                "X-CSRF-Token": "synthetic-csrf-token",
+            },
+        )
+    assert missing_idempotency.status_code == 422
+    assert missing_csrf.status_code == 403
+    assert queued.status_code == 200
+    response = queued.json()["data"]
+    assert response["job_count"] == 2
+    assert response["next_cursor"] == response["job_refs"][-1]
+    assert response["student_feedback_eligible"] is False
+    assert response["publication_status"] == "not_approved_for_publication_or_operational_use"
+    assert too_many.status_code == 422
+    assert cursor.status_code == 200
+    assert [call[0] for call in persistence.calls] == ["queue_batch", "queue_batch"]

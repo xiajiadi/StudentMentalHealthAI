@@ -18,6 +18,7 @@ from smhai_backend.domains.research_programme_generation.schemas import (
 )
 from smhai_backend.domains.school_research_programme_candidates.schemas import (
     GeneratedProgrammeCandidate,
+    QueueProgrammeGenerationBatchRequest,
 )
 from smhai_backend.domains.school_research_programme_candidates.service import (
     SchoolResearchProgrammeCandidateService,
@@ -115,6 +116,25 @@ class FakePersistence:
             "student_feedback_eligible": False,
         }
 
+    async def school_research_programme_generation_queue_batch(
+        self, actor_arg, task_ref, *, limit, after_job_ref, idempotency, trace_id
+    ):
+        self.calls.append(
+            ("queue_batch", actor_arg, task_ref, limit, after_job_ref, idempotency, trace_id)
+        )
+        refs = [f"REJ_{index:064x}" for index in range(1, min(limit, 2) + 1)]
+        return {
+            "batch_ref": "REJBATCH_" + "a" * 64,
+            "job_refs": refs,
+            "job_count": len(refs),
+            "next_cursor": refs[-1] if len(refs) == limit else None,
+            "policy_version": "RESEARCH_STAFF_PROGRAMME_POLICY_V1",
+            "purpose": "RESEARCH_SIMULATION",
+            "research_only": True,
+            "publication_status": "not_approved_for_publication_or_operational_use",
+            "student_feedback_eligible": False,
+        }
+
     async def store_generated_candidate(self, generated):
         self.calls.append(("store", generated))
         return summary()
@@ -172,6 +192,58 @@ async def test_specialist_can_review_and_adopt_only_to_staff_material_state():
     assert adopted["student_feedback_eligible"] is False
     assert adopted["output_boundary"] == "STAFF_REFERENCE_ONLY"
     assert [call[0] for call in persistence.calls] == ["list", "get", "adopt"]
+
+
+async def test_specialist_can_queue_a_bounded_staff_only_batch():
+    persistence = FakePersistence()
+    service = SchoolResearchProgrammeCandidateService(persistence=persistence)
+    specialist = actor(BackendRole.PSYCHOLOGICAL_SPECIALIST)
+    cursor = "REJ_" + "b" * 64
+
+    result = await service.queue_generation_batch(
+        specialist,
+        "TASK_demo",
+        limit=2,
+        after_job_ref=cursor,
+        idempotency=("batch-key", "request-hash", "scope-hash"),
+        trace_id="TRACE_batch",
+    )
+
+    assert result["job_count"] == 2
+    assert result["next_cursor"] == result["job_refs"][-1]
+    assert result["student_feedback_eligible"] is False
+    assert result["publication_status"] == "not_approved_for_publication_or_operational_use"
+    assert persistence.calls == [
+        (
+            "queue_batch",
+            specialist,
+            "TASK_demo",
+            2,
+            cursor,
+            ("batch-key", "request-hash", "scope-hash"),
+            "TRACE_batch",
+        )
+    ]
+
+
+@pytest.mark.parametrize("limit", [0, 101, True])
+def test_batch_request_rejects_out_of_bounds_limit(limit):
+    with pytest.raises(ValidationError):
+        QueueProgrammeGenerationBatchRequest.model_validate({"limit": limit}, strict=True)
+
+
+def test_batch_request_requires_opaque_job_cursor():
+    with pytest.raises(ValidationError):
+        QueueProgrammeGenerationBatchRequest.model_validate(
+            {"after_job_ref": "session-person-id"}, strict=True
+        )
+
+
+def test_batch_request_accepts_maximum_batch_size():
+    request = QueueProgrammeGenerationBatchRequest.model_validate(
+        {"limit": 100}, strict=True
+    )
+    assert request.limit == 100
 
 
 def _generated_candidate_input():

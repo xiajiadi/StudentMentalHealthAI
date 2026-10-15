@@ -17,7 +17,9 @@ from .schemas import (
     ProgrammeCandidateDetailDto,
     ProgrammeCandidateListDto,
     ProgrammeCandidateSummaryDto,
+    ProgrammeGenerationBatchQueuedDto,
     ProgrammeGenerationQueuedDto,
+    QueueProgrammeGenerationBatchRequest,
 )
 
 
@@ -169,6 +171,31 @@ class SchoolResearchProgrammeCandidateService:
             actor, task_ref, idempotency=idempotency, trace_id=trace_id
         )
         return self._project(ProgrammeGenerationQueuedDto, result)
+
+    async def queue_generation_batch(
+        self,
+        actor: Actor,
+        task_ref: str,
+        *,
+        limit: int,
+        after_job_ref: str | None,
+        idempotency,
+        trace_id: str,
+    ):
+        """Queue one bounded page of task-scoped jobs for staff-only research."""
+        self._require_specialist(actor)
+        request = QueueProgrammeGenerationBatchRequest.model_validate(
+            {"limit": limit, "after_job_ref": after_job_ref}, strict=True
+        )
+        result = await self._port().school_research_programme_generation_queue_batch(
+            actor,
+            task_ref,
+            limit=request.limit,
+            after_job_ref=request.after_job_ref,
+            idempotency=idempotency,
+            trace_id=trace_id,
+        )
+        return self._project(ProgrammeGenerationBatchQueuedDto, result)
 
     async def store_generated_candidate(self, generated: GeneratedProgrammeCandidate):
         """Internal processor seam; deliberately has no HTTP route."""

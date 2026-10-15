@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from datetime import UTC, datetime
 from uuid import uuid4
+
+from sqlalchemy import and_, or_
 
 from smhai_backend.adapters.school_research_feedback import (
     SchoolResearchFeedbackPersistenceAdapter,
@@ -27,6 +30,7 @@ from smhai_backend.integrations.research_programme import PROMPT_VERSION
 RESEARCH_STAFF_PROGRAMME_POLICY_VERSION = "RESEARCH_STAFF_PROGRAMME_POLICY_V1"
 _RESOURCE = "school_research_programme_candidate"
 _JOB_RESOURCE = "school_research_programme_generation_job"
+_BATCH_JOB_RESOURCE = "school_research_programme_generation_batch"
 _CONTENT_SCHEMA = "school_research_programme_candidate.v2"
 _LEGACY_CONTENT_SCHEMA = "school_research_programme_candidate.v1"
 _PUBLICATION_STATUS = "not_approved_for_publication_or_operational_use"
@@ -687,6 +691,212 @@ class SchoolResearchProgrammeCandidatePersistenceAdapter(SchoolResearchFeedbackP
                 "purpose": job.purpose,
                 "research_only": job.research_only,
                 "publication_status": job.publication_status,
+                "student_feedback_eligible": False,
+            }
+
+    async def school_research_programme_generation_queue_batch(
+        self,
+        actor,
+        task_ref: str,
+        *,
+        limit: int,
+        after_job_ref: str | None,
+        idempotency,
+        trace_id: str,
+    ) -> dict:
+        """Atomically queue a bounded page of individually authorized sessions."""
+        self._require_generation_enabled()
+        from database_layer.school_research_education_jobs import (
+            STAFF_PROGRAMME_POLICY_VERSION,
+        )
+
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise error(ErrorCode.VALIDATION_FAILED, detail="batch limit is invalid")
+        if after_job_ref is not None and (
+            type(after_job_ref) is not str
+            or re.fullmatch(r"REJ_[0-9a-f]{64}", after_job_ref) is None
+        ):
+            raise error(ErrorCode.VALIDATION_FAILED, detail="batch cursor is invalid")
+
+        now, db_now = self._now()
+        async with self._uow() as uow:
+            actor_account_id, role_id = await self._require_actor(
+                uow, actor, "psychological_specialist", db_now
+            )
+            task, binding, _profile, _pin = await self._active_task_for_actor(
+                uow, actor, task_ref, role_id=role_id, at=now
+            )
+            idem_claim = await self._school_idempotency_begin(uow, idempotency)
+            m = self._db_models
+            session = m.SchoolResearchSession
+            cursor_marker = None
+            if after_job_ref is not None:
+                cursor_query = (
+                    self._select(
+                        session.session_ref.label("session_ref"),
+                        session.completed_at.label("completed_at"),
+                        session.id.label("session_id"),
+                    )
+                    .join(
+                        m.SchoolResearchEducationJob,
+                        (m.SchoolResearchEducationJob.research_session_id == session.id)
+                        & (m.SchoolResearchEducationJob.school_id == session.school_id),
+                    )
+                    .where(
+                        m.SchoolResearchEducationJob.job_ref == after_job_ref,
+                        m.SchoolResearchEducationJob.school_id == actor.school_id,
+                        m.SchoolResearchEducationJob.task_id == task.id,
+                        m.SchoolResearchEducationJob.class_id == task.class_id,
+                        m.SchoolResearchEducationJob.task_binding_id == binding.binding_id,
+                        m.SchoolResearchEducationJob.profile_version_id
+                        == binding.profile_version_id,
+                        m.SchoolResearchEducationJob.profile_ref == binding.profile_ref,
+                        m.SchoolResearchEducationJob.profile_version_number
+                        == binding.profile_version_number,
+                        m.SchoolResearchEducationJob.profile_sha256 == binding.profile_sha256,
+                        m.SchoolResearchEducationJob.response_origin == "PUBLIC_OBSERVED",
+                        m.SchoolResearchEducationJob.job_kind == "EDUCATION_SUPPORT",
+                        m.SchoolResearchEducationJob.policy_version
+                        == STAFF_PROGRAMME_POLICY_VERSION,
+                        m.SchoolResearchEducationJob.policy_hash
+                        == self.expected_processor_policy_sha256,
+                        session.school_id == actor.school_id,
+                        session.task_id == task.id,
+                        session.class_id == task.class_id,
+                        session.task_binding_id == binding.binding_id,
+                        session.profile_version_id == binding.profile_version_id,
+                        session.profile_ref == binding.profile_ref,
+                        session.profile_version_number == binding.profile_version_number,
+                        session.profile_sha256 == binding.profile_sha256,
+                        session.response_origin == "PUBLIC_OBSERVED",
+                        session.status == "COMPLETED",
+                        session.completed_at.is_not(None),
+                        session.purpose == "RESEARCH_SIMULATION",
+                        session.research_only.is_(True),
+                    )
+                    .with_for_update()
+                )
+                cursor_result = await uow.session.execute(cursor_query)
+                cursor_row = cursor_result.first()
+                if cursor_row is None:
+                    raise _not_found()
+                cursor_mapping = cursor_row._mapping
+                cursor_ref = cursor_mapping["session_ref"]
+                cursor_marker = (
+                    cursor_mapping["completed_at"],
+                    cursor_mapping["session_id"],
+                )
+                await self._current_scope(
+                    uow, actor, task, session_ref=cursor_ref, at=now, lock=True
+                )
+
+            selection = self._select(
+                session.session_ref.label("session_ref"),
+                session.completed_at.label("completed_at"),
+                session.id.label("session_id"),
+            ).where(
+                session.school_id == actor.school_id,
+                session.task_id == task.id,
+                session.class_id == task.class_id,
+                session.task_binding_id == binding.binding_id,
+                session.profile_version_id == binding.profile_version_id,
+                session.profile_ref == binding.profile_ref,
+                session.profile_version_number == binding.profile_version_number,
+                session.profile_sha256 == binding.profile_sha256,
+                session.response_origin == "PUBLIC_OBSERVED",
+                session.status == "COMPLETED",
+                session.completed_at.is_not(None),
+                session.purpose == "RESEARCH_SIMULATION",
+                session.research_only.is_(True),
+            )
+            if cursor_marker is not None:
+                selection = selection.where(
+                    or_(
+                        session.completed_at > cursor_marker[0],
+                        and_(
+                            session.completed_at == cursor_marker[0],
+                            session.id > cursor_marker[1],
+                        ),
+                    )
+                )
+            selected = await uow.session.execute(
+                selection.order_by(session.completed_at, session.id)
+                .limit(limit)
+                .with_for_update()
+            )
+            rows = selected.all()
+
+            jobs = []
+            for row in rows:
+                session_ref = row._mapping["session_ref"]
+                scope, _metadata, _retention, _profile, _pin = await self._current_scope(
+                    uow, actor, task, session_ref=session_ref, at=now, lock=True
+                )
+                jobs.append(
+                    await _repo_call(
+                        uow.research_education_jobs.enqueue_completed_session(
+                            school_id=scope.school_id,
+                            research_session_id=scope.research_session_id,
+                            task_id=scope.task_id,
+                            class_id=scope.class_id,
+                            task_enrollment_id=scope.task_enrollment_id,
+                            subject_id=scope.subject_id,
+                            task_binding_id=scope.task_binding_id,
+                            profile_version_id=scope.profile_version_id,
+                            profile_ref=scope.profile_ref,
+                            profile_version_number=scope.profile_version_number,
+                            profile_sha256=scope.profile_sha256,
+                            response_origin=scope.response_origin,
+                            policy_version=STAFF_PROGRAMME_POLICY_VERSION,
+                            policy_hash=self.expected_processor_policy_sha256,
+                            now=now,
+                        )
+                    )
+                )
+
+            job_refs = [job.job_ref for job in jobs]
+            next_cursor = job_refs[-1] if len(job_refs) == limit else None
+            request_fingerprint = (
+                f"{actor.school_id}:{task.id}:{binding.binding_id}:{limit}:"
+                f"{after_job_ref or 'FIRST'}:{self.expected_processor_policy_sha256}:"
+                + ":".join(job_refs)
+            )
+            batch_ref = "REJBATCH_" + hashlib.sha256(
+                request_fingerprint.encode("ascii")
+            ).hexdigest()
+            if idem_claim.replayed:
+                receipt = await self._receipt_resource(idem_claim, _BATCH_JOB_RESOURCE)
+                if receipt != batch_ref:
+                    # The idempotency row stores one batch digest, not membership data.
+                    # Fail closed if the same page no longer resolves identically.
+                    raise _conflict()
+            else:
+                for job in jobs:
+                    await self._audit_research(
+                        uow,
+                        actor_account_id=actor_account_id,
+                        action="school_research_programme_generation.queued",
+                        resource_type=_JOB_RESOURCE,
+                        resource_ref=job.job_ref,
+                        trace_id=trace_id,
+                        state=job.status,
+                    )
+                await self._school_idempotency_complete(
+                    uow,
+                    idem_claim,
+                    resource_type=_BATCH_JOB_RESOURCE,
+                    result_ref=batch_ref,
+                )
+
+            return {
+                "batch_ref": batch_ref,
+                "job_refs": job_refs,
+                "job_count": len(job_refs),
+                "next_cursor": next_cursor,
+                "policy_version": STAFF_PROGRAMME_POLICY_VERSION,
+                "purpose": "RESEARCH_SIMULATION",
+                "research_only": True,
+                "publication_status": _PUBLICATION_STATUS,
                 "student_feedback_eligible": False,
             }
 
