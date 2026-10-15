@@ -57,9 +57,17 @@ CHECKPOINT_FIELDS = {
     "schema", "created_at", "updated_at", "source_head", "dependency_target_head",
     "source_root", "dependency_target", "mysql_bin", "python_specs", "workspace",
     "workspace_id", "schema_revision", "ports", "frontend_mode", "llm_profile",
-    "dependency_module_manifest_sha256", "research_profile_sha256", "stages", "whole_ready",
+    "dependency_module_manifest_sha256", "research_profile_sha256",
+    "workspace_profile_import_state", "stages", "whole_ready",
 }
-LEGACY_CHECKPOINT_FIELDS = CHECKPOINT_FIELDS - {"research_profile_sha256"}
+PRE_IMPORT_CHECKPOINT_FIELDS = CHECKPOINT_FIELDS - {"workspace_profile_import_state"}
+LEGACY_CHECKPOINT_FIELDS = PRE_IMPORT_CHECKPOINT_FIELDS - {"research_profile_sha256"}
+WORKSPACE_PROFILE_IMPORT_STATES = {
+    "NOT_REQUIRED", "PENDING", "RUNNING", "COMPLETED", "UNTRACKED",
+}
+RECOVERABLE_PROFILE_IMPORT_FAILURES = {
+    "RESEARCH_PROFILE_TARGET_CONFLICT", "RESEARCH_PROFILE_TARGET_WRITE_FAILED",
+}
 STAGE_STATUSES = {"PENDING", "RUNNING", "COMPLETED", "FAILED", "PENDING_VERIFICATION"}
 SAFE_STAGE_CODES = {
     "VERIFIED_BY_ROLE_LOGIN", "ABSOLUTE_PATH_REQUIRED", "ABSOLUTE_WORKSPACE_REQUIRED",
@@ -671,6 +679,19 @@ def _read_state(path: Path) -> dict[str, Any]:
         raise InstallError("CHECKPOINT_INVALID") from None
     if type(value) is dict and set(value) == LEGACY_CHECKPOINT_FIELDS:
         value["research_profile_sha256"] = RESEARCH_PROFILE_EMPTY_SHA256
+    if type(value) is dict and set(value) == PRE_IMPORT_CHECKPOINT_FIELDS:
+        stages = value.get("stages")
+        stage = stages.get("workspace", {}) if type(stages) is dict else {}
+        if type(stage) is dict and stage.get("status") == "COMPLETED":
+            value["workspace_profile_import_state"] = (
+                "NOT_REQUIRED"
+                if value.get("research_profile_sha256") == RESEARCH_PROFILE_EMPTY_SHA256
+                else "COMPLETED"
+            )
+        else:
+            # Prior versions did not persist the copy boundary. Never infer
+            # resumability for a RUNNING/FAILED workspace from its file tree.
+            value["workspace_profile_import_state"] = "UNTRACKED"
     if (
         type(value) is not dict
         or set(value) != CHECKPOINT_FIELDS
@@ -717,6 +738,8 @@ def _validate_checkpoint_metadata(value: dict[str, Any]) -> None:
              or not re.fullmatch(r"[a-f0-9]{64}", value["dependency_module_manifest_sha256"]))
         or not isinstance(value.get("research_profile_sha256"), str)
         or not RESEARCH_SHA256_RE.fullmatch(value["research_profile_sha256"])
+        or type(value.get("workspace_profile_import_state")) is not str
+        or value["workspace_profile_import_state"] not in WORKSPACE_PROFILE_IMPORT_STATES
     ):
         raise InstallError("CHECKPOINT_CONTENT_INVALID")
     for key in ("created_at", "updated_at"):
@@ -772,6 +795,11 @@ def _new_state(config: dict[str, Any]) -> dict[str, Any]:
         "research_profile_sha256": config.get("research_profile", {}).get(
             "sha256", RESEARCH_PROFILE_EMPTY_SHA256
         ),
+        "workspace_profile_import_state": (
+            "PENDING"
+            if config.get("research_profile", {}).get("workspace_files")
+            else "NOT_REQUIRED"
+        ),
         "dependency_module_manifest_sha256": None,
         "stages": {name: {"status": "PENDING", "code": None} for name in STAGE_NAMES},
         "whole_ready": False,
@@ -799,11 +827,41 @@ def _match_state(state: dict[str, Any], config: dict[str, Any]) -> None:
         raise InstallError("RESUME_CONFIGURATION_MISMATCH")
 
 
-def _validate_resume_workspace_binding(state: dict[str, Any], *, workspace_exists: bool) -> None:
+def _validate_resume_workspace_binding(
+    state: dict[str, Any], *, workspace_exists: bool,
+    allow_profile_import_recovery: bool = False,
+) -> None:
     stage_status = state["stages"]["workspace"]["status"]
     workspace_id = state.get("workspace_id")
     if stage_status in {"RUNNING", "FAILED"}:
-        raise InstallError("INCOMPLETE_STAGE_PRESERVED_FOR_INSPECTION")
+        code = state["stages"]["workspace"].get("code")
+        recoverable = (
+            allow_profile_import_recovery
+            and workspace_exists
+            and isinstance(workspace_id, str)
+            and WORKSPACE_ID_RE.fullmatch(workspace_id) is not None
+            and (
+                (
+                    stage_status == "RUNNING"
+                    and code is None
+                    and state.get("workspace_profile_import_state")
+                    in {"PENDING", "RUNNING", "COMPLETED"}
+                )
+                or (
+                    stage_status == "FAILED"
+                    and code in RECOVERABLE_PROFILE_IMPORT_FAILURES
+                    and state.get("workspace_profile_import_state") in {"PENDING", "RUNNING"}
+                )
+            )
+            and state["stages"]["dependencies"]["status"] == "COMPLETED"
+            and all(
+                state["stages"][name]["status"] == "PENDING"
+                for name in STAGE_NAMES[STAGE_NAMES.index("workspace") + 1:]
+            )
+        )
+        if not recoverable:
+            raise InstallError("INCOMPLETE_STAGE_PRESERVED_FOR_INSPECTION")
+        return
     if not workspace_exists:
         if (
             stage_status != "PENDING"
@@ -836,6 +894,48 @@ def _workspace_marker(path: Path) -> dict[str, Any]:
     ):
         raise InstallError("WORKSPACE_MARKER_INVALID")
     return marker
+
+
+def _verify_profile_import_workspace_identity(
+    config: dict[str, Any], state: dict[str, Any],
+) -> None:
+    """Revalidate the already-created workspace before completing file imports."""
+    workspace = config["workspace"]
+    marker = _workspace_marker(workspace)
+    if (
+        marker.get("workspace_id") != state.get("workspace_id")
+        or marker.get("port") != config["ports"]["database"]
+    ):
+        raise InstallError("WORKSPACE_IDENTITY_CHANGED")
+    private_path = workspace / "database.private.dpapi"
+    _reject_reparse_ancestors(private_path)
+    if not private_path.is_file():
+        raise InstallError("WORKSPACE_DATABASE_SETTINGS_UNAVAILABLE")
+    private: dict[str, Any] | None = None
+    try:
+        from prepare_school_runtime import validate_marker, verify_process
+        from private_settings import read_private
+
+        verified_marker = validate_marker(workspace, REPO)
+        if (
+            verified_marker.get("workspace_id") != state.get("workspace_id")
+            or verified_marker.get("port") != config["ports"]["database"]
+        ):
+            raise ValueError
+        verify_process(verified_marker)
+        private = read_private(private_path)
+        if (
+            private.get("DB_HOST") != "127.0.0.1"
+            or private.get("DB_NAME") != verified_marker.get("database")
+            or type(private.get("DB_PORT")) is not str
+            or int(private["DB_PORT"]) != verified_marker.get("port")
+        ):
+            raise ValueError
+    except Exception:  # noqa: BLE001 - identity failures remain content-free.
+        raise InstallError("WORKSPACE_IDENTITY_CHANGED") from None
+    finally:
+        if private is not None:
+            private.clear()
 
 
 def _dependency_receipt(config: dict[str, Any]) -> dict[str, Any]:
@@ -996,6 +1096,28 @@ def _path_entry_exists(path: Path) -> bool:
         raise InstallError("RESEARCH_PROFILE_TARGET_CONFLICT") from None
 
 
+def _write_workspace_research_file(
+    destination_dir: Path, path_name: str, record: dict[str, Any],
+) -> None:
+    _, raw = _read_pinned_research_file(
+        Path(record["source_path"]), record["sha256"], max_bytes=record["max_bytes"]
+    )
+    target = destination_dir / record["target_name"]
+    _reject_reparse_ancestors(destination_dir)
+    flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_BINARY", 0)
+    try:
+        fd = os.open(target, flags, 0o600)
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(raw)
+            stream.flush()
+            os.fsync(stream.fileno())
+    except FileExistsError:
+        raise InstallError("RESEARCH_PROFILE_TARGET_CONFLICT") from None
+    except OSError:
+        raise InstallError("RESEARCH_PROFILE_TARGET_WRITE_FAILED") from None
+    _read_pinned_research_file(target, record["sha256"], max_bytes=record["max_bytes"])
+
+
 def _materialize_workspace_research_files(config: dict[str, Any]) -> None:
     profile = config.get("research_profile", {})
     workspace_files = profile.get("workspace_files", {}) if isinstance(profile, dict) else {}
@@ -1016,27 +1138,77 @@ def _materialize_workspace_research_files(config: dict[str, Any]) -> None:
     for path_name, record in workspace_files.items():
         if path_name not in {name for name, _sha, _target in WORKSPACE_RESEARCH_FILES}:
             raise InstallError("RESEARCH_PROFILE_INVALID")
-        source_path = Path(record["source_path"])
-        expected_sha = record["sha256"]
-        target_name = record["target_name"]
-        limit = record["max_bytes"]
-        source_path, raw = _read_pinned_research_file(
-            source_path, expected_sha, max_bytes=limit
-        )
-        target = destination_dir / target_name
-        _reject_reparse_ancestors(destination_dir)
-        flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_BINARY", 0)
+        _write_workspace_research_file(destination_dir, path_name, record)
+
+
+def _resume_workspace_research_file_import(config: dict[str, Any]) -> None:
+    """Complete only missing exact pinned imports; never overwrite partial files."""
+    profile = config.get("research_profile", {})
+    workspace_files = profile.get("workspace_files", {}) if isinstance(profile, dict) else {}
+    if not workspace_files:
+        raise InstallError("RESEARCH_PROFILE_TARGET_CONFLICT")
+    expected_names = {record["target_name"] for record in workspace_files.values()}
+    destination_dir = _workspace_research_profile_dir(config)
+    if _path_entry_exists(destination_dir):
+        if destination_dir.is_symlink() or _is_reparse(destination_dir) or not destination_dir.is_dir():
+            raise InstallError("RESEARCH_PROFILE_TARGET_CONFLICT")
         try:
-            fd = os.open(target, flags, 0o600)
-            with os.fdopen(fd, "wb") as stream:
-                stream.write(raw)
-                stream.flush()
-                os.fsync(stream.fileno())
-        except FileExistsError:
+            names = {entry.name for entry in destination_dir.iterdir()}
+        except OSError:
             raise InstallError("RESEARCH_PROFILE_TARGET_CONFLICT") from None
+        if not names.issubset(expected_names):
+            raise InstallError("RESEARCH_PROFILE_TARGET_CONFLICT")
+        for path_name, record in workspace_files.items():
+            target = destination_dir / record["target_name"]
+            if _path_entry_exists(target):
+                _read_pinned_research_file(
+                    target, record["sha256"], max_bytes=record["max_bytes"]
+                )
+    else:
+        _reject_reparse_ancestors(config["workspace"])
+        try:
+            destination_dir.mkdir()
         except OSError:
             raise InstallError("RESEARCH_PROFILE_TARGET_WRITE_FAILED") from None
-        _read_pinned_research_file(target, expected_sha, max_bytes=limit)
+    if destination_dir.is_symlink() or _is_reparse(destination_dir):
+        raise InstallError("RESEARCH_PROFILE_TARGET_CONFLICT")
+    for path_name, record in workspace_files.items():
+        if path_name not in {name for name, _sha, _target in WORKSPACE_RESEARCH_FILES}:
+            raise InstallError("RESEARCH_PROFILE_INVALID")
+        if not _path_entry_exists(destination_dir / record["target_name"]):
+            _write_workspace_research_file(destination_dir, path_name, record)
+    _verify_workspace_research_files(config)
+
+
+def _research_profile_import_recovery_eligible(
+    config: dict[str, Any], state: dict[str, Any], *, workspace_exists: bool,
+) -> bool:
+    profile = config.get("research_profile", {})
+    workspace_files = profile.get("workspace_files", {}) if isinstance(profile, dict) else {}
+    workspace_stage = state["stages"]["workspace"]
+    stage_status = workspace_stage["status"]
+    stage_code = workspace_stage.get("code")
+    import_state = state.get("workspace_profile_import_state")
+    valid_boundary = (
+        stage_status == "RUNNING"
+        and stage_code is None
+        and import_state in {"PENDING", "RUNNING", "COMPLETED"}
+    ) or (
+        stage_status == "FAILED"
+        and stage_code in RECOVERABLE_PROFILE_IMPORT_FAILURES
+        and import_state in {"PENDING", "RUNNING"}
+    )
+    return bool(
+        workspace_files
+        and workspace_exists
+        and valid_boundary
+        and state.get("workspace_id") is not None
+        and state["stages"]["dependencies"]["status"] == "COMPLETED"
+        and all(
+            state["stages"][name]["status"] == "PENDING"
+            for name in STAGE_NAMES[STAGE_NAMES.index("workspace") + 1:]
+        )
+    )
 
 
 def _verify_workspace_research_files(config: dict[str, Any]) -> None:
@@ -1245,7 +1417,16 @@ def _run_stage(config: dict[str, Any], state: dict[str, Any], commands: dict[str
             if not isinstance(workspace_id, str) or not WORKSPACE_ID_RE.fullmatch(workspace_id):
                 raise InstallError("WORKSPACE_ID_INVALID")
             state["workspace_id"] = workspace_id
+            workspace_files = config.get("research_profile", {}).get("workspace_files", {})
+            state["workspace_profile_import_state"] = "PENDING" if workspace_files else "NOT_REQUIRED"
+            _write_state(config["state_path"], config["state_temp_path"], state)
+            if workspace_files:
+                state["workspace_profile_import_state"] = "RUNNING"
+                _write_state(config["state_path"], config["state_temp_path"], state)
             _materialize_workspace_research_files(config)
+            if workspace_files:
+                state["workspace_profile_import_state"] = "COMPLETED"
+                _write_state(config["state_path"], config["state_temp_path"], state)
         elif name == "schema":
             workspace_id = str(state["workspace_id"])
             upgrade_command = [item.format(workspace_id=workspace_id) for item in commands["schema_upgrade"]]
@@ -1366,13 +1547,27 @@ def resume(args: argparse.Namespace) -> dict[str, Any]:
     config = _validate_configuration(args, mode="resume")
     state = _read_state(config["state_path"])
     _match_state(state, config)
-    _validate_resume_workspace_binding(state, workspace_exists=config["workspace"].exists())
+    workspace_exists = config["workspace"].exists()
+    recover_profile_import = _research_profile_import_recovery_eligible(
+        config, state, workspace_exists=workspace_exists
+    )
+    _validate_resume_workspace_binding(
+        state,
+        workspace_exists=workspace_exists,
+        allow_profile_import_recovery=recover_profile_import,
+    )
     _verify_completed(config, state, _commands(config))
     if config["workspace"].exists():
         marker = _workspace_marker(config["workspace"])
         if state.get("workspace_id") != marker.get("workspace_id"):
             raise InstallError("WORKSPACE_IDENTITY_CHANGED")
     commands = _commands(config)
+    if recover_profile_import:
+        _verify_profile_import_workspace_identity(config, state)
+        _resume_workspace_research_file_import(config)
+        state["workspace_profile_import_state"] = "COMPLETED"
+        _write_state(config["state_path"], config["state_temp_path"], state)
+        _mark_stage(config, state, "workspace", "COMPLETED")
     for name in STAGE_NAMES:
         if state["stages"][name]["status"] == "PENDING_VERIFICATION":
             continue
