@@ -450,6 +450,167 @@ class SchoolResearchEducationCandidatePersistenceAdapter(SchoolResearchFeedbackP
         payload = self._payload_from_row(row) if include_payload else None
         return scope, session_ref, payload
 
+    async def school_research_education_candidate_generation_job_list(
+        self, actor, task_ref: str, *, offset: int, limit: int
+    ) -> dict:
+        """List only content-free jobs inside the caller's current assigned task scope."""
+        self._require_enabled()
+        from database_layer.school_research_education_jobs import (
+            GENERAL_EDUCATION_POLICY_VERSION,
+            ResearchEducationJobErrorCode,
+        )
+
+        if (
+            type(offset) is not int
+            or not 0 <= offset <= 100_000
+            or type(limit) is not int
+            or not 1 <= limit <= 50
+        ):
+            raise error(ErrorCode.VALIDATION_FAILED, detail="pagination is invalid")
+
+        statuses = (
+            "QUEUED",
+            "LEASED",
+            "RETRY",
+            "HELD",
+            "ABSTAINED",
+            "REVIEW_REQUIRED",
+            "CRISIS_ROUTED",
+            "FAILED",
+            "CANCELLED",
+        )
+        now, _db_now = self._now()
+        m = self._db_models
+        job = m.SchoolResearchEducationJob
+        session = m.SchoolResearchSession
+        async with self._uow() as uow:
+            task, binding, _role_id = await self._active_task(
+                uow, actor, task_ref, at=now
+            )
+            scoped_jobs = (
+                self._select(job.id.label("job_id"))
+                .select_from(job)
+                .join(
+                    session,
+                    (session.id == job.research_session_id)
+                    & (session.school_id == job.school_id),
+                )
+                .where(
+                    job.school_id == actor.school_id,
+                    job.task_id == task.id,
+                    job.class_id == task.class_id,
+                    job.task_binding_id == binding.binding_id,
+                    job.profile_version_id == binding.profile_version_id,
+                    job.profile_ref == binding.profile_ref,
+                    job.profile_version_number == binding.profile_version_number,
+                    job.profile_sha256 == binding.profile_sha256,
+                    job.response_origin == "PUBLIC_OBSERVED",
+                    job.job_kind == "EDUCATION_SUPPORT",
+                    job.policy_version == GENERAL_EDUCATION_POLICY_VERSION,
+                    job.policy_hash == self.policy_hash,
+                    job.purpose == "RESEARCH_SIMULATION",
+                    job.research_only.is_(True),
+                    job.publication_status == _PUBLICATION_STATUS,
+                    session.school_id == actor.school_id,
+                    session.task_id == task.id,
+                    session.class_id == task.class_id,
+                    session.task_binding_id == binding.binding_id,
+                    session.profile_version_id == binding.profile_version_id,
+                    session.profile_ref == binding.profile_ref,
+                    session.profile_version_number == binding.profile_version_number,
+                    session.profile_sha256 == binding.profile_sha256,
+                    session.response_origin == "PUBLIC_OBSERVED",
+                    session.status == "COMPLETED",
+                    session.completed_at.is_not(None),
+                    session.items_answered >= 1,
+                    session.purpose == "RESEARCH_SIMULATION",
+                    session.research_only.is_(True),
+                )
+                .subquery()
+            )
+            total = int(
+                await uow.session.scalar(
+                    self._select(func.count()).select_from(scoped_jobs)
+                )
+                or 0
+            )
+            page_result = await uow.session.execute(
+                self._select(
+                    job.id.label("job_id"),
+                    job.job_ref.label("job_ref"),
+                    job.status.label("status"),
+                    job.attempt_count.label("attempt_count"),
+                    job.last_error_code.label("last_error_code"),
+                    job.created_at.label("created_at"),
+                    job.updated_at.label("updated_at"),
+                )
+                .join(scoped_jobs, scoped_jobs.c.job_id == job.id)
+                .order_by(job.id)
+                .offset(offset)
+                .limit(limit)
+            )
+            status_result = await uow.session.execute(
+                self._select(job.status, func.count())
+                .join(scoped_jobs, scoped_jobs.c.job_id == job.id)
+                .group_by(job.status)
+            )
+            status_counts = {status: 0 for status in statuses}
+            for status, count in status_result.all():
+                if status not in status_counts:
+                    raise error(
+                        ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                        detail="research generation job data is unavailable",
+                    )
+                status_counts[status] = int(count)
+            if sum(status_counts.values()) != total:
+                raise error(
+                    ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                    detail="research generation job data is unavailable",
+                )
+
+            allowed_error_codes = {item.value for item in ResearchEducationJobErrorCode}
+            items = []
+            for row in page_result.all():
+                values = row._mapping
+                last_error_code = values["last_error_code"]
+                if (
+                    values["status"] not in status_counts
+                    or type(values["attempt_count"]) is not int
+                    or not 0 <= values["attempt_count"] <= 1
+                    or (
+                        last_error_code is not None
+                        and last_error_code not in allowed_error_codes
+                    )
+                ):
+                    raise error(
+                        ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                        detail="research generation job data is unavailable",
+                    )
+                items.append(
+                    {
+                        "job_ref": values["job_ref"],
+                        "status": values["status"],
+                        "attempt_count": values["attempt_count"],
+                        "last_error_code": last_error_code,
+                        "created_at": values["created_at"],
+                        "updated_at": values["updated_at"],
+                    }
+                )
+
+            return {
+                "items": items,
+                "offset": offset,
+                "limit": limit,
+                "total": total,
+                "has_more": offset + len(items) < total,
+                "status_counts": status_counts,
+                "policy_version": GENERAL_EDUCATION_POLICY_VERSION,
+                "purpose": "RESEARCH_SIMULATION",
+                "research_only": True,
+                "publication_status": _PUBLICATION_STATUS,
+                "student_feedback_eligible": False,
+            }
+
     def _summary(self, row, *, task_ref, session_ref):
         self._require_row_pins(row)
         return {

@@ -24,6 +24,7 @@ from .schemas import (
     ResearchEducationCandidateResolutionRequest,
     ResearchEducationCandidateSummaryDto,
     ResearchEducationCandidateTaskListDto,
+    ResearchEducationGenerationJobListDto,
 )
 
 router = APIRouter(
@@ -38,6 +39,7 @@ _ERRORS = problem_responses(
     ErrorCode.WORKFLOW_CONFLICT,
     ErrorCode.CSRF_FAILED,
     ErrorCode.DEPENDENCY_UNAVAILABLE,
+    ErrorCode.DEPENDENCY_INVALID_RESPONSE,
 )
 
 
@@ -110,6 +112,24 @@ async def list_candidates(
         await _service(request).list_for_task(
             actor, task_ref, status=status, offset=offset, limit=limit
         ),
+    )
+
+
+@router.get(
+    "/tasks/{task_ref}/generation-jobs",
+    response_model=ApiEnvelope[ResearchEducationGenerationJobListDto],
+    responses=_ERRORS,
+)
+async def list_generation_jobs(
+    request: Request,
+    task_ref: str,
+    actor: CurrentActor,
+    offset: int = Query(default=0, ge=0, le=100_000),
+    limit: int = Query(default=20, ge=1, le=50),
+):
+    return _response(
+        request,
+        await _service(request).list_jobs(actor, task_ref, offset=offset, limit=limit),
     )
 
 

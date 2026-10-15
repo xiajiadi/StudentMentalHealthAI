@@ -64,6 +64,7 @@ async def test_non_specialist_cannot_read_enqueue_or_resolve(role):
         root = "/api/v1/school/research-education-candidates"
         tasks = await client.get(f"{root}/tasks")
         listed = await client.get(f"{root}/tasks/TASK_demo/candidates")
+        jobs = await client.get(f"{root}/tasks/TASK_demo/generation-jobs")
         detail = await client.get(f"{root}/tasks/TASK_demo/candidates/REEDUC_synthetic_1")
         queued = await client.post(
             f"{root}/tasks/TASK_demo/enqueue",
@@ -78,10 +79,11 @@ async def test_non_specialist_cannot_read_enqueue_or_resolve(role):
     assert [
         tasks.status_code,
         listed.status_code,
+        jobs.status_code,
         detail.status_code,
         queued.status_code,
         resolved.status_code,
-    ] == [403] * 5
+    ] == [403] * 6
     assert persistence.calls == []
 
 
@@ -92,6 +94,7 @@ async def test_specialist_api_is_bounded_csrf_idempotent_and_payload_closed():
         root = "/api/v1/school/research-education-candidates"
         tasks = await client.get(f"{root}/tasks")
         listed = await client.get(f"{root}/tasks/TASK_demo/candidates?offset=3&limit=7")
+        jobs = await client.get(f"{root}/tasks/TASK_demo/generation-jobs?offset=2&limit=7")
         detail = await client.get(f"{root}/tasks/TASK_demo/candidates/REEDUC_synthetic_1")
         missing_idem = await client.post(
             f"{root}/tasks/TASK_demo/enqueue",
@@ -140,6 +143,17 @@ async def test_specialist_api_is_bounded_csrf_idempotent_and_payload_closed():
     assert listed.status_code == 200
     assert listed.json()["data"]["offset"] == 3
     assert listed.json()["data"]["limit"] == 7
+    assert jobs.status_code == 200
+    jobs_data = jobs.json()["data"]
+    assert jobs_data["offset"] == 2
+    assert jobs_data["limit"] == 7
+    assert jobs_data["policy_version"] == "RESEARCH_GENERAL_EDUCATION_DRAFT_V1"
+    assert set(jobs_data["status_counts"]) == {
+        "QUEUED", "LEASED", "RETRY", "HELD", "ABSTAINED", "REVIEW_REQUIRED",
+        "CRISIS_ROUTED", "FAILED", "CANCELLED",
+    }
+    assert not ({"subject_id", "lease_owner", "lease_token", "candidate_payload"}
+                & set(jobs_data["items"][0]))
     assert detail.status_code == 200
     detail_data = detail.json()["data"]
     assert detail_data["candidate_payload"]["schema_version"] == (
@@ -157,4 +171,6 @@ async def test_specialist_api_is_bounded_csrf_idempotent_and_payload_closed():
     assert resolved.json()["data"]["status"] == "ADOPTED"
     assert resolved.json()["data"]["student_feedback_eligible"] is False
     assert unapproved_publish_route.status_code in {404, 405}
-    assert [call[0] for call in persistence.calls] == ["tasks", "list", "get", "queue", "resolve"]
+    assert [call[0] for call in persistence.calls] == [
+        "tasks", "list", "jobs", "get", "queue", "resolve"
+    ]

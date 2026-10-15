@@ -196,11 +196,36 @@ implemented; typecheck/targeted ESLint and28 existing feedback/programme checks
 passed. Identity changes clear private UI state; old manual-feedback DTOs remain
 compatible. These checks do not establish actual browser or native inference proof.
 
-Native0020 migration/restore, new route inference and browser review/release have
-NOT run. Q remains0019/f8dc81e with all existing800 sessions preserved. Do not
-restart Q using CURRENT0020 code. Next use a fresh isolated forward restore from
-the sealed Q backup, verify source/config/owned dependencies, then ONE native
-candidate and its complete review/draft/publish/read/revoke browser journey.
+Code increment014e263e1ead324d1c0615ca51a52158e0def8b7 is committed/pushed.
+Native R restore completed from the sealed Q backup: R is
+D:/Projects/.StudentMentalHealthAI-school-install-20261015-r,
+UUID21e7ca60df3e2ba05197e6bdbb7649e7,DB3326,runtime0020. Official restore
+verified57 snapshot tables/34471 rows/882 ciphertexts and requires browser QA.
+The cohort has800 completed sessions/6400 items;3 other sessions are preserved.
+Preflight r1-r3 helper assertions were corrected to use cohort->binding->session
+metadata joins; r4 passed without changing the source data or assertions about
+the target cohort. Evidence D:/Dev/temp/psynova-q0019-r0020-restore-preflight-r4.json
+and psynova-q0019-r0020-native-restore-r1.json. No target reset or source mutation.
+
+R configs are prepared at research-config/r0020-restore-r1; approved student
+R3 manifest unchanged, research CAT57420, prospective API8100/UI4190.
+Draft config SHAa25846e27a801714792992655b8c45e8d8cc17291ad35b968b70687368685acc.
+Backend preflight passed; app start is held until the job-status GET increment
+is reviewed/committed. It exposes only task-scoped new-policy job metadata and
+nine-state counts, so failed work is visible without generating again.
+Runtime8161 was independently ownership-verified and restarted at014e263;
+health READY, no generation. Owner proof D:/Dev/temp/
+psynova-research-runtime-014e263-restart-20261015-r1/owner-ready.json.
+
+New route inference and browser review/release have NOT run. Q remains0019/f8dc81e
+with all existing800 sessions preserved; do not restart Q with CURRENT0020 code.
+Next start R at the reviewed next commit, then ONE native candidate for existing
+task TASK_M0015_m0015-cohort-20261014-r1_01, explicit limit1/offset0 and empty
+new-policy baseline. External proof helper psynova-r-general-education-one-candidate-
+proof-r1.py is PLAN_ONLY by default; reviewed SHA9b82ba20a592cf4f84bbd6b2bb8d4f253059a53b595f0f3a2601aec2ffc81400.
+Its execution must receive exact current HEAD/policy hash; no repeat POST/retry.
+After HELD, Root must check native DB job/candidate exact FK and inspect content,
+then complete review/draft/publish/read/revoke browser journey.
 Only after that acceptance enqueue remaining bounded800 work; no blind model reruns.
 
 Priority: finish held/review/release integration, source-grounded content review,

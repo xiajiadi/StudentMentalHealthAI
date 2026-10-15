@@ -138,6 +138,36 @@ def summary(**changes):
     }
 
 
+def generation_job_page(**changes):
+    statuses = (
+        "QUEUED", "LEASED", "RETRY", "HELD", "ABSTAINED", "REVIEW_REQUIRED",
+        "CRISIS_ROUTED", "FAILED", "CANCELLED",
+    )
+    return {
+        "items": [
+            {
+                "job_ref": "REJ_" + "a" * 64,
+                "status": "HELD",
+                "attempt_count": 1,
+                "last_error_code": None,
+                "created_at": datetime(2026, 10, 15, tzinfo=UTC),
+                "updated_at": datetime(2026, 10, 15, tzinfo=UTC),
+            }
+        ],
+        "offset": 0,
+        "limit": 20,
+        "total": 1,
+        "has_more": False,
+        "status_counts": {status: int(status == "HELD") for status in statuses},
+        "policy_version": "RESEARCH_GENERAL_EDUCATION_DRAFT_V1",
+        "purpose": "RESEARCH_SIMULATION",
+        "research_only": True,
+        "publication_status": "not_approved_for_publication_or_operational_use",
+        "student_feedback_eligible": False,
+        **changes,
+    }
+
+
 class FakePersistence:
     def __init__(self):
         self.calls = []
@@ -160,6 +190,12 @@ class FakePersistence:
     ):
         self.calls.append(("list", actor_arg, task_ref, status, offset, limit))
         return {"items": [summary()], "offset": offset, "limit": limit, "has_more": False}
+
+    async def school_research_education_candidate_generation_job_list(
+        self, actor_arg, task_ref, *, offset, limit
+    ):
+        self.calls.append(("jobs", actor_arg, task_ref, offset, limit))
+        return generation_job_page(offset=offset, limit=limit)
 
     async def school_research_education_candidate_get(self, actor_arg, task_ref, candidate_ref):
         self.calls.append(("get", actor_arg, task_ref, candidate_ref))
@@ -209,6 +245,7 @@ async def test_non_specialists_cannot_read_enqueue_or_resolve_candidates(role):
     operations = (
         lambda: service.list_tasks(staff),
         lambda: service.list_for_task(staff, "TASK_demo"),
+        lambda: service.list_jobs(staff, "TASK_demo"),
         lambda: service.get(staff, "TASK_demo", "REEDUC_demo"),
         lambda: service.queue_batch(
             staff,
@@ -242,6 +279,7 @@ async def test_specialist_operations_use_closed_task_bound_ports():
 
     tasks = await service.list_tasks(specialist)
     listed = await service.list_for_task(specialist, "TASK_demo", offset=5, limit=12)
+    jobs = await service.list_jobs(specialist, "TASK_demo", offset=2, limit=7)
     detail = await service.get(specialist, "TASK_demo", "REEDUC_synthetic_1")
     queued = await service.queue_batch(
         specialist,
@@ -263,6 +301,9 @@ async def test_specialist_operations_use_closed_task_bound_ports():
 
     assert tasks["items"][0]["task_ref"] == "TASK_demo"
     assert listed["items"][0]["student_feedback_eligible"] is False
+    assert jobs["items"][0]["status"] == "HELD"
+    assert jobs["status_counts"]["HELD"] == 1
+    assert jobs["items"][0]["created_at"].tzinfo is UTC
     assert detail["candidate_payload"]["source_cards"][0]["chunk_id"] == "CHUNK_R3_A"
     assert set(queued) == {
         "batch_ref",
@@ -316,6 +357,48 @@ async def test_candidate_pagination_rejects_out_of_bounds_or_bool(offset, limit)
         )
     assert raised.value.code.value == "validation_failed"
     assert persistence.calls == []
+
+
+@pytest.mark.parametrize(
+    ("offset", "limit"),
+    [(-1, 20), (100_001, 20), (0, 51), (True, 20), (0, True)],
+)
+async def test_generation_job_pagination_rejects_out_of_bounds_or_bool(offset, limit):
+    persistence = FakePersistence()
+    service = SchoolResearchEducationCandidateService(persistence=persistence)
+    with pytest.raises(BackendError) as raised:
+        await service.list_jobs(
+            actor(BackendRole.PSYCHOLOGICAL_SPECIALIST),
+            "TASK_demo",
+            offset=offset,
+            limit=limit,
+        )
+    assert raised.value.code.value == "validation_failed"
+    assert persistence.calls == []
+
+
+async def test_generation_job_page_rejects_unknown_status_or_inconsistent_counts():
+    persistence = FakePersistence()
+    service = SchoolResearchEducationCandidateService(persistence=persistence)
+    specialist = actor(BackendRole.PSYCHOLOGICAL_SPECIALIST)
+
+    async def unknown_status(*_args, **_kwargs):
+        page = generation_job_page()
+        page["items"][0]["status"] = "PRIVATE_STATE"
+        return page
+
+    persistence.school_research_education_candidate_generation_job_list = unknown_status
+    with pytest.raises(BackendError) as raised:
+        await service.list_jobs(specialist, "TASK_demo")
+    assert raised.value.code.value == "dependency_invalid_response"
+
+    async def inconsistent_counts(*_args, **_kwargs):
+        return generation_job_page(total=2)
+
+    persistence.school_research_education_candidate_generation_job_list = inconsistent_counts
+    with pytest.raises(BackendError) as raised:
+        await service.list_jobs(specialist, "TASK_demo")
+    assert raised.value.code.value == "dependency_invalid_response"
 
 
 @pytest.mark.parametrize("limit", [0, 101, True])

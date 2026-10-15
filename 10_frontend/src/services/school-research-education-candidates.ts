@@ -12,6 +12,42 @@ type RecordValue = Record<string, unknown>
 export type EducationSourceCard = FeedbackSourceCard
 export type ResearchEducationCandidateStatus = 'HELD' | 'ADOPTED' | 'DISCARDED'
 export type ResearchEducationCandidateTarget = 'ADOPTED' | 'DISCARDED'
+export type ResearchEducationGenerationStatus =
+  | 'QUEUED'
+  | 'LEASED'
+  | 'RETRY'
+  | 'HELD'
+  | 'ABSTAINED'
+  | 'REVIEW_REQUIRED'
+  | 'CRISIS_ROUTED'
+  | 'FAILED'
+  | 'CANCELLED'
+export type ResearchEducationGenerationJobErrorCode = typeof generationJobErrorCodes[number]
+
+export type ResearchEducationGenerationJob = {
+  job_ref: string
+  status: ResearchEducationGenerationStatus
+  attempt_count: number
+  last_error_code: ResearchEducationGenerationJobErrorCode | null
+  created_at: string
+  updated_at: string
+}
+
+export type ResearchEducationGenerationStatusCounts = Record<ResearchEducationGenerationStatus, number>
+
+export type ResearchEducationGenerationJobPage = {
+  items: ResearchEducationGenerationJob[]
+  offset: number
+  limit: number
+  total: number
+  has_more: boolean
+  status_counts: ResearchEducationGenerationStatusCounts
+  policy_version: 'RESEARCH_GENERAL_EDUCATION_DRAFT_V1'
+  purpose: 'RESEARCH_SIMULATION'
+  research_only: true
+  publication_status: 'not_approved_for_publication_or_operational_use'
+  student_feedback_eligible: false
+}
 
 export type ResearchEducationCandidateSummary = {
   candidate_ref: string
@@ -127,6 +163,26 @@ const candidateSummaryFields = [
   'student_feedback_eligible', 'created_at', 'updated_at',
 ].sort()
 const candidatePageFields = ['items', 'offset', 'limit', 'has_more'].sort()
+const generationStatuses: ResearchEducationGenerationStatus[] = [
+  'QUEUED', 'LEASED', 'RETRY', 'HELD', 'ABSTAINED', 'REVIEW_REQUIRED', 'CRISIS_ROUTED', 'FAILED', 'CANCELLED',
+]
+const generationStatusCountFields = [...generationStatuses].sort()
+const generationJobFields = [
+  'job_ref', 'status', 'attempt_count', 'last_error_code', 'created_at', 'updated_at',
+].sort()
+const generationJobPageFields = [
+  'items', 'offset', 'limit', 'total', 'has_more', 'status_counts', 'policy_version',
+  'purpose', 'research_only', 'publication_status', 'student_feedback_eligible',
+].sort()
+const generationJobErrorCodes = [
+  'POLICY_UNAVAILABLE', 'SOURCE_UNQUALIFIED', 'SAFETY_BLOCKED', 'UPSTREAM_TRANSIENT',
+  'UPSTREAM_RATE_LIMITED', 'UPSTREAM_TIMEOUT', 'DEPENDENCY_INVALID_RESPONSE', 'GENERATION_FAILED',
+  'INTERNAL_FAILURE', 'INTERNAL_FAILURE_AUTHORIZATION', 'INTERNAL_FAILURE_GENERATION',
+  'INTERNAL_FAILURE_OUTCOME_VALIDATION', 'INTERNAL_FAILURE_CANDIDATE_PROJECTION',
+  'INTERNAL_FAILURE_CANDIDATE_STORE', 'INTERNAL_FAILURE_DISPOSITION',
+  'INTERNAL_FAILURE_FINALIZATION', 'LEASE_EXPIRED_MAX_ATTEMPTS', 'MAX_ATTEMPTS_EXHAUSTED',
+] as const
+const generationJobErrorCodeSet = new Set<string>(generationJobErrorCodes)
 const candidateBatchFields = [
   'batch_ref', 'job_refs', 'job_count', 'offset', 'limit', 'next_offset', 'policy_version',
   'purpose', 'research_only', 'publication_status', 'student_feedback_eligible',
@@ -445,6 +501,81 @@ function mapPage(value: unknown, expectedOffset: number, expectedLimit: number):
   return { items, offset: expectedOffset, limit: expectedLimit, has_more: source.has_more }
 }
 
+function mapGenerationJobPage(
+  value: unknown,
+  expectedOffset: number,
+  expectedLimit: number,
+): ResearchEducationGenerationJobPage {
+  const message = '研究生成任务状态格式无法识别。'
+  const source = record(value, message)
+  exact(source, generationJobPageFields, message)
+  if (source.offset !== expectedOffset || source.limit !== expectedLimit
+    || !Number.isSafeInteger(source.total) || (source.total as number) < 0
+    || typeof source.has_more !== 'boolean'
+    || source.policy_version !== 'RESEARCH_GENERAL_EDUCATION_DRAFT_V1'
+    || source.purpose !== 'RESEARCH_SIMULATION' || source.research_only !== true
+    || source.publication_status !== publicationStatus || source.student_feedback_eligible !== false) {
+    throw new RealApiError('API_INVALID_RESPONSE', message)
+  }
+  if (!Array.isArray(source.items) || source.items.length > expectedLimit) {
+    throw new RealApiError('API_INVALID_RESPONSE', message)
+  }
+  const rawCounts = record(source.status_counts, message)
+  exact(rawCounts, generationStatusCountFields, message)
+  const statusCounts = {} as ResearchEducationGenerationStatusCounts
+  for (const status of generationStatuses) {
+    const count = rawCounts[status]
+    if (!Number.isSafeInteger(count) || (count as number) < 0) {
+      throw new RealApiError('API_INVALID_RESPONSE', message)
+    }
+    statusCounts[status] = count as number
+  }
+  const total = source.total as number
+  if (Object.values(statusCounts).reduce((sum, count) => sum + count, 0) !== total) {
+    throw new RealApiError('API_INVALID_RESPONSE', message)
+  }
+  const items = source.items.map((value): ResearchEducationGenerationJob => {
+    const item = record(value, message)
+    exact(item, generationJobFields, message)
+    if (!generationStatuses.includes(item.status as ResearchEducationGenerationStatus)
+      || !Number.isSafeInteger(item.attempt_count) || (item.attempt_count as number) < 0
+      || (item.attempt_count as number) > 1
+      || (item.last_error_code !== null && (typeof item.last_error_code !== 'string'
+        || !generationJobErrorCodeSet.has(item.last_error_code)))
+      || typeof item.created_at !== 'string' || Number.isNaN(Date.parse(item.created_at))
+      || typeof item.updated_at !== 'string' || Number.isNaN(Date.parse(item.updated_at))) {
+      throw new RealApiError('API_INVALID_RESPONSE', message)
+    }
+    const jobRef = text(item, 'job_ref', 68, message)
+    if (!jobRefPattern.test(jobRef)) throw new RealApiError('API_INVALID_RESPONSE', message)
+    return {
+      job_ref: jobRef,
+      status: item.status as ResearchEducationGenerationStatus,
+      attempt_count: item.attempt_count as number,
+      last_error_code: item.last_error_code as ResearchEducationGenerationJobErrorCode | null,
+      created_at: item.created_at,
+      updated_at: item.updated_at,
+    }
+  })
+  if (new Set(items.map((item) => item.job_ref)).size !== items.length
+    || source.has_more !== (expectedOffset + items.length < total)) {
+    throw new RealApiError('API_INVALID_RESPONSE', message)
+  }
+  return {
+    items,
+    offset: expectedOffset,
+    limit: expectedLimit,
+    total,
+    has_more: source.has_more,
+    status_counts: statusCounts,
+    policy_version: 'RESEARCH_GENERAL_EDUCATION_DRAFT_V1',
+    purpose: 'RESEARCH_SIMULATION',
+    research_only: true,
+    publication_status: publicationStatus,
+    student_feedback_eligible: false,
+  }
+}
+
 function mapBatch(value: unknown, expectedOffset: number, expectedLimit: number): ResearchEducationCandidateBatchReceipt {
   const message = '候选入队回执格式无法识别。'
   const source = record(value, message)
@@ -521,6 +652,20 @@ export class SchoolResearchEducationCandidateService {
       throw new RealApiError('API_INVALID_RESPONSE', '候选列表范围与请求不一致。')
     }
     return page
+  }
+
+  async listJobs(
+    taskRef: string,
+    offset = 0,
+    limit = 20,
+  ): Promise<ResearchEducationGenerationJobPage> {
+    reference(taskRef, '研究任务编号无效。')
+    const paging = pageArguments(offset, limit)
+    return mapGenerationJobPage(await requestSchoolResearchFeedbackApi({
+      method: 'GET',
+      path: `/api/v1/school/research-education-candidates/tasks/${encodeURIComponent(taskRef)}/generation-jobs`,
+      query: paging,
+    }), offset, limit)
   }
 
   async get(taskRef: string, candidateRef: string): Promise<ResearchEducationCandidateDetail> {

@@ -6,6 +6,7 @@ import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import ResearchFeedbackSources from '@/components/school/ResearchFeedbackSources.vue'
 import { newResearchFeedbackIdempotencyKey } from '@/services/school-research-feedback'
 import { schoolResearchEducationCandidates, type ResearchEducationCandidateDetail, type ResearchEducationCandidateSummary } from '@/services/school-research-education-candidates'
+import type { ResearchEducationGenerationJob } from '@/services/school-research-education-candidates'
 import { useSessionStore } from '@/stores/session'
 import { userFacingApiError } from '@/utils/user-facing-errors'
 
@@ -17,6 +18,9 @@ const detail = ref<ResearchEducationCandidateDetail | null>(null)
 const status = ref<'HELD' | 'ADOPTED' | 'DISCARDED'>('HELD')
 const offset = ref(0)
 const hasMore = ref(false)
+const jobs = ref<ResearchEducationGenerationJob[]>([])
+const jobTotal = ref(0)
+const jobCounts = ref<Record<string, number>>({})
 const busy = ref(false)
 const errorMessage = ref('')
 const notice = ref('')
@@ -32,6 +36,7 @@ const linked = computed(() => detail.value?.status === 'ADOPTED' && detail.value
 function clear() {
   ++sequence
   rows.value = []; detail.value = null; errorMessage.value = ''; notice.value = ''
+  jobs.value = []; jobTotal.value = 0; jobCounts.value = {}
   offset.value = 0; hasMore.value = false; batchOffset.value = 0
   confirmation.value = ''; pending.value = null; busy.value = false
 }
@@ -40,13 +45,20 @@ async function load(next = 0) {
   const current = ++sequence
   busy.value = true; errorMessage.value = ''; detail.value = null; confirmation.value = ''
   try {
-    const page = await schoolResearchEducationCandidates.list(props.taskRef, status.value, next, 20)
+    const [page, jobPage] = await Promise.all([
+      schoolResearchEducationCandidates.list(props.taskRef, status.value, next, 20),
+      schoolResearchEducationCandidates.listJobs(props.taskRef, 0, 20),
+    ])
     if (!alive || current !== sequence || !allowed.value) return
     rows.value = page.items; offset.value = page.offset; hasMore.value = page.has_more
+    jobs.value = jobPage.items; jobTotal.value = jobPage.total; jobCounts.value = jobPage.status_counts
   } catch (error) {
     if (current !== sequence) return
-    rows.value = []; errorMessage.value = userFacingApiError(error, '教育候选暂时无法加载。')
+    rows.value = []; jobs.value = []; jobTotal.value = 0; jobCounts.value = {}; errorMessage.value = userFacingApiError(error, '教育候选暂时无法加载。')
   } finally { if (current === sequence) busy.value = false }
+}
+function jobLabel(value: string): string {
+  return ({ QUEUED: '等待生成', LEASED: '正在生成', RETRY: '等待处理', HELD: '待核对', ABSTAINED: '未生成内容', REVIEW_REQUIRED: '需人工处理', CRISIS_ROUTED: '已进入安全处理', FAILED: '生成失败', CANCELLED: '已停止' } as Record<string, string>)[value] ?? '状态待确认'
 }
 async function open(item: ResearchEducationCandidateSummary) {
   if (!canWrite.value) return
@@ -107,6 +119,8 @@ onBeforeUnmount(() => { alive = false; clear() })
       <AppButton size="sm" :disabled="!canWrite || confirmation !== 'enqueue' || !Number.isInteger(batchOffset) || batchOffset < 0 || batchOffset > 100000" @click="enqueue">提交本批生成</AppButton>
     </div>
     <p v-if="notice" role="status">{{ notice }}</p>
+    <p v-if="jobTotal" role="status">本任务共 {{ jobTotal }} 项生成任务：<span v-for="(count,name) in jobCounts" :key="name"><template v-if="count">{{ jobLabel(String(name)) }} {{ count }} 项；</template></span></p>
+    <details v-if="jobs.length"><summary>查看生成状态（最多 20 条）</summary><ul><li v-for="(job,index) in jobs" :key="job.job_ref">任务 {{ index + 1 }}：{{ jobLabel(job.status) }} · 已尝试 {{ job.attempt_count }} 次</li></ul></details>
     <p v-if="busy" role="status" aria-busy="true">正在处理…</p>
     <AppStatusCallout v-if="errorMessage" tone="critical" title="候选操作未完成" :body="errorMessage"><AppButton v-if="pending" size="sm" :disabled="busy" @click="mutate(pending!)">使用相同请求重试</AppButton></AppStatusCallout>
     <p v-if="!busy && !rows.length && !errorMessage">当前没有此状态的候选。</p>

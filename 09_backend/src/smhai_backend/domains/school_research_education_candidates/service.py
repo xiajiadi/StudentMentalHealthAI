@@ -20,6 +20,7 @@ from .schemas import (
     ResearchEducationCandidateResolutionRequest,
     ResearchEducationCandidateSummaryDto,
     ResearchEducationCandidateTaskListDto,
+    ResearchEducationGenerationJobListDto,
 )
 
 
@@ -110,6 +111,14 @@ class SchoolResearchEducationCandidateService:
             actor, task_ref, status=status, offset=offset, limit=limit
         )
         return self._project(ResearchEducationCandidateListDto, result)
+
+    async def list_jobs(self, actor: Actor, task_ref: str, *, offset=0, limit=20):
+        self._require_specialist(actor)
+        self._pagination(offset, limit)
+        result = await self._port().school_research_education_candidate_generation_job_list(
+            actor, task_ref, offset=offset, limit=limit
+        )
+        return self._project(ResearchEducationGenerationJobListDto, result)
 
     async def get(self, actor: Actor, task_ref: str, candidate_ref: str):
         self._require_specialist(actor)

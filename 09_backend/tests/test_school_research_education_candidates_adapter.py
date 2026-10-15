@@ -165,6 +165,112 @@ async def test_revoked_specialist_assignment_fails_closed():
     assert raised.value.code is ErrorCode.RESOURCE_NOT_FOUND
 
 
+async def test_generation_job_list_is_current_task_scoped_and_content_free(monkeypatch):
+    from database_layer import models
+    from sqlalchemy import select
+
+    configured = adapter()
+    monkeypatch.setattr(configured, "_require_enabled", lambda: None)
+    configured._db_models = models
+    monkeypatch.setattr(configured, "_select", select, raising=False)
+    now = datetime(2026, 10, 15, tzinfo=UTC)
+    monkeypatch.setattr(configured, "_now", lambda: (now, now))
+    task = SimpleNamespace(id=23, class_id=31)
+    binding = SimpleNamespace(
+        binding_id=61,
+        profile_version_id=71,
+        profile_ref="PROMIS_SYNTHETIC",
+        profile_version_number=3,
+        profile_sha256="4" * 64,
+    )
+
+    async def active_task(_uow, _actor, _task_ref, *, at):
+        assert at == now
+        return task, binding, 7
+
+    monkeypatch.setattr(configured, "_active_task", active_task)
+
+    class Rows:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def all(self):
+            return self.rows
+
+    class Session:
+        def __init__(self):
+            self.statements = []
+
+        async def scalar(self, statement):
+            self.statements.append(statement)
+            return 1
+
+        async def execute(self, statement):
+            self.statements.append(statement)
+            if len(self.statements) == 2:
+                return Rows([
+                    SimpleNamespace(
+                        _mapping={
+                            "job_ref": "REJ_" + "a" * 64,
+                            "status": "HELD",
+                            "attempt_count": 1,
+                            "last_error_code": None,
+                            "created_at": now,
+                            "updated_at": now,
+                        }
+                    )
+                ])
+            return Rows([("HELD", 1)])
+
+    class UnitOfWork:
+        def __init__(self):
+            self.session = Session()
+            self.entered = self.exited = 0
+
+        async def __aenter__(self):
+            self.entered += 1
+            return self
+
+        async def __aexit__(self, _exc_type, _exc, _tb):
+            self.exited += 1
+            return False
+
+    uow = UnitOfWork()
+    monkeypatch.setattr(configured, "_uow", lambda: uow, raising=False)
+
+    result = await configured.school_research_education_candidate_generation_job_list(
+        actor(BackendRole.PSYCHOLOGICAL_SPECIALIST), "TASK_demo", offset=0, limit=20
+    )
+
+    assert result["total"] == 1
+    assert result["status_counts"]["HELD"] == 1
+    assert result["items"] == [
+        {
+            "job_ref": "REJ_" + "a" * 64,
+            "status": "HELD",
+            "attempt_count": 1,
+            "last_error_code": None,
+            "created_at": now,
+            "updated_at": now,
+        }
+    ]
+    assert uow.entered == uow.exited == 1
+    assert len(uow.session.statements) == 3
+    parameters = [
+        set(statement.compile().params.values()) for statement in uow.session.statements
+    ]
+    assert all(_POLICY_HASH in values for values in parameters)
+    assert all("RESEARCH_GENERAL_EDUCATION_DRAFT_V1" in values for values in parameters)
+    assert all(task.id in values for values in parameters)
+    assert all(binding.binding_id in values for values in parameters)
+    selected = " ".join(str(column) for column in uow.session.statements[1].selected_columns)
+    assert all(name in selected for name in ("job_ref", "status", "attempt_count", "created_at"))
+    assert all(
+        name not in selected
+        for name in ("subject_id", "lease_owner", "lease_token", "payload")
+    )
+
+
 def test_new_payload_must_match_server_policy_source_and_model_pins():
     configured = adapter()
     payload = candidate_payload()

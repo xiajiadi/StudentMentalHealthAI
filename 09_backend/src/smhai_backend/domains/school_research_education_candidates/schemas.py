@@ -5,7 +5,16 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StrictInt,
+    StrictStr,
+    field_validator,
+    model_validator,
+)
 
 from smhai_backend.domains.research_general_education.schemas import (
     ResearchGeneralEducationCandidatePayload,
@@ -63,6 +72,88 @@ class ResearchEducationCandidateListDto(_StrictModel):
     offset: StrictInt = Field(ge=0)
     limit: StrictInt = Field(ge=1, le=50)
     has_more: StrictBool
+
+
+class ResearchEducationGenerationJobSummaryDto(_StrictModel):
+    job_ref: StrictStr = Field(pattern=r"^REJ_[0-9a-f]{64}$", max_length=68)
+    status: Literal[
+        "QUEUED",
+        "LEASED",
+        "RETRY",
+        "HELD",
+        "ABSTAINED",
+        "REVIEW_REQUIRED",
+        "CRISIS_ROUTED",
+        "FAILED",
+        "CANCELLED",
+    ]
+    attempt_count: StrictInt = Field(ge=0, le=1)
+    last_error_code: Literal[
+        "POLICY_UNAVAILABLE",
+        "SOURCE_UNQUALIFIED",
+        "SAFETY_BLOCKED",
+        "UPSTREAM_TRANSIENT",
+        "UPSTREAM_RATE_LIMITED",
+        "UPSTREAM_TIMEOUT",
+        "DEPENDENCY_INVALID_RESPONSE",
+        "GENERATION_FAILED",
+        "INTERNAL_FAILURE",
+        "INTERNAL_FAILURE_AUTHORIZATION",
+        "INTERNAL_FAILURE_GENERATION",
+        "INTERNAL_FAILURE_OUTCOME_VALIDATION",
+        "INTERNAL_FAILURE_CANDIDATE_PROJECTION",
+        "INTERNAL_FAILURE_CANDIDATE_STORE",
+        "INTERNAL_FAILURE_DISPOSITION",
+        "INTERNAL_FAILURE_FINALIZATION",
+        "LEASE_EXPIRED_MAX_ATTEMPTS",
+        "MAX_ATTEMPTS_EXHAUSTED",
+    ] | None
+    created_at: datetime
+    updated_at: datetime
+
+    @field_validator("created_at", "updated_at", mode="after")
+    @classmethod
+    def timestamps_are_utc(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
+
+
+class ResearchEducationGenerationJobStatusCountsDto(_StrictModel):
+    QUEUED: StrictInt = Field(ge=0)
+    LEASED: StrictInt = Field(ge=0)
+    RETRY: StrictInt = Field(ge=0)
+    HELD: StrictInt = Field(ge=0)
+    ABSTAINED: StrictInt = Field(ge=0)
+    REVIEW_REQUIRED: StrictInt = Field(ge=0)
+    CRISIS_ROUTED: StrictInt = Field(ge=0)
+    FAILED: StrictInt = Field(ge=0)
+    CANCELLED: StrictInt = Field(ge=0)
+
+
+class ResearchEducationGenerationJobListDto(_StrictModel):
+    items: list[ResearchEducationGenerationJobSummaryDto]
+    offset: StrictInt = Field(ge=0, le=100_000)
+    limit: StrictInt = Field(ge=1, le=50)
+    total: StrictInt = Field(ge=0)
+    has_more: StrictBool
+    status_counts: ResearchEducationGenerationJobStatusCountsDto
+    policy_version: Literal["RESEARCH_GENERAL_EDUCATION_DRAFT_V1"]
+    purpose: Literal["RESEARCH_SIMULATION"]
+    research_only: Literal[True]
+    publication_status: Literal[_PUBLICATION_STATUS]
+    student_feedback_eligible: Literal[False]
+
+    @model_validator(mode="after")
+    def page_is_consistent(self):
+        if (
+            len(self.items) > self.limit
+            or len({item.job_ref for item in self.items}) != len(self.items)
+            or self.has_more != (self.offset + len(self.items) < self.total)
+            or sum(self.status_counts.model_dump().values()) != self.total
+        ):
+            raise ValueError("research education generation job page is inconsistent")
+        return self
 
 
 class ResearchEducationCandidateResolutionRequest(_StrictModel):
