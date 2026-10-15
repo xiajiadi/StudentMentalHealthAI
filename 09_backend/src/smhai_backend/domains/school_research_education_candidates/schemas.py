@@ -434,5 +434,31 @@ class ResearchEducationCandidateBatchDto(_StrictModel):
     student_feedback_eligible: Literal[False]
 
 
+class ResearchEducationInputReviewLineageDto(_StrictModel):
+    input_review_ref: StrictStr = Field(pattern=r"^REIR_[0-9a-f]{32}$", max_length=37)
+    status: Literal["CONSUMED"]
+    state_version: Literal[3]
+
+
+class ResearchEducationOutputReviewLineageDto(_StrictModel):
+    output_review_ref: StrictStr = Field(pattern=r"^REOR_[0-9a-f]{32}$", max_length=37)
+    status: Literal["CONSUMED"]
+    state_version: Literal[2]
+    reason_code: Literal["CONTENT_CONTROVERSIAL"]
+
+
+class ResearchEducationCandidateReviewLineageDto(_StrictModel):
+    generation_round: Literal[0, 1]
+    input_review: ResearchEducationInputReviewLineageDto | None
+    output_review: ResearchEducationOutputReviewLineageDto | None
+
+    @model_validator(mode="after")
+    def input_review_matches_generation_round(self):
+        if (self.generation_round == 1) != (self.input_review is not None):
+            raise ValueError("candidate and input review lineage disagree")
+        return self
+
+
 class ResearchEducationCandidateDetailDto(ResearchEducationCandidateSummaryDto):
     candidate_payload: ResearchGeneralEducationCandidatePayload
+    review_lineage: ResearchEducationCandidateReviewLineageDto

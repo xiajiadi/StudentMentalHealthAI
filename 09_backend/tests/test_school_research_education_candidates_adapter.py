@@ -1779,3 +1779,222 @@ async def test_claim_with_wrong_policy_hash_is_denied_and_only_cancelled():
         "state": "CANCELLED",
         "reason_code": "SCOPE_REVOKED",
     }
+
+
+@pytest.mark.parametrize(
+    "mismatch",
+    [
+        None,
+        "output_scope",
+        "input_scope",
+        "output_ref",
+        "input_ref",
+        "missing_output",
+        "missing_input",
+    ],
+)
+async def test_candidate_review_lineage_is_projected_only_after_exact_db_verification(mismatch):
+    from database_layer.models import (
+        SchoolResearchEducationInputReview,
+        SchoolResearchEducationJob,
+        SchoolResearchEducationOutputReview,
+    )
+    from database_layer.school_research_education_output_reviews import (
+        ResearchEducationOutputReviewScope,
+    )
+    from sqlalchemy import select
+
+    from smhai_backend.domains.research_general_education.service import (
+        EXPECTED_MODEL_DIGEST_SHA256,
+        EXPECTED_MODEL_ID,
+    )
+
+    configured = adapter()
+    now = datetime(2026, 10, 15, 11, 30, tzinfo=UTC)
+    consumed_input = replace(
+        _authorized_input_review_dto(configured),
+        status="CONSUMED",
+        state_version=3,
+        consumed_at=now,
+        updated_at=now,
+    )
+    input_review_ref = consumed_input.input_review_ref
+    input_scope = consumed_input.scope
+    if mismatch == "input_scope":
+        consumed_input = replace(
+            consumed_input,
+            scope=replace(input_scope, task_id=input_scope.task_id + 1),
+        )
+    elif mismatch == "input_ref":
+        consumed_input = replace(
+            consumed_input,
+            input_review_ref="REIR_" + "c" * 32,
+        )
+    job_ref = "REJ_" + "a" * 64
+    expected_trace = "TRACE_" + hashlib.sha256(f"{job_ref}:1".encode("ascii")).hexdigest()[:32]
+    output_ref = "REOR_" + "b" * 32
+    output_scope = ResearchEducationOutputReviewScope(
+        **{
+            name: getattr(input_scope, name)
+            for name in ResearchEducationOutputReviewScope.__dataclass_fields__
+        }
+    )
+    if mismatch == "output_scope":
+        output_scope = replace(output_scope, task_id=output_scope.task_id + 1)
+
+    row = _row(
+        candidate_payload(),
+        job_id=97,
+        generation_round=1,
+        input_review_id=consumed_input.id,
+        input_review_state="CONSUMED",
+        output_review_id=98,
+        output_review_state="CONSUMED",
+        scope=input_scope,
+        status="HELD",
+        state_version=1,
+        input_safety_action="REVIEW_REQUIRED",
+        output_safety_action="REVIEW_REQUIRED",
+        created_at=now,
+        trace_id=expected_trace,
+    )
+    job = SimpleNamespace(
+        id=row.job_id,
+        job_ref=job_ref,
+        school_id=row.scope.school_id,
+        research_session_id=row.scope.research_session_id,
+        generation_round=1,
+        input_review_id=consumed_input.id,
+        status="REVIEW_REQUIRED",
+        attempt_count=1,
+        policy_hash=row.policy_hash,
+        policy_version=row.policy_version,
+        last_error_code="SAFETY_BLOCKED",
+        lease_owner=None,
+        lease_token=None,
+        **{
+            name: getattr(row.scope, name)
+            for name in ResearchEducationOutputReviewScope.__dataclass_fields__
+            if name not in {"school_id", "research_session_id"}
+        },
+    )
+    source_job = SimpleNamespace(
+        id=consumed_input.job_id,
+        job_ref=consumed_input.job_ref,
+        school_id=row.scope.school_id,
+        research_session_id=row.scope.research_session_id,
+        generation_round=0,
+        input_review_id=None,
+        status="REVIEW_REQUIRED",
+        attempt_count=1,
+        last_error_code="SAFETY_BLOCKED",
+        policy_hash=consumed_input.policy_hash,
+        **{
+            name: getattr(row.scope, name)
+            for name in ResearchEducationOutputReviewScope.__dataclass_fields__
+            if name not in {"school_id", "research_session_id"}
+        },
+    )
+    output_review = SimpleNamespace(
+        id=row.output_review_id,
+        output_review_ref=output_ref,
+        job_id=job.id,
+        job_ref=job.job_ref,
+        generation_round=1,
+        input_review_id=consumed_input.id,
+        scope=output_scope,
+        safety_operation="OUTPUT",
+        safety_action="REVIEW_REQUIRED",
+        safety_reason_code="CONTENT_CONTROVERSIAL",
+        safety_requires_human=True,
+        input_safety_action="PROCEED",
+        retrieval_safety_action="PROCEED",
+        canonical_input_sha256=consumed_input.canonical_input_sha256,
+        policy_version=GENERAL_EDUCATION_POLICY_VERSION,
+        policy_hash=configured.policy_hash,
+        source_package_ref=configured.source_package_ref,
+        source_study_ref=configured.source_study_ref,
+        source_manifest_sha256=configured.source_manifest_sha256,
+        retrieval_id="RETR_synthetic_output_review",
+        retrieval_bundle_sha256="3" * 64,
+        prompt_id=PROMPT_ID,
+        prompt_version=PROMPT_VERSION,
+        prompt_sha256=PROMPT_SHA256,
+        model_ref=EXPECTED_MODEL_ID,
+        model_digest_sha256=EXPECTED_MODEL_DIGEST_SHA256,
+        runtime_version="runtime-synthetic",
+        safety_policy_version=SAFETY_POLICY_VERSION,
+        content_sha256="4" * 64,
+        candidate_content_sha256=row.content_sha256,
+        candidate_payload_schema_version="school-research-general-education-candidate.v1",
+        status="CONSUMED",
+        state_version=2,
+        consumed_at=now,
+        trace_id=expected_trace,
+        safety_trace_id=expected_trace,
+    )
+    if mismatch == "output_ref":
+        output_review.output_review_ref = "REOR_" + "c" * 32
+
+    class Session:
+        def __init__(self):
+            self.results = iter((job, output_ref, input_review_ref, source_job))
+
+        async def scalar(self, _statement):
+            return next(self.results)
+
+    class OutputReviews:
+        async def get_for_task(self, *, scope, output_review_ref):
+            assert output_review_ref == output_ref
+            assert scope == ResearchEducationOutputReviewScope(
+                **{
+                    name: getattr(row.scope, name)
+                    for name in ResearchEducationOutputReviewScope.__dataclass_fields__
+                }
+            )
+            return None if mismatch == "missing_output" else output_review
+
+    class InputReviews:
+        async def get_for_task(self, *, school_id, task_id, input_review_ref):
+            assert (school_id, task_id, input_review_ref) == (
+                row.scope.school_id,
+                row.scope.task_id,
+                input_review_ref,
+            )
+            return None if mismatch == "missing_input" else consumed_input
+
+    configured._db_models = SimpleNamespace(
+        SchoolResearchEducationJob=SchoolResearchEducationJob,
+        SchoolResearchEducationInputReview=SchoolResearchEducationInputReview,
+        SchoolResearchEducationOutputReview=SchoolResearchEducationOutputReview,
+    )
+    configured._select = select
+    uow = SimpleNamespace(
+        session=Session(),
+        research_education_output_reviews=OutputReviews(),
+        research_education_input_reviews=InputReviews(),
+    )
+
+    if mismatch is not None:
+        with pytest.raises(BackendError) as rejected:
+            await configured.verify_candidate_input_lineage_in_uow(uow, row)
+        assert rejected.value.code is ErrorCode.WORKFLOW_CONFLICT
+        return
+
+    lineage = await configured.verify_candidate_input_lineage_in_uow(uow, row)
+    assert lineage == {
+        "generation_round": 1,
+        "input_review": {
+            "input_review_ref": consumed_input.input_review_ref,
+            "status": "CONSUMED",
+            "state_version": 3,
+        },
+        "output_review": {
+            "output_review_ref": output_ref,
+            "status": "CONSUMED",
+            "state_version": 2,
+            "reason_code": "CONTENT_CONTROVERSIAL",
+        },
+    }
+    assert row.output_safety_action == "REVIEW_REQUIRED"
+    assert candidate_payload().provenance.output_safety_action == "PROCEED"

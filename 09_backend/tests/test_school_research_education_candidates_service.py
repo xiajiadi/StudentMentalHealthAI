@@ -141,6 +141,39 @@ def summary(**changes):
     }
 
 
+def candidate_review_lineage_round0():
+    return {"generation_round": 0, "input_review": None, "output_review": None}
+
+
+def candidate_review_lineage_round1():
+    return {
+        "generation_round": 1,
+        "input_review": {
+            "input_review_ref": "REIR_" + "a" * 32,
+            "status": "CONSUMED",
+            "state_version": 3,
+        },
+        "output_review": {
+            "output_review_ref": "REOR_" + "b" * 32,
+            "status": "CONSUMED",
+            "state_version": 2,
+            "reason_code": "CONTENT_CONTROVERSIAL",
+        },
+    }
+
+
+def candidate_review_lineage_round1_without_output_review():
+    return {
+        "generation_round": 1,
+        "input_review": {
+            "input_review_ref": "REIR_" + "a" * 32,
+            "status": "CONSUMED",
+            "state_version": 3,
+        },
+        "output_review": None,
+    }
+
+
 def generation_job_page(**changes):
     statuses = (
         "QUEUED", "LEASED", "RETRY", "HELD", "ABSTAINED", "REVIEW_REQUIRED",
@@ -287,7 +320,11 @@ class FakePersistence:
 
     async def school_research_education_candidate_get(self, actor_arg, task_ref, candidate_ref):
         self.calls.append(("get", actor_arg, task_ref, candidate_ref))
-        return {**summary(), "candidate_payload": candidate_payload()}
+        return {
+            **summary(),
+            "candidate_payload": candidate_payload(),
+            "review_lineage": candidate_review_lineage_round0(),
+        }
 
     async def school_research_education_candidate_queue_batch(
         self, actor_arg, task_ref, *, limit, offset, idempotency, trace_id
@@ -498,6 +535,7 @@ async def test_specialist_operations_use_closed_task_bound_ports():
     assert jobs["status_counts"]["HELD"] == 1
     assert jobs["items"][0]["created_at"].tzinfo is UTC
     assert detail["candidate_payload"]["source_cards"][0]["chunk_id"] == "CHUNK_R3_A"
+    assert detail["review_lineage"] == candidate_review_lineage_round0()
     assert set(queued) == {
         "batch_ref",
         "job_refs",
@@ -787,9 +825,133 @@ async def test_detail_rejects_unknown_nested_citation_fields():
     raw_payload["citations"][0]["raw_excerpt"] = "must not cross the API boundary"
 
     async def return_open_citation(_actor, _task_ref, _candidate_ref):
-        return {**summary(), "candidate_payload": raw_payload}
+        return {
+            **summary(),
+            "candidate_payload": raw_payload,
+            "review_lineage": candidate_review_lineage_round0(),
+        }
 
     persistence.school_research_education_candidate_get = return_open_citation
+    with pytest.raises(BackendError) as raised:
+        await service.get(
+            actor(BackendRole.PSYCHOLOGICAL_SPECIALIST),
+            "TASK_demo",
+            "REEDUC_synthetic_1",
+        )
+    assert raised.value.code.value == "dependency_invalid_response"
+
+
+async def test_detail_projects_verified_review_lineage_without_rewriting_v1_payload():
+    persistence = FakePersistence()
+    service = SchoolResearchEducationCandidateService(persistence=persistence)
+
+    async def return_round1(_actor, _task_ref, _candidate_ref):
+        return {
+            **summary(),
+            "candidate_payload": candidate_payload(),
+            "review_lineage": candidate_review_lineage_round1(),
+        }
+
+    persistence.school_research_education_candidate_get = return_round1
+    detail = await service.get(
+        actor(BackendRole.PSYCHOLOGICAL_SPECIALIST),
+        "TASK_demo",
+        "REEDUC_synthetic_1",
+    )
+    assert detail["review_lineage"] == candidate_review_lineage_round1()
+    assert detail["candidate_payload"]["schema_version"] == (
+        "school-research-general-education-candidate.v1"
+    )
+    assert detail["candidate_payload"]["provenance"]["input_safety_action"] == "PROCEED"
+    assert detail["candidate_payload"]["provenance"]["output_safety_action"] == "PROCEED"
+
+
+@pytest.mark.parametrize(
+    "review_lineage",
+    [
+        candidate_review_lineage_round1_without_output_review(),
+        {
+            "generation_round": 0,
+            "input_review": None,
+            "output_review": {
+                "output_review_ref": "REOR_" + "b" * 32,
+                "status": "CONSUMED",
+                "state_version": 2,
+                "reason_code": "CONTENT_CONTROVERSIAL",
+            },
+        },
+    ],
+)
+async def test_detail_accepts_valid_optional_review_lineage(review_lineage):
+    persistence = FakePersistence()
+    service = SchoolResearchEducationCandidateService(persistence=persistence)
+
+    async def return_lineage(_actor, _task_ref, _candidate_ref):
+        return {
+            **summary(),
+            "candidate_payload": candidate_payload(),
+            "review_lineage": review_lineage,
+        }
+
+    persistence.school_research_education_candidate_get = return_lineage
+    detail = await service.get(
+        actor(BackendRole.PSYCHOLOGICAL_SPECIALIST),
+        "TASK_demo",
+        "REEDUC_synthetic_1",
+    )
+    assert detail["review_lineage"] == review_lineage
+
+
+@pytest.mark.parametrize(
+    "review_lineage",
+    [
+        {"generation_round": 1, "input_review": None, "output_review": None},
+        {
+            "generation_round": 0,
+            "input_review": {
+                "input_review_ref": "REIR_" + "a" * 32,
+                "status": "CONSUMED",
+                "state_version": 3,
+            },
+            "output_review": None,
+        },
+        {
+            "generation_round": 1,
+            "input_review": {
+                "input_review_ref": "REIR_" + "a" * 32,
+                "status": "PENDING",
+                "state_version": 1,
+            },
+            "output_review": None,
+        },
+        {
+            "generation_round": 1,
+            "input_review": {
+                "input_review_ref": "REIR_" + "a" * 32,
+                "status": "CONSUMED",
+                "state_version": 3,
+            },
+            "output_review": {
+                "output_review_ref": "REOR_" + "b" * 32,
+                "status": "CONSUMED",
+                "state_version": 2,
+                "reason_code": "OUTPUT_UNSAFE",
+            },
+        },
+    ],
+)
+async def test_detail_rejects_invalid_review_lineage_projection(review_lineage):
+    persistence = FakePersistence()
+    service = SchoolResearchEducationCandidateService(persistence=persistence)
+
+    async def return_bad_lineage(_actor, _task_ref, _candidate_ref):
+        return {
+            **summary(),
+            "candidate_payload": candidate_payload(),
+            "review_lineage": review_lineage,
+        }
+
+    persistence.school_research_education_candidate_get = return_bad_lineage
     with pytest.raises(BackendError) as raised:
         await service.get(
             actor(BackendRole.PSYCHOLOGICAL_SPECIALIST),

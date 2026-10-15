@@ -276,6 +276,11 @@ async def test_specialist_api_is_bounded_csrf_idempotent_and_payload_closed():
     assert detail_data["candidate_payload"]["schema_version"] == (
         "school-research-general-education-candidate.v1"
     )
+    assert detail_data["review_lineage"] == {
+        "generation_round": 0,
+        "input_review": None,
+        "output_review": None,
+    }
     assert detail_data["student_feedback_eligible"] is False
     assert not ({"subject_id", "score", "answers", "response_text"} & set(detail_data))
     assert input_reviews.status_code == 200

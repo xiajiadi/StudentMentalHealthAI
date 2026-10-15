@@ -385,7 +385,7 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
             )
 
     async def verify_candidate_input_lineage_in_uow(self, uow, row):
-        """Verify immutable review sidecar independently of the v1 payload hash."""
+        """Verify immutable review lineage independently of the frozen v1 payload."""
         self._require_row_pins(row)
         m = self._db_models
         job = await uow.session.scalar(
@@ -417,6 +417,7 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
             )
         ):
             raise _conflict()
+        output_review_lineage = None
         if output_review_linked:
             from database_layer.school_research_education_output_reviews import (
                 ResearchEducationOutputReviewScope,
@@ -444,6 +445,8 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
                     output_review_ref=output_review_ref,
                 )
             )
+            if output_review is None or output_review.output_review_ref != output_review_ref:
+                raise _conflict()
             self._require_output_review_pins(output_review)
             if (
                 output_review.id != output_review_id
@@ -459,8 +462,18 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
                 or not self._same_scope(output_review.scope, row.scope)
             ):
                 raise _conflict()
+            output_review_lineage = {
+                "output_review_ref": output_review.output_review_ref,
+                "status": output_review.status,
+                "state_version": output_review.state_version,
+                "reason_code": output_review.safety_reason_code,
+            }
         if row.generation_round == 0:
-            return
+            return {
+                "generation_round": 0,
+                "input_review": None,
+                "output_review": output_review_lineage,
+            }
         expected_trace = "TRACE_" + hashlib.sha256(
             f"{job.job_ref}:{job.attempt_count}".encode("ascii")
         ).hexdigest()[:32]
@@ -488,6 +501,8 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
                 input_review_ref=ref,
             )
         )
+        if review is None or review.input_review_ref != ref:
+            raise _conflict()
         self._input_review_pins(review)
         if (
             review.status != "CONSUMED" or review.state_version != 3
@@ -511,6 +526,15 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
             or not self._same_scope(review.scope, original)
         ):
             raise _conflict()
+        return {
+            "generation_round": 1,
+            "input_review": {
+                "input_review_ref": review.input_review_ref,
+                "status": review.status,
+                "state_version": review.state_version,
+            },
+            "output_review": output_review_lineage,
+        }
 
     def _payload_from_row(self, row):
         from database_layer.crypto import EncryptedPayload
@@ -708,9 +732,9 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
         )
         if scope.response_origin != "PUBLIC_OBSERVED" or not self._same_scope(row.scope, scope):
             raise _not_found()
-        await self.verify_candidate_input_lineage_in_uow(uow, row)
+        review_lineage = await self.verify_candidate_input_lineage_in_uow(uow, row)
         payload = self._payload_from_row(row) if include_payload else None
-        return scope, session_ref, payload
+        return scope, session_ref, payload, review_lineage
 
     def _output_review_summary(self, row, *, task_ref, session_ref):
         return {
@@ -1285,7 +1309,7 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
         )
         if row is None:
             raise _not_found()
-        _scope, session_ref, _payload = await self._current_candidate(
+        _scope, session_ref, _payload, _review_lineage = await self._current_candidate(
             uow, actor, task, row, at=at
         )
         return self._summary(row, task_ref=task.task_ref, session_ref=session_ref)
@@ -1519,7 +1543,7 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
             )
             items = []
             for row in rows:
-                _scope, session_ref, _payload = await self._current_candidate(
+                _scope, session_ref, _payload, _review_lineage = await self._current_candidate(
                     uow, actor, task, row, at=now
                 )
                 items.append(self._summary(row, task_ref=task_ref, session_ref=session_ref))
@@ -1544,12 +1568,13 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
             )
             if row is None:
                 raise _not_found()
-            _scope, session_ref, payload = await self._current_candidate(
+            _scope, session_ref, payload, review_lineage = await self._current_candidate(
                 uow, actor, task, row, at=now, include_payload=True
             )
             return {
                 **self._summary(row, task_ref=task_ref, session_ref=session_ref),
                 "candidate_payload": payload.model_dump(mode="python"),
+                "review_lineage": review_lineage,
             }
 
     async def school_research_education_candidate_resolve(
@@ -1585,7 +1610,7 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
             )
             if row is None:
                 raise _not_found()
-            _scope, session_ref, _payload = await self._current_candidate(
+            _scope, session_ref, _payload, _review_lineage = await self._current_candidate(
                 uow, actor, task, row, at=now, lock=True
             )
             claim = await self._school_idempotency_begin(uow, idempotency)
