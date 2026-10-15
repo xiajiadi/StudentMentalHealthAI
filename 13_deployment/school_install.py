@@ -57,8 +57,9 @@ CHECKPOINT_FIELDS = {
     "schema", "created_at", "updated_at", "source_head", "dependency_target_head",
     "source_root", "dependency_target", "mysql_bin", "python_specs", "workspace",
     "workspace_id", "schema_revision", "ports", "frontend_mode", "llm_profile",
-    "dependency_module_manifest_sha256", "stages", "whole_ready",
+    "dependency_module_manifest_sha256", "research_profile_sha256", "stages", "whole_ready",
 }
+LEGACY_CHECKPOINT_FIELDS = CHECKPOINT_FIELDS - {"research_profile_sha256"}
 STAGE_STATUSES = {"PENDING", "RUNNING", "COMPLETED", "FAILED", "PENDING_VERIFICATION"}
 SAFE_STAGE_CODES = {
     "VERIFIED_BY_ROLE_LOGIN", "ABSOLUTE_PATH_REQUIRED", "ABSOLUTE_WORKSPACE_REQUIRED",
@@ -78,6 +79,9 @@ SAFE_STAGE_CODES = {
     "PYTHON_SPEC_INVALID", "PYTHON_SPEC_SET_INCOMPLETE", "REPARSE_PATH_REJECTED",
     "RESUME_CONFIGURATION_MISMATCH", "RESUME_STATE_UNAVAILABLE", "RUNTIME_IDENTITY_CREATION_FAILED",
     "RUNTIME_PREFLIGHT_FAILED", "SCHEMA_MIGRATION_DDL_FAILED",
+    "RESEARCH_PROFILE_HASH_MISMATCH", "RESEARCH_PROFILE_INVALID",
+    "RESEARCH_PROFILE_PATH_INVALID", "RESEARCH_PROFILE_TARGET_CONFLICT",
+    "RESEARCH_PROFILE_TARGET_WRITE_FAILED", "RESEARCH_PROFILE_INCOMPLETE",
     "SCHEMA_MIGRATION_FAILED", "SCHEMA_MIGRATION_POSTCHECK_FAILED", "SOURCE_OR_TARGET_MISSING",
     "SOURCE_TARGET_HEAD_MISMATCH", "SOURCE_TARGET_OVERLAP", "SOURCE_TRACKED_FILES_DIRTY",
     "STAGE_PROCESS_UNAVAILABLE", "STAGE_RESULT_INVALID", "STAGE_TIMEOUT_PRESERVE_AND_INSPECT",
@@ -88,6 +92,49 @@ SAFE_STAGE_CODES = {
 }
 PYTHON_SPEC_RE = re.compile(r"^([0-9]{2}_[a-z0-9-]+)=(.+)$")
 WORKSPACE_ID_RE = re.compile(r"^[a-f0-9]{32}$")
+RESEARCH_SHA256_RE = re.compile(r"^[a-f0-9]{64}$")
+RESEARCH_FILE_PAIRS = (
+    ("research_runtime_file", "research_runtime_sha256", "--research-runtime-file", "--research-runtime-sha256", 1024 * 1024),
+    ("research_service_file", "research_service_sha256", "--research-service-file", "--research-service-sha256", 1024 * 1024),
+    ("research_study_use_file", "research_study_use_sha256", "--research-study-use-file", "--research-study-use-sha256", 64 * 1024),
+    ("research_programme_manifest_file", "research_programme_manifest_sha256", "--research-programme-manifest-file", "--research-programme-manifest-sha256", 4 * 1024 * 1024),
+    ("research_student_config_file", "research_student_config_sha256", "--research-student-config-file", "--research-student-config-sha256", 16 * 1024),
+    ("research_education_draft_config_file", "research_education_draft_config_sha256", "--research-education-draft-config-file", "--research-education-draft-config-sha256", 8192),
+)
+RESEARCH_PATH_ARGUMENTS = (
+    ("research_cat_python", "--research-cat-python", "file"),
+    ("research_cat_source", "--research-cat-source", "directory"),
+    ("research_cat_dependencies", "--research-cat-dependencies", "directory"),
+)
+RESEARCH_VALUE_ARGUMENTS = (
+    ("research_latest_study_end", "--research-latest-study-end"),
+)
+RESEARCH_BOOLEAN_ARGUMENTS = (
+    ("research_source_rights_verified", "--research-source-rights-verified"),
+    ("enable_research_education_worker", "--enable-research-education-worker"),
+    ("enable_research_programme_worker", "--enable-research-programme-worker"),
+    ("enable_research_education_input_review_continuation", "--enable-research-education-input-review-continuation"),
+)
+WORKSPACE_RESEARCH_FILES = (
+    ("research_runtime_file", "research_runtime_sha256", "research-runtime.json"),
+    ("research_service_file", "research_service_sha256", "research-service.json"),
+    ("research_study_use_file", "research_study_use_sha256", "research-study-use.json"),
+)
+_EMPTY_RESEARCH_ARGUMENTS = {
+    **{name: None for pair in RESEARCH_FILE_PAIRS for name in pair[:2]},
+    **{name: None for name, _flag, _kind in RESEARCH_PATH_ARGUMENTS},
+    **{name: None for name, _flag in RESEARCH_VALUE_ARGUMENTS},
+    **{name: False for name, _flag in RESEARCH_BOOLEAN_ARGUMENTS},
+}
+RESEARCH_PROFILE_EMPTY_SHA256 = hashlib.sha256(
+    json.dumps(
+        _EMPTY_RESEARCH_ARGUMENTS,
+        sort_keys=True,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+).hexdigest()
 
 sys.path.insert(0, str(DEPLOYMENT))
 from school_schema import CURRENT_SCHOOL_REVISION
@@ -241,6 +288,231 @@ def _state_temp_path(workspace: Path) -> Path:
     return workspace.parent / f".{workspace.name}{STATE_TEMP_SUFFIX}"
 
 
+def _research_argument_values(args: argparse.Namespace) -> dict[str, Any]:
+    values: dict[str, Any] = {}
+    for name, sha_name, _flag, _sha_flag, _limit in RESEARCH_FILE_PAIRS:
+        raw_path = getattr(args, name, None)
+        values[name] = str(raw_path) if raw_path is not None else None
+        values[sha_name] = getattr(args, sha_name, None)
+    for name, _flag, _kind in RESEARCH_PATH_ARGUMENTS:
+        raw_path = getattr(args, name, None)
+        values[name] = str(raw_path) if raw_path is not None else None
+    for name, _flag in RESEARCH_VALUE_ARGUMENTS:
+        values[name] = getattr(args, name, None)
+    for name, _flag in RESEARCH_BOOLEAN_ARGUMENTS:
+        raw_value = getattr(args, name, False)
+        if type(raw_value) is not bool:
+            raise InstallError("RESEARCH_PROFILE_INVALID")
+        values[name] = raw_value
+    return values
+
+
+def _read_pinned_research_file(
+    raw_path: Any, expected_sha256: Any, *, max_bytes: int
+) -> tuple[Path, bytes]:
+    if not isinstance(raw_path, Path) or not raw_path.is_absolute() or ".." in raw_path.parts:
+        raise InstallError("RESEARCH_PROFILE_PATH_INVALID")
+    if type(expected_sha256) is not str or RESEARCH_SHA256_RE.fullmatch(expected_sha256) is None:
+        raise InstallError("RESEARCH_PROFILE_INVALID")
+    _reject_reparse_ancestors(raw_path)
+    resolved = _path(raw_path, exists=True)
+    if not resolved.is_file():
+        raise InstallError("RESEARCH_PROFILE_PATH_INVALID")
+    try:
+        with resolved.open("rb") as stream:
+            raw = stream.read(max_bytes + 1)
+    except OSError:
+        raise InstallError("RESEARCH_PROFILE_PATH_INVALID") from None
+    if not raw or len(raw) > max_bytes:
+        raise InstallError("RESEARCH_PROFILE_INVALID")
+    if hashlib.sha256(raw).hexdigest() != expected_sha256:
+        raise InstallError("RESEARCH_PROFILE_HASH_MISMATCH")
+    return resolved, raw
+
+
+def _validate_research_profile(
+    args: argparse.Namespace, *, source: Path
+) -> dict[str, Any]:
+    """Validate the opt-in profile inputs without persisting their contents."""
+    arguments = _research_argument_values(args)
+    file_paths: dict[str, Path] = {}
+    for path_name, sha_name, _flag, _sha_flag, max_bytes in RESEARCH_FILE_PAIRS:
+        raw_path = getattr(args, path_name, None)
+        expected_sha = getattr(args, sha_name, None)
+        if (raw_path is None) != (expected_sha is None):
+            raise InstallError("RESEARCH_PROFILE_INCOMPLETE")
+        if raw_path is None:
+            continue
+        resolved, _raw = _read_pinned_research_file(
+            raw_path, expected_sha, max_bytes=max_bytes
+        )
+        file_paths[path_name] = resolved
+        arguments[path_name] = str(resolved)
+
+    for name, _flag, kind in RESEARCH_PATH_ARGUMENTS:
+        raw_path = getattr(args, name, None)
+        if raw_path is None:
+            continue
+        if not isinstance(raw_path, Path) or not raw_path.is_absolute() or ".." in raw_path.parts:
+            raise InstallError("RESEARCH_PROFILE_PATH_INVALID")
+        _reject_reparse_ancestors(raw_path)
+        resolved = _path(raw_path, exists=True)
+        if (kind == "file" and not resolved.is_file()) or (
+            kind == "directory" and not resolved.is_dir()
+        ):
+            raise InstallError("RESEARCH_PROFILE_PATH_INVALID")
+        arguments[name] = str(resolved)
+
+    core_names = {
+        "research_runtime_file", "research_service_file", "research_cat_python",
+        "research_cat_source", "research_cat_dependencies",
+    }
+    core_supplied = any(arguments.get(name) is not None for name in core_names)
+    if core_supplied and any(arguments.get(name) is None for name in core_names):
+        raise InstallError("RESEARCH_PROFILE_INCOMPLETE")
+    study_supplied = any(
+        arguments.get(name) is not None
+        for name in (
+            "research_study_use_file", "research_study_use_sha256",
+            "research_latest_study_end",
+        )
+    ) or arguments["research_source_rights_verified"]
+    if study_supplied and (
+        not core_supplied
+        or arguments.get("research_study_use_file") is None
+        or arguments.get("research_study_use_sha256") is None
+        or arguments.get("research_latest_study_end") is None
+        or arguments["research_source_rights_verified"] is not True
+    ):
+        raise InstallError("RESEARCH_PROFILE_INCOMPLETE")
+
+    programme_enabled = arguments["enable_research_programme_worker"]
+    programme_manifest_supplied = (
+        arguments.get("research_programme_manifest_file") is not None
+        or arguments.get("research_programme_manifest_sha256") is not None
+    )
+    if programme_enabled != programme_manifest_supplied:
+        raise InstallError("RESEARCH_PROFILE_INCOMPLETE")
+    if (arguments["enable_research_education_worker"] or programme_enabled) and not study_supplied:
+        raise InstallError("RESEARCH_PROFILE_INCOMPLETE")
+    if programme_enabled:
+        from school_backend import RESEARCH_PROGRAMME_MANIFEST_SHA256
+
+        if arguments.get("research_programme_manifest_sha256") != RESEARCH_PROGRAMME_MANIFEST_SHA256:
+            raise InstallError("RESEARCH_PROFILE_INVALID")
+
+    student_supplied = (
+        arguments.get("research_student_config_file") is not None
+        or arguments.get("research_student_config_sha256") is not None
+    )
+    draft_supplied = (
+        arguments.get("research_education_draft_config_file") is not None
+        or arguments.get("research_education_draft_config_sha256") is not None
+    )
+    if student_supplied != (
+        arguments.get("research_student_config_file") is not None
+        and arguments.get("research_student_config_sha256") is not None
+    ):
+        raise InstallError("RESEARCH_PROFILE_INCOMPLETE")
+    if draft_supplied != (
+        arguments.get("research_education_draft_config_file") is not None
+        and arguments.get("research_education_draft_config_sha256") is not None
+    ):
+        raise InstallError("RESEARCH_PROFILE_INCOMPLETE")
+    if draft_supplied and (not student_supplied or not study_supplied):
+        raise InstallError("RESEARCH_PROFILE_INCOMPLETE")
+    if arguments["enable_research_education_input_review_continuation"] and not draft_supplied:
+        raise InstallError("RESEARCH_PROFILE_INCOMPLETE")
+
+    if core_supplied:
+        try:
+            backend_source = str(source / "09_backend" / "src")
+            if backend_source not in sys.path:
+                sys.path.insert(0, backend_source)
+            from school_backend import (
+                _parse_study_end,
+                _research_service_base_url,
+                _validate_study_use_policy,
+            )
+            from smhai_backend.domains.school_research.managed import (
+                validate_managed_research_config_pair,
+            )
+
+            validate_managed_research_config_pair(
+                runtime_config_file=file_paths["research_runtime_file"],
+                expected_runtime_config_sha256=arguments["research_runtime_sha256"],
+                service_config_file=file_paths["research_service_file"],
+                expected_service_config_sha256=arguments["research_service_sha256"],
+            )
+            if study_supplied:
+                base_url = _research_service_base_url(
+                    file_paths["research_service_file"],
+                    arguments["research_service_sha256"],
+                )
+                _validate_study_use_policy(
+                    study_file=file_paths["research_study_use_file"],
+                    study_sha256=arguments["research_study_use_sha256"],
+                    latest_end=_parse_study_end(arguments["research_latest_study_end"]),
+                    runtime_file=file_paths["research_runtime_file"],
+                    runtime_sha256=arguments["research_runtime_sha256"],
+                    service_file=file_paths["research_service_file"],
+                    service_sha256=arguments["research_service_sha256"],
+                    base_url=base_url,
+                )
+        except InstallError:
+            raise
+        except (AttributeError, ImportError, OSError, RuntimeError, TypeError, ValueError):
+            raise InstallError("RESEARCH_PROFILE_INVALID") from None
+
+    if student_supplied or draft_supplied:
+        try:
+            if str(DEPLOYMENT) not in sys.path:
+                sys.path.insert(0, str(DEPLOYMENT))
+            from school_research_education_draft_config import (
+                load_research_education_draft_config,
+            )
+            from school_research_student_config import load_student_research_config
+
+            student = (
+                load_student_research_config(
+                    file_paths["research_student_config_file"],
+                    arguments["research_student_config_sha256"],
+                )
+                if student_supplied else None
+            )
+            if draft_supplied:
+                draft = load_research_education_draft_config(
+                    file_paths["research_education_draft_config_file"],
+                    arguments["research_education_draft_config_sha256"],
+                )
+                if student is None or draft.student_source != student:
+                    raise ValueError
+        except (AttributeError, ImportError, OSError, TypeError, ValueError):
+            raise InstallError("RESEARCH_PROFILE_INVALID") from None
+
+    digest_material = json.dumps(
+        arguments, sort_keys=True, ensure_ascii=True, separators=(",", ":"), allow_nan=False
+    ).encode("utf-8")
+    digest = hashlib.sha256(digest_material).hexdigest()
+    workspace_files = {
+        path_name: {
+            "source_path": str(file_paths[path_name]),
+            "sha256": arguments[sha_name],
+            "target_name": target_name,
+            "max_bytes": next(item[4] for item in RESEARCH_FILE_PAIRS if item[0] == path_name),
+        }
+        for path_name, sha_name, target_name in WORKSPACE_RESEARCH_FILES
+        if path_name in file_paths
+    }
+    return {
+        "arguments": arguments,
+        "file_paths": file_paths,
+        "workspace_files": workspace_files,
+        "sha256": digest,
+        "enabled": any(value is not None and value is not False for value in arguments.values()),
+    }
+
+
 def _validate_configuration(args: argparse.Namespace, *, mode: str) -> dict[str, Any]:
     raw_source = Path(args.source_root)
     raw_target = Path(args.dependency_target_root)
@@ -297,6 +569,7 @@ def _validate_configuration(args: argparse.Namespace, *, mode: str) -> dict[str,
         if not resolved.is_file():
             raise InstallError("PYTHON_INTERPRETER_UNAVAILABLE")
         python_specs[module] = resolved
+    research_profile = _validate_research_profile(args, source=source)
     return {
         "source": source,
         "dependency_target": dependency_target,
@@ -315,6 +588,7 @@ def _validate_configuration(args: argparse.Namespace, *, mode: str) -> dict[str,
         },
         "frontend_mode": args.frontend_mode,
         "llm_profile": args.llm_profile,
+        "research_profile": research_profile,
     }
 
 
@@ -395,6 +669,8 @@ def _read_state(path: Path) -> dict[str, Any]:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError):
         raise InstallError("CHECKPOINT_INVALID") from None
+    if type(value) is dict and set(value) == LEGACY_CHECKPOINT_FIELDS:
+        value["research_profile_sha256"] = RESEARCH_PROFILE_EMPTY_SHA256
     if (
         type(value) is not dict
         or set(value) != CHECKPOINT_FIELDS
@@ -439,6 +715,8 @@ def _validate_checkpoint_metadata(value: dict[str, Any]) -> None:
         or value.get("dependency_module_manifest_sha256") is not None
         and (not isinstance(value.get("dependency_module_manifest_sha256"), str)
              or not re.fullmatch(r"[a-f0-9]{64}", value["dependency_module_manifest_sha256"]))
+        or not isinstance(value.get("research_profile_sha256"), str)
+        or not RESEARCH_SHA256_RE.fullmatch(value["research_profile_sha256"])
     ):
         raise InstallError("CHECKPOINT_CONTENT_INVALID")
     for key in ("created_at", "updated_at"):
@@ -491,6 +769,9 @@ def _new_state(config: dict[str, Any]) -> dict[str, Any]:
         "ports": config["ports"],
         "frontend_mode": config["frontend_mode"],
         "llm_profile": config["llm_profile"],
+        "research_profile_sha256": config.get("research_profile", {}).get(
+            "sha256", RESEARCH_PROFILE_EMPTY_SHA256
+        ),
         "dependency_module_manifest_sha256": None,
         "stages": {name: {"status": "PENDING", "code": None} for name in STAGE_NAMES},
         "whole_ready": False,
@@ -510,6 +791,9 @@ def _match_state(state: dict[str, Any], config: dict[str, Any]) -> None:
         "ports": config["ports"],
         "frontend_mode": config["frontend_mode"],
         "llm_profile": config["llm_profile"],
+        "research_profile_sha256": config.get("research_profile", {}).get(
+            "sha256", RESEARCH_PROFILE_EMPTY_SHA256
+        ),
     }
     if any(state.get(key) != value for key, value in expected.items()):
         raise InstallError("RESUME_CONFIGURATION_MISMATCH")
@@ -629,6 +913,7 @@ def _commands(config: dict[str, Any]) -> dict[str, list[str]]:
         "--enable-standard-cat",
         "--standard-cat-port", str(config["ports"]["standard_cat"]),
     ]
+    research_args = _research_cli_arguments(config)
     return {
         "dependencies": [
             sys.executable, str(config["source"] / "13_deployment" / "school_prepare_dependencies.py"),
@@ -643,15 +928,139 @@ def _commands(config: dict[str, Any]) -> dict[str, list[str]]:
         "backend_preflight": [python["09_backend"], scripts("school_backend.py"), *common,
                               "--port", str(config["ports"]["backend"]),
                               "--frontend-port", str(config["ports"]["frontend"]),
-                              "--llm-profile", config["llm_profile"], "--preflight-only"],
+                              "--llm-profile", config["llm_profile"], *research_args,
+                              "--preflight-only"],
         "synthetic_seed": [python["09_backend"], scripts("seed_school_workspace.py"), *common],
         "application_start": [python["09_backend"], scripts("school_app_lifecycle.py"), "start",
-                              *lifecycle_common],
+                              *lifecycle_common, *research_args],
         "application_status": [python["09_backend"], scripts("school_app_lifecycle.py"), "status", *common],
         "four_role_browser": [python["09_backend"], scripts("school_browser_qa.py"), *common,
                                "--backend-port", str(config["ports"]["backend"]),
                                "--frontend-port", str(config["ports"]["frontend"])],
     }
+
+
+def _research_cli_arguments(config: dict[str, Any]) -> list[str]:
+    profile = config.get("research_profile")
+    if not isinstance(profile, dict):
+        return []
+    arguments = profile.get("arguments")
+    if not isinstance(arguments, dict):
+        raise InstallError("RESEARCH_PROFILE_INVALID")
+    result: list[str] = []
+    for path_name, sha_name, path_flag, sha_flag, _limit in RESEARCH_FILE_PAIRS:
+        path_value = arguments.get(path_name)
+        sha_value = arguments.get(sha_name)
+        if path_value is None:
+            continue
+        if type(path_value) is not str or type(sha_value) is not str:
+            raise InstallError("RESEARCH_PROFILE_INVALID")
+        workspace_file = profile.get("workspace_files", {}).get(path_name)
+        if workspace_file is not None:
+            path_value = str(
+                config["workspace"] / ".school-research-profile" / workspace_file["target_name"]
+            )
+        result.extend((path_flag, path_value, sha_flag, sha_value))
+    for name, flag, _kind in RESEARCH_PATH_ARGUMENTS:
+        value = arguments.get(name)
+        if value is not None:
+            if type(value) is not str:
+                raise InstallError("RESEARCH_PROFILE_INVALID")
+            result.extend((flag, value))
+    for name, flag in RESEARCH_VALUE_ARGUMENTS:
+        value = arguments.get(name)
+        if value is not None:
+            if type(value) is not str:
+                raise InstallError("RESEARCH_PROFILE_INVALID")
+            result.extend((flag, value))
+    for name, flag in RESEARCH_BOOLEAN_ARGUMENTS:
+        value = arguments.get(name)
+        if type(value) is not bool:
+            raise InstallError("RESEARCH_PROFILE_INVALID")
+        if value:
+            result.append(flag)
+    return result
+
+
+def _workspace_research_profile_dir(config: dict[str, Any]) -> Path:
+    return config["workspace"] / ".school-research-profile"
+
+
+def _path_entry_exists(path: Path) -> bool:
+    try:
+        path.lstat()
+        return True
+    except FileNotFoundError:
+        return False
+    except OSError:
+        raise InstallError("RESEARCH_PROFILE_TARGET_CONFLICT") from None
+
+
+def _materialize_workspace_research_files(config: dict[str, Any]) -> None:
+    profile = config.get("research_profile", {})
+    workspace_files = profile.get("workspace_files", {}) if isinstance(profile, dict) else {}
+    destination_dir = _workspace_research_profile_dir(config)
+    if not workspace_files:
+        if _path_entry_exists(destination_dir):
+            raise InstallError("RESEARCH_PROFILE_TARGET_CONFLICT")
+        return
+    _reject_reparse_ancestors(config["workspace"])
+    try:
+        destination_dir.mkdir()
+    except FileExistsError:
+        raise InstallError("RESEARCH_PROFILE_TARGET_CONFLICT") from None
+    except OSError:
+        raise InstallError("RESEARCH_PROFILE_TARGET_WRITE_FAILED") from None
+    if destination_dir.is_symlink() or _is_reparse(destination_dir):
+        raise InstallError("RESEARCH_PROFILE_TARGET_CONFLICT")
+    for path_name, record in workspace_files.items():
+        if path_name not in {name for name, _sha, _target in WORKSPACE_RESEARCH_FILES}:
+            raise InstallError("RESEARCH_PROFILE_INVALID")
+        source_path = Path(record["source_path"])
+        expected_sha = record["sha256"]
+        target_name = record["target_name"]
+        limit = record["max_bytes"]
+        source_path, raw = _read_pinned_research_file(
+            source_path, expected_sha, max_bytes=limit
+        )
+        target = destination_dir / target_name
+        _reject_reparse_ancestors(destination_dir)
+        flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_BINARY", 0)
+        try:
+            fd = os.open(target, flags, 0o600)
+            with os.fdopen(fd, "wb") as stream:
+                stream.write(raw)
+                stream.flush()
+                os.fsync(stream.fileno())
+        except FileExistsError:
+            raise InstallError("RESEARCH_PROFILE_TARGET_CONFLICT") from None
+        except OSError:
+            raise InstallError("RESEARCH_PROFILE_TARGET_WRITE_FAILED") from None
+        _read_pinned_research_file(target, expected_sha, max_bytes=limit)
+
+
+def _verify_workspace_research_files(config: dict[str, Any]) -> None:
+    profile = config.get("research_profile", {})
+    workspace_files = profile.get("workspace_files", {}) if isinstance(profile, dict) else {}
+    destination_dir = _workspace_research_profile_dir(config)
+    if not workspace_files:
+        if _path_entry_exists(destination_dir):
+            raise InstallError("RESEARCH_PROFILE_TARGET_CONFLICT")
+        return
+    if not destination_dir.is_dir() or destination_dir.is_symlink() or _is_reparse(destination_dir):
+        raise InstallError("RESEARCH_PROFILE_TARGET_CONFLICT")
+    try:
+        names = {item.name for item in destination_dir.iterdir()}
+    except OSError:
+        raise InstallError("RESEARCH_PROFILE_TARGET_CONFLICT") from None
+    expected_names = {record["target_name"] for record in workspace_files.values()}
+    if names != expected_names:
+        raise InstallError("RESEARCH_PROFILE_TARGET_CONFLICT")
+    for record in workspace_files.values():
+        target = destination_dir / record["target_name"]
+        _read_pinned_research_file(
+            target, record["sha256"], max_bytes=record["max_bytes"]
+        )
 
 
 def _verify_app_status(payload: dict[str, Any], config: dict[str, Any], workspace_id: str) -> bool:
@@ -715,6 +1124,7 @@ def _verify_completed_workspace(config: dict[str, Any], state: dict[str, Any], c
         raise InstallError("WORKSPACE_IDENTITY_CHANGED")
     if not (config["workspace"] / "database.private.dpapi").is_file():
         raise InstallError("WORKSPACE_DATABASE_SETTINGS_UNAVAILABLE")
+    _verify_workspace_research_files(config)
 
 
 def _verify_completed_schema(config: dict[str, Any], state: dict[str, Any], commands: dict[str, list[str]]) -> None:
@@ -835,6 +1245,7 @@ def _run_stage(config: dict[str, Any], state: dict[str, Any], commands: dict[str
             if not isinstance(workspace_id, str) or not WORKSPACE_ID_RE.fullmatch(workspace_id):
                 raise InstallError("WORKSPACE_ID_INVALID")
             state["workspace_id"] = workspace_id
+            _materialize_workspace_research_files(config)
         elif name == "schema":
             workspace_id = str(state["workspace_id"])
             upgrade_command = [item.format(workspace_id=workspace_id) for item in commands["schema_upgrade"]]
@@ -985,6 +1396,15 @@ def build_parser() -> argparse.ArgumentParser:
         command.add_argument("--frontend-mode", choices=("preview",), default="preview")
         command.add_argument("--llm-profile", choices=("school-gpu-7b",), default="school-gpu-7b")
         command.add_argument("--python", action="append", required=True, metavar="MODULE=ABSOLUTE_PATH")
+        for name, _sha_name, path_flag, sha_flag, _limit in RESEARCH_FILE_PAIRS:
+            command.add_argument(path_flag, dest=name, type=Path)
+            command.add_argument(sha_flag, dest=_sha_name)
+        for name, flag, _kind in RESEARCH_PATH_ARGUMENTS:
+            command.add_argument(flag, dest=name, type=Path)
+        for name, flag in RESEARCH_VALUE_ARGUMENTS:
+            command.add_argument(flag, dest=name)
+        for name, flag in RESEARCH_BOOLEAN_ARGUMENTS:
+            command.add_argument(flag, dest=name, action="store_true")
     return parser
 
 

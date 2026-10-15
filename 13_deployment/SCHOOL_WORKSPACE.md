@@ -8,6 +8,12 @@ The school-schema development code must never be migrated onto the preserved M0 
 
 The command does not download or package Ollama/model, OPA, Guard, corpus, or vector assets. Keep those assets on the host and verify the actual service dependencies during startup; a dependency-package PASS is not AI readiness or whole-platform readiness. No backup or workspace from another Windows user is reused: DPAPI credentials remain bound to the current Windows user.
 
+### Explicit research profile opt-in
+
+`plan`, `install`, and `resume` also accept the existing Backend/lifecycle research options: the paired runtime/service files and hashes plus CAT paths; the paired study-use file/hash, `--research-source-rights-verified`, and `--research-latest-study-end`; optional student-source and general-education draft file/hash pairs; and the existing worker and one-shot continuation flags. A draft requires the matching student-source and study-use configuration. These options are absent by default. The source-rights flag is an operator declaration consumed by the existing policy validator; it does not represent ethics, clinical, psychometric, or school approval.
+
+The installer verifies every supplied file's exact bytes against its SHA-256 and binds the normalized paths, hashes, and opt-in flags into its content-free checkpoint. The runtime, service, and study-use JSON files are the only files imported into the newly created workspace; they are copied byte-for-byte with exclusive creation to `.school-research-profile/` and rechecked on resume. Student-source, draft, and programme-manifest files stay at their supplied absolute paths and must remain present and unchanged for resume. Existing Backend and lifecycle validation still checks their schemas, study/source bindings, and permissions before application startup. This does not start or certify the external Runtime, RAG, Safety, OPA, or model services and does not change `whole_ready=false`.
+
 From the source checkout, first run the read-only plan with the six Python paths used by the official dependency preparation tool:
 
 ```powershell
