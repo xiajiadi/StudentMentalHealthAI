@@ -221,21 +221,52 @@ requirement against restored0020; no queue/model action occurred. Source fix ali
 the exact startup requirement to0020 and retains rejection of0019/older schemas.
 27 startup checks, including parity with deployment's current revision, passed.
 Diagnostic D:/Dev/temp/psynova-r0020-startup-lifespan-diagnostic-20261015-r2/result.json.
-Native restart still pending after the fix; never relabel this first attempt READY.
+Fix7260e168e3411c781e37aa8cf1ab9e5e72367107 is committed/pushed. The subsequent
+official R restart is RUNNING: Backend8100/Frontend4190 and all three managed
+workers READY, research CAT57420 owned by Backend. Runtime revision0020 and
+service config pin match. Lifecycle manifest SHA
+467d1ebb8ae72df912a7f0c1b516ef5dea0ac16a83afc9c9937d9d3f13c006c2.
+whole_ready/current_ready_proof remain false; external services and the student
+conversation require separate verification. The first failed start is preserved
+under D:/Dev/temp/psynova-r0020-lifecycle-failure-archive-20261015-r1/.
 Runtime8161 was independently ownership-verified and restarted at014e263;
 health READY, no generation. Owner proof D:/Dev/temp/
 psynova-research-runtime-014e263-restart-20261015-r1/owner-ready.json.
 
-New route inference and browser review/release have NOT run. Q remains0019/f8dc81e
-with all existing800 sessions preserved; do not restart Q with CURRENT0020 code.
-Next start R at the reviewed next commit, then ONE native candidate for existing
-task TASK_M0015_m0015-cohort-20261014-r1_01, explicit limit1/offset0 and empty
-new-policy baseline. External proof helper psynova-r-general-education-one-candidate-
-proof-r1.py is PLAN_ONLY by default; reviewed SHA9b82ba20a592cf4f84bbd6b2bb8d4f253059a53b595f0f3a2601aec2ffc81400.
-Its execution must receive exact current HEAD/policy hash; no repeat POST/retry.
-After HELD, Root must check native DB job/candidate exact FK and inspect content,
+One controlled enqueue ran for task TASK_M0015_m0015-cohort-20261014-r1_01,
+limit1/offset0 with empty new-policy baseline. Job
+REJ_707a4801b19300358047e8741d4ed3bc1aff73897d0806c4ccf0f31e82e93169
+terminated REVIEW_REQUIRED/SAFETY_BLOCKED; no candidate was created. Preserve
+D:/Dev/temp/psynova-r-general-education-one-candidate-proof-r1.json and its
+reviewed helper (SHA9b82ba20a592cf4f84bbd6b2bb8d4f253059a53b595f0f3a2601aec2ffc81400).
+Do not rerun enqueue, reset/relabel the job or substitute a successful answer.
+
+Bounded diagnostic r2 reproduced INPUT/REVIEW_REQUIRED/requires_human=true,
+reason CONTENT_CONTROVERSIAL via the actual standard Safety8190 input route.
+R3 Safety8191 only serves bound retrieval. The prior8191 input404 and local
+preflight AttributeError are preserved and are not Safety decisions. Evidence:
+D:/Dev/temp/psynova-r-education-safety-stage-diagnostic-r2.json. No retrieval or
+primary Runtime ran in this diagnostic; Safety created synthetic review metadata,
+whose in-memory versus optional SQLite persistence was not observed. Guard's
+model/revision/decoding match existing evidence; no configuration or code defect
+has been established. This classification is an observed conservative gate,
+not proof that the fixed request is dangerous. Do not weaken policy, change
+age/actor/text to seek PASS, or treat an Agent as professional approval.
+
+The new native generation/review/release journey remains incomplete. Read-only
+R specialist browser status verification is underway. Q remains0019/f8dc81e;
+do not restart Q with CURRENT0020 code. After an authorized successful HELD,
+Root must check exact native job/candidate FK and actual source-grounded content,
 then complete review/draft/publish/read/revoke browser journey.
 Only after that acceptance enqueue remaining bounded800 work; no blind model reruns.
+
+External asset inventory captured99 unique files/8,219,811,810 bytes with no
+missing paths or pin mismatch. Manifest SHA
+8fb62ba4bd72a7e13e3ddb96d52c4aa282ac3da47f03049e4d1270531d2c0397 at
+D:/Dev/temp/psynova-school-asset-closure-20261015T202216-4c2170e330bd47a38b04de463e493b06/.
+This covers Ollama/support files, fixed7B blobs, OPA, Guard and source manifests;
+it excludes DB/Python/npm/response data. It is not an installer or redistribution
+approval;98 entries retain conditional/unverified rights pending focused review.
 
 Priority: finish held/review/release integration, source-grounded content review,
 useful empirical AI workload and installation/recovery acceptance.
