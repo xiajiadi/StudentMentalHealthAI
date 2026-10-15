@@ -69,6 +69,12 @@ async def test_non_specialist_cannot_read_enqueue_or_resolve(role):
         jobs = await client.get(f"{root}/tasks/TASK_demo/generation-jobs")
         detail = await client.get(f"{root}/tasks/TASK_demo/candidates/REEDUC_synthetic_1")
         input_reviews = await client.get(f"{root}/tasks/TASK_demo/input-reviews")
+        output_reviews = await client.get(
+            f"{root}/tasks/TASK_demo/output-reviews?offset=0&limit=20"
+        )
+        output_review = await client.get(
+            f"{root}/tasks/TASK_demo/output-reviews/REOR_{'a' * 32}"
+        )
         input_review = await client.get(
             f"{root}/tasks/TASK_demo/input-reviews/REI_synthetic_1"
         )
@@ -90,6 +96,14 @@ async def test_non_specialist_cannot_read_enqueue_or_resolve(role):
                 "X-CSRF-Token": "synthetic-csrf-token",
             },
         )
+        output_review_resolved = await client.post(
+            f"{root}/tasks/TASK_demo/output-reviews/REOR_synthetic_1/resolve",
+            json={"expected_state_version": 1, "target": "REJECTED"},
+            headers={
+                "Idempotency-Key": "denied-output-review",
+                "X-CSRF-Token": "synthetic-csrf-token",
+            },
+        )
     assert [
         tasks.status_code,
         listed.status_code,
@@ -100,7 +114,10 @@ async def test_non_specialist_cannot_read_enqueue_or_resolve(role):
         queued.status_code,
         resolved.status_code,
         input_review_resolved.status_code,
-    ] == [403] * 9
+        output_reviews.status_code,
+        output_review.status_code,
+        output_review_resolved.status_code,
+    ] == [403] * 12
     assert persistence.calls == []
 
 
@@ -113,6 +130,12 @@ async def test_specialist_api_is_bounded_csrf_idempotent_and_payload_closed():
         listed = await client.get(f"{root}/tasks/TASK_demo/candidates?offset=3&limit=7")
         jobs = await client.get(f"{root}/tasks/TASK_demo/generation-jobs?offset=2&limit=7")
         input_reviews = await client.get(f"{root}/tasks/TASK_demo/input-reviews")
+        output_reviews = await client.get(
+            f"{root}/tasks/TASK_demo/output-reviews?offset=0&limit=20"
+        )
+        output_review = await client.get(
+            f"{root}/tasks/TASK_demo/output-reviews/REOR_{'a' * 32}"
+        )
         input_review = await client.get(
             f"{root}/tasks/TASK_demo/input-reviews/REI_synthetic_1"
         )
@@ -196,6 +219,32 @@ async def test_specialist_api_is_bounded_csrf_idempotent_and_payload_closed():
                 "X-CSRF-Token": "synthetic-csrf-token",
             },
         )
+        output_review_missing_idem = await client.post(
+            f"{root}/tasks/TASK_demo/output-reviews/REOR_{'a' * 32}/resolve",
+            json={"expected_state_version": 1, "target": "REJECTED"},
+            headers={"X-CSRF-Token": "synthetic-csrf-token"},
+        )
+        output_review_missing_csrf = await client.post(
+            f"{root}/tasks/TASK_demo/output-reviews/REOR_{'a' * 32}/resolve",
+            json={"expected_state_version": 1, "target": "REJECTED"},
+            headers={"Idempotency-Key": "output-review-no-csrf"},
+        )
+        output_review_resolved = await client.post(
+            f"{root}/tasks/TASK_demo/output-reviews/REOR_{'a' * 32}/resolve",
+            json={"expected_state_version": 1, "target": "REJECTED"},
+            headers={
+                "Idempotency-Key": "output-review-reject",
+                "X-CSRF-Token": "synthetic-csrf-token",
+            },
+        )
+        output_review_candidate = await client.post(
+            f"{root}/tasks/TASK_demo/output-reviews/REOR_{'a' * 32}/resolve",
+            json={"expected_state_version": 1, "target": "CREATE_HELD_CANDIDATE"},
+            headers={
+                "Idempotency-Key": "output-review-candidate",
+                "X-CSRF-Token": "synthetic-csrf-token",
+            },
+        )
         unapproved_publish_route = await client.post(
             f"{root}/tasks/TASK_demo/candidates/REEDUC_synthetic_1/publish",
             json={},
@@ -259,9 +308,32 @@ async def test_specialist_api_is_bounded_csrf_idempotent_and_payload_closed():
     assert input_review_bad_target.status_code == 422
     assert input_review_bad_version.status_code == 422
     assert input_review_unavailable_action.status_code in {404, 405}
+    assert output_reviews.status_code == 200
+    output_page = output_reviews.json()["data"]
+    assert set(output_page) == {"items", "offset", "limit", "has_more"}
+    assert output_page["items"][0]["safety_action"] == "REVIEW_REQUIRED"
+    assert output_page["items"][0]["reason_codes"] == ["CONTENT_CONTROVERSIAL"]
+    assert output_review.status_code == 200
+    output_detail = output_review.json()["data"]
+    assert output_detail["review_payload"]["citations"] == []
+    assert output_detail["review_payload"]["citation_binding_status"] == (
+        "NOT_EVALUATED_AT_OUTPUT_STOP"
+    )
+    assert "retrieval_snapshot" not in output_detail["review_payload"]
+    assert "payload_ciphertext" not in output_detail
+    assert output_review_missing_idem.status_code == 422
+    assert output_review_missing_csrf.status_code == 403
+    assert output_review_resolved.status_code == 200
+    assert output_review_resolved.json()["data"]["output_review"]["status"] == "REJECTED"
+    assert "candidate" not in output_review_resolved.json()["data"]
+    assert output_review_candidate.status_code == 200
+    candidate_result = output_review_candidate.json()["data"]
+    assert candidate_result["output_review"]["status"] == "CONSUMED"
+    assert candidate_result["candidate"]["status"] == "HELD"
     assert [call[0] for call in persistence.calls] == [
-        "tasks", "list", "jobs", "input_review_list", "input_review_get",
-        "get", "queue", "resolve", "input_review_resolve"
+        "tasks", "list", "jobs", "input_review_list", "output_review_list",
+        "output_review_get", "input_review_get", "get", "queue", "resolve",
+        "input_review_resolve", "output_review_resolve", "output_review_resolve",
     ]
 
 

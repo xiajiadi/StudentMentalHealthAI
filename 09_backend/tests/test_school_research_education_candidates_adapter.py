@@ -15,8 +15,10 @@ from database_layer.school_research_education_jobs import (
 
 from smhai_backend.adapters.school_research_education_candidates import (
     SchoolResearchEducationCandidatePersistenceAdapter,
+    _canonical_mapping_sha256,
 )
 from smhai_backend.core.errors import BackendError, ErrorCode
+from smhai_backend.core.request_context import RequestContext
 from smhai_backend.domains.models import BackendRole
 from smhai_backend.domains.research_general_education.prompt import (
     PROMPT_ID,
@@ -73,6 +75,9 @@ def _row(payload, **changes):
         publication_status="not_approved_for_publication_or_operational_use",
         safety_policy_version=SAFETY_POLICY_VERSION,
         content_revision=1,
+        generation_round=0,
+        input_review_id=None,
+        input_review_state=None,
         status="HELD",
         state_version=1,
         content_sha256=adapter_for_hash._payload_sha256(payload),
@@ -202,12 +207,30 @@ def _finalize_harness(configured, claim, *, revoked=False):
         profile_sha256=claim.profile_sha256,
         response_origin=claim.response_origin,
     )
-    events = []
+    class EventLog(list):
+        output_review_status = None
+        output_review_consume_calls = 0
+        output_review_create_failure = False
+
+    events = EventLog()
 
     class InputReviewRepository:
         async def create_pending(self, **kwargs):
             events.append(("create_pending", kwargs, active_uow[0]))
             return SimpleNamespace(input_review_ref="REIR_synthetic")
+
+    class OutputReviewRepository:
+        async def create_pending(self, **kwargs):
+            events.append(("output_review_create_pending", kwargs, active_uow[0]))
+            if events.output_review_create_failure:
+                raise RuntimeError("synthetic persistence failure")
+            events.output_review_status = "PENDING"
+            return SimpleNamespace(output_review_ref="REOR_synthetic")
+
+        async def consume_for_candidate(self, **kwargs):
+            events.output_review_consume_calls += 1
+            events.output_review_status = "CONSUMED"
+            return kwargs
 
     class JobRepository:
         async def require_active_claim(self, **kwargs):
@@ -227,7 +250,21 @@ def _finalize_harness(configured, claim, *, revoked=False):
     class UnitOfWork:
         research_education_jobs = JobRepository()
         research_education_input_reviews = InputReviewRepository()
+        research_education_output_reviews = OutputReviewRepository()
         audit = AuditRepository()
+
+        class Session:
+            class Nested:
+                async def __aenter__(self):
+                    return self
+
+                async def __aexit__(self, *_args):
+                    return False
+
+            def begin_nested(self):
+                return self.Nested()
+
+        session = Session()
 
         async def __aenter__(self):
             active_uow.append(self)
@@ -250,6 +287,28 @@ def _finalize_harness(configured, claim, *, revoked=False):
     return events
 
 
+async def _generate_output_review_payload(claim, content):
+    from tests.test_research_general_education import (
+        _OutputReviewSafety,
+        _Runtime,
+        _service,
+    )
+
+    token = hashlib.sha256(
+        f"{claim.job_ref}:{claim.attempt_count}".encode("ascii")
+    ).hexdigest()[:32]
+    context = RequestContext(request_id=f"REQ_{token}", trace_id=f"TRACE_{token}")
+    runtime = _Runtime(content=content)
+    service, _retriever = _service(runtime=runtime, safety=_OutputReviewSafety())
+    result = await service.generate(
+        caller_role="PSYCHOLOGICAL_SPECIALIST", request_context=context
+    )
+    assert result.status == "REVIEW_REQUIRED"
+    assert result.reason_code == "OUTPUT_SAFETY_STOP"
+    assert result.output_review_payload is not None
+    return service, result.output_review_payload
+
+
 def test_disabled_or_unpinned_candidate_policy_fails_closed():
     with pytest.raises(BackendError) as raised:
         adapter(enabled=False)._require_enabled()
@@ -258,6 +317,10 @@ def test_disabled_or_unpinned_candidate_policy_fails_closed():
     with pytest.raises(BackendError) as raised:
         adapter(policy_hash=None)._require_enabled()
     assert raised.value.code is ErrorCode.DEPENDENCY_UNAVAILABLE
+
+    with pytest.raises(BackendError) as expired_source:
+        adapter(source_valid_through=datetime.now(UTC) - timedelta(seconds=1))._require_enabled()
+    assert expired_source.value.code is ErrorCode.DEPENDENCY_UNAVAILABLE
 
 
 async def test_wrong_school_is_hidden_before_scope_resolution():
@@ -460,12 +523,44 @@ def test_new_payload_must_match_server_policy_source_and_model_pins():
     with pytest.raises(BackendError) as raised:
         configured._validate_new_payload(unpinned)
     assert raised.value.code is ErrorCode.FORBIDDEN
-
     altered_excerpt = payload.model_dump(mode="json")
     altered_excerpt["source_cards"][0]["excerpt_text"] += " modified"
     with pytest.raises(BackendError) as raised:
         configured._validate_new_payload(altered_excerpt)
     assert raised.value.code is ErrorCode.FORBIDDEN
+
+
+def test_review_required_candidate_is_allowed_only_with_consumed_output_review_sidecar():
+    payload = candidate_payload()
+    provenance = payload.provenance.model_copy(
+        update={
+            "output_safety_action": "REVIEW_REQUIRED",
+            "output_safety_reason_codes": ["CONTENT_CONTROVERSIAL"],
+        }
+    )
+    reviewed_payload = payload.model_copy(update={"provenance": provenance})
+    configured = adapter()
+
+    with pytest.raises(BackendError) as missing_sidecar:
+        configured._require_row_pins(_row(reviewed_payload))
+    assert missing_sidecar.value.code is ErrorCode.DEPENDENCY_INVALID_RESPONSE
+
+    configured._require_row_pins(
+        _row(
+            reviewed_payload,
+            output_review_id=91,
+            output_review_state="CONSUMED",
+        )
+    )
+    with pytest.raises(BackendError) as wrong_sidecar:
+        configured._require_row_pins(
+            _row(
+                reviewed_payload,
+                output_review_id=91,
+                output_review_state="PENDING",
+            )
+        )
+    assert wrong_sidecar.value.code is ErrorCode.DEPENDENCY_INVALID_RESPONSE
 
 
 async def test_input_review_finalize_persists_exact_receipt_before_finishing_in_one_uow():
@@ -635,6 +730,360 @@ async def test_output_safety_diagnostic_audit_is_closed_content_free_and_trace_b
         assert set(audit["safe_metadata"]) == {
             "schema_version", "source", "state", "reason_code", "count"
         }
+
+
+@pytest.mark.parametrize("failure_kind", ["payload_unavailable", "oversize", "persistence"])
+async def test_optional_output_review_capture_failure_is_closed_and_keeps_safety_terminal(
+    failure_kind,
+):
+    claim = _education_job_claim(job_ref="REJ_" + "b" * 64)
+    configured = adapter()
+    configured.study_use_policy = SimpleNamespace(
+        ends_at=datetime(2026, 10, 16, 11, 30, tzinfo=UTC)
+    )
+    events = _finalize_harness(configured, claim)
+    payload = None
+    if failure_kind != "payload_unavailable":
+        service, payload = await _generate_output_review_payload(
+            claim,
+            {
+                "summary": "一般教育资料概述。",
+                "observations": ["来源分别描述一般教育信息。"],
+                "suggestions": [
+                    {"text": "可以查看来源。", "source_chunk_ids": ["CHUNK_UNKNOWN"]}
+                ],
+                "disclaimer": "仅为一般资料。",
+            },
+        )
+        configured.policy_hash = service.policy_pins.policy_hash
+        configured.source_package_ref = service.policy_pins.source_package_ref
+        configured.source_study_ref = service.policy_pins.source_study_ref
+        configured.source_manifest_sha256 = service.policy_pins.source_manifest_sha256
+        configured.source_cards = service.source_cards
+        configured.protection = SimpleNamespace(
+            encrypt_json=lambda *_args, **_kwargs: SimpleNamespace(
+                ciphertext=(b"x" * 1_000_001 if failure_kind == "oversize" else b"cipher"),
+                cipher_format_version="enc.v1",
+                key_version="test-key",
+                payload_schema_version="school-research-general-education-output-review.v1",
+            )
+        )
+        if failure_kind == "persistence":
+            events.output_review_create_failure = True
+
+    diagnostic = ResearchGeneralEducationOutputSafetyDiagnostic(
+        action="REVIEW_REQUIRED",
+        reason_codes=("CONTENT_CONTROVERSIAL",),
+        requires_human=True,
+    )
+    disposition = await configured.finalize_education_job(
+        claim,
+        status="REVIEW_REQUIRED",
+        error_code=ResearchEducationJobErrorCode.SAFETY_BLOCKED,
+        reason_code="OUTPUT_SAFETY_STOP",
+        output_safety_diagnostic=diagnostic,
+        output_review_payload=payload,
+    )
+
+    assert disposition == "REVIEW_REQUIRED"
+    assert any(event[0] == "finish" for event in events)
+    capture = next(
+        event[1]
+        for event in events
+        if event[0] == "audit"
+        and event[1]["action"] == "school_research_education_job.output_review_capture"
+    )
+    expected_code = {
+        "payload_unavailable": "PAYLOAD_UNAVAILABLE",
+        "oversize": "PAYLOAD_TOO_LARGE",
+        "persistence": "PERSISTENCE_FAILED",
+    }[failure_kind]
+    assert capture["result"] is AuditResult.FAILURE
+    assert capture["safe_metadata"] == {
+        "schema_version": "research-output-review-capture.v1",
+        "source": GENERAL_EDUCATION_POLICY_VERSION,
+        "state": "NOT_SAVED",
+        "reason_code": expected_code,
+    }
+    assert events.output_review_status is None
+    assert events.output_review_consume_calls == 0
+    assert "content" not in capture["safe_metadata"]
+
+
+@pytest.mark.asyncio
+async def test_output_review_savepoint_failure_allows_terminal_job_commit():
+    from sqlalchemy import Column, Integer, MetaData, Table, create_engine, insert, select
+    from sqlalchemy.orm import Session
+
+    claim = _education_job_claim(job_ref="REJ_" + "d" * 64)
+    service, payload = await _generate_output_review_payload(
+        claim,
+        {
+            "summary": "一般教育资料概述。",
+            "observations": ["来源分别描述一般教育信息。"],
+            "suggestions": [
+                {"text": "可以查看来源。", "source_chunk_ids": ["CHUNK_UNKNOWN"]}
+            ],
+            "disclaimer": "仅为一般资料。",
+        },
+    )
+    configured = adapter(
+        policy_hash=service.policy_pins.policy_hash,
+        source_package_ref=service.policy_pins.source_package_ref,
+        source_study_ref=service.policy_pins.source_study_ref,
+        source_manifest_sha256=service.policy_pins.source_manifest_sha256,
+        source_cards=service.source_cards,
+    )
+    configured.study_use_policy = SimpleNamespace(
+        ends_at=datetime(2026, 10, 16, 11, 30, tzinfo=UTC)
+    )
+    configured.protection = SimpleNamespace(
+        encrypt_json=lambda *_args, **_kwargs: SimpleNamespace(
+            ciphertext=b"encrypted-review",
+            cipher_format_version="enc.v1",
+            key_version="test-key",
+            payload_schema_version="school-research-general-education-output-review.v1",
+        )
+    )
+    _finalize_harness(configured, claim)
+
+    engine = create_engine("sqlite:///:memory:")
+    metadata = MetaData()
+    rows = Table("savepoint_probe", metadata, Column("id", Integer, primary_key=True))
+    metadata.create_all(engine)
+    with engine.begin() as connection:
+        connection.execute(insert(rows).values(id=1))
+
+    completed = []
+    audit_events = []
+
+    class Jobs:
+        async def require_active_claim(self, **_kwargs):
+            return claim
+
+        async def finish(self, **kwargs):
+            await uow.session.execute(insert(rows).values(id=2))
+            completed.append(kwargs["status"])
+            return kwargs["status"]
+
+    class OutputReviews:
+        async def create_pending(self, **_kwargs):
+            # The duplicate key raises IntegrityError inside the adapter's savepoint.
+            await uow.session.execute(insert(rows).values(id=1))
+
+    class Audit:
+        async def append(self, **kwargs):
+            audit_events.append(kwargs)
+
+    class UnitOfWork:
+        def __init__(self):
+            self.session = AsyncSessionFacade(engine)
+            self.research_education_jobs = Jobs()
+            self.research_education_output_reviews = OutputReviews()
+            self.research_education_input_reviews = SimpleNamespace()
+            self.audit = Audit()
+
+        async def __aenter__(self):
+            await self.session.begin()
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            try:
+                if exc_type is None:
+                    await self.session.commit()
+                else:
+                    await self.session.rollback()
+            finally:
+                await self.session.close()
+            return False
+
+    uow = None
+
+    class AsyncSessionFacade:
+        def __init__(self, database_engine):
+            self.sync_session = Session(database_engine)
+
+        async def begin(self):
+            self.sync_session.begin()
+
+        async def execute(self, statement):
+            return self.sync_session.execute(statement)
+
+        def begin_nested(self):
+            transaction = self.sync_session.begin_nested()
+
+            class NestedContext:
+                async def __aenter__(self):
+                    return transaction.__enter__()
+
+                async def __aexit__(self, exc_type, exc, traceback):
+                    return transaction.__exit__(exc_type, exc, traceback)
+
+            return NestedContext()
+
+        async def commit(self):
+            self.sync_session.commit()
+
+        async def rollback(self):
+            self.sync_session.rollback()
+
+        async def close(self):
+            self.sync_session.close()
+
+    def new_uow():
+        nonlocal uow
+        uow = UnitOfWork()
+        return uow
+
+    configured._uow = new_uow
+    diagnostic = ResearchGeneralEducationOutputSafetyDiagnostic(
+        action="REVIEW_REQUIRED",
+        reason_codes=("CONTENT_CONTROVERSIAL",),
+        requires_human=True,
+    )
+    try:
+        disposition = await configured.finalize_education_job(
+            claim,
+            status="REVIEW_REQUIRED",
+            error_code=ResearchEducationJobErrorCode.SAFETY_BLOCKED,
+            reason_code="OUTPUT_SAFETY_STOP",
+            output_safety_diagnostic=diagnostic,
+            output_review_payload=payload,
+        )
+        assert disposition == "REVIEW_REQUIRED"
+        assert completed == ["REVIEW_REQUIRED"]
+        assert any(
+            event["action"] == "school_research_education_job.output_review_capture"
+            and event["safe_metadata"]["reason_code"] == "PERSISTENCE_FAILED"
+            for event in audit_events
+        )
+        with Session(engine) as check_session:
+            committed_ids = list(check_session.scalars(select(rows.c.id)).all())
+        assert committed_ids == [1, 2]
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize("invalid_kind", ["unknown_source_chunk", "business_invalid_content"])
+async def test_output_review_keeps_structural_payload_until_candidate_validation(invalid_kind):
+    from database_layer.school_research_education_output_reviews import (
+        OUTPUT_REVIEW_PAYLOAD_SCHEMA_VERSION,
+    )
+
+    claim = _education_job_claim(job_ref="REJ_" + "c" * 64)
+    if invalid_kind == "unknown_source_chunk":
+        content = {
+            "summary": "一般教育资料概述。",
+            "observations": ["来源分别描述一般教育信息。"],
+            "suggestions": [
+                {"text": "可以查看来源。", "source_chunk_ids": ["CHUNK_UNKNOWN"]}
+            ],
+            "disclaimer": "仅为一般资料。",
+        }
+    else:
+        content = {
+            "summary": " ",
+            "observations": ["来源分别描述一般教育信息。"],
+            "suggestions": [
+                {
+                    "text": "可以查看来源。",
+                    "source_chunk_ids": [
+                        "CHUNK_SCHOOL_RESEARCH_policy-1",
+                        "CHUNK_SCHOOL_RESEARCH_theory-1",
+                        "CHUNK_SCHOOL_RESEARCH_intervention-1",
+                    ],
+                }
+            ],
+            "disclaimer": "仅为一般资料。",
+        }
+    service, payload = await _generate_output_review_payload(claim, content)
+    configured = adapter(
+        policy_hash=service.policy_pins.policy_hash,
+        source_package_ref=service.policy_pins.source_package_ref,
+        source_study_ref=service.policy_pins.source_study_ref,
+        source_manifest_sha256=service.policy_pins.source_manifest_sha256,
+        source_cards=service.source_cards,
+    )
+    configured.study_use_policy = SimpleNamespace(
+        ends_at=datetime(2026, 10, 15, 13, 30, tzinfo=UTC)
+    )
+    review_dump = payload.model_dump(mode="json")
+    configured.protection = SimpleNamespace(
+        encrypt_json=lambda *_args, **_kwargs: SimpleNamespace(
+            ciphertext=b"encrypted-review",
+            cipher_format_version="enc.v1",
+            key_version="test-key",
+            payload_schema_version=OUTPUT_REVIEW_PAYLOAD_SCHEMA_VERSION,
+        ),
+        decrypt_json=lambda _encrypted: review_dump,
+    )
+    events = _finalize_harness(configured, claim)
+    diagnostic = ResearchGeneralEducationOutputSafetyDiagnostic(
+        action="REVIEW_REQUIRED",
+        reason_codes=("CONTENT_CONTROVERSIAL",),
+        requires_human=True,
+    )
+
+    disposition = await configured.finalize_education_job(
+        claim,
+        status="REVIEW_REQUIRED",
+        error_code=ResearchEducationJobErrorCode.SAFETY_BLOCKED,
+        reason_code="OUTPUT_SAFETY_STOP",
+        output_safety_diagnostic=diagnostic,
+        output_review_payload=payload,
+    )
+
+    assert disposition == "REVIEW_REQUIRED"
+    assert [event[0] for event in events if event[0] in {
+        "output_review_create_pending", "finish"
+    }] == ["output_review_create_pending", "finish"]
+    assert events.output_review_status == "PENDING"
+    save_event = next(
+        event[1]
+        for event in events
+        if event[0] == "audit"
+        and event[1]["action"] == "school_research_education_job.output_review_capture"
+    )
+    assert save_event["safe_metadata"]["state"] == "SAVED"
+    assert save_event["safe_metadata"]["reason_code"] == "OUTPUT_REVIEW_SAVED"
+    create_event = next(event[1] for event in events if event[0] == "output_review_create_pending")
+    assert create_event["payload_ciphertext"] == b"encrypted-review"
+    assert create_event["evidence"].expires_at == datetime(
+        2026, 10, 15, 13, 30, tzinfo=UTC
+    )
+    assert "content" not in create_event
+
+    row = SimpleNamespace(
+        payload_schema_version=OUTPUT_REVIEW_PAYLOAD_SCHEMA_VERSION,
+        cipher_format_version="enc.v1",
+        key_version="test-key",
+        payload_ciphertext=b"encrypted-review",
+        job_ref=claim.job_ref,
+        generation_round=0,
+        policy_hash=payload.provenance.policy_hash,
+        source_manifest_sha256=payload.provenance.source_manifest_sha256,
+        retrieval_id=payload.provenance.retrieval_id,
+        retrieval_bundle_sha256=payload.provenance.retrieval_bundle_sha256,
+        prompt_id=payload.provenance.prompt_id,
+        prompt_version=payload.provenance.prompt_version,
+        prompt_sha256=payload.provenance.prompt_sha256,
+        model_ref=payload.provenance.model_id,
+        model_digest_sha256=payload.provenance.model_digest_sha256,
+        runtime_version=payload.provenance.runtime_version,
+        input_safety_action=payload.provenance.input_safety_action,
+        retrieval_safety_action=payload.provenance.retrieval_safety_action,
+        safety_decision_id=payload.safety_decision_id,
+        safety_review_ref=payload.safety_review_ref,
+        safety_trace_id=payload.safety_trace_id,
+        content_sha256=_canonical_mapping_sha256(review_dump),
+    )
+    readback = configured._output_review_payload_from_row(row)
+    assert readback.content == payload.content
+    with pytest.raises(BackendError) as rejected:
+        configured._candidate_payload_from_output_review(readback)
+    assert rejected.value.code is ErrorCode.WORKFLOW_CONFLICT
+    assert events.output_review_status == "PENDING"
+    assert events.output_review_consume_calls == 0
 
 
 async def test_real_audit_repository_accepts_schema_version_metadata_without_db_write():

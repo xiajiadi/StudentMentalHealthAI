@@ -348,6 +348,7 @@ class ResearchGeneralEducationWorker:
                 reason_code=outcome.reason_code,
                 boundary_diagnostic=outcome.boundary_diagnostic,
                 output_safety_diagnostic=outcome.output_safety_diagnostic,
+                output_review_payload=outcome.output_review_payload,
                 result=result,
                 input_review=outcome.input_review,
             )
@@ -446,6 +447,7 @@ class ResearchGeneralEducationWorker:
         reason_code=None,
         boundary_diagnostic=None,
         output_safety_diagnostic=None,
+        output_review_payload=None,
     ) -> ResearchGeneralEducationWorkerResult:
         try:
             review_kwargs = {} if input_review is None else {"input_review": input_review}
@@ -460,6 +462,11 @@ class ResearchGeneralEducationWorker:
                 if output_safety_diagnostic is None
                 else {"output_safety_diagnostic": output_safety_diagnostic}
             )
+            output_review_kwargs = (
+                {}
+                if output_review_payload is None
+                else {"output_review_payload": output_review_payload}
+            )
             persisted = await self.persistence_adapter.finalize_education_job(
                 claim,
                 status=status,
@@ -468,6 +475,7 @@ class ResearchGeneralEducationWorker:
                 **reason_kwargs,
                 **boundary_kwargs,
                 **output_safety_kwargs,
+                **output_review_kwargs,
             )
         except BackendError as exc:
             if exc.code in {

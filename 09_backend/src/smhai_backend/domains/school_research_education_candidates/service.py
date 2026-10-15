@@ -26,6 +26,10 @@ from .schemas import (
     ResearchEducationInputReviewListDto,
     ResearchEducationInputReviewResolutionRequest,
     ResearchEducationInputReviewSummaryDto,
+    ResearchEducationOutputReviewDetailDto,
+    ResearchEducationOutputReviewListDto,
+    ResearchEducationOutputReviewResolutionDto,
+    ResearchEducationOutputReviewResolutionRequest,
 )
 
 _INPUT_REVIEW_REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
@@ -87,6 +91,56 @@ class SchoolResearchEducationCandidateService:
                         payload_value
                     )
                 values["candidate_payload"] = payload
+            elif model is ResearchEducationOutputReviewDetailDto:
+                from smhai_backend.domains.research_general_education.schemas import (
+                    ResearchGeneralEducationSourceCard,
+                )
+                from smhai_backend.domains.support.schemas import GenerationContent, SupportCitation
+
+                from .schemas import ResearchEducationOutputReviewPayloadDto
+
+                payload_value = values.get("review_payload")
+                if not isinstance(payload_value, Mapping):
+                    raise ValueError("output review payload is unavailable")
+                payload_values = dict(payload_value)
+                payload_values["content"] = GenerationContent.model_validate(
+                    payload_values.get("content"), strict=True
+                )
+                source_cards = payload_values.get("source_cards")
+                if not isinstance(source_cards, list):
+                    raise ValueError("output review sources are unavailable")
+                payload_values["source_cards"] = [
+                    ResearchGeneralEducationSourceCard.model_validate(card, strict=True)
+                    for card in source_cards
+                ]
+                citations = payload_values.get("citations")
+                citation_fields = set(SupportCitation.model_fields)
+                if not isinstance(citations, list) or any(
+                    not isinstance(citation, Mapping)
+                    or set(citation) - citation_fields
+                    for citation in citations
+                ):
+                    raise ValueError("output review citations are invalid")
+                payload_values["citations"] = [
+                    SupportCitation.model_validate(citation, strict=True)
+                    for citation in citations
+                ]
+                from smhai_backend.domains.research_general_education.schemas import (
+                    ResearchGeneralEducationOutputReviewProvenance,
+                )
+
+                payload_values["provenance"] = (
+                    ResearchGeneralEducationOutputReviewProvenance.model_validate(
+                        payload_values.get("provenance"), strict=True
+                    )
+                )
+                payload_values["provenance"] = payload_values["provenance"].model_dump(
+                    mode="python"
+                )
+                payload = ResearchEducationOutputReviewPayloadDto.model_validate(
+                    payload_values, strict=True
+                )
+                values["review_payload"] = payload
             return model.model_validate(values, strict=True).model_dump(mode="python")
         except (ValidationError, ValueError) as exc:
             raise error(
@@ -112,6 +166,16 @@ class SchoolResearchEducationCandidateService:
 
     @staticmethod
     def _input_review_pagination(offset: int, limit: int) -> None:
+        if (
+            type(offset) is not int
+            or not 0 <= offset <= 100_000
+            or type(limit) is not int
+            or not 1 <= limit <= 20
+        ):
+            raise error(ErrorCode.VALIDATION_FAILED, detail="pagination is invalid")
+
+    @staticmethod
+    def _output_review_pagination(offset: int, limit: int) -> None:
         if (
             type(offset) is not int
             or not 0 <= offset <= 100_000
@@ -179,6 +243,90 @@ class SchoolResearchEducationCandidateService:
                 detail="research education input review is unavailable",
             )
         return detail
+
+    async def list_output_reviews(self, actor: Actor, task_ref: str, *, offset=0, limit=20):
+        self._require_specialist(actor)
+        task_ref = self._input_review_ref(task_ref, "task_ref")
+        self._output_review_pagination(offset, limit)
+        result = await self._port().school_research_education_output_review_list(
+            actor, task_ref, offset=offset, limit=limit
+        )
+        page = self._project(ResearchEducationOutputReviewListDto, result)
+        if (
+            page["offset"] != offset
+            or page["limit"] != limit
+            or (page["has_more"] and len(page["items"]) != limit)
+            or any(item["task_ref"] != task_ref for item in page["items"])
+        ):
+            raise error(
+                ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                detail="research education output review is unavailable",
+            )
+        return page
+
+    async def get_output_review(self, actor: Actor, task_ref: str, output_review_ref: str):
+        self._require_specialist(actor)
+        task_ref = self._input_review_ref(task_ref, "task_ref")
+        output_review_ref = self._input_review_ref(output_review_ref, "output_review_ref")
+        result = await self._port().school_research_education_output_review_get(
+            actor, task_ref, output_review_ref
+        )
+        detail = self._project(ResearchEducationOutputReviewDetailDto, result)
+        if (
+            detail["task_ref"] != task_ref
+            or detail["output_review_ref"] != output_review_ref
+        ):
+            raise error(
+                ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                detail="research education output review is unavailable",
+            )
+        return detail
+
+    async def resolve_output_review(
+        self,
+        actor: Actor,
+        task_ref: str,
+        output_review_ref: str,
+        *,
+        expected_state_version: int,
+        target: str,
+        idempotency,
+        trace_id: str,
+    ):
+        self._require_specialist(actor)
+        task_ref = self._input_review_ref(task_ref, "task_ref")
+        output_review_ref = self._input_review_ref(output_review_ref, "output_review_ref")
+        request = self._validate(
+            ResearchEducationOutputReviewResolutionRequest,
+            {"expected_state_version": expected_state_version, "target": target},
+        )
+        result = await self._port().school_research_education_output_review_resolve(
+            actor,
+            task_ref,
+            output_review_ref,
+            expected_state_version=request.expected_state_version,
+            target=request.target,
+            idempotency=idempotency,
+            trace_id=trace_id,
+        )
+        projected = self._project(ResearchEducationOutputReviewResolutionDto, result)
+        output_review = projected["output_review"]
+        expected_status = {
+            "REJECTED": "REJECTED",
+            "REVOKED": "REVOKED",
+            "CREATE_HELD_CANDIDATE": "CONSUMED",
+        }[request.target]
+        if (
+            output_review["task_ref"] != task_ref
+            or output_review["output_review_ref"] != output_review_ref
+            or output_review["status"] != expected_status
+            or output_review["state_version"] != 2
+        ):
+            raise error(
+                ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                detail="research education output review is unavailable",
+            )
+        return projected
 
     async def resolve_input_review(
         self,

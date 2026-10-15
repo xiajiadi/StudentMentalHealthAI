@@ -834,6 +834,8 @@ def build_container(
                         input_review_continuation_enabled=(
                             education_draft_settings.input_review_continuation_enabled
                         ),
+                        source_cards=source_cards,
+                        source_valid_through=package.valid_through,
                     )
                 )
                 school_research_education_candidates = (

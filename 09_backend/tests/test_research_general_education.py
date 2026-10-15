@@ -14,6 +14,10 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from smhai_backend.adapters.school_research_education_candidates import (
+    SchoolResearchEducationCandidatePersistenceAdapter,
+)
+from smhai_backend.core.errors import BackendError
 from smhai_backend.core.request_context import RequestContext
 from smhai_backend.domains.research_general_education.input_review_policy import (
     INPUT_REVIEW_CONTINUATION_POLICY_SHA256,
@@ -29,6 +33,7 @@ from smhai_backend.domains.research_general_education.schemas import (
     ResearchGeneralEducationCandidatePayload,
     ResearchGeneralEducationInputReviewReceipt,
     ResearchGeneralEducationOutcome,
+    ResearchGeneralEducationOutputReviewPayload,
     ResearchGeneralEducationOutputSafetyDiagnostic,
     ResearchGeneralEducationReviewedInputAuthorization,
     ResearchGeneralEducationSourceCard,
@@ -191,15 +196,16 @@ class _Safety:
         self.calls: list[tuple[str, dict[str, Any]]] = []
 
     async def check_input(self, context, request_context):
-        return self._check("INPUT", context)
+        return self._check("INPUT", context, trace_id=request_context.trace_id)
 
     async def check_retrieval(self, context, chunks, request_context):
-        return self._check("RETRIEVAL", context)
+        return self._check("RETRIEVAL", context, trace_id=request_context.trace_id)
 
     async def check_output(self, context, candidate_text, request_context):
         return self._check("OUTPUT", context)
 
-    def _check(self, stage, context):
+    def _check(self, stage, context, *, trace_id=None):
+        trace_id = trace_id or CONTEXT.trace_id
         self.calls.append((stage, context))
         action = self.actions[stage]
         reason_codes = (
@@ -214,12 +220,38 @@ class _Safety:
         )
         return SafetyCheckView(
             operation=stage,
-            trace_id=CONTEXT.trace_id,
+            trace_id=trace_id,
             decision=SafetyDecisionView(
                 action=action,
                 reason_codes=reason_codes,
                 requires_human=requires_human,
-                trace_id=CONTEXT.trace_id,
+                trace_id=trace_id,
+            ),
+        )
+
+
+class _OutputReviewSafety(_Safety):
+    def __init__(self, *, reason_codes=None, action="REVIEW_REQUIRED", requires_human=True):
+        super().__init__(
+            output_action=action,
+            output_reason_codes=(
+                ["CONTENT_CONTROVERSIAL"] if reason_codes is None else reason_codes
+            ),
+            output_requires_human=requires_human,
+        )
+
+    async def check_output(self, context, candidate_text, request_context):
+        self.calls.append(("OUTPUT", context))
+        return SafetyCheckView(
+            operation="OUTPUT",
+            trace_id=request_context.trace_id,
+            decision=SafetyDecisionView(
+                action=self.actions["OUTPUT"],
+                reason_codes=self.output_reason_codes,
+                requires_human=self.output_requires_human,
+                trace_id=request_context.trace_id,
+                decision_id="DEC_output_review_fixture",
+                review_case_id="REVIEW_output_review_fixture",
             ),
         )
 
@@ -302,8 +334,8 @@ class _Runtime:
             "disclaimer": "本草稿用于一般教育信息研究复核，不构成诊断或个体建议。",
         }
         return ResearchGeneralEducationRuntimeResult(
-            request_id=CONTEXT.request_id,
-            trace_id=CONTEXT.trace_id,
+            request_id=kwargs["context"].request_id,
+            trace_id=kwargs["context"].trace_id,
             generation_id=kwargs["generation_id"],
             retrieval_id=kwargs["retrieval_id"],
             prompt_id=kwargs["prompt_id"],
@@ -432,6 +464,101 @@ async def test_unrecognized_output_reason_omits_diagnostic_without_changing_safe
     assert result.reason_code == "OUTPUT_SAFETY_STOP"
     assert result.output_safety_diagnostic is None
     assert result.candidate is None
+
+
+@pytest.mark.asyncio
+async def test_exact_controversial_output_stop_retains_only_encrypted_review_envelope_input():
+    service, retriever = _service(safety=_OutputReviewSafety())
+
+    result = await service.generate(
+        caller_role="PSYCHOLOGICAL_SPECIALIST", request_context=CONTEXT
+    )
+
+    assert result.status == "REVIEW_REQUIRED"
+    assert result.reason_code == "OUTPUT_SAFETY_STOP"
+    assert result.candidate is None
+    assert type(result.output_review_payload) is ResearchGeneralEducationOutputReviewPayload
+    assert result.output_review_payload.schema_version == (
+        "school-research-general-education-output-review.v1"
+    )
+    assert result.output_review_payload.provenance.output_safety_action == "REVIEW_REQUIRED"
+    assert result.output_review_payload.provenance.output_safety_reason_codes == (
+        "CONTENT_CONTROVERSIAL",
+    )
+    assert result.output_review_payload.safety_decision_id == "DEC_output_review_fixture"
+    assert result.output_review_payload.safety_review_ref == "REVIEW_output_review_fixture"
+    assert result.output_review_payload.retrieval_snapshot.retrieval_id == (
+        result.output_review_payload.provenance.retrieval_id
+    )
+    assert len(result.output_review_payload.retrieval_snapshot.chunks) == 3
+    assert retriever.calls == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("reason_codes", "action", "requires_human"),
+    [
+        (["CONTENT_CONTROVERSIAL", "PII_DETECTED"], "REVIEW_REQUIRED", True),
+        (["CONTENT_UNSAFE"], "REVIEW_REQUIRED", True),
+        (["CONTENT_CONTROVERSIAL"], "BLOCK", True),
+        (["CONTENT_CONTROVERSIAL"], "PROCEED", True),
+        (["CONTENT_CONTROVERSIAL"], "REVIEW_REQUIRED", False),
+    ],
+)
+async def test_non_exact_output_stop_never_gets_content_bearing_review_payload(
+    reason_codes, action, requires_human
+):
+    service, _ = _service(
+        safety=_OutputReviewSafety(
+            reason_codes=reason_codes, action=action, requires_human=requires_human
+        )
+    )
+
+    result = await service.generate(
+        caller_role="PSYCHOLOGICAL_SPECIALIST", request_context=CONTEXT
+    )
+
+    assert result.output_review_payload is None
+
+
+@pytest.mark.asyncio
+async def test_output_review_envelope_rebinds_only_exact_job_trace_and_r3_bundle():
+    job_ref = "REJ_" + "a" * 64
+    token = hashlib.sha256(f"{job_ref}:1".encode("ascii")).hexdigest()[:32]
+    request_context = RequestContext(request_id=f"REQ_{token}", trace_id=f"TRACE_{token}")
+    service, _ = _service(safety=_OutputReviewSafety())
+
+    result = await service.generate(
+        caller_role="PSYCHOLOGICAL_SPECIALIST", request_context=request_context
+    )
+    assert result.output_review_payload is not None
+    persistence = SchoolResearchEducationCandidatePersistenceAdapter(
+        None,
+        enabled=True,
+        school_id=17,
+        school_study_ref="school-study-synthetic",
+        policy_hash=POLICY_SHA,
+        source_manifest_sha256=MANIFEST_SHA,
+        source_package_ref="source-package-v1",
+        source_study_ref="source-study-v1",
+        study_use_policy=None,
+        source_cards=service.source_cards,
+    )
+
+    validated = persistence._validated_output_review_payload(
+        result.output_review_payload,
+        job_ref=job_ref,
+        attempt_count=1,
+        generation_round=0,
+    )
+    assert validated is result.output_review_payload
+    with pytest.raises(BackendError):
+        persistence._validated_output_review_payload(
+            result.output_review_payload.model_copy(update={"safety_trace_id": "TRACE_wrong"}),
+            job_ref=job_ref,
+            attempt_count=1,
+            generation_round=0,
+        )
 
 
 def test_output_safety_diagnostic_rejects_unknown_reason_and_forged_outcome_pair():

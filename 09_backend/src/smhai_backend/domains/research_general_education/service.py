@@ -49,8 +49,11 @@ from .schemas import (
     ResearchGeneralEducationCandidatePayload,
     ResearchGeneralEducationInputReviewReceipt,
     ResearchGeneralEducationOutcome,
+    ResearchGeneralEducationOutputReviewPayload,
+    ResearchGeneralEducationOutputReviewProvenance,
     ResearchGeneralEducationOutputSafetyDiagnostic,
     ResearchGeneralEducationProvenance,
+    ResearchGeneralEducationRetrievalSnapshot,
     ResearchGeneralEducationReviewedInputAuthorization,
     ResearchGeneralEducationSourceCard,
 )
@@ -461,14 +464,42 @@ class ResearchGeneralEducationDraftService:
         output_action, output_reasons = output_codes
         stopped = _safety_stop(output_action, output_check.decision.requires_human)
         if stopped:
+            output_diagnostic = _output_safety_diagnostic(
+                output_check,
+                output_reasons,
+                expected_status=stopped,
+            )
+            output_review_payload = None
+            if (
+                output_action == "REVIEW_REQUIRED"
+                and output_reasons == ["CONTENT_CONTROVERSIAL"]
+                and output_check.decision.requires_human is True
+            ):
+                output_review_payload = _output_review_payload(
+                    check=output_check,
+                    request_context=request_context,
+                    content=content,
+                    retrieval=retrieval,
+                    generation_id=generation_id,
+                    retrieval_id=retrieval_id,
+                    retrieval_bundle_sha256=bundle.bundle_hash,
+                    input_action=input_action,
+                    input_reasons=input_reasons,
+                    retrieval_action=retrieval_action,
+                    retrieval_reasons=retrieval_reasons,
+                    generated=generated,
+                    policy_pins=self.policy_pins,
+                    canonical_input_sha256=(
+                        authorization.receipt.canonical_input_sha256
+                        if authorization is not None
+                        else None
+                    ),
+                )
             return _outcome(
                 stopped,
                 "OUTPUT_SAFETY_STOP",
-                output_safety_diagnostic=_output_safety_diagnostic(
-                    output_check,
-                    output_reasons,
-                    expected_status=stopped,
-                ),
+                output_safety_diagnostic=output_diagnostic,
+                output_review_payload=output_review_payload,
             )
 
         if not _content_well_formed(content):
@@ -1010,16 +1041,126 @@ def _output_safety_diagnostic(
         return None
 
 
+def _output_review_payload(
+    *,
+    check: SafetyCheckView,
+    request_context: RequestContext,
+    content: GenerationContent,
+    retrieval: RetrievalResult,
+    generation_id: str,
+    retrieval_id: str,
+    retrieval_bundle_sha256: str,
+    input_action: SafetyAction,
+    input_reasons: list[str],
+    retrieval_action: SafetyAction,
+    retrieval_reasons: list[str],
+    generated: ResearchGeneralEducationRuntimeResult,
+    policy_pins: ResearchGeneralEducationPolicyPins,
+    canonical_input_sha256: str | None,
+) -> ResearchGeneralEducationOutputReviewPayload | None:
+    """Build an encrypted-only envelope for the exact eligible Safety stop."""
+    try:
+        if (
+            check.operation != "OUTPUT"
+            or check.trace_id != request_context.trace_id
+            or check.decision.trace_id != request_context.trace_id
+            or check.decision.action != "REVIEW_REQUIRED"
+            or check.decision.requires_human is not True
+            or tuple(check.decision.reason_codes) != ("CONTENT_CONTROVERSIAL",)
+            or type(check.decision.decision_id) is not str
+            or type(check.review_reference) is not str
+        ):
+            return None
+        trace_fields = (
+            "package_id",
+            "study_ref",
+            "manifest_sha256",
+            "purpose",
+            "target_population",
+            "target_role",
+            "review_status",
+            "rights_status",
+            "source_rights_status",
+            "consumer_age_min",
+            "consumer_age_max",
+            "research_only",
+            "professional_approval",
+            "human_curated",
+            "ethics_approval",
+            "clinical_approval",
+            "psychometric_approval",
+            "publication_eligible",
+            "production_use",
+            "matched_layers",
+            "missing_layers",
+        )
+        if not isinstance(retrieval.trace, Mapping):
+            return None
+        trace = {name: retrieval.trace[name] for name in trace_fields}
+        snapshot = ResearchGeneralEducationRetrievalSnapshot(
+            retrieval_id=retrieval.retrieval_id,
+            label=retrieval.label,
+            chunks=[chunk.model_dump(mode="json") for chunk in retrieval.chunks],
+            trace=trace,
+        )
+        provenance = ResearchGeneralEducationOutputReviewProvenance(
+            generation_id=generation_id,
+            retrieval_id=retrieval_id,
+            retrieval_bundle_sha256=retrieval_bundle_sha256,
+            policy_version=GENERAL_EDUCATION_POLICY_VERSION,
+            policy_hash=policy_pins.policy_hash,
+            safety_policy_version=SAFETY_POLICY_VERSION,
+            source_package_ref=policy_pins.source_package_ref,
+            source_study_ref=policy_pins.source_study_ref,
+            source_manifest_sha256=policy_pins.source_manifest_sha256,
+            source_age_scope="14-17",
+            prompt_id=PROMPT_ID,
+            prompt_version=PROMPT_VERSION,
+            prompt_sha256=PROMPT_SHA256,
+            model_id=generated.model_id,
+            model_version=generated.model_version,
+            model_digest_sha256=generated.model_digest_sha256,
+            runtime_version=generated.runtime_version,
+            runtime_attempt_count=generated.attempt_count,
+            runtime_retry_count=generated.retry_count,
+            runtime_fallback_count=generated.fallback_count,
+            runtime_fallback_attempted=generated.fallback_attempted,
+            runtime_local_only=generated.local_only,
+            input_safety_action=input_action,
+            input_safety_reason_codes=input_reasons,
+            retrieval_safety_action=retrieval_action,
+            retrieval_safety_reason_codes=retrieval_reasons,
+            output_safety_action="REVIEW_REQUIRED",
+            output_safety_reason_codes=("CONTENT_CONTROVERSIAL",),
+            output_safety_requires_human=True,
+        )
+        return ResearchGeneralEducationOutputReviewPayload(
+            schema_version="school-research-general-education-output-review.v1",
+            content=content,
+            retrieval_snapshot=snapshot,
+            provenance=provenance,
+            safety_decision_id=check.decision.decision_id,
+            safety_review_ref=check.review_reference,
+            safety_trace_id=check.trace_id,
+            request_id=request_context.request_id,
+            canonical_input_sha256=canonical_input_sha256,
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
 def _outcome(
     status: str,
     reason_code: str,
     *,
     boundary_diagnostic: ResearchGeneralEducationBoundaryDiagnostic | None = None,
     output_safety_diagnostic: ResearchGeneralEducationOutputSafetyDiagnostic | None = None,
+    output_review_payload: ResearchGeneralEducationOutputReviewPayload | None = None,
 ) -> ResearchGeneralEducationOutcome:
     return ResearchGeneralEducationOutcome(
         status=status,
         reason_code=reason_code,
         boundary_diagnostic=boundary_diagnostic,
         output_safety_diagnostic=output_safety_diagnostic,
+        output_review_payload=output_review_payload,
     )

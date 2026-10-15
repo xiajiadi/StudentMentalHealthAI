@@ -31,6 +31,10 @@ from .schemas import (
     ResearchEducationInputReviewListDto,
     ResearchEducationInputReviewResolutionRequest,
     ResearchEducationInputReviewSummaryDto,
+    ResearchEducationOutputReviewDetailDto,
+    ResearchEducationOutputReviewListDto,
+    ResearchEducationOutputReviewResolutionDto,
+    ResearchEducationOutputReviewResolutionRequest,
 )
 
 router = APIRouter(
@@ -72,7 +76,9 @@ def _response(request: Request, data):
     )
 
 
-async def _write(request: Request, actor, operation: str, payload: dict, call, dto):
+async def _write(
+    request: Request, actor, operation: str, payload: dict, call, dto, *, exclude_none=False
+):
     key = request_key(request)
     if key is None:
         raise error(ErrorCode.VALIDATION_FAILED, detail="Idempotency-Key is required")
@@ -87,7 +93,9 @@ async def _write(request: Request, actor, operation: str, payload: dict, call, d
     )
     context = current_request_context(request)
     result = await call((key, fingerprint(payload), idem_scope), context.trace_id)
-    safe = dto.model_validate(result, strict=True).model_dump(mode="json")
+    safe = dto.model_validate(result, strict=True).model_dump(
+        mode="json", exclude_none=exclude_none
+    )
     return _response(request, safe)
 
 
@@ -205,6 +213,76 @@ async def resolve_input_review(
             trace_id=trace,
         ),
         ResearchEducationInputReviewSummaryDto,
+    )
+
+
+@router.get(
+    "/tasks/{task_ref}/output-reviews",
+    response_model=ApiEnvelope[ResearchEducationOutputReviewListDto],
+    responses=_ERRORS,
+)
+async def list_output_reviews(
+    request: Request,
+    task_ref: Annotated[str, Path(min_length=1, max_length=128)],
+    actor: CurrentActor,
+    offset: int = Query(default=0, ge=0, le=100_000),
+    limit: int = Query(default=20, ge=1, le=20),
+):
+    return _response(
+        request,
+        await _service(request).list_output_reviews(
+            actor, task_ref, offset=offset, limit=limit
+        ),
+    )
+
+
+@router.get(
+    "/tasks/{task_ref}/output-reviews/{output_review_ref}",
+    response_model=ApiEnvelope[ResearchEducationOutputReviewDetailDto],
+    responses=_ERRORS,
+)
+async def get_output_review(
+    request: Request,
+    task_ref: Annotated[str, Path(min_length=1, max_length=128)],
+    output_review_ref: Annotated[str, Path(min_length=1, max_length=128)],
+    actor: CurrentActor,
+):
+    return _response(
+        request,
+        await _service(request).get_output_review(actor, task_ref, output_review_ref),
+    )
+
+
+@router.post(
+    "/tasks/{task_ref}/output-reviews/{output_review_ref}/resolve",
+    response_model=ApiEnvelope[ResearchEducationOutputReviewResolutionDto],
+    openapi_extra=CSRF_SECURITY_OPENAPI_EXTRA,
+    responses=_ERRORS,
+)
+async def resolve_output_review(
+    request: Request,
+    task_ref: Annotated[str, Path(min_length=1, max_length=128)],
+    output_review_ref: Annotated[str, Path(min_length=1, max_length=128)],
+    payload: ResearchEducationOutputReviewResolutionRequest,
+    actor: CsrfActor,
+):
+    service = _service(request)
+    return await _write(
+        request,
+        actor,
+        f"research-education-output-review-resolve:{task_ref}:{output_review_ref}",
+        payload.model_dump(),
+        lambda idem, trace: service.resolve_output_review(
+            actor,
+            task_ref,
+            output_review_ref,
+            expected_state_version=payload.expected_state_version,
+            target=payload.target,
+            idempotency=idem,
+            trace_id=trace,
+        ),
+        ResearchEducationOutputReviewResolutionDto,
+        exclude_none=True,
     )
 
 

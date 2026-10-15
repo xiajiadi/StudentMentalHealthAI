@@ -22,7 +22,9 @@ from smhai_backend.domains.research_general_education.prompt import (
 )
 from smhai_backend.domains.research_general_education.schemas import (
     ResearchGeneralEducationCandidatePayload,
+    ResearchGeneralEducationSourceCard,
 )
+from smhai_backend.domains.support.schemas import GenerationContent, SupportCitation
 
 _PUBLICATION_STATUS = "not_approved_for_publication_or_operational_use"
 _INPUT_REVIEW_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
@@ -282,6 +284,129 @@ class ResearchEducationInputReviewResolutionRequest(_StrictModel):
             and self.expected_state_version != 1
         ):
             raise ValueError("input review target is incompatible with its version")
+        return self
+
+
+class ResearchEducationOutputReviewSummaryDto(_StrictModel):
+    output_review_ref: StrictStr = Field(pattern=r"^REOR_[0-9a-f]{32}$", max_length=37)
+    job_ref: StrictStr = Field(pattern=r"^REJ_[0-9a-f]{64}$", max_length=68)
+    task_ref: StrictStr = Field(min_length=1, max_length=128)
+    session_ref: StrictStr = Field(min_length=1, max_length=128)
+    generation_round: Literal[0, 1]
+    status: Literal["PENDING", "REJECTED", "REVOKED", "CONSUMED"]
+    state_version: StrictInt = Field(ge=1, le=2)
+    expires_at: datetime
+    created_at: datetime
+    updated_at: datetime
+    safety_action: Literal["REVIEW_REQUIRED"]
+    reason_codes: list[Literal["CONTENT_CONTROVERSIAL"]] = Field(min_length=1, max_length=1)
+    requires_human: Literal[True]
+    purpose: Literal["RESEARCH_SIMULATION"]
+    research_only: Literal[True]
+    publication_status: Literal[_PUBLICATION_STATUS]
+    student_feedback_eligible: Literal[False]
+
+    @field_validator("expires_at", "created_at", "updated_at", mode="after")
+    @classmethod
+    def output_review_timestamps_are_utc(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
+
+    @model_validator(mode="after")
+    def review_status_matches_version(self):
+        expected = 1 if self.status == "PENDING" else 2
+        if (
+            self.state_version != expected
+            or self.expires_at <= self.created_at
+            or self.updated_at < self.created_at
+        ):
+            raise ValueError("output review status, version, or timestamps are inconsistent")
+        return self
+
+
+class ResearchEducationOutputReviewListDto(_StrictModel):
+    items: list[ResearchEducationOutputReviewSummaryDto]
+    offset: StrictInt = Field(ge=0, le=100_000)
+    limit: StrictInt = Field(ge=1, le=20)
+    has_more: StrictBool
+
+    @model_validator(mode="after")
+    def page_is_consistent(self):
+        if (
+            len(self.items) > self.limit
+            or len({item.output_review_ref for item in self.items}) != len(self.items)
+        ):
+            raise ValueError("output review page is inconsistent")
+        return self
+
+
+class ResearchEducationOutputReviewProvenanceDto(_StrictModel):
+    generation_id: StrictStr = Field(pattern=r"^GEN_[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$")
+    retrieval_id: StrictStr = Field(pattern=r"^RETR_[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$")
+    retrieval_bundle_sha256: StrictStr = Field(pattern=_SHA256.pattern)
+    policy_version: Literal["RESEARCH_GENERAL_EDUCATION_DRAFT_V1"]
+    policy_hash: StrictStr = Field(pattern=_SHA256.pattern)
+    safety_policy_version: Literal["safety-port-unversioned.v1"]
+    source_package_ref: StrictStr = Field(min_length=1, max_length=255)
+    source_study_ref: StrictStr = Field(min_length=1, max_length=255)
+    source_manifest_sha256: StrictStr = Field(pattern=_SHA256.pattern)
+    source_age_scope: Literal["14-17"]
+    prompt_id: StrictStr = Field(pattern=r"^PROMPT_[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$")
+    prompt_version: StrictStr = Field(min_length=1, max_length=64)
+    prompt_sha256: StrictStr = Field(pattern=_SHA256.pattern)
+    model_id: StrictStr = Field(min_length=1, max_length=128)
+    model_version: StrictStr = Field(min_length=1, max_length=128)
+    model_digest_sha256: StrictStr = Field(pattern=_SHA256.pattern)
+    runtime_version: StrictStr = Field(min_length=1, max_length=64)
+    runtime_attempt_count: Literal[1]
+    runtime_retry_count: Literal[0]
+    runtime_fallback_count: Literal[0]
+    runtime_fallback_attempted: Literal[False]
+    runtime_local_only: Literal[True]
+    input_safety_action: Literal[
+        "PROCEED", "PROCEED_WITH_BOUNDARY", "BLOCK", "REVIEW_REQUIRED", "CRISIS_ROUTE"
+    ]
+    input_safety_reason_codes: list[StrictStr] = Field(min_length=1, max_length=16)
+    retrieval_safety_action: Literal[
+        "PROCEED", "PROCEED_WITH_BOUNDARY", "BLOCK", "REVIEW_REQUIRED", "CRISIS_ROUTE"
+    ]
+    retrieval_safety_reason_codes: list[StrictStr] = Field(min_length=1, max_length=16)
+    output_safety_action: Literal["REVIEW_REQUIRED"]
+    output_safety_reason_codes: tuple[Literal["CONTENT_CONTROVERSIAL"], ...] = Field(
+        min_length=1, max_length=1
+    )
+    output_safety_requires_human: Literal[True]
+
+
+class ResearchEducationOutputReviewPayloadDto(_StrictModel):
+    schema_version: Literal["school-research-general-education-output-review.v1"]
+    content: GenerationContent
+    source_cards: list[ResearchGeneralEducationSourceCard] = Field(min_length=1, max_length=8)
+    citations: list[SupportCitation] = Field(default_factory=list, max_length=8)
+    citation_binding_status: Literal["NOT_EVALUATED_AT_OUTPUT_STOP"]
+    provenance: ResearchEducationOutputReviewProvenanceDto
+
+
+class ResearchEducationOutputReviewDetailDto(ResearchEducationOutputReviewSummaryDto):
+    review_payload: ResearchEducationOutputReviewPayloadDto
+
+
+class ResearchEducationOutputReviewResolutionRequest(_StrictModel):
+    expected_state_version: StrictInt = Field(ge=1, le=1)
+    target: Literal["REJECTED", "REVOKED", "CREATE_HELD_CANDIDATE"]
+
+
+class ResearchEducationOutputReviewResolutionDto(_StrictModel):
+    output_review: ResearchEducationOutputReviewSummaryDto
+    candidate: ResearchEducationCandidateSummaryDto | None = None
+
+    @model_validator(mode="after")
+    def candidate_matches_resolution(self):
+        if (self.output_review.status == "CONSUMED") != (self.candidate is not None):
+            raise ValueError("output review resolution and candidate disagree")
+        if self.candidate is not None and self.candidate.status != "HELD":
+            raise ValueError("output review candidate must remain held")
         return self
 
 

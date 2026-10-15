@@ -209,6 +209,52 @@ def input_review_detail(**changes):
     }
 
 
+def output_review_summary(**changes):
+    return {
+        "output_review_ref": "REOR_" + "a" * 32,
+        "job_ref": "REJ_" + "b" * 64,
+        "task_ref": "TASK_demo",
+        "session_ref": "RSESSION_synthetic_1",
+        "generation_round": 0,
+        "status": "PENDING",
+        "state_version": 1,
+        "expires_at": datetime(2026, 10, 16, 12, tzinfo=UTC),
+        "created_at": datetime(2026, 10, 15, 12, tzinfo=UTC),
+        "updated_at": datetime(2026, 10, 15, 12, tzinfo=UTC),
+        "safety_action": "REVIEW_REQUIRED",
+        "reason_codes": ["CONTENT_CONTROVERSIAL"],
+        "requires_human": True,
+        "purpose": "RESEARCH_SIMULATION",
+        "research_only": True,
+        "publication_status": "not_approved_for_publication_or_operational_use",
+        "student_feedback_eligible": False,
+        **changes,
+    }
+
+
+def output_review_detail(**changes):
+    candidate = candidate_payload()
+    provenance = candidate.provenance.model_dump(mode="python")
+    provenance.pop("cited_chunk_ids")
+    provenance.update(
+        output_safety_action="REVIEW_REQUIRED",
+        output_safety_reason_codes=("CONTENT_CONTROVERSIAL",),
+        output_safety_requires_human=True,
+    )
+    return {
+        **output_review_summary(),
+        "review_payload": {
+            "schema_version": "school-research-general-education-output-review.v1",
+            "content": candidate.content.model_dump(mode="python"),
+            "source_cards": [card.model_dump(mode="python") for card in candidate.source_cards],
+            "citations": [],
+            "citation_binding_status": "NOT_EVALUATED_AT_OUTPUT_STOP",
+            "provenance": provenance,
+        },
+        **changes,
+    }
+
+
 class FakePersistence:
     def __init__(self):
         self.calls = []
@@ -317,6 +363,47 @@ class FakePersistence:
             continuation_enabled=self.input_review_continuation_enabled,
         )
 
+    async def school_research_education_output_review_list(
+        self, actor_arg, task_ref, *, offset, limit
+    ):
+        self.calls.append(("output_review_list", actor_arg, task_ref, offset, limit))
+        return {
+            "items": [output_review_summary()],
+            "offset": offset,
+            "limit": limit,
+            "has_more": False,
+        }
+
+    async def school_research_education_output_review_get(
+        self, actor_arg, task_ref, output_review_ref
+    ):
+        self.calls.append(("output_review_get", actor_arg, task_ref, output_review_ref))
+        return output_review_detail()
+
+    async def school_research_education_output_review_resolve(
+        self,
+        actor_arg,
+        task_ref,
+        output_review_ref,
+        *,
+        expected_state_version,
+        target,
+        idempotency,
+        trace_id,
+    ):
+        self.calls.append(
+            ("output_review_resolve", actor_arg, task_ref, output_review_ref, target)
+        )
+        candidate = None
+        status = target
+        if target == "CREATE_HELD_CANDIDATE":
+            status = "CONSUMED"
+            candidate = summary()
+        return {
+            "output_review": output_review_summary(status=status, state_version=2),
+            "candidate": candidate,
+        }
+
 
 @pytest.mark.parametrize(
     "role",
@@ -333,10 +420,21 @@ async def test_non_specialists_cannot_read_enqueue_or_resolve_candidates(role):
         lambda: service.get(staff, "TASK_demo", "REEDUC_demo"),
         lambda: service.list_input_reviews(staff, "TASK_demo"),
         lambda: service.get_input_review(staff, "TASK_demo", "REI_demo"),
+        lambda: service.list_output_reviews(staff, "TASK_demo"),
+        lambda: service.get_output_review(staff, "TASK_demo", "REOR_demo"),
         lambda: service.resolve_input_review(
             staff,
             "TASK_demo",
             "REI_demo",
+            expected_state_version=1,
+            target="REJECTED",
+            idempotency=("key", "body", "scope"),
+            trace_id="TRACE_demo",
+        ),
+        lambda: service.resolve_output_review(
+            staff,
+            "TASK_demo",
+            "REOR_demo",
             expected_state_version=1,
             target="REJECTED",
             idempotency=("key", "body", "scope"),
@@ -447,6 +545,87 @@ async def test_specialist_input_review_ports_are_task_bound_and_allow_review_act
     assert [call[0] for call in persistence.calls] == [
         "input_review_list", "input_review_get", "input_review_resolve"
     ]
+
+
+async def test_specialist_output_review_ports_keep_sources_separate_from_bound_citations():
+    persistence = FakePersistence()
+    service = SchoolResearchEducationCandidateService(persistence=persistence)
+    specialist = actor(BackendRole.PSYCHOLOGICAL_SPECIALIST)
+
+    page = await service.list_output_reviews(
+        specialist, "TASK_demo", offset=2, limit=8
+    )
+    detail = await service.get_output_review(
+        specialist, "TASK_demo", "REOR_" + "a" * 32
+    )
+
+    assert page["items"][0]["status"] == "PENDING"
+    assert page["items"][0]["reason_codes"] == ["CONTENT_CONTROVERSIAL"]
+    assert page["offset"] == 2 and page["limit"] == 8
+    assert detail["review_payload"]["citation_binding_status"] == (
+        "NOT_EVALUATED_AT_OUTPUT_STOP"
+    )
+    assert detail["review_payload"]["citations"] == []
+    assert len(detail["review_payload"]["source_cards"]) == 1
+    assert "retrieval_snapshot" not in detail["review_payload"]
+    assert "safety_decision_id" not in detail["review_payload"]["provenance"]
+    assert [call[0] for call in persistence.calls] == [
+        "output_review_list", "output_review_get"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("target", "expected_status", "candidate_expected"),
+    [
+        ("REJECTED", "REJECTED", False),
+        ("REVOKED", "REVOKED", False),
+        ("CREATE_HELD_CANDIDATE", "CONSUMED", True),
+    ],
+)
+async def test_output_review_resolution_is_versioned_and_candidate_stays_held(
+    target, expected_status, candidate_expected
+):
+    persistence = FakePersistence()
+    service = SchoolResearchEducationCandidateService(persistence=persistence)
+    specialist = actor(BackendRole.PSYCHOLOGICAL_SPECIALIST)
+
+    result = await service.resolve_output_review(
+        specialist,
+        "TASK_demo",
+        "REOR_" + "a" * 32,
+        expected_state_version=1,
+        target=target,
+        idempotency=("output-review-key", "request-hash", "scope-hash"),
+        trace_id="TRACE_demo",
+    )
+
+    assert result["output_review"]["status"] == expected_status
+    assert result["output_review"]["state_version"] == 2
+    if candidate_expected:
+        assert result["candidate"]["status"] == "HELD"
+        assert result["candidate"]["student_feedback_eligible"] is False
+    else:
+        assert result["candidate"] is None
+    assert persistence.calls[-1][0] == "output_review_resolve"
+
+
+async def test_output_review_rejects_bad_version_or_target_before_port():
+    persistence = FakePersistence()
+    service = SchoolResearchEducationCandidateService(persistence=persistence)
+    specialist = actor(BackendRole.PSYCHOLOGICAL_SPECIALIST)
+    for version, target in ((2, "REJECTED"), (1, "APPROVED")):
+        with pytest.raises(BackendError) as raised:
+            await service.resolve_output_review(
+                specialist,
+                "TASK_demo",
+                "REOR_" + "a" * 32,
+                expected_state_version=version,
+                target=target,
+                idempotency=("key", "hash", "scope"),
+                trace_id="TRACE_demo",
+            )
+        assert raised.value.code is ErrorCode.VALIDATION_FAILED
+    assert persistence.calls == []
 
 
 async def test_input_review_continuation_requires_trusted_enablement_and_preserves_idempotency():

@@ -277,6 +277,78 @@ class ResearchGeneralEducationOutputSafetyDiagnostic(_StrictModel):
         return None
 
 
+class ResearchGeneralEducationOutputReviewProvenance(_StrictModel):
+    """Safe generation/source pins retained with an eligible output review."""
+
+    generation_id: StrictStr = Field(pattern=r"^GEN_[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$")
+    retrieval_id: StrictStr = Field(pattern=r"^RETR_[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$")
+    retrieval_bundle_sha256: StrictStr = Field(pattern=_SHA256.pattern)
+    policy_version: Literal["RESEARCH_GENERAL_EDUCATION_DRAFT_V1"]
+    policy_hash: StrictStr = Field(pattern=_SHA256.pattern)
+    safety_policy_version: Literal["safety-port-unversioned.v1"]
+    source_package_ref: StrictStr = Field(min_length=1, max_length=255)
+    source_study_ref: StrictStr = Field(min_length=1, max_length=255)
+    source_manifest_sha256: StrictStr = Field(pattern=_SHA256.pattern)
+    source_age_scope: Literal["14-17"]
+    prompt_id: StrictStr = Field(pattern=r"^PROMPT_[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$")
+    prompt_version: StrictStr = Field(min_length=1, max_length=64)
+    prompt_sha256: StrictStr = Field(pattern=_SHA256.pattern)
+    model_id: StrictStr = Field(min_length=1, max_length=128)
+    model_version: StrictStr = Field(min_length=1, max_length=128)
+    model_digest_sha256: StrictStr = Field(pattern=_SHA256.pattern)
+    runtime_version: StrictStr = Field(min_length=1, max_length=64)
+    runtime_attempt_count: Literal[1]
+    runtime_retry_count: Literal[0]
+    runtime_fallback_count: Literal[0]
+    runtime_fallback_attempted: Literal[False]
+    runtime_local_only: Literal[True]
+    input_safety_action: SafetyAction
+    input_safety_reason_codes: list[StrictStr] = Field(min_length=1, max_length=16)
+    retrieval_safety_action: SafetyAction
+    retrieval_safety_reason_codes: list[StrictStr] = Field(min_length=1, max_length=16)
+    output_safety_action: Literal["REVIEW_REQUIRED"]
+    output_safety_reason_codes: tuple[Literal["CONTENT_CONTROVERSIAL"], ...] = Field(
+        min_length=1, max_length=1
+    )
+    output_safety_requires_human: Literal[True]
+
+    def model_post_init(self, __context: object) -> None:
+        if any(
+            _SAFE_REASON.fullmatch(code) is None
+            for codes in (
+                self.input_safety_reason_codes,
+                self.retrieval_safety_reason_codes,
+            )
+            for code in codes
+        ):
+            raise ValueError("Safety reason codes must be closed code tokens")
+
+
+class ResearchGeneralEducationRetrievalSnapshot(_StrictModel):
+    """Private encrypted snapshot needed to re-run original evidence checks."""
+
+    retrieval_id: StrictStr = Field(pattern=r"^RETR_[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$")
+    label: Literal["SCHOOL_RESEARCH_STUDENT_SOURCE_PACKAGE"]
+    chunks: list[dict[str, object]] = Field(min_length=1, max_length=8)
+    trace: dict[str, object]
+
+
+class ResearchGeneralEducationOutputReviewPayload(_StrictModel):
+    """Encrypted original output plus exact retrieval input; never an HTTP DTO."""
+
+    schema_version: Literal["school-research-general-education-output-review.v1"]
+    content: GenerationContent
+    retrieval_snapshot: ResearchGeneralEducationRetrievalSnapshot
+    provenance: ResearchGeneralEducationOutputReviewProvenance
+    safety_decision_id: StrictStr = Field(pattern=r"^DEC_[A-Za-z0-9][A-Za-z0-9_.:-]{0,155}$")
+    safety_review_ref: StrictStr = Field(
+        pattern=r"^REVIEW_[A-Za-z0-9][A-Za-z0-9_.:-]{0,152}$"
+    )
+    safety_trace_id: StrictStr = Field(pattern=r"^TRACE_[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$")
+    request_id: StrictStr = Field(pattern=r"^REQ_[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$")
+    canonical_input_sha256: StrictStr | None = Field(default=None, pattern=_SHA256.pattern)
+
+
 class ResearchGeneralEducationOutcome(_StrictModel):
     status: ResearchGeneralEducationStatus
     reason_code: StrictStr = Field(pattern=r"^[A-Z][A-Z0-9_]{0,95}$")
@@ -284,6 +356,7 @@ class ResearchGeneralEducationOutcome(_StrictModel):
     input_review: ResearchGeneralEducationInputReviewReceipt | None = None
     boundary_diagnostic: ResearchGeneralEducationBoundaryDiagnostic | None = None
     output_safety_diagnostic: ResearchGeneralEducationOutputSafetyDiagnostic | None = None
+    output_review_payload: ResearchGeneralEducationOutputReviewPayload | None = None
 
     def model_post_init(self, __context: object) -> None:
         if (self.status == "HELD") != (self.candidate is not None):
@@ -304,3 +377,16 @@ class ResearchGeneralEducationOutcome(_StrictModel):
             or self.output_safety_diagnostic.stopped_status != self.status
         ):
             raise ValueError("output Safety diagnostics must match the actual stop outcome")
+        if self.output_review_payload is not None and (
+            self.status != "REVIEW_REQUIRED"
+            or self.reason_code != "OUTPUT_SAFETY_STOP"
+            or self.output_safety_diagnostic is None
+            or self.output_safety_diagnostic.action != "REVIEW_REQUIRED"
+            or self.output_safety_diagnostic.reason_codes != ("CONTENT_CONTROVERSIAL",)
+            or self.output_safety_diagnostic.requires_human is not True
+            or self.output_review_payload.provenance.output_safety_action
+            != self.output_safety_diagnostic.action
+            or self.output_review_payload.provenance.output_safety_reason_codes
+            != self.output_safety_diagnostic.reason_codes
+        ):
+            raise ValueError("output review payload must match the exact eligible Safety stop")

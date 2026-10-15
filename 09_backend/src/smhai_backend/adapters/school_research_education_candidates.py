@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -22,9 +22,12 @@ from smhai_backend.adapters.school_research_feedback import (
     _repo_call,
 )
 from smhai_backend.core.errors import BackendError, ErrorCode, error
+from smhai_backend.core.request_context import valid_correlation_id
 from smhai_backend.domains.research_general_education.schemas import (
     ResearchGeneralEducationCandidatePayload,
+    ResearchGeneralEducationOutputReviewPayload,
     ResearchGeneralEducationOutputSafetyDiagnostic,
+    ResearchGeneralEducationSourceCard,
 )
 from smhai_backend.domains.school_research.study_use import ResearchStudyUsePolicy
 
@@ -34,6 +37,7 @@ _BATCH_RESOURCE = "school_research_education_candidate_batch"
 _JOB_RESOURCE = "school_research_education_candidate_job"
 _JOB_AUDIT_RESOURCE = "school_research_education_job"
 _CANDIDATE_RESOURCE = "school_research_education_candidate"
+_OUTPUT_REVIEW_RESOURCE = "school_research_education_output_review"
 _PUBLICATION_STATUS = "not_approved_for_publication_or_operational_use"
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _SAFE_OUTCOME_REASON_TOKEN = re.compile(r"^[A-Z][A-Z0-9_]{0,95}$")
@@ -119,6 +123,45 @@ async def _candidate_repo_call(awaitable):
         ) from None
 
 
+async def _output_review_repo_call(awaitable):
+    """Translate expected output-review storage failures without echoing data."""
+    from database_layer.errors import (
+        DatabaseUnavailable,
+        EncryptionKeyUnavailable,
+        ForeignKeyConflict,
+        NotFound,
+        OptimisticConcurrencyConflict,
+        UniqueConflict,
+    )
+    from database_layer.school_research_education_output_reviews import (
+        ResearchEducationOutputReviewError,
+    )
+
+    try:
+        return await awaitable
+    except (OptimisticConcurrencyConflict, UniqueConflict, ResearchEducationOutputReviewError):
+        raise _conflict() from None
+    except (ForeignKeyConflict, NotFound):
+        raise _not_found() from None
+    except (DatabaseUnavailable, EncryptionKeyUnavailable):
+        raise error(
+            ErrorCode.DEPENDENCY_UNAVAILABLE,
+            detail="research education output review storage is unavailable",
+            retryable=True,
+        ) from None
+
+
+def _canonical_mapping_sha256(value: dict[str, object]) -> str:
+    canonical = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
 class SchoolResearchEducationCandidatePersistenceAdapter(
     ResearchEducationInputReviewPersistenceMixin, SchoolResearchFeedbackPersistenceAdapter
 ):
@@ -137,6 +180,8 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
         source_study_ref: str | None,
         study_use_policy: ResearchStudyUsePolicy | None,
         input_review_continuation_enabled: bool = False,
+        source_cards=None,
+        source_valid_through: datetime | None = None,
     ) -> None:
         super().__init__(persistence, study_use_policy=study_use_policy)
         self.enabled = enabled is True
@@ -147,6 +192,8 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
         self.source_package_ref = source_package_ref
         self.source_study_ref = source_study_ref
         self.input_review_continuation_enabled = input_review_continuation_enabled is True
+        self.source_cards = dict(source_cards or {})
+        self.source_valid_through = source_valid_through
 
     def _require_enabled(self) -> None:
         if (
@@ -166,6 +213,10 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
             or type(self.study_use_policy) is not ResearchStudyUsePolicy
             or self.study_use_policy.source_rights_verified is not True
             or self.study_use_policy.study_ref != self.school_study_ref
+            or (
+                self.source_valid_through is not None
+                and _aware_utc(self.source_valid_through) < datetime.now(UTC)
+            )
         ):
             raise error(
                 ErrorCode.DEPENDENCY_UNAVAILABLE,
@@ -282,6 +333,17 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
         return all(getattr(left, name) == getattr(right, name) for name in names)
 
     def _require_row_pins(self, row) -> None:
+        output_review_id = getattr(row, "output_review_id", None)
+        output_review_state = getattr(row, "output_review_state", None)
+        output_review_linked = (
+            type(output_review_id) is int
+            and output_review_id > 0
+            and output_review_state == "CONSUMED"
+        )
+        safe_output_action = row.output_safety_action in {
+            "PROCEED",
+            "PROCEED_WITH_BOUNDARY",
+        }
         if (
             row.study_ref != self.school_study_ref
             or row.policy_version != _POLICY_VERSION
@@ -309,7 +371,11 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
                 or row.input_safety_action != "REVIEW_REQUIRED"
             ))
             or row.retrieval_safety_action not in {"PROCEED", "PROCEED_WITH_BOUNDARY"}
-            or row.output_safety_action not in {"PROCEED", "PROCEED_WITH_BOUNDARY"}
+            or not (
+                (safe_output_action and output_review_id is None and output_review_state is None)
+                or (row.output_safety_action == "REVIEW_REQUIRED" and output_review_linked)
+            )
+            or (output_review_id is None) != (output_review_state is None)
             or not isinstance(row.content_sha256, str)
             or _SHA256.fullmatch(row.content_sha256) is None
         ):
@@ -329,19 +395,83 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
                 m.SchoolResearchEducationJob.research_session_id == row.scope.research_session_id,
             )
         )
+        output_review_id = getattr(row, "output_review_id", None)
+        output_review_linked = output_review_id is not None
+        expected_job_status = "REVIEW_REQUIRED" if output_review_linked else "HELD"
         if (
-            job is None or job.generation_round != row.generation_round
-            or job.input_review_id != row.input_review_id or job.status != "HELD"
-            or job.attempt_count != 1 or job.policy_hash != row.policy_hash
-            or job.policy_version != row.policy_version or not self._same_scope(row.scope, job)
+            job is None
+            or job.generation_round != row.generation_round
+            or job.input_review_id != row.input_review_id
+            or job.status != expected_job_status
+            or job.attempt_count != 1
+            or job.policy_hash != row.policy_hash
+            or job.policy_version != row.policy_version
+            or not self._same_scope(row.scope, job)
+            or (
+                output_review_linked
+                and (
+                    job.last_error_code != "SAFETY_BLOCKED"
+                    or job.lease_owner is not None
+                    or job.lease_token is not None
+                )
+            )
         ):
             raise _conflict()
+        if output_review_linked:
+            from database_layer.school_research_education_output_reviews import (
+                ResearchEducationOutputReviewScope,
+            )
+
+            m = self._db_models
+            output_review_ref = await uow.session.scalar(
+                self._select(m.SchoolResearchEducationOutputReview.output_review_ref).where(
+                    m.SchoolResearchEducationOutputReview.id == output_review_id,
+                    m.SchoolResearchEducationOutputReview.school_id == row.scope.school_id,
+                    m.SchoolResearchEducationOutputReview.task_id == row.scope.task_id,
+                )
+            )
+            if not isinstance(output_review_ref, str):
+                raise _conflict()
+            output_scope = ResearchEducationOutputReviewScope(
+                **{
+                    name: getattr(row.scope, name)
+                    for name in ResearchEducationOutputReviewScope.__dataclass_fields__
+                }
+            )
+            output_review = await _output_review_repo_call(
+                uow.research_education_output_reviews.get_for_task(
+                    scope=output_scope,
+                    output_review_ref=output_review_ref,
+                )
+            )
+            self._require_output_review_pins(output_review)
+            if (
+                output_review.id != output_review_id
+                or output_review.job_id != job.id
+                or output_review.status != "CONSUMED"
+                or output_review.state_version != 2
+                or output_review.consumed_at != row.created_at
+                or output_review.candidate_content_sha256 != row.content_sha256
+                or output_review.candidate_payload_schema_version != _PAYLOAD_SCHEMA
+                or getattr(row, "output_review_state", None) != "CONSUMED"
+                or output_review.safety_action != "REVIEW_REQUIRED"
+                or output_review.safety_reason_code != "CONTENT_CONTROVERSIAL"
+                or not self._same_scope(output_review.scope, row.scope)
+            ):
+                raise _conflict()
         if row.generation_round == 0:
             return
         expected_trace = "TRACE_" + hashlib.sha256(
             f"{job.job_ref}:{job.attempt_count}".encode("ascii")
         ).hexdigest()[:32]
-        if row.trace_id != expected_trace:
+        if output_review_linked:
+            try:
+                safe_trace = valid_correlation_id(row.trace_id, "TRACE")
+            except (TypeError, ValueError):
+                raise _conflict() from None
+            if safe_trace != row.trace_id:
+                raise _conflict()
+        elif row.trace_id != expected_trace:
             raise _conflict()
         ref = await uow.session.scalar(
             self._select(m.SchoolResearchEducationInputReview.input_review_ref).where(
@@ -581,6 +711,578 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
         await self.verify_candidate_input_lineage_in_uow(uow, row)
         payload = self._payload_from_row(row) if include_payload else None
         return scope, session_ref, payload
+
+    def _output_review_summary(self, row, *, task_ref, session_ref):
+        return {
+            "output_review_ref": row.output_review_ref,
+            "job_ref": row.job_ref,
+            "task_ref": task_ref,
+            "session_ref": session_ref,
+            "generation_round": row.generation_round,
+            "status": row.status,
+            "state_version": row.state_version,
+            "expires_at": row.expires_at,
+            "created_at": row.created_at,
+            "updated_at": row.updated_at,
+            "safety_action": row.safety_action,
+            "reason_codes": [row.safety_reason_code],
+            "requires_human": row.safety_requires_human,
+            "purpose": "RESEARCH_SIMULATION",
+            "research_only": True,
+            "publication_status": _PUBLICATION_STATUS,
+            "student_feedback_eligible": False,
+        }
+
+    def _output_review_detail_payload(self, payload):
+        from smhai_backend.domains.research_general_education.service import (
+            _source_cards_match_bundle,
+        )
+        from smhai_backend.integrations.evidence import (
+            EligibilityPolicy,
+            build_retrieval_evidence_bundle,
+        )
+        from smhai_backend.integrations.rag import KnowledgeChunk, RetrievalResult
+
+        snapshot = payload.retrieval_snapshot
+        retrieval = RetrievalResult(
+            retrieval_id=snapshot.retrieval_id,
+            chunks=tuple(
+                KnowledgeChunk.model_validate(item, strict=True) for item in snapshot.chunks
+            ),
+            label=snapshot.label,
+            trace=dict(snapshot.trace),
+        )
+        bundle = build_retrieval_evidence_bundle(
+            retrieval,
+            transaction_id=payload.provenance.generation_id,
+            request_id=payload.request_id,
+            trace_id=payload.safety_trace_id,
+            policy=EligibilityPolicy(
+                target_population="secondary_school_student",
+                target_role="student",
+                risk_level=None,
+                required_review_status="pending",
+                required_rights_status="verified",
+            ),
+            strict_eligibility=True,
+        )
+        bundle.require_eligible()
+        cards = [self.source_cards.get(chunk_id) for chunk_id in bundle.chunk_ids]
+        if (
+            bundle.bundle_hash != payload.provenance.retrieval_bundle_sha256
+            or any(type(card) is not ResearchGeneralEducationSourceCard for card in cards)
+            or not _source_cards_match_bundle(
+                bundle, {card.chunk_id: card for card in cards if card is not None}
+            )
+        ):
+            raise error(
+                ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                detail="research education output review sources are unavailable",
+            )
+        return {
+            "schema_version": "school-research-general-education-output-review.v1",
+            "content": payload.content.model_dump(mode="python"),
+            "source_cards": [card.model_dump(mode="python") for card in cards],
+            "citations": [],
+            "citation_binding_status": "NOT_EVALUATED_AT_OUTPUT_STOP",
+            "provenance": payload.provenance.model_dump(mode="python"),
+        }
+
+    def _candidate_payload_from_output_review(self, payload):
+        from smhai_backend.domains.conversations.service import (
+            _contains_unsupported_bibliography,
+        )
+        from smhai_backend.domains.research_general_education.schemas import (
+            ResearchGeneralEducationCandidatePayload,
+            ResearchGeneralEducationProvenance,
+        )
+        from smhai_backend.domains.research_general_education.service import (
+            ResearchGeneralEducationRuntimeSource,
+            _contains_forbidden_generated_claim,
+            _content_well_formed,
+            _within_runtime_evidence_budget,
+            canonical_candidate_payload_sha256,
+        )
+        from smhai_backend.domains.support.service import SupportOrchestrator
+        from smhai_backend.integrations.evidence import (
+            EligibilityPolicy,
+            build_retrieval_evidence_bundle,
+        )
+        from smhai_backend.integrations.rag import KnowledgeChunk, RetrievalResult
+
+        snapshot = payload.retrieval_snapshot
+        retrieval = RetrievalResult(
+            retrieval_id=snapshot.retrieval_id,
+            chunks=tuple(
+                KnowledgeChunk.model_validate(item, strict=True) for item in snapshot.chunks
+            ),
+            label=snapshot.label,
+            trace=dict(snapshot.trace),
+        )
+        bundle = build_retrieval_evidence_bundle(
+            retrieval,
+            transaction_id=payload.provenance.generation_id,
+            request_id=payload.request_id,
+            trace_id=payload.safety_trace_id,
+            policy=EligibilityPolicy(
+                target_population="secondary_school_student",
+                target_role="student",
+                risk_level=None,
+                required_review_status="pending",
+                required_rights_status="verified",
+            ),
+            strict_eligibility=True,
+        )
+        bundle.require_eligible()
+        content = payload.content
+        if (
+            not _content_well_formed(content)
+            or _contains_forbidden_generated_claim(content)
+            or _contains_unsupported_bibliography(
+                content,
+                bundle,
+                original_disclaimer="本草稿仅用于一般教育信息研究复核，不构成诊断或个体建议。",
+            )
+            or not _within_runtime_evidence_budget(
+                tuple(
+                    ResearchGeneralEducationRuntimeSource(
+                        chunk_id=item.chunk_id,
+                        text=item.text or "",
+                        title=str(item.citation.get("title") or ""),
+                        organization=str(item.citation.get("organization") or ""),
+                        locator=item.locator or "",
+                    )
+                    for item in bundle.items
+                )
+            )
+            or any(
+                not set(suggestion.source_chunk_ids).issubset(set(bundle.chunk_ids))
+                for suggestion in content.suggestions
+            )
+        ):
+            raise _conflict()
+        try:
+            citations = SupportOrchestrator._citations_from_bundle(bundle, content)
+        except Exception:
+            raise _conflict() from None
+        if (
+            not citations
+            or any(citation.chunk_id is None for citation in citations)
+            or len({citation.chunk_id for citation in citations}) != len(citations)
+        ):
+            raise _conflict()
+        cited_ids = [citation.chunk_id for citation in citations]
+        source_cards = [self.source_cards.get(chunk_id) for chunk_id in cited_ids]
+        from smhai_backend.domains.research_general_education.service import (
+            _source_cards_match_bundle,
+        )
+
+        if (
+            any(type(card) is not ResearchGeneralEducationSourceCard for card in source_cards)
+            or not set(cited_ids).issubset(set(bundle.chunk_ids))
+            or not _source_cards_match_bundle(bundle, self.source_cards)
+        ):
+            raise _conflict()
+        provenance = payload.provenance
+        candidate_provenance = ResearchGeneralEducationProvenance(
+            policy_version=provenance.policy_version,
+            policy_hash=provenance.policy_hash,
+            safety_policy_version=provenance.safety_policy_version,
+            source_package_ref=provenance.source_package_ref,
+            source_study_ref=provenance.source_study_ref,
+            source_manifest_sha256=provenance.source_manifest_sha256,
+            source_age_scope=provenance.source_age_scope,
+            retrieval_id=provenance.retrieval_id,
+            retrieval_bundle_sha256=provenance.retrieval_bundle_sha256,
+            cited_chunk_ids=cited_ids,
+            generation_id=provenance.generation_id,
+            prompt_id=provenance.prompt_id,
+            prompt_version=provenance.prompt_version,
+            prompt_sha256=provenance.prompt_sha256,
+            model_id=provenance.model_id,
+            model_version=provenance.model_version,
+            model_digest_sha256=provenance.model_digest_sha256,
+            runtime_version=provenance.runtime_version,
+            runtime_attempt_count=provenance.runtime_attempt_count,
+            runtime_retry_count=provenance.runtime_retry_count,
+            runtime_fallback_count=provenance.runtime_fallback_count,
+            runtime_fallback_attempted=provenance.runtime_fallback_attempted,
+            runtime_local_only=provenance.runtime_local_only,
+            input_safety_action=provenance.input_safety_action,
+            input_safety_reason_codes=provenance.input_safety_reason_codes,
+            retrieval_safety_action=provenance.retrieval_safety_action,
+            retrieval_safety_reason_codes=provenance.retrieval_safety_reason_codes,
+            output_safety_action=provenance.output_safety_action,
+            output_safety_reason_codes=list(provenance.output_safety_reason_codes),
+        )
+        result = ResearchGeneralEducationCandidatePayload.from_closed_mapping(
+            {
+                "schema_version": "school-research-general-education-candidate.v1",
+                "content": content.model_dump(mode="python"),
+                "citations": [citation.model_dump(mode="python") for citation in citations],
+                "source_cards": [card.model_dump(mode="python") for card in source_cards],
+                "provenance": candidate_provenance.model_dump(mode="python"),
+            }
+        )
+        if len(json.dumps(content.model_dump(mode="json"), ensure_ascii=False)) > 12_000:
+            raise _conflict()
+        return result, canonical_candidate_payload_sha256(result)
+
+    async def school_research_education_output_review_list(
+        self, actor, task_ref: str, *, offset: int, limit: int
+    ) -> dict:
+        self._require_enabled()
+        task_ref = self._input_review_ref(task_ref, "task_ref")
+        if (
+            type(offset) is not int
+            or not 0 <= offset <= 100_000
+            or type(limit) is not int
+            or not 1 <= limit <= 20
+        ):
+            raise error(ErrorCode.VALIDATION_FAILED, detail="output review pagination is invalid")
+        now, _db_now = self._now()
+        async with self._uow() as uow:
+            task, _binding, _role_id = await self._active_task(
+                uow, actor, task_ref, at=now
+            )
+            rows = await _output_review_repo_call(
+                uow.research_education_output_reviews.list_for_task(
+                    school_id=actor.school_id,
+                    task_id=task.id,
+                    offset=offset,
+                    limit=limit + 1,
+                )
+            )
+            if not isinstance(rows, (tuple, list)) or len(rows) > limit + 1:
+                raise error(
+                    ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                    detail="research education output review metadata is unavailable",
+                )
+            items = []
+            for row in rows:
+                _scope, session_ref, _payload = await self._current_output_review(
+                    uow, actor, task, row, at=now
+                )
+                items.append(
+                    self._output_review_summary(row, task_ref=task_ref, session_ref=session_ref)
+                )
+            return {
+                "items": items[:limit],
+                "offset": offset,
+                "limit": limit,
+                "has_more": len(items) > limit,
+            }
+
+    async def school_research_education_output_review_get(
+        self, actor, task_ref: str, output_review_ref: str
+    ) -> dict:
+        self._require_enabled()
+        task_ref = self._input_review_ref(task_ref, "task_ref")
+        output_review_ref = self._input_review_ref(output_review_ref, "output_review_ref")
+        now, _db_now = self._now()
+        async with self._uow() as uow:
+            task, _binding, _role_id = await self._active_task(
+                uow, actor, task_ref, at=now
+            )
+            from database_layer.school_research_education_output_reviews import (
+                ResearchEducationOutputReviewScope,
+            )
+
+            scope = await _output_review_repo_call(
+                uow.research_education_output_reviews.find_scope_for_task(
+                    school_id=actor.school_id,
+                    task_id=task.id,
+                    output_review_ref=output_review_ref,
+                )
+            )
+            if scope is None:
+                raise _not_found()
+            if type(scope) is not ResearchEducationOutputReviewScope:
+                raise error(
+                    ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                    detail="research education output review scope is unavailable",
+                )
+            task_scope, _metadata, _retention, _profile, _pin = await self._current_scope(
+                uow,
+                actor,
+                task,
+                session_ref=await self._session_ref(
+                    uow, actor, task, scope.research_session_id
+                ),
+                at=now,
+            )
+            if not self._same_scope(scope, task_scope):
+                raise _not_found()
+            row = await _output_review_repo_call(
+                uow.research_education_output_reviews.get_for_task(
+                    scope=scope, output_review_ref=output_review_ref
+                )
+            )
+            if row is None:
+                raise _not_found()
+            _current, session_ref, payload = await self._current_output_review(
+                uow, actor, task, row, at=now, include_payload=True
+            )
+            return {
+                **self._output_review_summary(row, task_ref=task_ref, session_ref=session_ref),
+                "review_payload": self._output_review_detail_payload(payload),
+            }
+
+    async def school_research_education_output_review_resolve(
+        self,
+        actor,
+        task_ref: str,
+        output_review_ref: str,
+        *,
+        expected_state_version: int,
+        target: str,
+        idempotency,
+        trace_id: str,
+    ) -> dict:
+        self._require_enabled()
+        task_ref = self._input_review_ref(task_ref, "task_ref")
+        output_review_ref = self._input_review_ref(output_review_ref, "output_review_ref")
+        if (
+            type(expected_state_version) is not int
+            or expected_state_version != 1
+            or target not in {"REJECTED", "REVOKED", "CREATE_HELD_CANDIDATE"}
+            or valid_correlation_id(trace_id, "TRACE") != trace_id
+        ):
+            raise error(ErrorCode.VALIDATION_FAILED, detail="output review resolution is invalid")
+        from database_layer.school_research_education_output_reviews import (
+            ResearchEducationOutputReviewScope,
+        )
+
+        now, db_now = self._now()
+        async with self._uow() as uow:
+            actor_account_id, role_id = await self._require_actor(
+                uow, actor, "psychological_specialist", db_now
+            )
+            task, _binding, checked_role_id = await self._active_task(
+                uow, actor, task_ref, at=now
+            )
+            if checked_role_id != role_id:
+                raise _not_found()
+            scope = await _output_review_repo_call(
+                uow.research_education_output_reviews.find_scope_for_task(
+                    school_id=actor.school_id,
+                    task_id=task.id,
+                    output_review_ref=output_review_ref,
+                )
+            )
+            if type(scope) is not ResearchEducationOutputReviewScope:
+                raise _not_found()
+            session_ref = await self._session_ref(
+                uow, actor, task, scope.research_session_id
+            )
+            live_scope, _metadata, _retention, _profile, _pin = await self._current_scope(
+                uow, actor, task, session_ref=session_ref, at=now, lock=True
+            )
+            if not self._same_scope(scope, live_scope):
+                raise _not_found()
+            row = await _output_review_repo_call(
+                uow.research_education_output_reviews.get_for_task(
+                    scope=scope, output_review_ref=output_review_ref
+                )
+            )
+            if row is None:
+                raise _not_found()
+            _scope, session_ref, review_payload = await self._current_output_review(
+                uow,
+                actor,
+                task,
+                row,
+                at=now,
+                lock=True,
+                include_payload=target == "CREATE_HELD_CANDIDATE",
+            )
+            claim = await self._school_idempotency_begin(uow, idempotency)
+            if claim.replayed:
+                if (
+                    await self._receipt_resource(claim, _OUTPUT_REVIEW_RESOURCE)
+                    != row.output_review_ref
+                ):
+                    raise _conflict()
+                current = await _output_review_repo_call(
+                    uow.research_education_output_reviews.get_for_task(
+                        scope=scope, output_review_ref=output_review_ref
+                    )
+                )
+                if current is None:
+                    raise _not_found()
+                expected_status = {
+                    "REJECTED": "REJECTED",
+                    "REVOKED": "REVOKED",
+                    "CREATE_HELD_CANDIDATE": "CONSUMED",
+                }[target]
+                if (
+                    current.status != expected_status
+                    or current.state_version != 2
+                    or current.resolved_by_membership_role_id != role_id
+                ):
+                    raise _conflict()
+                candidate = None
+                if target == "CREATE_HELD_CANDIDATE":
+                    candidate = await self._candidate_for_output_review(
+                        uow,
+                        actor,
+                        task,
+                        current,
+                        trace_id=trace_id,
+                        at=now,
+                    )
+                return {
+                    "output_review": self._output_review_summary(
+                        current, task_ref=task_ref, session_ref=session_ref
+                    ),
+                    "candidate": candidate,
+                }
+
+            if (
+                row.status != "PENDING"
+                or row.state_version != expected_state_version
+                or row.expires_at <= now
+                or (
+                    row.retention_due_at is not None
+                    and _aware_utc(row.retention_due_at) <= now
+                )
+            ):
+                raise _conflict()
+            if target in {"REJECTED", "REVOKED"}:
+                updated = await _output_review_repo_call(
+                    uow.research_education_output_reviews.resolve(
+                        scope=scope,
+                        output_review_ref=output_review_ref,
+                        expected_state_version=expected_state_version,
+                        status=target,
+                        actor_membership_role_id=role_id,
+                        trace_id=trace_id,
+                        now=now,
+                    )
+                )
+                self._require_output_review_pins(updated)
+                await self._audit_research(
+                    uow,
+                    actor_account_id=actor_account_id,
+                    action=f"school_research_education_output_review.{target.lower()}",
+                    resource_type=_OUTPUT_REVIEW_RESOURCE,
+                    resource_ref=updated.output_review_ref,
+                    trace_id=trace_id,
+                    state=updated.status,
+                )
+                await self._school_idempotency_complete(
+                    uow,
+                    claim,
+                    resource_type=_OUTPUT_REVIEW_RESOURCE,
+                    result_ref=updated.output_review_ref,
+                )
+                return {
+                    "output_review": self._output_review_summary(
+                        updated, task_ref=task_ref, session_ref=session_ref
+                    ),
+                    "candidate": None,
+                }
+
+            candidate_payload, candidate_sha = self._candidate_payload_from_output_review(
+                review_payload
+            )
+            from database_layer.school_research_education_candidates import (
+                ResearchEducationCandidateScope,
+            )
+
+            candidate_scope = ResearchEducationCandidateScope(
+                **{
+                    name: getattr(scope, name)
+                    for name in ResearchEducationCandidateScope.__dataclass_fields__
+                }
+            )
+            encrypted = self.protection.encrypt_json(
+                candidate_payload.model_dump(mode="json"),
+                payload_schema_version=_PAYLOAD_SCHEMA,
+            )
+            if len(encrypted.ciphertext) > 1_000_000:
+                raise _conflict()
+            candidate_ref = f"REEDUC_{uuid4().hex}"
+            candidate = await _candidate_repo_call(
+                uow.research_education_candidates.create_held_from_output_review(
+                    scope=candidate_scope,
+                    output_review_ref=output_review_ref,
+                    candidate_ref=candidate_ref,
+                    content_sha256=candidate_sha,
+                    payload_ciphertext=encrypted.ciphertext,
+                    cipher_format_version=encrypted.cipher_format_version,
+                    key_version=encrypted.key_version,
+                    payload_schema_version=encrypted.payload_schema_version,
+                    actor_membership_role_id=role_id,
+                    trace_id=trace_id,
+                    now=now,
+                )
+            )
+            updated = await _output_review_repo_call(
+                uow.research_education_output_reviews.get_for_task(
+                    scope=scope, output_review_ref=output_review_ref
+                )
+            )
+            if (
+                updated is None
+                or updated.status != "CONSUMED"
+                or updated.state_version != 2
+                or updated.consumed_at != candidate.created_at
+                or candidate.status != "HELD"
+                or candidate.created_at != now
+            ):
+                raise _conflict()
+            self._require_row_pins(candidate)
+            await self._audit_research(
+                uow,
+                actor_account_id=actor_account_id,
+                action="school_research_education_output_review.create_held_candidate",
+                resource_type=_OUTPUT_REVIEW_RESOURCE,
+                resource_ref=output_review_ref,
+                trace_id=trace_id,
+                state="CONSUMED",
+            )
+            await self._school_idempotency_complete(
+                uow,
+                claim,
+                resource_type=_OUTPUT_REVIEW_RESOURCE,
+                result_ref=output_review_ref,
+            )
+            candidate_summary = self._summary(
+                candidate, task_ref=task_ref, session_ref=session_ref
+            )
+            return {
+                "output_review": self._output_review_summary(
+                    updated, task_ref=task_ref, session_ref=session_ref
+                ),
+                "candidate": candidate_summary,
+            }
+
+    async def _candidate_for_output_review(
+        self, uow, actor, task, review, *, trace_id, at
+    ):
+        m = self._db_models
+        candidate_ref = await uow.session.scalar(
+            self._select(m.SchoolResearchEducationCandidate.candidate_ref).where(
+                m.SchoolResearchEducationCandidate.school_id == actor.school_id,
+                m.SchoolResearchEducationCandidate.task_id == task.id,
+                m.SchoolResearchEducationCandidate.output_review_id == review.id,
+                m.SchoolResearchEducationCandidate.output_review_state == "CONSUMED",
+            )
+        )
+        if not isinstance(candidate_ref, str):
+            raise _conflict()
+        row = await uow.research_education_candidates.get_for_task(
+            school_id=actor.school_id,
+            task_id=task.id,
+            candidate_ref=candidate_ref,
+        )
+        if row is None:
+            raise _not_found()
+        _scope, session_ref, _payload = await self._current_candidate(
+            uow, actor, task, row, at=at
+        )
+        return self._summary(row, task_ref=task.task_ref, session_ref=session_ref)
 
     async def school_research_education_candidate_generation_job_list(
         self, actor, task_ref: str, *, offset: int, limit: int
@@ -1423,6 +2125,7 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
         reason_code=None,
         boundary_diagnostic=None,
         output_safety_diagnostic=None,
+        output_review_payload=None,
     ) -> str:
         """Write a content-free terminal disposition only for the exact live lease."""
         self._require_enabled()
@@ -1516,6 +2219,129 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
                         now=now,
                     )
                 )
+            output_safety_for_review = self._safe_output_safety_diagnostic(
+                output_safety_diagnostic,
+                status=disposition,
+                error_code=error_code if current else None,
+                reason_code=reason_code,
+                scope_current=current,
+            )
+            review_payload = None
+            review_capture = None
+            eligible_output_review = (
+                current
+                and output_safety_for_review is not None
+                and output_safety_for_review.action == "REVIEW_REQUIRED"
+                and output_safety_for_review.reason_codes == ("CONTENT_CONTROVERSIAL",)
+                and output_safety_for_review.requires_human is True
+            )
+            if eligible_output_review:
+                capture_code = "PAYLOAD_UNAVAILABLE"
+                if type(output_review_payload) is ResearchGeneralEducationOutputReviewPayload:
+                    capture_code = "PAYLOAD_REBIND_FAILED"
+                    try:
+                        review_payload = self._validated_output_review_payload(
+                            output_review_payload,
+                            job_ref=persisted.job_ref,
+                            attempt_count=persisted.attempt_count,
+                            generation_round=persisted.generation_round,
+                        )
+                    except Exception:
+                        review_payload = None
+                if review_payload is not None:
+                    capture_code = "RETENTION_WINDOW_INVALID"
+                    try:
+                        expires_at = min(
+                            now + timedelta(hours=24),
+                            _aware_utc(self.study_use_policy.ends_at),
+                        )
+                        if _retention is not None:
+                            expires_at = min(expires_at, _aware_utc(_retention))
+                        if expires_at > now:
+                            from database_layer.school_research_education_output_reviews import (
+                                OUTPUT_REVIEW_PAYLOAD_SCHEMA_VERSION,
+                                ResearchEducationOutputReviewEvidence,
+                                ResearchEducationOutputReviewScope,
+                            )
+
+                            provenance = review_payload.provenance
+                            evidence = ResearchEducationOutputReviewEvidence(
+                                safety_decision_id=review_payload.safety_decision_id,
+                                safety_review_ref=review_payload.safety_review_ref,
+                                safety_trace_id=review_payload.safety_trace_id,
+                                safety_operation="OUTPUT",
+                                safety_action="REVIEW_REQUIRED",
+                                safety_reason_codes=("CONTENT_CONTROVERSIAL",),
+                                safety_requires_human=True,
+                                input_safety_action=provenance.input_safety_action,
+                                retrieval_safety_action=provenance.retrieval_safety_action,
+                                canonical_input_sha256=review_payload.canonical_input_sha256,
+                                policy_version=provenance.policy_version,
+                                policy_hash=provenance.policy_hash,
+                                source_package_ref=provenance.source_package_ref,
+                                source_study_ref=provenance.source_study_ref,
+                                source_manifest_sha256=provenance.source_manifest_sha256,
+                                retrieval_id=provenance.retrieval_id,
+                                retrieval_bundle_sha256=provenance.retrieval_bundle_sha256,
+                                prompt_id=provenance.prompt_id,
+                                prompt_version=provenance.prompt_version,
+                                prompt_sha256=provenance.prompt_sha256,
+                                model_ref=provenance.model_id,
+                                model_digest_sha256=provenance.model_digest_sha256,
+                                runtime_version=provenance.runtime_version,
+                                safety_policy_version=provenance.safety_policy_version,
+                                candidate_content_sha256=None,
+                                candidate_payload_schema_version=None,
+                                expires_at=expires_at,
+                                trace_id=review_payload.safety_trace_id,
+                            )
+                            serialized_review = review_payload.model_dump(mode="json")
+                            capture_code = "ENCRYPTION_FAILED"
+                            encrypted_review = self.protection.encrypt_json(
+                                serialized_review,
+                                payload_schema_version=OUTPUT_REVIEW_PAYLOAD_SCHEMA_VERSION,
+                            )
+                            capture_code = "PAYLOAD_TOO_LARGE"
+                            if len(encrypted_review.ciphertext) <= 1_000_000:
+                                scope_values = {
+                                    name: getattr(_scope, name)
+                                    for name in (
+                                        ResearchEducationOutputReviewScope.__dataclass_fields__
+                                    )
+                                }
+                                capture_code = "PERSISTENCE_FAILED"
+                                try:
+                                    async with uow.session.begin_nested():
+                                        await _output_review_repo_call(
+                                            uow.research_education_output_reviews.create_pending(
+                                                claim=persisted,
+                                                scope=ResearchEducationOutputReviewScope(**scope_values),
+                                                evidence=evidence,
+                                                content_sha256=_canonical_mapping_sha256(
+                                                    serialized_review
+                                                ),
+                                                payload_ciphertext=encrypted_review.ciphertext,
+                                                cipher_format_version=(
+                                                    encrypted_review.cipher_format_version
+                                                ),
+                                                key_version=encrypted_review.key_version,
+                                                payload_schema_version=(
+                                                    encrypted_review.payload_schema_version
+                                                ),
+                                                now=now,
+                                            )
+                                        )
+                                except Exception:
+                                    pass
+                                else:
+                                    review_capture = ("SAVED", "OUTPUT_REVIEW_SAVED")
+                        else:
+                            capture_code = "RETENTION_WINDOW_INVALID"
+                    except Exception:
+                        # Capture is optional; retain only its closed outcome below.
+                        pass
+                if review_capture is None:
+                    review_capture = ("NOT_SAVED", capture_code)
             await _repo_call(
                 uow.research_education_jobs.finish(
                     school_id=persisted.school_id,
@@ -1599,6 +2425,28 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
                             "count": int(output_safety.requires_human),
                         },
                     )
+            if review_capture is not None:
+                token = hashlib.sha256(
+                    f"{persisted.job_ref}:{persisted.attempt_count}".encode("ascii")
+                ).hexdigest()[:32]
+                from database_layer.enums import AuditResult
+
+                capture_state, capture_code = review_capture
+                await uow.audit.append(
+                    action="school_research_education_job.output_review_capture",
+                    resource_type=_JOB_AUDIT_RESOURCE,
+                    resource_public_id=persisted.job_ref,
+                    result=(
+                        AuditResult.SUCCESS if capture_state == "SAVED" else AuditResult.FAILURE
+                    ),
+                    trace_id=f"TRACE_{token}",
+                    safe_metadata={
+                        "schema_version": "research-output-review-capture.v1",
+                        "source": _POLICY_VERSION,
+                        "state": capture_state,
+                        "reason_code": capture_code,
+                    },
+                )
             return disposition
 
     @staticmethod
@@ -1686,6 +2534,322 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
         if validated.stopped_status != status:
             return None
         return validated
+
+    def _validated_output_review_payload(
+        self, value, *, job_ref: str, attempt_count: int, generation_round: int
+    ):
+        """Fail closed unless the encrypted envelope reproduces the pinned R3 evidence."""
+        from smhai_backend.domains.research_general_education.prompt import (
+            get_prompt_definition,
+        )
+        from smhai_backend.domains.research_general_education.service import (
+            EXPECTED_MODEL_DIGEST_SHA256,
+            EXPECTED_MODEL_ID,
+            EXPECTED_MODEL_VERSION,
+            ResearchGeneralEducationPolicyPins,
+            _source_cards_match_bundle,
+            _valid_retrieval,
+        )
+        from smhai_backend.integrations.evidence import (
+            EligibilityPolicy,
+            build_retrieval_evidence_bundle,
+        )
+        from smhai_backend.integrations.rag import KnowledgeChunk, RetrievalResult
+
+        if type(value) is not ResearchGeneralEducationOutputReviewPayload:
+            raise _conflict()
+        provenance = value.provenance
+        registered_prompt = get_prompt_definition(
+            provenance.prompt_id, provenance.prompt_version, provenance.prompt_sha256
+        )
+        if (
+            registered_prompt is None
+            or provenance.policy_version != _POLICY_VERSION
+            or provenance.policy_hash != self.policy_hash
+            or provenance.safety_policy_version != "safety-port-unversioned.v1"
+            or provenance.source_package_ref != self.source_package_ref
+            or provenance.source_study_ref != self.source_study_ref
+            or provenance.source_manifest_sha256 != self.source_manifest_sha256
+            or provenance.prompt_id != registered_prompt.prompt_id
+            or provenance.prompt_version != registered_prompt.version
+            or provenance.prompt_sha256 != registered_prompt.sha256
+            or provenance.model_id != EXPECTED_MODEL_ID
+            or provenance.model_version != EXPECTED_MODEL_VERSION
+            or provenance.model_digest_sha256 != EXPECTED_MODEL_DIGEST_SHA256
+            or provenance.output_safety_action != "REVIEW_REQUIRED"
+            or provenance.output_safety_reason_codes != ("CONTENT_CONTROVERSIAL",)
+            or provenance.output_safety_requires_human is not True
+            or value.canonical_input_sha256 is not None
+            and generation_round == 0
+            or value.canonical_input_sha256 is None
+            and generation_round == 1
+        ):
+            raise _conflict()
+        trace_token = hashlib.sha256(
+            f"{job_ref}:{attempt_count}".encode("ascii")
+        ).hexdigest()[:32]
+        if (
+            value.safety_trace_id != f"TRACE_{trace_token}"
+            or value.request_id != f"REQ_{trace_token}"
+        ):
+            raise _conflict()
+        snapshot = value.retrieval_snapshot
+        required_trace_fields = {
+            "package_id", "study_ref", "manifest_sha256", "purpose", "target_population",
+            "target_role", "review_status", "rights_status", "source_rights_status",
+            "consumer_age_min", "consumer_age_max", "research_only", "professional_approval",
+            "human_curated", "ethics_approval", "clinical_approval", "psychometric_approval",
+            "publication_eligible", "production_use", "matched_layers", "missing_layers",
+        }
+        if (
+            snapshot.retrieval_id != provenance.retrieval_id
+            or set(snapshot.trace) != required_trace_fields
+            or len(json.dumps(value.model_dump(mode="json"), ensure_ascii=False)) > 262_144
+        ):
+            raise _conflict()
+        try:
+            chunks = tuple(
+                KnowledgeChunk.model_validate(item, strict=True) for item in snapshot.chunks
+            )
+            retrieval = RetrievalResult(
+                retrieval_id=snapshot.retrieval_id,
+                chunks=chunks,
+                label=snapshot.label,
+                trace=dict(snapshot.trace),
+            )
+            pins = ResearchGeneralEducationPolicyPins(
+                policy_hash=self.policy_hash,
+                source_package_ref=self.source_package_ref,
+                source_study_ref=self.source_study_ref,
+                source_manifest_sha256=self.source_manifest_sha256,
+            )
+            if not _valid_retrieval(retrieval, pins, provenance.retrieval_id):
+                raise ValueError("retrieval snapshot is not current")
+            bundle = build_retrieval_evidence_bundle(
+                retrieval,
+                transaction_id=provenance.generation_id,
+                request_id=value.request_id,
+                trace_id=value.safety_trace_id,
+                policy=EligibilityPolicy(
+                    target_population="secondary_school_student",
+                    target_role="student",
+                    risk_level=None,
+                    required_review_status="pending",
+                    required_rights_status="verified",
+                ),
+                strict_eligibility=True,
+            )
+            bundle.require_eligible()
+        except Exception:
+            raise _conflict() from None
+        cards = {chunk_id: self.source_cards.get(chunk_id) for chunk_id in bundle.chunk_ids}
+        if (
+            bundle.bundle_hash != provenance.retrieval_bundle_sha256
+            or not bundle.items
+            or any(type(card) is not ResearchGeneralEducationSourceCard for card in cards.values())
+            or not _source_cards_match_bundle(bundle, cards)
+        ):
+            raise _conflict()
+        return value
+
+    def _require_output_review_pins(self, row) -> None:
+        from smhai_backend.domains.research_general_education.prompt import (
+            get_prompt_definition,
+        )
+        from smhai_backend.domains.research_general_education.service import (
+            EXPECTED_MODEL_DIGEST_SHA256,
+            EXPECTED_MODEL_ID,
+        )
+
+        expected_token = hashlib.sha256(
+            f"{row.job_ref}:1".encode("ascii")
+        ).hexdigest()[:32]
+        prompt = get_prompt_definition(row.prompt_id, row.prompt_version, row.prompt_sha256)
+        valid_state = (row.status == "PENDING" and row.state_version == 1) or (
+            row.status in {"REJECTED", "REVOKED", "CONSUMED"}
+            and row.state_version == 2
+        )
+        if (
+            not valid_state
+            or row.safety_operation != "OUTPUT"
+            or row.safety_action != "REVIEW_REQUIRED"
+            or row.safety_reason_code != "CONTENT_CONTROVERSIAL"
+            or row.safety_requires_human is not True
+            or row.safety_trace_id != f"TRACE_{expected_token}"
+            or row.trace_id != f"TRACE_{expected_token}"
+            or row.policy_version != _POLICY_VERSION
+            or row.policy_hash != self.policy_hash
+            or row.source_package_ref != self.source_package_ref
+            or row.source_study_ref != self.source_study_ref
+            or row.source_manifest_sha256 != self.source_manifest_sha256
+            or row.safety_policy_version != "safety-port-unversioned.v1"
+            or prompt is None
+            or row.model_ref != EXPECTED_MODEL_ID
+            or row.model_digest_sha256 != EXPECTED_MODEL_DIGEST_SHA256
+            or row.runtime_version is None
+            or not isinstance(row.content_sha256, str)
+            or _SHA256.fullmatch(row.content_sha256) is None
+            or row.generation_round not in {0, 1}
+            or (row.generation_round == 0 and row.canonical_input_sha256 is not None)
+            or (row.generation_round == 1 and _SHA256.fullmatch(
+                row.canonical_input_sha256 or ""
+            ) is None)
+            or (row.status == "CONSUMED")
+            != (
+                isinstance(row.candidate_content_sha256, str)
+                and _SHA256.fullmatch(row.candidate_content_sha256) is not None
+            )
+            or (row.status == "CONSUMED")
+            != (row.candidate_payload_schema_version == _PAYLOAD_SCHEMA)
+            or (
+                row.status != "CONSUMED"
+                and (
+                    row.candidate_content_sha256 is not None
+                    or row.candidate_payload_schema_version is not None
+                )
+            )
+        ):
+            raise error(
+                ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                detail="research education output review metadata is unavailable",
+            )
+
+    def _output_review_payload_from_row(self, row):
+        from database_layer.crypto import EncryptedPayload
+        from database_layer.school_research_education_output_reviews import (
+            OUTPUT_REVIEW_PAYLOAD_SCHEMA_VERSION,
+        )
+
+        from smhai_backend.domains.research_general_education.schemas import (
+            ResearchGeneralEducationOutputReviewPayload,
+        )
+        from smhai_backend.domains.research_general_education.service import (
+            EXPECTED_MODEL_VERSION,
+        )
+
+        if (
+            row.payload_schema_version != OUTPUT_REVIEW_PAYLOAD_SCHEMA_VERSION
+            or not row.cipher_format_version
+            or not row.key_version
+        ):
+            raise error(
+                ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                detail="research education output review content is unavailable",
+            )
+        try:
+            value = self.protection.decrypt_json(
+                EncryptedPayload(
+                    ciphertext=row.payload_ciphertext,
+                    cipher_format_version=row.cipher_format_version,
+                    key_version=row.key_version,
+                    payload_schema_version=row.payload_schema_version,
+                )
+            )
+            expected = set(ResearchGeneralEducationOutputReviewPayload.model_fields)
+            if set(value) != expected:
+                raise ValueError("encrypted output review fields are not closed")
+            from smhai_backend.domains.support.schemas import GenerationContent
+
+            validated_value = dict(value)
+            validated_value["content"] = GenerationContent.model_validate(
+                value["content"], strict=True
+            ).model_dump(mode="python")
+            validated_provenance = dict(value["provenance"])
+            validated_provenance["output_safety_reason_codes"] = tuple(
+                validated_provenance["output_safety_reason_codes"]
+            )
+            validated_value["provenance"] = validated_provenance
+            payload = ResearchGeneralEducationOutputReviewPayload.model_validate(
+                validated_value, strict=True
+            )
+            self._validated_output_review_payload(
+                payload,
+                job_ref=row.job_ref,
+                attempt_count=1,
+                generation_round=row.generation_round,
+            )
+        except Exception:
+            raise error(
+                ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                detail="research education output review content is unavailable",
+            ) from None
+        if (
+            payload.provenance.policy_hash != row.policy_hash
+            or payload.provenance.source_manifest_sha256 != row.source_manifest_sha256
+            or payload.provenance.retrieval_id != row.retrieval_id
+            or payload.provenance.retrieval_bundle_sha256 != row.retrieval_bundle_sha256
+            or payload.provenance.prompt_id != row.prompt_id
+            or payload.provenance.prompt_version != row.prompt_version
+            or payload.provenance.prompt_sha256 != row.prompt_sha256
+            or payload.provenance.model_id != row.model_ref
+            or payload.provenance.model_version != EXPECTED_MODEL_VERSION
+            or payload.provenance.model_digest_sha256 != row.model_digest_sha256
+            or payload.provenance.runtime_version != row.runtime_version
+            or payload.provenance.input_safety_action != row.input_safety_action
+            or payload.provenance.retrieval_safety_action != row.retrieval_safety_action
+            or payload.safety_decision_id != row.safety_decision_id
+            or payload.safety_review_ref != row.safety_review_ref
+            or payload.safety_trace_id != row.safety_trace_id
+            or _canonical_mapping_sha256(payload.model_dump(mode="json"))
+            != row.content_sha256
+        ):
+            raise error(
+                ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                detail="research education output review provenance is unavailable",
+            )
+        return payload
+
+    async def _current_output_review(
+        self, uow, actor, task, row, *, at, lock=False, include_payload=False
+    ):
+        self._require_output_review_pins(row)
+        if row.scope.task_id != task.id or row.scope.school_id != actor.school_id:
+            raise _not_found()
+        session_ref = await self._session_ref(
+            uow, actor, task, row.scope.research_session_id
+        )
+        scope, _metadata, _retention, _profile, _pin = await self._current_scope(
+            uow, actor, task, session_ref=session_ref, at=at, lock=lock
+        )
+        if scope.response_origin != "PUBLIC_OBSERVED" or not self._same_scope(
+            row.scope, scope
+        ):
+            raise _not_found()
+        job = await uow.session.scalar(
+            self._select(self._db_models.SchoolResearchEducationJob).where(
+                self._db_models.SchoolResearchEducationJob.id == row.job_id,
+                self._db_models.SchoolResearchEducationJob.school_id == row.scope.school_id,
+                self._db_models.SchoolResearchEducationJob.research_session_id
+                == row.scope.research_session_id,
+            )
+        )
+        if (
+            job is None
+            or job.job_ref != row.job_ref
+            or job.generation_round != row.generation_round
+            or job.status != "REVIEW_REQUIRED"
+            or job.last_error_code != "SAFETY_BLOCKED"
+            or job.attempt_count != 1
+            or job.lease_owner is not None
+            or job.lease_token is not None
+            or job.input_review_id != row.input_review_id
+            or job.policy_hash != row.policy_hash
+            or not self._same_scope(row.scope, job)
+        ):
+            raise error(
+                ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                detail="research education output review source is unavailable",
+            )
+        if include_payload and (
+            _aware_utc(row.expires_at) <= _aware_utc(at)
+            or (
+                row.retention_due_at is not None
+                and _aware_utc(row.retention_due_at) <= _aware_utc(at)
+            )
+        ):
+            raise _conflict()
+        payload = self._output_review_payload_from_row(row) if include_payload else None
+        return scope, session_ref, payload
 
     def _input_review_evidence(self, receipt, *, now, retention_due_at=None):
         """Rebind the actual stopped-input receipt to this server's trusted pins."""
