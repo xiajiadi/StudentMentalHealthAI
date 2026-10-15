@@ -10,13 +10,14 @@ import SpecialistResearchFeedback from '@/components/school/SpecialistResearchFe
 import SpecialistResearchProgrammeCandidates from '@/components/school/SpecialistResearchProgrammeCandidates.vue'
 import SpecialistCatManagement from '@/components/school/SpecialistCatManagement.vue'
 import SchoolResearchManagement from '@/components/school/SchoolResearchManagement.vue'
+import SchoolResearchSourceCatalog from '@/components/school/SchoolResearchSourceCatalog.vue'
 import SchoolConversationSafetyReviews from '@/components/school/SchoolConversationSafetyReviews.vue'
 
 const route = useRoute()
 const section = computed(() => String(route.params.section ?? 'overview'))
 const page = computed(() => ({
   overview: { eyebrow: '心理专业工作区', title: '专业支持与协作', intro: '查看专业资料边界与任务工作流入口。涉及个体判断的事项仍需由具备资质的人员依据已确认流程独立处理。' },
-  resources: { eyebrow: '专业资料', title: '资料使用边界', intro: '资料审核与使用权限尚未在此工作区接通；当前页面不提供个体化建议或资料发布操作。' },
+  resources: { eyebrow: '专业资料', title: '研究教育来源目录', intro: '查看当前固定来源包的公开文献信息、权利记录和工程审核边界。目录不构成心理、伦理或正式发布批准。' },
   tasks: { eyebrow: '工作事项', title: '任务专业复核', intro: '查看已指派任务中的完成记录。复核决定不会自动发布学生反馈，需在记录中单独起草和发布。' },
   cat: { eyebrow: 'CAT 工程管理', title: '测评方案与模拟', intro: '管理合成题库与方案，或运行工程模拟。结果尚待心理学验证。' },
 }[section.value as 'overview' | 'resources' | 'tasks' | 'cat'] ?? { eyebrow: '心理专业工作区', title: '专业支持与协作', intro: '查看当前可用的资料与工作入口。' }))
@@ -42,9 +43,9 @@ const page = computed(() => ({
       <section class="specialist-grid" aria-label="专业工作区功能状态">
         <AppCard class="specialist-card">
           <span class="specialist-card__icon specialist-card__icon--teal"><BookOpenCheck :size="19" aria-hidden="true" /></span>
-          <span class="specialist-card__state">待审核与接入</span>
-          <h2>专业资料</h2><p>资料目录、来源权限与审核状态尚未连入此页面。</p>
-          <RouterLink to="/specialist/resources">查看资料边界 <ArrowRight :size="15" aria-hidden="true" /></RouterLink>
+          <span class="specialist-card__state">只读来源目录</span>
+          <h2>专业资料</h2><p>查看固定研究来源包的来源、权利记录和审核限制；不展示来源片段正文。</p>
+          <RouterLink to="/specialist/resources">查看来源目录 <ArrowRight :size="15" aria-hidden="true" /></RouterLink>
         </AppCard>
         <AppCard class="specialist-card">
           <span class="specialist-card__icon"><ClipboardCheck :size="19" aria-hidden="true" /></span>
@@ -60,7 +61,7 @@ const page = computed(() => ({
     </template>
 
     <template v-else-if="section === 'resources'">
-      <SchoolResearchManagement mode="specialist" />
+      <SchoolResearchSourceCatalog />
     </template>
 
     <template v-else-if="section === 'tasks'">
@@ -69,7 +70,10 @@ const page = computed(() => ({
       <SpecialistResearchFeedback />
       <SpecialistResearchProgrammeCandidates />
     </template>
-    <SpecialistCatManagement v-else-if="section === 'cat'" />
+    <template v-else-if="section === 'cat'">
+      <SpecialistCatManagement />
+      <SchoolResearchManagement mode="specialist" />
+    </template>
   </main>
 </template>
 

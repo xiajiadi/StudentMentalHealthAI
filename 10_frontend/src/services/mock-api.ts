@@ -182,6 +182,14 @@ export class MockApiProvider implements FrontendApi {
     throw new MockApiError('RESEARCH_SERVICE_UNAVAILABLE', '当前演示环境没有研究资料目录；不会用虚构资料代替服务端候选。')
   }
 
+  async listResearchSourceCatalog(): Promise<never> {
+    throw new MockApiError('RESEARCH_SERVICE_UNAVAILABLE', '当前演示环境没有已校验的来源包；不会用虚构资料代替服务端目录。')
+  }
+
+  async getResearchSource(_sourceRef: string): Promise<never> {
+    throw new MockApiError('RESEARCH_SERVICE_UNAVAILABLE', '当前演示环境没有已校验的来源包；不会用虚构资料代替服务端详情。')
+  }
+
   async listResearchProfileVersions(
     _profileRef: string,
   ): Promise<never> {

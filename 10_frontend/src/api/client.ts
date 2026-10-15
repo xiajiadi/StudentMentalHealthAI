@@ -269,6 +269,57 @@ export interface ResearchProfileCandidate {
   catalog_state: 'REGISTRY_CANDIDATE' | 'IMPORTED_CANDIDATE' | 'EXISTING_CANDIDATE' | 'IDEMPOTENT_REPLAY'
 }
 
+export interface ResearchSourceReview {
+  package_status: 'ENGINEERING_REVIEWED_RESEARCH_ONLY'
+  reviewer_kind: 'AI_ENGINEERING'
+  review_status: 'pending'
+  professional_approval: false
+  ethics_approval: false
+  clinical_approval: false
+  psychometric_approval: false
+  publication_eligible: false
+  production_use: false
+}
+
+export interface ResearchSourceSummary {
+  source_ref: string
+  title: string
+  organization: string
+  publication_date: string
+  canonical_url: string
+  source_population_scope: string
+  source_language: 'English'
+  layers: Array<'policy' | 'theory' | 'intervention'>
+  rights_status: 'VERIFIED_WITH_CONDITIONS' | 'PENDING'
+  retrieval_eligible: boolean
+}
+
+export interface ResearchSourceDetail extends ResearchSourceSummary {
+  license: string
+  license_url: string
+  attribution: string
+  rights_evidence_url: string
+  rights_evidence_sha256: string
+  rights_scope_note: string
+  source_capture_sha256: string | null
+  review: ResearchSourceReview
+}
+
+export interface ResearchSourceCatalogPage {
+  schema_version: 'school.research-source-catalog.v1'
+  source_package_ref: string
+  manifest_sha256: string
+  study_ref: string
+  consumer_age_min: 14
+  consumer_age_max: 17
+  review: ResearchSourceReview
+  items: ResearchSourceSummary[]
+  total: number
+  limit: number
+  offset: number
+  has_more: boolean
+}
+
 /** Persisted version metadata only; actual use must be rechecked by the server. */
 export interface ResearchProfileVersion {
   profile_ref: string
@@ -424,6 +475,8 @@ export interface FrontendApi {
   resumeStudentResearchSession?(sessionRef: string): Promise<ApiEnvelope<ResearchL1Session>>
   answerStudentResearchSession?(sessionRef: string, input: ResearchAnswerInput, idempotencyKey: string): Promise<ApiEnvelope<ResearchL1Session>>
   listResearchProfileCatalog?(params?: { signal?: AbortSignal }): Promise<ApiEnvelope<ResearchProfileCandidate[]>>
+  listResearchSourceCatalog?(params?: { limit?: number; offset?: number; signal?: AbortSignal }): Promise<ApiEnvelope<ResearchSourceCatalogPage>>
+  getResearchSource?(sourceRef: string, params?: { signal?: AbortSignal }): Promise<ApiEnvelope<ResearchSourceDetail>>
   listResearchProfileVersions?(profileRef: string, params?: { limit?: number; offset?: number; signal?: AbortSignal }): Promise<ApiEnvelope<ResearchProfileVersionPage>>
   importResearchProfile?(profileRef: string, versionNumber: number, idempotencyKey: string): Promise<ApiEnvelope<ResearchProfileCandidate>>
   enableResearchProfileSimulation?(profileRef: string, versionNumber: number, idempotencyKey: string): Promise<ApiEnvelope<ResearchProfileSimulationReceipt>>

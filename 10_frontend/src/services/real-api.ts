@@ -34,6 +34,10 @@ import type {
   ResearchProfileVersion,
   ResearchProfileVersionPage,
   ResearchProfileSimulationReceipt,
+  ResearchSourceCatalogPage,
+  ResearchSourceDetail,
+  ResearchSourceReview,
+  ResearchSourceSummary,
   ResearchTaskBindingOption,
   ResearchTaskPublishInput,
   ResearchTaskPublicationReceipt,
@@ -252,6 +256,155 @@ const mapResearchProfileCandidate = (value: unknown): ResearchProfileCandidate =
     execution_status: value.execution_status as string,
     created_at: created === null ? null : requiredTimestamp(value, 'created_at', true),
     catalog_state: value.catalog_state as ResearchProfileCandidate['catalog_state'],
+  }
+}
+
+const mapResearchSourceReview = (value: unknown): ResearchSourceReview => {
+  const keys = [
+    'package_status', 'reviewer_kind', 'review_status', 'professional_approval', 'ethics_approval',
+    'clinical_approval', 'psychometric_approval', 'publication_eligible', 'production_use',
+  ] as const
+  if (!isRecord(value) || Array.isArray(value)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '资料审核边界格式无法识别。')
+  }
+  requireExactKeys(value, keys, '资料审核边界包含不支持的信息。')
+  if (value.package_status !== 'ENGINEERING_REVIEWED_RESEARCH_ONLY'
+    || value.reviewer_kind !== 'AI_ENGINEERING' || value.review_status !== 'pending'
+    || keys.slice(3).some((key) => value[key] !== false)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '资料审核状态或批准范围无法识别。')
+  }
+  return {
+    package_status: 'ENGINEERING_REVIEWED_RESEARCH_ONLY',
+    reviewer_kind: 'AI_ENGINEERING',
+    review_status: 'pending',
+    professional_approval: false,
+    ethics_approval: false,
+    clinical_approval: false,
+    psychometric_approval: false,
+    publication_eligible: false,
+    production_use: false,
+  }
+}
+
+const validHttpsUrl = (value: unknown): value is string => {
+  if (typeof value !== 'string' || !value.trim()) return false
+  try {
+    const url = new globalThis.URL(value)
+    return url.protocol === 'https:' && Boolean(url.hostname) && !url.username && !url.password
+  } catch {
+    return false
+  }
+}
+
+const mapResearchSourceSummary = (value: unknown): ResearchSourceSummary => {
+  const keys = [
+    'source_ref', 'title', 'organization', 'publication_date', 'canonical_url',
+    'source_population_scope', 'source_language', 'layers', 'rights_status', 'retrieval_eligible',
+  ] as const
+  if (!isRecord(value) || Array.isArray(value)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '来源目录条目格式无法识别。')
+  }
+  requireExactKeys(value, keys, '来源目录条目包含不支持的信息。')
+  const layers = value.layers
+  if (!Array.isArray(layers) || layers.length > 3
+    || layers.some((layer) => !['policy', 'theory', 'intervention'].includes(String(layer)))
+    || new Set(layers).size !== layers.length
+    || value.source_language !== 'English'
+    || !['VERIFIED_WITH_CONDITIONS', 'PENDING'].includes(String(value.rights_status))
+    || typeof value.retrieval_eligible !== 'boolean'
+    || (value.retrieval_eligible && value.rights_status !== 'VERIFIED_WITH_CONDITIONS')
+    || !validHttpsUrl(value.canonical_url)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '来源目录状态格式无法识别。')
+  }
+  return {
+    source_ref: requiredString(value, 'source_ref'),
+    title: requiredString(value, 'title'),
+    organization: requiredString(value, 'organization'),
+    publication_date: requiredString(value, 'publication_date'),
+    canonical_url: value.canonical_url,
+    source_population_scope: requiredString(value, 'source_population_scope'),
+    source_language: 'English',
+    layers: layers as ResearchSourceSummary['layers'],
+    rights_status: value.rights_status as ResearchSourceSummary['rights_status'],
+    retrieval_eligible: value.retrieval_eligible,
+  }
+}
+
+const mapResearchSourcePage = (value: unknown): ResearchSourceCatalogPage => {
+  const keys = [
+    'schema_version', 'source_package_ref', 'manifest_sha256', 'study_ref',
+    'consumer_age_min', 'consumer_age_max', 'review', 'items', 'total', 'limit', 'offset', 'has_more',
+  ] as const
+  if (!isRecord(value) || Array.isArray(value)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '来源目录分页格式无法识别。')
+  }
+  requireExactKeys(value, keys, '来源目录包含不支持的信息。')
+  if (value.schema_version !== 'school.research-source-catalog.v1'
+    || !/^[0-9a-f]{64}$/.test(String(value.manifest_sha256))
+    || value.consumer_age_min !== 14 || value.consumer_age_max !== 17
+    || typeof value.has_more !== 'boolean' || !Array.isArray(value.items)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '来源目录分页状态无法识别。')
+  }
+  const total = requiredCount(value, 'total')
+  const limit = requiredPositiveCount(value, 'limit')
+  const offset = requiredCount(value, 'offset')
+  if (limit > 50 || offset > 10_000 || value.items.length > limit
+    || offset + value.items.length > total || value.has_more !== (offset + value.items.length < total)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '来源目录分页范围无法识别。')
+  }
+  const items = value.items.map(mapResearchSourceSummary)
+  if (new Set(items.map((item) => item.source_ref)).size !== items.length) {
+    throw new RealApiError('API_INVALID_RESPONSE', '来源目录包含重复条目。')
+  }
+  return {
+    schema_version: 'school.research-source-catalog.v1',
+    source_package_ref: requiredString(value, 'source_package_ref'),
+    manifest_sha256: value.manifest_sha256 as string,
+    study_ref: requiredString(value, 'study_ref'),
+    consumer_age_min: 14,
+    consumer_age_max: 17,
+    review: mapResearchSourceReview(value.review),
+    items,
+    total,
+    limit,
+    offset,
+    has_more: value.has_more,
+  }
+}
+
+const mapResearchSourceDetail = (value: unknown): ResearchSourceDetail => {
+  if (!isRecord(value) || Array.isArray(value)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '来源详情格式无法识别。')
+  }
+  const summary = mapResearchSourceSummary(Object.fromEntries(
+    Object.entries(value).filter(([key]) => [
+      'source_ref', 'title', 'organization', 'publication_date', 'canonical_url',
+      'source_population_scope', 'source_language', 'layers', 'rights_status', 'retrieval_eligible',
+    ].includes(key)),
+  ))
+  const keys = [
+    'source_ref', 'title', 'organization', 'publication_date', 'canonical_url',
+    'source_population_scope', 'source_language', 'layers', 'rights_status', 'retrieval_eligible',
+    'license', 'license_url', 'attribution', 'rights_evidence_url', 'rights_evidence_sha256',
+    'rights_scope_note', 'source_capture_sha256', 'review',
+  ] as const
+  requireExactKeys(value, keys, '来源详情包含不支持的信息。')
+  if (!validHttpsUrl(value.license_url) || !validHttpsUrl(value.rights_evidence_url)
+    || (value.source_capture_sha256 !== null
+      && (typeof value.source_capture_sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(value.source_capture_sha256)))
+    || typeof value.rights_evidence_sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(value.rights_evidence_sha256)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '来源权利证据格式无法识别。')
+  }
+  return {
+    ...summary,
+    license: requiredString(value, 'license'),
+    license_url: value.license_url,
+    attribution: requiredString(value, 'attribution'),
+    rights_evidence_url: value.rights_evidence_url,
+    rights_evidence_sha256: value.rights_evidence_sha256,
+    rights_scope_note: requiredString(value, 'rights_scope_note'),
+    source_capture_sha256: value.source_capture_sha256 as string | null,
+    review: mapResearchSourceReview(value.review),
   }
 }
 
@@ -1731,6 +1884,49 @@ export class RealApiProvider implements FrontendApi {
     }))
     if (!Array.isArray(response.data)) throw new RealApiError('API_INVALID_RESPONSE', '研究资料目录格式无法识别。')
     return { ...response, data: response.data.map(mapResearchProfileCandidate) }
+  }
+
+  async listResearchSourceCatalog(
+    params: { limit?: number; offset?: number; signal?: AbortSignal } = {},
+  ): Promise<ApiEnvelope<ResearchSourceCatalogPage>> {
+    const limit = params.limit ?? 20
+    const offset = params.offset ?? 0
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 50
+      || !Number.isSafeInteger(offset) || offset < 0 || offset > 10_000) {
+      throw new RealApiError('API_INVALID_REQUEST', '资料目录分页范围无效。')
+    }
+    const query = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+    const response = await unwrap<unknown>(() => apiClient.request({
+      method: 'GET',
+      url: `/api/v1/school/research-sources/catalog?${query.toString()}`,
+      signal: params.signal,
+      parseAs: 'json',
+    }))
+    const data = mapResearchSourcePage(response.data)
+    if (data.limit !== limit || data.offset !== offset) {
+      throw new RealApiError('API_INVALID_RESPONSE', '资料目录分页与当前查询不匹配。')
+    }
+    return { ...response, data }
+  }
+
+  async getResearchSource(
+    sourceRef: string,
+    params: { signal?: AbortSignal } = {},
+  ): Promise<ApiEnvelope<ResearchSourceDetail>> {
+    if (!/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(sourceRef)) {
+      throw new RealApiError('API_INVALID_REQUEST', '来源编号无效。')
+    }
+    const response = await unwrap<unknown>(() => apiClient.request({
+      method: 'GET',
+      url: `/api/v1/school/research-sources/${encodeURIComponent(sourceRef)}`,
+      signal: params.signal,
+      parseAs: 'json',
+    }))
+    const data = mapResearchSourceDetail(response.data)
+    if (data.source_ref !== sourceRef) {
+      throw new RealApiError('API_INVALID_RESPONSE', '来源详情与当前选择不匹配。')
+    }
+    return { ...response, data }
   }
 
   async listResearchProfileVersions(
