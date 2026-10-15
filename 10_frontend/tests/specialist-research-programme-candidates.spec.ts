@@ -8,12 +8,16 @@ const service = vi.hoisted(() => ({
   get: vi.fn(),
   transition: vi.fn(),
   queueGeneration: vi.fn(),
+  queueGenerationBatch: vi.fn(),
+  listGenerationJobs: vi.fn(),
 }))
 const keyFactory = vi.hoisted(() => vi.fn(() => 'programme-candidate-synthetic-key'))
+const batchKeyFactory = vi.hoisted(() => vi.fn(() => 'programme-batch-synthetic-key'))
 
 vi.mock('@/services/school-research-programme-candidates', () => ({
   schoolResearchProgrammeCandidates: service,
   newProgrammeCandidateIdempotencyKey: keyFactory,
+  newProgrammeGenerationBatchIdempotencyKey: batchKeyFactory,
 }))
 
 import SpecialistResearchProgrammeCandidates from '@/components/school/SpecialistResearchProgrammeCandidates.vue'
@@ -38,6 +42,30 @@ const detail = {
     body: '仅用于教职工研究模拟参考；资料未构成个体化建议或经验证的效果结论。',
     citations: [{ citation_id: 'S1', source_title: '公开来源标题', source_organization: '公开机构', source_url: 'https://example.org/source', source_locator: '第 2 节' }],
   },
+}
+const emptyStatusCounts = {
+  QUEUED: 0, LEASED: 0, RETRY: 0, HELD: 0, ABSTAINED: 0,
+  REVIEW_REQUIRED: 0, CRISIS_ROUTED: 0, FAILED: 0, CANCELLED: 0,
+}
+const emptyGenerationJobPage = {
+  items: [], offset: 0, limit: 25, total: 0, has_more: false,
+  status_counts: emptyStatusCounts,
+  policy_version: 'RESEARCH_STAFF_PROGRAMME_POLICY_V1' as const,
+  purpose: 'RESEARCH_SIMULATION' as const,
+  research_only: true as const,
+  publication_status: 'not_approved_for_publication_or_operational_use' as const,
+  student_feedback_eligible: false as const,
+}
+const batchReceipt = {
+  batch_ref: `REJBATCH_${'b'.repeat(64)}`,
+  job_refs: [`REJ_${'a'.repeat(64)}`, `REJ_${'c'.repeat(64)}`],
+  job_count: 2,
+  next_cursor: null,
+  policy_version: 'RESEARCH_STAFF_PROGRAMME_POLICY_V1' as const,
+  purpose: 'RESEARCH_SIMULATION' as const,
+  research_only: true as const,
+  publication_status: 'not_approved_for_publication_or_operational_use' as const,
+  student_feedback_eligible: false as const,
 }
 
 function specialistSession() {
@@ -65,6 +93,8 @@ describe('specialist research programme candidates', () => {
       purpose: 'RESEARCH_SIMULATION', research_only: true,
       publication_status: 'not_approved_for_publication_or_operational_use', student_feedback_eligible: false,
     })
+    service.queueGenerationBatch.mockResolvedValue(batchReceipt)
+    service.listGenerationJobs.mockResolvedValue(emptyGenerationJobPage)
   })
 
   it('loads only authorized task candidates and requires explicit confirmation before adopting', async () => {
@@ -190,6 +220,259 @@ describe('specialist research programme candidates', () => {
     wrapper.unmount()
   })
 
+  it('queues one bounded batch after separate confirmation and renders service status counts', async () => {
+    const { pinia } = specialistSession()
+    batchKeyFactory.mockReturnValueOnce('programme-batch-page-1')
+    service.listGenerationJobs
+      .mockResolvedValueOnce(emptyGenerationJobPage)
+      .mockResolvedValueOnce({
+        ...emptyGenerationJobPage,
+        items: [
+          {
+            job_ref: `REJ_${'d'.repeat(64)}`, status: 'QUEUED', attempt_count: 0,
+            updated_at: '2026-10-15T08:00:00Z', last_error_code: null,
+          },
+          {
+            job_ref: `REJ_${'e'.repeat(64)}`, status: 'RETRY', attempt_count: 1,
+            updated_at: '2026-10-15T08:01:00Z', last_error_code: 'DEPENDENCY_UNAVAILABLE',
+          },
+        ],
+        total: 2,
+        status_counts: { ...emptyStatusCounts, QUEUED: 1, RETRY: 1 },
+      })
+    const wrapper = mount(SpecialistResearchProgrammeCandidates, { global: { plugins: [pinia] } })
+    await flushPromises()
+    await wrapper.find('button.programme-candidates__task').trigger('click')
+    await flushPromises()
+
+    const batchButton = wrapper.findAll('button').find((button) => button.text().includes('请求首批'))!
+    expect(batchButton.attributes('disabled')).toBeDefined()
+    const batchConsent = wrapper.findAll('input[type="checkbox"]').find((input) =>
+      input.element.parentElement?.textContent?.includes('不发布学生反馈'))!
+    await batchConsent.setValue(true)
+    await batchButton.trigger('click')
+    await flushPromises()
+
+    expect(service.queueGenerationBatch).toHaveBeenCalledWith(task.task_ref, 'programme-batch-page-1', 25, null)
+    expect(service.listGenerationJobs).toHaveBeenLastCalledWith(task.task_ref, 0, 25)
+    expect(wrapper.text()).toContain('回执包含 2 项任务记录（可能包含已有任务）')
+    expect(wrapper.text()).toContain('已排队 · 1')
+    expect(wrapper.text()).toContain('待重试 · 1')
+    expect(wrapper.text()).toContain('共 2 项任务')
+    expect(wrapper.text()).not.toContain(batchReceipt.batch_ref)
+    wrapper.unmount()
+  })
+
+  it('retries the same batch page with the same idempotency key', async () => {
+    const { pinia } = specialistSession()
+    batchKeyFactory.mockReturnValueOnce('programme-batch-retry-key')
+    service.queueGenerationBatch
+      .mockRejectedValueOnce({ code: 'NETWORK_UNAVAILABLE', retryable: true })
+      .mockResolvedValueOnce(batchReceipt)
+    const wrapper = mount(SpecialistResearchProgrammeCandidates, { global: { plugins: [pinia] } })
+    await flushPromises()
+    await wrapper.find('button.programme-candidates__task').trigger('click')
+    await flushPromises()
+    const batchConsent = wrapper.findAll('input[type="checkbox"]').find((input) =>
+      input.element.parentElement?.textContent?.includes('不发布学生反馈'))!
+    await batchConsent.setValue(true)
+    await wrapper.findAll('button').find((button) => button.text().includes('请求首批'))!.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('使用相同请求重试')
+    expect(service.queueGenerationBatch).toHaveBeenCalledTimes(1)
+
+    await wrapper.findAll('button').find((button) => button.text().includes('使用相同请求重试'))!.trigger('click')
+    await flushPromises()
+    expect(service.queueGenerationBatch).toHaveBeenNthCalledWith(2, task.task_ref, 'programme-batch-retry-key', 25, null)
+    expect(wrapper.text()).toContain('回执包含 2 项任务记录')
+    wrapper.unmount()
+  })
+
+  it('uses a new idempotency key for the next cursor page', async () => {
+    const { pinia } = specialistSession()
+    const firstPage = { ...batchReceipt, next_cursor: batchReceipt.job_refs[1] }
+    const lastPage = { ...batchReceipt, batch_ref: `REJBATCH_${'f'.repeat(64)}`, next_cursor: null }
+    batchKeyFactory.mockReturnValueOnce('programme-batch-page-one').mockReturnValueOnce('programme-batch-page-two')
+    service.queueGenerationBatch.mockResolvedValueOnce(firstPage).mockResolvedValueOnce(lastPage)
+    const wrapper = mount(SpecialistResearchProgrammeCandidates, { global: { plugins: [pinia] } })
+    await flushPromises()
+    await wrapper.find('button.programme-candidates__task').trigger('click')
+    await flushPromises()
+
+    const consent = () => wrapper.findAll('input[type="checkbox"]').find((input) =>
+      input.element.parentElement?.textContent?.includes('不发布学生反馈'))!
+    await consent().setValue(true)
+    await wrapper.findAll('button').find((button) => button.text().includes('请求首批'))!.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('请求下一批（最多 25 项）')
+    await consent().setValue(true)
+    await wrapper.findAll('button').find((button) => button.text().includes('请求下一批'))!.trigger('click')
+    await flushPromises()
+
+    expect(service.queueGenerationBatch).toHaveBeenNthCalledWith(1, task.task_ref, 'programme-batch-page-one', 25, null)
+    expect(service.queueGenerationBatch).toHaveBeenNthCalledWith(2, task.task_ref, 'programme-batch-page-two', 25, batchReceipt.job_refs[1])
+    expect(batchKeyFactory).toHaveBeenNthCalledWith(1, 25)
+    expect(batchKeyFactory).toHaveBeenNthCalledWith(2, 25)
+    expect(wrapper.text()).toContain('当前授权范围没有更多批次')
+    wrapper.unmount()
+  })
+
+  it('resets the batch cursor and uses a fresh key when the batch size changes', async () => {
+    const { pinia } = specialistSession()
+    const firstPage = { ...batchReceipt, next_cursor: batchReceipt.job_refs[1] }
+    batchKeyFactory.mockReturnValueOnce('programme-batch-size-25').mockReturnValueOnce('programme-batch-size-2')
+    service.queueGenerationBatch.mockResolvedValueOnce(firstPage).mockResolvedValueOnce(batchReceipt)
+    const wrapper = mount(SpecialistResearchProgrammeCandidates, { global: { plugins: [pinia] } })
+    await flushPromises()
+    await wrapper.find('button.programme-candidates__task').trigger('click')
+    await flushPromises()
+
+    const consent = () => wrapper.findAll('input[type="checkbox"]').find((input) =>
+      input.element.parentElement?.textContent?.includes('不发布学生反馈'))!
+    await consent().setValue(true)
+    await wrapper.findAll('button').find((button) => button.text().includes('请求首批（最多 25 项）'))!.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('请求下一批（最多 25 项）')
+
+    await wrapper.find('select[aria-label="每批生成任务数量"]').setValue('2')
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('回执包含 2 项任务记录')
+    expect(wrapper.text()).toContain('请求首批（最多 2 项）')
+    expect((consent().element as { checked: boolean }).checked).toBe(false)
+    await consent().setValue(true)
+    await wrapper.findAll('button').find((button) => button.text().includes('请求首批（最多 2 项）'))!.trigger('click')
+    await flushPromises()
+
+    expect(service.queueGenerationBatch).toHaveBeenNthCalledWith(1, task.task_ref, 'programme-batch-size-25', 25, null)
+    expect(service.queueGenerationBatch).toHaveBeenNthCalledWith(2, task.task_ref, 'programme-batch-size-2', 2, null)
+    expect(batchKeyFactory).toHaveBeenNthCalledWith(1, 25)
+    expect(batchKeyFactory).toHaveBeenNthCalledWith(2, 2)
+    wrapper.unmount()
+  })
+
+  it('clears the batch receipt and confirmation when changing authorized tasks', async () => {
+    const { pinia } = specialistSession()
+    const secondTask = { ...task, task_ref: 'TASK_reference_2', class_ref: 'CLASS_reference_2', class_display_name: '第二合成事项' }
+    service.listTasks.mockResolvedValue([task, secondTask])
+    const wrapper = mount(SpecialistResearchProgrammeCandidates, { global: { plugins: [pinia] } })
+    await flushPromises()
+    await wrapper.findAll('button.programme-candidates__task')[0].trigger('click')
+    await flushPromises()
+    const consent = () => wrapper.findAll('input[type="checkbox"]').find((input) =>
+      input.element.parentElement?.textContent?.includes('不发布学生反馈'))!
+    await consent().setValue(true)
+    await wrapper.findAll('button').find((button) => button.text().includes('请求首批'))!.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('回执包含 2 项任务记录')
+
+    await wrapper.findAll('button.programme-candidates__task')[1].trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('第二合成事项')
+    expect(wrapper.text()).not.toContain('回执包含 2 项任务记录')
+    expect(wrapper.text()).toContain('请求首批（最多 25 项）')
+    expect((consent().element as { checked: boolean }).checked).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('ignores old job-status reads after the selected task changes', async () => {
+    const { pinia } = specialistSession()
+    const secondTask = { ...task, task_ref: 'TASK_reference_2', class_ref: 'CLASS_reference_2', class_display_name: '第二合成事项' }
+    let finishFirstRead: ((value: unknown) => void) | undefined
+    service.listTasks.mockResolvedValue([task, secondTask])
+    service.listGenerationJobs.mockImplementation((taskRef: string) => {
+      if (taskRef === task.task_ref) return new Promise((resolve) => { finishFirstRead = resolve })
+      return Promise.resolve({ ...emptyGenerationJobPage, total: 2, status_counts: { ...emptyStatusCounts, FAILED: 2 } })
+    })
+    const wrapper = mount(SpecialistResearchProgrammeCandidates, { global: { plugins: [pinia] } })
+    await flushPromises()
+    const taskButtons = wrapper.findAll('button.programme-candidates__task')
+    await taskButtons[0].trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button.programme-candidates__task')[1].trigger('click')
+    await flushPromises()
+    finishFirstRead?.({
+      ...emptyGenerationJobPage,
+      total: 1,
+      status_counts: { ...emptyStatusCounts, HELD: 1 },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('第二合成事项')
+    expect(wrapper.text()).toContain('共 2 项任务')
+    expect(wrapper.text()).toContain('处理失败 · 2')
+    expect(wrapper.text()).not.toContain('候选已保存 · 1')
+    wrapper.unmount()
+  })
+
+  it('ignores stale A-to-B-to-A batch completions and preserves the current busy and retry state', async () => {
+    const { pinia, session } = specialistSession()
+    const secondTask = { ...task, task_ref: 'TASK_reference_2', class_ref: 'CLASS_reference_2', class_display_name: '第二合成事项' }
+    let settles: Array<{ resolve: (value: unknown) => void; reject: (reason?: unknown) => void }> = []
+    service.queueGenerationBatch.mockImplementation(() => new Promise((resolve, reject) => {
+      settles.push({ resolve, reject })
+    }))
+    const wrapper = mount(SpecialistResearchProgrammeCandidates, { global: { plugins: [pinia] } })
+    await flushPromises()
+
+    const batchConsent = () => wrapper.findAll('input[type="checkbox"]').find((input) =>
+      input.element.parentElement?.textContent?.includes('不发布学生反馈'))!
+    const startBatch = async () => {
+      await batchConsent().setValue(true)
+      await wrapper.findAll('button').find((button) => button.text().includes('请求首批'))!.trigger('click')
+      await flushPromises()
+    }
+    const setIdentity = (role: 'teacher' | 'psychological_specialist', schoolRef: string) => {
+      session.signIn({
+        userId: role === 'teacher' ? 'USER_synthetic_teacher' : 'USER_synthetic_specialist',
+        role, subjectId: null, displayName: 'Synthetic User', initials: 'S',
+        activeContext: { role, schoolRef },
+      })
+    }
+
+    await wrapper.find('button.programme-candidates__task').trigger('click')
+    await flushPromises()
+    await startBatch()
+    expect(settles).toHaveLength(1)
+
+    service.listTasks.mockResolvedValue([secondTask])
+    setIdentity('teacher', 'SCHOOL_synthetic')
+    await flushPromises()
+    setIdentity('psychological_specialist', 'SCHOOL_B')
+    await flushPromises()
+    await wrapper.find('button.programme-candidates__task').trigger('click')
+    await flushPromises()
+    await startBatch()
+    expect(settles).toHaveLength(2)
+
+    service.listTasks.mockResolvedValue([task])
+    setIdentity('teacher', 'SCHOOL_B')
+    await flushPromises()
+    setIdentity('psychological_specialist', 'SCHOOL_A')
+    await flushPromises()
+    await wrapper.find('button.programme-candidates__task').trigger('click')
+    await flushPromises()
+    await startBatch()
+    expect(settles).toHaveLength(3)
+
+    settles[0]?.resolve({ ...batchReceipt, job_count: 99 })
+    await flushPromises()
+    expect(wrapper.findAll('button').find((button) => button.text().includes('请求首批'))!.attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).not.toContain('回执包含 99 项任务记录')
+    expect(wrapper.text()).not.toContain('使用相同请求重试')
+
+    settles[1]?.reject({ code: 'NETWORK_UNAVAILABLE', retryable: true })
+    await flushPromises()
+    expect(wrapper.findAll('button').find((button) => button.text().includes('请求首批'))!.attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).not.toContain('批次请求未完成')
+    expect(wrapper.text()).not.toContain('使用相同请求重试')
+
+    settles[2]?.resolve(batchReceipt)
+    await flushPromises()
+    expect(wrapper.text()).toContain('回执包含 2 项任务记录')
+    expect(wrapper.text()).not.toContain('回执包含 99 项任务记录')
+    wrapper.unmount()
+  })
+
   it('clears old task state when identity changes during an in-flight queue request', async () => {
     const { pinia, session } = specialistSession()
     let finishQueue: ((value: unknown) => void) | undefined
@@ -219,6 +502,62 @@ describe('specialist research programme candidates', () => {
     expect(wrapper.text()).not.toContain('请求生成参考候选')
     expect(wrapper.text()).not.toContain('已排队')
     expect(wrapper.text()).not.toContain('合成教职工事项')
+    wrapper.unmount()
+  })
+
+  it('does not let an old single-job completion overwrite a new same-task request', async () => {
+    const { pinia, session } = specialistSession()
+    const resolves: Array<(value: unknown) => void> = []
+    service.queueGeneration.mockImplementation(() => new Promise((resolve) => { resolves.push(resolve) }))
+    const wrapper = mount(SpecialistResearchProgrammeCandidates, { global: { plugins: [pinia] } })
+    await flushPromises()
+    const enterTask = async () => {
+      await wrapper.find('button.programme-candidates__task').trigger('click')
+      await flushPromises()
+    }
+    const generationConsent = () => wrapper.findAll('input[type="checkbox"]').find((input) =>
+      input.element.parentElement?.textContent?.includes('我确认请求仅用于此授权事项中的教职工参考资料'))!
+    const startSingle = async () => {
+      await generationConsent().setValue(true)
+      await wrapper.findAll('button').find((button) => button.text().includes('请求生成参考候选'))!.trigger('click')
+      await flushPromises()
+    }
+    const setIdentity = (role: 'teacher' | 'psychological_specialist') => {
+      session.signIn({
+        userId: role === 'teacher' ? 'USER_synthetic_teacher' : 'USER_synthetic_specialist',
+        role, subjectId: null, displayName: 'Synthetic User', initials: 'S',
+        activeContext: { role, schoolRef: 'SCHOOL_synthetic' },
+      })
+    }
+
+    await enterTask()
+    await startSingle()
+    setIdentity('teacher')
+    await flushPromises()
+    setIdentity('psychological_specialist')
+    await flushPromises()
+    await enterTask()
+    await startSingle()
+    expect(resolves).toHaveLength(2)
+
+    resolves[0]?.({
+      job_ref: 'REJOB_stale_synthetic', status: 'FAILED', policy_version: 'RESEARCH_STAFF_PROGRAMME_POLICY_V1',
+      purpose: 'RESEARCH_SIMULATION', research_only: true,
+      publication_status: 'not_approved_for_publication_or_operational_use', student_feedback_eligible: false,
+    })
+    await flushPromises()
+    expect(wrapper.findAll('button').find((button) => button.text().includes('请求生成参考候选'))!.attributes('disabled')).toBeDefined()
+    expect(wrapper.findAll('.programme-candidates__receipt').some((receipt) => receipt.text().includes('处理失败'))).toBe(false)
+    expect(wrapper.text()).not.toContain('REJOB_stale_synthetic')
+
+    resolves[1]?.({
+      job_ref: 'REJOB_current_synthetic', status: 'QUEUED', policy_version: 'RESEARCH_STAFF_PROGRAMME_POLICY_V1',
+      purpose: 'RESEARCH_SIMULATION', research_only: true,
+      publication_status: 'not_approved_for_publication_or_operational_use', student_feedback_eligible: false,
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain('已排队')
+    expect(wrapper.text()).not.toContain('REJOB_current_synthetic')
     wrapper.unmount()
   })
 
