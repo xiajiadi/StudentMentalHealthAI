@@ -734,6 +734,9 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
         }
 
     def _output_review_detail_payload(self, payload):
+        from smhai_backend.domains.research_general_education.retrieval_trace import (
+            project_r3_retrieval_trace,
+        )
         from smhai_backend.domains.research_general_education.service import (
             _source_cards_match_bundle,
         )
@@ -750,7 +753,7 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
                 KnowledgeChunk.model_validate(item, strict=True) for item in snapshot.chunks
             ),
             label=snapshot.label,
-            trace=dict(snapshot.trace),
+            trace=project_r3_retrieval_trace(snapshot.trace),
         )
         bundle = build_retrieval_evidence_bundle(
             retrieval,
@@ -2545,6 +2548,9 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
         from smhai_backend.domains.research_general_education.prompt import (
             get_prompt_definition,
         )
+        from smhai_backend.domains.research_general_education.retrieval_trace import (
+            project_r3_retrieval_trace,
+        )
         from smhai_backend.domains.research_general_education.service import (
             EXPECTED_MODEL_DIGEST_SHA256,
             EXPECTED_MODEL_ID,
@@ -2597,20 +2603,13 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
         ):
             raise _conflict()
         snapshot = value.retrieval_snapshot
-        required_trace_fields = {
-            "package_id", "study_ref", "manifest_sha256", "purpose", "target_population",
-            "target_role", "review_status", "rights_status", "source_rights_status",
-            "consumer_age_min", "consumer_age_max", "research_only", "professional_approval",
-            "human_curated", "ethics_approval", "clinical_approval", "psychometric_approval",
-            "publication_eligible", "production_use", "matched_layers", "missing_layers",
-        }
         if (
             snapshot.retrieval_id != provenance.retrieval_id
-            or set(snapshot.trace) != required_trace_fields
             or len(json.dumps(value.model_dump(mode="json"), ensure_ascii=False)) > 262_144
         ):
             raise _conflict()
         try:
+            trace = project_r3_retrieval_trace(snapshot.trace)
             chunks = tuple(
                 KnowledgeChunk.model_validate(item, strict=True) for item in snapshot.chunks
             )
@@ -2618,7 +2617,7 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
                 retrieval_id=snapshot.retrieval_id,
                 chunks=chunks,
                 label=snapshot.label,
-                trace=dict(snapshot.trace),
+                trace=trace,
             )
             pins = ResearchGeneralEducationPolicyPins(
                 policy_hash=self.policy_hash,

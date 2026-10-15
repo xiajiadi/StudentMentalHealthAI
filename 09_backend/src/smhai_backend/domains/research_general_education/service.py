@@ -44,6 +44,10 @@ from .prompt import (
     PROMPT_VERSION,
     get_prompt_definition,
 )
+from .retrieval_trace import (
+    R3_GENERAL_EDUCATION_REQUIRED_LAYERS,
+    project_r3_retrieval_trace,
+)
 from .schemas import (
     ResearchGeneralEducationBoundaryDiagnostic,
     ResearchGeneralEducationCandidatePayload,
@@ -62,7 +66,7 @@ _FIXED_QUERY = (
     "general school wellbeing education, school environment, supportive relationships, "
     "student participation and evidence limitations"
 )
-_EXPECTED_LAYERS = ["policy", "theory", "intervention"]
+_EXPECTED_LAYERS = list(R3_GENERAL_EDUCATION_REQUIRED_LAYERS)
 EXPECTED_MODEL_ID = "qwen2.5-7b-instruct-school-demo"
 EXPECTED_MODEL_VERSION = "qwen2.5:7b-instruct-q4_K_M"
 EXPECTED_MODEL_DIGEST_SHA256 = "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e"
@@ -873,7 +877,10 @@ def _valid_retrieval(
         or not isinstance(retrieval.trace, Mapping)
     ):
         return False
-    trace = retrieval.trace
+    try:
+        trace = project_r3_retrieval_trace(retrieval.trace)
+    except (TypeError, ValueError):
+        return False
     return (
         trace.get("package_id") == pins.source_package_ref
         and trace.get("study_ref") == pins.source_study_ref
@@ -1071,32 +1078,10 @@ def _output_review_payload(
             or type(check.review_reference) is not str
         ):
             return None
-        trace_fields = (
-            "package_id",
-            "study_ref",
-            "manifest_sha256",
-            "purpose",
-            "target_population",
-            "target_role",
-            "review_status",
-            "rights_status",
-            "source_rights_status",
-            "consumer_age_min",
-            "consumer_age_max",
-            "research_only",
-            "professional_approval",
-            "human_curated",
-            "ethics_approval",
-            "clinical_approval",
-            "psychometric_approval",
-            "publication_eligible",
-            "production_use",
-            "matched_layers",
-            "missing_layers",
-        )
-        if not isinstance(retrieval.trace, Mapping):
+        try:
+            trace = project_r3_retrieval_trace(retrieval.trace)
+        except (TypeError, ValueError):
             return None
-        trace = {name: retrieval.trace[name] for name in trace_fields}
         snapshot = ResearchGeneralEducationRetrievalSnapshot(
             retrieval_id=retrieval.retrieval_id,
             label=retrieval.label,

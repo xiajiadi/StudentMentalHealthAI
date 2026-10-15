@@ -28,6 +28,10 @@ from smhai_backend.domains.research_general_education.prompt import (
     get_prompt_definition,
     is_current_prompt,
 )
+from smhai_backend.domains.research_general_education.retrieval_trace import (
+    R3_RETRIEVAL_TRACE_FIELDS,
+    project_r3_retrieval_trace,
+)
 from smhai_backend.domains.research_general_education.schemas import (
     ResearchGeneralEducationBoundaryDiagnostic,
     ResearchGeneralEducationCandidatePayload,
@@ -53,6 +57,10 @@ from smhai_backend.domains.research_general_education.service import (
     canonical_candidate_payload_sha256,
     canonical_input_context_sha256,
     source_cards_from_package,
+)
+from smhai_backend.integrations.evidence import (
+    EligibilityPolicy,
+    build_retrieval_evidence_bundle,
 )
 from smhai_backend.integrations.rag import Citation, KnowledgeChunk, RetrievalResult
 from smhai_backend.integrations.safety import SafetyCheckView, SafetyDecisionView
@@ -144,6 +152,10 @@ def _retrieval(
         "source_rights_status": "VERIFIED_WITH_CONDITIONS",
         "consumer_age_min": 14,
         "consumer_age_max": 17,
+        "query_transform": "NONE",
+        "required_layers": ["policy", "theory", "intervention"],
+        "selection_strategy": "LAYER_FIRST_BOUNDED_POOL",
+        "reviewer_kind": "AI_ENGINEERING",
         "research_only": True,
         "professional_approval": False,
         "human_curated": False,
@@ -526,12 +538,40 @@ async def test_output_review_envelope_rebinds_only_exact_job_trace_and_r3_bundle
     job_ref = "REJ_" + "a" * 64
     token = hashlib.sha256(f"{job_ref}:1".encode("ascii")).hexdigest()[:32]
     request_context = RequestContext(request_id=f"REQ_{token}", trace_id=f"TRACE_{token}")
-    service, _ = _service(safety=_OutputReviewSafety())
+    service, _retriever = _service(safety=_OutputReviewSafety())
 
     result = await service.generate(
         caller_role="PSYCHOLOGICAL_SPECIALIST", request_context=request_context
     )
     assert result.output_review_payload is not None
+    output_payload = result.output_review_payload
+    snapshot = output_payload.retrieval_snapshot
+    assert len(R3_RETRIEVAL_TRACE_FIELDS) == 25
+    assert set(snapshot.trace) == set(R3_RETRIEVAL_TRACE_FIELDS)
+    snapshot_retrieval = RetrievalResult(
+        retrieval_id=snapshot.retrieval_id,
+        chunks=tuple(
+            KnowledgeChunk.model_validate(item, strict=True) for item in snapshot.chunks
+        ),
+        label=snapshot.label,
+        trace=project_r3_retrieval_trace(snapshot.trace),
+    )
+    rebound_bundle = build_retrieval_evidence_bundle(
+        snapshot_retrieval,
+        transaction_id=output_payload.provenance.generation_id,
+        request_id=output_payload.request_id,
+        trace_id=output_payload.safety_trace_id,
+        policy=EligibilityPolicy(
+            target_population="secondary_school_student",
+            target_role="student",
+            risk_level=None,
+            required_review_status="pending",
+            required_rights_status="verified",
+        ),
+        strict_eligibility=True,
+    )
+    assert rebound_bundle.bundle_hash == output_payload.provenance.retrieval_bundle_sha256
+
     persistence = SchoolResearchEducationCandidatePersistenceAdapter(
         None,
         enabled=True,
@@ -546,15 +586,38 @@ async def test_output_review_envelope_rebinds_only_exact_job_trace_and_r3_bundle
     )
 
     validated = persistence._validated_output_review_payload(
-        result.output_review_payload,
+        output_payload,
         job_ref=job_ref,
         attempt_count=1,
         generation_round=0,
     )
-    assert validated is result.output_review_payload
+    assert validated is output_payload
+
+    unknown_trace = dict(snapshot.trace)
+    unknown_trace["unknown_trace_field"] = "SYNTHETIC"
+    with pytest.raises(ValueError):
+        project_r3_retrieval_trace(unknown_trace)
+
+    changed_trace = dict(snapshot.trace)
+    changed_trace["query_transform"] = (
+        "LEXICAL_BILINGUAL_KEYWORD_EXPANSION"
+        if changed_trace["query_transform"] == "NONE"
+        else "NONE"
+    )
+    changed_snapshot = snapshot.model_copy(update={"trace": changed_trace})
+    changed_payload = output_payload.model_copy(
+        update={"retrieval_snapshot": changed_snapshot}
+    )
     with pytest.raises(BackendError):
         persistence._validated_output_review_payload(
-            result.output_review_payload.model_copy(update={"safety_trace_id": "TRACE_wrong"}),
+            changed_payload,
+            job_ref=job_ref,
+            attempt_count=1,
+            generation_round=0,
+        )
+    with pytest.raises(BackendError):
+        persistence._validated_output_review_payload(
+            output_payload.model_copy(update={"safety_trace_id": "TRACE_wrong"}),
             job_ref=job_ref,
             attempt_count=1,
             generation_round=0,
