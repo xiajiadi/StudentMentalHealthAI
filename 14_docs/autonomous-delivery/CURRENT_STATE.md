@@ -1,5 +1,36 @@
 # PsyNova current execution state
 
+## Current checkpoint: 2026-10-16, feedback visibility and sealed recovery verified
+
+- Engineering estimate remains about80%; ACTIVE, no shutdown deadline. Root
+  verified actual synthetic student visibility after publish200/v2, then revoke200/v3
+  and absence for the same mapped student. Body/title hashes and2 sources match.
+  r1 failed before revoke on a harness label mismatch; retained. Separate r2 revoked
+  exactly once and passed, with Root viewing the actual empty result screenshot.
+  Evidence:D:/Dev/temp/psynova-z0023-feedback-publish-selfread-revoke-20261016-r1/result.json
+  and sibling r2/result.json. No model rerun or content substitution.
+- Official Z backup/readback and fresh isolated restore each exited0. Backup
+  SHA288a3e5b27ea385cdd133fdfcc1e18af75224eff8ef310018ec14a953e56696d.
+  New .StudentMentalHealthAI-school-install-20261016-z-backup-verify uses3337,
+  revision0023,34745 imported rows,885 encrypted payloads.800 completed sessions,
+  800 unique subjects,8 tasks and6400 answers persist; feedback remains REVOKED/v3.
+  All4279 restored authentication sessions are inactive.64 snapshot tables include
+  the separately verified migration table;63 business tables are imported.
+  Evidence:D:/Dev/temp/psynova-z0023-backup-restore-20261016-r1/.
+  Restored app/browser not started; ready=false remains.
+- Integrated specialist source catalogue and tenant-proven admin operations audit
+  (9a9f98d,b85f5b7), then wired container/router. Removed eager research service
+  import so default Backend can import without research RAG path. Root18 focused
+  Backend and9 frontend checks/typecheck pass; browser/runtime reload still pending.
+  Catalogue projects actual5 sources/rights/original populations; audit returns
+  only closed operational metadata with resource-to-school ownership proofs.
+- Controlled batch offset8/limit5 PLAN_ONLY succeeded, but execute stopped before
+  ledger/enqueue with SAFE_RUNNER_FAILURE. Worker is diagnosing nested helper API
+  composition; do not claim jobs queued or blindly repeat. No offset6/7 replay.
+- Next:finish helper repair, controlled queue page, owned Z reload on integrated
+  code, actual source/audit role and privacy browser checks, then remaining queue
+  and delivery acceptance. Dedicated remote still798c before these new commits.
+
 ## Current checkpoint: 2026-10-16, fresh research install and real candidate draft verified
 
 - Engineering estimate remains about80% complete/20% remaining. ACTIVE, no shutdown

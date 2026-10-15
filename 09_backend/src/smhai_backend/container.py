@@ -117,6 +117,8 @@ class BackendContainer:
     school_feedback: SchoolFeedbackService | None = None
     school_conversation_safety: Any | None = None
     school_research_feedback: Any | None = None
+    school_operations_audit: Any | None = None
+    school_research_sources: Any | None = None
     school_research_education_candidates: Any | None = None
     school_research_programme_candidates: Any | None = None
     independent_conversations: IndependentConversationService | None = None
@@ -447,6 +449,18 @@ def build_container(
     school_research_tasks = build_school_research_tasks_service(settings, persistence)
     school_research_cohorts = build_school_research_cohorts_service(settings, school_research_tasks)
     school_research_discovery = build_school_research_discovery_service(settings, persistence)
+    school_operations_audit = None
+    if persistence is not None:
+        from smhai_backend.adapters.school_operations_audit import (
+            SchoolOperationsAuditPersistenceAdapter,
+        )
+        from smhai_backend.domains.school_operations_audit.service import (
+            SchoolOperationsAuditService,
+        )
+
+        school_operations_audit = SchoolOperationsAuditService(
+            persistence=SchoolOperationsAuditPersistenceAdapter(persistence)
+        )
     from smhai_backend.domains.school_research.lifecycle import (
         build_school_research_process_factory,
     )
@@ -710,6 +724,7 @@ def build_container(
     school_research_student_conversations = None
     active_research_student_safety = None
     research_student_package = None
+    school_research_sources = None
     student_rag = None
     student_lane_settings = settings.school_research_student_conversation
     if student_lane_settings.enabled:
@@ -737,6 +752,16 @@ def build_container(
             package = None
         if package is not None:
             research_student_package = package
+            from smhai_backend.domains.school_research_sources.service import (
+                SchoolResearchSourcesService,
+            )
+
+            school_research_sources = SchoolResearchSourcesService(
+                package=package,
+                expected_school_id=student_lane_settings.school_id,
+                expected_manifest_sha256=student_lane_settings.manifest_sha256,
+                expected_study_ref=student_lane_settings.study_ref,
+            )
             if independent_llm is None:
                 independent_llm = IndependentLLMRuntimeClient(settings.llm)
             active_research_student_safety = SchoolResearchStudentSafetyClient(
@@ -936,6 +961,8 @@ def build_container(
         school_feedback=school_feedback,
         school_conversation_safety=school_conversation_safety,
         school_research_feedback=school_research_feedback,
+        school_operations_audit=school_operations_audit,
+        school_research_sources=school_research_sources,
         school_research_education_candidates=school_research_education_candidates,
         school_research_programme_candidates=school_research_programme_candidates,
         cat_management=cat_management,

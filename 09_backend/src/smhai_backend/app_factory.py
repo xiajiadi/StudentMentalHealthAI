@@ -36,6 +36,9 @@ from smhai_backend.domains.school_conversation_safety.router import (
 )
 from smhai_backend.domains.school_directory.router import router as school_directory_router
 from smhai_backend.domains.school_feedback.router import router as school_feedback_router
+from smhai_backend.domains.school_operations_audit.router import (
+    router as school_operations_audit_router,
+)
 from smhai_backend.domains.school_research.router import router as school_research_router
 from smhai_backend.domains.school_research_cohorts.router import (
     router as school_research_cohorts_router,
@@ -54,6 +57,9 @@ from smhai_backend.domains.school_research_profiles.router import (
 )
 from smhai_backend.domains.school_research_programme_candidates.router import (
     router as school_research_programme_candidates_router,
+)
+from smhai_backend.domains.school_research_sources.router import (
+    router as school_research_sources_router,
 )
 from smhai_backend.domains.school_research_tasks.router import (
     router as school_research_tasks_router,
@@ -121,6 +127,12 @@ def create_app(
         school_research_profiles_router, prefix=settings.api_prefix, include_in_schema=False
     )
     app.include_router(school_directory_router, prefix=settings.api_prefix, include_in_schema=False)
+    app.include_router(
+        school_research_sources_router, prefix=settings.api_prefix, include_in_schema=False
+    )
+    app.include_router(
+        school_operations_audit_router, prefix=settings.api_prefix, include_in_schema=False
+    )
     app.include_router(
         school_research_tasks_router, prefix=settings.api_prefix, include_in_schema=False
     )
