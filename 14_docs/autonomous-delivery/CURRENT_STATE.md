@@ -28,13 +28,39 @@ Runtime/Safety/OPA/Ollama/RAG were not stopped or reconfigured.
 Official application start proof:
 D:/Dev/temp/psynova-q0019-app-source-r3-start-20261015-r1.json.
 
-Next: exactly one NEW empty-conversation/prompt1.3 R3-native request and actual
-content/source-hash review. Worker dependency_recovery prepares it only; Root
-executes. Preserve all failed once proofs, do not retry a POST after artifact
-validation failure: recover existing turn by GET. Old r5 _parse_backend_argv and
-old R1-only source preflight helpers now intentionally fail on current R3 config;
-use current reviewed config/official lifecycle and exact new source pins. Never
-silently restart R1 to satisfy old helper assertions. No R3 model request yet.
+R3 native once request was executed once; create/message counts1/1, logouttrue.
+Original artifact D:/Dev/temp/psynova-q0019-student-research-api-once-r9.json
+preserves FAIL/unexpected (the helper masks imported CheckFailure). Root's
+GET-only r10/r11 inspection found the actual terminal state:
+CONV_f35b2223ecde4def8b133e4823092325 / TURN_a0596139490f42b490379a345255ba4b,
+failed/DEPENDENCY_FAILURE, stage=retrieval,
+dependency_error_code=dependency_invalid_response, exact R3 manifest hash.
+Generation was not reached; prompt-version assertion in r10/r11 was therefore
+inapplicable, not evidence of a model failure. Do not replay create/message.
+Root cause: adapter concatenated full record locator plus population, URL,
+license/URL and attribution into a512-char citation column. All4 R3 citations
+exceeded it (570-823 chars), before Safety retrieval or Runtime generation.
+Fix retains the legacy locator when it fits; otherwise uses a stable pinned
+record reference plus every provenance field verbatim. Full original section
+remains in KnowledgeChunk.location.section and the pinned source package.
+No schema expansion/organization repurpose/metadata truncation. Oversize remaining
+provenance still fails closed. Five focused adapter tests passed; actual R3 loader/
+retriever/adapter conversion verified4 hashes,3 layers, locators358/446/378/411.
+Next: official app restart with unchanged research configs, then one fresh bounded
+request; preserve this failed turn and do not replay its POST.
+Keep guards/contracts and every original failed artifact. Old R1-only preflights
+intentionally reject the current R3 config; never switch back to satisfy them.
+
+Fresh seven-module offline dependency installation completed at identical5dfa0e3
+source/target HEAD. Target D:/Dev/projects/smhai-offline-deps-20261015-5dfa0e3-r1;
+8 official stages succeeded (six Python versions/public imports, frontend locked
+packages, manifest integrity), exit0/state persistence succeeded. Root inspected
+report and source/target diffs; tracked sources unchanged. Evidence:
+D:/Dev/temp/psynova-offline-install-20261015-r1.json,
+SHAf7278efe7db8153beb5ecba9fad07317729138341f4a2f2157544e96676d4ad2.
+This proves dependency preparation using this host's D-drive caches; model/OPA/
+Guard/vector assets, independent service startup and portable cache delivery are
+separate. Preserve target and expected state/npm files; no cleanup or retry.
 
 Active checkpoint: 2026-10-15 16:32 CST (explicit user Continue). No new shutdown
 deadline. Previous06:30 cutoff is historical and satisfied. Goal/heartbeat ACTIVE;

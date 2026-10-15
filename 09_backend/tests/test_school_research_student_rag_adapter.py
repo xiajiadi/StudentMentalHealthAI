@@ -49,7 +49,7 @@ def _fixtures(*, eligible: bool = True, rights: str = "VERIFIED_WITH_CONDITIONS"
         publisher=source.publisher,
         canonical_url=source.canonical_url,
         locator=(
-            "Abstract, background; source population: Review ages 14-24; source: "
+            "Abstract, background; source population: Review ages 14-24; not high-school-only; source: "
             "https://example.org/article; license: CC BY 4.0 "
             "(https://creativecommons.org/licenses/by/4.0/); "
             "attribution: Example journal, CC BY 4.0"
@@ -96,6 +96,23 @@ def _fixtures(*, eligible: bool = True, rights: str = "VERIFIED_WITH_CONDITIONS"
     return FakeRetriever(), package, hit
 
 
+async def _retrieve(retriever):
+    package = retriever.package
+    adapter = SchoolResearchStudentRagAdapter(
+        retriever,
+        expected_manifest_sha256=package.manifest_sha256,
+        expected_package_id=package.package_id,
+        expected_study_ref=package.study_ref,
+    )
+    return await adapter.retrieve(
+        query="school connectedness",
+        target_population="secondary_school_student",
+        top_k=8,
+        retrieval_id="RETR_student_research",
+        context=RequestContext(request_id="REQ_research", trace_id="TRACE_research"),
+    )
+
+
 @pytest.mark.asyncio
 async def test_adapter_returns_frozen_pending_student_chunk_with_source_boundary() -> None:
     retriever, _package, _hit = _fixtures()
@@ -120,8 +137,12 @@ async def test_adapter_returns_frozen_pending_student_chunk_with_source_boundary
     assert chunk.population_scope == ["secondary_school_student"]
     assert chunk.role_scope == ["student"]
     assert chunk.risk_scope == ["normal"]
-    assert "source population: Review ages 14-24" in chunk.citation.locator
-    assert "CC BY 4.0" in chunk.citation.locator
+    assert chunk.citation.locator == (
+        "Abstract, background; source population: Review ages 14-24; not high-school-only; source: "
+        "https://example.org/article; license: CC BY 4.0 "
+        "(https://creativecommons.org/licenses/by/4.0/); "
+        "attribution: Example journal, CC BY 4.0"
+    )
     assert result.trace["manifest_sha256"] == _HASH
     assert result.trace["professional_approval"] is False
     assert result.trace["consumer_age_min"] == 14
@@ -129,6 +150,58 @@ async def test_adapter_returns_frozen_pending_student_chunk_with_source_boundary
     assert result.trace["matched_layers"] == ["theory"]
     assert result.trace["missing_layers"] == ["policy", "intervention"]
 
+
+@pytest.mark.asyncio
+async def test_long_locator_falls_back_without_truncating_source_metadata() -> None:
+    retriever, package, hit = _fixtures()
+    record = package.records[0]
+    record.locator = "Original record location; " + "x" * 600
+    hit.citation.locator = record.locator
+    result = await _retrieve(retriever)
+
+    chunk = result.chunks[0]
+    source = package.sources[0]
+    expected = (
+        f"record: {record.record_id}; source population: {record.source_population_scope}; "
+        f"source: {source.canonical_url}; license: {source.license} ({source.license_url}); "
+        f"attribution: {source.attribution}"
+    )
+    assert chunk.citation.locator == expected
+    assert len(chunk.citation.locator) <= 512
+    assert chunk.location["section"] == record.locator
+    for value in (record.source_population_scope, source.canonical_url, source.license,
+                  source.license_url, source.attribution):
+        assert value in chunk.citation.locator
+
+
+@pytest.mark.asyncio
+async def test_locator_at_512_char_boundary_keeps_legacy_format() -> None:
+    retriever, package, hit = _fixtures()
+    record = package.records[0]
+    source = package.sources[0]
+    suffix = (
+        f"; source population: {record.source_population_scope}; "
+        f"source: {source.canonical_url}; license: {source.license} ({source.license_url}); "
+        f"attribution: {source.attribution}"
+    )
+    record.locator = "L" * (512 - len(suffix))
+    hit.citation.locator = record.locator
+    chunk = (await _retrieve(retriever)).chunks[0]
+
+    assert len(chunk.citation.locator) == 512
+    assert chunk.citation.locator == f"{record.locator}{suffix}"
+
+
+@pytest.mark.asyncio
+async def test_locator_fallback_still_fails_closed_when_provenance_exceeds_512() -> None:
+    retriever, package, hit = _fixtures()
+    record = package.records[0]
+    record.locator = "Original record location; " + "x" * 600
+    record.source_population_scope = "Population; " + "p" * 600
+    hit.citation.locator = record.locator
+
+    with pytest.raises(BackendError):
+        await _retrieve(retriever)
 
 @pytest.mark.asyncio
 async def test_adapter_refuses_package_pin_or_source_eligibility_mismatch() -> None:

@@ -185,13 +185,18 @@ class SchoolResearchStudentRagAdapter:
     def _to_knowledge_chunk(self, hit: Any) -> KnowledgeChunk:
         record = self._record_by_id[hit.record_id]
         source = self._source_by_id[record.source_id]
-        locator = (
-            f"{record.locator}; source population: {record.source_population_scope}; "
+        locator_suffix = (
+            f"; source population: {record.source_population_scope}; "
             f"source: {source.canonical_url}; license: {source.license} ({source.license_url}); "
             f"attribution: {source.attribution}"
         )
+        locator = f"{record.locator}{locator_suffix}"
         if len(locator) > 512:
-            raise ValueError("source locator exceeds the persisted citation boundary")
+            # The full section remains in location.section and the pinned
+            # package; this stable reference keeps the provenance suffix intact.
+            locator = f"record: {record.record_id}{locator_suffix}"
+            if len(locator) > 512:
+                raise ValueError("source locator exceeds the persisted citation boundary")
         chunk = KnowledgeChunk(
             schema_version="knowledge.v1",
             chunk_id=hit.chunk_id,
