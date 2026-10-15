@@ -16,8 +16,8 @@ original external artifacts. This file records current facts only.
   public_empirical_resources/root/attempt3 lease checkpoint renewed this run.
   These are scheduling/state facts, not unattended execution or final acceptance.
 - Root directly delegates Luna/high workers; no Lead/recursive delegation.
-  dependency_recovery is performing read-only candidate/review-path reuse audit;
-  other direct workers finished. Root owns integration,
+  All direct workers finished their bounded work. Candidate/review reuse audit
+  is complete; Root owns the next architecture increment, integration,
   content review and state. Prompt1.4 research-only constraints and47 focused
   service tests are reviewed; native r13 semantic review FAILED as detailed below.
 - Preserve user untracked10_frontend/output/ and
@@ -111,8 +111,18 @@ D:/Dev/temp/psynova-q0019-student-research-api-once-r13.json and
 psynova-q0019-r13-root-content-review.json preserve separate outcomes.
 Stop prompt-only model loops. Next: inspect reuse of existing encrypted candidate/
 review/explicit-release workflows, retaining source-specific evidence limits;
-Root must decide a bounded implementation before any new model attempt. No
-source-specific hardcoded answer, guard loosening, JSON repair or blind retries.
+Root must decide a bounded implementation before any new model attempt. Audit
+confirmed programme candidates are task-bound/STAFF_REFERENCE_ONLY and feedback
+records require completed research CAT sessions; neither can silently become an
+independent-conversation release path. Existing blocked/failed turns cannot hold
+approved content. A separate research candidate/release design must preserve
+conversation privacy, explicit student sharing consent, assigned specialist
+scope, encrypted payload/citations and separate approval/publication. Do not
+repurpose crisis/safety cases as ordinary evidence-review cases or grant general
+specialists access to private chats. University mode and frozen contracts remain
+unchanged. No source-specific hardcoded answer, guard loosening, JSON repair or
+blind retries. Next first step is a small explicit design and bounded ownership
+before any additive schema/API work, not another prompt-only generation.
 Earlier failed/partial r1/r2 sources and turns remain unchanged; see Git history.
 
 ##800 cohort, staff queue and completed workflows
