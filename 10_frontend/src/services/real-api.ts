@@ -310,10 +310,11 @@ const mapResearchSourceSummary = (value: unknown): ResearchSourceSummary => {
   requireExactKeys(value, keys, '来源目录条目包含不支持的信息。')
   const layers = value.layers
   if (!Array.isArray(layers) || layers.length > 3
-    || layers.some((layer) => !['policy', 'theory', 'intervention'].includes(String(layer)))
+    || layers.some((layer) => typeof layer !== 'string' || !['policy', 'theory', 'intervention'].includes(layer))
     || new Set(layers).size !== layers.length
     || value.source_language !== 'English'
-    || !['VERIFIED_WITH_CONDITIONS', 'PENDING'].includes(String(value.rights_status))
+    || typeof value.rights_status !== 'string'
+    || !['VERIFIED_WITH_CONDITIONS', 'PENDING'].includes(value.rights_status)
     || typeof value.retrieval_eligible !== 'boolean'
     || (value.retrieval_eligible && value.rights_status !== 'VERIFIED_WITH_CONDITIONS')
     || !validHttpsUrl(value.canonical_url)) {
@@ -343,7 +344,8 @@ const mapResearchSourcePage = (value: unknown): ResearchSourceCatalogPage => {
   }
   requireExactKeys(value, keys, '来源目录包含不支持的信息。')
   if (value.schema_version !== 'school.research-source-catalog.v1'
-    || !/^[0-9a-f]{64}$/.test(String(value.manifest_sha256))
+    || typeof value.manifest_sha256 !== 'string'
+    || !/^[0-9a-f]{64}$/.test(value.manifest_sha256)
     || value.consumer_age_min !== 14 || value.consumer_age_max !== 17
     || typeof value.has_more !== 'boolean' || !Array.isArray(value.items)) {
     throw new RealApiError('API_INVALID_RESPONSE', '来源目录分页状态无法识别。')

@@ -112,4 +112,13 @@ describe('RealApiProvider research source catalog', () => {
     const { provider } = await createProvider(() => envelope({ ...detail, source_ref: 'SRC_OTHER' }))
     await expect(provider.getResearchSource('SRC_POLICY')).rejects.toMatchObject({ code: 'API_INVALID_RESPONSE' })
   })
+
+  it('rejects array values masquerading as source strings', async () => {
+    for (const change of [{ layers: [['policy']] }, { rights_status: ['VERIFIED_WITH_CONDITIONS'] }]) {
+      const { provider } = await createProvider(() => envelope({ ...detail, ...change }))
+      await expect(provider.getResearchSource('SRC_POLICY')).rejects.toMatchObject({ code: 'API_INVALID_RESPONSE' })
+    }
+    const { provider } = await createProvider(() => envelope({ ...page, manifest_sha256: [page.manifest_sha256] }))
+    await expect(provider.listResearchSourceCatalog()).rejects.toMatchObject({ code: 'API_INVALID_RESPONSE' })
+  })
 })
