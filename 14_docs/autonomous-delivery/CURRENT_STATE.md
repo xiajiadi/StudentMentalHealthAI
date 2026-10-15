@@ -1,36 +1,64 @@
 # PsyNova current execution state
 
-## Current checkpoint: 2026-10-16, real candidate held; read lineage under diagnosis
+## Current checkpoint: 2026-10-16, fresh research install and real candidate draft verified
 
-- Engineering estimate remains about80% complete/20% remaining. No shutdown
-  deadline. Dedicated development branch and origin are at f33a7db before this note.
+- Engineering estimate remains about80% complete/20% remaining. ACTIVE, no shutdown
+  deadline. Product code and dedicated remote branch are at a8ee867 before this note.
 - f33a7db preserves the complete closed25-field R3 retrieval trace. Actual public
   package read-only rebuild produces the identical evidence-bundle hash; unknown
   fields remain denied. Root ran165 focused Backend checks successfully.
   Evidence:D:/Dev/temp/psynova-z0023-output-trace-roundtrip-20261016-r1.json.
-- Z was officially stopped/preflighted/restarted on that source, each exit0.
-  Current lifecycle manifest SHA24a647c722206ebb4e8a61186035e34d8811c949178f6f82388f60c0ead0bf67.
+- Z was officially stopped/preflighted/restarted on a8ee867, each exit0.
+  Current lifecycle manifest SHA441ea1b90306d9e6bbfcede507c60fdf457a5cc24e91ab93fc239c39f4d9713a.
   App listeners remain owned/ready; whole_ready=false is retained.
 - Offset7 ran exactly once:actual input authorization, local generation, then HELD
   job REJ_7b9ab40cb8e05e2a305d6237212fd09770174310bd1b39be21ea0d992c3fb6dc.
   Its input review is CONSUMED/v3; candidate count1, output-review count0 because
-  the output Safety allowed this case. No student publication or body export.
+  output Safety allowed this case. Candidate is now ADOPTED/v2, not student-published.
   Evidence:D:/Dev/temp/psynova-z0023-onecase-offset7-20261016/execution-result.json.
-- Real specialist browser candidate-list GET returns409, while the same task's
-  generation/input/output-review lists return200. Login/context/logout succeeded;
-  no business writes, nonlocal calls or candidate screenshots occurred. Root has
-  assigned exact candidate/job/input-review lineage diagnosis, not a guard bypass.
-  Evidence:D:/Dev/temp/psynova-z0023-candidate-detail-20261016-r3/result.json.
 - Exact read-only diagnosis isolated the timestamp mismatch:the candidate's DB
   default created_at was61.351ms later than the input review's transaction clock;
   candidate DTO also returned naive timestamps while review DTO used UTC-aware.
   bdb89ac explicitly writes one clock and normalizes DTO UTC representation,
   retaining strict lineage equality. Root's24 focused DB/feedback checks passed.
-  The existing row is still unchanged; exact-row audited correction is under
-  review before source reload and browser rerun. No body has been read yet.
-- Next:repair the proven read defect, review actual candidate/source content,
-  then adoption/case review/draft/publication/self-read/revocation in isolated
-  synthetic accounts. Do not replay offset6/7 or fabricate a positive output review.
+  Root's exact-row repair aligned only candidate.created_at to the existing review
+  transaction clock; audit13887 and external proof preserve the original value.
+  updated_at/body/hash/job/review/state/events were preserved. First repair script
+  failed before writes on the wrong revision-table name; its evidence is retained.
+  D:/Dev/temp/psynova-z0023-candidate-lineage-audit-20261016-r1/repair-result-r2.json.
+- 5ef4d9f/a8ee867 add a closed verified detail review_lineage sidecar, keeping
+  encrypted payload v1, summaries and original Safety conclusions unchanged. This
+  fixes the old frontend mapper rejecting an authorized round1 REVIEW_REQUIRED.
+  Root108 Backend checks,4 mapper tests,typecheck/build passed. Real browser r5
+  GET/list/detail200,2 source cards,logout succeeded; Root viewed all3 screenshots.
+  D:/Dev/temp/psynova-z0023-candidate-detail-20261016-r5/result.json.
+- Root reviewed the actual local7B candidate and both public reviews, then revised
+  only the separate general-education draft. Case
+  SRV_8bbdf724d95e88cb07cb61176ba841d9fe1a6320744ea3d5 is APPROVED/v3 solely
+  within the isolated simulation workflow, not professional ethics approval.
+  Feedback RFEED_dfb338dd89c44787be1d1c4d74efa85b is DRAFT/v1/revision1; Root
+  viewed the real draft screenshot,body and2 sources. r4 draft POST200/logout true:
+  D:/Dev/temp/psynova-z0023-candidate-feedback-flow-20261016-r4/result.json.
+  r1/r2 harness failures and r3 known422 are retained. r3 disclaimer matched the
+  frozen diagnosis-word regex; wording was revised without changing that gate.
+- Fresh AB installed once from a8ee867:all7 official stages COMPLETED, schema0023,
+  profile import COMPLETED,4 roles x9 browser checks passed,whole_ready=false.
+  Workspace .StudentMentalHealthAI-school-install-20261016-ab,
+  UUIDd2bed8e9726943b1a26edf6141444ec3; DB3336/API8110/UI4200/CAT8188/research57426.
+  D:/Dev/temp/psynova-0023-research-install-plan-20261016-ab-r2/install-result.json
+  SHAc678f3f0ff76fbb4c784d49dda6187ecd1420ac341dbd04698f31174696cb869.
+  AA's original failed browser checkpoint remains failed; separate QA passed after
+  setting PLAYWRIGHT_BROWSERS_PATH=D:/Dev/caches/ms-playwright in the child only.
+- Correct existing800-cohort student vault was found through the original M0015
+  replay source,not the8-role Q vault. RAM-only exact session/account/SELF/membership/
+  credential mapping passed; no password reset or identity substitution.
+  D:/Dev/temp/psynova-z-student-self-map-20261016-r2/mapping-proof.json.
+- Next:explicitly publish this reviewed synthetic draft,verify the mapped student's
+  real self-read,then revoke and verify invisibility. FE owner is preparing that
+  bounded workflow; no publication yet. Then enqueue a controlled small round0 page,
+  expand the800 queue,verify recovery and remaining delivery gaps. Batch helper is
+  prepared and independently reviewed but NOT executed; no automatic adoption.
+  Do not replay offset6/7 or fabricate a positive output review.
 
 ## Current checkpoint: 2026-10-16, 0023 native runtime and output-capture gap
 

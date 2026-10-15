@@ -1,8 +1,8 @@
 # Task-bound research general-education candidates
 
-Controller direction2026-10-15; additive engineering increment. This completes
-the required completed research session -> real RAG/local-model candidate ->
-assigned specialist review -> explicit feedback publish/revoke chain. It does not
+Controller direction2026-10-15; additive engineering increment. The required path is
+completed research session -> real RAG/local-model candidate -> assigned specialist
+review -> explicit feedback publish/revoke. Verified progress is in CURRENT_STATE.md. It does not
 replace private independent conversations with a taskless review portal.
 
 ## Invariants
@@ -27,6 +27,11 @@ replace private independent conversations with a taskless review portal.
 - Candidate payload includes full structured citations and exact source excerpts/
   populations/limitations from the pinned source package, preserving qualifiers.
   Reviewed feedback can be corrected in a new draft; retain candidate lineage.
+- Detail adds a closed review_lineage projection after server verification of the
+  actual consumed input/output review sidecars. It is separate from immutable
+  encrypted payload v1; candidate summaries stay unchanged. Historical
+  REVIEW_REQUIRED remains the original Safety action,never an automatic approval.
+  Candidate and consumed-review creation timestamps use one UTC transaction clock.
 - Scope C is current assigned-task access, rechecked on every operation. Existing
   review-case authorization and case APPROVED/version gates remain. ADOPTED is
   a research workflow action, not professional/clinical approval or publication.
