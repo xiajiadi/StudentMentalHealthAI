@@ -1,282 +1,153 @@
 # PsyNova current execution state
 
-## Latest integrated state: source-r3 active
+Updated2026-10-15 after explicit human Continue. ACTIVE; no new shutdown deadline.
+The previous06:30 CST deadline was satisfied before shutdown and was explicitly
+revoked by the later human Continue. Do not reapply historical deadlines.
+Historical states/receipts remain in Git history (929a341 and earlier) and their
+original external artifacts. This file records current facts only.
 
-Root reviewed and pushed bbdd777 (GET0ceb014 / source registry699f763 /
-frontendbbdd777). API39 tests, source registry14+6+14 tests, frontend17+3 tests,
-typecheck/lint/build passed. Actual GET proof verifies2 HELD and teacher/admin/
-student403, four logouts: D:/Dev/temp/psynova-q0019-generation-jobs-get-r2.json.
-Actual browser r9 clicked batch2 once with real CSRF/key;2 HELD before/after,
-no extra job or model work. Root viewed queue screenshot; logout succeeded:
-D:/Dev/temp/psynova-q0019-student-research-staff-ui-once-r9.json and matching folder.
-The bounded browser guard blocked2 unrelated read requests; this is queue proof,
-not acceptance of the whole specialist overview. Unexecuted r8 used stale P
-ports/auth-helper pins; Root corrected r9 to exact Q8099/4189 and Q credential base.
+## Workspace, execution and preservation
 
-R3 source cutover completed through explicit config and official app lifecycle.
-App now RUNNING at codebbdd777 with student config
-D:/Projects/.StudentMentalHealthAI-school-install-20261015-q/research-config/student-source-r3-20261015/student-lane.json
+- Canonical D:/Projects/StudentMentalHealthAI-m0-integration; dedicated branch
+  xiajiadi/autonomous-delivery-20261011. Reviewed code929a3414059ed0e37128dde4e84c62b2af23cb49
+  was pushed to origin. Use actual HEAD for subsequent source/state increments.
+- Goal ACTIVE; heartbeat psynova ACTIVE; Runner stopped=false,
+  public_empirical_resources/root/attempt3 lease checkpoint renewed this run.
+  These are scheduling/state facts, not unattended execution or final acceptance.
+- Root directly delegates Luna/high workers; no Lead/recursive delegation.
+  All direct workers finished their bounded increments; Root owns integration,
+  content review and state. Prompt1.4 research-only constraints and47 focused
+  service tests are reviewed; native semantic validation remains pending.
+- Preserve user untracked10_frontend/output/ and
+  10_frontend/public/assets/heartbridge/login-mark-v2.png. Preserve databases,
+  keys, backups, old helpers/failures and all800 existing completed sessions.
+
+## Current running installation and ownership
+
+Q D:/Projects/.StudentMentalHealthAI-school-install-20261015-q,
+UUID98ca312250aa6ff6b7f61942d3f78bf6, DB3325/API8099/UI4189/CAT57419,
+runtime revision20261015_0019. P source directory remains required for restored
+installation lineage: D:/Projects/.StudentMentalHealthAI-school-install-20261014-p,
+UUID7d9eeefbb52a00c93e069904e98081b4, DB3324; P remains stopped.
+
+Q official app restart at929a341 passed, retaining every research flag and worker:
+D:/Dev/temp/psynova-q0019-official-restart-r4.json. Backend/Frontend OWNED/READY,
+DB VERIFIED. No DB or dependency-host restart. The unexecuted-stop r3 helper
+failed because it called instance validators on a module; Root corrected r4 and
+reviewed read-only preflight before official stop/start.
+
+Selected student config:
+Q/research-config/student-source-r3-20261015/student-lane.json,
 SHA048a281d4842fdfd1a00277ae952a5a7d5c5a7d19799c9a836ecd4348026ad54.
-Old student config1d0db6... remains byte-identical. R3 manifest exact SHAac9cc1...
-from the staged package below; no university-default or professional flag change.
-Root reverified all old8191 CIM identities/tree/listener, stopped Backend first,
-stopped only3 old research-safety processes, and started owned R3 safety8191.
-NEW authoritative8191 owner proof (replaces old8191 row, not other services):
-D:/Dev/temp/psynova-research-safety-r3-owner-20261015-090724-375856be/owner-ready.json
-Listener31256; fresh identities/creation/argv and healthREADY recorded. Shared/main
-Runtime/Safety/OPA/Ollama/RAG were not stopped or reconfigured.
-Official application start proof:
-D:/Dev/temp/psynova-q0019-app-source-r3-start-20261015-r1.json.
+Other original research configs remain Q/research-config/q0019-restore-r1/.
+Old student config SHA1d0db6209a6bfb392d5e5dc063afec4c458e08db0774a6d2569330f8f7e6ef12
+remains unchanged. Old R1-only helper preflights intentionally reject R3; never
+revert config or omit flags merely to satisfy an obsolete helper.
 
-R3 native once request was executed once; create/message counts1/1, logouttrue.
-Original artifact D:/Dev/temp/psynova-q0019-student-research-api-once-r9.json
-preserves FAIL/unexpected (the helper masks imported CheckFailure). Root's
-GET-only r10/r11 inspection found the actual terminal state:
+Owned dependencies Runtime8160/Ollama11437, Safety8190/OPA8181, RAG8170,
+research Runtime8161: original this-run ownership proof
+D:/Dev/temp/psynova-dependency-recovery-owned-20261015-070207-f9ddca8f/owner-ready.json.
+Only its8191 row is obsolete. Authoritative R3 Safety8191 ownership:
+D:/Dev/temp/psynova-research-safety-r3-owner-20261015-090724-375856be/owner-ready.json;
+fresh read-only process/listener/health proof
+D:/Dev/temp/psynova-research-safety-r3-owner-refreshed-20261015-r2.json.
+Listener31256; verify PID/creation/argv afresh before stopping anything.
+RAG8170 is synthetic university data; the student research lane uses the separate
+real-source package. RTX3060/12288MiB observed. Fixed Ollama0.33.3,
+qwen2.5:7b-instruct-q4_K_M / logical qwen2.5-7b-instruct-school-demo,
+digest845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e;
+contract MODEL_local_primary, runtime0.1.0-school-demo, no cloud fallback.
+
+## Real RAG sources and current content-quality blocker
+
+Active manifest:
+D:/Dev/datasets/psynova-public-research/staging/student-general-education-source-review-20261015-r3/manifest.json,
+SHAac9cc1641faa565ff7a18866be1c2dbf8aaf16aff7155ea80c38bfd979429a9b.
+WHO HAT/physical activity, Raniti connectedness review, Gaskin sleep review;
+Firecrawl/direct official acquisition, rights records and exact text hashes.
+Four eligible excerpts, three layers; CDC trace-only. Consumer14-17 intersection;
+original populations/languages retained, research-only/all approval flagsfalse.
+R1 and R3 are closed hash-pinned supported versions; R1 default unchanged.
+
+8c97097/prompt1.3 fixed a genuine missing-text defect: Runtime previously got only
+citation IDs/locators. Research now sends exact bounded untrusted source text;
+47 focused service tests passed. Existing guards/university mode unchanged.
+
+R3 once r9 failed before Runtime: full locator+population+URL+license/URL+
+attribution exceeded512 chars for all4 sources. Actual GET-only recovery:
 CONV_f35b2223ecde4def8b133e4823092325 / TURN_a0596139490f42b490379a345255ba4b,
-failed/DEPENDENCY_FAILURE, stage=retrieval,
-dependency_error_code=dependency_invalid_response, exact R3 manifest hash.
-Generation was not reached; prompt-version assertion in r10/r11 was therefore
-inapplicable, not evidence of a model failure. Do not replay create/message.
-Root cause: adapter concatenated full record locator plus population, URL,
-license/URL and attribution into a512-char citation column. All4 R3 citations
-exceeded it (570-823 chars), before Safety retrieval or Runtime generation.
-Fix retains the legacy locator when it fits; otherwise uses a stable pinned
-record reference plus every provenance field verbatim. Full original section
-remains in KnowledgeChunk.location.section and the pinned source package.
-No schema expansion/organization repurpose/metadata truncation. Oversize remaining
-provenance still fails closed. Five focused adapter tests passed; actual R3 loader/
-retriever/adapter conversion verified4 hashes,3 layers, locators358/446/378/411.
-Next: official app restart with unchanged research configs, then one fresh bounded
-request; preserve this failed turn and do not replay its POST.
-Keep guards/contracts and every original failed artifact. Old R1-only preflights
-intentionally reject the current R3 config; never switch back to satisfy them.
+failed/DEPENDENCY_FAILURE, stage=retrieval/dependency_invalid_response.
+D:/Dev/temp/psynova-q0019-student-research-api-once-r9.json preserves helper FAIL;
+original POST was not replayed. r10/r11 assumed prompt version existed despite
+pre-generation failure; their assertion failure is not a model failure.
 
-Fresh seven-module offline dependency installation completed at identical5dfa0e3
-source/target HEAD. Target D:/Dev/projects/smhai-offline-deps-20261015-5dfa0e3-r1;
-8 official stages succeeded (six Python versions/public imports, frontend locked
-packages, manifest integrity), exit0/state persistence succeeded. Root inspected
-report and source/target diffs; tracked sources unchanged. Evidence:
+929a341 fixes citation projection: keep legacy format when it fits; otherwise
+stable record reference plus every population/URL/license/attribution field
+verbatim. Full record locator remains location.section and the pinned package.
+No schema widening, metadata truncation or organization-field repurpose; remaining
+overflow still fails closed. Root5 tests passed; actual R3 converter verified
+4 hashes/3 layers and locator lengths358/446/378/411.
+
+NEW r12 completed once after restart, native fixed7B/3 R3 citations/Safety/claim/
+citation checks. Evidence D:/Dev/temp/psynova-q0019-student-research-api-once-r12.json.
+CONV_d48d19ebac0a48c38c77e16287cbee48 / TURN_0eaedf1aa9f543e28ec22d5fccfe4a2d,
+content SHA2ea788137c971f53b17114ddac7b4af13624c8dc4496aca9bcd49d8507a37e14.
+Root GET-only readback matched body/hash/source hashes and logouttrue.
+CONTENT REVIEW FAILED: it applies limited sleep-intervention findings to physical
+activity and invents a combined sleep-education/exercise proposal. Preserve this
+exact answer; transport/provenance completion is not semantic acceptance.
+Prompt1.4 adds generic source-by-source constraints, negative-result/population
+separation and explicit insufficient-evidence behavior.47 focused tests passed;
+university prompt is unchanged. Next: restart with unchanged configs and one
+new bounded native/content review after Root source review. No source-specific
+hardcoded answer, guard loosening, JSON repair or blind model retries. Root must
+review changed prompt/tests before another native request.
+Earlier failed/partial r1/r2 sources and turns remain unchanged; see Git history.
+
+##800 cohort, staff queue and completed workflows
+
+COHORT_R_b35676ba82d7455eaf58a2b4f8090826,
+SYNTHETIC_SCHOOL_SEED_ALPHA_V1, HUNNU_PROMIS_HISTORICAL_REPLAY_2026_R1:
+800cases/8classes/800subjects/8tasks/800completed PUBLIC_OBSERVED sessions,
+SUM(items_answered)=6400. Do not rerun/reseed. This study differs from RAG study
+school-noncommercial-rag-research-2027-06; preserve task-level specialist scope.
+
+2 staff reference jobs HELD,798 without staff-policy job. They are literature
+catalogue candidates, not student reports. Batch2 exact-key replay/no extra job
+and real UI/GET pagination/counts verified; teacher/admin/student GET403.
+Evidence D:/Dev/temp/psynova-q0019-staff-batch-native-r4.json,
+psynova-q0019-generation-jobs-get-r2.json,
+psynova-q0019-student-research-staff-ui-once-r9.json. Root viewed UI screenshot;
+queue-only browser guard blocked2 unrelated GETs; no whole-overview acceptance.
+Completion-trigger education lane lacks approved processor and abstains with
+POLICY_UNAVAILABLE; do not claim800 AI feedback completed.
+
+Prior native/browser evidence preserves four-role provisioning, completion,
+review/draft/explicit publish/student read/revoke and denied Scope A access.
+Safety case SCS_01a69ae5cc0c3a3235dc52a05e4a6ff12d79f2a00064b678 is
+ESCALATION_NEEDED v8 with encrypted note and8 events; no closure/contact/approval.
+Actual Q DB restart and authenticated encrypted readback passed earlier.
+P-to-Q restore matched55 business tables34023rows/865 ciphertexts. Latest sealed
+Q backup20261014-221528-d2a6ca2893d04ca6842e92d7df1e8c8a.private.dpapi,
+SHA0e3569c29e9948c743452701ae5f8eb5267821122f47742876b8e5bc046f8266,
+58tables34282rows includes v8 but predates this run's new jobs/turns/auth rows.
+It is not a current full snapshot. Keep P lineage and both old sealed backups.
+
+## Installation and remaining delivery work
+
+Fresh offline dependency installation completed at identical5dfa0e3 source/target:
+D:/Dev/projects/smhai-offline-deps-20261015-5dfa0e3-r1. All8 official stages passed
+(six Python versions/imports, frontend locked packages, manifest integrity),
+exit0/state persistence succeeded. Root inspected report and tracked diffs.
 D:/Dev/temp/psynova-offline-install-20261015-r1.json,
 SHAf7278efe7db8153beb5ecba9fad07317729138341f4a2f2157544e96676d4ad2.
-This proves dependency preparation using this host's D-drive caches; model/OPA/
-Guard/vector assets, independent service startup and portable cache delivery are
-separate. Preserve target and expected state/npm files; no cleanup or retry.
+Target/state/npm files preserved. This proves this host's cached dependency prep;
+portable model/OPA/Guard/vector assets and fresh-install service startup remain
+separate. No cleanup/retry of any failed target.
 
-Active checkpoint: 2026-10-15 16:32 CST (explicit user Continue). No new shutdown
-deadline. Previous06:30 cutoff is historical and satisfied. Goal/heartbeat ACTIVE;
-Runner stopped=false, public_empirical_resources/root/attempt3 lease renewed.
-Canonical D:/Projects/StudentMentalHealthAI-m0-integration, dedicated branch
-xiajiadi/autonomous-delivery-20261011. RTX3060/12288MiB freshly observed this run.
-Preserve two user untracked frontend paths and all800 existing completed sessions.
-
-## Reviewed source and current native application
-
-Reviewed source267c8e6 includes closed refusal diagnostics11701a8, research
-prompt1.2/66c23ac, atomic staff batch28b99ff, offline dependenciesfda531e and
-actual-manifest Python-range fix267c8e6. Dependency tests35 passed; actual seven-
-module read-only plan passed. No fresh-target dependency installation was run.
-MySQL/Ollama/model/OPA/Guard assets still require their separate preflights.
-
-Crucial research RAG root cause fixed in8c97097/prompt1.3: runtime previously got
-citation IDs/locators without retrieved text. Research mode now sends exact text
-as bounded untrusted JSON, separates metadata and preserves negative findings;
-missing/over-budget text fails before runtime.47 service tests passed. University
-prompt and existing Safety/claim/bibliography/citation guards remain unchanged.
-
-Q DB3325/API8099/UI4189/runtime0019 is RUNNING through official restored-install
-and lifecycle paths. Current application code8c97097 with original research flags;
-newer commits only offline preparation/docs. Q UUID98ca312250aa6ff6b7f61942d3f78bf6.
-P remains stopped; retain P directory for Q source binding. Current this-run
-owned dependencies Runtime8160/Ollama11437, Safety8190/OPA8181, RAG8170 and research
-Runtime8161/Safety8191 are fresh-owned; old shutdown shared-PID assumptions do not
-apply. Ownership: D:/Dev/temp/psynova-dependency-recovery-owned-20261015-070207-f9ddca8f/owner-ready.json.
-RAG8170 remains synthetic university data; research student lane separately uses
-real-source manifest r1. No cloud fallback/model substitution/reset/reseed.
-
-## Native generation, content review and browser evidence
-
-Prompt1.1 r2 refused STANDARD_CLAIM_BOUNDARY_REJECTED. Prompt1.2 r3 returned3
-citations but Root content review FAILED grounding (60-minute detail absent from
-actual excerpt, unsupported effects). Keep original turn; not accepted evidence.
-Prompt1.3 r4 made exactly one create/message, native completed PROCEED/4citations.
-Its external once-helper failed with UnboundLocalError (st used before assignment).
-GET-only r6 recovery confirmed same existing turn; NO POST/model retry:
-CONV_7c80692a17594a4a8aac74b16043ed3c / TURN_cf77b314f8a040df9eacdc62603c0de8.
-Content SHA4c1b9c42b42bbba632ee70eaa28757b42cd1930a6b0319b461a97e365f91982f.
-Root read text and viewed GET-only browser screenshot r7; DOM/content/hash/4refs,
-research banner and logout passed. Evidence/screenshot:
-D:/Dev/temp/psynova-q0019-student-research-recovery-ui-r7/.
-Content review PARTIAL: no unsupported60-minute detail and negative sleep finding
-preserved, but some action suggestions exceed r1's four one-sentence excerpts.
-Do not call this entailment validation or professional/production acceptance.
-Original helper failures/pins/schema mismatches are preserved externally.
-
-##800 cohort and actual staff queue
-
-DB read confirmed exactly COHORT_R_b35676ba82d7455eaf58a2b4f8090826,
-SYNTHETIC_SCHOOL_SEED_ALPHA_V1, studyHUNNU_PROMIS_HISTORICAL_REPLAY_2026_R1:
-800cases/8classes/800subjects/8tasks/800completed PUBLIC_OBSERVED sessions.
-This cohort study differs from student-RAG policy study
-school-noncommercial-rag-research-2027-06; do not conflate filters.
-A specialist need not be authorized for all8 tasks. Batch helper r1/r2 failed
-wrong study filtering; r3 failed requiring whole-cohort tasks in specialist scope.
-All stopped before queue writes. r4 uses exact cohort and authorized-task
-intersection plus first-page expected new-job count (existing jobs included).
-Native batch2 PASS:1 existing HELD +1 new job, same-key receipt replay/no new job,
-cohort800 unchanged. After asynchronous worker:2 HELD total,798 without policy job.
-D:/Dev/temp/psynova-q0019-staff-batch-native-r4.json
-D:/Dev/temp/psynova-q0019-staff-batch-native-r4-terminal-aggregate.json
-Reservation D:/Dev/temp/psynova-q0019-staff-batch-once-r4.reservation.json blocks
-write reruns. Use aggregate-only after failure; never replay CAT/cohort creation.
-This is STAFF_REFERENCE_ONLY literature catalogue work, not800 student feedback.
-Completion-trigger research education lane still abstains without approved policy.
-
-## Active direct workers and next integration
-
-- delivery_gap_check owns09 programme adapter/service/router/schema/tests:
-  add task-scoped GET generation-jobs with pagination, nine true status counts
-  including RETRY, safe metadata only, current task/profile/source authorization.
-- student_claim_diagnosis owns10 frontend programme client/component/tests:
-  batch25 confirmation/pagination/stable retry key and true GET job counts/manual
-  refresh; no fake processing percentage or student publication.
-- dependency_recovery owns08 research-student retrieval +09 core config +13
-  student config/host and matching tests: closed exact r1/r3 manifest registry,
-  retain r1 defaults and old config bytes. No running config changes yet.
-Root directly integrates/reviews; no Lead/recursion. Do not overlap their files.
-
-New independently captured source r3 is staged only, not active:
-D:/Dev/datasets/psynova-public-research/staging/student-general-education-source-review-20261015-r3/manifest.json
-SHAac9cc1641faa565ff7a18866be1c2dbf8aaf16aff7155ea80c38bfd979429a9b.
-WHO PDFs/PMC Gaskin/Raniti official Firecrawl captures have complete-byte or
-rendered-capture hashes and rights records. Four eligible coherent excerpts,
-including WHO good practice and negative/limited findings, fit6000-char evidence
-budget. CDC trace-only; pending/research-only, all approval flagsfalse.
-After closed-version source review, choose a NEW explicit config and exact hash;
-never overwrite r1 or silently upgrade Q. Then test one new student source-grounded
-turn and review actual content; no blind loops or claims from health200.
-
-Only reviewed dedicated-branch pushes allowed. Remote was last verifiedd4a78ad;
-subsequent8c97097/381a618/267c8e6 and this checkpoint require reviewed push. No
-production/professional approval, protected merge/tag/release or school deployment.
-
-## Historical shutdown checkpoint (before this explicit resume)
-
-Saved for user shutdown: 2026-10-15 06:17 CST.
-Engineering remains incomplete; no production or professional approval.
-Canonical workspace: D:/Projects/StudentMentalHealthAI-m0-integration.
-Branch: xiajiadi/autonomous-delivery-20261011.
-Reviewed code HEAD eaf2c250f80d6ee14349fc0f82fdf88d9335f718 was pushed and
-verified on the dedicated remote branch. This checkpoint adds maintained state
-and recovery documentation; use actual Git HEAD for its final commit.
-
-## Paused execution and preserved ownership
-
-User cutoff06:30 CST; no new work after06:15. All direct workers completed.
-Runner stopped=true and heartbeat psynova PAUSED were observed. Goal metadata
-was BLOCKED during work; Controller will apply the explicitly authorized PAUSED
-status as the final action after saving/pushing this checkpoint.
-Do not automatically resume after the cutoff. Wait for explicit user continuation.
-
-Q application officially STOPPED; Backend8099/Frontend4189 and backend-managed
-CAT57419 are absent. P application remains STOPPED. Both owned MySQL instances
-P3324 and Q3325 were sealed, gracefully stopped with one scoped SHUTDOWN each,
-and their original guardian/listener PIDs exited with ports free.
-Owned Runtime8161 and Safety8191 listeners/launchers and auxiliary conhost exited.
-Shared Runtime8160/Safety8190/Ollama11437/OPA/Guard were not stopped or altered.
-
-Shutdown evidence:
-D:/Dev/temp/psynova-owned-pq-database-stop-ae0115a9a72a4ad9af833548d45f9b0d.json
-D:/Dev/temp/psynova-research-owned-host-stop-dedbdcff83f44dd8a3eb4979ce090f88.json
-D:/Dev/temp/psynova-shutdown-sealed-backup-checkpoint-20261015-r1.json
-
-## Current recoverable target and backups
-
-Q D:/Projects/.StudentMentalHealthAI-school-install-20261015-q.
-UUID98ca312250aa6ff6b7f61942d3f78bf6; DB3325/API8099/UI4189.
-Snapshot0018/runtime0019; school-gpu-7b; research configs:
-Q/research-config/q0019-restore-r1/. Student config SHA
-1d0db6209a6bfb392d5e5dc063afec4c458e08db0774a6d2569330f8f7e6ef12.
-Source P D:/Projects/.StudentMentalHealthAI-school-install-20261014-p,
-UUID7d9eeefbb52a00c93e069904e98081b4, DB3324/runtime0018. Keep its directory;
-Q recovery verifies its source marker without starting the P database.
-
-Final Q backup:
-Q/backups/20261014-221528-d2a6ca2893d04ca6842e92d7df1e8c8a.private.dpapi
-SHA0e3569c29e9948c743452701ae5f8eb5267821122f47742876b8e5bc046f8266.
-58 tables/34282 rows; sealed readback verified. Latest safety case v8 and encrypted
-note are present;8 case events. Final P backup:
-P/backups/20261014-221511-510f06df9a39482986cad0a81d9dd088.private.dpapi
-SHA8dc15379ad12c21d3986022175a501d6b151c6138fac03abbc3d8f34e41f1e1b,
-56 tables/34024 rows. Old backups, keys, databases and failures remain intact.
-
-## Verified increments
-
-- Original800 fictional accounts completed authenticated public-observed replay:
-  800 completed sessions, SUM(items_answered)=6400. Full-item replay is not
-  clinical validation of shortened CAT. Do not rerun/reseed this cohort.
-- Existing four-role, Scope A denials, feedback publication/student visibility/
-  revocation and subsequent absence evidence remains preserved.
-- P→Q restore previously matched800 baseline and865 authenticated ciphertexts.
-  Existing HELD staff source catalogue/2citations/browser/logout were verified;
-  this is model-selected verified source metadata, not student feedback.
-- b8f7888/b74896b add0019 independent safety cases/events, operational-only admin,
-  assigned specialist access, encrypted notes and CAS. eafedd9 fixes startup0019.
-- eaf2c25 adds explicit restored-install resume with source/target path/ID/port
-  binding and unchanged legacy mode.82 focused tests passed. Actual Q SQL
-  shutdown, official database STARTED, app restart and authenticated encrypted
-  note readback passed. The note was v5 at this restart; later v8 was backed up,
-  not claimed as another full restore test.
-  Evidence D:/Dev/temp/psynova-q0019-safety-durable-app-resume-943c944c4d5d438da2efd1b0bfcc4e11.json.
-- Actual specialist browser buttons performed IN_REVIEW, note save and
-  ESCALATION_NEEDED. Final case v8/action CRISIS_ROUTE; no closure/approval/contact,
-  both UI logouts verified. Prior stale-CAS/admin-detail/teacher denials preserved.
-  D:/Dev/temp/psynova-q0019-safety-ui-write-proof-42894523afef4664930dcef23d6cee09.json.
-
-## Student generation: bounded proof and unresolved quality
-
-Prompt1.0 real local7B turn passed three Safety stages/three layers/4citations,
-namespace and cross-role denials, idempotent replay and actual browser reads.
-Root content review found a model-invented Raniti article number1512; primary
-source is2152. The old answer and r5 proof remain preserved, not approved.
-c6692c0 changes research prompt1.1 and rejects generated bibliography fields;
-10 focused tests passed.74cdafd records only closed dependency_error_code;
-76 focused tests passed, no body/stack/secrets or weakened failure mapping.
-
-The first1.1 r6 turn terminally failed at generation; provider cause is unknown.
-No replay or rewrite. Current readiness is not proof of provider receipt then.
-The one diagnostic r8 request reached claim_boundary and was CLAIM_REJECTED,
-content=null/citations=[]; it is not a successful student answer or a uniquely
-attributed native bibliography-guard pass. No further generation was attempted.
-GET-only browser review eventually passed with API/browser logout:
-D:/Dev/temp/psynova-q0019-student-research-ui-resume-r11.json.
-Screenshot student-research-contentless-refusal.png was inspected. Earlier UI
-helpers had artifact-path, async selection and expectedText argument defects;
-failures remain unchanged. No product error was hidden by rewriting the turn.
-All failed restore/helper artifacts remain preserved, including r3's inaccurate
-effects=NONE; later independent readback explicitly records actual operations.
-
-## Resume sequence and next work
-
-1. Re-read this checkpoint, AGENTS/MISSION and actual Git status. Keep user
-   untracked 10_frontend/output/ and public/assets/heartbridge/login-mark-v2.png.
-2. Verify fixed Ollama0.33.3/7B/digest and external dependencies. Restart only the
-   private research hosts with the original configs and NEW exact owner proofs;
-   old PIDs must never be reused as authority.
-3. Use SCHOOL_RESUME.md restored-install mode for Q with explicit source P IDs
-   and ports above. Start application with the preserved research flags in Q's
-   stopped lifecycle manifest; do not treat ordinary start without flags as
-   equivalent. Verify services and stored case/conversations without generating.
-4. Resume the Runner only on explicit continuation; reconcile expired lease
-   metadata separately. Task BACKLOG labels do not authorize repeating800 replay.
-5. Prioritize a useful source-grounded prompt1.1 student answer, precise refusal
-   attribution and bounded content review without loosening Safety/citation
-   checks; then remaining empirical AI workload, packaging and final role/ops
-   acceptance. Do not claim the whole school system is accepted.
-
-Sources remain outside Git under D:/Dev/datasets/psynova-public-research/.
-Student manifest SHA70637b39cb11a34de91599a1a32e9e1a6edff6a76b19cc1b11895ee7170e9974:
-WHO HAT2021/Raniti2022/WHOphysical2020/Gaskin2024, original ages/language/limits;
-CDC pending excluded. Research pending, no CAT-context/clinical approval.
-PROMIS noncommercial declaration is not proprietary CAT/app written permission.
-Keep frozen Contract/D4/HumanGold, public-population provenance, privacy and
-professional/psychometric/ethical/school-production approval boundaries.
+Priority: resolve source-grounded content quality; then complete useful empirical
+AI workload, held/review/release integration and installation/recovery acceptance.
+Retain Contract/D4/HumanGold, licensed public-data population provenance and
+privacy. PROMIS school noncommercial declaration is not proprietary CAT/app
+permission. No psychometric/clinical/ethics/school-production approval, protected
+branch merge/tag/release or actual school deployment is granted by engineering.

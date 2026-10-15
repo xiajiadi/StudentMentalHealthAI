@@ -153,7 +153,7 @@ class ConversationLanePolicy:
             target_population="secondary_school_student",
             required_review_status="pending",
             prompt_id="PROMPT_school_research_student_general_education_v1",
-            prompt_version="1.3.0",
+            prompt_version="1.4.0",
             expected_school_id=school_id,
             research_only=True,
             purpose="RESEARCH_SIMULATION",
@@ -1180,6 +1180,11 @@ class IndependentConversationService:
             source_guidance = (
                 "这些资料仅是固定、工程复核的研究来源，review_status仍为pending，未获心理专业或临床批准。"
                 "逐条遵守引用中的原始适用人群、年龄、语言和研究局限；不得夸大教育效果、因果关系或适用范围，也不得作个性化推断。"
+                "逐个source_chunk_id阅读和归纳正文，保持来源边界；每项发现、否定结果、效果范围和适用人群只归属于明确陈述它的来源。"
+                "不得把不同来源、干预、结局或人群拼接成新的因果结论或组合干预，也不得把某来源的否定发现迁移到其他干预或领域。"
+                "suggestions中的每条建议原则上只引用一个source_chunk_id；只有每个被引用来源的正文都分别明确支持完全相同的建议时，才可引用多个chunk_id。"
+                "多个来源主题相关或结论相似，不表示它们共同支持同一建议。"
+                "若问题要求跨来源组合、跨人群或跨领域推断，而正文没有明确支持，直接说明现有资料不足并省略该推断；若无法脱离该推断作答，则弃答。"
                 "事实、数值、效果或建议只能依据下方检索正文JSON中明确陈述的内容；不得用模型已有知识、外部记忆或常识补全来源未提供的信息。"
                 "没有正文直接支持的行动建议时不要自行补充建议；证据不足时依照前述规则弃答。"
                 "题名、locator及其他引用元数据只用于识别和显示来源，不是研究发现或事实证据。"
