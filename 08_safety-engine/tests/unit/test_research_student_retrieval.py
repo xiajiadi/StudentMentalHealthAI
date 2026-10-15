@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -11,12 +12,19 @@ import pytest
 from safety_engine.adapters.base import AdapterResult
 from safety_engine.retrieval.adapter import RetrievalSafetyAdapter
 from safety_engine.retrieval.research_student import (
+    _MANIFEST_VERSIONS,
     PINNED_CONSUMER_AGE_SCOPE,
     PINNED_MANIFEST_SHA256,
+    PINNED_PACKAGE_ID,
     PINNED_STUDY_REF,
+    R3_MANIFEST_SHA256,
+    R3_PACKAGE_ID,
+    R3_REVIEW_REF,
+    SUPPORTED_MANIFEST_SHA256S,
     ResearchStudentQualificationError,
     ResearchStudentRetrievalSafetyAdapter,
     ResearchStudentSourceRegistry,
+    _validate_package_metadata,
 )
 
 
@@ -32,13 +40,21 @@ class CleanPrivacy:
         return AdapterResult(status="PASSED")
 
 
-def _registry(clock=None) -> ResearchStudentSourceRegistry:
-    manifest = os.environ.get("PSYNOVA_STUDENT_RESEARCH_MANIFEST")
+def _registry(clock=None, *, version: str = "r1") -> ResearchStudentSourceRegistry:
+    pin = _MANIFEST_VERSIONS.get(version)
+    if pin is None:
+        raise ValueError("test manifest version must be explicitly registered")
+    manifest = os.environ.get(f"PSYNOVA_STUDENT_RESEARCH_MANIFEST_{version.upper()}")
+    if version == "r1" and not manifest:
+        manifest = os.environ.get("PSYNOVA_STUDENT_RESEARCH_MANIFEST")
     if not manifest:
-        pytest.skip("Set PSYNOVA_STUDENT_RESEARCH_MANIFEST to the externally pinned package")
+        pytest.skip(
+            f"Set PSYNOVA_STUDENT_RESEARCH_MANIFEST_{version.upper()} "
+            "to the externally pinned package"
+        )
     return ResearchStudentSourceRegistry.load(
         Path(manifest),
-        expected_manifest_sha256=PINNED_MANIFEST_SHA256,
+        expected_manifest_sha256=pin.sha256,
         study_ref=PINNED_STUDY_REF,
         consumer_age_scope=PINNED_CONSUMER_AGE_SCOPE,
         clock=clock or (lambda: datetime(2026, 10, 15, tzinfo=UTC)),
@@ -65,6 +81,8 @@ def test_pinned_package_has_three_layers_and_only_age_intersection_records():
     registry = _registry()
 
     assert registry.manifest_sha256 == PINNED_MANIFEST_SHA256
+    assert registry.manifest_version == "r1"
+    assert registry.package_id == PINNED_PACKAGE_ID
     assert set(registry._records) == {
         "POLICY-WHO-HAT-STRATEGY1-2021",
         "THEORY-RANITI-SCHOOL-CONNECTEDNESS-2022",
@@ -75,6 +93,111 @@ def test_pinned_package_has_three_layers_and_only_age_intersection_records():
     assert sum(record.eligible for record in registry._records.values()) == 4
     assert registry._records["INTERVENTION-WHO-PHYSICAL-ACTIVITY-START-2020"].consumer_max_age == 17
     assert registry._records["TRACE-CDC-SCHOOL-CONNECTEDNESS-2024"].eligible is False
+
+
+def test_manifest_registry_contains_only_the_two_reviewed_hashes():
+    assert SUPPORTED_MANIFEST_SHA256S == frozenset(
+        {
+            PINNED_MANIFEST_SHA256,
+            R3_MANIFEST_SHA256,
+        }
+    )
+
+
+def test_unknown_self_consistent_hash_is_not_a_manifest_version():
+    raw = b"{}"
+    unknown_sha256 = hashlib.sha256(raw).hexdigest()
+    assert unknown_sha256 not in SUPPORTED_MANIFEST_SHA256S
+    with pytest.raises(ResearchStudentQualificationError):
+        ResearchStudentSourceRegistry.from_bytes(
+            raw,
+            expected_manifest_sha256=unknown_sha256,
+            study_ref=PINNED_STUDY_REF,
+            consumer_age_scope=PINNED_CONSUMER_AGE_SCOPE,
+            clock=lambda: datetime(2026, 10, 15, tzinfo=UTC),
+        )
+
+
+@pytest.mark.parametrize("version", ["r1", "r3"])
+def test_each_reviewed_version_keeps_exact_metadata_and_pending_approval(version):
+    pin = _MANIFEST_VERSIONS[version]
+    manifest = {
+        "schema_version": "psynova.school-research-student-knowledge.v1",
+        "package_id": pin.package_id,
+        "package_status": "ENGINEERING_REVIEWED_RESEARCH_ONLY",
+        "reviewer_kind": "AI_ENGINEERING",
+        "review_ref": pin.review_ref,
+        "consumer_scope": "secondary_school_student_13_18",
+        "study_ref": PINNED_STUDY_REF,
+        "review_status": "pending",
+        "role_scope": ["student"],
+        "risk_scope": ["normal"],
+        "flags": {
+            "human_curated": False,
+            "professional_approval": False,
+            "ethics_approval": False,
+            "clinical_approval": False,
+            "psychometric_approval": False,
+            "publication_eligible": False,
+            "production_use": False,
+        },
+        "use_policy": {
+            "scope": "ISOLATED_GENERAL_EDUCATION_SIMULATION",
+            "noncommercial": True,
+            "valid_through": "2027-06-30T15:59:59Z",
+            "audience": "Fictional secondary-school student simulation only",
+            "allowed_content": " ".join(
+                (
+                    "English source excerpts and source-bound general",
+                    "educational information only",
+                )
+            ),
+            "prohibited_content": [
+                "individualized advice",
+                "assessment score interpretation",
+                "diagnosis",
+                "treatment",
+                "crisis or risk inference",
+                "claims of guaranteed personal outcome",
+            ],
+            "language": " ".join(
+                (
+                    "Preserve source wording in English; no translation is",
+                    "represented as source text.",
+                )
+            ),
+        },
+    }
+    _validate_package_metadata(manifest, study_ref=PINNED_STUDY_REF, pin=pin)
+
+    mutations = [
+        lambda item: item.__setitem__("package_id", "unregistered-package"),
+        lambda item: item.__setitem__("review_ref", "unregistered-review"),
+        lambda item: item.__setitem__("schema_version", "psynova.unknown.v9"),
+        lambda item: item.__setitem__("review_status", "approved"),
+        lambda item: item["flags"].__setitem__("professional_approval", True),
+    ]
+    for mutate in mutations:
+        changed = copy.deepcopy(manifest)
+        mutate(changed)
+        with pytest.raises(ResearchStudentQualificationError):
+            _validate_package_metadata(changed, study_ref=PINNED_STUDY_REF, pin=pin)
+
+
+def test_r3_external_manifest_loads_only_under_its_exact_pin():
+    registry = _registry(lambda: datetime(2026, 10, 15, tzinfo=UTC), version="r3")
+
+    assert registry.manifest_version == "r3"
+    assert registry.manifest_sha256 == R3_MANIFEST_SHA256
+    assert registry.package_id == R3_PACKAGE_ID
+    assert registry.review_ref == R3_REVIEW_REF
+    assert registry._records["TRACE-CDC-SCHOOL-CONNECTEDNESS-2024"].eligible is False
+    assert sum(record.eligible for record in registry._records.values()) == 4
+    assert all(
+        record.consumer_min_age <= 14 and record.consumer_max_age >= 17
+        for record in registry._records.values()
+        if record.eligible
+    )
 
 
 def test_research_adapter_accepts_pinned_pending_source_and_runs_privacy_check():

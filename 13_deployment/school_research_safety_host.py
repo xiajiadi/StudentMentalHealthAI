@@ -25,9 +25,6 @@ from pydantic import (
 from safety_engine.domain import ActorRole, SafetyContext
 from safety_engine.retrieval.research_student import (
     PINNED_CONSUMER_AGE_SCOPE,
-    PINNED_MANIFEST_SHA256,
-    PINNED_PACKAGE_ID,
-    PINNED_STUDY_REF,
     STUDY_END_UTC,
     ResearchStudentQualificationError,
     ResearchStudentRetrievalSafetyAdapter,
@@ -216,9 +213,9 @@ def create_app(
 
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.state.research_only = True
-    app.state.package_id = PINNED_PACKAGE_ID
-    app.state.manifest_sha256 = PINNED_MANIFEST_SHA256
-    app.state.study_ref = PINNED_STUDY_REF
+    app.state.package_id = registry.package_id
+    app.state.manifest_sha256 = registry.manifest_sha256
+    app.state.study_ref = registry.study_ref
     app.state.consumer_age_scope = PINNED_CONSUMER_AGE_SCOPE
     app.state.professional_approval = False
     app.state.publication_eligible = False
@@ -289,8 +286,8 @@ def create_app(
                 content={"detail": {"code": "RESEARCH_SAFETY_REQUEST_INVALID"}},
             )
         if (
-            payload.study_ref != PINNED_STUDY_REF
-            or payload.package_id != PINNED_PACKAGE_ID
+            payload.study_ref != registry.study_ref
+            or payload.package_id != registry.package_id
             or payload.manifest_sha256 != registry.manifest_sha256
             or payload.consumer_age_scope != PINNED_CONSUMER_AGE_SCOPE
             or payload.purpose != "RESEARCH_SIMULATION"
@@ -400,9 +397,9 @@ def main(argv: list[str] | None = None) -> int:
                 json.dumps(
                     {
                         "status": "PREFLIGHT_OK",
-                        "package_id": PINNED_PACKAGE_ID,
+                        "package_id": registry.package_id,
                         "manifest_sha256": registry.manifest_sha256,
-                        "study_ref": PINNED_STUDY_REF,
+                        "study_ref": registry.study_ref,
                         "consumer_age_scope": PINNED_CONSUMER_AGE_SCOPE,
                         "research_only": True,
                         "publication_eligible": False,

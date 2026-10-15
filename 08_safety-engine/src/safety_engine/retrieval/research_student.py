@@ -23,15 +23,41 @@ from typing import Any
 from safety_engine.adapters.presidio import PresidioPrivacyAdapter
 from safety_engine.retrieval.adapter import RetrievalSafetyAdapter
 
-PINNED_MANIFEST_SHA256 = "70637b39cb11a34de91599a1a32e9e1a6edff6a76b19cc1b11895ee7170e9974"
-PINNED_PACKAGE_ID = "student-general-education-source-review-20261015-r1"
+R1_MANIFEST_SHA256 = "70637b39cb11a34de91599a1a32e9e1a6edff6a76b19cc1b11895ee7170e9974"
+R1_PACKAGE_ID = "student-general-education-source-review-20261015-r1"
+R1_REVIEW_REF = "AI-ENG-2026-10-15-STUDENT-GENERAL-EDUCATION-SOURCE-TRACEABILITY"
+R3_MANIFEST_SHA256 = "ac9cc1641faa565ff7a18866be1c2dbf8aaf16aff7155ea80c38bfd979429a9b"
+R3_PACKAGE_ID = "student-general-education-source-review-20261015-r3"
+R3_REVIEW_REF = "AI-ENG-2026-10-15-STUDENT-GENERAL-EDUCATION-SOURCE-TRACEABILITY-R3"
+# Backward-compatible defaults remain bound to r1. The registry is closed: a
+# manifest is selectable only by one of these two exact reviewed byte hashes.
+PINNED_MANIFEST_SHA256 = R1_MANIFEST_SHA256
+PINNED_PACKAGE_ID = R1_PACKAGE_ID
 PINNED_STUDY_REF = "school-noncommercial-rag-research-2027-06"
-PINNED_REVIEW_REF = "AI-ENG-2026-10-15-STUDENT-GENERAL-EDUCATION-SOURCE-TRACEABILITY"
+PINNED_REVIEW_REF = R1_REVIEW_REF
 PINNED_CONSUMER_AGE_SCOPE = "14-17"
 STUDY_END_UTC = datetime(2027, 6, 30, 15, 59, 59, tzinfo=UTC)
 _MAX_MANIFEST_BYTES = 512 * 1024
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _REGISTRY_TOKEN = object()
+
+
+@dataclass(frozen=True, slots=True)
+class _ManifestPin:
+    version: str
+    sha256: str
+    package_id: str
+    review_ref: str
+
+
+_MANIFEST_VERSIONS = MappingProxyType(
+    {
+        "r1": _ManifestPin("r1", R1_MANIFEST_SHA256, R1_PACKAGE_ID, R1_REVIEW_REF),
+        "r3": _ManifestPin("r3", R3_MANIFEST_SHA256, R3_PACKAGE_ID, R3_REVIEW_REF),
+    }
+)
+_MANIFEST_PIN_BY_SHA256 = MappingProxyType({pin.sha256: pin for pin in _MANIFEST_VERSIONS.values()})
+SUPPORTED_MANIFEST_SHA256S = frozenset(_MANIFEST_PIN_BY_SHA256)
 
 _TOP_LEVEL_KEYS = {
     "schema_version",
@@ -250,9 +276,18 @@ def _parse_utc(value: str) -> datetime:
 
 
 class ResearchStudentSourceRegistry:
-    """Server-loaded, externally pinned allowlist for one research package."""
+    """Server-loaded allowlist for one of the two externally pinned packages."""
 
-    __slots__ = ("manifest_sha256", "package_id", "study_ref", "_sources", "_records", "_clock")
+    __slots__ = (
+        "manifest_version",
+        "manifest_sha256",
+        "package_id",
+        "review_ref",
+        "study_ref",
+        "_sources",
+        "_records",
+        "_clock",
+    )
 
     def __init__(
         self,
@@ -263,10 +298,13 @@ class ResearchStudentSourceRegistry:
         clock: Callable[[], datetime],
         _verified_token: object,
     ) -> None:
-        if _verified_token is not _REGISTRY_TOKEN or manifest_sha256 != PINNED_MANIFEST_SHA256:
+        pin = _MANIFEST_PIN_BY_SHA256.get(manifest_sha256)
+        if _verified_token is not _REGISTRY_TOKEN or pin is None:
             raise ResearchStudentQualificationError()
         self.manifest_sha256 = manifest_sha256
-        self.package_id = PINNED_PACKAGE_ID
+        self.manifest_version = pin.version
+        self.package_id = pin.package_id
+        self.review_ref = pin.review_ref
         self.study_ref = PINNED_STUDY_REF
         self._sources = MappingProxyType(dict(sources))
         self._records = MappingProxyType(dict(records))
@@ -287,7 +325,8 @@ class ResearchStudentSourceRegistry:
             not isinstance(manifest_file, Path)
             or not manifest_file.is_absolute()
             or manifest_file.is_symlink()
-            or expected_manifest_sha256 != PINNED_MANIFEST_SHA256
+            or type(expected_manifest_sha256) is not str
+            or expected_manifest_sha256 not in _MANIFEST_PIN_BY_SHA256
             or study_ref != PINNED_STUDY_REF
             or consumer_age_scope != PINNED_CONSUMER_AGE_SCOPE
         ):
@@ -331,14 +370,19 @@ class ResearchStudentSourceRegistry:
         consumer_age_scope: str,
         clock: Callable[[], datetime],
     ) -> ResearchStudentSourceRegistry:
+        pin = (
+            _MANIFEST_PIN_BY_SHA256.get(expected_manifest_sha256)
+            if type(expected_manifest_sha256) is str
+            else None
+        )
         if (
             type(raw) is not bytes
             or not raw
             or len(raw) > _MAX_MANIFEST_BYTES
-            or expected_manifest_sha256 != PINNED_MANIFEST_SHA256
+            or pin is None
             or study_ref != PINNED_STUDY_REF
             or consumer_age_scope != PINNED_CONSUMER_AGE_SCOPE
-            or not hmac.compare_digest(hashlib.sha256(raw).hexdigest(), PINNED_MANIFEST_SHA256)
+            or not hmac.compare_digest(hashlib.sha256(raw).hexdigest(), pin.sha256)
         ):
             raise ResearchStudentQualificationError()
         try:
@@ -353,11 +397,11 @@ class ResearchStudentSourceRegistry:
             raise ResearchStudentQualificationError() from exc
         if type(manifest) is not dict or set(manifest) != _TOP_LEVEL_KEYS:
             raise ResearchStudentQualificationError()
-        _validate_package_metadata(manifest, study_ref=study_ref)
+        _validate_package_metadata(manifest, study_ref=study_ref, pin=pin)
         sources = _parse_sources(manifest["sources"])
         records = _parse_records(manifest["records"], sources)
         registry = cls(
-            manifest_sha256=PINNED_MANIFEST_SHA256,
+            manifest_sha256=pin.sha256,
             sources=sources,
             records=records,
             clock=clock,
@@ -444,13 +488,15 @@ class ResearchStudentRetrievalSafetyAdapter(RetrievalSafetyAdapter):
         super().__init__(privacy, source_eligibility=registry.allows_chunk)
 
 
-def _validate_package_metadata(manifest: dict[str, Any], *, study_ref: str) -> None:
+def _validate_package_metadata(
+    manifest: dict[str, Any], *, study_ref: str, pin: _ManifestPin
+) -> None:
     if (
         manifest.get("schema_version") != "psynova.school-research-student-knowledge.v1"
-        or manifest.get("package_id") != PINNED_PACKAGE_ID
+        or manifest.get("package_id") != pin.package_id
         or manifest.get("package_status") != "ENGINEERING_REVIEWED_RESEARCH_ONLY"
         or manifest.get("reviewer_kind") != "AI_ENGINEERING"
-        or manifest.get("review_ref") != PINNED_REVIEW_REF
+        or manifest.get("review_ref") != pin.review_ref
         or manifest.get("consumer_scope") != "secondary_school_student_13_18"
         or manifest.get("study_ref") != study_ref
         or manifest.get("review_status") != "pending"

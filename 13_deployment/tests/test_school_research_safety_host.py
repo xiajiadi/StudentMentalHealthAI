@@ -13,6 +13,8 @@ from safety_engine.retrieval.research_student import (
     PINNED_CONSUMER_AGE_SCOPE,
     PINNED_MANIFEST_SHA256,
     PINNED_STUDY_REF,
+    R3_MANIFEST_SHA256,
+    R3_PACKAGE_ID,
     ResearchStudentRetrievalSafetyAdapter,
     ResearchStudentSourceRegistry,
 )
@@ -108,17 +110,20 @@ def _service(registry):
     )
 
 
-def _registry(clock=None):
-    manifest = os.environ.get("PSYNOVA_STUDENT_RESEARCH_MANIFEST")
+def _registry(clock=None, *, version="r1"):
+    manifest = os.environ.get(f"PSYNOVA_STUDENT_RESEARCH_MANIFEST_{version.upper()}")
+    if version == "r1" and not manifest:
+        manifest = os.environ.get("PSYNOVA_STUDENT_RESEARCH_MANIFEST")
     if not manifest:
         import pytest
 
         pytest.skip(
-            "Set PSYNOVA_STUDENT_RESEARCH_MANIFEST to the externally pinned package"
+            f"Set PSYNOVA_STUDENT_RESEARCH_MANIFEST_{version.upper()} to the externally pinned package"
         )
+    manifest_sha256 = PINNED_MANIFEST_SHA256 if version == "r1" else R3_MANIFEST_SHA256
     return ResearchStudentSourceRegistry.load(
         Path(manifest),
-        expected_manifest_sha256=PINNED_MANIFEST_SHA256,
+        expected_manifest_sha256=manifest_sha256,
         study_ref=PINNED_STUDY_REF,
         consumer_age_scope=PINNED_CONSUMER_AGE_SCOPE,
         clock=clock or (lambda: datetime(2026, 10, 15, tzinfo=UTC)),
@@ -171,6 +176,16 @@ def test_private_host_exposes_only_health_and_research_retrieval():
     assert app.state.professional_approval is False
     assert app.state.publication_eligible is False
     assert app.state.production_use is False
+
+
+def test_private_host_propagates_explicit_r3_manifest_identity():
+    registry = _registry(lambda: datetime(2026, 10, 15, tzinfo=UTC), version="r3")
+    app = create_app(
+        _service(registry), registry, clock=lambda: datetime(2026, 10, 15, tzinfo=UTC)
+    )
+
+    assert app.state.package_id == R3_PACKAGE_ID
+    assert app.state.manifest_sha256 == R3_MANIFEST_SHA256
 
 
 def test_route_runs_safety_service_and_returns_only_decision_trace():

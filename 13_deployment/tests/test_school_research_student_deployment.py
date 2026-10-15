@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -12,10 +13,13 @@ import school_backend as backend
 import school_research_student_config as student_config
 from school_research_student_config import (
     MANIFEST_SHA256,
+    R3_MANIFEST_SHA256,
     SAFETY_BASE_URL,
     STUDY_REF,
+    SUPPORTED_MANIFEST_SHA256S,
     StudentResearchConfigError,
     load_student_research_config,
+    restore_student_research_config,
 )
 
 
@@ -74,10 +78,20 @@ def test_student_config_reads_exact_core_fields_and_pinned_manifest(tmp_path, mo
     assert MANIFEST_SHA256 == (
         "70637b39cb11a34de91599a1a32e9e1a6edff6a76b19cc1b11895ee7170e9974"
     )
+    assert SUPPORTED_MANIFEST_SHA256S == frozenset(
+        {
+            MANIFEST_SHA256,
+            R3_MANIFEST_SHA256,
+        }
+    )
     source_manifest = tmp_path / "pinned-source-manifest.json"
     source_manifest.write_text('{"test_fixture":"source contents are not output"}', encoding="utf-8")
     source_sha = hashlib.sha256(source_manifest.read_bytes()).hexdigest()
-    monkeypatch.setattr(student_config, "MANIFEST_SHA256", source_sha)
+    # This stubs only the external-byte fixture for parser plumbing; a separate
+    # assertion above keeps the production allowlist fixed to the two reviewed pins.
+    monkeypatch.setattr(
+        student_config, "SUPPORTED_MANIFEST_SHA256S", frozenset({source_sha})
+    )
     config_file = tmp_path / "student-config.json"
     config_sha = _write_config(
         config_file,
@@ -105,6 +119,47 @@ def test_student_config_reads_exact_core_fields_and_pinned_manifest(tmp_path, mo
     )
     with pytest.raises(StudentResearchConfigError):
         load_student_research_config(wrong_source, wrong_sha)
+
+
+def test_closed_manifest_pins_agree_across_runtime_layers():
+    backend_source = Path(__file__).resolve().parents[2] / "09_backend" / "src"
+    sys.path.insert(0, str(backend_source))
+    from safety_engine.retrieval.research_student import (
+        SUPPORTED_MANIFEST_SHA256S as safety_pins,
+    )
+    from smhai_backend.core.config import (
+        SUPPORTED_MANIFEST_SHA256S as backend_pins,
+    )
+
+    assert SUPPORTED_MANIFEST_SHA256S == safety_pins == backend_pins
+    assert SUPPORTED_MANIFEST_SHA256S == frozenset(
+        {
+            MANIFEST_SHA256,
+            R3_MANIFEST_SHA256,
+        }
+    )
+
+
+def test_r3_external_config_loads_only_when_its_exact_manifest_is_selected(tmp_path):
+    manifest_value = os.environ.get("PSYNOVA_STUDENT_RESEARCH_MANIFEST_R3")
+    if not manifest_value:
+        pytest.skip(
+            "Set PSYNOVA_STUDENT_RESEARCH_MANIFEST_R3 for the external R3 load probe"
+        )
+    manifest_path = Path(manifest_value)
+    config_file = tmp_path / "student-config-r3.json"
+    config_sha = _write_config(
+        config_file,
+        _document(manifest_path, manifest_sha256=R3_MANIFEST_SHA256),
+    )
+
+    loaded = load_student_research_config(config_file, config_sha)
+    restored = restore_student_research_config(loaded.manifest_value())
+
+    assert loaded.manifest_sha256 == R3_MANIFEST_SHA256
+    assert loaded.core_settings()["manifest_sha256"] == R3_MANIFEST_SHA256
+    assert restored is not None
+    assert restored.manifest_sha256 == R3_MANIFEST_SHA256
 
 
 def test_student_config_rejects_duplicate_keys_and_nonfinite_json(tmp_path):

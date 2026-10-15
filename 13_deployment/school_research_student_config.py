@@ -12,7 +12,11 @@ from pathlib import Path
 from typing import Any
 
 STUDY_REF = "school-noncommercial-rag-research-2027-06"
-MANIFEST_SHA256 = "70637b39cb11a34de91599a1a32e9e1a6edff6a76b19cc1b11895ee7170e9974"
+R1_MANIFEST_SHA256 = "70637b39cb11a34de91599a1a32e9e1a6edff6a76b19cc1b11895ee7170e9974"
+R3_MANIFEST_SHA256 = "ac9cc1641faa565ff7a18866be1c2dbf8aaf16aff7155ea80c38bfd979429a9b"
+# Keep the historical constant and implicit config default bound to r1.
+MANIFEST_SHA256 = R1_MANIFEST_SHA256
+SUPPORTED_MANIFEST_SHA256S = frozenset({R1_MANIFEST_SHA256, R3_MANIFEST_SHA256})
 SAFETY_BASE_URL = "http://127.0.0.1:8191"
 MAX_CONFIG_BYTES = 16 * 1024
 MAX_MANIFEST_BYTES = 512 * 1024
@@ -153,7 +157,7 @@ def load_student_research_config(
             or document["purpose"] != "RESEARCH_SIMULATION"
             or type(document["study_ref"]) is not str or document["study_ref"] != STUDY_REF
             or type(document["manifest_sha256"]) is not str
-            or document["manifest_sha256"] != MANIFEST_SHA256
+            or document["manifest_sha256"] not in SUPPORTED_MANIFEST_SHA256S
             or type(document["safety_base_url"]) is not str
             or document["safety_base_url"] != SAFETY_BASE_URL
             or type(document["consumer_age_min"]) is not int or document["consumer_age_min"] != 14
@@ -163,7 +167,7 @@ def load_student_research_config(
         manifest_path = _safe_absolute_path(document["manifest_file"])
         manifest_bytes, manifest = _read_json(manifest_path, MAX_MANIFEST_BYTES)
         if (
-            hashlib.sha256(manifest_bytes).hexdigest() != MANIFEST_SHA256
+            hashlib.sha256(manifest_bytes).hexdigest() != document["manifest_sha256"]
             or type(manifest) is not dict
         ):
             raise StudentResearchConfigError("student_research_config_source_invalid")
@@ -172,7 +176,7 @@ def load_student_research_config(
             config_sha256=digest,
             school_id=document["school_id"],
             manifest_file=str(manifest_path),
-            manifest_sha256=MANIFEST_SHA256,
+            manifest_sha256=document["manifest_sha256"],
         )
     except StudentResearchConfigError:
         raise
@@ -196,7 +200,8 @@ def restore_student_research_config(value: object) -> StudentResearchConfig | No
         or type(value["school_id"]) is not int or value["school_id"] < 1
         or value["purpose"] != "RESEARCH_SIMULATION"
         or value["study_ref"] != STUDY_REF
-        or value["manifest_sha256"] != MANIFEST_SHA256
+        or type(value["manifest_sha256"]) is not str
+        or value["manifest_sha256"] not in SUPPORTED_MANIFEST_SHA256S
         or value["safety_base_url"] != SAFETY_BASE_URL
         or type(value["consumer_age_min"]) is not int or value["consumer_age_min"] != 14
         or type(value["consumer_age_max"]) is not int or value["consumer_age_max"] != 17
@@ -207,5 +212,5 @@ def restore_student_research_config(value: object) -> StudentResearchConfig | No
         config_sha256=config_sha,
         school_id=value["school_id"],
         manifest_file=str(manifest_path),
-        manifest_sha256=MANIFEST_SHA256,
+        manifest_sha256=value["manifest_sha256"],
     )

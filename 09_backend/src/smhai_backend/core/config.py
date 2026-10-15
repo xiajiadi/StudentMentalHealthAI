@@ -35,8 +35,18 @@ _RESEARCH_PROGRAMME_MANIFEST_SHA256 = (
 )
 _RESEARCH_PROGRAMME_SOURCE_STUDY_REF = "school-noncommercial-rag-research-2027-06"
 _SCHOOL_RESEARCH_STUDENT_STUDY_REF = "school-noncommercial-rag-research-2027-06"
-_SCHOOL_RESEARCH_STUDENT_MANIFEST_SHA256 = (
+_SCHOOL_RESEARCH_STUDENT_R1_MANIFEST_SHA256 = (
     "70637b39cb11a34de91599a1a32e9e1a6edff6a76b19cc1b11895ee7170e9974"
+)
+_SCHOOL_RESEARCH_STUDENT_R3_MANIFEST_SHA256 = (
+    "ac9cc1641faa565ff7a18866be1c2dbf8aaf16aff7155ea80c38bfd979429a9b"
+)
+_SCHOOL_RESEARCH_STUDENT_MANIFEST_SHA256 = _SCHOOL_RESEARCH_STUDENT_R1_MANIFEST_SHA256
+SUPPORTED_MANIFEST_SHA256S = frozenset(
+    {
+        _SCHOOL_RESEARCH_STUDENT_R1_MANIFEST_SHA256,
+        _SCHOOL_RESEARCH_STUDENT_R3_MANIFEST_SHA256,
+    }
 )
 RESEARCH_PROGRAMME_PROCESSOR_POLICY_SHA256 = (
     "70a71a65a2dad7b862ba792762069ef7ed4c02152f33dc87d0689cbc5aff1689"
@@ -310,7 +320,7 @@ class SchoolResearchStudentConversationSettings(BaseModel):
             or not isinstance(self.school_id, int)
             or self.school_id < 1
             or self.study_ref != _SCHOOL_RESEARCH_STUDENT_STUDY_REF
-            or self.manifest_sha256 != _SCHOOL_RESEARCH_STUDENT_MANIFEST_SHA256
+            or self.manifest_sha256 not in SUPPORTED_MANIFEST_SHA256S
             or not isinstance(self.manifest_file, str)
             or not (
                 Path(self.manifest_file).is_absolute()
