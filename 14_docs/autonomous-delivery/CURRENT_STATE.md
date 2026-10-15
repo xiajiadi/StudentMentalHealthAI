@@ -10,14 +10,16 @@ original external artifacts. This file records current facts only.
 
 - Canonical D:/Projects/StudentMentalHealthAI-m0-integration; dedicated branch
   xiajiadi/autonomous-delivery-20261011. Reviewed code929a3414059ed0e37128dde4e84c62b2af23cb49
-  was pushed to origin. Use actual HEAD for subsequent source/state increments.
+  was pushed to origin. Prompt1.4 codef8dc81edc5b385d672cf0cc9bdf94ff5f5f5a6f6
+  is also pushed; use actual HEAD for later state increments.
 - Goal ACTIVE; heartbeat psynova ACTIVE; Runner stopped=false,
   public_empirical_resources/root/attempt3 lease checkpoint renewed this run.
   These are scheduling/state facts, not unattended execution or final acceptance.
 - Root directly delegates Luna/high workers; no Lead/recursive delegation.
-  All direct workers finished their bounded increments; Root owns integration,
+  dependency_recovery is performing read-only candidate/review-path reuse audit;
+  other direct workers finished. Root owns integration,
   content review and state. Prompt1.4 research-only constraints and47 focused
-  service tests are reviewed; native semantic validation remains pending.
+  service tests are reviewed; native r13 semantic review FAILED as detailed below.
 - Preserve user untracked10_frontend/output/ and
   10_frontend/public/assets/heartbridge/login-mark-v2.png. Preserve databases,
   keys, backups, old helpers/failures and all800 existing completed sessions.
@@ -30,8 +32,8 @@ runtime revision20261015_0019. P source directory remains required for restored
 installation lineage: D:/Projects/.StudentMentalHealthAI-school-install-20261014-p,
 UUID7d9eeefbb52a00c93e069904e98081b4, DB3324; P remains stopped.
 
-Q official app restart at929a341 passed, retaining every research flag and worker:
-D:/Dev/temp/psynova-q0019-official-restart-r4.json. Backend/Frontend OWNED/READY,
+Q official app restart atf8dc81e passed, retaining every research flag and worker:
+D:/Dev/temp/psynova-q0019-official-restart-r5-prompt14.json. Backend/Frontend OWNED/READY,
 DB VERIFIED. No DB or dependency-host restart. The unexecuted-stop r3 helper
 failed because it called instance validators on a module; Root corrected r4 and
 reviewed read-only preflight before official stop/start.
@@ -50,7 +52,7 @@ D:/Dev/temp/psynova-dependency-recovery-owned-20261015-070207-f9ddca8f/owner-rea
 Only its8191 row is obsolete. Authoritative R3 Safety8191 ownership:
 D:/Dev/temp/psynova-research-safety-r3-owner-20261015-090724-375856be/owner-ready.json;
 fresh read-only process/listener/health proof
-D:/Dev/temp/psynova-research-safety-r3-owner-refreshed-20261015-r2.json.
+D:/Dev/temp/psynova-research-safety-r3-owner-refreshed-20261015-r3.json.
 Listener31256; verify PID/creation/argv afresh before stopping anything.
 RAG8170 is synthetic university data; the student research lane uses the separate
 real-source package. RTX3060/12288MiB observed. Fixed Ollama0.33.3,
@@ -96,12 +98,21 @@ Root GET-only readback matched body/hash/source hashes and logouttrue.
 CONTENT REVIEW FAILED: it applies limited sleep-intervention findings to physical
 activity and invents a combined sleep-education/exercise proposal. Preserve this
 exact answer; transport/provenance completion is not semantic acceptance.
-Prompt1.4 adds generic source-by-source constraints, negative-result/population
-separation and explicit insufficient-evidence behavior.47 focused tests passed;
-university prompt is unchanged. Next: restart with unchanged configs and one
-new bounded native/content review after Root source review. No source-specific
-hardcoded answer, guard loosening, JSON repair or blind model retries. Root must
-review changed prompt/tests before another native request.
+Prompt1.4/f8dc81e adds generic source-by-source constraints, negative-result/
+population separation and insufficient-evidence behavior.47 focused tests passed;
+university prompt unchanged. After official restart, NEW r13 once completed with
+valid3 citations, pinned Runtime and single attempt; same-turn GET/hash/logout
+verified. CONV_47fb43eef67146d29b36b4b0c6e131d7 /
+TURN_72cad08c0af04a9eac88a621ae13478c,
+content SHA9b0cbe9489b7ef723e1ce3e82d25bb0f8e0bf3a5ecbcc9a05e167f38e12365c7.
+Root content review again FAIL: WHO weekly-average qualifier lost; Gaskin
+single-study/high-bias/one-week limits lost and converted to a school action.
+D:/Dev/temp/psynova-q0019-student-research-api-once-r13.json and
+psynova-q0019-r13-root-content-review.json preserve separate outcomes.
+Stop prompt-only model loops. Next: inspect reuse of existing encrypted candidate/
+review/explicit-release workflows, retaining source-specific evidence limits;
+Root must decide a bounded implementation before any new model attempt. No
+source-specific hardcoded answer, guard loosening, JSON repair or blind retries.
 Earlier failed/partial r1/r2 sources and turns remain unchanged; see Git history.
 
 ##800 cohort, staff queue and completed workflows
@@ -127,11 +138,15 @@ review/draft/explicit publish/student read/revoke and denied Scope A access.
 Safety case SCS_01a69ae5cc0c3a3235dc52a05e4a6ff12d79f2a00064b678 is
 ESCALATION_NEEDED v8 with encrypted note and8 events; no closure/contact/approval.
 Actual Q DB restart and authenticated encrypted readback passed earlier.
-P-to-Q restore matched55 business tables34023rows/865 ciphertexts. Latest sealed
+P-to-Q restore matched55 business tables34023rows/865 ciphertexts. Pre-resume sealed
 Q backup20261014-221528-d2a6ca2893d04ca6842e92d7df1e8c8a.private.dpapi,
 SHA0e3569c29e9948c743452701ae5f8eb5267821122f47742876b8e5bc046f8266,
 58tables34282rows includes v8 but predates this run's new jobs/turns/auth rows.
-It is not a current full snapshot. Keep P lineage and both old sealed backups.
+NEW Q sealed backup and readback verified58tables:
+Q/backups/20261015-100726-1654b0b61d9a4c3bb105f655ff1db5ba.private.dpapi,
+SHA838965e47b7f35eeef26d3dc7e6c5cbb3f825ebe4a8317fa8b01a1f14d5cfe0b.
+Revision0019; current-Windows-user DPAPI/new-isolated-instance restore only.
+This is sealed snapshot evidence, not a new restore acceptance. Keep old backups.
 
 ## Installation and remaining delivery work
 
