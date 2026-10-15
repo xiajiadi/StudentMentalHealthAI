@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
@@ -13,6 +14,7 @@ from database_layer.school_research_education_jobs import (
 
 from smhai_backend.domains.research_general_education.schemas import (
     ResearchGeneralEducationCandidatePayload,
+    ResearchGeneralEducationInputReviewReceipt,
     ResearchGeneralEducationOutcome,
 )
 from smhai_backend.domains.research_general_education.service import (
@@ -23,6 +25,8 @@ from smhai_backend.domains.research_general_education.service import (
     PROMPT_SHA256,
     PROMPT_VERSION,
     SAFETY_POLICY_VERSION,
+    ResearchGeneralEducationPolicyPins,
+    canonical_input_context_sha256,
 )
 from smhai_backend.domains.school_research_general_education_generation.worker import (
     ResearchGeneralEducationWorker,
@@ -192,14 +196,16 @@ class _Adapter:
         self.authorized = authorized
         self.authorized_claims = []
         self.finalized = []
+        self.finalize_kwargs = []
         self.stored = []
 
     async def authorize_education_claim(self, claim):
         self.authorized_claims.append(claim)
         return self.authorized
 
-    async def finalize_education_job(self, claim, *, status, error_code=None):
+    async def finalize_education_job(self, claim, *, status, error_code=None, **kwargs):
         self.finalized.append((claim, status, error_code))
+        self.finalize_kwargs.append(kwargs)
         return status
 
     async def store_generated_candidate(self, claim, payload, *, trace_id):
@@ -410,6 +416,83 @@ async def test_generation_exception_is_terminal_and_cancellation_leaves_single_a
     assert cancelled_generation.calls == 1
     assert cancelled_adapter.finalized == []
     assert cancelled_adapter.stored == []
+
+
+def _input_review_receipt(claim, **changes):
+    pins = ResearchGeneralEducationPolicyPins(
+        policy_hash=_POLICY_HASH,
+        source_package_ref="R3_PACKAGE_SYNTHETIC",
+        source_study_ref="R3_STUDY_SYNTHETIC",
+        source_manifest_sha256=_MANIFEST_HASH,
+    )
+    token = hashlib.sha256(
+        f"{claim.job_ref}:{claim.attempt_count}".encode("ascii")
+    ).hexdigest()[:32]
+    values = {
+        "schema_version": "school-research-general-education-input-review.v1",
+        "operation": "INPUT",
+        "action": "REVIEW_REQUIRED",
+        "reason_codes": ("CONTENT_CONTROVERSIAL",),
+        "requires_human": True,
+        "decision_id": "DEC_worker_fixture_001",
+        "review_ref": "REVIEW_worker_fixture_001",
+        "trace_id": f"TRACE_{token}",
+        "canonical_input_sha256": canonical_input_context_sha256(policy_pins=pins),
+        "policy_version": GENERAL_EDUCATION_POLICY_VERSION,
+        "policy_hash": _POLICY_HASH,
+        "safety_policy_version": SAFETY_POLICY_VERSION,
+        "source_package_ref": pins.source_package_ref,
+        "source_study_ref": pins.source_study_ref,
+        "source_manifest_sha256": pins.source_manifest_sha256,
+        "source_age_scope": "14-17",
+        "prompt_id": PROMPT_ID,
+        "prompt_version": PROMPT_VERSION,
+        "prompt_sha256": PROMPT_SHA256,
+    }
+    values.update(changes)
+    return ResearchGeneralEducationInputReviewReceipt(**values)
+
+
+@pytest.mark.asyncio
+async def test_worker_passes_only_valid_input_review_receipt_and_legacy_outcome_omits_kwarg():
+    claim = _claim()
+    adapter = _Adapter()
+    receipt = _input_review_receipt(claim)
+    generation = _Generation(
+        ResearchGeneralEducationOutcome(
+            status="REVIEW_REQUIRED",
+            reason_code="INPUT_SAFETY_STOP",
+            input_review=receipt,
+        )
+    )
+    worker = _worker(claim=claim, adapter=adapter, generation=generation)
+
+    result = await worker.run_once()
+
+    assert result is ResearchGeneralEducationWorkerResult.REVIEW_REQUIRED
+    assert adapter.finalized == [
+        (claim, "REVIEW_REQUIRED", ResearchEducationJobErrorCode.SAFETY_BLOCKED)
+    ]
+    assert adapter.finalize_kwargs == [{"input_review": receipt}]
+    assert adapter.stored == []
+
+    legacy_adapter = _Adapter()
+    legacy_worker = _worker(
+        claim=claim,
+        adapter=legacy_adapter,
+        generation=_Generation(
+            ResearchGeneralEducationOutcome(
+                status="REVIEW_REQUIRED", reason_code="OUTPUT_SAFETY_STOP"
+            )
+        ),
+    )
+    legacy_result = await legacy_worker.run_once()
+
+    assert legacy_result is ResearchGeneralEducationWorkerResult.REVIEW_REQUIRED
+    assert legacy_adapter.finalized == [
+        (claim, "REVIEW_REQUIRED", ResearchEducationJobErrorCode.SAFETY_BLOCKED)
+    ]
+    assert legacy_adapter.finalize_kwargs == [{}]
 
 
 @pytest.mark.asyncio

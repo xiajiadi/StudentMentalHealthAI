@@ -27,6 +27,7 @@ from school_schema import (
     RESEARCH_CAT_SESSIONS_REVISION,
     RESEARCH_COHORTS_REVISION,
     RESEARCH_EDUCATION_CANDIDATES_REVISION,
+    RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION,
     RESEARCH_EDUCATION_JOBS_REVISION,
     RESEARCH_PARAMETER_PROVENANCE_REVISION,
     RESEARCH_PROGRAMME_CANDIDATES_REVISION,
@@ -114,11 +115,16 @@ RESEARCH_PROGRAMME_CANDIDATE_REVISIONS = frozenset(
         RESEARCH_PROGRAMME_CANDIDATES_REVISION,
         CONVERSATION_SAFETY_CASES_REVISION,
         RESEARCH_EDUCATION_CANDIDATES_REVISION,
+        RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION,
     }
 )
 RESEARCH_EDUCATION_CANDIDATE_REVISIONS = frozenset(
-    {RESEARCH_EDUCATION_CANDIDATES_REVISION}
+    {RESEARCH_EDUCATION_CANDIDATES_REVISION, RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION}
 )
+RESEARCH_EDUCATION_INPUT_REVIEW_TABLES = frozenset({
+    "school_research_education_input_reviews",
+    "school_research_education_input_review_events",
+})
 CONVERSATION_SAFETY_TABLES = frozenset(
     {"school_conversation_safety_cases", "school_conversation_safety_events"}
 )
@@ -130,6 +136,7 @@ COHORT_AND_EDUCATION_JOBS_REVISIONS = frozenset(
         RESEARCH_PROGRAMME_CANDIDATES_REVISION,
         CONVERSATION_SAFETY_CASES_REVISION,
         RESEARCH_EDUCATION_CANDIDATES_REVISION,
+        RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION,
     }
 )
 RESEARCH_REVIEW_FEEDBACK_REVISIONS = frozenset(
@@ -138,6 +145,7 @@ RESEARCH_REVIEW_FEEDBACK_REVISIONS = frozenset(
         RESEARCH_PROGRAMME_CANDIDATES_REVISION,
         CONVERSATION_SAFETY_CASES_REVISION,
         RESEARCH_EDUCATION_CANDIDATES_REVISION,
+        RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION,
     }
 )
 RESEARCH_EDUCATION_REVISIONS = frozenset(
@@ -147,6 +155,7 @@ RESEARCH_EDUCATION_REVISIONS = frozenset(
         RESEARCH_PROGRAMME_CANDIDATES_REVISION,
         CONVERSATION_SAFETY_CASES_REVISION,
         RESEARCH_EDUCATION_CANDIDATES_REVISION,
+        RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION,
     }
 )
 RESEARCH_COHORT_REFERENCE_TABLES = frozenset({
@@ -210,6 +219,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
         | RESEARCH_PROGRAMME_CANDIDATE_TABLES
         | CONVERSATION_SAFETY_TABLES
         | RESEARCH_EDUCATION_CANDIDATE_TABLES
+        | RESEARCH_EDUCATION_INPUT_REVIEW_TABLES
     )
     if revision not in SUPPORTED_BACKUP_REVISIONS:
         raise ValueError("Unsupported restore revision")
@@ -222,6 +232,8 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
 
     tables: dict[str, TableSpec] = {}
     for table_name, table in metadata_tables.items():
+        if revision != RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION and table_name in RESEARCH_EDUCATION_INPUT_REVIEW_TABLES:
+            continue
         if (
             revision not in {
                 CAT_TASK_BINDING_REVISION, SCHOOL_FEEDBACK_PUBLICATION_REVISION,
@@ -233,6 +245,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
                 RESEARCH_PROGRAMME_CANDIDATES_REVISION,
                 CONVERSATION_SAFETY_CASES_REVISION,
                 RESEARCH_EDUCATION_CANDIDATES_REVISION,
+                RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION,
             }
             and table_name in CAT_TASK_BINDING_TABLES
         ):
@@ -249,6 +262,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
                 RESEARCH_PROGRAMME_CANDIDATES_REVISION,
                 CONVERSATION_SAFETY_CASES_REVISION,
                 RESEARCH_EDUCATION_CANDIDATES_REVISION,
+                RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION,
             }
             and table_name in SCHOOL_FEEDBACK_TABLES
         ):
@@ -264,6 +278,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
             RESEARCH_PROGRAMME_CANDIDATES_REVISION,
             CONVERSATION_SAFETY_CASES_REVISION,
             RESEARCH_EDUCATION_CANDIDATES_REVISION,
+            RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION,
         } and table_name in POST_ASSESSMENT_JOB_TABLES:
             continue
         if revision not in {
@@ -276,6 +291,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
             RESEARCH_PROGRAMME_CANDIDATES_REVISION,
             CONVERSATION_SAFETY_CASES_REVISION,
             RESEARCH_EDUCATION_CANDIDATES_REVISION,
+            RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION,
         } and table_name in RESEARCH_CAT_TABLES:
             continue
         if (
@@ -287,6 +303,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
                 RESEARCH_PROGRAMME_CANDIDATES_REVISION,
                 CONVERSATION_SAFETY_CASES_REVISION,
                 RESEARCH_EDUCATION_CANDIDATES_REVISION,
+                RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION,
             }
             and table_name in PUBLIC_OBSERVED_CASE_ASSIGNMENT_TABLES
         ):
@@ -309,6 +326,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
                 RESEARCH_PROGRAMME_CANDIDATES_REVISION,
                 CONVERSATION_SAFETY_CASES_REVISION,
                 RESEARCH_EDUCATION_CANDIDATES_REVISION,
+                RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION,
             }
             and table_name in RESEARCH_PROGRAMME_CANDIDATE_TABLES
         ):
@@ -317,6 +335,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
             revision not in {
                 CONVERSATION_SAFETY_CASES_REVISION,
                 RESEARCH_EDUCATION_CANDIDATES_REVISION,
+                RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION,
             }
             and table_name in CONVERSATION_SAFETY_TABLES
         ):
@@ -338,6 +357,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
                 RESEARCH_PROGRAMME_CANDIDATES_REVISION,
                 CONVERSATION_SAFETY_CASES_REVISION,
                 RESEARCH_EDUCATION_CANDIDATES_REVISION,
+                RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION,
             }
             and table_name in CAT_ASSET_TABLES
         ):
@@ -354,6 +374,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
                 RESEARCH_PROGRAMME_CANDIDATES_REVISION,
                 CONVERSATION_SAFETY_CASES_REVISION,
                 RESEARCH_EDUCATION_CANDIDATES_REVISION,
+                RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION,
             }
             and table_name in PROFESSIONAL_REVIEW_TABLES
         ):
@@ -363,14 +384,14 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
         columns = tuple(column.name for column in table.columns)
         nullable = frozenset(column.name for column in table.columns if column.nullable)
         if (
-            revision != RESEARCH_EDUCATION_CANDIDATES_REVISION
+            revision not in RESEARCH_EDUCATION_CANDIDATE_REVISIONS
             and table_name == "school_research_feedback_records"
         ):
             lineage_columns = {"source_candidate_id", "source_candidate_revision"}
             columns = tuple(column for column in columns if column not in lineage_columns)
             nullable = nullable - lineage_columns
         elif (
-            revision == RESEARCH_EDUCATION_CANDIDATES_REVISION
+            revision in RESEARCH_EDUCATION_CANDIDATE_REVISIONS
             and table_name == "school_research_feedback_records"
         ):
             # Revision 0020 appends lineage columns with ALTER TABLE after all
@@ -418,6 +439,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
                 RESEARCH_PROGRAMME_CANDIDATES_REVISION,
                 CONVERSATION_SAFETY_CASES_REVISION,
                 RESEARCH_EDUCATION_CANDIDATES_REVISION,
+                RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION,
             }
             and table_name in CAT_TASK_BINDING_MODE_TABLES
         ):
@@ -436,7 +458,7 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
             for constraint in table.foreign_key_constraints
         )
         if (
-            revision != RESEARCH_EDUCATION_CANDIDATES_REVISION
+            revision not in RESEARCH_EDUCATION_CANDIDATE_REVISIONS
             and table_name == "school_research_feedback_records"
         ):
             foreign_keys = tuple(

@@ -26,6 +26,9 @@ from .school_post_assessment_jobs import SchoolPostAssessmentJobRepository
 from .school_research_cat import SchoolResearchCatRepository
 from .school_research_cohorts import SchoolResearchCohortRepository
 from .school_research_education_candidates import SchoolResearchEducationCandidateRepository
+from .school_research_education_input_reviews import (
+    SchoolResearchEducationInputReviewRepository,
+)
 from .school_research_education_jobs import SchoolResearchEducationJobRepository
 from .school_research_programme_candidates import SchoolResearchProgrammeCandidateRepository
 from .school_research_review_feedback import (
@@ -61,6 +64,9 @@ class SqlAlchemyUnitOfWork:
         self.research_cohorts: SchoolResearchCohortRepository | None = None
         self.research_education_jobs: SchoolResearchEducationJobRepository | None = None
         self.research_education_candidates: SchoolResearchEducationCandidateRepository | None = None
+        self.research_education_input_reviews: (
+            SchoolResearchEducationInputReviewRepository | None
+        ) = None
         self.research_reviews: SchoolResearchReviewRepository | None = None
         self.research_feedback: SchoolResearchFeedbackRepository | None = None
         self.research_programme_candidates: SchoolResearchProgrammeCandidateRepository | None = None
@@ -85,6 +91,9 @@ class SqlAlchemyUnitOfWork:
         self.research_cohorts = SchoolResearchCohortRepository(self.session)
         self.research_education_jobs = SchoolResearchEducationJobRepository(self.session)
         self.research_education_candidates = SchoolResearchEducationCandidateRepository(
+            self.session
+        )
+        self.research_education_input_reviews = SchoolResearchEducationInputReviewRepository(
             self.session
         )
         self.research_reviews = SchoolResearchReviewRepository(self.session)

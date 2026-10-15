@@ -806,6 +806,35 @@ def test_check_normalizer_matches_mysql_metadata_transport_and_parentheses():
     )
 
 
+def test_check_normalizer_preserves_not_in_semantics():
+    not_in = migration._normalize_check_sql("status NOT IN ('PENDING', 'REVOKED')")
+    prefix_not_in = migration._normalize_check_sql(
+        "NOT (status IN ('PENDING', 'REVOKED'))"
+    )
+    in_expression = migration._normalize_check_sql("status IN ('PENDING', 'REVOKED')")
+    not_in_with_null = migration._normalize_check_sql("status NOT IN ('PENDING', NULL)")
+    in_with_null = migration._normalize_check_sql("status IN ('PENDING', NULL)")
+
+    assert not_in == prefix_not_in
+    assert not_in != in_expression
+    assert not_in_with_null != in_with_null
+
+
+def test_check_normalizer_accepts_existing_safety_case_not_in_constraint():
+    database_root = Path(__file__).resolve().parents[2] / "11_database"
+    sys.path.insert(0, str(database_root))
+    from database_layer.models import SchoolConversationSafetyCase
+
+    constraint = next(
+        constraint
+        for constraint in SchoolConversationSafetyCase.__table__.constraints
+        if constraint.name.endswith("_assignment_matches_state")
+    )
+    normalized = migration._normalize_check_sql(str(constraint.sqltext))
+
+    assert "(not (status in ('UNASSIGNED_PENDING','REVOKED')))" in normalized
+
+
 def test_check_normalizer_accepts_only_single_column_length_shape_checks():
     assert migration._normalize_check_sql("length(profile_sha256) = 64") == (
         migration._normalize_check_sql("((LENGTH(`profile_sha256`) = 64))")
@@ -836,6 +865,7 @@ def test_check_normalizer_preserves_literals_operators_and_precedence(left, righ
         "length('profile_sha256') = 64",
         "char_length(profile_sha256) = 64",
         "length(profile_sha256 + 1) = 64",
+        "status NOT BETWEEN 'PENDING' AND 'REVOKED'",
     ],
 )
 def test_check_normalizer_rejects_unknown_expression_syntax(expression):

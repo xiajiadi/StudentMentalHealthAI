@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Query, Request
+from typing import Annotated
+
+from fastapi import APIRouter, Path, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
@@ -25,6 +27,10 @@ from .schemas import (
     ResearchEducationCandidateSummaryDto,
     ResearchEducationCandidateTaskListDto,
     ResearchEducationGenerationJobListDto,
+    ResearchEducationInputReviewDetailDto,
+    ResearchEducationInputReviewListDto,
+    ResearchEducationInputReviewResolutionRequest,
+    ResearchEducationInputReviewSummaryDto,
 )
 
 router = APIRouter(
@@ -130,6 +136,75 @@ async def list_generation_jobs(
     return _response(
         request,
         await _service(request).list_jobs(actor, task_ref, offset=offset, limit=limit),
+    )
+
+
+@router.get(
+    "/tasks/{task_ref}/input-reviews",
+    response_model=ApiEnvelope[ResearchEducationInputReviewListDto],
+    responses=_ERRORS,
+)
+async def list_input_reviews(
+    request: Request,
+    task_ref: Annotated[str, Path(min_length=1, max_length=128)],
+    actor: CurrentActor,
+    offset: int = Query(default=0, ge=0, le=100_000),
+    limit: int = Query(default=20, ge=1, le=20),
+):
+    return _response(
+        request,
+        await _service(request).list_input_reviews(
+            actor, task_ref, offset=offset, limit=limit
+        ),
+    )
+
+
+@router.get(
+    "/tasks/{task_ref}/input-reviews/{input_review_ref}",
+    response_model=ApiEnvelope[ResearchEducationInputReviewDetailDto],
+    responses=_ERRORS,
+)
+async def get_input_review(
+    request: Request,
+    task_ref: Annotated[str, Path(min_length=1, max_length=128)],
+    input_review_ref: Annotated[str, Path(min_length=1, max_length=128)],
+    actor: CurrentActor,
+):
+    return _response(
+        request,
+        await _service(request).get_input_review(actor, task_ref, input_review_ref),
+    )
+
+
+@router.post(
+    "/tasks/{task_ref}/input-reviews/{input_review_ref}/resolve",
+    response_model=ApiEnvelope[ResearchEducationInputReviewSummaryDto],
+    openapi_extra=CSRF_SECURITY_OPENAPI_EXTRA,
+    responses=_ERRORS,
+)
+async def resolve_input_review(
+    request: Request,
+    task_ref: Annotated[str, Path(min_length=1, max_length=128)],
+    input_review_ref: Annotated[str, Path(min_length=1, max_length=128)],
+    payload: ResearchEducationInputReviewResolutionRequest,
+    actor: CsrfActor,
+):
+    service = _service(request)
+    return await _write(
+        request,
+        actor,
+        f"research-education-input-review-resolve:{task_ref}:{input_review_ref}",
+        payload.model_dump(),
+        lambda idem, trace: service.resolve_input_review(
+            actor,
+            task_ref,
+            input_review_ref,
+            expected_state_version=payload.expected_state_version,
+            target=payload.target,
+            idempotency=idem,
+            trace_id=trace,
+        ),
+        ResearchEducationInputReviewSummaryDto,
     )
 
 

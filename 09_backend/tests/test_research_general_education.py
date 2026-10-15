@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from smhai_backend.core.request_context import RequestContext
 from smhai_backend.domains.research_general_education.schemas import (
     ResearchGeneralEducationCandidatePayload,
+    ResearchGeneralEducationInputReviewReceipt,
     ResearchGeneralEducationSourceCard,
 )
 from smhai_backend.domains.research_general_education.service import (
@@ -30,6 +31,7 @@ from smhai_backend.domains.research_general_education.service import (
     ResearchGeneralEducationPolicyPins,
     ResearchGeneralEducationRuntimeResult,
     canonical_candidate_payload_sha256,
+    canonical_input_context_sha256,
     source_cards_from_package,
 )
 from smhai_backend.integrations.rag import Citation, KnowledgeChunk, RetrievalResult
@@ -193,6 +195,45 @@ class _Safety:
         )
 
 
+class _InputReviewSafety(_Safety):
+    def __init__(
+        self,
+        *,
+        decision_id="DEC_fixture_001",
+        review_ref="REVIEW_fixture_001",
+        reason_codes=None,
+        action="REVIEW_REQUIRED",
+        requires_human=True,
+        operation="INPUT",
+        trace_id=None,
+    ):
+        super().__init__(input_action=action)
+        self.decision_id = decision_id
+        self.review_ref = review_ref
+        self.reason_codes = (
+            ["CONTENT_CONTROVERSIAL"] if reason_codes is None else reason_codes
+        )
+        self.requires_human = requires_human
+        self.operation = operation
+        self.trace_id = trace_id
+
+    async def check_input(self, context, request_context):
+        self.calls.append(("INPUT", context))
+        trace_id = self.trace_id or request_context.trace_id
+        return SafetyCheckView(
+            operation=self.operation,
+            trace_id=trace_id,
+            decision=SafetyDecisionView(
+                action=self.actions["INPUT"],
+                reason_codes=self.reason_codes,
+                requires_human=self.requires_human,
+                trace_id=trace_id,
+                decision_id=self.decision_id,
+                review_case_id=self.review_ref,
+            ),
+        )
+
+
 class _Retriever:
     label = "SCHOOL_RESEARCH_STUDENT_SOURCE_PACKAGE"
 
@@ -327,6 +368,130 @@ async def test_crisis_route_stops_before_retrieval_and_runtime():
     assert retriever.calls == 0
     assert runtime.calls == []
     assert result.candidate is None
+    assert result.input_review is None
+
+
+@pytest.mark.asyncio
+async def test_exact_input_review_evidence_is_projected_and_bound_without_runtime_calls():
+    safety = _InputReviewSafety()
+    service, retriever = _service(safety=safety)
+    first_context = RequestContext(request_id="REQ_first", trace_id="TRACE_first")
+    second_context = RequestContext(request_id="REQ_second", trace_id="TRACE_second")
+
+    first = await service.generate(caller_role="SYSTEM", request_context=first_context)
+    second = await service.generate(caller_role="SYSTEM", request_context=second_context)
+
+    assert first.status == second.status == "REVIEW_REQUIRED"
+    assert first.reason_code == "INPUT_SAFETY_STOP"
+    assert first.candidate is second.candidate is None
+    assert isinstance(first.input_review, ResearchGeneralEducationInputReviewReceipt)
+    assert first.input_review.operation == "INPUT"
+    assert first.input_review.action == "REVIEW_REQUIRED"
+    assert first.input_review.reason_codes == ("CONTENT_CONTROVERSIAL",)
+    assert first.input_review.requires_human is True
+    assert first.input_review.decision_id == "DEC_fixture_001"
+    assert first.input_review.review_ref == "REVIEW_fixture_001"
+    assert first.input_review.trace_id == first_context.trace_id
+    assert second.input_review is not None
+    assert second.input_review.trace_id == second_context.trace_id
+    assert first.input_review.canonical_input_sha256 == second.input_review.canonical_input_sha256
+    assert first.input_review.policy_hash == POLICY_SHA
+    assert first.input_review.source_manifest_sha256 == MANIFEST_SHA
+    assert first.input_review.prompt_id == PROMPT_ID
+    assert retriever.calls == 0
+    assert service.runtime.calls == []
+    serialized = first.model_dump(mode="json")
+    assert "current_user_message" not in json.dumps(serialized)
+    assert "request_id" not in serialized["input_review"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "safety_kwargs,expected_status",
+    [
+        ({"decision_id": None}, "REVIEW_REQUIRED"),
+        ({"review_ref": None}, "REVIEW_REQUIRED"),
+        ({"reason_codes": ["CONTENT_CONTROVERSIAL", "OTHER_REASON"]}, "REVIEW_REQUIRED"),
+        ({"reason_codes": ["INPUT_REVIEW_REQUIRED"]}, "REVIEW_REQUIRED"),
+        ({"requires_human": False}, "REVIEW_REQUIRED"),
+        ({"action": "BLOCK"}, "REVIEW_REQUIRED"),
+        ({"action": "CRISIS_ROUTE"}, "CRISIS_ROUTED"),
+        ({"operation": "RETRIEVAL"}, "FAILED"),
+        ({"trace_id": "TRACE_unrelated"}, "FAILED"),
+    ],
+)
+async def test_ineligible_or_unbound_input_review_never_gets_receipt(
+    safety_kwargs, expected_status
+):
+    safety = _InputReviewSafety(**safety_kwargs)
+    service, retriever = _service(safety=safety)
+
+    result = await service.generate(caller_role="SYSTEM", request_context=CONTEXT)
+
+    assert result.status == expected_status
+    assert result.input_review is None
+    assert result.candidate is None
+    assert retriever.calls == 0
+    assert service.runtime.calls == []
+
+
+@pytest.mark.asyncio
+async def test_specialist_context_does_not_receive_system_input_review_receipt():
+    service, _retriever = _service(safety=_InputReviewSafety())
+
+    result = await service.generate(caller_role="PSYCHOLOGICAL_SPECIALIST", request_context=CONTEXT)
+
+    assert result.status == "REVIEW_REQUIRED"
+    assert result.input_review is None
+
+
+def test_input_review_canonical_digest_is_strict_and_changes_with_trusted_pins():
+    pins = ResearchGeneralEducationPolicyPins(
+        policy_hash=POLICY_SHA,
+        source_package_ref="source-package-v1",
+        source_study_ref="source-study-v1",
+        source_manifest_sha256=MANIFEST_SHA,
+    )
+    first = canonical_input_context_sha256(policy_pins=pins)
+    changed_pins = ResearchGeneralEducationPolicyPins(
+        policy_hash="c" * 64,
+        source_package_ref="source-package-v1",
+        source_study_ref="source-study-v1",
+        source_manifest_sha256=MANIFEST_SHA,
+    )
+
+    assert first != canonical_input_context_sha256(policy_pins=changed_pins)
+    with pytest.raises(ValueError):
+        canonical_input_context_sha256(
+            policy_pins=ResearchGeneralEducationPolicyPins(
+                policy_hash="not-a-digest",
+                source_package_ref="source-package-v1",
+                source_study_ref="source-study-v1",
+                source_manifest_sha256=MANIFEST_SHA,
+            )
+        )
+
+
+def test_safety_projection_preserves_optional_decision_id_and_accepts_legacy_payload():
+    base = {
+        "operation": "INPUT",
+        "trace_id": CONTEXT.trace_id,
+        "decision": {
+            "action": "REVIEW_REQUIRED",
+            "reason_codes": ["CONTENT_CONTROVERSIAL"],
+            "requires_human": True,
+            "trace_id": CONTEXT.trace_id,
+            "review_case_id": "REVIEW_fixture_001",
+        },
+    }
+
+    legacy = SafetyCheckView.from_payload(base)
+    with_decision = SafetyCheckView.from_payload(
+        {**base, "decision": {**base["decision"], "decision_id": "DEC_fixture_001"}}
+    )
+
+    assert legacy.decision.decision_id is None
+    assert with_decision.decision.decision_id == "DEC_fixture_001"
 
 
 @pytest.mark.asyncio

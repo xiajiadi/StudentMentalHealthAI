@@ -241,6 +241,7 @@ class ResearchGeneralEducationWorker:
                 status=status,
                 error_code=code,
                 result=result,
+                input_review=outcome.input_review,
             )
 
     async def _claim_one(self) -> list[Any]:
@@ -322,10 +323,12 @@ class ResearchGeneralEducationWorker:
         status: str,
         result: ResearchGeneralEducationWorkerResult,
         error_code=None,
+        input_review=None,
     ) -> ResearchGeneralEducationWorkerResult:
         try:
+            review_kwargs = {} if input_review is None else {"input_review": input_review}
             persisted = await self.persistence_adapter.finalize_education_job(
-                claim, status=status, error_code=error_code
+                claim, status=status, error_code=error_code, **review_kwargs
             )
         except BackendError as exc:
             if exc.code in {

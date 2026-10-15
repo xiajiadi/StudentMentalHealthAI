@@ -421,6 +421,12 @@ def _normalize_check_sql(value: Any) -> str:
                     negate = True
                 self.take("null")
                 return ("is-null", negate, left)
+            negate_in = False
+            if self.peek("not"):
+                self.take("not")
+                if not self.peek("in"):
+                    raise ValueError("unsupported CHECK syntax")
+                negate_in = True
             if self.peek("in"):
                 self.take("in")
                 self.take("(")
@@ -429,7 +435,8 @@ def _normalize_check_sql(value: Any) -> str:
                     self.take(",")
                     values.append(self.parse_or())
                 self.take(")")
-                return ("in", left, tuple(values))
+                expression = ("in", left, tuple(values))
+                return ("not", expression) if negate_in else expression
             if self.peek("between"):
                 self.take("between")
                 lower = self.parse_primary()

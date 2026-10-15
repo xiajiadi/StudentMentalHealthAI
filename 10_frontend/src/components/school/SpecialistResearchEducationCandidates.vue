@@ -4,6 +4,7 @@ import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import ResearchFeedbackSources from '@/components/school/ResearchFeedbackSources.vue'
+import SpecialistResearchEducationInputReviews from '@/components/school/SpecialistResearchEducationInputReviews.vue'
 import { newResearchFeedbackIdempotencyKey } from '@/services/school-research-feedback'
 import { schoolResearchEducationCandidates, type ResearchEducationCandidateDetail, type ResearchEducationCandidateSummary } from '@/services/school-research-education-candidates'
 import type { ResearchEducationGenerationJob } from '@/services/school-research-education-candidates'
@@ -59,6 +60,18 @@ async function load(next = 0) {
 }
 function jobLabel(value: string): string {
   return ({ QUEUED: '等待生成', LEASED: '正在生成', RETRY: '等待处理', HELD: '待核对', ABSTAINED: '未生成内容', REVIEW_REQUIRED: '需人工处理', CRISIS_ROUTED: '已进入安全处理', FAILED: '生成失败', CANCELLED: '已停止' } as Record<string, string>)[value] ?? '状态待确认'
+}
+function jobExplanation(job: ResearchEducationGenerationJob): string | null {
+  if (!['ABSTAINED', 'REVIEW_REQUIRED', 'CRISIS_ROUTED', 'FAILED', 'CANCELLED'].includes(job.status)) return null
+  const explanation = ({
+    SAFETY_BLOCKED: '安全检查要求复核，尚未生成可用内容。',
+    SOURCE_UNQUALIFIED: '资料不满足本次研究要求，未生成可用内容。',
+    GENERATION_FAILED: '生成未完成，未生成可用内容。',
+    UPSTREAM_TIMEOUT: '处理超时，未生成可用内容。',
+    UPSTREAM_TRANSIENT: '所需服务暂不可用，未生成可用内容。',
+    INTERNAL_FAILURE_OUTCOME_VALIDATION: '返回内容未通过格式检查，未生成可用内容。',
+  } as Record<string, string>)[job.last_error_code ?? ''] ?? '此任务已结束，未生成可用内容。'
+  return `${explanation} 刷新页面不会自动重新生成。`
 }
 async function open(item: ResearchEducationCandidateSummary) {
   if (!canWrite.value) return
@@ -120,7 +133,7 @@ onBeforeUnmount(() => { alive = false; clear() })
     </div>
     <p v-if="notice" role="status">{{ notice }}</p>
     <p v-if="jobTotal" role="status">本任务共 {{ jobTotal }} 项生成任务：<span v-for="(count,name) in jobCounts" :key="name"><template v-if="count">{{ jobLabel(String(name)) }} {{ count }} 项；</template></span></p>
-    <details v-if="jobs.length"><summary>查看生成状态（最多 20 条）</summary><ul><li v-for="(job,index) in jobs" :key="job.job_ref">任务 {{ index + 1 }}：{{ jobLabel(job.status) }} · 已尝试 {{ job.attempt_count }} 次</li></ul></details>
+    <details v-if="jobs.length"><summary>查看生成状态（最多 20 条）</summary><ul><li v-for="(job,index) in jobs" :key="job.job_ref">任务 {{ index + 1 }}：{{ jobLabel(job.status) }} · 已尝试 {{ job.attempt_count }} 次<small v-if="jobExplanation(job)">{{ jobExplanation(job) }}</small></li></ul></details>
     <p v-if="busy" role="status" aria-busy="true">正在处理…</p>
     <AppStatusCallout v-if="errorMessage" tone="critical" title="候选操作未完成" :body="errorMessage"><AppButton v-if="pending" size="sm" :disabled="busy" @click="mutate(pending!)">使用相同请求重试</AppButton></AppStatusCallout>
     <p v-if="!busy && !rows.length && !errorMessage">当前没有此状态的候选。</p>
@@ -137,6 +150,7 @@ onBeforeUnmount(() => { alive = false; clear() })
       <p v-else-if="detail.status === 'ADOPTED'">选择同一完成记录并完成复核后，可将此来源用于新的反馈修订稿。</p>
     </section>
   </AppCard>
+  <SpecialistResearchEducationInputReviews :task-ref="taskRef" :disabled="disabled" />
 </template>
 
 <style scoped>
@@ -145,6 +159,7 @@ onBeforeUnmount(() => { alive = false; clear() })
 .education-candidates header { justify-content: space-between; align-items: flex-start; }
 .education-candidates h3,.education-candidates h4 { margin: 0; font-size: 15px; }
 .education-candidates p,.education-candidates li,.education-candidates label { margin: 5px 0; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.education-candidates li small { display: block; color: var(--color-text-secondary); }
 .education-candidates input[type=number] { width: 88px; }
 .education-candidates select,.education-candidates input[type=number] { padding: 6px; border: 1px solid #d7e3de; border-radius: 6px; background: white; color: var(--color-text-primary); }
 .education-candidates__original { display: grid; gap: 9px; border-top: 1px solid #e4ece8; padding-top: 14px; }

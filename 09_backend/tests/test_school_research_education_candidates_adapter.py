@@ -1,17 +1,35 @@
 from __future__ import annotations
 
+import hashlib
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
+from database_layer.school_research_education_jobs import (
+    GENERAL_EDUCATION_POLICY_VERSION,
+    ResearchEducationJobClaim,
+    ResearchEducationJobErrorCode,
+)
 
 from smhai_backend.adapters.school_research_education_candidates import (
     SchoolResearchEducationCandidatePersistenceAdapter,
 )
 from smhai_backend.core.errors import BackendError, ErrorCode
 from smhai_backend.domains.models import BackendRole
-from smhai_backend.domains.research_general_education.service import SAFETY_POLICY_VERSION
+from smhai_backend.domains.research_general_education.prompt import (
+    PROMPT_ID,
+    PROMPT_SHA256,
+    PROMPT_VERSION,
+)
+from smhai_backend.domains.research_general_education.schemas import (
+    ResearchGeneralEducationInputReviewReceipt,
+)
+from smhai_backend.domains.research_general_education.service import (
+    SAFETY_POLICY_VERSION,
+    ResearchGeneralEducationPolicyPins,
+    canonical_input_context_sha256,
+)
 
 from .test_school_research_education_candidates_service import (
     actor,
@@ -73,6 +91,154 @@ def _row(payload, **changes):
     )
     values.update(changes)
     return SimpleNamespace(**values)
+
+
+def _education_job_claim(**changes):
+    now = datetime(2026, 10, 15, 11, 30, tzinfo=UTC)
+    values = {
+        "id": 91,
+        "job_ref": "REJ_education_review_001",
+        "school_id": 17,
+        "research_session_id": 11,
+        "task_id": 23,
+        "class_id": 31,
+        "task_enrollment_id": 41,
+        "subject_id": 51,
+        "task_binding_id": 61,
+        "profile_version_id": 71,
+        "profile_ref": "PROMIS_SYNTHETIC",
+        "profile_version_number": 3,
+        "profile_sha256": "1" * 64,
+        "response_origin": "PUBLIC_OBSERVED",
+        "policy_version": GENERAL_EDUCATION_POLICY_VERSION,
+        "policy_hash": _POLICY_HASH,
+        "purpose": "RESEARCH_SIMULATION",
+        "research_only": True,
+        "publication_status": "not_approved_for_publication_or_operational_use",
+        "status": "LEASED",
+        "attempt_count": 1,
+        "next_attempt_at": None,
+        "lease_expires_at": now + timedelta(minutes=5),
+        "last_error_code": None,
+        "created_at": now,
+        "updated_at": now,
+        "lease_owner": "worker-synthetic",
+        "lease_token": "lease-token-synthetic",
+    }
+    values.update(changes)
+    return ResearchEducationJobClaim(**values)
+
+
+def _input_review_receipt(claim, *, configured=None, **changes):
+    configured = configured or adapter()
+    pins = ResearchGeneralEducationPolicyPins(
+        policy_hash=configured.policy_hash,
+        source_package_ref=configured.source_package_ref,
+        source_study_ref=configured.source_study_ref,
+        source_manifest_sha256=configured.source_manifest_sha256,
+    )
+    token = hashlib.sha256(
+        f"{claim.job_ref}:{claim.attempt_count}".encode("ascii")
+    ).hexdigest()[:32]
+    values = {
+        "schema_version": "school-research-general-education-input-review.v1",
+        "operation": "INPUT",
+        "action": "REVIEW_REQUIRED",
+        "reason_codes": ("CONTENT_CONTROVERSIAL",),
+        "requires_human": True,
+        "decision_id": "DEC_adapter_fixture_001",
+        "review_ref": "REVIEW_adapter_fixture_001",
+        "trace_id": f"TRACE_{token}",
+        "canonical_input_sha256": canonical_input_context_sha256(policy_pins=pins),
+        "policy_version": GENERAL_EDUCATION_POLICY_VERSION,
+        "policy_hash": configured.policy_hash,
+        "safety_policy_version": SAFETY_POLICY_VERSION,
+        "source_package_ref": configured.source_package_ref,
+        "source_study_ref": configured.source_study_ref,
+        "source_manifest_sha256": configured.source_manifest_sha256,
+        "source_age_scope": "14-17",
+        "prompt_id": PROMPT_ID,
+        "prompt_version": PROMPT_VERSION,
+        "prompt_sha256": PROMPT_SHA256,
+    }
+    values.update(changes)
+    return ResearchGeneralEducationInputReviewReceipt(**values)
+
+
+def test_input_review_expiry_is_bounded_by_remaining_retention():
+    configured = adapter()
+    receipt = _input_review_receipt(_education_job_claim(), configured=configured)
+    now = datetime(2026, 10, 15, tzinfo=UTC)
+    retention = now + timedelta(hours=2)
+    evidence = configured._input_review_evidence(
+        receipt, now=now, retention_due_at=retention
+    )
+    assert evidence.expires_at == retention
+    with pytest.raises(BackendError):
+        configured._input_review_evidence(receipt, now=now, retention_due_at=now)
+
+
+def _finalize_harness(configured, claim, *, revoked=False):
+    from database_layer.school_research_education_input_reviews import (
+        ResearchEducationInputReviewScope,
+    )
+
+    now = datetime(2026, 10, 15, 11, 30, tzinfo=UTC)
+    scope = ResearchEducationInputReviewScope(
+        research_session_id=claim.research_session_id,
+        school_id=claim.school_id,
+        task_id=claim.task_id,
+        class_id=claim.class_id,
+        task_enrollment_id=claim.task_enrollment_id,
+        subject_id=claim.subject_id,
+        task_binding_id=claim.task_binding_id,
+        profile_version_id=claim.profile_version_id,
+        profile_ref=claim.profile_ref,
+        profile_version_number=claim.profile_version_number,
+        profile_sha256=claim.profile_sha256,
+        response_origin=claim.response_origin,
+    )
+    events = []
+
+    class InputReviewRepository:
+        async def create_pending(self, **kwargs):
+            events.append(("create_pending", kwargs, active_uow[0]))
+            return SimpleNamespace(input_review_ref="REIR_synthetic")
+
+    class JobRepository:
+        async def require_active_claim(self, **kwargs):
+            assert kwargs["job_id"] == claim.id
+            return claim
+
+        async def finish(self, **kwargs):
+            events.append(("finish", kwargs, active_uow[0]))
+            return kwargs["status"]
+
+    active_uow = []
+
+    class UnitOfWork:
+        research_education_jobs = JobRepository()
+        research_education_input_reviews = InputReviewRepository()
+
+        async def __aenter__(self):
+            active_uow.append(self)
+            return self
+
+        async def __aexit__(self, *_args):
+            return False
+
+    async def live_claim_scope(_uow, _claim, *, now):
+        assert now == now_fixed
+        if revoked:
+            raise BackendError(ErrorCode.FORBIDDEN)
+        return claim, object(), object(), "RSESS_synthetic", scope, None
+
+    now_fixed = now
+    configured._require_enabled = lambda: None
+    configured._now = lambda: (now, now)
+    configured._uow = UnitOfWork
+    configured._live_claim_scope = live_claim_scope
+    return events
 
 
 def test_disabled_or_unpinned_candidate_policy_fails_closed():
@@ -287,6 +453,111 @@ def test_new_payload_must_match_server_policy_source_and_model_pins():
     with pytest.raises(BackendError) as raised:
         configured._validate_new_payload(altered_excerpt)
     assert raised.value.code is ErrorCode.FORBIDDEN
+
+
+async def test_input_review_finalize_persists_exact_receipt_before_finishing_in_one_uow():
+    claim = _education_job_claim()
+    configured = adapter()
+    receipt = _input_review_receipt(claim, configured=configured)
+    events = _finalize_harness(configured, claim)
+
+    disposition = await configured.finalize_education_job(
+        claim,
+        status="REVIEW_REQUIRED",
+        error_code=ResearchEducationJobErrorCode.SAFETY_BLOCKED,
+        input_review=receipt,
+    )
+
+    assert disposition == "REVIEW_REQUIRED"
+    assert [event[0] for event in events] == ["create_pending", "finish"]
+    assert events[0][2] is events[1][2]
+    evidence = events[0][1]["evidence"]
+    assert evidence.decision_id == receipt.decision_id
+    assert evidence.safety_review_ref == receipt.review_ref
+    assert evidence.safety_trace_id == receipt.trace_id
+    assert evidence.safety_operation == "INPUT"
+    assert evidence.safety_action == "REVIEW_REQUIRED"
+    assert evidence.reason_codes == ("CONTENT_CONTROVERSIAL",)
+    assert evidence.requires_human is True
+    assert evidence.canonical_input_sha256 == receipt.canonical_input_sha256
+    assert evidence.policy_hash == configured.policy_hash
+    assert evidence.source_manifest_sha256 == configured.source_manifest_sha256
+    assert evidence.prompt_id == PROMPT_ID
+    assert evidence.expires_at == datetime(2026, 10, 16, 11, 30, tzinfo=UTC)
+    assert events[1][1]["status"] == "REVIEW_REQUIRED"
+    assert events[1][1]["error_code"] is ResearchEducationJobErrorCode.SAFETY_BLOCKED
+
+
+@pytest.mark.parametrize(
+    "invalid_receipt", ["wrong_trace", "wrong_pin", "wrong_digest", "wrong_type"]
+)
+async def test_invalid_receipt_cannot_create_pending_review_or_finish_job(invalid_receipt):
+    claim = _education_job_claim()
+    configured = adapter()
+    receipt = _input_review_receipt(claim, configured=configured)
+    if invalid_receipt == "wrong_trace":
+        receipt = _input_review_receipt(
+            claim, configured=configured, trace_id="TRACE_wrong_binding"
+        )
+    elif invalid_receipt == "wrong_pin":
+        receipt = _input_review_receipt(
+            claim, configured=configured, source_manifest_sha256="9" * 64
+        )
+    elif invalid_receipt == "wrong_digest":
+        receipt = _input_review_receipt(
+            claim, configured=configured, canonical_input_sha256="9" * 64
+        )
+    else:
+        receipt = SimpleNamespace(trace_id=receipt.trace_id)
+    events = _finalize_harness(configured, claim)
+
+    with pytest.raises(BackendError) as raised:
+        await configured.finalize_education_job(
+            claim,
+            status="REVIEW_REQUIRED",
+            error_code=ResearchEducationJobErrorCode.SAFETY_BLOCKED,
+            input_review=receipt,
+        )
+
+    assert raised.value.code is ErrorCode.WORKFLOW_CONFLICT
+    assert events == []
+
+
+async def test_nonreview_status_cannot_persist_input_review_receipt():
+    claim = _education_job_claim()
+    configured = adapter()
+    receipt = _input_review_receipt(claim, configured=configured)
+    events = _finalize_harness(configured, claim)
+
+    with pytest.raises(BackendError) as raised:
+        await configured.finalize_education_job(
+            claim,
+            status="FAILED",
+            error_code=ResearchEducationJobErrorCode.GENERATION_FAILED,
+            input_review=receipt,
+        )
+
+    assert raised.value.code is ErrorCode.WORKFLOW_CONFLICT
+    assert events == []
+
+
+async def test_revoked_scope_cancels_job_without_persisting_input_review():
+    claim = _education_job_claim()
+    configured = adapter()
+    receipt = _input_review_receipt(claim, configured=configured)
+    events = _finalize_harness(configured, claim, revoked=True)
+
+    disposition = await configured.finalize_education_job(
+        claim,
+        status="REVIEW_REQUIRED",
+        error_code=ResearchEducationJobErrorCode.SAFETY_BLOCKED,
+        input_review=receipt,
+    )
+
+    assert disposition == "CANCELLED"
+    assert [event[0] for event in events] == ["finish"]
+    assert events[0][1]["status"] == "CANCELLED"
+    assert events[0][1]["error_code"] is None
 
 
 def test_candidate_readback_checks_row_payload_provenance_and_content_hash():

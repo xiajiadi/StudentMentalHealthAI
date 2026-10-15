@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictStr
 
 from smhai_backend.core.errors import ErrorCode, error
 from smhai_backend.core.request_context import RequestContext
@@ -26,6 +26,7 @@ class SafetyDecisionView(BaseModel):
     reason_codes: list[str] = Field(min_length=1)
     requires_human: bool
     trace_id: str = Field(min_length=1)
+    decision_id: StrictStr | None = Field(default=None, min_length=5, max_length=160)
     review_case_id: str | None = None
     crisis_template_id: str | None = None
     disclosure_policy: str = "FULL"

@@ -13,7 +13,7 @@ from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr
 
 from smhai_backend.core.errors import ErrorCode, error
-from smhai_backend.core.request_context import RequestContext
+from smhai_backend.core.request_context import RequestContext, valid_correlation_id
 from smhai_backend.domains.conversations.service import _contains_unsupported_bibliography
 from smhai_backend.domains.support.schemas import GenerationContent
 from smhai_backend.domains.support.service import (
@@ -39,6 +39,7 @@ from .prompt import (
 )
 from .schemas import (
     ResearchGeneralEducationCandidatePayload,
+    ResearchGeneralEducationInputReviewReceipt,
     ResearchGeneralEducationOutcome,
     ResearchGeneralEducationProvenance,
     ResearchGeneralEducationSourceCard,
@@ -53,6 +54,7 @@ EXPECTED_MODEL_ID = "qwen2.5-7b-instruct-school-demo"
 EXPECTED_MODEL_VERSION = "qwen2.5:7b-instruct-q4_K_M"
 EXPECTED_MODEL_DIGEST_SHA256 = "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e"
 SAFETY_POLICY_VERSION = "safety-port-unversioned.v1"
+GENERAL_EDUCATION_POLICY_VERSION = "RESEARCH_GENERAL_EDUCATION_DRAFT_V1"
 _MAX_RUNTIME_EVIDENCE_CHARS = 6_000
 _MAX_GENERATED_CONTENT_CHARS = 12_000
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -260,7 +262,21 @@ class ResearchGeneralEducationDraftService:
         input_action, input_reasons = input_codes
         stopped = _safety_stop(input_action, input_check.decision.requires_human)
         if stopped:
-            return _outcome(stopped, "INPUT_SAFETY_STOP")
+            input_review = (
+                _input_review_receipt(
+                    input_check,
+                    safety_context=safety_context,
+                    request_context=request_context,
+                    policy_pins=self.policy_pins,
+                )
+                if stopped == "REVIEW_REQUIRED"
+                else None
+            )
+            return ResearchGeneralEducationOutcome(
+                status=stopped,
+                reason_code="INPUT_SAFETY_STOP",
+                input_review=input_review,
+            )
 
         retrieval_id = f"RETR_{uuid4().hex}"
         generation_id = f"GEN_{uuid4().hex}"
@@ -479,6 +495,170 @@ def canonical_candidate_payload_sha256(
         allow_nan=False,
     ).encode("utf-8")
     return hashlib.sha256(canonical).hexdigest()
+
+
+def canonical_input_context_sha256(
+    *, policy_pins: ResearchGeneralEducationPolicyPins
+) -> str:
+    """Hash the fixed SYSTEM input and trusted pins, without caller text or IDs."""
+    if not isinstance(policy_pins, ResearchGeneralEducationPolicyPins):
+        raise ValueError("trusted research policy pins are required")
+    expected_input = _fixed_review_input_context()
+    if (
+        type(policy_pins.policy_hash) is not str
+        or _SHA256.fullmatch(policy_pins.policy_hash) is None
+        or type(policy_pins.source_manifest_sha256) is not str
+        or _SHA256.fullmatch(policy_pins.source_manifest_sha256) is None
+        or type(policy_pins.source_package_ref) is not str
+        or not policy_pins.source_package_ref
+        or len(policy_pins.source_package_ref) > 255
+        or type(policy_pins.source_study_ref) is not str
+        or not policy_pins.source_study_ref
+        or len(policy_pins.source_study_ref) > 255
+    ):
+        raise ValueError("trusted research policy/source pins are invalid")
+    binding = {
+        "schema_version": "school-research-general-education-input-binding.v1",
+        "input_context": expected_input,
+        "policy": {
+            "policy_version": GENERAL_EDUCATION_POLICY_VERSION,
+            "policy_hash": policy_pins.policy_hash,
+            "safety_policy_version": SAFETY_POLICY_VERSION,
+        },
+        "source": {
+            "source_package_ref": policy_pins.source_package_ref,
+            "source_study_ref": policy_pins.source_study_ref,
+            "source_manifest_sha256": policy_pins.source_manifest_sha256,
+            "source_age_scope": "14-17",
+        },
+        "prompt": {
+            "prompt_id": PROMPT_ID,
+            "prompt_version": PROMPT_VERSION,
+            "prompt_sha256": PROMPT_SHA256,
+        },
+    }
+    canonical = json.dumps(
+        binding,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def _matches_fixed_input_safety_context(context: Mapping[str, object]) -> bool:
+    """Require the actual Safety call to use the exact fixed worker projection."""
+    expected_input = _fixed_review_input_context()
+    expected_keys = set(expected_input) | {"request_id", "trace_id"}
+    if not isinstance(context, Mapping) or set(context) != expected_keys:
+        return False
+    request_id = context.get("request_id")
+    trace_id = context.get("trace_id")
+    if (
+        type(request_id) is not str
+        or valid_correlation_id(request_id, "REQ") != request_id
+        or type(trace_id) is not str
+        or valid_correlation_id(trace_id, "TRACE") != trace_id
+    ):
+        return False
+    actual_input = {key: context[key] for key in expected_input}
+    try:
+        actual_input_json = json.dumps(
+            actual_input,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        expected_input_json = json.dumps(
+            expected_input,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+    except (TypeError, ValueError):
+        return False
+    return actual_input_json == expected_input_json
+
+
+def _fixed_review_input_context() -> dict[str, object]:
+    """Exact stable projection used by `_safety_context` for worker SYSTEM calls."""
+    return {
+        "actor_role": "SYSTEM",
+        "age_group": "UNKNOWN",
+        "assessment_signals": [],
+        "current_user_message": FIXED_GENERAL_EDUCATION_REQUEST,
+        "conversation_metadata": {
+            "purpose": "RESEARCH_SIMULATION",
+            "research_only": True,
+            "student_data_supplied": False,
+            "student_feedback_eligible": False,
+            "publication_eligible": False,
+            "production_use": False,
+            "target_audience": "secondary_school_student_14_17",
+        },
+        "retrieval_metadata": {},
+        "generation_metadata": {},
+        "component_health": {},
+    }
+
+
+def _input_review_receipt(
+    check: SafetyCheckView,
+    *,
+    safety_context: Mapping[str, object],
+    request_context: RequestContext,
+    policy_pins: ResearchGeneralEducationPolicyPins,
+) -> ResearchGeneralEducationInputReviewReceipt | None:
+    """Project only fully bound, real Safety INPUT review evidence."""
+    if (
+        not isinstance(check, SafetyCheckView)
+        or check.operation != "INPUT"
+        or check.trace_id != request_context.trace_id
+        or check.decision.trace_id != request_context.trace_id
+        or check.decision.action != "REVIEW_REQUIRED"
+        or check.decision.requires_human is not True
+        or check.decision.reason_codes != ["CONTENT_CONTROVERSIAL"]
+        or not check.decision.decision_id
+        or not check.review_reference
+    ):
+        return None
+    if not _matches_fixed_input_safety_context(safety_context):
+        return None
+    if (
+        safety_context.get("request_id") != request_context.request_id
+        or safety_context.get("trace_id") != request_context.trace_id
+    ):
+        return None
+    try:
+        input_digest = canonical_input_context_sha256(
+            policy_pins=policy_pins,
+        )
+        return ResearchGeneralEducationInputReviewReceipt(
+            schema_version="school-research-general-education-input-review.v1",
+            operation=check.operation,
+            action=check.decision.action,
+            reason_codes=tuple(check.decision.reason_codes),
+            requires_human=check.decision.requires_human,
+            decision_id=check.decision.decision_id,
+            review_ref=check.review_reference,
+            trace_id=check.trace_id,
+            canonical_input_sha256=input_digest,
+            policy_version=GENERAL_EDUCATION_POLICY_VERSION,
+            policy_hash=policy_pins.policy_hash,
+            safety_policy_version=SAFETY_POLICY_VERSION,
+            source_package_ref=policy_pins.source_package_ref,
+            source_study_ref=policy_pins.source_study_ref,
+            source_manifest_sha256=policy_pins.source_manifest_sha256,
+            source_age_scope="14-17",
+            prompt_id=PROMPT_ID,
+            prompt_version=PROMPT_VERSION,
+            prompt_sha256=PROMPT_SHA256,
+        )
+    except (TypeError, ValueError):
+        return None
 
 
 def _safety_context(

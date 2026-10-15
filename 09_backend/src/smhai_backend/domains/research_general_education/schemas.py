@@ -158,11 +158,42 @@ ResearchGeneralEducationStatus = Literal[
 ]
 
 
+class ResearchGeneralEducationInputReviewReceipt(_StrictModel):
+    """Actual, content-free Safety evidence for the fixed research input stop."""
+
+    schema_version: Literal["school-research-general-education-input-review.v1"]
+    operation: Literal["INPUT"]
+    action: Literal["REVIEW_REQUIRED"]
+    reason_codes: tuple[Literal["CONTENT_CONTROVERSIAL"], ...] = Field(
+        min_length=1, max_length=1
+    )
+    requires_human: Literal[True]
+    decision_id: StrictStr = Field(pattern=r"^DEC_[A-Za-z0-9][A-Za-z0-9_.:-]{0,155}$")
+    review_ref: StrictStr = Field(pattern=r"^REVIEW_[A-Za-z0-9][A-Za-z0-9_.:-]{0,152}$")
+    trace_id: StrictStr = Field(pattern=r"^TRACE_[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$")
+    canonical_input_sha256: StrictStr = Field(pattern=_SHA256.pattern)
+    policy_version: Literal["RESEARCH_GENERAL_EDUCATION_DRAFT_V1"]
+    policy_hash: StrictStr = Field(pattern=_SHA256.pattern)
+    safety_policy_version: Literal["safety-port-unversioned.v1"]
+    source_package_ref: StrictStr = Field(min_length=1, max_length=255)
+    source_study_ref: StrictStr = Field(min_length=1, max_length=255)
+    source_manifest_sha256: StrictStr = Field(pattern=_SHA256.pattern)
+    source_age_scope: Literal["14-17"]
+    prompt_id: StrictStr = Field(pattern=r"^PROMPT_[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$")
+    prompt_version: StrictStr = Field(min_length=1, max_length=64)
+    prompt_sha256: StrictStr = Field(pattern=_SHA256.pattern)
+
+
 class ResearchGeneralEducationOutcome(_StrictModel):
     status: ResearchGeneralEducationStatus
     reason_code: StrictStr = Field(pattern=r"^[A-Z][A-Z0-9_]{0,95}$")
     candidate: ResearchGeneralEducationCandidatePayload | None = None
+    input_review: ResearchGeneralEducationInputReviewReceipt | None = None
 
     def model_post_init(self, __context: object) -> None:
         if (self.status == "HELD") != (self.candidate is not None):
             raise ValueError("only a held outcome may contain a candidate")
+        if self.input_review is not None and (
+            self.status != "REVIEW_REQUIRED" or self.reason_code != "INPUT_SAFETY_STOP"
+        ):
+            raise ValueError("input review evidence is only valid for a stopped input outcome")

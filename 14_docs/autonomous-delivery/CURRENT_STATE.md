@@ -270,6 +270,34 @@ approval;98 entries retain conditional/unverified rights pending focused review.
 
 Priority: finish held/review/release integration, source-grounded content review,
 useful empirical AI workload and installation/recovery acceptance.
+
+## Bound stopped-input review increment (2026-10-15)
+
+RESEARCH_EDUCATION_INPUT_REVIEW.md defines the controlled workflow. Increment one
+captures actual Safety decision/review/trace evidence only for the fixed SYSTEM
+INPUT REVIEW_REQUIRED/CONTENT_CONTROVERSIAL request. A strict receipt passes
+through the processor and is atomically persisted with terminal job disposition;
+missing evidence cannot be reconstructed for the historical failed job.0021 adds
+content-free review/events with exact session scope,original job reference,
+source/policy/prompt/input pins,expiry/version and append-only transitions.
+Current assigned Scope C APIs/UI support read,REJECTED and REVOKED only.
+Continuation is explicitly disabled; there is no approve,rerun or publication
+shortcut. The eventual authorized one-shot continuation remains required work.
+
+Root fresh integration checks:117 Backend receipt/worker/adapter/API/startup tests,
+33 database review/candidate/job tests,137 deployment migration/restore tests;
+frontend typecheck and focused ESLint passed. Migration checks exposed an existing
+0019 NOT IN parser gap; the minimal fix preserves negation and unsupported-syntax
+rejection. Earlier74 fixture errors are not native migration failures. New source
+requires0021; do not restart Q0019 or R0020 with this source. Native0021 migration,
+receipt creation and browser negative dispositions have not yet been exercised.
+
+The prior R0020 read-only specialist browser check matched one
+REVIEW_REQUIRED/SAFETY_BLOCKED job,no candidate,and logout succeeded. Screenshot:
+D:/Dev/temp/psynova-r0020-education-candidates-ui-20261015-r1/artifacts/education-candidates.png.
+Its result-verified.json is a separately preserved parseable copy; original
+result.json had a trailing literal backslash-n. This is status-display evidence,
+not candidate content or review/release acceptance.
 Retain Contract/D4/HumanGold, licensed public-data population provenance and
 privacy. PROMIS school noncommercial declaration is not proprietary CAT/app
 permission. No psychometric/clinical/ethics/school-production approval, protected

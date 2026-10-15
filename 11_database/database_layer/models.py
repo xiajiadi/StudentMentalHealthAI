@@ -3433,6 +3433,166 @@ class SchoolResearchEducationCandidateEvent(ResourceIdentityMixin, TimestampMixi
     retention_due_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
 
 
+class SchoolResearchEducationInputReview(ResourceIdentityMixin, TimestampMixin, Base):
+    """Content-free receipt for a stopped research-job input safety decision."""
+
+    __tablename__ = "school_research_education_input_reviews"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint(
+            "input_review_ref", name="school_research_education_input_review_ref_unique"
+        ),
+        UniqueConstraint("job_id", name="school_research_education_input_review_job_unique"),
+        UniqueConstraint(
+            "id", "research_session_id", "school_id",
+            name="school_research_education_input_review_id_session_school_unique",
+        ),
+        UniqueConstraint(
+            "id", *_RESEARCH_SESSION_SCOPE,
+            name="school_research_education_input_review_scope_unique",
+        ),
+        CheckConstraint("safety_operation = 'INPUT'", name="safety_op"),
+        CheckConstraint("safety_action = 'REVIEW_REQUIRED'", name="safety_action"),
+        CheckConstraint("safety_reason_code = 'CONTENT_CONTROVERSIAL'", name="safety_reason"),
+        CheckConstraint("safety_requires_human = 1", name="safety_human"),
+        CheckConstraint("status IN ('PENDING', 'REJECTED', 'REVOKED')", name="status_allowed"),
+        CheckConstraint("state_version IN (1, 2)", name="state_ver"),
+        CheckConstraint("expires_at > created_at", name="expiry"),
+        CheckConstraint(
+            "(status = 'PENDING' AND state_version = 1 "
+            "AND resolved_at IS NULL AND resolved_by_membership_role_id IS NULL) OR "
+            "(status IN ('REJECTED', 'REVOKED') AND state_version = 2 "
+            "AND resolved_at IS NOT NULL AND resolved_by_membership_role_id IS NOT NULL)",
+            name="resolution",
+        ),
+        ForeignKeyConstraint(
+            ["job_id", "research_session_id", "school_id"],
+            [
+                "school_research_education_jobs.id",
+                "school_research_education_jobs.research_session_id",
+                "school_research_education_jobs.school_id",
+            ],
+            name="fk_school_research_education_input_review_job_exact_scope",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            list(_RESEARCH_SESSION_SCOPE),
+            [
+                "school_research_sessions.id",
+                *[f"school_research_sessions.{name}" for name in _RESEARCH_SESSION_SCOPE[1:]],
+            ],
+            name="fk_school_research_education_input_review_session_exact_scope",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["resolved_by_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_school_research_education_input_review_actor_school",
+            ondelete="RESTRICT",
+        ),
+        Index(
+            "ix_school_research_education_input_review_task_status",
+            "school_id", "task_id", "status", "created_at",
+        ),
+    )
+
+    input_review_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    job_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    research_session_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    task_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    class_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    task_enrollment_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    subject_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    task_binding_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    profile_version_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    profile_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    profile_version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    profile_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    response_origin: Mapped[str] = mapped_column(ascii_id(32), nullable=False)
+    safety_decision_id: Mapped[str] = mapped_column(ascii_id(160), nullable=False)
+    safety_review_ref: Mapped[str] = mapped_column(ascii_id(160), nullable=False)
+    safety_trace_id: Mapped[str] = mapped_column(ascii_id(160), nullable=False)
+    safety_operation: Mapped[str] = mapped_column(ascii_id(16), nullable=False)
+    safety_action: Mapped[str] = mapped_column(ascii_id(24), nullable=False)
+    safety_reason_code: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    safety_requires_human: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    canonical_input_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    policy_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    policy_hash: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    source_package_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    source_study_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    source_manifest_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    prompt_id: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    prompt_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    status: Mapped[str] = mapped_column(
+        ascii_id(16), nullable=False, default="PENDING", server_default="PENDING"
+    )
+    state_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    expires_at: Mapped[datetime] = mapped_column(utc_datetime(), nullable=False)
+    resolved_by_membership_role_id: Mapped[int | None] = mapped_column(unsigned_id(), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    trace_id: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    retention_due_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+
+
+class SchoolResearchEducationInputReviewEvent(ResourceIdentityMixin, TimestampMixin, Base):
+    """Append-only, content-free events for an input review disposition."""
+
+    __tablename__ = "school_research_education_input_review_events"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint(
+            "input_review_id", "state_version",
+            name="school_research_education_input_review_event_version_unique",
+        ),
+        CheckConstraint("event_type IN ('PENDING', 'REJECTED', 'REVOKED')", name="event_type"),
+        CheckConstraint(
+            "from_status IS NULL OR from_status IN ('PENDING', 'REJECTED', 'REVOKED')",
+            name="from_status",
+        ),
+        CheckConstraint("to_status IN ('PENDING', 'REJECTED', 'REVOKED')", name="to_status"),
+        CheckConstraint("state_version IN (1, 2)", name="state_ver"),
+        CheckConstraint(
+            "(event_type = 'PENDING' AND from_status IS NULL AND to_status = 'PENDING' "
+            "AND state_version = 1 AND actor_membership_role_id IS NULL) OR "
+            "(event_type IN ('REJECTED', 'REVOKED') AND from_status = 'PENDING' "
+            "AND to_status = event_type AND state_version = 2 "
+            "AND actor_membership_role_id IS NOT NULL)",
+            name="shape",
+        ),
+        ForeignKeyConstraint(
+            ["input_review_id", "research_session_id", "school_id"],
+            [
+                "school_research_education_input_reviews.id",
+                "school_research_education_input_reviews.research_session_id",
+                "school_research_education_input_reviews.school_id",
+            ],
+            name="fk_school_research_education_input_review_event_exact_scope",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["actor_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_school_research_education_input_review_event_actor_school",
+            ondelete="RESTRICT",
+        ),
+    )
+
+    input_review_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    research_session_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    input_review_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    actor_membership_role_id: Mapped[int | None] = mapped_column(unsigned_id(), nullable=True)
+    event_type: Mapped[str] = mapped_column(ascii_id(16), nullable=False)
+    from_status: Mapped[str | None] = mapped_column(ascii_id(16), nullable=True)
+    to_status: Mapped[str] = mapped_column(ascii_id(16), nullable=False)
+    state_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    trace_id: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    retention_due_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+
+
 class SchoolConversationSafetyCase(ResourceIdentityMixin, TimestampMixin, Base):
     """Metadata-only school case linked to a blocked independent conversation turn."""
 

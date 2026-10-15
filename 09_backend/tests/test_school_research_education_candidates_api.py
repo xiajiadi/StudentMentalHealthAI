@@ -66,6 +66,10 @@ async def test_non_specialist_cannot_read_enqueue_or_resolve(role):
         listed = await client.get(f"{root}/tasks/TASK_demo/candidates")
         jobs = await client.get(f"{root}/tasks/TASK_demo/generation-jobs")
         detail = await client.get(f"{root}/tasks/TASK_demo/candidates/REEDUC_synthetic_1")
+        input_reviews = await client.get(f"{root}/tasks/TASK_demo/input-reviews")
+        input_review = await client.get(
+            f"{root}/tasks/TASK_demo/input-reviews/REI_synthetic_1"
+        )
         queued = await client.post(
             f"{root}/tasks/TASK_demo/enqueue",
             json={"limit": 2, "offset": 0},
@@ -76,14 +80,25 @@ async def test_non_specialist_cannot_read_enqueue_or_resolve(role):
             json={"expected_state_version": 1, "target": "ADOPTED"},
             headers={"Idempotency-Key": "denied", "X-CSRF-Token": "synthetic-csrf-token"},
         )
+        input_review_resolved = await client.post(
+            f"{root}/tasks/TASK_demo/input-reviews/REI_synthetic_1/resolve",
+            json={"expected_state_version": 1, "target": "REVOKED"},
+            headers={
+                "Idempotency-Key": "denied-input-review",
+                "X-CSRF-Token": "synthetic-csrf-token",
+            },
+        )
     assert [
         tasks.status_code,
         listed.status_code,
         jobs.status_code,
         detail.status_code,
+        input_reviews.status_code,
+        input_review.status_code,
         queued.status_code,
         resolved.status_code,
-    ] == [403] * 6
+        input_review_resolved.status_code,
+    ] == [403] * 9
     assert persistence.calls == []
 
 
@@ -95,6 +110,13 @@ async def test_specialist_api_is_bounded_csrf_idempotent_and_payload_closed():
         tasks = await client.get(f"{root}/tasks")
         listed = await client.get(f"{root}/tasks/TASK_demo/candidates?offset=3&limit=7")
         jobs = await client.get(f"{root}/tasks/TASK_demo/generation-jobs?offset=2&limit=7")
+        input_reviews = await client.get(f"{root}/tasks/TASK_demo/input-reviews")
+        input_review = await client.get(
+            f"{root}/tasks/TASK_demo/input-reviews/REI_synthetic_1"
+        )
+        input_review_bad_page = await client.get(
+            f"{root}/tasks/TASK_demo/input-reviews?limit=21"
+        )
         detail = await client.get(f"{root}/tasks/TASK_demo/candidates/REEDUC_synthetic_1")
         missing_idem = await client.post(
             f"{root}/tasks/TASK_demo/enqueue",
@@ -130,6 +152,48 @@ async def test_specialist_api_is_bounded_csrf_idempotent_and_payload_closed():
                 "X-CSRF-Token": "synthetic-csrf-token",
             },
         )
+        input_review_resolved = await client.post(
+            f"{root}/tasks/TASK_demo/input-reviews/REI_synthetic_1/resolve",
+            json={"expected_state_version": 1, "target": "REJECTED"},
+            headers={
+                "Idempotency-Key": "input-review-resolve",
+                "X-CSRF-Token": "synthetic-csrf-token",
+            },
+        )
+        input_review_missing_idem = await client.post(
+            f"{root}/tasks/TASK_demo/input-reviews/REI_synthetic_1/resolve",
+            json={"expected_state_version": 1, "target": "REVOKED"},
+            headers={"X-CSRF-Token": "synthetic-csrf-token"},
+        )
+        input_review_missing_csrf = await client.post(
+            f"{root}/tasks/TASK_demo/input-reviews/REI_synthetic_1/resolve",
+            json={"expected_state_version": 1, "target": "REVOKED"},
+            headers={"Idempotency-Key": "input-review-no-csrf"},
+        )
+        input_review_bad_target = await client.post(
+            f"{root}/tasks/TASK_demo/input-reviews/REI_synthetic_1/resolve",
+            json={"expected_state_version": 1, "target": "APPROVED"},
+            headers={
+                "Idempotency-Key": "input-review-bad-target",
+                "X-CSRF-Token": "synthetic-csrf-token",
+            },
+        )
+        input_review_bad_version = await client.post(
+            f"{root}/tasks/TASK_demo/input-reviews/REI_synthetic_1/resolve",
+            json={"expected_state_version": 0, "target": "REVOKED"},
+            headers={
+                "Idempotency-Key": "input-review-bad-version",
+                "X-CSRF-Token": "synthetic-csrf-token",
+            },
+        )
+        input_review_unavailable_action = await client.post(
+            f"{root}/tasks/TASK_demo/input-reviews/REI_synthetic_1/continue",
+            json={},
+            headers={
+                "Idempotency-Key": "input-review-continue",
+                "X-CSRF-Token": "synthetic-csrf-token",
+            },
+        )
         unapproved_publish_route = await client.post(
             f"{root}/tasks/TASK_demo/candidates/REEDUC_synthetic_1/publish",
             json={},
@@ -161,6 +225,18 @@ async def test_specialist_api_is_bounded_csrf_idempotent_and_payload_closed():
     )
     assert detail_data["student_feedback_eligible"] is False
     assert not ({"subject_id", "score", "answers", "response_text"} & set(detail_data))
+    assert input_reviews.status_code == 200
+    review_page = input_reviews.json()["data"]
+    assert review_page["limit"] == 20
+    assert review_page["items"][0]["reason_codes"] == ["CONTENT_CONTROVERSIAL"]
+    assert review_page["items"][0]["continuation_enabled"] is False
+    assert input_review.status_code == 200
+    assert input_review_bad_page.status_code == 422
+    review_data = input_review.json()["data"]
+    assert review_data["fixed_request"]
+    assert review_data["policy_version"] == "RESEARCH_GENERAL_EDUCATION_DRAFT_V1"
+    assert not ({"subject_id", "score", "answers", "response_text", "safety_review_ref"}
+                & set(review_data))
     assert missing_idem.status_code == 422
     assert missing_csrf.status_code == 403
     assert queued.status_code == 200
@@ -171,6 +247,15 @@ async def test_specialist_api_is_bounded_csrf_idempotent_and_payload_closed():
     assert resolved.json()["data"]["status"] == "ADOPTED"
     assert resolved.json()["data"]["student_feedback_eligible"] is False
     assert unapproved_publish_route.status_code in {404, 405}
+    assert input_review_resolved.status_code == 200
+    assert input_review_resolved.json()["data"]["status"] == "REJECTED"
+    assert input_review_resolved.json()["data"]["continuation_enabled"] is False
+    assert input_review_missing_idem.status_code == 422
+    assert input_review_missing_csrf.status_code == 403
+    assert input_review_bad_target.status_code == 422
+    assert input_review_bad_version.status_code == 422
+    assert input_review_unavailable_action.status_code in {404, 405}
     assert [call[0] for call in persistence.calls] == [
-        "tasks", "list", "jobs", "get", "queue", "resolve"
+        "tasks", "list", "jobs", "input_review_list", "input_review_get",
+        "get", "queue", "resolve", "input_review_resolve"
     ]

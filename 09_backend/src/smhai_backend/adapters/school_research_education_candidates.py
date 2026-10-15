@@ -5,14 +5,19 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 
 from sqlalchemy import func
 
+from smhai_backend.adapters.school_research_education_input_reviews import (
+    ResearchEducationInputReviewPersistenceMixin,
+    _input_review_repo_call,
+)
 from smhai_backend.adapters.school_research_feedback import (
     SchoolResearchFeedbackPersistenceAdapter,
+    _aware_utc,
     _naive_utc,
     _repo_call,
 )
@@ -79,7 +84,9 @@ async def _candidate_repo_call(awaitable):
         ) from None
 
 
-class SchoolResearchEducationCandidatePersistenceAdapter(SchoolResearchFeedbackPersistenceAdapter):
+class SchoolResearchEducationCandidatePersistenceAdapter(
+    ResearchEducationInputReviewPersistenceMixin, SchoolResearchFeedbackPersistenceAdapter
+):
     """Reuse the established task Scope C checks and exact completed-session scope."""
 
     def __init__(
@@ -1264,7 +1271,7 @@ class SchoolResearchEducationCandidatePersistenceAdapter(SchoolResearchFeedbackP
             raise
 
     async def finalize_education_job(
-        self, claim, *, status: str, error_code=None
+        self, claim, *, status: str, error_code=None, input_review=None
     ) -> str:
         """Write a content-free terminal disposition only for the exact live lease."""
         self._require_enabled()
@@ -1325,6 +1332,37 @@ class SchoolResearchEducationCandidatePersistenceAdapter(SchoolResearchFeedbackP
                 ):
                     raise _conflict() from None
             disposition = status if current else "CANCELLED"
+            if input_review is not None and current:
+                if (
+                    disposition != "REVIEW_REQUIRED"
+                    or error_code is not ResearchEducationJobErrorCode.SAFETY_BLOCKED
+                ):
+                    raise _conflict()
+                expected_token = hashlib.sha256(
+                    f"{persisted.job_ref}:{persisted.attempt_count}".encode("ascii")
+                ).hexdigest()[:32]
+                evidence = self._input_review_evidence(
+                    input_review, now=now, retention_due_at=_retention
+                )
+                if input_review.trace_id != f"TRACE_{expected_token}":
+                    raise _conflict()
+                from database_layer.school_research_education_input_reviews import (
+                    ResearchEducationInputReviewScope,
+                )
+
+                await _input_review_repo_call(
+                    uow.research_education_input_reviews.create_pending(
+                        claim=persisted,
+                        scope=ResearchEducationInputReviewScope(
+                            **{
+                                name: getattr(_scope, name)
+                                for name in ResearchEducationInputReviewScope.__dataclass_fields__
+                            }
+                        ),
+                        evidence=evidence,
+                        now=now,
+                    )
+                )
             await _repo_call(
                 uow.research_education_jobs.finish(
                     school_id=persisted.school_id,
@@ -1338,6 +1376,71 @@ class SchoolResearchEducationCandidatePersistenceAdapter(SchoolResearchFeedbackP
                 )
             )
             return disposition
+
+    def _input_review_evidence(self, receipt, *, now, retention_due_at=None):
+        """Rebind the actual stopped-input receipt to this server's trusted pins."""
+        from database_layer.school_research_education_input_reviews import (
+            ResearchEducationInputReviewEvidence,
+        )
+
+        from smhai_backend.domains.research_general_education.prompt import (
+            PROMPT_ID,
+            PROMPT_SHA256,
+            PROMPT_VERSION,
+        )
+        from smhai_backend.domains.research_general_education.schemas import (
+            ResearchGeneralEducationInputReviewReceipt,
+        )
+        from smhai_backend.domains.research_general_education.service import (
+            ResearchGeneralEducationPolicyPins,
+            canonical_input_context_sha256,
+        )
+
+        pins = ResearchGeneralEducationPolicyPins(
+            policy_hash=self.policy_hash,
+            source_package_ref=self.source_package_ref,
+            source_study_ref=self.source_study_ref,
+            source_manifest_sha256=self.source_manifest_sha256,
+        )
+        if (
+            type(receipt) is not ResearchGeneralEducationInputReviewReceipt
+            or receipt.policy_version != _POLICY_VERSION
+            or receipt.policy_hash != self.policy_hash
+            or receipt.source_package_ref != self.source_package_ref
+            or receipt.source_study_ref != self.source_study_ref
+            or receipt.source_manifest_sha256 != self.source_manifest_sha256
+            or receipt.prompt_id != PROMPT_ID
+            or receipt.prompt_version != PROMPT_VERSION
+            or receipt.prompt_sha256 != PROMPT_SHA256
+            or receipt.canonical_input_sha256
+            != canonical_input_context_sha256(policy_pins=pins)
+        ):
+            raise _conflict()
+        expires_at = now + timedelta(hours=24)
+        if retention_due_at is not None:
+            expires_at = min(expires_at, _aware_utc(retention_due_at))
+        if expires_at <= now:
+            raise _conflict()
+        return ResearchEducationInputReviewEvidence(
+            decision_id=receipt.decision_id,
+            safety_review_ref=receipt.review_ref,
+            safety_trace_id=receipt.trace_id,
+            safety_operation=receipt.operation,
+            safety_action=receipt.action,
+            reason_codes=tuple(receipt.reason_codes),
+            requires_human=receipt.requires_human,
+            canonical_input_sha256=receipt.canonical_input_sha256,
+            policy_version=receipt.policy_version,
+            policy_hash=receipt.policy_hash,
+            source_package_ref=receipt.source_package_ref,
+            source_study_ref=receipt.source_study_ref,
+            source_manifest_sha256=receipt.source_manifest_sha256,
+            prompt_id=receipt.prompt_id,
+            prompt_version=receipt.prompt_version,
+            prompt_sha256=receipt.prompt_sha256,
+            trace_id=receipt.trace_id,
+            expires_at=expires_at,
+        )
 
     async def store_generated_candidate(self, claim, payload, *, trace_id: str) -> dict:
         """Persist only a fully validated held candidate against its active job lease."""

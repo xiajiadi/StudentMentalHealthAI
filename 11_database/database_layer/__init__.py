@@ -24,12 +24,25 @@ from .provenance import (
     SYNTHETIC_SCHOOL_SEED_PROVENANCE_REF,
     SYNTHETIC_SCHOOL_TEST_PROVENANCE_REF,
 )
+from .school_conversation_safety import (
+    ConversationSafetyCaseDTO,
+    ConversationSafetyEventDTO,
+    SchoolConversationSafetyError,
+    SchoolConversationSafetyRepository,
+)
 from .school_research_cohorts import (
     ResearchCohortCaseAssignment,
     ResearchCohortErrorCode,
     ResearchCohortMetadata,
     ResearchCohortRepositoryError,
     SchoolResearchCohortRepository,
+)
+from .school_research_education_input_reviews import (
+    ResearchEducationInputReviewDTO,
+    ResearchEducationInputReviewError,
+    ResearchEducationInputReviewEvidence,
+    ResearchEducationInputReviewScope,
+    SchoolResearchEducationInputReviewRepository,
 )
 from .school_research_education_jobs import (
     ResearchEducationJobClaim,
@@ -52,12 +65,6 @@ from .school_research_review_feedback import (
     ResearchSessionScope,
     SchoolResearchFeedbackRepository,
     SchoolResearchReviewRepository,
-)
-from .school_conversation_safety import (
-    ConversationSafetyCaseDTO,
-    ConversationSafetyEventDTO,
-    SchoolConversationSafetyError,
-    SchoolConversationSafetyRepository,
 )
 from .school_seed import (
     SCHOOL_SEED_SLOTS,
@@ -104,6 +111,11 @@ __all__ = [
     "ResearchEducationJobDTO",
     "ResearchEducationJobErrorCode",
     "SchoolResearchEducationJobRepository",
+    "ResearchEducationInputReviewDTO",
+    "ResearchEducationInputReviewError",
+    "ResearchEducationInputReviewEvidence",
+    "ResearchEducationInputReviewScope",
+    "SchoolResearchEducationInputReviewRepository",
     "ResearchFeedbackEventDTO",
     "ResearchFeedbackRecordDTO",
     "ResearchReviewCaseDTO",

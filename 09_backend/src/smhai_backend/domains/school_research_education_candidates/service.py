@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 
 from pydantic import ValidationError
@@ -21,7 +22,13 @@ from .schemas import (
     ResearchEducationCandidateSummaryDto,
     ResearchEducationCandidateTaskListDto,
     ResearchEducationGenerationJobListDto,
+    ResearchEducationInputReviewDetailDto,
+    ResearchEducationInputReviewListDto,
+    ResearchEducationInputReviewResolutionRequest,
+    ResearchEducationInputReviewSummaryDto,
 )
+
+_INPUT_REVIEW_REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 
 class SchoolResearchEducationCandidateService:
@@ -97,6 +104,22 @@ class SchoolResearchEducationCandidateService:
         ):
             raise error(ErrorCode.VALIDATION_FAILED, detail="pagination is invalid")
 
+    @staticmethod
+    def _input_review_ref(value: str, name: str) -> str:
+        if type(value) is not str or _INPUT_REVIEW_REF.fullmatch(value) is None:
+            raise error(ErrorCode.VALIDATION_FAILED, detail=f"{name} is invalid")
+        return value
+
+    @staticmethod
+    def _input_review_pagination(offset: int, limit: int) -> None:
+        if (
+            type(offset) is not int
+            or not 0 <= offset <= 100_000
+            or type(limit) is not int
+            or not 1 <= limit <= 20
+        ):
+            raise error(ErrorCode.VALIDATION_FAILED, detail="pagination is invalid")
+
     async def list_tasks(self, actor: Actor):
         self._require_specialist(actor)
         result = await self._port().school_research_education_candidate_list_tasks(actor)
@@ -119,6 +142,83 @@ class SchoolResearchEducationCandidateService:
             actor, task_ref, offset=offset, limit=limit
         )
         return self._project(ResearchEducationGenerationJobListDto, result)
+
+    async def list_input_reviews(
+        self, actor: Actor, task_ref: str, *, offset=0, limit=20
+    ):
+        self._require_specialist(actor)
+        task_ref = self._input_review_ref(task_ref, "task_ref")
+        self._input_review_pagination(offset, limit)
+        result = await self._port().school_research_education_input_review_list(
+            actor, task_ref, offset=offset, limit=limit
+        )
+        page = self._project(ResearchEducationInputReviewListDto, result)
+        if (
+            page["offset"] != offset
+            or page["limit"] != limit
+            or (page["has_more"] and len(page["items"]) != limit)
+            or any(item["task_ref"] != task_ref for item in page["items"])
+        ):
+            raise error(
+                ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                detail="research education input review is unavailable",
+            )
+        return page
+
+    async def get_input_review(self, actor: Actor, task_ref: str, input_review_ref: str):
+        self._require_specialist(actor)
+        task_ref = self._input_review_ref(task_ref, "task_ref")
+        input_review_ref = self._input_review_ref(input_review_ref, "input_review_ref")
+        result = await self._port().school_research_education_input_review_get(
+            actor, task_ref, input_review_ref
+        )
+        detail = self._project(ResearchEducationInputReviewDetailDto, result)
+        if detail["task_ref"] != task_ref or detail["input_review_ref"] != input_review_ref:
+            raise error(
+                ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                detail="research education input review is unavailable",
+            )
+        return detail
+
+    async def resolve_input_review(
+        self,
+        actor: Actor,
+        task_ref: str,
+        input_review_ref: str,
+        *,
+        expected_state_version: int,
+        target: str,
+        idempotency,
+        trace_id: str,
+    ):
+        self._require_specialist(actor)
+        task_ref = self._input_review_ref(task_ref, "task_ref")
+        input_review_ref = self._input_review_ref(input_review_ref, "input_review_ref")
+        request = self._validate(
+            ResearchEducationInputReviewResolutionRequest,
+            {"expected_state_version": expected_state_version, "target": target},
+        )
+        result = await self._port().school_research_education_input_review_resolve(
+            actor,
+            task_ref,
+            input_review_ref,
+            expected_state_version=request.expected_state_version,
+            target=request.target,
+            idempotency=idempotency,
+            trace_id=trace_id,
+        )
+        summary = self._project(ResearchEducationInputReviewSummaryDto, result)
+        if (
+            summary["task_ref"] != task_ref
+            or summary["input_review_ref"] != input_review_ref
+            or summary["status"] != request.target
+            or summary["state_version"] != request.expected_state_version + 1
+        ):
+            raise error(
+                ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                detail="research education input review is unavailable",
+            )
+        return summary
 
     async def get(self, actor: Actor, task_ref: str, candidate_ref: str):
         self._require_specialist(actor)

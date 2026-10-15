@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from typing import Literal
 
@@ -16,11 +17,16 @@ from pydantic import (
     model_validator,
 )
 
+from smhai_backend.domains.research_general_education.prompt import (
+    FIXED_GENERAL_EDUCATION_REQUEST,
+)
 from smhai_backend.domains.research_general_education.schemas import (
     ResearchGeneralEducationCandidatePayload,
 )
 
 _PUBLICATION_STATUS = "not_approved_for_publication_or_operational_use"
+_INPUT_REVIEW_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
 class _StrictModel(BaseModel):
@@ -154,6 +160,92 @@ class ResearchEducationGenerationJobListDto(_StrictModel):
         ):
             raise ValueError("research education generation job page is inconsistent")
         return self
+
+
+class ResearchEducationInputReviewSummaryDto(_StrictModel):
+    input_review_ref: StrictStr = Field(min_length=1, max_length=128)
+    job_ref: StrictStr = Field(pattern=r"^REJ_[0-9a-f]{64}$", max_length=68)
+    task_ref: StrictStr = Field(min_length=1, max_length=128)
+    session_ref: StrictStr = Field(min_length=1, max_length=128)
+    status: Literal["PENDING", "REJECTED", "REVOKED"]
+    state_version: StrictInt = Field(ge=1, le=2)
+    expires_at: datetime
+    created_at: datetime
+    updated_at: datetime
+    reason_codes: list[Literal["CONTENT_CONTROVERSIAL"]] = Field(min_length=1, max_length=1)
+    purpose: Literal["RESEARCH_SIMULATION"]
+    research_only: Literal[True]
+    continuation_enabled: Literal[False]
+
+    @field_validator("input_review_ref", "task_ref", "session_ref", mode="after")
+    @classmethod
+    def refs_are_bounded_tokens(cls, value: str) -> str:
+        if _INPUT_REVIEW_TOKEN.fullmatch(value) is None:
+            raise ValueError("input review reference is invalid")
+        return value
+
+    @field_validator("expires_at", "created_at", "updated_at", mode="after")
+    @classmethod
+    def review_timestamps_are_utc(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
+
+    @model_validator(mode="after")
+    def review_version_matches_status(self):
+        if (self.status == "PENDING") != (self.state_version == 1):
+            raise ValueError("input review status and version are inconsistent")
+        if self.expires_at <= self.created_at or self.updated_at < self.created_at:
+            raise ValueError("input review timestamps are inconsistent")
+        return self
+
+
+class ResearchEducationInputReviewListDto(_StrictModel):
+    items: list[ResearchEducationInputReviewSummaryDto]
+    offset: StrictInt = Field(ge=0, le=100_000)
+    limit: StrictInt = Field(ge=1, le=20)
+    has_more: StrictBool
+
+    @model_validator(mode="after")
+    def page_is_consistent(self):
+        if (
+            len(self.items) > self.limit
+            or len({item.input_review_ref for item in self.items}) != len(self.items)
+        ):
+            raise ValueError("input review page is inconsistent")
+        return self
+
+
+class ResearchEducationInputReviewDetailDto(ResearchEducationInputReviewSummaryDto):
+    fixed_request: StrictStr = Field(min_length=1, max_length=2_000)
+    canonical_input_sha256: StrictStr = Field(pattern=_SHA256.pattern)
+    policy_version: Literal["RESEARCH_GENERAL_EDUCATION_DRAFT_V1"]
+    policy_hash: StrictStr = Field(pattern=_SHA256.pattern)
+    source_package_ref: StrictStr = Field(min_length=1, max_length=128)
+    source_study_ref: StrictStr = Field(min_length=1, max_length=128)
+    source_manifest_sha256: StrictStr = Field(pattern=_SHA256.pattern)
+    prompt_id: StrictStr = Field(pattern=r"^PROMPT_[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$")
+    prompt_version: StrictStr = Field(min_length=1, max_length=64)
+    prompt_sha256: StrictStr = Field(pattern=_SHA256.pattern)
+
+    @field_validator("fixed_request", mode="after")
+    @classmethod
+    def request_is_the_fixed_research_request(cls, value: str) -> str:
+        if value != FIXED_GENERAL_EDUCATION_REQUEST:
+            raise ValueError("input review request is not the fixed request")
+        return value
+
+    @field_validator("source_package_ref", "source_study_ref", mode="after")
+    @classmethod
+    def source_refs_are_bounded_tokens(cls, value: str) -> str:
+        if _INPUT_REVIEW_TOKEN.fullmatch(value) is None:
+            raise ValueError("input review source reference is invalid")
+        return value
+
+
+class ResearchEducationInputReviewResolutionRequest(_StrictModel):
+    expected_state_version: StrictInt = Field(ge=1, le=2_147_483_647)
+    target: Literal["REJECTED", "REVOKED"]
 
 
 class ResearchEducationCandidateResolutionRequest(_StrictModel):

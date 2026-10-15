@@ -5,8 +5,11 @@ from datetime import UTC, datetime
 
 import pytest
 
-from smhai_backend.core.errors import BackendError
+from smhai_backend.core.errors import BackendError, ErrorCode, error
 from smhai_backend.domains.models import Actor, BackendRole
+from smhai_backend.domains.research_general_education.prompt import (
+    FIXED_GENERAL_EDUCATION_REQUEST,
+)
 from smhai_backend.domains.research_general_education.schemas import (
     ResearchGeneralEducationCandidatePayload,
 )
@@ -168,6 +171,42 @@ def generation_job_page(**changes):
     }
 
 
+def input_review_summary(**changes):
+    return {
+        "input_review_ref": "REI_synthetic_1",
+        "job_ref": "REJ_" + "c" * 64,
+        "task_ref": "TASK_demo",
+        "session_ref": "RSESSION_synthetic_1",
+        "status": "PENDING",
+        "state_version": 1,
+        "expires_at": datetime(2026, 10, 16, tzinfo=UTC),
+        "created_at": datetime(2026, 10, 15, tzinfo=UTC),
+        "updated_at": datetime(2026, 10, 15, tzinfo=UTC),
+        "reason_codes": ["CONTENT_CONTROVERSIAL"],
+        "purpose": "RESEARCH_SIMULATION",
+        "research_only": True,
+        "continuation_enabled": False,
+        **changes,
+    }
+
+
+def input_review_detail(**changes):
+    return {
+        **input_review_summary(),
+        "fixed_request": FIXED_GENERAL_EDUCATION_REQUEST,
+        "canonical_input_sha256": "1" * 64,
+        "policy_version": "RESEARCH_GENERAL_EDUCATION_DRAFT_V1",
+        "policy_hash": "2" * 64,
+        "source_package_ref": "PKG_R3",
+        "source_study_ref": "STUDY_R3",
+        "source_manifest_sha256": "3" * 64,
+        "prompt_id": PROMPT_ID,
+        "prompt_version": PROMPT_VERSION,
+        "prompt_sha256": PROMPT_SHA256,
+        **changes,
+    }
+
+
 class FakePersistence:
     def __init__(self):
         self.calls = []
@@ -233,6 +272,37 @@ class FakePersistence:
         self.calls.append(("resolve", actor_arg, task_ref, candidate_ref, target))
         return summary(status=target, state_version=2)
 
+    async def school_research_education_input_review_list(
+        self, actor_arg, task_ref, *, offset, limit
+    ):
+        self.calls.append(("input_review_list", actor_arg, task_ref, offset, limit))
+        return {
+            "items": [input_review_summary()],
+            "offset": offset,
+            "limit": limit,
+            "has_more": False,
+        }
+
+    async def school_research_education_input_review_get(
+        self, actor_arg, task_ref, input_review_ref
+    ):
+        self.calls.append(("input_review_get", actor_arg, task_ref, input_review_ref))
+        return input_review_detail()
+
+    async def school_research_education_input_review_resolve(
+        self,
+        actor_arg,
+        task_ref,
+        input_review_ref,
+        *,
+        expected_state_version,
+        target,
+        idempotency,
+        trace_id,
+    ):
+        self.calls.append(("input_review_resolve", actor_arg, task_ref, input_review_ref, target))
+        return input_review_summary(status=target, state_version=expected_state_version + 1)
+
 
 @pytest.mark.parametrize(
     "role",
@@ -247,6 +317,17 @@ async def test_non_specialists_cannot_read_enqueue_or_resolve_candidates(role):
         lambda: service.list_for_task(staff, "TASK_demo"),
         lambda: service.list_jobs(staff, "TASK_demo"),
         lambda: service.get(staff, "TASK_demo", "REEDUC_demo"),
+        lambda: service.list_input_reviews(staff, "TASK_demo"),
+        lambda: service.get_input_review(staff, "TASK_demo", "REI_demo"),
+        lambda: service.resolve_input_review(
+            staff,
+            "TASK_demo",
+            "REI_demo",
+            expected_state_version=1,
+            target="REJECTED",
+            idempotency=("key", "body", "scope"),
+            trace_id="TRACE_demo",
+        ),
         lambda: service.queue_batch(
             staff,
             "TASK_demo",
@@ -320,6 +401,143 @@ async def test_specialist_operations_use_closed_task_bound_ports():
     }
     assert resolved["status"] == "ADOPTED"
     assert resolved["student_feedback_eligible"] is False
+
+
+async def test_specialist_input_review_ports_are_task_bound_and_allow_only_dispositions():
+    persistence = FakePersistence()
+    service = SchoolResearchEducationCandidateService(persistence=persistence)
+    specialist = actor(BackendRole.PSYCHOLOGICAL_SPECIALIST)
+
+    page = await service.list_input_reviews(specialist, "TASK_demo", offset=2, limit=8)
+    detail = await service.get_input_review(
+        specialist, "TASK_demo", "REI_synthetic_1"
+    )
+    resolved = await service.resolve_input_review(
+        specialist,
+        "TASK_demo",
+        "REI_synthetic_1",
+        expected_state_version=1,
+        target="REVOKED",
+        idempotency=("resolve-key", "request-hash", "scope-hash"),
+        trace_id="TRACE_demo",
+    )
+
+    assert page["items"][0]["reason_codes"] == ["CONTENT_CONTROVERSIAL"]
+    assert page["items"][0]["continuation_enabled"] is False
+    assert page["items"][0]["task_ref"] == "TASK_demo"
+    assert detail["fixed_request"] == FIXED_GENERAL_EDUCATION_REQUEST
+    assert detail["policy_version"] == "RESEARCH_GENERAL_EDUCATION_DRAFT_V1"
+    assert "subject_id" not in detail and "response_text" not in detail
+    assert resolved["status"] == "REVOKED"
+    assert resolved["state_version"] == 2
+    assert [call[0] for call in persistence.calls] == [
+        "input_review_list", "input_review_get", "input_review_resolve"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("offset", "limit"),
+    [(-1, 20), (100_001, 20), (0, 21), (True, 20), (0, True)],
+)
+async def test_input_review_pagination_is_bounded(offset, limit):
+    persistence = FakePersistence()
+    service = SchoolResearchEducationCandidateService(persistence=persistence)
+    with pytest.raises(BackendError) as raised:
+        await service.list_input_reviews(
+            actor(BackendRole.PSYCHOLOGICAL_SPECIALIST),
+            "TASK_demo",
+            offset=offset,
+            limit=limit,
+        )
+    assert raised.value.code.value == "validation_failed"
+    assert persistence.calls == []
+
+
+async def test_input_review_ports_reject_wrong_scope_or_malformed_evidence():
+    persistence = FakePersistence()
+    service = SchoolResearchEducationCandidateService(persistence=persistence)
+    specialist = actor(BackendRole.PSYCHOLOGICAL_SPECIALIST)
+
+    async def wrong_task(_actor, _task_ref, *, offset, limit):
+        return {
+            "items": [input_review_summary(task_ref="TASK_other")],
+            "offset": offset,
+            "limit": limit,
+            "has_more": False,
+        }
+
+    persistence.school_research_education_input_review_list = wrong_task
+    with pytest.raises(BackendError) as raised:
+        await service.list_input_reviews(specialist, "TASK_demo")
+    assert raised.value.code.value == "dependency_invalid_response"
+
+    async def wrong_review(_actor, _task_ref, _review_ref):
+        return input_review_detail(input_review_ref="REI_other")
+
+    persistence.school_research_education_input_review_get = wrong_review
+    with pytest.raises(BackendError) as raised:
+        await service.get_input_review(specialist, "TASK_demo", "REI_synthetic_1")
+    assert raised.value.code.value == "dependency_invalid_response"
+
+    async def unsafe_detail(_actor, _task_ref, _review_ref):
+        return input_review_detail(response_text="must never be projected")
+
+    persistence.school_research_education_input_review_get = unsafe_detail
+    with pytest.raises(BackendError) as raised:
+        await service.get_input_review(specialist, "TASK_demo", "REI_synthetic_1")
+    assert raised.value.code.value == "dependency_invalid_response"
+
+    async def unsafe_request(_actor, _task_ref, _review_ref):
+        return input_review_detail(fixed_request="untrusted request")
+
+    persistence.school_research_education_input_review_get = unsafe_request
+    with pytest.raises(BackendError) as raised:
+        await service.get_input_review(specialist, "TASK_demo", "REI_synthetic_1")
+    assert raised.value.code.value == "dependency_invalid_response"
+
+
+@pytest.mark.parametrize(
+    ("expected_state_version", "target"),
+    [(0, "REJECTED"), (1, "APPROVED")],
+)
+async def test_input_review_resolution_rejects_invalid_request_before_port(
+    expected_state_version, target
+):
+    persistence = FakePersistence()
+    service = SchoolResearchEducationCandidateService(persistence=persistence)
+    with pytest.raises(BackendError) as raised:
+        await service.resolve_input_review(
+            actor(BackendRole.PSYCHOLOGICAL_SPECIALIST),
+            "TASK_demo",
+            "REI_synthetic_1",
+            expected_state_version=expected_state_version,
+            target=target,
+            idempotency=("key", "body", "scope"),
+            trace_id="TRACE_demo",
+        )
+    assert raised.value.code.value == "validation_failed"
+    assert persistence.calls == []
+
+
+async def test_input_review_resolution_passes_stale_conflict_without_relabeling():
+    persistence = FakePersistence()
+    service = SchoolResearchEducationCandidateService(persistence=persistence)
+
+    async def stale_version(*_args, **_kwargs):
+        raise error(ErrorCode.WORKFLOW_CONFLICT, detail="input review state changed")
+
+    persistence.school_research_education_input_review_resolve = stale_version
+    with pytest.raises(BackendError) as raised:
+        await service.resolve_input_review(
+            actor(BackendRole.PSYCHOLOGICAL_SPECIALIST),
+            "TASK_demo",
+            "REI_synthetic_1",
+            expected_state_version=1,
+            target="REVOKED",
+            idempotency=("key", "body", "scope"),
+            trace_id="TRACE_demo",
+        )
+    assert raised.value.code.value == "workflow_conflict"
 
 
 async def test_detail_rejects_unknown_nested_citation_fields():
