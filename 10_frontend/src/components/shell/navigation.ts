@@ -49,6 +49,7 @@ export const workspaceConfig: Partial<Record<Role, WorkspaceConfig>> = {
   school_admin: { title: 'Admin Workspace', home: '/admin/overview', items: [
     { label: '管理概览', to: '/admin/overview', icon: LayoutDashboard },
     { label: '用户与角色', to: '/admin/users', icon: UsersRound },
+    { label: '运营记录', to: '/admin/audit', icon: ClipboardList },
     { label: '系统设置', to: '/admin/settings', icon: Settings2 },
   ] },
   reviewer: { title: 'Safety Review Workspace', home: '/reviewer/queue', items: [

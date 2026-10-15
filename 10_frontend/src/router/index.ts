@@ -38,7 +38,7 @@ const router = createRouter({
     { path: '/specialist', redirect: '/specialist/overview' },
     { path: '/specialist/:section(overview|resources|tasks|cat)', name: 'specialist-workspace', component: () => import('@/views/specialist/SpecialistWorkspaceView.vue'), meta: { roles: ['psychological_specialist'], layout: 'workspace' } },
     { path: '/admin', redirect: '/admin/overview' },
-    { path: '/admin/:section(overview|users|settings)', name: 'admin-workspace', component: () => import('@/views/admin/AdminWorkspaceView.vue'), meta: { roles: ['school_admin'], layout: 'workspace' } },
+    { path: '/admin/:section(overview|users|audit|settings)', name: 'admin-workspace', component: () => import('@/views/admin/AdminWorkspaceView.vue'), meta: { roles: ['school_admin'], layout: 'workspace' } },
     { path: '/reviewer', redirect: '/reviewer/queue' },
     { path: '/reviewer/queue', name: 'reviewer-queue', component: () => import('@/views/reviewer/ReviewQueueView.vue'), meta: { roles: ['reviewer'], layout: 'workspace' } },
     { path: '/reviewer/cases/:id', name: 'reviewer-detail', component: () => import('@/views/reviewer/ReviewDetailView.vue'), meta: { roles: ['reviewer'], layout: 'workspace' } },

@@ -117,6 +117,31 @@ export interface SchoolDirectory {
   }>
 }
 
+export type SchoolOperationsAuditCategory =
+  | 'organization' | 'class' | 'member' | 'account_batch' | 'account' | 'task'
+
+export interface SchoolOperationsAuditEvent {
+  event_ref: string
+  created_at: string
+  action:
+    | 'school_directory.rename_school'
+    | 'school_directory.rename_class'
+    | 'school_directory.rename_member'
+    | 'school_directory.import_accounts'
+    | 'school_directory.activate_account'
+    | 'school_tasks.task.published'
+  result: 'SUCCESS' | 'FAILURE' | 'DENIED'
+  resource_category: SchoolOperationsAuditCategory
+  record_count: number | null
+}
+
+export interface SchoolOperationsAuditPage {
+  items: SchoolOperationsAuditEvent[]
+  offset: number
+  limit: number
+  has_more: boolean
+}
+
 export interface SchoolAccountImportRow {
   row_no: number
   login_name: string
@@ -454,6 +479,12 @@ export interface FrontendApi {
   listSchoolClasses?(params?: { signal?: AbortSignal }): Promise<ApiEnvelope<SchoolClass[]>>
   listSchoolMembers?(role: SchoolMemberRole): Promise<ApiEnvelope<SchoolMember[]>>
   getSchoolAdminDirectory?(): Promise<ApiEnvelope<SchoolDirectory>>
+  listSchoolOperationsAudit?(params: {
+    offset: number
+    limit: number
+    category?: SchoolOperationsAuditCategory | null
+    signal?: AbortSignal
+  }): Promise<ApiEnvelope<SchoolOperationsAuditPage>>
   updateSchoolDisplayName?(displayName: string): Promise<ApiEnvelope<unknown>>
   updateSchoolClassDisplayName?(classRef: string, displayName: string): Promise<ApiEnvelope<unknown>>
   updateSchoolMemberDisplayName?(userId: string, displayName: string): Promise<ApiEnvelope<unknown>>

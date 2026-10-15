@@ -65,6 +65,9 @@ import type {
   TeacherTaskProgress,
   SupportResult,
   SchoolDirectory,
+  SchoolOperationsAuditCategory,
+  SchoolOperationsAuditEvent,
+  SchoolOperationsAuditPage,
   SchoolAccountImportRow,
   SchoolAccountPreview,
   SchoolAccountBatch,
@@ -768,6 +771,63 @@ const mapSchoolDirectory = (value: unknown): SchoolDirectory => {
     }
   })
   return { school, classes, members }
+}
+
+const auditCategoryByAction: Record<SchoolOperationsAuditEvent['action'], SchoolOperationsAuditCategory> = {
+  'school_directory.rename_school': 'organization',
+  'school_directory.rename_class': 'class',
+  'school_directory.rename_member': 'member',
+  'school_directory.import_accounts': 'account_batch',
+  'school_directory.activate_account': 'account',
+  'school_tasks.task.published': 'task',
+}
+
+const mapSchoolOperationsAudit = (value: unknown): SchoolOperationsAuditPage => {
+  const pageKeys = ['items', 'offset', 'limit', 'has_more'] as const
+  const eventKeys = ['event_ref', 'created_at', 'action', 'result', 'resource_category', 'record_count'] as const
+  if (!isRecord(value) || !Array.isArray(value.items)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '运营记录列表格式无法识别。')
+  }
+  requireExactKeys(value, pageKeys, '运营记录列表包含不支持的信息。')
+  if (!Number.isSafeInteger(value.offset) || (value.offset as number) < 0 || (value.offset as number) > 10_000
+    || !Number.isSafeInteger(value.limit) || (value.limit as number) < 1 || (value.limit as number) > 50
+    || typeof value.has_more !== 'boolean' || value.items.length > (value.limit as number)) {
+    throw new RealApiError('API_INVALID_RESPONSE', '运营记录分页信息无效。')
+  }
+  const items = value.items.map((entry): SchoolOperationsAuditEvent => {
+    if (!isRecord(entry)) throw new RealApiError('API_INVALID_RESPONSE', '运营记录格式无法识别。')
+    requireExactKeys(entry, eventKeys, '运营记录包含不支持的信息。')
+    const action = entry.action
+    if (typeof action !== 'string' || !Object.hasOwn(auditCategoryByAction, action)) {
+      throw new RealApiError('API_INVALID_RESPONSE', '运营记录操作类型无法识别。')
+    }
+    const category = auditCategoryByAction[action as SchoolOperationsAuditEvent['action']]
+    if (entry.resource_category !== category
+      || (entry.result !== 'SUCCESS' && entry.result !== 'FAILURE' && entry.result !== 'DENIED')
+      || typeof entry.event_ref !== 'string'
+      || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(entry.event_ref)
+      || typeof entry.created_at !== 'string' || Number.isNaN(Date.parse(entry.created_at))) {
+      throw new RealApiError('API_INVALID_RESPONSE', '运营记录字段无法识别。')
+    }
+    const count = entry.record_count
+    if (count !== null && (!Number.isSafeInteger(count) || (count as number) < 1 || (count as number) > 100)) {
+      throw new RealApiError('API_INVALID_RESPONSE', '运营记录数量信息无效。')
+    }
+    return {
+      event_ref: entry.event_ref,
+      created_at: entry.created_at,
+      action: action as SchoolOperationsAuditEvent['action'],
+      result: entry.result,
+      resource_category: category,
+      record_count: count as number | null,
+    }
+  })
+  return {
+    items,
+    offset: value.offset as number,
+    limit: value.limit as number,
+    has_more: value.has_more,
+  }
 }
 
 const mapSchoolAccountPreview = (value: unknown): SchoolAccountPreview => {
@@ -1636,6 +1696,37 @@ export class RealApiProvider implements FrontendApi {
       method: 'GET', url: '/api/v1/school/admin/directory', parseAs: 'json',
     }))
     return { ...response, data: mapSchoolDirectory(response.data) }
+  }
+
+  async listSchoolOperationsAudit(params: {
+    offset: number
+    limit: number
+    category?: SchoolOperationsAuditCategory | null
+    signal?: AbortSignal
+  }): Promise<ApiEnvelope<SchoolOperationsAuditPage>> {
+    const { offset, limit, category = null, signal } = params
+    const validCategories: SchoolOperationsAuditCategory[] = [
+      'organization', 'class', 'member', 'account_batch', 'account', 'task',
+    ]
+    if (!Number.isSafeInteger(offset) || offset < 0 || offset > 10_000
+      || !Number.isSafeInteger(limit) || limit < 1 || limit > 50
+      || (category !== null && !validCategories.includes(category))) {
+      throw new RealApiError('API_INVALID_REQUEST', '运营记录查询范围无效。')
+    }
+    const query = new URLSearchParams({ offset: String(offset), limit: String(limit) })
+    if (category) query.set('category', category)
+    const response = await unwrap<unknown>(() => apiClient.request({
+      method: 'GET',
+      url: `/api/v1/school/operations-audit?${query.toString()}`,
+      signal,
+      parseAs: 'json',
+    }))
+    const data = mapSchoolOperationsAudit(response.data)
+    if (data.offset !== offset || data.limit !== limit
+      || (category !== null && data.items.some((item) => item.resource_category !== category))) {
+      throw new RealApiError('API_INVALID_RESPONSE', '运营记录与当前查询不匹配。')
+    }
+    return { ...response, data }
   }
 
   async updateSchoolDisplayName(displayName: string): Promise<ApiEnvelope<unknown>> {

@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { Activity, ArrowRight, Building2, CircleHelp, RefreshCw, Settings2, UsersRound } from '@lucide/vue'
+import { Activity, ArrowRight, Building2, CircleHelp, ClipboardList, RefreshCw, Settings2, UsersRound } from '@lucide/vue'
 import type { DependencyStatusDto } from '@/api/generated/types.gen'
 import AppCard from '@/components/app/AppCard.vue'
 import AppPageHeader from '@/components/app/AppPageHeader.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import AdminSchoolDirectory from '@/components/school/AdminSchoolDirectory.vue'
 import AdminSchoolOperations from '@/components/school/AdminSchoolOperations.vue'
+import AdminOperationsAudit from '@/components/school/AdminOperationsAudit.vue'
 import SchoolResearchManagement from '@/components/school/SchoolResearchManagement.vue'
 import SafetyAssignments from '@/components/school/SafetyAssignments.vue'
 import { readDependencyHealth } from '@/views/admin/health'
@@ -25,8 +26,9 @@ const dependencies = ref<Record<string, DependencyStatusDto>>({})
 const page = computed(() => ({
   overview: { eyebrow: '学校管理空间', title: '管理概览', intro: '管理班级、人员分配和测评任务，并查看本地服务能力。' },
   users: { eyebrow: '用户与角色', title: '班级与人员', intro: '管理当前学校的目录名称、合成账号和班级分配。' },
+  audit: { eyebrow: '本校运营记录', title: '运营记录', intro: '查看能够通过本校对象归属验证的学校管理操作。' },
   settings: { eyebrow: '系统设置', title: '服务能力状态', intro: '以下只读信息来自 Backend 公开的依赖健康端点，不包含配置写入或管理操作。' },
-}[section.value as 'overview' | 'users' | 'settings'] ?? { eyebrow: '学校管理空间', title: '管理概览', intro: '查看本地服务公开的依赖能力状态。' }))
+}[section.value as 'overview' | 'users' | 'audit' | 'settings'] ?? { eyebrow: '学校管理空间', title: '管理概览', intro: '查看本地服务公开的依赖能力状态。' }))
 const healthRows = computed(() => Object.entries(dependencies.value ?? {}).map(([name, value]) => ({ name, status: value.status, integration: value.integration })))
 const healthLabel = (status: string) => status === 'READY' || status === 'AVAILABLE' ? '可用' : status === 'UNAVAILABLE' ? '不可用' : status === 'DEFERRED' ? '未配置' : status === 'DISABLED' ? '已关闭' : status || '未知'
 const healthTone = (status: string) => status === 'READY' || status === 'AVAILABLE' ? 'health-row__status--ready' : status === 'UNAVAILABLE' ? 'health-row__status--down' : 'health-row__status--unknown'
@@ -69,6 +71,7 @@ watch(section, (value) => {
       <section class="admin-summary" aria-label="管理功能可用状态">
         <AppCard class="admin-feature"><span class="admin-feature__icon"><UsersRound :size="19" aria-hidden="true" /></span><span class="admin-feature__state">按学校授权</span><h2>班级与人员</h2><p>从同校的在用账号中分配教师和学生。</p><RouterLink to="/admin/users">管理班级人员 <ArrowRight :size="15" aria-hidden="true" /></RouterLink></AppCard>
         <AppCard class="admin-feature"><span class="admin-feature__icon admin-feature__icon--teal"><Settings2 :size="19" aria-hidden="true" /></span><span class="admin-feature__state">只读状态</span><h2>服务能力</h2><p>仅读取公开的依赖健康端点，不提供配置变更操作。</p><RouterLink to="/admin/settings">查看服务状态 <ArrowRight :size="15" aria-hidden="true" /></RouterLink></AppCard>
+        <AppCard class="admin-feature"><span class="admin-feature__icon"><ClipboardList :size="19" aria-hidden="true" /></span><span class="admin-feature__state">本校范围</span><h2>运营记录</h2><p>查看可验证归属到本校的管理操作，不包含心理内容或全库审计。</p><RouterLink to="/admin/audit">查看运营记录 <ArrowRight :size="15" aria-hidden="true" /></RouterLink></AppCard>
       </section>
       <AdminSchoolOperations :key="schoolScopeKey" />
       <SchoolResearchManagement :key="schoolScopeKey" mode="admin" />
@@ -78,6 +81,10 @@ watch(section, (value) => {
       <AdminSchoolDirectory />
       <AdminSchoolOperations :key="schoolScopeKey" mode="members" />
       <AppStatusCallout tone="info" title="安全复核权限单独管理" body="学校管理员页面不展示安全复核队列或复核操作。安全复核员（REVIEWER）是独立角色，需使用其专属工作区。" />
+    </template>
+
+    <template v-else-if="section === 'audit'">
+      <AdminOperationsAudit :key="schoolScopeKey" :scope-key="schoolScopeKey" />
     </template>
 
     <template v-else>
