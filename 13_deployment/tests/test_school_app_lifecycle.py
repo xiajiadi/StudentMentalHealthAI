@@ -39,6 +39,7 @@ class FakeOperations:
         self.standard_cat_listener_child = False
         self.standard_cat_base_executable = None
         self.standard_cat_child_executable_override = None
+        self.standard_cat_child_argv0_override = None
         self.fail_terminate_pid = None
         self.autoexit_parent_after_child = False
         self.exit_before_terminate_pid = None
@@ -106,6 +107,8 @@ class FakeOperations:
                     or self.backend_base_executable
                 )
             child_argv = [child_executable, *argv[1:]]
+            if cat_child and self.standard_cat_child_argv0_override is not None:
+                child_argv[0] = self.standard_cat_child_argv0_override
             if self.backend_child_tail_override and backend_child:
                 child_argv[child_argv.index("--port") + 1] = "9999"
             self.processes[listener_pid] = {
@@ -454,6 +457,31 @@ def test_standard_cat_venv_launcher_owns_only_verified_base_python_listener(prep
     assert ops.bound == {}
 
 
+def test_standard_cat_accepts_windows_redirector_argv0_with_exact_base_process(prepared):
+    repo, workspace, ops, app = prepared
+    ops.ready[8180] = True
+    ops.standard_cat_listener_child = True
+    launcher = repo / "01_cat-engine" / ".venv" / "Scripts" / "python.exe"
+    ops.standard_cat_child_argv0_override = str(launcher.resolve())
+
+    result = app.start(
+        workspace,
+        frontend_mode="dev",
+        enable_standard_cat=True,
+    )
+
+    assert result["status"] == "RUNNING"
+    manifest = json.loads(
+        (workspace / lifecycle.MANIFEST_NAME).read_text(encoding="utf-8")
+    )
+    cat_service = manifest["services"][0]
+    assert cat_service["listener"]["executable"] == ops.standard_cat_base_executable
+    assert cat_service["listener"]["argv"][0] == str(launcher.resolve())
+    assert cat_service["listener_candidate"]["identity_verified"] is True
+    assert app.status(workspace)["standard_cat"]["readiness"] == "READY"
+    assert app.stop(workspace)["status"] == "STOPPED"
+
+
 def test_standard_cat_rejects_unrelated_python_listener_without_stopping_it(prepared):
     _repo, workspace, ops, app = prepared
     ops.ready[8180] = True
@@ -475,6 +503,32 @@ def test_standard_cat_rejects_unrelated_python_listener_without_stopping_it(prep
     cat_service = manifest["services"][0]
     assert cat_service["listener"] is None
     assert cat_service["listener_candidate"]["identity_verified"] is False
+    assert ops.terminated == []
+    assert ops.listeners(8180)[0]["OwningProcess"] == 900
+
+
+def test_standard_cat_rejects_unknown_argv0_even_with_pinned_base_executable(prepared):
+    _repo, workspace, ops, app = prepared
+    ops.ready[8180] = True
+    ops.standard_cat_listener_child = True
+    ops.standard_cat_child_argv0_override = str(
+        workspace.parent / "unrelated-python.exe"
+    )
+
+    result = app.start(
+        workspace,
+        frontend_mode="dev",
+        enable_standard_cat=True,
+    )
+
+    assert result["status"] == "STOP_BLOCKED_FOREIGN_LISTENER"
+    manifest = json.loads(
+        (workspace / lifecycle.MANIFEST_NAME).read_text(encoding="utf-8")
+    )
+    candidate = manifest["services"][0]["listener_candidate"]
+    assert candidate["executable"] == ops.standard_cat_base_executable
+    assert candidate["argv"][0] == str(workspace.parent / "unrelated-python.exe")
+    assert candidate["identity_verified"] is False
     assert ops.terminated == []
     assert ops.listeners(8180)[0]["OwningProcess"] == 900
 

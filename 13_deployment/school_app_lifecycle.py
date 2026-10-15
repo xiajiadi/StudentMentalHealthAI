@@ -1468,13 +1468,34 @@ def _backend_listener_argv_matches(
     )
 
 
+def _standard_cat_listener_argv_matches(
+    actual_argv: list[str], service_argv: list[str], base_executable: object
+) -> bool:
+    """Accept either argv[0] form emitted by Windows venv Python redirectors."""
+    return bool(
+        isinstance(base_executable, str)
+        and Path(base_executable).is_absolute()
+        and len(actual_argv) == len(service_argv)
+        and actual_argv
+        and isinstance(service_argv[0], str)
+        and Path(service_argv[0]).is_absolute()
+        and _path_key(actual_argv[0])
+        in {_path_key(base_executable), _path_key(service_argv[0])}
+        and actual_argv[1:] == service_argv[1:]
+    )
+
+
 def _listener_argv_matches(
     service: dict[str, Any], pid: object, actual_argv: list[str]
 ) -> bool:
     if pid == service.get("pid"):
         return _normalized_argv(actual_argv) == _normalized_argv(service["argv"])
-    if service.get("name") in {"backend", "standard_cat"}:
+    if service.get("name") == "backend":
         return _backend_listener_argv_matches(
+            actual_argv, service["argv"], service.get("base_executable")
+        )
+    if service.get("name") == "standard_cat":
+        return _standard_cat_listener_argv_matches(
             actual_argv, service["argv"], service.get("base_executable")
         )
     return _normalized_argv(actual_argv) == _normalized_argv(service["argv"])
