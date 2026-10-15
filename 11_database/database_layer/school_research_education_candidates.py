@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -15,6 +16,7 @@ from .errors import ForeignKeyConflict, OptimisticConcurrencyConflict, UniqueCon
 from .models import (
     SchoolResearchEducationCandidate,
     SchoolResearchEducationCandidateEvent,
+    SchoolResearchEducationInputReview,
     SchoolResearchEducationJob,
     SchoolResearchSession,
 )
@@ -40,6 +42,14 @@ _SESSION_SCOPE_FIELDS = (
     "profile_sha256",
     "response_origin",
 )
+
+
+def _continuation_trace_id(job_ref: str, attempt_count: int) -> str:
+    token = hashlib.sha256(f"{job_ref}:{attempt_count}".encode("ascii")).hexdigest()[:32]
+    return f"TRACE_{token}"
+
+if TYPE_CHECKING:
+    from .school_research_education_input_reviews import ResearchEducationInputReviewDTO
 
 
 class ResearchEducationCandidateError(ValueError):
@@ -107,6 +117,9 @@ class ResearchEducationCandidateDTO:
     retention_due_at: datetime | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    generation_round: int = field(default=0, kw_only=True)
+    input_review_id: int | None = field(default=None, kw_only=True, repr=False)
+    input_review_state: str | None = field(default=None, kw_only=True)
 
 
 class SchoolResearchEducationCandidateRepository:
@@ -114,6 +127,181 @@ class SchoolResearchEducationCandidateRepository:
 
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+
+    async def _validate_consumed_review(
+        self,
+        job: SchoolResearchEducationJob,
+        receipt: ResearchEducationInputReviewDTO,
+        scope: ResearchEducationCandidateScope,
+    ) -> None:
+        from .school_research_education_input_reviews import ResearchEducationInputReviewDTO
+
+        if type(receipt) is not ResearchEducationInputReviewDTO:
+            raise ResearchEducationCandidateError("INPUT_REVIEW_RECEIPT_INVALID")
+        review = await self.session.scalar(
+            select(SchoolResearchEducationInputReview)
+            .where(
+                SchoolResearchEducationInputReview.id == job.input_review_id,
+                SchoolResearchEducationInputReview.research_session_id
+                == scope.research_session_id,
+                SchoolResearchEducationInputReview.school_id == scope.school_id,
+            )
+            .with_for_update()
+        )
+        if (
+            review is None
+            or review.status != "CONSUMED"
+            or review.state_version != 3
+            or review.consumed_at is None
+            or review.original_job_generation_round != 0
+            or review.job_id == job.id
+            or job.generation_round != 1
+            or job.input_review_id != review.id
+            or any(getattr(review, name) != getattr(scope, name) for name in _SESSION_SCOPE_FIELDS)
+            or review.policy_version != job.policy_version
+            or review.policy_hash != job.policy_hash
+            or receipt.id != review.id
+            or receipt.job_id != review.job_id
+            or receipt.input_review_ref != review.input_review_ref
+            or receipt.status != review.status
+            or receipt.state_version != review.state_version
+            or receipt.consumed_at is None
+            or _stored_utc_naive(receipt.consumed_at)
+            != _stored_utc_naive(review.consumed_at)
+            or receipt.grant_policy_version != review.grant_policy_version
+            or receipt.grant_policy_hash != review.grant_policy_hash
+            or receipt.authorized_by_membership_role_id
+            != review.authorized_by_membership_role_id
+            or receipt.policy_version != review.policy_version
+            or receipt.policy_hash != review.policy_hash
+            or receipt.source_package_ref != review.source_package_ref
+            or receipt.source_study_ref != review.source_study_ref
+            or receipt.source_manifest_sha256 != review.source_manifest_sha256
+            or receipt.prompt_id != review.prompt_id
+            or receipt.prompt_version != review.prompt_version
+            or receipt.prompt_sha256 != review.prompt_sha256
+            or receipt.canonical_input_sha256 != review.canonical_input_sha256
+            or receipt.safety_action != review.safety_action
+            or receipt.safety_reason_code != review.safety_reason_code
+            or receipt.safety_requires_human is not review.safety_requires_human
+            or receipt.original_job_generation_round != 0
+            or any(
+                getattr(receipt.scope, name) != getattr(scope, name)
+                for name in _SESSION_SCOPE_FIELDS
+            )
+        ):
+            raise ResearchEducationCandidateError("INPUT_REVIEW_LINEAGE_INVALID")
+        source_job = await self.session.scalar(
+            select(SchoolResearchEducationJob)
+            .where(
+                SchoolResearchEducationJob.id == review.job_id,
+                SchoolResearchEducationJob.generation_round == 0,
+                SchoolResearchEducationJob.input_review_id.is_(None),
+                SchoolResearchEducationJob.research_session_id == scope.research_session_id,
+                SchoolResearchEducationJob.school_id == scope.school_id,
+                SchoolResearchEducationJob.status == "REVIEW_REQUIRED",
+            )
+            .with_for_update()
+        )
+        if (
+            source_job is None
+            or any(
+                getattr(source_job, name) != getattr(scope, name)
+                for name in _SESSION_SCOPE_FIELDS
+            )
+            or source_job.policy_version != review.policy_version
+            or source_job.policy_hash != review.policy_hash
+        ):
+            raise ResearchEducationCandidateError("INPUT_REVIEW_SOURCE_INVALID")
+
+    async def _validate_persisted_lineage(
+        self, row: SchoolResearchEducationCandidate
+    ) -> None:
+        job = await self.session.scalar(
+            select(SchoolResearchEducationJob)
+            .where(
+                SchoolResearchEducationJob.id == row.job_id,
+                SchoolResearchEducationJob.research_session_id == row.research_session_id,
+                SchoolResearchEducationJob.school_id == row.school_id,
+            )
+            .with_for_update()
+        )
+        if job is None:
+            raise ResearchEducationCandidateError("CANDIDATE_JOB_LINEAGE_INVALID")
+        if row.generation_round == 0:
+            if (
+                row.input_review_id is not None
+                or row.input_review_state is not None
+                or row.input_safety_action not in _SAFE_SAFETY_ACTIONS
+                or job.generation_round != 0
+                or job.input_review_id is not None
+            ):
+                raise ResearchEducationCandidateError("CANDIDATE_ROUND_ZERO_LINEAGE_INVALID")
+            return
+        if (
+            row.generation_round != 1
+            or row.input_review_id is None
+            or row.input_review_state != "CONSUMED"
+            or row.input_safety_action != "REVIEW_REQUIRED"
+            or row.retrieval_safety_action not in _SAFE_SAFETY_ACTIONS
+            or row.output_safety_action not in _SAFE_SAFETY_ACTIONS
+            or job.generation_round != 1
+            or job.input_review_id != row.input_review_id
+            or job.attempt_count != 1
+            or row.trace_id != _continuation_trace_id(job.job_ref, job.attempt_count)
+        ):
+            raise ResearchEducationCandidateError("CANDIDATE_CONTINUATION_LINEAGE_INVALID")
+        review = await self.session.scalar(
+            select(SchoolResearchEducationInputReview).where(
+                SchoolResearchEducationInputReview.id == row.input_review_id,
+                SchoolResearchEducationInputReview.status == "CONSUMED",
+                SchoolResearchEducationInputReview.state_version == 3,
+                SchoolResearchEducationInputReview.research_session_id
+                == row.research_session_id,
+                SchoolResearchEducationInputReview.school_id == row.school_id,
+            )
+        )
+        if (
+            review is None
+            or review.consumed_at is None
+            or review.original_job_generation_round != 0
+            or review.authorized_at is None
+            or review.authorized_by_membership_role_id is None
+            or review.grant_policy_version is None
+            or review.grant_policy_hash is None
+            or any(getattr(review, name) != getattr(row, name) for name in _SESSION_SCOPE_FIELDS)
+            or review.policy_version != row.policy_version
+            or review.policy_hash != row.policy_hash
+            or review.source_manifest_sha256 != row.source_manifest_sha256
+            or review.prompt_id != row.prompt_ref
+            or review.prompt_version != row.prompt_version
+            or review.prompt_sha256 != row.prompt_sha256
+            or review.safety_operation != "INPUT"
+            or review.safety_action != "REVIEW_REQUIRED"
+            or review.safety_reason_code != "CONTENT_CONTROVERSIAL"
+            or review.safety_requires_human is not True
+        ):
+            raise ResearchEducationCandidateError("CANDIDATE_CONSUMED_REVIEW_INVALID")
+        source_job = await self.session.scalar(
+            select(SchoolResearchEducationJob).where(
+                SchoolResearchEducationJob.id == review.job_id,
+                SchoolResearchEducationJob.generation_round == 0,
+                SchoolResearchEducationJob.input_review_id.is_(None),
+                SchoolResearchEducationJob.status == "REVIEW_REQUIRED",
+                SchoolResearchEducationJob.research_session_id == row.research_session_id,
+                SchoolResearchEducationJob.school_id == row.school_id,
+            )
+        )
+        if (
+            source_job is None
+            or any(
+                getattr(source_job, name) != getattr(row, name)
+                for name in _SESSION_SCOPE_FIELDS
+            )
+            or source_job.policy_version != review.policy_version
+            or source_job.policy_hash != review.policy_hash
+        ):
+            raise ResearchEducationCandidateError("CANDIDATE_SOURCE_JOB_INVALID")
 
     async def create_held(
         self,
@@ -143,6 +331,7 @@ class SchoolResearchEducationCandidateRepository:
         key_version: str,
         payload_schema_version: str,
         trace_id: str,
+        input_review: ResearchEducationInputReviewDTO | None = None,
         now: datetime | None = None,
     ) -> ResearchEducationCandidateDTO:
         _validate_scope(scope)
@@ -172,9 +361,42 @@ class SchoolResearchEducationCandidateRepository:
             _require_sha256(value, name)
         if claim.policy_version != policy_version or claim.policy_hash != policy_hash:
             raise ResearchEducationCandidateError("POLICY_PIN_MISMATCH")
-        if any(action not in _SAFE_SAFETY_ACTIONS for action in (
-            input_safety_action, retrieval_safety_action, output_safety_action
-        )):
+        is_continuation = claim.generation_round == 1
+        if (
+            retrieval_safety_action not in _SAFE_SAFETY_ACTIONS
+            or output_safety_action not in _SAFE_SAFETY_ACTIONS
+            or (
+                not is_continuation
+                and (
+                    claim.generation_round != 0
+                    or claim.input_review_id is not None
+                    or input_review is not None
+                    or input_safety_action not in _SAFE_SAFETY_ACTIONS
+                )
+            )
+            or (
+                is_continuation
+                and (
+                    input_safety_action != "REVIEW_REQUIRED"
+                    or input_review is None
+                    or claim.input_review_id != input_review.id
+                    or input_review.status != "CONSUMED"
+                    or input_review.state_version != 3
+                    or input_review.consumed_at is None
+                    or input_review.original_job_generation_round != 0
+                    or any(
+                        getattr(input_review.scope, name) != getattr(scope, name)
+                        for name in _SESSION_SCOPE_FIELDS
+                    )
+                    or input_review.policy_version != policy_version
+                    or input_review.policy_hash != policy_hash
+                    or input_review.source_manifest_sha256 != source_manifest_sha256
+                    or input_review.prompt_id != prompt_ref
+                    or input_review.prompt_version != prompt_version
+                    or input_review.prompt_sha256 != prompt_sha256
+                )
+            )
+        ):
             raise ResearchEducationCandidateError("INVALID_SAFETY_DISPOSITION")
         _require_ciphertext(
             payload_ciphertext,
@@ -194,6 +416,8 @@ class SchoolResearchEducationCandidateRepository:
                 SchoolResearchEducationJob.policy_version == policy_version,
                 SchoolResearchEducationJob.policy_hash == policy_hash,
                 SchoolResearchEducationJob.response_origin == "PUBLIC_OBSERVED",
+                SchoolResearchEducationJob.generation_round == claim.generation_round,
+                SchoolResearchEducationJob.input_review_id == claim.input_review_id,
                 SchoolResearchEducationJob.status == "LEASED",
                 SchoolResearchEducationJob.lease_owner == claim.lease_owner,
                 SchoolResearchEducationJob.lease_token == claim.lease_token,
@@ -205,6 +429,12 @@ class SchoolResearchEducationCandidateRepository:
             raise OptimisticConcurrencyConflict("research education job lease is stale")
         if any(getattr(job, name) != getattr(scope, name) for name in _SESSION_SCOPE_FIELDS):
             raise ForeignKeyConflict("research candidate session scope was not found")
+        if is_continuation:
+            if trace_id != _continuation_trace_id(job.job_ref, job.attempt_count):
+                raise ResearchEducationCandidateError("INPUT_REVIEW_TRACE_INVALID")
+            await self._validate_consumed_review(job, input_review, scope)
+        elif job.input_review_id is not None:
+            raise ResearchEducationCandidateError("ROUND_ZERO_JOB_HAS_REVIEW_LINEAGE")
 
         # Select metadata columns only: never materialize the encrypted CAT snapshot.
         completed_session = await self.session.execute(
@@ -230,6 +460,7 @@ class SchoolResearchEducationCandidateRepository:
             .with_for_update()
         )
         if existing is not None:
+            await self._validate_persisted_lineage(existing)
             if not _same_candidate(
                 existing,
                 scope=scope,
@@ -252,6 +483,9 @@ class SchoolResearchEducationCandidateRepository:
                 output_safety_action=output_safety_action,
                 content_sha256=content_sha256,
                 payload_schema_version=payload_schema_version,
+                generation_round=claim.generation_round,
+                input_review_id=claim.input_review_id,
+                input_review_state="CONSUMED" if is_continuation else None,
             ):
                 raise UniqueConflict("research candidate replay does not match its held payload")
             return _dto(existing)
@@ -259,6 +493,9 @@ class SchoolResearchEducationCandidateRepository:
         row = SchoolResearchEducationCandidate(
             candidate_ref=candidate_ref,
             job_id=job.id,
+            generation_round=claim.generation_round,
+            input_review_id=claim.input_review_id,
+            input_review_state="CONSUMED" if is_continuation else None,
             **_scope_values(scope),
             study_ref=study_ref,
             policy_version=policy_version,
@@ -338,10 +575,14 @@ class SchoolResearchEducationCandidateRepository:
                 output_safety_action=output_safety_action,
                 content_sha256=content_sha256,
                 payload_schema_version=payload_schema_version,
+                generation_round=claim.generation_round,
+                input_review_id=claim.input_review_id,
+                input_review_state="CONSUMED" if is_continuation else None,
             ):
                 raise UniqueConflict(
                     "research candidate job already has a different payload"
                 ) from None
+            await self._validate_persisted_lineage(existing)
             return _dto(existing)
         return _dto(row)
 
@@ -358,6 +599,8 @@ class SchoolResearchEducationCandidateRepository:
                 SchoolResearchEducationCandidate.candidate_ref == candidate_ref,
             )
         )
+        if row is not None:
+            await self._validate_persisted_lineage(row)
         return _dto(row) if row is not None else None
 
     async def list_for_task(
@@ -389,7 +632,10 @@ class SchoolResearchEducationCandidateRepository:
             .limit(limit)
             .offset(offset)
         )
-        return [_dto(row) for row in rows.all()]
+        result = list(rows.all())
+        for row in result:
+            await self._validate_persisted_lineage(row)
+        return [_dto(row) for row in result]
 
     async def resolve(
         self,
@@ -422,6 +668,7 @@ class SchoolResearchEducationCandidateRepository:
         )
         if row is None:
             raise ForeignKeyConflict("research education candidate was not found")
+        await self._validate_persisted_lineage(row)
         if row.status != "HELD" or row.state_version != expected_state_version:
             raise OptimisticConcurrencyConflict("research education candidate version is stale")
         previous = row.status
@@ -516,6 +763,9 @@ def _dto(row: SchoolResearchEducationCandidate) -> ResearchEducationCandidateDTO
         retention_due_at=row.retention_due_at,
         created_at=row.created_at,
         updated_at=row.updated_at,
+        generation_round=row.generation_round,
+        input_review_id=row.input_review_id,
+        input_review_state=row.input_review_state,
     )
 
 
@@ -554,6 +804,10 @@ def _require_claim_scope(
         or claim.status != "LEASED"
         or claim.policy_version != GENERAL_EDUCATION_POLICY_VERSION
         or claim.response_origin != "PUBLIC_OBSERVED"
+        or claim.generation_round not in {0, 1}
+        or (claim.generation_round == 0 and claim.input_review_id is not None)
+        or (claim.generation_round == 1 and claim.input_review_id is None)
+        or (claim.generation_round == 1 and claim.attempt_count != 1)
         or any(getattr(claim, name) != getattr(scope, name) for name in _SESSION_SCOPE_FIELDS)
     ):
         raise ResearchEducationCandidateError("JOB_CLAIM_SCOPE_INVALID")
@@ -606,6 +860,12 @@ def _utc_naive(value: datetime | None) -> datetime:
         return datetime.now(UTC).replace(tzinfo=None)
     if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
         raise ResearchEducationCandidateError("INVALID_TIMESTAMP")
+    return value.astimezone(UTC).replace(tzinfo=None)
+
+
+def _stored_utc_naive(value: datetime) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value
     return value.astimezone(UTC).replace(tzinfo=None)
 
 

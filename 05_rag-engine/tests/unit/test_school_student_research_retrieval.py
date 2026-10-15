@@ -279,6 +279,70 @@ def test_bilingual_query_expansion_is_bounded_and_layer_coverage_is_observed(
     assert unrelated.missing_layers == ("policy", "theory", "intervention")
 
 
+def test_required_layers_selects_best_ranked_hit_per_layer_with_full_excerpts(tmp_path: Path) -> None:
+    value = _package()
+    # Competing high-match theory records make a simple top-three truncation
+    # liable to omit policy or intervention evidence.
+    for index in range(3):
+        source_id = "THEORY_SRC"
+        text = (
+            "school support connectedness student participation school environment "
+            f"theory record {index} retains original population limitations"
+        )
+        value["records"].append(
+            {
+                "record_id": f"THEORY_EXTRA_{index}",
+                "source_id": source_id,
+                "layer": "theory",
+                "text": text,
+                "locator": f"Review section {index}",
+                "excerpt_sha256": _sha(text),
+                "source_population_scope": "Review ages 14-24",
+                "consumer_scope": "secondary_school_student_13_18",
+                "language": "English",
+                "certainty": "General source statement; no individual outcome claim",
+                "role_fit": "General education only",
+                "student_retrieval_eligible": True,
+            }
+        )
+    path, digest = _write_package(tmp_path, value)
+    package = load_school_student_package(
+        path,
+        expected_manifest_sha256=digest,
+        expected_study_ref="school-noncommercial-rag-research-2027-06",
+    )
+    result = SchoolStudentEducationRetriever(package).retrieve(
+        "school support connectedness student participation environment sleep education",
+        target_population=CONSUMER_SCOPE,
+        limit=3,
+        required_layers=("policy", "theory", "intervention"),
+    )
+
+    assert len(result.hits) == 3
+    assert result.matched_layers == ("policy", "theory", "intervention")
+    assert result.missing_layers == ()
+    assert {hit.layer for hit in result.hits} == set(result.matched_layers)
+    records_by_id = {record.record_id: record for record in package.records}
+    assert all(hit.text == records_by_id[hit.record_id].text for hit in result.hits)
+    assert all(hit.citation.source_population_scope for hit in result.hits)
+
+
+def test_required_layers_fails_closed_when_layer_has_no_lexical_match(tmp_path: Path) -> None:
+    path, digest = _write_package(tmp_path, _package())
+    package = load_school_student_package(
+        path,
+        expected_manifest_sha256=digest,
+        expected_study_ref="school-noncommercial-rag-research-2027-06",
+    )
+    with pytest.raises(SchoolStudentPackageError, match="STUDENT_REQUIRED_LAYER_MISSING"):
+        SchoolStudentEducationRetriever(package).retrieve(
+            "policyOnlyUnmatchedToken",
+            target_population=CONSUMER_SCOPE,
+            limit=3,
+            required_layers=("policy", "theory", "intervention"),
+        )
+
+
 def test_loader_rejects_wrong_hash_and_cannot_relabel_pending_rights(tmp_path: Path) -> None:
     package = _package()
     path, digest = _write_package(tmp_path, package)

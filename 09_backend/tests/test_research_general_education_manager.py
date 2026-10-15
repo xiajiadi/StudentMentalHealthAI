@@ -99,6 +99,7 @@ def _settings(**overrides):
         "source_study_ref": "source-study",
         "source_manifest_sha256": _MANIFEST_HASH,
         "policy_hash": _POLICY_HASH,
+        "input_review_continuation_enabled": False,
         "poll_interval_seconds": 1.0,
         "lease_seconds": 300,
         "shutdown_drain_seconds": 1.0,
@@ -122,6 +123,7 @@ def _dependencies(persistence=None):
         source_package_ref="R3_package",
         source_study_ref="source-study",
         source_manifest_sha256=_MANIFEST_HASH,
+        input_review_continuation_enabled=False,
     )
     pins = SimpleNamespace(
         policy_hash=_POLICY_HASH,
@@ -159,6 +161,7 @@ async def test_manager_starts_one_worker_for_exact_school_and_drains(monkeypatch
     assert worker.kwargs["school_id"] == 17
     assert worker.kwargs["policy_hash"] == _POLICY_HASH
     assert worker.kwargs["concurrency_lock"] is lock
+    assert worker.kwargs["input_review_continuation_enabled"] is False
     assert manager.health == {17: "RUNNING"}
     assert manager.dependency_status()["status"] == "READY"
 
@@ -166,6 +169,49 @@ async def test_manager_starts_one_worker_for_exact_school_and_drains(monkeypatch
 
     assert worker._task.done()
     assert manager._closed is True
+
+
+@pytest.mark.asyncio
+async def test_manager_only_enables_reviewed_claims_when_setting_and_adapter_allow_it(monkeypatch):
+    _FakeWorker.instances.clear()
+    monkeypatch.setattr(manager_module, "ResearchGeneralEducationWorker", _FakeWorker)
+    persistence, adapter, generation_service = _dependencies()
+    adapter.input_review_continuation_enabled = True
+    manager = ResearchGeneralEducationWorkerManager(
+        persistence=persistence,
+        persistence_adapter=adapter,
+        generation_service=generation_service,
+        settings=_settings(input_review_continuation_enabled=True),
+        concurrency_lock=asyncio.Lock(),
+        source_valid_through=datetime.now(UTC) + timedelta(days=1),
+    )
+
+    await manager.start()
+
+    assert len(_FakeWorker.instances) == 1
+    assert _FakeWorker.instances[0].kwargs["input_review_continuation_enabled"] is True
+    await manager.close()
+
+
+@pytest.mark.asyncio
+async def test_manager_refuses_continuation_setting_without_adapter_opt_in(monkeypatch):
+    _FakeWorker.instances.clear()
+    monkeypatch.setattr(manager_module, "ResearchGeneralEducationWorker", _FakeWorker)
+    persistence, adapter, generation_service = _dependencies()
+    manager = ResearchGeneralEducationWorkerManager(
+        persistence=persistence,
+        persistence_adapter=adapter,
+        generation_service=generation_service,
+        settings=_settings(input_review_continuation_enabled=True),
+        concurrency_lock=asyncio.Lock(),
+        source_valid_through=datetime.now(UTC) + timedelta(days=1),
+    )
+
+    with pytest.raises(RuntimeError, match="continuation adapter is not enabled"):
+        await manager.start()
+
+    assert persistence.select_count == 0
+    assert _FakeWorker.instances == []
 
 
 @pytest.mark.asyncio

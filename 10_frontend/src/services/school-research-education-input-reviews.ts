@@ -6,8 +6,16 @@ import {
 
 type UnknownRecord = Record<string, unknown>
 
-export type ResearchEducationInputReviewStatus = 'PENDING' | 'REJECTED' | 'REVOKED'
-export type ResearchEducationInputReviewTarget = Extract<ResearchEducationInputReviewStatus, 'REJECTED' | 'REVOKED'>
+export type ResearchEducationInputReviewStatus =
+  | 'PENDING'
+  | 'CONTINUATION_AUTHORIZED'
+  | 'CONSUMED'
+  | 'REJECTED'
+  | 'REVOKED'
+export type ResearchEducationInputReviewTarget =
+  | 'CONTINUATION_AUTHORIZED'
+  | 'REJECTED'
+  | 'REVOKED'
 
 export type ResearchEducationInputReviewSummary = {
   input_review_ref: string
@@ -22,7 +30,7 @@ export type ResearchEducationInputReviewSummary = {
   reason_codes: ['CONTENT_CONTROVERSIAL']
   purpose: 'RESEARCH_SIMULATION'
   research_only: true
-  continuation_enabled: false
+  continuation_enabled: boolean
 }
 
 export type ResearchEducationInputReviewDetail = ResearchEducationInputReviewSummary & {
@@ -133,13 +141,19 @@ function mapSummary(value: unknown, expectedTaskRef: string): ResearchEducationI
   const status = source.status
   const stateVersion = source.state_version
   const reasons = source.reason_codes
+  const versions: Record<string, number[]> = {
+    PENDING: [1],
+    CONTINUATION_AUTHORIZED: [2],
+    CONSUMED: [3],
+    REJECTED: [2],
+    REVOKED: [2, 3],
+  }
   if (taskRef !== expectedTaskRef || !jobRefPattern.test(jobRef)
-    || (status !== 'PENDING' && status !== 'REJECTED' && status !== 'REVOKED')
-    || !Number.isSafeInteger(stateVersion) || (stateVersion as number) < 1 || (stateVersion as number) > 2
-    || (status === 'PENDING') !== (stateVersion === 1)
+    || typeof status !== 'string' || !(status in versions)
+    || !Number.isSafeInteger(stateVersion) || !versions[status]?.includes(stateVersion as number)
     || !Array.isArray(reasons) || reasons.length !== 1 || reasons[0] !== 'CONTENT_CONTROVERSIAL'
     || source.purpose !== 'RESEARCH_SIMULATION' || source.research_only !== true
-    || source.continuation_enabled !== false) {
+    || typeof source.continuation_enabled !== 'boolean') {
     return invalid(message)
   }
   const expiresAt = timestamp(source, 'expires_at', message)
@@ -161,7 +175,7 @@ function mapSummary(value: unknown, expectedTaskRef: string): ResearchEducationI
     reason_codes: ['CONTENT_CONTROVERSIAL'],
     purpose: 'RESEARCH_SIMULATION',
     research_only: true,
-    continuation_enabled: false,
+    continuation_enabled: source.continuation_enabled,
   })
 }
 
@@ -241,9 +255,14 @@ export class SchoolResearchEducationInputReviewService {
   ): Promise<ResearchEducationInputReviewSummary> {
     taskArgument(taskRef)
     idempotencyArgument(key)
-    if (review.task_ref !== taskRef || review.status !== 'PENDING' || review.state_version !== 1
-      || Date.parse(review.expires_at) <= Date.now()
-      || (target !== 'REJECTED' && target !== 'REVOKED')) {
+    const pending = review.status === 'PENDING' && review.state_version === 1
+    const authorized = review.status === 'CONTINUATION_AUTHORIZED' && review.state_version === 2
+    const validTarget = target === 'CONTINUATION_AUTHORIZED'
+      ? pending && review.continuation_enabled
+      : target === 'REJECTED'
+        ? pending
+        : target === 'REVOKED' && (pending || authorized)
+    if (review.task_ref !== taskRef || !validTarget || Date.parse(review.expires_at) <= Date.now()) {
       throw new RealApiError('WORKFLOW_CONFLICT', '这条输入复核已过期或状态已变化。')
     }
     const updated = mapSummary(await requestSchoolResearchFeedbackApi({
@@ -252,7 +271,8 @@ export class SchoolResearchEducationInputReviewService {
       body: { expected_state_version: review.state_version, target },
       idempotencyKey: key,
     }), taskRef)
-    if (updated.input_review_ref !== review.input_review_ref || updated.status !== target
+    const expectedStatus = target
+    if (updated.input_review_ref !== review.input_review_ref || updated.status !== expectedStatus
       || updated.state_version !== review.state_version + 1) {
       return invalid('输入复核结果与请求不一致。')
     }

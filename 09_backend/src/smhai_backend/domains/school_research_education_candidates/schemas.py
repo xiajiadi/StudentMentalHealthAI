@@ -82,6 +82,8 @@ class ResearchEducationCandidateListDto(_StrictModel):
 
 class ResearchEducationGenerationJobSummaryDto(_StrictModel):
     job_ref: StrictStr = Field(pattern=r"^REJ_[0-9a-f]{64}$", max_length=68)
+    generation_round: Literal[0, 1]
+    input_review_ref: StrictStr | None = Field(max_length=128)
     status: Literal[
         "QUEUED",
         "LEASED",
@@ -123,6 +125,19 @@ class ResearchEducationGenerationJobSummaryDto(_StrictModel):
         if value.tzinfo is None or value.utcoffset() is None:
             return value.replace(tzinfo=UTC)
         return value.astimezone(UTC)
+
+    @field_validator("input_review_ref", mode="after")
+    @classmethod
+    def review_reference_is_bounded(cls, value: str | None) -> str | None:
+        if value is not None and _INPUT_REVIEW_TOKEN.fullmatch(value) is None:
+            raise ValueError("input review reference is invalid")
+        return value
+
+    @model_validator(mode="after")
+    def generation_round_matches_review_reference(self):
+        if (self.generation_round == 0) != (self.input_review_ref is None):
+            raise ValueError("generation round and input review reference are inconsistent")
+        return self
 
 
 class ResearchEducationGenerationJobStatusCountsDto(_StrictModel):
@@ -167,15 +182,21 @@ class ResearchEducationInputReviewSummaryDto(_StrictModel):
     job_ref: StrictStr = Field(pattern=r"^REJ_[0-9a-f]{64}$", max_length=68)
     task_ref: StrictStr = Field(min_length=1, max_length=128)
     session_ref: StrictStr = Field(min_length=1, max_length=128)
-    status: Literal["PENDING", "REJECTED", "REVOKED"]
-    state_version: StrictInt = Field(ge=1, le=2)
+    status: Literal[
+        "PENDING",
+        "CONTINUATION_AUTHORIZED",
+        "CONSUMED",
+        "REJECTED",
+        "REVOKED",
+    ]
+    state_version: StrictInt = Field(ge=1, le=3)
     expires_at: datetime
     created_at: datetime
     updated_at: datetime
     reason_codes: list[Literal["CONTENT_CONTROVERSIAL"]] = Field(min_length=1, max_length=1)
     purpose: Literal["RESEARCH_SIMULATION"]
     research_only: Literal[True]
-    continuation_enabled: Literal[False]
+    continuation_enabled: StrictBool
 
     @field_validator("input_review_ref", "task_ref", "session_ref", mode="after")
     @classmethod
@@ -193,7 +214,14 @@ class ResearchEducationInputReviewSummaryDto(_StrictModel):
 
     @model_validator(mode="after")
     def review_version_matches_status(self):
-        if (self.status == "PENDING") != (self.state_version == 1):
+        valid_versions = {
+            "PENDING": {1},
+            "CONTINUATION_AUTHORIZED": {2},
+            "CONSUMED": {3},
+            "REJECTED": {2},
+            "REVOKED": {2, 3},
+        }
+        if self.state_version not in valid_versions[self.status]:
             raise ValueError("input review status and version are inconsistent")
         if self.expires_at <= self.created_at or self.updated_at < self.created_at:
             raise ValueError("input review timestamps are inconsistent")
@@ -244,8 +272,17 @@ class ResearchEducationInputReviewDetailDto(ResearchEducationInputReviewSummaryD
 
 
 class ResearchEducationInputReviewResolutionRequest(_StrictModel):
-    expected_state_version: StrictInt = Field(ge=1, le=2_147_483_647)
-    target: Literal["REJECTED", "REVOKED"]
+    expected_state_version: StrictInt = Field(ge=1, le=2)
+    target: Literal["CONTINUATION_AUTHORIZED", "REJECTED", "REVOKED"]
+
+    @model_validator(mode="after")
+    def target_matches_expected_version(self):
+        if (
+            self.target in {"CONTINUATION_AUTHORIZED", "REJECTED"}
+            and self.expected_state_version != 1
+        ):
+            raise ValueError("input review target is incompatible with its version")
+        return self
 
 
 class ResearchEducationCandidateResolutionRequest(_StrictModel):

@@ -88,6 +88,7 @@ class SchoolResearchFeedbackPersistenceAdapter(SchoolProfessionalReviewPersisten
         super().__init__(persistence)
         self.study_use_policy = study_use_policy
         self.education_candidate_validator = education_candidate_validator
+        self.education_candidate_lineage_validator = None
 
     def _now(self) -> tuple[datetime, datetime]:
         value = self._utc_now()
@@ -680,6 +681,14 @@ class SchoolResearchFeedbackPersistenceAdapter(SchoolProfessionalReviewPersisten
             or (source_revision is not None and candidate.content_revision != source_revision)
         ):
             raise _not_found()
+        lineage_validator = self.education_candidate_lineage_validator
+        if callable(lineage_validator):
+            await lineage_validator(uow, candidate)
+        elif getattr(candidate, "generation_round", 0) != 0:
+            raise error(
+                ErrorCode.DEPENDENCY_UNAVAILABLE,
+                detail="feedback source lineage verification is unavailable",
+            )
         payload = validator(candidate, scope)
         if type(payload) is not ResearchGeneralEducationCandidatePayload:
             raise error(

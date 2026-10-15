@@ -208,11 +208,19 @@ class SchoolResearchEducationCandidateService:
             trace_id=trace_id,
         )
         summary = self._project(ResearchEducationInputReviewSummaryDto, result)
+        expected_status_version = {
+            "CONTINUATION_AUTHORIZED": ("CONTINUATION_AUTHORIZED", 2),
+            "REJECTED": ("REJECTED", 2),
+            "REVOKED": ("REVOKED", request.expected_state_version + 1),
+        }[request.target]
         if (
             summary["task_ref"] != task_ref
             or summary["input_review_ref"] != input_review_ref
-            or summary["status"] != request.target
-            or summary["state_version"] != request.expected_state_version + 1
+            or (summary["status"], summary["state_version"]) != expected_status_version
+            or (
+                request.target == "CONTINUATION_AUTHORIZED"
+                and summary["continuation_enabled"] is not True
+            )
         ):
             raise error(
                 ErrorCode.DEPENDENCY_INVALID_RESPONSE,

@@ -831,6 +831,9 @@ def build_container(
                         source_package_ref=package.package_id,
                         source_study_ref=education_draft_settings.source_study_ref,
                         study_use_policy=programme_study_policy,
+                        input_review_continuation_enabled=(
+                            education_draft_settings.input_review_continuation_enabled
+                        ),
                     )
                 )
                 school_research_education_candidates = (
@@ -842,6 +845,10 @@ def build_container(
                     school_research_feedback_adapter.education_candidate_validator = (
                         school_research_education_candidate_adapter
                         .validate_feedback_candidate_in_uow
+                    )
+                    school_research_feedback_adapter.education_candidate_lineage_validator = (
+                        school_research_education_candidate_adapter
+                        .verify_candidate_input_lineage_in_uow
                     )
                 concurrency_lock = (
                     research_programme_worker_manager.concurrency_lock

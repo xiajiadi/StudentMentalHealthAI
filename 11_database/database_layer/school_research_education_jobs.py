@@ -90,6 +90,8 @@ class ResearchEducationJobDTO:
     last_error_code: str | None
     created_at: datetime
     updated_at: datetime
+    generation_round: int = field(default=0, kw_only=True)
+    input_review_id: int | None = field(default=None, kw_only=True, repr=False)
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -166,6 +168,8 @@ def _dto(job: SchoolResearchEducationJob) -> ResearchEducationJobDTO:
         last_error_code=job.last_error_code,
         created_at=_utc_aware(job.created_at),  # type: ignore[arg-type]
         updated_at=_utc_aware(job.updated_at),  # type: ignore[arg-type]
+        generation_round=job.generation_round,
+        input_review_id=job.input_review_id,
     )
 
 
@@ -320,6 +324,7 @@ class SchoolResearchEducationJobRepository:
         lease_seconds: int = 60,
         max_attempts: int = 5,
         policy_version: str = _POLICY_VERSION,
+        generation_round: int = 0,
         now: datetime | None = None,
     ) -> list[ResearchEducationJobClaim]:
         school_id = _require_id(school_id, "school_id")
@@ -327,6 +332,9 @@ class SchoolResearchEducationJobRepository:
         _bounded_int(limit, "limit", 1, 100)
         _bounded_int(lease_seconds, "lease_seconds", 5, 3600)
         _bounded_int(max_attempts, "max_attempts", 1, 20)
+        _bounded_int(generation_round, "generation_round", 0, 1)
+        if generation_round == 1 and max_attempts != 1:
+            raise ValueError("review continuation jobs have exactly one attempt")
         if type(policy_version) is not str or policy_version not in _POLICY_VERSIONS:
             raise ValueError("policy_version is not enabled for research sessions")
         clock = _utc_naive(now)
@@ -351,6 +359,7 @@ class SchoolResearchEducationJobRepository:
             .where(
                 SchoolResearchEducationJob.school_id == school_id,
                 SchoolResearchEducationJob.policy_version == policy_version,
+                SchoolResearchEducationJob.generation_round == generation_round,
                 policy_scope,
                 eligible,
             )
@@ -447,7 +456,8 @@ class SchoolResearchEducationJobRepository:
         )
         job.last_error_code = error_code.value
         self._clear_lease(job)
-        if job.attempt_count >= max_attempts:
+        effective_max_attempts = 1 if job.generation_round == 1 else max_attempts
+        if job.attempt_count >= effective_max_attempts:
             job.status = "FAILED"
             job.next_attempt_at = None
         else:
@@ -516,12 +526,16 @@ class SchoolResearchEducationJobRepository:
         return job
 
     @staticmethod
-    def _key_query(*, school_id: int, research_session_id: int, policy_version: str):
+    def _key_query(
+        *, school_id: int, research_session_id: int, policy_version: str,
+        generation_round: int = 0,
+    ):
         return select(SchoolResearchEducationJob).where(
             SchoolResearchEducationJob.school_id == school_id,
             SchoolResearchEducationJob.research_session_id == research_session_id,
             SchoolResearchEducationJob.job_kind == SchoolResearchEducationJobRepository.JOB_KIND,
             SchoolResearchEducationJob.policy_version == policy_version,
+            SchoolResearchEducationJob.generation_round == generation_round,
         )
 
     @staticmethod
@@ -534,6 +548,8 @@ class SchoolResearchEducationJobRepository:
             or job.purpose != SchoolResearchEducationJobRepository.PURPOSE
             or job.research_only is not True
             or job.publication_status != "not_approved_for_publication_or_operational_use"
+            or job.generation_round != 0
+            or job.input_review_id is not None
         ):
             raise UniqueConflict("research outbox idempotency key conflicts with scope")
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import re
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 
 from smhai_backend.core.errors import ErrorCode, error
 from smhai_backend.core.request_context import valid_correlation_id
@@ -67,6 +68,83 @@ async def _input_review_repo_call(awaitable):
 
 class ResearchEducationInputReviewPersistenceMixin:
     """Reusable routes over current assigned Scope C and research-session facts."""
+
+    async def _continuation_authorization(self, uow, claim, task, *, now):
+        from smhai_backend.domains.research_general_education.input_review_policy import (
+            INPUT_REVIEW_CONTINUATION_POLICY_SHA256,
+            INPUT_REVIEW_CONTINUATION_POLICY_VERSION,
+        )
+        from smhai_backend.domains.research_general_education.schemas import (
+            ResearchGeneralEducationInputReviewReceipt,
+            ResearchGeneralEducationReviewedInputAuthorization,
+        )
+        if (
+            not self.input_review_continuation_enabled or claim.generation_round != 1
+            or type(claim.input_review_id) is not int or claim.attempt_count != 1
+        ):
+            raise _conflict()
+        m = self._db_models
+        ref = await uow.session.scalar(
+            self._select(m.SchoolResearchEducationInputReview.input_review_ref).where(
+                m.SchoolResearchEducationInputReview.id == claim.input_review_id,
+                m.SchoolResearchEducationInputReview.school_id == claim.school_id,
+                m.SchoolResearchEducationInputReview.task_id == claim.task_id,
+                m.SchoolResearchEducationInputReview.research_session_id
+                == claim.research_session_id,
+            ).with_for_update()
+        )
+        if ref is None:
+            raise _conflict()
+        review = await _input_review_repo_call(
+            uow.research_education_input_reviews.get_for_task(
+                school_id=claim.school_id, task_id=claim.task_id, input_review_ref=ref,
+            )
+        )
+        self._input_review_pins(review)
+        if (
+            review.status != "CONTINUATION_AUTHORIZED" or review.state_version != 2
+            or review.expires_at <= now or not self._same_scope(review.scope, claim)
+        ):
+            raise _conflict()
+        await self._require_active_specialist_assignment(
+            uow, task, at=now, membership_role_id=review.authorized_by_membership_role_id
+        )
+        # Also prove the immutable original stopped round-0 job remains intact.
+        actor_scope = SimpleNamespace(school_id=claim.school_id)
+        await self._current_input_review(uow, actor_scope, task, review, at=now, lock=True)
+        receipt = ResearchGeneralEducationInputReviewReceipt(
+            schema_version="school-research-general-education-input-review.v1",
+            operation=review.safety_operation, action=review.safety_action,
+            reason_codes=(review.safety_reason_code,), requires_human=review.safety_requires_human,
+            decision_id=review.decision_id, review_ref=review.safety_review_ref,
+            trace_id=review.safety_trace_id, canonical_input_sha256=review.canonical_input_sha256,
+            policy_version=review.policy_version, policy_hash=review.policy_hash,
+            safety_policy_version="safety-port-unversioned.v1",
+            source_package_ref=review.source_package_ref, source_study_ref=review.source_study_ref,
+            source_manifest_sha256=review.source_manifest_sha256, source_age_scope="14-17",
+            prompt_id=review.prompt_id, prompt_version=review.prompt_version,
+            prompt_sha256=review.prompt_sha256,
+        )
+        trace = "TRACE_" + hashlib.sha256(
+            f"{claim.job_ref}:{claim.attempt_count}".encode("ascii")
+        ).hexdigest()[:32]
+        return ResearchGeneralEducationReviewedInputAuthorization(
+            input_review_ref=review.input_review_ref, authorized_state_version=2,
+            receipt=receipt, continuation_job_ref=claim.job_ref, continuation_trace_id=trace,
+            continuation_policy_version=INPUT_REVIEW_CONTINUATION_POLICY_VERSION,
+            continuation_policy_hash=INPUT_REVIEW_CONTINUATION_POLICY_SHA256,
+            expires_at=review.expires_at,
+        ), review
+
+    async def load_input_review_authorization(self, claim):
+        self._require_enabled()
+        now, _db_now = self._now()
+        async with self._uow() as uow:
+            persisted, task, *_ = await self._live_claim_scope(uow, claim, now=now)
+            authorization, _review = await self._continuation_authorization(
+                uow, persisted, task, now=now
+            )
+            return authorization
 
     def _input_review_ref(self, value: str, field: str) -> str:
         if type(value) is not str or _SAFE_REF.fullmatch(value) is None:
@@ -140,10 +218,15 @@ class ResearchEducationInputReviewPersistenceMixin:
             or row.safety_trace_id != row.trace_id
             or row.trace_id != expected_trace
             or not isinstance(row.status, str)
-            or row.status not in {"PENDING", "REJECTED", "REVOKED"}
+            or row.status not in {
+                "PENDING", "REJECTED", "REVOKED", "CONTINUATION_AUTHORIZED", "CONSUMED"
+            }
             or type(row.state_version) is not int
             or (row.status == "PENDING") != (row.state_version == 1)
-            or (row.status in {"REJECTED", "REVOKED"}) != (row.state_version == 2)
+            or (row.status == "REJECTED" and row.state_version != 2)
+            or (row.status == "REVOKED" and row.state_version not in {2, 3})
+            or (row.status == "CONTINUATION_AUTHORIZED" and row.state_version != 2)
+            or (row.status == "CONSUMED" and row.state_version != 3)
             or not isinstance(row.expires_at, datetime)
             or not isinstance(row.created_at, datetime)
             or not isinstance(row.updated_at, datetime)
@@ -192,6 +275,29 @@ class ResearchEducationInputReviewPersistenceMixin:
             ) from None
         if row.canonical_input_sha256 != expected_digest:
             raise _conflict()
+        if row.status in {"CONTINUATION_AUTHORIZED", "CONSUMED"} or (
+            row.status == "REVOKED" and row.state_version == 3
+        ):
+            from smhai_backend.domains.research_general_education.input_review_policy import (
+                INPUT_REVIEW_CONTINUATION_POLICY_SHA256,
+                INPUT_REVIEW_CONTINUATION_POLICY_VERSION,
+            )
+            if (
+                row.grant_policy_version != INPUT_REVIEW_CONTINUATION_POLICY_VERSION
+                or row.grant_policy_hash != INPUT_REVIEW_CONTINUATION_POLICY_SHA256
+                or type(row.authorized_by_membership_role_id) is not int
+                or row.authorized_by_membership_role_id <= 0
+                or not isinstance(row.authorized_at, datetime)
+                or row.authorized_at.tzinfo is None
+                or not row.created_at <= row.authorized_at < row.expires_at
+                or (row.status == "CONSUMED" and (
+                    not isinstance(row.consumed_at, datetime)
+                    or row.consumed_at.tzinfo is None
+                    or not row.authorized_at <= row.consumed_at < row.expires_at
+                ))
+                or (row.status != "CONSUMED" and row.consumed_at is not None)
+            ):
+                raise _conflict()
 
     async def _current_input_review(self, uow, actor, task, row, *, at, lock=False):
         m = self._db_models
@@ -242,6 +348,8 @@ class ResearchEducationInputReviewPersistenceMixin:
             m.SchoolResearchEducationJob.purpose,
             m.SchoolResearchEducationJob.research_only,
             m.SchoolResearchEducationJob.publication_status,
+            m.SchoolResearchEducationJob.generation_round,
+            m.SchoolResearchEducationJob.input_review_id,
         ).where(
             m.SchoolResearchEducationJob.id == row.job_id,
             m.SchoolResearchEducationJob.job_ref == row.job_ref,
@@ -276,13 +384,14 @@ class ResearchEducationInputReviewPersistenceMixin:
             "RESEARCH_SIMULATION",
             True,
             "not_approved_for_publication_or_operational_use",
+            0,
+            None,
         )
         if tuple(job) != expected_job:
             raise _conflict()
         return current_scope, session_ref
 
-    @staticmethod
-    def _input_review_summary(row, *, task_ref: str, session_ref: str) -> dict:
+    def _input_review_summary(self, row, *, task_ref: str, session_ref: str) -> dict:
         return {
             "input_review_ref": row.input_review_ref,
             "job_ref": row.job_ref,
@@ -296,7 +405,7 @@ class ResearchEducationInputReviewPersistenceMixin:
             "reason_codes": [row.safety_reason_code],
             "purpose": "RESEARCH_SIMULATION",
             "research_only": True,
-            "continuation_enabled": False,
+            "continuation_enabled": self.input_review_continuation_enabled,
         }
 
     def _input_review_detail(self, row, *, task_ref: str, session_ref: str) -> dict:
@@ -407,10 +516,12 @@ class ResearchEducationInputReviewPersistenceMixin:
             or expected_state_version < 1
             or expected_state_version > 2_147_483_647
             or type(target) is not str
-            or target not in {"REJECTED", "REVOKED"}
+            or target not in {"REJECTED", "REVOKED", "CONTINUATION_AUTHORIZED"}
             or valid_correlation_id(trace_id, "TRACE") != trace_id
         ):
             raise error(ErrorCode.VALIDATION_FAILED, detail="input review resolution is invalid")
+        if target == "CONTINUATION_AUTHORIZED" and not self.input_review_continuation_enabled:
+            raise _conflict()
         now, db_now = self._now()
         async with self._uow() as uow:
             actor_account_id, role_id = await self._require_actor(
@@ -456,7 +567,11 @@ class ResearchEducationInputReviewPersistenceMixin:
                 if (
                     current.status != target
                     or current.state_version != expected_state_version + 1
-                    or current.resolved_by_membership_role_id != role_id
+                    or (
+                        current.authorized_by_membership_role_id
+                        if target == "CONTINUATION_AUTHORIZED"
+                        else current.resolved_by_membership_role_id
+                    ) != role_id
                     or current.expires_at <= now
                 ):
                     raise _conflict()
@@ -465,22 +580,39 @@ class ResearchEducationInputReviewPersistenceMixin:
                 )
 
             repository = uow.research_education_input_reviews
-            resolver = repository.reject if target == "REJECTED" else repository.revoke
-            updated = await _input_review_repo_call(
-                resolver(
-                    input_review_ref=input_review_ref,
-                    scope=row.scope,
-                    expected_state_version=expected_state_version,
-                    actor_membership_role_id=role_id,
-                    trace_id=trace_id,
-                    now=now,
+            if target == "CONTINUATION_AUTHORIZED":
+                from smhai_backend.domains.research_general_education.input_review_policy import (
+                    INPUT_REVIEW_CONTINUATION_POLICY_SHA256,
+                    INPUT_REVIEW_CONTINUATION_POLICY_VERSION,
                 )
-            )
+                updated, _job = await _input_review_repo_call(
+                    repository.authorize_and_enqueue_continuation(
+                        input_review_ref=input_review_ref, scope=row.scope,
+                        expected_state_version=expected_state_version,
+                        actor_membership_role_id=role_id,
+                        grant_policy_version=INPUT_REVIEW_CONTINUATION_POLICY_VERSION,
+                        grant_policy_hash=INPUT_REVIEW_CONTINUATION_POLICY_SHA256,
+                        trace_id=trace_id, now=now,
+                    )
+                )
+            else:
+                resolver = repository.reject if target == "REJECTED" else repository.revoke
+                updated = await _input_review_repo_call(
+                    resolver(
+                        input_review_ref=input_review_ref, scope=row.scope,
+                        expected_state_version=expected_state_version,
+                        actor_membership_role_id=role_id, trace_id=trace_id, now=now,
+                    )
+                )
             self._input_review_pins(updated)
             if (
                 updated.status != target
                 or updated.state_version != expected_state_version + 1
-                or updated.resolved_by_membership_role_id != role_id
+                or (
+                    updated.authorized_by_membership_role_id
+                    if target == "CONTINUATION_AUTHORIZED"
+                    else updated.resolved_by_membership_role_id
+                ) != role_id
             ):
                 raise error(
                     ErrorCode.DEPENDENCY_INVALID_RESPONSE,

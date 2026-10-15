@@ -11,9 +11,14 @@ from typing import Any
 
 from smhai_backend.core.errors import BackendError, ErrorCode
 from smhai_backend.core.request_context import RequestContext
+from smhai_backend.domains.research_general_education.input_review_policy import (
+    INPUT_REVIEW_CONTINUATION_POLICY_SHA256,
+    INPUT_REVIEW_CONTINUATION_POLICY_VERSION,
+)
 from smhai_backend.domains.research_general_education.schemas import (
     ResearchGeneralEducationCandidatePayload,
     ResearchGeneralEducationOutcome,
+    ResearchGeneralEducationReviewedInputAuthorization,
 )
 
 _SAFE_WORKER_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
@@ -48,6 +53,7 @@ class ResearchGeneralEducationWorker:
         generation_service,
         concurrency_lock: asyncio.Lock,
         worker_id: str,
+        input_review_continuation_enabled: bool = False,
         poll_interval_seconds: float = 1.0,
         lease_seconds: int = 300,
         clock=lambda: datetime.now(UTC),
@@ -58,6 +64,8 @@ class ResearchGeneralEducationWorker:
             raise ValueError("general-education policy hash is invalid")
         if not isinstance(concurrency_lock, asyncio.Lock):
             raise TypeError("a shared worker concurrency lock is required")
+        if type(input_review_continuation_enabled) is not bool:
+            raise ValueError("input-review continuation opt-in must be boolean")
         if not callable(getattr(generation_service, "generate", None)):
             raise ValueError("general-education generation service is required")
         for method in (
@@ -82,6 +90,14 @@ class ResearchGeneralEducationWorker:
         self.policy_hash = policy_hash
         self.persistence = persistence
         self.persistence_adapter = persistence_adapter
+        adapter_continuation_enabled = (
+            getattr(persistence_adapter, "input_review_continuation_enabled", False) is True
+        )
+        if input_review_continuation_enabled and not adapter_continuation_enabled:
+            raise ValueError("input-review continuation adapter is not enabled")
+        self.input_review_continuation_enabled = (
+            input_review_continuation_enabled and adapter_continuation_enabled
+        )
         self.generation_service = generation_service
         self.concurrency_lock = concurrency_lock
         self.worker_id = worker_id
@@ -189,11 +205,97 @@ class ResearchGeneralEducationWorker:
                     result=ResearchGeneralEducationWorkerResult.CANCELLED,
                 )
 
-            try:
-                outcome = await self.generation_service.generate(
-                    caller_role="SYSTEM",
-                    request_context=self._context(claim),
+            generation_round = getattr(claim, "generation_round", 0)
+            reviewed_authorization = None
+            if type(generation_round) is not int or generation_round not in {0, 1}:
+                return await self._finalize(
+                    claim,
+                    status="CANCELLED",
+                    result=ResearchGeneralEducationWorkerResult.CANCELLED,
                 )
+            if generation_round == 0:
+                if getattr(claim, "input_review_id", None) is not None:
+                    return await self._finalize(
+                        claim,
+                        status="CANCELLED",
+                        result=ResearchGeneralEducationWorkerResult.CANCELLED,
+                    )
+            else:
+                if not self.input_review_continuation_enabled:
+                    return await self._finalize(
+                        claim,
+                        status="CANCELLED",
+                        result=ResearchGeneralEducationWorkerResult.CANCELLED,
+                    )
+                review_id = getattr(claim, "input_review_id", None)
+                loader = getattr(self.persistence_adapter, "load_input_review_authorization", None)
+                if type(review_id) is not int or review_id <= 0 or not callable(loader):
+                    return await self._finalize(
+                        claim,
+                        status="CANCELLED",
+                        result=ResearchGeneralEducationWorkerResult.CANCELLED,
+                    )
+                try:
+                    reviewed_authorization = await loader(claim)
+                except asyncio.CancelledError:
+                    raise
+                except BackendError as exc:
+                    if exc.code in {
+                        ErrorCode.FORBIDDEN,
+                        ErrorCode.RESOURCE_NOT_FOUND,
+                        ErrorCode.WORKFLOW_CONFLICT,
+                    }:
+                        return await self._finalize(
+                            claim,
+                            status="CANCELLED",
+                            result=ResearchGeneralEducationWorkerResult.CANCELLED,
+                        )
+                    return await self._finalize(
+                        claim,
+                        status="FAILED",
+                        error_code=self._error_codes().INTERNAL_FAILURE_AUTHORIZATION,
+                        result=ResearchGeneralEducationWorkerResult.FAILED,
+                    )
+                except Exception:
+                    return await self._finalize(
+                        claim,
+                        status="FAILED",
+                        error_code=self._error_codes().INTERNAL_FAILURE_AUTHORIZATION,
+                        result=ResearchGeneralEducationWorkerResult.FAILED,
+                    )
+                context = self._context(claim)
+                if (
+                    type(reviewed_authorization)
+                    is not ResearchGeneralEducationReviewedInputAuthorization
+                    or reviewed_authorization.continuation_job_ref != claim.job_ref
+                    or reviewed_authorization.continuation_trace_id != context.trace_id
+                    or reviewed_authorization.continuation_policy_version
+                    != INPUT_REVIEW_CONTINUATION_POLICY_VERSION
+                    or reviewed_authorization.continuation_policy_hash
+                    != INPUT_REVIEW_CONTINUATION_POLICY_SHA256
+                    or reviewed_authorization.expires_at.astimezone(UTC) <= self._now()
+                    or not callable(
+                        getattr(self.generation_service, "generate_reviewed_input", None)
+                    )
+                ):
+                    return await self._finalize(
+                        claim,
+                        status="CANCELLED",
+                        result=ResearchGeneralEducationWorkerResult.CANCELLED,
+                    )
+
+            try:
+                if generation_round == 0:
+                    outcome = await self.generation_service.generate(
+                        caller_role="SYSTEM",
+                        request_context=self._context(claim),
+                    )
+                else:
+                    outcome = await self.generation_service.generate_reviewed_input(
+                        caller_role="SYSTEM",
+                        request_context=self._context(claim),
+                        authorization=reviewed_authorization,
+                    )
             except asyncio.CancelledError:
                 # Leave the active lease to expire. max_attempts=1 prevents regeneration.
                 raise
@@ -220,8 +322,11 @@ class ResearchGeneralEducationWorker:
                         claim, self._error_codes().INTERNAL_FAILURE_OUTCOME_VALIDATION
                     )
                 try:
+                    store_kwargs = {"trace_id": self._context(claim).trace_id}
+                    if reviewed_authorization is not None:
+                        store_kwargs["input_review"] = reviewed_authorization
                     stored = await self.persistence_adapter.store_generated_candidate(
-                        claim, outcome.candidate, trace_id=self._context(claim).trace_id
+                        claim, outcome.candidate, **store_kwargs
                     )
                 except asyncio.CancelledError:
                     raise
@@ -251,7 +356,7 @@ class ResearchGeneralEducationWorker:
 
         now = self._now()
         async with self.persistence._uow() as uow:
-            claims = await uow.research_education_jobs.claim_next(
+            claim_kwargs = dict(
                 school_id=self.school_id,
                 lease_owner=self.worker_id,
                 limit=1,
@@ -260,7 +365,18 @@ class ResearchGeneralEducationWorker:
                 policy_version=GENERAL_EDUCATION_POLICY_VERSION,
                 now=now,
             )
-            return list(claims)
+            if self.input_review_continuation_enabled:
+                reviewed_claims = await uow.research_education_jobs.claim_next(
+                    **claim_kwargs,
+                    generation_round=1,
+                )
+                if reviewed_claims:
+                    return list(reviewed_claims)
+            ordinary_claims = await uow.research_education_jobs.claim_next(
+                **claim_kwargs,
+                generation_round=0,
+            )
+            return list(ordinary_claims)
 
     def _valid_claim(self, claim: Any) -> bool:
         from database_layer.school_research_education_jobs import (

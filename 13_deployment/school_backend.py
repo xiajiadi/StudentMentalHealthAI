@@ -127,6 +127,7 @@ class ResearchCLIConfigError(PreparationError):
             "research_education_draft_config_invalid",
             "research_education_draft_source_mismatch",
             "research_education_draft_study_mismatch",
+            "research_education_continuation_requires_draft",
         }
         self.code = code if code in allowed else "research_config_invalid"
         super().__init__(self.code)
@@ -208,6 +209,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--research-student-config-sha256")
     parser.add_argument("--research-education-draft-config-file", type=Path)
     parser.add_argument("--research-education-draft-config-sha256")
+    parser.add_argument(
+        "--enable-research-education-input-review-continuation",
+        action="store_true",
+        help="Enable one-shot, explicitly authorized research input-review continuation",
+    )
     return parser
 
 
@@ -233,7 +239,16 @@ def build_research_education_draft_settings_kwargs(
     """Validate the explicit held-draft lane against the approved source and study."""
     config_file = getattr(args, "research_education_draft_config_file", None)
     config_sha256 = getattr(args, "research_education_draft_config_sha256", None)
+    continuation_enabled = getattr(
+        args, "enable_research_education_input_review_continuation", False
+    )
+    if type(continuation_enabled) is not bool:
+        raise ResearchCLIConfigError("research_education_draft_config_invalid")
     if config_file is None and config_sha256 is None:
+        if continuation_enabled:
+            raise ResearchCLIConfigError(
+                "research_education_continuation_requires_draft"
+            )
         return {"research_general_education_draft": {"enabled": False}}
     if config_file is None or config_sha256 is None:
         raise ResearchCLIConfigError("research_education_draft_config_incomplete")
@@ -287,7 +302,9 @@ def build_research_education_draft_settings_kwargs(
         raise ResearchCLIConfigError("research_education_draft_config_invalid") from None
     except (AttributeError, ImportError, OSError, RuntimeError, TypeError, ValueError):
         raise ResearchCLIConfigError("research_education_draft_study_mismatch") from None
-    return {"research_general_education_draft": draft.core_settings()}
+    core_settings = draft.core_settings()
+    core_settings["input_review_continuation_enabled"] = continuation_enabled
+    return {"research_general_education_draft": core_settings}
 
 
 def build_research_settings_kwargs(args: argparse.Namespace, workspace: Path) -> dict[str, object]:

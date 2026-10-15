@@ -8,6 +8,47 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import school_restore_import as importer
+from school_schema import RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION
+
+
+def test_0022_import_splits_only_continuation_jobs_around_reviews():
+    plan = {
+        "revision": RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION,
+        "table_order": [
+            "school_research_education_jobs",
+            "school_research_education_input_reviews",
+            "school_research_education_input_review_events",
+            "school_research_education_candidates",
+        ],
+        "tables": {
+            "school_research_education_jobs": {
+                "columns": ["job_ref", "generation_round"],
+                "rows": [["REJ_original", 0], ["REJ_continuation", 1]],
+            },
+            "school_research_education_input_reviews": {
+                "columns": ["input_review_ref"],
+                "rows": [["REVIEW_original"]],
+            },
+            "school_research_education_input_review_events": {
+                "columns": ["input_review_ref"],
+                "rows": [["REVIEW_original"]],
+            },
+            "school_research_education_candidates": {
+                "columns": ["candidate_ref"],
+                "rows": [["REEDUC_candidate"]],
+            },
+        },
+    }
+
+    rows = list(importer._ordered_snapshot_rows(plan))
+
+    assert [(name, row[-1] if name.endswith("jobs") else row[0]) for name, row in rows] == [
+        ("school_research_education_jobs", 0),
+        ("school_research_education_input_reviews", "REVIEW_original"),
+        ("school_research_education_input_review_events", "REVIEW_original"),
+        ("school_research_education_jobs", 1),
+        ("school_research_education_candidates", "REEDUC_candidate"),
+    ]
 
 
 class FakeConnection:

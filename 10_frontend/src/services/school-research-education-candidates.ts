@@ -26,6 +26,8 @@ export type ResearchEducationGenerationJobErrorCode = typeof generationJobErrorC
 
 export type ResearchEducationGenerationJob = {
   job_ref: string
+  generation_round: 0 | 1
+  input_review_ref: string | null
   status: ResearchEducationGenerationStatus
   attempt_count: number
   last_error_code: ResearchEducationGenerationJobErrorCode | null
@@ -143,6 +145,7 @@ const sha256Pattern = /^[0-9a-f]{64}$/
 const chunkIdPattern = /^CHUNK_[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$/
 const candidateRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/
 const jobRefPattern = /^REJ_[0-9a-f]{64}$/
+const inputReviewRefPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/
 const batchRefPattern = /^REGENBATCH_[0-9a-f]{64}$/
 const provenanceFields = [
   'policy_version', 'policy_hash', 'safety_policy_version', 'source_package_ref',
@@ -168,7 +171,8 @@ const generationStatuses: ResearchEducationGenerationStatus[] = [
 ]
 const generationStatusCountFields = [...generationStatuses].sort()
 const generationJobFields = [
-  'job_ref', 'status', 'attempt_count', 'last_error_code', 'created_at', 'updated_at',
+  'job_ref', 'generation_round', 'input_review_ref', 'status', 'attempt_count',
+  'last_error_code', 'created_at', 'updated_at',
 ].sort()
 const generationJobPageFields = [
   'items', 'offset', 'limit', 'total', 'has_more', 'status_counts', 'policy_version',
@@ -547,9 +551,18 @@ function mapGenerationJobPage(
       throw new RealApiError('API_INVALID_RESPONSE', message)
     }
     const jobRef = text(item, 'job_ref', 68, message)
-    if (!jobRefPattern.test(jobRef)) throw new RealApiError('API_INVALID_RESPONSE', message)
+    const generationRound = item.generation_round
+    const inputReviewRef = item.input_review_ref
+    if (!jobRefPattern.test(jobRef)
+      || (generationRound !== 0 && generationRound !== 1)
+      || (generationRound === 0 && inputReviewRef !== null)
+      || (generationRound === 1 && (typeof inputReviewRef !== 'string' || !inputReviewRefPattern.test(inputReviewRef)))) {
+      throw new RealApiError('API_INVALID_RESPONSE', message)
+    }
     return {
       job_ref: jobRef,
+      generation_round: generationRound,
+      input_review_ref: inputReviewRef as string | null,
       status: item.status as ResearchEducationGenerationStatus,
       attempt_count: item.attempt_count as number,
       last_error_code: item.last_error_code as ResearchEducationGenerationJobErrorCode | null,

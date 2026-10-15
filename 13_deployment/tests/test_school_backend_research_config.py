@@ -115,6 +115,21 @@ def test_general_education_draft_requires_both_explicit_config_pins(tmp_path):
     assert exc.value.code == "research_education_draft_config_incomplete"
 
 
+def test_input_review_continuation_cli_opt_in_requires_pinned_draft_config(tmp_path):
+    args = backend.build_parser().parse_args(
+        [
+            "--workspace",
+            str(tmp_path),
+            "--enable-research-education-input-review-continuation",
+        ]
+    )
+
+    with pytest.raises(backend.ResearchCLIConfigError) as exc:
+        backend.build_cli_settings_kwargs(args)
+
+    assert exc.value.code == "research_education_continuation_requires_draft"
+
+
 def test_general_education_draft_maps_only_matching_source_study_and_8161_runtime(
     tmp_path, monkeypatch
 ):
@@ -145,6 +160,7 @@ def test_general_education_draft_maps_only_matching_source_study_and_8161_runtim
     args.research_student_config_sha256 = student_sha
     args.research_education_draft_config_file = draft_file
     args.research_education_draft_config_sha256 = draft_sha
+    args.enable_research_education_input_review_continuation = True
     monkeypatch.setattr(backend, "_validate_study_use_policy", lambda **_kwargs: None)
     monkeypatch.setattr(backend, "load_student_research_config", lambda *_args: source)
     monkeypatch.setattr(
@@ -162,7 +178,10 @@ def test_general_education_draft_maps_only_matching_source_study_and_8161_runtim
 
     settings, research = backend.build_cli_settings_kwargs(args)
 
-    assert settings["research_general_education_draft"] == draft.core_settings()
+    assert settings["research_general_education_draft"] == {
+        **draft.core_settings(),
+        "input_review_continuation_enabled": True,
+    }
     assert research["research_programme_runtime"] == {
         "mode": "http",
         "base_url": "http://127.0.0.1:8161",
@@ -176,6 +195,7 @@ def test_general_education_draft_maps_only_matching_source_study_and_8161_runtim
     monkeypatch.setenv("SMHAI_SCHOOL_CSRF_SECRET", "a" * 64)
     parsed = BackendSettings(_env_file=None, **settings)
     assert parsed.research_general_education_draft.enabled is True
+    assert parsed.research_general_education_draft.input_review_continuation_enabled is True
     assert parsed.research_programme_runtime.timeout.read >= 65
 
 

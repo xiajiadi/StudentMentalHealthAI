@@ -19,6 +19,10 @@ from smhai_backend.adapters.school_research_education_input_reviews import (
     _input_review_repo_call,
 )
 from smhai_backend.core.errors import BackendError, ErrorCode, error
+from smhai_backend.domains.research_general_education.input_review_policy import (
+    INPUT_REVIEW_CONTINUATION_POLICY_SHA256,
+    INPUT_REVIEW_CONTINUATION_POLICY_VERSION,
+)
 from smhai_backend.domains.research_general_education.prompt import (
     PROMPT_ID,
     PROMPT_SHA256,
@@ -178,6 +182,7 @@ class FakeAudit:
 class FakeAdapter(ResearchEducationInputReviewPersistenceMixin):
     def __init__(self, initial=None):
         self.enabled = True
+        self.input_review_continuation_enabled = False
         self.school_id = 17
         self.school_study_ref = "STUDY_R3"
         self.policy_hash = POLICY_HASH
@@ -230,6 +235,8 @@ class FakeAdapter(ResearchEducationInputReviewPersistenceMixin):
             "RESEARCH_SIMULATION",
             True,
             "not_approved_for_publication_or_operational_use",
+            0,
+            None,
         )
 
     def _require_enabled(self):
@@ -292,6 +299,80 @@ class FakeAdapter(ResearchEducationInputReviewPersistenceMixin):
 
 def specialist():
     return SimpleNamespace(school_id=17, role="psychological_specialist")
+
+
+def authorized_row(**changes):
+    values = dict(
+        status="CONTINUATION_AUTHORIZED", state_version=2,
+        decision_id="DEC_synthetic_1", safety_review_ref="REVIEW_synthetic_1",
+        grant_policy_version=INPUT_REVIEW_CONTINUATION_POLICY_VERSION,
+        grant_policy_hash=INPUT_REVIEW_CONTINUATION_POLICY_SHA256,
+        authorized_by_membership_role_id=222, authorized_at=NOW,
+        resolved_by_membership_role_id=None, resolved_at=None, updated_at=NOW,
+    )
+    values.update(changes)
+    return row(**values)
+
+
+@pytest.mark.parametrize("changes", [
+    {"grant_policy_hash": "9" * 64},
+    {"grant_policy_version": "OTHER"},
+    {"authorized_by_membership_role_id": None},
+    {"authorized_at": NOW + timedelta(days=1)},
+    {"status": "CONSUMED", "state_version": 2, "consumed_at": NOW},
+    {"status": "CONSUMED", "state_version": 3, "consumed_at": None},
+])
+def test_review_grant_pins_and_consumption_state_fail_closed(changes):
+    adapter = FakeAdapter()
+    adapter._input_review_pins(authorized_row())
+    with pytest.raises(BackendError):
+        adapter._input_review_pins(authorized_row(**changes))
+
+
+@pytest.mark.asyncio
+async def test_continuation_disabled_cannot_enqueue_or_begin_idempotency():
+    adapter = FakeAdapter()
+    with pytest.raises(BackendError) as raised:
+        await adapter.school_research_education_input_review_resolve(
+            specialist(), "TASK_synthetic_1", INPUT_REVIEW_REF,
+            expected_state_version=1, target="CONTINUATION_AUTHORIZED",
+            idempotency=("idem", "body", "scope"), trace_id="TRACE_synthetic_1",
+        )
+    assert raised.value.code is ErrorCode.WORKFLOW_CONFLICT
+    assert not adapter.repo.calls
+    assert not adapter.events
+
+
+@pytest.mark.asyncio
+async def test_continuation_capability_rechecks_exact_authorizer_and_original_job():
+    review = authorized_row()
+    adapter = FakeAdapter(review)
+    adapter.input_review_continuation_enabled = True
+    claim = SimpleNamespace(
+        **{name: getattr(review.scope, name) for name in review.scope.__dataclass_fields__},
+        generation_round=1, input_review_id=review.id, attempt_count=1,
+        job_ref="REJ_" + "f" * 64,
+    )
+    async def scalar(_statement):
+        return review.input_review_ref
+    async def require_assignment(_uow, _task, *, at, membership_role_id):
+        assert at == NOW
+        assert membership_role_id == review.authorized_by_membership_role_id
+        adapter.events.append(("exact_authorizer", membership_role_id))
+    adapter.session.scalar = scalar
+    adapter._require_active_specialist_assignment = require_assignment
+    grant, actual = await adapter._continuation_authorization(
+        adapter.uow, claim, adapter.task, now=NOW,
+    )
+    assert actual is review
+    assert grant.receipt.action == "REVIEW_REQUIRED"
+    assert grant.receipt.trace_id == trace_for_job(JOB_REF)
+    assert grant.continuation_trace_id == trace_for_job(claim.job_ref)
+    assert grant.continuation_job_ref != grant.receipt.trace_id
+    assert ("exact_authorizer", 222) in adapter.events
+    adapter.repo.current = replace(review, expires_at=NOW)
+    with pytest.raises(BackendError):
+        await adapter._continuation_authorization(adapter.uow, claim, adapter.task, now=NOW)
 
 
 @pytest.mark.asyncio

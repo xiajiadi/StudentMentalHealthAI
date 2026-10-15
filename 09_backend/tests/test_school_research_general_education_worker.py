@@ -12,10 +12,15 @@ from database_layer.school_research_education_jobs import (
     ResearchEducationJobErrorCode,
 )
 
+from smhai_backend.domains.research_general_education.input_review_policy import (
+    INPUT_REVIEW_CONTINUATION_POLICY_SHA256,
+    INPUT_REVIEW_CONTINUATION_POLICY_VERSION,
+)
 from smhai_backend.domains.research_general_education.schemas import (
     ResearchGeneralEducationCandidatePayload,
     ResearchGeneralEducationInputReviewReceipt,
     ResearchGeneralEducationOutcome,
+    ResearchGeneralEducationReviewedInputAuthorization,
 )
 from smhai_backend.domains.research_general_education.service import (
     EXPECTED_MODEL_DIGEST_SHA256,
@@ -165,11 +170,36 @@ class _Repository:
         self.error = error
         self.calls = []
 
-    async def claim_next(self, **kwargs):
+    async def claim_next(
+        self,
+        *,
+        school_id,
+        lease_owner,
+        limit,
+        lease_seconds,
+        max_attempts,
+        policy_version,
+        generation_round,
+        now,
+    ):
+        kwargs = {
+            "school_id": school_id,
+            "lease_owner": lease_owner,
+            "limit": limit,
+            "lease_seconds": lease_seconds,
+            "max_attempts": max_attempts,
+            "policy_version": policy_version,
+            "generation_round": generation_round,
+            "now": now,
+        }
         self.calls.append(kwargs)
         if self.error is not None:
             raise self.error
-        return self.claims
+        return [
+            claim
+            for claim in self.claims
+            if getattr(claim, "generation_round", 0) == generation_round
+        ][:limit]
 
 
 class _Uow:
@@ -186,18 +216,22 @@ class _Uow:
 class _Persistence:
     def __init__(self, repository):
         self.repository = repository
+        self.uow_count = 0
 
     def _uow(self):
+        self.uow_count += 1
         return _Uow(self.repository)
 
 
 class _Adapter:
-    def __init__(self, *, authorized=True):
+    def __init__(self, *, authorized=True, input_review_continuation_enabled=False):
         self.authorized = authorized
+        self.input_review_continuation_enabled = input_review_continuation_enabled
         self.authorized_claims = []
         self.finalized = []
         self.finalize_kwargs = []
         self.stored = []
+        self.review_authorization = None
 
     async def authorize_education_claim(self, claim):
         self.authorized_claims.append(claim)
@@ -208,8 +242,11 @@ class _Adapter:
         self.finalize_kwargs.append(kwargs)
         return status
 
-    async def store_generated_candidate(self, claim, payload, *, trace_id):
-        self.stored.append((claim, payload, trace_id))
+    async def load_input_review_authorization(self, claim):
+        return self.review_authorization
+
+    async def store_generated_candidate(self, claim, payload, *, trace_id, input_review=None):
+        self.stored.append((claim, payload, trace_id, input_review))
         return {
             "candidate_ref": "REEDUC_synthetic_candidate",
             "status": "HELD",
@@ -227,6 +264,7 @@ class _Generation:
         self.outcome = outcome
         self.error = error
         self.calls = []
+        self.reviewed_calls = []
 
     async def generate(self, **kwargs):
         self.calls.append(kwargs)
@@ -234,13 +272,29 @@ class _Generation:
             raise self.error
         return self.outcome
 
+    async def generate_reviewed_input(self, **kwargs):
+        self.reviewed_calls.append(kwargs)
+        if self.error is not None:
+            raise self.error
+        return self.outcome
 
-def _worker(*, claim=None, adapter=None, generation=None, repository=None, lock=None):
+
+def _worker(
+    *,
+    claim=None,
+    adapter=None,
+    generation=None,
+    repository=None,
+    lock=None,
+    persistence=None,
+    continuation_enabled=False,
+):
     claim_repo = repository or _Repository([claim or _claim()])
+    active_persistence = persistence or _Persistence(claim_repo)
     return ResearchGeneralEducationWorker(
         school_id=2,
         policy_hash=_POLICY_HASH,
-        persistence=_Persistence(claim_repo),
+        persistence=active_persistence,
         persistence_adapter=adapter or _Adapter(),
         generation_service=generation
         or _Generation(
@@ -250,6 +304,7 @@ def _worker(*, claim=None, adapter=None, generation=None, repository=None, lock=
         ),
         concurrency_lock=lock or asyncio.Lock(),
         worker_id="general-education-2",
+        input_review_continuation_enabled=continuation_enabled,
         clock=lambda: _NOW,
     )
 
@@ -303,6 +358,7 @@ async def test_claim_uses_policy_attempt_one_and_db_error_never_calls_model():
             "lease_seconds": 300,
             "max_attempts": 1,
             "policy_version": GENERAL_EDUCATION_POLICY_VERSION,
+            "generation_round": 0,
             "now": _NOW,
         }
     ]
@@ -321,7 +377,15 @@ async def test_claim_uses_policy_attempt_one_and_db_error_never_calls_model():
 async def test_mismatched_claim_is_cancelled_without_generation(claim):
     adapter = _Adapter()
     generation = _Generation()
-    worker = _worker(claim=claim, adapter=adapter, generation=generation)
+    repository = _Repository([claim])
+    persistence = _Persistence(repository)
+    worker = _worker(
+        claim=claim,
+        adapter=adapter,
+        generation=generation,
+        repository=repository,
+        persistence=persistence,
+    )
 
     result = await worker.run_once()
 
@@ -451,6 +515,131 @@ def _input_review_receipt(claim, **changes):
     }
     values.update(changes)
     return ResearchGeneralEducationInputReviewReceipt(**values)
+
+
+@pytest.mark.asyncio
+async def test_round_one_uses_only_typed_reviewed_path_and_binds_candidate_storage():
+    claim = _claim(generation_round=1, input_review_id=52)
+    receipt = _input_review_receipt(claim).model_copy(
+        update={"trace_id": "TRACE_original_input_job"}
+    )
+    worker = _worker(claim=claim)
+    context = worker._context(claim)
+    authorization = ResearchGeneralEducationReviewedInputAuthorization(
+        input_review_ref=receipt.review_ref,
+        authorized_state_version=2,
+        receipt=receipt,
+        continuation_job_ref=claim.job_ref,
+        continuation_trace_id=context.trace_id,
+        continuation_policy_version=INPUT_REVIEW_CONTINUATION_POLICY_VERSION,
+        continuation_policy_hash=INPUT_REVIEW_CONTINUATION_POLICY_SHA256,
+        expires_at=_NOW + timedelta(hours=1),
+    )
+    adapter = _Adapter(input_review_continuation_enabled=True)
+    adapter.review_authorization = authorization
+    generation = _Generation(
+        ResearchGeneralEducationOutcome(
+            status="HELD",
+            reason_code="AWAITING_SOURCE_LIMIT_AND_CONTENT_REVIEW",
+            candidate=_payload(),
+        )
+    )
+    repository = _Repository([claim])
+    persistence = _Persistence(repository)
+    worker = _worker(
+        claim=claim,
+        adapter=adapter,
+        generation=generation,
+        repository=repository,
+        persistence=persistence,
+        continuation_enabled=True,
+    )
+
+    result = await worker.run_once()
+
+    assert result is ResearchGeneralEducationWorkerResult.HELD
+    assert generation.calls == []
+    assert len(generation.reviewed_calls) == 1
+    assert generation.reviewed_calls[0] == {
+        "caller_role": "SYSTEM",
+        "request_context": worker._context(claim),
+        "authorization": authorization,
+    }
+    assert adapter.stored[0][3] is authorization
+    assert repository.calls[0]["generation_round"] == 1
+    assert len(repository.calls) == 1
+    assert persistence.uow_count == 1
+
+
+@pytest.mark.asyncio
+async def test_round_one_missing_grant_is_cancelled_without_generation_fallback():
+    claim = _claim(generation_round=1, input_review_id=52)
+    adapter = _Adapter(input_review_continuation_enabled=True)
+    generation = _Generation()
+    repository = _Repository([claim])
+    worker = _worker(
+        claim=claim,
+        adapter=adapter,
+        generation=generation,
+        repository=repository,
+        continuation_enabled=True,
+    )
+
+    result = await worker.run_once()
+
+    assert result is ResearchGeneralEducationWorkerResult.CANCELLED
+    assert adapter.finalized[0][1] == "CANCELLED"
+    assert generation.calls == []
+    assert generation.reviewed_calls == []
+    assert adapter.stored == []
+
+
+@pytest.mark.asyncio
+async def test_enabled_claim_checks_reviewed_round_first_then_round_zero_in_one_uow():
+    ordinary_claim = _claim()
+    repository = _Repository([ordinary_claim])
+    persistence = _Persistence(repository)
+    adapter = _Adapter(input_review_continuation_enabled=True)
+    generation = _Generation(
+        ResearchGeneralEducationOutcome(status="ABSTAINED", reason_code="ZERO_EVIDENCE")
+    )
+    worker = _worker(
+        claim=ordinary_claim,
+        adapter=adapter,
+        generation=generation,
+        repository=repository,
+        persistence=persistence,
+        continuation_enabled=True,
+    )
+
+    result = await worker.run_once()
+
+    assert result is ResearchGeneralEducationWorkerResult.ABSTAINED
+    assert [call["generation_round"] for call in repository.calls] == [1, 0]
+    assert all(call["max_attempts"] == 1 for call in repository.calls)
+    assert persistence.uow_count == 1
+    assert len(generation.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_disabled_worker_queries_only_round_zero_even_if_round_one_exists():
+    continuation_claim = _claim(generation_round=1, input_review_id=52)
+    repository = _Repository([continuation_claim])
+    adapter = _Adapter(input_review_continuation_enabled=True)
+    generation = _Generation()
+    worker = _worker(
+        claim=continuation_claim,
+        adapter=adapter,
+        generation=generation,
+        repository=repository,
+    )
+
+    result = await worker.run_once()
+
+    assert result is ResearchGeneralEducationWorkerResult.IDLE
+    assert [call["generation_round"] for call in repository.calls] == [0]
+    assert adapter.authorized_claims == []
+    assert generation.calls == []
 
 
 @pytest.mark.asyncio

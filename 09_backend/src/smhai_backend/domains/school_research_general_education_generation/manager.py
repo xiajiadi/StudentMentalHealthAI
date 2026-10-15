@@ -65,6 +65,21 @@ class ResearchGeneralEducationWorkerManager:
             self.health[school_id] = "UNAVAILABLE"
             self._started = True
             return
+        input_review_continuation_enabled = getattr(
+            self.settings, "input_review_continuation_enabled", False
+        )
+        if type(input_review_continuation_enabled) is not bool:
+            raise RuntimeError("general-education continuation setting is invalid")
+        if (
+            input_review_continuation_enabled
+            and getattr(
+                self.persistence_adapter,
+                "input_review_continuation_enabled",
+                False,
+            )
+            is not True
+        ):
+            raise RuntimeError("general-education continuation adapter is not enabled")
         policy = getattr(self.persistence_adapter, "study_use_policy", None)
         generation_pins = getattr(self.generation_service, "policy_pins", None)
         if (
@@ -116,6 +131,7 @@ class ResearchGeneralEducationWorkerManager:
                 generation_service=self.generation_service,
                 concurrency_lock=self.concurrency_lock,
                 worker_id=f"general-education-{school_id}",
+                input_review_continuation_enabled=input_review_continuation_enabled,
                 poll_interval_seconds=self.settings.poll_interval_seconds,
                 lease_seconds=self.settings.lease_seconds,
                 clock=lambda: self.persistence._utc_now().replace(tzinfo=UTC),

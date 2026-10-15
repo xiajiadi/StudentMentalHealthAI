@@ -230,6 +230,7 @@ class ResearchGeneralEducationDraftSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: StrictBool = False
+    input_review_continuation_enabled: StrictBool = False
     school_id: StrictInt | None = None
     school_study_ref: StrictStr | None = Field(
         default=None, min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
@@ -277,6 +278,10 @@ class ResearchGeneralEducationDraftSettings(BaseModel):
 
     @model_validator(mode="after")
     def validate_enabled_pins(self) -> ResearchGeneralEducationDraftSettings:
+        if self.input_review_continuation_enabled and not self.enabled:
+            raise ValueError(
+                "input-review continuation requires the general-education draft lane"
+            )
         if not self.enabled:
             return self
         manifest_file = self.source_manifest_file

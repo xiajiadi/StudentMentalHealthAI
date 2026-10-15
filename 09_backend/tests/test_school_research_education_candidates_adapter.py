@@ -383,6 +383,8 @@ async def test_generation_job_list_is_current_task_scoped_and_content_free(monke
                             "last_error_code": None,
                             "created_at": now,
                             "updated_at": now,
+                            "generation_round": 0,
+                            "input_review_ref": None,
                         }
                     )
                 ])
@@ -418,6 +420,8 @@ async def test_generation_job_list_is_current_task_scoped_and_content_free(monke
             "last_error_code": None,
             "created_at": now,
             "updated_at": now,
+            "generation_round": 0,
+            "input_review_ref": None,
         }
     ]
     assert uow.entered == uow.exited == 1

@@ -73,6 +73,7 @@ class SchoolResearchStudentRagAdapter:
         query: str,
         target_population: Literal["secondary_school_student"],
         top_k: int,
+        required_layers: tuple[str, ...] | None = None,
         retrieval_id: str,
         context: RequestContext,
     ) -> RetrievalResult:
@@ -81,12 +82,18 @@ class SchoolResearchStudentRagAdapter:
         if not isinstance(retrieval_id, str) or not retrieval_id.startswith("RETR_"):
             raise error(ErrorCode.VALIDATION_FAILED, detail="invalid retrieval reference")
         try:
-            result = self._retriever.retrieve(
-                query,
-                target_population=_TARGET_POPULATION,
-                limit=top_k,
-            )
+            retrieve_kwargs = {
+                "target_population": _TARGET_POPULATION,
+                "limit": top_k,
+            }
+            if required_layers is not None:
+                retrieve_kwargs["required_layers"] = required_layers
+            result = self._retriever.retrieve(query, **retrieve_kwargs)
             self._verify_result(result)
+            if required_layers is not None and not set(required_layers).issubset(
+                set(result.matched_layers)
+            ):
+                raise ValueError("required student research layer is missing")
             chunks = tuple(self._to_knowledge_chunk(hit) for hit in result.hits)
             trace = {
                 "package_id": self._package_id,
@@ -103,6 +110,14 @@ class SchoolResearchStudentRagAdapter:
                 "query_transform": result.query_transform,
                 "matched_layers": list(result.matched_layers),
                 "missing_layers": list(result.missing_layers),
+                **(
+                    {
+                        "required_layers": list(required_layers),
+                        "selection_strategy": "LAYER_FIRST_BOUNDED_POOL",
+                    }
+                    if required_layers is not None
+                    else {}
+                ),
                 "reviewer_kind": "AI_ENGINEERING",
                 "research_only": True,
                 "professional_approval": False,

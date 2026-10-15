@@ -101,6 +101,7 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
         source_package_ref: str | None,
         source_study_ref: str | None,
         study_use_policy: ResearchStudyUsePolicy | None,
+        input_review_continuation_enabled: bool = False,
     ) -> None:
         super().__init__(persistence, study_use_policy=study_use_policy)
         self.enabled = enabled is True
@@ -110,6 +111,7 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
         self.source_manifest_sha256 = source_manifest_sha256
         self.source_package_ref = source_package_ref
         self.source_study_ref = source_study_ref
+        self.input_review_continuation_enabled = input_review_continuation_enabled is True
 
     def _require_enabled(self) -> None:
         if (
@@ -260,6 +262,19 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
             or row.state_version not in {1, 2}
             or (row.status == "HELD") != (row.state_version == 1)
             or row.scope.response_origin != "PUBLIC_OBSERVED"
+            or type(row.generation_round) is not int
+            or row.generation_round not in {0, 1}
+            or (row.generation_round == 0 and (
+                row.input_review_id is not None or row.input_review_state is not None
+                or row.input_safety_action not in {"PROCEED", "PROCEED_WITH_BOUNDARY"}
+            ))
+            or (row.generation_round == 1 and (
+                type(row.input_review_id) is not int or row.input_review_id <= 0
+                or row.input_review_state != "CONSUMED"
+                or row.input_safety_action != "REVIEW_REQUIRED"
+            ))
+            or row.retrieval_safety_action not in {"PROCEED", "PROCEED_WITH_BOUNDARY"}
+            or row.output_safety_action not in {"PROCEED", "PROCEED_WITH_BOUNDARY"}
             or not isinstance(row.content_sha256, str)
             or _SHA256.fullmatch(row.content_sha256) is None
         ):
@@ -267,6 +282,70 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
                 ErrorCode.DEPENDENCY_INVALID_RESPONSE,
                 detail="research education candidate metadata is unavailable",
             )
+
+    async def verify_candidate_input_lineage_in_uow(self, uow, row):
+        """Verify immutable review sidecar independently of the v1 payload hash."""
+        self._require_row_pins(row)
+        m = self._db_models
+        job = await uow.session.scalar(
+            self._select(m.SchoolResearchEducationJob).where(
+                m.SchoolResearchEducationJob.id == row.job_id,
+                m.SchoolResearchEducationJob.school_id == row.scope.school_id,
+                m.SchoolResearchEducationJob.research_session_id == row.scope.research_session_id,
+            )
+        )
+        if (
+            job is None or job.generation_round != row.generation_round
+            or job.input_review_id != row.input_review_id or job.status != "HELD"
+            or job.attempt_count != 1 or job.policy_hash != row.policy_hash
+            or job.policy_version != row.policy_version or not self._same_scope(row.scope, job)
+        ):
+            raise _conflict()
+        if row.generation_round == 0:
+            return
+        expected_trace = "TRACE_" + hashlib.sha256(
+            f"{job.job_ref}:{job.attempt_count}".encode("ascii")
+        ).hexdigest()[:32]
+        if row.trace_id != expected_trace:
+            raise _conflict()
+        ref = await uow.session.scalar(
+            self._select(m.SchoolResearchEducationInputReview.input_review_ref).where(
+                m.SchoolResearchEducationInputReview.id == row.input_review_id,
+                m.SchoolResearchEducationInputReview.school_id == row.scope.school_id,
+                m.SchoolResearchEducationInputReview.task_id == row.scope.task_id,
+            )
+        )
+        if ref is None:
+            raise _conflict()
+        review = await _input_review_repo_call(
+            uow.research_education_input_reviews.get_for_task(
+                school_id=row.scope.school_id, task_id=row.scope.task_id,
+                input_review_ref=ref,
+            )
+        )
+        self._input_review_pins(review)
+        if (
+            review.status != "CONSUMED" or review.state_version != 3
+            or not self._same_scope(row.scope, review.scope)
+            or row.created_at is None or review.consumed_at != row.created_at
+        ):
+            raise _conflict()
+        original = await uow.session.scalar(
+            self._select(m.SchoolResearchEducationJob).where(
+                m.SchoolResearchEducationJob.id == review.job_id,
+                m.SchoolResearchEducationJob.school_id == row.scope.school_id,
+                m.SchoolResearchEducationJob.research_session_id == row.scope.research_session_id,
+            )
+        )
+        if (
+            original is None or original.job_ref != review.job_ref
+            or original.generation_round != 0 or original.input_review_id is not None
+            or original.status != "REVIEW_REQUIRED" or original.attempt_count != 1
+            or original.last_error_code != "SAFETY_BLOCKED"
+            or original.policy_hash != review.policy_hash
+            or not self._same_scope(review.scope, original)
+        ):
+            raise _conflict()
 
     def _payload_from_row(self, row):
         from database_layer.crypto import EncryptedPayload
@@ -401,7 +480,9 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
             raise _not_found()
         return value
 
-    async def _require_active_specialist_assignment(self, uow, task, *, at: datetime) -> None:
+    async def _require_active_specialist_assignment(
+        self, uow, task, *, at: datetime, membership_role_id: int | None = None
+    ) -> None:
         m = self._db_models
         assignment_id = await uow.session.scalar(
             self._select(m.SchoolTaskSpecialistAssignment.id)
@@ -435,6 +516,10 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
                 (m.AccountSchoolMembership.valid_until.is_(None))
                 | (m.AccountSchoolMembership.valid_until >= _naive_utc(at)),
                 m.Account.status == self._db_enums.AccountStatus.ACTIVE.value,
+                *(
+                    [m.MembershipRole.id == membership_role_id]
+                    if membership_role_id is not None else []
+                ),
             )
             .limit(1)
             .with_for_update()
@@ -454,6 +539,7 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
         )
         if scope.response_origin != "PUBLIC_OBSERVED" or not self._same_scope(row.scope, scope):
             raise _not_found()
+        await self.verify_candidate_input_lineage_in_uow(uow, row)
         payload = self._payload_from_row(row) if include_payload else None
         return scope, session_ref, payload
 
@@ -550,8 +636,19 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
                     job.last_error_code.label("last_error_code"),
                     job.created_at.label("created_at"),
                     job.updated_at.label("updated_at"),
+                    job.generation_round.label("generation_round"),
+                    m.SchoolResearchEducationInputReview.input_review_ref.label("input_review_ref"),
                 )
                 .join(scoped_jobs, scoped_jobs.c.job_id == job.id)
+                .outerjoin(
+                    m.SchoolResearchEducationInputReview,
+                    (m.SchoolResearchEducationInputReview.id == job.input_review_id)
+                    & (m.SchoolResearchEducationInputReview.school_id == job.school_id)
+                    & (
+                        m.SchoolResearchEducationInputReview.research_session_id
+                        == job.research_session_id
+                    ),
+                )
                 .order_by(job.id)
                 .offset(offset)
                 .limit(limit)
@@ -584,6 +681,9 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
                     values["status"] not in status_counts
                     or type(values["attempt_count"]) is not int
                     or not 0 <= values["attempt_count"] <= 1
+                    or type(values["generation_round"]) is not int
+                    or values["generation_round"] not in {0, 1}
+                    or (values["generation_round"] == 0) != (values["input_review_ref"] is None)
                     or (
                         last_error_code is not None
                         and last_error_code not in allowed_error_codes
@@ -601,6 +701,8 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
                         "last_error_code": last_error_code,
                         "created_at": values["created_at"],
                         "updated_at": values["updated_at"],
+                        "generation_round": values["generation_round"],
+                        "input_review_ref": values["input_review_ref"],
                     }
                 )
 
@@ -1156,6 +1258,8 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
             "status",
             "lease_owner",
             "lease_token",
+            "generation_round",
+            "input_review_id",
         )
         return all(getattr(left, name) == getattr(right, name) for name in names)
 
@@ -1336,6 +1440,8 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
                 if (
                     disposition != "REVIEW_REQUIRED"
                     or error_code is not ResearchEducationJobErrorCode.SAFETY_BLOCKED
+                    or persisted.generation_round != 0
+                    or persisted.input_review_id is not None
                 ):
                     raise _conflict()
                 expected_token = hashlib.sha256(
@@ -1442,7 +1548,9 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
             expires_at=expires_at,
         )
 
-    async def store_generated_candidate(self, claim, payload, *, trace_id: str) -> dict:
+    async def store_generated_candidate(
+        self, claim, payload, *, trace_id: str, input_review=None
+    ) -> dict:
         """Persist only a fully validated held candidate against its active job lease."""
         self._require_enabled()
         from database_layer.school_research_education_candidates import (
@@ -1475,6 +1583,43 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
                 await self._live_claim_scope(uow, claim, now=now)
             )
             if payload.provenance.source_study_ref != self.source_study_ref:
+                raise _conflict()
+            consumed_review = None
+            if persisted.generation_round == 1:
+                authorization, review = await self._continuation_authorization(
+                    uow, persisted, _task, now=now
+                )
+                if input_review != authorization or trace_id != authorization.continuation_trace_id:
+                    raise _conflict()
+                if payload.provenance.input_safety_action != "REVIEW_REQUIRED":
+                    raise _conflict()
+                from smhai_backend.domains.research_general_education.input_review_policy import (
+                    INPUT_REVIEW_CONTINUATION_POLICY_SHA256,
+                    INPUT_REVIEW_CONTINUATION_POLICY_VERSION,
+                )
+                consumed_review = await _input_review_repo_call(
+                    uow.research_education_input_reviews.consume_for_candidate(
+                        claim=persisted,
+                        scope=review.scope,
+                        grant_policy_version=INPUT_REVIEW_CONTINUATION_POLICY_VERSION,
+                        grant_policy_hash=INPUT_REVIEW_CONTINUATION_POLICY_SHA256,
+                        source_package_ref=review.source_package_ref,
+                        source_study_ref=review.source_study_ref,
+                        source_manifest_sha256=review.source_manifest_sha256,
+                        prompt_id=review.prompt_id, prompt_version=review.prompt_version,
+                        prompt_sha256=review.prompt_sha256,
+                        canonical_input_sha256=review.canonical_input_sha256,
+                        trace_id=trace_id, now=now,
+                    )
+                )
+                if consumed_review.id != review.id or consumed_review.status != "CONSUMED":
+                    raise _conflict()
+            elif (
+                persisted.generation_round != 0 or persisted.input_review_id is not None
+                or input_review is not None
+                or payload.provenance.input_safety_action
+                not in {"PROCEED", "PROCEED_WITH_BOUNDARY"}
+            ):
                 raise _conflict()
             encrypted = self.protection.encrypt_json(
                 payload.model_dump(mode="json"),
@@ -1522,6 +1667,7 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
                     payload_schema_version=encrypted.payload_schema_version,
                     trace_id=trace_id,
                     now=now,
+                    input_review=consumed_review,
                 )
             )
             finished = await _repo_call(

@@ -13,13 +13,64 @@ from pathlib import Path
 
 from school_backup import encode_value
 from school_restore_plan import plan_restore, trusted_manifest
-from school_schema import LEGACY_SCHOOL_SNAPSHOT_REVISION
+from school_schema import (
+    LEGACY_SCHOOL_SNAPSHOT_REVISION,
+    RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION,
+)
 
 SUPPORTED_REVISION = LEGACY_SCHOOL_SNAPSHOT_REVISION
 
 
 class RestoreImportError(RuntimeError):
     """Redacted restore failure; preserve the isolated target for inspection."""
+
+
+def _ordered_snapshot_rows(plan: dict):
+    """Yield 0022 rows in FK-safe order without disabling MySQL constraints."""
+    round_one_jobs = []
+    continuation_snapshot = (
+        plan.get("revision") == RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION
+    )
+    job_table = "school_research_education_jobs"
+    review_table = "school_research_education_input_reviews"
+    review_event_table = "school_research_education_input_review_events"
+    jobs_seen = False
+    reviews_seen = False
+    review_events_seen = False
+    for name in plan["table_order"]:
+        rows = plan["tables"][name]["rows"]
+        if continuation_snapshot and name == job_table:
+            jobs_seen = True
+            columns = plan["tables"][name]["columns"]
+            if "generation_round" not in columns:
+                raise RestoreImportError("Continuation snapshot job layout is invalid")
+            round_index = columns.index("generation_round")
+            for row in rows:
+                if type(row[round_index]) is not int or row[round_index] not in {0, 1}:
+                    raise RestoreImportError("Continuation snapshot job round is invalid")
+                if row[round_index] == 0:
+                    yield name, row
+                else:
+                    round_one_jobs.append((name, row))
+            continue
+        if continuation_snapshot and name == review_table:
+            reviews_seen = True
+            for row in rows:
+                yield name, row
+            continue
+        if continuation_snapshot and name == review_event_table:
+            review_events_seen = True
+            for row in rows:
+                yield name, row
+            yield from round_one_jobs
+            round_one_jobs.clear()
+            continue
+        for row in rows:
+            yield name, row
+    if continuation_snapshot and (
+        not jobs_seen or not reviews_seen or not review_events_seen or round_one_jobs
+    ):
+        raise RestoreImportError("Continuation snapshot row ordering is incomplete")
 
 
 def validate_target_marker(target: dict, package: dict) -> None:
@@ -99,14 +150,13 @@ def import_snapshot(connection, package: dict, target: dict, *, restored_at: dat
             # The launcher supplies autocommit=False. Explicit BEGIN also keeps
             # inserts atomic if a caller supplied an autocommit connection.
             cursor.execute("START TRANSACTION")
-            for name in plan["table_order"]:
+            for name, row in _ordered_snapshot_rows(plan):
                 table = plan["tables"][name]
                 columns = table["columns"]
                 names = ", ".join(f"`{column}`" for column in columns)
                 placeholders = ", ".join("%s" for _ in columns)
                 statement = f"INSERT INTO `{name}` ({names}) VALUES ({placeholders})"
-                for row in table["rows"]:
-                    cursor.execute(statement, tuple(row))
+                cursor.execute(statement, tuple(row))
             for name, expected in plan["row_counts"].items():
                 cursor.execute(f"SELECT COUNT(*) FROM `{name}`")
                 if cursor.fetchone()[0] != expected:

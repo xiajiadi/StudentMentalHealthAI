@@ -16,6 +16,7 @@ from database_layer.errors import ForeignKeyConflict, OptimisticConcurrencyConfl
 from database_layer.models import (
     SchoolResearchEducationInputReview,
     SchoolResearchEducationInputReviewEvent,
+    SchoolResearchEducationJob,
 )
 from database_layer.school_research_education_input_reviews import (
     ResearchEducationInputReviewError,
@@ -179,23 +180,64 @@ def _create(session, claim, evidence=None):
     )
 
 
+def _finish_review_required(session, claim):
+    jobs = SchoolResearchEducationJobRepository(
+        cast(AsyncSession, _InputReviewAsyncSessionAdapter(session))
+    )
+    return asyncio.run(
+        jobs.finish(
+            school_id=claim.school_id,
+            research_session_id=claim.research_session_id,
+            job_id=claim.id,
+            lease_owner=claim.lease_owner,
+            lease_token=claim.lease_token,
+            status="REVIEW_REQUIRED",
+            now=_NOW + timedelta(seconds=30),
+        )
+    )
+
+
+def _authorize(session, claim, pending):
+    return asyncio.run(
+        _repo(session).authorize_and_enqueue_continuation(
+            input_review_ref=pending.input_review_ref,
+            scope=_scope(claim),
+            expected_state_version=1,
+            actor_membership_role_id=1,
+            grant_policy_version="RESEARCH_INPUT_REVIEW_ONCE_V1",
+            grant_policy_hash="e" * 64,
+            trace_id="TRACE_authorize_001",
+            now=_NOW + timedelta(minutes=1),
+        )
+    )
+
+
 def test_input_review_schema_is_job_and_session_bound_content_free_and_mysql_safe():
     review = SchoolResearchEducationInputReview.__table__
     event_table = SchoolResearchEducationInputReviewEvent.__table__
-    assert len(review.columns) == 41
+    assert len(review.columns) == 47
     assert "job_id" in review.columns
     assert "canonical_input_sha256" in review.columns
     assert "raw_input" not in review.columns and "input_text" not in review.columns
     assert "snapshot_ciphertext" not in review.columns and "answer" not in review.columns
+    assert review.c.status.type.length == 24
+    assert review.c.original_job_generation_round.default.arg == 0
+    assert review.c.grant_policy_version.nullable is True
+    assert review.c.grant_policy_hash.nullable is True
+    assert review.c.authorized_by_membership_role_id.nullable is True
+    assert review.c.consumed_at.nullable is True
+    assert event_table.c.event_type.type.length == 24
+    assert event_table.c.from_status.type.length == 24
+    assert event_table.c.to_status.type.length == 24
     assert any(
         constraint.name == "fk_school_research_education_input_review_session_exact_scope"
         and len(constraint.elements) == 12
         for constraint in review.foreign_key_constraints
     )
     assert any(
-        constraint.name == "fk_school_research_education_input_review_job_exact_scope"
+        constraint.name == "fk_school_research_education_input_review_job_round_scope"
         and tuple(element.parent.name for element in constraint.elements)
-        == ("job_id", "research_session_id", "school_id")
+        == ("job_id", "original_job_generation_round", "research_session_id", "school_id")
         for constraint in review.foreign_key_constraints
     )
     assert any(
@@ -386,6 +428,195 @@ def test_expired_review_cannot_be_disposed_and_uow_exposes_repository(session):
     asyncio.run(check_uow())
 
 
+def test_authorize_enqueues_one_round1_and_round0_replay_stays_unchanged(session):
+    claim = _claim(session)
+    pending = _create(session, claim)
+    _finish_review_required(session, claim)
+
+    authorized, continuation = _authorize(session, claim, pending)
+    assert authorized.status == "CONTINUATION_AUTHORIZED"
+    assert authorized.state_version == 2
+    assert authorized.authorized_by_membership_role_id == 1
+    assert authorized.grant_policy_version == "RESEARCH_INPUT_REVIEW_ONCE_V1"
+    assert continuation.generation_round == 1
+    assert continuation.input_review_id == authorized.id
+    assert continuation.status == "QUEUED" and continuation.attempt_count == 0
+
+    original = session.get(SchoolResearchEducationJob, claim.id)
+    assert original is not None
+    assert original.status == "REVIEW_REQUIRED"
+    assert original.generation_round == 0 and original.input_review_id is None
+    assert session.scalar(
+        select(SchoolResearchEducationJob).where(
+            SchoolResearchEducationJob.input_review_id == authorized.id
+        )
+    ).id == continuation.id
+
+    jobs = SchoolResearchEducationJobRepository(
+        cast(AsyncSession, _InputReviewAsyncSessionAdapter(session))
+    )
+    replay = asyncio.run(
+        jobs.enqueue_completed_session(
+            school_id=claim.school_id,
+            research_session_id=claim.research_session_id,
+            task_id=claim.task_id,
+            class_id=claim.class_id,
+            task_enrollment_id=claim.task_enrollment_id,
+            subject_id=claim.subject_id,
+            task_binding_id=claim.task_binding_id,
+            profile_version_id=claim.profile_version_id,
+            profile_ref=claim.profile_ref,
+            profile_version_number=claim.profile_version_number,
+            profile_sha256=claim.profile_sha256,
+            response_origin=claim.response_origin,
+            policy_version=claim.policy_version,
+            policy_hash=claim.policy_hash,
+            now=_NOW + timedelta(minutes=1),
+        )
+    )
+    assert replay.id == claim.id and replay.generation_round == 0
+    assert replay.input_review_id is None
+
+    assert asyncio.run(
+        jobs.claim_next(
+            school_id=1,
+            lease_owner="normal-worker",
+            policy_version=GENERAL_EDUCATION_POLICY_VERSION,
+            now=_NOW + timedelta(minutes=2),
+        )
+    ) == []
+    claimed = asyncio.run(
+        jobs.claim_next(
+            school_id=1,
+            lease_owner="continuation-worker",
+            policy_version=GENERAL_EDUCATION_POLICY_VERSION,
+            generation_round=1,
+            max_attempts=1,
+            now=_NOW + timedelta(minutes=2),
+        )
+    )
+    assert len(claimed) == 1 and claimed[0].id == continuation.id
+    assert claimed[0].generation_round == 1
+    assert asyncio.run(
+        jobs.claim_next(
+            school_id=1,
+            lease_owner="continuation-worker-2",
+            policy_version=GENERAL_EDUCATION_POLICY_VERSION,
+            generation_round=1,
+            max_attempts=1,
+            now=_NOW + timedelta(minutes=3),
+        )
+    ) == []
+
+
+def test_dispatch_recheck_and_consume_require_current_review_pins(session):
+    claim0 = _claim(session)
+    pending = _create(session, claim0)
+    _finish_review_required(session, claim0)
+    authorized, continuation = _authorize(session, claim0, pending)
+    jobs = SchoolResearchEducationJobRepository(
+        cast(AsyncSession, _InputReviewAsyncSessionAdapter(session))
+    )
+    claim1 = asyncio.run(
+        jobs.claim_next(
+            school_id=1,
+            lease_owner="continuation-worker",
+            policy_version=GENERAL_EDUCATION_POLICY_VERSION,
+            generation_round=1,
+            max_attempts=1,
+            now=_NOW + timedelta(minutes=2),
+        )
+    )[0]
+    repo = _repo(session)
+    pins = dict(
+        claim=claim1,
+        scope=_scope(claim1),
+        grant_policy_version="RESEARCH_INPUT_REVIEW_ONCE_V1",
+        grant_policy_hash="e" * 64,
+        source_package_ref="student-r3-source-package",
+        source_study_ref="school-noncommercial-rag-research-2027-06",
+        source_manifest_sha256="c" * 64,
+        prompt_id="PROMPT_research_general_education",
+        prompt_version="1.4.0",
+        prompt_sha256="d" * 64,
+        canonical_input_sha256="b" * 64,
+        now=_NOW + timedelta(minutes=2),
+    )
+    authorized_capability = asyncio.run(repo.require_authorized_continuation(**pins))
+    assert authorized_capability.id == authorized.id
+    assert authorized_capability.status == "CONTINUATION_AUTHORIZED"
+
+    with pytest.raises(ResearchEducationInputReviewError):
+        asyncio.run(
+            repo.consume_for_candidate(
+                **dict(
+                    pins,
+                    prompt_sha256="f" * 64,
+                    trace_id="TRACE_consume_001",
+                )
+            )
+        )
+    assert (
+        session.get(SchoolResearchEducationInputReview, authorized.id).status
+        == "CONTINUATION_AUTHORIZED"
+    )
+
+    consumed = asyncio.run(
+        repo.consume_for_candidate(
+            **pins,
+            trace_id="TRACE_consume_001",
+        )
+    )
+    assert consumed.status == "CONSUMED" and consumed.state_version == 3
+    assert consumed.consumed_at == _NOW + timedelta(minutes=2)
+    event_rows = session.scalars(
+        select(SchoolResearchEducationInputReviewEvent).order_by(
+            SchoolResearchEducationInputReviewEvent.state_version
+        )
+    ).all()
+    assert [(item.event_type, item.state_version) for item in event_rows] == [
+        ("PENDING", 1),
+        ("CONTINUATION_AUTHORIZED", 2),
+        ("CONSUMED", 3),
+    ]
+    assert event_rows[-1].actor_membership_role_id is None
+    assert continuation.input_review_id == consumed.id
+
+
+def test_revoke_authorized_grant_cancels_continuation_job(session):
+    claim0 = _claim(session)
+    pending = _create(session, claim0)
+    _finish_review_required(session, claim0)
+    authorized, continuation = _authorize(session, claim0, pending)
+
+    revoked = asyncio.run(
+        _repo(session).revoke(
+            input_review_ref=pending.input_review_ref,
+            scope=_scope(claim0),
+            expected_state_version=2,
+            actor_membership_role_id=1,
+            trace_id="TRACE_revoke_authorized_001",
+            now=_NOW + timedelta(minutes=2),
+        )
+    )
+    assert revoked.status == "REVOKED" and revoked.state_version == 3
+    assert revoked.authorized_by_membership_role_id == 1
+    assert session.get(SchoolResearchEducationJob, continuation.id).status == "CANCELLED"
+    assert asyncio.run(
+        SchoolResearchEducationJobRepository(
+            cast(AsyncSession, _InputReviewAsyncSessionAdapter(session))
+        ).claim_next(
+            school_id=1,
+            lease_owner="continuation-worker",
+            policy_version=GENERAL_EDUCATION_POLICY_VERSION,
+            generation_round=1,
+            max_attempts=1,
+            now=_NOW + timedelta(minutes=3),
+        )
+    ) == []
+    assert authorized.id == revoked.id
+
+
 def test_0021_migration_is_additive_has_short_names_and_refuses_data_downgrade():
     migration_path = (
         Path(__file__).parents[1]
@@ -424,6 +655,12 @@ def test_0021_migration_is_additive_has_short_names_and_refuses_data_downgrade()
             ),
         )
     )
+    model_names -= {
+        "school_research_education_input_review_status_scope_unique",
+        "fk_school_research_education_input_review_authorizer_school",
+        "fk_school_research_education_input_review_job_round_scope",
+    }
+    model_names = {name for name in model_names if "original_job" not in name}
     assert model_names <= set(names)
     assert "CREATE TABLE school_research_education_input_reviews" in sql
     assert "CREATE TABLE school_research_education_input_review_events" in sql
@@ -454,5 +691,59 @@ def test_0021_migration_is_additive_has_short_names_and_refuses_data_downgrade()
                 ).scalar_one()
                 == 1
             )
+    finally:
+        engine.dispose()
+
+
+def test_0022_migration_adds_round_lineage_and_refuses_round1_downgrade():
+    migration_path = (
+        Path(__file__).parents[1]
+        / "migrations"
+        / "versions"
+        / "20261015_0022_research_education_input_review_continuation.py"
+    )
+    spec = importlib.util.spec_from_file_location("education_continuation_0022", migration_path)
+    assert spec is not None and spec.loader is not None
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    assert migration.revision == "20261015_0022"
+    assert migration.down_revision == "20261015_0021"
+
+    output = io.StringIO()
+    context = MigrationContext.configure(
+        dialect=mysql.dialect(),
+        opts={"as_sql": True, "output_buffer": output},
+    )
+    with Operations.context(context):
+        migration.upgrade()
+    sql = output.getvalue()
+    assert "generation_round" in sql
+    assert "input_review_id" in sql
+    assert "CONTINUATION_AUTHORIZED" in sql
+    assert "CONSUMED" in sql
+    assert "fk_school_research_education_candidate_consumed_review" in sql
+    names = re.findall(r"CONSTRAINT\s+`?([A-Za-z0-9_]+)`?", sql)
+    assert names and all(len(name) <= 64 for name in names)
+
+    engine = create_engine("sqlite://")
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                "CREATE TABLE school_research_education_jobs "
+                "(generation_round INTEGER, input_review_id INTEGER)"
+            )
+            connection.exec_driver_sql(
+                "INSERT INTO school_research_education_jobs VALUES (1, 9)"
+            )
+            context = MigrationContext.configure(connection)
+            with (
+                Operations.context(context),
+                pytest.raises(RuntimeError, match="jobs has continuation data"),
+            ):
+                migration.downgrade()
+            assert connection.exec_driver_sql(
+                "SELECT generation_round, input_review_id "
+                "FROM school_research_education_jobs"
+            ).one() == (1, 9)
     finally:
         engine.dispose()

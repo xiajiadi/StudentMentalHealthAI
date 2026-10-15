@@ -61,6 +61,11 @@ async function load(next = 0) {
 function jobLabel(value: string): string {
   return ({ QUEUED: '等待生成', LEASED: '正在生成', RETRY: '等待处理', HELD: '待核对', ABSTAINED: '未生成内容', REVIEW_REQUIRED: '需人工处理', CRISIS_ROUTED: '已进入安全处理', FAILED: '生成失败', CANCELLED: '已停止' } as Record<string, string>)[value] ?? '状态待确认'
 }
+function jobRoundLabel(job: ResearchEducationGenerationJob): string {
+  return job.generation_round === 0
+    ? '原始研究任务'
+    : `授权继续任务（输入复核 ${job.input_review_ref}）`
+}
 function jobExplanation(job: ResearchEducationGenerationJob): string | null {
   if (!['ABSTAINED', 'REVIEW_REQUIRED', 'CRISIS_ROUTED', 'FAILED', 'CANCELLED'].includes(job.status)) return null
   const explanation = ({
@@ -133,7 +138,7 @@ onBeforeUnmount(() => { alive = false; clear() })
     </div>
     <p v-if="notice" role="status">{{ notice }}</p>
     <p v-if="jobTotal" role="status">本任务共 {{ jobTotal }} 项生成任务：<span v-for="(count,name) in jobCounts" :key="name"><template v-if="count">{{ jobLabel(String(name)) }} {{ count }} 项；</template></span></p>
-    <details v-if="jobs.length"><summary>查看生成状态（最多 20 条）</summary><ul><li v-for="(job,index) in jobs" :key="job.job_ref">任务 {{ index + 1 }}：{{ jobLabel(job.status) }} · 已尝试 {{ job.attempt_count }} 次<small v-if="jobExplanation(job)">{{ jobExplanation(job) }}</small></li></ul></details>
+    <details v-if="jobs.length"><summary>查看生成状态（最多 20 条）</summary><ul><li v-for="(job,index) in jobs" :key="job.job_ref">任务 {{ index + 1 }}：{{ jobRoundLabel(job) }} · {{ jobLabel(job.status) }} · 已尝试 {{ job.attempt_count }} 次<small v-if="jobExplanation(job)">{{ jobExplanation(job) }}</small></li></ul></details>
     <p v-if="busy" role="status" aria-busy="true">正在处理…</p>
     <AppStatusCallout v-if="errorMessage" tone="critical" title="候选操作未完成" :body="errorMessage"><AppButton v-if="pending" size="sm" :disabled="busy" @click="mutate(pending!)">使用相同请求重试</AppButton></AppStatusCallout>
     <p v-if="!busy && !rows.length && !errorMessage">当前没有此状态的候选。</p>

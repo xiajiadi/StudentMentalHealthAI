@@ -4,6 +4,7 @@ import hashlib
 import json
 import sys
 from copy import deepcopy
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -13,9 +14,14 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from smhai_backend.core.request_context import RequestContext
+from smhai_backend.domains.research_general_education.input_review_policy import (
+    INPUT_REVIEW_CONTINUATION_POLICY_SHA256,
+    INPUT_REVIEW_CONTINUATION_POLICY_VERSION,
+)
 from smhai_backend.domains.research_general_education.schemas import (
     ResearchGeneralEducationCandidatePayload,
     ResearchGeneralEducationInputReviewReceipt,
+    ResearchGeneralEducationReviewedInputAuthorization,
     ResearchGeneralEducationSourceCard,
 )
 from smhai_backend.domains.research_general_education.service import (
@@ -240,9 +246,11 @@ class _Retriever:
     def __init__(self, retrieval):
         self.retrieval = retrieval
         self.calls = 0
+        self.call_args = []
 
     async def retrieve(self, **kwargs):
         self.calls += 1
+        self.call_args.append(kwargs)
         return RetrievalResult(
             retrieval_id=kwargs["retrieval_id"],
             chunks=self.retrieval.chunks,
@@ -314,7 +322,7 @@ def _service(*, layers=None, safety=None, runtime=None, source_suffix=""):
 async def test_generation_returns_exact_cited_sources_held_and_pinned():
     runtime = _Runtime()
     safety = _Safety()
-    service, _ = _service(runtime=runtime, safety=safety)
+    service, retriever = _service(runtime=runtime, safety=safety)
 
     result = await service.generate(caller_role="PSYCHOLOGICAL_SPECIALIST", request_context=CONTEXT)
 
@@ -340,7 +348,105 @@ async def test_generation_returns_exact_cited_sources_held_and_pinned():
         "sources",
     }
     assert runtime.calls[0]["sources"][0].text == result.candidate.source_cards[0].excerpt_text
+    assert retriever.call_args[0]["top_k"] == 3
+    assert retriever.call_args[0]["required_layers"] == ("policy", "theory", "intervention")
     assert len(canonical_candidate_payload_sha256(result.candidate)) == 64
+
+
+@pytest.mark.asyncio
+async def test_reviewed_input_continues_with_bound_capability_and_preserves_original_decision():
+    safety = _Safety()
+    runtime = _Runtime()
+    service, retriever = _service(safety=safety, runtime=runtime)
+    pins = ResearchGeneralEducationPolicyPins(
+        policy_hash=POLICY_SHA,
+        source_package_ref="source-package-v1",
+        source_study_ref="source-study-v1",
+        source_manifest_sha256=MANIFEST_SHA,
+    )
+    receipt = ResearchGeneralEducationInputReviewReceipt(
+        schema_version="school-research-general-education-input-review.v1",
+        operation="INPUT",
+        action="REVIEW_REQUIRED",
+        reason_codes=("CONTENT_CONTROVERSIAL",),
+        requires_human=True,
+        decision_id="DEC_original_fixture",
+        review_ref="REVIEW_original_fixture",
+        trace_id="TRACE_original_input",
+        canonical_input_sha256=canonical_input_context_sha256(policy_pins=pins),
+        policy_version="RESEARCH_GENERAL_EDUCATION_DRAFT_V1",
+        policy_hash=POLICY_SHA,
+        safety_policy_version=SAFETY_POLICY_VERSION,
+        source_package_ref=pins.source_package_ref,
+        source_study_ref=pins.source_study_ref,
+        source_manifest_sha256=MANIFEST_SHA,
+        source_age_scope="14-17",
+        prompt_id=PROMPT_ID,
+        prompt_version=PROMPT_VERSION,
+        prompt_sha256=PROMPT_SHA256,
+    )
+    authorization = ResearchGeneralEducationReviewedInputAuthorization(
+        input_review_ref=receipt.review_ref,
+        authorized_state_version=2,
+        receipt=receipt,
+        continuation_job_ref="REJ_continuation_fixture",
+        continuation_trace_id=CONTEXT.trace_id,
+        continuation_policy_version=INPUT_REVIEW_CONTINUATION_POLICY_VERSION,
+        continuation_policy_hash=INPUT_REVIEW_CONTINUATION_POLICY_SHA256,
+        expires_at=datetime.fromisoformat("2026-10-16T00:00:00+00:00"),
+    )
+
+    result = await service.generate_reviewed_input(
+        caller_role="SYSTEM", request_context=CONTEXT, authorization=authorization
+    )
+
+    assert result.status == "HELD"
+    assert result.candidate.schema_version == "school-research-general-education-candidate.v1"
+    assert result.candidate.provenance.input_safety_action == "REVIEW_REQUIRED"
+    assert result.candidate.provenance.input_safety_reason_codes == ["CONTENT_CONTROVERSIAL"]
+    assert [stage for stage, _context in safety.calls] == ["RETRIEVAL", "OUTPUT"]
+    assert retriever.calls == 1
+    assert len(runtime.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_reviewed_input_rejects_policy_or_trace_mismatch_before_retrieval():
+    service, retriever = _service()
+    pins = ResearchGeneralEducationPolicyPins(
+        policy_hash=POLICY_SHA,
+        source_package_ref="source-package-v1",
+        source_study_ref="source-study-v1",
+        source_manifest_sha256=MANIFEST_SHA,
+    )
+    receipt = ResearchGeneralEducationInputReviewReceipt(
+        schema_version="school-research-general-education-input-review.v1",
+        operation="INPUT", action="REVIEW_REQUIRED",
+        reason_codes=("CONTENT_CONTROVERSIAL",), requires_human=True,
+        decision_id="DEC_original_fixture", review_ref="REVIEW_original_fixture",
+        trace_id="TRACE_original_input",
+        canonical_input_sha256=canonical_input_context_sha256(policy_pins=pins),
+        policy_version="RESEARCH_GENERAL_EDUCATION_DRAFT_V1", policy_hash=POLICY_SHA,
+        safety_policy_version=SAFETY_POLICY_VERSION,
+        source_package_ref=pins.source_package_ref, source_study_ref=pins.source_study_ref,
+        source_manifest_sha256=MANIFEST_SHA, source_age_scope="14-17",
+        prompt_id=PROMPT_ID, prompt_version=PROMPT_VERSION, prompt_sha256=PROMPT_SHA256,
+    )
+    authorization = ResearchGeneralEducationReviewedInputAuthorization(
+        input_review_ref=receipt.review_ref, authorized_state_version=2, receipt=receipt,
+        continuation_job_ref="REJ_continuation_fixture", continuation_trace_id="TRACE_other",
+        continuation_policy_version=INPUT_REVIEW_CONTINUATION_POLICY_VERSION,
+        continuation_policy_hash=INPUT_REVIEW_CONTINUATION_POLICY_SHA256,
+        expires_at=datetime.fromisoformat("2026-10-16T00:00:00+00:00"),
+    )
+
+    result = await service.generate_reviewed_input(
+        caller_role="SYSTEM", request_context=CONTEXT, authorization=authorization
+    )
+
+    assert result.status == "FAILED"
+    assert result.reason_code == "INPUT_REVIEW_AUTHORIZATION_INVALID"
+    assert retriever.calls == 0
+    assert service.runtime.calls == []
 
 
 @pytest.mark.asyncio

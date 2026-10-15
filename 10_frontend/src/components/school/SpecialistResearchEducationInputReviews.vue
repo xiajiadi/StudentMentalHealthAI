@@ -34,11 +34,12 @@ let clockTimer: number | undefined
 const allowed = computed(() => session.user?.role === 'psychological_specialist')
 const canResolve = computed(() => Boolean(
   allowed.value && !busy.value && !props.disabled && !pending.value
-  && selected.value?.status === 'PENDING'
+  && (selected.value?.status === 'PENDING' || selected.value?.status === 'CONTINUATION_AUTHORIZED')
   && Date.parse(selected.value.expires_at) > nowMs.value,
 ))
 const selectedExpired = computed(() => Boolean(
-  selected.value?.status === 'PENDING' && Date.parse(selected.value.expires_at) <= nowMs.value,
+  (selected.value?.status === 'PENDING' || selected.value?.status === 'CONTINUATION_AUTHORIZED')
+  && Date.parse(selected.value.expires_at) <= nowMs.value,
 ))
 
 function clearState() {
@@ -131,7 +132,11 @@ async function sendPending() {
     ))
     target.value = ''
     confirmed.value = false
-    notice.value = updated.status === 'REJECTED' ? '已拒绝此输入复核请求。' : '已撤销此输入复核记录。'
+    notice.value = updated.status === 'REJECTED'
+      ? '已拒绝此输入复核请求。'
+      : updated.status === 'CONTINUATION_AUTHORIZED'
+        ? '已授权一次研究生成。生成的候选仍需人工审核；此授权不代表专业批准。'
+        : '已撤销此输入复核记录。'
   } catch (error) {
     if (current !== sequence) return
     errorMessage.value = userFacingApiError(error, '操作未完成。')
@@ -146,7 +151,12 @@ function resolveSelected() {
   const row = selected.value
   const disposition = target.value
   if (!row || !canResolve.value || !confirmed.value || !disposition
-    || row.status !== 'PENDING' || Date.parse(row.expires_at) <= Date.now()) return
+    || Date.parse(row.expires_at) <= Date.now()) return
+  const pendingReview = row.status === 'PENDING' && row.state_version === 1
+  const authorizedReview = row.status === 'CONTINUATION_AUTHORIZED' && row.state_version === 2
+  if ((disposition === 'CONTINUATION_AUTHORIZED' && (!pendingReview || !row.continuation_enabled))
+    || (disposition === 'REJECTED' && !pendingReview)
+    || (disposition === 'REVOKED' && !pendingReview && !authorizedReview)) return
   let key: string
   try {
     key = newResearchEducationInputReviewIdempotencyKey()
@@ -160,7 +170,13 @@ function resolveSelected() {
 }
 
 function statusLabel(status: ResearchEducationInputReviewSummary['status']): string {
-  return ({ PENDING: '待核对', REJECTED: '已拒绝', REVOKED: '已撤销' })[status]
+  return ({
+    PENDING: '待核对',
+    CONTINUATION_AUTHORIZED: '已授权一次继续',
+    CONSUMED: '已使用',
+    REJECTED: '已拒绝',
+    REVOKED: '已撤销',
+  })[status]
 }
 
 function dateLabel(value: string): string {
@@ -195,7 +211,7 @@ onBeforeUnmount(() => {
     <header class="input-reviews__header">
       <div>
         <h3>研究输入复核</h3>
-        <p>核对固定研究请求，并记录拒绝或撤销决定。</p>
+        <p>核对固定研究请求，并按权限记录一次性继续授权、拒绝或撤销。</p>
       </div>
       <AppButton variant="quiet" size="sm" :disabled="busy || Boolean(pending)" @click="load(offset)">刷新</AppButton>
     </header>
@@ -237,13 +253,32 @@ onBeforeUnmount(() => {
       </dl>
       <h5>固定研究请求</h5>
       <blockquote>{{ detail.fixed_request }}</blockquote>
-      <p v-if="selectedExpired" class="input-reviews__expired" role="status">此记录已过期，不能再进行状态变更。</p>
-      <div v-if="detail.status === 'PENDING' && !selectedExpired" class="input-reviews__actions">
+      <p v-if="selectedExpired" class="input-reviews__expired" role="status">
+        {{ detail.status === 'CONTINUATION_AUTHORIZED' ? '此授权已过期，不能继续使用或变更。' : '此记录已过期，不能再进行状态变更。' }}
+      </p>
+      <p
+        v-if="detail.status === 'PENDING' && detail.continuation_enabled && !selectedExpired"
+        class="input-reviews__continuation-note"
+      >
+        授权只允许一次研究生成；生成的候选仍需人工审核，不代表专业批准。
+      </p>
+      <div
+        v-if="(detail.status === 'PENDING' || detail.status === 'CONTINUATION_AUTHORIZED') && !selectedExpired"
+        class="input-reviews__actions"
+      >
         <label for="input-review-disposition">确认处理</label>
         <select id="input-review-disposition" v-model="target" :disabled="!canResolve">
           <option value="">请选择</option>
-          <option value="REJECTED">拒绝此输入复核请求</option>
-          <option value="REVOKED">撤销此待处理记录</option>
+          <option v-if="detail.status === 'PENDING'" value="REJECTED">拒绝此输入复核请求</option>
+          <option
+            v-if="detail.status === 'PENDING' && detail.continuation_enabled"
+            value="CONTINUATION_AUTHORIZED"
+          >
+            授权一次继续
+          </option>
+          <option value="REVOKED">
+            {{ detail.status === 'CONTINUATION_AUTHORIZED' ? '撤销未使用的继续授权' : '撤销此待处理记录' }}
+          </option>
         </select>
         <label class="input-reviews__confirm">
           <input v-model="confirmed" type="checkbox" :disabled="!canResolve">
@@ -255,7 +290,9 @@ onBeforeUnmount(() => {
           :disabled="!canResolve || !target || !confirmed"
           @click="resolveSelected"
         >
-          确认{{ target === 'REJECTED' ? '拒绝' : target === 'REVOKED' ? '撤销' : '处理' }}
+          确认{{ target === 'CONTINUATION_AUTHORIZED'
+            ? '授权一次继续'
+            : target === 'REJECTED' ? '拒绝' : target === 'REVOKED' ? '撤销' : '处理' }}
         </AppButton>
       </div>
     </section>
@@ -282,5 +319,6 @@ onBeforeUnmount(() => {
 .input-reviews__actions select { max-width: 100%; padding: 7px; border: 1px solid #d7e3de; border-radius: 6px; background: white; color: var(--color-text-primary); }
 .input-reviews__confirm { display: flex; align-items: center; gap: 6px; }
 .input-reviews__expired { color: #7a4300; }
+.input-reviews__continuation-note { border-inline-start: 3px solid #b27b20; padding-inline-start: 10px; }
 .input-reviews :focus-visible { outline: 2px solid #438e7b; outline-offset: 3px; }
 </style>

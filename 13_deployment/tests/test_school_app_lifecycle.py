@@ -481,6 +481,7 @@ def test_general_education_draft_config_roundtrips_argv_and_reports_own_status(
         research_config=research_input,
         student_research_config=student_input,
         research_education_draft_config=draft_input,
+        input_review_continuation_enabled=True,
     )
 
     backend_argv = ops.spawned[0][0]
@@ -490,11 +491,15 @@ def test_general_education_draft_config_roundtrips_argv_and_reports_own_status(
     assert backend_argv[
         backend_argv.index("--research-education-draft-config-sha256") + 1
     ] == draft_config.config_sha256
+    assert "--enable-research-education-input-review-continuation" in backend_argv
     manifest = json.loads(
         (workspace / lifecycle.MANIFEST_NAME).read_text(encoding="utf-8")
     )
     assert manifest[lifecycle.RESEARCH_EDUCATION_DRAFT_CONFIG_KEY] == (
-        draft_config.manifest_value()
+        {
+            **draft_config.manifest_value(),
+            "input_review_continuation_enabled": True,
+        }
     )
     restored = lifecycle._research_education_draft_config_from_manifest(manifest)
     assert restored is not None
@@ -503,7 +508,17 @@ def test_general_education_draft_config_roundtrips_argv_and_reports_own_status(
         draft_config.config_file,
         "--research-education-draft-config-sha256",
         draft_config.config_sha256,
+        "--enable-research-education-input-review-continuation",
     ]
+    legacy_manifest = dict(manifest)
+    legacy_draft = dict(legacy_manifest[lifecycle.RESEARCH_EDUCATION_DRAFT_CONFIG_KEY])
+    legacy_draft.pop("input_review_continuation_enabled")
+    legacy_manifest[lifecycle.RESEARCH_EDUCATION_DRAFT_CONFIG_KEY] = legacy_draft
+    legacy_restored = lifecycle._research_education_draft_config_from_manifest(
+        legacy_manifest
+    )
+    assert legacy_restored is not None
+    assert legacy_restored.input_review_continuation_enabled is False
     assert started["research_general_education_draft_worker"]["status"] == "UNVERIFIED"
 
     status = app.status(workspace)
@@ -511,7 +526,33 @@ def test_general_education_draft_config_roundtrips_argv_and_reports_own_status(
         "enabled": True,
         "status": "READY",
         "integration": lifecycle.RESEARCH_GENERAL_EDUCATION_DRAFT_INTEGRATION,
+        "input_review_continuation_enabled": True,
     }
+    stopped = app.stop(workspace)
+    assert stopped["status"] == "STOPPED"
+    stopped_manifest = json.loads(
+        (workspace / lifecycle.MANIFEST_NAME).read_text(encoding="utf-8")
+    )
+    assert stopped_manifest[lifecycle.RESEARCH_EDUCATION_DRAFT_CONFIG_KEY][
+        "input_review_continuation_enabled"
+    ] is True
+    app.start(
+        workspace,
+        frontend_mode="dev",
+        research_config=research_input,
+        student_research_config=student_input,
+        research_education_draft_config=draft_input,
+        input_review_continuation_enabled=True,
+    )
+    restarted_backend_argv = ops.spawned[-2][0]
+    assert "--enable-research-education-input-review-continuation" in restarted_backend_argv
+    restarted_manifest = json.loads(
+        (workspace / lifecycle.MANIFEST_NAME).read_text(encoding="utf-8")
+    )
+    assert restarted_manifest[lifecycle.RESEARCH_EDUCATION_DRAFT_CONFIG_KEY][
+        "input_review_continuation_enabled"
+    ] is True
+    app.stop(workspace)
 
 
 def test_general_education_draft_lifecycle_rejects_missing_source_or_study():

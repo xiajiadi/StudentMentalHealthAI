@@ -178,8 +178,15 @@ def _validated_research_education_draft_config(
     *,
     research_config: ResearchProcessConfig | None,
     student_research_config: StudentResearchProcessConfig | None,
+    input_review_continuation_enabled: bool = False,
 ) -> ResearchEducationDraftProcessConfig | None:
+    if type(input_review_continuation_enabled) is not bool:
+        raise LifecycleError("Research education continuation opt-in is invalid")
     if value is None:
+        if input_review_continuation_enabled:
+            raise LifecycleError(
+                "Research education continuation requires the explicit draft config"
+            )
         return None
     if (
         not isinstance(value, Mapping)
@@ -218,7 +225,10 @@ def _validated_research_education_draft_config(
         raise LifecycleError(
             "Research education draft student source differs from the explicit student config"
         )
-    return ResearchEducationDraftProcessConfig(deployment)
+    return ResearchEducationDraftProcessConfig(
+        deployment,
+        input_review_continuation_enabled=input_review_continuation_enabled,
+    )
 
 
 def _research_education_draft_config_from_manifest(
@@ -231,6 +241,9 @@ def _research_education_draft_config_from_manifest(
         raise LifecycleError("Lifecycle research education draft config is invalid")
     config_file = value.get("config_file")
     config_sha256 = value.get("config_sha256")
+    continuation_enabled = value.get("input_review_continuation_enabled", False)
+    if type(continuation_enabled) is not bool:
+        raise LifecycleError("Lifecycle research education continuation flag is invalid")
     if type(config_file) is not str or type(config_sha256) is not str:
         raise LifecycleError("Lifecycle research education draft config is invalid")
     try:
@@ -241,9 +254,15 @@ def _research_education_draft_config_from_manifest(
         raise LifecycleError(
             "Lifecycle research education draft config failed pinned preflight"
         ) from None
-    if deployment.manifest_value() != value:
+    expected_value = deployment.manifest_value()
+    if "input_review_continuation_enabled" in value:
+        expected_value["input_review_continuation_enabled"] = continuation_enabled
+    if expected_value != value:
         raise LifecycleError("Lifecycle research education draft config pins changed")
-    return ResearchEducationDraftProcessConfig(deployment)
+    return ResearchEducationDraftProcessConfig(
+        deployment,
+        input_review_continuation_enabled=continuation_enabled,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -397,9 +416,14 @@ class ResearchEducationDraftProcessConfig:
     """Lifecycle-owned caller pin for the separately opt-in held-draft lane."""
 
     deployment: ResearchEducationDraftConfig
+    input_review_continuation_enabled: bool = False
+
+    def __post_init__(self) -> None:
+        if type(self.input_review_continuation_enabled) is not bool:
+            raise LifecycleError("Research education continuation opt-in is invalid")
 
     def cli_arguments(self) -> list[str]:
-        return [
+        values = [
             RESEARCH_EDUCATION_DRAFT_CONFIG_FLAGS[
                 "research_education_draft_config_file"
             ],
@@ -409,9 +433,15 @@ class ResearchEducationDraftProcessConfig:
             ],
             self.deployment.config_sha256,
         ]
+        if self.input_review_continuation_enabled:
+            values.append("--enable-research-education-input-review-continuation")
+        return values
 
     def manifest_value(self) -> dict[str, object]:
-        return self.deployment.manifest_value()
+        return {
+            **self.deployment.manifest_value(),
+            "input_review_continuation_enabled": self.input_review_continuation_enabled,
+        }
 
 
 def _utc_now() -> str:
@@ -1472,6 +1502,7 @@ class SchoolAppLifecycle:
         research_config: Mapping[str, object] | None = None,
         student_research_config: Mapping[str, object] | None = None,
         research_education_draft_config: Mapping[str, object] | None = None,
+        input_review_continuation_enabled: bool = False,
     ) -> dict[str, Any]:
         if not IS_WINDOWS:
             raise LifecycleError("Native school application lifecycle requires Windows")
@@ -1486,6 +1517,7 @@ class SchoolAppLifecycle:
             research_education_draft_config,
             research_config=research_config,
             student_research_config=student_research_config,
+            input_review_continuation_enabled=input_review_continuation_enabled,
         )
         if research_config is not None:
             _validate_research_port(research_config.port, backend_port, frontend_port)
@@ -1863,11 +1895,15 @@ class SchoolAppLifecycle:
                     ),
                 )
             )
+            result["research_general_education_draft_worker"][
+                "input_review_continuation_enabled"
+            ] = education_draft_config.input_review_continuation_enabled
         else:
             result["research_general_education_draft_worker"] = {
                 "enabled": False,
                 "status": "DISABLED",
                 "integration": RESEARCH_GENERAL_EDUCATION_DRAFT_INTEGRATION,
+                "input_review_continuation_enabled": False,
             }
         if research_config is not None:
             try:
@@ -3146,6 +3182,11 @@ def _public_status(manifest: dict[str, Any]) -> dict[str, Any]:
         "enabled": draft_config is not None,
         "status": "UNVERIFIED" if draft_config is not None else "DISABLED",
         "integration": RESEARCH_GENERAL_EDUCATION_DRAFT_INTEGRATION,
+        "input_review_continuation_enabled": (
+            draft_config.input_review_continuation_enabled
+            if draft_config is not None
+            else False
+        ),
     }
     return result
 
@@ -3200,6 +3241,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     start.add_argument(
         RESEARCH_EDUCATION_DRAFT_CONFIG_FLAGS["research_education_draft_config_sha256"]
+    )
+    start.add_argument(
+        "--enable-research-education-input-review-continuation",
+        action="store_true",
     )
     return parser
 
@@ -3294,6 +3339,9 @@ def main(argv: list[str] | None = None) -> int:
                 research_config=research_config,
                 student_research_config=student_research_config,
                 research_education_draft_config=research_education_draft_config,
+                input_review_continuation_enabled=(
+                    args.enable_research_education_input_review_continuation
+                ),
             )
         elif args.command == "status":
             result = lifecycle.status(args.workspace)

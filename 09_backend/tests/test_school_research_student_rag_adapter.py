@@ -49,7 +49,8 @@ def _fixtures(*, eligible: bool = True, rights: str = "VERIFIED_WITH_CONDITIONS"
         publisher=source.publisher,
         canonical_url=source.canonical_url,
         locator=(
-            "Abstract, background; source population: Review ages 14-24; not high-school-only; source: "
+            "Abstract, background; source population: Review ages 14-24; "
+            "not high-school-only; source: "
             "https://example.org/article; license: CC BY 4.0 "
             "(https://creativecommons.org/licenses/by/4.0/); "
             "attribution: Example journal, CC BY 4.0"
@@ -73,6 +74,7 @@ def _fixtures(*, eligible: bool = True, rights: str = "VERIFIED_WITH_CONDITIONS"
     class FakeRetriever:
         def __init__(self):
             self.package = package
+            self.last_required_layers = None
             self.result = SimpleNamespace(
                 status="MATCHES",
                 package_id=package.package_id,
@@ -90,7 +92,8 @@ def _fixtures(*, eligible: bool = True, rights: str = "VERIFIED_WITH_CONDITIONS"
                 hits=(hit,),
             )
 
-        def retrieve(self, query, *, target_population, limit):
+        def retrieve(self, query, *, target_population, limit, required_layers=None):
+            self.last_required_layers = required_layers
             return self.result
 
     return FakeRetriever(), package, hit
@@ -149,6 +152,29 @@ async def test_adapter_returns_frozen_pending_student_chunk_with_source_boundary
     assert result.trace["query_transform"] == "NONE"
     assert result.trace["matched_layers"] == ["theory"]
     assert result.trace["missing_layers"] == ["policy", "intervention"]
+
+
+@pytest.mark.asyncio
+async def test_adapter_forwards_required_layers_and_rejects_incomplete_selection() -> None:
+    retriever, package, _hit = _fixtures()
+    adapter = SchoolResearchStudentRagAdapter(
+        retriever,
+        expected_manifest_sha256=_HASH,
+        expected_package_id=package.package_id,
+        expected_study_ref=_STUDY,
+    )
+
+    with pytest.raises(BackendError):
+        await adapter.retrieve(
+            query="school connectedness",
+            target_population="secondary_school_student",
+            top_k=3,
+            required_layers=("policy", "theory", "intervention"),
+            retrieval_id="RETR_student_research",
+            context=RequestContext(request_id="REQ_research", trace_id="TRACE_research"),
+        )
+
+    assert retriever.last_required_layers == ("policy", "theory", "intervention")
 
 
 @pytest.mark.asyncio

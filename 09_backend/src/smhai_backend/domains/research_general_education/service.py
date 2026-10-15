@@ -7,6 +7,7 @@ import json
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Literal, Protocol
 from uuid import uuid4
 
@@ -30,6 +31,10 @@ from smhai_backend.integrations.evidence import (
 from smhai_backend.integrations.rag import RetrievalResult
 from smhai_backend.integrations.safety import SafetyAction, SafetyCheckView, SafetyClient
 
+from .input_review_policy import (
+    INPUT_REVIEW_CONTINUATION_POLICY_SHA256,
+    INPUT_REVIEW_CONTINUATION_POLICY_VERSION,
+)
 from .prompt import (
     FIXED_GENERAL_EDUCATION_REQUEST,
     PROMPT_ID,
@@ -42,6 +47,7 @@ from .schemas import (
     ResearchGeneralEducationInputReviewReceipt,
     ResearchGeneralEducationOutcome,
     ResearchGeneralEducationProvenance,
+    ResearchGeneralEducationReviewedInputAuthorization,
     ResearchGeneralEducationSourceCard,
 )
 
@@ -118,6 +124,7 @@ class SchoolResearchStudentRetrieverPort(Protocol):
         query: str,
         target_population: Literal["secondary_school_student"],
         top_k: int,
+        required_layers: tuple[str, ...] | None = None,
         retrieval_id: str,
         context: RequestContext,
     ) -> RetrievalResult: ...
@@ -246,37 +253,76 @@ class ResearchGeneralEducationDraftService:
         caller_role: Literal["SYSTEM", "PSYCHOLOGICAL_SPECIALIST"],
         request_context: RequestContext,
     ) -> ResearchGeneralEducationOutcome:
+        return await self._generate(
+            caller_role=caller_role,
+            request_context=request_context,
+            authorization=None,
+        )
+
+    async def generate_reviewed_input(
+        self,
+        *,
+        caller_role: Literal["SYSTEM"],
+        request_context: RequestContext,
+        authorization: ResearchGeneralEducationReviewedInputAuthorization,
+    ) -> ResearchGeneralEducationOutcome:
+        """Continue only from a current worker-loaded, exact receipt capability."""
+        if caller_role != "SYSTEM":
+            raise error(ErrorCode.FORBIDDEN, detail="reviewed continuation is worker-only")
+        return await self._generate(
+            caller_role=caller_role,
+            request_context=request_context,
+            authorization=authorization,
+        )
+
+    async def _generate(
+        self,
+        *,
+        caller_role: Literal["SYSTEM", "PSYCHOLOGICAL_SPECIALIST"],
+        request_context: RequestContext,
+        authorization: ResearchGeneralEducationReviewedInputAuthorization | None,
+    ) -> ResearchGeneralEducationOutcome:
         if caller_role not in {"SYSTEM", "PSYCHOLOGICAL_SPECIALIST"}:
             raise error(ErrorCode.FORBIDDEN, detail="research draft access denied")
         if not isinstance(request_context, RequestContext):
             raise error(ErrorCode.VALIDATION_FAILED, detail="request context is invalid")
 
         safety_context = _safety_context(request_context, caller_role)
-        try:
-            input_check = await self.safety.check_input(safety_context, request_context)
-        except Exception:
-            return _outcome("FAILED", "INPUT_SAFETY_UNAVAILABLE")
-        input_codes = _safety_codes(input_check, "INPUT", request_context)
-        if input_codes is None:
-            return _outcome("FAILED", "INPUT_SAFETY_INVALID")
-        input_action, input_reasons = input_codes
-        stopped = _safety_stop(input_action, input_check.decision.requires_human)
-        if stopped:
-            input_review = (
-                _input_review_receipt(
-                    input_check,
-                    safety_context=safety_context,
-                    request_context=request_context,
-                    policy_pins=self.policy_pins,
+        if authorization is None:
+            try:
+                input_check = await self.safety.check_input(safety_context, request_context)
+            except Exception:
+                return _outcome("FAILED", "INPUT_SAFETY_UNAVAILABLE")
+            input_codes = _safety_codes(input_check, "INPUT", request_context)
+            if input_codes is None:
+                return _outcome("FAILED", "INPUT_SAFETY_INVALID")
+            input_action, input_reasons = input_codes
+            stopped = _safety_stop(input_action, input_check.decision.requires_human)
+            if stopped:
+                input_review = (
+                    _input_review_receipt(
+                        input_check,
+                        safety_context=safety_context,
+                        request_context=request_context,
+                        policy_pins=self.policy_pins,
+                    )
+                    if stopped == "REVIEW_REQUIRED"
+                    else None
                 )
-                if stopped == "REVIEW_REQUIRED"
-                else None
-            )
-            return ResearchGeneralEducationOutcome(
-                status=stopped,
-                reason_code="INPUT_SAFETY_STOP",
-                input_review=input_review,
-            )
+                return ResearchGeneralEducationOutcome(
+                    status=stopped,
+                    reason_code="INPUT_SAFETY_STOP",
+                    input_review=input_review,
+                )
+        else:
+            if not _valid_reviewed_input_authorization(
+                authorization,
+                request_context=request_context,
+                policy_pins=self.policy_pins,
+            ):
+                return _outcome("FAILED", "INPUT_REVIEW_AUTHORIZATION_INVALID")
+            input_action = authorization.receipt.action
+            input_reasons = list(authorization.receipt.reason_codes)
 
         retrieval_id = f"RETR_{uuid4().hex}"
         generation_id = f"GEN_{uuid4().hex}"
@@ -284,7 +330,8 @@ class ResearchGeneralEducationDraftService:
             retrieval = await self.retriever.retrieve(
                 query=_FIXED_QUERY,
                 target_population="secondary_school_student",
-                top_k=8,
+                top_k=3,
+                required_layers=tuple(_EXPECTED_LAYERS),
                 retrieval_id=retrieval_id,
                 context=request_context,
             )
@@ -545,6 +592,49 @@ def canonical_input_context_sha256(
         allow_nan=False,
     ).encode("utf-8")
     return hashlib.sha256(canonical).hexdigest()
+
+
+def _valid_reviewed_input_authorization(
+    authorization: ResearchGeneralEducationReviewedInputAuthorization,
+    *,
+    request_context: RequestContext,
+    policy_pins: ResearchGeneralEducationPolicyPins,
+) -> bool:
+    if type(authorization) is not ResearchGeneralEducationReviewedInputAuthorization:
+        return False
+    receipt = authorization.receipt
+    try:
+        expected_input_hash = canonical_input_context_sha256(policy_pins=policy_pins)
+    except (TypeError, ValueError):
+        return False
+    now = datetime.now(UTC)
+    return (
+        authorization.authorized_state_version == 2
+        and receipt.review_ref == authorization.input_review_ref
+        and authorization.continuation_job_ref.startswith("REJ_")
+        and authorization.continuation_trace_id == request_context.trace_id
+        and receipt.trace_id != authorization.continuation_trace_id
+        and authorization.continuation_policy_version
+        == INPUT_REVIEW_CONTINUATION_POLICY_VERSION
+        and authorization.continuation_policy_hash
+        == INPUT_REVIEW_CONTINUATION_POLICY_SHA256
+        and receipt.operation == "INPUT"
+        and receipt.action == "REVIEW_REQUIRED"
+        and receipt.reason_codes == ("CONTENT_CONTROVERSIAL",)
+        and receipt.requires_human is True
+        and receipt.canonical_input_sha256 == expected_input_hash
+        and receipt.policy_version == GENERAL_EDUCATION_POLICY_VERSION
+        and receipt.policy_hash == policy_pins.policy_hash
+        and receipt.safety_policy_version == SAFETY_POLICY_VERSION
+        and receipt.source_package_ref == policy_pins.source_package_ref
+        and receipt.source_study_ref == policy_pins.source_study_ref
+        and receipt.source_manifest_sha256 == policy_pins.source_manifest_sha256
+        and receipt.source_age_scope == "14-17"
+        and receipt.prompt_id == PROMPT_ID
+        and receipt.prompt_version == PROMPT_VERSION
+        and receipt.prompt_sha256 == PROMPT_SHA256
+        and authorization.expires_at.astimezone(UTC) > now
+    )
 
 
 def _matches_fixed_input_safety_context(context: Mapping[str, object]) -> bool:

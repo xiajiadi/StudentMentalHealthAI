@@ -84,6 +84,7 @@ def test_general_education_draft_is_off_by_default_with_single_attempt_bounds():
     assert settings.max_attempts == 1
     assert settings.shutdown_drain_seconds == 10.0
     assert backend.research_general_education_draft.enabled is False
+    assert backend.research_general_education_draft.input_review_continuation_enabled is False
 
 
 def test_enabled_draft_requires_exact_trusted_config_pins():
@@ -94,6 +95,23 @@ def test_enabled_draft_requires_exact_trusted_config_pins():
     assert settings.policy_hash == "c" * 64
     assert settings.source_manifest_sha256 == _SOURCE_MANIFEST_SHA256
     assert settings.source_manifest_file == _MANIFEST_FILE
+    assert settings.input_review_continuation_enabled is False
+
+
+def test_input_review_continuation_is_opt_in_and_requires_draft_lane():
+    with pytest.raises(ValidationError):
+        ResearchGeneralEducationDraftSettings.model_validate(
+            {"input_review_continuation_enabled": True}
+        )
+
+    configured = BackendSettings(
+        **_enabled_backend_settings(
+            research_general_education_draft=_draft_settings(
+                input_review_continuation_enabled=True
+            )
+        )
+    )
+    assert configured.research_general_education_draft.input_review_continuation_enabled is True
 
 
 @pytest.mark.parametrize(

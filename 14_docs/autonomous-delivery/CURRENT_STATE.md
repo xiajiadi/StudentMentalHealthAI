@@ -1,5 +1,47 @@
 # PsyNova current execution state
 
+## Latest increment: 2026-10-15, input-review continuation integration
+
+Engineering scope estimate remains approximately75% complete/25% remaining,
+not final acceptance or permission for school production use. ACTIVE; no deadline.
+
+- Canonical code base7fa96751546cbc6396939baf580e6e6d3ac34e87 is preserved while
+  0022 implementation is reviewed in the attached research-input-review-continuation
+  worktree. Integrate only into xiajiadi/autonomous-delivery-20261011 after review.
+- R0020 official sealed backup restored into new S0021 workspace
+  D:/Projects/.StudentMentalHealthAI-school-install-20261015-s;
+  UUID e824e0017def24190dfb74bba1971aff, DB3327/API8101/UI4191/CAT57421.
+  Runtime0021, source7fa9675. Original Q/R/P databases and lineage files preserved.
+- S restored882 encrypted payloads. Cohort spans8 tasks/classes:800 completed
+  sessions/6400 items; whole research table803/6424 includes3 other sessions.
+  One selected task has100/800; it must not be mistaken for the whole cohort.
+- Native offset1 job REJ_36c169f8d3303f1dbe0b2ce5b967df95368e5f3460fd29cc13259b06e5f183f8
+  stopped INPUT REVIEW_REQUIRED/SAFETY_BLOCKED, attempt1. Its actual receipt
+  REIR_f055d60c586b4f7c96258599c1b31e8d remains PENDINGv1, candidate0.
+  Historical offset0 job REJ_707a4801b19300358047e8741d4ed3bc1aff73897d0806c4ccf0f31e82e93169
+  is unchanged, no retrospective receipt. API logout succeeded.
+  Evidence D:/Dev/temp/psynova-s0021-offset1-input-review-result-20261015-r1.json,
+  SHA d578ccef59eb6f686c1b80142b9480ea213275e868b71159ac6c65bacb1bbe48.
+- 0022 code adds default-disabled assigned-specialist one-shot research continuation,
+  distinct round1 job, exact review/lease/source/prompt/authorizer lineage and
+  atomic consume/HELD-candidate/finish. Frozen Safety decision and payloadv1 retained.
+  Retrieval/output guards and separate publication review remain mandatory.
+- Full untruncated R3 layer selection is now5840/6000 runtime projection characters,
+  preserving policy/theory/intervention. Verified locally against pinned real package:
+  D:/Dev/temp/psynova-0022-layered-retrieval-proof-r1.json,
+  SHA f78177d6b17fd8721666a2e4f9fa41ec1ca150d4a6d87f1c4cc135f370d1dd18.
+  This is retrieval/budget evidence with zero model/Safety/DB calls.
+- Root fresh Backend focused run189 passed. Worker DB39 passed and deployment206
+  passed/1 skipped require final artifact review. Native0022 migration, real reviewed
+  generation and specialist publish/student-read/revoke are still PENDING.
+- Next: integrate reviewed0022 source, fresh S0021 sealed backup, restore into absent
+  T0022 (DB3328/API8102/UI4192/CAT57422), preserve receipt/job/cohort, explicitly
+  opt in continuation, then one bounded real generation and content review. No bulk
+  800 generation until representative path passes. Preserve failures and targets.
+
+The sections below retain earlier evidence and may describe older instances;
+the latest section and actual Git/service evidence govern resumption.
+
 Updated2026-10-15 after explicit human Continue. ACTIVE; no new shutdown deadline.
 The previous06:30 CST deadline was satisfied before shutdown and was explicitly
 revoked by the later human Continue. Do not reapply historical deadlines.

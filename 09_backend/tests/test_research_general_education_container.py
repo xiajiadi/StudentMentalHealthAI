@@ -189,6 +189,10 @@ async def test_enabled_container_wires_held_worker_candidate_feedback_and_privat
         assert (
             feedback_adapter.education_candidate_validator.__self__ is candidate_adapter
         )
+        assert (
+            feedback_adapter.education_candidate_lineage_validator.__self__
+            is candidate_adapter
+        )
         assert container.post_assessment_worker_manager is not None
         assert (
             manager.concurrency_lock

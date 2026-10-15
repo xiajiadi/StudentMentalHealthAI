@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from typing import Literal
 from urllib.parse import urlsplit
 
@@ -182,6 +183,26 @@ class ResearchGeneralEducationInputReviewReceipt(_StrictModel):
     prompt_id: StrictStr = Field(pattern=r"^PROMPT_[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$")
     prompt_version: StrictStr = Field(min_length=1, max_length=64)
     prompt_sha256: StrictStr = Field(pattern=_SHA256.pattern)
+
+
+class ResearchGeneralEducationReviewedInputAuthorization(_StrictModel):
+    """Typed, worker-only capability for one review-bound continuation job."""
+
+    input_review_ref: StrictStr = Field(min_length=1, max_length=160)
+    authorized_state_version: Literal[2]
+    receipt: ResearchGeneralEducationInputReviewReceipt
+    continuation_job_ref: StrictStr = Field(pattern=r"^REJ_[A-Za-z0-9][A-Za-z0-9_.:-]{0,155}$")
+    continuation_trace_id: StrictStr = Field(pattern=r"^TRACE_[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$")
+    continuation_policy_version: StrictStr = Field(min_length=1, max_length=64)
+    continuation_policy_hash: StrictStr = Field(pattern=_SHA256.pattern)
+    expires_at: datetime
+
+    @field_validator("expires_at")
+    @classmethod
+    def require_aware_expiry(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("review continuation expiry must include a timezone")
+        return value
 
 
 class ResearchGeneralEducationOutcome(_StrictModel):

@@ -822,9 +822,14 @@ def test_0016_migration_has_exact_model_columns_and_composite_session_fk(monkeyp
         with Operations.context(MigrationContext.configure(connection)):
             migration.upgrade()
     inspector = sa_inspect(engine)
+    additive_0022_columns = {"generation_round", "input_review_id"}
     assert [
         column["name"] for column in inspector.get_columns("school_research_education_jobs")
-    ] == list(SchoolResearchEducationJob.__table__.columns.keys())
+    ] == [
+        name
+        for name in SchoolResearchEducationJob.__table__.columns.keys()
+        if name not in additive_0022_columns
+    ]
     foreign_key = next(
         fk
         for fk in inspector.get_foreign_keys("school_research_education_jobs")

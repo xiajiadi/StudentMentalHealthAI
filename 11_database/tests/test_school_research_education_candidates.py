@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import importlib.util
 import io
 import re
@@ -23,6 +24,9 @@ from database_layer.school_research_education_candidates import (
     ResearchEducationCandidateScope,
     SchoolResearchEducationCandidateRepository,
 )
+from database_layer.school_research_education_input_reviews import (
+    SchoolResearchEducationInputReviewRepository,
+)
 from database_layer.school_research_education_jobs import (
     GENERAL_EDUCATION_POLICY_VERSION,
     SchoolResearchEducationJobRepository,
@@ -33,6 +37,7 @@ from sqlalchemy import (
     Column,
     Integer,
     MetaData,
+    String,
     Table,
     create_engine,
     event,
@@ -43,6 +48,16 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.schema import CreateTable
 
+from test_school_research_education_input_reviews import (
+    _authorize,
+    _finish_review_required,
+)
+from test_school_research_education_input_reviews import (
+    _create as _create_input_review,
+)
+from test_school_research_education_input_reviews import (
+    _scope as _input_review_scope,
+)
 from test_school_research_education_jobs import _AsyncSessionAdapter, _seed
 
 _NOW = datetime(2026, 10, 15, 9, 0, tzinfo=UTC)
@@ -111,6 +126,12 @@ def _scope(claim):
 
 
 def _candidate_values(claim):
+    trace_id = "TRACE_general_001"
+    if claim.generation_round == 1:
+        token = hashlib.sha256(
+            f"{claim.job_ref}:{claim.attempt_count}".encode("ascii")
+        ).hexdigest()[:32]
+        trace_id = f"TRACE_{token}"
     return {
         "claim": claim,
         "scope": _scope(claim),
@@ -136,7 +157,7 @@ def _candidate_values(claim):
         "cipher_format_version": "fernet.v1",
         "key_version": "school-key-v1",
         "payload_schema_version": "school_research_education_candidate.v1",
-        "trace_id": "TRACE_general_001",
+        "trace_id": trace_id,
         "now": _NOW,
     }
 
@@ -184,6 +205,10 @@ def test_candidate_schema_is_exact_session_job_bound_and_ciphertext_only():
         "answer", "score", "snapshot_ciphertext", "candidate_body", "candidate_text"
     }.intersection(candidate.columns.keys())
     assert candidate.c.payload_ciphertext.type.python_type is bytes
+    assert candidate.c.generation_round.default.arg == 0
+    assert candidate.c.generation_round.nullable is False
+    assert candidate.c.input_review_id.nullable is True
+    assert candidate.c.input_review_state.nullable is True
     assert event_table.c["candidate_id"].nullable is False
     assert not any(name.endswith("ciphertext") for name in event_table.columns.keys())
 
@@ -197,6 +222,21 @@ def test_candidate_schema_is_exact_session_job_bound_and_ciphertext_only():
         ("job_id", "research_session_id", "school_id"),
         "school_research_education_jobs",
         ("id", "research_session_id", "school_id"),
+    ) in foreign_keys
+    assert (
+        ("job_id", "generation_round", "research_session_id", "school_id"),
+        "school_research_education_jobs",
+        ("id", "generation_round", "research_session_id", "school_id"),
+    ) in foreign_keys
+    assert (
+        ("job_id", "input_review_id", "research_session_id", "school_id"),
+        "school_research_education_jobs",
+        ("id", "input_review_id", "research_session_id", "school_id"),
+    ) in foreign_keys
+    assert (
+        ("input_review_id", "input_review_state", "research_session_id", "school_id"),
+        "school_research_education_input_reviews",
+        ("id", "status", "research_session_id", "school_id"),
     ) in foreign_keys
     assert set(
         element.parent.name
@@ -214,6 +254,78 @@ def test_candidate_schema_is_exact_session_job_bound_and_ciphertext_only():
     mysql_sql = str(CreateTable(candidate).compile(dialect=mysql.dialect()))
     assert "payload_ciphertext MEDIUMBLOB NOT NULL" in mysql_sql
     assert "snapshot_ciphertext" not in mysql_sql and "answer" not in mysql_sql
+    assert candidate.c.input_review_state.type.length == 24
+
+
+def test_candidate_round_safety_check_rejects_partial_review_and_keeps_normal_round0():
+    candidate = SchoolResearchEducationCandidate.__table__
+    check = next(
+        constraint
+        for constraint in candidate.constraints
+        if isinstance(constraint, CheckConstraint)
+        and constraint.name.endswith("safety_actions_allowed")
+    )
+    guard = Table(
+        "candidate_review_round_guard",
+        MetaData(),
+        Column("generation_round", Integer, nullable=False),
+        Column("input_review_id", Integer, nullable=True),
+        Column("input_review_state", String(24), nullable=True),
+        Column("input_safety_action", String(32), nullable=False),
+        Column("retrieval_safety_action", String(32), nullable=False),
+        Column("output_safety_action", String(32), nullable=False),
+        CheckConstraint(str(check.sqltext), name="round_review_actions_match"),
+    )
+    engine = create_engine("sqlite://")
+    guard.metadata.create_all(engine)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                guard.insert().values(
+                    generation_round=0,
+                    input_review_id=None,
+                    input_review_state=None,
+                    input_safety_action="PROCEED",
+                    retrieval_safety_action="PROCEED",
+                    output_safety_action="PROCEED_WITH_BOUNDARY",
+                )
+            )
+            connection.execute(
+                guard.insert().values(
+                    generation_round=1,
+                    input_review_id=7,
+                    input_review_state="CONSUMED",
+                    input_safety_action="REVIEW_REQUIRED",
+                    retrieval_safety_action="PROCEED",
+                    output_safety_action="PROCEED",
+                )
+            )
+        for values in (
+            {"generation_round": 0, "input_review_id": None, "input_review_state": "CONSUMED",
+             "input_safety_action": "PROCEED"},
+            {"generation_round": 1, "input_review_id": 7, "input_review_state": None,
+             "input_safety_action": "REVIEW_REQUIRED"},
+            {"generation_round": 1, "input_review_id": None, "input_review_state": None,
+             "input_safety_action": "REVIEW_REQUIRED"},
+            {"generation_round": 0, "input_review_id": None, "input_review_state": None,
+             "input_safety_action": "REVIEW_REQUIRED"},
+        ):
+            with pytest.raises(IntegrityError):
+                with engine.begin() as connection:
+                    connection.execute(
+                        guard.insert().values(
+                            {
+                                "input_review_state": None,
+                                "input_review_id": None,
+                                "input_safety_action": "PROCEED",
+                                "retrieval_safety_action": "PROCEED",
+                                "output_safety_action": "PROCEED",
+                                **values,
+                            }
+                        )
+                    )
+    finally:
+        engine.dispose()
 
 
 def test_feedback_candidate_pair_check_preserves_legacy_nulls_and_rejects_partial_pairs():
@@ -272,6 +384,8 @@ def test_held_candidate_replay_resolve_and_append_only_events(session):
     assert first.candidate_ref == replay.candidate_ref
     assert first.status == "HELD" and first.state_version == 1
     assert first.content_revision == 1
+    assert first.generation_round == 0
+    assert first.input_review_id is None and first.input_review_state is None
     assert first.source_manifest_sha256 == _MANIFEST_HASH
     assert first.purpose == "RESEARCH_SIMULATION"
     assert first.research_only is True
@@ -346,6 +460,106 @@ def test_candidate_replay_with_different_content_or_scope_fails_closed(session):
 
     with pytest.raises(ResearchEducationCandidateError):
         asyncio.run(repository.create_held(**dict(values, output_safety_action="REVIEW_REQUIRED")))
+
+
+def test_reviewed_candidate_requires_and_persists_consumed_round1_sidecar(session):
+    claim0 = _claim(session)
+    pending = _create_input_review(session, claim0)
+    _finish_review_required(session, claim0)
+    authorized, continuation = _authorize(session, claim0, pending)
+    jobs = SchoolResearchEducationJobRepository(_CandidateAsyncSessionAdapter(session))
+    claim1 = asyncio.run(
+        jobs.claim_next(
+            school_id=claim0.school_id,
+            lease_owner="continuation-worker",
+            policy_version=GENERAL_EDUCATION_POLICY_VERSION,
+            generation_round=1,
+            max_attempts=1,
+            now=_NOW.replace(minute=2),
+        )
+    )[0]
+    input_reviews = SchoolResearchEducationInputReviewRepository(
+        _CandidateAsyncSessionAdapter(session)
+    )
+    evidence = pending
+    consumed = asyncio.run(
+        input_reviews.consume_for_candidate(
+            claim=claim1,
+            scope=_input_review_scope(claim0),
+            grant_policy_version="RESEARCH_INPUT_REVIEW_ONCE_V1",
+            grant_policy_hash="e" * 64,
+            source_package_ref=evidence.source_package_ref,
+            source_study_ref=evidence.source_study_ref,
+            source_manifest_sha256=evidence.source_manifest_sha256,
+            prompt_id=evidence.prompt_id,
+            prompt_version=evidence.prompt_version,
+            prompt_sha256=evidence.prompt_sha256,
+            canonical_input_sha256=evidence.canonical_input_sha256,
+            trace_id="TRACE_candidate_consume_001",
+            now=_NOW.replace(minute=2),
+        )
+    )
+    values = _candidate_values(claim1)
+    values.update(
+        input_safety_action="REVIEW_REQUIRED",
+        input_review=consumed,
+        source_manifest_sha256=consumed.source_manifest_sha256,
+        prompt_ref=consumed.prompt_id,
+        prompt_version=consumed.prompt_version,
+        prompt_sha256=consumed.prompt_sha256,
+        now=_NOW.replace(minute=2),
+    )
+    repository = SchoolResearchEducationCandidateRepository(
+        _CandidateAsyncSessionAdapter(session)
+    )
+    with pytest.raises(ResearchEducationCandidateError, match="INPUT_REVIEW_TRACE_INVALID"):
+        asyncio.run(repository.create_held(**dict(values, trace_id="TRACE_unbound")))
+    candidate = asyncio.run(repository.create_held(**values))
+    assert candidate.generation_round == 1
+    assert candidate.input_review_id == consumed.id
+    assert candidate.input_review_state == "CONSUMED"
+    assert candidate.input_safety_action == "REVIEW_REQUIRED"
+
+    stored_candidate = session.get(SchoolResearchEducationCandidate, candidate.id)
+    assert stored_candidate is not None
+    valid_trace = stored_candidate.trace_id
+    stored_candidate.trace_id = "TRACE_unbound"
+    session.flush()
+    with pytest.raises(
+        ResearchEducationCandidateError,
+        match="CANDIDATE_CONTINUATION_LINEAGE_INVALID",
+    ):
+        asyncio.run(
+            repository.get_for_task(
+                school_id=claim1.school_id,
+                task_id=claim1.task_id,
+                candidate_ref=candidate.candidate_ref,
+            )
+        )
+    stored_candidate.trace_id = valid_trace
+    session.flush()
+
+    finalized = asyncio.run(
+        jobs.finish(
+            school_id=claim1.school_id,
+            research_session_id=claim1.research_session_id,
+            job_id=claim1.id,
+            lease_owner=claim1.lease_owner,
+            lease_token=claim1.lease_token,
+            status="HELD",
+            now=_NOW.replace(minute=2),
+        )
+    )
+    assert finalized.status == "HELD" and finalized.generation_round == 1
+    assert continuation.id == claim1.id and authorized.id == consumed.id
+    listed = asyncio.run(repository.list_for_task(school_id=1, task_id=1))
+    fetched = asyncio.run(
+        repository.get_for_task(
+            school_id=1, task_id=1, candidate_ref=candidate.candidate_ref
+        )
+    )
+    assert [row.input_review_id for row in listed] == [consumed.id]
+    assert fetched is not None and fetched.input_review_state == "CONSUMED"
 
 
 def test_candidate_repository_never_selects_cat_snapshot(session):

@@ -6,7 +6,6 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from smhai_backend.core.config import BackendSettings
 from smhai_backend.core.errors import (
     BackendError,
     backend_error_handler,
@@ -31,7 +30,10 @@ def mounted_app(role: BackendRole):
         school_research_education_candidates=SchoolResearchEducationCandidateService(
             persistence=persistence
         ),
-        settings=BackendSettings(),
+        settings=SimpleNamespace(
+            allowed_origins=(),
+            auth=SimpleNamespace(csrf_header_name="X-CSRF-Token"),
+        ),
     )
     app.add_exception_handler(BackendError, backend_error_handler)
     app.add_exception_handler(Exception, unhandled_error_handler)
@@ -218,6 +220,8 @@ async def test_specialist_api_is_bounded_csrf_idempotent_and_payload_closed():
     }
     assert not ({"subject_id", "lease_owner", "lease_token", "candidate_payload"}
                 & set(jobs_data["items"][0]))
+    assert jobs_data["items"][0]["generation_round"] == 0
+    assert jobs_data["items"][0]["input_review_ref"] is None
     assert detail.status_code == 200
     detail_data = detail.json()["data"]
     assert detail_data["candidate_payload"]["schema_version"] == (
@@ -258,4 +262,44 @@ async def test_specialist_api_is_bounded_csrf_idempotent_and_payload_closed():
     assert [call[0] for call in persistence.calls] == [
         "tasks", "list", "jobs", "input_review_list", "input_review_get",
         "get", "queue", "resolve", "input_review_resolve"
+    ]
+
+
+async def test_specialist_can_authorize_once_and_revoke_unused_authorization():
+    app, persistence = mounted_app(BackendRole.PSYCHOLOGICAL_SPECIALIST)
+    persistence.input_review_continuation_enabled = True
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        root = (
+            "/api/v1/school/research-education-candidates/tasks/"
+            "TASK_demo/input-reviews/REI_synthetic_1"
+        )
+        listed = await client.get(root.rsplit("/REI_synthetic_1", 1)[0])
+        authorized = await client.post(
+            f"{root}/resolve",
+            json={"expected_state_version": 1, "target": "CONTINUATION_AUTHORIZED"},
+            headers={
+                "Idempotency-Key": "authorize-once",
+                "X-CSRF-Token": "synthetic-csrf-token",
+            },
+        )
+        revoked = await client.post(
+            f"{root}/resolve",
+            json={"expected_state_version": 2, "target": "REVOKED"},
+            headers={
+                "Idempotency-Key": "revoke-unused-authorization",
+                "X-CSRF-Token": "synthetic-csrf-token",
+            },
+        )
+
+    assert listed.status_code == 200
+    assert listed.json()["data"]["items"][0]["continuation_enabled"] is True
+    assert authorized.status_code == 200
+    assert authorized.json()["data"]["status"] == "CONTINUATION_AUTHORIZED"
+    assert authorized.json()["data"]["state_version"] == 2
+    assert revoked.status_code == 200
+    assert revoked.json()["data"]["status"] == "REVOKED"
+    assert revoked.json()["data"]["state_version"] == 3
+    assert [call[0] for call in persistence.calls] == [
+        "input_review_list", "input_review_resolve", "input_review_resolve"
     ]

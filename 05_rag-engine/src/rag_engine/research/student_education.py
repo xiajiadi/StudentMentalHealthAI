@@ -621,6 +621,7 @@ class SchoolStudentEducationRetriever:
         target_population: str,
         limit: int = 8,
         now: datetime | None = None,
+        required_layers: tuple[str, ...] | None = None,
     ) -> SchoolStudentRetrievalResult:
         if target_population != CONSUMER_SCOPE:
             raise SchoolStudentPackageError("STUDENT_POPULATION_NOT_AUTHORIZED")
@@ -635,11 +636,21 @@ class SchoolStudentEducationRetriever:
             raise SchoolStudentPackageError("STUDENT_QUERY_IDENTITY_TOKEN")
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 8:
             raise SchoolStudentPackageError("STUDENT_LIMIT_INVALID")
+        if required_layers is not None and (
+            type(required_layers) is not tuple
+            or not required_layers
+            or len(required_layers) > limit
+            or any(type(layer) is not str or layer not in _LAYERS for layer in required_layers)
+            or len(set(required_layers)) != len(required_layers)
+        ):
+            raise SchoolStudentPackageError("STUDENT_REQUIRED_LAYERS_INVALID")
         search_query, query_transform = _expand_bilingual_query(query.strip())
         try:
             hits = self._lexical.search(
                 search_query,
-                limit=limit,
+                # Keep a bounded candidate pool before ensuring the required
+                # evidence layers; truncating directly to `limit` can lose one.
+                limit=8 if required_layers is not None else limit,
                 filters=MetadataFilter(
                     review_status=(),
                     rights_status=(),
@@ -685,6 +696,19 @@ class SchoolStudentEducationRetriever:
                     lexical_score=float(hit.sparse_score),
                 )
             )
+        if required_layers is not None:
+            best_by_layer: dict[str, str] = {}
+            for hit in projected:
+                if hit.layer in required_layers and hit.layer not in best_by_layer:
+                    best_by_layer[hit.layer] = hit.chunk_id
+            if any(layer not in best_by_layer for layer in required_layers):
+                raise SchoolStudentPackageError("STUDENT_REQUIRED_LAYER_MISSING")
+            selected_ids = set(best_by_layer.values())
+            for hit in projected:
+                if len(selected_ids) >= limit:
+                    break
+                selected_ids.add(hit.chunk_id)
+            projected = [hit for hit in projected if hit.chunk_id in selected_ids]
         matched_layers = tuple(
             layer for layer in _LAYER_ORDER if any(hit.layer == layer for hit in projected)
         )

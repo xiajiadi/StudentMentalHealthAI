@@ -30,6 +30,7 @@ from school_schema import (
     RESEARCH_CAT_SESSIONS_REVISION,
     RESEARCH_COHORTS_REVISION,
     RESEARCH_EDUCATION_CANDIDATES_REVISION,
+    RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION,
     RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION,
     RESEARCH_EDUCATION_JOBS_REVISION,
     RESEARCH_PARAMETER_PROVENANCE_REVISION,
@@ -303,8 +304,8 @@ def test_research_revision_adds_three_isolated_tables_and_preserves_0011_layout(
 
 def test_parameter_provenance_revision_preserves_0012_snapshot_shape():
     assert RESEARCH_PARAMETER_PROVENANCE_REVISION in SCHOOL_REVISION_CHAIN
-    assert CURRENT_SCHOOL_REVISION == RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION
-    assert SCHOOL_REVISION_CHAIN[-7:] == (
+    assert CURRENT_SCHOOL_REVISION == RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION
+    assert SCHOOL_REVISION_CHAIN[-8:] == (
         RESEARCH_COHORTS_REVISION,
         RESEARCH_EDUCATION_JOBS_REVISION,
         RESEARCH_REVIEW_FEEDBACK_REVISION,
@@ -312,6 +313,7 @@ def test_parameter_provenance_revision_preserves_0012_snapshot_shape():
         CONVERSATION_SAFETY_CASES_REVISION,
         RESEARCH_EDUCATION_CANDIDATES_REVISION,
         RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION,
+        RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION,
     )
     old = restore_plan._load_trusted_tables(RESEARCH_CAT_SESSIONS_REVISION)
     current = restore_plan._load_trusted_tables(RESEARCH_PARAMETER_PROVENANCE_REVISION)
@@ -392,8 +394,8 @@ def test_public_observed_revision_preserves_0013_snapshots_and_adds_exact_assign
 
 def test_sealed_cohort_revision_preserves_0014_snapshot_and_adds_only_cohort_projection():
     assert RESEARCH_COHORTS_REVISION in SCHOOL_REVISION_CHAIN
-    assert CURRENT_SCHOOL_REVISION == RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION
-    assert SCHOOL_REVISION_CHAIN[-7:] == (
+    assert CURRENT_SCHOOL_REVISION == RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION
+    assert SCHOOL_REVISION_CHAIN[-8:] == (
         RESEARCH_COHORTS_REVISION,
         RESEARCH_EDUCATION_JOBS_REVISION,
         RESEARCH_REVIEW_FEEDBACK_REVISION,
@@ -401,6 +403,7 @@ def test_sealed_cohort_revision_preserves_0014_snapshot_and_adds_only_cohort_pro
         CONVERSATION_SAFETY_CASES_REVISION,
         RESEARCH_EDUCATION_CANDIDATES_REVISION,
         RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION,
+        RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION,
     )
 
     previous = restore_plan._load_trusted_tables(PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION)
@@ -464,8 +467,8 @@ def test_sealed_cohort_revision_preserves_0014_snapshot_and_adds_only_cohort_pro
 def test_research_education_jobs_revision_adds_one_table_and_preserves_0015_rows():
     assert RESEARCH_EDUCATION_JOBS_REVISION in SCHOOL_REVISION_CHAIN
     assert RESEARCH_EDUCATION_JOBS_REVISION in SUPPORTED_SNAPSHOT_REVISIONS
-    assert CURRENT_SCHOOL_REVISION == RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION
-    assert SCHOOL_REVISION_CHAIN[-7:] == (
+    assert CURRENT_SCHOOL_REVISION == RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION
+    assert SCHOOL_REVISION_CHAIN[-8:] == (
         RESEARCH_COHORTS_REVISION,
         RESEARCH_EDUCATION_JOBS_REVISION,
         RESEARCH_REVIEW_FEEDBACK_REVISION,
@@ -473,6 +476,7 @@ def test_research_education_jobs_revision_adds_one_table_and_preserves_0015_rows
         CONVERSATION_SAFETY_CASES_REVISION,
         RESEARCH_EDUCATION_CANDIDATES_REVISION,
         RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION,
+        RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION,
     )
 
     previous = restore_plan._load_trusted_tables(RESEARCH_COHORTS_REVISION)
@@ -578,8 +582,8 @@ def test_research_education_jobs_revision_adds_one_table_and_preserves_0015_rows
 def test_research_review_feedback_revision_adds_four_tables_and_preserves_0016():
     assert RESEARCH_REVIEW_FEEDBACK_REVISION in SCHOOL_REVISION_CHAIN
     assert RESEARCH_REVIEW_FEEDBACK_REVISION in SUPPORTED_SNAPSHOT_REVISIONS
-    assert CURRENT_SCHOOL_REVISION == RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION
-    assert CURRENT_SCHOOL_MIGRATION_FILE == "20261015_0021_school_research_education_input_reviews.py"
+    assert CURRENT_SCHOOL_REVISION == RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION
+    assert CURRENT_SCHOOL_MIGRATION_FILE == "20261015_0022_research_education_input_review_continuation.py"
 
     previous = restore_plan._load_trusted_tables(RESEARCH_EDUCATION_JOBS_REVISION)
     current = restore_plan._load_trusted_tables(RESEARCH_REVIEW_FEEDBACK_REVISION)
@@ -617,11 +621,11 @@ def test_research_review_feedback_revision_adds_four_tables_and_preserves_0016()
 
 
 def test_0018_candidate_revision_preserves_0017_snapshot_and_adds_encrypted_candidate():
-    assert CURRENT_SCHOOL_REVISION == RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION
+    assert CURRENT_SCHOOL_REVISION == RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION
     assert SCHOOL_REVISION_CHAIN.index(RESEARCH_PROGRAMME_CANDIDATES_REVISION) - 1 == (
         SCHOOL_REVISION_CHAIN.index(RESEARCH_REVIEW_FEEDBACK_REVISION)
     )
-    assert CURRENT_SCHOOL_MIGRATION_FILE == "20261015_0021_school_research_education_input_reviews.py"
+    assert CURRENT_SCHOOL_MIGRATION_FILE == "20261015_0022_research_education_input_review_continuation.py"
     previous = restore_plan._load_trusted_tables(RESEARCH_REVIEW_FEEDBACK_REVISION)
     current = restore_plan._load_trusted_tables(RESEARCH_PROGRAMME_CANDIDATES_REVISION)
     candidate_table = "school_research_programme_candidates"
@@ -653,8 +657,8 @@ def test_0018_candidate_revision_preserves_0017_snapshot_and_adds_encrypted_cand
 def test_0019_conversation_safety_revision_preserves_0018_and_adds_only_metadata_cases():
     assert CONVERSATION_SAFETY_CASES_REVISION in SCHOOL_REVISION_CHAIN
     assert CONVERSATION_SAFETY_CASES_REVISION in SUPPORTED_SNAPSHOT_REVISIONS
-    assert CURRENT_SCHOOL_REVISION == RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION
-    assert CURRENT_SCHOOL_MIGRATION_FILE == "20261015_0021_school_research_education_input_reviews.py"
+    assert CURRENT_SCHOOL_REVISION == RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION
+    assert CURRENT_SCHOOL_MIGRATION_FILE == "20261015_0022_research_education_input_review_continuation.py"
     assert SCHOOL_REVISION_CHAIN.index(CONVERSATION_SAFETY_CASES_REVISION) - 1 == (
         SCHOOL_REVISION_CHAIN.index(RESEARCH_PROGRAMME_CANDIDATES_REVISION)
     )
@@ -759,13 +763,14 @@ def test_0020_education_candidate_revision_preserves_0019_and_adds_exact_lineage
 def test_0021_input_review_revision_preserves_0020_and_adds_only_review_tables():
     assert RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION in SCHOOL_REVISION_CHAIN
     assert RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION in SUPPORTED_SNAPSHOT_REVISIONS
-    assert CURRENT_SCHOOL_REVISION == RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION
+    assert CURRENT_SCHOOL_REVISION == RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION
     assert CURRENT_SCHOOL_MIGRATION_FILE == (
-        "20261015_0021_school_research_education_input_reviews.py"
+        "20261015_0022_research_education_input_review_continuation.py"
     )
-    assert SCHOOL_REVISION_CHAIN[-2:] == (
+    assert SCHOOL_REVISION_CHAIN[-3:] == (
         RESEARCH_EDUCATION_CANDIDATES_REVISION,
         RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION,
+        RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION,
     )
 
     previous = restore_plan._load_trusted_tables(RESEARCH_EDUCATION_CANDIDATES_REVISION)
@@ -832,6 +837,88 @@ def test_0021_input_review_revision_preserves_0020_and_adds_only_review_tables()
     )
     assert order.index("school_research_education_input_reviews") < order.index(
         "school_research_education_input_review_events"
+    )
+
+
+def test_0022_continuation_snapshot_preserves_0021_and_appends_alter_columns_in_order():
+    previous = restore_plan._load_trusted_tables(RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION)
+    current = restore_plan._load_trusted_tables(
+        RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION
+    )
+    assert set(current) == set(previous)
+    assert len(current) == 62
+
+    appended_columns = {
+        "school_research_education_jobs": ("generation_round", "input_review_id"),
+        "school_research_education_candidates": (
+            "generation_round",
+            "input_review_id",
+            "input_review_state",
+        ),
+        "school_research_education_input_reviews": (
+            "original_job_generation_round",
+            "grant_policy_version",
+            "grant_policy_hash",
+            "authorized_by_membership_role_id",
+            "authorized_at",
+            "consumed_at",
+        ),
+    }
+    for table_name, appended in appended_columns.items():
+        previous_columns = previous[table_name].columns
+        current_columns = current[table_name].columns
+        assert current_columns == previous_columns + appended
+        assert all(
+            column in current[table_name].nullable_columns
+            for column in appended
+            if column in {"input_review_id", "input_review_state", "grant_policy_version",
+                          "grant_policy_hash", "authorized_by_membership_role_id",
+                          "authorized_at", "consumed_at"}
+        )
+    changed_tables = set(appended_columns)
+    assert all(
+        current[name] == spec for name, spec in previous.items() if name not in changed_tables
+    )
+
+    jobs = current["school_research_education_jobs"]
+    reviews = current["school_research_education_input_reviews"]
+    candidates = current["school_research_education_candidates"]
+    assert any(
+        fk.local_columns == ("input_review_id", "research_session_id", "school_id")
+        and fk.remote_table == "school_research_education_input_reviews"
+        for fk in jobs.foreign_keys
+    )
+    assert any(
+        fk.local_columns
+        == ("job_id", "original_job_generation_round", "research_session_id", "school_id")
+        and fk.remote_table == "school_research_education_jobs"
+        for fk in reviews.foreign_keys
+    )
+    assert any(
+        fk.local_columns
+        == ("input_review_id", "input_review_state", "research_session_id", "school_id")
+        and fk.remote_table == "school_research_education_input_reviews"
+        for fk in candidates.foreign_keys
+    )
+
+    package = empty_package()
+    package["revision"] = RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION
+    package["tables"] = {
+        name: {"create_sql": "opaque archived DDL", "columns": list(spec.columns), "rows": []}
+        for name, spec in current.items()
+    }
+    package["tables"][restore_plan.REVISION_TABLE]["rows"] = [
+        [RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION]
+    ]
+    plan = restore_plan.plan_restore(package, restored_at=RESTORED_AT)
+    assert plan["revision"] == RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION
+    assert len(plan["table_order"]) == 61
+    order = plan["table_order"]
+    assert order.index("school_research_education_jobs") < order.index(
+        "school_research_education_input_reviews"
+    )
+    assert order.index("school_research_education_input_reviews") < order.index(
+        "school_research_education_candidates"
     )
 
 

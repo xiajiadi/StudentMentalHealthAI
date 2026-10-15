@@ -150,6 +150,8 @@ def generation_job_page(**changes):
         "items": [
             {
                 "job_ref": "REJ_" + "a" * 64,
+                "generation_round": 0,
+                "input_review_ref": None,
                 "status": "HELD",
                 "attempt_count": 1,
                 "last_error_code": None,
@@ -210,6 +212,7 @@ def input_review_detail(**changes):
 class FakePersistence:
     def __init__(self):
         self.calls = []
+        self.input_review_continuation_enabled = False
 
     async def school_research_education_candidate_list_tasks(self, actor_arg):
         self.calls.append(("tasks", actor_arg))
@@ -277,7 +280,9 @@ class FakePersistence:
     ):
         self.calls.append(("input_review_list", actor_arg, task_ref, offset, limit))
         return {
-            "items": [input_review_summary()],
+            "items": [input_review_summary(
+                continuation_enabled=self.input_review_continuation_enabled
+            )],
             "offset": offset,
             "limit": limit,
             "has_more": False,
@@ -287,7 +292,9 @@ class FakePersistence:
         self, actor_arg, task_ref, input_review_ref
     ):
         self.calls.append(("input_review_get", actor_arg, task_ref, input_review_ref))
-        return input_review_detail()
+        return input_review_detail(
+            continuation_enabled=self.input_review_continuation_enabled
+        )
 
     async def school_research_education_input_review_resolve(
         self,
@@ -300,8 +307,15 @@ class FakePersistence:
         idempotency,
         trace_id,
     ):
-        self.calls.append(("input_review_resolve", actor_arg, task_ref, input_review_ref, target))
-        return input_review_summary(status=target, state_version=expected_state_version + 1)
+        self.calls.append((
+            "input_review_resolve", actor_arg, task_ref, input_review_ref,
+            expected_state_version, target, idempotency,
+        ))
+        return input_review_summary(
+            status=target,
+            state_version=expected_state_version + 1,
+            continuation_enabled=self.input_review_continuation_enabled,
+        )
 
 
 @pytest.mark.parametrize(
@@ -403,7 +417,7 @@ async def test_specialist_operations_use_closed_task_bound_ports():
     assert resolved["student_feedback_eligible"] is False
 
 
-async def test_specialist_input_review_ports_are_task_bound_and_allow_only_dispositions():
+async def test_specialist_input_review_ports_are_task_bound_and_allow_review_actions():
     persistence = FakePersistence()
     service = SchoolResearchEducationCandidateService(persistence=persistence)
     specialist = actor(BackendRole.PSYCHOLOGICAL_SPECIALIST)
@@ -433,6 +447,53 @@ async def test_specialist_input_review_ports_are_task_bound_and_allow_only_dispo
     assert [call[0] for call in persistence.calls] == [
         "input_review_list", "input_review_get", "input_review_resolve"
     ]
+
+
+async def test_input_review_continuation_requires_trusted_enablement_and_preserves_idempotency():
+    persistence = FakePersistence()
+    service = SchoolResearchEducationCandidateService(persistence=persistence)
+    specialist = actor(BackendRole.PSYCHOLOGICAL_SPECIALIST)
+    key = ("continue-key", "request-hash", "scope-hash")
+
+    with pytest.raises(BackendError) as disabled:
+        await service.resolve_input_review(
+            specialist, "TASK_demo", "REI_synthetic_1",
+            expected_state_version=1, target="CONTINUATION_AUTHORIZED",
+            idempotency=key, trace_id="TRACE_demo",
+        )
+    assert disabled.value.code.value == "dependency_invalid_response"
+
+    persistence.input_review_continuation_enabled = True
+    authorized = await service.resolve_input_review(
+        specialist, "TASK_demo", "REI_synthetic_1",
+        expected_state_version=1, target="CONTINUATION_AUTHORIZED",
+        idempotency=key, trace_id="TRACE_demo",
+    )
+    assert authorized["status"] == "CONTINUATION_AUTHORIZED"
+    assert authorized["state_version"] == 2
+    assert authorized["continuation_enabled"] is True
+    assert persistence.calls[-1] == (
+        "input_review_resolve", specialist, "TASK_demo", "REI_synthetic_1",
+        1, "CONTINUATION_AUTHORIZED", key,
+    )
+
+
+async def test_input_review_resolution_rejects_inconsistent_status_versions():
+    persistence = FakePersistence()
+    service = SchoolResearchEducationCandidateService(persistence=persistence)
+
+    async def invalid_transition(*_args, **_kwargs):
+        return input_review_summary(status="CONTINUATION_AUTHORIZED", state_version=3)
+
+    persistence.school_research_education_input_review_resolve = invalid_transition
+    with pytest.raises(BackendError) as raised:
+        await service.resolve_input_review(
+            actor(BackendRole.PSYCHOLOGICAL_SPECIALIST),
+            "TASK_demo", "REI_synthetic_1",
+            expected_state_version=1, target="CONTINUATION_AUTHORIZED",
+            idempotency=("key", "body", "scope"), trace_id="TRACE_demo",
+        )
+    assert raised.value.code.value == "dependency_invalid_response"
 
 
 @pytest.mark.parametrize(
@@ -614,6 +675,48 @@ async def test_generation_job_page_rejects_unknown_status_or_inconsistent_counts
         return generation_job_page(total=2)
 
     persistence.school_research_education_candidate_generation_job_list = inconsistent_counts
+    with pytest.raises(BackendError) as raised:
+        await service.list_jobs(specialist, "TASK_demo")
+    assert raised.value.code.value == "dependency_invalid_response"
+
+
+async def test_generation_job_page_requires_exact_round_review_pair():
+    persistence = FakePersistence()
+    service = SchoolResearchEducationCandidateService(persistence=persistence)
+    specialist = actor(BackendRole.PSYCHOLOGICAL_SPECIALIST)
+
+    async def malformed_round(*_args, **_kwargs):
+        page = generation_job_page()
+        page["items"][0].update(
+            generation_round=1,
+            input_review_ref=None,
+        )
+        return page
+
+    persistence.school_research_education_candidate_generation_job_list = malformed_round
+    with pytest.raises(BackendError) as raised:
+        await service.list_jobs(specialist, "TASK_demo")
+    assert raised.value.code.value == "dependency_invalid_response"
+
+    async def valid_continuation_round(*_args, **_kwargs):
+        page = generation_job_page()
+        page["items"][0].update(
+            generation_round=1,
+            input_review_ref="REI_synthetic_1",
+        )
+        return page
+
+    persistence.school_research_education_candidate_generation_job_list = valid_continuation_round
+    result = await service.list_jobs(specialist, "TASK_demo")
+    assert result["items"][0]["generation_round"] == 1
+    assert result["items"][0]["input_review_ref"] == "REI_synthetic_1"
+
+    async def missing_round_field(*_args, **_kwargs):
+        page = generation_job_page()
+        del page["items"][0]["generation_round"]
+        return page
+
+    persistence.school_research_education_candidate_generation_job_list = missing_round_field
     with pytest.raises(BackendError) as raised:
         await service.list_jobs(specialist, "TASK_demo")
     assert raised.value.code.value == "dependency_invalid_response"
