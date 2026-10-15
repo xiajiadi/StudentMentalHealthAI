@@ -24,6 +24,7 @@ from smhai_backend.domains.research_general_education.prompt import (
     PROMPT_VERSION,
 )
 from smhai_backend.domains.research_general_education.schemas import (
+    ResearchGeneralEducationBoundaryDiagnostic,
     ResearchGeneralEducationInputReviewReceipt,
 )
 from smhai_backend.domains.research_general_education.service import (
@@ -544,6 +545,105 @@ async def test_terminal_reason_audit_is_safe_and_same_uow(
         "state": "FAILED",
         "reason_code": expected_audit_reason,
     }
+
+
+async def test_boundary_diagnostic_audit_is_content_free_and_same_uow():
+    claim = _education_job_claim()
+    configured = adapter()
+    events = _finalize_harness(configured, claim)
+    diagnostic = ResearchGeneralEducationBoundaryDiagnostic(
+        field_kind="OBSERVATION",
+        field_index=2,
+        category="CLINICAL",
+        match_count=3,
+    )
+
+    disposition = await configured.finalize_education_job(
+        claim,
+        status="ABSTAINED",
+        error_code=ResearchEducationJobErrorCode.GENERATION_FAILED,
+        reason_code="RESEARCH_CLAIM_BOUNDARY_REJECTED",
+        boundary_diagnostic=diagnostic,
+    )
+
+    assert disposition == "ABSTAINED"
+    assert [event[0] for event in events] == ["finish", "audit", "audit"]
+    assert events[0][2] is events[1][2] is events[2][2]
+    terminal_audit = events[1][1]
+    assert terminal_audit["action"] == "school_research_education_job.terminal"
+    assert terminal_audit["safe_metadata"] == {
+        "source": GENERAL_EDUCATION_POLICY_VERSION,
+        "state": "ABSTAINED",
+        "reason_code": "RESEARCH_CLAIM_BOUNDARY_REJECTED",
+    }
+    diagnostic_audit = events[2][1]
+    assert diagnostic_audit["action"] == "school_research_education_job.claim_boundary"
+    assert diagnostic_audit["resource_type"] == "school_research_education_job"
+    assert diagnostic_audit["resource_public_id"] == claim.job_ref
+    assert diagnostic_audit["result"] is AuditResult.FAILURE
+    assert diagnostic_audit["trace_id"] == terminal_audit["trace_id"]
+    assert diagnostic_audit["safe_metadata"] == {
+        "source": GENERAL_EDUCATION_POLICY_VERSION,
+        "state": "OBSERVATION",
+        "reason_code": "CLINICAL",
+        "count": 3,
+    }
+
+
+@pytest.mark.parametrize(
+    "diagnostic",
+    [
+        SimpleNamespace(
+            field_kind="SUMMARY", field_index=0, category="DIAGNOSIS", match_count=1
+        ),
+        ResearchGeneralEducationBoundaryDiagnostic.model_construct(
+            field_kind="SUMMARY", field_index=-1, category="DIAGNOSIS", match_count=0
+        ),
+    ],
+)
+async def test_invalid_boundary_diagnostic_adds_no_claim_audit(diagnostic):
+    claim = _education_job_claim()
+    configured = adapter()
+    events = _finalize_harness(configured, claim)
+
+    disposition = await configured.finalize_education_job(
+        claim,
+        status="ABSTAINED",
+        error_code=ResearchEducationJobErrorCode.GENERATION_FAILED,
+        reason_code="RESEARCH_CLAIM_BOUNDARY_REJECTED",
+        boundary_diagnostic=diagnostic,
+    )
+
+    assert disposition == "ABSTAINED"
+    assert [event[0] for event in events] == ["finish", "audit"]
+    assert events[1][1]["action"] == "school_research_education_job.terminal"
+    assert events[1][1]["safe_metadata"]["reason_code"] == (
+        "RESEARCH_CLAIM_BOUNDARY_REJECTED"
+    )
+
+
+async def test_valid_diagnostic_is_ignored_for_nonboundary_outcome():
+    claim = _education_job_claim()
+    configured = adapter()
+    events = _finalize_harness(configured, claim)
+    diagnostic = ResearchGeneralEducationBoundaryDiagnostic(
+        field_kind="SUMMARY",
+        field_index=0,
+        category="DIAGNOSIS",
+        match_count=1,
+    )
+
+    disposition = await configured.finalize_education_job(
+        claim,
+        status="FAILED",
+        error_code=ResearchEducationJobErrorCode.GENERATION_FAILED,
+        reason_code="RESEARCH_RUNTIME_FAILED",
+        boundary_diagnostic=diagnostic,
+    )
+
+    assert disposition == "FAILED"
+    assert [event[0] for event in events] == ["finish", "audit"]
+    assert events[1][1]["action"] == "school_research_education_job.terminal"
 
 
 @pytest.mark.parametrize(

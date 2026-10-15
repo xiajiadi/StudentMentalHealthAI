@@ -1409,7 +1409,14 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
             raise
 
     async def finalize_education_job(
-        self, claim, *, status: str, error_code=None, input_review=None, reason_code=None
+        self,
+        claim,
+        *,
+        status: str,
+        error_code=None,
+        input_review=None,
+        reason_code=None,
+        boundary_diagnostic=None,
     ) -> str:
         """Write a content-free terminal disposition only for the exact live lease."""
         self._require_enabled()
@@ -1536,6 +1543,27 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
                         "reason_code": safe_reason_code,
                     },
                 )
+            boundary_metadata = self._safe_claim_boundary_metadata(
+                boundary_diagnostic,
+                status=disposition,
+                error_code=error_code if current else None,
+                reason_code=reason_code,
+                scope_current=current,
+            )
+            if boundary_metadata is not None:
+                token = hashlib.sha256(
+                    f"{persisted.job_ref}:{persisted.attempt_count}".encode("ascii")
+                ).hexdigest()[:32]
+                from database_layer.enums import AuditResult
+
+                await uow.audit.append(
+                    action="school_research_education_job.claim_boundary",
+                    resource_type=_JOB_AUDIT_RESOURCE,
+                    resource_public_id=persisted.job_ref,
+                    result=AuditResult.FAILURE,
+                    trace_id=f"TRACE_{token}",
+                    safe_metadata=boundary_metadata,
+                )
             return disposition
 
     @staticmethod
@@ -1550,6 +1578,53 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
         if reason_code in _SERVICE_OUTCOME_REASON_CODES:
             return reason_code
         return "UNCLASSIFIED_OUTCOME"
+
+    @staticmethod
+    def _safe_claim_boundary_metadata(
+        diagnostic, *, status, error_code, reason_code, scope_current
+    ) -> dict[str, object] | None:
+        from database_layer.school_research_education_jobs import (
+            ResearchEducationJobErrorCode,
+        )
+
+        if (
+            not scope_current
+            or status != "ABSTAINED"
+            or error_code is not ResearchEducationJobErrorCode.GENERATION_FAILED
+            or reason_code != "RESEARCH_CLAIM_BOUNDARY_REJECTED"
+        ):
+            return None
+        from smhai_backend.domains.research_general_education.schemas import (
+            ResearchGeneralEducationBoundaryDiagnostic,
+        )
+
+        if type(diagnostic) is not ResearchGeneralEducationBoundaryDiagnostic:
+            return None
+        allowed_fields = {"SUMMARY", "OBSERVATION", "SUGGESTION"}
+        allowed_categories = {
+            "DIAGNOSIS",
+            "CLINICAL",
+            "SEVERITY",
+            "PSYCHOMETRIC_SCORE",
+            "OTHER_ALLOWLISTED",
+        }
+        if (
+            type(diagnostic.field_kind) is not str
+            or diagnostic.field_kind not in allowed_fields
+            or type(diagnostic.field_index) is not int
+            or not 0 <= diagnostic.field_index <= 12_000
+            or type(diagnostic.category) is not str
+            or diagnostic.category not in allowed_categories
+            or type(diagnostic.match_count) is not int
+            or not 1 <= diagnostic.match_count <= 12_000
+        ):
+            return None
+        return {
+            "source": _POLICY_VERSION,
+            "state": diagnostic.field_kind,
+            "reason_code": diagnostic.category,
+            "count": diagnostic.match_count,
+        }
 
     def _input_review_evidence(self, receipt, *, now, retention_due_at=None):
         """Rebind the actual stopped-input receipt to this server's trusted pins."""

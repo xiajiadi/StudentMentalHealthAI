@@ -17,6 +17,7 @@ from smhai_backend.domains.research_general_education.input_review_policy import
     INPUT_REVIEW_CONTINUATION_POLICY_VERSION,
 )
 from smhai_backend.domains.research_general_education.schemas import (
+    ResearchGeneralEducationBoundaryDiagnostic,
     ResearchGeneralEducationCandidatePayload,
     ResearchGeneralEducationInputReviewReceipt,
     ResearchGeneralEducationOutcome,
@@ -444,6 +445,36 @@ async def test_unauthorized_claim_and_outcome_dispositions_never_store_candidate
         assert adapter.finalized[0][1:] == (expected, code)
         assert adapter.finalize_kwargs == [{"reason_code": reason}]
         assert adapter.stored == []
+
+
+@pytest.mark.asyncio
+async def test_boundary_diagnostic_is_forwarded_without_candidate_text():
+    diagnostic = ResearchGeneralEducationBoundaryDiagnostic(
+        field_kind="OBSERVATION",
+        field_index=2,
+        category="CLINICAL",
+        match_count=3,
+    )
+    adapter = _Adapter()
+    generation = _Generation(
+        ResearchGeneralEducationOutcome(
+            status="ABSTAINED",
+            reason_code="RESEARCH_CLAIM_BOUNDARY_REJECTED",
+            boundary_diagnostic=diagnostic,
+        )
+    )
+    worker = _worker(adapter=adapter, generation=generation)
+
+    result = await worker.run_once()
+
+    assert result is ResearchGeneralEducationWorkerResult.ABSTAINED
+    assert adapter.finalize_kwargs == [
+        {
+            "reason_code": "RESEARCH_CLAIM_BOUNDARY_REJECTED",
+            "boundary_diagnostic": diagnostic,
+        }
+    ]
+    assert adapter.stored == []
 
 
 @pytest.mark.asyncio

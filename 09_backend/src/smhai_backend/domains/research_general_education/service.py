@@ -20,6 +20,7 @@ from smhai_backend.domains.support.schemas import GenerationContent
 from smhai_backend.domains.support.service import (
     SupportOrchestrator,
     _contains_forbidden_generated_claim,
+    _first_boundary_match,
 )
 from smhai_backend.integrations.evidence import (
     CitationBindingError,
@@ -43,6 +44,7 @@ from .prompt import (
     PROMPT_VERSION,
 )
 from .schemas import (
+    ResearchGeneralEducationBoundaryDiagnostic,
     ResearchGeneralEducationCandidatePayload,
     ResearchGeneralEducationInputReviewReceipt,
     ResearchGeneralEducationOutcome,
@@ -462,7 +464,11 @@ class ResearchGeneralEducationDraftService:
         if not _content_well_formed(content):
             return _outcome("ABSTAINED", "RESEARCH_CONTENT_EMPTY")
         if _contains_forbidden_generated_claim(content):
-            return _outcome("ABSTAINED", "RESEARCH_CLAIM_BOUNDARY_REJECTED")
+            return _outcome(
+                "ABSTAINED",
+                "RESEARCH_CLAIM_BOUNDARY_REJECTED",
+                boundary_diagnostic=_claim_boundary_diagnostic(content),
+            )
         if _contains_unsupported_bibliography(
             content,
             bundle,
@@ -951,5 +957,30 @@ def _content_well_formed(content: GenerationContent) -> bool:
     )
 
 
-def _outcome(status: str, reason_code: str) -> ResearchGeneralEducationOutcome:
-    return ResearchGeneralEducationOutcome(status=status, reason_code=reason_code)
+def _claim_boundary_diagnostic(
+    content: GenerationContent,
+) -> ResearchGeneralEducationBoundaryDiagnostic | None:
+    """Project only bounded matcher metadata; diagnostic failures do not alter rejection."""
+    try:
+        field_kind, field_index, category, match_count = _first_boundary_match(content)
+        return ResearchGeneralEducationBoundaryDiagnostic(
+            field_kind=field_kind,
+            field_index=field_index,
+            category=category,
+            match_count=match_count,
+        )
+    except Exception:
+        return None
+
+
+def _outcome(
+    status: str,
+    reason_code: str,
+    *,
+    boundary_diagnostic: ResearchGeneralEducationBoundaryDiagnostic | None = None,
+) -> ResearchGeneralEducationOutcome:
+    return ResearchGeneralEducationOutcome(
+        status=status,
+        reason_code=reason_code,
+        boundary_diagnostic=boundary_diagnostic,
+    )

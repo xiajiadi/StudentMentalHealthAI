@@ -205,11 +205,27 @@ class ResearchGeneralEducationReviewedInputAuthorization(_StrictModel):
         return value
 
 
+class ResearchGeneralEducationBoundaryDiagnostic(_StrictModel):
+    """Content-free bounded metadata for the existing claim boundary matcher."""
+
+    field_kind: Literal["SUMMARY", "OBSERVATION", "SUGGESTION"]
+    field_index: StrictInt = Field(ge=0, le=12_000)
+    category: Literal[
+        "DIAGNOSIS",
+        "CLINICAL",
+        "SEVERITY",
+        "PSYCHOMETRIC_SCORE",
+        "OTHER_ALLOWLISTED",
+    ]
+    match_count: StrictInt = Field(ge=1, le=12_000)
+
+
 class ResearchGeneralEducationOutcome(_StrictModel):
     status: ResearchGeneralEducationStatus
     reason_code: StrictStr = Field(pattern=r"^[A-Z][A-Z0-9_]{0,95}$")
     candidate: ResearchGeneralEducationCandidatePayload | None = None
     input_review: ResearchGeneralEducationInputReviewReceipt | None = None
+    boundary_diagnostic: ResearchGeneralEducationBoundaryDiagnostic | None = None
 
     def model_post_init(self, __context: object) -> None:
         if (self.status == "HELD") != (self.candidate is not None):
@@ -218,3 +234,8 @@ class ResearchGeneralEducationOutcome(_StrictModel):
             self.status != "REVIEW_REQUIRED" or self.reason_code != "INPUT_SAFETY_STOP"
         ):
             raise ValueError("input review evidence is only valid for a stopped input outcome")
+        if self.boundary_diagnostic is not None and (
+            self.status != "ABSTAINED"
+            or self.reason_code != "RESEARCH_CLAIM_BOUNDARY_REJECTED"
+        ):
+            raise ValueError("boundary diagnostics are only valid for a boundary rejection")

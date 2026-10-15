@@ -19,6 +19,7 @@ from smhai_backend.domains.research_general_education.input_review_policy import
     INPUT_REVIEW_CONTINUATION_POLICY_VERSION,
 )
 from smhai_backend.domains.research_general_education.schemas import (
+    ResearchGeneralEducationBoundaryDiagnostic,
     ResearchGeneralEducationCandidatePayload,
     ResearchGeneralEducationInputReviewReceipt,
     ResearchGeneralEducationReviewedInputAuthorization,
@@ -619,6 +620,13 @@ async def test_claim_rejection_contains_no_candidate_or_generated_text():
     assert result.status == "ABSTAINED"
     assert result.reason_code == "RESEARCH_CLAIM_BOUNDARY_REJECTED"
     assert result.candidate is None
+    assert type(result.boundary_diagnostic) is ResearchGeneralEducationBoundaryDiagnostic
+    assert result.boundary_diagnostic.field_kind == "SUMMARY"
+    assert result.boundary_diagnostic.field_index == 0
+    assert result.boundary_diagnostic.category == "DIAGNOSIS"
+    assert result.boundary_diagnostic.match_count == 1
+    assert not hasattr(result.boundary_diagnostic, "text")
+    assert not hasattr(result.boundary_diagnostic, "match")
 
 
 @pytest.mark.asyncio
