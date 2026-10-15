@@ -43,6 +43,16 @@ STAGE_NAMES = (
     "application",
     "four_role_browser",
 )
+
+SYNTHETIC_SEED_EXPECTED_RESULT = {
+    "recipe": "school-contexts-v1",
+    "schools": 2,
+    "subjects": 2,
+    "role_accounts": 8,
+    "credentials": "current-user DPAPI",
+    "specialist_subject_grants": 0,
+    "admin_subject_grants": 0,
+}
 CHECKPOINT_FIELDS = {
     "schema", "created_at", "updated_at", "source_head", "dependency_target_head",
     "source_root", "dependency_target", "mysql_bin", "python_specs", "workspace",
@@ -783,6 +793,24 @@ def _schema_migration_failure_code(exit_code: int, payload: dict[str, Any]) -> s
     return known_failures.get((status, code), "SCHEMA_MIGRATION_FAILED")
 
 
+def _synthetic_seed_result_matches(result: Any) -> bool:
+    if type(result) is not dict or set(result) != set(SYNTHETIC_SEED_EXPECTED_RESULT):
+        return False
+    for key in ("recipe", "credentials"):
+        if type(result.get(key)) is not str or result[key] != SYNTHETIC_SEED_EXPECTED_RESULT[key]:
+            return False
+    for key in (
+        "schools",
+        "subjects",
+        "role_accounts",
+        "specialist_subject_grants",
+        "admin_subject_grants",
+    ):
+        if type(result.get(key)) is not int or result[key] != SYNTHETIC_SEED_EXPECTED_RESULT[key]:
+            return False
+    return True
+
+
 def _run_stage(config: dict[str, Any], state: dict[str, Any], commands: dict[str, list[str]], name: str) -> None:
     current = state["stages"][name]["status"]
     if current == "COMPLETED":
@@ -820,15 +848,7 @@ def _run_stage(config: dict[str, Any], state: dict[str, Any], commands: dict[str
             _verify_runtime(config, commands)
         elif name == "synthetic_seed":
             code, result = _run_json(commands["synthetic_seed"], timeout=180)
-            if (
-                code != 0 or result.get("recipe") != "school-contexts-v1"
-                or result.get("schools") != 1
-                or type(result.get("subjects")) is not int
-                or result.get("subjects", 0) < 1
-                or result.get("role_accounts") != 4
-                or result.get("specialist_subject_grants") != 0
-                or result.get("admin_subject_grants") != 0
-            ):
+            if code != 0 or not _synthetic_seed_result_matches(result):
                 raise InstallError("SYNTHETIC_SEED_FAILED")
             state["stages"][name] = {"status": "PENDING_VERIFICATION", "code": None}
             _write_state(config["state_path"], config["state_temp_path"], state)

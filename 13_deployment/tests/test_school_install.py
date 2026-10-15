@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import json
 import sys
 from pathlib import Path
@@ -171,6 +172,117 @@ def test_resume_never_replays_running_or_pending_verification_stages(monkeypatch
     with pytest.raises(installer.InstallError, match="INCOMPLETE_STAGE_PRESERVED_FOR_INSPECTION"):
         installer._run_stage(config, state, {}, "workspace")
     installer._run_stage(config, state, {}, "synthetic_seed")
+
+
+def _seed_assignment_value(tree: ast.Module, name: str) -> ast.expr:
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == name for target in node.targets
+        ):
+            return node.value
+    raise AssertionError(f"registered seed assignment missing: {name}")
+
+
+def test_installer_seed_expectations_match_registered_recipe_without_running_seed():
+    seed_path = Path(__file__).resolve().parents[2] / "11_database" / "database_layer" / "school_seed.py"
+    tree = ast.parse(seed_path.read_text(encoding="utf-8"), filename=str(seed_path))
+
+    recipes = _seed_assignment_value(tree, "SYNTHETIC_SCHOOL_RECIPES")
+    assert isinstance(recipes, ast.Tuple)
+    recipe_keys = []
+    subject_refs = []
+    for recipe in recipes.elts:
+        assert isinstance(recipe, ast.Call)
+        fields = {keyword.arg: ast.literal_eval(keyword.value) for keyword in recipe.keywords}
+        recipe_keys.append(fields["key"])
+        subject_refs.append(fields["subject_ref"])
+
+    roles = ast.literal_eval(_seed_assignment_value(tree, "SCHOOL_SEED_ROLE_CODES"))
+    slots = _seed_assignment_value(tree, "SCHOOL_SEED_SLOTS")
+    assert isinstance(slots, ast.Call) and isinstance(slots.func, ast.Name) and slots.func.id == "tuple"
+    assert len(slots.args) == 1 and isinstance(slots.args[0], ast.GeneratorExp)
+    comprehensions = slots.args[0].generators
+    assert len(comprehensions) == 2
+    registered_schools = ast.literal_eval(comprehensions[0].iter)
+    registered_roles = ast.literal_eval(comprehensions[1].iter)
+
+    assert tuple(recipe_keys) == registered_schools
+    assert tuple(registered_roles) == roles
+    assert len(set(subject_refs)) == len(subject_refs)
+    assert installer.SYNTHETIC_SEED_EXPECTED_RESULT == {
+        "recipe": "school-contexts-v1",
+        "schools": len(recipe_keys),
+        "subjects": len(subject_refs),
+        "role_accounts": len(registered_schools) * len(registered_roles),
+        "credentials": "current-user DPAPI",
+        "specialist_subject_grants": 0,
+        "admin_subject_grants": 0,
+    }
+
+
+def _real_school_seed_child_payload():
+    return {
+        "recipe": "school-contexts-v1",
+        "schools": 2,
+        "subjects": 2,
+        "role_accounts": 8,
+        "credentials": "current-user DPAPI",
+        "specialist_subject_grants": 0,
+        "admin_subject_grants": 0,
+    }
+
+
+def test_synthetic_seed_stage_accepts_registered_child_payload(monkeypatch, tmp_path):
+    state = {
+        "stages": {name: {"status": "PENDING", "code": None} for name in installer.STAGE_NAMES},
+    }
+    config = {"state_path": tmp_path / "state.json", "state_temp_path": tmp_path / "state.json.tmp"}
+    monkeypatch.setattr(installer, "_write_state", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(installer, "_run_json", lambda *_args, **_kwargs: (0, _real_school_seed_child_payload()))
+
+    installer._run_stage(config, state, {"synthetic_seed": ["seed"]}, "synthetic_seed")
+
+    assert state["stages"]["synthetic_seed"] == {"status": "PENDING_VERIFICATION", "code": None}
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda payload: payload.update(schools=1),
+        lambda payload: payload.update(subjects=1),
+        lambda payload: payload.update(role_accounts=4),
+        lambda payload: payload.update(schools=True),
+        lambda payload: payload.update(subjects=False),
+        lambda payload: payload.update(role_accounts=True),
+        lambda payload: payload.update(specialist_subject_grants=1),
+        lambda payload: payload.update(admin_subject_grants=1),
+        lambda payload: payload.update(specialist_subject_grants=False),
+        lambda payload: payload.pop("subjects"),
+        lambda payload: payload.pop("credentials"),
+        lambda payload: payload.update(extra_subject_grants=0),
+    ],
+    ids=(
+        "wrong-school-count", "wrong-subject-count", "wrong-account-count", "bool-schools",
+        "bool-subjects", "bool-accounts", "specialist-grant", "admin-grant", "bool-grant",
+        "missing-count", "missing-protocol-field", "unexpected-grant-field",
+    ),
+)
+def test_synthetic_seed_stage_rejects_unregistered_or_unsafe_child_payload(
+    monkeypatch, tmp_path, mutate
+):
+    payload = _real_school_seed_child_payload()
+    mutate(payload)
+    state = {
+        "stages": {name: {"status": "PENDING", "code": None} for name in installer.STAGE_NAMES},
+    }
+    config = {"state_path": tmp_path / "state.json", "state_temp_path": tmp_path / "state.json.tmp"}
+    monkeypatch.setattr(installer, "_write_state", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(installer, "_run_json", lambda *_args, **_kwargs: (0, payload))
+
+    with pytest.raises(installer.InstallError, match="SYNTHETIC_SEED_FAILED"):
+        installer._run_stage(config, state, {"synthetic_seed": ["seed"]}, "synthetic_seed")
+
+    assert state["stages"]["synthetic_seed"] == {"status": "FAILED", "code": "SYNTHETIC_SEED_FAILED"}
 
 
 @pytest.mark.parametrize(
