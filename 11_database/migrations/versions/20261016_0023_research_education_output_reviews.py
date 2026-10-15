@@ -266,6 +266,8 @@ def upgrade() -> None:
         sa.Column("output_review_state", _ascii(16), nullable=True),
     )
     op.drop_constraint(
+        # The 0022 migration passed this name without op.f(), so the active
+        # database constraint has the naming-convention-prefixed form.
         "ck_school_research_education_candidates_safety_actions_allowed",
         "school_research_education_candidates",
         type_="check",
@@ -314,14 +316,16 @@ def downgrade() -> None:
         type_="foreignkey",
     )
     op.drop_constraint(
-        "ck_school_research_education_candidates_safety_actions_allowed",
+        op.f("ck_school_research_education_candidates_safety_actions_allowed"),
         "school_research_education_candidates",
         type_="check",
     )
     op.drop_column("school_research_education_candidates", "output_review_state")
     op.drop_column("school_research_education_candidates", "output_review_id")
     op.create_check_constraint(
-        op.f("ck_school_research_education_candidates_safety_actions_allowed"),
+        # Restore the exact 0022 operation so its historical prefixed name is
+        # recreated by the active target-metadata naming convention.
+        "ck_school_research_education_candidates_safety_actions_allowed",
         "school_research_education_candidates",
         "((generation_round = 0 AND input_review_id IS NULL AND input_review_state IS NULL "
         "AND input_safety_action IN ('PROCEED', 'PROCEED_WITH_BOUNDARY')) OR "

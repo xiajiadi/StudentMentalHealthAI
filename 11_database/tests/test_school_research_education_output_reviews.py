@@ -501,7 +501,7 @@ def test_output_review_resolve_is_expiry_and_state_version_guarded(session):
         ))
 
 
-def test_0023_migration_names_match_models_and_downgrade_refuses_rows():
+def test_0023_migration_names_match_models_and_downgrade_refuses_rows(monkeypatch):
     migration_path = (
         Path(__file__).parents[1]
         / "migrations"
@@ -515,13 +515,32 @@ def test_0023_migration_names_match_models_and_downgrade_refuses_rows():
     assert migration.revision == "20261016_0023"
     assert migration.down_revision == "20261015_0022"
 
+    legacy_name = "ck_school_research_education_candidates_safety_actions_allowed"
+    legacy_output = io.StringIO()
+    legacy_context = MigrationContext.configure(
+        dialect=mysql.dialect(),
+        opts={"as_sql": True, "output_buffer": legacy_output, "target_metadata": Base.metadata},
+    )
+    with Operations.context(legacy_context):
+        Operations(legacy_context).create_check_constraint(
+            legacy_name, "school_research_education_candidates", "1=1"
+        )
+    legacy_sql = legacy_output.getvalue()
+    old_name_match = re.search(r"ADD CONSTRAINT ([A-Za-z0-9_]+) CHECK", legacy_sql)
+    assert old_name_match is not None
+    old_name = old_name_match.group(1)
+    assert old_name != legacy_name
+
     output = io.StringIO()
     context = MigrationContext.configure(
-        dialect=mysql.dialect(), opts={"as_sql": True, "output_buffer": output}
+        dialect=mysql.dialect(),
+        opts={"as_sql": True, "output_buffer": output, "target_metadata": Base.metadata},
     )
     with Operations.context(context):
         migration.upgrade()
     sql = output.getvalue()
+    assert f"DROP CHECK {old_name}" in sql
+    assert f"ADD CONSTRAINT {legacy_name} CHECK" in sql
     names = set(re.findall(r"CONSTRAINT\s+`?([A-Za-z0-9_]+)`?", sql))
     names.update(re.findall(r"CREATE\s+(?:UNIQUE\s+)?INDEX\s+`?([A-Za-z0-9_]+)`?", sql))
     assert names and all(len(name) <= 64 for name in names)
@@ -542,6 +561,39 @@ def test_0023_migration_names_match_models_and_downgrade_refuses_rows():
     assert "CREATE TABLE school_research_education_output_review_events" in sql
     assert "payload_ciphertext MEDIUMBLOB NOT NULL" in sql
     assert "raw_output" not in sql and "candidate_body" not in sql
+
+    downgrade_output = io.StringIO()
+    downgrade_context = MigrationContext.configure(
+        dialect=mysql.dialect(),
+        opts={
+            "as_sql": True,
+            "output_buffer": downgrade_output,
+            "target_metadata": Base.metadata,
+        },
+    )
+    real_operations = Operations(downgrade_context)
+
+    class _NoRows:
+        def first(self):
+            return None
+
+    class _NoRowsBind:
+        def execute(self, _statement):
+            return _NoRows()
+
+    class _OperationsWithEmptyBind:
+        def __getattr__(self, name):
+            if name == "get_bind":
+                return lambda: _NoRowsBind()
+            return getattr(real_operations, name)
+
+    with Operations.context(downgrade_context):
+        monkeypatch.setattr(migration, "op", _OperationsWithEmptyBind())
+        migration.downgrade()
+    downgrade_sql = downgrade_output.getvalue()
+    assert f"DROP CHECK {legacy_name}" in downgrade_sql
+    assert f"ADD CONSTRAINT {old_name} CHECK" in downgrade_sql
+    monkeypatch.undo()
 
     engine = create_engine("sqlite://")
     try:
