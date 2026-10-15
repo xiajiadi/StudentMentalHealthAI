@@ -10,7 +10,14 @@ the saved checkpoint. Do not reset/reseed the800 cohort.
 Reviewed code11701a8 adds exactly three closed diagnostic_reason_code values
 for standard claim rejection, research bibliography rejection and citation
 binding rejection.78 focused tests passed; no change to Safety, action/status,
-model or failed content retention. No new model request has run in this resume.
+model or failed content retention. The first new native request (r2) was safely refused by the standard claim
+boundary; no candidate text was retained. Reviewed code66c23ac moves research
+boundary prose into the disclaimer field (prompt1.2.0), preserves existing
+claim/bibliography/citation guards, and adds closed category/field diagnostics.
+80 focused checks passed. One fresh r3 request then completed on the fixed
+local7B with PROCEED,3 citations and policy/theory/intervention retrieval hits.
+Its original approved content still requires Controller/UI review; a successful
+single turn is not800-job or production acceptance.
 
 Q DB resumed through official restored-install mode; backup SHA matches below.
 Q application RUNNING with all original research flags and fixed7B profile:
@@ -23,9 +30,17 @@ process ancestry/CIM creation/loopback listener proof:
 D:/Dev/temp/psynova-dependency-recovery-owned-20261015-070207-f9ddca8f/owner-ready.json.
 RAG8170 retains its existing synthetic university corpus; the research student
 lane separately uses the pinned real-source manifest below. Do not call the
-synthetic corpus public research evidence. Next: one new API-only diagnostic
-request with exact branch reason, then fix its demonstrated cause and validate
-a useful source-grounded student answer without weakening checks.
+synthetic corpus public research evidence. Current app restarted through official lifecycle with all original research
+flags on66c23ac. Evidence: D:/Dev/temp/psynova-q0019-app-prompt12-start-20261015-r1.json.
+Native request proof: D:/Dev/temp/psynova-q0019-student-research-claim-diagnostic-once-20261015-r3.json.
+Conversation CONV_a327f7dbf4c342179e8d0c6220c98767;
+turn TURN_fda41a1573ea4c3b9a1faee57612a047; prompt1.2.0/attempt1;
+content SHA8fa46118ca2bac13e844efc58b57f180c64fdee7db6e76fbc9ed46d56f60846b.
+No CAT fields or cloud fallback; authenticated logout succeeded.
+Next: actual approved-content and GET-only UI review; bounded per-session
+staff programme batch queue (HELD/staff reference only), preserving800 cohort.
+The completion-trigger research education lane currently abstains without an
+approved processor; do not describe it as800 generated student reports.
 
 ## Historical shutdown checkpoint (before this explicit resume)
 
