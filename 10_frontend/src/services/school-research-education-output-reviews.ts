@@ -2,7 +2,6 @@ import { RealApiError } from '@/services/real-api'
 import {
   mapResearchEducationCandidateSummary,
   type ResearchEducationCandidateSummary,
-  type ResearchGeneralEducationContent,
 } from '@/services/school-research-education-candidates'
 import {
   mapResearchEducationSourceCard,
@@ -71,12 +70,19 @@ export type ResearchEducationOutputReviewSummary = {
 export type ResearchEducationOutputReviewDetail = ResearchEducationOutputReviewSummary & {
   review_payload: {
     schema_version: 'school-research-general-education-output-review.v1'
-    content: ResearchGeneralEducationContent
+    content: ResearchEducationOutputReviewContent
     source_cards: FeedbackSourceCard[]
     citations: ResearchFeedbackCitation[]
     citation_binding_status: 'NOT_EVALUATED_AT_OUTPUT_STOP'
     provenance: ResearchEducationOutputReviewProvenance
   }
+}
+
+export type ResearchEducationOutputReviewContent = {
+  summary: string
+  observations: string[]
+  suggestions: Array<{ text: string; source_chunk_ids: string[] }>
+  disclaimer: string
 }
 
 export type ResearchEducationOutputReviewPage = {
@@ -134,6 +140,13 @@ function exactFields(source: UnknownRecord, fields: string[], message: string): 
 function text(source: UnknownRecord, key: string, max: number, message: string): string {
   const value = source[key]
   if (typeof value !== 'string' || !value.trim() || value.length > max) return invalid(message)
+  return value
+}
+
+function reviewText(value: unknown, max: number, message: string, allowEmpty = false): string {
+  if (typeof value !== 'string' || value.length > max || (!allowEmpty && value.length === 0)) {
+    return invalid(message)
+  }
   return value
 }
 
@@ -226,14 +239,13 @@ function mapPage(value: unknown, taskRef: string, offset: number, limit: number)
   return { items, offset, limit, has_more: source.has_more }
 }
 
-function mapContent(value: unknown): ResearchGeneralEducationContent {
+function mapReviewContent(value: unknown): ResearchEducationOutputReviewContent {
   const message = '输出复核正文格式无法识别。'
   const source = record(value, message)
   exactFields(source, contentFields, message)
   if (!Array.isArray(source.observations) || !Array.isArray(source.suggestions)) return invalid(message)
   const observations = source.observations.map((item) => {
-    if (typeof item !== 'string') return invalid(message)
-    return item
+    return reviewText(item, 100_000, message, true)
   })
   const suggestions = source.suggestions.map((value) => {
     const item = record(value, message)
@@ -245,15 +257,15 @@ function mapContent(value: unknown): ResearchGeneralEducationContent {
       return invalid(message)
     }
     return Object.freeze({
-      text: text(item, 'text', 100_000, message),
+      text: reviewText(item.text, 100_000, message),
       source_chunk_ids: Object.freeze([...item.source_chunk_ids]) as string[],
     })
   })
   return Object.freeze({
-    summary: text(source, 'summary', 100_000, message),
+    summary: reviewText(source.summary, 100_000, message),
     observations: Object.freeze(observations) as string[],
-    suggestions: Object.freeze(suggestions) as ResearchGeneralEducationContent['suggestions'],
-    disclaimer: text(source, 'disclaimer', 100_000, message),
+    suggestions: Object.freeze(suggestions) as ResearchEducationOutputReviewContent['suggestions'],
+    disclaimer: reviewText(source.disclaimer, 100_000, message),
   })
 }
 
@@ -357,7 +369,7 @@ function mapDetail(value: unknown, taskRef: string, outputReviewRef: string): Re
   return Object.freeze({
     ...summary,
     review_payload: Object.freeze({
-      content: mapContent(payload.content),
+      content: mapReviewContent(payload.content),
       source_cards: Object.freeze(sourceCards) as FeedbackSourceCard[],
       citations: [],
       schema_version: 'school-research-general-education-output-review.v1',

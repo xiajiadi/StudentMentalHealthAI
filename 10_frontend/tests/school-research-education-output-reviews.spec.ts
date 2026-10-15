@@ -149,6 +149,45 @@ describe('SchoolResearchEducationOutputReviewService', () => {
     expect(url).toContain(`/tasks/TASK_synthetic_1/output-reviews/REOR_${'a'.repeat(32)}`)
   })
 
+  it('preserves whitespace-only review content for the specialist to inspect', async () => {
+    const content = {
+      summary: ' \t ',
+      observations: ['\n'],
+      suggestions: [{ text: '  ', source_chunk_ids: ['CHUNK_synthetic_1'] }],
+      disclaimer: '\t\n',
+    }
+    fetchMock.mockResolvedValueOnce(response(envelope(reviewDetail({
+      review_payload: { ...reviewDetail().review_payload, content },
+    }))))
+
+    const detail = await new SchoolResearchEducationOutputReviewService().get(
+      'TASK_synthetic_1', `REOR_${'a'.repeat(32)}`,
+    )
+
+    expect(detail.review_payload.content).toEqual(content)
+  })
+
+  it('sends invalid blank output to Backend for CREATE_HELD_CANDIDATE validation', async () => {
+    fetchMock
+      .mockResolvedValueOnce(response(envelope({ csrf_token: 'csrf-synthetic' })))
+      .mockResolvedValueOnce(response({
+        request_id: 'REQ_synthetic',
+        trace_id: 'TRACE_synthetic',
+        error: { code: 'VALIDATION_FAILED', detail: 'Synthetic candidate content is invalid.' },
+      }, 422))
+
+    await expect(new SchoolResearchEducationOutputReviewService().resolve(
+      'TASK_synthetic_1', summary(), 'CREATE_HELD_CANDIDATE', 'key-synthetic-blank',
+    )).rejects.toMatchObject({ code: 'VALIDATION_FAILED' })
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const [, init] = fetchMock.mock.calls[1] as [string, RequestInit]
+    expect(JSON.parse(String(init.body))).toEqual({
+      expected_state_version: 1,
+      target: 'CREATE_HELD_CANDIDATE',
+    })
+  })
+
   it('rejects mismatched tasks, unexpected payload fields, or fabricated citations', async () => {
     fetchMock
       .mockResolvedValueOnce(response(envelope(page([summary({ task_ref: 'TASK_other' })]))))
@@ -254,6 +293,37 @@ describe('SpecialistResearchEducationOutputReviews', () => {
     expect(wrapper.text()).not.toContain('Synthetic educational summary.')
     expect(wrapper.emitted('candidateCreated')).toHaveLength(1)
     expect(fetchMock).toHaveBeenCalledTimes(5)
+  })
+
+  it('renders whitespace-only content verbatim and still permits rejection', async () => {
+    const content = {
+      summary: ' \t ',
+      observations: ['\n'],
+      suggestions: [{ text: '  ', source_chunk_ids: ['CHUNK_synthetic_1'] }],
+      disclaimer: '\t\n',
+    }
+    fetchMock
+      .mockResolvedValueOnce(response(envelope(page([summary()]))))
+      .mockResolvedValueOnce(response(envelope(reviewDetail({
+        review_payload: { ...reviewDetail().review_payload, content },
+      }))))
+    wrapper = mount(SpecialistResearchEducationOutputReviews, { props: { taskRef: 'TASK_synthetic_1' } })
+    await flushPromises()
+    await wrapper.get('.output-reviews__row').trigger('click')
+    await flushPromises()
+
+    const contentNode = wrapper.get('.output-reviews__content').element
+    const paragraphs = contentNode.querySelectorAll('p')
+    const listItems = contentNode.querySelectorAll('li')
+    expect(paragraphs[0]?.textContent).toBe(content.summary)
+    expect(listItems[0]?.textContent).toBe(content.observations[0])
+    expect(listItems[1]?.textContent).toBe(content.suggestions[0]?.text)
+    expect(paragraphs[1]?.textContent).toBe(content.disclaimer)
+
+    await wrapper.get('#output-review-target').setValue('REJECTED')
+    await wrapper.get('.output-reviews__confirm input').setValue(true)
+    const reject = wrapper.findAll('button').find((button) => button.text().includes('确认拒绝'))
+    expect(reject?.attributes('disabled')).toBeUndefined()
   })
 
   it('clears late private detail after switching task and hides the panel from other roles', async () => {
