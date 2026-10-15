@@ -97,11 +97,11 @@ export type ResearchGeneralEducationProvenance = {
   runtime_fallback_count: 0
   runtime_fallback_attempted: false
   runtime_local_only: true
-  input_safety_action: 'PROCEED' | 'PROCEED_WITH_BOUNDARY'
+  input_safety_action: 'PROCEED' | 'PROCEED_WITH_BOUNDARY' | 'REVIEW_REQUIRED'
   input_safety_reason_codes: string[]
   retrieval_safety_action: 'PROCEED' | 'PROCEED_WITH_BOUNDARY'
   retrieval_safety_reason_codes: string[]
-  output_safety_action: 'PROCEED' | 'PROCEED_WITH_BOUNDARY'
+  output_safety_action: 'PROCEED' | 'PROCEED_WITH_BOUNDARY' | 'REVIEW_REQUIRED'
   output_safety_reason_codes: string[]
 }
 
@@ -115,6 +115,23 @@ export type ResearchGeneralEducationCandidatePayload = {
 
 export type ResearchEducationCandidateDetail = ResearchEducationCandidateSummary & {
   candidate_payload: ResearchGeneralEducationCandidatePayload
+  review_lineage: ResearchEducationCandidateReviewLineage
+}
+
+// A consumed receipt binds history; it never converts a Safety REVIEW_REQUIRED action into approval.
+export type ResearchEducationCandidateReviewLineage = {
+  generation_round: 0 | 1
+  input_review: null | {
+    input_review_ref: string
+    status: 'CONSUMED'
+    state_version: 3
+  }
+  output_review: null | {
+    output_review_ref: string
+    status: 'CONSUMED'
+    state_version: 2
+    reason_code: 'CONTENT_CONTROVERSIAL'
+  }
 }
 
 export type ResearchEducationCandidatePage = {
@@ -157,6 +174,9 @@ const provenanceFields = [
   'input_safety_reason_codes', 'retrieval_safety_action', 'retrieval_safety_reason_codes',
   'output_safety_action', 'output_safety_reason_codes',
 ].sort()
+const reviewLineageFields = ['generation_round', 'input_review', 'output_review'].sort()
+const inputReviewLineageFields = ['input_review_ref', 'status', 'state_version'].sort()
+const outputReviewLineageFields = ['output_review_ref', 'status', 'state_version', 'reason_code'].sort()
 const contentFields = ['summary', 'observations', 'suggestions', 'disclaimer'].sort()
 const suggestionFields = ['text', 'source_chunk_ids'].sort()
 const candidatePayloadFields = ['schema_version', 'content', 'citations', 'source_cards', 'provenance'].sort()
@@ -195,6 +215,8 @@ const citationFields = [
   'citation_id', 'chunk_id', 'document_id', 'title', 'organization', 'locator', 'rank',
   'source_version', 'source_hash',
 ].sort()
+const inputReviewSidecarRefPattern = /^REIR_[a-f0-9]{32}$/
+const outputReviewRefPattern = /^REOR_[a-f0-9]{32}$/
 
 function record(value: unknown, message: string): RecordValue {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -332,7 +354,61 @@ function mapCitation(value: unknown): ResearchFeedbackCitation {
   }
 }
 
-function mapProvenance(value: unknown): ResearchGeneralEducationProvenance {
+function mapReviewLineage(value: unknown): ResearchEducationCandidateReviewLineage {
+  const message = '候选复核关联格式无法识别。'
+  const source = record(value, message)
+  exact(source, reviewLineageFields, message)
+  if (source.generation_round !== 0 && source.generation_round !== 1) {
+    throw new RealApiError('API_INVALID_RESPONSE', message)
+  }
+
+  let inputReview: ResearchEducationCandidateReviewLineage['input_review'] = null
+  if (source.input_review !== null) {
+    const input = record(source.input_review, message)
+    exact(input, inputReviewLineageFields, message)
+    if (typeof input.input_review_ref !== 'string' || !inputReviewSidecarRefPattern.test(input.input_review_ref)
+      || input.status !== 'CONSUMED' || input.state_version !== 3) {
+      throw new RealApiError('API_INVALID_RESPONSE', message)
+    }
+    inputReview = {
+      input_review_ref: input.input_review_ref,
+      status: 'CONSUMED',
+      state_version: 3,
+    }
+  }
+
+  let outputReview: ResearchEducationCandidateReviewLineage['output_review'] = null
+  if (source.output_review !== null) {
+    const output = record(source.output_review, message)
+    exact(output, outputReviewLineageFields, message)
+    if (typeof output.output_review_ref !== 'string' || !outputReviewRefPattern.test(output.output_review_ref)
+      || output.status !== 'CONSUMED' || output.state_version !== 2
+      || output.reason_code !== 'CONTENT_CONTROVERSIAL') {
+      throw new RealApiError('API_INVALID_RESPONSE', message)
+    }
+    outputReview = {
+      output_review_ref: output.output_review_ref,
+      status: 'CONSUMED',
+      state_version: 2,
+      reason_code: 'CONTENT_CONTROVERSIAL',
+    }
+  }
+
+  if ((source.generation_round === 0 && inputReview !== null)
+    || (source.generation_round === 1 && inputReview === null)) {
+    throw new RealApiError('API_INVALID_RESPONSE', message)
+  }
+  return {
+    generation_round: source.generation_round,
+    input_review: inputReview,
+    output_review: outputReview,
+  }
+}
+
+function mapProvenance(
+  value: unknown,
+  lineage: ResearchEducationCandidateReviewLineage,
+): ResearchGeneralEducationProvenance {
   const message = '候选来源追溯格式无法识别。'
   const source = record(value, message)
   exact(source, provenanceFields, message)
@@ -349,9 +425,13 @@ function mapProvenance(value: unknown): ResearchGeneralEducationProvenance {
     }
     return [...values] as string[]
   }
-  const action = (key: string): 'PROCEED' | 'PROCEED_WITH_BOUNDARY' => {
+  const action = (
+    key: string,
+    reviewed = false,
+  ): 'PROCEED' | 'PROCEED_WITH_BOUNDARY' | 'REVIEW_REQUIRED' => {
     const value = source[key]
-    if (value !== 'PROCEED' && value !== 'PROCEED_WITH_BOUNDARY') {
+    if (value !== 'PROCEED' && value !== 'PROCEED_WITH_BOUNDARY'
+      && !(reviewed && value === 'REVIEW_REQUIRED')) {
       throw new RealApiError('API_INVALID_RESPONSE', message)
     }
     return value
@@ -370,6 +450,14 @@ function mapProvenance(value: unknown): ResearchGeneralEducationProvenance {
     || source.runtime_local_only !== true) {
     throw new RealApiError('API_INVALID_RESPONSE', message)
   }
+  const inputSafetyAction = action('input_safety_action', lineage.generation_round === 1 && lineage.input_review !== null)
+  const outputSafetyAction = action('output_safety_action', lineage.output_review !== null)
+  if ((lineage.generation_round === 1 && inputSafetyAction !== 'REVIEW_REQUIRED')
+    || (lineage.generation_round === 0 && inputSafetyAction === 'REVIEW_REQUIRED')
+    || ((outputSafetyAction === 'REVIEW_REQUIRED') !== (lineage.output_review !== null))) {
+    throw new RealApiError('API_INVALID_RESPONSE', message)
+  }
+
   return {
     policy_version: 'RESEARCH_GENERAL_EDUCATION_DRAFT_V1',
     policy_hash: hash('policy_hash'),
@@ -394,16 +482,19 @@ function mapProvenance(value: unknown): ResearchGeneralEducationProvenance {
     runtime_fallback_count: 0,
     runtime_fallback_attempted: false,
     runtime_local_only: true,
-    input_safety_action: action('input_safety_action'),
+    input_safety_action: inputSafetyAction,
     input_safety_reason_codes: reasons('input_safety_reason_codes'),
     retrieval_safety_action: action('retrieval_safety_action'),
     retrieval_safety_reason_codes: reasons('retrieval_safety_reason_codes'),
-    output_safety_action: action('output_safety_action'),
+    output_safety_action: outputSafetyAction,
     output_safety_reason_codes: reasons('output_safety_reason_codes'),
   }
 }
 
-function mapPayload(value: unknown): ResearchGeneralEducationCandidatePayload {
+function mapPayload(
+  value: unknown,
+  lineage: ResearchEducationCandidateReviewLineage,
+): ResearchGeneralEducationCandidatePayload {
   const message = '候选原始内容格式无法识别。'
   const source = record(value, message)
   exact(source, candidatePayloadFields, message)
@@ -442,7 +533,7 @@ function mapPayload(value: unknown): ResearchGeneralEducationCandidatePayload {
   }
   const citations = source.citations.map(mapCitation)
   const sourceCards = source.source_cards.map(mapResearchEducationSourceCard)
-  const provenance = mapProvenance(source.provenance)
+  const provenance = mapProvenance(source.provenance, lineage)
   const chunks = sourceCards.map((card) => card.chunk_id)
   if (new Set(chunks).size !== chunks.length || citations.length !== sourceCards.length
     || new Set(citations.map((citation) => citation.citation_id)).size !== citations.length
@@ -486,10 +577,12 @@ function mapPayload(value: unknown): ResearchGeneralEducationCandidatePayload {
 function mapDetail(value: unknown): ResearchEducationCandidateDetail {
   const message = '候选原始内容格式无法识别。'
   const source = record(value, message)
-  exact(source, [...candidateSummaryFields, 'candidate_payload'].sort(), message)
+  exact(source, [...candidateSummaryFields, 'candidate_payload', 'review_lineage'].sort(), message)
+  const reviewLineage = mapReviewLineage(source.review_lineage)
   return Object.freeze({
     ...mapSummary(Object.fromEntries(Object.entries(source).filter(([key]) => candidateSummaryFields.includes(key)))),
-    candidate_payload: mapPayload(source.candidate_payload),
+    candidate_payload: mapPayload(source.candidate_payload, reviewLineage),
+    review_lineage: Object.freeze(reviewLineage),
   })
 }
 
