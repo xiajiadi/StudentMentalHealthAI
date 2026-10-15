@@ -141,10 +141,11 @@ def _required_revision(profile: str) -> str:
         "20261015_0019",
         "20261015_0020",
         "20261015_0021",
+        "20261015_0022",
     ],
 )
-async def test_school_tenant_startup_requires_education_input_review_revision(old_revision):
-    assert REQUIRED_SCHOOL_TENANT_DATABASE_REVISION == "20261015_0022"
+async def test_school_tenant_startup_requires_output_review_revision(old_revision):
+    assert REQUIRED_SCHOOL_TENANT_DATABASE_REVISION == "20261016_0023"
     adapter = _adapter([old_revision], "school_tenant")
 
     async def no_bootstrap():
@@ -152,7 +153,7 @@ async def test_school_tenant_startup_requires_education_input_review_revision(ol
 
     adapter._ensure_synthetic_fixtures = no_bootstrap
 
-    with pytest.raises(RuntimeError, match="20261015_0022"):
+    with pytest.raises(RuntimeError, match="20261016_0023"):
         await adapter.start()
 
 
@@ -354,10 +355,35 @@ def test_unknown_profile_does_not_fall_back_to_legacy_provider():
         )
 
 
-def test_backend_school_revision_matches_installed_revision_chain():
-    import runpy
+def test_backend_school_revision_matches_deployment_chain_tip_without_importing_it():
+    import ast
     from pathlib import Path
 
-    deployment = Path(__file__).resolve().parents[2] / "13_deployment/school_schema.py"
-    schema = runpy.run_path(str(deployment))
-    assert REQUIRED_SCHOOL_TENANT_DATABASE_REVISION == schema["CURRENT_SCHOOL_REVISION"]
+    root = Path(__file__).resolve().parents[2]
+    backend_file = root / "09_backend/src/smhai_backend/adapters/database.py"
+    deployment_file = root / "13_deployment/school_schema.py"
+    backend_tree = ast.parse(backend_file.read_text(encoding="utf-8"))
+    deployment_tree = ast.parse(deployment_file.read_text(encoding="utf-8"))
+
+    def assignments(tree: ast.Module) -> dict[str, ast.expr]:
+        result: dict[str, ast.expr] = {}
+        for node in tree.body:
+            if not isinstance(node, ast.Assign):
+                continue
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    result[target.id] = node.value
+        return result
+
+    backend_values = assignments(backend_tree)
+    deployment_values = assignments(deployment_tree)
+    revision_expr = backend_values["REQUIRED_SCHOOL_TENANT_DATABASE_REVISION"]
+    revision = ast.literal_eval(revision_expr)
+    chain_expr = deployment_values["SCHOOL_REVISION_CHAIN"]
+    assert isinstance(chain_expr, ast.Tuple) and chain_expr.elts
+    chain_tip_expr = chain_expr.elts[-1]
+    assert isinstance(chain_tip_expr, ast.Name)
+    current_expr = deployment_values["CURRENT_SCHOOL_REVISION"]
+    assert isinstance(current_expr, ast.Name)
+    assert current_expr.id == chain_tip_expr.id
+    assert revision == ast.literal_eval(deployment_values[chain_tip_expr.id])
