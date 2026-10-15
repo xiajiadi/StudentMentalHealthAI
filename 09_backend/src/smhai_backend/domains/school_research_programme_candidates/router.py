@@ -23,6 +23,7 @@ from .schemas import (
     ProgrammeCandidateListDto,
     ProgrammeCandidateSummaryDto,
     ProgrammeGenerationBatchQueuedDto,
+    ProgrammeGenerationJobListDto,
     ProgrammeGenerationQueuedDto,
     QueueProgrammeGenerationBatchRequest,
     QueueProgrammeGenerationRequest,
@@ -103,6 +104,29 @@ async def list_task_candidates(
     return _response(
         request,
         ProgrammeCandidateListDto.model_validate(result, strict=True).model_dump(mode="json"),
+    )
+
+
+@router.get(
+    "/tasks/{task_ref}/generation-jobs",
+    response_model=ApiEnvelope[ProgrammeGenerationJobListDto],
+    responses=_ERRORS,
+)
+async def list_task_generation_jobs(
+    request: Request,
+    task_ref: str,
+    actor: CurrentActor,
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=25, ge=1, le=100),
+):
+    result = await _service(request).list_generation_jobs(
+        actor, task_ref, offset=offset, limit=limit
+    )
+    return _response(
+        request,
+        ProgrammeGenerationJobListDto.model_validate(result, strict=True).model_dump(
+            mode="json"
+        ),
     )
 
 

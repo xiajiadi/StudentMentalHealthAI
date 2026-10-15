@@ -18,6 +18,7 @@ from smhai_backend.domains.research_programme_generation.schemas import (
 )
 from smhai_backend.domains.school_research_programme_candidates.schemas import (
     GeneratedProgrammeCandidate,
+    ProgrammeGenerationJobListDto,
     QueueProgrammeGenerationBatchRequest,
 )
 from smhai_backend.domains.school_research_programme_candidates.service import (
@@ -55,6 +56,41 @@ def summary(**changes):
     }
 
 
+def generation_job_list(**changes):
+    return {
+        "items": [
+            {
+                "job_ref": "REJ_" + "a" * 64,
+                "status": "RETRY",
+                "attempt_count": 2,
+                "updated_at": datetime(2026, 10, 15, tzinfo=UTC),
+                "last_error_code": "UPSTREAM_TIMEOUT",
+            }
+        ],
+        "offset": 0,
+        "limit": 25,
+        "total": 1,
+        "has_more": False,
+        "status_counts": {
+            "QUEUED": 0,
+            "LEASED": 0,
+            "RETRY": 1,
+            "HELD": 0,
+            "ABSTAINED": 0,
+            "REVIEW_REQUIRED": 0,
+            "CRISIS_ROUTED": 0,
+            "FAILED": 0,
+            "CANCELLED": 0,
+        },
+        "policy_version": "RESEARCH_STAFF_PROGRAMME_POLICY_V1",
+        "purpose": "RESEARCH_SIMULATION",
+        "research_only": True,
+        "publication_status": "not_approved_for_publication_or_operational_use",
+        "student_feedback_eligible": False,
+        **changes,
+    }
+
+
 class FakePersistence:
     def __init__(self):
         self.calls = []
@@ -62,6 +98,12 @@ class FakePersistence:
     async def school_research_programme_candidate_list(self, actor_arg, task_ref, *, offset, limit):
         self.calls.append(("list", actor_arg, task_ref, offset, limit))
         return [summary()]
+
+    async def school_research_programme_generation_job_list(
+        self, actor_arg, task_ref, *, offset, limit
+    ):
+        self.calls.append(("jobs", actor_arg, task_ref, offset, limit))
+        return generation_job_list(offset=offset, limit=limit)
 
     async def school_research_programme_candidate_get(self, actor_arg, task_ref, candidate_ref):
         self.calls.append(("get", actor_arg, task_ref, candidate_ref))
@@ -149,6 +191,7 @@ async def test_non_specialists_cannot_read_adopt_or_discard_candidate(role):
     service = SchoolResearchProgrammeCandidateService(persistence=persistence)
     for operation in (
         lambda: service.list_for_task(actor(role), "TASK_demo"),
+        lambda: service.list_generation_jobs(actor(role), "TASK_demo"),
         lambda: service.get(actor(role), "TASK_demo", "RPCAND_demo"),
         lambda: service.adopt(
             actor(role), "TASK_demo", "RPCAND_demo", expected_state_version=1,
@@ -163,6 +206,61 @@ async def test_non_specialists_cannot_read_adopt_or_discard_candidate(role):
             await operation()
         assert exc.value.code.value == "forbidden"
     assert persistence.calls == []
+
+
+async def test_specialist_can_list_only_closed_staff_generation_job_summaries():
+    persistence = FakePersistence()
+    service = SchoolResearchProgrammeCandidateService(persistence=persistence)
+    specialist = actor(BackendRole.PSYCHOLOGICAL_SPECIALIST)
+
+    result = await service.list_generation_jobs(specialist, "TASK_demo", offset=0, limit=25)
+
+    assert set(result) == {
+        "items", "offset", "limit", "total", "has_more", "status_counts",
+        "policy_version", "purpose", "research_only", "publication_status",
+        "student_feedback_eligible",
+    }
+    assert result["items"][0]["status"] == "RETRY"
+    assert result["items"][0]["last_error_code"] == "UPSTREAM_TIMEOUT"
+    assert result["student_feedback_eligible"] is False
+    assert persistence.calls == [("jobs", specialist, "TASK_demo", 0, 25)]
+
+
+@pytest.mark.parametrize(("offset", "limit"), [(-1, 25), (0, 101), (True, 25)])
+async def test_generation_job_pagination_rejects_invalid_values(offset, limit):
+    persistence = FakePersistence()
+    service = SchoolResearchProgrammeCandidateService(persistence=persistence)
+
+    with pytest.raises(BackendError) as raised:
+        await service.list_generation_jobs(
+            actor(BackendRole.PSYCHOLOGICAL_SPECIALIST),
+            "TASK_demo",
+            offset=offset,
+            limit=limit,
+        )
+
+    assert raised.value.code.value == "validation_failed"
+    assert persistence.calls == []
+
+
+def test_generation_job_summary_rejects_open_error_codes_and_extra_scope_fields():
+    value = generation_job_list()
+    with pytest.raises(ValidationError):
+        ProgrammeGenerationJobListDto.model_validate(
+            {
+                **value,
+                "items": [{**value["items"][0], "last_error_code": "raw error text"}],
+            },
+            strict=True,
+        )
+    with pytest.raises(ValidationError):
+        ProgrammeGenerationJobListDto.model_validate(
+            {
+                **value,
+                "items": [{**value["items"][0], "subject_id": 99}],
+            },
+            strict=True,
+        )
 
 
 async def test_specialist_can_review_and_adopt_only_to_staff_material_state():

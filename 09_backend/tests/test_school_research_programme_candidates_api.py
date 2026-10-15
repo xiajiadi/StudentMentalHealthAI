@@ -63,6 +63,9 @@ async def test_non_specialist_cannot_read_or_change_staff_candidates(role):
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
         listed = await client.get("/api/v1/school/research-programme-candidates/tasks/TASK_demo")
+        jobs = await client.get(
+            "/api/v1/school/research-programme-candidates/tasks/TASK_demo/generation-jobs"
+        )
         detail = await client.get(
             "/api/v1/school/research-programme-candidates/tasks/TASK_demo/RPCAND_synthetic_1"
         )
@@ -74,7 +77,9 @@ async def test_non_specialist_cannot_read_or_change_staff_candidates(role):
                 "X-CSRF-Token": "synthetic-csrf-token",
             },
         )
-    assert [listed.status_code, detail.status_code, adopted.status_code] == [403, 403, 403]
+    assert [listed.status_code, jobs.status_code, detail.status_code, adopted.status_code] == [
+        403, 403, 403, 403
+    ]
     assert persistence.calls == []
 
 
@@ -84,6 +89,9 @@ async def test_specialist_candidate_review_has_closed_scope_and_staff_only_adopt
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
         root = "/api/v1/school/research-programme-candidates/tasks/TASK_demo"
         listed = await client.get(root)
+        jobs = await client.get(f"{root}/generation-jobs")
+        paged_jobs = await client.get(f"{root}/generation-jobs?offset=1&limit=1")
+        invalid_jobs_page = await client.get(f"{root}/generation-jobs?offset=-1")
         detail = await client.get(f"{root}/RPCAND_synthetic_1")
         bad_adopt = await client.post(
             f"{root}/RPCAND_synthetic_1/adopt",
@@ -120,6 +128,26 @@ async def test_specialist_candidate_review_has_closed_scope_and_staff_only_adopt
     assert listed.status_code == 200
     assert listed.json()["data"]["items"][0]["student_feedback_eligible"] is False
     assert listed.json()["data"]["items"][0]["output_boundary"] == "STAFF_REFERENCE_ONLY"
+    assert jobs.status_code == 200
+    job_data = jobs.json()["data"]
+    assert set(job_data) == {
+        "items", "offset", "limit", "total", "has_more", "status_counts",
+        "policy_version", "purpose", "research_only", "publication_status",
+        "student_feedback_eligible",
+    }
+    assert set(job_data["items"][0]) == {
+        "job_ref", "status", "attempt_count", "updated_at", "last_error_code"
+    }
+    assert set(job_data["status_counts"]) == {
+        "QUEUED", "LEASED", "RETRY", "HELD", "ABSTAINED", "REVIEW_REQUIRED",
+        "CRISIS_ROUTED", "FAILED", "CANCELLED",
+    }
+    assert job_data["status_counts"]["RETRY"] == 1
+    assert job_data["student_feedback_eligible"] is False
+    assert paged_jobs.status_code == 200
+    assert paged_jobs.json()["data"]["offset"] == 1
+    assert paged_jobs.json()["data"]["limit"] == 1
+    assert invalid_jobs_page.status_code == 422
     assert detail.status_code == 200
     detail_row = detail.json()["data"]
     assert detail_row["output_boundary"] == "STAFF_REFERENCE_ONLY"
@@ -135,7 +163,7 @@ async def test_specialist_candidate_review_has_closed_scope_and_staff_only_adopt
     assert adopted.json()["data"]["output_boundary"] == "STAFF_REFERENCE_ONLY"
     assert forged_student_route.status_code == 404
     assert public_create_route.status_code == 405
-    assert [call[0] for call in persistence.calls] == ["list", "get", "adopt"]
+    assert [call[0] for call in persistence.calls] == ["list", "jobs", "jobs", "get", "adopt"]
 
 
 async def test_generation_queue_is_specialist_csrf_idempotency_and_policy_closed():

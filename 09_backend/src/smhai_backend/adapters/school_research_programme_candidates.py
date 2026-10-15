@@ -7,10 +7,11 @@ import re
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, func, or_
 
 from smhai_backend.adapters.school_research_feedback import (
     SchoolResearchFeedbackPersistenceAdapter,
+    _naive_utc,
     _repo_call,
 )
 from smhai_backend.core.errors import BackendError, ErrorCode, error
@@ -23,6 +24,7 @@ from smhai_backend.domains.research_programme_generation.schemas import (
 from smhai_backend.domains.school_research.study_use import ResearchStudyUsePolicy
 from smhai_backend.domains.school_research_programme_candidates.schemas import (
     GeneratedProgrammeCandidate,
+    PROGRAMME_GENERATION_JOB_STATUSES,
     ProgrammeCandidateContent,
 )
 from smhai_backend.integrations.research_programme import PROMPT_VERSION
@@ -897,6 +899,259 @@ class SchoolResearchProgrammeCandidatePersistenceAdapter(SchoolResearchFeedbackP
                 "purpose": "RESEARCH_SIMULATION",
                 "research_only": True,
                 "publication_status": _PUBLICATION_STATUS,
+                "student_feedback_eligible": False,
+            }
+
+    async def school_research_programme_generation_job_list(
+        self, actor, task_ref: str, *, offset: int, limit: int
+    ) -> dict:
+        """List content-free staff-programme job summaries in the active task scope."""
+        self._require_generation_enabled()
+        from database_layer.school_research_education_jobs import (
+            ResearchEducationJobErrorCode,
+            STAFF_PROGRAMME_POLICY_VERSION,
+        )
+
+        if (
+            type(offset) is not int
+            or offset < 0
+            or type(limit) is not int
+            or not 1 <= limit <= 100
+        ):
+            raise error(ErrorCode.VALIDATION_FAILED, detail="pagination is invalid")
+
+        now, db_now = self._now()
+        async with self._uow() as uow:
+            _, role_id = await self._require_actor(
+                uow, actor, "psychological_specialist", db_now
+            )
+            task, binding, _profile, _pin = await self._active_task_for_actor(
+                uow, actor, task_ref, role_id=role_id, at=now
+            )
+            m = self._db_models
+            job = m.SchoolResearchEducationJob
+            session = m.SchoolResearchSession
+            grant = m.SubjectAccessGrant
+            account = m.Account
+            membership = m.AccountSchoolMembership
+            role = m.MembershipRole
+            enrollment = m.TaskEnrollment
+            class_student = m.SchoolClassStudent
+            school_class = m.SchoolClass
+            subject = m.Subject
+
+            valid_grants = (
+                self._select(
+                    grant.id.label("grant_id"),
+                    grant.school_id.label("school_id"),
+                    grant.subject_id.label("subject_id"),
+                )
+                .join(account, account.id == grant.principal_account_id)
+                .join(
+                    membership,
+                    (membership.account_id == account.id)
+                    & (membership.school_id == grant.school_id),
+                )
+                .join(
+                    role,
+                    (role.membership_id == membership.id)
+                    & (role.school_id == membership.school_id),
+                )
+                .where(
+                    grant.school_id == actor.school_id,
+                    grant.relationship_type == "SELF",
+                    grant.status == "ACTIVE",
+                    grant.revoked_at.is_(None),
+                    grant.valid_from <= _naive_utc(now),
+                    (grant.valid_until.is_(None))
+                    | (grant.valid_until >= _naive_utc(now)),
+                    account.status == self._db_enums.AccountStatus.ACTIVE.value,
+                    membership.status == "ACTIVE",
+                    membership.revoked_at.is_(None),
+                    membership.valid_from <= _naive_utc(now),
+                    (membership.valid_until.is_(None))
+                    | (membership.valid_until >= _naive_utc(now)),
+                    role.role_code == "student",
+                    role.status == "ACTIVE",
+                    role.revoked_at.is_(None),
+                    role.valid_from <= _naive_utc(now),
+                    (role.valid_until.is_(None))
+                    | (role.valid_until >= _naive_utc(now)),
+                )
+                .subquery()
+            )
+
+            scoped_jobs = (
+                self._select(job.id.label("job_id"))
+                .select_from(job)
+                .join(
+                    session,
+                    (session.id == job.research_session_id)
+                    & (session.school_id == job.school_id),
+                )
+                .join(
+                    enrollment,
+                    (enrollment.id == session.task_enrollment_id)
+                    & (enrollment.task_id == session.task_id)
+                    & (enrollment.school_id == session.school_id)
+                    & (enrollment.class_id == session.class_id)
+                    & (enrollment.subject_id == session.subject_id),
+                )
+                .join(
+                    class_student,
+                    (class_student.id == enrollment.class_student_id)
+                    & (class_student.school_id == enrollment.school_id)
+                    & (class_student.class_id == enrollment.class_id)
+                    & (class_student.subject_id == enrollment.subject_id),
+                )
+                .join(
+                    school_class,
+                    (school_class.id == session.class_id)
+                    & (school_class.school_id == session.school_id),
+                )
+                .join(
+                    subject,
+                    (subject.id == session.subject_id)
+                    & (subject.school_id == session.school_id),
+                )
+                .join(
+                    valid_grants,
+                    (valid_grants.c.school_id == session.school_id)
+                    & (valid_grants.c.subject_id == session.subject_id),
+                )
+                .where(
+                    job.school_id == actor.school_id,
+                    job.task_id == task.id,
+                    job.class_id == task.class_id,
+                    job.task_binding_id == binding.binding_id,
+                    job.profile_version_id == binding.profile_version_id,
+                    job.profile_ref == binding.profile_ref,
+                    job.profile_version_number == binding.profile_version_number,
+                    job.profile_sha256 == binding.profile_sha256,
+                    job.response_origin == "PUBLIC_OBSERVED",
+                    job.job_kind == "EDUCATION_SUPPORT",
+                    job.policy_version == STAFF_PROGRAMME_POLICY_VERSION,
+                    job.policy_hash == self.expected_processor_policy_sha256,
+                    job.purpose == "RESEARCH_SIMULATION",
+                    job.research_only.is_(True),
+                    job.publication_status
+                    == "not_approved_for_publication_or_operational_use",
+                    session.school_id == actor.school_id,
+                    session.task_id == task.id,
+                    session.class_id == task.class_id,
+                    session.task_binding_id == binding.binding_id,
+                    session.profile_version_id == binding.profile_version_id,
+                    session.profile_ref == binding.profile_ref,
+                    session.profile_version_number == binding.profile_version_number,
+                    session.profile_sha256 == binding.profile_sha256,
+                    session.response_origin == "PUBLIC_OBSERVED",
+                    session.status == "COMPLETED",
+                    session.completed_at.is_not(None),
+                    session.items_answered >= 1,
+                    session.purpose == "RESEARCH_SIMULATION",
+                    session.research_only.is_(True),
+                    enrollment.status == "ACTIVE",
+                    enrollment.revoked_at.is_(None),
+                    class_student.status == "ACTIVE",
+                    class_student.revoked_at.is_(None),
+                    class_student.valid_from <= _naive_utc(now),
+                    (class_student.valid_until.is_(None))
+                    | (class_student.valid_until >= _naive_utc(now)),
+                    school_class.status == "ACTIVE",
+                    subject.status == self._db_enums.SubjectStatus.ACTIVE.value,
+                    subject.data_origin == self._db_enums.DataOrigin.SYNTHETIC.value,
+                )
+                .group_by(job.id)
+                .having(func.count(func.distinct(valid_grants.c.grant_id)) == 1)
+                .subquery()
+            )
+            if binding.cohort_id is not None:
+                study_ref = getattr(self.study_use_policy, "study_ref", None)
+                if not isinstance(study_ref, str) or not study_ref:
+                    raise error(
+                        ErrorCode.DEPENDENCY_UNAVAILABLE,
+                        detail="research study pin is unavailable",
+                        retryable=True,
+                    )
+                cohort = m.SchoolResearchCohort
+                scoped_jobs = (
+                    self._select(scoped_jobs.c.job_id)
+                    .join(
+                        cohort,
+                        (cohort.id == binding.cohort_id)
+                        & (cohort.school_id == actor.school_id),
+                    )
+                    .where(cohort.study_ref == study_ref)
+                    .subquery()
+                )
+
+            total = await uow.session.scalar(
+                self._select(func.count()).select_from(scoped_jobs)
+            )
+            page_result = await uow.session.execute(
+                self._select(
+                    job.id.label("job_id"),
+                    job.job_ref.label("job_ref"),
+                    job.status.label("status"),
+                    job.attempt_count.label("attempt_count"),
+                    job.updated_at.label("updated_at"),
+                    job.last_error_code.label("last_error_code"),
+                )
+                .join(scoped_jobs, scoped_jobs.c.job_id == job.id)
+                .order_by(job.id)
+                .offset(offset)
+                .limit(limit)
+            )
+            status_result = await uow.session.execute(
+                self._select(job.status, func.count())
+                .join(scoped_jobs, scoped_jobs.c.job_id == job.id)
+                .group_by(job.status)
+            )
+            status_counts = {status: 0 for status in PROGRAMME_GENERATION_JOB_STATUSES}
+            for status, count in status_result.all():
+                if status not in status_counts:
+                    raise error(
+                        ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                        detail="research generation job data is unavailable",
+                    )
+                status_counts[status] = int(count)
+            if sum(status_counts.values()) != int(total or 0):
+                raise error(
+                    ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                    detail="research generation job data is unavailable",
+                )
+
+            allowed_error_codes = {item.value for item in ResearchEducationJobErrorCode}
+            items = []
+            for row in page_result.all():
+                values = row._mapping
+                last_error_code = values["last_error_code"]
+                if last_error_code is not None and last_error_code not in allowed_error_codes:
+                    raise error(
+                        ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                        detail="research generation job data is unavailable",
+                    )
+                items.append(
+                    {
+                        "job_ref": values["job_ref"],
+                        "status": values["status"],
+                        "attempt_count": values["attempt_count"],
+                        "updated_at": values["updated_at"],
+                        "last_error_code": last_error_code,
+                    }
+                )
+
+            return {
+                "items": items,
+                "offset": offset,
+                "limit": limit,
+                "total": int(total or 0),
+                "has_more": offset + len(items) < int(total or 0),
+                "status_counts": status_counts,
+                "policy_version": STAFF_PROGRAMME_POLICY_VERSION,
+                "purpose": "RESEARCH_SIMULATION",
+                "research_only": True,
+                "publication_status": "not_approved_for_publication_or_operational_use",
                 "student_feedback_eligible": False,
             }
 

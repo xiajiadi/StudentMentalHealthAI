@@ -702,3 +702,124 @@ def _async(value):
         return value
 
     return resolve()
+
+
+async def test_generation_job_list_uses_one_uow_and_exact_staff_research_scope(monkeypatch):
+    from datetime import UTC, datetime
+
+    from sqlalchemy import select
+    from database_layer import enums
+    from database_layer import models
+    from smhai_backend.domains.models import BackendRole
+    from .test_school_research_programme_candidates_service import actor
+
+    adapter = _adapter(expected_source_manifest_sha256="c" * 64)
+    adapter.study_use_policy = _policy()
+    adapter.study_use_policy_sha256 = "a" * 64
+    adapter.configure_generation(enabled=True, processor_policy_sha256="3" * 64)
+    adapter._db_models = models
+    adapter._db_enums = enums
+    monkeypatch.setattr(adapter, "_select", select, raising=False)
+    now = datetime(2026, 10, 15, tzinfo=UTC)
+    monkeypatch.setattr(adapter, "_now", lambda: (now, now))
+
+    task = SimpleNamespace(id=29, class_id=31)
+    binding = SimpleNamespace(
+        binding_id=37,
+        cohort_id=43,
+        profile_version_id=41,
+        profile_ref="PROMIS_SYNTHETIC",
+        profile_version_number=1,
+        profile_sha256="a" * 64,
+        response_origin="PUBLIC_OBSERVED",
+    )
+
+    class _Rows:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def all(self):
+            return self._rows
+
+    class _Session:
+        def __init__(self):
+            self.statements = []
+
+        async def scalar(self, statement):
+            self.statements.append(statement)
+            return 3
+
+        async def execute(self, statement):
+            self.statements.append(statement)
+            if len(self.statements) == 2:
+                return _Rows([
+                    SimpleNamespace(
+                        _mapping={
+                            "job_ref": "REJ_" + "b" * 64,
+                            "status": "RETRY",
+                            "attempt_count": 2,
+                            "updated_at": now,
+                            "last_error_code": "UPSTREAM_TIMEOUT",
+                        }
+                    )
+                ])
+            return _Rows([("RETRY", 1), ("QUEUED", 2)])
+
+    class _Uow:
+        def __init__(self):
+            self.session = _Session()
+            self.entered = 0
+            self.exited = 0
+
+        async def __aenter__(self):
+            self.entered += 1
+            return self
+
+        async def __aexit__(self, exc_type, _exc, _tb):
+            self.exited += 1
+            return False
+
+    uow = _Uow()
+    monkeypatch.setattr(adapter, "_uow", lambda: uow, raising=False)
+
+    async def require_actor(_uow, _actor, _role, _at):
+        return 13, 23
+
+    async def active_task(_uow, _actor, _task_ref, *, role_id, at):
+        assert role_id == 23 and at == now
+        return task, binding, SimpleNamespace(), SimpleNamespace()
+
+    monkeypatch.setattr(adapter, "_require_actor", require_actor)
+    monkeypatch.setattr(adapter, "_active_task_for_actor", active_task)
+
+    result = await adapter.school_research_programme_generation_job_list(
+        actor(BackendRole.PSYCHOLOGICAL_SPECIALIST), "TASK_demo", offset=0, limit=25
+    )
+
+    assert result["total"] == 3
+    assert result["status_counts"]["RETRY"] == 1
+    assert result["status_counts"]["QUEUED"] == 2
+    assert result["items"] == [
+        {
+            "job_ref": "REJ_" + "b" * 64,
+            "status": "RETRY",
+            "attempt_count": 2,
+            "updated_at": now,
+            "last_error_code": "UPSTREAM_TIMEOUT",
+        }
+    ]
+    assert set(result["items"][0]) == {
+        "job_ref", "status", "attempt_count", "updated_at", "last_error_code"
+    }
+    assert result["student_feedback_eligible"] is False
+    assert uow.entered == uow.exited == 1
+    assert len(uow.session.statements) == 3
+    parameter_sets = [set(statement.compile().params.values()) for statement in uow.session.statements]
+    assert all("RESEARCH_STAFF_PROGRAMME_POLICY_V1" in values for values in parameter_sets)
+    assert all("RESEARCH_SIMULATION" in values for values in parameter_sets)
+    assert all("PUBLIC_OBSERVED" in values for values in parameter_sets)
+    assert all(adapter.study_use_policy.study_ref in values for values in parameter_sets)
+    selected = {str(column) for column in uow.session.statements[1].selected_columns}
+    assert all(name in " ".join(selected) for name in ("job_ref", "status", "attempt_count", "updated_at"))
+    assert "subject_id" not in " ".join(selected)
+    assert "session_ref" not in " ".join(selected)

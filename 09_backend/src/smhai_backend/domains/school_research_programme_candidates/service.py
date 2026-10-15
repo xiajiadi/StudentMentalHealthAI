@@ -18,6 +18,7 @@ from .schemas import (
     ProgrammeCandidateListDto,
     ProgrammeCandidateSummaryDto,
     ProgrammeGenerationBatchQueuedDto,
+    ProgrammeGenerationJobListDto,
     ProgrammeGenerationQueuedDto,
     QueueProgrammeGenerationBatchRequest,
 )
@@ -104,6 +105,20 @@ class SchoolResearchProgrammeCandidateService:
             )
         summary = [self._summary(item) for item in items]
         return ProgrammeCandidateListDto(items=summary).model_dump(mode="python")
+
+    async def list_generation_jobs(self, actor: Actor, task_ref: str, *, offset=0, limit=25):
+        self._require_specialist(actor)
+        if (
+            type(offset) is not int
+            or offset < 0
+            or type(limit) is not int
+            or not 1 <= limit <= 100
+        ):
+            raise error(ErrorCode.VALIDATION_FAILED, detail="pagination is invalid")
+        result = await self._port().school_research_programme_generation_job_list(
+            actor, task_ref, offset=offset, limit=limit
+        )
+        return self._project(ProgrammeGenerationJobListDto, result)
 
     async def get(self, actor: Actor, task_ref: str, candidate_ref: str):
         self._require_specialist(actor)

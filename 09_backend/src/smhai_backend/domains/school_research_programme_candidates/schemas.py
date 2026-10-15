@@ -10,6 +10,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    StrictBool,
     StrictInt,
     StrictStr,
     field_validator,
@@ -18,6 +19,10 @@ from pydantic import (
 
 _PUBLICATION_STATUS = "not_approved_for_publication_or_operational_use"
 _HEX = frozenset("0123456789abcdef")
+PROGRAMME_GENERATION_JOB_STATUSES = (
+    "QUEUED", "LEASED", "RETRY", "HELD", "ABSTAINED", "REVIEW_REQUIRED",
+    "CRISIS_ROUTED", "FAILED", "CANCELLED",
+)
 
 
 class _StrictModel(BaseModel):
@@ -235,7 +240,7 @@ class ProgrammeGenerationBatchQueuedDto(_StrictModel):
 class _Output(_StrictModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    @field_validator("created_at", mode="after", check_fields=False)
+    @field_validator("created_at", "updated_at", mode="after", check_fields=False)
     @classmethod
     def normalize_created_at(cls, value):
         if isinstance(value, datetime):
@@ -265,6 +270,62 @@ class ProgrammeCandidateDetailDto(ProgrammeCandidateSummaryDto):
 
 class ProgrammeCandidateListDto(_StrictModel):
     items: list[ProgrammeCandidateSummaryDto]
+
+
+class ProgrammeGenerationJobSummaryDto(_Output):
+    job_ref: StrictStr = Field(pattern=r"^REJ_[0-9a-f]{64}$", max_length=68)
+    status: Literal[
+        "QUEUED", "LEASED", "RETRY", "HELD", "ABSTAINED", "REVIEW_REQUIRED",
+        "CRISIS_ROUTED", "FAILED", "CANCELLED",
+    ]
+    attempt_count: StrictInt = Field(ge=0, le=20)
+    updated_at: datetime
+    last_error_code: Literal[
+        "POLICY_UNAVAILABLE",
+        "SOURCE_UNQUALIFIED",
+        "SAFETY_BLOCKED",
+        "UPSTREAM_TRANSIENT",
+        "UPSTREAM_RATE_LIMITED",
+        "UPSTREAM_TIMEOUT",
+        "DEPENDENCY_INVALID_RESPONSE",
+        "GENERATION_FAILED",
+        "INTERNAL_FAILURE",
+        "INTERNAL_FAILURE_AUTHORIZATION",
+        "INTERNAL_FAILURE_GENERATION",
+        "INTERNAL_FAILURE_OUTCOME_VALIDATION",
+        "INTERNAL_FAILURE_CANDIDATE_PROJECTION",
+        "INTERNAL_FAILURE_CANDIDATE_STORE",
+        "INTERNAL_FAILURE_DISPOSITION",
+        "INTERNAL_FAILURE_FINALIZATION",
+        "LEASE_EXPIRED_MAX_ATTEMPTS",
+        "MAX_ATTEMPTS_EXHAUSTED",
+    ] | None
+
+
+class ProgrammeGenerationJobStatusCountsDto(_StrictModel):
+    QUEUED: StrictInt = Field(ge=0)
+    LEASED: StrictInt = Field(ge=0)
+    RETRY: StrictInt = Field(ge=0)
+    HELD: StrictInt = Field(ge=0)
+    ABSTAINED: StrictInt = Field(ge=0)
+    REVIEW_REQUIRED: StrictInt = Field(ge=0)
+    CRISIS_ROUTED: StrictInt = Field(ge=0)
+    FAILED: StrictInt = Field(ge=0)
+    CANCELLED: StrictInt = Field(ge=0)
+
+
+class ProgrammeGenerationJobListDto(_StrictModel):
+    items: list[ProgrammeGenerationJobSummaryDto]
+    offset: StrictInt = Field(ge=0)
+    limit: StrictInt = Field(ge=1, le=100)
+    total: StrictInt = Field(ge=0)
+    has_more: StrictBool
+    status_counts: ProgrammeGenerationJobStatusCountsDto
+    policy_version: Literal["RESEARCH_STAFF_PROGRAMME_POLICY_V1"]
+    purpose: Literal["RESEARCH_SIMULATION"]
+    research_only: Literal[True]
+    publication_status: Literal[_PUBLICATION_STATUS]
+    student_feedback_eligible: Literal[False]
 
 
 class ProgrammeCandidateGenerationResultDto(_StrictModel):
