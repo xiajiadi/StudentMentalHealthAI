@@ -14,7 +14,10 @@ import migrate_school_workspace as migration
 import resume_school_workspace as resume
 from school_check_names import (
     LEGACY_CHECK_NAME_DECLARATIONS,
+    MIGRATION_CHECK_NAME_DECLARATIONS,
+    MIGRATION_CHECK_NAME_SOURCES,
     legacy_school_check_names,
+    source_derived_school_check_names,
 )
 
 BUILDER_PASSWORD = "a" * 64
@@ -569,6 +572,157 @@ def test_current_accepts_only_source_derived_legacy_check_names(prepared):
     result = service.upgrade(workspace, expected_port=PORT, workspace_id=WORKSPACE_ID)
     assert result["status"] == "ALREADY_CURRENT"
     assert ops.migrations == []
+
+
+def test_migration_check_aliases_are_source_bound_and_mysql_compiled(prepared):
+    _repo, _workspace, _marker, db, _ops, _service, _settings, _reads = prepared
+    aliases = source_derived_school_check_names(db.expected_schema)
+    versions = Path(__file__).resolve().parents[1] / ".." / "11_database" / "migrations" / "versions"
+    versions = versions.resolve(strict=True)
+
+    assert set(MIGRATION_CHECK_NAME_SOURCES) <= set(db.expected_schema)
+    assert set(MIGRATION_CHECK_NAME_SOURCES) <= set(aliases)
+    for table_name, source_files in MIGRATION_CHECK_NAME_SOURCES.items():
+        source_text = "\n".join((versions / filename).read_text(encoding="utf-8") for filename in source_files)
+        assert aliases[table_name]
+        for physical_name, canonical_name in aliases[table_name].items():
+            if physical_name == canonical_name:
+                continue
+            declaration = MIGRATION_CHECK_NAME_DECLARATIONS.get(table_name, {}).get(
+                canonical_name, canonical_name
+            )
+            assert f'"{declaration}"' in source_text or f"'{declaration}'" in source_text
+            assert len(physical_name) <= 64
+
+
+def test_current_accepts_exact_source_derived_migration_check_names(prepared):
+    _repo, workspace, _marker, db, ops, service, _settings, _reads = prepared
+    set_current_schema(db)
+    aliases = source_derived_school_check_names(db.expected_schema)
+
+    for table_name in MIGRATION_CHECK_NAME_SOURCES:
+        check_aliases = aliases.get(table_name, {})
+        canonical_to_physical = {
+            canonical: physical
+            for physical, canonical in check_aliases.items()
+            if physical != canonical
+        }
+        assert canonical_to_physical
+        checks = db.schema[table_name]["checks"]
+        converted = set()
+        replacements = 0
+        for name, expression, enforced in checks:
+            physical_name = canonical_to_physical.get(name, name)
+            replacements += physical_name != name
+            converted.add((physical_name, expression, enforced))
+        db.schema[table_name]["checks"] = converted
+        assert replacements == len(canonical_to_physical)
+    assert sum(
+        len(
+            {
+                canonical
+                for physical, canonical in aliases[table].items()
+                if physical != canonical
+            }
+        )
+        for table in MIGRATION_CHECK_NAME_SOURCES
+    ) > 0
+
+    result = service.upgrade(workspace, expected_port=PORT, workspace_id=WORKSPACE_ID)
+
+    assert result["status"] == "ALREADY_CURRENT"
+    assert result["side_effects"] == []
+    assert ops.migrations == []
+
+
+@pytest.mark.parametrize("drift", ["unknown_name", "wrong_table", "duplicate", "expression", "unenforced"])
+def test_migration_check_alias_rejects_wrong_table_or_semantic_drift(prepared, drift):
+    _repo, workspace, _marker, db, ops, service, _settings, _reads = prepared
+    set_current_schema(db)
+    table_name = "school_research_education_candidates"
+    alias_table = "school_research_education_candidate_events"
+    aliases = source_derived_school_check_names(db.expected_schema)[table_name]
+    physical_name, canonical_name = next(iter(aliases.items()))
+    contract = db.schema[table_name]
+    check = next(item for item in contract["checks"] if item[0] == canonical_name)
+    contract["checks"].remove(check)
+    _name, expression, enforced = check
+
+    if drift == "unknown_name":
+        contract["checks"].add(("ck_untrusted_candidate_check", expression, enforced))
+    elif drift == "wrong_table":
+        db.schema[alias_table]["checks"].add((physical_name, expression, enforced))
+    elif drift == "duplicate":
+        contract["checks"].add(check)
+        contract["checks"].add((physical_name, expression, enforced))
+    elif drift == "expression":
+        contract["checks"].add((physical_name, expression + " AND 1 = 0", enforced))
+    else:
+        contract["checks"].add((physical_name, expression, False))
+
+    with pytest.raises(migration.MigrationError, match="CURRENT_SCHEMA_DRIFT"):
+        service.upgrade(workspace, expected_port=PORT, workspace_id=WORKSPACE_ID)
+    assert ops.migrations == []
+
+
+def test_current_accepts_only_the_retained_0021_mysql_fk_support_index(prepared):
+    _repo, workspace, _marker, db, ops, service, _settings, _reads = prepared
+    set_current_schema(db)
+    table = "school_research_education_input_reviews"
+    db.schema[table]["indexes"].add(
+        (
+            "fk_school_research_education_input_review_job_exact_scope",
+            ("job_id", "research_session_id", "school_id"),
+            False,
+        )
+    )
+
+    result = service.upgrade(workspace, expected_port=PORT, workspace_id=WORKSPACE_ID)
+
+    assert result["status"] == "ALREADY_CURRENT"
+    assert ops.migrations == []
+
+
+@pytest.mark.parametrize("drift", ["renamed", "reordered", "unique", "current_fk_missing"])
+def test_retained_fk_index_exception_rejects_nonmatching_metadata(prepared, drift):
+    _repo, workspace, _marker, db, ops, service, _settings, _reads = prepared
+    set_current_schema(db)
+    table = "school_research_education_input_reviews"
+    index_name = "fk_school_research_education_input_review_job_exact_scope"
+    columns = ("job_id", "research_session_id", "school_id")
+    unique = False
+    if drift == "renamed":
+        index_name = "untrusted_fk_support_index"
+    elif drift == "reordered":
+        columns = tuple(reversed(columns))
+    elif drift == "unique":
+        unique = True
+    db.schema[table]["indexes"].add((index_name, columns, unique))
+    if drift == "current_fk_missing":
+        db.schema[table]["foreign_keys"] = {
+            fk for fk in db.schema[table]["foreign_keys"]
+            if fk[0] != "fk_school_research_education_input_review_job_round_scope"
+        }
+
+    with pytest.raises(migration.MigrationError, match="CURRENT_SCHEMA_DRIFT"):
+        service.upgrade(workspace, expected_port=PORT, workspace_id=WORKSPACE_ID)
+    assert ops.migrations == []
+
+
+def test_retained_mysql_index_matches_the_trusted_0021_to_0022_fk_evolution():
+    root = Path(__file__).resolve().parents[2]
+    migrations = root / "11_database" / "migrations" / "versions"
+    predecessor = (migrations / "20261015_0021_school_research_education_input_reviews.py").read_text(
+        encoding="utf-8"
+    )
+    current = (migrations / "20261015_0022_research_education_input_review_continuation.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'name="fk_school_research_education_input_review_job_exact_scope"' in predecessor
+    assert 'op.drop_constraint(\n        "fk_school_research_education_input_review_job_exact_scope"' in current
+    assert '"fk_school_research_education_input_review_job_round_scope"' in current
+    assert '"job_id", "original_job_generation_round", "research_session_id", "school_id"' in current
 
 
 @pytest.mark.parametrize(

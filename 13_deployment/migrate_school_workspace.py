@@ -35,13 +35,31 @@ from resume_school_workspace import (
 from resume_school_workspace import (
     PORT as SOURCE_DATABASE_PORT,
 )
-from school_check_names import legacy_school_check_names
+from school_check_names import source_derived_school_check_names
 from school_schema import CURRENT_SCHOOL_MIGRATION_FILE, CURRENT_SCHOOL_REVISION
 
 BUILDER_USER = "psynova_builder"
 MIGRATION_TIMEOUT_SECONDS = 900
 _WORKSPACE_ID_RE = re.compile(r"^[a-f0-9]{32}$")
 _PASSWORD_RE = re.compile(r"^[a-f0-9]{64}$")
+
+# MySQL retained this exact support index when 0022 replaced the 0021
+# three-column job FK with the current four-column generation-round FK.
+# Accept it only while the exact replacement FK is present in both trusted and
+# observed metadata; it is not a generic FK-prefix or extra-index exemption.
+TRUSTED_RETAINED_MYSQL_FK_SUPPORT_INDEXES = {
+    "school_research_education_input_reviews": {
+        "index": (
+            "fk_school_research_education_input_review_job_exact_scope",
+            ("job_id", "research_session_id", "school_id"),
+            False,
+        ),
+        "replacement_fk_name": "fk_school_research_education_input_review_job_round_scope",
+        "replacement_fk_columns": (
+            "job_id", "original_job_generation_round", "research_session_id", "school_id",
+        ),
+    },
+}
 
 
 class MigrationError(RuntimeError):
@@ -827,14 +845,18 @@ def _verify_current_schema(
             (name, local_columns, False)
             for name, local_columns, *_rest in expected_table.get("foreign_keys", set())
         }
+        retained_mysql_fk_indexes = _trusted_retained_mysql_fk_support_indexes(
+            table_name, expected_table, observed
+        )
         observed["indexes"] = {
             index
             for index in observed.get("indexes", set())
-            if index in expected_indexes
+            if index not in retained_mysql_fk_indexes
+            and (index in expected_indexes
             or (
                 index not in mirrored_unique_indexes
                 and index not in mysql_foreign_key_indexes
-            )
+            ))
         }
     if (
         has_other_objects
@@ -858,7 +880,7 @@ def _verify_school_check_name_representations(
     """
 
     try:
-        aliases = legacy_school_check_names()
+        aliases = source_derived_school_check_names(expected)
         for table_name, table_aliases in aliases.items():
             observed_table = actual.get(table_name)
             expected_table = expected.get(table_name)
@@ -890,6 +912,39 @@ def _verify_school_check_name_representations(
         raise
     except Exception:  # noqa: BLE001 - metadata derivation stays fail-closed.
         raise MigrationError("CURRENT_SCHEMA_INSPECTION_FAILED") from None
+
+
+def _trusted_retained_mysql_fk_support_indexes(
+    table_name: str,
+    expected_table: dict[str, Any],
+    observed_table: dict[str, Any],
+) -> set[tuple[str, tuple[str, ...], bool]]:
+    contract = TRUSTED_RETAINED_MYSQL_FK_SUPPORT_INDEXES.get(table_name)
+    if contract is None:
+        return set()
+    replacement_name = contract["replacement_fk_name"]
+    replacement_columns = contract["replacement_fk_columns"]
+    expected_replacement = any(
+        foreign_key[0] == replacement_name and foreign_key[1] == replacement_columns
+        for foreign_key in expected_table.get("foreign_keys", set())
+    )
+    observed_replacement = any(
+        foreign_key[0] == replacement_name and foreign_key[1] == replacement_columns
+        for foreign_key in observed_table.get("foreign_keys", set())
+    )
+    retained_index = contract["index"]
+    old_foreign_key_still_present = any(
+        foreign_key[0] == retained_index[0]
+        for foreign_key in observed_table.get("foreign_keys", set())
+    )
+    if (
+        expected_replacement
+        and observed_replacement
+        and not old_foreign_key_still_present
+        and retained_index in observed_table.get("indexes", set())
+    ):
+        return {retained_index}
+    return set()
 
 
 def _database_state(
