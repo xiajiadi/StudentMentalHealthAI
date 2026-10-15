@@ -53,6 +53,9 @@ def _write_repo(root: Path) -> None:
             )
         else:
             minor = prepare.MODULES[module]["python_minor"]
+            expected_requires = prepare.PYTHON_REQUIRES.get(
+                module, f">={minor[0]}.{minor[1]},<{minor[0]}.{minor[1] + 1}"
+            )
             build_system = ""
             if module in prepare.BUILD_BACKENDS:
                 backend, requirements = prepare.BUILD_BACKENDS[module]
@@ -63,7 +66,7 @@ def _write_repo(root: Path) -> None:
                 )
             (directory / "pyproject.toml").write_text(
                 build_system
-                + f'[project]\nname = "fixture-{module}"\nrequires-python = ">={minor[0]}.{minor[1]},<{minor[0]}.{minor[1] + 1}"\n',
+                + f'[project]\nname = "fixture-{module}"\nrequires-python = "{expected_requires}"\n',
                 encoding="utf-8",
             )
             (directory / "uv.lock").write_text(
@@ -543,6 +546,51 @@ def test_failed_install_persists_stage_and_stops_following_modules(
     assert saved["stages"][-1]["name"] == "manifest_integrity"
     assert saved["stages"][-1]["state"] == "succeeded"
     assert called == ["01_cat-engine"]
+
+
+@pytest.mark.parametrize(
+    ("module", "declared"),
+    [
+        ("05_rag-engine", ">=3.10,<3.15"),
+        ("06_llm-runtime", ">=3.11"),
+    ],
+)
+def test_real_module_manifests_allow_exact_reviewed_range_on_pinned_python(
+    module, declared
+):
+    root = Path(__file__).resolve().parents[2]
+    with (root / module / "pyproject.toml").open("rb") as stream:
+        project = prepare.tomllib.load(stream)
+
+    assert project["project"]["requires-python"] == declared
+    prepare._check_python_requirement(root, module, (3, 12, 13))
+
+
+@pytest.mark.parametrize(
+    ("module", "declared"),
+    [
+        ("05_rag-engine", ">=3.10,<3.15,!=3.12.0"),
+        ("06_llm-runtime", ">=3.11,<4"),
+    ],
+)
+def test_unreviewed_python_requirement_changes_are_rejected(tmp_path, module, declared):
+    module_root = tmp_path / module
+    module_root.mkdir()
+    (module_root / "pyproject.toml").write_text(
+        f'[project]\nname = "fixture"\nrequires-python = "{declared}"\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(prepare.PreparationError, match="PythonRequirementMismatch"):
+        prepare._check_python_requirement(tmp_path, module, (3, 12, 13))
+
+
+@pytest.mark.parametrize("module", ["05_rag-engine", "06_llm-runtime"])
+def test_broader_manifest_does_not_broaden_selected_runtime(module):
+    root = Path(__file__).resolve().parents[2]
+
+    with pytest.raises(prepare.PreparationError, match="PythonVersionMismatch"):
+        prepare._check_python_requirement(root, module, (3, 13, 0))
 
 
 def test_target_venv_python_version_is_checked_after_sync(tmp_path, monkeypatch):

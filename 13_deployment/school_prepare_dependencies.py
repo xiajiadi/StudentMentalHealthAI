@@ -76,6 +76,12 @@ MODULES = {
 PYTHON_MODULES = tuple(
     name for name, value in MODULES.items() if value["runtime"] == "python"
 )
+# Exact declarations reviewed in the module manifests. These modules still run on
+# the pinned 3.12 interpreter even though their supported ranges are broader.
+PYTHON_REQUIRES = {
+    "05_rag-engine": ">=3.10,<3.15",
+    "06_llm-runtime": ">=3.11",
+}
 FRONTEND_MODULE = "10_frontend"
 LOCK_FILES = {
     "01_cat-engine": ("pyproject.toml", "uv.lock"),
@@ -551,8 +557,10 @@ def _check_python_requirement(
     if version[:2] != expected:
         raise PreparationError("PythonVersionMismatch")
     compact = re.sub(r"\s+", "", requirement)
-    wanted = f">={expected[0]}.{expected[1]},<{expected[0]}.{expected[1] + 1}"
-    if wanted not in compact:
+    wanted = PYTHON_REQUIRES.get(
+        module, f">={expected[0]}.{expected[1]},<{expected[0]}.{expected[1] + 1}"
+    )
+    if compact != wanted:
         raise PreparationError("PythonRequirementMismatch")
 
 
