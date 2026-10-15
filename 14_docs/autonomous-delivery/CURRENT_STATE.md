@@ -1,5 +1,41 @@
 # PsyNova current execution state
 
+## Latest integrated state: source-r3 active
+
+Root reviewed and pushed bbdd777 (GET0ceb014 / source registry699f763 /
+frontendbbdd777). API39 tests, source registry14+6+14 tests, frontend17+3 tests,
+typecheck/lint/build passed. Actual GET proof verifies2 HELD and teacher/admin/
+student403, four logouts: D:/Dev/temp/psynova-q0019-generation-jobs-get-r2.json.
+Actual browser r9 clicked batch2 once with real CSRF/key;2 HELD before/after,
+no extra job or model work. Root viewed queue screenshot; logout succeeded:
+D:/Dev/temp/psynova-q0019-student-research-staff-ui-once-r9.json and matching folder.
+The bounded browser guard blocked2 unrelated read requests; this is queue proof,
+not acceptance of the whole specialist overview. Unexecuted r8 used stale P
+ports/auth-helper pins; Root corrected r9 to exact Q8099/4189 and Q credential base.
+
+R3 source cutover completed through explicit config and official app lifecycle.
+App now RUNNING at codebbdd777 with student config
+D:/Projects/.StudentMentalHealthAI-school-install-20261015-q/research-config/student-source-r3-20261015/student-lane.json
+SHA048a281d4842fdfd1a00277ae952a5a7d5c5a7d19799c9a836ecd4348026ad54.
+Old student config1d0db6... remains byte-identical. R3 manifest exact SHAac9cc1...
+from the staged package below; no university-default or professional flag change.
+Root reverified all old8191 CIM identities/tree/listener, stopped Backend first,
+stopped only3 old research-safety processes, and started owned R3 safety8191.
+NEW authoritative8191 owner proof (replaces old8191 row, not other services):
+D:/Dev/temp/psynova-research-safety-r3-owner-20261015-090724-375856be/owner-ready.json
+Listener31256; fresh identities/creation/argv and healthREADY recorded. Shared/main
+Runtime/Safety/OPA/Ollama/RAG were not stopped or reconfigured.
+Official application start proof:
+D:/Dev/temp/psynova-q0019-app-source-r3-start-20261015-r1.json.
+
+Next: exactly one NEW empty-conversation/prompt1.3 R3-native request and actual
+content/source-hash review. Worker dependency_recovery prepares it only; Root
+executes. Preserve all failed once proofs, do not retry a POST after artifact
+validation failure: recover existing turn by GET. Old r5 _parse_backend_argv and
+old R1-only source preflight helpers now intentionally fail on current R3 config;
+use current reviewed config/official lifecycle and exact new source pins. Never
+silently restart R1 to satisfy old helper assertions. No R3 model request yet.
+
 Active checkpoint: 2026-10-15 16:32 CST (explicit user Continue). No new shutdown
 deadline. Previous06:30 cutoff is historical and satisfied. Goal/heartbeat ACTIVE;
 Runner stopped=false, public_empirical_resources/root/attempt3 lease renewed.
