@@ -19,7 +19,11 @@ from smhai_backend.domains.conversations.service import (
     IndependentConversationService,
 )
 from smhai_backend.domains.models import Actor, BackendRole
-from smhai_backend.integrations.evidence import EligibilityPolicy, build_retrieval_evidence_bundle
+from smhai_backend.integrations.evidence import (
+    CitationBindingError,
+    EligibilityPolicy,
+    build_retrieval_evidence_bundle,
+)
 from smhai_backend.integrations.independent import GenerationResult
 from smhai_backend.integrations.rag import KnowledgeChunk, RetrievalResult
 from smhai_backend.integrations.safety import SafetyCheckView, SafetyDecisionView
@@ -847,6 +851,10 @@ async def test_invalid_or_forbidden_candidate_is_failed_without_persisted_conten
     assert finish["status"] == "FAILED"
     assert finish.get("approved_content") is None
     assert finish.get("citations", ()) == ()
+    if expected_action == "CLAIM_REJECTED":
+        assert finish["safe_metadata"]["diagnostic_reason_code"] == (
+            "STANDARD_CLAIM_BOUNDARY_REJECTED"
+        )
 
 
 @pytest.mark.asyncio
@@ -990,6 +998,40 @@ async def test_research_lane_rejects_unbound_bibliography_after_output_safety(
     finish = persistence.finish_calls[-1]
     assert finish["safe_metadata"]["stage"] == "claim_boundary"
     assert finish["safe_metadata"]["failure_code"] == "CLAIM_REJECTED"
+    assert finish["safe_metadata"]["diagnostic_reason_code"] == (
+        "RESEARCH_BIBLIOGRAPHY_GUARD_REJECTED"
+    )
+    assert finish.get("approved_content") is None
+    assert finish.get("citations", ()) == ()
+
+
+@pytest.mark.asyncio
+async def test_research_lane_records_closed_citation_binding_rejection_reason(monkeypatch) -> None:
+    from smhai_backend.domains.support.service import SupportOrchestrator
+
+    def reject_binding(_bundle, _content):
+        raise CitationBindingError("candidate citation rejected")
+
+    monkeypatch.setattr(
+        SupportOrchestrator, "_citations_from_bundle", staticmethod(reject_binding)
+    )
+    service, persistence, _, _, _ = _research_service(
+        chunks=(_research_chunk(),),
+        policy=_research_policy(),
+    )
+
+    result = await _submit(service)
+
+    assert result.status == "failed"
+    assert result.action == "INVALID_OUTPUT"
+    finish = persistence.finish_calls[-1]
+    assert finish["status"] == "FAILED"
+    assert finish["action"] == "INVALID_OUTPUT"
+    assert finish["safe_metadata"]["failure_code"] == "INVALID_OUTPUT"
+    assert finish["safe_metadata"]["diagnostic_reason_code"] == (
+        "CITATION_BINDING_REJECTED"
+    )
+    assert "candidate citation rejected" not in repr(finish["safe_metadata"])
     assert finish.get("approved_content") is None
     assert finish.get("citations", ()) == ()
 

@@ -68,6 +68,25 @@ def test_dependency_error_diagnostic_allowlist_accepts_only_closed_codes() -> No
     assert _safe_component_metadata({"dependency_error_code": {"message": "private"}}) == {}
 
 
+def test_conversation_diagnostic_reason_allowlist_accepts_only_closed_codes() -> None:
+    assert _safe_component_metadata(
+        {
+            "diagnostic_reason_code": "RESEARCH_BIBLIOGRAPHY_GUARD_REJECTED",
+            "message": "candidate body must not be persisted",
+        }
+    ) == {"diagnostic_reason_code": "RESEARCH_BIBLIOGRAPHY_GUARD_REJECTED"}
+    for value in (
+        "STANDARD_CLAIM_BOUNDARY_REJECTED",
+        "CITATION_BINDING_REJECTED",
+    ):
+        assert _safe_component_metadata({"diagnostic_reason_code": value}) == {
+            "diagnostic_reason_code": value
+        }
+    assert _safe_component_metadata(
+        {"diagnostic_reason_code": "candidate body: private"}
+    ) == {}
+
+
 def test_key_and_timestamp_helpers_normalize_without_echoing_input() -> None:
     assert _required_key("  synthetic-key  ") == "synthetic-key"
     with pytest.raises(BackendError):
@@ -485,7 +504,14 @@ async def test_finish_turn_failure_actions_are_terminal_without_output(monkeypat
         run.run_ref,
         status="FAILED",
         action=failure_action,
-        safe_metadata={"failure_code": failure_action},
+        safe_metadata={
+            "failure_code": failure_action,
+            **(
+                {"diagnostic_reason_code": "RESEARCH_BIBLIOGRAPHY_GUARD_REJECTED"}
+                if failure_action == "CLAIM_REJECTED"
+                else {}
+            ),
+        },
         trace_id="TRACE_synthetic",
     )
 
@@ -493,6 +519,10 @@ async def test_finish_turn_failure_actions_are_terminal_without_output(monkeypat
     assert result["action"] == failure_action
     assert run.status == "FAILED"
     assert run.workflow_action == failure_action
+    if failure_action == "CLAIM_REJECTED":
+        assert result["safe_metadata"]["diagnostic_reason_code"] == (
+            "RESEARCH_BIBLIOGRAPHY_GUARD_REJECTED"
+        )
     assert uow.support.message_calls == []
     assert uow.support.evidence_calls == []
     assert uow.committed is True

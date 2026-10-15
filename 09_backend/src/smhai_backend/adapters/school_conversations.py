@@ -43,6 +43,7 @@ _SAFE_COMPONENT_KEYS = frozenset(
         "attempt_count",
         "claim_boundary_status",
         "dependency_error_code",
+        "diagnostic_reason_code",
         "evidence_count",
         "failure_code",
         "generation_id",
@@ -89,6 +90,13 @@ _SAFE_DEPENDENCY_ERROR_CODES = frozenset(
         "UNKNOWN",
     }
 )
+_SAFE_DIAGNOSTIC_REASON_CODES = frozenset(
+    {
+        "STANDARD_CLAIM_BOUNDARY_REJECTED",
+        "RESEARCH_BIBLIOGRAPHY_GUARD_REJECTED",
+        "CITATION_BINDING_REJECTED",
+    }
+)
 _SAFE_ATOM = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:/+-]{0,127}$")
 _OPAQUE_SUFFIX = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,126}$")
 
@@ -125,6 +133,10 @@ def _safe_component_metadata(value: Mapping[str, Any] | None) -> dict[str, Any]:
         item = value.get(key)
         if key == "dependency_error_code":
             if type(item) is str and item in _SAFE_DEPENDENCY_ERROR_CODES:
+                result[key] = item
+            continue
+        if key == "diagnostic_reason_code":
+            if type(item) is str and item in _SAFE_DIAGNOSTIC_REASON_CODES:
                 result[key] = item
             continue
         if isinstance(item, str) and _SAFE_ATOM.fullmatch(item):

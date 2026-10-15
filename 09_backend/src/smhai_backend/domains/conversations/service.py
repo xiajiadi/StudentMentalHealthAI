@@ -814,6 +814,7 @@ class IndependentConversationService:
                 context,
                 stage="claim_boundary",
                 reason="CLAIM_REJECTED",
+                diagnostic_reason_code="STANDARD_CLAIM_BOUNDARY_REJECTED",
                 generation_id=generation_id,
                 retrieval_id=retrieval_id,
                 action="CLAIM_REJECTED",
@@ -828,6 +829,7 @@ class IndependentConversationService:
                 context,
                 stage="claim_boundary",
                 reason="CLAIM_REJECTED",
+                diagnostic_reason_code="RESEARCH_BIBLIOGRAPHY_GUARD_REJECTED",
                 generation_id=generation_id,
                 retrieval_id=retrieval_id,
                 action="CLAIM_REJECTED",
@@ -842,6 +844,7 @@ class IndependentConversationService:
                 context,
                 stage="citation_validation",
                 reason="INVALID_OUTPUT",
+                diagnostic_reason_code="CITATION_BINDING_REJECTED",
                 generation_id=generation_id,
                 retrieval_id=retrieval_id,
             )
@@ -1321,6 +1324,7 @@ class IndependentConversationService:
         *,
         stage: str,
         reason: str,
+        diagnostic_reason_code: str | None = None,
         generation_id: str | None = None,
         retrieval_id: str | None = None,
         action: str = "INVALID_OUTPUT",
@@ -1330,6 +1334,8 @@ class IndependentConversationService:
             "stage": stage,
             "failure_code": reason,
         }
+        if diagnostic_reason_code is not None:
+            metadata["diagnostic_reason_code"] = diagnostic_reason_code
         if generation_id:
             metadata["generation_id"] = generation_id
         if retrieval_id:
