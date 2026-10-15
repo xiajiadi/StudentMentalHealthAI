@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
+  browserBinaryPrerequisite,
   classifyCurrentPath,
   isLoopbackBrowserOrigin,
   safeForbiddenRouteDiagnostic,
@@ -8,6 +12,39 @@ import {
   studentHistoryMetadataFailureCode,
   studentHistoryRenderedMismatch,
 } from '../school_browser_qa.mjs';
+
+test('headless browser preflight checks both exact Chromium and headless-shell revision paths', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'psynova-browser-prereq-'));
+  try {
+    const chromium = path.join(root, 'chromium-1243', 'chrome-win64', 'chrome.exe');
+    const shell = path.join(
+      root, 'chromium_headless_shell-1243', 'chrome-headless-shell-win64',
+      'chrome-headless-shell.exe',
+    );
+    fs.mkdirSync(path.dirname(chromium), { recursive: true });
+    fs.writeFileSync(chromium, 'synthetic executable marker');
+
+    assert.deepEqual(browserBinaryPrerequisite(chromium, 'win32'), {
+      status: 'FAIL', code: 'HEADLESS_SHELL_EXECUTABLE_MISSING',
+    });
+    fs.mkdirSync(path.dirname(shell), { recursive: true });
+    fs.writeFileSync(shell, 'synthetic executable marker');
+    assert.deepEqual(browserBinaryPrerequisite(chromium, 'win32'), {
+      status: 'PASS', code: 'READY',
+    });
+    assert.deepEqual(browserBinaryPrerequisite(path.join(root, 'missing.exe'), 'win32'), {
+      status: 'FAIL', code: 'CHROMIUM_EXECUTABLE_MISSING',
+    });
+    assert.equal(JSON.stringify(browserBinaryPrerequisite(chromium, 'win32')).includes(root), false);
+  } finally {
+    const tempRoot = path.resolve(os.tmpdir());
+    const resolvedRoot = path.resolve(root);
+    if (resolvedRoot === tempRoot || !resolvedRoot.startsWith(`${tempRoot}${path.sep}`)) {
+      throw new Error('Refusing to remove test path outside the OS temp directory');
+    }
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test('forbidden-route diagnostics expose only fixed stage, code, and path classes', () => {
   const pathWithPrivateId = '/student/assessment/ASSESS_private-sentinel';

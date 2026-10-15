@@ -1,4 +1,5 @@
 import path from 'node:path';
+import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 
@@ -130,6 +131,53 @@ export function isLoopbackBrowserOrigin(value) {
   } catch {
     return false;
   }
+}
+
+export function browserBinaryPrerequisite(chromiumExecutablePath, platform = process.platform) {
+  const isFile = (candidate) => {
+    try { return fs.statSync(candidate).isFile(); } catch { return false; }
+  };
+  if (typeof chromiumExecutablePath !== 'string' || !path.isAbsolute(chromiumExecutablePath)) {
+    return { status: 'FAIL', code: 'BROWSER_LAYOUT_UNRECOGNIZED' };
+  }
+  if (!isFile(chromiumExecutablePath)) {
+    return { status: 'FAIL', code: 'CHROMIUM_EXECUTABLE_MISSING' };
+  }
+
+  const revisionDirectory = path.dirname(path.dirname(chromiumExecutablePath));
+  const revisionMatch = path.basename(revisionDirectory).match(/^chromium-(\d+)$/);
+  const platformDirectory = path.basename(path.dirname(chromiumExecutablePath));
+  if (!revisionMatch) return { status: 'FAIL', code: 'BROWSER_LAYOUT_UNRECOGNIZED' };
+
+  let shellDirectory;
+  let shellExecutable;
+  if (platform === 'win32') {
+    const platformMatch = platformDirectory.match(/^chrome-(win32|win64|win-arm64)$/);
+    if (!platformMatch || path.basename(chromiumExecutablePath) !== 'chrome.exe') {
+      return { status: 'FAIL', code: 'BROWSER_LAYOUT_UNRECOGNIZED' };
+    }
+    shellDirectory = `chrome-headless-shell-${platformMatch[1]}`;
+    shellExecutable = 'chrome-headless-shell.exe';
+  } else if (platform === 'linux') {
+    const platformMatch = platformDirectory.match(/^chrome-(linux|linux64|linux-arm64)$/);
+    if (!platformMatch || path.basename(chromiumExecutablePath) !== 'chrome') {
+      return { status: 'FAIL', code: 'BROWSER_LAYOUT_UNRECOGNIZED' };
+    }
+    shellDirectory = `chrome-headless-shell-${platformMatch[1]}`;
+    shellExecutable = 'chrome-headless-shell';
+  } else {
+    return { status: 'FAIL', code: 'BROWSER_LAYOUT_UNRECOGNIZED' };
+  }
+
+  const shellPath = path.join(
+    path.dirname(revisionDirectory),
+    `chromium_headless_shell-${revisionMatch[1]}`,
+    shellDirectory,
+    shellExecutable,
+  );
+  return isFile(shellPath)
+    ? { status: 'PASS', code: 'READY' }
+    : { status: 'FAIL', code: 'HEADLESS_SHELL_EXECUTABLE_MISSING' };
 }
 
 function validPayload(payload) {
@@ -535,6 +583,22 @@ async function main() {
 
   let browser;
   const results = [];
+  let browserPrerequisite;
+  try {
+    browserPrerequisite = browserBinaryPrerequisite(chromium.executablePath());
+  } catch {
+    browserPrerequisite = { status: 'FAIL', code: 'BROWSER_LAYOUT_UNRECOGNIZED' };
+  }
+  if (browserPrerequisite.status !== 'PASS') {
+    process.stdout.write(`${JSON.stringify({
+      ...failResult(),
+      browser_prerequisite: browserPrerequisite,
+    })}\n`);
+    process.exitCode = 2;
+    return;
+  }
+
+  let browserLaunchFailureCode;
   try {
     browser = await chromium.launch({ headless: true });
     for (const slot of ACCOUNT_SLOTS) {
@@ -547,6 +611,7 @@ async function main() {
       }
     }
   } catch {
+    browserLaunchFailureCode = 'BROWSER_LAUNCH_FAILED';
     for (const slot of ACCOUNT_SLOTS) {
       if (!results.some((item) => item.slot === slot)) results.push({ slot, status: 'FAIL' });
     }
@@ -557,6 +622,8 @@ async function main() {
   const passed = results.filter((item) => item.status === 'PASS').length;
   process.stdout.write(`${JSON.stringify({
     status: passed === ACCOUNT_SLOTS.length ? 'PASS' : 'FAIL',
+    browser_prerequisite: browserPrerequisite,
+    ...(browserLaunchFailureCode ? { browser_launch_failure_code: browserLaunchFailureCode } : {}),
     results,
   })}\n`);
   // The JSON report carries per-account failures; reserve a nonzero exit for

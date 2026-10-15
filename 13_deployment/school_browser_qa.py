@@ -90,6 +90,15 @@ SAFE_DIAGNOSTIC_ENDPOINTS = {
     "/api/v1/assessments/{assessment_id}/responses",
     "/api/v1/assessments/{assessment_id}/complete",
 }
+SAFE_BROWSER_PREREQUISITE_CODES = {
+    "READY",
+    "CHROMIUM_EXECUTABLE_MISSING",
+    "HEADLESS_SHELL_EXECUTABLE_MISSING",
+    "BROWSER_LAYOUT_UNRECOGNIZED",
+    "INVALID_DIAGNOSTIC",
+}
+
+
 class HarnessError(Exception):
     """Safe, fixed-message wrapper error."""
 
@@ -245,6 +254,23 @@ def _exact_account_results(children: object) -> dict[str, dict[str, Any]] | None
     if set(by_slot) != set(ACCOUNT_SLOTS):
         return None
     return by_slot
+
+
+def _sanitize_browser_prerequisite(value: object) -> dict[str, str] | None:
+    if not isinstance(value, dict):
+        return None
+    status = value.get("status")
+    code = value.get("code")
+    if (
+        type(status) is not str
+        or status not in {"PASS", "FAIL"}
+        or type(code) is not str
+        or code not in SAFE_BROWSER_PREREQUISITE_CODES
+    ):
+        return {"status": "FAIL", "code": "INVALID_DIAGNOSTIC"}
+    if (status == "PASS") != (code == "READY"):
+        return {"status": "FAIL", "code": "INVALID_DIAGNOSTIC"}
+    return {"status": status, "code": code}
 
 
 def sanitize_task_child_output(
@@ -438,7 +464,60 @@ def sanitize_child_output(
             safe["pass_count"] += 1
             safe["fail_count"] -= 1
     safe["status"] = "PASS" if safe["pass_count"] == len(ACCOUNT_SLOTS) else "FAIL"
+    if isinstance(parsed, dict):
+        prerequisite = _sanitize_browser_prerequisite(parsed.get("browser_prerequisite"))
+        if prerequisite is not None:
+            safe["browser_prerequisite"] = prerequisite
+            if prerequisite["status"] != "PASS":
+                safe["status"] = "FAIL"
+        if "browser_launch_failure_code" in parsed:
+            launch_failure = parsed.get("browser_launch_failure_code")
+            safe["browser_launch_failure_code"] = (
+                launch_failure
+                if launch_failure == "BROWSER_LAUNCH_FAILED"
+                else "INVALID_DIAGNOSTIC"
+            )
+            safe["status"] = "FAIL"
     return safe
+
+
+def persist_sanitized_report(
+    artifact_dir: Path, workflow: str, result: dict[str, Any],
+) -> dict[str, Any]:
+    """Persist only already-sanitized evidence in the exclusive run directory."""
+    report_path = artifact_dir / "sanitized-report.json"
+    temporary_path = artifact_dir / f".sanitized-report-{uuid.uuid4().hex}.tmp"
+    result["evidence_report_status"] = "PERSISTED"
+    result["evidence_report_path"] = str(report_path)
+    document = {
+        "schema_version": "psynova.school-browser-qa-report.v1",
+        "workflow": workflow,
+        "result": result,
+    }
+    try:
+        encoded = json.dumps(document, ensure_ascii=False, separators=(",", ":"))
+        descriptor = os.open(
+            temporary_path,
+            os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+            0o600,
+        )
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as stream:
+            stream.write(encoded)
+            stream.flush()
+            os.fsync(stream.fileno())
+        if report_path.exists():
+            raise FileExistsError
+        os.replace(temporary_path, report_path)
+    except (OSError, TypeError, ValueError):
+        try:
+            temporary_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        result.pop("evidence_report_path", None)
+        result["evidence_report_status"] = "UNAVAILABLE"
+        result["status"] = "FAIL"
+        result["failure_class"] = "SafeReportPersistenceFailed"
+    return result
 
 
 def safe_error_result(stage: str, exc: BaseException) -> dict[str, Any]:
@@ -571,20 +650,28 @@ def run(
         )
     except subprocess.TimeoutExpired as exc:
         del serialized
-        return safe_error_result("browser_runner", exc)
+        return persist_sanitized_report(
+            artifact_dir, workflow, safe_error_result("browser_runner", exc)
+        )
     except OSError as exc:
         del serialized
-        return safe_error_result("browser_runner", exc)
+        return persist_sanitized_report(
+            artifact_dir, workflow, safe_error_result("browser_runner", exc)
+        )
     del serialized
     # Child stdout/stderr are intentionally held only in memory. stdout is
     # parsed through a strict allowlist; stderr is never used or emitted.
     if workflow == "school-tasks":
-        return sanitize_task_child_output(
+        result = sanitize_task_child_output(
             child.stdout,
             artifact_dir=artifact_dir,
             child_exit_code=child.returncode,
         )
-    return sanitize_child_output(child.stdout, artifact_dir=artifact_dir, child_exit_code=child.returncode)
+    else:
+        result = sanitize_child_output(
+            child.stdout, artifact_dir=artifact_dir, child_exit_code=child.returncode
+        )
+    return persist_sanitized_report(artifact_dir, workflow, result)
 
 
 def main() -> int:

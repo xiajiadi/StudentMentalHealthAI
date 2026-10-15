@@ -527,3 +527,95 @@ def test_node_environment_excludes_database_and_application_secrets():
     })
 
     assert environment == {"PATH": "node-path", "SystemRoot": "windows-root"}
+
+
+def test_browser_prerequisite_diagnostic_is_closed_and_contains_no_paths(tmp_path):
+    secret = "browser-path-secret-sentinel"
+    children = [
+        {"slot": slot, "status": "FAIL", "stages": {}}
+        for slot in qa.ACCOUNT_SLOTS
+    ]
+    result = qa.sanitize_child_output(
+        json.dumps({
+            "results": children,
+            "browser_prerequisite": {
+                "status": "FAIL", "code": "HEADLESS_SHELL_EXECUTABLE_MISSING",
+                "path": secret,
+            },
+            "unexpected": secret,
+        }),
+        artifact_dir=tmp_path,
+        child_exit_code=2,
+    )
+
+    assert result["browser_prerequisite"] == {
+        "status": "FAIL", "code": "HEADLESS_SHELL_EXECUTABLE_MISSING",
+    }
+    assert secret not in json.dumps(result)
+
+    malformed = qa.sanitize_child_output(
+        json.dumps({
+            "results": children,
+            "browser_prerequisite": {"status": "PASS", "code": "HEADLESS_SHELL_EXECUTABLE_MISSING"},
+        }),
+        artifact_dir=tmp_path,
+        child_exit_code=2,
+    )
+    assert malformed["browser_prerequisite"] == {
+        "status": "FAIL", "code": "INVALID_DIAGNOSTIC",
+    }
+
+    launch_failure = qa.sanitize_child_output(
+        json.dumps({
+            "results": children,
+            "browser_prerequisite": {"status": "PASS", "code": "READY"},
+            "browser_launch_failure_code": secret,
+        }),
+        artifact_dir=tmp_path,
+        child_exit_code=2,
+    )
+    assert launch_failure["browser_launch_failure_code"] == "INVALID_DIAGNOSTIC"
+    assert secret not in json.dumps(launch_failure)
+
+
+def test_sanitized_report_is_persisted_without_raw_child_output(tmp_path):
+    artifact_dir = tmp_path / "exclusive-run"
+    artifact_dir.mkdir()
+    secret = "raw-child-secret-sentinel"
+    safe = qa.sanitize_child_output(
+        json.dumps({
+            "password": secret,
+            "results": [
+                {"slot": slot, "status": "FAIL", "stages": {}, "exception": secret}
+                for slot in qa.ACCOUNT_SLOTS
+            ],
+            "browser_prerequisite": {"status": "PASS", "code": "READY"},
+        }),
+        artifact_dir=artifact_dir,
+        child_exit_code=0,
+    )
+
+    result = qa.persist_sanitized_report(artifact_dir, "auth", safe)
+    report_path = Path(result["evidence_report_path"])
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+
+    assert result["evidence_report_status"] == "PERSISTED"
+    assert report["schema_version"] == "psynova.school-browser-qa-report.v1"
+    assert report["workflow"] == "auth"
+    assert report["result"] == result
+    assert secret not in report_path.read_text(encoding="utf-8")
+
+
+def test_sanitized_report_collision_fails_closed_without_overwriting(tmp_path):
+    artifact_dir = tmp_path / "exclusive-run"
+    artifact_dir.mkdir()
+    report_path = artifact_dir / "sanitized-report.json"
+    report_path.write_text("preserve-existing", encoding="utf-8")
+
+    result = qa.persist_sanitized_report(artifact_dir, "auth", qa._result_shell())
+
+    assert report_path.read_text(encoding="utf-8") == "preserve-existing"
+    assert result["status"] == "FAIL"
+    assert result["failure_class"] == "SafeReportPersistenceFailed"
+    assert result["evidence_report_status"] == "UNAVAILABLE"
+    assert "evidence_report_path" not in result
