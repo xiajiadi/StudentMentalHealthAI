@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   classifyCurrentPath,
+  isLoopbackBrowserOrigin,
   safeForbiddenRouteDiagnostic,
   safeRestoreDiagnostic,
   studentHistoryMetadataFailureCode,
@@ -27,9 +28,9 @@ test('forbidden-route diagnostics expose only fixed stage, code, and path classe
 });
 
 test('student history diagnostics follow the metadata DTO and bind null-time display to returned rows', async () => {
-  const schema = await import('node:fs/promises').then(({ readFile }) => readFile(
+  const schema = (await import('node:fs/promises').then(({ readFile }) => readFile(
     new URL('../../09_backend/src/smhai_backend/domains/school_tasks/schemas.py', import.meta.url), 'utf8',
-  ));
+  ))).replace(/\r\n/g, '\n');
   const dtoBlock = schema.match(/class StudentAssessmentMetadataDto\(SchoolOutputDto\):([\s\S]*?)(?=\n\nclass )/);
   assert.ok(dtoBlock);
   const fields = [...dtoBlock[1].matchAll(/^\s{4}([a-z_]+):/gm)].map((match) => match[1]).sort();
@@ -71,4 +72,19 @@ test('history row comparison preserves API order and rejects wrong counts or dat
   assert.equal(studentHistoryRenderedMismatch(metadata, statusLabels, ['0 项已记录 · 尚未开始', summaries[0]], expectedTimes), 'ITEM_COUNT_LABEL_MISMATCH');
   assert.equal(studentHistoryRenderedMismatch(metadata, statusLabels, ['3 项已记录 · wrong-date', summaries[1]], expectedTimes), 'DATE_LABEL_MISMATCH');
   assert.equal(studentHistoryRenderedMismatch(metadata, statusLabels, [summaries[0], '0 项已记录 · 时间未提供'], expectedTimes), 'NULL_TIME_LABEL_MISMATCH');
+});
+
+test('rejects non-loopback, missing, malformed, or decorated origins', () => {
+  for (const value of [
+    'https://127.0.0.1:8104',
+    'http://localhost:8104',
+    'http://192.168.1.10:8104',
+    'http://user@127.0.0.1:8104',
+    'http://127.0.0.1:8104/path',
+    'http://127.0.0.1:80',
+    'http://127.0.0.1',
+    null,
+  ]) {
+    assert.equal(isLoopbackBrowserOrigin(value), false, String(value));
+  }
 });

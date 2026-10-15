@@ -16,6 +16,19 @@ def _passed_task_stages():
     return {key: "PASS" for key in qa.TASK_STAGE_KEYS}
 
 
+def _write_synthetic_marker(workspace, *, port=3330):
+    (workspace / "workspace.json").write_text(json.dumps({
+        "schema_version": "psynova.synthetic-workspace.v1",
+        "project": "StudentMentalHealthAI",
+        "workspace_id": "a" * 32,
+        "state": "READY_FOR_MIGRATION",
+        "host": "127.0.0.1",
+        "port": port,
+        "database": "smhai_school_demo",
+        "synthetic_only": True,
+    }), encoding="utf-8")
+
+
 def test_workflow_dispatch_preserves_auth_default_and_rejects_unknown():
     assert qa._node_script_for_workflow("auth") == qa.NODE_SCRIPT
     assert qa._node_script_for_workflow("school-tasks") == qa.TASK_NODE_SCRIPT
@@ -31,6 +44,7 @@ def test_workspace_must_be_owned_external_path(tmp_path):
     repo.mkdir()
     workspace = tmp_path / qa.WORKSPACE_PREFIX
     workspace.mkdir()
+    _write_synthetic_marker(workspace)
 
     assert qa.validate_workspace_path(workspace, repo) == workspace.resolve()
 
@@ -38,6 +52,55 @@ def test_workspace_must_be_owned_external_path(tmp_path):
         qa.validate_workspace_path(repo / qa.WORKSPACE_PREFIX, repo)
     with pytest.raises(qa.HarnessError):
         qa.validate_workspace_path(tmp_path / "unrelated", repo)
+
+
+def test_custom_workspace_requires_explicit_distinct_loopback_ports_and_marker(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    workspace = tmp_path / ".StudentMentalHealthAI-school-install-test"
+    workspace.mkdir()
+    _write_synthetic_marker(workspace)
+
+    assert qa.validate_workspace_path(workspace, repo, allow_custom_name=True) == workspace.resolve()
+    assert qa._loopback_urls(workspace, 8104, 4194)[2:] == (
+        "http://127.0.0.1:4194", "http://127.0.0.1:8104",
+    )
+    with pytest.raises(qa.HarnessError):
+        qa._loopback_urls(workspace, None, None)
+    with pytest.raises(qa.HarnessError):
+        qa._loopback_urls(workspace, 8104, 8104)
+    with pytest.raises(qa.HarnessError):
+        qa._loopback_urls(workspace, 3330, 4194)
+
+
+def test_custom_workspace_marker_must_be_synthetic_loopback_and_registered_schema(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    workspace = tmp_path / ".StudentMentalHealthAI-school-install-test"
+    workspace.mkdir()
+    _write_synthetic_marker(workspace)
+    marker_path = workspace / "workspace.json"
+    marker = json.loads(marker_path.read_text(encoding="utf-8"))
+    marker["synthetic_only"] = False
+    marker_path.write_text(json.dumps(marker), encoding="utf-8")
+
+    with pytest.raises(qa.HarnessError):
+        qa.validate_workspace_path(workspace, repo, allow_custom_name=True)
+
+
+def test_owner_gate_requires_current_schema_and_live_owned_app_services():
+    status = {
+        "status": "RUNNING",
+        "manifest_is_current_revision": True,
+        "database": "VERIFIED",
+        "services": {
+            "backend": {"port": 8104, "owned_process": True, "listener": "OWNED", "ready": True},
+            "frontend": {"port": 4194, "owned_process": True, "listener": "OWNED", "ready": True},
+        },
+    }
+    assert qa.verify_owned_application_services(status, backend_port=8104, frontend_port=4194)
+    status["services"]["frontend"]["listener"] = "MISSING_OR_FOREIGN"
+    assert not qa.verify_owned_application_services(status, backend_port=8104, frontend_port=4194)
 
 
 def test_only_registered_alpha_credential_slots_are_forwarded():

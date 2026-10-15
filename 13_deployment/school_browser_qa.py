@@ -12,7 +12,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-
 REPO = Path(__file__).resolve().parents[1]
 FRONTEND = REPO / "10_frontend"
 NODE_SCRIPT = Path(__file__).with_name("school_browser_qa.mjs")
@@ -95,14 +94,16 @@ class HarnessError(Exception):
     """Safe, fixed-message wrapper error."""
 
 
-def validate_workspace_path(workspace: Path, repo: Path = REPO) -> Path:
-    """Require the owned external school workspace; never accept a repo path."""
+def validate_workspace_path(
+    workspace: Path, repo: Path = REPO, *, allow_custom_name: bool = False,
+) -> Path:
+    """Require an external synthetic workspace with a valid marker."""
     try:
         resolved = workspace.resolve(strict=True)
         resolved_repo = repo.resolve(strict=True)
     except (OSError, RuntimeError) as exc:
         raise HarnessError("InvalidWorkspace") from exc
-    if not resolved.is_dir() or resolved.name != WORKSPACE_PREFIX:
+    if not resolved.is_dir() or (resolved.name != WORKSPACE_PREFIX and not allow_custom_name):
         raise HarnessError("InvalidWorkspace")
     try:
         resolved.relative_to(resolved_repo)
@@ -110,7 +111,80 @@ def validate_workspace_path(workspace: Path, repo: Path = REPO) -> Path:
         pass
     else:
         raise HarnessError("InvalidWorkspace")
+    marker = _read_workspace_marker(resolved)
+    if marker is None:
+        raise HarnessError("InvalidWorkspace")
     return resolved
+
+
+def _read_workspace_marker(workspace: Path) -> dict[str, Any] | None:
+    try:
+        marker = json.loads((workspace / "workspace.json").read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    if (
+        not isinstance(marker, dict)
+        or marker.get("schema_version") != "psynova.synthetic-workspace.v1"
+        or marker.get("project") != "StudentMentalHealthAI"
+        or marker.get("synthetic_only") is not True
+        or marker.get("state") not in {"READY_FOR_MIGRATION", "READY"}
+        or marker.get("host") != "127.0.0.1"
+        or marker.get("database") != "smhai_school_demo"
+        or type(marker.get("port")) is not int
+        or not 1024 <= marker["port"] <= 65535
+        or not isinstance(marker.get("workspace_id"), str)
+        or not marker["workspace_id"]
+    ):
+        return None
+    return marker
+
+
+def _loopback_urls(
+    workspace: Path, backend_port: int | None, frontend_port: int | None,
+) -> tuple[int, int, str, str]:
+    custom_workspace = workspace.name != WORKSPACE_PREFIX
+    if backend_port is None and frontend_port is None and not custom_workspace:
+        backend_port, frontend_port = 8088, 4178
+    if type(backend_port) is not int or type(frontend_port) is not int:
+        raise HarnessError("ExplicitLoopbackPortsRequired")
+    if (
+        not 1024 <= backend_port <= 65535
+        or not 1024 <= frontend_port <= 65535
+        or backend_port == frontend_port
+    ):
+        raise HarnessError("InvalidLoopbackPortProfile")
+    marker = _read_workspace_marker(workspace)
+    if marker is None or marker["port"] in {backend_port, frontend_port}:
+        raise HarnessError("InvalidLoopbackPortProfile")
+    return (
+        backend_port,
+        frontend_port,
+        f"http://127.0.0.1:{frontend_port}",
+        f"http://127.0.0.1:{backend_port}",
+    )
+
+
+def verify_owned_application_services(
+    status: object, *, backend_port: int, frontend_port: int,
+) -> bool:
+    if not isinstance(status, dict) or status.get("status") != "RUNNING":
+        return False
+    if status.get("manifest_is_current_revision") is not True or status.get("database") != "VERIFIED":
+        return False
+    services = status.get("services")
+    if not isinstance(services, dict):
+        return False
+    for name, port in (("backend", backend_port), ("frontend", frontend_port)):
+        item = services.get(name)
+        if (
+            not isinstance(item, dict)
+            or item.get("port") != port
+            or item.get("owned_process") is not True
+            or item.get("listener") != "OWNED"
+            or item.get("ready") is not True
+        ):
+            return False
+    return True
 
 
 def validate_credentials(private: Any) -> dict[str, dict[str, str]]:
@@ -412,14 +486,23 @@ def create_artifact_run_dir(workspace: Path) -> Path:
     return run_dir
 
 
-def run(workspace_arg: Path, workflow: str = "auth") -> dict[str, Any]:
+def run(
+    workspace_arg: Path, workflow: str = "auth", *,
+    backend_port: int | None = None, frontend_port: int | None = None,
+) -> dict[str, Any]:
     try:
         node_script = _node_script_for_workflow(workflow)
     except HarnessError as exc:
         return safe_error_result("workflow_gate", exc)
     try:
-        workspace = validate_workspace_path(workspace_arg)
-    except Exception as exc:
+        workspace = validate_workspace_path(
+            workspace_arg,
+            allow_custom_name=backend_port is not None and frontend_port is not None,
+        )
+        backend_port, frontend_port, frontend_url, backend_url = _loopback_urls(
+            workspace, backend_port, frontend_port
+        )
+    except Exception as exc:  # noqa: BLE001 - discard raw parse and path details.
         return safe_error_result("workspace_gate", exc)
     # Import only after path validation. This gate rechecks owned process,
     # workspace ACL, sealed runtime settings, database grants and revision.
@@ -430,30 +513,42 @@ def run(workspace_arg: Path, workflow: str = "auth") -> dict[str, Any]:
         REPO / "13_deployment",
     ):
         sys.path.insert(0, str(path))
-    from school_backend import load_runtime
     from private_settings import read_private
+    from school_backend import load_runtime
 
     try:
         load_runtime(workspace, REPO)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - errors may contain SQL or DPAPI details.
         return safe_error_result("runtime_gate", exc)
     try:
+        from school_app_lifecycle import LifecycleError, SchoolAppLifecycle
+
+        lifecycle_status = SchoolAppLifecycle(REPO).status(workspace)
+        if not verify_owned_application_services(
+            lifecycle_status,
+            backend_port=backend_port,
+            frontend_port=frontend_port,
+        ):
+            raise HarnessError("LifecycleOwnershipUnavailable")
+    except (HarnessError, LifecycleError, OSError, TypeError, ValueError) as exc:
+        return safe_error_result("owner_gate", exc)
+    try:
         credentials = validate_credentials(read_private(workspace / ACCOUNT_FILE))
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - credential decoder errors stay private.
         return safe_error_result("account_gate", exc)
     node = shutil.which("node")
     if not node:
         return safe_error_result("browser_runner", HarnessError("NodeUnavailable"))
     try:
         artifact_dir = create_artifact_run_dir(workspace)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - file and ACL details stay private.
         return safe_error_result("artifact_target", exc)
 
     payload = {
         "credentials": credentials,
         "artifact_dir": str(artifact_dir),
-        "frontend_url": FRONTEND_URL,
-        "backend_url": BACKEND_URL,
+        "frontend_url": frontend_url,
+        "backend_url": backend_url,
         "accounts": {
             slot: {"role": frontend_role, "api_role": api_role, "path": route}
             for slot, (frontend_role, api_role, route) in ACCOUNT_SLOTS.items()
@@ -496,10 +591,17 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workspace", type=Path, required=True)
     parser.add_argument("--workflow", default="auth")
+    parser.add_argument("--backend-port", type=int)
+    parser.add_argument("--frontend-port", type=int)
     args = parser.parse_args()
     try:
-        result = run(args.workspace, args.workflow)
-    except Exception as exc:  # SQL/DPAPI/Playwright errors may embed secrets.
+        result = run(
+            args.workspace,
+            args.workflow,
+            backend_port=args.backend_port,
+            frontend_port=args.frontend_port,
+        )
+    except Exception as exc:  # noqa: BLE001 - SQL/DPAPI/Playwright errors may embed secrets.
         result = safe_error_result("harness", exc)
     print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
     return 0 if result.get("status") == "PASS" else 2

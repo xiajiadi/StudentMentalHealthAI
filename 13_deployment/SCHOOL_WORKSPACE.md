@@ -2,6 +2,43 @@
 
 The school-schema development code must never be migrated onto the preserved M0 database. The legacy launcher fails before dependency/bootstrap/DDL when the school migration is present. Existing M0 processes remain a historical baseline; use the pinned M0 source for legacy operation.
 
+## Current fresh offline install (schema 20261015_0022)
+
+`school_install.py` composes the existing cached dependency preparer, fresh isolated workspace creator, empty-schema migration, least-privilege runtime identity, fictional synthetic seed, owned preview lifecycle, and four-role browser check. It requires a clean dependency-target worktree at the same HEAD as the source and an absolute, non-existing external workspace. The parent directory, vendor MySQL binary directory, six already-installed Python interpreters, and offline dependency caches must already exist. Standard CAT uses port 8182 by default; the database/API/UI ports are always explicit and must be free.
+
+The command does not download or package Ollama/model, OPA, Guard, corpus, or vector assets. Keep those assets on the host and verify the actual service dependencies during startup; a dependency-package PASS is not AI readiness or whole-platform readiness. No backup or workspace from another Windows user is reused: DPAPI credentials remain bound to the current Windows user.
+
+From the source checkout, first run the read-only plan with the six Python paths used by the official dependency preparation tool:
+
+```powershell
+$source = 'D:\Projects\StudentMentalHealthAI-m0-integration'
+$dependencyTarget = 'D:\Dev\projects\smhai-school-install-deps-20261016-v'
+$workspace = 'D:\Projects\.StudentMentalHealthAI-school-install-20261016-v'
+$mysqlBin = 'D:\Dev\tools\mysql\bin'
+$installerPython = 'D:\Dev\pythons\python312\python.exe'
+$catPython = 'D:\Dev\pythons\python314\python.exe'
+$py312 = 'D:\Dev\pythons\python312\python.exe'
+$head = git -C $source rev-parse HEAD
+git -C $source worktree add --detach $dependencyTarget $head
+$pythonArgs = @(
+  '--python', "01_cat-engine=$catPython",
+  '--python', "09_backend=$py312",
+  '--python', "11_database=$py312",
+  '--python', "05_rag-engine=$py312",
+  '--python', "06_llm-runtime=$py312",
+  '--python', "08_safety-engine=$py312"
+)
+& $installerPython .\13_deployment\school_install.py plan `
+  --source-root $source --dependency-target-root $dependencyTarget `
+  --workspace $workspace --mysql-bin $mysqlBin `
+  --database-port 3330 --backend-port 8104 --frontend-port 4194 `
+  --standard-cat-port 8182 @pythonArgs
+```
+
+After reviewing the plan, replace `plan` with `install`. To continue after a fully completed stage, rerun the same arguments with `resume`. Completed stages are rechecked; a stage left `running` or marked failed blocks automated replay. Inspect and preserve that target rather than resetting it or re-running seed, migration, or lifecycle start. The checkpoint is a content-free sibling JSON file; workspace credentials stay in the workspace's current-user DPAPI files.
+
+The final machine result is `APP_AND_ROLE_BROWSER_VERIFIED` only when the current-schema workspace, owned services, and all four synthetic role browser sessions verify. `whole_ready` remains false; the command does not claim AI readiness, asset redistribution rights, psychometric validation, or production approval.
+
 Initialize a **new, non-existing external directory** using an already-installed vendor MySQL binary and the database module's environment:
 
 ```powershell
@@ -24,11 +61,9 @@ After the empty-schema migration and ownership checks, run:
 .\11_database\.venv\Scripts\python.exe .\13_deployment\prepare_school_runtime.py --workspace <absolute-external-directory>
 ```
 
-This validates the marker, guardian/listener ownership, current-user-only DACL, connected port/datadir/schema and current revision `20261014_0011`. It generates a separate account with only SELECT/INSERT/UPDATE/DELETE on `smhai_school_demo`. Sealed recovery settings are written before account DDL; existing runtime settings are never overwritten. A new login then checks actual grants and active roles, refusing global/schema/role/grant-option expansion. Failure locks the account created by this attempt and preserves sealed material for explicit inspection rather than silently resetting or retrying account creation. Only successful permission verification writes `runtime-ready.json`; launchers must require that marker and recheck permissions. If locking fails, startup remains blocked pending owned-workspace inspection. The script does not launch applications or seed users.
+This validates the marker, guardian/listener ownership, current-user-only DACL, connected port/datadir/schema and the current revision `20261015_0022`. It generates a separate account with only SELECT/INSERT/UPDATE/DELETE on `smhai_school_demo`. Sealed recovery settings are written before account DDL; existing runtime settings are never overwritten. A new login then checks actual grants and active roles, refusing global/schema/role/grant-option expansion. Failure locks the account created by this attempt and preserves sealed material for explicit inspection rather than silently resetting or retrying account creation. Only successful permission verification writes `runtime-ready.json`; launchers must require that marker and recheck permissions. If locking fails, startup remains blocked pending owned-workspace inspection. The script does not launch applications or seed users.
 
-This checkout now requires schema revision `20261014_0011`. Existing workspaces G and H remain at `20261013_0010`; this update did not migrate either workspace. Historical runtime evidence below must not be read as proof of 0011 readiness. The current workspace migrator does not upgrade an existing 0010 database, so runtime preparation and application startup remain blocked for those targets until a separately approved upgrade path is implemented and verified.
-
-Current isolated 3308 workspace has passed native runtime login, exact grants/no-active-role verification and revision read. A clean repeated full install and school backend/browser operation remain pending.
+The current workspace schema revision is `20261015_0022`. The migrator accepts a new empty workspace or exact-current metadata; it does not upgrade an older existing workspace. Create a new external workspace for this install flow. Historical runtime evidence for earlier revisions is not proof of current-schema readiness.
 
 School-profile backend now consumes the current-user DPAPI key provider without plaintext fallback. Real workspace key-provider/Fernet encryption and decryption roundtrip passes; this proves key-format compatibility, not full backend/browser operation.
 
@@ -40,9 +75,9 @@ School-profile backend now consumes the current-user DPAPI key provider without 
 
 The entrypoint requires matching `runtime-ready.json`, verifies process/listener/DACL and actual runtime grants/revision again, and reads the sealed authentication and database key files. It clears inherited database/SMHAI settings in its own process and rebuilds only the verified target; no plaintext `.env` is loaded. Application configuration fixes school tenancy, MySQL persistence and real HTTP module clients. Configuration preflight does not prove running services or authenticated workflows. Without `--preflight-only`, it runs the backend in the foreground on loopback 8088; an owning launcher still needs to manage its lifecycle. The corresponding frontend origin is loopback 4178. Historical M0 service processes are not stopped or reconfigured by this entrypoint.
 
-Current entrypoint target/grants/revision/auth environment checks pass against the owned workspace, and deployment tests pass 49/49 (also independently rerun). Application startup, controlled four-role seed and browser business tests remain pending.
+The backend preflight verifies the runtime marker, grants, current revision, and auth environment. It does not by itself verify service ownership or browser workflows; the fresh install command follows it with lifecycle status and four-role browser checks.
 
-School authentication uses an independently generated 32-byte CSRF HMAC key from `school-auth.private.dpapi`, validated as 64 hex characters and passed only in process memory. Missing/invalid secrets fail closed. Current actual foreground startup and HTTP health/ready are verified, with zero implicit accounts; role login and browser workflows await controlled synthetic seeding.
+School authentication uses an independently generated 32-byte CSRF HMAC key from `school-auth.private.dpapi`, validated as 64 hex characters and passed only in process memory. Missing/invalid secrets fail closed. Role credentials are created only by the explicit fictional school seed and remain sealed for the current Windows user.
 
 ## Backend + Frontend lifecycle for a prepared workspace
 

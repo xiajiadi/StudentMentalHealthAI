@@ -117,15 +117,26 @@ function failResult() {
   };
 }
 
+export function isLoopbackBrowserOrigin(value) {
+  if (typeof value !== 'string' || value.length > 80) return false;
+  try {
+    const url = new URL(value);
+    const port = Number(url.port);
+    return url.protocol === 'http:' && url.hostname === '127.0.0.1'
+      && url.pathname === '/' && !url.search && !url.hash
+      && !url.username && !url.password
+      && /^\d{1,5}$/.test(url.port) && Number.isInteger(port)
+      && port >= 1024 && port <= 65535;
+  } catch {
+    return false;
+  }
+}
+
 function validPayload(payload) {
   if (!payload || typeof payload !== 'object') return false;
   if (!path.isAbsolute(payload.artifact_dir)) return false;
-  const allowedTargets = [
-    ['http://127.0.0.1:4178', 'http://127.0.0.1:8088'],
-    ['http://127.0.0.1:4179', 'http://127.0.0.1:8089'],
-  ];
-  if (!allowedTargets.some(([frontend, backend]) =>
-    payload.frontend_url === frontend && payload.backend_url === backend)) return false;
+  if (!isLoopbackBrowserOrigin(payload.frontend_url) || !isLoopbackBrowserOrigin(payload.backend_url)
+    || payload.frontend_url === payload.backend_url) return false;
   for (const slot of ACCOUNT_SLOTS) {
     const account = payload.credentials?.[slot];
     const expected = payload.accounts?.[slot];
