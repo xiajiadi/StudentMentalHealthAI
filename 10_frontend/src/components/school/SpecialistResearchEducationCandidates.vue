@@ -5,6 +5,7 @@ import AppCard from '@/components/app/AppCard.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import ResearchFeedbackSources from '@/components/school/ResearchFeedbackSources.vue'
 import SpecialistResearchEducationInputReviews from '@/components/school/SpecialistResearchEducationInputReviews.vue'
+import SpecialistResearchEducationOutputReviews from '@/components/school/SpecialistResearchEducationOutputReviews.vue'
 import { newResearchFeedbackIdempotencyKey } from '@/services/school-research-feedback'
 import { schoolResearchEducationCandidates, type ResearchEducationCandidateDetail, type ResearchEducationCandidateSummary } from '@/services/school-research-education-candidates'
 import type { ResearchEducationGenerationJob } from '@/services/school-research-education-candidates'
@@ -122,6 +123,11 @@ function resolve(target: 'ADOPTED' | 'DISCARDED') {
   const key = newResearchFeedbackIdempotencyKey(); const taskRef = props.taskRef
   void mutate(() => schoolResearchEducationCandidates.resolve(taskRef, row, target, key))
 }
+function refreshAfterOutputReview() {
+  confirmation.value = ''
+  if (status.value === 'HELD') void load(0)
+  else status.value = 'HELD'
+}
 watch(() => [props.taskRef, session.user?.role, session.user?.userId, session.user?.activeContext] as const, () => { clear(); if (allowed.value) void load() }, { immediate: true })
 watch(status, () => { if (!busy.value && !pending.value) void load() })
 onBeforeUnmount(() => { alive = false; clear() })
@@ -155,6 +161,11 @@ onBeforeUnmount(() => { alive = false; clear() })
       <p v-else-if="detail.status === 'ADOPTED'">选择同一完成记录并完成复核后，可将此来源用于新的反馈修订稿。</p>
     </section>
   </AppCard>
+  <SpecialistResearchEducationOutputReviews
+    :task-ref="taskRef"
+    :disabled="disabled"
+    @candidate-created="refreshAfterOutputReview"
+  />
   <SpecialistResearchEducationInputReviews :task-ref="taskRef" :disabled="disabled" />
 </template>
 

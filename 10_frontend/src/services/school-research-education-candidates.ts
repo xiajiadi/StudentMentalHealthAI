@@ -307,6 +307,10 @@ function mapSummary(value: unknown): ResearchEducationCandidateSummary {
   }
 }
 
+export function mapResearchEducationCandidateSummary(value: unknown): ResearchEducationCandidateSummary {
+  return mapSummary(value)
+}
+
 function mapCitation(value: unknown): ResearchFeedbackCitation {
   const message = '候选引用格式无法识别。'
   const source = record(value, message)

@@ -1,10 +1,10 @@
 <script setup lang="ts">
-defineProps<{ sourceCards: Array<{
+withDefaults(defineProps<{ title?: string; sourceCards: Array<{
   chunk_id: string; record_id: string; source_id: string; title: string; organization: string; canonical_url: string;
   record_locator: string; source_population_scope: string; source_language: string;
   license: string; license_url: string; attribution: string; excerpt_text: string;
   consumer_age_min: number; consumer_age_max: number;
-}> }>()
+}> }>(), { title: '参考来源' })
 
 function sourceUrl(value: string): string | undefined {
   try {
@@ -15,8 +15,8 @@ function sourceUrl(value: string): string | undefined {
 </script>
 
 <template>
-  <section v-if="sourceCards.length" class="feedback-sources" aria-label="反馈参考来源">
-    <h4>参考来源</h4>
+  <section v-if="sourceCards.length" class="feedback-sources" :aria-label="title">
+    <h4>{{ title }}</h4>
     <details v-for="source in sourceCards" :key="source.chunk_id">
       <summary>{{ source.title }}</summary>
       <p>{{ source.organization }} · {{ source.record_locator }} · 记录 {{ source.record_id }} · 来源 {{ source.source_id }}</p>
