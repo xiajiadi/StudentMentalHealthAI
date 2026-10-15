@@ -138,10 +138,11 @@ def _required_revision(profile: str) -> str:
         "20261014_0016",
         "20261014_0017",
         "20261014_0018",
+        "20261015_0019",
     ],
 )
-async def test_school_tenant_startup_requires_conversation_safety_revision(old_revision):
-    assert REQUIRED_SCHOOL_TENANT_DATABASE_REVISION == "20261015_0019"
+async def test_school_tenant_startup_requires_education_candidate_revision(old_revision):
+    assert REQUIRED_SCHOOL_TENANT_DATABASE_REVISION == "20261015_0020"
     adapter = _adapter([old_revision], "school_tenant")
 
     async def no_bootstrap():
@@ -149,7 +150,7 @@ async def test_school_tenant_startup_requires_conversation_safety_revision(old_r
 
     adapter._ensure_synthetic_fixtures = no_bootstrap
 
-    with pytest.raises(RuntimeError, match="20261015_0019"):
+    with pytest.raises(RuntimeError, match="20261015_0020"):
         await adapter.start()
 
 

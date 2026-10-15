@@ -213,6 +213,15 @@ Draft config SHAa25846e27a801714792992655b8c45e8d8cc17291ad35b968b70687368685acc
 Backend preflight passed; app start is held until the job-status GET increment
 is reviewed/committed. It exposes only task-scoped new-policy job metadata and
 nine-state counts, so failed work is visible without generating again.
+Job status increment eeff122d2e059083533a5ee57acec83380c330d7 was reviewed/pushed.
+First official R start built the preview but Backend exited before managed CAT;
+failed manifest remains PARTIAL_READINESS_UNOBSERVED, with no API/UI/CAT listener.
+Controlled actual-lifespan diagnostic isolated database.py's stale0019 startup
+requirement against restored0020; no queue/model action occurred. Source fix aligns
+the exact startup requirement to0020 and retains rejection of0019/older schemas.
+27 startup checks, including parity with deployment's current revision, passed.
+Diagnostic D:/Dev/temp/psynova-r0020-startup-lifespan-diagnostic-20261015-r2/result.json.
+Native restart still pending after the fix; never relabel this first attempt READY.
 Runtime8161 was independently ownership-verified and restarted at014e263;
 health READY, no generation. Owner proof D:/Dev/temp/
 psynova-research-runtime-014e263-restart-20261015-r1/owner-ready.json.
