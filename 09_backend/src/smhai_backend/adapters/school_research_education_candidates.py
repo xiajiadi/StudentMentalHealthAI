@@ -384,13 +384,13 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
     def _payload_from_row(self, row):
         from database_layer.crypto import EncryptedPayload
 
+        from smhai_backend.domains.research_general_education.prompt import (
+            get_prompt_definition,
+        )
         from smhai_backend.domains.research_general_education.service import (
             EXPECTED_MODEL_DIGEST_SHA256,
             EXPECTED_MODEL_ID,
             EXPECTED_MODEL_VERSION,
-            PROMPT_ID,
-            PROMPT_SHA256,
-            PROMPT_VERSION,
             SAFETY_POLICY_VERSION,
         )
 
@@ -419,8 +419,15 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
                 detail="research education candidate content is unavailable",
             ) from None
         provenance = payload.provenance
+        registered_prompt = get_prompt_definition(
+            row.prompt_ref, row.prompt_version, row.prompt_sha256
+        )
         if (
-            provenance.policy_version != row.policy_version
+            registered_prompt is None
+            or provenance.prompt_id != registered_prompt.prompt_id
+            or provenance.prompt_version != registered_prompt.version
+            or provenance.prompt_sha256 != registered_prompt.sha256
+            or provenance.policy_version != row.policy_version
             or provenance.policy_hash != row.policy_hash
             or provenance.source_manifest_sha256 != row.source_manifest_sha256
             or provenance.source_package_ref != self.source_package_ref
@@ -430,11 +437,8 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
             or provenance.retrieval_id != row.retrieval_id
             or provenance.retrieval_bundle_sha256 != row.retrieval_bundle_sha256
             or provenance.prompt_id != row.prompt_ref
-            or provenance.prompt_id != PROMPT_ID
             or provenance.prompt_version != row.prompt_version
-            or provenance.prompt_version != PROMPT_VERSION
             or provenance.prompt_sha256 != row.prompt_sha256
-            or provenance.prompt_sha256 != PROMPT_SHA256
             or provenance.model_id != row.model_ref
             or provenance.model_id != EXPECTED_MODEL_ID
             or provenance.model_version != EXPECTED_MODEL_VERSION

@@ -22,6 +22,7 @@ from smhai_backend.domains.research_general_education.prompt import (
     PROMPT_ID,
     PROMPT_SHA256,
     PROMPT_VERSION,
+    get_prompt_definition,
 )
 from smhai_backend.domains.research_general_education.schemas import (
     ResearchGeneralEducationBoundaryDiagnostic,
@@ -740,11 +741,39 @@ def test_candidate_readback_checks_row_payload_provenance_and_content_hash():
     with pytest.raises(BackendError) as raised:
         configured._payload_from_row(tampered)
     assert raised.value.code is ErrorCode.DEPENDENCY_INVALID_RESPONSE
-
     with pytest.raises(BackendError) as raised:
         configured._payload_from_row(_row(payload, content_sha256="0" * 64))
     assert raised.value.code is ErrorCode.DEPENDENCY_INVALID_RESPONSE
 
+
+def test_candidate_readback_accepts_only_registered_historical_prompt_tuple():
+    configured = adapter()
+    payload = candidate_payload()
+    old_sha = "f7b8f8ed70cfdf932d7e774101dfb4d2dae17e45f6aaf968e09fda146c0686ea"
+    legacy_prompt = get_prompt_definition(PROMPT_ID, "1.0.0", old_sha)
+    assert legacy_prompt is not None
+    legacy_payload = payload.model_copy(update={
+        "provenance": payload.provenance.model_copy(update={
+            "prompt_id": legacy_prompt.prompt_id,
+            "prompt_version": legacy_prompt.version,
+            "prompt_sha256": legacy_prompt.sha256,
+        })
+    })
+    configured.protection = SimpleNamespace(
+        decrypt_json=lambda _encrypted: legacy_payload.model_dump(mode="python")
+    )
+
+    result = configured._payload_from_row(_row(legacy_payload))
+    assert result.provenance.prompt_version == "1.0.0"
+    assert result.provenance.prompt_sha256 == old_sha
+    with pytest.raises(BackendError):
+        configured._validate_new_payload(legacy_payload)
+
+    with pytest.raises(BackendError) as raised:
+        configured._payload_from_row(
+            _row(legacy_payload, prompt_sha256="0" * 64)
+        )
+    assert raised.value.code is ErrorCode.DEPENDENCY_INVALID_RESPONSE
 
 async def test_worker_live_claim_locks_task_scope_before_job_lease():
     from database_layer import models

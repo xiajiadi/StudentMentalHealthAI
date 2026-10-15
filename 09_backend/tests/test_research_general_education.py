@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import sys
 from copy import deepcopy
@@ -17,6 +18,11 @@ from smhai_backend.core.request_context import RequestContext
 from smhai_backend.domains.research_general_education.input_review_policy import (
     INPUT_REVIEW_CONTINUATION_POLICY_SHA256,
     INPUT_REVIEW_CONTINUATION_POLICY_VERSION,
+    continuation_policy_sha256_for_prompt,
+)
+from smhai_backend.domains.research_general_education.prompt import (
+    get_prompt_definition,
+    is_current_prompt,
 )
 from smhai_backend.domains.research_general_education.schemas import (
     ResearchGeneralEducationBoundaryDiagnostic,
@@ -560,6 +566,12 @@ def test_input_review_canonical_digest_is_strict_and_changes_with_trusted_pins()
         source_manifest_sha256=MANIFEST_SHA,
     )
     first = canonical_input_context_sha256(policy_pins=pins)
+    legacy_digest = canonical_input_context_sha256(
+        policy_pins=pins,
+        prompt_id=PROMPT_ID,
+        prompt_version="1.0.0",
+        prompt_sha256="f7b8f8ed70cfdf932d7e774101dfb4d2dae17e45f6aaf968e09fda146c0686ea",
+    )
     changed_pins = ResearchGeneralEducationPolicyPins(
         policy_hash="c" * 64,
         source_package_ref="source-package-v1",
@@ -568,6 +580,8 @@ def test_input_review_canonical_digest_is_strict_and_changes_with_trusted_pins()
     )
 
     assert first != canonical_input_context_sha256(policy_pins=changed_pins)
+    assert legacy_digest == "27fd7f3b700963538b26fd95a683a78f86cdedd58d5ad75fe2ead6f2aa5cc1e8"
+    assert first != legacy_digest
     with pytest.raises(ValueError):
         canonical_input_context_sha256(
             policy_pins=ResearchGeneralEducationPolicyPins(
@@ -577,6 +591,63 @@ def test_input_review_canonical_digest_is_strict_and_changes_with_trusted_pins()
                 source_manifest_sha256=MANIFEST_SHA,
             )
         )
+
+
+def test_prompt_catalog_is_closed_and_preserves_legacy_prompt_and_policy_hashes():
+    legacy_sha = "f7b8f8ed70cfdf932d7e774101dfb4d2dae17e45f6aaf968e09fda146c0686ea"
+    legacy = get_prompt_definition(PROMPT_ID, "1.0.0", legacy_sha)
+    current = get_prompt_definition(PROMPT_ID, PROMPT_VERSION, PROMPT_SHA256)
+
+    assert PROMPT_VERSION == "1.1.0"
+    assert legacy is not None and legacy.sha256 == legacy_sha
+    assert current is not None and current.template == PROMPT_TEMPLATE
+    assert "否定句、引述" in current.template
+    assert "不得删去或弱化" in current.template
+    assert is_current_prompt(PROMPT_ID, PROMPT_VERSION, PROMPT_SHA256)
+    assert not is_current_prompt(PROMPT_ID, "1.0.0", legacy_sha)
+    assert get_prompt_definition(PROMPT_ID, "latest", legacy_sha) is None
+    assert get_prompt_definition(PROMPT_ID, "1.0.0", "0" * 64) is None
+    with pytest.raises(TypeError):
+        from smhai_backend.domains.research_general_education.prompt import PROMPT_REGISTRY
+
+        PROMPT_REGISTRY[(PROMPT_ID, "forged", "0" * 64)] = legacy
+
+    assert continuation_policy_sha256_for_prompt(
+        PROMPT_ID, "1.0.0", legacy_sha
+    ) == "0d23a580b13fe877576ba03bc7075b5a96d5e3c8de58a88aeb4136b884b79811"
+    assert continuation_policy_sha256_for_prompt(
+        PROMPT_ID, "1.0.0", "0" * 64
+    ) is None
+
+
+def test_prompt_module_supports_spec_exec_without_sys_modules_registration():
+    prompt_path = (
+        Path(__file__).resolve().parents[1]
+        / "src"
+        / "smhai_backend"
+        / "domains"
+        / "research_general_education"
+        / "prompt.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "_isolated_research_general_education_prompt", prompt_path
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    assert module.__name__ not in sys.modules
+
+    spec.loader.exec_module(module)
+
+    assert module.__name__ not in sys.modules
+    assert module.PROMPT_VERSION == "1.1.0"
+    assert module.PROMPT_SHA256 == hashlib.sha256(
+        module.PROMPT_TEMPLATE.encode("utf-8")
+    ).hexdigest()
+    assert module.get_prompt_definition(
+        module.PROMPT_ID,
+        "1.0.0",
+        "f7b8f8ed70cfdf932d7e774101dfb4d2dae17e45f6aaf968e09fda146c0686ea",
+    ).sha256 == "f7b8f8ed70cfdf932d7e774101dfb4d2dae17e45f6aaf968e09fda146c0686ea"
 
 
 def test_safety_projection_preserves_optional_decision_id_and_accepts_legacy_payload():
@@ -641,7 +712,7 @@ async def test_runtime_identity_mismatch_fails_closed_after_one_attempt():
     assert result.candidate is None
     assert len(runtime.calls) == 1
     assert PROMPT_ID == "PROMPT_school_research_general_education_candidate_v1"
-    assert PROMPT_VERSION == "1.0.0"
+    assert PROMPT_VERSION == "1.1.0"
 
 
 @pytest.mark.asyncio

@@ -24,6 +24,7 @@ from smhai_backend.core.request_context import RequestContext
 from smhai_backend.domains.research_general_education.input_review_policy import (
     INPUT_REVIEW_CONTINUATION_POLICY_SHA256,
     INPUT_REVIEW_CONTINUATION_POLICY_VERSION,
+    continuation_policy_sha256_for_prompt,
 )
 from smhai_backend.domains.research_general_education.prompt import (
     PROMPT_ID,
@@ -330,6 +331,194 @@ def test_review_grant_pins_and_consumption_state_fail_closed(changes):
     adapter._input_review_pins(authorized_row())
     with pytest.raises(BackendError):
         adapter._input_review_pins(authorized_row(**changes))
+
+
+def test_historical_prompt_review_and_grant_remain_readable_but_not_authorizable():
+    adapter = FakeAdapter()
+    adapter.input_review_continuation_enabled = True
+    old_sha = "f7b8f8ed70cfdf932d7e774101dfb4d2dae17e45f6aaf968e09fda146c0686ea"
+    old_policy_hash = continuation_policy_sha256_for_prompt(PROMPT_ID, "1.0.0", old_sha)
+    pins = ResearchGeneralEducationPolicyPins(
+        policy_hash=POLICY_HASH,
+        source_package_ref="PKG_R3",
+        source_study_ref="STUDY_R3",
+        source_manifest_sha256=MANIFEST_HASH,
+    )
+    old_digest = canonical_input_context_sha256(
+        policy_pins=pins,
+        prompt_id=PROMPT_ID,
+        prompt_version="1.0.0",
+        prompt_sha256=old_sha,
+    )
+    pending_old = row(
+        prompt_version="1.0.0",
+        prompt_sha256=old_sha,
+        canonical_input_sha256=old_digest,
+    )
+    adapter._input_review_pins(pending_old)
+    assert adapter._input_review_summary(
+        pending_old, task_ref="TASK_synthetic_1", session_ref="RSESSION_synthetic_1"
+    )["continuation_enabled"] is False
+
+    authorized_old = authorized_row(
+        prompt_version="1.0.0",
+        prompt_sha256=old_sha,
+        canonical_input_sha256=old_digest,
+        grant_policy_hash=old_policy_hash,
+    )
+    adapter._input_review_pins(authorized_old)
+    consumed_old = authorized_row(
+        status="CONSUMED",
+        state_version=3,
+        prompt_version="1.0.0",
+        prompt_sha256=old_sha,
+        canonical_input_sha256=old_digest,
+        grant_policy_hash=old_policy_hash,
+        consumed_at=NOW + timedelta(minutes=1),
+    )
+    adapter._input_review_pins(consumed_old)
+    with pytest.raises(BackendError):
+        adapter._input_review_pins(authorized_row(
+            prompt_version="1.0.0",
+            prompt_sha256=old_sha,
+            canonical_input_sha256=old_digest,
+            grant_policy_hash=INPUT_REVIEW_CONTINUATION_POLICY_SHA256,
+        ))
+
+
+@pytest.mark.asyncio
+async def test_historical_pending_review_cannot_be_authorized_for_current_generation():
+    adapter = FakeAdapter()
+    adapter.input_review_continuation_enabled = True
+    old_sha = "f7b8f8ed70cfdf932d7e774101dfb4d2dae17e45f6aaf968e09fda146c0686ea"
+    pins = ResearchGeneralEducationPolicyPins(
+        policy_hash=POLICY_HASH,
+        source_package_ref="PKG_R3",
+        source_study_ref="STUDY_R3",
+        source_manifest_sha256=MANIFEST_HASH,
+    )
+    old_digest = canonical_input_context_sha256(
+        policy_pins=pins,
+        prompt_id=PROMPT_ID,
+        prompt_version="1.0.0",
+        prompt_sha256=old_sha,
+    )
+    adapter.review = row(
+        prompt_version="1.0.0",
+        prompt_sha256=old_sha,
+        canonical_input_sha256=old_digest,
+    )
+    adapter.repo.current = adapter.review
+    with pytest.raises(BackendError) as raised:
+        await adapter.school_research_education_input_review_resolve(
+            specialist(), "TASK_synthetic_1", INPUT_REVIEW_REF,
+            expected_state_version=1, target="CONTINUATION_AUTHORIZED",
+            idempotency=("idem", "body", "scope"), trace_id="TRACE_synthetic_1",
+        )
+    assert raised.value.code is ErrorCode.WORKFLOW_CONFLICT
+    assert not any(call[0] == "idempotency_begin" for call in adapter.events)
+    assert not any(call[0] == "authorize" for call in adapter.repo.calls)
+
+
+@pytest.mark.asyncio
+async def test_historical_authorization_cannot_load_generation_capability():
+    adapter = FakeAdapter()
+    adapter.input_review_continuation_enabled = True
+    old_sha = "f7b8f8ed70cfdf932d7e774101dfb4d2dae17e45f6aaf968e09fda146c0686ea"
+    old_policy_hash = continuation_policy_sha256_for_prompt(PROMPT_ID, "1.0.0", old_sha)
+    pins = ResearchGeneralEducationPolicyPins(
+        policy_hash=POLICY_HASH,
+        source_package_ref="PKG_R3",
+        source_study_ref="STUDY_R3",
+        source_manifest_sha256=MANIFEST_HASH,
+    )
+    old_digest = canonical_input_context_sha256(
+        policy_pins=pins,
+        prompt_id=PROMPT_ID,
+        prompt_version="1.0.0",
+        prompt_sha256=old_sha,
+    )
+    review = authorized_row(
+        prompt_version="1.0.0",
+        prompt_sha256=old_sha,
+        canonical_input_sha256=old_digest,
+        grant_policy_hash=old_policy_hash,
+    )
+    adapter.review = review
+    adapter.repo.current = review
+
+    async def scalar(_statement):
+        return review.input_review_ref
+
+    adapter.session.scalar = scalar
+    claim = SimpleNamespace(
+        **{
+            name: getattr(review.scope, name)
+            for name in review.scope.__dataclass_fields__
+        },
+        generation_round=1,
+        input_review_id=review.id,
+        attempt_count=1,
+        job_ref="REJ_" + "f" * 64,
+    )
+    with pytest.raises(BackendError) as raised:
+        await adapter._continuation_authorization(
+            adapter.uow, claim, adapter.task, now=NOW
+        )
+    assert raised.value.code is ErrorCode.WORKFLOW_CONFLICT
+
+
+@pytest.mark.asyncio
+async def test_historical_authorized_review_can_be_revoked_without_reauthorizing():
+    adapter = FakeAdapter()
+    old_sha = "f7b8f8ed70cfdf932d7e774101dfb4d2dae17e45f6aaf968e09fda146c0686ea"
+    old_policy_hash = continuation_policy_sha256_for_prompt(PROMPT_ID, "1.0.0", old_sha)
+    pins = ResearchGeneralEducationPolicyPins(
+        policy_hash=POLICY_HASH,
+        source_package_ref="PKG_R3",
+        source_study_ref="STUDY_R3",
+        source_manifest_sha256=MANIFEST_HASH,
+    )
+    old_digest = canonical_input_context_sha256(
+        policy_pins=pins,
+        prompt_id=PROMPT_ID,
+        prompt_version="1.0.0",
+        prompt_sha256=old_sha,
+    )
+    review = authorized_row(
+        prompt_version="1.0.0",
+        prompt_sha256=old_sha,
+        canonical_input_sha256=old_digest,
+        grant_policy_hash=old_policy_hash,
+    )
+    adapter.review = review
+    adapter.repo.current = review
+
+    async def revoke(**kwargs):
+        adapter.repo.calls.append(("revoke", kwargs))
+        adapter.repo.current = replace(
+            review,
+            status="REVOKED",
+            state_version=3,
+            resolved_by_membership_role_id=kwargs["actor_membership_role_id"],
+            resolved_at=NOW,
+            updated_at=NOW,
+        )
+        return adapter.repo.current
+
+    adapter.repo.revoke = revoke
+    result = await adapter.school_research_education_input_review_resolve(
+        specialist(),
+        "TASK_synthetic_1",
+        INPUT_REVIEW_REF,
+        expected_state_version=2,
+        target="REVOKED",
+        idempotency=("idem", "body", "scope"),
+        trace_id="TRACE_synthetic_1",
+    )
+    assert result["status"] == "REVOKED"
+    assert result["state_version"] == 3
+    assert [call[0] for call in adapter.repo.calls] == ["get", "revoke"]
 
 
 @pytest.mark.asyncio

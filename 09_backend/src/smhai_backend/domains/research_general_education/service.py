@@ -42,6 +42,7 @@ from .prompt import (
     PROMPT_SHA256,
     PROMPT_TEMPLATE,  # noqa: F401 - re-exported for Runtime integration clients.
     PROMPT_VERSION,
+    get_prompt_definition,
 )
 from .schemas import (
     ResearchGeneralEducationBoundaryDiagnostic,
@@ -551,11 +552,20 @@ def canonical_candidate_payload_sha256(
 
 
 def canonical_input_context_sha256(
-    *, policy_pins: ResearchGeneralEducationPolicyPins
+    *,
+    policy_pins: ResearchGeneralEducationPolicyPins,
+    prompt_id: str | None = None,
+    prompt_version: str | None = None,
+    prompt_sha256: str | None = None,
 ) -> str:
-    """Hash the fixed SYSTEM input and trusted pins, without caller text or IDs."""
+    """Hash fixed input and pins against one exact registered prompt identity."""
     if not isinstance(policy_pins, ResearchGeneralEducationPolicyPins):
         raise ValueError("trusted research policy pins are required")
+    if prompt_id is None and prompt_version is None and prompt_sha256 is None:
+        prompt_id, prompt_version, prompt_sha256 = PROMPT_ID, PROMPT_VERSION, PROMPT_SHA256
+    prompt = get_prompt_definition(prompt_id, prompt_version, prompt_sha256)
+    if prompt is None:
+        raise ValueError("registered research prompt pins are required")
     expected_input = _fixed_review_input_context()
     if (
         type(policy_pins.policy_hash) is not str
@@ -585,9 +595,9 @@ def canonical_input_context_sha256(
             "source_age_scope": "14-17",
         },
         "prompt": {
-            "prompt_id": PROMPT_ID,
-            "prompt_version": PROMPT_VERSION,
-            "prompt_sha256": PROMPT_SHA256,
+            "prompt_id": prompt.prompt_id,
+            "prompt_version": prompt.version,
+            "prompt_sha256": prompt.sha256,
         },
     }
     canonical = json.dumps(

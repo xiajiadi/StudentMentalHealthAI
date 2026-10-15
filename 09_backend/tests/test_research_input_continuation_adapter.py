@@ -18,7 +18,9 @@ from smhai_backend.core.errors import BackendError, ErrorCode
 from smhai_backend.domains.research_general_education.input_review_policy import (
     INPUT_REVIEW_CONTINUATION_POLICY_SHA256,
     INPUT_REVIEW_CONTINUATION_POLICY_VERSION,
+    continuation_policy_sha256_for_prompt,
 )
+from smhai_backend.domains.research_general_education.prompt import PROMPT_ID
 from smhai_backend.domains.research_general_education.schemas import (
     ResearchGeneralEducationCandidatePayload,
     ResearchGeneralEducationInputReviewReceipt,
@@ -375,17 +377,51 @@ class _LineageReviewRepository:
         return self.review
 
 
-def _lineage_fixture(*, candidate_trace_id=None):
+def _lineage_fixture(*, candidate_trace_id=None, legacy_prompt=False):
     configured = adapter()
     configured._db_models = models
     configured._select = select
     scope = _scope()
     claim = _continuation_claim()
+    payload = candidate_payload()
+    review_changes = {}
+    if legacy_prompt:
+        old_sha = "f7b8f8ed70cfdf932d7e774101dfb4d2dae17e45f6aaf968e09fda146c0686ea"
+        old_policy_hash = continuation_policy_sha256_for_prompt(
+            PROMPT_ID, "1.0.0", old_sha
+        )
+        assert old_policy_hash is not None
+        pins = ResearchGeneralEducationPolicyPins(
+            policy_hash="1" * 64,
+            source_package_ref="R3_PACKAGE_SYNTHETIC",
+            source_study_ref="R3_STUDY_SYNTHETIC",
+            source_manifest_sha256="2" * 64,
+        )
+        old_digest = canonical_input_context_sha256(
+            policy_pins=pins,
+            prompt_id=PROMPT_ID,
+            prompt_version="1.0.0",
+            prompt_sha256=old_sha,
+        )
+        review_changes = {
+            "prompt_version": "1.0.0",
+            "prompt_sha256": old_sha,
+            "canonical_input_sha256": old_digest,
+            "grant_policy_hash": old_policy_hash,
+        }
+        payload = payload.model_copy(update={
+            "provenance": payload.provenance.model_copy(update={
+                "prompt_id": PROMPT_ID,
+                "prompt_version": "1.0.0",
+                "prompt_sha256": old_sha,
+            })
+        })
     review = _authorized_review(
         status="CONSUMED",
         state_version=3,
         consumed_at=NOW,
         updated_at=NOW,
+        **review_changes,
     )
     job = SimpleNamespace(
         id=claim.id,
@@ -412,7 +448,7 @@ def _lineage_fixture(*, candidate_trace_id=None):
     )
     continuation_trace = _trace_for_review_job(claim.job_ref)
     row = candidate_row(
-        candidate_payload(),
+        payload,
         job_id=claim.id,
         scope=scope,
         generation_round=1,
@@ -448,3 +484,13 @@ async def test_continuation_candidate_read_accepts_exact_consumed_sidecar_job_an
     await configured.verify_candidate_input_lineage_in_uow(uow, row)
 
     assert uow.session.values == []
+
+
+@pytest.mark.asyncio
+async def test_historical_consumed_candidate_keeps_registered_prompt_and_grant_lineage():
+    configured, uow, row = _lineage_fixture(legacy_prompt=True)
+
+    await configured.verify_candidate_input_lineage_in_uow(uow, row)
+
+    assert row.prompt_version == "1.0.0"
+    assert row.input_review_state == "CONSUMED"

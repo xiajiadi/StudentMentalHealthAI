@@ -74,6 +74,9 @@ class ResearchEducationInputReviewPersistenceMixin:
             INPUT_REVIEW_CONTINUATION_POLICY_SHA256,
             INPUT_REVIEW_CONTINUATION_POLICY_VERSION,
         )
+        from smhai_backend.domains.research_general_education.prompt import (
+            is_current_prompt,
+        )
         from smhai_backend.domains.research_general_education.schemas import (
             ResearchGeneralEducationInputReviewReceipt,
             ResearchGeneralEducationReviewedInputAuthorization,
@@ -104,6 +107,9 @@ class ResearchEducationInputReviewPersistenceMixin:
         if (
             review.status != "CONTINUATION_AUTHORIZED" or review.state_version != 2
             or review.expires_at <= now or not self._same_scope(review.scope, claim)
+            or not is_current_prompt(
+                review.prompt_id, review.prompt_version, review.prompt_sha256
+            )
         ):
             raise _conflict()
         await self._require_active_specialist_assignment(
@@ -158,9 +164,7 @@ class ResearchEducationInputReviewPersistenceMixin:
         )
 
         from smhai_backend.domains.research_general_education.prompt import (
-            PROMPT_ID,
-            PROMPT_SHA256,
-            PROMPT_VERSION,
+            get_prompt_definition,
         )
         from smhai_backend.domains.research_general_education.service import (
             ResearchGeneralEducationPolicyPins,
@@ -175,15 +179,14 @@ class ResearchEducationInputReviewPersistenceMixin:
                 ErrorCode.DEPENDENCY_INVALID_RESPONSE,
                 detail="research education input review metadata is unavailable",
             )
+        prompt = get_prompt_definition(row.prompt_id, row.prompt_version, row.prompt_sha256)
         if (
             row.policy_version != _POLICY_VERSION
             or row.policy_hash != self.policy_hash
             or row.source_package_ref != self.source_package_ref
             or row.source_study_ref != self.source_study_ref
             or row.source_manifest_sha256 != self.source_manifest_sha256
-            or row.prompt_id != PROMPT_ID
-            or row.prompt_version != PROMPT_VERSION
-            or row.prompt_sha256 != PROMPT_SHA256
+            or prompt is None
         ):
             raise _conflict()
         if (
@@ -266,7 +269,10 @@ class ResearchEducationInputReviewPersistenceMixin:
                     source_package_ref=row.source_package_ref,
                     source_study_ref=row.source_study_ref,
                     source_manifest_sha256=row.source_manifest_sha256,
-                )
+                ),
+                prompt_id=row.prompt_id,
+                prompt_version=row.prompt_version,
+                prompt_sha256=row.prompt_sha256,
             )
         except (TypeError, ValueError):
             raise error(
@@ -279,12 +285,15 @@ class ResearchEducationInputReviewPersistenceMixin:
             row.status == "REVOKED" and row.state_version == 3
         ):
             from smhai_backend.domains.research_general_education.input_review_policy import (
-                INPUT_REVIEW_CONTINUATION_POLICY_SHA256,
                 INPUT_REVIEW_CONTINUATION_POLICY_VERSION,
+                continuation_policy_sha256_for_prompt,
+            )
+            expected_grant_hash = continuation_policy_sha256_for_prompt(
+                row.prompt_id, row.prompt_version, row.prompt_sha256
             )
             if (
                 row.grant_policy_version != INPUT_REVIEW_CONTINUATION_POLICY_VERSION
-                or row.grant_policy_hash != INPUT_REVIEW_CONTINUATION_POLICY_SHA256
+                or row.grant_policy_hash != expected_grant_hash
                 or type(row.authorized_by_membership_role_id) is not int
                 or row.authorized_by_membership_role_id <= 0
                 or not isinstance(row.authorized_at, datetime)
@@ -392,6 +401,8 @@ class ResearchEducationInputReviewPersistenceMixin:
         return current_scope, session_ref
 
     def _input_review_summary(self, row, *, task_ref: str, session_ref: str) -> dict:
+        from smhai_backend.domains.research_general_education.prompt import is_current_prompt
+
         return {
             "input_review_ref": row.input_review_ref,
             "job_ref": row.job_ref,
@@ -405,7 +416,10 @@ class ResearchEducationInputReviewPersistenceMixin:
             "reason_codes": [row.safety_reason_code],
             "purpose": "RESEARCH_SIMULATION",
             "research_only": True,
-            "continuation_enabled": self.input_review_continuation_enabled,
+            "continuation_enabled": (
+                self.input_review_continuation_enabled
+                and is_current_prompt(row.prompt_id, row.prompt_version, row.prompt_sha256)
+            ),
         }
 
     def _input_review_detail(self, row, *, task_ref: str, session_ref: str) -> dict:
@@ -544,6 +558,12 @@ class ResearchEducationInputReviewPersistenceMixin:
             _scope, session_ref = await self._current_input_review(
                 uow, actor, task, row, at=now, lock=True
             )
+            if target == "CONTINUATION_AUTHORIZED":
+                from smhai_backend.domains.research_general_education.prompt import (
+                    is_current_prompt,
+                )
+                if not is_current_prompt(row.prompt_id, row.prompt_version, row.prompt_sha256):
+                    raise _conflict()
             if row.expires_at <= now:
                 raise _conflict()
 
