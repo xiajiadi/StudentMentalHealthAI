@@ -1,0 +1,2 @@
+# Runtime validates this schema against its canonical Git blob digest.
+09_backend/src/smhai_backend/domains/research_general_education/generation_content.schema.json text eol=lf
