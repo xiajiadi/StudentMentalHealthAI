@@ -173,6 +173,145 @@ def test_resume_never_replays_running_or_pending_verification_stages(monkeypatch
     installer._run_stage(config, state, {}, "synthetic_seed")
 
 
+@pytest.mark.parametrize(
+    ("exit_code", "payload", "expected_code"),
+    [
+        (
+            2,
+            {"status": "PARTIAL_FAILURE", "code": "POST_MIGRATION_CHECK_FAILED"},
+            "SCHEMA_MIGRATION_POSTCHECK_FAILED",
+        ),
+        (
+            2,
+            {"status": "PARTIAL_FAILURE", "code": "MIGRATION_FAILED"},
+            "SCHEMA_MIGRATION_DDL_FAILED",
+        ),
+        (
+            2,
+            {"status": "BLOCKED", "code": "POST_MIGRATION_CHECK_FAILED"},
+            "SCHEMA_MIGRATION_FAILED",
+        ),
+        (
+            2,
+            {"status": "PARTIAL_FAILURE", "code": "UNRECOGNIZED_CHILD_FAILURE"},
+            "SCHEMA_MIGRATION_FAILED",
+        ),
+        (
+            2,
+            {
+                "status": "PARTIAL_FAILURE",
+                "code": "POST_MIGRATION_CHECK_FAILED",
+                "detail": "RAW_CHILD_TEXT_SHOULD_NOT_PERSIST",
+            },
+            "SCHEMA_MIGRATION_FAILED",
+        ),
+        (2, {"status": [], "code": "POST_MIGRATION_CHECK_FAILED"}, "SCHEMA_MIGRATION_FAILED"),
+        (2, {"status": {}, "code": "POST_MIGRATION_CHECK_FAILED"}, "SCHEMA_MIGRATION_FAILED"),
+        (2, {"status": None, "code": "POST_MIGRATION_CHECK_FAILED"}, "SCHEMA_MIGRATION_FAILED"),
+        (2, {"status": "PARTIAL_FAILURE", "code": []}, "SCHEMA_MIGRATION_FAILED"),
+        (2, {"status": "PARTIAL_FAILURE", "code": {}}, "SCHEMA_MIGRATION_FAILED"),
+        (2, {"status": "PARTIAL_FAILURE", "code": None}, "SCHEMA_MIGRATION_FAILED"),
+    ],
+    ids=(
+        "postcheck", "ddl", "wrong-status", "unknown-code", "expanded-payload",
+        "status-list", "status-dict", "status-null", "code-list", "code-dict", "code-null",
+    ),
+)
+def test_schema_stage_maps_only_exact_migrator_partial_failure_results(
+    monkeypatch, tmp_path, exit_code, payload, expected_code
+):
+    state = {
+        "workspace_id": "a" * 32,
+        "stages": {
+            name: {"status": "PENDING", "code": None}
+            for name in installer.STAGE_NAMES
+        },
+    }
+    config = {
+        "state_path": tmp_path / "state.json",
+        "state_temp_path": tmp_path / "state.json.tmp",
+    }
+    monkeypatch.setattr(installer, "_write_state", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(installer, "_run_json", lambda *_args, **_kwargs: (exit_code, payload))
+
+    with pytest.raises(installer.InstallError, match=expected_code):
+        installer._run_stage(config, state, {"schema_upgrade": ["migrate"]}, "schema")
+
+    assert state["stages"]["schema"] == {"status": "FAILED", "code": expected_code}
+    assert "RAW_CHILD_TEXT_SHOULD_NOT_PERSIST" not in str(state)
+
+
+def test_schema_stage_does_not_trust_failure_payload_when_child_exits_zero(monkeypatch, tmp_path):
+    state = {
+        "workspace_id": "a" * 32,
+        "stages": {
+            name: {"status": "PENDING", "code": None}
+            for name in installer.STAGE_NAMES
+        },
+    }
+    config = {
+        "state_path": tmp_path / "state.json",
+        "state_temp_path": tmp_path / "state.json.tmp",
+    }
+    monkeypatch.setattr(installer, "_write_state", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        installer,
+        "_run_json",
+        lambda *_args, **_kwargs: (
+            0,
+            {"status": "PARTIAL_FAILURE", "code": "POST_MIGRATION_CHECK_FAILED"},
+        ),
+    )
+
+    with pytest.raises(installer.InstallError, match="SCHEMA_MIGRATION_FAILED"):
+        installer._run_stage(config, state, {"schema_upgrade": ["migrate"]}, "schema")
+
+    assert state["stages"]["schema"] == {
+        "status": "FAILED",
+        "code": "SCHEMA_MIGRATION_FAILED",
+    }
+
+
+@pytest.mark.parametrize(
+    "failure_code",
+    ["SCHEMA_MIGRATION_DDL_FAILED", "SCHEMA_MIGRATION_POSTCHECK_FAILED"],
+)
+def test_schema_migration_stage_codes_round_trip_in_existing_checkpoint_shape(
+    tmp_path, failure_code
+):
+    config = {
+        "source_head": "b" * 40,
+        "target_head": "b" * 40,
+        "source": tmp_path / "source",
+        "mysql_bin": tmp_path / "mysql-bin",
+        "python_specs": {
+            name: tmp_path / f"{name}.exe" for name in installer.PYTHON_MODULES
+        },
+        "workspace": tmp_path / "workspace",
+        "ports": {"database": 3330, "backend": 8104, "frontend": 4194, "standard_cat": 8182},
+        "frontend_mode": "preview",
+        "llm_profile": "school-gpu-7b",
+        "dependency_target": tmp_path / "deps",
+    }
+    state = installer._new_state(config)
+    state["workspace_id"] = "a" * 32
+    state["stages"]["dependencies"] = {"status": "COMPLETED", "code": None}
+    state["stages"]["workspace"] = {"status": "COMPLETED", "code": None}
+    state_path = installer._state_path(config["workspace"])
+    temp_path = installer._state_temp_path(config["workspace"])
+
+    installer._mark_stage(
+        {"state_path": state_path, "state_temp_path": temp_path},
+        state,
+        "schema",
+        "FAILED",
+        failure_code,
+    )
+
+    restored = installer._read_state(state_path)
+    assert restored["stages"]["schema"] == {"status": "FAILED", "code": failure_code}
+
+
 @pytest.mark.parametrize("dependency_status", ["PENDING", "COMPLETED"])
 def test_resume_allows_first_workspace_creation_when_prior_workspace_stage_never_started(dependency_status):
     state = {

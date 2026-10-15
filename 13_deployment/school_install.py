@@ -67,7 +67,8 @@ SAFE_STAGE_CODES = {
     "PORT_UNAVAILABLE", "PYTHON_ENVIRONMENT_MISSING", "PYTHON_INTERPRETER_UNAVAILABLE",
     "PYTHON_SPEC_INVALID", "PYTHON_SPEC_SET_INCOMPLETE", "REPARSE_PATH_REJECTED",
     "RESUME_CONFIGURATION_MISMATCH", "RESUME_STATE_UNAVAILABLE", "RUNTIME_IDENTITY_CREATION_FAILED",
-    "RUNTIME_PREFLIGHT_FAILED", "SCHEMA_MIGRATION_FAILED", "SOURCE_OR_TARGET_MISSING",
+    "RUNTIME_PREFLIGHT_FAILED", "SCHEMA_MIGRATION_DDL_FAILED",
+    "SCHEMA_MIGRATION_FAILED", "SCHEMA_MIGRATION_POSTCHECK_FAILED", "SOURCE_OR_TARGET_MISSING",
     "SOURCE_TARGET_HEAD_MISMATCH", "SOURCE_TARGET_OVERLAP", "SOURCE_TRACKED_FILES_DIRTY",
     "STAGE_PROCESS_UNAVAILABLE", "STAGE_RESULT_INVALID", "STAGE_TIMEOUT_PRESERVE_AND_INSPECT",
     "SYNTHETIC_SEED_FAILED", "SYNTHETIC_SEED_STAGE_INVALID", "VENDOR_MYSQL_BINARY_UNAVAILABLE",
@@ -761,6 +762,27 @@ def _begin_stage(config: dict[str, Any], state: dict[str, Any], name: str) -> No
     _mark_stage(config, state, name, "RUNNING")
 
 
+def _schema_migration_failure_code(exit_code: int, payload: dict[str, Any]) -> str:
+    """Project only the migrator's exact, known partial-failure results."""
+    if (
+        type(exit_code) is not int
+        or exit_code != 2
+        or type(payload) is not dict
+        or set(payload) != {"status", "code"}
+    ):
+        return "SCHEMA_MIGRATION_FAILED"
+    status = payload.get("status")
+    code = payload.get("code")
+    if type(status) is not str or type(code) is not str:
+        return "SCHEMA_MIGRATION_FAILED"
+    known_failures = {
+        ("PARTIAL_FAILURE", "MIGRATION_FAILED"): "SCHEMA_MIGRATION_DDL_FAILED",
+        ("PARTIAL_FAILURE", "POST_MIGRATION_CHECK_FAILED"):
+            "SCHEMA_MIGRATION_POSTCHECK_FAILED",
+    }
+    return known_failures.get((status, code), "SCHEMA_MIGRATION_FAILED")
+
+
 def _run_stage(config: dict[str, Any], state: dict[str, Any], commands: dict[str, list[str]], name: str) -> None:
     current = state["stages"][name]["status"]
     if current == "COMPLETED":
@@ -790,7 +812,7 @@ def _run_stage(config: dict[str, Any], state: dict[str, Any], commands: dict[str
             upgrade_command = [item.format(workspace_id=workspace_id) for item in commands["schema_upgrade"]]
             code, result = _run_json(upgrade_command, timeout=900)
             if code != 0 or result.get("status") != "MIGRATED" or result.get("revision") != CURRENT_SCHOOL_REVISION:
-                raise InstallError("SCHEMA_MIGRATION_FAILED")
+                raise InstallError(_schema_migration_failure_code(code, result))
         elif name == "runtime_identity":
             code, result = _run_json(commands["runtime_identity"], timeout=180)
             if code != 0 or result.get("runtime_identity") != "CREATED" or result.get("port") != config["ports"]["database"]:
