@@ -1,5 +1,53 @@
 # PsyNova current execution state
 
+## Latest native checkpoint: 2026-10-16 (UTC 2026-10-15)
+
+Engineering estimate remains about75% complete/25% remaining. ACTIVE; no current
+shutdown deadline. This estimate is not school-production or professional approval.
+
+- Reviewed/pushed dedicated branch0f4c48f4d7dbab05637a7bf1adc81e4c39eb606f.
+  Increment953e3ac adds durable allowlisted terminal reasons and optional owned
+  standard CAT. Root fresh focused Backend35/deployment80 checks passed.
+  CAT raw source fingerprints differed only by7 CRLF/LF files;2e13daf explicitly
+  canonicalizes text hash inputs without changing CAT source, assets or bank.
+  Actual Windows3.14 redirector retains venv argv0 while running pinned base
+  Python;0f4c48f fixes CAT-only matching, preserving executable/parent/creation
+  checks and Backend behavior. Worker84 focused checks and Root15 targeted
+  listener checks passed. No whole-project acceptance is implied.
+- T DB3328 preserved, native stop/start recovered through reviewed one-time
+  captured-identity reconciliation, not a weakened general ownership validator.
+  Backend8102, frontend4192, standardCAT8180 independently OWNED/READY; stop/start/
+  status exit0. Current lifecycle manifest SHA
+  eb542c64e2de112924b4c33c12cd988edca02c86fa679c11471bf2b56b0ffc1d.
+  Evidence D:/Dev/temp/psynova-t0022-standard-cat-reconcile-execution-20261016-r1.json
+  SHA45d627e18585f86dc68218843b9a4c51cb95a03fb707567d84459ccf8d39f0f9.
+  Failed ownership manifest is archived. whole_ready remains false; researchCAT
+  aggregate owner proof remains unverified. Root GET core health and all listed
+  module/worker dependencies READY, including standard CAT REAL_HTTP.
+- Exactly one new offset2 original case was enqueued. Original job
+  REJ_8b7e86ba41894877b2ecf0abf917d706df03d204cd147cee7b5aec623bfc124f
+  is REVIEW_REQUIRED/SAFETY_BLOCKED attempt1; actual receipt
+  REIR_792d1347dadb455bbd7af26c8c4ade88 PENDINGv1 was reviewed for the fixed
+  non-personal research request, then authorized once through the existing API.
+  This is continuation authorization, not content/professional approval.
+  New round1 REJ_052fd1bc835475601c413481843343090b8ac8950121d011bc5461247073f3ed
+  ended ABSTAINED/GENERATION_FAILED attempt1. Its actual durable terminal reason is
+  RESEARCH_CLAIM_BOUNDARY_REJECTED, with valid deterministic trace binding.
+  New receipt remains AUTHORIZEDv2, not consumed; no candidate was published.
+  Old jobs and old AUTHv2 review unchanged; logout succeeded. Result:
+  D:/Dev/temp/psynova-t0022-input-review-continuation-offset2-r1/authorization-execution-result.json.
+  The reached service branch establishes that retrieval/Runtime/schema/output
+  safety checks returned acceptable results for this attempt; exact external
+  Runtime invocation count remains UNOBSERVED. Do not infer the old failed
+  case's cause from this different attempt or claim a positive candidate journey.
+- Next bounded increment: content-free claim-boundary category/field/count audit
+  using the existing classifier; no raw text, new regex, guard weakening, prompt
+  changes or model retry. Worker owns only general service/outcome/worker/adapter
+  and focused checks in the implementation worktree. Then Root diagnoses the
+  actual rejection before any new bounded generation. No bulk800 inference yet.
+
+Earlier checkpoints below retain their original stage context.
+
 ## Latest increment: 2026-10-15, input-review continuation integration
 
 ### Native T0022 checkpoint after first continuation
