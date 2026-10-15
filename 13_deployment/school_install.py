@@ -32,6 +32,8 @@ PYTHON_MODULES = (
     "06_llm-runtime",
     "08_safety-engine",
 )
+DEPENDENCY_PLAN_STAGE_NAMES = (*PYTHON_MODULES, "10_frontend")
+DEPENDENCY_RECEIPT_STAGE_NAMES = (*DEPENDENCY_PLAN_STAGE_NAMES, "manifest_integrity")
 STAGE_NAMES = (
     "dependencies",
     "workspace",
@@ -557,12 +559,46 @@ def _dependency_receipt(config: dict[str, Any]) -> dict[str, Any]:
         or receipt.get("module_manifest_sha256") != receipt.get("target_module_manifest_sha256")
         or receipt.get("lock_sha256") != receipt.get("target_lock_sha256")
         or receipt.get("state_persistence") != "succeeded"
-        or not isinstance(stages, list)
-        or len(stages) != 8
-        or any(not isinstance(row, dict) or row.get("state") != "succeeded" or row.get("exit_code") != 0 for row in stages)
+        or not _dependency_stages_match(
+            stages, DEPENDENCY_RECEIPT_STAGE_NAMES, expected_state="succeeded", require_success_exit=True,
+        )
     ):
         raise InstallError("DEPENDENCY_RECEIPT_NOT_COMPLETE")
     return receipt
+
+
+def _dependency_stages_match(
+    stages: Any,
+    expected_names: tuple[str, ...],
+    *,
+    expected_state: str,
+    require_success_exit: bool,
+) -> bool:
+    if not isinstance(stages, list) or len(stages) != len(expected_names):
+        return False
+    for row, expected_name in zip(stages, expected_names, strict=True):
+        if type(row) is not dict or row.get("name") != expected_name or row.get("state") != expected_state:
+            return False
+        if require_success_exit and (type(row.get("exit_code")) is not int or row["exit_code"] != 0):
+            return False
+    return True
+
+
+def _dependency_plan_stages_valid(stages: Any) -> bool:
+    if not _dependency_stages_match(
+        stages, DEPENDENCY_PLAN_STAGE_NAMES, expected_state="planned", require_success_exit=False,
+    ):
+        return False
+    for module, row in zip(DEPENDENCY_PLAN_STAGE_NAMES, stages, strict=True):
+        expected_target = "node_modules" if module == "10_frontend" else ".venv"
+        if row.get("target") != expected_target:
+            return False
+        if module == "10_frontend":
+            if "python" in row:
+                return False
+        elif not isinstance(row.get("python"), str) or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", row["python"]):
+            return False
+    return True
 
 
 def _commands(config: dict[str, Any]) -> dict[str, list[str]]:
@@ -844,9 +880,7 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
         or not isinstance(dependency_plan.get("module_manifest_sha256"), str)
         or not re.fullmatch(r"[a-f0-9]{64}", dependency_plan["module_manifest_sha256"])
         or not isinstance(dependency_plan.get("lock_sha256"), dict)
-        or not isinstance(plan_stages, list)
-        or len(plan_stages) != 8
-        or any(not isinstance(stage, dict) or stage.get("state") != "planned" for stage in plan_stages)
+        or not _dependency_plan_stages_valid(plan_stages)
     ):
         raise InstallError("OFFLINE_DEPENDENCY_PLAN_INVALID")
     return {

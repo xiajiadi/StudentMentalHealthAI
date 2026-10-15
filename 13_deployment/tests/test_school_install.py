@@ -28,6 +28,70 @@ def test_python_specs_require_exact_supported_module_set(tmp_path):
         installer._parse_python_specs([*specs[:-1], "99_unknown=C:\\python.exe"])
 
 
+def _real_dependency_plan_stage_rows():
+    return [
+        {
+            "name": module,
+            "state": "planned",
+            "target": "node_modules" if module == "10_frontend" else ".venv",
+            **({} if module == "10_frontend" else {"python": "3.12.13"}),
+        }
+        for module in installer.DEPENDENCY_PLAN_STAGE_NAMES
+    ]
+
+
+def test_dependency_plan_accepts_exact_seven_stage_protocol():
+    rows = _real_dependency_plan_stage_rows()
+
+    assert len(rows) == 7
+    assert installer._dependency_plan_stages_valid(rows)
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda rows: rows.pop(),
+        lambda rows: rows.__setitem__(2, dict(rows[1])),
+        lambda rows: rows.__setitem__(3, {**rows[3], "name": "unknown_module"}),
+        lambda rows: rows.__setitem__(4, {**rows[4], "state": "succeeded"}),
+    ],
+    ids=("missing", "duplicate", "unknown", "wrong-state"),
+)
+def test_dependency_plan_rejects_nonmatching_stage_protocol(mutate):
+    rows = _real_dependency_plan_stage_rows()
+    mutate(rows)
+
+    assert not installer._dependency_plan_stages_valid(rows)
+
+
+def test_dependency_receipt_requires_exact_module_and_integrity_stages():
+    rows = [
+        {"name": name, "state": "succeeded", "exit_code": 0}
+        for name in installer.DEPENDENCY_RECEIPT_STAGE_NAMES
+    ]
+
+    assert len(rows) == 8
+    assert installer._dependency_stages_match(
+        rows,
+        installer.DEPENDENCY_RECEIPT_STAGE_NAMES,
+        expected_state="succeeded",
+        require_success_exit=True,
+    )
+    for invalid in (
+        rows[:-1],
+        [*rows[:2], dict(rows[1]), *rows[3:]],
+        [*rows[:3], {**rows[3], "name": "unknown_module"}, *rows[4:]],
+        [*rows[:4], {**rows[4], "state": "failed"}, *rows[5:]],
+        [*rows[:4], {**rows[4], "exit_code": False}, *rows[5:]],
+    ):
+        assert not installer._dependency_stages_match(
+            invalid,
+            installer.DEPENDENCY_RECEIPT_STAGE_NAMES,
+            expected_state="succeeded",
+            require_success_exit=True,
+        )
+
+
 @pytest.mark.parametrize(
     "ports",
     [
