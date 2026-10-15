@@ -1,4 +1,33 @@
-# PsyNova shutdown checkpoint
+# PsyNova current execution state
+
+Resumed by explicit user continuation: 2026-10-15 14:51 CST. No new shutdown
+deadline was supplied; the previous06:30 cutoff is historical and satisfied.
+Goal ACTIVE; Runner resumed with public_empirical_resources owned by root,
+attempt3, current lease. Heartbeat psynova ACTIVE with the old cutoff removed.
+RTX3060/12288MiB observed. Branch/workspace and two user untracked paths match
+the saved checkpoint. Do not reset/reseed the800 cohort.
+
+Reviewed code11701a8 adds exactly three closed diagnostic_reason_code values
+for standard claim rejection, research bibliography rejection and citation
+binding rejection.78 focused tests passed; no change to Safety, action/status,
+model or failed content retention. No new model request has run in this resume.
+
+Q DB resumed through official restored-install mode; backup SHA matches below.
+Q application RUNNING with all original research flags and fixed7B profile:
+D:/Dev/temp/psynova-q0019-app-resume-20261015-afternoon-r1.json.
+Fixed Runtime8160/Ollama11437, real Safety8190/OPA8181, BM25 RAG8170 and private
+research8161/8191 hosts are all freshly OWNED_READY. This run now owns those
+new processes, including managed Ollama and OPA; do not apply historical
+shared-service ownership assumptions from the shutdown below. Exact current
+process ancestry/CIM creation/loopback listener proof:
+D:/Dev/temp/psynova-dependency-recovery-owned-20261015-070207-f9ddca8f/owner-ready.json.
+RAG8170 retains its existing synthetic university corpus; the research student
+lane separately uses the pinned real-source manifest below. Do not call the
+synthetic corpus public research evidence. Next: one new API-only diagnostic
+request with exact branch reason, then fix its demonstrated cause and validate
+a useful source-grounded student answer without weakening checks.
+
+## Historical shutdown checkpoint (before this explicit resume)
 
 Saved for user shutdown: 2026-10-15 06:17 CST.
 Engineering remains incomplete; no production or professional approval.
