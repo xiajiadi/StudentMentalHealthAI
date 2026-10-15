@@ -541,6 +541,22 @@ def test_0023_migration_names_match_models_and_downgrade_refuses_rows(monkeypatc
     sql = output.getvalue()
     assert f"DROP CHECK {old_name}" in sql
     assert f"ADD CONSTRAINT {legacy_name} CHECK" in sql
+    candidate_check = next(
+        constraint
+        for constraint in SchoolResearchEducationCandidate.__table__.constraints
+        if constraint.name == legacy_name and hasattr(constraint, "sqltext")
+    )
+    migration_check = re.findall(
+        rf"ALTER TABLE `?school_research_education_candidates`? "
+        rf"ADD CONSTRAINT `?{re.escape(legacy_name)}`? CHECK \((.*?)\);",
+        sql,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    assert len(migration_check) == 1
+    def normalize_check(value):
+        return re.sub(r"\s+", "", value).casefold()
+
+    assert normalize_check(migration_check[0]) == normalize_check(str(candidate_check.sqltext))
     names = set(re.findall(r"CONSTRAINT\s+`?([A-Za-z0-9_]+)`?", sql))
     names.update(re.findall(r"CREATE\s+(?:UNIQUE\s+)?INDEX\s+`?([A-Za-z0-9_]+)`?", sql))
     assert names and all(len(name) <= 64 for name in names)

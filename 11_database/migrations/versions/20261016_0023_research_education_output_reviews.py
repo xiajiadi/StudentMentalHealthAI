@@ -335,7 +335,8 @@ def upgrade() -> None:
         "school_research_education_candidates",
         "((generation_round = 0 AND input_review_id IS NULL AND input_review_state IS NULL "
         "AND input_safety_action IN ('PROCEED', 'PROCEED_WITH_BOUNDARY')) OR "
-        "(generation_round = 1 AND input_review_id IS NOT NULL AND input_review_state = 'CONSUMED' "
+        "(generation_round = 1 AND input_review_id IS NOT NULL "
+        "AND input_review_state IS NOT NULL AND input_review_state = 'CONSUMED' "
         "AND input_safety_action = 'REVIEW_REQUIRED')) AND "
         "retrieval_safety_action IN ('PROCEED', 'PROCEED_WITH_BOUNDARY') AND "
         "(((output_safety_action IN ('PROCEED', 'PROCEED_WITH_BOUNDARY')) "
