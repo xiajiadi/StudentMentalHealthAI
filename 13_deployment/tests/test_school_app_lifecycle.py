@@ -642,6 +642,39 @@ def test_standard_cat_cli_is_opt_in_and_keeps_default_port():
     assert enabled.standard_cat_port == 8181
 
 
+def test_standard_cat_source_fingerprint_is_stable_for_crlf_worktrees(tmp_path):
+    lf_root = tmp_path / "lf"
+    crlf_root = tmp_path / "crlf"
+    for root, newline in ((lf_root, b"\n"), (crlf_root, b"\r\n")):
+        source = root / "01_cat-engine" / "src" / "cat_engine" / "api"
+        source.mkdir(parents=True)
+        (source / "app.py").write_bytes(b"def main():\n    return 1\n".replace(b"\n", newline))
+        project = root / "01_cat-engine" / "pyproject.toml"
+        project.write_bytes(b"[project]\nname = 'synthetic-cat'\n".replace(b"\n", newline))
+
+    baseline = standard_cat.source_fingerprint(lf_root)
+    assert baseline == standard_cat.source_fingerprint(crlf_root)
+
+    app = crlf_root / "01_cat-engine" / "src" / "cat_engine" / "api" / "app.py"
+    app.write_bytes(b"def main():\n    return 2\n".replace(b"\n", b"\r\n"))
+    assert standard_cat.source_fingerprint(crlf_root) != baseline
+
+
+def test_standard_cat_source_edit_fails_pinned_preflight(prepared):
+    repo, workspace, ops, app = prepared
+    entrypoint = repo / standard_cat.STANDARD_CAT_ENTRYPOINT_RELATIVE
+    entrypoint.write_text("def main():\n    return 'changed'\n", encoding="utf-8")
+
+    with pytest.raises(lifecycle.LifecycleError, match="preflight failed"):
+        app.plan(
+            workspace,
+            frontend_mode="dev",
+            enable_standard_cat=True,
+        )
+
+    assert ops.spawned == []
+
+
 def test_research_programme_worker_manifest_argv_restore_and_live_status(
     prepared, monkeypatch
 ):

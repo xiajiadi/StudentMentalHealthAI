@@ -16,7 +16,7 @@ STANDARD_CAT_SOURCE_RELATIVE = Path("01_cat-engine/src/cat_engine")
 STANDARD_CAT_ENTRYPOINT_RELATIVE = Path("01_cat-engine/src/cat_engine/api/app.py")
 STANDARD_CAT_PROJECT_FILE = Path("01_cat-engine/pyproject.toml")
 STANDARD_CAT_PYTHON_RELATIVE = Path("01_cat-engine/.venv/Scripts/python.exe")
-STANDARD_CAT_SOURCE_SHA256 = "a0b72c364690e0a353273d8c452dd7884a46225a9aa2de0c31d97ae7ab8db56c"
+STANDARD_CAT_SOURCE_SHA256 = "7f12059a0223bfb2e006c4c30634026101e214ca3932be6b43d6e67a71cb7856"
 STANDARD_CAT_ENTRYPOINT_SHA256 = "89fb5d31ca74d947ae092a62cb0019a565125894092219925cd7ca88d9a5f697"
 STANDARD_CAT_CONFIG_SHA256 = "78f9922930e40a8f9f8c436a644e5c7b9548d9d4f32377d30f143619f3f09e8a"
 STANDARD_CAT_BANK_SHA256 = "e73d4d8f3732d690f0b248f28ff19b6bbabbb7f8834abf2a57a4d0ba3353585e"
@@ -102,7 +102,9 @@ def source_fingerprint(repo: Path) -> str:
         if not path.resolve(strict=True).is_relative_to(repo.resolve(strict=True)):
             raise StandardCATError("Pinned CAT source escaped the repository")
         relative = path.relative_to(repo).as_posix().encode("utf-8")
-        data = path.read_bytes()
+        # Git text sources are pinned with LF bytes; make CRLF worktree checkouts
+        # produce that same explicit canonical representation before hashing.
+        data = path.read_bytes().replace(b"\r\n", b"\n")
         digest.update(len(relative).to_bytes(4, "big"))
         digest.update(relative)
         digest.update(len(data).to_bytes(8, "big"))
