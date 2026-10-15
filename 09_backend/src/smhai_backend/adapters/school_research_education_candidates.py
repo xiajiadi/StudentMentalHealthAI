@@ -1183,6 +1183,9 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
                     "candidate": None,
                 }
 
+            await self._require_current_output_review_input_grant(
+                uow, task, row, at=now
+            )
             candidate_payload, candidate_sha = self._candidate_payload_from_output_review(
                 review_payload
             )
@@ -2850,6 +2853,78 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
             raise _conflict()
         payload = self._output_review_payload_from_row(row) if include_payload else None
         return scope, session_ref, payload
+
+    async def _require_current_output_review_input_grant(self, uow, task, output_review, *, at):
+        """Require round-1 candidate creation to use the current server-owned grant pin."""
+        if output_review.generation_round == 0:
+            return
+        if output_review.generation_round != 1 or output_review.input_review_id is None:
+            raise _conflict()
+
+        from smhai_backend.domains.research_general_education.input_review_policy import (
+            INPUT_REVIEW_CONTINUATION_POLICY_SHA256,
+            INPUT_REVIEW_CONTINUATION_POLICY_VERSION,
+        )
+
+        m = self._db_models
+        input_review_ref = await uow.session.scalar(
+            self._select(m.SchoolResearchEducationInputReview.input_review_ref)
+            .where(
+                m.SchoolResearchEducationInputReview.id == output_review.input_review_id,
+                m.SchoolResearchEducationInputReview.school_id == output_review.scope.school_id,
+                m.SchoolResearchEducationInputReview.task_id == task.id,
+                m.SchoolResearchEducationInputReview.research_session_id
+                == output_review.scope.research_session_id,
+            )
+            .with_for_update()
+        )
+        if not isinstance(input_review_ref, str):
+            raise _conflict()
+        input_review = await _input_review_repo_call(
+            uow.research_education_input_reviews.get_for_task(
+                school_id=output_review.scope.school_id,
+                task_id=task.id,
+                input_review_ref=input_review_ref,
+            )
+        )
+        self._input_review_pins(input_review)
+        if (
+            input_review.id != output_review.input_review_id
+            or input_review.status != "CONTINUATION_AUTHORIZED"
+            or input_review.state_version != 2
+            or input_review.expires_at <= at
+            or (
+                input_review.retention_due_at is not None
+                and _aware_utc(input_review.retention_due_at) <= _aware_utc(at)
+            )
+            or input_review.grant_policy_version != INPUT_REVIEW_CONTINUATION_POLICY_VERSION
+            or input_review.grant_policy_hash != INPUT_REVIEW_CONTINUATION_POLICY_SHA256
+            or input_review.policy_version != output_review.policy_version
+            or input_review.policy_hash != output_review.policy_hash
+            or input_review.source_package_ref != output_review.source_package_ref
+            or input_review.source_study_ref != output_review.source_study_ref
+            or input_review.source_manifest_sha256 != output_review.source_manifest_sha256
+            or input_review.prompt_id != output_review.prompt_id
+            or input_review.prompt_version != output_review.prompt_version
+            or input_review.prompt_sha256 != output_review.prompt_sha256
+            or input_review.canonical_input_sha256 != output_review.canonical_input_sha256
+            or not self._same_scope(input_review.scope, output_review.scope)
+        ):
+            raise _conflict()
+        await self._require_active_specialist_assignment(
+            uow,
+            task,
+            at=at,
+            membership_role_id=input_review.authorized_by_membership_role_id,
+        )
+        await self._current_input_review(
+            uow,
+            SimpleNamespace(school_id=output_review.scope.school_id),
+            task,
+            input_review,
+            at=at,
+            lock=True,
+        )
 
     def _input_review_evidence(self, receipt, *, now, retention_due_at=None):
         """Rebind the actual stopped-input receipt to this server's trusted pins."""

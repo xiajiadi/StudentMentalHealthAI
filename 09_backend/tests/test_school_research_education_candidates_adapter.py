@@ -174,6 +174,178 @@ def _input_review_receipt(claim, *, configured=None, **changes):
     return ResearchGeneralEducationInputReviewReceipt(**values)
 
 
+def _authorized_input_review_dto(
+    configured,
+    *,
+    prompt_version=PROMPT_VERSION,
+    prompt_sha256=PROMPT_SHA256,
+):
+    from database_layer.school_research_education_input_reviews import (
+        ResearchEducationInputReviewDTO,
+        ResearchEducationInputReviewScope,
+    )
+
+    from smhai_backend.domains.research_general_education.input_review_policy import (
+        INPUT_REVIEW_CONTINUATION_POLICY_VERSION,
+        continuation_policy_sha256_for_prompt,
+    )
+    from smhai_backend.domains.research_general_education.prompt import PROMPT_ID
+
+    claim = _education_job_claim(job_ref="REJ_" + "e" * 64)
+    now = datetime(2026, 10, 15, 11, 30, tzinfo=UTC)
+    scope = ResearchEducationInputReviewScope(
+        research_session_id=claim.research_session_id,
+        school_id=claim.school_id,
+        task_id=claim.task_id,
+        class_id=claim.class_id,
+        task_enrollment_id=claim.task_enrollment_id,
+        subject_id=claim.subject_id,
+        task_binding_id=claim.task_binding_id,
+        profile_version_id=claim.profile_version_id,
+        profile_ref=claim.profile_ref,
+        profile_version_number=claim.profile_version_number,
+        profile_sha256=claim.profile_sha256,
+        response_origin=claim.response_origin,
+    )
+    pins = ResearchGeneralEducationPolicyPins(
+        policy_hash=configured.policy_hash,
+        source_package_ref=configured.source_package_ref,
+        source_study_ref=configured.source_study_ref,
+        source_manifest_sha256=configured.source_manifest_sha256,
+    )
+    trace = "TRACE_" + hashlib.sha256(f"{claim.job_ref}:1".encode("ascii")).hexdigest()[:32]
+    return ResearchEducationInputReviewDTO(
+        id=301,
+        input_review_ref="REIR_" + "f" * 32,
+        job_id=claim.id,
+        job_ref=claim.job_ref,
+        scope=scope,
+        decision_id="DEC_synthetic_authorized_input",
+        safety_review_ref="REVIEW_synthetic_authorized_input",
+        safety_trace_id=trace,
+        safety_operation="INPUT",
+        safety_action="REVIEW_REQUIRED",
+        safety_reason_code="CONTENT_CONTROVERSIAL",
+        safety_requires_human=True,
+        canonical_input_sha256=canonical_input_context_sha256(
+            policy_pins=pins,
+            prompt_id=PROMPT_ID,
+            prompt_version=prompt_version,
+            prompt_sha256=prompt_sha256,
+        ),
+        policy_version=GENERAL_EDUCATION_POLICY_VERSION,
+        policy_hash=configured.policy_hash,
+        source_package_ref=configured.source_package_ref,
+        source_study_ref=configured.source_study_ref,
+        source_manifest_sha256=configured.source_manifest_sha256,
+        prompt_id=PROMPT_ID,
+        prompt_version=prompt_version,
+        prompt_sha256=prompt_sha256,
+        status="CONTINUATION_AUTHORIZED",
+        state_version=2,
+        expires_at=now + timedelta(hours=12),
+        resolved_by_membership_role_id=None,
+        resolved_at=None,
+        trace_id=trace,
+        retention_due_at=None,
+        created_at=now - timedelta(minutes=30),
+        updated_at=now,
+        original_job_generation_round=0,
+        grant_policy_version=INPUT_REVIEW_CONTINUATION_POLICY_VERSION,
+        grant_policy_hash=continuation_policy_sha256_for_prompt(
+            PROMPT_ID, prompt_version, prompt_sha256
+        ),
+        authorized_by_membership_role_id=73,
+        authorized_at=now - timedelta(minutes=20),
+        consumed_at=None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_output_review_round_one_requires_current_input_grant_and_prompt():
+    from database_layer.models import SchoolResearchEducationInputReview
+    from sqlalchemy import select
+
+    from smhai_backend.domains.research_general_education.prompt import PROMPT_REGISTRY
+
+    configured = adapter()
+    current_review = _authorized_input_review_dto(configured)
+    output_review = SimpleNamespace(
+        generation_round=1,
+        input_review_id=current_review.id,
+        scope=current_review.scope,
+        policy_version=current_review.policy_version,
+        policy_hash=current_review.policy_hash,
+        source_package_ref=current_review.source_package_ref,
+        source_study_ref=current_review.source_study_ref,
+        source_manifest_sha256=current_review.source_manifest_sha256,
+        prompt_id=current_review.prompt_id,
+        prompt_version=current_review.prompt_version,
+        prompt_sha256=current_review.prompt_sha256,
+        canonical_input_sha256=current_review.canonical_input_sha256,
+    )
+
+    class Session:
+        async def scalar(self, _statement):
+            return current_review.input_review_ref
+
+    class InputReviews:
+        async def get_for_task(self, **_kwargs):
+            return current_review
+
+    uow = SimpleNamespace(
+        session=Session(),
+        research_education_input_reviews=InputReviews(),
+    )
+    configured._db_models = SimpleNamespace(
+        SchoolResearchEducationInputReview=SchoolResearchEducationInputReview
+    )
+    configured._select = select
+
+    async def role_is_current(*_args, **_kwargs):
+        return None
+
+    async def original_review_is_current(*_args, **_kwargs):
+        return None
+
+    configured._require_active_specialist_assignment = role_is_current
+    configured._current_input_review = original_review_is_current
+    await configured._require_current_output_review_input_grant(
+        uow,
+        SimpleNamespace(id=current_review.scope.task_id),
+        output_review,
+        at=datetime(2026, 10, 15, 11, 30, tzinfo=UTC),
+    )
+
+    legacy_prompt = next(
+        definition for key, definition in PROMPT_REGISTRY.items() if key[1] == "1.0.0"
+    )
+    legacy_review = _authorized_input_review_dto(
+        configured,
+        prompt_version=legacy_prompt.version,
+        prompt_sha256=legacy_prompt.sha256,
+    )
+    legacy_output = SimpleNamespace(
+        **{
+            **output_review.__dict__,
+            "input_review_id": legacy_review.id,
+            "scope": legacy_review.scope,
+            "prompt_version": legacy_review.prompt_version,
+            "prompt_sha256": legacy_review.prompt_sha256,
+            "canonical_input_sha256": legacy_review.canonical_input_sha256,
+        }
+    )
+    current_review = legacy_review
+    with pytest.raises(BackendError) as rejected:
+        await configured._require_current_output_review_input_grant(
+            uow,
+            SimpleNamespace(id=legacy_review.scope.task_id),
+            legacy_output,
+            at=datetime(2026, 10, 15, 11, 30, tzinfo=UTC),
+        )
+    assert rejected.value.code is ErrorCode.WORKFLOW_CONFLICT
+
+
 def test_input_review_expiry_is_bounded_by_remaining_retention():
     configured = adapter()
     receipt = _input_review_receipt(_education_job_claim(), configured=configured)
