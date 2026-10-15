@@ -2,7 +2,7 @@
 
 The school-schema development code must never be migrated onto the preserved M0 database. The legacy launcher fails before dependency/bootstrap/DDL when the school migration is present. Existing M0 processes remain a historical baseline; use the pinned M0 source for legacy operation.
 
-## Current fresh offline install (schema 20261015_0022)
+## Current fresh offline install (schema 20261016_0023)
 
 `school_install.py` composes the existing cached dependency preparer, fresh isolated workspace creator, empty-schema migration, least-privilege runtime identity, fictional synthetic seed, owned preview lifecycle, and four-role browser check. It requires a clean dependency-target worktree at the same HEAD as the source and an absolute, non-existing external workspace. The parent directory, vendor MySQL binary directory, six already-installed Python interpreters, and offline dependency caches must already exist. Standard CAT uses port 8182 by default; the database/API/UI ports are always explicit and must be free.
 
@@ -67,9 +67,9 @@ After the empty-schema migration and ownership checks, run:
 .\11_database\.venv\Scripts\python.exe .\13_deployment\prepare_school_runtime.py --workspace <absolute-external-directory>
 ```
 
-This validates the marker, guardian/listener ownership, current-user-only DACL, connected port/datadir/schema and the current revision `20261015_0022`. It generates a separate account with only SELECT/INSERT/UPDATE/DELETE on `smhai_school_demo`. Sealed recovery settings are written before account DDL; existing runtime settings are never overwritten. A new login then checks actual grants and active roles, refusing global/schema/role/grant-option expansion. Failure locks the account created by this attempt and preserves sealed material for explicit inspection rather than silently resetting or retrying account creation. Only successful permission verification writes `runtime-ready.json`; launchers must require that marker and recheck permissions. If locking fails, startup remains blocked pending owned-workspace inspection. The script does not launch applications or seed users.
+This validates the marker, guardian/listener ownership, current-user-only DACL, connected port/datadir/schema and the current revision `20261016_0023`. It generates a separate account with only SELECT/INSERT/UPDATE/DELETE on `smhai_school_demo`. Sealed recovery settings are written before account DDL; existing runtime settings are never overwritten. A new login then checks actual grants and active roles, refusing global/schema/role/grant-option expansion. Failure locks the account created by this attempt and preserves sealed material for explicit inspection rather than silently resetting or retrying account creation. Only successful permission verification writes `runtime-ready.json`; launchers must require that marker and recheck permissions. If locking fails, startup remains blocked pending owned-workspace inspection. The script does not launch applications or seed users.
 
-The current workspace schema revision is `20261015_0022`. The migrator accepts a new empty workspace or exact-current metadata; it does not upgrade an older existing workspace. Create a new external workspace for this install flow. Historical runtime evidence for earlier revisions is not proof of current-schema readiness.
+The current workspace schema revision is `20261016_0023`. The migrator accepts a new empty workspace or exact-current metadata; it does not upgrade an older existing workspace. Create a new external workspace for this install flow. Historical runtime evidence for earlier revisions is not proof of current-schema readiness.
 
 School-profile backend now consumes the current-user DPAPI key provider without plaintext fallback. Real workspace key-provider/Fernet encryption and decryption roundtrip passes; this proves key-format compatibility, not full backend/browser operation.
 

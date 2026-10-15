@@ -1,5 +1,45 @@
 # PsyNova current execution state
 
+## Current checkpoint: 2026-10-16, 0023 native runtime and output-capture gap
+
+- Estimate remains80% engineering complete/20% remaining. ACTIVE, no shutdown
+  deadline. Canonical code through dc6b68e contains additive output-review DB/API/UI,
+  opt-in installer research-profile import and bounded interruption recovery.
+  Root checks:197 DB/restore/migrator,164 Backend,51 candidate/feedback adapter,
+  30 startup,76 installer, frontend typecheck/build and2 files/15 unit checks passed.
+- T0022 is preserved. Its sealed backup restored into new Y and Z without reset.
+  Y is retained as a failed strict-schema target:0023 CHECK missed an explicit
+  input_review_state IS NOT NULL. Source fix543320d matches ORM exactly; downgrade
+  also preserves the historical CHECK name. Never hand-edit Y to manufacture PASS.
+- Z D:/Projects/.StudentMentalHealthAI-school-install-20261016-z,
+  UUID0fb43b6833e2e71b7991242e2b8c107c, DB3334/API8108/UI4198/CAT8186/researchCAT57424:
+  restore exit0,882 ciphertexts verified; independent strict schema CURRENT/0023,
+  800 subjects/800 completed sessions/6400 answers across8 tasks reconciled.
+  D:/Dev/temp/psynova-z0023-schema-readonly-20261016-r1.json
+  SHAa3d967a958264bc84730a24271158e87065ff51c5e853c665d24dfa90eb03d36.
+- First Z start failed because Backend still required0022. dc6b68e synchronizes
+  that startup pin and checks the deployment chain. Official stop/preflight/start/
+  status then each exited0; three app services OWNED READY, draft worker READY.
+  D:/Dev/temp/psynova-z0023-revision-fixed-start-20261016-r1/04-official-status.json.
+  ResearchCAT listener ownership remains not independently verified; whole_ready=false.
+- Specialist actual browser output-review empty state/list200/screenshot/logout
+  passed. Separate student/teacher/admin sessions each received403 and logged out.
+  D:/Dev/temp/psynova-z0023-output-review-ui-20261016-r1/result.json
+  and psynova-z0023-output-review-role-denial-20261016-r2/result.json.
+- One offset6 case ran once:enqueue1, actual input-review authorization1, logout true.
+  Round1 REJ_55490bbb20035b58110fd3f9e03cfe73d8f44027bdf772d0dca8cd78f18ba99d
+  remains REVIEW_REQUIRED/SAFETY_BLOCKED attempt1; exact output audit confirms sole
+  CONTENT_CONTROVERSIAL, capture NOT_SAVED/PAYLOAD_REBIND_FAILED, review rows0.
+  General jobs now13 terminal, input AUTH reviews6, candidates0. No body was exported.
+  D:/Dev/temp/psynova-z0023-offset6-output-capture-audit-20261016-r1.json
+  SHAed81e62e27c46810677a7d53f376f0b03071149827d2d0b1cd6aee50a41d81f8.
+- Root identified a deterministic snapshot defect:the saved21-field trace drops
+  four real R3 fields included in the original evidence-bundle hash. Backend owner
+  is repairing full closed25-field capture/rebinding, with real-package read-only
+  hash roundtrip evidence. Do not rerun case6, retrofill discarded text, relax hashes
+  or batch800 generation. Next:integrate that repair, controlled Z reload, then one
+  future case followed by actual content review/HELD/adoption/publish/self-read/revoke.
+
 ## Current checkpoint: 2026-10-16, fresh installation verified and output review in progress
 
 - Engineering estimate is about80% complete/20% remaining, not professional or
