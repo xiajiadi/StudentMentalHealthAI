@@ -1,7 +1,8 @@
-"""Own the Backend and Frontend processes for a prepared synthetic school workspace.
+"""Own application processes for a prepared synthetic school workspace.
 
 This is an application lifecycle helper, not an installer. It never creates,
-migrates, seeds, stops, or resets a database and never manages shared modules.
+migrates, seeds, stops, or resets a database. The synthetic standard CAT is
+managed only when explicitly enabled; other shared modules remain external.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -52,6 +53,13 @@ from school_research_student_config import (
     restore_student_research_config,
 )
 from school_schema import CURRENT_SCHOOL_REVISION, SUPPORTED_SNAPSHOT_REVISIONS
+from school_standard_cat import (
+    DEFAULT_STANDARD_CAT_PORT,
+    StandardCATConfig,
+    StandardCATError,
+    load_standard_cat_config,
+    restore_standard_cat_config,
+)
 
 SCHEMA = "psynova.school-app-lifecycle.v1"
 MANIFEST_NAME = "school-app-lifecycle.json"
@@ -66,7 +74,12 @@ SECRET_ENV_NAMES = {
     "PYTHONPATH",
     "PYTHONHOME",
 }
-READY_PATHS = {"backend": "/health/ready", "frontend": "/"}
+READY_PATHS = {
+    "standard_cat": "/health/ready",
+    "backend": "/health/ready",
+    "frontend": "/",
+}
+STANDARD_CAT_CONFIG_KEY = "standard_cat"
 START_TIMEOUT_SECONDS = 25.0
 IS_WINDOWS = os.name == "nt"
 FILE_ATTRIBUTE_REPARSE_POINT = 0x400
@@ -469,6 +482,18 @@ def _sanitize_environment(source: dict[str, str] | None = None) -> dict[str, str
 def _backend_python_paths(repo: Path) -> tuple[Path, Path]:
     launcher = repo / "09_backend" / ".venv" / "Scripts" / "python.exe"
     config = repo / "09_backend" / ".venv" / "pyvenv.cfg"
+    return _verified_venv_python_paths(launcher, config, label="Backend")
+
+
+def _standard_cat_python_paths(repo: Path) -> tuple[Path, Path]:
+    launcher = repo / "01_cat-engine" / ".venv" / "Scripts" / "python.exe"
+    config = repo / "01_cat-engine" / ".venv" / "pyvenv.cfg"
+    return _verified_venv_python_paths(launcher, config, label="Standard CAT")
+
+
+def _verified_venv_python_paths(
+    launcher: Path, config: Path, *, label: str
+) -> tuple[Path, Path]:
     try:
         _reject_reparse_path(launcher)
         _reject_reparse_path(config)
@@ -483,7 +508,7 @@ def _backend_python_paths(repo: Path) -> tuple[Path, Path]:
         home = Path(values["home"])
         if not home.is_absolute() or ".." in home.parts:
             raise ValueError
-        _require_local_absolute_path(home)
+        _require_local_absolute_path(home, label=label)
         _reject_reparse_path(home.parent)
         home_info = home.lstat()
         attributes = getattr(home_info, "st_file_attributes", 0)
@@ -493,7 +518,7 @@ def _backend_python_paths(repo: Path) -> tuple[Path, Path]:
         else:
             _reject_reparse_path(home)
         resolved_home = home.resolve(strict=True)
-        _require_local_absolute_path(resolved_home)
+        _require_local_absolute_path(resolved_home, label=label)
         if resolved_home.drive.casefold() != home.drive.casefold():
             raise ValueError
         _reject_reparse_path(resolved_home)
@@ -506,11 +531,11 @@ def _backend_python_paths(repo: Path) -> tuple[Path, Path]:
         return resolved_launcher, resolved_base
     except (OSError, KeyError, ValueError, LifecycleError):
         raise LifecycleError(
-            "Backend virtual environment base Python cannot be verified"
+            f"{label} virtual environment base Python cannot be verified"
         ) from None
 
 
-def _require_local_absolute_path(path: Path) -> None:
+def _require_local_absolute_path(path: Path, *, label: str) -> None:
     if (
         not path.is_absolute()
         or not path.drive
@@ -519,7 +544,7 @@ def _require_local_absolute_path(path: Path) -> None:
         or path.drive[1] != ":"
         or not IS_WINDOWS
     ):
-        raise LifecycleError("Backend Python home must resolve to a local drive")
+        raise LifecycleError(f"{label} Python home must resolve to a local drive")
     try:
         from ctypes import wintypes
 
@@ -529,9 +554,9 @@ def _require_local_absolute_path(path: Path) -> None:
         get_drive_type.restype = wintypes.UINT
         drive_type = get_drive_type(path.anchor)
     except (AttributeError, OSError):
-        raise LifecycleError("Backend Python drive type cannot be verified") from None
+        raise LifecycleError(f"{label} Python drive type cannot be verified") from None
     if drive_type not in {2, 3, 6}:  # removable, fixed, or RAM disk
-        raise LifecycleError("Backend Python home must resolve to a local drive")
+        raise LifecycleError(f"{label} Python home must resolve to a local drive")
 
 
 def _reject_reparse_path(path: Path) -> None:
@@ -1246,6 +1271,35 @@ if ($null -eq $p) { 'null'; exit 0 }
         except (OSError, urllib.error.URLError, urllib.error.HTTPError, ValueError):
             return False
 
+    def standard_cat_ready(self, port: int) -> bool:
+        try:
+            url = f"http://127.0.0.1:{port}/health/ready"
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            with opener.open(url, timeout=1.0) as response:
+                if response.status != 200:
+                    return False
+                payload = json.loads(response.read(64 * 1024))
+            return (
+                isinstance(payload, dict)
+                and payload.get("status") == "READY"
+                and payload.get("service") == "cat"
+                and payload.get("synthetic_fixture_only") is True
+            )
+        except (OSError, urllib.error.URLError, urllib.error.HTTPError, ValueError):
+            return False
+
+    def wait_standard_cat_ready(
+        self, process: subprocess.Popen, port: int, timeout: float
+    ) -> bool:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                return False
+            if self.standard_cat_ready(port):
+                return True
+            time.sleep(min(0.25, max(0.0, deadline - time.monotonic())))
+        return False
+
     def dependency_status(self, port: int, dependency: str) -> dict[str, str] | None:
         integrations = {
             "research_education_worker": "RESEARCH_OUTBOX",
@@ -1419,7 +1473,7 @@ def _listener_argv_matches(
 ) -> bool:
     if pid == service.get("pid"):
         return _normalized_argv(actual_argv) == _normalized_argv(service["argv"])
-    if service.get("name") == "backend":
+    if service.get("name") in {"backend", "standard_cat"}:
         return _backend_listener_argv_matches(
             actual_argv, service["argv"], service.get("base_executable")
         )
@@ -1453,6 +1507,31 @@ class SchoolAppLifecycle:
     def _workspace(self, workspace: Path) -> Path:
         return _absolute_external_workspace(Path(workspace), self.repo)
 
+    def _standard_cat_config(
+        self,
+        enabled: bool,
+        port: int,
+        backend_port: int,
+        frontend_port: int,
+    ) -> StandardCATConfig | None:
+        if type(enabled) is not bool:
+            raise LifecycleError("Standard CAT opt-in must be explicit")
+        if not enabled:
+            if port != DEFAULT_STANDARD_CAT_PORT:
+                raise LifecycleError(
+                    "A custom standard CAT port requires --enable-standard-cat"
+                )
+            return None
+        try:
+            _validate_standard_cat_port(port, backend_port, frontend_port)
+            config = load_standard_cat_config(self.repo, port)
+            launcher, _base_python = _standard_cat_python_paths(self.repo)
+            if _path_key(str(config.python)) != _path_key(str(launcher)):
+                raise StandardCATError("Pinned standard CAT interpreter changed")
+            return replace(config, python=launcher)
+        except StandardCATError:
+            raise LifecycleError("Pinned standard CAT preflight failed") from None
+
     def plan(
         self,
         workspace: Path,
@@ -1461,10 +1540,15 @@ class SchoolAppLifecycle:
         frontend_port: int = DEFAULT_FRONTEND_PORT,
         llm_profile: str = "default",
         frontend_mode: str,
+        enable_standard_cat: bool = False,
+        standard_cat_port: int = DEFAULT_STANDARD_CAT_PORT,
     ) -> dict[str, Any]:
         target = self._workspace(workspace)
         _validate_ports(backend_port, frontend_port)
         _validate_options(llm_profile, frontend_mode)
+        standard_cat_config = self._standard_cat_config(
+            enable_standard_cat, standard_cat_port, backend_port, frontend_port
+        )
         marker_path = target / "workspace.json"
         manifest_path = target / MANIFEST_NAME
         return {
@@ -1474,7 +1558,15 @@ class SchoolAppLifecycle:
             "manifest_present": manifest_path.exists(),
             "required_revision": CURRENT_SCHOOL_REVISION,
             "database": "smhai_school_demo",
-            "services": ["backend", "frontend"],
+            "services": (
+                ["standard_cat", "backend", "frontend"]
+                if standard_cat_config is not None
+                else ["backend", "frontend"]
+            ),
+            "standard_cat_enabled": standard_cat_config is not None,
+            "standard_cat_port": (
+                standard_cat_config.port if standard_cat_config is not None else None
+            ),
             "backend_port": backend_port,
             "frontend_port": frontend_port,
             "llm_profile": llm_profile,
@@ -1503,6 +1595,8 @@ class SchoolAppLifecycle:
         student_research_config: Mapping[str, object] | None = None,
         research_education_draft_config: Mapping[str, object] | None = None,
         input_review_continuation_enabled: bool = False,
+        enable_standard_cat: bool = False,
+        standard_cat_port: int = DEFAULT_STANDARD_CAT_PORT,
     ) -> dict[str, Any]:
         if not IS_WINDOWS:
             raise LifecycleError("Native school application lifecycle requires Windows")
@@ -1519,6 +1613,16 @@ class SchoolAppLifecycle:
             student_research_config=student_research_config,
             input_review_continuation_enabled=input_review_continuation_enabled,
         )
+        standard_cat_config = self._standard_cat_config(
+            enable_standard_cat, standard_cat_port, backend_port, frontend_port
+        )
+        if standard_cat_config is not None and research_config is not None:
+            _validate_standard_cat_port(
+                standard_cat_config.port,
+                backend_port,
+                frontend_port,
+                research_config.port,
+            )
         if research_config is not None:
             _validate_research_port(research_config.port, backend_port, frontend_port)
         manifest_path = target / MANIFEST_NAME
@@ -1585,6 +1689,8 @@ class SchoolAppLifecycle:
         ports_to_check = (backend_port, frontend_port) + (
             (research_config.port,) if research_config is not None else ()
         )
+        if standard_cat_config is not None:
+            ports_to_check += (standard_cat_config.port,)
         for port in ports_to_check:
             if not self.ops.port_is_free(port) or self.ops.listeners(port):
                 raise LifecycleError(
@@ -1630,6 +1736,8 @@ class SchoolAppLifecycle:
             },
             "whole_ready": False,
         }
+        if standard_cat_config is not None:
+            manifest[STANDARD_CAT_CONFIG_KEY] = standard_cat_config.manifest_value()
         if research_config is not None:
             manifest["research_config"] = research_config.manifest_value()
             manifest["research_cat_port"] = research_config.port
@@ -1643,6 +1751,44 @@ class SchoolAppLifecycle:
             manifest["frontend_preview_dir"] = str(preview_output_dir)
         _atomic_write(manifest_path, manifest)
         try:
+            if standard_cat_config is not None:
+                cat_argv = standard_cat_config.argv()
+                cat_environment = _sanitize_environment()
+                cat_environment.update(standard_cat_config.environment())
+                cat_process = self.ops.spawn(
+                    cat_argv,
+                    cwd=self.repo / "01_cat-engine",
+                    env=cat_environment,
+                )
+                self._record_spawn(
+                    manifest,
+                    manifest_path,
+                    "standard_cat",
+                    cat_process,
+                    standard_cat_config.port,
+                    cat_argv,
+                    parent_identity,
+                )
+                cat_ready = self.ops.wait_standard_cat_ready(
+                    cat_process, standard_cat_config.port, timeout
+                )
+                if cat_ready:
+                    cat_ready = self._confirm_service_listener(
+                        manifest["services"][-1]
+                    )
+                manifest["services"][-1]["readiness"] = (
+                    "READY" if cat_ready else "NOT_OBSERVED"
+                )
+                _atomic_write(manifest_path, manifest)
+                if not cat_ready:
+                    manifest["state"] = "PARTIAL_READINESS_UNOBSERVED"
+                    manifest["updated_at"] = _utc_now()
+                    _atomic_write(manifest_path, manifest)
+                    self._cleanup_failed_standard_cat_start(
+                        target, manifest_path, "PARTIAL_READINESS_UNOBSERVED"
+                    )
+                    return _public_status(_read_manifest(manifest_path))
+
             backend_argv = self._backend_argv(
                 target,
                 backend_port,
@@ -1651,6 +1797,7 @@ class SchoolAppLifecycle:
                 research_config=research_config,
                 student_research_config=student_research_config,
                 research_education_draft_config=research_education_draft_config,
+                standard_cat_config=standard_cat_config,
             )
             backend = self.ops.spawn(
                 backend_argv, cwd=self.repo, env=_sanitize_environment()
@@ -1677,6 +1824,11 @@ class SchoolAppLifecycle:
                 manifest["state"] = "PARTIAL_READINESS_UNOBSERVED"
                 manifest["updated_at"] = _utc_now()
                 _atomic_write(manifest_path, manifest)
+                if standard_cat_config is not None:
+                    self._cleanup_failed_standard_cat_start(
+                        target, manifest_path, "PARTIAL_READINESS_UNOBSERVED"
+                    )
+                    manifest = _read_manifest(manifest_path)
                 return _public_status(manifest)
 
             if preview_output_dir is not None:
@@ -1713,6 +1865,11 @@ class SchoolAppLifecycle:
             )
             manifest["updated_at"] = _utc_now()
             _atomic_write(manifest_path, manifest)
+            if not frontend_ready and standard_cat_config is not None:
+                self._cleanup_failed_standard_cat_start(
+                    target, manifest_path, "PARTIAL_READINESS_UNOBSERVED"
+                )
+                manifest = _read_manifest(manifest_path)
             result = _public_status(manifest)
             if research_config is not None and research_config.programme_worker is not None:
                 result["research_programme_worker"] = self._worker_dependency_status(
@@ -1728,6 +1885,10 @@ class SchoolAppLifecycle:
             manifest["failure_type"] = type(exc).__name__
             manifest["updated_at"] = _utc_now()
             _atomic_write(manifest_path, manifest)
+            if standard_cat_config is not None:
+                self._cleanup_failed_standard_cat_start(
+                    target, manifest_path, "PARTIAL_FAILURE"
+                )
             raise LifecycleError(
                 f"School application start incomplete ({type(exc).__name__}); inspect status before recovery"
             ) from None
@@ -1818,8 +1979,12 @@ class SchoolAppLifecycle:
                     "listener": "OWNED"
                     if listener_owned and bound
                     else "MISSING_OR_FOREIGN",
-                    "ready": self.ops.http_ready(
-                        port, READY_PATHS.get(service.get("name"), "/")
+                    "ready": (
+                        self.ops.standard_cat_ready(port)
+                        if service.get("name") == "standard_cat"
+                        else self.ops.http_ready(
+                            port, READY_PATHS.get(service.get("name"), "/")
+                        )
                     )
                     if owned and listener_owned and bound
                     else False,
@@ -1868,6 +2033,22 @@ class SchoolAppLifecycle:
             "current_ready_proof": False,
             "manifest_validated": True,
         }
+        standard_cat_config = manifest.get(STANDARD_CAT_CONFIG_KEY)
+        if isinstance(standard_cat_config, dict):
+            cat_status = listeners.get("standard_cat", {})
+            cat_ready = (
+                cat_status.get("owned_process") is True
+                and cat_status.get("listener") == "OWNED"
+                and cat_status.get("ready") is True
+            )
+            result["standard_cat"] = {
+                "enabled": True,
+                "port": standard_cat_config["port"],
+                "readiness": "READY" if cat_ready else "UNVERIFIED",
+            }
+            result["external_modules"]["cat"] = (
+                "READY" if cat_ready else "UNVERIFIED"
+            )
         student_research_config = _student_research_config_from_manifest(manifest)
         if student_research_config is not None:
             # There is no capability-specific readiness signal yet. A healthy
@@ -2409,6 +2590,7 @@ class SchoolAppLifecycle:
         research_config: ResearchProcessConfig | None = None,
         student_research_config: StudentResearchProcessConfig | None = None,
         research_education_draft_config: ResearchEducationDraftProcessConfig | None = None,
+        standard_cat_config: StandardCATConfig | None = None,
     ) -> list[str]:
         python, _base_python = _backend_python_paths(self.repo)
         argv = [
@@ -2429,7 +2611,26 @@ class SchoolAppLifecycle:
             argv.extend(student_research_config.cli_arguments())
         if research_education_draft_config is not None:
             argv.extend(research_education_draft_config.cli_arguments())
+        if standard_cat_config is not None:
+            argv.extend(("--cat-port", str(standard_cat_config.port)))
         return _safe_argv(argv)
+
+    def _cleanup_failed_standard_cat_start(
+        self, target: Path, manifest_path: Path, restore_state: str
+    ) -> None:
+        """Best-effort stop only the opt-in startup's verified owned processes."""
+        try:
+            self.stop(target)
+        except LifecycleError:
+            return
+        manifest = _read_manifest(manifest_path)
+        manifest["state"] = restore_state
+        manifest["failure_code"] = "START_FAILURE_CLEANED"
+        for service in manifest.get("services", []):
+            if isinstance(service, dict):
+                service["readiness"] = "STOPPED"
+        manifest["updated_at"] = _utc_now()
+        _atomic_write(manifest_path, manifest)
 
     def _frontend_argv(
         self, mode: str, port: int, preview_output_dir: Path | None = None
@@ -2517,8 +2718,14 @@ class SchoolAppLifecycle:
                 "listener": None,
                 "listener_candidate": None,
                 "base_executable": (
-                    str(_backend_python_paths(self.repo)[1])
-                    if name == "backend"
+                    str(
+                        (
+                            _backend_python_paths(self.repo)
+                            if name == "backend"
+                            else _standard_cat_python_paths(self.repo)
+                        )[1]
+                    )
+                    if name in {"backend", "standard_cat"}
                     else None
                 ),
                 "state": "IDENTITY_UNAVAILABLE",
@@ -2533,7 +2740,15 @@ class SchoolAppLifecycle:
             )
         launcher = _process_record("launcher", identity, argv, parent_identity)
         base_executable = (
-            str(_backend_python_paths(self.repo)[1]) if name == "backend" else None
+            str(
+                (
+                    _backend_python_paths(self.repo)
+                    if name == "backend"
+                    else _standard_cat_python_paths(self.repo)
+                )[1]
+            )
+            if name in {"backend", "standard_cat"}
+            else None
         )
         entry = {
             "name": name,
@@ -2612,7 +2827,7 @@ class SchoolAppLifecycle:
             service["executable"]
             if listener_pid == service["pid"]
             else service.get("base_executable")
-            if service["name"] == "backend"
+            if service["name"] in {"backend", "standard_cat"}
             else shutil.which("node")
         )
         candidate["identity_verified"] = bool(
@@ -2693,7 +2908,7 @@ class SchoolAppLifecycle:
         ):
             raise LifecycleError("Lifecycle manifest has unknown research fields")
         services = manifest.get("services")
-        if not isinstance(services, list) or len(services) > 2:
+        if not isinstance(services, list) or len(services) > 3:
             raise LifecycleError("Lifecycle manifest service list is invalid")
         _validate_ports(manifest.get("backend_port"), manifest.get("frontend_port"))
         _validate_options(manifest.get("llm_profile"), manifest.get("frontend_mode"))
@@ -2708,6 +2923,22 @@ class SchoolAppLifecycle:
         education_draft_config = _research_education_draft_config_from_manifest(
             manifest
         )
+        standard_cat_config = None
+        if STANDARD_CAT_CONFIG_KEY in manifest:
+            try:
+                standard_cat_config = restore_standard_cat_config(
+                    self.repo, manifest.get(STANDARD_CAT_CONFIG_KEY)
+                )
+            except StandardCATError:
+                raise LifecycleError(
+                    "Lifecycle standard CAT pins failed validation"
+                ) from None
+            _validate_standard_cat_port(
+                standard_cat_config.port,
+                manifest["backend_port"],
+                manifest["frontend_port"],
+                research_config.port if research_config is not None else None,
+            )
         if education_draft_config is not None:
             if (
                 research_config is None
@@ -2729,10 +2960,22 @@ class SchoolAppLifecycle:
                 raise LifecycleError(
                     "Lifecycle research education draft source pins differ"
                 )
-        expected_ports = {
-            "backend": manifest["backend_port"],
-            "frontend": manifest["frontend_port"],
-        }
+        expected_ports = {}
+        if standard_cat_config is not None:
+            expected_ports["standard_cat"] = standard_cat_config.port
+        expected_ports.update(
+            {
+                "backend": manifest["backend_port"],
+                "frontend": manifest["frontend_port"],
+            }
+        )
+        expected_order = list(expected_ports)
+        observed_order = [
+            service.get("name") if isinstance(service, dict) else None
+            for service in services
+        ]
+        if observed_order != expected_order[: len(observed_order)]:
+            raise LifecycleError("Lifecycle service start order is invalid")
         seen: set[str] = set()
         for service in services:
             if not isinstance(service, dict):
@@ -2750,7 +2993,22 @@ class SchoolAppLifecycle:
                 raise LifecycleError(
                     "Lifecycle manifest service identity is incomplete"
                 )
-            if name == "backend":
+            if name == "standard_cat":
+                assert standard_cat_config is not None
+                expected_launcher, expected_base = _standard_cat_python_paths(
+                    self.repo
+                )
+                expected_argv = [str(expected_launcher), "-m", standard_cat_config.module]
+                expected_executable = str(standard_cat_config.python)
+                if (
+                    not isinstance(service.get("base_executable"), str)
+                    or _path_key(service["base_executable"])
+                    != _path_key(str(expected_base))
+                ):
+                    raise LifecycleError(
+                        "Standard CAT base Python differs from the verified venv"
+                    )
+            elif name == "backend":
                 expected_launcher, expected_base = _backend_python_paths(self.repo)
                 expected_argv = [
                     str(expected_launcher),
@@ -2770,6 +3028,10 @@ class SchoolAppLifecycle:
                     expected_argv.extend(student_research_config.cli_arguments())
                 if education_draft_config is not None:
                     expected_argv.extend(education_draft_config.cli_arguments())
+                if standard_cat_config is not None:
+                    expected_argv.extend(
+                        ("--cat-port", str(standard_cat_config.port))
+                    )
                 expected_executable = expected_argv[0]
                 if not isinstance(service.get("base_executable"), str) or _path_key(
                     service["base_executable"]
@@ -2856,7 +3118,11 @@ class SchoolAppLifecycle:
                     or service.get("state") != "IDENTITY_UNAVAILABLE"
                     or service.get("readiness") != "NOT_OBSERVED"
                     or service.get("base_executable")
-                    != (str(expected_base) if name == "backend" else None)
+                    != (
+                        str(expected_base)
+                        if name in {"backend", "standard_cat"}
+                        else None
+                    )
                 ):
                     raise LifecycleError(
                         "Lifecycle unverified spawn record is invalid"
@@ -2914,7 +3180,7 @@ class SchoolAppLifecycle:
                     service["executable"]
                     if candidate.get("pid") == service["pid"]
                     else service.get("base_executable")
-                    if service["name"] == "backend"
+                    if service["name"] in {"backend", "standard_cat"}
                     else shutil.which("node")
                 )
                 candidate_verified = bool(
@@ -3013,11 +3279,11 @@ class SchoolAppLifecycle:
                         or not _same_identity(
                             child.get("parent"), _identity_from_process(launcher)
                         )
-                        or service["name"] != "backend"
+                        or service["name"] not in {"backend", "standard_cat"}
                         or _path_key(child["executable"])
                         != _path_key(service["base_executable"])
                     ):
-                        raise LifecycleError("Backend listener child chain is invalid")
+                        raise LifecycleError("Python listener child chain is invalid")
             seen.add(name)
 
 
@@ -3098,6 +3364,21 @@ def _validate_research_port(port: int, backend_port: int, frontend_port: int) ->
         )
 
 
+def _validate_standard_cat_port(
+    port: int,
+    backend_port: int,
+    frontend_port: int,
+    research_cat_port: int | None = None,
+) -> None:
+    reserved = {backend_port, frontend_port, 8160, 8170, 8190}
+    if research_cat_port is not None:
+        reserved.add(research_cat_port)
+    if type(port) is not int or not 1024 <= port <= 65535 or port in reserved:
+        raise LifecycleError(
+            "Standard CAT port must be distinct from application, research CAT and module ports"
+        )
+
+
 def _validate_options(profile: str, frontend_mode: str) -> None:
     if profile not in LLM_PROFILES or frontend_mode not in {"dev", "preview"}:
         raise LifecycleError(
@@ -3144,6 +3425,34 @@ def _public_status(manifest: dict[str, Any]) -> dict[str, Any]:
         "whole_ready": False,
         "manifest": MANIFEST_NAME,
     }
+    standard_cat = manifest.get(STANDARD_CAT_CONFIG_KEY)
+    if isinstance(standard_cat, dict) and standard_cat.get("enabled") is True:
+        service = next(
+            (
+                item
+                for item in result["services"]
+                if item.get("name") == "standard_cat"
+            ),
+            None,
+        )
+        result["standard_cat"] = {
+            "enabled": True,
+            "port": standard_cat.get("port"),
+            "readiness": (
+                "STOPPED"
+                if manifest.get("state") == "STOPPED"
+                else service.get("readiness")
+                if service
+                else "NOT_OBSERVED"
+            ),
+        }
+        result["external_modules"]["cat"] = (
+            "READY"
+            if manifest.get("state") != "STOPPED"
+            and service is not None
+            and service.get("readiness") == "READY"
+            else "UNVERIFIED"
+        )
     if "research_config" in manifest and "research_cat_port" in manifest:
         result["research_cat"] = {
             "port": manifest["research_cat_port"],
@@ -3197,10 +3506,10 @@ def build_parser() -> argparse.ArgumentParser:
     plan = commands.add_parser("plan", help="Read-only command and requirement plan")
     status = commands.add_parser("status", help="Inspect owned processes and readiness")
     start = commands.add_parser(
-        "start", help="Start Backend and Frontend for a prepared workspace"
+        "start", help="Start an optional standard CAT, Backend and Frontend"
     )
     stop = commands.add_parser(
-        "stop", help="Stop only verified Backend and Frontend processes"
+        "stop", help="Stop only verified lifecycle-owned processes"
     )
     for command in (plan, status, start, stop):
         command.add_argument("--workspace", type=Path, required=True)
@@ -3210,6 +3519,10 @@ def build_parser() -> argparse.ArgumentParser:
         command.add_argument("--llm-profile", choices=LLM_PROFILES, default="default")
         command.add_argument(
             "--frontend-mode", choices=("dev", "preview"), required=True
+        )
+        command.add_argument("--enable-standard-cat", action="store_true")
+        command.add_argument(
+            "--standard-cat-port", type=int, default=DEFAULT_STANDARD_CAT_PORT
         )
     start.add_argument("--timeout", type=float, default=START_TIMEOUT_SECONDS)
     for name in RESEARCH_CONFIG_ARGUMENTS:
@@ -3260,6 +3573,8 @@ def main(argv: list[str] | None = None) -> int:
                 frontend_port=args.frontend_port,
                 llm_profile=args.llm_profile,
                 frontend_mode=args.frontend_mode,
+                enable_standard_cat=args.enable_standard_cat,
+                standard_cat_port=args.standard_cat_port,
             )
         elif args.command == "start":
             supplied_research = {
@@ -3342,6 +3657,8 @@ def main(argv: list[str] | None = None) -> int:
                 input_review_continuation_enabled=(
                     args.enable_research_education_input_review_continuation
                 ),
+                enable_standard_cat=args.enable_standard_cat,
+                standard_cat_port=args.standard_cat_port,
             )
         elif args.command == "status":
             result = lifecycle.status(args.workspace)

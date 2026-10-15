@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import subprocess
@@ -10,6 +11,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import school_app_lifecycle as lifecycle
+import school_standard_cat as standard_cat
 
 
 class FakeProcess:
@@ -34,9 +36,13 @@ class FakeOperations:
         self.backend_base_executable = None
         self.backend_child_executable_override = None
         self.backend_child_tail_override = False
+        self.standard_cat_listener_child = False
+        self.standard_cat_base_executable = None
+        self.standard_cat_child_executable_override = None
         self.fail_terminate_pid = None
         self.autoexit_parent_after_child = False
         self.exit_before_terminate_pid = None
+        self.fail_backend_spawn = False
 
     def port_is_free(self, port):
         return port in self.free or port not in self.bound
@@ -48,11 +54,23 @@ class FakeOperations:
         return self.processes.get(pid)
 
     def spawn(self, argv, *, cwd, env):
-        assert not any(
-            name.upper().startswith("DB_") or name.upper().startswith("SMHAI_")
+        cat_environment = "SMHAI_CAT_PORT" in env
+        allowed_cat_environment = {
+            "PYTHONPATH",
+            "SMHAI_CAT_PORT",
+            "SMHAI_CAT_CONFIG",
+            "SMHAI_CAT_ITEM_BANK",
+        }
+        assert not any(name.upper().startswith("DB_") for name in env)
+        assert not {"DATABASE_URL", "DATABASE_KEY_FILE", "MYSQL_PWD"} & set(env)
+        assert all(
+            not name.upper().startswith("SMHAI_")
+            or (cat_environment and name in allowed_cat_environment)
             for name in env
         )
-        assert not {"DATABASE_URL", "DATABASE_KEY_FILE", "MYSQL_PWD"} & set(env)
+        assert "PYTHONPATH" not in env or cat_environment
+        if self.fail_backend_spawn and Path(argv[1]).name == "school_backend.py":
+            raise lifecycle.LifecycleError("synthetic backend spawn failure")
         pid = self.next_pid
         self.next_pid += 1
         executable = argv[0]
@@ -64,15 +82,31 @@ class FakeOperations:
             "CommandLine": subprocess.list2cmdline(argv),
         }
         self.processes[pid] = record
-        port = int(argv[argv.index("--port") + 1])
+        port = (
+            int(env["SMHAI_CAT_PORT"])
+            if cat_environment
+            else int(argv[argv.index("--port") + 1])
+        )
         listener_pid = pid
-        if self.backend_listener_child and Path(argv[1]).name == "school_backend.py":
+        backend_child = (
+            self.backend_listener_child
+            and Path(argv[1]).name == "school_backend.py"
+        )
+        cat_child = cat_environment and self.standard_cat_listener_child
+        if backend_child or cat_child:
             listener_pid = 900
-            child_executable = (
-                self.backend_child_executable_override or self.backend_base_executable
-            )
+            if cat_child:
+                child_executable = (
+                    self.standard_cat_child_executable_override
+                    or self.standard_cat_base_executable
+                )
+            else:
+                child_executable = (
+                    self.backend_child_executable_override
+                    or self.backend_base_executable
+                )
             child_argv = [child_executable, *argv[1:]]
-            if self.backend_child_tail_override:
+            if self.backend_child_tail_override and backend_child:
                 child_argv[child_argv.index("--port") + 1] = "9999"
             self.processes[listener_pid] = {
                 "ProcessId": listener_pid,
@@ -94,7 +128,13 @@ class FakeOperations:
     def wait_ready(self, process, port, path, timeout):
         return self.ready.get(port, True)
 
+    def wait_standard_cat_ready(self, process, port, timeout):
+        return self.ready.get(port, False)
+
     def http_ready(self, port, path):
+        return self.ready.get(port, False)
+
+    def standard_cat_ready(self, port):
         return self.ready.get(port, False)
 
     def build_frontend(self, repo, backend_port, preview_output_dir, *, timeout=360.0):
@@ -126,6 +166,51 @@ def prepared(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     workspace = tmp_path / "external" / "workspace"
     (repo / "13_deployment").mkdir(parents=True)
+    cat_root = repo / "01_cat-engine"
+    cat_venv = cat_root / ".venv"
+    (cat_venv / "Scripts").mkdir(parents=True)
+    (cat_venv / "Scripts" / "python.exe").touch()
+    cat_base_home = repo / "cat-base-python"
+    cat_base_home.mkdir()
+    (cat_base_home / "python.exe").touch()
+    (cat_venv / "pyvenv.cfg").write_text(
+        f"home = {cat_base_home}\nversion_info = 3.14\n", encoding="utf-8"
+    )
+    (cat_root / "fixtures").mkdir(parents=True)
+    (cat_root / "fixtures" / "demo_cat_config.v1.json").write_text(
+        '{"config_version":"synthetic-test"}', encoding="utf-8"
+    )
+    (cat_root / "fixtures" / "synthetic_item_bank.v1.json").write_text(
+        '{"metadata":{"synthetic":true}}', encoding="utf-8"
+    )
+    cat_app = cat_root / "src" / "cat_engine" / "api" / "app.py"
+    cat_app.parent.mkdir(parents=True)
+    cat_app.write_text("def main(): pass\n", encoding="utf-8")
+    (cat_root / "pyproject.toml").write_text("[project]\nname='synthetic-cat'\n")
+    monkeypatch.setattr(
+        standard_cat,
+        "STANDARD_CAT_CONFIG_SHA256",
+        hashlib.sha256(
+            (cat_root / "fixtures" / "demo_cat_config.v1.json").read_bytes()
+        ).hexdigest(),
+    )
+    monkeypatch.setattr(
+        standard_cat,
+        "STANDARD_CAT_BANK_SHA256",
+        hashlib.sha256(
+            (cat_root / "fixtures" / "synthetic_item_bank.v1.json").read_bytes()
+        ).hexdigest(),
+    )
+    monkeypatch.setattr(
+        standard_cat,
+        "STANDARD_CAT_ENTRYPOINT_SHA256",
+        hashlib.sha256(cat_app.read_bytes()).hexdigest(),
+    )
+    monkeypatch.setattr(
+        standard_cat,
+        "STANDARD_CAT_SOURCE_SHA256",
+        standard_cat.source_fingerprint(repo),
+    )
     (repo / "09_backend" / ".venv" / "Scripts").mkdir(parents=True)
     (repo / "09_backend" / ".venv" / "Scripts" / "python.exe").touch()
     backend_venv = repo / "09_backend" / ".venv"
@@ -145,6 +230,7 @@ def prepared(tmp_path, monkeypatch):
     (workspace / "runtime-ready.json").write_text("{}", encoding="utf-8")
     ops = FakeOperations()
     ops.backend_base_executable = str(base_python.resolve())
+    ops.standard_cat_base_executable = str((cat_base_home / "python.exe").resolve())
     app = lifecycle.SchoolAppLifecycle(repo, ops)
     monkeypatch.setattr(
         app,
@@ -279,6 +365,7 @@ def test_start_dev_records_only_owned_backend_frontend_and_stop(prepared):
         (workspace / lifecycle.MANIFEST_NAME).read_text(encoding="utf-8")
     )
     assert manifest["required_revision"] == lifecycle.CURRENT_SCHOOL_REVISION
+    assert "--cat-port" not in ops.spawned[0][0]
     assert {service["port"] for service in manifest["services"]} == {8088, 4178}
     assert all(
         service["creation_time"] and service["argv"] and service["parent"]
@@ -296,6 +383,263 @@ def test_start_dev_records_only_owned_backend_frontend_and_stop(prepared):
     assert stopped["status"] == "STOPPED"
     assert set(ops.terminated) == {501, 502}
     assert ops.bound == {}
+
+
+def test_opt_in_standard_cat_starts_first_and_stops_last(prepared):
+    _repo, workspace, ops, app = prepared
+    ops.ready[8180] = True
+
+    result = app.start(
+        workspace,
+        frontend_mode="dev",
+        llm_profile="default",
+        enable_standard_cat=True,
+    )
+
+    assert result["status"] == "RUNNING"
+    manifest = json.loads(
+        (workspace / lifecycle.MANIFEST_NAME).read_text(encoding="utf-8")
+    )
+    assert [item["name"] for item in manifest["services"]] == [
+        "standard_cat",
+        "backend",
+        "frontend",
+    ]
+    cat_argv, cat_cwd, cat_env = ops.spawned[0]
+    assert cat_argv == [
+        str(_repo / "01_cat-engine" / ".venv" / "Scripts" / "python.exe"),
+        "-m",
+        "cat_engine.api.app",
+    ]
+    assert cat_cwd == _repo / "01_cat-engine"
+    assert cat_env["SMHAI_CAT_PORT"] == "8180"
+    assert Path(cat_env["PYTHONPATH"]) == _repo / "01_cat-engine" / "src"
+    backend_argv = ops.spawned[1][0]
+    assert backend_argv[backend_argv.index("--cat-port") + 1] == "8180"
+    assert result["external_modules"]["cat"] == "READY"
+
+    stopped = app.stop(workspace)
+    assert stopped["status"] == "STOPPED"
+    assert stopped["standard_cat"]["readiness"] == "STOPPED"
+    assert ops.terminated == [503, 502, 501]
+    assert ops.bound == {}
+
+
+def test_standard_cat_venv_launcher_owns_only_verified_base_python_listener(prepared):
+    _repo, workspace, ops, app = prepared
+    ops.ready[8180] = True
+    ops.standard_cat_listener_child = True
+
+    result = app.start(
+        workspace,
+        frontend_mode="dev",
+        enable_standard_cat=True,
+    )
+
+    assert result["status"] == "RUNNING"
+    manifest = json.loads(
+        (workspace / lifecycle.MANIFEST_NAME).read_text(encoding="utf-8")
+    )
+    cat_service = manifest["services"][0]
+    assert cat_service["base_executable"] == ops.standard_cat_base_executable
+    assert [entry["role"] for entry in cat_service["processes"]] == [
+        "launcher",
+        "listener",
+    ]
+    assert cat_service["listener"]["pid"] == 900
+    assert app.status(workspace)["standard_cat"]["readiness"] == "READY"
+
+    assert app.stop(workspace)["status"] == "STOPPED"
+    assert ops.terminated == [503, 502, 900, 501]
+    assert ops.bound == {}
+
+
+def test_standard_cat_rejects_unrelated_python_listener_without_stopping_it(prepared):
+    _repo, workspace, ops, app = prepared
+    ops.ready[8180] = True
+    ops.standard_cat_listener_child = True
+    ops.standard_cat_child_executable_override = str(
+        workspace.parent / "unrelated-python.exe"
+    )
+
+    result = app.start(
+        workspace,
+        frontend_mode="dev",
+        enable_standard_cat=True,
+    )
+
+    assert result["status"] == "STOP_BLOCKED_FOREIGN_LISTENER"
+    manifest = json.loads(
+        (workspace / lifecycle.MANIFEST_NAME).read_text(encoding="utf-8")
+    )
+    cat_service = manifest["services"][0]
+    assert cat_service["listener"] is None
+    assert cat_service["listener_candidate"]["identity_verified"] is False
+    assert ops.terminated == []
+    assert ops.listeners(8180)[0]["OwningProcess"] == 900
+
+
+def test_standard_cat_foreign_listener_is_never_adopted(prepared):
+    _repo, workspace, ops, app = prepared
+    ops.bound[8180] = [
+        {"OwningProcess": 9901, "LocalAddress": "127.0.0.1", "LocalPort": 8180}
+    ]
+
+    with pytest.raises(lifecycle.LifecycleError, match="refusing to adopt"):
+        app.start(
+            workspace,
+            frontend_mode="dev",
+            enable_standard_cat=True,
+        )
+
+    assert ops.spawned == []
+    assert not (workspace / lifecycle.MANIFEST_NAME).exists()
+    assert 9901 in [row["OwningProcess"] for row in ops.listeners(8180)]
+
+
+def test_standard_cat_is_cleaned_when_later_service_spawn_fails(prepared):
+    _repo, workspace, ops, app = prepared
+    ops.ready[8180] = True
+    ops.fail_backend_spawn = True
+
+    with pytest.raises(lifecycle.LifecycleError, match="start incomplete"):
+        app.start(
+            workspace,
+            frontend_mode="dev",
+            enable_standard_cat=True,
+        )
+
+    manifest = json.loads(
+        (workspace / lifecycle.MANIFEST_NAME).read_text(encoding="utf-8")
+    )
+    assert manifest["state"] == "PARTIAL_FAILURE"
+    assert manifest["failure_code"] == "START_FAILURE_CLEANED"
+    assert [item["name"] for item in manifest["services"]] == ["standard_cat"]
+    assert ops.terminated == [501]
+    assert ops.bound == {}
+
+
+def test_standard_cat_stop_restart_keeps_explicit_port_and_backend_target(prepared):
+    _repo, workspace, ops, app = prepared
+    ops.ready[8181] = True
+    first = app.start(
+        workspace,
+        frontend_mode="dev",
+        enable_standard_cat=True,
+        standard_cat_port=8181,
+    )
+    assert first["status"] == "RUNNING"
+    assert app.stop(workspace)["status"] == "STOPPED"
+
+    ops.next_pid = 601
+    restarted = app.start(
+        workspace,
+        frontend_mode="dev",
+        enable_standard_cat=True,
+        standard_cat_port=8181,
+    )
+    assert restarted["status"] == "RUNNING"
+    manifest = json.loads(
+        (workspace / lifecycle.MANIFEST_NAME).read_text(encoding="utf-8")
+    )
+    assert manifest["standard_cat"]["port"] == 8181
+    assert manifest["services"][0]["port"] == 8181
+    backend_argv = next(
+        argv for argv, _cwd, _env in ops.spawned if Path(argv[1]).name == "school_backend.py"
+    )
+    assert backend_argv[backend_argv.index("--cat-port") + 1] == "8181"
+    assert len(list(workspace.glob("school-app-lifecycle.stopped-*.json"))) == 1
+
+
+def test_standard_cat_readiness_requires_synthetic_cat_health_payload(monkeypatch):
+    class Response:
+        status = 200
+
+        def __init__(self, value):
+            self.value = value
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, _limit):
+            return json.dumps(self.value).encode("utf-8")
+
+    class Opener:
+        def __init__(self, response):
+            self.response = response
+
+        def open(self, url, timeout):
+            assert url in {
+                "http://127.0.0.1:8180/health/ready",
+                "http://127.0.0.1:8088/health/ready",
+            }
+            assert timeout == 1.0
+            return self.response
+
+    payload = {
+        "status": "READY",
+        "service": "cat",
+        "synthetic_fixture_only": True,
+    }
+    monkeypatch.setattr(
+        lifecycle.urllib.request,
+        "build_opener",
+        lambda *_args: Opener(Response(payload)),
+    )
+    assert lifecycle.LifecycleOperations().standard_cat_ready(8180) is True
+    assert (
+        lifecycle.LifecycleOperations().http_ready(8088, "/health/ready") is False
+    )
+
+    payload["synthetic_fixture_only"] = False
+    assert lifecycle.LifecycleOperations().standard_cat_ready(8180) is False
+    assert (
+        lifecycle.LifecycleOperations().http_ready(8088, "/health/ready") is False
+    )
+
+
+def test_standard_cat_manifest_validation_rechecks_pinned_assets(prepared):
+    repo, workspace, ops, app = prepared
+    ops.ready[8180] = True
+    app.start(workspace, frontend_mode="dev", enable_standard_cat=True)
+    config_path = repo / "01_cat-engine" / "fixtures" / "demo_cat_config.v1.json"
+    config_path.write_text('{"config_version":"tampered"}', encoding="utf-8")
+
+    with pytest.raises(lifecycle.LifecycleError, match="pins failed validation"):
+        app.status(workspace)
+    assert ops.terminated == []
+
+
+def test_standard_cat_cli_is_opt_in_and_keeps_default_port():
+    args = lifecycle.build_parser().parse_args(
+        [
+            "start",
+            "--workspace",
+            "C:/synthetic/workspace",
+            "--frontend-mode",
+            "dev",
+        ]
+    )
+    assert args.enable_standard_cat is False
+    assert args.standard_cat_port == 8180
+
+    enabled = lifecycle.build_parser().parse_args(
+        [
+            "start",
+            "--workspace",
+            "C:/synthetic/workspace",
+            "--frontend-mode",
+            "dev",
+            "--enable-standard-cat",
+            "--standard-cat-port",
+            "8181",
+        ]
+    )
+    assert enabled.enable_standard_cat is True
+    assert enabled.standard_cat_port == 8181
 
 
 def test_research_programme_worker_manifest_argv_restore_and_live_status(

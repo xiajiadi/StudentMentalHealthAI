@@ -442,6 +442,7 @@ async def test_unauthorized_claim_and_outcome_dispositions_never_store_candidate
         assert result.value == expected
         assert len(adapter.finalized) == 1
         assert adapter.finalized[0][1:] == (expected, code)
+        assert adapter.finalize_kwargs == [{"reason_code": reason}]
         assert adapter.stored == []
 
 
@@ -662,7 +663,9 @@ async def test_worker_passes_only_valid_input_review_receipt_and_legacy_outcome_
     assert adapter.finalized == [
         (claim, "REVIEW_REQUIRED", ResearchEducationJobErrorCode.SAFETY_BLOCKED)
     ]
-    assert adapter.finalize_kwargs == [{"input_review": receipt}]
+    assert adapter.finalize_kwargs == [
+        {"input_review": receipt, "reason_code": "INPUT_SAFETY_STOP"}
+    ]
     assert adapter.stored == []
 
     legacy_adapter = _Adapter()
@@ -681,7 +684,9 @@ async def test_worker_passes_only_valid_input_review_receipt_and_legacy_outcome_
     assert legacy_adapter.finalized == [
         (claim, "REVIEW_REQUIRED", ResearchEducationJobErrorCode.SAFETY_BLOCKED)
     ]
-    assert legacy_adapter.finalize_kwargs == [{}]
+    assert legacy_adapter.finalize_kwargs == [
+        {"reason_code": "OUTPUT_SAFETY_STOP"}
+    ]
 
 
 @pytest.mark.asyncio

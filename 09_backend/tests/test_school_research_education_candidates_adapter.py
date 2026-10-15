@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
+from database_layer.enums import AuditResult
 from database_layer.school_research_education_jobs import (
     GENERAL_EDUCATION_POLICY_VERSION,
     ResearchEducationJobClaim,
@@ -214,11 +215,16 @@ def _finalize_harness(configured, claim, *, revoked=False):
             events.append(("finish", kwargs, active_uow[0]))
             return kwargs["status"]
 
+    class AuditRepository:
+        async def append(self, **kwargs):
+            events.append(("audit", kwargs, active_uow[0]))
+
     active_uow = []
 
     class UnitOfWork:
         research_education_jobs = JobRepository()
         research_education_input_reviews = InputReviewRepository()
+        audit = AuditRepository()
 
         async def __aenter__(self):
             active_uow.append(self)
@@ -493,6 +499,54 @@ async def test_input_review_finalize_persists_exact_receipt_before_finishing_in_
 
 
 @pytest.mark.parametrize(
+    ("reason_code", "expected_audit_reason"),
+    [
+        ("RESEARCH_RUNTIME_FAILED", "RESEARCH_RUNTIME_FAILED"),
+        ("UNTRUSTED_BUT_WELL_FORMED", "UNCLASSIFIED_OUTCOME"),
+        ("raw reason text", None),
+        (123, None),
+    ],
+)
+async def test_terminal_reason_audit_is_safe_and_same_uow(
+    reason_code, expected_audit_reason
+):
+    claim = _education_job_claim()
+    configured = adapter()
+    events = _finalize_harness(configured, claim)
+
+    disposition = await configured.finalize_education_job(
+        claim,
+        status="FAILED",
+        error_code=ResearchEducationJobErrorCode.GENERATION_FAILED,
+        reason_code=reason_code,
+    )
+
+    assert disposition == "FAILED"
+    assert events[0][0] == "finish"
+    assert events[0][1]["status"] == "FAILED"
+    assert events[0][1]["error_code"] is ResearchEducationJobErrorCode.GENERATION_FAILED
+    if expected_audit_reason is None:
+        assert [event[0] for event in events] == ["finish"]
+        return
+    assert [event[0] for event in events] == ["finish", "audit"]
+    audit = events[1][1]
+    assert events[0][2] is events[1][2]
+    assert audit["action"] == "school_research_education_job.terminal"
+    assert audit["resource_type"] == "school_research_education_job"
+    assert audit["resource_public_id"] == claim.job_ref
+    assert audit["result"] is AuditResult.FAILURE
+    token = hashlib.sha256(
+        f"{claim.job_ref}:{claim.attempt_count}".encode("ascii")
+    ).hexdigest()[:32]
+    assert audit["trace_id"] == f"TRACE_{token}"
+    assert audit["safe_metadata"] == {
+        "source": GENERAL_EDUCATION_POLICY_VERSION,
+        "state": "FAILED",
+        "reason_code": expected_audit_reason,
+    }
+
+
+@pytest.mark.parametrize(
     "invalid_receipt", ["wrong_trace", "wrong_pin", "wrong_digest", "wrong_type"]
 )
 async def test_invalid_receipt_cannot_create_pending_review_or_finish_job(invalid_receipt):
@@ -559,9 +613,16 @@ async def test_revoked_scope_cancels_job_without_persisting_input_review():
     )
 
     assert disposition == "CANCELLED"
-    assert [event[0] for event in events] == ["finish"]
+    assert [event[0] for event in events] == ["finish", "audit"]
     assert events[0][1]["status"] == "CANCELLED"
     assert events[0][1]["error_code"] is None
+    assert events[0][2] is events[1][2]
+    assert events[1][1]["result"] is AuditResult.DENIED
+    assert events[1][1]["safe_metadata"] == {
+        "source": GENERAL_EDUCATION_POLICY_VERSION,
+        "state": "CANCELLED",
+        "reason_code": "SCOPE_REVOKED",
+    }
 
 
 def test_candidate_readback_checks_row_payload_provenance_and_content_hash():
@@ -745,6 +806,7 @@ async def test_claim_with_wrong_policy_hash_is_denied_and_only_cancelled():
         lease_token="token-synthetic",
     )
     finished = []
+    audit_events = []
 
     class JobRepository:
         async def require_active_claim(self, **kwargs):
@@ -754,8 +816,13 @@ async def test_claim_with_wrong_policy_hash_is_denied_and_only_cancelled():
         async def finish(self, **kwargs):
             finished.append(kwargs)
 
+    class AuditRepository:
+        async def append(self, **kwargs):
+            audit_events.append(kwargs)
+
     class UnitOfWork:
         research_education_jobs = JobRepository()
+        audit = AuditRepository()
 
         async def __aenter__(self):
             return self
@@ -775,3 +842,10 @@ async def test_claim_with_wrong_policy_hash_is_denied_and_only_cancelled():
     assert len(finished) == 1
     assert finished[0]["status"] == "CANCELLED"
     assert finished[0]["error_code"] is None
+    assert len(audit_events) == 1
+    assert audit_events[0]["result"] is AuditResult.DENIED
+    assert audit_events[0]["safe_metadata"] == {
+        "source": GENERAL_EDUCATION_POLICY_VERSION,
+        "state": "CANCELLED",
+        "reason_code": "SCOPE_REVOKED",
+    }

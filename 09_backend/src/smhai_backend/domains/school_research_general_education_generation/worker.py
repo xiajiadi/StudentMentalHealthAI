@@ -345,6 +345,7 @@ class ResearchGeneralEducationWorker:
                 claim,
                 status=status,
                 error_code=code,
+                reason_code=outcome.reason_code,
                 result=result,
                 input_review=outcome.input_review,
             )
@@ -440,11 +441,13 @@ class ResearchGeneralEducationWorker:
         result: ResearchGeneralEducationWorkerResult,
         error_code=None,
         input_review=None,
+        reason_code=None,
     ) -> ResearchGeneralEducationWorkerResult:
         try:
             review_kwargs = {} if input_review is None else {"input_review": input_review}
+            reason_kwargs = {} if reason_code is None else {"reason_code": reason_code}
             persisted = await self.persistence_adapter.finalize_education_job(
-                claim, status=status, error_code=error_code, **review_kwargs
+                claim, status=status, error_code=error_code, **review_kwargs, **reason_kwargs
             )
         except BackendError as exc:
             if exc.code in {

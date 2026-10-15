@@ -2,6 +2,52 @@
 
 ## Latest increment: 2026-10-15, input-review continuation integration
 
+### Native T0022 checkpoint after first continuation
+
+- Reviewed/pushed dedicated branch HEAD31c3f3bcd9852bf1644293ac82a841cf0def8ce0
+  (0022 integration238d384; separate Backend REIR/Safety REVIEW identifier fix31c3f3b).
+  Root fresh Backend189 passed, DB39 passed; deployment100 passed/1 skipped plus
+  restore-plan31 passed after correcting the test interpreter's SQLAlchemy path.
+  Identifier fix focused52 passed. These are bounded checks, not whole acceptance.
+- T D:/Projects/.StudentMentalHealthAI-school-install-20261015-t,
+  UUID45a13bd60387c9df8e4964ce35304d7c, DB3328/API8102/UI4192/researchCAT57422.
+  Fresh S0021 sealed backup SHA7975b10bda92843dd387525e716870c9f5cc6bac6c4d399206de344446fde532.
+  Restore source238d384, snapshot0021/runtime0022. Restore stdout/exit was not
+  recovered; terminal markers and independent live DB verification support the
+  observed state. Do not invent CLI exit0. Native proof:
+  D:/Dev/temp/psynova-s0021-t0022-plan-20261015-r1-7e7647ce/target-native-db-proof-r2.json,
+  SHA f5c13ca9453434bce5fc21c7798a96a4fa52db6302b058d7262f6a0ad91554f3.
+- T official application start at31c3f3b DID return exit0, independently verified
+  owned Backend/Frontend and research worker readiness. Continuation flag occurs
+  once in owned Backend argv. All research config hashes unchanged except CAT
+  service port57421->57422. Owner proof:
+  D:/Dev/temp/psynova-t0022-start-postflight-ownerproof-20261015-r1.json,
+  SHA a1aac5802332a9a8118bc1c395b12a16aa7e9e4ad434653a01cadf3f3bc43c00.
+  Whole-ready remains false; student conversation UNVERIFIED and researchCAT
+  ownership has not passed the official lifecycle's aggregate owner check.
+- Standard CAT localhost8180 has no listener, while researchCAT57422 is a
+  distinct bearer-only protocol. Standard dependency is UNAVAILABLE; do not point
+  it to57422. Worker is implementing optional owned standard CAT lifecycle in
+  the separate implementation worktree; no service has been manually spawned.
+- Exactly one native authorization POST was performed for REIR_f055d60c586b4f7c96258599c1b31e8d.
+  New round1 REJ_f5b5b728dbcc1ff78114cc972cc617241ed3b61950efe59425eb1f3e88b42ef9,
+  attempt1/FAILED/GENERATION_FAILED, trace TRACE_0e88fa80573d8ff0024f0e778b3d4684.
+  Grant remains CONTINUATION_AUTHORIZEDv2, not consumed; candidates0. Original
+  round0 jobs remain immutable. This is a failed generation, never PASS.
+  D:/Dev/temp/psynova-t0022-input-review-continuation-r2/execution-result.json,
+  SHA c916c6caec46e20bff84ede27020746f664ddebda0b327dc432a51b07cf1ae86.
+- Actual Runtime call status remains UNOBSERVED. Lifecycle discards generic
+  stdout/stderr; inspected Runtime/Safety logs had no stage data. Do not guess
+  the failed stage or replay/reset the failed job. Implementing content-free,
+  allowlisted outcome reason audit in existing audit_events (no schema change),
+  then diagnose a bounded new case. No JSON repair, substitute content, model
+  change or guard weakening. Positive candidate/publication/browser closure is
+  still required before bulk800 generation. Estimate remains75%/25%.
+
+Root reviewed the outcome audit and optional owned standard CAT increment. Fresh focused Backend35 and deployment80 checks passed; the first deployment command referenced a nonexistent test filename and ran no tests, then the corrected discovered path passed. Static authorization validation succeeded without a model call; the failed generation stage is still unresolved. Next: official T restart with unchanged research pins and optional standard CAT8180, then one new bounded observable case. No bulk generation or acceptance is granted.
+
+Earlier increment details below retain their original stage context.
+
 Engineering scope estimate remains approximately75% complete/25% remaining,
 not final acceptance or permission for school production use. ACTIVE; no deadline.
 

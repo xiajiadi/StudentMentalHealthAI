@@ -31,9 +31,43 @@ _POLICY_VERSION = "RESEARCH_GENERAL_EDUCATION_DRAFT_V1"
 _PAYLOAD_SCHEMA = "school-research-general-education-candidate.v1"
 _BATCH_RESOURCE = "school_research_education_candidate_batch"
 _JOB_RESOURCE = "school_research_education_candidate_job"
+_JOB_AUDIT_RESOURCE = "school_research_education_job"
 _CANDIDATE_RESOURCE = "school_research_education_candidate"
 _PUBLICATION_STATUS = "not_approved_for_publication_or_operational_use"
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_SAFE_OUTCOME_REASON_TOKEN = re.compile(r"^[A-Z][A-Z0-9_]{0,95}$")
+_SERVICE_OUTCOME_REASON_CODES = frozenset(
+    {
+        "AWAITING_SOURCE_LIMIT_AND_CONTENT_REVIEW",
+        "INPUT_REVIEW_AUTHORIZATION_INVALID",
+        "INPUT_SAFETY_INVALID",
+        "INPUT_SAFETY_STOP",
+        "INPUT_SAFETY_UNAVAILABLE",
+        "OUTPUT_SAFETY_INVALID",
+        "OUTPUT_SAFETY_STOP",
+        "OUTPUT_SAFETY_UNAVAILABLE",
+        "RESEARCH_BIBLIOGRAPHY_REJECTED",
+        "RESEARCH_CANDIDATE_BINDING_INVALID",
+        "RESEARCH_CITATION_BINDING_REJECTED",
+        "RESEARCH_CLAIM_BOUNDARY_REJECTED",
+        "RESEARCH_CONTENT_EMPTY",
+        "RESEARCH_CONTENT_INVALID",
+        "RESEARCH_CONTENT_SIZE_EXCEEDED",
+        "RESEARCH_EVIDENCE_INELIGIBLE",
+        "RESEARCH_EVIDENCE_INVALID",
+        "RESEARCH_RETRIEVAL_UNAVAILABLE",
+        "RESEARCH_RUNTIME_FAILED",
+        "RESEARCH_RUNTIME_RESPONSE_INVALID",
+        "RESEARCH_ZERO_BOUND_CITATIONS",
+        "RETRIEVAL_SAFETY_INVALID",
+        "RETRIEVAL_SAFETY_STOP",
+        "RETRIEVAL_SAFETY_UNAVAILABLE",
+        "RUNTIME_EVIDENCE_BUDGET_EXCEEDED",
+        "SOURCE_CARD_BINDING_INVALID",
+        "SOURCE_CARD_UNAVAILABLE",
+        "ZERO_EVIDENCE",
+    }
+)
 
 
 def _not_found():
@@ -1375,7 +1409,7 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
             raise
 
     async def finalize_education_job(
-        self, claim, *, status: str, error_code=None, input_review=None
+        self, claim, *, status: str, error_code=None, input_review=None, reason_code=None
     ) -> str:
         """Write a content-free terminal disposition only for the exact live lease."""
         self._require_enabled()
@@ -1481,7 +1515,41 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
                     now=now,
                 )
             )
+            safe_reason_code = self._safe_job_outcome_reason(
+                reason_code, scope_current=current
+            )
+            if safe_reason_code is not None:
+                token = hashlib.sha256(
+                    f"{persisted.job_ref}:{persisted.attempt_count}".encode("ascii")
+                ).hexdigest()[:32]
+                from database_layer.enums import AuditResult
+
+                await uow.audit.append(
+                    action="school_research_education_job.terminal",
+                    resource_type=_JOB_AUDIT_RESOURCE,
+                    resource_public_id=persisted.job_ref,
+                    result=(AuditResult.DENIED if not current else AuditResult.FAILURE),
+                    trace_id=f"TRACE_{token}",
+                    safe_metadata={
+                        "source": _POLICY_VERSION,
+                        "state": disposition,
+                        "reason_code": safe_reason_code,
+                    },
+                )
             return disposition
+
+    @staticmethod
+    def _safe_job_outcome_reason(reason_code, *, scope_current: bool) -> str | None:
+        if not scope_current:
+            return "SCOPE_REVOKED"
+        if (
+            type(reason_code) is not str
+            or _SAFE_OUTCOME_REASON_TOKEN.fullmatch(reason_code) is None
+        ):
+            return None
+        if reason_code in _SERVICE_OUTCOME_REASON_CODES:
+            return reason_code
+        return "UNCLASSIFIED_OUTCOME"
 
     def _input_review_evidence(self, receipt, *, now, retention_due_at=None):
         """Rebind the actual stopped-input receipt to this server's trusted pins."""
