@@ -1,5 +1,35 @@
 # PsyNova current execution state
 
+## Current bounded work: 2026-10-16, diagnostic observed
+
+- Claim diagnostic increment85847bfec90ac9d2c787e460cf6b01417ad788f9 is reviewed,
+  pushed and loaded after official T stop/start. Root fresh63 focused checks passed;
+  guards/regex/model/prompt remained unchanged. Stop exit0; the start command's exit
+  was lost, but fresh official status exit0 verifies Backend/Frontend/standardCAT
+  OWNED/READY. Manifest SHA9b4f83b228a32c68da86f30dfc90cde121d14a5c4514c96f2bfe660fc2e604cf.
+- One new offset3 case plus one actual input-review continuation ran through the
+  existing authorized workflow, no retry. Round1
+  REJ_25c3f82d8465d2b36bc82ad1e37a35746b8da1b9665a9a443cdc2eb4d0ac6d02
+  ended ABSTAINED/RESEARCH_CLAIM_BOUNDARY_REJECTED attempt1. Durable diagnostic:
+  OBSERVATION / DIAGNOSIS / match_count1, deterministic trace valid. Logout true;
+  old jobs/reviews unchanged, no candidate content exported or published.
+  D:/Dev/temp/psynova-general-education-one-case-diagnostic-20261016-result.json.
+- The R3 Raniti excerpt itself contains a diagnostic-outcomes research limitation.
+  A keyword match alone does not prove the generated sentence made a diagnosis;
+  rejected body was not retained. Do not weaken the regex, omit source qualifiers,
+  manufacture a candidate or infer the old failed case's cause.
+- Next implementation direction: immutable versioned prompt contracts with exact
+  v1.0.0 retained, stronger body-field constraints for new generations, historical
+  read compatibility and rejection of cross-prompt continuation. Worker is first
+  examining concrete interfaces before coding. No prompt has changed yet.
+- Parallel delivery work: compose official dependency/workspace/migration/runtime/
+  synthetic-seed/lifecycle/browser tools into a fresh-install entrypoint in the
+  separate school-install-entrypoint worktree. Explicit fresh external target,
+  no old DB reset/reseed or asset redistribution. No fresh native install yet.
+- Estimate remains about75%/25%, ACTIVE without shutdown deadline. Positive held
+  candidate/review/publish/student-read/revoke and fresh install acceptance remain
+  incomplete; no professional, clinical or school-production approval.
+
 ## Latest native checkpoint: 2026-10-16 (UTC 2026-10-15)
 
 Engineering estimate remains about75% complete/25% remaining. ACTIVE; no current
