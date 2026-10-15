@@ -1,5 +1,37 @@
 # PsyNova current execution state
 
+## Current checkpoint: 2026-10-16, real candidate held; read lineage under diagnosis
+
+- Engineering estimate remains about80% complete/20% remaining. No shutdown
+  deadline. Dedicated development branch and origin are at f33a7db before this note.
+- f33a7db preserves the complete closed25-field R3 retrieval trace. Actual public
+  package read-only rebuild produces the identical evidence-bundle hash; unknown
+  fields remain denied. Root ran165 focused Backend checks successfully.
+  Evidence:D:/Dev/temp/psynova-z0023-output-trace-roundtrip-20261016-r1.json.
+- Z was officially stopped/preflighted/restarted on that source, each exit0.
+  Current lifecycle manifest SHA24a647c722206ebb4e8a61186035e34d8811c949178f6f82388f60c0ead0bf67.
+  App listeners remain owned/ready; whole_ready=false is retained.
+- Offset7 ran exactly once:actual input authorization, local generation, then HELD
+  job REJ_7b9ab40cb8e05e2a305d6237212fd09770174310bd1b39be21ea0d992c3fb6dc.
+  Its input review is CONSUMED/v3; candidate count1, output-review count0 because
+  the output Safety allowed this case. No student publication or body export.
+  Evidence:D:/Dev/temp/psynova-z0023-onecase-offset7-20261016/execution-result.json.
+- Real specialist browser candidate-list GET returns409, while the same task's
+  generation/input/output-review lists return200. Login/context/logout succeeded;
+  no business writes, nonlocal calls or candidate screenshots occurred. Root has
+  assigned exact candidate/job/input-review lineage diagnosis, not a guard bypass.
+  Evidence:D:/Dev/temp/psynova-z0023-candidate-detail-20261016-r3/result.json.
+- Exact read-only diagnosis isolated the timestamp mismatch:the candidate's DB
+  default created_at was61.351ms later than the input review's transaction clock;
+  candidate DTO also returned naive timestamps while review DTO used UTC-aware.
+  bdb89ac explicitly writes one clock and normalizes DTO UTC representation,
+  retaining strict lineage equality. Root's24 focused DB/feedback checks passed.
+  The existing row is still unchanged; exact-row audited correction is under
+  review before source reload and browser rerun. No body has been read yet.
+- Next:repair the proven read defect, review actual candidate/source content,
+  then adoption/case review/draft/publication/self-read/revocation in isolated
+  synthetic accounts. Do not replay offset6/7 or fabricate a positive output review.
+
 ## Current checkpoint: 2026-10-16, 0023 native runtime and output-capture gap
 
 - Estimate remains80% engineering complete/20% remaining. ACTIVE, no shutdown
