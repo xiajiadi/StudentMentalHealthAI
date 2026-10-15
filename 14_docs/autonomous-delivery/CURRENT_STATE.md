@@ -16,8 +16,13 @@ boundary prose into the disclaimer field (prompt1.2.0), preserves existing
 claim/bibliography/citation guards, and adds closed category/field diagnostics.
 80 focused checks passed. One fresh r3 request then completed on the fixed
 local7B with PROCEED,3 citations and policy/theory/intervention retrieval hits.
-Its original approved content still requires Controller/UI review; a successful
-single turn is not800-job or production acceptance.
+GET-only browser proof r4 passed and Root viewed the screenshot. However Root
+content review FAILED grounding: the answer introduced60-minute activity advice
+absent from the selected text and positive effects unsupported by the four short
+chunks; the sleep review chunk instead reports typically ineffective education
+interventions. Generation/display success is not content acceptance. Preserve
+the original turn; do not edit or reuse it as accepted evidence. Next fixes must
+address excerpt context and evidence-only generation, including negative findings.
 
 Q DB resumed through official restored-install mode; backup SHA matches below.
 Q application RUNNING with all original research flags and fixed7B profile:
@@ -37,7 +42,18 @@ Conversation CONV_a327f7dbf4c342179e8d0c6220c98767;
 turn TURN_fda41a1573ea4c3b9a1faee57612a047; prompt1.2.0/attempt1;
 content SHA8fa46118ca2bac13e844efc58b57f180c64fdee7db6e76fbc9ed46d56f60846b.
 No CAT fields or cloud fallback; authenticated logout succeeded.
-Next: actual approved-content and GET-only UI review; bounded per-session
+GET-only UI proof and screenshot:
+D:/Dev/temp/psynova-q0019-student-research-approved-content-ui-r4/.
+External r3 read helper had a base-hash typo and failed before authentication;
+r4 browser helper corrected and programmatically verified all file pins.
+Reviewed batch queue code28b99ff has33 focused tests: singleUOW,limit100, per-item
+scope, stable cursor, idempotency member-change conflict and rollback. Native
+queue validation is pending; no800 generation claim.
+Reviewed offline dependency codefda531e has29 focused tests and extends existing
+locked/offline preparation to RAG/Runtime/Safety (RAG runtime extra also includes
+dense packages). No fresh target installation was run. MySQL/Ollama/model assets
+retain their existing separate strict preflight.
+Next: evidence context and content-grounding repair; native bounded per-session
 staff programme batch queue (HELD/staff reference only), preserving800 cohort.
 The completion-trigger research education lane currently abstains without an
 approved processor; do not describe it as800 generated student reports.
