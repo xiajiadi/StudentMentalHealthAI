@@ -1,5 +1,50 @@
 # PsyNova current execution state
 
+## Current checkpoint: 2026-10-16, prompt reload and fresh install
+
+Engineering estimate remains about75% complete/25% remaining; not professional
+or school-production approval. ACTIVE, no current shutdown deadline.
+
+- Dedicated branch reviewed/pushed through ad8baa3f5997067cdc4b72a2b7ad2c55f128226b.
+  Immutable prompt catalog af6b7dd keeps exact1.0.0 records readable/revocable;
+  current1.1.0 cannot use historical continuation grants. Root117 focused checks
+  passed. Canonical schema asset checkout uses LF; no schema semantics changed.
+- T and private Runtime now load prompt1.1.0 from source2afc958. Reload helper
+  failed after Runtime spawn because of a missing datetime import; preserved
+  checkpoint, no blind rerun. Reviewed resume-only helper performed official T
+  start exit0; fresh status exit0 verifies DB0022 and Backend/Frontend/standardCAT
+  OWNED/READY. Runtime54428/2388 READY, fixedOllama0.33.3/7B digest unchanged.
+  Lifecycle SHA5b27385e474e9fae8b0dc9f5008b847a40e8076b7404cf2d48f74e8d2ec52945.
+  Owner/recovery evidence D:/Dev/temp/psynova-t0022-prompt-v1-1-resume-272e6fa803a34111b063078ab1440461.json
+  SHA33d8f7b60d00abf6d91409e16d8ee6204b7579871a5ef3cc597899aa4566133f.
+  whole_ready remains false; researchCAT owner and student conversation unverified.
+- Root authenticated GET/list verified3 historical1.0.0 AUTHv2 reviews, all now
+  continuation_enabled=false; logout succeeded, no business mutation requests.
+  D:/Dev/temp/psynova-v11-legacy-review-read-20261016-result.json.
+- One new1.1.0 offset4 case plus one actual input-review continuation ran once.
+  Round1 REJ_acac808103bad25b8ca6532e262aa5380b87b0705c31ce10bf6eb5ab716eebef
+  ended REVIEW_REQUIRED/SAFETY_BLOCKED, attempt1, terminal OUTPUT_SAFETY_STOP.
+  Actual review REIR_62dae2c8923540be87883621569bacc8 remains AUTHv2.
+  No HELD candidate or content export/publication; logout succeeded. Total9
+  terminal general-education jobs,4 AUTH reviews, candidate0. Do not retry or
+  infer the exact Safety reason without evidence. Investigate safe diagnostics.
+  Result D:/Dev/temp/psynova-general-education-v11-one-case-20261016-result.json
+  SHA66c7c86252b5d949135721fbe832968bf872d56551f967da1e5e5e69ae40d00d.
+- Fresh installer2afc958 composes official offline dependency/workspace/migration/
+  runtime/seed/lifecycle/role-browser tools. Native plan found a7-plan-stage vs
+  8-receipt-stage mismatch; ad8baa3 fixes exact names/order/status validation.
+  Root23 focused tests passed. Fixed D: source/deps copies atad8baa3 plan READY.
+- One actual fresh V install completed dependencies/workspace, then failed schema
+  verification. V d0bfe8ccb3de7b9927a596d5a1dd2e6a, DB3330 retained; no runtime
+  identity/seed/application/browser. Read-only DB has revision0022 but official
+  schema check reports CURRENT_SCHEMA_DRIFT; exact metadata cause under review.
+  Preserve D:/Projects/..StudentMentalHealthAI-school-install-20261016-v.school-install-state.json
+  and V target. Do not reset/reseed, retry DDL or mark schema accepted.
+- Next: identify output Safety reason without raw content; fix the exact fresh
+  schema drift cause; then prove positive candidate/adopt/review/publish/self-read/
+  revoke and fresh installation. Research-only feedback remains distinct from L2
+  or professional approval. No batch800 inference until bounded path succeeds.
+
 ## Current bounded work: 2026-10-16, diagnostic observed
 
 - Claim diagnostic increment85847bfec90ac9d2c787e460cf6b01417ad788f9 is reviewed,
