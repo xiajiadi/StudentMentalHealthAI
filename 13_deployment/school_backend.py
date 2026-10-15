@@ -24,6 +24,10 @@ from prepare_school_runtime import (
     verify_runtime_grants,
 )
 from private_settings import read_private
+from school_research_education_draft_config import (
+    ResearchEducationDraftConfigError,
+    load_research_education_draft_config,
+)
 from school_research_student_config import (
     StudentResearchConfigError,
     load_student_research_config,
@@ -70,6 +74,7 @@ _RESEARCH_PROGRAMME_MODEL_DIGEST_SHA256 = (
 _RESEARCH_PROGRAMME_PROMPT_REF = "PROMPT_staff_school_programme_research_v1"
 _RESEARCH_PROGRAMME_PROMPT_VERSION = "1.2.0"
 _RESEARCH_PROGRAMME_RUNTIME_URL = "http://127.0.0.1:8161"
+_RESEARCH_EDUCATION_RUNTIME_URL = _RESEARCH_PROGRAMME_RUNTIME_URL
 _RESEARCH_PROGRAMME_MANIFEST_MAX_BYTES = 4 * 1024 * 1024
 RESEARCH_PROGRAMME_MANIFEST_SHA256 = _RESEARCH_PROGRAMME_MANIFEST_SHA256
 RESEARCH_PROGRAMME_PROCESSOR_POLICY_SHA256 = _RESEARCH_PROGRAMME_PROCESSOR_POLICY_SHA256
@@ -118,6 +123,10 @@ class ResearchCLIConfigError(PreparationError):
             "student_research_config_incomplete",
             "student_research_config_invalid",
             "student_research_config_source_invalid",
+            "research_education_draft_config_incomplete",
+            "research_education_draft_config_invalid",
+            "research_education_draft_source_mismatch",
+            "research_education_draft_study_mismatch",
         }
         self.code = code if code in allowed else "research_config_invalid"
         super().__init__(self.code)
@@ -197,6 +206,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--research-programme-manifest-sha256")
     parser.add_argument("--research-student-config-file", type=Path)
     parser.add_argument("--research-student-config-sha256")
+    parser.add_argument("--research-education-draft-config-file", type=Path)
+    parser.add_argument("--research-education-draft-config-sha256")
     return parser
 
 
@@ -213,6 +224,70 @@ def build_research_student_settings_kwargs(args: argparse.Namespace) -> dict[str
     except StudentResearchConfigError as exc:
         raise ResearchCLIConfigError(exc.code) from None
     return {"school_research_student_conversation": config.core_settings()}
+
+
+def build_research_education_draft_settings_kwargs(
+    args: argparse.Namespace,
+    research_settings: dict[str, object],
+) -> dict[str, object]:
+    """Validate the explicit held-draft lane against the approved source and study."""
+    config_file = getattr(args, "research_education_draft_config_file", None)
+    config_sha256 = getattr(args, "research_education_draft_config_sha256", None)
+    if config_file is None and config_sha256 is None:
+        return {"research_general_education_draft": {"enabled": False}}
+    if config_file is None or config_sha256 is None:
+        raise ResearchCLIConfigError("research_education_draft_config_incomplete")
+
+    student_file = getattr(args, "research_student_config_file", None)
+    student_sha256 = getattr(args, "research_student_config_sha256", None)
+    if student_file is None or student_sha256 is None:
+        raise ResearchCLIConfigError("research_education_draft_source_mismatch")
+    study_file = getattr(args, "research_study_use_file", None)
+    study_sha256 = getattr(args, "research_study_use_sha256", None)
+    latest_end_value = getattr(args, "research_latest_study_end", None)
+    if (
+        study_file is None
+        or study_sha256 is None
+        or research_settings.get("school_research_study_use_file") is None
+        or research_settings.get("school_research_source_rights_verified") is not True
+    ):
+        raise ResearchCLIConfigError("research_education_draft_study_mismatch")
+
+    try:
+        draft = load_research_education_draft_config(config_file, config_sha256)
+        student_source = load_student_research_config(student_file, student_sha256)
+        if (
+            draft.student_source.config_sha256 != student_source.config_sha256
+            or draft.student_source.school_id != student_source.school_id
+            or draft.student_source.manifest_file != student_source.manifest_file
+            or draft.student_source.manifest_sha256 != student_source.manifest_sha256
+            or draft.student_source != student_source
+        ):
+            raise ResearchCLIConfigError("research_education_draft_source_mismatch")
+
+        from smhai_backend.domains.school_research.study_use import (
+            load_research_study_use_policy,
+        )
+
+        policy = load_research_study_use_policy(
+            _validated_absolute_path(study_file, kind="file"),
+            expected_sha256=_validated_sha256(study_sha256),
+            source_rights_verified=True,
+            latest_allowed_ends_at=_parse_study_end(latest_end_value),
+        )
+        if (
+            policy.source_rights_verified is not True
+            or policy.school_id != draft.school_id
+            or policy.study_ref != draft.school_study_ref
+        ):
+            raise ResearchCLIConfigError("research_education_draft_study_mismatch")
+    except ResearchCLIConfigError:
+        raise
+    except (ResearchEducationDraftConfigError, StudentResearchConfigError):
+        raise ResearchCLIConfigError("research_education_draft_config_invalid") from None
+    except (AttributeError, ImportError, OSError, RuntimeError, TypeError, ValueError):
+        raise ResearchCLIConfigError("research_education_draft_study_mismatch") from None
+    return {"research_general_education_draft": draft.core_settings()}
 
 
 def build_research_settings_kwargs(args: argparse.Namespace, workspace: Path) -> dict[str, object]:
@@ -343,6 +418,19 @@ def build_research_settings_kwargs(args: argparse.Namespace, workspace: Path) ->
                     "shutdown_drain_seconds": 10.0,
                 },
             }
+        education_draft_enabled = (
+            getattr(args, "research_education_draft_config_file", None) is not None
+            or getattr(args, "research_education_draft_config_sha256", None) is not None
+        )
+        if education_draft_enabled:
+            programme_settings.setdefault(
+                "research_programme_runtime",
+                {
+                    "mode": "http",
+                    "base_url": _RESEARCH_EDUCATION_RUNTIME_URL,
+                    "timeout": {"read": 65.0},
+                },
+            )
     except ResearchCLIConfigError:
         raise
     except (OSError, ValueError, TypeError):
@@ -627,6 +715,9 @@ def build_cli_settings_kwargs(
     research_kwargs = build_research_settings_kwargs(args, args.workspace)
     settings_kwargs.update(research_kwargs)
     settings_kwargs.update(build_research_student_settings_kwargs(args))
+    settings_kwargs.update(
+        build_research_education_draft_settings_kwargs(args, research_kwargs)
+    )
     settings_kwargs["research_education_worker"] = {
         "enabled": args.enable_research_education_worker
     }
@@ -706,6 +797,9 @@ def main() -> int:
             type(programme_worker) is dict and programme_worker.get("enabled") is True
         ) or (
             type(student_lane) is dict and student_lane.get("enabled") is True
+        ) or (
+            type(settings_kwargs.get("research_general_education_draft")) is dict
+            and settings_kwargs["research_general_education_draft"].get("enabled") is True
         ):
             _prepare_research_programme_rag_import(repo)
         if research_kwargs:

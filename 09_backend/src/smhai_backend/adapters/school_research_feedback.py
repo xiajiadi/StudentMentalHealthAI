@@ -12,6 +12,9 @@ from smhai_backend.adapters.school_professional_reviews import (
 )
 from smhai_backend.core.errors import BackendError, ErrorCode, error
 from smhai_backend.core.request_context import get_request_context
+from smhai_backend.domains.research_general_education.schemas import (
+    ResearchGeneralEducationCandidatePayload,
+)
 from smhai_backend.domains.school_research.study_use import (
     ResearchStudyProfilePin,
     ResearchStudyUseError,
@@ -20,6 +23,7 @@ from smhai_backend.domains.school_research.study_use import (
 
 _CASE_NOTE_SCHEMA = "school_research_review_note.v1"
 _FEEDBACK_CONTENT_SCHEMA = "school_research_feedback_content.v1"
+_FEEDBACK_CONTENT_SCHEMA_V2 = "school_research_feedback_content.v2"
 _CASE_RESOURCE = "school_research_review_case"
 _FEEDBACK_RESOURCE = "school_research_feedback"
 _PUBLICATION_NOT_APPROVED = "not_approved_for_publication_or_operational_use"
@@ -79,9 +83,11 @@ class SchoolResearchFeedbackPersistenceAdapter(SchoolProfessionalReviewPersisten
         persistence,
         *,
         study_use_policy: ResearchStudyUsePolicy | None = None,
+        education_candidate_validator=None,
     ):
         super().__init__(persistence)
         self.study_use_policy = study_use_policy
+        self.education_candidate_validator = education_candidate_validator
 
     def _now(self) -> tuple[datetime, datetime]:
         value = self._utc_now()
@@ -412,11 +418,18 @@ class SchoolResearchFeedbackPersistenceAdapter(SchoolProfessionalReviewPersisten
             raise error(ErrorCode.DEPENDENCY_INVALID_RESPONSE, detail="review note is unavailable")
         return value["note"]
 
-    def _feedback_content(self, dto) -> tuple[str, str]:
+    def _feedback_content(
+        self,
+        dto,
+        *,
+        candidate_ref: str | None = None,
+        candidate_payload: ResearchGeneralEducationCandidatePayload | None = None,
+    ) -> dict:
         if (
             not dto.cipher_format_version
             or not dto.key_version
-            or dto.payload_schema_version != _FEEDBACK_CONTENT_SCHEMA
+            or dto.payload_schema_version
+            not in {_FEEDBACK_CONTENT_SCHEMA, _FEEDBACK_CONTENT_SCHEMA_V2}
         ):
             raise error(
                 ErrorCode.DEPENDENCY_INVALID_RESPONSE,
@@ -438,20 +451,81 @@ class SchoolResearchFeedbackPersistenceAdapter(SchoolProfessionalReviewPersisten
                 ErrorCode.DEPENDENCY_INVALID_RESPONSE,
                 detail="feedback content is unavailable",
             ) from None
+        if not isinstance(value, dict):
+            raise error(
+                ErrorCode.DEPENDENCY_INVALID_RESPONSE, detail="feedback content is unavailable"
+            )
+        common_fields = {"feedback_ref", "content_revision", "title", "body"}
+        if dto.payload_schema_version == _FEEDBACK_CONTENT_SCHEMA:
+            if (
+                set(value) != common_fields
+                or getattr(dto, "source_candidate_id", None) is not None
+                or getattr(dto, "source_candidate_revision", None) is not None
+            ):
+                raise error(
+                    ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                    detail="feedback content is unavailable",
+                )
+            citation_rows = []
+            source_cards = []
+            source_manifest_sha256 = None
+        else:
+            v2_fields = common_fields | {
+                "source_candidate_ref",
+                "source_candidate_revision",
+                "source_manifest_sha256",
+                "source_provenance",
+                "citations",
+                "source_cards",
+            }
+            if (
+                set(value) != v2_fields
+                or candidate_payload is None
+                or type(candidate_payload) is not ResearchGeneralEducationCandidatePayload
+                or getattr(dto, "source_candidate_id", None) is None
+                or getattr(dto, "source_candidate_revision", None) != 1
+                or candidate_ref is None
+                or value.get("source_candidate_ref") != candidate_ref
+                or value.get("source_candidate_revision") != 1
+                or value.get("source_manifest_sha256")
+                != candidate_payload.provenance.source_manifest_sha256
+                or value.get("source_provenance")
+                != candidate_payload.provenance.model_dump(mode="json")
+                or value.get("citations")
+                != [item.model_dump(mode="json") for item in candidate_payload.citations]
+                or value.get("source_cards")
+                != [item.model_dump(mode="json") for item in candidate_payload.source_cards]
+            ):
+                raise error(
+                    ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                    detail="feedback source content is unavailable",
+                )
+            citation_rows = [
+                item.model_dump(mode="python") for item in candidate_payload.citations
+            ]
+            source_cards = [
+                item.model_dump(mode="python") for item in candidate_payload.source_cards
+            ]
+            source_manifest_sha256 = candidate_payload.provenance.source_manifest_sha256
         if (
-            not isinstance(value, dict)
-            or set(value) != {"feedback_ref", "content_revision", "title", "body"}
-            or value["feedback_ref"] != dto.feedback_ref
+            value.get("feedback_ref") != dto.feedback_ref
+            or type(value.get("content_revision")) is not int
             or value["content_revision"] != dto.content_revision
-            or not isinstance(value["title"], str)
+            or not isinstance(value.get("title"), str)
             or not 1 <= len(value["title"]) <= 120
-            or not isinstance(value["body"], str)
+            or not isinstance(value.get("body"), str)
             or not 1 <= len(value["body"]) <= 4000
         ):
             raise error(
                 ErrorCode.DEPENDENCY_INVALID_RESPONSE, detail="feedback content is unavailable"
             )
-        return value["title"], value["body"]
+        return {
+            "title": value["title"],
+            "body": value["body"],
+            "citations": citation_rows,
+            "source_cards": source_cards,
+            "source_manifest_sha256": source_manifest_sha256,
+        }
 
     def _case_projection(self, case, *, task_ref: str, session_ref: str):
         if (
@@ -471,7 +545,16 @@ class SchoolResearchFeedbackPersistenceAdapter(SchoolProfessionalReviewPersisten
             "review_note": self._review_note(case),
         }
 
-    def _feedback_projection(self, record, *, case_ref: str, session_ref: str, student: bool):
+    def _feedback_projection(
+        self,
+        record,
+        *,
+        case_ref: str,
+        session_ref: str,
+        student: bool,
+        candidate_ref: str | None = None,
+        candidate_payload: ResearchGeneralEducationCandidatePayload | None = None,
+    ):
         if (
             record.feedback_kind != "GENERAL_EDUCATIONAL_SUPPORT"
             or record.purpose != "RESEARCH_SIMULATION"
@@ -484,7 +567,9 @@ class SchoolResearchFeedbackPersistenceAdapter(SchoolProfessionalReviewPersisten
                 ErrorCode.DEPENDENCY_INVALID_RESPONSE,
                 detail="research feedback is unavailable",
             )
-        title, body = self._feedback_content(record)
+        content = self._feedback_content(
+            record, candidate_ref=candidate_ref, candidate_payload=candidate_payload
+        )
         common = {
             "feedback_ref": record.feedback_ref,
             "session_ref": session_ref,
@@ -496,8 +581,11 @@ class SchoolResearchFeedbackPersistenceAdapter(SchoolProfessionalReviewPersisten
             "content_revision": record.content_revision,
             "state_version": record.state_version,
             "status": record.status,
-            "title": title,
-            "body": body,
+            "title": content["title"],
+            "body": content["body"],
+            "citations": content["citations"],
+            "source_cards": content["source_cards"],
+            "source_manifest_sha256": content["source_manifest_sha256"],
             "created_at": record.created_at,
             "published_at": record.published_at,
         }
@@ -509,6 +597,96 @@ class SchoolResearchFeedbackPersistenceAdapter(SchoolProfessionalReviewPersisten
             "case_version": record.case_version,
             "revoked_at": record.revoked_at,
         }
+
+    def _require_education_candidate_validator(self):
+        validator = self.education_candidate_validator
+        if not callable(validator):
+            raise error(
+                ErrorCode.DEPENDENCY_UNAVAILABLE,
+                detail="research education sources are unavailable",
+                retryable=True,
+            )
+        return validator
+
+    async def _candidate_for_feedback(
+        self,
+        uow,
+        *,
+        actor,
+        task,
+        scope,
+        record=None,
+        candidate_ref: str | None = None,
+    ):
+        """Resolve and validate candidate lineage inside the caller's authorized UOW."""
+        candidate_model = self._db_models.SchoolResearchEducationCandidate
+        source_id = getattr(record, "source_candidate_id", None) if record is not None else None
+        source_revision = (
+            getattr(record, "source_candidate_revision", None) if record is not None else None
+        )
+        if candidate_ref is None and source_id is None:
+            if source_revision is not None:
+                raise error(
+                    ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                    detail="feedback source content is unavailable",
+                )
+            return None, None
+        if (source_id is None) != (source_revision is None):
+            raise error(
+                ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                detail="feedback source content is unavailable",
+            )
+
+        validator = self._require_education_candidate_validator()
+        if candidate_ref is not None:
+            candidate = await uow.research_education_candidates.get_for_task(
+                school_id=actor.school_id,
+                task_id=task.id,
+                candidate_ref=candidate_ref,
+            )
+        else:
+            stored_ref = await uow.session.scalar(
+                self._select(candidate_model.candidate_ref).where(
+                    candidate_model.id == source_id,
+                    candidate_model.school_id == actor.school_id,
+                    candidate_model.task_id == task.id,
+                    candidate_model.research_session_id == scope.research_session_id,
+                )
+            )
+            if stored_ref is None:
+                raise _not_found()
+            candidate = await uow.research_education_candidates.get_for_task(
+                school_id=actor.school_id,
+                task_id=task.id,
+                candidate_ref=stored_ref,
+            )
+        if (
+            candidate is None
+            or candidate.scope.research_session_id != scope.research_session_id
+            or candidate.scope.school_id != scope.school_id
+            or candidate.scope.task_id != scope.task_id
+            or candidate.scope.class_id != scope.class_id
+            or candidate.scope.task_enrollment_id != scope.task_enrollment_id
+            or candidate.scope.subject_id != scope.subject_id
+            or candidate.scope.task_binding_id != scope.task_binding_id
+            or candidate.scope.profile_version_id != scope.profile_version_id
+            or candidate.scope.profile_ref != scope.profile_ref
+            or candidate.scope.profile_version_number != scope.profile_version_number
+            or candidate.scope.profile_sha256 != scope.profile_sha256
+            or candidate.scope.response_origin != scope.response_origin
+            or candidate.status != "ADOPTED"
+            or candidate.content_revision != 1
+            or (source_id is not None and candidate.id != source_id)
+            or (source_revision is not None and candidate.content_revision != source_revision)
+        ):
+            raise _not_found()
+        payload = validator(candidate, scope)
+        if type(payload) is not ResearchGeneralEducationCandidatePayload:
+            raise error(
+                ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                detail="feedback source content is unavailable",
+            )
+        return candidate, payload
 
     async def school_research_feedback_list_tasks(self, actor):
         now, db_now = self._now()
@@ -1022,6 +1200,7 @@ class SchoolResearchFeedbackPersistenceAdapter(SchoolProfessionalReviewPersisten
         body,
         idempotency,
         trace_id,
+        candidate_ref=None,
     ):
         from sqlalchemy import func
 
@@ -1049,6 +1228,17 @@ class SchoolResearchFeedbackPersistenceAdapter(SchoolProfessionalReviewPersisten
             scope, _metadata, retention, _profile, _pin = await self._current_scope(
                 uow, actor, task, session_ref=session_ref, at=now, lock=True
             )
+            candidate = candidate_payload = None
+            if candidate_ref is not None:
+                if row.status != "APPROVED" or row.version != expected_case_version:
+                    raise _workflow_conflict()
+                candidate, candidate_payload = await self._candidate_for_feedback(
+                    uow,
+                    actor=actor,
+                    task=task,
+                    scope=scope,
+                    candidate_ref=candidate_ref,
+                )
             claim = await self._school_idempotency_begin(uow, idempotency)
             if claim.replayed:
                 ref = await self._receipt_resource(claim, _FEEDBACK_RESOURCE)
@@ -1064,8 +1254,20 @@ class SchoolResearchFeedbackPersistenceAdapter(SchoolProfessionalReviewPersisten
                 )
                 if dto is None:
                     raise _not_found()
+                if candidate_ref is not None and (
+                    getattr(dto, "source_candidate_id", None) != candidate.id
+                    or getattr(dto, "source_candidate_revision", None) != 1
+                ):
+                    raise _workflow_conflict()
+                if candidate_ref is None and getattr(dto, "source_candidate_id", None) is not None:
+                    raise _workflow_conflict()
                 return self._feedback_projection(
-                    dto, case_ref=row.review_ref, session_ref=session_ref, student=False
+                    dto,
+                    case_ref=row.review_ref,
+                    session_ref=session_ref,
+                    student=False,
+                    candidate_ref=candidate_ref,
+                    candidate_payload=candidate_payload,
                 )
             if row.status != "APPROVED" or row.version != expected_case_version:
                 raise _workflow_conflict()
@@ -1079,14 +1281,38 @@ class SchoolResearchFeedbackPersistenceAdapter(SchoolProfessionalReviewPersisten
             )
             ref = f"RFEED_{uuid4().hex}"
             next_revision = latest_revision + 1
+            content = {
+                "feedback_ref": ref,
+                "content_revision": next_revision,
+                "title": title,
+                "body": body,
+            }
+            candidate_id = candidate_revision = None
+            payload_schema_version = _FEEDBACK_CONTENT_SCHEMA
+            if candidate is not None and candidate_payload is not None:
+                content.update(
+                    {
+                        "source_candidate_ref": candidate.candidate_ref,
+                        "source_candidate_revision": candidate.content_revision,
+                        "source_manifest_sha256": (
+                            candidate_payload.provenance.source_manifest_sha256
+                        ),
+                        "source_provenance": candidate_payload.provenance.model_dump(mode="json"),
+                        "citations": [
+                            item.model_dump(mode="json") for item in candidate_payload.citations
+                        ],
+                        "source_cards": [
+                            item.model_dump(mode="json")
+                            for item in candidate_payload.source_cards
+                        ],
+                    }
+                )
+                candidate_id = candidate.id
+                candidate_revision = candidate.content_revision
+                payload_schema_version = _FEEDBACK_CONTENT_SCHEMA_V2
             protected = self.protection.encrypt_json(
-                {
-                    "feedback_ref": ref,
-                    "content_revision": next_revision,
-                    "title": title,
-                    "body": body,
-                },
-                payload_schema_version=_FEEDBACK_CONTENT_SCHEMA,
+                content,
+                payload_schema_version=payload_schema_version,
             )
             dto = await _repo_call(
                 uow.research_feedback.create_draft(
@@ -1102,6 +1328,8 @@ class SchoolResearchFeedbackPersistenceAdapter(SchoolProfessionalReviewPersisten
                     actor_membership_role_id=role_id,
                     trace_id=trace_id,
                     retention_due_at=retention,
+                    source_candidate_id=candidate_id,
+                    source_candidate_revision=candidate_revision,
                     now=now,
                 )
             )
@@ -1118,7 +1346,12 @@ class SchoolResearchFeedbackPersistenceAdapter(SchoolProfessionalReviewPersisten
                 uow, claim, resource_type=_FEEDBACK_RESOURCE, result_ref=dto.feedback_ref
             )
             return self._feedback_projection(
-                dto, case_ref=row.review_ref, session_ref=session_ref, student=False
+                dto,
+                case_ref=row.review_ref,
+                session_ref=session_ref,
+                student=False,
+                candidate_ref=candidate_ref,
+                candidate_payload=candidate_payload,
             )
 
     async def school_research_feedback_list_for_case(self, actor, case_ref, *, offset, limit):
@@ -1162,9 +1395,21 @@ class SchoolResearchFeedbackPersistenceAdapter(SchoolProfessionalReviewPersisten
                         ErrorCode.DEPENDENCY_INVALID_RESPONSE,
                         detail="research feedback data is unavailable",
                     )
+                candidate, candidate_payload = await self._candidate_for_feedback(
+                    uow,
+                    actor=actor,
+                    task=task,
+                    scope=scope,
+                    record=record,
+                )
                 items.append(
                     self._feedback_projection(
-                        record, case_ref=row.review_ref, session_ref=session_ref, student=False
+                        record,
+                        case_ref=row.review_ref,
+                        session_ref=session_ref,
+                        student=False,
+                        candidate_ref=(candidate.candidate_ref if candidate is not None else None),
+                        candidate_payload=candidate_payload,
                     )
                 )
             return {"items": items, "total": count}
@@ -1257,6 +1502,13 @@ class SchoolResearchFeedbackPersistenceAdapter(SchoolProfessionalReviewPersisten
             scope, _metadata, _retention, _profile, _pin = await self._current_scope(
                 uow, actor, task, session_ref=session_ref, at=now, lock=True
             )
+            candidate, candidate_payload = await self._candidate_for_feedback(
+                uow,
+                actor=actor,
+                task=task,
+                scope=scope,
+                record=record,
+            )
             claim = await self._school_idempotency_begin(uow, idempotency)
             target_resource = "PUBLISHED" if publish else "REVOKED"
             if claim.replayed:
@@ -1269,7 +1521,12 @@ class SchoolResearchFeedbackPersistenceAdapter(SchoolProfessionalReviewPersisten
                 if current is None or current.status != target_resource:
                     raise _workflow_conflict()
                 return self._feedback_projection(
-                    current, case_ref=case.review_ref, session_ref=session_ref, student=False
+                    current,
+                    case_ref=case.review_ref,
+                    session_ref=session_ref,
+                    student=False,
+                    candidate_ref=(candidate.candidate_ref if candidate is not None else None),
+                    candidate_payload=candidate_payload,
                 )
             if publish:
                 dto = await _repo_call(
@@ -1309,7 +1566,12 @@ class SchoolResearchFeedbackPersistenceAdapter(SchoolProfessionalReviewPersisten
                 uow, claim, resource_type=_FEEDBACK_RESOURCE, result_ref=dto.feedback_ref
             )
             return self._feedback_projection(
-                dto, case_ref=case.review_ref, session_ref=session_ref, student=False
+                dto,
+                case_ref=case.review_ref,
+                session_ref=session_ref,
+                student=False,
+                candidate_ref=(candidate.candidate_ref if candidate is not None else None),
+                candidate_payload=candidate_payload,
             )
 
     async def school_research_feedback_list_student(self, actor, *, offset, limit):
@@ -1540,8 +1802,21 @@ class SchoolResearchFeedbackPersistenceAdapter(SchoolProfessionalReviewPersisten
             or case.version != record.case_version
         ):
             raise _not_found()
+        task = await self._task_by_id(uow, actor, record.task_id, lock=False)
+        candidate, candidate_payload = await self._candidate_for_feedback(
+            uow,
+            actor=actor,
+            task=task,
+            scope=scope,
+            record=dto,
+        )
         return self._feedback_projection(
-            dto, case_ref=case.review_ref, session_ref=session_ref, student=True
+            dto,
+            case_ref=case.review_ref,
+            session_ref=session_ref,
+            student=True,
+            candidate_ref=(candidate.candidate_ref if candidate is not None else None),
+            candidate_payload=candidate_payload,
         )
 
     async def _review_model(self, uow, actor, task, role_id, case_ref, *, lock):

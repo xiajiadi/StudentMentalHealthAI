@@ -5,6 +5,7 @@ import AppBadge from '@/components/app/AppBadge.vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
+import ResearchFeedbackSources from '@/components/school/ResearchFeedbackSources.vue'
 import { schoolResearchFeedback, type StudentResearchFeedback } from '@/services/school-research-feedback'
 import { useSessionStore } from '@/stores/session'
 import { userFacingApiError } from '@/utils/user-facing-errors'
@@ -95,6 +96,7 @@ onBeforeUnmount(() => {
       <AppCard v-for="item in rows" :key="item.feedback_ref" class="student-research-feedback__item">
         <header><h3>{{ item.title }}</h3><AppBadge tone="teal" dot>演示账户可见</AppBadge></header>
         <p class="student-research-feedback__body">{{ item.body }}</p>
+        <ResearchFeedbackSources :source-cards="item.source_cards ?? []" />
         <p class="student-research-feedback__time">发布于 {{ formatDate(item.published_at) }}</p>
       </AppCard>
     </div>

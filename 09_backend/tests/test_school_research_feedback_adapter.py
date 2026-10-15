@@ -16,6 +16,8 @@ from smhai_backend.domains.school_research.study_use import (
     ResearchStudyUsePolicy,
 )
 
+from .test_school_research_education_candidates_service import candidate_payload
+
 _PROFILE_SHA = "1" * 64
 _MANIFEST_SHA = "2" * 64
 _CROSSWALK_SHA = "3" * 64
@@ -277,3 +279,229 @@ async def test_case_and_student_list_candidates_exclude_revoked_scopes():
     assert "subject_access_grants.revoked_at IS NULL" in student_sql
     assert "account_school_memberships.revoked_at IS NULL" in student_sql
     assert "membership_roles.revoked_at IS NULL" in student_sql
+
+
+def _feedback_row(
+    *, schema, payload_value, source_candidate_id=None, source_candidate_revision=None
+):
+    import json
+
+    return SimpleNamespace(
+        feedback_ref="RFEED_synthetic",
+        content_revision=1,
+        title="人工修订标题",
+        body="人工修订后的教育支持正文。",
+        status="DRAFT",
+        feedback_kind="GENERAL_EDUCATIONAL_SUPPORT",
+        purpose="RESEARCH_SIMULATION",
+        research_only=True,
+        psychological_interpretation_allowed=False,
+        publication_status="not_approved_for_publication_or_operational_use",
+        case_version=2,
+        state_version=1,
+        created_at=datetime(2026, 10, 14, tzinfo=UTC),
+        published_at=None,
+        revoked_at=None,
+        cipher_format_version="enc.v1",
+        key_version="key-v1",
+        payload_schema_version=schema,
+        payload_ciphertext=json.dumps(payload_value, ensure_ascii=False).encode(),
+        source_candidate_id=source_candidate_id,
+        source_candidate_revision=source_candidate_revision,
+    )
+
+
+def _install_feedback_decrypt(monkeypatch, adapter, clear_value):
+    class EncryptedPayload:
+        def __init__(
+            self, *, ciphertext, key_version, cipher_format_version, payload_schema_version
+        ):
+            self.ciphertext = ciphertext
+            self.key_version = key_version
+            self.cipher_format_version = cipher_format_version
+            self.payload_schema_version = payload_schema_version
+
+    crypto_module = ModuleType("database_layer.crypto")
+    crypto_module.EncryptedPayload = EncryptedPayload
+    monkeypatch.setitem(sys.modules, "database_layer.crypto", crypto_module)
+    adapter.protection = SimpleNamespace(decrypt_json=lambda _encrypted: clear_value)
+
+
+def test_feedback_v1_payload_remains_readable_with_empty_source_projection(monkeypatch):
+    clear = {
+        "feedback_ref": "RFEED_synthetic",
+        "content_revision": 1,
+        "title": "人工修订标题",
+        "body": "人工修订后的教育支持正文。",
+    }
+    adapter = SchoolResearchFeedbackPersistenceAdapter(None)
+    _install_feedback_decrypt(monkeypatch, adapter, clear)
+    row = _feedback_row(
+        schema="school_research_feedback_content.v1", payload_value=clear
+    )
+
+    result = adapter._feedback_content(row)
+
+    assert result == {
+        "title": clear["title"],
+        "body": clear["body"],
+        "citations": [],
+        "source_cards": [],
+        "source_manifest_sha256": None,
+    }
+
+
+def test_feedback_v2_payload_keeps_reviewed_text_and_exact_candidate_sources(monkeypatch):
+    payload = candidate_payload()
+    clear = {
+        "feedback_ref": "RFEED_synthetic",
+        "content_revision": 1,
+        "title": "人工修订标题",
+        "body": "人工修订后的教育支持正文。",
+        "source_candidate_ref": "REEDUC_synthetic",
+        "source_candidate_revision": 1,
+        "source_manifest_sha256": payload.provenance.source_manifest_sha256,
+        "source_provenance": payload.provenance.model_dump(mode="json"),
+        "citations": [item.model_dump(mode="json") for item in payload.citations],
+        "source_cards": [item.model_dump(mode="json") for item in payload.source_cards],
+    }
+    adapter = SchoolResearchFeedbackPersistenceAdapter(None)
+    _install_feedback_decrypt(monkeypatch, adapter, clear)
+    row = _feedback_row(
+        schema="school_research_feedback_content.v2",
+        payload_value=clear,
+        source_candidate_id=71,
+        source_candidate_revision=1,
+    )
+
+    result = adapter._feedback_content(
+        row, candidate_ref="REEDUC_synthetic", candidate_payload=payload
+    )
+
+    assert result["title"] == "人工修订标题"
+    assert result["body"] == "人工修订后的教育支持正文。"
+    assert result["citations"] == [
+        item.model_dump(mode="python") for item in payload.citations
+    ]
+    assert result["source_cards"] == [
+        item.model_dump(mode="python") for item in payload.source_cards
+    ]
+    assert result["source_manifest_sha256"] == payload.provenance.source_manifest_sha256
+    assert "content" not in result
+    assert "candidate_payload" not in result
+
+    with pytest.raises(BackendError) as raised:
+        adapter._feedback_content(row, candidate_ref="REEDUC_other", candidate_payload=payload)
+    assert raised.value.code is ErrorCode.DEPENDENCY_INVALID_RESPONSE
+
+
+async def test_feedback_candidate_lookup_requires_exact_session_scope_before_validation():
+    from database_layer import models
+
+    expected_scope = SimpleNamespace(
+        research_session_id=11,
+        school_id=17,
+        task_id=21,
+        class_id=31,
+        task_enrollment_id=41,
+        subject_id=51,
+        task_binding_id=61,
+        profile_version_id=71,
+        profile_ref="PROMIS_SYNTHETIC",
+        profile_version_number=3,
+        profile_sha256="1" * 64,
+        response_origin="PUBLIC_OBSERVED",
+    )
+    row = SimpleNamespace(
+        id=91,
+        candidate_ref="REEDUC_synthetic",
+        scope=SimpleNamespace(**vars(expected_scope)),
+        status="ADOPTED",
+        content_revision=1,
+    )
+
+    class CandidateRepository:
+        async def get_for_task(self, *, school_id, task_id, candidate_ref):
+            assert (school_id, task_id, candidate_ref) == (
+                expected_scope.school_id,
+                expected_scope.task_id,
+                row.candidate_ref,
+            )
+            return row
+
+    class UnitOfWork:
+        research_education_candidates = CandidateRepository()
+
+    payload = candidate_payload()
+    validated = []
+    adapter = SchoolResearchFeedbackPersistenceAdapter(
+        None,
+        education_candidate_validator=lambda candidate, scope: validated.append(
+            (candidate, scope)
+        )
+        or payload,
+    )
+    adapter._db_models = models
+
+    candidate, result = await adapter._candidate_for_feedback(
+        UnitOfWork(),
+        actor=SimpleNamespace(school_id=expected_scope.school_id),
+        task=SimpleNamespace(id=expected_scope.task_id),
+        scope=expected_scope,
+        candidate_ref=row.candidate_ref,
+    )
+
+    assert candidate is row
+    assert result is payload
+    assert validated == [(row, expected_scope)]
+
+
+async def test_feedback_candidate_from_another_session_is_not_used():
+    from database_layer import models
+
+    expected_scope = SimpleNamespace(
+        research_session_id=11,
+        school_id=17,
+        task_id=21,
+        class_id=31,
+        task_enrollment_id=41,
+        subject_id=51,
+        task_binding_id=61,
+        profile_version_id=71,
+        profile_ref="PROMIS_SYNTHETIC",
+        profile_version_number=3,
+        profile_sha256="1" * 64,
+        response_origin="PUBLIC_OBSERVED",
+    )
+    wrong_scope = SimpleNamespace(**vars(expected_scope))
+    wrong_scope.research_session_id = 12
+    row = SimpleNamespace(
+        id=91,
+        candidate_ref="REEDUC_other_session",
+        scope=wrong_scope,
+        status="ADOPTED",
+        content_revision=1,
+    )
+
+    class CandidateRepository:
+        async def get_for_task(self, **_kwargs):
+            return row
+
+    adapter = SchoolResearchFeedbackPersistenceAdapter(
+        None,
+        education_candidate_validator=lambda *_args: pytest.fail(
+            "candidate payload validator must not run for a foreign session"
+        ),
+    )
+    adapter._db_models = models
+
+    with pytest.raises(BackendError) as raised:
+        await adapter._candidate_for_feedback(
+            SimpleNamespace(research_education_candidates=CandidateRepository()),
+            actor=SimpleNamespace(school_id=expected_scope.school_id),
+            task=SimpleNamespace(id=expected_scope.task_id),
+            scope=expected_scope,
+            candidate_ref=row.candidate_ref,
+        )
+
+    assert raised.value.code is ErrorCode.RESOURCE_NOT_FOUND

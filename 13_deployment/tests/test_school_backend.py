@@ -288,6 +288,50 @@ assert ResearchOnlyRetriever.__module__ == "rag_engine.research.retrieval"
     assert completed.returncode == 0
 
 
+def test_general_education_draft_alone_prepares_the_rag_import(monkeypatch, tmp_path):
+    import types
+
+    import smhai_backend.core.config as config_module
+
+    prepared = []
+    monkeypatch.setattr(
+        backend,
+        "build_cli_settings_kwargs",
+        lambda _args: (
+            {
+                "research_general_education_draft": {"enabled": True},
+                "research_programme_worker": {"enabled": False},
+                "school_research_student_conversation": {"enabled": False},
+            },
+            {},
+        ),
+    )
+    monkeypatch.setattr(
+        backend,
+        "_prepare_research_programme_rag_import",
+        lambda repo: prepared.append(repo),
+    )
+    monkeypatch.setattr(
+        backend,
+        "load_runtime",
+        lambda *_args: {"database": "smhai_school_demo", "port": 3314},
+    )
+    monkeypatch.setattr(config_module, "BackendSettings", lambda **values: values)
+    monkeypatch.setitem(
+        sys.modules,
+        "smhai_backend.app_factory",
+        types.SimpleNamespace(create_app=lambda **_kwargs: object()),
+    )
+    monkeypatch.setattr(
+        sys, "argv", ["school_backend.py", "--workspace", str(tmp_path), "--preflight-only"]
+    )
+
+    result = backend.main()
+
+    assert result == 0
+    assert prepared == [Path(backend.__file__).resolve().parents[1]]
+
+
 @pytest.mark.parametrize("cat_port", [True, False, 8181.0, "8181", 1023, 65536])
 def test_cat_port_requires_a_tcp_port_integer_in_range(cat_port):
     with pytest.raises(ValueError, match="cat_port must be between 1024 and 65535"):

@@ -1,0 +1,458 @@
+from __future__ import annotations
+
+import asyncio
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from database_layer.school_research_education_jobs import (
+    GENERAL_EDUCATION_POLICY_VERSION,
+    ResearchEducationJobClaim,
+    ResearchEducationJobErrorCode,
+)
+
+from smhai_backend.domains.research_general_education.schemas import (
+    ResearchGeneralEducationCandidatePayload,
+    ResearchGeneralEducationOutcome,
+)
+from smhai_backend.domains.research_general_education.service import (
+    EXPECTED_MODEL_DIGEST_SHA256,
+    EXPECTED_MODEL_ID,
+    EXPECTED_MODEL_VERSION,
+    PROMPT_ID,
+    PROMPT_SHA256,
+    PROMPT_VERSION,
+    SAFETY_POLICY_VERSION,
+)
+from smhai_backend.domains.school_research_general_education_generation.worker import (
+    ResearchGeneralEducationWorker,
+    ResearchGeneralEducationWorkerResult,
+)
+from smhai_backend.domains.support.schemas import GenerationContent, Suggestion, SupportCitation
+
+_NOW = datetime(2026, 10, 15, 9, 0, tzinfo=UTC)
+_POLICY_HASH = "a" * 64
+_MANIFEST_HASH = "b" * 64
+
+
+def _claim(**changes):
+    values = {
+        "id": 17,
+        "job_ref": "REJ_0123456789abcdef",
+        "school_id": 2,
+        "research_session_id": 3,
+        "task_id": 4,
+        "class_id": 5,
+        "task_enrollment_id": 6,
+        "subject_id": 7,
+        "task_binding_id": 8,
+        "profile_version_id": 9,
+        "profile_ref": "synthetic-profile",
+        "profile_version_number": 3,
+        "profile_sha256": "c" * 64,
+        "response_origin": "PUBLIC_OBSERVED",
+        "policy_version": GENERAL_EDUCATION_POLICY_VERSION,
+        "policy_hash": _POLICY_HASH,
+        "purpose": "RESEARCH_SIMULATION",
+        "research_only": True,
+        "publication_status": "not_approved_for_publication_or_operational_use",
+        "status": "LEASED",
+        "attempt_count": 1,
+        "next_attempt_at": None,
+        "lease_expires_at": _NOW + timedelta(minutes=5),
+        "last_error_code": None,
+        "created_at": _NOW,
+        "updated_at": _NOW,
+        "lease_owner": "general-education-2",
+        "lease_token": "synthetic-lease-token",
+    }
+    values.update(changes)
+    return ResearchEducationJobClaim(**values)
+
+
+def _payload():
+    excerpt = "公开来源保留的人群范围和局限。"
+    from hashlib import sha256
+
+    excerpt_hash = sha256(excerpt.encode("utf-8")).hexdigest()
+    chunk_id = "CHUNK_R3_A"
+    source_card = {
+        "chunk_id": chunk_id,
+        "record_id": "RECORD_R3_A",
+        "source_id": "SOURCE_R3_A",
+        "title": "Public source",
+        "organization": "Public organization",
+        "canonical_url": "https://example.org/source",
+        "record_locator": "section-1",
+        "source_population_scope": "secondary school students",
+        "source_language": "zh",
+        "license": "CC BY 4.0",
+        "license_url": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "Public organization",
+        "excerpt_sha256": excerpt_hash,
+        "excerpt_text": excerpt,
+        "consumer_age_min": 14,
+        "consumer_age_max": 17,
+    }
+    suffix = (
+        "; source population: secondary school students; source: https://example.org/source; "
+        "license: CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/); "
+        "attribution: Public organization"
+    )
+    return ResearchGeneralEducationCandidatePayload(
+        schema_version="school-research-general-education-candidate.v1",
+        content=GenerationContent(
+            summary="一般教育信息",
+            observations=["公开资料中的一般观察"],
+            suggestions=[Suggestion(text="查看来源资料", source_chunk_ids=[chunk_id])],
+            disclaimer="供研究任务中的专业人员复核。",
+        ),
+        citations=[
+            SupportCitation(
+                citation_id="C1",
+                chunk_id=chunk_id,
+                document_id="DOC_R3_A",
+                title="Public source",
+                organization="Public organization",
+                locator=f"section-1{suffix}",
+                rank=1,
+                source_version="R3-v1",
+                source_hash=f"sha256:{excerpt_hash}",
+            )
+        ],
+        source_cards=[source_card],
+        provenance={
+            "policy_version": GENERAL_EDUCATION_POLICY_VERSION,
+            "policy_hash": _POLICY_HASH,
+            "safety_policy_version": SAFETY_POLICY_VERSION,
+            "source_package_ref": "R3_PACKAGE_SYNTHETIC",
+            "source_study_ref": "R3_STUDY_SYNTHETIC",
+            "source_manifest_sha256": _MANIFEST_HASH,
+            "source_age_scope": "14-17",
+            "retrieval_id": "RETR_education_1",
+            "retrieval_bundle_sha256": "d" * 64,
+            "cited_chunk_ids": [chunk_id],
+            "generation_id": "GEN_education_1",
+            "prompt_id": PROMPT_ID,
+            "prompt_version": PROMPT_VERSION,
+            "prompt_sha256": PROMPT_SHA256,
+            "model_id": EXPECTED_MODEL_ID,
+            "model_version": EXPECTED_MODEL_VERSION,
+            "model_digest_sha256": EXPECTED_MODEL_DIGEST_SHA256,
+            "runtime_version": "runtime-pinned-v1",
+            "runtime_attempt_count": 1,
+            "runtime_retry_count": 0,
+            "runtime_fallback_count": 0,
+            "runtime_fallback_attempted": False,
+            "runtime_local_only": True,
+            "input_safety_action": "PROCEED",
+            "input_safety_reason_codes": ["CLEAR"],
+            "retrieval_safety_action": "PROCEED",
+            "retrieval_safety_reason_codes": ["CLEAR"],
+            "output_safety_action": "PROCEED",
+            "output_safety_reason_codes": ["CLEAR"],
+        },
+    )
+
+
+class _Repository:
+    def __init__(self, claims=None, *, error=None):
+        self.claims = list(claims or [])
+        self.error = error
+        self.calls = []
+
+    async def claim_next(self, **kwargs):
+        self.calls.append(kwargs)
+        if self.error is not None:
+            raise self.error
+        return self.claims
+
+
+class _Uow:
+    def __init__(self, repository):
+        self.research_education_jobs = repository
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_args):
+        return None
+
+
+class _Persistence:
+    def __init__(self, repository):
+        self.repository = repository
+
+    def _uow(self):
+        return _Uow(self.repository)
+
+
+class _Adapter:
+    def __init__(self, *, authorized=True):
+        self.authorized = authorized
+        self.authorized_claims = []
+        self.finalized = []
+        self.stored = []
+
+    async def authorize_education_claim(self, claim):
+        self.authorized_claims.append(claim)
+        return self.authorized
+
+    async def finalize_education_job(self, claim, *, status, error_code=None):
+        self.finalized.append((claim, status, error_code))
+        return status
+
+    async def store_generated_candidate(self, claim, payload, *, trace_id):
+        self.stored.append((claim, payload, trace_id))
+        return {
+            "candidate_ref": "REEDUC_synthetic_candidate",
+            "status": "HELD",
+            "state_version": 1,
+            "purpose": "RESEARCH_SIMULATION",
+            "research_only": True,
+            "psychological_interpretation_allowed": False,
+            "publication_status": "not_approved_for_publication_or_operational_use",
+            "student_feedback_eligible": False,
+        }
+
+
+class _Generation:
+    def __init__(self, outcome=None, *, error=None):
+        self.outcome = outcome
+        self.error = error
+        self.calls = []
+
+    async def generate(self, **kwargs):
+        self.calls.append(kwargs)
+        if self.error is not None:
+            raise self.error
+        return self.outcome
+
+
+def _worker(*, claim=None, adapter=None, generation=None, repository=None, lock=None):
+    claim_repo = repository or _Repository([claim or _claim()])
+    return ResearchGeneralEducationWorker(
+        school_id=2,
+        policy_hash=_POLICY_HASH,
+        persistence=_Persistence(claim_repo),
+        persistence_adapter=adapter or _Adapter(),
+        generation_service=generation
+        or _Generation(
+            ResearchGeneralEducationOutcome(
+                status="ABSTAINED", reason_code="ZERO_EVIDENCE"
+            )
+        ),
+        concurrency_lock=lock or asyncio.Lock(),
+        worker_id="general-education-2",
+        clock=lambda: _NOW,
+    )
+
+
+@pytest.mark.asyncio
+async def test_held_candidate_is_authorized_then_stored_once_with_system_context():
+    claim = _claim()
+    adapter = _Adapter()
+    payload = _payload()
+    generation = _Generation(
+        ResearchGeneralEducationOutcome(
+            status="HELD",
+            reason_code="AWAITING_SOURCE_LIMIT_AND_CONTENT_REVIEW",
+            candidate=payload,
+        )
+    )
+    worker = _worker(claim=claim, adapter=adapter, generation=generation)
+
+    result = await worker.run_once()
+
+    assert result is ResearchGeneralEducationWorkerResult.HELD
+    assert adapter.authorized_claims == [claim]
+    assert len(generation.calls) == 1
+    assert set(generation.calls[0]) == {"caller_role", "request_context"}
+    assert generation.calls[0]["caller_role"] == "SYSTEM"
+    context = generation.calls[0]["request_context"]
+    assert context.request_id == context.trace_id.replace("TRACE_", "REQ_")
+    assert claim.job_ref not in {context.request_id, context.trace_id}
+    assert len(adapter.stored) == 1
+    assert adapter.stored[0][:2] == (claim, payload)
+    assert adapter.stored[0][2] == context.trace_id
+    assert adapter.finalized == []
+
+
+@pytest.mark.asyncio
+async def test_claim_uses_policy_attempt_one_and_db_error_never_calls_model():
+    repository = _Repository(error=RuntimeError("database detail must not escape"))
+    generation = _Generation(
+        ResearchGeneralEducationOutcome(status="ABSTAINED", reason_code="ZERO_EVIDENCE")
+    )
+    worker = _worker(repository=repository, generation=generation)
+
+    result = await worker.run_once()
+
+    assert result is ResearchGeneralEducationWorkerResult.RETRY
+    assert repository.calls == [
+        {
+            "school_id": 2,
+            "lease_owner": "general-education-2",
+            "limit": 1,
+            "lease_seconds": 300,
+            "max_attempts": 1,
+            "policy_version": GENERAL_EDUCATION_POLICY_VERSION,
+            "now": _NOW,
+        }
+    ]
+    assert generation.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "claim",
+    [
+        _claim(policy_hash="f" * 64),
+        _claim(response_origin="MODEL_GENERATED"),
+        _claim(policy_version="NO_RESEARCH_PERSONALIZED_POLICY_V1", policy_hash=None),
+    ],
+)
+async def test_mismatched_claim_is_cancelled_without_generation(claim):
+    adapter = _Adapter()
+    generation = _Generation()
+    worker = _worker(claim=claim, adapter=adapter, generation=generation)
+
+    result = await worker.run_once()
+
+    assert result is ResearchGeneralEducationWorkerResult.CANCELLED
+    assert adapter.finalized == [(claim, "CANCELLED", None)]
+    assert generation.calls == []
+    assert adapter.stored == []
+
+
+@pytest.mark.asyncio
+async def test_unauthorized_claim_and_outcome_dispositions_never_store_candidate():
+    claim = _claim()
+    adapter = _Adapter(authorized=False)
+    generation = _Generation()
+    worker = _worker(claim=claim, adapter=adapter, generation=generation)
+
+    result = await worker.run_once()
+
+    assert result is ResearchGeneralEducationWorkerResult.CANCELLED
+    assert adapter.finalized == [(claim, "CANCELLED", None)]
+    assert generation.calls == []
+
+    dispositions = (
+        (
+            "ABSTAINED",
+            "ZERO_EVIDENCE",
+            "ABSTAINED",
+            ResearchEducationJobErrorCode.SOURCE_UNQUALIFIED,
+        ),
+        (
+            "REVIEW_REQUIRED",
+            "OUTPUT_SAFETY_STOP",
+            "REVIEW_REQUIRED",
+            ResearchEducationJobErrorCode.SAFETY_BLOCKED,
+        ),
+        (
+            "CRISIS_ROUTED",
+            "CRISIS_ROUTE",
+            "CRISIS_ROUTED",
+            ResearchEducationJobErrorCode.SAFETY_BLOCKED,
+        ),
+        (
+            "FAILED",
+            "RESEARCH_RUNTIME_FAILED",
+            "FAILED",
+            ResearchEducationJobErrorCode.GENERATION_FAILED,
+        ),
+    )
+    for status, reason, expected, code in dispositions:
+        adapter = _Adapter()
+        generation = _Generation(ResearchGeneralEducationOutcome(status=status, reason_code=reason))
+        worker = _worker(adapter=adapter, generation=generation)
+        result = await worker.run_once()
+        assert result.value == expected
+        assert len(adapter.finalized) == 1
+        assert adapter.finalized[0][1:] == (expected, code)
+        assert adapter.stored == []
+
+
+@pytest.mark.asyncio
+async def test_generation_exception_is_terminal_and_cancellation_leaves_single_attempt_lease():
+    claim = _claim()
+    adapter = _Adapter()
+    generation = _Generation(error=TimeoutError("sensitive model detail"))
+    worker = _worker(claim=claim, adapter=adapter, generation=generation)
+
+    result = await worker.run_once()
+
+    assert result is ResearchGeneralEducationWorkerResult.FAILED
+    assert generation.calls[0]["caller_role"] == "SYSTEM"
+    assert adapter.finalized == [
+        (claim, "FAILED", ResearchEducationJobErrorCode.UPSTREAM_TIMEOUT)
+    ]
+    assert adapter.stored == []
+
+    class _CancelledGeneration:
+        calls = 0
+
+        async def generate(self, **_kwargs):
+            self.calls += 1
+            raise asyncio.CancelledError
+
+    cancelled_generation = _CancelledGeneration()
+    cancelled_adapter = _Adapter()
+    worker = _worker(
+        claim=claim,
+        adapter=cancelled_adapter,
+        generation=cancelled_generation,
+    )
+    with pytest.raises(asyncio.CancelledError):
+        await worker.run_once()
+    assert cancelled_generation.calls == 1
+    assert cancelled_adapter.finalized == []
+    assert cancelled_adapter.stored == []
+
+
+@pytest.mark.asyncio
+async def test_shared_lock_serializes_workers_and_start_stop_are_idempotent():
+    shared_lock = asyncio.Lock()
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    class _BlockingGeneration:
+        active = 0
+        max_active = 0
+
+        async def generate(self, **_kwargs):
+            self.active += 1
+            self.max_active = max(self.max_active, self.active)
+            entered.set()
+            await release.wait()
+            self.active -= 1
+            return ResearchGeneralEducationOutcome(status="ABSTAINED", reason_code="ZERO_EVIDENCE")
+
+    first_claim = _claim()
+    second_claim = replace(first_claim, id=18, job_ref="REJ_1123456789abcdef")
+    first_repo = _Repository([first_claim])
+    second_repo = _Repository([second_claim])
+    generation = _BlockingGeneration()
+    first = _worker(repository=first_repo, generation=generation, lock=shared_lock)
+    second = _worker(repository=second_repo, generation=generation, lock=shared_lock)
+
+    first_run = asyncio.create_task(first.run_once())
+    await entered.wait()
+    second_run = asyncio.create_task(second.run_once())
+    await asyncio.sleep(0)
+    assert second_repo.calls == []
+    release.set()
+    await asyncio.gather(first_run, second_run)
+    assert generation.max_active == 1
+    assert len(second_repo.calls) == 1
+
+    idle_repo = _Repository([])
+    poller = _worker(repository=idle_repo)
+    started = poller.start()
+    assert poller.start() is started
+    await asyncio.sleep(0)
+    await poller.stop(drain=True)
+    assert started.done()
+    assert idle_repo.calls

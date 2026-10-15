@@ -16,10 +16,10 @@ original external artifacts. This file records current facts only.
   public_empirical_resources/root/attempt3 lease checkpoint renewed this run.
   These are scheduling/state facts, not unattended execution or final acceptance.
 - Root directly delegates Luna/high workers; no Lead/recursive delegation.
-  All direct workers finished their bounded work. Candidate/review reuse audit
-  is complete; Root owns the next architecture increment, integration,
-  content review and state. Prompt1.4 research-only constraints and47 focused
-  service tests are reviewed; native r13 semantic review FAILED as detailed below.
+  The task-bound held-candidate increment is implemented and under integration
+  review. Direct workers own bounded config/runtime/container/deployment/frontend
+  work; Root reviews actual changes and native readiness. Prompt1.4 research-only
+  constraints remain; native r13 semantic review FAILED as detailed below.
 - Preserve user untracked10_frontend/output/ and
   10_frontend/public/assets/heartbridge/login-mark-v2.png. Preserve databases,
   keys, backups, old helpers/failures and all800 existing completed sessions.
@@ -170,8 +170,41 @@ Target/state/npm files preserved. This proves this host's cached dependency prep
 portable model/OPA/Guard/vector assets and fresh-install service startup remain
 separate. No cleanup/retry of any failed target.
 
-Priority: resolve source-grounded content quality; then complete useful empirical
-AI workload, held/review/release integration and installation/recovery acceptance.
+## Active increment: exact-session held candidates (2026-10-15)
+
+Planning estimate supplied to operator: engineering about75percent complete,
+25percent remaining. This is a scope estimate, not acceptance or production approval.
+Direction is RESEARCH_GENERAL_EDUCATION_CANDIDATES.md: reuse completed800 sessions,
+new RESEARCH_GENERAL_EDUCATION_DRAFT_V1 policy, immutable encrypted0020 candidates,
+assigned specialist source review, separate edited feedback draft v2 with lineage,
+existing case APPROVED gate and explicit publish/student SELF read/revoke.
+Private chats and0018 staff reference catalogue remain independent.
+
+Implemented: database migration/repository/UOW/restore registration; exact-session
+candidate API and bounded enqueue; one-attempt worker and shared-lock manager;
+fixed person-free Runtime8161 route; R3/all-three-Safety processor; opt-in config,
+container/lifecycle and feedback v2 integration. Source excerpts/population/license
+and original generated payload are retained. No assessment answers/scores/snapshot
+are passed to the new processor. Every successful generation stays HELD.
+
+Root fresh targeted checks:116 backend processor/runtime/candidate/feedback/worker/
+settings tests,24 manager/container/previous-worker tests,41 database candidate/
+outbox/feedback/schema tests passed. Independent review then fixed MySQL constraint
+identifier lengths and nullable lineage CHECK bypass;42 adjacent database tests
+passed after that fix. Frontend source display/candidate review/link-to-draft is
+implemented; typecheck/targeted ESLint and28 existing feedback/programme checks
+passed. Identity changes clear private UI state; old manual-feedback DTOs remain
+compatible. These checks do not establish actual browser or native inference proof.
+
+Native0020 migration/restore, new route inference and browser review/release have
+NOT run. Q remains0019/f8dc81e with all existing800 sessions preserved. Do not
+restart Q using CURRENT0020 code. Next use a fresh isolated forward restore from
+the sealed Q backup, verify source/config/owned dependencies, then ONE native
+candidate and its complete review/draft/publish/read/revoke browser journey.
+Only after that acceptance enqueue remaining bounded800 work; no blind model reruns.
+
+Priority: finish held/review/release integration, source-grounded content review,
+useful empirical AI workload and installation/recovery acceptance.
 Retain Contract/D4/HumanGold, licensed public-data population provenance and
 privacy. PROMIS school noncommercial declaration is not proprietary CAT/app
 permission. No psychometric/clinical/ethics/school-production approval, protected

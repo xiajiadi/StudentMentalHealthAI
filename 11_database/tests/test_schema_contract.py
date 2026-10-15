@@ -39,6 +39,8 @@ from database_layer.models import (  # noqa: F401
     SchoolPostAssessmentJob,
     SchoolProfessionalReviewCase,
     SchoolProfessionalReviewEvent,
+    SchoolResearchEducationCandidate,
+    SchoolResearchEducationCandidateEvent,
     SchoolResearchFeedbackEvent,
     SchoolResearchFeedbackRecord,
     SchoolResearchReviewCase,
@@ -58,7 +60,7 @@ from sqlalchemy.schema import CreateTable
 
 
 def test_domain_table_count_and_explicit_mysql_defaults() -> None:
-    assert len(Base.metadata.tables) == 57
+    assert len(Base.metadata.tables) == 59
     assert set(Base.metadata.tables) == {
         "accounts",
         "roles",
@@ -113,6 +115,8 @@ def test_domain_table_count_and_explicit_mysql_defaults() -> None:
         "school_research_feedback_records",
         "school_research_feedback_events",
         "school_research_programme_candidates",
+        "school_research_education_candidates",
+        "school_research_education_candidate_events",
         "school_conversation_safety_cases",
         "school_conversation_safety_events",
         "idempotency_records",
@@ -139,6 +143,7 @@ def test_sensitive_columns_are_binary_and_raw_secret_columns_absent() -> None:
         "review_events.note_ciphertext",
         "school_professional_review_cases.case_note_ciphertext",
         "school_conversation_safety_cases.review_note_ciphertext",
+        "school_research_education_candidates.payload_ciphertext",
     }
     for dotted in encrypted_columns:
         table_name, column_name = dotted.split(".")

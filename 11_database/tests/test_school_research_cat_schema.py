@@ -36,7 +36,7 @@ def _target_columns(constraint):
 
 
 def test_research_tables_are_separate_locked_and_mysql_compilable():
-    assert len(Base.metadata.tables) == 55
+    assert len(Base.metadata.tables) == 59
     assert MeasurementTask.__table__.c.cat_binding_mode.server_default.arg == "FIXTURE"
     task_mode_check = next(
         constraint

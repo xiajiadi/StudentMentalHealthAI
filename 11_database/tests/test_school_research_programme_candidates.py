@@ -110,7 +110,7 @@ def _scope(**changes):
         "profile_ref": "research-profile",
         "profile_version_number": 3,
         "profile_sha256": "a" * 64,
-        "response_origin": "MODEL_GENERATED",
+        "response_origin": "PUBLIC_OBSERVED",
     }
     values.update(changes)
     return ResearchProgrammeCandidateScope(**values)
@@ -164,7 +164,7 @@ def test_candidate_schema_is_task_scoped_encrypted_and_nonpublishable():
         table.c.publication_status.server_default.arg
         == "not_approved_for_publication_or_operational_use"
     )
-    assert len(Base.metadata.tables) == 55
+    assert len(Base.metadata.tables) == 59
     pin_columns = {
         tuple(column.name for column in constraint.columns)
         for constraint in table.constraints
@@ -259,6 +259,10 @@ def test_candidate_ingest_rejects_bad_safety_and_foreign_binding(session):
         with pytest.raises(ForeignKeyConflict):
             await repository.create_held(
                 **_candidate_kwargs(scope=_scope(profile_sha256="9" * 64))
+            )
+        with pytest.raises(ForeignKeyConflict):
+            await repository.create_held(
+                **_candidate_kwargs(scope=_scope(response_origin="MODEL_GENERATED"))
             )
 
     asyncio.run(run())

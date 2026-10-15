@@ -38,6 +38,36 @@ export type ResearchReviewCase = {
 }
 
 export type ResearchFeedbackStatus = 'DRAFT' | 'PUBLISHED' | 'REVOKED'
+export type ResearchFeedbackCitation = {
+  citation_id: string
+  chunk_id: string | null
+  document_id: string | null
+  title: string | null
+  organization: string | null
+  locator: string | null
+  rank: number | null
+  source_version: string | null
+  source_hash: string | null
+}
+export type FeedbackSourceCard = {
+  chunk_id: string
+  record_id: string
+  source_id: string
+  title: string
+  organization: string
+  canonical_url: string
+  record_locator: string
+  source_population_scope: string
+  source_language: string
+  license: string
+  license_url: string
+  attribution: string
+  excerpt_sha256: string
+  excerpt_text: string
+  consumer_age_min: number
+  consumer_age_max: number
+}
+export type ResearchEducationSourceCard = FeedbackSourceCard
 export type ResearchFeedback = {
   feedback_ref: string
   case_ref: string
@@ -53,6 +83,9 @@ export type ResearchFeedback = {
   status: ResearchFeedbackStatus
   title: string
   body: string
+  citations: ResearchFeedbackCitation[]
+  source_cards: ResearchEducationSourceCard[]
+  source_manifest_sha256: string | null
   created_at: string
   published_at: string | null
   revoked_at: string | null
@@ -74,13 +107,35 @@ const caseFields = ['case_ref', 'task_ref', 'session_ref', 'status', 'version', 
 const feedbackFields = [
   'feedback_ref', 'case_ref', 'session_ref', 'feedback_kind', 'purpose', 'research_only',
   'psychological_interpretation_allowed', 'publication_status', 'content_revision', 'case_version',
+  'state_version', 'status', 'title', 'body', 'citations', 'source_cards', 'source_manifest_sha256',
+  'created_at', 'published_at', 'revoked_at',
+].sort()
+const legacyFeedbackFields = [
+  'feedback_ref', 'case_ref', 'session_ref', 'feedback_kind', 'purpose', 'research_only',
+  'psychological_interpretation_allowed', 'publication_status', 'content_revision', 'case_version',
   'state_version', 'status', 'title', 'body', 'created_at', 'published_at', 'revoked_at',
 ].sort()
 const studentFeedbackFields = [
   'feedback_ref', 'session_ref', 'feedback_kind', 'purpose', 'research_only',
   'psychological_interpretation_allowed', 'publication_status', 'content_revision', 'state_version',
+  'status', 'title', 'body', 'citations', 'source_cards', 'source_manifest_sha256',
+  'created_at', 'published_at',
+].sort()
+const legacyStudentFeedbackFields = [
+  'feedback_ref', 'session_ref', 'feedback_kind', 'purpose', 'research_only',
+  'psychological_interpretation_allowed', 'publication_status', 'content_revision', 'state_version',
   'status', 'title', 'body', 'created_at', 'published_at',
 ].sort()
+const citationFields = [
+  'citation_id', 'chunk_id', 'document_id', 'title', 'organization', 'locator', 'rank',
+  'source_version', 'source_hash',
+].sort()
+const sourceCardFields = [
+  'chunk_id', 'record_id', 'source_id', 'title', 'organization', 'canonical_url',
+  'record_locator', 'source_population_scope', 'source_language', 'license', 'license_url',
+  'attribution', 'excerpt_sha256', 'excerpt_text', 'consumer_age_min', 'consumer_age_max',
+].sort()
+const sha256Pattern = /^[0-9a-f]{64}$/
 
 const record = (value: unknown, message: string): UnknownRecord => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -91,6 +146,12 @@ const record = (value: unknown, message: string): UnknownRecord => {
 
 const exactFields = (source: UnknownRecord, fields: string[], message: string) => {
   if (Object.keys(source).sort().join('|') !== fields.join('|')) {
+    throw new RealApiError('API_INVALID_RESPONSE', message)
+  }
+}
+
+const exactFieldVersion = (source: UnknownRecord, versions: string[][], message: string) => {
+  if (!versions.some((fields) => Object.keys(source).sort().join('|') === fields.join('|'))) {
     throw new RealApiError('API_INVALID_RESPONSE', message)
   }
 }
@@ -191,10 +252,112 @@ const mapCase = (value: unknown): ResearchReviewCase => {
   }
 }
 
+export function mapResearchFeedbackCitation(value: unknown): ResearchFeedbackCitation {
+  const message = '研究引用格式无法识别。'
+  const source = record(value, message)
+  exactFields(source, citationFields, message)
+  const rank = source.rank
+  if (rank !== null && (!Number.isSafeInteger(rank) || (rank as number) < 1)) {
+    throw new RealApiError('API_INVALID_RESPONSE', message)
+  }
+  return {
+    citation_id: requiredText(source, 'citation_id', 128, message),
+    chunk_id: optionalText(source, 'chunk_id', 192, message),
+    document_id: optionalText(source, 'document_id', 128, message),
+    title: optionalText(source, 'title', 500, message),
+    organization: optionalText(source, 'organization', 300, message),
+    locator: optionalText(source, 'locator', 2048, message),
+    rank: rank as number | null,
+    source_version: optionalText(source, 'source_version', 128, message),
+    source_hash: optionalText(source, 'source_hash', 128, message),
+  }
+}
+
+export function mapResearchEducationSourceCard(value: unknown): ResearchEducationSourceCard {
+  const message = '研究来源卡格式无法识别。'
+  const source = record(value, message)
+  exactFields(source, sourceCardFields, message)
+  const canonicalUrl = requiredText(source, 'canonical_url', 2048, message)
+  const licenseUrl = requiredText(source, 'license_url', 2048, message)
+  for (const candidateUrl of [canonicalUrl, licenseUrl]) {
+    let parsed: window.URL
+    try { parsed = new window.URL(candidateUrl) } catch { throw new RealApiError('API_INVALID_RESPONSE', message) }
+    if (parsed.protocol !== 'https:' || !parsed.hostname || parsed.username || parsed.password) {
+      throw new RealApiError('API_INVALID_RESPONSE', message)
+    }
+  }
+  const ageMin = source.consumer_age_min
+  const ageMax = source.consumer_age_max
+  const excerptHash = requiredText(source, 'excerpt_sha256', 64, message)
+  if (!sha256Pattern.test(excerptHash)
+    || !Number.isSafeInteger(ageMin) || !Number.isSafeInteger(ageMax)
+    || ageMin !== 14 || ageMax !== 17) {
+    throw new RealApiError('API_INVALID_RESPONSE', message)
+  }
+  return {
+    chunk_id: requiredText(source, 'chunk_id', 166, message),
+    record_id: requiredText(source, 'record_id', 128, message),
+    source_id: requiredText(source, 'source_id', 128, message),
+    title: requiredText(source, 'title', 512, message),
+    organization: requiredText(source, 'organization', 256, message),
+    canonical_url: canonicalUrl,
+    record_locator: requiredText(source, 'record_locator', 1024, message),
+    source_population_scope: requiredText(source, 'source_population_scope', 512, message),
+    source_language: requiredText(source, 'source_language', 16, message),
+    license: requiredText(source, 'license', 256, message),
+    license_url: licenseUrl,
+    attribution: requiredText(source, 'attribution', 2048, message),
+    excerpt_sha256: excerptHash,
+    excerpt_text: requiredText(source, 'excerpt_text', 8000, message),
+    consumer_age_min: ageMin as number,
+    consumer_age_max: ageMax as number,
+  }
+}
+
+function sourceProjection(source: UnknownRecord, message: string) {
+  if (!Object.hasOwn(source, 'citations')
+    && !Object.hasOwn(source, 'source_cards')
+    && !Object.hasOwn(source, 'source_manifest_sha256')) {
+    return { citations: [], source_cards: [], source_manifest_sha256: null }
+  }
+  if (!Array.isArray(source.citations) || source.citations.length > 8
+    || !Array.isArray(source.source_cards) || source.source_cards.length > 8) {
+    throw new RealApiError('API_INVALID_RESPONSE', message)
+  }
+  const citations = source.citations.map(mapResearchFeedbackCitation)
+  const sourceCards = source.source_cards.map(mapResearchEducationSourceCard)
+  const manifest = optionalText(source, 'source_manifest_sha256', 64, message)
+  if ((manifest !== null && !sha256Pattern.test(manifest))
+    || (sourceCards.length === 0 ? citations.length !== 0 || manifest !== null
+      : citations.length !== sourceCards.length || manifest === null)) {
+    throw new RealApiError('API_INVALID_RESPONSE', message)
+  }
+  if (new Set(sourceCards.map((card) => card.chunk_id)).size !== sourceCards.length
+    || new Set(citations.map((citation) => citation.citation_id)).size !== citations.length) {
+    throw new RealApiError('API_INVALID_RESPONSE', message)
+  }
+  if (citations.some((citation, index) => {
+    const card = sourceCards[index]
+    const locatorSuffix = `; source population: ${card.source_population_scope}; source: ${card.canonical_url}; license: ${card.license} (${card.license_url}); attribution: ${card.attribution}`
+    return !card || citation.chunk_id !== card.chunk_id || citation.title !== card.title
+      || citation.organization !== card.organization
+      || citation.source_hash !== `sha256:${card.excerpt_sha256}`
+      || (citation.locator !== `${card.record_locator}${locatorSuffix}`
+        && citation.locator !== `record: ${card.record_id}${locatorSuffix}`)
+  })) {
+    throw new RealApiError('API_INVALID_RESPONSE', message)
+  }
+  return {
+    citations,
+    source_cards: sourceCards,
+    source_manifest_sha256: manifest,
+  }
+}
+
 const mapFeedback = (value: unknown): ResearchFeedback => {
   const message = '研究反馈版本格式无法识别。'
   const source = record(value, message)
-  exactFields(source, feedbackFields, message)
+  exactFieldVersion(source, [legacyFeedbackFields, feedbackFields], message)
   if (source.feedback_kind !== 'GENERAL_EDUCATIONAL_SUPPORT'
     || source.purpose !== 'RESEARCH_SIMULATION' || source.research_only !== true
     || source.psychological_interpretation_allowed !== false || source.publication_status !== publicationStatus
@@ -204,6 +367,7 @@ const mapFeedback = (value: unknown): ResearchFeedback => {
   const status = source.status as ResearchFeedbackStatus
   const publishedAt = timestamp(source, 'published_at', message, true)
   const revokedAt = timestamp(source, 'revoked_at', message, true)
+  const sources = sourceProjection(source, message)
   if ((status === 'DRAFT' && (publishedAt !== null || revokedAt !== null))
     || (status === 'PUBLISHED' && (publishedAt === null || revokedAt !== null))
     || (status === 'REVOKED' && (publishedAt === null || revokedAt === null))) {
@@ -224,6 +388,7 @@ const mapFeedback = (value: unknown): ResearchFeedback => {
     status,
     title: requiredText(source, 'title', 120, message),
     body: requiredText(source, 'body', 4000, message),
+    ...sources,
     created_at: timestamp(source, 'created_at', message)!,
     published_at: publishedAt,
     revoked_at: revokedAt,
@@ -233,13 +398,14 @@ const mapFeedback = (value: unknown): ResearchFeedback => {
 const mapStudentFeedback = (value: unknown): StudentResearchFeedback => {
   const message = '学生反馈记录格式无法识别。'
   const source = record(value, message)
-  exactFields(source, studentFeedbackFields, message)
+  exactFieldVersion(source, [legacyStudentFeedbackFields, studentFeedbackFields], message)
   if (source.feedback_kind !== 'GENERAL_EDUCATIONAL_SUPPORT'
     || source.purpose !== 'RESEARCH_SIMULATION' || source.research_only !== true
     || source.psychological_interpretation_allowed !== false || source.publication_status !== publicationStatus
     || source.status !== 'PUBLISHED') {
     throw new RealApiError('API_INVALID_RESPONSE', message)
   }
+  const sources = sourceProjection(source, message)
   return {
     feedback_ref: requiredText(source, 'feedback_ref', 128, message),
     session_ref: requiredText(source, 'session_ref', 128, message),
@@ -253,10 +419,14 @@ const mapStudentFeedback = (value: unknown): StudentResearchFeedback => {
     status: 'PUBLISHED',
     title: requiredText(source, 'title', 120, message),
     body: requiredText(source, 'body', 4000, message),
+    ...sources,
     created_at: timestamp(source, 'created_at', message)!,
     published_at: timestamp(source, 'published_at', message)!,
   }
 }
+
+export type ResearchFeedbackApiRequest = RequestInput
+export const requestSchoolResearchFeedbackApi = (input: ResearchFeedbackApiRequest): Promise<unknown> => request(input)
 
 const mapPage = <T>(value: unknown, mapper: (item: unknown) => T, limit: number): ResearchPage<T> => {
   const message = '研究反馈列表格式无法识别。'
@@ -406,15 +576,27 @@ export class SchoolResearchFeedbackService {
     return mapPage(data, mapFeedback, limit)
   }
 
-  async createDraft(caseRef: string, expectedCaseVersion: number, title: string, body: string, key: string): Promise<ResearchFeedback> {
+  async createDraft(
+    caseRef: string,
+    expectedCaseVersion: number,
+    title: string,
+    body: string,
+    key: string,
+    candidateRef?: string,
+  ): Promise<ResearchFeedback> {
     requireRef(caseRef); idempotencyKey(key)
+    if (candidateRef !== undefined) requireRef(candidateRef)
     if (!Number.isSafeInteger(expectedCaseVersion) || expectedCaseVersion < 1
       || !title.trim() || title.length > 120 || !body.trim() || body.length > 4000) {
       throw new RealApiError('VALIDATION_FAILED', '反馈标题或正文无效。')
     }
+    const requestBody: Record<string, unknown> = {
+      expected_case_version: expectedCaseVersion, title, body,
+      ...(candidateRef !== undefined ? { candidate_ref: candidateRef } : {}),
+    }
     return mapFeedback(await request({
       method: 'POST', path: `/api/v1/school/research-feedback/cases/${encodeURIComponent(caseRef)}/draft`,
-      body: { expected_case_version: expectedCaseVersion, title, body }, idempotencyKey: key,
+      body: requestBody, idempotencyKey: key,
     }))
   }
 

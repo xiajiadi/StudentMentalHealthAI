@@ -1,7 +1,9 @@
 import hashlib
 import json
 import sys
+from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -79,6 +81,150 @@ def test_no_research_cli_preserves_existing_disabled_defaults(tmp_path, monkeypa
     assert settings.school_research_enabled is False
     assert settings.school_research_managed_enabled is False
     assert settings.research_education_worker_enabled is False
+
+
+def test_general_education_draft_is_disabled_by_default_even_with_environment_override(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv(
+        "SMHAI_RESEARCH_GENERAL_EDUCATION_DRAFT__ENABLED", "true"
+    )
+    monkeypatch.setenv("SMHAI_SCHOOL_CSRF_SECRET", "a" * 64)
+    args = backend.build_parser().parse_args(["--workspace", str(tmp_path)])
+
+    settings, _research = backend.build_cli_settings_kwargs(args)
+
+    assert settings["research_general_education_draft"] == {"enabled": False}
+    from smhai_backend.core.config import BackendSettings
+
+    parsed = BackendSettings(_env_file=None, **settings)
+    assert parsed.research_general_education_draft.enabled is False
+
+
+def test_general_education_draft_requires_both_explicit_config_pins(tmp_path):
+    args = backend.build_parser().parse_args(
+        [
+            "--workspace", str(tmp_path),
+            "--research-education-draft-config-file", str(tmp_path / "draft.json"),
+        ]
+    )
+
+    with pytest.raises(backend.ResearchCLIConfigError) as exc:
+        backend.build_cli_settings_kwargs(args)
+
+    assert exc.value.code == "research_education_draft_config_incomplete"
+
+
+def test_general_education_draft_maps_only_matching_source_study_and_8161_runtime(
+    tmp_path, monkeypatch
+):
+    from school_research_education_draft_config import ResearchEducationDraftConfig
+    from school_research_student_config import StudentResearchConfig
+
+    workspace, args, _service, _service_sha = _fixture(tmp_path)
+    study_file = _attach_study_use(args, workspace)
+    student_file = workspace / "student.json"
+    student_sha = "b" * 64
+    source = StudentResearchConfig(
+        config_file=str(student_file),
+        config_sha256=student_sha,
+        school_id=7,
+        manifest_file=str(workspace / "source-r3.json"),
+        manifest_sha256="ac9cc1641faa565ff7a18866be1c2dbf8aaf16aff7155ea80c38bfd979429a9b",
+    )
+    draft_file = workspace / "draft.json"
+    draft_sha = "c" * 64
+    draft = ResearchEducationDraftConfig(
+        config_file=str(draft_file),
+        config_sha256=draft_sha,
+        school_id=7,
+        school_study_ref="school-study-r3",
+        student_source=source,
+    )
+    args.research_student_config_file = student_file
+    args.research_student_config_sha256 = student_sha
+    args.research_education_draft_config_file = draft_file
+    args.research_education_draft_config_sha256 = draft_sha
+    monkeypatch.setattr(backend, "_validate_study_use_policy", lambda **_kwargs: None)
+    monkeypatch.setattr(backend, "load_student_research_config", lambda *_args: source)
+    monkeypatch.setattr(
+        backend, "load_research_education_draft_config", lambda *_args: draft
+    )
+    monkeypatch.setattr(
+        "smhai_backend.domains.school_research.study_use.load_research_study_use_policy",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            school_id=7,
+            study_ref="school-study-r3",
+            source_rights_verified=True,
+        ),
+        raising=False,
+    )
+
+    settings, research = backend.build_cli_settings_kwargs(args)
+
+    assert settings["research_general_education_draft"] == draft.core_settings()
+    assert research["research_programme_runtime"] == {
+        "mode": "http",
+        "base_url": "http://127.0.0.1:8161",
+        "timeout": {"read": 65.0},
+    }
+    assert "research_programme_worker" not in research
+    assert research["school_research_study_use_file"] == str(study_file)
+
+    from smhai_backend.core.config import BackendSettings
+
+    monkeypatch.setenv("SMHAI_SCHOOL_CSRF_SECRET", "a" * 64)
+    parsed = BackendSettings(_env_file=None, **settings)
+    assert parsed.research_general_education_draft.enabled is True
+    assert parsed.research_programme_runtime.timeout.read >= 65
+
+
+def test_general_education_draft_rejects_source_and_study_scope_mismatches(
+    tmp_path, monkeypatch
+):
+    from school_research_education_draft_config import ResearchEducationDraftConfig
+    from school_research_student_config import StudentResearchConfig
+
+    workspace, args, _service, _service_sha = _fixture(tmp_path)
+    _attach_study_use(args, workspace)
+    student_file = workspace / "student.json"
+    source = StudentResearchConfig(
+        config_file=str(student_file), config_sha256="b" * 64, school_id=7,
+        manifest_file=str(workspace / "source-r3.json"),
+        manifest_sha256="ac9cc1641faa565ff7a18866be1c2dbf8aaf16aff7155ea80c38bfd979429a9b",
+    )
+    args.research_student_config_file = student_file
+    args.research_student_config_sha256 = source.config_sha256
+    args.research_education_draft_config_file = workspace / "draft.json"
+    args.research_education_draft_config_sha256 = "c" * 64
+    monkeypatch.setattr(backend, "_validate_study_use_policy", lambda **_kwargs: None)
+    monkeypatch.setattr(backend, "load_student_research_config", lambda *_args: source)
+    mismatch_source = replace(source, manifest_sha256="d" * 64)
+    mismatch_draft = ResearchEducationDraftConfig(
+        config_file=str(workspace / "draft.json"), config_sha256="c" * 64,
+        school_id=7, school_study_ref="school-study-r3", student_source=mismatch_source,
+    )
+    monkeypatch.setattr(
+        backend, "load_research_education_draft_config", lambda *_args: mismatch_draft
+    )
+    with pytest.raises(backend.ResearchCLIConfigError) as source_exc:
+        backend.build_cli_settings_kwargs(args)
+    assert source_exc.value.code == "research_education_draft_source_mismatch"
+
+    matching_draft = replace(mismatch_draft, student_source=source)
+    monkeypatch.setattr(
+        backend, "load_research_education_draft_config", lambda *_args: matching_draft
+    )
+    monkeypatch.setattr(
+        "smhai_backend.domains.school_research.study_use.load_research_study_use_policy",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            school_id=7, study_ref="another-study", source_rights_verified=True
+        ),
+        raising=False,
+    )
+    with pytest.raises(backend.ResearchCLIConfigError) as study_exc:
+        backend.build_cli_settings_kwargs(args)
+    assert study_exc.value.code == "research_education_draft_study_mismatch"
 
 
 def test_complete_research_cli_maps_only_explicit_nonsecret_settings(

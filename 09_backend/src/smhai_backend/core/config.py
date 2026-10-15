@@ -18,6 +18,7 @@ from pydantic import (
     SecretStr,
     StrictBool,
     StrictInt,
+    StrictStr,
     ValidationError,
     field_validator,
     model_validator,
@@ -223,6 +224,83 @@ class ResearchEducationWorkerSettings(BaseModel):
         return value
 
 
+class ResearchGeneralEducationDraftSettings(BaseModel):
+    """Trusted pins and bounded worker settings for held education drafts."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: StrictBool = False
+    school_id: StrictInt | None = None
+    school_study_ref: StrictStr | None = Field(
+        default=None, min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    )
+    policy_version: Literal["RESEARCH_GENERAL_EDUCATION_DRAFT_V1"] = (
+        "RESEARCH_GENERAL_EDUCATION_DRAFT_V1"
+    )
+    policy_hash: StrictStr | None = None
+    source_study_ref: StrictStr | None = Field(
+        default=None, min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    )
+    source_manifest_sha256: StrictStr | None = None
+    source_manifest_file: StrictStr | None = Field(default=None, repr=False)
+    poll_interval_seconds: float = Field(default=1.0, ge=0.01, le=60, strict=True)
+    lease_seconds: StrictInt = Field(default=300, ge=120, le=3600)
+    max_attempts: Literal[1] = 1
+    shutdown_drain_seconds: float = Field(default=10.0, gt=0, le=120, strict=True)
+
+    @field_validator("max_attempts", mode="before")
+    @classmethod
+    def validate_single_attempt(cls, value: Any) -> Any:
+        if type(value) is not int or value != 1:
+            raise ValueError("research education generation allows exactly one attempt")
+        return value
+
+    @field_validator("policy_hash", "source_manifest_sha256")
+    @classmethod
+    def validate_hash_pins(cls, value: str | None) -> str | None:
+        if value is not None and (
+            type(value) is not str or _SHA256_PATTERN.fullmatch(value) is None
+        ):
+            raise ValueError("research education pins must be lowercase SHA-256 values")
+        return value
+
+    @field_validator(
+        "poll_interval_seconds", "shutdown_drain_seconds", mode="before"
+    )
+    @classmethod
+    def validate_finite_worker_settings(cls, value: Any) -> Any:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("research education worker settings must be JSON numbers")
+        if not math.isfinite(float(value)):
+            raise ValueError("research education worker settings must be finite")
+        return value
+
+    @model_validator(mode="after")
+    def validate_enabled_pins(self) -> ResearchGeneralEducationDraftSettings:
+        if not self.enabled:
+            return self
+        manifest_file = self.source_manifest_file
+        if (
+            isinstance(self.school_id, bool)
+            or not isinstance(self.school_id, int)
+            or self.school_id < 1
+            or not isinstance(self.school_study_ref, str)
+            or not isinstance(self.policy_hash, str)
+            or _SHA256_PATTERN.fullmatch(self.policy_hash) is None
+            or self.source_study_ref != _SCHOOL_RESEARCH_STUDENT_STUDY_REF
+            or self.source_manifest_sha256 != _SCHOOL_RESEARCH_STUDENT_R3_MANIFEST_SHA256
+            or not isinstance(manifest_file, str)
+            or not manifest_file
+            or not (
+                Path(manifest_file).is_absolute()
+                or PureWindowsPath(manifest_file).is_absolute()
+            )
+            or any(part == ".." for part in re.split(r"[\\/]", manifest_file))
+        ):
+            raise ValueError("research general-education draft requires exact server pins")
+        return self
+
+
 class ResearchProgrammeWorkerSettings(BaseModel):
     """Explicit, non-production staff-programme generation lane."""
 
@@ -401,6 +479,9 @@ class BackendSettings(BaseSettings):
     research_education_worker: ResearchEducationWorkerSettings = Field(
         default_factory=ResearchEducationWorkerSettings
     )
+    research_general_education_draft: ResearchGeneralEducationDraftSettings = Field(
+        default_factory=ResearchGeneralEducationDraftSettings
+    )
     research_programme_worker: ResearchProgrammeWorkerSettings = Field(
         default_factory=ResearchProgrammeWorkerSettings
     )
@@ -536,6 +617,29 @@ class BackendSettings(BaseSettings):
             raise ValueError(
                 "research education worker requires nonproduction managed school research "
                 "with MySQL and a pinned study-use policy"
+            )
+        education_draft = self.research_general_education_draft
+        student_lane = self.school_research_student_conversation
+        if education_draft.enabled and (
+            self.environment == "production"
+            or self.identity_profile != "school_tenant"
+            or self.persistence_mode != "mysql"
+            or not self.school_research_enabled
+            or not self.school_research_managed_enabled
+            or not self.school_research_study_use_file
+            or self.school_research_source_rights_verified is not True
+            or not student_lane.enabled
+            or education_draft.school_id != student_lane.school_id
+            or education_draft.source_study_ref != student_lane.study_ref
+            or education_draft.source_manifest_file != student_lane.manifest_file
+            or education_draft.source_manifest_sha256 != student_lane.manifest_sha256
+            or self.research_programme_runtime.mode != "http"
+            or self.research_programme_runtime.base_url != "http://127.0.0.1:8161"
+            or self.research_programme_runtime.timeout.read < 65
+        ):
+            raise ValueError(
+                "research general-education draft requires nonproduction school MySQL, "
+                "matching R3 student package pins, and the private 8161 Runtime"
             )
         if self.research_programme_worker.enabled and (
             self.environment == "production"

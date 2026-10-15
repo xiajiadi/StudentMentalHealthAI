@@ -40,6 +40,11 @@ from school_backend import (
     _parse_study_end,
     build_research_settings_kwargs,
 )
+from school_research_education_draft_config import (
+    ResearchEducationDraftConfig,
+    ResearchEducationDraftConfigError,
+    load_research_education_draft_config,
+)
 from school_research_student_config import (
     StudentResearchConfig,
     StudentResearchConfigError,
@@ -118,6 +123,18 @@ STUDENT_RESEARCH_CONFIG_FLAGS = {
     "research_student_config_file": "--research-student-config-file",
     "research_student_config_sha256": "--research-student-config-sha256",
 }
+RESEARCH_EDUCATION_DRAFT_CONFIG_ARGUMENTS = (
+    "research_education_draft_config_file",
+    "research_education_draft_config_sha256",
+)
+RESEARCH_EDUCATION_DRAFT_CONFIG_FLAGS = {
+    "research_education_draft_config_file": "--research-education-draft-config-file",
+    "research_education_draft_config_sha256": "--research-education-draft-config-sha256",
+}
+RESEARCH_EDUCATION_DRAFT_CONFIG_KEY = "research_education_draft_config"
+RESEARCH_GENERAL_EDUCATION_DRAFT_INTEGRATION = (
+    "RESEARCH_GENERAL_EDUCATION_DRAFT_OUTBOX"
+)
 
 
 def _validated_student_research_config(
@@ -154,6 +171,79 @@ def _student_research_config_from_manifest(
         return StudentResearchProcessConfig(restored) if restored is not None else None
     except StudentResearchConfigError:
         raise LifecycleError("Lifecycle student research config is invalid") from None
+
+
+def _validated_research_education_draft_config(
+    value: Mapping[str, object] | None,
+    *,
+    research_config: ResearchProcessConfig | None,
+    student_research_config: StudentResearchProcessConfig | None,
+) -> ResearchEducationDraftProcessConfig | None:
+    if value is None:
+        return None
+    if (
+        not isinstance(value, Mapping)
+        or set(value) != set(RESEARCH_EDUCATION_DRAFT_CONFIG_ARGUMENTS)
+    ):
+        raise LifecycleError("Research education draft config pair is incomplete")
+    config_file = value.get("research_education_draft_config_file")
+    expected_sha = value.get("research_education_draft_config_sha256")
+    if isinstance(config_file, str):
+        config_file = Path(config_file)
+    if not isinstance(config_file, Path) or type(expected_sha) is not str:
+        raise LifecycleError("Research education draft config pair is incomplete")
+    if (
+        research_config is None
+        or research_config.study_use_file is None
+        or research_config.source_rights_verified is not True
+        or student_research_config is None
+    ):
+        raise LifecycleError(
+            "Research education draft requires the approved study and student source config"
+        )
+    try:
+        deployment = load_research_education_draft_config(config_file, expected_sha)
+    except ResearchEducationDraftConfigError:
+        raise LifecycleError(
+            "Research education draft config failed pinned preflight"
+        ) from None
+    source = deployment.student_source
+    student = student_research_config.deployment
+    if (
+        source.config_sha256 != student.config_sha256
+        or source.school_id != student.school_id
+        or source.manifest_file != student.manifest_file
+        or source.manifest_sha256 != student.manifest_sha256
+    ):
+        raise LifecycleError(
+            "Research education draft student source differs from the explicit student config"
+        )
+    return ResearchEducationDraftProcessConfig(deployment)
+
+
+def _research_education_draft_config_from_manifest(
+    manifest: Mapping[str, object],
+) -> ResearchEducationDraftProcessConfig | None:
+    value = manifest.get(RESEARCH_EDUCATION_DRAFT_CONFIG_KEY)
+    if value is None:
+        return None
+    if type(value) is not dict:
+        raise LifecycleError("Lifecycle research education draft config is invalid")
+    config_file = value.get("config_file")
+    config_sha256 = value.get("config_sha256")
+    if type(config_file) is not str or type(config_sha256) is not str:
+        raise LifecycleError("Lifecycle research education draft config is invalid")
+    try:
+        deployment = load_research_education_draft_config(
+            Path(config_file), config_sha256
+        )
+    except ResearchEducationDraftConfigError:
+        raise LifecycleError(
+            "Lifecycle research education draft config failed pinned preflight"
+        ) from None
+    if deployment.manifest_value() != value:
+        raise LifecycleError("Lifecycle research education draft config pins changed")
+    return ResearchEducationDraftProcessConfig(deployment)
 
 
 @dataclass(frozen=True, slots=True)
@@ -295,6 +385,28 @@ class StudentResearchProcessConfig:
             STUDENT_RESEARCH_CONFIG_FLAGS["research_student_config_file"],
             self.deployment.config_file,
             STUDENT_RESEARCH_CONFIG_FLAGS["research_student_config_sha256"],
+            self.deployment.config_sha256,
+        ]
+
+    def manifest_value(self) -> dict[str, object]:
+        return self.deployment.manifest_value()
+
+
+@dataclass(frozen=True, slots=True)
+class ResearchEducationDraftProcessConfig:
+    """Lifecycle-owned caller pin for the separately opt-in held-draft lane."""
+
+    deployment: ResearchEducationDraftConfig
+
+    def cli_arguments(self) -> list[str]:
+        return [
+            RESEARCH_EDUCATION_DRAFT_CONFIG_FLAGS[
+                "research_education_draft_config_file"
+            ],
+            self.deployment.config_file,
+            RESEARCH_EDUCATION_DRAFT_CONFIG_FLAGS[
+                "research_education_draft_config_sha256"
+            ],
             self.deployment.config_sha256,
         ]
 
@@ -1108,6 +1220,9 @@ if ($null -eq $p) { 'null'; exit 0 }
         integrations = {
             "research_education_worker": "RESEARCH_OUTBOX",
             "research_programme_worker": "RESEARCH_STAFF_PROGRAMME_OUTBOX",
+            "research_general_education_draft_worker": (
+                RESEARCH_GENERAL_EDUCATION_DRAFT_INTEGRATION
+            ),
         }
         expected_integration = integrations.get(dependency)
         if expected_integration is None:
@@ -1356,6 +1471,7 @@ class SchoolAppLifecycle:
         timeout: float = START_TIMEOUT_SECONDS,
         research_config: Mapping[str, object] | None = None,
         student_research_config: Mapping[str, object] | None = None,
+        research_education_draft_config: Mapping[str, object] | None = None,
     ) -> dict[str, Any]:
         if not IS_WINDOWS:
             raise LifecycleError("Native school application lifecycle requires Windows")
@@ -1365,6 +1481,11 @@ class SchoolAppLifecycle:
         research_config = _validated_research_config(research_config, target)
         student_research_config = _validated_student_research_config(
             student_research_config
+        )
+        research_education_draft_config = _validated_research_education_draft_config(
+            research_education_draft_config,
+            research_config=research_config,
+            student_research_config=student_research_config,
         )
         if research_config is not None:
             _validate_research_port(research_config.port, backend_port, frontend_port)
@@ -1427,6 +1548,7 @@ class SchoolAppLifecycle:
             llm_profile=llm_profile,
             research_config=research_config,
             student_research_config=student_research_config,
+            research_education_draft_config=research_education_draft_config,
         )
         ports_to_check = (backend_port, frontend_port) + (
             (research_config.port,) if research_config is not None else ()
@@ -1481,6 +1603,10 @@ class SchoolAppLifecycle:
             manifest["research_cat_port"] = research_config.port
         if student_research_config is not None:
             manifest["research_student_config"] = student_research_config.manifest_value()
+        if research_education_draft_config is not None:
+            manifest[RESEARCH_EDUCATION_DRAFT_CONFIG_KEY] = (
+                research_education_draft_config.manifest_value()
+            )
         if preview_output_dir is not None:
             manifest["frontend_preview_dir"] = str(preview_output_dir)
         _atomic_write(manifest_path, manifest)
@@ -1492,6 +1618,7 @@ class SchoolAppLifecycle:
                 llm_profile,
                 research_config=research_config,
                 student_research_config=student_research_config,
+                research_education_draft_config=research_education_draft_config,
             )
             backend = self.ops.spawn(
                 backend_argv, cwd=self.repo, env=_sanitize_environment()
@@ -1717,6 +1844,30 @@ class SchoolAppLifecycle:
                 "enabled": True,
                 "status": "UNVERIFIED",
                 "integration": "SCHOOL_RESEARCH_STUDENT_CONVERSATION",
+            }
+        education_draft_config = _research_education_draft_config_from_manifest(
+            manifest
+        )
+        if education_draft_config is not None:
+            backend_state = listeners.get("backend", {})
+            result["research_general_education_draft_worker"] = (
+                self._worker_dependency_status(
+                    int(manifest["backend_port"]),
+                    "research_general_education_draft_worker",
+                    RESEARCH_GENERAL_EDUCATION_DRAFT_INTEGRATION,
+                    enabled=True,
+                    backend_ready=(
+                        backend_state.get("owned_process") is True
+                        and backend_state.get("listener") == "OWNED"
+                        and backend_state.get("ready") is True
+                    ),
+                )
+            )
+        else:
+            result["research_general_education_draft_worker"] = {
+                "enabled": False,
+                "status": "DISABLED",
+                "integration": RESEARCH_GENERAL_EDUCATION_DRAFT_INTEGRATION,
             }
         if research_config is not None:
             try:
@@ -2135,6 +2286,7 @@ class SchoolAppLifecycle:
         llm_profile: str,
         research_config: ResearchProcessConfig | None = None,
         student_research_config: StudentResearchProcessConfig | None = None,
+        research_education_draft_config: ResearchEducationDraftProcessConfig | None = None,
     ) -> dict[str, Any]:
         try:
             from prepare_school_runtime import validate_marker, verify_process
@@ -2179,6 +2331,8 @@ class SchoolAppLifecycle:
             argv.extend(research_config.cli_arguments())
         if student_research_config is not None:
             argv.extend(student_research_config.cli_arguments())
+        if research_education_draft_config is not None:
+            argv.extend(research_education_draft_config.cli_arguments())
         try:
             result = subprocess.run(
                 _safe_argv(argv),
@@ -2218,6 +2372,7 @@ class SchoolAppLifecycle:
         *,
         research_config: ResearchProcessConfig | None = None,
         student_research_config: StudentResearchProcessConfig | None = None,
+        research_education_draft_config: ResearchEducationDraftProcessConfig | None = None,
     ) -> list[str]:
         python, _base_python = _backend_python_paths(self.repo)
         argv = [
@@ -2236,6 +2391,8 @@ class SchoolAppLifecycle:
             argv.extend(research_config.cli_arguments())
         if student_research_config is not None:
             argv.extend(student_research_config.cli_arguments())
+        if research_education_draft_config is not None:
+            argv.extend(research_education_draft_config.cli_arguments())
         return _safe_argv(argv)
 
     def _frontend_argv(
@@ -2493,7 +2650,8 @@ class SchoolAppLifecycle:
         if any(
             key.startswith("research_")
             and key not in {
-                "research_config", "research_cat_port", "research_student_config"
+                "research_config", "research_cat_port", "research_student_config",
+                RESEARCH_EDUCATION_DRAFT_CONFIG_KEY,
             }
             for key in manifest
         ):
@@ -2511,6 +2669,30 @@ class SchoolAppLifecycle:
             allow_legacy_prompt=allow_legacy_prompt,
         )
         student_research_config = _student_research_config_from_manifest(manifest)
+        education_draft_config = _research_education_draft_config_from_manifest(
+            manifest
+        )
+        if education_draft_config is not None:
+            if (
+                research_config is None
+                or research_config.study_use_file is None
+                or research_config.source_rights_verified is not True
+                or student_research_config is None
+            ):
+                raise LifecycleError(
+                    "Lifecycle research education draft dependencies are incomplete"
+                )
+            draft_source = education_draft_config.deployment.student_source
+            student_source = student_research_config.deployment
+            if (
+                draft_source.config_sha256 != student_source.config_sha256
+                or draft_source.school_id != student_source.school_id
+                or draft_source.manifest_file != student_source.manifest_file
+                or draft_source.manifest_sha256 != student_source.manifest_sha256
+            ):
+                raise LifecycleError(
+                    "Lifecycle research education draft source pins differ"
+                )
         expected_ports = {
             "backend": manifest["backend_port"],
             "frontend": manifest["frontend_port"],
@@ -2550,6 +2732,8 @@ class SchoolAppLifecycle:
                     expected_argv.extend(research_config.cli_arguments())
                 if student_research_config is not None:
                     expected_argv.extend(student_research_config.cli_arguments())
+                if education_draft_config is not None:
+                    expected_argv.extend(education_draft_config.cli_arguments())
                 expected_executable = expected_argv[0]
                 if not isinstance(service.get("base_executable"), str) or _path_key(
                     service["base_executable"]
@@ -2957,6 +3141,12 @@ def _public_status(manifest: dict[str, Any]) -> dict[str, Any]:
             "status": "UNVERIFIED",
             "integration": "SCHOOL_RESEARCH_STUDENT_CONVERSATION",
         }
+    draft_config = _research_education_draft_config_from_manifest(manifest)
+    result["research_general_education_draft_worker"] = {
+        "enabled": draft_config is not None,
+        "status": "UNVERIFIED" if draft_config is not None else "DISABLED",
+        "integration": RESEARCH_GENERAL_EDUCATION_DRAFT_INTEGRATION,
+    }
     return result
 
 
@@ -3004,6 +3194,13 @@ def build_parser() -> argparse.ArgumentParser:
         )
     start.add_argument("--research-student-config-file", type=Path)
     start.add_argument("--research-student-config-sha256")
+    start.add_argument(
+        RESEARCH_EDUCATION_DRAFT_CONFIG_FLAGS["research_education_draft_config_file"],
+        type=Path,
+    )
+    start.add_argument(
+        RESEARCH_EDUCATION_DRAFT_CONFIG_FLAGS["research_education_draft_config_sha256"]
+    )
     return parser
 
 
@@ -3078,6 +3275,15 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 else None
             )
+            education_draft_values = {
+                name: getattr(args, name)
+                for name in RESEARCH_EDUCATION_DRAFT_CONFIG_ARGUMENTS
+            }
+            research_education_draft_config = (
+                education_draft_values
+                if any(value is not None for value in education_draft_values.values())
+                else None
+            )
             result = lifecycle.start(
                 args.workspace,
                 backend_port=args.backend_port,
@@ -3087,6 +3293,7 @@ def main(argv: list[str] | None = None) -> int:
                 timeout=args.timeout,
                 research_config=research_config,
                 student_research_config=student_research_config,
+                research_education_draft_config=research_education_draft_config,
             )
         elif args.command == "status":
             result = lifecycle.status(args.workspace)

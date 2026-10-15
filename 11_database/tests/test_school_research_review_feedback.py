@@ -13,11 +13,15 @@ from alembic.operations import Operations
 from database_layer.base import Base
 from database_layer.errors import ForeignKeyConflict, OptimisticConcurrencyConflict
 from database_layer.models import (
+    SchoolResearchEducationCandidate,
     SchoolResearchFeedbackEvent,
     SchoolResearchFeedbackRecord,
     SchoolResearchReviewCase,
     SchoolResearchReviewEvent,
     SchoolTaskSpecialistAssignment,
+)
+from database_layer.school_research_education_candidates import (
+    SchoolResearchEducationCandidateRepository,
 )
 from database_layer.school_research_review_feedback import (
     ResearchReviewFeedbackError,
@@ -30,6 +34,11 @@ from sqlalchemy import create_engine, event, inspect
 from sqlalchemy.dialects import mysql
 from sqlalchemy.orm import Session
 
+from test_school_research_education_candidates import (
+    _candidate_values,
+    _CandidateAsyncSessionAdapter,
+    _claim,
+)
 from test_school_research_education_jobs import _seed
 
 _NOW = datetime(2026, 10, 14, 9, 0, tzinfo=UTC)
@@ -140,7 +149,7 @@ def _scope() -> ResearchSessionScope:
         profile_ref="research-profile",
         profile_version_number=3,
         profile_sha256="a" * 64,
-        response_origin="MODEL_GENERATED",
+        response_origin="PUBLIC_OBSERVED",
     )
 
 
@@ -158,7 +167,7 @@ def test_models_have_exact_research_session_scope_and_metadata_only_events():
     assert "case_note_ciphertext" not in SchoolResearchReviewEvent.__table__.columns
     assert "payload_ciphertext" not in SchoolResearchFeedbackEvent.__table__.columns
     assert "psychological_interpretation_allowed" in SchoolResearchFeedbackRecord.__table__.columns
-    assert len(Base.metadata.tables) == 55
+    assert len(Base.metadata.tables) == 59
 
 
 def test_unit_of_work_exposes_new_repositories():
@@ -186,6 +195,14 @@ def test_unit_of_work_exposes_new_repositories():
 
 
 def test_case_feedback_cas_encrypted_payload_and_revoke_events(session):
+    candidate_claim = _claim(session)
+    candidate_repository = SchoolResearchEducationCandidateRepository(
+        _CandidateAsyncSessionAdapter(session)
+    )
+    held_candidate = asyncio.run(
+        candidate_repository.create_held(**_candidate_values(candidate_claim))
+    )
+
     async def run():
         wrapped = _AsyncSessionAdapter(session)
         reviews = SchoolResearchReviewRepository(wrapped)
@@ -232,6 +249,65 @@ def test_case_feedback_cas_encrypted_payload_and_revoke_events(session):
             now=_NOW,
         )
 
+        with pytest.raises(ResearchReviewFeedbackError):
+            await feedback.create_draft(
+                school_id=1,
+                research_session_id=1,
+                expected_case_version=case.version,
+                feedback_ref="research-feedback-missing-lineage-pair",
+                content_revision=1,
+                payload_ciphertext=b"encrypted-education-feedback",
+                cipher_format_version="fernet.v1",
+                key_version="research-key-v1",
+                payload_schema_version="research-feedback.v1",
+                actor_membership_role_id=1,
+                source_candidate_id=held_candidate.id,
+                now=_NOW,
+            )
+        with pytest.raises(ResearchReviewFeedbackError):
+            await feedback.create_draft(
+                school_id=1,
+                research_session_id=1,
+                expected_case_version=case.version,
+                feedback_ref="research-feedback-unsupported-candidate-revision",
+                content_revision=1,
+                payload_ciphertext=b"encrypted-education-feedback",
+                cipher_format_version="fernet.v1",
+                key_version="research-key-v1",
+                payload_schema_version="research-feedback.v1",
+                actor_membership_role_id=1,
+                source_candidate_id=held_candidate.id,
+                source_candidate_revision=2,
+                now=_NOW,
+            )
+        with pytest.raises(ForeignKeyConflict):
+            await feedback.create_draft(
+                school_id=1,
+                research_session_id=1,
+                expected_case_version=case.version,
+                feedback_ref="research-feedback-held-candidate",
+                content_revision=1,
+                payload_ciphertext=b"encrypted-education-feedback",
+                cipher_format_version="fernet.v1",
+                key_version="research-key-v1",
+                payload_schema_version="research-feedback.v1",
+                actor_membership_role_id=1,
+                source_candidate_id=held_candidate.id,
+                source_candidate_revision=held_candidate.content_revision,
+                now=_NOW,
+            )
+        adopted_candidate = await candidate_repository.resolve(
+            school_id=1,
+            task_id=1,
+            candidate_ref=held_candidate.candidate_ref,
+            expected_state_version=held_candidate.state_version,
+            target="ADOPTED",
+            actor_membership_role_id=1,
+            trace_id="TRACE_candidate_adopted",
+            now=_NOW,
+        )
+        original_candidate_ciphertext = adopted_candidate.payload_ciphertext
+
         draft = await feedback.create_draft(
             school_id=1,
             research_session_id=1,
@@ -243,6 +319,8 @@ def test_case_feedback_cas_encrypted_payload_and_revoke_events(session):
             key_version="research-key-v1",
             payload_schema_version="research-feedback.v1",
             actor_membership_role_id=1,
+            source_candidate_id=adopted_candidate.id,
+            source_candidate_revision=adopted_candidate.content_revision,
             now=_NOW,
         )
         assert draft.status == "DRAFT" and draft.case_version == case.version
@@ -250,6 +328,11 @@ def test_case_feedback_cas_encrypted_payload_and_revoke_events(session):
         assert draft.psychological_interpretation_allowed is False
         assert draft.publication_status == "not_approved_for_publication_or_operational_use"
         assert "encrypted-education-feedback" not in repr(draft)
+        assert draft.source_candidate_id == adopted_candidate.id
+        assert draft.source_candidate_revision == adopted_candidate.content_revision
+        persisted_candidate = session.get(SchoolResearchEducationCandidate, adopted_candidate.id)
+        assert persisted_candidate is not None
+        assert persisted_candidate.payload_ciphertext == original_candidate_ciphertext
 
         published = await feedback.publish(
             school_id=1,
@@ -290,6 +373,8 @@ def test_case_feedback_cas_encrypted_payload_and_revoke_events(session):
         )
         assert draft_revoked.status == "REVOKED" and draft_revoked.published_at is None
         assert draft_revoked.published_by_membership_role_id is None
+        assert second_draft.source_candidate_id is None
+        assert second_draft.source_candidate_revision is None
         review_events = await reviews.list_events(school_id=1, research_session_id=1)
         feedback_events = await feedback.list_events(school_id=1, feedback_id=draft.id)
         assert [item.to_status for item in review_events] == ["OPEN", "IN_REVIEW", "APPROVED"]
@@ -322,6 +407,13 @@ def test_repository_rejects_scope_mismatch_missing_cipher_metadata_and_inactive_
         with pytest.raises(ForeignKeyConflict):
             await reviews.create_case(
                 scope=wrong_scope,
+                specialist_membership_role_id=1,
+                actor_membership_role_id=1,
+                now=_NOW,
+            )
+        with pytest.raises(ForeignKeyConflict):
+            await reviews.create_case(
+                scope=replace(_scope(), response_origin="MODEL_GENERATED"),
                 specialist_membership_role_id=1,
                 actor_membership_role_id=1,
                 now=_NOW,
@@ -436,8 +528,17 @@ def test_0017_migration_revision_and_model_column_order_match():
                 assert inspector.get_columns(table_name)
                 actual_columns = inspector.get_columns(table_name)
                 model_columns = Base.metadata.tables[table_name].columns
-                assert [item["name"] for item in actual_columns] == list(model_columns.keys())
-                for actual, expected in zip(actual_columns, model_columns.values(), strict=True):
+                expected_model_columns = list(model_columns.values())
+                if table_name == "school_research_feedback_records":
+                    expected_model_columns = [
+                        column
+                        for column in expected_model_columns
+                        if column.name not in {"source_candidate_id", "source_candidate_revision"}
+                    ]
+                assert [item["name"] for item in actual_columns] == [
+                    column.name for column in expected_model_columns
+                ]
+                for actual, expected in zip(actual_columns, expected_model_columns, strict=True):
                     assert actual["nullable"] is expected.nullable
                     actual_type = actual["type"].compile(dialect=connection.dialect)
                     expected_type = expected.type.compile(dialect=connection.dialect)
@@ -452,12 +553,22 @@ def test_0017_migration_revision_and_model_column_order_match():
                     (tuple(item["constrained_columns"]), tuple(item["referred_columns"]))
                     for item in inspector.get_foreign_keys(table_name)
                 }
+                expected_fk_constraints = list(
+                    Base.metadata.tables[table_name].foreign_key_constraints
+                )
+                if table_name == "school_research_feedback_records":
+                    expected_fk_constraints = [
+                        fk
+                        for fk in expected_fk_constraints
+                        if "source_candidate_id"
+                        not in {element.parent.name for element in fk.elements}
+                    ]
                 expected_fks = {
                     (
                         tuple(element.parent.name for element in fk.elements),
                         tuple(element.column.name for element in fk.elements),
                     )
-                    for fk in Base.metadata.tables[table_name].foreign_key_constraints
+                    for fk in expected_fk_constraints
                 }
                 assert actual_fks == expected_fks
                 actual_uniques = {
@@ -478,6 +589,10 @@ def test_0017_migration_revision_and_model_column_order_match():
                     for constraint in Base.metadata.tables[table_name].constraints
                     if constraint.__class__.__name__ == "CheckConstraint"
                 }
+                if table_name == "school_research_feedback_records":
+                    expected_checks.discard(
+                        "ck_school_research_feedback_records_source_candidate_pair_matches"
+                    )
                 assert actual_checks == expected_checks
                 actual_indexes = {
                     (item["name"], tuple(item["column_names"]))

@@ -2,12 +2,25 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictInt,
+    StrictStr,
+    field_validator,
+)
+
+from smhai_backend.domains.research_general_education.schemas import (
+    ResearchGeneralEducationSourceCard,
+)
 
 _PUBLICATION_STATUS = "not_approved_for_publication_or_operational_use"
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
 class ResearchFeedbackModel(BaseModel):
@@ -35,6 +48,7 @@ class ResearchFeedbackDraftRequest(ResearchFeedbackModel):
     expected_case_version: StrictInt = Field(ge=1, le=2_147_483_647)
     title: StrictStr = Field(min_length=1, max_length=120)
     body: StrictStr = Field(min_length=1, max_length=4000)
+    candidate_ref: StrictStr | None = Field(default=None, min_length=1, max_length=128)
 
     @field_validator("title", "body")
     @classmethod
@@ -64,6 +78,18 @@ class _ResearchOutput(BaseModel):
                 return value.replace(tzinfo=UTC)
             return value.astimezone(UTC)
         return value
+
+
+class ResearchFeedbackCitationDto(_ResearchOutput):
+    citation_id: StrictStr = Field(min_length=1, max_length=128)
+    chunk_id: StrictStr | None = Field(default=None, max_length=192)
+    document_id: StrictStr | None = Field(default=None, max_length=128)
+    title: StrictStr | None = Field(default=None, max_length=500)
+    organization: StrictStr | None = Field(default=None, max_length=300)
+    locator: StrictStr | None = Field(default=None, max_length=2048)
+    rank: StrictInt | None = Field(default=None, ge=1)
+    source_version: StrictStr | None = Field(default=None, max_length=128)
+    source_hash: StrictStr | None = Field(default=None, max_length=128)
 
 
 class ResearchReviewTaskDto(_ResearchOutput):
@@ -108,9 +134,21 @@ class ResearchFeedbackDto(_ResearchOutput):
     status: Literal["DRAFT", "PUBLISHED", "REVOKED"]
     title: StrictStr = Field(min_length=1, max_length=120)
     body: StrictStr = Field(min_length=1, max_length=4000)
+    citations: list[ResearchFeedbackCitationDto] = Field(default_factory=list, max_length=8)
+    source_cards: list[ResearchGeneralEducationSourceCard] = Field(
+        default_factory=list, max_length=8
+    )
+    source_manifest_sha256: StrictStr | None = Field(default=None, max_length=64)
     created_at: datetime
     published_at: datetime | None = None
     revoked_at: datetime | None = None
+
+    @field_validator("source_manifest_sha256")
+    @classmethod
+    def source_manifest_is_sha256(cls, value: str | None) -> str | None:
+        if value is not None and _SHA256.fullmatch(value) is None:
+            raise ValueError("source manifest pin is invalid")
+        return value
 
 
 class StudentResearchFeedbackDto(_ResearchOutput):
@@ -128,8 +166,20 @@ class StudentResearchFeedbackDto(_ResearchOutput):
     status: Literal["PUBLISHED"]
     title: StrictStr = Field(min_length=1, max_length=120)
     body: StrictStr = Field(min_length=1, max_length=4000)
+    citations: list[ResearchFeedbackCitationDto] = Field(default_factory=list, max_length=8)
+    source_cards: list[ResearchGeneralEducationSourceCard] = Field(
+        default_factory=list, max_length=8
+    )
+    source_manifest_sha256: StrictStr | None = Field(default=None, max_length=64)
     created_at: datetime
     published_at: datetime
+
+    @field_validator("source_manifest_sha256")
+    @classmethod
+    def source_manifest_is_sha256(cls, value: str | None) -> str | None:
+        if value is not None and _SHA256.fullmatch(value) is None:
+            raise ValueError("source manifest pin is invalid")
+        return value
 
 
 class ResearchReviewTaskListDto(ResearchFeedbackModel):

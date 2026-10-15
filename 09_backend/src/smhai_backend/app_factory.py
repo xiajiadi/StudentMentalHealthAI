@@ -43,6 +43,9 @@ from smhai_backend.domains.school_research_cohorts.router import (
 from smhai_backend.domains.school_research_discovery.router import (
     router as school_research_discovery_router,
 )
+from smhai_backend.domains.school_research_education_candidates.router import (
+    router as school_research_education_candidates_router,
+)
 from smhai_backend.domains.school_research_feedback.router import (
     router as school_research_feedback_router,
 )
@@ -140,6 +143,11 @@ def create_app(
     )
     app.include_router(
         school_research_programme_candidates_router,
+        prefix=settings.api_prefix,
+        include_in_schema=False,
+    )
+    app.include_router(
+        school_research_education_candidates_router,
         prefix=settings.api_prefix,
         include_in_schema=False,
     )

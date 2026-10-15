@@ -165,6 +165,9 @@ async def test_student_surface_returns_only_published_research_feedback_projecti
         "status",
         "title",
         "body",
+        "citations",
+        "source_cards",
+        "source_manifest_sha256",
         "created_at",
         "published_at",
     }

@@ -1,0 +1,168 @@
+"""Closed DTOs for non-personal, held general-education research drafts."""
+
+from __future__ import annotations
+
+import re
+from typing import Literal
+from urllib.parse import urlsplit
+
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, field_validator
+
+from smhai_backend.domains.support.schemas import GenerationContent, SupportCitation
+from smhai_backend.integrations.safety import SafetyAction
+
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_CHUNK_ID = re.compile(r"^CHUNK_[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$")
+_REF = re.compile(r"^(?:RETR|GEN|PROMPT)_[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$")
+_SAFE_REASON = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
+
+
+class _StrictModel(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+
+
+class ResearchGeneralEducationSourceCard(_StrictModel):
+    """Exact source-package metadata retained with a cited excerpt."""
+
+    chunk_id: StrictStr = Field(pattern=_CHUNK_ID.pattern)
+    record_id: StrictStr = Field(min_length=1, max_length=128)
+    source_id: StrictStr = Field(min_length=1, max_length=128)
+    title: StrictStr = Field(min_length=1, max_length=512)
+    organization: StrictStr = Field(min_length=1, max_length=256)
+    canonical_url: StrictStr = Field(min_length=1, max_length=2048)
+    record_locator: StrictStr = Field(min_length=1, max_length=1024)
+    source_population_scope: StrictStr = Field(min_length=1, max_length=512)
+    source_language: StrictStr = Field(min_length=1, max_length=16)
+    license: StrictStr = Field(min_length=1, max_length=256)
+    license_url: StrictStr = Field(min_length=1, max_length=2048)
+    attribution: StrictStr = Field(min_length=1, max_length=2048)
+    excerpt_sha256: StrictStr = Field(pattern=_SHA256.pattern)
+    excerpt_text: StrictStr = Field(min_length=1, max_length=8000)
+    consumer_age_min: StrictInt = Field(ge=14, le=17)
+    consumer_age_max: StrictInt = Field(ge=14, le=17)
+
+    @field_validator("canonical_url", "license_url")
+    @classmethod
+    def require_https_source_url(cls, value: str) -> str:
+        parsed = urlsplit(value)
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+            raise ValueError("source URLs must preserve an HTTPS locator")
+        return value
+
+
+class ResearchGeneralEducationProvenance(_StrictModel):
+    policy_version: Literal["RESEARCH_GENERAL_EDUCATION_DRAFT_V1"]
+    policy_hash: StrictStr = Field(pattern=_SHA256.pattern)
+    safety_policy_version: Literal["safety-port-unversioned.v1"]
+    source_package_ref: StrictStr = Field(min_length=1)
+    source_study_ref: StrictStr = Field(min_length=1)
+    source_manifest_sha256: StrictStr = Field(pattern=_SHA256.pattern)
+    source_age_scope: Literal["14-17"]
+    retrieval_id: StrictStr = Field(pattern=r"^RETR_[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$")
+    retrieval_bundle_sha256: StrictStr = Field(pattern=_SHA256.pattern)
+    cited_chunk_ids: list[StrictStr] = Field(min_length=1, max_length=8)
+    generation_id: StrictStr = Field(pattern=r"^GEN_[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$")
+    prompt_id: StrictStr = Field(pattern=r"^PROMPT_[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$")
+    prompt_version: StrictStr = Field(min_length=1, max_length=64)
+    prompt_sha256: StrictStr = Field(pattern=_SHA256.pattern)
+    model_id: StrictStr = Field(min_length=1, max_length=128)
+    model_version: StrictStr = Field(min_length=1, max_length=128)
+    model_digest_sha256: StrictStr = Field(pattern=_SHA256.pattern)
+    runtime_version: StrictStr = Field(min_length=1, max_length=64)
+    runtime_attempt_count: Literal[1]
+    runtime_retry_count: Literal[0]
+    runtime_fallback_count: Literal[0]
+    runtime_fallback_attempted: Literal[False]
+    runtime_local_only: Literal[True]
+    input_safety_action: SafetyAction
+    input_safety_reason_codes: list[StrictStr] = Field(min_length=1, max_length=16)
+    retrieval_safety_action: SafetyAction
+    retrieval_safety_reason_codes: list[StrictStr] = Field(min_length=1, max_length=16)
+    output_safety_action: SafetyAction
+    output_safety_reason_codes: list[StrictStr] = Field(min_length=1, max_length=16)
+
+    def model_post_init(self, __context: object) -> None:
+        if any(
+            _SAFE_REASON.fullmatch(code) is None
+            for codes in (
+                self.input_safety_reason_codes,
+                self.retrieval_safety_reason_codes,
+                self.output_safety_reason_codes,
+            )
+            for code in codes
+        ):
+            raise ValueError("safety reason codes must be closed code tokens")
+        if len(set(self.cited_chunk_ids)) != len(self.cited_chunk_ids):
+            raise ValueError("cited chunk ids must be unique")
+        if any(_CHUNK_ID.fullmatch(value) is None for value in self.cited_chunk_ids):
+            raise ValueError("cited chunk id is invalid")
+
+
+class ResearchGeneralEducationCandidatePayload(_StrictModel):
+    schema_version: Literal["school-research-general-education-candidate.v1"]
+    content: GenerationContent
+    citations: list[SupportCitation] = Field(min_length=1, max_length=8)
+    source_cards: list[ResearchGeneralEducationSourceCard] = Field(min_length=1, max_length=8)
+    provenance: ResearchGeneralEducationProvenance
+
+    @classmethod
+    def from_closed_mapping(cls, value: object) -> ResearchGeneralEducationCandidatePayload:
+        """Validate closed nested citations despite SupportCitation's legacy extra=ignore."""
+        if not isinstance(value, dict):
+            raise ValueError("candidate payload must be an object")
+        allowed = set(SupportCitation.model_fields)
+        citations = value.get("citations")
+        if not isinstance(citations, list) or any(
+            not isinstance(item, dict) or set(item) - allowed for item in citations
+        ):
+            raise ValueError("candidate citations must use the closed SupportCitation fields")
+        return cls.model_validate(value, strict=True)
+
+    def model_post_init(self, __context: object) -> None:
+        citation_ids = [citation.chunk_id for citation in self.citations]
+        card_ids = [card.chunk_id for card in self.source_cards]
+        if (
+            any(value is None for value in citation_ids)
+            or len(set(citation_ids)) != len(citation_ids)
+            or len(set(card_ids)) != len(card_ids)
+            or set(citation_ids) != set(card_ids)
+            or set(self.provenance.cited_chunk_ids) != set(citation_ids)
+        ):
+            raise ValueError("citations, source cards, and provenance do not bind exactly")
+        for citation, card in zip(self.citations, self.source_cards, strict=True):
+            if (
+                citation.chunk_id != card.chunk_id
+                or citation.title != card.title
+                or citation.organization != card.organization
+            ):
+                raise ValueError("citation metadata differs from its source card")
+            suffix = (
+                f"; source population: {card.source_population_scope}; "
+                f"source: {card.canonical_url}; license: {card.license} "
+                f"({card.license_url}); attribution: {card.attribution}"
+            )
+            expected_locators = {
+                f"{card.record_locator}{suffix}",
+                f"record: {card.record_id}{suffix}",
+            }
+            if citation.locator not in expected_locators:
+                raise ValueError("citation locator differs from its source-card metadata")
+            if citation.source_hash != f"sha256:{card.excerpt_sha256}":
+                raise ValueError("citation hash differs from source card excerpt hash")
+            if (card.consumer_age_min, card.consumer_age_max) != (14, 17):
+                raise ValueError("candidate source-card age scope must remain 14-17")
+
+
+ResearchGeneralEducationStatus = Literal[
+    "HELD", "ABSTAINED", "REVIEW_REQUIRED", "CRISIS_ROUTED", "FAILED"
+]
+
+
+class ResearchGeneralEducationOutcome(_StrictModel):
+    status: ResearchGeneralEducationStatus
+    reason_code: StrictStr = Field(pattern=r"^[A-Z][A-Z0-9_]{0,95}$")
+    candidate: ResearchGeneralEducationCandidatePayload | None = None
+
+    def model_post_init(self, __context: object) -> None:
+        if (self.status == "HELD") != (self.candidate is not None):
+            raise ValueError("only a held outcome may contain a candidate")

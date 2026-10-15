@@ -305,9 +305,9 @@ def test_0017_ciphertext_verification_uses_new_review_and_feedback_metadata(tmp_
     )
 
 
-def test_0018_ciphertext_verification_includes_held_programme_candidate(tmp_path, monkeypatch):
+def test_0020_ciphertext_verification_includes_held_education_candidate(tmp_path, monkeypatch):
     manifest = trusted_manifest(CURRENT_SCHOOL_REVISION)
-    table_name = "school_research_programme_candidates"
+    table_name = "school_research_education_candidates"
     assert table_name in manifest
     connection = CiphertextConnection(
         set(manifest),
@@ -317,7 +317,7 @@ def test_0018_ciphertext_verification_includes_held_programme_candidate(tmp_path
                     b"synthetic-held-candidate-cipher",
                     "school-key-v1",
                     "fernet.v1",
-                    "school_research_programme_candidate.v1",
+                    "school_research_education_candidate.v1",
                 )
             ],
         },
@@ -335,6 +335,7 @@ def test_0018_ciphertext_verification_includes_held_programme_candidate(tmp_path
         and f"FROM `{table_name}`" in sql
         for sql in connection.fake_cursor.queries
     )
+    assert "school_research_education_candidate_events" in manifest
 
 
 def test_0016_ciphertext_verification_excludes_0017_tables(tmp_path, monkeypatch):

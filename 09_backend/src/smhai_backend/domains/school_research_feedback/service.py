@@ -226,6 +226,7 @@ class SchoolResearchFeedbackService:
         expected_case_version: int,
         title: str,
         body: str,
+        candidate_ref: str | None = None,
         idempotency,
         trace_id: str,
     ):
@@ -236,6 +237,7 @@ class SchoolResearchFeedbackService:
                 "expected_case_version": expected_case_version,
                 "title": title,
                 "body": body,
+                "candidate_ref": candidate_ref,
             },
         )
         if _FORBIDDEN_GENERATED_CLAIMS.search(request.title) or _FORBIDDEN_GENERATED_CLAIMS.search(
@@ -248,6 +250,7 @@ class SchoolResearchFeedbackService:
             expected_case_version=request.expected_case_version,
             title=request.title,
             body=request.body,
+            candidate_ref=request.candidate_ref,
             idempotency=idempotency,
             trace_id=trace_id,
         )

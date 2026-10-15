@@ -400,6 +400,132 @@ def test_research_programme_worker_manifest_argv_restore_and_live_status(
     assert stopped["status"] == "STOPPED"
 
 
+def test_general_education_draft_config_roundtrips_argv_and_reports_own_status(
+    prepared, monkeypatch
+):
+    from school_research_education_draft_config import ResearchEducationDraftConfig
+    from school_research_student_config import StudentResearchConfig
+
+    repo, workspace, ops, app = prepared
+    source_config = StudentResearchConfig(
+        config_file=str(workspace / "student-source.json"),
+        config_sha256="a" * 64,
+        school_id=7,
+        manifest_file=str(workspace / "source-r3.json"),
+        manifest_sha256="ac9cc1641faa565ff7a18866be1c2dbf8aaf16aff7155ea80c38bfd979429a9b",
+    )
+    draft_config = ResearchEducationDraftConfig(
+        config_file=str(workspace / "education-draft.json"),
+        config_sha256="b" * 64,
+        school_id=7,
+        school_study_ref="school-study-r3",
+        student_source=source_config,
+    )
+    monkeypatch.setattr(
+        lifecycle, "load_student_research_config", lambda *_args: source_config
+    )
+    monkeypatch.setattr(
+        lifecycle, "load_research_education_draft_config", lambda *_args: draft_config
+    )
+    settings = {
+        "school_research_runtime_file": str(workspace / "runtime.json"),
+        "school_research_runtime_sha256": "c" * 64,
+        "school_research_service_file": str(workspace / "service.json"),
+        "school_research_service_sha256": "d" * 64,
+        "school_research_cat_python": str(repo / "cat-python.exe"),
+        "school_research_cat_source": str(repo / "cat-source"),
+        "school_research_cat_dependencies": str(repo / "cat-deps"),
+        "school_research_base_url": "http://127.0.0.1:8182",
+        "school_research_study_use_file": str(workspace / "study-use.json"),
+        "school_research_study_use_sha256": "e" * 64,
+        "school_research_source_rights_verified": True,
+        "school_research_latest_study_end": "2027-06-30T15:59:59Z",
+    }
+    monkeypatch.setattr(
+        lifecycle, "build_research_settings_kwargs", lambda *_args: settings
+    )
+    ops.dependency_status = lambda _port, dependency: (
+        {
+            "status": "READY",
+            "integration": lifecycle.RESEARCH_GENERAL_EDUCATION_DRAFT_INTEGRATION,
+        }
+        if dependency == "research_general_education_draft_worker"
+        else None
+    )
+    research_input = {
+        name: str(workspace / f"{name}.json")
+        for name in lifecycle.RESEARCH_CONFIG_ARGUMENTS
+    }
+    research_input.update(
+        {
+            "research_runtime_sha256": "c" * 64,
+            "research_service_sha256": "d" * 64,
+            "research_study_use_file": workspace / "study-use.json",
+            "research_study_use_sha256": "e" * 64,
+            "research_source_rights_verified": True,
+            "research_latest_study_end": "2027-06-30T15:59:59Z",
+        }
+    )
+    student_input = {
+        "research_student_config_file": Path(source_config.config_file),
+        "research_student_config_sha256": source_config.config_sha256,
+    }
+    draft_input = {
+        "research_education_draft_config_file": Path(draft_config.config_file),
+        "research_education_draft_config_sha256": draft_config.config_sha256,
+    }
+
+    started = app.start(
+        workspace,
+        frontend_mode="dev",
+        research_config=research_input,
+        student_research_config=student_input,
+        research_education_draft_config=draft_input,
+    )
+
+    backend_argv = ops.spawned[0][0]
+    assert backend_argv[
+        backend_argv.index("--research-education-draft-config-file") + 1
+    ] == draft_config.config_file
+    assert backend_argv[
+        backend_argv.index("--research-education-draft-config-sha256") + 1
+    ] == draft_config.config_sha256
+    manifest = json.loads(
+        (workspace / lifecycle.MANIFEST_NAME).read_text(encoding="utf-8")
+    )
+    assert manifest[lifecycle.RESEARCH_EDUCATION_DRAFT_CONFIG_KEY] == (
+        draft_config.manifest_value()
+    )
+    restored = lifecycle._research_education_draft_config_from_manifest(manifest)
+    assert restored is not None
+    assert restored.cli_arguments() == [
+        "--research-education-draft-config-file",
+        draft_config.config_file,
+        "--research-education-draft-config-sha256",
+        draft_config.config_sha256,
+    ]
+    assert started["research_general_education_draft_worker"]["status"] == "UNVERIFIED"
+
+    status = app.status(workspace)
+    assert status["research_general_education_draft_worker"] == {
+        "enabled": True,
+        "status": "READY",
+        "integration": lifecycle.RESEARCH_GENERAL_EDUCATION_DRAFT_INTEGRATION,
+    }
+
+
+def test_general_education_draft_lifecycle_rejects_missing_source_or_study():
+    with pytest.raises(lifecycle.LifecycleError, match="requires the approved study"):
+        lifecycle._validated_research_education_draft_config(
+            {
+                "research_education_draft_config_file": Path("C:/synthetic/draft.json"),
+                "research_education_draft_config_sha256": "a" * 64,
+            },
+            research_config=None,
+            student_research_config=None,
+        )
+
+
 def test_research_programme_worker_manifest_rejects_prompt_pin_drift(
     prepared, monkeypatch
 ):

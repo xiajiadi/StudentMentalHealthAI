@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .errors import ForeignKeyConflict, OptimisticConcurrencyConflict, UniqueConflict
 from .models import (
+    SchoolResearchEducationCandidate,
     SchoolResearchFeedbackEvent,
     SchoolResearchFeedbackRecord,
     SchoolResearchReviewCase,
@@ -141,6 +142,8 @@ class ResearchFeedbackRecordDTO:
     retention_due_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    source_candidate_id: int | None = field(default=None, repr=False)
+    source_candidate_revision: int | None = None
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -431,6 +434,8 @@ class SchoolResearchFeedbackRepository:
         actor_membership_role_id: int,
         trace_id: str | None = None,
         retention_due_at: datetime | None = None,
+        source_candidate_id: int | None = None,
+        source_candidate_revision: int | None = None,
         now: datetime | None = None,
     ) -> ResearchFeedbackRecordDTO:
         _require_id(school_id, "school_id")
@@ -447,6 +452,17 @@ class SchoolResearchFeedbackRepository:
             optional=False,
         )
         _require_optional_token(trace_id, "trace_id", 128)
+        if source_candidate_id is None and source_candidate_revision is None:
+            pass
+        elif source_candidate_id is None or source_candidate_revision is None:
+            raise ResearchReviewFeedbackError(
+                "candidate lineage fields must be provided together"
+            )
+        else:
+            _require_id(source_candidate_id, "source_candidate_id")
+            _require_positive_int(source_candidate_revision, "source_candidate_revision")
+            if source_candidate_revision != 1:
+                raise ResearchReviewFeedbackError("unsupported candidate revision")
         clock = _utc_naive(now)
         retention = _utc_naive(retention_due_at) if retention_due_at is not None else None
         case = await self.session.scalar(
@@ -467,6 +483,24 @@ class SchoolResearchFeedbackRepository:
             raise OptimisticConcurrencyConflict("approved research review version is stale")
         scope = _scope_from_model(case)
         await _require_active_assignment(self.session, scope, actor_membership_role_id)
+        if source_candidate_id is not None:
+            eligible_candidate_id = await self.session.scalar(
+                select(SchoolResearchEducationCandidate.id)
+                .where(
+                    SchoolResearchEducationCandidate.id == source_candidate_id,
+                    SchoolResearchEducationCandidate.research_session_id
+                    == scope.research_session_id,
+                    SchoolResearchEducationCandidate.school_id == scope.school_id,
+                    SchoolResearchEducationCandidate.content_revision
+                    == source_candidate_revision,
+                    SchoolResearchEducationCandidate.status == "ADOPTED",
+                )
+                .with_for_update()
+            )
+            if eligible_candidate_id is None:
+                raise ForeignKeyConflict(
+                    "adopted research education candidate was not found in this session"
+                )
         row = SchoolResearchFeedbackRecord(
             feedback_ref=feedback_ref,
             review_case_id=case.id,
@@ -491,6 +525,8 @@ class SchoolResearchFeedbackRepository:
             revoked_at=None,
             trace_id=trace_id,
             retention_due_at=retention,
+            source_candidate_id=source_candidate_id,
+            source_candidate_revision=source_candidate_revision,
             created_at=clock,
             updated_at=clock,
         )
@@ -816,6 +852,8 @@ def _feedback_record_dto(row: SchoolResearchFeedbackRecord) -> ResearchFeedbackR
         retention_due_at=_utc_aware(row.retention_due_at),
         created_at=_utc_aware(row.created_at),
         updated_at=_utc_aware(row.updated_at),
+        source_candidate_id=row.source_candidate_id,
+        source_candidate_revision=row.source_candidate_revision,
     )
 
 

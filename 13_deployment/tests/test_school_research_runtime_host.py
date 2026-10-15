@@ -13,6 +13,7 @@ DEPLOYMENT = Path(__file__).resolve().parents[1]
 RUNTIME_SOURCE = DEPLOYMENT.parent / "06_llm-runtime" / "src"
 sys.path.insert(0, str(DEPLOYMENT))
 sys.path.insert(0, str(RUNTIME_SOURCE))
+sys.path.insert(0, str(RUNTIME_SOURCE.parent / ".venv" / "Lib" / "site-packages"))
 
 import school_llm_runtime
 import school_research_runtime_host as host
@@ -56,14 +57,20 @@ def test_external_registry_mode_reuses_pinned_model_without_process_ownership(tm
         service.shutdown()
 
 
-def test_app_exposes_only_health_and_research_programme_route():
+def test_app_registers_both_research_routes_without_changing_host_scope():
     from types import SimpleNamespace
+
+    import school_research_general_education_runtime as education_runtime
 
     now = datetime(2026, 10, 14, tzinfo=UTC)
     service = FakeService()
     app = host.create_app(SimpleNamespace(service=service), clock=lambda: now)
     paths = {route.path for route in app.routes}
-    assert paths == {host.HEALTH_PATH, host.ROUTE_PATH}
+    assert paths == {
+        host.HEALTH_PATH,
+        host.ROUTE_PATH,
+        education_runtime.ROUTE_PATH,
+    }
     assert app.state.research_study_ref == host.STUDY_REF
     assert app.state.research_noncommercial is True
     assert app.state.research_publication_eligible is False
@@ -99,6 +106,28 @@ def test_study_deadline_is_inclusive_and_allows_no_generation_after_expiry():
         "scope": "research_programme_noncommercial_hold_only",
         "runtime_version": host.RUNTIME_VERSION,
     }
+    assert service.generate_calls == 0
+
+
+def test_study_expiry_guard_blocks_both_generation_routes():
+    import school_research_general_education_runtime as education_runtime
+
+    service = FakeService()
+    app = host.create_app(
+        SimpleNamespace(service=service),
+        clock=lambda: host.STUDY_END_UTC + timedelta(microseconds=1),
+    )
+
+    with TestClient(app) as client:
+        programme = client.post(host.ROUTE_PATH, content=b"not-read-after-expiry")
+        general_education = client.post(
+            education_runtime.ROUTE_PATH,
+            content=b"not-read-after-expiry",
+        )
+
+    for response in (programme, general_education):
+        assert response.status_code == 410
+        assert response.json() == {"detail": {"code": "RESEARCH_STUDY_EXPIRED"}}
     assert service.generate_calls == 0
 
 

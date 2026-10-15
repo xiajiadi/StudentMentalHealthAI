@@ -25,7 +25,13 @@ _TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _POLICY_VERSION = "NO_RESEARCH_PERSONALIZED_POLICY_V1"
 STAFF_PROGRAMME_POLICY_VERSION = "RESEARCH_STAFF_PROGRAMME_POLICY_V1"
-_POLICY_VERSIONS = frozenset({_POLICY_VERSION, STAFF_PROGRAMME_POLICY_VERSION})
+GENERAL_EDUCATION_POLICY_VERSION = "RESEARCH_GENERAL_EDUCATION_DRAFT_V1"
+_PINNED_PUBLIC_OBSERVED_POLICIES = frozenset(
+    {STAFF_PROGRAMME_POLICY_VERSION, GENERAL_EDUCATION_POLICY_VERSION}
+)
+_POLICY_VERSIONS = frozenset(
+    {_POLICY_VERSION, STAFF_PROGRAMME_POLICY_VERSION, GENERAL_EDUCATION_POLICY_VERSION}
+)
 _TERMINAL_STATES = frozenset(
     {"HELD", "ABSTAINED", "REVIEW_REQUIRED", "CRISIS_ROUTED", "FAILED", "CANCELLED"}
 )
@@ -228,18 +234,18 @@ class SchoolResearchEducationJobRepository:
             raise ValueError("profile_version_number must be positive")
         if type(policy_version) is not str or policy_version not in _POLICY_VERSIONS:
             raise ValueError("policy_version is not enabled for research sessions")
-        if policy_version == STAFF_PROGRAMME_POLICY_VERSION and policy_hash is None:
-            raise ValueError("staff programme policy requires a pinned policy hash")
+        if policy_version in _PINNED_PUBLIC_OBSERVED_POLICIES and policy_hash is None:
+            raise ValueError("pinned research policy requires a policy hash")
         if not isinstance(response_origin, str) or response_origin not in {
             "PUBLIC_OBSERVED",
             "MODEL_GENERATED",
         }:
             raise ValueError("response_origin is not supported")
         if (
-            policy_version == STAFF_PROGRAMME_POLICY_VERSION
+            policy_version in _PINNED_PUBLIC_OBSERVED_POLICIES
             and response_origin != "PUBLIC_OBSERVED"
         ):
-            raise ValueError("staff programme jobs require public observed sessions")
+            raise ValueError("pinned research jobs require public observed sessions")
         _utc_naive(now)  # validate the caller's timestamp even though enqueue stores no clock field
         scope = {
             **ids,
@@ -337,7 +343,7 @@ class SchoolResearchEducationJobRepository:
         )
         policy_scope = (
             SchoolResearchEducationJob.response_origin == "PUBLIC_OBSERVED"
-            if policy_version == STAFF_PROGRAMME_POLICY_VERSION
+            if policy_version in _PINNED_PUBLIC_OBSERVED_POLICIES
             else True
         )
         result = await self.session.scalars(

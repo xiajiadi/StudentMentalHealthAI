@@ -164,6 +164,7 @@ class FakePersistence:
         body,
         idempotency,
         trace_id,
+        candidate_ref=None,
     ):
         self.calls.append(
             (
@@ -173,6 +174,7 @@ class FakePersistence:
                 expected_case_version,
                 title,
                 body,
+                candidate_ref,
                 idempotency,
                 trace_id,
             )
@@ -274,6 +276,8 @@ async def test_research_case_review_and_explicit_feedback_publication_flow():
         trace_id="TRACE_synthetic",
     )
     assert draft["status"] == "DRAFT"
+    assert persistence.calls[-1][0] == "create_draft"
+    assert persistence.calls[-1][6] is None
     published = await service.publish(
         specialist,
         draft["feedback_ref"],
@@ -322,3 +326,23 @@ async def test_roles_and_unsupported_content_fail_before_persistence():
             trace_id="TRACE_synthetic",
         )
     assert persistence.calls == []
+
+
+async def test_candidate_reference_is_forwarded_only_as_optional_feedback_lineage():
+    persistence = FakePersistence()
+    service = SchoolResearchFeedbackService(persistence=persistence)
+    specialist = actor(BackendRole.PSYCHOLOGICAL_SPECIALIST)
+
+    await service.create_draft(
+        specialist,
+        "SRV_synthetic_1",
+        expected_case_version=2,
+        title="人工修订标题",
+        body="人工修订后的教育支持正文。",
+        candidate_ref="REEDUC_synthetic_candidate",
+        idempotency=("key-candidate", "fingerprint-candidate", "scope"),
+        trace_id="TRACE_synthetic",
+    )
+
+    assert persistence.calls[-1][0] == "create_draft"
+    assert persistence.calls[-1][6] == "REEDUC_synthetic_candidate"

@@ -6,6 +6,7 @@ import asyncio
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -116,6 +117,7 @@ class BackendContainer:
     school_feedback: SchoolFeedbackService | None = None
     school_conversation_safety: Any | None = None
     school_research_feedback: Any | None = None
+    school_research_education_candidates: Any | None = None
     school_research_programme_candidates: Any | None = None
     independent_conversations: IndependentConversationService | None = None
     school_research_student_conversations: IndependentConversationService | None = None
@@ -131,6 +133,8 @@ class BackendContainer:
     research_education_worker_manager: Any | None = None
     research_programme_worker_manager: Any | None = None
     research_programme_runtime_client: Any | None = None
+    research_general_education_worker_manager: Any | None = None
+    research_general_education_runtime_client: Any | None = None
     school_research: Any | None = None
     school_research_profiles: Any | None = None
     school_research_tasks: Any | None = None
@@ -158,8 +162,20 @@ class BackendContainer:
                 await self.research_education_worker_manager.start()
             if self.research_programme_worker_manager is not None:
                 await self.research_programme_worker_manager.start()
+            if self.research_general_education_worker_manager is not None:
+                await self.research_general_education_worker_manager.start()
         except (Exception, asyncio.CancelledError):
             research_shutdown_failed = await self._close_research_process()
+            research_general_education_shutdown_failed = False
+            if self.research_general_education_worker_manager is not None:
+                try:
+                    await self.research_general_education_worker_manager.close()
+                except Exception:
+                    research_general_education_shutdown_failed = True
+                    _LOGGER.error(
+                        "general-education worker cleanup failed during startup",
+                        extra={"failure_code": "RESEARCH_GENERAL_EDUCATION_WORKER_CLEANUP_FAILURE"},
+                    )
             research_programme_shutdown_failed = False
             if self.research_programme_worker_manager is not None:
                 try:
@@ -196,6 +212,7 @@ class BackendContainer:
                 and not worker_shutdown_failed
                 and not research_education_shutdown_failed
                 and not research_programme_shutdown_failed
+                and not research_general_education_shutdown_failed
                 and not research_shutdown_failed
             ):
                 await self.persistence.close()
@@ -203,6 +220,16 @@ class BackendContainer:
 
     async def close(self) -> None:
         research_shutdown_failed = await self._close_research_process()
+        research_general_education_shutdown_failed = False
+        if self.research_general_education_worker_manager is not None:
+            try:
+                await self.research_general_education_worker_manager.close()
+            except Exception:
+                research_general_education_shutdown_failed = True
+                _LOGGER.error(
+                    "general-education worker cleanup failed during shutdown",
+                    extra={"failure_code": "RESEARCH_GENERAL_EDUCATION_WORKER_CLEANUP_FAILURE"},
+                )
         research_programme_shutdown_failed = False
         if self.research_programme_worker_manager is not None:
             try:
@@ -239,6 +266,7 @@ class BackendContainer:
             and not worker_shutdown_failed
             and not research_education_shutdown_failed
             and not research_programme_shutdown_failed
+            and not research_general_education_shutdown_failed
             and not research_shutdown_failed
         ):
             await self.persistence.close()
@@ -248,6 +276,8 @@ class BackendContainer:
             raise RuntimeError("research education worker shutdown did not complete")
         if research_programme_shutdown_failed:
             raise RuntimeError("staff programme worker shutdown did not complete")
+        if research_general_education_shutdown_failed:
+            raise RuntimeError("general-education worker shutdown did not complete")
         if worker_shutdown_failed:
             raise RuntimeError("post-assessment worker shutdown did not complete")
         if clients_failed:
@@ -291,6 +321,7 @@ class BackendContainer:
             ("independent_rag", self.independent_rag),
             ("independent_llm", self.independent_llm),
             ("research_programme_runtime", self.research_programme_runtime_client),
+            ("research_general_education_runtime", self.research_general_education_runtime_client),
         )
         for name, client in clients:
             if client is None or id(client) in seen:
@@ -348,6 +379,18 @@ class BackendContainer:
             self.research_programme_worker_manager.dependency_status()
             if self.research_programme_worker_manager is not None
             else {"status": "DISABLED", "integration": "RESEARCH_STAFF_PROGRAMME_OUTBOX"}
+        )
+        statuses["research_general_education_draft_worker"] = (
+            self.research_general_education_worker_manager.dependency_status()
+            if self.research_general_education_worker_manager is not None
+            else {
+                "status": (
+                    "UNAVAILABLE"
+                    if self.settings.research_general_education_draft.enabled
+                    else "DISABLED"
+                ),
+                "integration": "RESEARCH_GENERAL_EDUCATION_DRAFT_OUTBOX",
+            }
         )
         return statuses
 
@@ -483,6 +526,9 @@ def build_container(
         )
     )
     school_research_feedback = None
+    school_research_feedback_adapter = None
+    school_research_education_candidate_adapter = None
+    school_research_education_candidates = None
     school_research_programme_candidates = None
     school_research_programme_candidate_adapter = None
     programme_study_policy = None
@@ -518,10 +564,11 @@ def build_container(
                     "staff programme worker requires a pinned school/source study pair"
                 )
 
+        school_research_feedback_adapter = SchoolResearchFeedbackPersistenceAdapter(
+            persistence, study_use_policy=programme_study_policy
+        )
         school_research_feedback = SchoolResearchFeedbackService(
-            persistence=SchoolResearchFeedbackPersistenceAdapter(
-                persistence, study_use_policy=programme_study_policy
-            )
+            persistence=school_research_feedback_adapter
         )
         from smhai_backend.adapters.school_research_programme_candidates import (
             SchoolResearchProgrammeCandidatePersistenceAdapter,
@@ -662,6 +709,8 @@ def build_container(
         )
     school_research_student_conversations = None
     active_research_student_safety = None
+    research_student_package = None
+    student_rag = None
     student_lane_settings = settings.school_research_student_conversation
     if student_lane_settings.enabled:
         if persistence is None:
@@ -687,6 +736,7 @@ def build_container(
                 raise
             package = None
         if package is not None:
+            research_student_package = package
             if independent_llm is None:
                 independent_llm = IndependentLLMRuntimeClient(settings.llm)
             active_research_student_safety = SchoolResearchStudentSafetyClient(
@@ -722,6 +772,105 @@ def build_container(
                 rag=student_rag,
                 llm=independent_llm,
                 lane_policy=student_lane_policy,
+            )
+    research_general_education_worker_manager = None
+    research_general_education_runtime_client = None
+    education_draft_settings = settings.research_general_education_draft
+    if education_draft_settings.enabled and persistence is not None:
+        if (
+            research_student_package is not None
+            and student_rag is not None
+            and active_research_student_safety is not None
+            and programme_study_policy is not None
+        ):
+            from smhai_backend.adapters.school_research_education_candidates import (
+                SchoolResearchEducationCandidatePersistenceAdapter,
+            )
+            from smhai_backend.domains.research_general_education.service import (
+                ResearchGeneralEducationDraftService,
+                ResearchGeneralEducationPolicyPins,
+                source_cards_from_package,
+            )
+            from smhai_backend.domains.school_research_education_candidates.service import (
+                SchoolResearchEducationCandidateService,
+            )
+            from smhai_backend.domains.school_research_general_education_generation.manager import (
+                ResearchGeneralEducationWorkerManager,
+            )
+            from smhai_backend.integrations.research_general_education import (
+                ResearchGeneralEducationRuntimeClient,
+            )
+
+            package = research_student_package
+            if datetime.now(UTC) <= package.valid_through:
+                policy_pins = ResearchGeneralEducationPolicyPins(
+                    policy_hash=education_draft_settings.policy_hash,
+                    source_package_ref=package.package_id,
+                    source_study_ref=education_draft_settings.source_study_ref,
+                    source_manifest_sha256=education_draft_settings.source_manifest_sha256,
+                )
+                source_cards = source_cards_from_package(package, policy_pins=policy_pins)
+                research_general_education_runtime_client = (
+                    ResearchGeneralEducationRuntimeClient(settings.research_programme_runtime)
+                )
+                generation_service = ResearchGeneralEducationDraftService(
+                    safety=active_research_student_safety,
+                    retriever=student_rag,
+                    runtime=research_general_education_runtime_client,
+                    policy_pins=policy_pins,
+                    source_cards=source_cards,
+                )
+                school_research_education_candidate_adapter = (
+                    SchoolResearchEducationCandidatePersistenceAdapter(
+                        persistence,
+                        enabled=True,
+                        school_id=education_draft_settings.school_id,
+                        school_study_ref=education_draft_settings.school_study_ref,
+                        policy_hash=education_draft_settings.policy_hash,
+                        source_manifest_sha256=education_draft_settings.source_manifest_sha256,
+                        source_package_ref=package.package_id,
+                        source_study_ref=education_draft_settings.source_study_ref,
+                        study_use_policy=programme_study_policy,
+                    )
+                )
+                school_research_education_candidates = (
+                    SchoolResearchEducationCandidateService(
+                        persistence=school_research_education_candidate_adapter
+                    )
+                )
+                if school_research_feedback_adapter is not None:
+                    school_research_feedback_adapter.education_candidate_validator = (
+                        school_research_education_candidate_adapter
+                        .validate_feedback_candidate_in_uow
+                    )
+                concurrency_lock = (
+                    research_programme_worker_manager.concurrency_lock
+                    if research_programme_worker_manager is not None
+                    else _shared_worker_concurrency_lock(
+                        post_assessment_worker_manager,
+                        research_education_worker_manager,
+                        fallback=research_worker_lock,
+                    )
+                )
+                research_general_education_worker_manager = (
+                    ResearchGeneralEducationWorkerManager(
+                        persistence=persistence,
+                        persistence_adapter=school_research_education_candidate_adapter,
+                        generation_service=generation_service,
+                        settings=education_draft_settings,
+                        concurrency_lock=concurrency_lock,
+                        source_valid_through=package.valid_through,
+                    )
+                )
+            else:
+                _LOGGER.warning(
+                    "general-education worker disabled because its source package expired",
+                    extra={"failure_code": "RESEARCH_GENERAL_EDUCATION_SOURCE_EXPIRED"},
+                )
+        else:
+            _LOGGER.warning(
+                "general-education worker disabled because pinned student sources are unavailable",
+                extra={"failure_code": "RESEARCH_GENERAL_EDUCATION_SOURCE_UNAVAILABLE"},
             )
     support = SupportOrchestrator(
         assessments=assessments,
@@ -778,6 +927,7 @@ def build_container(
         school_feedback=school_feedback,
         school_conversation_safety=school_conversation_safety,
         school_research_feedback=school_research_feedback,
+        school_research_education_candidates=school_research_education_candidates,
         school_research_programme_candidates=school_research_programme_candidates,
         cat_management=cat_management,
         cat_management_client=cat_management_client,
@@ -788,6 +938,8 @@ def build_container(
         research_education_worker_manager=research_education_worker_manager,
         research_programme_worker_manager=research_programme_worker_manager,
         research_programme_runtime_client=research_programme_runtime_client,
+        research_general_education_worker_manager=research_general_education_worker_manager,
+        research_general_education_runtime_client=research_general_education_runtime_client,
         independent_conversations=independent_conversations,
         school_research_student_conversations=school_research_student_conversations,
         school_research_student_safety=active_research_student_safety,

@@ -1,4 +1,4 @@
-"""Loopback-only host for staff research programme generation."""
+"""Loopback-only host for staff research generation routes."""
 
 from __future__ import annotations
 
@@ -67,10 +67,13 @@ def create_app(
     *,
     clock: Callable[[], datetime] | None = None,
 ) -> Any:
-    """Build an app containing only /health and the research programme route."""
+    """Build an app containing health and hold-only research generation routes."""
 
     from fastapi import FastAPI, Request
     from fastapi.responses import JSONResponse
+    from school_research_general_education_runtime import (
+        attach_research_general_education_routes,
+    )
     from school_research_programme_runtime import attach_research_programme_routes
 
     selected_clock = clock or (lambda: datetime.now(UTC))
@@ -126,6 +129,7 @@ def create_app(
         }
 
     attach_research_programme_routes(app, runtime)
+    attach_research_general_education_routes(app, runtime)
     return app
 
 
@@ -241,7 +245,12 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"status": "BLOCKED", "code": exc.code}, separators=(",", ":")))
         return 2
     except Exception as exc:  # noqa: BLE001 - safe type only; never print provider details
-        print(json.dumps({"status": "FAILED", "error_type": type(exc).__name__}, separators=(",", ":")))
+        print(
+            json.dumps(
+                {"status": "FAILED", "error_type": type(exc).__name__},
+                separators=(",", ":"),
+            )
+        )
         return 1
 
 

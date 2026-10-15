@@ -5,6 +5,9 @@ import AppBadge from '@/components/app/AppBadge.vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
+import ResearchFeedbackSources from '@/components/school/ResearchFeedbackSources.vue'
+import SpecialistResearchEducationCandidates from '@/components/school/SpecialistResearchEducationCandidates.vue'
+import type { ResearchEducationCandidateDetail } from '@/services/school-research-education-candidates'
 import {
   newResearchFeedbackIdempotencyKey,
   schoolResearchFeedback,
@@ -43,6 +46,7 @@ const feedbackState = ref<'idle' | 'loading' | 'ready' | 'error'>('idle')
 const feedbackError = ref('')
 const draftTitle = ref('')
 const draftBody = ref('')
+const draftCandidateRef = ref<string | undefined>()
 const confirmation = ref('')
 const mutationBusy = ref(false)
 const mutationError = ref('')
@@ -73,7 +77,8 @@ function classify(error: unknown, fallback: string) {
   }
 }
 
-function clearPrivateState() {
+function clearSelectedData() {
+  clearDraft()
   selectedTaskRef.value = ''
   selectedSessionRef.value = ''
   sessions.value = []
@@ -86,13 +91,24 @@ function clearPrivateState() {
   feedbackRows.value = []
   feedbackTotal.value = 0
   reviewNote.value = ''
-  draftTitle.value = ''
-  draftBody.value = ''
   confirmation.value = ''
   failedRequest.value = null
   ++taskSequence
   ++taskDataSequence
   ++detailSequence
+}
+
+function clearPrivateState() {
+  clearSelectedData()
+  tasks.value = []
+  tasksState.value = 'idle'
+  tasksError.value = ''
+}
+
+function clearDraft() {
+  draftCandidateRef.value = undefined
+  draftTitle.value = ''
+  draftBody.value = ''
 }
 
 function formatDate(value: string) {
@@ -120,7 +136,7 @@ async function loadTasks() {
     tasks.value = rows
     tasksState.value = 'ready'
     if (selectedTaskRef.value && !rows.some((row) => row.task_ref === selectedTaskRef.value)) {
-      clearPrivateState()
+      clearSelectedData()
       accessMessage.value = '当前任务权限发生变化，已清除此页记录。刷新列表后重新选择。'
     }
   } catch (error) {
@@ -161,6 +177,8 @@ async function loadTaskData(options: { sessionOffset?: number; caseOffset?: numb
       caseState.value = 'idle'
       feedbackRows.value = []
       feedbackState.value = 'idle'
+      reviewNote.value = ''
+      clearDraft()
     }
   } catch (error) {
     if (sequence !== taskDataSequence || taskRef !== selectedTaskRef.value) return
@@ -182,6 +200,7 @@ async function loadTaskData(options: { sessionOffset?: number; caseOffset?: numb
 async function selectTask(taskRef: string) {
   if (!canMutate.value || taskRef === selectedTaskRef.value) return
   selectedTaskRef.value = taskRef
+  clearDraft()
   selectedSessionRef.value = ''
   selectedCase.value = null
   sessions.value = []
@@ -196,8 +215,10 @@ async function selectTask(taskRef: string) {
 
 async function selectSession(item: ResearchEligibleSession) {
   if (!canMutate.value) return
+  clearDraft()
   selectedSessionRef.value = item.session_ref
   confirmation.value = ''
+  reviewNote.value = ''
   if (item.case_ref) {
     await loadCase(item.case_ref)
     return
@@ -219,6 +240,7 @@ async function loadCase(caseRef: string) {
   const taskRef = selectedTaskRef.value
   if (!taskRef || !isSpecialist.value) return
   const sequence = ++detailSequence
+  clearDraft()
   caseState.value = 'loading'
   caseError.value = ''
   feedbackRows.value = []
@@ -324,8 +346,19 @@ function createDraft() {
   const key = newResearchFeedbackIdempotencyKey()
   const title = draftTitle.value.trim()
   const body = draftBody.value.trim()
-  const run = () => schoolResearchFeedback.createDraft(row.case_ref, row.version, title, body, key)
+  const candidateRef = draftCandidateRef.value
+  const run = () => schoolResearchFeedback.createDraft(row.case_ref, row.version, title, body, key, candidateRef)
   void runMutation('建立教育反馈草稿', run)
+}
+
+function useCandidate(candidate: ResearchEducationCandidateDetail) {
+  if (!canMutate.value || selectedCase.value?.status !== 'APPROVED'
+    || candidate.status !== 'ADOPTED' || candidate.task_ref !== selectedTaskRef.value
+    || candidate.session_ref !== selectedCase.value.session_ref) return
+  const content = candidate.candidate_payload.content
+  draftCandidateRef.value = candidate.candidate_ref
+  draftTitle.value = '日常学习与生活支持'
+  draftBody.value = [content.summary, ...content.observations, ...content.suggestions.map(item => item.text), content.disclaimer].join('\n\n')
 }
 
 function publish(item: ResearchFeedback) {
@@ -406,6 +439,7 @@ onBeforeUnmount(() => {
     </div>
 
     <template v-if="selectedTask">
+      <SpecialistResearchEducationCandidates :key="selectedTaskRef" :task-ref="selectedTaskRef" :session-ref="selectedCase?.session_ref" :can-use-source="selectedCase?.status === 'APPROVED'" :disabled="!canMutate" @source="useCandidate" />
       <div class="research-feedback__columns">
         <AppCard class="research-feedback__panel">
           <header class="research-feedback__panel-head"><div><span class="research-feedback__kicker">{{ selectedTask.class_display_name || '研究任务' }}</span><h3>已完成记录</h3><p>列表不显示学生身份或原始作答。</p></div><AppButton variant="quiet" size="sm" aria-label="刷新研究记录" :disabled="sessionsState === 'loading' || casesState === 'loading' || mutationBusy" @click="loadTaskData"><RotateCcw :size="15" aria-hidden="true" /></AppButton></header>
@@ -460,6 +494,7 @@ onBeforeUnmount(() => {
               <li v-for="item in feedbackRows" :key="item.feedback_ref" class="research-feedback__version">
                 <header><div><h5>{{ item.title }}</h5><small>修订 {{ item.content_revision }} · 状态版本 {{ item.state_version }}</small></div><AppBadge :tone="item.status === 'PUBLISHED' ? 'teal' : item.status === 'REVOKED' ? 'amber' : 'neutral'" dot>{{ feedbackStatusLabel(item.status) }}</AppBadge></header>
                 <p class="research-feedback__body">{{ item.body }}</p>
+                <ResearchFeedbackSources :source-cards="item.source_cards ?? []" />
                 <p class="research-feedback__time">建立于 {{ formatDate(item.created_at) }}<span v-if="item.published_at"> · 发布于 {{ formatDate(item.published_at) }}</span><span v-if="item.revoked_at"> · 撤回于 {{ formatDate(item.revoked_at) }}</span></p>
                 <label v-if="item.status === 'DRAFT' && selectedCase.status === 'APPROVED'" class="research-feedback__confirm"><input v-model="confirmation" type="radio" :value="`publish:${item.feedback_ref}`" :disabled="!canMutate"><span>我确认只在当前合成演示账户中提供这条内容。</span></label>
                 <AppButton v-if="item.status === 'DRAFT' && selectedCase.status === 'APPROVED'" size="sm" :disabled="!canMutate || confirmation !== `publish:${item.feedback_ref}`" @click="publish(item)">发布到演示学生账户</AppButton>
@@ -471,9 +506,10 @@ onBeforeUnmount(() => {
 
           <form v-if="selectedCase.status === 'APPROVED'" class="research-feedback__draft" @submit.prevent="createDraft">
             <h4>建立新的教育反馈版本</h4><p>只写一般教育支持内容，不要加入诊断、治疗、分数解释或复核备注。</p>
+            <p v-if="draftCandidateRef">已关联当前记录的候选来源。请核对并修订正文，原始候选保持不变。<AppButton variant="quiet" size="sm" :disabled="!canMutate" @click="draftCandidateRef = undefined">取消来源关联</AppButton></p>
             <label for="research-feedback-title">标题</label><input id="research-feedback-title" v-model="draftTitle" maxlength="120" required :disabled="!canMutate" placeholder="输入简短标题">
             <label for="research-feedback-body">正文</label><textarea id="research-feedback-body" v-model="draftBody" maxlength="4000" rows="4" required :disabled="!canMutate" placeholder="填写供当前合成学生账户查看的教育支持内容。" />
-            <div class="research-feedback__draft-footer"><small>{{ draftTitle.length }}/120 · {{ draftBody.length }}/4000</small><AppButton type="submit" size="sm" :disabled="!canMutate || !draftTitle.trim() || !draftBody.trim()">建立草稿</AppButton></div>
+            <div class="research-feedback__draft-footer"><small>{{ draftTitle.length }}/120 · {{ draftBody.length }}/4000</small><AppButton type="submit" size="sm" :disabled="!canMutate || !draftTitle.trim() || !draftBody.trim() || draftTitle.length > 120 || draftBody.length > 4000">建立草稿</AppButton></div>
           </form>
         </template>
       </AppCard>

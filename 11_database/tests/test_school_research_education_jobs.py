@@ -30,6 +30,7 @@ from database_layer.models import (
 )
 from database_layer.provenance import SYNTHETIC_SCHOOL_SEED_PROVENANCE_REF
 from database_layer.school_research_education_jobs import (
+    GENERAL_EDUCATION_POLICY_VERSION,
     STAFF_PROGRAMME_POLICY_VERSION,
     ResearchEducationJobClaim,
     ResearchEducationJobErrorCode,
@@ -733,6 +734,52 @@ def test_no_policy_worker_cannot_claim_staff_programme_job(session):
 
     with pytest.raises(ValueError):
         _enqueue(repo, policy_version=STAFF_PROGRAMME_POLICY_VERSION)
+
+
+def test_general_education_policy_requires_hash_public_observed_and_isolated_claim(session):
+    repo = _repo(session)
+    with pytest.raises(ValueError):
+        _enqueue(repo, policy_version=GENERAL_EDUCATION_POLICY_VERSION)
+    with pytest.raises(ValueError):
+        _enqueue(
+            repo,
+            policy_version=GENERAL_EDUCATION_POLICY_VERSION,
+            policy_hash="9" * 64,
+            response_origin="MODEL_GENERATED",
+        )
+
+    general_job = _enqueue(
+        repo,
+        policy_version=GENERAL_EDUCATION_POLICY_VERSION,
+        policy_hash="9" * 64,
+    )
+    replay = _enqueue(
+        repo,
+        policy_version=GENERAL_EDUCATION_POLICY_VERSION,
+        policy_hash="9" * 64,
+    )
+    assert replay.id == general_job.id
+    with pytest.raises(UniqueConflict):
+        _enqueue(
+            repo,
+            policy_version=GENERAL_EDUCATION_POLICY_VERSION,
+            policy_hash="8" * 64,
+        )
+    assert asyncio.run(
+        repo.claim_next(school_id=1, lease_owner="old-no-policy-worker", now=_NOW)
+    ) == []
+    claim = asyncio.run(
+        repo.claim_next(
+            school_id=1,
+            lease_owner="general-education-worker",
+            policy_version=GENERAL_EDUCATION_POLICY_VERSION,
+            now=_NOW,
+        )
+    )
+    assert len(claim) == 1
+    assert claim[0].id == general_job.id
+    assert claim[0].policy_version == GENERAL_EDUCATION_POLICY_VERSION
+    assert claim[0].policy_hash == "9" * 64
 
 
 def test_0016_migration_has_exact_model_columns_and_composite_session_fk(monkeypatch):
