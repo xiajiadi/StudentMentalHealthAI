@@ -188,7 +188,7 @@ class ResearchGeneralEducationInputReviewReceipt(_StrictModel):
 class ResearchGeneralEducationReviewedInputAuthorization(_StrictModel):
     """Typed, worker-only capability for one review-bound continuation job."""
 
-    input_review_ref: StrictStr = Field(min_length=1, max_length=160)
+    input_review_ref: StrictStr = Field(pattern=r"^REIR_[0-9a-f]{32}$")
     authorized_state_version: Literal[2]
     receipt: ResearchGeneralEducationInputReviewReceipt
     continuation_job_ref: StrictStr = Field(pattern=r"^REJ_[A-Za-z0-9][A-Za-z0-9_.:-]{0,155}$")

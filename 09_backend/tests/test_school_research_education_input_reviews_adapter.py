@@ -12,6 +12,7 @@ from database_layer.school_research_education_input_reviews import (
     ResearchEducationInputReviewError,
     ResearchEducationInputReviewScope,
 )
+from pydantic import ValidationError
 from sqlalchemy import select
 
 from smhai_backend.adapters.school_research_education_input_reviews import (
@@ -19,6 +20,7 @@ from smhai_backend.adapters.school_research_education_input_reviews import (
     _input_review_repo_call,
 )
 from smhai_backend.core.errors import BackendError, ErrorCode, error
+from smhai_backend.core.request_context import RequestContext
 from smhai_backend.domains.research_general_education.input_review_policy import (
     INPUT_REVIEW_CONTINUATION_POLICY_SHA256,
     INPUT_REVIEW_CONTINUATION_POLICY_VERSION,
@@ -30,6 +32,7 @@ from smhai_backend.domains.research_general_education.prompt import (
 )
 from smhai_backend.domains.research_general_education.service import (
     ResearchGeneralEducationPolicyPins,
+    _valid_reviewed_input_authorization,
     canonical_input_context_sha256,
 )
 
@@ -344,7 +347,15 @@ async def test_continuation_disabled_cannot_enqueue_or_begin_idempotency():
 
 
 @pytest.mark.asyncio
-async def test_continuation_capability_rechecks_exact_authorizer_and_original_job():
+async def test_continuation_capability_rechecks_exact_authorizer_and_original_job(monkeypatch):
+    from smhai_backend.domains.research_general_education import service as processor
+
+    class FixedClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return NOW if tz is not None else NOW.replace(tzinfo=None)
+
+    monkeypatch.setattr(processor, "datetime", FixedClock)
     review = authorized_row()
     adapter = FakeAdapter(review)
     adapter.input_review_continuation_enabled = True
@@ -366,10 +377,32 @@ async def test_continuation_capability_rechecks_exact_authorizer_and_original_jo
     )
     assert actual is review
     assert grant.receipt.action == "REVIEW_REQUIRED"
+    assert grant.input_review_ref == INPUT_REVIEW_REF
+    assert grant.input_review_ref != grant.receipt.review_ref
     assert grant.receipt.trace_id == trace_for_job(JOB_REF)
     assert grant.continuation_trace_id == trace_for_job(claim.job_ref)
     assert grant.continuation_job_ref != grant.receipt.trace_id
     assert ("exact_authorizer", 222) in adapter.events
+
+    # The real persistence adapter produces two independent identifiers; the
+    # processor validator must accept the Backend REIR ref beside Safety REVIEW ref.
+    assert _valid_reviewed_input_authorization(
+        grant,
+        request_context=RequestContext(
+            request_id="REQ_continuation", trace_id=grant.continuation_trace_id
+        ),
+        policy_pins=ResearchGeneralEducationPolicyPins(
+            policy_hash=POLICY_HASH,
+            source_package_ref="PKG_R3",
+            source_study_ref="STUDY_R3",
+            source_manifest_sha256=MANIFEST_HASH,
+        ),
+    )
+    malformed = grant.model_dump()
+    malformed["input_review_ref"] = grant.receipt.review_ref
+    with pytest.raises(ValidationError):
+        type(grant).model_validate(malformed)
+
     adapter.repo.current = replace(review, expires_at=NOW)
     with pytest.raises(BackendError):
         await adapter._continuation_authorization(adapter.uow, claim, adapter.task, now=NOW)

@@ -386,7 +386,7 @@ async def test_reviewed_input_continues_with_bound_capability_and_preserves_orig
         prompt_sha256=PROMPT_SHA256,
     )
     authorization = ResearchGeneralEducationReviewedInputAuthorization(
-        input_review_ref=receipt.review_ref,
+        input_review_ref="REIR_" + "1" * 32,
         authorized_state_version=2,
         receipt=receipt,
         continuation_job_ref="REJ_continuation_fixture",
@@ -432,7 +432,7 @@ async def test_reviewed_input_rejects_policy_or_trace_mismatch_before_retrieval(
         prompt_id=PROMPT_ID, prompt_version=PROMPT_VERSION, prompt_sha256=PROMPT_SHA256,
     )
     authorization = ResearchGeneralEducationReviewedInputAuthorization(
-        input_review_ref=receipt.review_ref, authorized_state_version=2, receipt=receipt,
+        input_review_ref="REIR_" + "1" * 32, authorized_state_version=2, receipt=receipt,
         continuation_job_ref="REJ_continuation_fixture", continuation_trace_id="TRACE_other",
         continuation_policy_version=INPUT_REVIEW_CONTINUATION_POLICY_VERSION,
         continuation_policy_hash=INPUT_REVIEW_CONTINUATION_POLICY_SHA256,

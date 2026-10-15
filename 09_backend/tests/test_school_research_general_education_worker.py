@@ -526,7 +526,7 @@ async def test_round_one_uses_only_typed_reviewed_path_and_binds_candidate_stora
     worker = _worker(claim=claim)
     context = worker._context(claim)
     authorization = ResearchGeneralEducationReviewedInputAuthorization(
-        input_review_ref=receipt.review_ref,
+        input_review_ref="REIR_" + "e" * 32,
         authorized_state_version=2,
         receipt=receipt,
         continuation_job_ref=claim.job_ref,

@@ -610,7 +610,6 @@ def _valid_reviewed_input_authorization(
     now = datetime.now(UTC)
     return (
         authorization.authorized_state_version == 2
-        and receipt.review_ref == authorization.input_review_ref
         and authorization.continuation_job_ref.startswith("REJ_")
         and authorization.continuation_trace_id == request_context.trace_id
         and receipt.trace_id != authorization.continuation_trace_id
