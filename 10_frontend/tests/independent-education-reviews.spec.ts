@@ -76,6 +76,26 @@ beforeEach(() => { vi.stubGlobal('crypto', { randomUUID: () => 'synthetic-key' }
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.resetModules() })
 
 describe('independent education review service', () => {
+  it('withdraws a revoked publication with its current version and blocks terminal repeats', async () => {
+    const revoked = { ...studentReview, status: 'REVOKED' as const, state_version: 5, published_content: null }
+    const withdrawn = { ...revoked, status: 'WITHDRAWN' as const, state_version: 6 }
+    const { StudentIndependentEducationReviewService, observed } = await loadService((url) => {
+      if (new URLConstructor(url).pathname === '/api/v1/auth/csrf') return response({ csrf_token: 'csrf-synthetic' })
+      return response({ education_review: withdrawn })
+    })
+    const service = new StudentIndependentEducationReviewService()
+    const result = await service.withdraw(conversationRef, revoked, 'withdraw-revoked-key')
+    expect(result.status).toBe('WITHDRAWN')
+    expect(result.published_content).toBeNull()
+    const posts = observed.filter((item) => item.init.method === 'POST')
+    expect(posts).toHaveLength(1)
+    expect(new URLConstructor(posts[0]!.url).pathname).toBe(`/api/v1/student/research-conversations/${conversationRef}/education-reviews/${reviewRef}/withdraw`)
+    expect(JSON.parse(String(posts[0]!.init.body))).toEqual({ expected_version: 5 })
+    expect(new HeadersConstructor(posts[0]!.init.headers).get('Idempotency-Key')).toBe('withdraw-revoked-key')
+    await expect(service.withdraw(conversationRef, result, 'terminal-repeat-key')).rejects.toMatchObject({ code: 'VALIDATION_FAILED' })
+    expect(observed.filter((item) => item.init.method === 'POST')).toHaveLength(1)
+  })
+
   it('maps student pages with published content only and sends exact consent/version body', async () => {
     const { StudentIndependentEducationReviewService, observed } = await loadService((url, init) => {
       const path = new URLConstructor(url).pathname

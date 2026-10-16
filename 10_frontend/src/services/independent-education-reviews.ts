@@ -477,7 +477,7 @@ export class StudentIndependentEducationReviewService {
     validateRef(conversationId, conversationRefPattern, '会话编号无效。')
     validateRef(item.review_ref, reviewRefPattern, '研究教育复核编号无效。')
     validateMutation(item.state_version, key)
-    if (item.status === 'REVOKED' || item.status === 'WITHDRAWN') throw new RealApiError('VALIDATION_FAILED', '当前记录不能撤回。')
+    if (item.status === 'WITHDRAWN') throw new RealApiError('VALIDATION_FAILED', '当前记录不能撤回。')
     const result = await requestIndependentEducationReview<unknown>({
       method: 'POST',
       path: `/api/v1/student/research-conversations/${encodeURIComponent(conversationId)}/education-reviews/${encodeURIComponent(item.review_ref)}/withdraw`,

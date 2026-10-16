@@ -1,5 +1,34 @@
 # PsyNova current execution state
 
+## Current checkpoint: 2026-10-16 18:51+08, native review release and new encrypted restore verified
+
+- Engineering estimate94%; remaining native browser mutation closure and unified
+  delivery handoff are active. No shutdown cutoff or professional approval.
+- AH prompt1.5 native generation passed, HELD and explicitly SHARED; Root viewed
+  actual candidate/source cards/draft controls. Source review corrected WHO weekly
+  average wording, sleep one-study/one-week/high-bias limitations and population
+  limits in a separate draft; original candidate remains immutable.
+- Real draft/publish/owner-read succeeded. Release helper incorrectly required404
+  for beta cross-school denial; actual403 forbidden carried no data. Preserve its
+  BLOCKED result. Independent owner GET confirms WITHDRAWN/v5; same cleanup key
+  replay200 does not revive content; specialist GET404. All sessions logged out.
+  Evidence:D:/Dev/temp/psynova-ah-independent-review-prompt15-20261016-r5/.
+- Direct RAM-only decrypted publication receipt verified OUTPUT/PROCEED,
+  requires_human=false, correct event trace and recomputed material SHA.
+  Official AH backup restored to new AK3345/0024. Exact review candidate/draft,
+  five-state events, false approval flags and real Safety receipt round-trip.
+  Safe proof:D:/Dev/temp/psynova-ah-release-review-metadata-20261016-r1/
+  ah-ak-restore-review-crossproof.json. AK app was not started; ready=false.
+- New R6 real7B case is HELD/v1 for browser-only consent/actions, not yet shared.
+  Helper early return omitted its capture file; authenticated owner GET saved
+  actual metadata in D:/Dev/temp/psynova-ah-independent-native-buttons-20261016-r6/
+  hold-owner-reconciliation.json. No generation replay or unconsented candidate read.
+- Native-action preparation exposed FE service guard rejecting REVOKED withdrawal
+  despite component and Backend supporting it. Corrected service guard;11 focused
+  component/service checks, typecheck and changed-file lint passed.
+- Next: explicit AH reload of this FE fix, browser share/view then Root-bound draft,
+  UI publish/student read/revoke/withdraw; finish unified main entry and delivery.
+
 ## Current checkpoint: 2026-10-16 18:03+08, restored four-role browser verified
 
 - Engineering estimate90%; remaining independent-review native closure is not PASS.
