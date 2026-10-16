@@ -797,6 +797,48 @@ async def test_worker_does_not_forward_private_diagnostic_for_unrelated_failure(
     assert adapter.finalize_kwargs == [{"reason_code": "RESEARCH_RUNTIME_FAILED"}]
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure_stage", ["generation", "candidate_store"])
+async def test_unexpected_worker_failures_forward_only_fixed_audit_reason(failure_stage):
+    claim = _claim()
+    adapter = _Adapter()
+    generation = _Generation(
+        ResearchGeneralEducationOutcome(
+            status="HELD",
+            reason_code="AWAITING_SOURCE_LIMIT_AND_CONTENT_REVIEW",
+            candidate=_payload(),
+        ),
+        error=RuntimeError("private exception detail"),
+    )
+    if failure_stage == "candidate_store":
+        generation = _Generation(
+            ResearchGeneralEducationOutcome(
+                status="HELD",
+                reason_code="AWAITING_SOURCE_LIMIT_AND_CONTENT_REVIEW",
+                candidate=_payload(),
+            )
+        )
+
+        async def fail_store(*_args, **_kwargs):
+            raise RuntimeError("private candidate payload detail")
+
+        adapter.store_generated_candidate = fail_store
+
+    worker = _worker(claim=claim, adapter=adapter, generation=generation)
+
+    result = await worker.run_once()
+
+    assert result is ResearchGeneralEducationWorkerResult.FAILED
+    assert adapter.finalized == [
+        (claim, "FAILED", ResearchEducationJobErrorCode.INTERNAL_FAILURE_GENERATION)
+        if failure_stage == "generation"
+        else (claim, "FAILED", ResearchEducationJobErrorCode.INTERNAL_FAILURE_CANDIDATE_STORE)
+    ]
+    assert adapter.finalize_kwargs == [{"reason_code": "WORKER_GENERATION_FAILURE_V1"}]
+    assert "private exception detail" not in repr(adapter.finalize_kwargs)
+    assert "private candidate payload detail" not in repr(adapter.finalize_kwargs)
+
+
 @pytest.mark.parametrize(
     ("action", "requires_human", "status", "result"),
     [

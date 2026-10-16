@@ -24,6 +24,7 @@ from smhai_backend.domains.research_general_education.schemas import (
 _SAFE_WORKER_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _PUBLICATION_STATUS = "not_approved_for_publication_or_operational_use"
+_GENERATION_FAILURE_AUDIT_REASON = "WORKER_GENERATION_FAILURE_V1"
 
 
 class ResearchGeneralEducationWorkerResult(StrEnum):
@@ -434,6 +435,7 @@ class ResearchGeneralEducationWorker:
             claim,
             status="FAILED",
             error_code=error_code,
+            reason_code=_GENERATION_FAILURE_AUDIT_REASON,
             result=ResearchGeneralEducationWorkerResult.FAILED,
         )
 

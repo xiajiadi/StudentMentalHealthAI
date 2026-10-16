@@ -772,6 +772,7 @@ async def test_input_review_finalize_persists_exact_receipt_before_finishing_in_
     ("reason_code", "expected_audit_reason"),
     [
         ("RESEARCH_RUNTIME_FAILED", "RESEARCH_RUNTIME_FAILED"),
+        ("WORKER_GENERATION_FAILURE_V1", "WORKER_GENERATION_FAILURE_V1"),
         ("UNTRUSTED_BUT_WELL_FORMED", "UNCLASSIFIED_OUTCOME"),
         ("raw reason text", None),
         (123, None),
