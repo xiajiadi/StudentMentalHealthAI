@@ -21,6 +21,7 @@ from school_schema import (
     CAT_ASSETS_REVISION,
     CAT_TASK_BINDING_REVISION,
     CONVERSATION_SAFETY_CASES_REVISION,
+    INDEPENDENT_EDUCATION_REVIEW_REVISION,
     POST_ASSESSMENT_JOB_OUTBOX_REVISION,
     PROFESSIONAL_REVIEW_REVISION,
     PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
@@ -118,6 +119,10 @@ RESEARCH_EDUCATION_OUTPUT_REVIEW_TABLES = frozenset(
         "school_research_education_output_review_events",
     }
 )
+INDEPENDENT_EDUCATION_REVIEW_TABLES = frozenset({
+    "school_independent_education_reviews",
+    "school_independent_education_review_events",
+})
 RESEARCH_PROGRAMME_CANDIDATE_REVISIONS = frozenset(
     {
         RESEARCH_PROGRAMME_CANDIDATES_REVISION,
@@ -242,9 +247,17 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
         | RESEARCH_EDUCATION_CANDIDATE_TABLES
         | RESEARCH_EDUCATION_INPUT_REVIEW_TABLES
         | RESEARCH_EDUCATION_OUTPUT_REVIEW_TABLES
+        | INDEPENDENT_EDUCATION_REVIEW_TABLES
     )
     if revision not in SUPPORTED_BACKUP_REVISIONS:
         raise ValueError("Unsupported restore revision")
+    # 0024 only adds independent-review tables. All pre-existing tables retain
+    # the exact 0023 physical column/FK layouts, including ALTER TABLE order.
+    # Keep the requested revision separately so old backups never acquire the
+    # newly added tables or accidentally accept unknown schema revisions.
+    requested_revision = revision
+    if revision == INDEPENDENT_EDUCATION_REVIEW_REVISION:
+        revision = RESEARCH_EDUCATION_OUTPUT_REVIEW_REVISION
     if (
         len(metadata_tables) != len(expected_current)
         or set(metadata_tables) != expected_current
@@ -254,6 +267,11 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
 
     tables: dict[str, TableSpec] = {}
     for table_name, table in metadata_tables.items():
+        if (
+            table_name in INDEPENDENT_EDUCATION_REVIEW_TABLES
+            and requested_revision != INDEPENDENT_EDUCATION_REVIEW_REVISION
+        ):
+            continue
         if revision not in {
             RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION,
             RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION,
