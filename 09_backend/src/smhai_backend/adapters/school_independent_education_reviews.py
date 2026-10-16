@@ -7,8 +7,6 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import func, select
-
 from smhai_backend.core.errors import ErrorCode, error
 from smhai_backend.domains.independent_education_reviews.schemas import (
     IndependentEducationCandidatePayload,
@@ -239,6 +237,8 @@ class SchoolIndependentEducationReviewsPersistenceAdapter:
         )
 
     async def _find_reviewer_role(self, uow, reviewer_ref: str, now: datetime):
+        from sqlalchemy import select
+
         reviewer_ref = self._reviewer_ref(reviewer_ref)
         m = self._conversations._db_models
         public_id = reviewer_ref.removeprefix("ROLE_")
@@ -326,6 +326,8 @@ class SchoolIndependentEducationReviewsPersistenceAdapter:
         return account_id, role_id, row
 
     async def _require_current_owner_self(self, uow, row, now: datetime) -> None:
+        from sqlalchemy import select
+
         m = self._conversations._db_models
         enums = self._conversations._db_enums
         result = await uow.session.execute(
@@ -398,6 +400,8 @@ class SchoolIndependentEducationReviewsPersistenceAdapter:
         }
 
     async def _public_reviewer_id(self, uow, row) -> str | None:
+        from sqlalchemy import select
+
         if row.reviewer_membership_role_id is None:
             return None
         m = self._conversations._db_models
@@ -477,6 +481,8 @@ class SchoolIndependentEducationReviewsPersistenceAdapter:
             }
 
     async def student_reviewers(self, actor, conversation_id: str, *, offset: int, limit: int):
+        from sqlalchemy import func, select
+
         offset, limit = self._require_page(offset, limit)
         now = self._conversations._utc_now()
         async with self._conversations._uow() as uow:
