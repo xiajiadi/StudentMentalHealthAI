@@ -1236,6 +1236,7 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
             candidate = await _candidate_repo_call(
                 uow.research_education_candidates.create_held_from_output_review(
                     scope=candidate_scope,
+                    school_study_ref=self.school_study_ref,
                     output_review_ref=output_review_ref,
                     candidate_ref=candidate_ref,
                     content_sha256=candidate_sha,

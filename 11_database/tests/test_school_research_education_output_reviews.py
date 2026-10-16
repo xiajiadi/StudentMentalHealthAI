@@ -13,7 +13,7 @@ import pytest
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from database_layer.base import Base
-from database_layer.errors import OptimisticConcurrencyConflict
+from database_layer.errors import ForeignKeyConflict, OptimisticConcurrencyConflict
 from database_layer.models import (
     SchoolResearchEducationCandidate,
     SchoolResearchEducationCandidateEvent,
@@ -202,12 +202,22 @@ def _finish_review_job(session, claim, now):
     )
 
 
-def _create_candidate_from_output_review(session, claim, review, *, actor_id=1, now=_NOW):
+def _create_candidate_from_output_review(
+    session,
+    claim,
+    review,
+    *,
+    actor_id=1,
+    school_study_ref="school-general-education-r3",
+    scope=None,
+    now=_NOW,
+):
     return asyncio.run(
         SchoolResearchEducationCandidateRepository(
             _OutputReviewAsyncSessionAdapter(session)
         ).create_held_from_output_review(
-            scope=_candidate_scope(claim),
+            scope=scope or _candidate_scope(claim),
+            school_study_ref=school_study_ref,
             output_review_ref=review.output_review_ref,
             candidate_ref=f"RGECAND_{claim.job_ref[4:]}",
             content_sha256=_CANDIDATE_HASH,
@@ -350,8 +360,26 @@ def test_round0_output_review_candidate_consumes_one_receipt_and_keeps_job_termi
     claim = _round0_claim(session)
     review = _create_output_review(session, claim)
     _finish_review_job(session, claim, _NOW + timedelta(seconds=30))
+    with pytest.raises(ForeignKeyConflict):
+        _create_candidate_from_output_review(
+            session,
+            claim,
+            review,
+            school_study_ref="HUNNU_PROMIS_HISTORICAL_REPLAY_2026_R1",
+            scope=replace(_candidate_scope(claim), school_id=999),
+        )
+    session.expire_all()
+    assert session.get(SchoolResearchEducationOutputReview, review.id).status == "PENDING"
+    assert session.scalar(select(SchoolResearchEducationCandidate).where(
+        SchoolResearchEducationCandidate.job_id == claim.id
+    )) is None
+
     candidate = _create_candidate_from_output_review(
-        session, claim, review, now=_NOW + timedelta(minutes=1)
+        session,
+        claim,
+        review,
+        school_study_ref="HUNNU_PROMIS_HISTORICAL_REPLAY_2026_R1",
+        now=_NOW + timedelta(minutes=1),
     )
     session.expire_all()
     persisted_review = session.scalar(
@@ -373,10 +401,12 @@ def test_round0_output_review_candidate_consumes_one_receipt_and_keeps_job_termi
     assert candidate.output_safety_action == "REVIEW_REQUIRED"
     assert candidate.output_review_id == review.id
     assert candidate.output_review_state == "CONSUMED"
+    assert candidate.study_ref == "HUNNU_PROMIS_HISTORICAL_REPLAY_2026_R1"
     assert candidate.trace_id == "TRACE_candidate_resolve_001"
     assert candidate.trace_id != persisted_review.trace_id
     assert candidate.input_review_id is None
     assert persisted_review.status == "CONSUMED"
+    assert persisted_review.source_study_ref == "school-general-education-r3"
     assert persisted_review.candidate_content_sha256 == _CANDIDATE_HASH
     assert persisted_review.candidate_payload_schema_version == CANDIDATE_PAYLOAD_SCHEMA_VERSION
     assert persisted_review.state_version == 2
@@ -445,6 +475,7 @@ def test_round1_terminal_candidate_atomically_consumes_authorized_input_review(s
         session,
         claim1,
         output_review,
+        school_study_ref="HUNNU_PROMIS_HISTORICAL_REPLAY_2026_R1",
         now=_NOW + timedelta(minutes=2, seconds=45),
     )
     session.expire_all()
@@ -461,10 +492,12 @@ def test_round1_terminal_candidate_atomically_consumes_authorized_input_review(s
     assert candidate.input_review_id == authorized.id
     assert candidate.input_review_state == "CONSUMED"
     assert candidate.output_review_id == output_review.id
+    assert candidate.study_ref == "HUNNU_PROMIS_HISTORICAL_REPLAY_2026_R1"
     assert candidate.created_at == input_persisted.consumed_at.replace(tzinfo=UTC)
     assert candidate.created_at.tzinfo is UTC and candidate.updated_at.tzinfo is UTC
     assert input_persisted.status == "CONSUMED" and input_persisted.state_version == 3
     assert output_persisted.status == "CONSUMED" and output_persisted.state_version == 2
+    assert output_persisted.source_study_ref == "school-noncommercial-rag-research-2027-06"
     assert job.status == "REVIEW_REQUIRED" and job.last_error_code == "SAFETY_BLOCKED"
     candidate_repository = SchoolResearchEducationCandidateRepository(
         _OutputReviewAsyncSessionAdapter(session)
@@ -475,6 +508,8 @@ def test_round1_terminal_candidate_atomically_consumes_authorized_input_review(s
         candidate_ref=candidate.candidate_ref,
     ))
     assert readback is not None and readback.created_at == candidate.created_at
+    assert readback.study_ref == "HUNNU_PROMIS_HISTORICAL_REPLAY_2026_R1"
+    assert output_persisted.source_study_ref == "school-noncommercial-rag-research-2027-06"
     assert readback.created_at.tzinfo is UTC
 
 

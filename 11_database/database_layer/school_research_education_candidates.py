@@ -220,6 +220,7 @@ class SchoolResearchEducationCandidateRepository:
     async def _validate_persisted_lineage(
         self, row: SchoolResearchEducationCandidate
     ) -> None:
+        _require_token(row.study_ref, "study_ref")
         job = await self.session.scalar(
             select(SchoolResearchEducationJob)
             .where(
@@ -351,7 +352,6 @@ class SchoolResearchEducationCandidateRepository:
             or review.retrieval_safety_action != candidate.retrieval_safety_action
             or review.policy_version != candidate.policy_version
             or review.policy_hash != candidate.policy_hash
-            or review.source_study_ref != candidate.study_ref
             or review.source_manifest_sha256 != candidate.source_manifest_sha256
             or review.retrieval_id != candidate.retrieval_id
             or review.retrieval_bundle_sha256 != candidate.retrieval_bundle_sha256
@@ -666,6 +666,7 @@ class SchoolResearchEducationCandidateRepository:
         self,
         *,
         scope: ResearchEducationCandidateScope,
+        school_study_ref: str,
         output_review_ref: str,
         candidate_ref: str,
         content_sha256: str,
@@ -681,6 +682,7 @@ class SchoolResearchEducationCandidateRepository:
         async with self.session.begin_nested():
             return await self._create_held_from_output_review_unchecked(
                 scope=scope,
+                school_study_ref=school_study_ref,
                 output_review_ref=output_review_ref,
                 candidate_ref=candidate_ref,
                 content_sha256=content_sha256,
@@ -697,6 +699,7 @@ class SchoolResearchEducationCandidateRepository:
         self,
         *,
         scope: ResearchEducationCandidateScope,
+        school_study_ref: str,
         output_review_ref: str,
         candidate_ref: str,
         content_sha256: str,
@@ -710,6 +713,7 @@ class SchoolResearchEducationCandidateRepository:
     ) -> ResearchEducationCandidateDTO:
         """Consume a reviewed safety stop and persist one immutable HELD candidate."""
         _validate_scope(scope)
+        _require_token(school_study_ref, "school_study_ref")
         _require_token(output_review_ref, "output_review_ref")
         _require_token(candidate_ref, "candidate_ref")
         _require_id(actor_membership_role_id, "actor_membership_role_id")
@@ -811,7 +815,9 @@ class SchoolResearchEducationCandidateRepository:
                 existing,
                 scope=scope,
                 candidate_ref=candidate_ref,
-                study_ref=review_dto.source_study_ref,
+                # This DB column is the school study pin; source-study provenance remains
+                # bound by the consumed output-review envelope and candidate payload hash.
+                study_ref=school_study_ref,
                 policy_version=review_dto.policy_version,
                 policy_hash=review_dto.policy_hash,
                 source_manifest_sha256=review_dto.source_manifest_sha256,
@@ -912,7 +918,7 @@ class SchoolResearchEducationCandidateRepository:
                 output_review_id=consumed_review.id,
                 output_review_state="CONSUMED",
                 **_scope_values(scope),
-                study_ref=consumed_review.source_study_ref,
+                study_ref=school_study_ref,
                 policy_version=consumed_review.policy_version,
                 policy_hash=consumed_review.policy_hash,
                 source_manifest_sha256=consumed_review.source_manifest_sha256,
