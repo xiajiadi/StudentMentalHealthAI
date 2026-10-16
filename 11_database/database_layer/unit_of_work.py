@@ -22,6 +22,7 @@ from .repositories import (
     SupportRepository,
 )
 from .school_conversation_safety import SchoolConversationSafetyRepository
+from .school_independent_education_reviews import SchoolIndependentEducationReviewRepository
 from .school_post_assessment_jobs import SchoolPostAssessmentJobRepository
 from .school_research_cat import SchoolResearchCatRepository
 from .school_research_cohorts import SchoolResearchCohortRepository
@@ -29,10 +30,10 @@ from .school_research_education_candidates import SchoolResearchEducationCandida
 from .school_research_education_input_reviews import (
     SchoolResearchEducationInputReviewRepository,
 )
+from .school_research_education_jobs import SchoolResearchEducationJobRepository
 from .school_research_education_output_reviews import (
     SchoolResearchEducationOutputReviewRepository,
 )
-from .school_research_education_jobs import SchoolResearchEducationJobRepository
 from .school_research_programme_candidates import SchoolResearchProgrammeCandidateRepository
 from .school_research_review_feedback import (
     SchoolResearchFeedbackRepository,
@@ -73,6 +74,7 @@ class SqlAlchemyUnitOfWork:
         self.research_education_output_reviews: (
             SchoolResearchEducationOutputReviewRepository | None
         ) = None
+        self.independent_education_reviews: SchoolIndependentEducationReviewRepository | None = None
         self.research_reviews: SchoolResearchReviewRepository | None = None
         self.research_feedback: SchoolResearchFeedbackRepository | None = None
         self.research_programme_candidates: SchoolResearchProgrammeCandidateRepository | None = None
@@ -104,6 +106,9 @@ class SqlAlchemyUnitOfWork:
         )
         self.research_education_output_reviews = SchoolResearchEducationOutputReviewRepository(
             self.session
+        )
+        self.independent_education_reviews = SchoolIndependentEducationReviewRepository(
+            self.session, self.protection
         )
         self.research_reviews = SchoolResearchReviewRepository(self.session)
         self.research_feedback = SchoolResearchFeedbackRepository(self.session)

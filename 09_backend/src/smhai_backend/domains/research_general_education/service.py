@@ -153,18 +153,31 @@ class ResearchGeneralEducationPolicyPins:
 def source_cards_from_package(
     package: object,
     *,
-    policy_pins: ResearchGeneralEducationPolicyPins,
+    policy_pins: ResearchGeneralEducationPolicyPins | None = None,
     consumer_age_min: int = 14,
     consumer_age_max: int = 17,
 ) -> dict[str, ResearchGeneralEducationSourceCard]:
     """Build source cards from the pinned R3 package's actual records/sources."""
     if (consumer_age_min, consumer_age_max) != (14, 17):
         raise ValueError("research candidate audience must remain pinned to ages 14-17")
+    package_id = getattr(package, "package_id", None)
+    study_ref = getattr(package, "study_ref", None)
+    manifest_sha256 = getattr(package, "manifest_sha256", None)
     if (
-        getattr(package, "package_id", None) != policy_pins.source_package_ref
-        or getattr(package, "study_ref", None) != policy_pins.source_study_ref
-        or getattr(package, "manifest_sha256", None)
-        != policy_pins.source_manifest_sha256
+        not isinstance(package_id, str)
+        or not package_id
+        or not isinstance(study_ref, str)
+        or not study_ref
+        or not isinstance(manifest_sha256, str)
+        or _SHA256.fullmatch(manifest_sha256) is None
+        or (
+            policy_pins is not None
+            and (
+                package_id != policy_pins.source_package_ref
+                or study_ref != policy_pins.source_study_ref
+                or manifest_sha256 != policy_pins.source_manifest_sha256
+            )
+        )
     ):
         raise ValueError("source cards do not come from the pinned R3 package")
     records = getattr(package, "records", None)

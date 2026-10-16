@@ -4191,6 +4191,219 @@ class SchoolConversationSafetyEvent(ResourceIdentityMixin, Base):
     created_at: Mapped[datetime] = mapped_column(utc_datetime(), nullable=False, default=utc_now)
 
 
+class SchoolIndependentEducationReview(ResourceIdentityMixin, TimestampMixin, Base):
+    """Encrypted research-only output review, isolated from conversation messages."""
+
+    __tablename__ = "school_independent_education_reviews"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("review_ref", name="independent_edu_review_ref_unique"),
+        UniqueConstraint("support_run_id", name="independent_edu_review_run_unique"),
+        UniqueConstraint("id", "school_id", name="independent_edu_review_id_school_unique"),
+        UniqueConstraint(
+            "id",
+            "school_id",
+            "subject_id",
+            "support_session_id",
+            name="independent_edu_review_scope_unique",
+        ),
+        CheckConstraint(
+            "status IN ('HELD', 'SHARED', 'DRAFT', 'PUBLISHED', 'REVOKED', 'WITHDRAWN')",
+            name="status_allowed",
+        ),
+        CheckConstraint("state_version >= 1", name="state_version_positive"),
+        CheckConstraint("purpose = 'RESEARCH_SIMULATION'", name="purpose_research_only"),
+        CheckConstraint("research_only = 1", name="research_only_locked"),
+        CheckConstraint("professional_approval = 0", name="professional_false"),
+        CheckConstraint("clinical_approval = 0", name="clinical_false"),
+        CheckConstraint("psychometric_approval = 0", name="psychometric_false"),
+        CheckConstraint("ethics_approval = 0", name="ethics_false"),
+        CheckConstraint("school_production_approval = 0", name="production_false"),
+        CheckConstraint(
+            "(reviewer_membership_role_id IS NULL AND shared_at IS NULL "
+            "AND consent_notice_version IS NULL) OR "
+            "(reviewer_membership_role_id IS NOT NULL AND shared_at IS NOT NULL "
+            "AND consent_notice_version IS NOT NULL)",
+            name="share_assignment_pair",
+        ),
+        CheckConstraint(
+            "(reviewed_payload_ciphertext IS NULL AND reviewed_cipher_format_version IS NULL "
+            "AND reviewed_key_version IS NULL AND reviewed_payload_schema_version IS NULL "
+            "AND reviewed_content_sha256 IS NULL AND reviewed_at IS NULL AND content_revision = 0) OR "
+            "(reviewed_payload_ciphertext IS NOT NULL AND reviewed_cipher_format_version IS NOT NULL "
+            "AND reviewed_key_version IS NOT NULL AND reviewed_payload_schema_version IS NOT NULL "
+            "AND reviewed_content_sha256 IS NOT NULL AND reviewed_at IS NOT NULL AND content_revision >= 1)",
+            name="reviewed_cipher_envelope",
+        ),
+        CheckConstraint(
+            "input_safety_action IN ('PROCEED', 'PROCEED_WITH_BOUNDARY') AND "
+            "retrieval_safety_action IN ('PROCEED', 'PROCEED_WITH_BOUNDARY') AND "
+            "output_safety_action IN ('PROCEED', 'PROCEED_WITH_BOUNDARY')",
+            name="safety_actions_passed",
+        ),
+        CheckConstraint(
+            "(status = 'HELD' AND reviewer_membership_role_id IS NULL AND shared_at IS NULL "
+            "AND published_at IS NULL AND revoked_at IS NULL AND withdrawn_at IS NULL) OR "
+            "(status = 'SHARED' AND reviewer_membership_role_id IS NOT NULL AND shared_at IS NOT NULL "
+            "AND published_at IS NULL AND revoked_at IS NULL AND withdrawn_at IS NULL) OR "
+            "(status = 'DRAFT' AND reviewer_membership_role_id IS NOT NULL AND shared_at IS NOT NULL "
+            "AND content_revision >= 1 AND published_at IS NULL AND revoked_at IS NULL "
+            "AND withdrawn_at IS NULL) OR "
+            "(status = 'PUBLISHED' AND reviewer_membership_role_id IS NOT NULL AND shared_at IS NOT NULL "
+            "AND content_revision >= 1 AND published_at IS NOT NULL AND revoked_at IS NULL "
+            "AND withdrawn_at IS NULL) OR "
+            "(status = 'REVOKED' AND reviewer_membership_role_id IS NOT NULL AND shared_at IS NOT NULL "
+            "AND content_revision >= 1 AND published_at IS NOT NULL AND revoked_at IS NOT NULL "
+            "AND withdrawn_at IS NULL) OR "
+            "(status = 'WITHDRAWN' AND withdrawn_at IS NOT NULL "
+            "AND (revoked_at IS NULL OR (published_at IS NOT NULL AND content_revision >= 1)) "
+            "AND ((reviewer_membership_role_id IS NULL AND shared_at IS NULL) OR "
+            "(reviewer_membership_role_id IS NOT NULL AND shared_at IS NOT NULL)))",
+            name="state_timestamps_match",
+        ),
+        CheckConstraint(
+            "claim_boundary_status = 'ACCEPTED' AND citation_binding_status = 'BOUND'",
+            name="claims_citations_bound",
+        ),
+        ForeignKeyConstraint(
+            ["support_session_id", "subject_id"],
+            ["support_sessions.id", "support_sessions.subject_id"],
+            name="fk_ind_edu_review_session_subject",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["support_run_id", "support_session_id"],
+            ["support_runs.id", "support_runs.support_session_id"],
+            name="fk_ind_edu_review_run_session",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["subject_id", "school_id"],
+            ["subjects.id", "subjects.school_id"],
+            name="fk_ind_edu_review_subject_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["reviewer_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_ind_edu_review_reviewer_school",
+            ondelete="RESTRICT",
+        ),
+        Index("ix_ind_edu_review_owner_status", "school_id", "subject_id", "status", "created_at"),
+        Index(
+            "ix_ind_edu_review_reviewer_status",
+            "school_id",
+            "reviewer_membership_role_id",
+            "status",
+            "created_at",
+        ),
+    )
+
+    review_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    subject_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    support_session_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    support_run_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    reviewer_membership_role_id: Mapped[int | None] = mapped_column(unsigned_id(), nullable=True)
+    consent_notice_version: Mapped[str | None] = mapped_column(ascii_id(64), nullable=True)
+    status: Mapped[str] = mapped_column(ascii_id(16), nullable=False, default="HELD")
+    state_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    purpose: Mapped[str] = mapped_column(
+        ascii_id(32), nullable=False, default="RESEARCH_SIMULATION"
+    )
+    research_only: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    professional_approval: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    clinical_approval: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    psychometric_approval: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    ethics_approval: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    school_production_approval: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    source_study_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    source_package_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    source_manifest_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    retrieval_id: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    retrieval_bundle_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    prompt_id: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    prompt_sha256: Mapped[str | None] = mapped_column(ascii_id(64), nullable=True)
+    model_id: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    logical_model_id: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    model_version: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    model_digest_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    runtime_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    trace_id: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    input_safety_action: Mapped[str] = mapped_column(ascii_id(32), nullable=False)
+    input_safety_reason_codes: Mapped[list[str]] = mapped_column(mysql.JSON, nullable=False)
+    retrieval_safety_action: Mapped[str] = mapped_column(ascii_id(32), nullable=False)
+    retrieval_safety_reason_codes: Mapped[list[str]] = mapped_column(mysql.JSON, nullable=False)
+    output_safety_action: Mapped[str] = mapped_column(ascii_id(32), nullable=False)
+    output_safety_reason_codes: Mapped[list[str]] = mapped_column(mysql.JSON, nullable=False)
+    claim_boundary_status: Mapped[str] = mapped_column(
+        ascii_id(16), nullable=False, default="ACCEPTED"
+    )
+    citation_binding_status: Mapped[str] = mapped_column(
+        ascii_id(16), nullable=False, default="BOUND"
+    )
+    candidate_content_sha256: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    candidate_payload_ciphertext: Mapped[bytes] = mapped_column(mysql.MEDIUMBLOB, nullable=False)
+    candidate_cipher_format_version: Mapped[str] = mapped_column(ascii_id(32), nullable=False)
+    candidate_key_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    candidate_payload_schema_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    reviewed_content_sha256: Mapped[str | None] = mapped_column(ascii_id(64), nullable=True)
+    reviewed_payload_ciphertext: Mapped[bytes | None] = mapped_column(
+        mysql.MEDIUMBLOB, nullable=True
+    )
+    reviewed_cipher_format_version: Mapped[str | None] = mapped_column(ascii_id(32), nullable=True)
+    reviewed_key_version: Mapped[str | None] = mapped_column(ascii_id(64), nullable=True)
+    reviewed_payload_schema_version: Mapped[str | None] = mapped_column(ascii_id(64), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    content_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    shared_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    withdrawn_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    retention_due_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+
+
+class SchoolIndependentEducationReviewEvent(ResourceIdentityMixin, Base):
+    """Append-only content-free lifecycle events for independent education reviews."""
+
+    __tablename__ = "school_independent_education_review_events"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("review_id", "state_version", name="independent_edu_review_event_version"),
+        CheckConstraint(
+            "event_type IN ('CREATED', 'SHARED', 'DRAFT_SAVED', 'PUBLISHED', 'REVOKED', 'WITHDRAWN')",
+            name="event_type_allowed",
+        ),
+        CheckConstraint("state_version >= 1", name="state_version_positive"),
+        ForeignKeyConstraint(
+            ["review_id", "school_id"],
+            [
+                "school_independent_education_reviews.id",
+                "school_independent_education_reviews.school_id",
+            ],
+            name="fk_ind_edu_review_event_scope",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["actor_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_ind_edu_review_event_actor",
+            ondelete="RESTRICT",
+        ),
+        Index("ix_ind_edu_review_events_created", "review_id", "created_at"),
+    )
+
+    review_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    actor_membership_role_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    event_type: Mapped[str] = mapped_column(ascii_id(16), nullable=False)
+    from_status: Mapped[str | None] = mapped_column(ascii_id(16), nullable=True)
+    to_status: Mapped[str] = mapped_column(ascii_id(16), nullable=False)
+    state_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    trace_id: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    retention_due_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(utc_datetime(), nullable=False, default=utc_now)
+
+
 class AuditEvent(ResourceIdentityMixin, Base):
     __tablename__ = "audit_events"
     __table_args__ = mysql_table_args(
@@ -4251,4 +4464,6 @@ __all__ = [
     "SchoolResearchProgrammeCandidate",
     "SchoolConversationSafetyCase",
     "SchoolConversationSafetyEvent",
+    "SchoolIndependentEducationReview",
+    "SchoolIndependentEducationReviewEvent",
 ]

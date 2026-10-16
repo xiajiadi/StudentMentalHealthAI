@@ -7,7 +7,14 @@ from .schemas import (
     ResearchGeneralEducationSourceCard,
     ResearchGeneralEducationStatus,
 )
-from .service import ResearchGeneralEducationDraftService
+
+
+def __getattr__(name: str):
+    if name == "ResearchGeneralEducationDraftService":
+        from .service import ResearchGeneralEducationDraftService
+
+        return ResearchGeneralEducationDraftService
+    raise AttributeError(name)
 
 __all__ = [
     "ResearchGeneralEducationCandidatePayload",

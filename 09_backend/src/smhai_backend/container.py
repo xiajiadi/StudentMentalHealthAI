@@ -28,6 +28,9 @@ from smhai_backend.adapters.school_conversation_safety import (
 from smhai_backend.adapters.school_conversations import SchoolConversationsPersistenceAdapter
 from smhai_backend.adapters.school_directory import SchoolDirectoryPersistenceAdapter
 from smhai_backend.adapters.school_feedback import SchoolFeedbackPersistenceAdapter
+from smhai_backend.adapters.school_independent_education_reviews import (
+    SchoolIndependentEducationReviewsPersistenceAdapter,
+)
 from smhai_backend.adapters.school_post_assessment import (
     SchoolPostAssessmentPersistenceAdapter,
     SchoolPostAssessmentWorkerManager,
@@ -47,6 +50,9 @@ from smhai_backend.domains.cat_management.service import SchoolCatManagementServ
 from smhai_backend.domains.conversations.service import (
     ConversationLanePolicy,
     IndependentConversationService,
+)
+from smhai_backend.domains.independent_education_reviews.service import (
+    IndependentEducationReviewService,
 )
 from smhai_backend.domains.professional_reviews.service import SchoolProfessionalReviewService
 from smhai_backend.domains.school_directory.service import SchoolDirectoryService
@@ -124,6 +130,7 @@ class BackendContainer:
     independent_conversations: IndependentConversationService | None = None
     school_research_student_conversations: IndependentConversationService | None = None
     school_research_student_safety: SafetyClient | None = None
+    independent_education_reviews: IndependentEducationReviewService | None = None
     independent_rag: IndependentRagClient | None = None
     independent_llm: IndependentLLMRuntimeClient | None = None
     cat_management: SchoolCatManagementService | None = None
@@ -600,8 +607,7 @@ def build_container(
                 persistence,
                 study_use_policy=programme_study_policy,
                 study_use_policy_sha256=settings.school_research_study_use_sha256,
-                enabled=settings.school_research_enabled
-                and settings.environment != "production",
+                enabled=settings.school_research_enabled and settings.environment != "production",
                 expected_source_manifest_sha256=programme_settings.package_manifest_sha256,
                 expected_processor_policy_sha256=programme_job_policy_sha256,
                 expected_model_ref=programme_settings.model_ref,
@@ -674,6 +680,7 @@ def build_container(
         from smhai_backend.integrations.research_programme import (
             HttpResearchProgrammeRuntimeClient,
         )
+
         programme_settings = settings.research_programme_worker
         retriever = ResearchOnlyRetriever.from_manifest(
             Path(programme_settings.package_manifest_file),
@@ -727,6 +734,7 @@ def build_container(
     school_research_student_conversations = None
     active_research_student_safety = None
     research_student_package = None
+    research_student_source_cards = None
     school_research_sources = None
     student_rag = None
     student_lane_settings = settings.school_research_student_conversation
@@ -755,6 +763,9 @@ def build_container(
             package = None
         if package is not None:
             research_student_package = package
+            from smhai_backend.domains.research_general_education.service import (
+                source_cards_from_package,
+            )
             from smhai_backend.domains.school_research_sources.service import (
                 SchoolResearchSourcesService,
             )
@@ -792,6 +803,8 @@ def build_container(
                 manifest_sha256=student_lane_settings.manifest_sha256,
                 valid_through=package.valid_through,
             )
+            student_source_cards = source_cards_from_package(package)
+            research_student_source_cards = student_source_cards
             school_research_student_conversations = IndependentConversationService(
                 persistence=SchoolConversationsPersistenceAdapter(
                     persistence, target_role="student_research"
@@ -800,7 +813,29 @@ def build_container(
                 rag=student_rag,
                 llm=independent_llm,
                 lane_policy=student_lane_policy,
+                source_cards=student_source_cards,
             )
+    independent_education_reviews = None
+    if (
+        persistence is not None
+        and student_lane_settings.enabled
+        and research_student_package is not None
+        and research_student_source_cards is not None
+    ):
+        independent_education_reviews = IndependentEducationReviewService(
+            persistence=SchoolIndependentEducationReviewsPersistenceAdapter(
+                persistence,
+                expected_school_id=student_lane_settings.school_id,
+                source_study_ref=research_student_package.study_ref,
+                source_package_ref=research_student_package.package_id,
+                source_manifest_sha256=research_student_package.manifest_sha256,
+                prompt_id=student_lane_policy.prompt_id,
+                prompt_version=student_lane_policy.prompt_version,
+                valid_through=research_student_package.valid_through,
+                source_cards=research_student_source_cards,
+            ),
+            safety=active_research_student_safety,
+        )
     research_general_education_worker_manager = None
     research_general_education_runtime_client = None
     education_draft_settings = settings.research_general_education_draft
@@ -838,8 +873,8 @@ def build_container(
                     source_manifest_sha256=education_draft_settings.source_manifest_sha256,
                 )
                 source_cards = source_cards_from_package(package, policy_pins=policy_pins)
-                research_general_education_runtime_client = (
-                    ResearchGeneralEducationRuntimeClient(settings.research_programme_runtime)
+                research_general_education_runtime_client = ResearchGeneralEducationRuntimeClient(
+                    settings.research_programme_runtime
                 )
                 generation_service = ResearchGeneralEducationDraftService(
                     safety=active_research_student_safety,
@@ -866,19 +901,15 @@ def build_container(
                         source_valid_through=package.valid_through,
                     )
                 )
-                school_research_education_candidates = (
-                    SchoolResearchEducationCandidateService(
-                        persistence=school_research_education_candidate_adapter
-                    )
+                school_research_education_candidates = SchoolResearchEducationCandidateService(
+                    persistence=school_research_education_candidate_adapter
                 )
                 if school_research_feedback_adapter is not None:
                     school_research_feedback_adapter.education_candidate_validator = (
-                        school_research_education_candidate_adapter
-                        .validate_feedback_candidate_in_uow
+                        school_research_education_candidate_adapter.validate_feedback_candidate_in_uow
                     )
                     school_research_feedback_adapter.education_candidate_lineage_validator = (
-                        school_research_education_candidate_adapter
-                        .verify_candidate_input_lineage_in_uow
+                        school_research_education_candidate_adapter.verify_candidate_input_lineage_in_uow
                     )
                 concurrency_lock = (
                     research_programme_worker_manager.concurrency_lock
@@ -983,6 +1014,7 @@ def build_container(
         independent_conversations=independent_conversations,
         school_research_student_conversations=school_research_student_conversations,
         school_research_student_safety=active_research_student_safety,
+        independent_education_reviews=independent_education_reviews,
         independent_rag=independent_rag,
         independent_llm=independent_llm,
         support=support,

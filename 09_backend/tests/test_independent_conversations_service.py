@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
@@ -19,6 +20,9 @@ from smhai_backend.domains.conversations.service import (
     IndependentConversationService,
 )
 from smhai_backend.domains.models import Actor, BackendRole
+from smhai_backend.domains.research_general_education.schemas import (
+    ResearchGeneralEducationSourceCard,
+)
 from smhai_backend.integrations.evidence import (
     CitationBindingError,
     EligibilityPolicy,
@@ -50,6 +54,7 @@ class FakePersistence:
         self.history = dict(history or {"turns": [], "messages": []})
         self.reserve_calls: list[dict[str, Any]] = []
         self.finish_calls: list[dict[str, Any]] = []
+        self.hold_calls: list[dict[str, Any]] = []
         self.detail_calls: list[tuple[int, int]] = []
 
     async def create(self, actor: Actor, *, idempotency_key: str, trace_id: str) -> dict[str, Any]:
@@ -120,6 +125,26 @@ class FakePersistence:
             "user_message_sequence": 1,
             "assistant_message_sequence": 2 if kwargs.get("approved_content") is not None else None,
             "citations": [dict(item) for item in kwargs.get("citations", ())],
+            "safe_metadata": dict(kwargs.get("safe_metadata", {})),
+        }
+
+    async def finish_content_review_hold(
+        self,
+        actor: Actor,
+        conversation_id: str,
+        turn_id: str,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        record = {"conversation_id": conversation_id, "turn_id": turn_id, **kwargs}
+        self.hold_calls.append(record)
+        return {
+            "turn_id": turn_id,
+            "status": "blocked",
+            "action": "CONTENT_REVIEW_HELD",
+            "completed_at": "2026-10-12T00:00:01Z",
+            "user_message_sequence": 1,
+            "assistant_message_sequence": None,
+            "citations": [],
             "safe_metadata": dict(kwargs.get("safe_metadata", {})),
         }
 
@@ -359,7 +384,7 @@ class FakeRuntime:
             model_version="synthetic-model-version",
             runtime_version="synthetic-runtime-version",
             synthetic_fixture_only=True,
-            trace={"attempt_count": 1},
+            trace={"attempt_count": 1, "digest": "a" * 64},
         )
 
 
@@ -407,7 +432,52 @@ def _research_service(
 ):
     persistence = FakePersistence()
     safety = FakeSafety(retrieval_action=retrieval_action)
-    rag = FakeResearchRag(chunks=chunks, bad_manifest=bad_manifest)
+    normalized_chunks = []
+    source_cards = {}
+    for index, chunk in enumerate(chunks, start=1):
+        text = chunk.text
+        if not isinstance(text, str):
+            normalized_chunks.append(chunk)
+            continue
+        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        record_locator = chunk.citation.locator
+        canonical_url = "https://example.edu/research"
+        license_name = "CC BY 4.0"
+        license_url = "https://creativecommons.org/licenses/by/4.0/"
+        attribution = "Example educational research source"
+        population_scope = "secondary school students; ages 14-24"
+        suffix = (
+            f"; source population: {population_scope}; source: {canonical_url}; "
+            f"license: {license_name} ({license_url}); attribution: {attribution}"
+        )
+        normalized = chunk.model_copy(
+            update={
+                "content_hash": f"sha256:{digest}",
+                "citation": chunk.citation.model_copy(
+                    update={"locator": f"{record_locator}{suffix}"}
+                ),
+            }
+        )
+        normalized_chunks.append(normalized)
+        source_cards[chunk.chunk_id] = ResearchGeneralEducationSourceCard(
+            chunk_id=chunk.chunk_id,
+            record_id=f"record-{index}",
+            source_id=f"source-{index}",
+            title=chunk.citation.title,
+            organization=chunk.citation.organization,
+            canonical_url=canonical_url,
+            record_locator=record_locator,
+            source_population_scope=population_scope,
+            source_language="en",
+            license=license_name,
+            license_url=license_url,
+            attribution=attribution,
+            excerpt_sha256=digest,
+            excerpt_text=text,
+            consumer_age_min=14,
+            consumer_age_max=17,
+        )
+    rag = FakeResearchRag(chunks=normalized_chunks, bad_manifest=bad_manifest)
     llm = FakeRuntime()
     service = IndependentConversationService(
         persistence=persistence,
@@ -415,6 +485,7 @@ def _research_service(
         rag=rag,
         llm=llm,
         lane_policy=policy or _research_policy(),
+        source_cards=source_cards,
     )
     return service, persistence, safety, rag, llm
 
@@ -709,7 +780,7 @@ async def test_input_safety_stops_rag_and_runtime(action: str) -> None:
 
     result = await _submit(service)
 
-    assert result.status == "blocked"
+    assert result.status == "blocked", result.safe_metadata.get("stage")
     assert safety.calls == ["safety_input"]
     assert rag.calls == []
     assert runtime.calls == []
@@ -1092,10 +1163,11 @@ async def test_research_lane_allows_ordinary_year_and_duration_numbers() -> None
 
     assert safety.calls[-1] == "safety_output"
     assert len(runtime.calls) == 1
-    assert result.status == "completed"
-    assert len(persistence.finish_calls[-1].get("citations", ())) == 1
-    assert "claim_boundary_category" not in persistence.finish_calls[-1]["safe_metadata"]
-    assert "claim_boundary_field_kind" not in persistence.finish_calls[-1]["safe_metadata"]
+    assert result.status == "blocked", result.safe_metadata.get("stage")
+    assert result.action == "CONTENT_REVIEW_HELD"
+    assert len(persistence.hold_calls[-1]["candidate_payload"]["citations"]) == 1
+    assert "claim_boundary_category" not in persistence.hold_calls[-1]["safe_metadata"]
+    assert "claim_boundary_field_kind" not in persistence.hold_calls[-1]["safe_metadata"]
 
 
 @pytest.mark.asyncio
@@ -1211,10 +1283,11 @@ async def test_research_lane_passes_json_encoded_source_text_to_runtime_as_untru
 
     result = await _submit(service)
 
-    assert result.status == "completed"
+    assert result.status == "blocked"
+    assert result.action == "CONTENT_REVIEW_HELD"
     messages = runtime.calls[0]["messages"]
     assert runtime.calls[0]["prompt_version"] == "1.4.0"
-    assert persistence.finish_calls[-1]["safe_metadata"]["prompt_version"] == "1.4.0"
+    assert persistence.hold_calls[-1]["safe_metadata"]["prompt_version"] == "1.4.0"
     assert [item["role"] for item in messages] == ["system", "user"]
     system_prompt = messages[0]["content"]
     assert "逐个source_chunk_id阅读和归纳正文，保持来源边界" in system_prompt

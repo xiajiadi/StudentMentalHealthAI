@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections.abc import Mapping, Sequence
@@ -15,7 +16,14 @@ from pydantic import ValidationError
 from smhai_backend.adapters.school_conversations import SchoolConversationsPersistenceAdapter
 from smhai_backend.core.errors import BackendError, ErrorCode, error
 from smhai_backend.core.request_context import RequestContext
+from smhai_backend.domains.independent_education_reviews.schemas import (
+    IndependentEducationCandidatePayload,
+    IndependentEducationReviewProvenance,
+)
 from smhai_backend.domains.models import Actor, BackendRole
+from smhai_backend.domains.research_general_education.schemas import (
+    ResearchGeneralEducationSourceCard,
+)
 from smhai_backend.domains.school_conversation_safety.contracts import SafetyCaseSeed
 from smhai_backend.domains.support.schemas import GenerationContent, SupportCitation
 from smhai_backend.domains.support.service import (
@@ -270,12 +278,30 @@ class IndependentConversationService:
         rag: IndependentRagPort | IndependentRagClient,
         llm: IndependentRuntimePort | IndependentLLMRuntimeClient,
         lane_policy: ConversationLanePolicy | None = None,
+        source_cards: Mapping[str, ResearchGeneralEducationSourceCard] | None = None,
     ) -> None:
         self.persistence = persistence
         self.safety = safety
         self.rag = rag
         self.llm = llm
         self.lane_policy = lane_policy or ConversationLanePolicy()
+        validated_cards: dict[str, ResearchGeneralEducationSourceCard] = {}
+        for key, value in (source_cards or {}).items():
+            card = (
+                value
+                if isinstance(value, ResearchGeneralEducationSourceCard)
+                else ResearchGeneralEducationSourceCard.model_validate(value, strict=True)
+            )
+            if (
+                key != card.chunk_id
+                or card.chunk_id in validated_cards
+                or (card.consumer_age_min, card.consumer_age_max) != (14, 17)
+                or hashlib.sha256(card.excerpt_text.encode("utf-8")).hexdigest()
+                != card.excerpt_sha256
+            ):
+                raise ValueError("research source card mapping is invalid")
+            validated_cards[key] = card
+        self.source_cards = validated_cards
 
     def _require_student(self, actor: Actor) -> None:
         if (
@@ -489,6 +515,15 @@ class IndependentConversationService:
                 stage="input_safety",
                 reason="INVALID_SAFETY_ACTION",
             )
+        if self.lane_policy.research_only and input_check.decision.requires_human:
+            return await self._finish_invalid(
+                actor,
+                conversation_id,
+                turn_id,
+                context,
+                stage="input_safety",
+                reason="INCONSISTENT_SAFETY_REVIEW_FLAG",
+            )
 
         retrieval_id = f"RETR_{uuid4().hex}"
         metadata.update({"stage": "retrieval", "retrieval_id": retrieval_id})
@@ -525,10 +560,8 @@ class IndependentConversationService:
             metadata.update(
                 {
                     "source_query_transform": retrieval.trace["query_transform"],
-                    "source_layers_hit": "+".join(retrieval.trace["matched_layers"])
-                    or "none",
-                    "source_layers_missing": "+".join(retrieval.trace["missing_layers"])
-                    or "none",
+                    "source_layers_hit": "+".join(retrieval.trace["matched_layers"]) or "none",
+                    "source_layers_missing": "+".join(retrieval.trace["missing_layers"]) or "none",
                 }
             )
         if retrieval.retrieval_id != retrieval_id:
@@ -668,6 +701,17 @@ class IndependentConversationService:
                 context,
                 retrieval_check,
                 metadata,
+            )
+        if self.lane_policy.research_only and retrieval_check.decision.requires_human:
+            return await self._finish_invalid(
+                actor,
+                conversation_id,
+                turn_id,
+                context,
+                stage="retrieval_safety",
+                reason="INCONSISTENT_SAFETY_REVIEW_FLAG",
+                generation_id=None,
+                retrieval_id=retrieval_id,
             )
 
         generation_id = f"GEN_{uuid4().hex}"
@@ -824,6 +868,17 @@ class IndependentConversationService:
                 output_check,
                 metadata,
             )
+        if self.lane_policy.research_only and output_check.decision.requires_human:
+            return await self._finish_invalid(
+                actor,
+                conversation_id,
+                turn_id,
+                context,
+                stage="output_safety",
+                reason="INCONSISTENT_SAFETY_REVIEW_FLAG",
+                generation_id=generation_id,
+                retrieval_id=retrieval_id,
+            )
         if _contains_forbidden_generated_claim(content):
             field_kind, _field_index, category, _match_count = _first_boundary_match(content)
             return await self._finish_invalid(
@@ -901,6 +956,41 @@ class IndependentConversationService:
                 "claim_boundary_status": "ACCEPTED",
             }
         )
+        if self.lane_policy.research_only:
+            try:
+                independent_candidate = self._research_review_candidate(
+                    content=content,
+                    citations=citations,
+                    bundle=bundle,
+                    generation_id=generation_id,
+                    retrieval_id=retrieval_id,
+                    candidate=candidate,
+                    input_check=input_check,
+                    retrieval_check=retrieval_check,
+                    output_check=output_check,
+                    trace_id=context.trace_id,
+                )
+            except (TypeError, ValueError, ValidationError):
+                return await self._finish_invalid(
+                    actor,
+                    conversation_id,
+                    turn_id,
+                    context,
+                    stage="candidate_projection",
+                    reason="RESEARCH_REVIEW_CANDIDATE_INVALID",
+                    generation_id=generation_id,
+                    retrieval_id=retrieval_id,
+                )
+            metadata["stage"] = "content_review_hold"
+            finished = await self.persistence.finish_content_review_hold(
+                actor,
+                conversation_id,
+                turn_id,
+                candidate_payload=independent_candidate.model_dump(mode="json"),
+                safe_metadata=metadata,
+                trace_id=context.trace_id,
+            )
+            return self._turn_result(finished)
         finished = await self.persistence.finish_turn(
             actor,
             conversation_id,
@@ -922,6 +1012,80 @@ class IndependentConversationService:
             trace_id=context.trace_id,
         )
         return self._turn_result(finished, content=content.model_dump(mode="json"))
+
+    def _research_review_candidate(
+        self,
+        *,
+        content: GenerationContent,
+        citations: Sequence[Any],
+        bundle: RetrievalEvidenceBundle,
+        generation_id: str,
+        retrieval_id: str,
+        candidate: GenerationResult,
+        input_check: SafetyCheckView,
+        retrieval_check: SafetyCheckView,
+        output_check: SafetyCheckView,
+        trace_id: str,
+    ) -> IndependentEducationCandidatePayload:
+        if (
+            not self.lane_policy.research_only
+            or self.lane_policy.purpose != "RESEARCH_SIMULATION"
+            or not self.lane_policy.package_id
+            or not self.lane_policy.study_ref
+            or not self.lane_policy.manifest_sha256
+            or not self.source_cards
+            or candidate.trace.get("digest") is None
+        ):
+            raise ValueError("research candidate pins are unavailable")
+        validated_citations = [
+            item if isinstance(item, SupportCitation) else SupportCitation.model_validate(item)
+            for item in citations
+        ]
+        cards = []
+        for citation in validated_citations:
+            if citation.chunk_id is None or citation.chunk_id not in self.source_cards:
+                raise ValueError("cited source card is unavailable")
+            card = self.source_cards[citation.chunk_id]
+            if citation.source_hash != f"sha256:{card.excerpt_sha256}":
+                raise ValueError("citation hash does not match source card")
+            cards.append(card)
+        provenance = IndependentEducationReviewProvenance(
+            purpose="RESEARCH_SIMULATION",
+            research_only=True,
+            source_study_ref=self.lane_policy.study_ref,
+            source_package_ref=self.lane_policy.package_id,
+            source_manifest_sha256=self.lane_policy.manifest_sha256,
+            retrieval_id=retrieval_id,
+            retrieval_bundle_sha256=bundle.bundle_hash,
+            generation_id=generation_id,
+            prompt_id=self.lane_policy.prompt_id,
+            prompt_version=self.lane_policy.prompt_version,
+            prompt_sha256=None,
+            model_id=candidate.model_id,
+            logical_model_id=candidate.logical_model_id,
+            model_version=candidate.model_version,
+            model_digest_sha256=str(candidate.trace.get("digest")),
+            runtime_version=candidate.runtime_version,
+            trace_id=trace_id,
+            input_safety_action=input_check.decision.action,
+            input_safety_reason_codes=list(input_check.decision.reason_codes),
+            input_safety_requires_human=False,
+            retrieval_safety_action=retrieval_check.decision.action,
+            retrieval_safety_reason_codes=list(retrieval_check.decision.reason_codes),
+            retrieval_safety_requires_human=False,
+            output_safety_action=output_check.decision.action,
+            output_safety_reason_codes=list(output_check.decision.reason_codes),
+            output_safety_requires_human=False,
+            claim_boundary_status="ACCEPTED",
+            citation_binding_status="BOUND",
+        )
+        return IndependentEducationCandidatePayload(
+            schema_version="independent-research-education-candidate.v1",
+            content=content,
+            citations=validated_citations,
+            source_cards=cards,
+            provenance=provenance,
+        )
 
     async def _recent_approved_history(
         self,
@@ -1026,9 +1190,7 @@ class IndependentConversationService:
             return _RESEARCH_STUDENT_ABSTENTION.model_copy(deep=True)
         return _ABSTENTION.model_copy(deep=True)
 
-    def _user_message(
-        self, message: str, *, retrieval: RetrievalResult | None = None
-    ) -> str:
+    def _user_message(self, message: str, *, retrieval: RetrievalResult | None = None) -> str:
         if self.lane_policy.research_only:
             layer_names = {
                 "policy": "政策",
@@ -1198,9 +1360,7 @@ class IndependentConversationService:
                 "需要引用时只在suggestions.source_chunk_ids中引用本轮提供的chunk_id，"
                 "完整来源由系统根据已核验的引用元数据单独显示。"
             )
-            audience = (
-                "你为14–17岁虚构中学生研究演示提供来源支持的一般教育信息。"
-            )
+            audience = "你为14–17岁虚构中学生研究演示提供来源支持的一般教育信息。"
         elif synthetic_demo_chunk_ids:
             synthetic_chunk_ids_json = json.dumps(
                 synthetic_demo_chunk_ids, ensure_ascii=False, separators=(",", ":")

@@ -27,6 +27,12 @@ from smhai_backend.domains.conversations.research_router import (
 )
 from smhai_backend.domains.conversations.router import router as conversations_router
 from smhai_backend.domains.health.router import router as health_router
+from smhai_backend.domains.independent_education_reviews.router import (
+    staff_router as independent_education_reviews_router,
+)
+from smhai_backend.domains.independent_education_reviews.router import (
+    student_router as student_independent_education_reviews_router,
+)
 from smhai_backend.domains.professional_reviews.router import router as professional_reviews_router
 from smhai_backend.domains.school_conversation_safety.router import (
     router as school_conversation_safety_router,
@@ -166,6 +172,16 @@ def create_app(
     app.include_router(conversations_router, prefix=settings.api_prefix, include_in_schema=False)
     app.include_router(
         research_conversations_router, prefix=settings.api_prefix, include_in_schema=False
+    )
+    app.include_router(
+        student_independent_education_reviews_router,
+        prefix=settings.api_prefix,
+        include_in_schema=False,
+    )
+    app.include_router(
+        independent_education_reviews_router,
+        prefix=settings.api_prefix,
+        include_in_schema=False,
     )
     app.include_router(
         professional_reviews_router, prefix=settings.api_prefix, include_in_schema=False

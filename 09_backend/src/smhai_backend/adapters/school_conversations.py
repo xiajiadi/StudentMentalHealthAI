@@ -6,6 +6,7 @@ the existing database unit of work. It does not enter the assessment-bound workf
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections.abc import Mapping, Sequence
@@ -509,6 +510,7 @@ class SchoolConversationsPersistenceAdapter:
                         sequences.add(value)
                         turn_by_sequence[value] = run.run_ref
             messages: list[dict[str, Any]] = []
+            action_by_turn = {run.run_ref: run.workflow_action for run in runs}
             if sequences:
                 message_rows = list(
                     (
@@ -524,8 +526,17 @@ class SchoolConversationsPersistenceAdapter:
                 )
                 # Authorization and ownership are established before any ciphertext is opened.
                 for row in message_rows:
-                    payload = self._persistence._decrypt_support_message(row)
                     expected_turn = turn_by_sequence.get(int(row.sequence_no))
+                    if (
+                        self._target_role == "student_research"
+                        and row.message_kind == self._db_enums.MessageKind.APPROVED_OUTPUT.value
+                        and action_by_turn.get(expected_turn)
+                        in {"PROCEED", "PROCEED_WITH_BOUNDARY"}
+                    ):
+                        # Legacy research answers remain encrypted in storage, but their
+                        # old completed projection is no longer a release mechanism.
+                        continue
+                    payload = self._persistence._decrypt_support_message(row)
                     if (
                         not isinstance(payload, Mapping)
                         or payload.get("schema_version") != "independent-message.v1"
@@ -555,7 +566,7 @@ class SchoolConversationsPersistenceAdapter:
                     )
             run_ids = [run.id for run in runs]
             evidence_by_run: dict[int, list[dict[str, Any]]] = {run_id: [] for run_id in run_ids}
-            if run_ids:
+            if run_ids and self._target_role != "student_research":
                 evidence_rows = list(
                     (
                         await uow.session.scalars(
@@ -721,11 +732,16 @@ class SchoolConversationsPersistenceAdapter:
             and action not in _TURN_FAILURE_ACTIONS
         ):
             raise error(ErrorCode.WORKFLOW_CONFLICT, detail="turn reservation is unavailable")
-        if status == self._db_enums.SupportRunStatus.BLOCKED.value and action not in {
-            "BLOCK",
-            "REVIEW_REQUIRED",
-            "CRISIS_ROUTE",
-        }:
+        if (
+            status == self._db_enums.SupportRunStatus.BLOCKED.value
+            and action
+            not in {
+                "BLOCK",
+                "REVIEW_REQUIRED",
+                "CRISIS_ROUTE",
+            }
+            and not (self._target_role == "student_research" and action == "CONTENT_REVIEW_HELD")
+        ):
             raise error(ErrorCode.WORKFLOW_CONFLICT, detail="turn reservation is unavailable")
 
         m = self._db_models
@@ -764,6 +780,13 @@ class SchoolConversationsPersistenceAdapter:
                 or message.message_kind != self._db_enums.MessageKind.APPROVED_OUTPUT.value
             ):
                 raise error(ErrorCode.WORKFLOW_CONFLICT, detail="turn reservation is unavailable")
+            if (
+                self._target_role == "student_research"
+                and status == self._db_enums.SupportRunStatus.COMPLETED.value
+                and action in {"PROCEED", "PROCEED_WITH_BOUNDARY"}
+            ):
+                result["assistant_message_sequence"] = assistant_sequence
+                return result
             payload = self._persistence._decrypt_support_message(message)
             if (
                 not isinstance(payload, Mapping)
@@ -1209,9 +1232,7 @@ class SchoolConversationsPersistenceAdapter:
                     uow, actor, "student", now
                 )
                 safety_action = next(
-                    item
-                    for item in self._db_enums.SafetyAction
-                    if item.value == safety_case.action
+                    item for item in self._db_enums.SafetyAction if item.value == safety_case.action
                 )
                 decision = await uow.support.create_safety_decision(
                     decision_ref=f"SAFE_{uuid4().hex}",
@@ -1260,5 +1281,194 @@ class SchoolConversationsPersistenceAdapter:
                 "user_message_sequence": sequence,
                 "assistant_message_sequence": output_sequence,
                 "citations": evidence,
+                "safe_metadata": clean_metadata,
+            }
+
+    async def finish_content_review_hold(
+        self,
+        actor: Any,
+        conversation_id: str,
+        turn_id: str,
+        *,
+        candidate_payload: Mapping[str, Any],
+        safe_metadata: Mapping[str, Any] | None,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        """Atomically hold a validated research candidate and block its source turn."""
+        if self._target_role != "student_research":
+            raise error(ErrorCode.FORBIDDEN, detail="research review hold is unavailable")
+        from smhai_backend.domains.independent_education_reviews.schemas import (
+            IndependentEducationCandidatePayload,
+        )
+
+        try:
+            candidate = IndependentEducationCandidatePayload.model_validate(
+                candidate_payload, strict=True
+            )
+        except (TypeError, ValueError):
+            raise error(
+                ErrorCode.VALIDATION_FAILED,
+                detail="research candidate could not be held",
+            ) from None
+        if candidate.provenance.trace_id != trace_id:
+            raise error(ErrorCode.WORKFLOW_CONFLICT, detail="research turn binding is unavailable")
+        conversation_id = _safe_id(conversation_id, "CONV")
+        turn_id = _safe_id(turn_id, "TURN")
+        now = self._utc_now()
+        clean_metadata = _safe_component_metadata(safe_metadata)
+        m = self._db_models
+        async with self._uow() as uow:
+            account_id, subject = await self._student_subject(uow, actor, now)
+            _student_account_id, actor_role_id = await self._school_actor_role(
+                uow, actor, "student", now
+            )
+            session = await self._owned_session(uow, actor, subject, conversation_id, lock=True)
+            run = await uow.session.scalar(
+                self._select(m.SupportRun)
+                .where(
+                    m.SupportRun.run_ref == turn_id,
+                    m.SupportRun.support_session_id == session.id,
+                    m.SupportRun.assessment_session_id.is_(None),
+                )
+                .with_for_update()
+            )
+            if run is None or run.trace_id != trace_id:
+                raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="turn was not found")
+            if run.status != self._db_enums.SupportRunStatus.REQUESTED.value:
+                existing = await uow.session.scalar(
+                    self._select(m.SchoolIndependentEducationReview).where(
+                        m.SchoolIndependentEducationReview.support_run_id == run.id,
+                        m.SchoolIndependentEducationReview.support_session_id == session.id,
+                        m.SchoolIndependentEducationReview.subject_id == subject.id,
+                        m.SchoolIndependentEducationReview.school_id == actor.school_id,
+                    )
+                )
+                if (
+                    run.status == self._db_enums.SupportRunStatus.BLOCKED.value
+                    and run.workflow_action == "CONTENT_REVIEW_HELD"
+                    and existing is not None
+                    and existing.trace_id == trace_id
+                    and existing.candidate_content_sha256
+                    == hashlib.sha256(
+                        json.dumps(
+                            candidate.model_dump(mode="json"),
+                            ensure_ascii=False,
+                            allow_nan=False,
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        ).encode("utf-8")
+                    ).hexdigest()
+                ):
+                    stored = (
+                        run.component_versions
+                        if isinstance(run.component_versions, Mapping)
+                        else {}
+                    )
+                    return {
+                        "turn_id": turn_id,
+                        "status": "blocked",
+                        "action": "CONTENT_REVIEW_HELD",
+                        "completed_at": _timestamp(run.completed_at),
+                        "user_message_sequence": None,
+                        "assistant_message_sequence": None,
+                        "citations": [],
+                        "safe_metadata": _safe_component_metadata(stored.get("safe_metadata")),
+                    }
+                raise error(ErrorCode.WORKFLOW_CONFLICT, detail="turn is already terminal")
+            component = (
+                run.component_versions if isinstance(run.component_versions, Mapping) else {}
+            )
+            sequence = component.get("user_message_sequence")
+            if not isinstance(sequence, int) or isinstance(sequence, bool) or sequence < 1:
+                raise error(ErrorCode.WORKFLOW_CONFLICT, detail="turn reservation is unavailable")
+            started = run.started_at or run.created_at
+            if started is not None and started <= now - _TURN_MAX_AGE:
+                safe = _safe_component_metadata(component.get("safe_metadata"))
+                safe["failure_code"] = "TURN_INTERRUPTED"
+                run.status = self._db_enums.SupportRunStatus.FAILED.value
+                run.workflow_action = "INTERRUPTED"
+                run.completed_at = now
+                run.component_versions = {
+                    "source": "independent_conversation",
+                    "user_message_sequence": sequence,
+                    "safe_metadata": safe,
+                }
+                await self._audit(
+                    uow,
+                    account_id=account_id,
+                    action="student_conversation.turn_interrupted",
+                    resource_type="student_conversation_turn",
+                    resource_ref=turn_id,
+                    trace_id=trace_id,
+                )
+                return {
+                    "turn_id": turn_id,
+                    "status": "failed",
+                    "action": "INTERRUPTED",
+                    "completed_at": _timestamp(now),
+                    "user_message_sequence": sequence,
+                    "assistant_message_sequence": None,
+                    "citations": [],
+                    "safe_metadata": safe,
+                }
+            if (
+                candidate.provenance.source_study_ref == ""
+                or candidate.provenance.source_package_ref == ""
+                or candidate.provenance.source_manifest_sha256 == ""
+            ):
+                raise error(
+                    ErrorCode.WORKFLOW_CONFLICT, detail="research source pins are unavailable"
+                )
+            if uow.independent_education_reviews is None:
+                raise error(
+                    ErrorCode.DEPENDENCY_UNAVAILABLE,
+                    detail="research education review persistence is unavailable",
+                    retryable=True,
+                )
+            review = await uow.independent_education_reviews.create_held(
+                review_ref=f"EDUREV_{uuid4().hex}",
+                school_id=actor.school_id,
+                subject_id=subject.id,
+                support_session_id=session.id,
+                support_run_id=run.id,
+                candidate_payload=candidate.model_dump(mode="json"),
+                provenance=candidate.provenance.model_dump(mode="python"),
+                actor_membership_role_id=actor_role_id,
+                trace_id=trace_id,
+                retention_due_at=session.retention_due_at,
+                now=now,
+            )
+            run.status = self._db_enums.SupportRunStatus.BLOCKED.value
+            run.workflow_action = "CONTENT_REVIEW_HELD"
+            run.completed_at = now
+            run.generation_ref = candidate.provenance.generation_id
+            run.retrieval_ref = candidate.provenance.retrieval_id
+            if run.started_at is not None:
+                elapsed = (now - run.started_at).total_seconds() * 1000
+                run.duration_ms = max(0, min(int(elapsed), 2_147_483_647))
+            run.component_versions = {
+                "source": "independent_conversation",
+                "user_message_sequence": sequence,
+                "assistant_message_sequence": None,
+                "safe_metadata": clean_metadata,
+            }
+            session.trace_id = trace_id
+            await uow.session.flush()
+            await self._audit(
+                uow,
+                account_id=account_id,
+                action="student_conversation.content_review_held",
+                resource_type="independent_education_review",
+                resource_ref=review.review_ref,
+                trace_id=trace_id,
+            )
+            return {
+                "turn_id": turn_id,
+                "status": "blocked",
+                "action": "CONTENT_REVIEW_HELD",
+                "completed_at": _timestamp(now),
+                "user_message_sequence": sequence,
+                "assistant_message_sequence": None,
+                "citations": [],
                 "safe_metadata": clean_metadata,
             }
