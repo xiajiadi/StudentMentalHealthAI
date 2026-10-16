@@ -14,11 +14,28 @@ Validate version, project, synthetic scope, supported schema revision, source id
 
 Only a previously nonexistent external workspace/datadir and a free loopback port may become a restore target. Reject source/target overlap, existing content, reparse points and foreign process ownership. Never DROP, reset, truncate or overwrite an existing schema. Failure preserves the new target and a non-sensitive phase marker for inspection.
 
-Use trusted repository migrations to build the snapshot's explicitly supported revision (0005 through0010). Match its exact table/column manifest before importing; upgrade to the current runtime revision only after old-layout import succeeds. MySQL DDL is not transactional, so a failed migration cannot be described as rolled back. Keep foreign-key checks enabled and use the reviewed parent-first dependency order, including composite constraints. Import data transactionally and verify stored values and references before publishing readiness.
+Use trusted repository migrations to build the snapshot's explicitly supported revision (0005 through0023; see `13_deployment/school_schema.py`). Match its exact table/column manifest before importing; upgrade to the current runtime revision only after old-layout import succeeds. MySQL DDL is not transactional, so a failed migration cannot be described as rolled back. Keep foreign-key checks enabled and use the reviewed parent-first dependency order, including composite constraints. Import data transactionally and verify stored values and references before publishing readiness.
 
 Restore the original sealed application-key container exclusively to the new private target. Generate new target database/runtime identities and CSRF configuration; never reuse source administrative credentials. Revoke all imported authentication sessions in the target and require fresh login. This is a deliberate recovery transformation; record it in the recovery summary without changing the source snapshot.
 
 ## Evidence and current limits
+
+### Current0023 recovery and review-only startup
+
+CurrentUser recovery now preserves the800-case research cohort,6400 answers,
+input/output review receipts and encrypted candidate/feedback state. The fresh
+AC restore verified63 tables/43482 rows/1126 encrypted fields,then ran the
+candidate-review and rewritten-feedback publish/SELF-read/deny/revoke workflow.
+Exact source pins,API/database/browser artifacts and limits are indexed in
+`CURRENT_STATE.md`;this is bounded engineering evidence,not global readiness.
+
+For a review-only restored application,keep the draft configuration enabled and
+pass `--disable-research-general-education-draft-worker` to the official lifecycle
+`start` command. This keeps candidate/output-review APIs available without
+claiming queued jobs. Confirm the actual Backend dependency reports `DISABLED`;
+input-review continuation is a separate flag. Old manifests retain normal worker
+enablement. The switch does not change draft-file hashes or grant publication
+permission. Stopping the application preserves MySQL and pending queue rows.
 
 ### Current0010 feedback recovery evidence
 
