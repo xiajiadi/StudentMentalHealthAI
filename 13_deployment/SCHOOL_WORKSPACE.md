@@ -2,7 +2,7 @@
 
 The school-schema development code must never be migrated onto the preserved M0 database. The legacy launcher fails before dependency/bootstrap/DDL when the school migration is present. Existing M0 processes remain a historical baseline; use the pinned M0 source for legacy operation.
 
-## Current fresh offline install (schema 20261016_0023)
+## Current fresh offline install (schema 20261016_0024)
 
 `school_install.py` composes the existing cached dependency preparer, fresh isolated workspace creator, empty-schema migration, least-privilege runtime identity, fictional synthetic seed, owned preview lifecycle, and four-role browser check. It requires a clean dependency-target worktree at the same HEAD as the source and an absolute, non-existing external workspace. The parent directory, vendor MySQL binary directory, six already-installed Python interpreters, and offline dependency caches must already exist. Standard CAT uses port 8182 by default; the database/API/UI ports are always explicit and must be free.
 
@@ -53,11 +53,11 @@ Initialize a **new, non-existing external directory** using an already-installed
 
 The initializer rejects existing paths, repository paths and system/legacy ports. It creates a dedicated loopback-only instance and `smhai_school_demo`; does not install a service, elevate privilege or reuse/reset old data. The directory DACL is verified to grant only the current user. Credentials/encryption keys are randomly generated and sealed using current-user Windows DPAPI; plaintext settings, password argv and `MYSQL_PWD` are not used. Vendor initialization output stays in memory. A one-purpose PyMySQL connection sends password rotation before the driver's usual SET NAMES, as required by expired-password initialization; normal database connections are unchanged.
 
-`READY_FOR_MIGRATION` proves initialization only. Check the marker, owned process/listener and empty schema before migrations. Use the protected configuration only inside the database process, never display/export values or put them into shell text. Builder permission is limited to this new schema; a separate runtime identity with fewer permissions remains a delivery requirement.
+`READY_FOR_MIGRATION` proves initialization only. Check the marker, owned process/listener and empty schema before migrations. Use the protected configuration only inside the database process, never display/export values or put them into shell text. `prepare_school_runtime.py` creates and verifies a separate runtime identity limited to `SELECT`, `INSERT`, `UPDATE`, and `DELETE` on this schema; the application does not receive the workspace-builder account.
 
-Creation does not silently reuse a failed directory. On setup failure, preserve the new data and sealed recovery material; stop only the process tree held by this creation attempt. Recovery requires checking the marker/executable/datadir/listener and the actual failure cause. Current initialization was recovered after a missing driver environment and expired-password driver initialization issue; generic unattended recovery is not yet implemented or accepted.
+Creation does not silently reuse a failed directory. On setup failure, preserve the new data and sealed recovery material; stop only the process tree held by this creation attempt. Recovery requires checking the marker/executable/datadir/listener and the actual failure cause. The official sealed-backup restore flow is implemented separately; it does not make failed initialization safe to replay or reset.
 
-The state is Windows/user-bound: another user or machine cannot decrypt the DPAPI settings by merely copying these files. Portability, backup/recovery and runtime-key-provider integration still need separate implementation and QA before packaging.
+The official backup and restore flow is implemented and has verified current-schema key decryption in an isolated workspace. DPAPI settings remain bound to the Windows user that created them: copying a backup to another user or machine does not make its keys portable.
 
 ## Runtime database identity
 
@@ -67,9 +67,9 @@ After the empty-schema migration and ownership checks, run:
 .\11_database\.venv\Scripts\python.exe .\13_deployment\prepare_school_runtime.py --workspace <absolute-external-directory>
 ```
 
-This validates the marker, guardian/listener ownership, current-user-only DACL, connected port/datadir/schema and the current revision `20261016_0023`. It generates a separate account with only SELECT/INSERT/UPDATE/DELETE on `smhai_school_demo`. Sealed recovery settings are written before account DDL; existing runtime settings are never overwritten. A new login then checks actual grants and active roles, refusing global/schema/role/grant-option expansion. Failure locks the account created by this attempt and preserves sealed material for explicit inspection rather than silently resetting or retrying account creation. Only successful permission verification writes `runtime-ready.json`; launchers must require that marker and recheck permissions. If locking fails, startup remains blocked pending owned-workspace inspection. The script does not launch applications or seed users.
+This validates the marker, guardian/listener ownership, current-user-only DACL, connected port/datadir/schema and the current revision `20261016_0024`. It generates a separate account with only `SELECT`/`INSERT`/`UPDATE`/`DELETE` on `smhai_school_demo`. Sealed recovery settings are written before account DDL; existing runtime settings are never overwritten. A new login then checks actual grants and active roles, refusing global/schema/role/grant-option expansion. Failure locks the account created by this attempt and preserves sealed material for explicit inspection rather than silently resetting or retrying account creation. Only successful permission verification writes `runtime-ready.json`; launchers must require that marker and recheck permissions. If locking fails, startup remains blocked pending owned-workspace inspection. The script does not launch applications or seed users.
 
-The current workspace schema revision is `20261016_0023`. The migrator accepts a new empty workspace or exact-current metadata; it does not upgrade an older existing workspace. Create a new external workspace for this install flow. Historical runtime evidence for earlier revisions is not proof of current-schema readiness.
+The current workspace schema revision is `20261016_0024`. The migrator accepts a new empty workspace or exact-current metadata; it does not upgrade an older existing workspace. Create a new external workspace for this install flow. Historical runtime evidence for earlier revisions is not proof of current-schema readiness.
 
 School-profile backend now consumes the current-user DPAPI key provider without plaintext fallback. Real workspace key-provider/Fernet encryption and decryption roundtrip passes; this proves key-format compatibility, not full backend/browser operation.
 
