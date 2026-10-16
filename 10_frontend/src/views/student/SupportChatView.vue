@@ -295,7 +295,7 @@ onMounted(() => {
       class="support-boundary"
       tone="info"
       :title="props.researchMode ? '14–17 岁虚构校园场景研究演示' : '这是一般教育支持'"
-      :body="props.researchMode ? '基于公开资料提供一般学习与生活信息。资料已做工程核验，尚未经过心理专业审核；不会读取测评答案，也不用于诊断或治疗。' : '对话不会读取测评答案，也不提供测评解释、诊断或治疗建议。'"
+      :body="props.researchMode ? '每条问题独立处理，不使用其他对话历史或测评答案。生成草稿需经单独分享与核对后才能发布；资料仅用于研究演示，不用于诊断或治疗。' : '对话不会读取测评答案，也不提供测评解释、诊断或治疗建议。'"
     />
 
     <AppStatusCallout
