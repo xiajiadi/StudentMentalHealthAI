@@ -460,28 +460,7 @@ class SchoolIndependentEducationReviewsPersistenceAdapter:
                 self._require_source_current(row)
                 published = None
                 if row.status == "PUBLISHED":
-                    candidate = self._candidate(row, await repo.get_candidate_payload(row))
-                    draft_value = await repo.get_reviewed_payload(row)
-                    try:
-                        draft = IndependentEducationDraftPayload.model_validate(
-                            draft_value, strict=True
-                        )
-                    except (TypeError, ValueError):
-                        raise error(
-                            ErrorCode.DEPENDENCY_INVALID_RESPONSE, detail="review is unavailable"
-                        ) from None
-                    if (
-                        draft.candidate_content_sha256 != row.candidate_content_sha256
-                        or draft.source_manifest_sha256 != row.source_manifest_sha256
-                        or [item.model_dump(mode="python") for item in draft.citations]
-                        != [item.model_dump(mode="python") for item in candidate.citations]
-                        or [item.model_dump(mode="python") for item in draft.source_cards]
-                        != [item.model_dump(mode="python") for item in candidate.source_cards]
-                    ):
-                        raise error(
-                            ErrorCode.DEPENDENCY_INVALID_RESPONSE, detail="review is unavailable"
-                        )
-                    published = self._published_content(draft, row)
+                    published = await self._published_for_student(uow, row)
                 items.append(
                     self._student_summary(
                         row,
@@ -708,6 +687,8 @@ class SchoolIndependentEducationReviewsPersistenceAdapter:
     async def _published_for_student(self, uow, row):
         if row.status != "PUBLISHED":
             return None
+        if await self._public_reviewer_id(uow, row) is None:
+            raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="review was not found")
         repo = uow.independent_education_reviews
         candidate = self._candidate(row, await repo.get_candidate_payload(row))
         payload = await repo.get_reviewed_payload(row)

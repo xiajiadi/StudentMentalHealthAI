@@ -584,6 +584,207 @@ async def test_revoke_idempotency_replay_can_read_revoked_metadata_only(monkeypa
     assert raised.value.code is ErrorCode.RESOURCE_NOT_FOUND
 
 
+@pytest.mark.asyncio
+async def test_student_list_fails_closed_before_decrypt_when_publisher_is_inactive(
+    monkeypatch,
+) -> None:
+    adapter = _adapter()
+    now = datetime(2026, 10, 16, tzinfo=UTC)
+    row = SimpleNamespace(
+        review_ref="EDUREV_" + "1" * 32,
+        status="PUBLISHED",
+        subject_id=13,
+        school_id=1,
+    )
+
+    class _Repo:
+        payload_reads = 0
+
+        async def list_for_owner(self, **_kwargs):
+            return [{"review_ref": row.review_ref}]
+
+        async def count_for_owner(self, **_kwargs):
+            return 1
+
+        async def get(self, **_kwargs):
+            return row
+
+        async def get_candidate_payload(self, _row):
+            self.payload_reads += 1
+            raise AssertionError("published payload must not be read")
+
+    repo = _Repo()
+
+    class _Uow:
+        independent_education_reviews = repo
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_exc):
+            return None
+
+    @asynccontextmanager
+    async def uow():
+        yield _Uow()
+
+    async def student_scope(*_args):
+        return (11, 12, SimpleNamespace(id=13), SimpleNamespace(id=14))
+
+    async def owner_current(*_args):
+        return None
+
+    async def inactive_reviewer(*_args):
+        return None
+
+    monkeypatch.setattr(adapter, "_student_scope", student_scope)
+    monkeypatch.setattr(adapter, "_require_current_owner_self", owner_current)
+    monkeypatch.setattr(adapter, "_public_reviewer_id", inactive_reviewer)
+    monkeypatch.setattr(adapter, "_require_source_current", lambda *_args: None)
+    adapter._conversations._uow = uow
+    adapter._conversations._utc_now = lambda: now
+
+    with pytest.raises(BackendError) as raised:
+        await adapter.student_list(
+            SimpleNamespace(school_id=1), "CONV_test", offset=0, limit=10
+        )
+
+    assert raised.value.code is ErrorCode.RESOURCE_NOT_FOUND
+    assert repo.payload_reads == 0
+
+
+@pytest.mark.asyncio
+async def test_share_replay_fails_closed_before_decrypt_when_publisher_is_inactive(
+    monkeypatch,
+) -> None:
+    adapter = _adapter()
+    now = datetime(2026, 10, 16, tzinfo=UTC)
+    row = SimpleNamespace(
+        review_ref="EDUREV_" + "2" * 32,
+        status="PUBLISHED",
+        state_version=5,
+        created_at=now,
+        updated_at=now,
+        subject_id=13,
+        school_id=1,
+    )
+
+    class _Repo:
+        payload_reads = 0
+
+        async def get_candidate_payload(self, _row):
+            self.payload_reads += 1
+            raise AssertionError("published payload must not be read")
+
+    repo = _Repo()
+
+    class _Uow:
+        independent_education_reviews = repo
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_exc):
+            return None
+
+    @asynccontextmanager
+    async def uow():
+        yield _Uow()
+
+    class _Claim:
+        replayed = True
+
+    async def load_student_review(*_args):
+        return (11, 12, SimpleNamespace(), SimpleNamespace(), row, object())
+
+    async def write_claim(*_args):
+        return _Claim()
+
+    async def inactive_reviewer(*_args):
+        return None
+
+    monkeypatch.setattr(adapter, "_load_student_review", load_student_review)
+    monkeypatch.setattr(adapter, "_write_claim", write_claim)
+    monkeypatch.setattr(adapter, "_public_reviewer_id", inactive_reviewer)
+    adapter._conversations._uow = uow
+    adapter._conversations._utc_now = lambda: now
+
+    with pytest.raises(BackendError) as raised:
+        await adapter.share(
+            SimpleNamespace(school_id=1),
+            "CONV_test",
+            row.review_ref,
+            expected_version=2,
+            reviewer_ref="ROLE_00000000-0000-4000-8000-000000000001",
+            consent=True,
+            idempotency=("share-key", "e" * 64),
+            trace_id="TRACE_share_replay",
+        )
+
+    assert raised.value.code is ErrorCode.RESOURCE_NOT_FOUND
+    assert repo.payload_reads == 0
+
+
+@pytest.mark.asyncio
+async def test_published_student_projection_remains_available_for_active_reviewer(
+    monkeypatch,
+) -> None:
+    adapter = _adapter()
+    now = datetime(2026, 10, 16, tzinfo=UTC)
+    card = adapter.source_cards["CHUNK_SCHOOL_RESEARCH_RECORD_1"]
+    citation = SupportCitation.model_validate(
+        {
+            "citation_id": "CITATION_active_reviewer",
+            "chunk_id": card.chunk_id,
+            "document_id": "DOC_active_reviewer",
+            "title": card.title,
+            "organization": card.organization,
+            "locator": "Abstract",
+            "rank": 1,
+            "source_version": "knowledge.v1",
+            "source_hash": "sha256:" + card.excerpt_sha256,
+        },
+        strict=True,
+    )
+    draft = IndependentEducationDraftPayload(
+        schema_version="independent-research-education-reviewed-draft.v1",
+        title="Active reviewer title",
+        body="Published content remains visible while reviewer is active.",
+        citations=[citation],
+        source_cards=[card],
+        candidate_content_sha256="a" * 64,
+        source_manifest_sha256=adapter.source_manifest_sha256,
+    )
+    row = SimpleNamespace(
+        status="PUBLISHED",
+        published_at=now,
+        candidate_content_sha256="a" * 64,
+        source_manifest_sha256=adapter.source_manifest_sha256,
+    )
+    candidate = SimpleNamespace(citations=[citation], source_cards=[card])
+
+    class _Repo:
+        async def get_candidate_payload(self, _row):
+            return None
+
+        async def get_reviewed_payload(self, _row):
+            return draft.model_dump(mode="json")
+
+    class _Uow:
+        independent_education_reviews = _Repo()
+
+    async def active_reviewer(*_args):
+        return "00000000-0000-4000-8000-000000000099"
+
+    monkeypatch.setattr(adapter, "_candidate", lambda *_args: candidate)
+    monkeypatch.setattr(adapter, "_public_reviewer_id", active_reviewer)
+
+    published = await adapter._published_for_student(_Uow(), row)
+
+    assert published is not None
+    assert published["body"] == draft.body
+
+
 def test_source_expiry_treats_naive_database_clock_as_utc() -> None:
     naive_now = datetime(2026, 10, 16, 1, 0)
     valid = _adapter(valid_through=datetime(2026, 10, 16, 2, 0, tzinfo=UTC))
