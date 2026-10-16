@@ -1,5 +1,32 @@
 # PsyNova current execution state
 
+## Current checkpoint: 2026-10-16,800 input stops reconciled and20 continuations authorized
+
+- Fresh read-only round aggregate shows all800 round0 jobs terminal:
+  REVIEW_REQUIRED800. This establishes complete input-Safety routing, not800
+  model generations. No missing jobs, terminal retry or substituted responses.
+  D:/Dev/temp/psynova-z0023-rounds-aggregate-20261016-r1.json.
+- Input inventory r1 stopped on duplicate pagination while inserts were active;
+  failure retained. Explicit first-page-per-task r2 observed100 receipts,97
+  eligible at capture,3 conservatively ineligible; coverage_complete=false.
+  Logout succeeded. Result SHA19d74a8d31b95c6ae185d7436e5b48edbe57737e736be239b09223d9cac392f8.
+- Root reviewed the actual fixed general-education request, empty personal-data
+  context and pinned policy/source/prompt; selected4 eligible receipts from each
+  of tasks01–05. Decision SHA9d20c3f28cbe242a88893c3453458f7f9b0bc384a99bcab6d960d732355aa6f3
+  explicitly keeps professional/psychological/clinical/ethical/publication flags
+  false. This is isolated engineering input review, not professional approval.
+- Independent review covered durable intent, same-key unknown-result recovery,
+  exact R1 binding and OS mutex. Root corrected a cross-page status snapshot race;
+  immutable scope/identity/total and per-page status-count checks remain strict.
+  Frozen continuation helper SHA46d0eb9ffa23c5e1fb08a539e89f1ff6f77978a8e486dee0ded6da3830092c3f
+  executed once:20 selected,20 reservations,20 HTTP responses observed,
+  AUTHORIZATIONS_OBSERVED,exit0,logout=true. No candidate body read or publication.
+  D:/Dev/temp/psynova-z0023-input-continuation-20261016-r1/authorization-ledger.json.
+- Next:observe these20 real R1 outcomes and collect full input inventory now
+  round0 inserts have stopped; independently identify remaining delivery gaps.
+  Source HEAD6c263c5,Backend runtime e5b5ab2,lifecycle552dedd5 unchanged.
+  Engineering estimate remains about80%; no shutdown deadline.
+
 ## Current checkpoint: 2026-10-16, all800 round0 jobs persisted
 
 - First800-driver attempt stopped before any POST because the specialist was
