@@ -1,5 +1,72 @@
 # PsyNova current execution state
 
+## Final engineering checkpoint: 2026-10-16 22:15+08
+
+Controller completion audit: ENGINEERING_DEMO_READY for the full mandate's
+fictional-school/public-research engineering scope. No production, clinical,
+measurement-validity or professional approval is granted. The former local
+demonstration milestone alone was insufficient; the saved-configuration recovery
+and generic terminal-audit gaps below have now been implemented and reviewed.
+
+- Product/runtime source: dc5092c3cd1b0d7156a038b8145fa1d1a02f7162, pushed only
+  to the dedicated branch. Primary entry remains http://127.0.0.1:4207/login.
+  Later checkpoint/documentation edits do not require another product reload.
+- Requirement audit: actual800 distinct authentication coverage,800 completed
+  public-observed sessions/6400 answers, independent full-bank/complement numeric
+  checks, real local7B/RAG generation, native consent/review/publish/revoke/
+  withdraw, four-role permissions and synthetic crisis routing are evidenced by
+  the reports/screenshots indexed below. Failures and population/measurement
+  limits remain disclosed; this is not800 successful generated reports.
+- Fresh install/auth is evidenced by the AH official installer report; current
+  encrypted recovery by AI/AK proofs; actual teacher8-class completion and
+  specialist IN_REVIEW persistence by the final native role reports. Saved
+  research configuration now has an official resume-plan/resume interface,
+  not a dependency on manually reconstructed temporary start arguments.
+- Root reviewed both new diffs; independent QA found no blocker. Worker focused
+  checks:78 Backend and10 lifecycle; Root fresh checks:7 Backend and4 resume.
+  Initial test-import/preflight failures remain recorded, not relabeled PASS.
+- One actual AI stop -> resume-plan -> resume completed, each exit0, no business
+  or model request. Runtime/Frontend/standard CAT are owned and ready; core and
+  eight dependency status projections are READY. Generic whole_ready=false and
+  lifecycle student-lane UNVERIFIED are retained; health alone is not acceptance.
+- Root compared the official STOPPED archive against the live manifest directly:
+  all saved configuration fields equal, original ISO study-end string preserved.
+  Both readonly cohort snapshots retain800 complete sessions/6400 answers and
+  identical per-task/round/status/error/attempt aggregates; active outbox0.
+  Current manifest SHA256:
+  6a707aad967e0666f2ca4abfa1f2a3674510c76cd17da9e84a655c642af72df4.
+  Evidence: D:/Dev/temp/psynova-ai-resume-dc5092c-20261016-r3/
+  root-direct-resume-audit.json, final-report.json and health-dependencies-allowlisted.json.
+  The worker overwrote two manually generated configuration summaries while
+  correcting its digest error; their aggregate flags are not authoritative.
+  Root's independent check uses official archived/current manifests instead.
+- Remaining external boundaries are unchanged: professional review, language/
+  population validation and actual school deployment/security/operations approval;
+  assets/dependencies must be prepared lawfully. DPAPI is current-user recovery,
+  not cross-user portability; no OS-reboot/autonomous-continuity guarantee.
+  Legacy Runner queue is not marked DONE or reset. User files, failed targets,
+  old receipts, terminal failures, original databases and frozen evidence remain.
+
+## Active delivery gap: saved-configuration restart, 2026-10-16
+
+Historical checkpoint, closed by dc5092c and the native evidence above.
+At that point the full objective remained ACTIVE. The local milestone below was
+not final completion. Fresh lifecycle inspection found that ordinary start
+rebuilds its manifest from explicit CLI inputs, so omitted research flags can
+silently omit previously enabled lanes after a legitimate stop. Implement a
+strict stopped-manifest resume/resume-plan entry using existing validators and
+start path; do not stop the live primary workspace or relax any source pins.
+No cross-user DPAPI transfer or terminal model-job replay is authorized by this
+increment. Original failures and incomplete receipts remain preserved.
+
+Fresh read-only failure aggregation covers all17 R1 failures:15 are
+OUTPUT_SAFETY_UNAVAILABLE/UPSTREAM_TRANSIENT, one has RESEARCH_RUNTIME_FAILED,
+and one GENERATION_FAILED has no safe terminal-event reason. Do not relabel
+these as source/content rejection or invent the unknown cause. This missing
+terminal audit is separate from the older round0 missing receipt. Evidence:
+D:/Dev/temp/psynova-z0023-r1-failure-safe-summary-20261016-r1/result.json,
+SHA2568d489d7e54d0e8f32212111322345f38a02aaa42bda049cce1edb1395b40f1c8.
+
 ## Current checkpoint: 2026-10-16 21:29+08, local engineering demonstration ready
 
 - Controller concludes ENGINEERING_DEMO_READY for the defined local Windows,

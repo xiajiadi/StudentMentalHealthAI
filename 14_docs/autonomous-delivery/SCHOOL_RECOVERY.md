@@ -14,11 +14,28 @@ Validate version, project, synthetic scope, supported schema revision, source id
 
 Only a previously nonexistent external workspace/datadir and a free loopback port may become a restore target. Reject source/target overlap, existing content, reparse points and foreign process ownership. Never DROP, reset, truncate or overwrite an existing schema. Failure preserves the new target and a non-sensitive phase marker for inspection.
 
-Use trusted repository migrations to build the snapshot's explicitly supported revision (0005 through0023; see `13_deployment/school_schema.py`). Match its exact table/column manifest before importing; upgrade to the current runtime revision only after old-layout import succeeds. MySQL DDL is not transactional, so a failed migration cannot be described as rolled back. Keep foreign-key checks enabled and use the reviewed parent-first dependency order, including composite constraints. Import data transactionally and verify stored values and references before publishing readiness.
+Use trusted repository migrations to build the snapshot's explicitly supported revision (0005 through0024; see `13_deployment/school_schema.py`). Match its exact table/column manifest before importing; upgrade to the current runtime revision only after old-layout import succeeds. MySQL DDL is not transactional, so a failed migration cannot be described as rolled back. Keep foreign-key checks enabled and use the reviewed parent-first dependency order, including composite constraints. Import data transactionally and verify stored values and references before publishing readiness.
 
 Restore the original sealed application-key container exclusively to the new private target. Generate new target database/runtime identities and CSRF configuration; never reuse source administrative credentials. Revoke all imported authentication sessions in the target and require fresh login. This is a deliberate recovery transformation; record it in the recovery summary without changing the source snapshot.
 
 ## Evidence and current limits
+
+### Current0024 recovery
+
+The independent AI target restored the final Z0023 snapshot and upgraded to0024.
+Fresh verification decrypted1558 stored encrypted cells with zero claimable jobs;
+four-role browser checks and later native role workflows ran on this target.
+Separately, the AH0024 backup restored into AK0024 and retained the independent
+education candidate/review ciphertexts, publication receipt and withdrawn event
+history. The reviewed payloads matched after RAM-only decryption. AK was not
+started for a browser check; its restore status remains
+`DATA_KEYS_RUNTIME_VERIFIED_REQUIRES_BROWSER`.
+
+Evidence: external `psynova-independent-restore-ai-20261016-r1/`
+`fresh-ciphertext-verification.json` and
+`psynova-ah-release-review-metadata-20261016-r1/`
+`ah-ak-restore-review-crossproof.json`. These verify same-Windows-user recovery;
+they do not establish cross-user key portability or automatic OS-reboot recovery.
 
 ### Current0023 recovery and review-only startup
 
