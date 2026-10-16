@@ -12,9 +12,12 @@ import argparse
 import csv
 from dataclasses import dataclass
 import hashlib
+import io
 import json
 import math
 from pathlib import Path
+import platform
+import random
 from typing import Mapping, Sequence
 
 import numpy as np
@@ -33,6 +36,9 @@ from cat_engine.research.research_session import (
 FORMAT_VERSION = "promis-eight-full-bank-eap-comparison.v1"
 GRID_STEPS = 10_000
 EXPECTED_RECORDS = 800
+EXPECTED_SOURCE_RECORDS = 1005
+EXPECTED_COMPLETE_SOURCE_RECORDS = 958
+EXPECTED_COMPLEMENT_RECORDS = 158
 _CATEGORY_COUNT = 5
 
 
@@ -190,6 +196,180 @@ def _read_complete_responses(path: Path, profile: ResearchCATProfile) -> tuple[l
     return rows, file_hash
 
 
+def _serialize_response_rows(
+    columns: Sequence[str], rows: Sequence[Mapping[str, str]]
+) -> bytes:
+    buffer = io.StringIO(newline="")
+    writer = csv.DictWriter(buffer, fieldnames=list(columns), lineterminator="\n")
+    writer.writeheader()
+    writer.writerows(rows)
+    return buffer.getvalue().encode("utf-8")
+
+
+def _read_seeded_complement(
+    source_path: Path,
+    selected_path: Path,
+    profile: ResearchCATProfile,
+) -> tuple[list[tuple[int, ...]], dict[str, object]]:
+    """Rebuild and validate the exact fixed-seed complement of the pinned 800.
+
+    This is an engineering-workflow holdout only. It does not hold out published
+    parameter calibration data and must not be described as predictive or
+    psychometric validation.
+    """
+
+    expected_columns = tuple(item.qid for item in profile.items)
+    if len(expected_columns) != 8 or len(set(expected_columns)) != 8:
+        raise FullBankComparisonError("PROFILE_ITEM_SET_INVALID", "pinned profile is not the expected eight-item bank")
+
+    try:
+        metadata = json.loads(profile.raw_metadata_json)
+        source_meta = metadata["source_data"]["observed_response_source"]
+        sample_meta = metadata["provenance"]["coverage_sample"]
+        response_scale = metadata["response_scale"]
+        expected_source_sha = source_meta["response_only_csv_sha256"]
+        expected_numeric_sha = metadata["provenance"]["numeric_1_5_csv_sha256"]
+        expected_selected_sha = metadata["provenance"]["complete_observed_800_csv_sha256"]
+        seed = sample_meta["seed"]
+        complete_count = sample_meta["complete_source_rows"]
+        selected_count = sample_meta["selected_rows"]
+        expected_unselected_count = sample_meta["complete_rows_not_selected"]
+        algorithm = sample_meta["algorithm"]
+        label_to_raw = dict(
+            zip(response_scale["source_labels"], response_scale["source_raw_codes"], strict=True)
+        )
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise FullBankComparisonError(
+            "PROFILE_SPLIT_METADATA_INVALID", "pinned split metadata is invalid"
+        ) from exc
+    if (
+        type(seed) is not int
+        or type(complete_count) is not int
+        or type(selected_count) is not int
+        or type(expected_unselected_count) is not int
+        or not isinstance(algorithm, str)
+        or "random.Random(seed).sample" not in algorithm
+        or selected_count != EXPECTED_RECORDS
+        or complete_count != EXPECTED_COMPLETE_SOURCE_RECORDS
+        or expected_unselected_count != EXPECTED_COMPLEMENT_RECORDS
+    ):
+        raise FullBankComparisonError("PROFILE_SPLIT_METADATA_INVALID", "pinned split counts or algorithm differ")
+
+    source_sha = _sha256_file(source_path)
+    if source_sha != expected_source_sha:
+        raise FullBankComparisonError(
+            "SOURCE_RESPONSE_HASH_MISMATCH", "source response file differs from its pinned hash"
+        )
+    selected_sha = _sha256_file(selected_path)
+    if selected_sha != expected_selected_sha:
+        raise FullBankComparisonError(
+            "SELECTED_RESPONSE_HASH_MISMATCH", "selected 800 matrix differs from its pinned hash"
+        )
+
+    try:
+        complete_rows: list[dict[str, str]] = []
+        numeric_rows: list[dict[str, str]] = []
+        with source_path.open("r", newline="", encoding="utf-8-sig") as handle:
+            reader = csv.DictReader(handle)
+            if tuple(reader.fieldnames or ()) != expected_columns:
+                raise FullBankComparisonError(
+                    "SOURCE_RESPONSE_COLUMNS_INVALID", "source columns differ from the pinned eight items"
+                )
+            source_rows = 0
+            for raw_row in reader:
+                source_rows += 1
+                invalid_shape = (
+                    raw_row is None
+                    or set(raw_row) != set(expected_columns)
+                    or any(raw_row[key] is None for key in expected_columns)
+                )
+                if invalid_shape:
+                    raise FullBankComparisonError(
+                        "SOURCE_RESPONSE_ROW_INVALID", "source row shape differs from the pinned matrix"
+                    )
+                converted: dict[str, str] = {}
+                for column in expected_columns:
+                    label = (raw_row[column] or "").strip()
+                    if label and label not in label_to_raw:
+                        raise FullBankComparisonError(
+                            "SOURCE_RESPONSE_CATEGORY_INVALID", "source contains an unpinned category"
+                        )
+                    converted[column] = str(label_to_raw[label]) if label else "NA"
+                numeric_rows.append(converted)
+                if all(value != "NA" for value in converted.values()):
+                    complete_rows.append(converted)
+    except FullBankComparisonError:
+        raise
+    except (OSError, csv.Error) as exc:
+        raise FullBankComparisonError(
+            "SOURCE_RESPONSE_MATRIX_INVALID", "source response matrix could not be read"
+        ) from exc
+
+    if source_rows != EXPECTED_SOURCE_RECORDS or len(complete_rows) != complete_count:
+        raise FullBankComparisonError(
+            "SOURCE_RESPONSE_COUNT_INVALID", "source row or complete-case count differs from the profile"
+        )
+
+    numeric_sha = hashlib.sha256(_serialize_response_rows(expected_columns, numeric_rows)).hexdigest()
+    if numeric_sha != expected_numeric_sha:
+        raise FullBankComparisonError(
+            "NUMERIC_MATRIX_HASH_MISMATCH", "reconstructed numeric matrix differs from the pinned hash"
+        )
+
+    selected_indices = set(random.Random(seed).sample(range(len(complete_rows)), selected_count))
+    selected_rows = [row for index, row in enumerate(complete_rows) if index in selected_indices]
+    complement_rows = [row for index, row in enumerate(complete_rows) if index not in selected_indices]
+    reconstructed_selected = _serialize_response_rows(expected_columns, selected_rows)
+    reconstructed_selected_sha = hashlib.sha256(reconstructed_selected).hexdigest()
+    if (
+        reconstructed_selected_sha != expected_selected_sha
+        or len(selected_rows) != selected_count
+        or len(complement_rows) != expected_unselected_count
+    ):
+        raise FullBankComparisonError(
+            "SEEDED_SPLIT_RECONSTRUCTION_MISMATCH",
+            "fixed-seed selection or complement differs from the pinned split",
+        )
+
+    # The selected CSV is immutable evidence; compare its bytes to the locally
+    # reconstructed serialization, not merely the row count or parsed values.
+    try:
+        selected_bytes = selected_path.read_bytes()
+    except OSError as exc:
+        raise FullBankComparisonError(
+            "SELECTED_RESPONSE_MATRIX_INVALID", "pinned selected matrix could not be read"
+        ) from exc
+    if selected_bytes != reconstructed_selected:
+        raise FullBankComparisonError(
+            "SEEDED_SPLIT_RECONSTRUCTION_MISMATCH",
+            "selected matrix byte order differs from the fixed-seed reconstruction",
+        )
+
+    rows: list[tuple[int, ...]] = []
+    for row in complement_rows:
+        try:
+            rows.append(tuple(int(row[column]) for column in expected_columns))
+        except (KeyError, ValueError) as exc:
+            raise FullBankComparisonError(
+                "COMPLEMENT_RESPONSE_INVALID", "complement contains a non-complete response"
+            ) from exc
+    split_provenance: dict[str, object] = {
+        "algorithm": algorithm,
+        "seed": seed,
+        "source_rows": source_rows,
+        "complete_source_rows": len(complete_rows),
+        "selected_rows": len(selected_rows),
+        "complement_rows": len(rows),
+        "source_response_csv_sha256": source_sha,
+        "reconstructed_numeric_matrix_sha256": numeric_sha,
+        "selected_800_csv_sha256": selected_sha,
+        "reconstructed_selected_800_csv_sha256": reconstructed_selected_sha,
+        "split_indices_disjoint": True,
+        "individual_row_indices_or_hashes_written": False,
+    }
+    return rows, split_provenance
+
+
 def _run_aggregate(profile: ResearchCATProfile, rows: Sequence[Sequence[int]]) -> _Aggregate:
     config = CATConfig.from_dict(
         {
@@ -343,6 +523,94 @@ def build_report(profile_path: Path, manifest_path: Path, responses_path: Path) 
     }
 
 
+def build_complement_report(
+    profile_path: Path,
+    manifest_path: Path,
+    source_responses_path: Path,
+    selected_responses_path: Path,
+) -> dict[str, object]:
+    profile = _load_profile(profile_path, manifest_path)
+    rows, split = _read_seeded_complement(source_responses_path, selected_responses_path, profile)
+    aggregate = _run_aggregate(profile, rows)
+    source = json.loads(profile.source_metadata_json)
+    model = json.loads(profile.model_metadata_json)
+    return {
+        "format_version": "promis-eight-full-bank-eap-complement.v1",
+        "status": "COMPLETED_AGGREGATE_ONLY" if not aggregate.failures else "COMPLETED_WITH_FAILURES_AGGREGATE_ONLY",
+        "research_only": True,
+        "publication_status": "not_approved",
+        "psychological_interpretation_allowed": False,
+        "scope": "seeded_complete_case_complement_of_800_engineering_workflow_only",
+        "comparison": {
+            "kind": "full_eight_item_CAT_vs_independent_full_eight_item_EAP_numerical_consistency",
+            "records_are_mutually_exclusive_from_pinned_800_workflow_sample": True,
+            "published_parameter_calibration_holdout": False,
+            "predictive_or_measurement_accuracy_evaluated": False,
+            "shortening_evaluated": False,
+            "full_bank_items_per_record": 8,
+            "quadrature": {
+                "method": "composite_trapezoid",
+                "grid_steps": GRID_STEPS,
+                "theta_interval": [-4.0, 4.0],
+                "prior": {"family": "Gaussian", "mean": 0.0, "sd": 1.0},
+            },
+        },
+        "source": {
+            "profile_id": profile.profile_id,
+            "instrument_id": profile.instrument_id,
+            "profile_sha256": profile.file_sha256,
+            "manifest_sha256": profile.manifest_sha256,
+            "response_population": source["observed_response_source"]["population"],
+            "parameter_origin": model["parameter_origin"],
+            "parameter_version": model["parameter_version"],
+            "response_records": len(rows),
+            "items": len(profile.items),
+        },
+        "execution": {
+            "python_implementation": platform.python_implementation(),
+            "python_version": platform.python_version(),
+        },
+        "split_provenance": split,
+        "aggregate": {
+            "records_started": aggregate.records,
+            "full_bank_comparisons_completed": aggregate.completed,
+            "comparison_denominator": aggregate.completed,
+            "failure_counts": dict(aggregate.failures),
+            "stop_reason_counts": dict(aggregate.stop_reasons),
+            "test_length_counts": dict(aggregate.test_length_counts),
+            "item_exposure_counts": dict(aggregate.item_exposure_counts),
+            "cat_vs_independent_full_bank_eap": {
+                "mean_signed_difference": aggregate.estimate_mean_difference,
+                "mae": aggregate.estimate_mae,
+                "rmse": aggregate.estimate_rmse,
+                "max_absolute_difference": aggregate.estimate_max_absolute_difference,
+                "standard_error_mae": aggregate.standard_error_mae,
+                "standard_error_max_absolute_difference": aggregate.standard_error_max_absolute_difference,
+            },
+            "individual_theta_or_response_rows_written": False,
+        },
+        "limitations": [
+            (
+                "the 158 complete records are the deterministic complement of one selected 800-record "
+                "engineering sample, not held out from published parameter calibration"
+            ),
+            (
+                "CAT and the independent reference share published parameters, category mapping and prior; "
+                "results are numerical consistency only, not prediction or measurement accuracy"
+            ),
+            "all eight items are administered; adaptive shortening and item reduction are not evaluated",
+            (
+                "the source is a US general-population caregiver/child panel, not a school-based or "
+                "representative Chinese secondary-school sample"
+            ),
+            (
+                "no local calibration, parameter tuning, imputation, response generation, person-level "
+                "estimate export or psychological interpretation is performed"
+            ),
+        ],
+    }
+
+
 def write_report(report: Mapping[str, object], output_path: Path) -> None:
     output = output_path.resolve()
     if output.exists():
@@ -359,14 +627,41 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", required=True, type=Path)
     parser.add_argument("--manifest", required=True, type=Path)
-    parser.add_argument("--responses", required=True, type=Path)
+    parser.add_argument(
+        "--responses", type=Path, help="run the original pinned 800-record comparison"
+    )
+    parser.add_argument(
+        "--source-responses", type=Path,
+        help="run the seeded complement comparison from the pinned source matrix",
+    )
+    parser.add_argument(
+        "--selected-responses", type=Path,
+        help="immutable selected 800 matrix used to prove the complement split",
+    )
     parser.add_argument("--output", required=True, type=Path)
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    legacy_mode = (
+        args.responses is not None
+        and args.source_responses is None
+        and args.selected_responses is None
+    )
+    complement_mode = (
+        args.responses is None
+        and args.source_responses is not None
+        and args.selected_responses is not None
+    )
+    if not (legacy_mode or complement_mode):
+        parser.error("provide either --responses or both --source-responses and --selected-responses")
+    args.mode = "legacy" if legacy_mode else "complement"
+    return args
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
-    report = build_report(args.profile, args.manifest, args.responses)
+    if args.mode == "complement":
+        report = build_complement_report(args.profile, args.manifest, args.source_responses, args.selected_responses)
+    else:
+        report = build_report(args.profile, args.manifest, args.responses)
     write_report(report, args.output)
     aggregate = report["aggregate"]
     metrics = aggregate["cat_vs_independent_full_bank_eap"]
