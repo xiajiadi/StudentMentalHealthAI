@@ -149,8 +149,9 @@ from school_schema import CURRENT_SCHOOL_REVISION
 
 
 class InstallError(RuntimeError):
-    def __init__(self, code: str) -> None:
+    def __init__(self, code: str, *, details: dict[str, Any] | None = None) -> None:
         self.code = code
+        self.details = details
         super().__init__(code)
 
 
@@ -962,6 +963,280 @@ def _dependency_receipt(config: dict[str, Any]) -> dict[str, Any]:
     return receipt
 
 
+DEPENDENCY_RETRY_SCHEMA = "psynova.school-install-dependency-retry.v1"
+DEPENDENCY_RETRY_START_FIELDS = {
+    "schema", "source_root", "dependency_target", "workspace", "source_head",
+    "dependency_target_head", "attempt", "prior_failure_code", "started_at",
+}
+DEPENDENCY_RETRY_RESULT_FIELDS = {
+    "schema", "source_root", "dependency_target", "workspace", "source_head",
+    "dependency_target_head", "attempt", "status", "finished_at", "exit_code",
+    "stage", "error_code", "install_code",
+}
+DEPENDENCY_CHILD_STAGES = frozenset((*DEPENDENCY_RECEIPT_STAGE_NAMES, "preflight", "runner", "child_output", "process"))
+DEPENDENCY_CHILD_ERROR_CODES = frozenset({
+    "CommandFailed", "DuplicatePythonMapping", "FileNotFoundError", "FrontendCheckFailed",
+    "GitInspectionFailed", "ImportCheckFailed", "InterpreterMustBeAbsolute", "InterpreterProbeFailed",
+    "InvalidFrontendLock", "InvalidGitHead", "InvalidInterpreter", "InvalidJson", "InvalidPath", "InvalidResponse",
+    "InvalidPythonManifest", "InvalidPythonMapping", "MissingManifestOrLock", "MissingPythonMapping",
+    "MissingTargetManifest", "MissingTargetModule", "MissingTool", "MissingTrustedModuleManifest",
+    "MissingTrustedNpmCli", "NpmConfigArtifactCreationFailed", "NpmConfigArtifactExists", "NestedRepository",
+    "PermissionError", "PostInstallManifestChanged", "PostInstallManifestCheckFailed",
+    "PythonRequirementMismatch", "PythonVersionMismatch", "ReparsePoint", "RepositoryRootMismatch",
+    "RootsMustBeAbsolute", "SourceCannotBeInstallTarget", "SourceTargetOverlap", "StatePersistenceFailed",
+    "SystemTarget", "TargetEnvironmentExists", "TargetHasUntrackedOrIgnoredFiles", "TargetHeadMismatch",
+    "TargetLockMismatch", "TargetManifestMismatch", "TargetModuleNotDirectory", "TimeoutExpired",
+    "TrackedFilesDifferFromHead", "UnknownGitConfig", "UnregisteredModule", "UnexpectedError",
+    "UnsupportedBuildSystem", "UnsupportedFrontendLockSource", "UnsupportedGitlink", "UnsupportedIndexFlags",
+    "UnsupportedPackageManagerConfig", "UnsupportedPythonLockSource", "UnsupportedUvProjectConfig",
+    "UntrustedExecutableWrapper", "MissingTool:node.exe", "MissingTool:uv.exe",
+})
+DEPENDENCY_CHILD_FAILURE_INSTALL_CODES = {
+    "MissingManifestOrLock": "DEPENDENCY_LOCK_FILE_MISSING",
+    "TargetHasUntrackedOrIgnoredFiles": "DEPENDENCY_TARGET_NOT_CLEAN",
+    "TargetLockMismatch": "DEPENDENCY_LOCK_PIN_CHANGED",
+    "TargetManifestMismatch": "DEPENDENCY_MANIFEST_PIN_CHANGED",
+    "SourceTargetOverlap": "SOURCE_TARGET_OVERLAP",
+}
+DEPENDENCY_PIN_FILES = (
+    "MODULES.md",
+    *(f"{module}/{filename}" for module in PYTHON_MODULES for filename in ("pyproject.toml", "uv.lock")),
+    "10_frontend/package.json",
+    "10_frontend/package-lock.json",
+)
+
+
+def _dependency_failure_detail(exit_code: int | None, payload: Any, *, stage: str = "child_output") -> dict[str, Any]:
+    child_stage = stage if stage in DEPENDENCY_CHILD_STAGES else "child_output"
+    child_code = "UnexpectedError"
+    if type(payload) is dict:
+        rows = payload.get("stages")
+        if type(rows) is list:
+            for row in rows:
+                if type(row) is not dict or row.get("state") != "failed":
+                    continue
+                candidate_stage = row.get("name")
+                if type(candidate_stage) is str and candidate_stage in DEPENDENCY_CHILD_STAGES:
+                    child_stage = candidate_stage
+                candidate_code = row.get("error_class")
+                if type(candidate_code) is str and candidate_code in DEPENDENCY_CHILD_ERROR_CODES:
+                    child_code = candidate_code
+                break
+        if child_code == "UnexpectedError":
+            candidate_code = payload.get("error_class")
+            if type(candidate_code) is str and candidate_code in DEPENDENCY_CHILD_ERROR_CODES:
+                child_code = candidate_code
+                child_stage = "preflight"
+    return {
+        "exit_code": exit_code if type(exit_code) is int else None,
+        "stage": child_stage,
+        "error_code": child_code,
+    }
+
+
+def _dependency_failure_install_code(details: dict[str, Any]) -> str:
+    return DEPENDENCY_CHILD_FAILURE_INSTALL_CODES.get(
+        details["error_code"], "OFFLINE_DEPENDENCY_PREPARATION_FAILED"
+    )
+
+
+def _run_dependency_preparation(command: list[str], *, timeout: int) -> tuple[int, dict[str, Any]]:
+    env = _minimal_env(include_caches=True)
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    try:
+        result = subprocess.run(
+            command, capture_output=True, timeout=timeout, check=False, shell=False, env=env,
+        )
+    except subprocess.TimeoutExpired:
+        details = _dependency_failure_detail(None, None, stage="process")
+        details["error_code"] = "TimeoutExpired"
+        raise InstallError("STAGE_TIMEOUT_PRESERVE_AND_INSPECT", details=details) from None
+    except OSError:
+        details = _dependency_failure_detail(None, None, stage="process")
+        details["error_code"] = "MissingTool"
+        raise InstallError("STAGE_PROCESS_UNAVAILABLE", details=details) from None
+    try:
+        payload = json.loads(result.stdout.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError):
+        details = _dependency_failure_detail(result.returncode, None)
+        details["error_code"] = "InvalidJson"
+        raise InstallError("STAGE_RESULT_INVALID", details=details) from None
+    if type(payload) is not dict:
+        details = _dependency_failure_detail(result.returncode, None)
+        details["error_code"] = "InvalidResponse"
+        raise InstallError("STAGE_RESULT_INVALID", details=details)
+    return result.returncode, payload
+
+
+def _dependency_report_is_failure(exit_code: int, payload: dict[str, Any]) -> bool:
+    status = payload.get("status")
+    return (
+        exit_code != 0
+        or payload.get("mode") != "install"
+        or payload.get("schema_version") != "school-dependency-preparation.v1"
+        or payload.get("run_state") != "completed"
+        or (status is not None and (type(status) is not str or status != "completed"))
+        or payload.get("error_class") is not None
+    )
+
+
+def _dependency_retry_paths(config: dict[str, Any], attempt: int) -> tuple[Path, Path]:
+    stem = f"{config['state_path'].name}.dependency-retry-{attempt:03d}"
+    return tuple(config["state_path"].with_name(f"{stem}-{kind}.json") for kind in ("start", "result"))
+
+
+def _read_retry_record(path: Path, fields: set[str], *, attempt: int, config: dict[str, Any]) -> dict[str, Any]:
+    _reject_reparse_ancestors(path)
+    if _is_reparse(path):
+        raise InstallError("REPARSE_PATH_REJECTED")
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        raise InstallError("CHECKPOINT_INVALID") from None
+    expected = {
+        "schema": DEPENDENCY_RETRY_SCHEMA,
+        "source_root": str(config["source"]),
+        "dependency_target": str(config["dependency_target"]),
+        "workspace": str(config["workspace"]),
+        "source_head": config["source_head"],
+        "dependency_target_head": config["target_head"],
+        "attempt": attempt,
+    }
+    if type(record) is not dict or set(record) != fields or any(record.get(k) != v for k, v in expected.items()):
+        raise InstallError("RESUME_CONFIGURATION_MISMATCH")
+    return record
+
+
+def _write_retry_record(path: Path, record: dict[str, Any]) -> None:
+    _reject_reparse_ancestors(path)
+    temp_path = path.with_name(path.name + ".tmp")
+    if path.exists() or _is_reparse(path) or temp_path.exists() or _is_reparse(temp_path):
+        raise InstallError("CHECKPOINT_TEMP_CONFLICT")
+    raw = (json.dumps(record, sort_keys=True, ensure_ascii=True, separators=(",", ":"), allow_nan=False) + "\n").encode("utf-8")
+    flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_BINARY", 0)
+    try:
+        fd = os.open(temp_path, flags, 0o600)
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(raw)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temp_path, path)
+    except OSError:
+        try:
+            temp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise InstallError("CHECKPOINT_PERSIST_FAILED") from None
+
+
+def _validate_dependency_retry(config: dict[str, Any], state: dict[str, Any]) -> None:
+    prior_failure_code = state["stages"]["dependencies"].get("code")
+    if (
+        state["stages"]["dependencies"]["status"] != "FAILED"
+        or any(state["stages"][name]["status"] != "PENDING" for name in STAGE_NAMES if name != "dependencies")
+        or state.get("workspace_id") is not None
+        or _path_entry_exists(config["workspace"])
+        or state.get("dependency_module_manifest_sha256") is not None
+        or type(prior_failure_code) is not str
+        or prior_failure_code not in SAFE_STAGE_CODES
+    ):
+        raise InstallError("INCOMPLETE_STAGE_PRESERVED_FOR_INSPECTION")
+    source_head = _validate_git_root(config["source"], require_clean=False)
+    target_head = _validate_git_root(config["dependency_target"], require_clean=True)
+    if source_head != config["source_head"] or target_head != config["target_head"]:
+        raise InstallError("SOURCE_TARGET_HEAD_MISMATCH")
+    for relative in DEPENDENCY_PIN_FILES:
+        source_file = config["source"] / relative
+        target_file = config["dependency_target"] / relative
+        if not source_file.is_file() or not target_file.is_file():
+            raise InstallError("DEPENDENCY_LOCK_FILE_MISSING")
+        if _sha256(source_file) != _sha256(target_file):
+            code = "DEPENDENCY_MANIFEST_PIN_CHANGED" if relative == "MODULES.md" else "DEPENDENCY_LOCK_PIN_CHANGED"
+            raise InstallError(code)
+    status = _git_output(
+        ["-C", str(config["dependency_target"]), "status", "--porcelain=v1", "--untracked-files=normal", "--ignored=traditional"],
+        cwd=REPO,
+    )
+    if any(entry[:2] in {"??", "!!"} for entry in status.splitlines() if entry):
+        raise InstallError("DEPENDENCY_TARGET_NOT_CLEAN")
+
+
+def _start_dependency_retry(config: dict[str, Any], state: dict[str, Any]) -> tuple[int, Path]:
+    pattern = f"{config['state_path'].name}.dependency-retry-*-start.json"
+    starts = sorted(config["state_path"].parent.glob(pattern))
+    results = {path.name.replace("-result.json", "-start.json") for path in config["state_path"].parent.glob(
+        f"{config['state_path'].name}.dependency-retry-*-result.json"
+    )}
+    indexes: list[int] = []
+    for path in starts:
+        match = re.fullmatch(re.escape(config["state_path"].name) + r"\.dependency-retry-([0-9]{3})-start\.json", path.name)
+        if match is None:
+            raise InstallError("CHECKPOINT_INVALID")
+        indexes.append(int(match.group(1)))
+    if indexes != list(range(1, len(indexes) + 1)) or results != {path.name for path in starts}:
+        raise InstallError("INCOMPLETE_STAGE_PRESERVED_FOR_INSPECTION")
+    for index, start_path in enumerate(starts, start=1):
+        start = _read_retry_record(start_path, DEPENDENCY_RETRY_START_FIELDS, attempt=index, config=config)
+        if (
+            type(start.get("prior_failure_code")) is not str
+            or start["prior_failure_code"] not in SAFE_STAGE_CODES
+            or not isinstance(start.get("started_at"), str)
+        ):
+            raise InstallError("CHECKPOINT_INVALID")
+        _start, result_path = _dependency_retry_paths(config, index)
+        result = _read_retry_record(result_path, DEPENDENCY_RETRY_RESULT_FIELDS, attempt=index, config=config)
+        if (
+            type(result.get("status")) is not str
+            or result["status"] not in {"COMPLETED", "FAILED"}
+            or not isinstance(result.get("finished_at"), str)
+            or (result.get("exit_code") is not None and type(result["exit_code"]) is not int)
+            or (result.get("stage") is not None and (type(result["stage"]) is not str or result["stage"] not in DEPENDENCY_CHILD_STAGES))
+            or (result.get("error_code") is not None and (type(result["error_code"]) is not str or result["error_code"] not in DEPENDENCY_CHILD_ERROR_CODES))
+            or (result.get("install_code") is not None and (type(result["install_code"]) is not str or result["install_code"] not in SAFE_STAGE_CODES))
+        ):
+            raise InstallError("CHECKPOINT_INVALID")
+    attempt = len(indexes) + 1
+    start_path, result_path = _dependency_retry_paths(config, attempt)
+    _reject_reparse_ancestors(result_path)
+    if result_path.exists() or _is_reparse(result_path):
+        raise InstallError("CHECKPOINT_TEMP_CONFLICT")
+    start = {
+        "schema": DEPENDENCY_RETRY_SCHEMA,
+        "source_root": str(config["source"]),
+        "dependency_target": str(config["dependency_target"]),
+        "workspace": str(config["workspace"]),
+        "source_head": config["source_head"],
+        "dependency_target_head": config["target_head"],
+        "attempt": attempt,
+        "prior_failure_code": state["stages"]["dependencies"]["code"],
+        "started_at": _utc_now(),
+    }
+    _write_retry_record(start_path, start)
+    return attempt, start_path
+
+
+def _finish_dependency_retry(
+    config: dict[str, Any], attempt: int, *, status: str, error: InstallError | None = None,
+) -> None:
+    start_path, result_path = _dependency_retry_paths(config, attempt)
+    start = _read_retry_record(start_path, DEPENDENCY_RETRY_START_FIELDS, attempt=attempt, config=config)
+    details = error.details if error is not None and type(error.details) is dict else {}
+    child_stage = details.get("stage")
+    child_code = details.get("error_code")
+    record = {key: start[key] for key in (
+        "schema", "source_root", "dependency_target", "workspace", "source_head", "dependency_target_head", "attempt",
+    )}
+    record.update(
+        status=status,
+        finished_at=_utc_now(),
+        exit_code=details.get("exit_code") if type(details.get("exit_code")) is int else None,
+        stage=child_stage if type(child_stage) is str and child_stage in DEPENDENCY_CHILD_STAGES else None,
+        error_code=child_code if type(child_code) is str and child_code in DEPENDENCY_CHILD_ERROR_CODES else None,
+        install_code=error.code if error is not None and error.code in SAFE_STAGE_CODES else None,
+    )
+    _write_retry_record(result_path, record)
+
+
 def _dependency_stages_match(
     stages: Any,
     expected_names: tuple[str, ...],
@@ -1016,7 +1291,7 @@ def _commands(config: dict[str, Any]) -> dict[str, list[str]]:
     research_args = _research_cli_arguments(config)
     return {
         "dependencies": [
-            sys.executable, str(config["source"] / "13_deployment" / "school_prepare_dependencies.py"),
+            sys.executable, "-B", str(config["source"] / "13_deployment" / "school_prepare_dependencies.py"),
             "install", "--source-root", str(config["source"]), "--target-root", str(target),
             *[arg for module in PYTHON_MODULES for arg in ("--python", f"{module}={config['python_specs'][module]}")],
         ],
@@ -1393,20 +1668,38 @@ def _synthetic_seed_result_matches(result: Any) -> bool:
     return True
 
 
-def _run_stage(config: dict[str, Any], state: dict[str, Any], commands: dict[str, list[str]], name: str) -> None:
+def _run_stage(
+    config: dict[str, Any],
+    state: dict[str, Any],
+    commands: dict[str, list[str]],
+    name: str,
+    *,
+    allow_failed_dependency_retry: bool = False,
+) -> None:
     current = state["stages"][name]["status"]
     if current == "COMPLETED":
         return
     if current == "PENDING_VERIFICATION":
         return
-    if current != "PENDING":
+    retry_failed_dependency = (
+        allow_failed_dependency_retry is True and name == "dependencies" and current == "FAILED"
+    )
+    if allow_failed_dependency_retry and not retry_failed_dependency:
         raise InstallError("INCOMPLETE_STAGE_PRESERVED_FOR_INSPECTION")
-    _begin_stage(config, state, name)
+    if current != "PENDING" and not retry_failed_dependency:
+        raise InstallError("INCOMPLETE_STAGE_PRESERVED_FOR_INSPECTION")
     try:
+        # A failed dependency stage moves directly to RUNNING only on the explicitly
+        # validated retry path. Never persist an intermediate PENDING state that a
+        # later ordinary resume could mistake for permission to rerun the child.
+        _begin_stage(config, state, name)
         if name == "dependencies":
-            code, result = _run_json(commands["dependencies"], timeout=1800, include_caches=True)
+            code, result = _run_dependency_preparation(commands["dependencies"], timeout=1800)
+            if _dependency_report_is_failure(code, result):
+                details = _dependency_failure_detail(code, result)
+                raise InstallError(_dependency_failure_install_code(details), details=details)
             receipt = _dependency_receipt(config)
-            if code != 0 or result.get("run_state") != "completed" or receipt.get("run_state") != "completed":
+            if receipt.get("run_state") != "completed":
                 raise InstallError("OFFLINE_DEPENDENCY_PREPARATION_FAILED")
             state["dependency_module_manifest_sha256"] = receipt["target_module_manifest_sha256"]
         elif name == "workspace":
@@ -1500,6 +1793,7 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
     _check_ports_available(tuple(config["ports"].values()))
     command = [
         sys.executable,
+        "-B",
         str(config["source"] / "13_deployment" / "school_prepare_dependencies.py"),
         "plan", "--source-root", str(config["source"]), "--target-root", str(config["dependency_target"]),
         *[arg for module in PYTHON_MODULES for arg in ("--python", f"{module}={config['python_specs'][module]}")],
@@ -1547,6 +1841,9 @@ def resume(args: argparse.Namespace) -> dict[str, Any]:
     config = _validate_configuration(args, mode="resume")
     state = _read_state(config["state_path"])
     _match_state(state, config)
+    retry_failed_dependencies = getattr(args, "retry_failed_dependencies", False) is True
+    if retry_failed_dependencies:
+        _validate_dependency_retry(config, state)
     workspace_exists = config["workspace"].exists()
     recover_profile_import = _research_profile_import_recovery_eligible(
         config, state, workspace_exists=workspace_exists
@@ -1562,6 +1859,20 @@ def resume(args: argparse.Namespace) -> dict[str, Any]:
         if state.get("workspace_id") != marker.get("workspace_id"):
             raise InstallError("WORKSPACE_IDENTITY_CHANGED")
     commands = _commands(config)
+    if retry_failed_dependencies:
+        retry_attempt, _start_path = _start_dependency_retry(config, state)
+        try:
+            _run_stage(
+                config,
+                state,
+                commands,
+                "dependencies",
+                allow_failed_dependency_retry=True,
+            )
+        except InstallError as exc:
+            _finish_dependency_retry(config, retry_attempt, status="FAILED", error=exc)
+            raise
+        _finish_dependency_retry(config, retry_attempt, status="COMPLETED")
     if recover_profile_import:
         _verify_profile_import_workspace_identity(config, state)
         _resume_workspace_research_file_import(config)
@@ -1580,6 +1891,12 @@ def build_parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True)
     for name in ("plan", "install", "resume"):
         command = commands.add_parser(name)
+        if name == "resume":
+            command.add_argument(
+                "--retry-failed-dependencies",
+                action="store_true",
+                help="Retry only a failed dependency stage when every later install stage is still pending.",
+            )
         command.add_argument("--source-root", type=Path, default=REPO)
         command.add_argument("--dependency-target-root", type=Path, required=True)
         command.add_argument("--workspace", type=Path, required=True)
@@ -1615,7 +1932,10 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(result, sort_keys=True, separators=(",", ":")))
         return 0 if result.get("status") in {"PLAN_READY", "APP_AND_ROLE_BROWSER_VERIFIED"} else 1
     except InstallError as exc:
-        print(json.dumps({"schema": "psynova.school-install-result.v1", "status": "BLOCKED", "code": exc.code}, separators=(",", ":")))
+        payload = {"schema": "psynova.school-install-result.v1", "status": "BLOCKED", "code": exc.code}
+        if exc.details is not None:
+            payload["dependency_failure"] = exc.details
+        print(json.dumps(payload, separators=(",", ":")))
         return 2
     except Exception as exc:  # noqa: BLE001 - subprocess/DPAPI details stay closed.
         print(json.dumps({

@@ -4,6 +4,7 @@ import ast
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -500,6 +501,353 @@ def test_resume_revalidates_completed_dependencies_before_first_workspace_creati
     assert installer.resume(type("Args", (), {})()) == {"status": "TESTED"}
     assert events == ["revalidate", "dependencies-noop", "workspace"]
     assert not workspace.exists()
+
+
+def _dependency_retry_fixture(tmp_path):
+    source = tmp_path / "source"
+    target = tmp_path / "dependencies"
+    source.mkdir()
+    target.mkdir()
+    for relative in installer.DEPENDENCY_PIN_FILES:
+        for root in (source, target):
+            path = root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f"pinned:{relative}\n", encoding="utf-8")
+    config = {
+        "source": source,
+        "dependency_target": target,
+        "source_head": "a" * 40,
+        "target_head": "a" * 40,
+        "workspace": tmp_path / "workspace",
+        "state_path": tmp_path / "install-state.json",
+        "state_temp_path": tmp_path / "install-state.json.tmp",
+        "ports": {"database": 3339, "backend": 8113, "frontend": 4203, "standard_cat": 8189},
+        "python_specs": {},
+        "mysql_bin": tmp_path,
+        "frontend_mode": "preview",
+        "llm_profile": "school-gpu-7b",
+        "research_profile": {"sha256": installer.RESEARCH_PROFILE_EMPTY_SHA256},
+    }
+    state = {
+        "workspace_id": None,
+        "dependency_module_manifest_sha256": None,
+        "stages": {name: {"status": "PENDING", "code": None} for name in installer.STAGE_NAMES},
+    }
+    state["stages"]["dependencies"] = {"status": "FAILED", "code": "DEPENDENCY_RECEIPT_UNAVAILABLE"}
+    return config, state
+
+
+def _stub_clean_git(monkeypatch, config):
+    monkeypatch.setattr(
+        installer,
+        "_validate_git_root",
+        lambda root, *, require_clean: config["source_head"] if root in {config["source"], config["dependency_target"]} else None,
+    )
+    monkeypatch.setattr(installer, "_git_output", lambda *_args, **_kwargs: "")
+
+
+def test_dependency_child_error_is_projected_before_receipt_read(monkeypatch, tmp_path):
+    state = {"stages": {name: {"status": "PENDING", "code": None} for name in installer.STAGE_NAMES}}
+    config = {"state_path": tmp_path / "state.json", "state_temp_path": tmp_path / "state.json.tmp"}
+    payload = {
+        "schema_version": "school-dependency-preparation.v1",
+        "mode": "install",
+        "status": "blocked",
+        "error_class": "TargetHasUntrackedOrIgnoredFiles",
+        "stages": [],
+    }
+    monkeypatch.setattr(installer, "_write_state", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(installer, "_run_dependency_preparation", lambda *_args, **_kwargs: (2, payload))
+    monkeypatch.setattr(installer, "_dependency_receipt", lambda *_args: pytest.fail("receipt masked child failure"))
+
+    with pytest.raises(installer.InstallError) as caught:
+        installer._run_stage(config, state, {"dependencies": ["python", "-B"]}, "dependencies")
+
+    assert caught.value.code == "DEPENDENCY_TARGET_NOT_CLEAN"
+    assert caught.value.details == {
+        "exit_code": 2,
+        "stage": "preflight",
+        "error_code": "TargetHasUntrackedOrIgnoredFiles",
+    }
+    assert state["stages"]["dependencies"] == {"status": "FAILED", "code": "DEPENDENCY_TARGET_NOT_CLEAN"}
+
+
+def test_dependency_invalid_json_reports_child_exit_code_without_raw_output(monkeypatch):
+    monkeypatch.setattr(
+        installer.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=7, stdout=b"not-json private output", stderr=b"ignored"),
+    )
+
+    with pytest.raises(installer.InstallError) as caught:
+        installer._run_dependency_preparation(["python", "-B"], timeout=10)
+
+    assert caught.value.code == "STAGE_RESULT_INVALID"
+    assert caught.value.details == {"exit_code": 7, "stage": "child_output", "error_code": "InvalidJson"}
+    assert "private output" not in str(caught.value)
+
+
+def test_retry_flag_is_available_only_for_resume():
+    required = [
+        "--dependency-target-root", "D:/deps",
+        "--workspace", "D:/workspace",
+        "--mysql-bin", "D:/mysql/bin",
+        "--database-port", "3339",
+        "--backend-port", "8113",
+        "--frontend-port", "4203",
+    ]
+    for index, module in enumerate(installer.PYTHON_MODULES):
+        required.extend(("--python", f"{module}=D:/python/{index}/python.exe"))
+
+    parsed = installer.build_parser().parse_args(["resume", "--retry-failed-dependencies", *required])
+
+    assert parsed.retry_failed_dependencies is True
+    with pytest.raises(SystemExit):
+        installer.build_parser().parse_args(["install", "--retry-failed-dependencies", *required])
+
+
+def test_failed_dependency_resume_defaults_to_fail_closed(monkeypatch, tmp_path):
+    config, state = _dependency_retry_fixture(tmp_path)
+    monkeypatch.setattr(installer, "_validate_configuration", lambda *_args, **_kwargs: config)
+    monkeypatch.setattr(installer, "_read_state", lambda _path: state)
+    monkeypatch.setattr(installer, "_match_state", lambda *_args: None)
+    monkeypatch.setattr(installer, "_verify_completed", lambda *_args: None)
+    monkeypatch.setattr(installer, "_commands", lambda *_args: {"dependencies": ["python", "-B"]})
+    monkeypatch.setattr(installer, "_write_state", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(installer, "_run_dependency_preparation", lambda *_args, **_kwargs: pytest.fail("default resume retried dependencies"))
+
+    with pytest.raises(installer.InstallError, match="INCOMPLETE_STAGE_PRESERVED_FOR_INSPECTION"):
+        installer.resume(SimpleNamespace(retry_failed_dependencies=False))
+
+
+def test_explicit_dependency_retry_is_pinned_and_records_old_failure(monkeypatch, tmp_path):
+    config, state = _dependency_retry_fixture(tmp_path)
+    events = []
+    child_payload = {
+        "schema_version": "school-dependency-preparation.v1",
+        "mode": "install",
+        "run_state": "completed",
+        "stages": [],
+    }
+    monkeypatch.setattr(installer, "_validate_configuration", lambda *_args, **_kwargs: config)
+    monkeypatch.setattr(installer, "_read_state", lambda _path: state)
+    monkeypatch.setattr(installer, "_match_state", lambda *_args: None)
+    monkeypatch.setattr(installer, "_verify_completed", lambda *_args: None)
+    monkeypatch.setattr(installer, "_commands", lambda *_args: {"dependencies": ["python", "-B", "prepare"]})
+    monkeypatch.setattr(installer, "_write_state", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(installer, "_run_dependency_preparation", lambda command, **_kwargs: (events.append(command[1]) or (0, child_payload)))
+    monkeypatch.setattr(
+        installer,
+        "_dependency_receipt",
+        lambda *_args: {"run_state": "completed", "target_module_manifest_sha256": "b" * 64},
+    )
+    _stub_clean_git(monkeypatch, config)
+    real_run_stage = installer._run_stage
+
+    def run_stage(stage_config, current_state, commands, name, **kwargs):
+        if name == "dependencies":
+            return real_run_stage(stage_config, current_state, commands, name, **kwargs)
+        events.append(name)
+        current_state["stages"][name] = {"status": "COMPLETED", "code": None}
+
+    monkeypatch.setattr(installer, "_run_stage", run_stage)
+    monkeypatch.setattr(installer, "_summary", lambda _state: {"status": "TESTED"})
+
+    result = installer.resume(SimpleNamespace(retry_failed_dependencies=True))
+
+    assert result == {"status": "TESTED"}
+    assert events[0] == "-B"
+    assert state["stages"]["dependencies"] == {"status": "COMPLETED", "code": None}
+    assert state["dependency_module_manifest_sha256"] == "b" * 64
+    start_path, result_path = installer._dependency_retry_paths(config, 1)
+    start = json.loads(start_path.read_text(encoding="utf-8"))
+    record = json.loads(result_path.read_text(encoding="utf-8"))
+    assert start["prior_failure_code"] == "DEPENDENCY_RECEIPT_UNAVAILABLE"
+    assert start["attempt"] == 1
+    assert isinstance(start["started_at"], str)
+    assert record["status"] == "COMPLETED"
+    assert record["install_code"] is None
+    assert record["exit_code"] is None
+
+
+def test_failed_dependency_retry_keeps_original_and_child_failure_records(monkeypatch, tmp_path):
+    config, state = _dependency_retry_fixture(tmp_path)
+    monkeypatch.setattr(installer, "_validate_configuration", lambda *_args, **_kwargs: config)
+    monkeypatch.setattr(installer, "_read_state", lambda _path: state)
+    monkeypatch.setattr(installer, "_match_state", lambda *_args: None)
+    monkeypatch.setattr(installer, "_verify_completed", lambda *_args: None)
+    monkeypatch.setattr(installer, "_commands", lambda *_args: {"dependencies": ["python", "-B", "prepare"]})
+    monkeypatch.setattr(installer, "_write_state", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        installer,
+        "_run_dependency_preparation",
+        lambda *_args, **_kwargs: (
+            2,
+            {
+                "schema_version": "school-dependency-preparation.v1",
+                "mode": "install",
+                "status": "blocked",
+                "error_class": "TargetHasUntrackedOrIgnoredFiles",
+                "stages": [],
+            },
+        ),
+    )
+    monkeypatch.setattr(installer, "_dependency_receipt", lambda *_args: pytest.fail("receipt masked child failure"))
+    _stub_clean_git(monkeypatch, config)
+
+    with pytest.raises(installer.InstallError, match="DEPENDENCY_TARGET_NOT_CLEAN"):
+        installer.resume(SimpleNamespace(retry_failed_dependencies=True))
+
+    assert state["stages"]["dependencies"] == {"status": "FAILED", "code": "DEPENDENCY_TARGET_NOT_CLEAN"}
+    start_path, result_path = installer._dependency_retry_paths(config, 1)
+    start = json.loads(start_path.read_text(encoding="utf-8"))
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    assert start["prior_failure_code"] == "DEPENDENCY_RECEIPT_UNAVAILABLE"
+    assert result["status"] == "FAILED"
+    assert result["exit_code"] == 2
+    assert result["stage"] == "preflight"
+    assert result["error_code"] == "TargetHasUntrackedOrIgnoredFiles"
+    assert result["install_code"] == "DEPENDENCY_TARGET_NOT_CLEAN"
+
+
+def test_failed_dependency_stage_requires_explicit_retry_capability(monkeypatch, tmp_path):
+    config, state = _dependency_retry_fixture(tmp_path)
+    monkeypatch.setattr(installer, "_write_state", lambda *_args, **_kwargs: pytest.fail("stage must not transition"))
+
+    with pytest.raises(installer.InstallError, match="INCOMPLETE_STAGE_PRESERVED_FOR_INSPECTION"):
+        installer._run_stage(config, state, {"dependencies": ["python", "-B"]}, "dependencies")
+
+    assert state["stages"]["dependencies"] == {"status": "FAILED", "code": "DEPENDENCY_RECEIPT_UNAVAILABLE"}
+
+
+def test_retry_persists_failed_to_running_without_pending_window(monkeypatch, tmp_path):
+    config, state = _dependency_retry_fixture(tmp_path)
+    writes = []
+    child_payload = {
+        "schema_version": "school-dependency-preparation.v1",
+        "mode": "install",
+        "run_state": "completed",
+        "stages": [],
+    }
+    monkeypatch.setattr(installer, "_validate_configuration", lambda *_args, **_kwargs: config)
+    monkeypatch.setattr(installer, "_read_state", lambda _path: state)
+    monkeypatch.setattr(installer, "_match_state", lambda *_args: None)
+    monkeypatch.setattr(installer, "_verify_completed", lambda *_args: None)
+    monkeypatch.setattr(installer, "_commands", lambda *_args: {"dependencies": ["python", "-B", "prepare"]})
+    monkeypatch.setattr(installer, "_write_state", lambda _path, _temp, current: writes.append(current["stages"]["dependencies"]["status"]))
+    monkeypatch.setattr(installer, "_run_dependency_preparation", lambda *_args, **_kwargs: (0, child_payload))
+    monkeypatch.setattr(
+        installer,
+        "_dependency_receipt",
+        lambda *_args: {"run_state": "completed", "target_module_manifest_sha256": "b" * 64},
+    )
+    _stub_clean_git(monkeypatch, config)
+    real_run_stage = installer._run_stage
+
+    def complete_remaining_stages(stage_config, current_state, commands, name, **kwargs):
+        if name == "dependencies":
+            return real_run_stage(stage_config, current_state, commands, name, **kwargs)
+        current_state["stages"][name] = {"status": "COMPLETED", "code": None}
+
+    monkeypatch.setattr(installer, "_run_stage", complete_remaining_stages)
+    monkeypatch.setattr(installer, "_summary", lambda _state: {"status": "TESTED"})
+
+    installer.resume(SimpleNamespace(retry_failed_dependencies=True))
+
+    assert writes[0] == "RUNNING"
+    assert "PENDING" not in writes
+    assert state["stages"]["dependencies"] == {"status": "COMPLETED", "code": None}
+
+
+def test_retry_checkpoint_transition_failure_keeps_default_resume_fail_closed(monkeypatch, tmp_path):
+    config, state = _dependency_retry_fixture(tmp_path)
+    writes = 0
+    child_calls = []
+
+    def write_state(*_args, **_kwargs):
+        nonlocal writes
+        writes += 1
+        if writes == 1:
+            raise installer.InstallError("CHECKPOINT_PERSIST_FAILED")
+
+    monkeypatch.setattr(installer, "_validate_configuration", lambda *_args, **_kwargs: config)
+    monkeypatch.setattr(installer, "_read_state", lambda _path: state)
+    monkeypatch.setattr(installer, "_match_state", lambda *_args: None)
+    monkeypatch.setattr(installer, "_verify_completed", lambda *_args: None)
+    monkeypatch.setattr(installer, "_commands", lambda *_args: {"dependencies": ["python", "-B", "prepare"]})
+    monkeypatch.setattr(installer, "_write_state", write_state)
+    monkeypatch.setattr(
+        installer,
+        "_run_dependency_preparation",
+        lambda *_args, **_kwargs: child_calls.append("called") or (0, {}),
+    )
+    _stub_clean_git(monkeypatch, config)
+
+    with pytest.raises(installer.InstallError, match="CHECKPOINT_PERSIST_FAILED"):
+        installer.resume(SimpleNamespace(retry_failed_dependencies=True))
+
+    assert child_calls == []
+    assert state["stages"]["dependencies"] == {"status": "FAILED", "code": "CHECKPOINT_PERSIST_FAILED"}
+    _start_path, result_path = installer._dependency_retry_paths(config, 1)
+    assert json.loads(result_path.read_text(encoding="utf-8"))["status"] == "FAILED"
+
+    with pytest.raises(installer.InstallError, match="INCOMPLETE_STAGE_PRESERVED_FOR_INSPECTION"):
+        installer.resume(SimpleNamespace(retry_failed_dependencies=False))
+    assert child_calls == []
+
+
+@pytest.mark.parametrize("mutation,expected", [
+    ("later_stage", "INCOMPLETE_STAGE_PRESERVED_FOR_INSPECTION"),
+    ("target_dirty", "DEPENDENCY_TARGET_NOT_CLEAN"),
+    ("lock_changed", "DEPENDENCY_LOCK_PIN_CHANGED"),
+    ("manifest_changed", "DEPENDENCY_MANIFEST_PIN_CHANGED"),
+    ("ignored_file", "DEPENDENCY_TARGET_NOT_CLEAN"),
+    ("workspace_exists", "INCOMPLETE_STAGE_PRESERVED_FOR_INSPECTION"),
+    ("source_head", "SOURCE_TARGET_HEAD_MISMATCH"),
+])
+def test_dependency_retry_rejects_unsafe_stage_or_pin_changes(monkeypatch, tmp_path, mutation, expected):
+    config, state = _dependency_retry_fixture(tmp_path)
+    _stub_clean_git(monkeypatch, config)
+    if mutation == "later_stage":
+        state["stages"]["workspace"] = {"status": "FAILED", "code": "WORKSPACE_CREATE_FAILED"}
+    elif mutation == "lock_changed":
+        (config["dependency_target"] / "05_rag-engine" / "uv.lock").write_text("changed\n", encoding="utf-8")
+    elif mutation == "manifest_changed":
+        (config["dependency_target"] / "MODULES.md").write_text("changed\n", encoding="utf-8")
+    elif mutation == "ignored_file":
+        monkeypatch.setattr(installer, "_git_output", lambda *_args, **_kwargs: "!! 13_deployment/__pycache__/")
+    elif mutation == "workspace_exists":
+        config["workspace"].mkdir()
+    elif mutation == "source_head":
+        monkeypatch.setattr(
+            installer,
+            "_validate_git_root",
+            lambda root, *, require_clean: ("c" * 40) if root == config["dependency_target"] else config["source_head"],
+        )
+    else:
+        def dirty(root, *, require_clean):
+            if root == config["dependency_target"] and require_clean:
+                raise installer.InstallError("DEPENDENCY_TARGET_NOT_CLEAN")
+            return config["source_head"]
+        monkeypatch.setattr(installer, "_validate_git_root", dirty)
+    with pytest.raises(installer.InstallError, match=expected):
+        installer._validate_dependency_retry(config, state)
+
+
+def test_dependency_retry_still_requires_a_complete_receipt(monkeypatch, tmp_path):
+    state = {"stages": {name: {"status": "PENDING", "code": None} for name in installer.STAGE_NAMES}}
+    config = {"state_path": tmp_path / "state.json", "state_temp_path": tmp_path / "state.json.tmp"}
+    monkeypatch.setattr(installer, "_write_state", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        installer,
+        "_run_dependency_preparation",
+        lambda *_args, **_kwargs: (0, {"schema_version": "school-dependency-preparation.v1", "mode": "install", "run_state": "completed"}),
+    )
+    monkeypatch.setattr(installer, "_dependency_receipt", lambda *_args: (_ for _ in ()).throw(installer.InstallError("DEPENDENCY_RECEIPT_UNAVAILABLE")))
+
+    with pytest.raises(installer.InstallError, match="DEPENDENCY_RECEIPT_UNAVAILABLE"):
+        installer._run_stage(config, state, {"dependencies": ["python", "-B"]}, "dependencies")
+    assert state["stages"]["dependencies"] == {"status": "FAILED", "code": "DEPENDENCY_RECEIPT_UNAVAILABLE"}
 
 
 def test_checkpoint_is_content_free_and_written_atomically(tmp_path):
