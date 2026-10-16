@@ -1,6 +1,6 @@
 # PsyNova current execution state
 
-## Current checkpoint: 2026-10-16 12:40+08, native feedback chain confirmed; shutdown deadline13:40
+## Current checkpoint: 2026-10-16 13:04+08, native feedback chain confirmed; cutoff cancelled
 
 - Root's first20 continuations reached8 HELD,3 ABSTAINED and9 OUTPUT reviews,
   all attempt1. Three abstentions have claim-boundary DIAGNOSIS field hits;
@@ -74,11 +74,10 @@
   SHA220f9d0e9a0c189e98bd91cacc9531b03655b33b6fbc73c42d5a86a1175faf78.
   AC app officially STOPPED;DB3338 retained,manifest9e5b771d359bbc9103ada135f5993ea01e7c44d8a587329540ace886f4aa135e.
   Z remains RUNNING;its process still uses e5b5ab2,not source2bf717f.
-- New explicit user cutoff:2026-10-16 13:40 Beijing/05:40UTC.13:25 stop dispatch,
-  13:30 gather workers/save/stop owned apps,13:35 pause Runner/automation/goal.
-  Five-minute heartbeat checks cutoff;progress reports about20 minutes. Do not
-  resume past cutoff without explicit user instruction. Local exact timing and
-  current85% engineering estimate in .autonomous/shutdown-checkpoint.json.
+- Latest user instruction at13:04+08 CANCELS the13:40 shutdown plan. There is
+  NO current cutoff. Runner/goal remain ACTIVE;heartbeat restored to15-minute
+  continuation with about20-minute progress reports. Do not pause using any old
+  time. .autonomous/shutdown-checkpoint.json records ACTIVE_NO_CUTOFF.
   QUEUED jobs persist across Backend stop;LEASED drain default10s can expire to
   terminal FAILED with max_attempt1,so prefer finish current lease before stop.
   No terminal retry. Dedicated research Runtime8161 old owner proof differs from
@@ -92,7 +91,7 @@
   found no blocker;no reviewer rerun/API/model calls.
   Next:observe real remaining batch outcomes without replay,save final snapshot
   and backup;when idle reload current source through official lifecycle if time
-  permits,finish delivery acceptance then deadline pause.85% is an estimate,
+  permits,finish delivery acceptance and continue without a cutoff.85% is an estimate,
   not ENGINEERING_DEMO_READY/production/professional approval. No overall acceptance.
 
 ## Current checkpoint: 2026-10-16,800 input stops reconciled and20 continuations authorized
