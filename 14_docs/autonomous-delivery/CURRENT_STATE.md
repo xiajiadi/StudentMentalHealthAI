@@ -1,6 +1,6 @@
 # PsyNova current execution state
 
-## Current checkpoint: 2026-10-16, cohort-wide continuation and restored role access
+## Current checkpoint: 2026-10-16, cohort processing and isolated output-review recovery
 
 - Root's first20 continuations reached8 HELD,3 ABSTAINED and9 OUTPUT reviews,
   all attempt1. Three abstentions have claim-boundary DIAGNOSIS field hits;
@@ -21,14 +21,13 @@
   Failed temporary launchers are retained; no batch002 business replay after
   its successful ledger. The final executor reused the reviewed helper with
   only batch DIR/shared LOCK changes,not the unused generic wrapper.
-- Consistent read-only snapshot:8 tasks/800 sessions; general policy1599 jobs
-  =800 R0+799 R1. R1:649 QUEUED,1 LEASED,69 REVIEW_REQUIRED,52 HELD,22 ABSTAINED,
-  6 FAILED.650 active is a snapshot,not completion. Two additional staff-policy
-  jobs are excluded from this total.5 new failures locate to OUTPUT_SAFETY_UNAVAILABLE;
-  underlying transport/schema cause remains unknown.1 failed prompt1.0 job is
-  historical/unresolved. No terminal retry. RTX3060 snapshot95%/5565MiB used.
-  D:/Dev/temp/psynova-z0023-rounds-reconciliation-20261016-r1.json
-  SHA2df47775b4f80dfce182eb40add97c9bd7936186c884ee76ca25a6d593d5fe77.
+- Read-only snapshot at2026-10-16 11:24+08:8 tasks/800 sessions; general
+  policy1599 jobs=800 R0+799 R1. R1:454 QUEUED,1 LEASED,174 REVIEW_REQUIRED,
+  116 HELD,46 ABSTAINED,8 FAILED.455 active/344 terminal are point-in-time
+  counts,not completion. GPU96%/5565MiB.7 UPSTREAM_TRANSIENT failures remain
+  without exact historical transport/schema classification;no terminal retry.
+  D:/Dev/temp/psynova-z0023-rounds-aggregate-20261016-r2/queue-summary.json
+  SHA303d706852827072bfcb958d7b5a4e890923b1e2eaee680bfedecc39745589bf.
 - Existing isolated restore3337 was officially started,passed real four-role
   auth/routes/negative API checks and stopped; Root viewed all4 screenshots.
   Main cohort remains800/6400;3 extra one-session tasks explain total803/6424.
@@ -37,17 +36,29 @@
   QA used byte-identical official AB harness with actual locked1.63/cache1243;
   no version substitution,download or mutation of live Z dependencies.
   D:/Dev/temp/psynova-z-backup-restore-app-closure-20261016-r3/.
-- Native CREATE_HELD for a separate reviewed output returned502,one POST only.
-  Read-only reconciliation confirms no candidate/resolve/idempotency row and
-  unchanged PENDING/v1/input-authorized state. Canonical repository writes
-  source_study_ref into candidate.study_ref while adapter requires the distinct
-  school study pin. This explains the rollback; fix assigned in a new isolated
-  worktree from eade77c. Preserve both pins and immutable content,do not weaken
-  adapter checks or restart Z while its generation queue is active.
-- Next:fix and verify school/source study separation,diagnose closed Safety
-  dependency failures,observe remaining jobs,then delivery acceptance. Backend
-  runtime e5b5ab2,lifecycle552dedd5;no shutdown deadline. Engineering estimate
-  remains about80%,not school production or professional approval.
+- Native CREATE_HELD returned502,one POST only;read-only reconciliation
+  proves rollback with original pending state/content unchanged. Root integrated
+  independently reviewed93912e3:school study and source study remain separate
+  immutable pins.16 DB+50 adapter focused checks passed;native proof pending.
+- Fresh official encrypted Z backup restored to isolated AC/3338/revision0023:
+  63 tables/43482 rows/1126 ciphertext;800 unique completed research cases and
+  6400 answers retained. Target output remains PENDING/v1,input AUTHORIZED/v2,
+  candidate count0. Official result DATA_KEYS_RUNTIME_VERIFIED_REQUIRES_BROWSER;
+  ready=false. D:/Dev/temp/psynova-z-output-review-ac-20261016-r1/.
+- Root integrated independently reviewed worker-off capability42700894 as85e51a0:
+  explicit disable CLI preserves candidate APIs and draft-file hashes;old manifests
+  retain default-enabled generation. Four focused integrated checks passed. AC
+  app/native CREATE_HELD proof pending;Z active queue remains untouched.
+- Root integrated independently reviewed Safety diagnostic a09d923 as a616892.
+  Twelve focused integrated checks passed with explicit Backend/DB import paths;
+  initial collection lacked DB dependencies and executed no tests. Private closed
+  failure categories do not reconstruct historical causes or enable retry. Z
+  process has not reloaded this code.
+- Next:start AC with workers disabled,prove output review on restored AC,observe
+  remaining jobs,then delivery acceptance. Z backend process remains e5b5ab2;
+  canonical source85e51a0 is not automatically loaded in that process. Lifecycle
+  manifest552dedd5;no shutdown deadline. Engineering estimate about80%,not school
+  production or professional approval.
 
 ## Current checkpoint: 2026-10-16,800 input stops reconciled and20 continuations authorized
 
