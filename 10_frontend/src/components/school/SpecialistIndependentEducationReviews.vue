@@ -191,7 +191,7 @@ async function executePending() {
     publishConfirmed.value = false
     revokeConfirmed.value = false
     const successMessage = operation.label === '保存草稿' ? '修订草稿已保存。发布仍需单独确认。'
-      : operation.label === '发布' ? '复核资料已发布给本人。此操作不代表任何专业或正式批准。'
+      : operation.label === '发布' ? '复核资料已发布给学生本人。'
         : '发布已撤回，学生将无法继续查看。'
     if (operation.label === '撤回发布') {
       clearDetail()
@@ -264,7 +264,7 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="independent-education-review-workspace" aria-labelledby="independent-education-review-title">
-    <AppStatusCallout tone="info" title="独立研究教育内容复核" body="只查看学生明确分享的一份生成草稿及公开来源，不展示问题或私密对话历史。保存草稿不会发布；发布只代表研究演示工作流完成，不构成专业、临床、心理测量学、伦理或学校生产批准。" />
+    <AppStatusCallout tone="info" title="独立研究教育内容复核" body="仅显示学生明确分享的一份生成草稿和公开来源，不展示原始问题或私密对话。请核对内容与来源后单独发布；保存草稿不会发布。这些资料仅用于研究演示。" />
     <header class="independent-education-review-workspace__header">
       <div><span class="independent-education-review-workspace__kicker">指定分享 · 单稿复核</span><h2 id="independent-education-review-title">研究教育复核</h2><p>仅显示当前账号被明确指派的分享记录。</p></div>
       <AppButton variant="quiet" size="sm" :disabled="listState === 'loading' || mutationBusy" aria-label="刷新独立研究教育复核列表" @click="loadList(offset)"><RotateCcw :size="15" aria-hidden="true" />刷新列表</AppButton>
@@ -330,7 +330,7 @@ onBeforeUnmount(() => {
               <ResearchFeedbackSources :source-cards="detail.reviewed_draft.source_cards" />
             </div>
             <div v-if="canPublish" class="independent-education-review-workspace__confirm">
-              <label><input v-model="publishConfirmed" type="checkbox" :disabled="mutationBusy || Boolean(pendingMutation)">我确认这是独立研究教育内容的工程复核发布，不代表专业、伦理、临床、心理测量学或学校生产批准。</label>
+              <label><input v-model="publishConfirmed" type="checkbox" :disabled="mutationBusy || Boolean(pendingMutation)">我已核对内容与引用来源，同意向学生本人发布，且仅用于研究演示。</label>
               <AppButton size="sm" :disabled="mutationBusy || Boolean(pendingMutation) || !publishConfirmed" :loading="mutationBusy && pendingMutation?.label === '发布'" @click="publish">发布给本人</AppButton>
             </div>
             <div v-if="canRevoke" class="independent-education-review-workspace__confirm">

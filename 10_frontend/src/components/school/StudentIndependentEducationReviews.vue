@@ -222,7 +222,7 @@ onBeforeUnmount(() => {
       <div><span class="independent-education-reviews__kicker">独立研究教育支持</span><h2 id="independent-education-reviews-title">资料分享与复核状态</h2><p>未分享的草稿正文不会显示在这里。</p></div>
       <AppButton variant="quiet" size="sm" :disabled="state === 'loading' || mutationBusy" aria-label="刷新研究教育复核状态" @click="load(offset)"><RotateCcw :size="15" aria-hidden="true" />刷新</AppButton>
     </header>
-    <AppStatusCallout tone="info" title="按需分享一份资料" body="分享仅涉及这份生成草稿和公开来源，可能包含问题中反映的信息；不会共享原始问题、其他消息或历史、测评作答或报告。分享给心理老师不代表专业批准。撤回后老师将不能继续查看，已发布内容也会停止显示。" />
+    <AppStatusCallout tone="info" title="按需分享一份资料" body="分享仅涉及这份生成草稿和公开来源，草稿可能反映问题中的信息。原始问题、其他消息、测评作答和报告不会共享。分享不表示内容已经核对或发布；撤回后，老师不能继续查看，已发布内容也会停止显示。" />
     <p v-if="statusMessage" class="independent-education-reviews__notice" role="status">{{ statusMessage }}</p>
     <p v-if="state === 'loading'" class="independent-education-reviews__state" role="status" aria-busy="true">正在读取复核状态…</p>
     <AppStatusCallout v-else-if="state === 'error'" tone="attention" title="研究复核状态暂不可用" :body="requestError"><AppButton variant="secondary" size="sm" @click="load(offset)">重新加载</AppButton></AppStatusCallout>
@@ -252,7 +252,7 @@ onBeforeUnmount(() => {
           <p class="independent-education-reviews__body">{{ item.published_content.body }}</p>
           <ResearchFeedbackSources :source-cards="item.published_content.source_cards" />
           <p class="independent-education-reviews__muted">发布时间：{{ formatDate(item.published_content.published_at) }}</p>
-          <p class="independent-education-reviews__boundary">这是经人工修订后单独发布的一般教育资料，不是个人测评解释、诊断或治疗建议，也不代表正式心理、伦理或学校生产批准。</p>
+          <p class="independent-education-reviews__boundary">这份一般教育资料经老师核对后单独发布，仅用于研究演示，不用于个人测评解释、诊断或治疗。</p>
         </div>
       </AppCard>
     </div>
