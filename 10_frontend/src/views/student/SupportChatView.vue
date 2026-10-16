@@ -94,6 +94,7 @@ const turnStatusText = (turn: Pick<IndependentConversationTurn, 'action' | 'stat
   if (turn.action === 'ABSTAIN') return '资料不足，暂不提供建议'
   if (turn.status === 'requested') return '处理中'
   if (turn.status === 'blocked' && turn.action === 'CRISIS_ROUTE') return '安全提示'
+  if (turn.status === 'blocked' && turn.action === 'CONTENT_REVIEW_HELD') return '草稿待核对'
   if (turn.status === 'blocked') return '这条消息已暂停'
   if (turn.status === 'failed') return '本次回复未完成'
   return '教育支持信息'
@@ -420,6 +421,12 @@ onMounted(() => {
                 :body="message.content.text"
               />
               <AppStatusCallout
+                v-else-if="researchMode && message.turn.action === 'CONTENT_REVIEW_HELD'"
+                tone="info"
+                title="草稿待核对"
+                body="这份生成草稿尚未发布。你可以在下方选择是否将它分享给一位心理老师核对。"
+              />
+              <AppStatusCallout
                 v-else-if="message.role === 'assistant' && message.turn.status === 'blocked'"
                 tone="attention"
                 title="这次对话已暂停"
@@ -461,6 +468,12 @@ onMounted(() => {
             <p v-if="receipt.status === 'requested'" class="conversation-pending" role="status">
               消息已收到，回复仍在处理中。请刷新会话查看状态。
             </p>
+            <AppStatusCallout
+              v-else-if="researchMode && receipt.action === 'CONTENT_REVIEW_HELD'"
+              tone="info"
+              title="草稿待核对"
+              body="这份生成草稿尚未发布。你可以在下方选择是否将它分享给一位心理老师核对。"
+            />
             <AppStatusCallout
               v-else-if="receipt.status === 'blocked' && receipt.content?.kind !== 'approved_safety_response'"
               tone="attention"

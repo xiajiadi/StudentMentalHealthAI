@@ -34,6 +34,8 @@ const conversations = vi.hoisted(() => ({
 vi.mock('@/services/mock-api', () => ({ frontendApi: api }))
 vi.mock('@/services/independent-conversations', () => ({
   independentConversations: conversations,
+  researchConversations: conversations,
+  researchConversationCapability: vi.fn(async () => ({ enabled: true })),
   newConversationIdempotencyKey: vi.fn(() => 'synthetic-independent-key'),
 }))
 
@@ -69,7 +71,7 @@ const conversationProjection = (conversationId: string) => ({
   updatedAt: '2026-10-07T00:01:00Z',
 })
 
-const conversationMessage = (index: number, status: 'completed' | 'requested', text: string) => {
+const conversationMessage = (index: number, status: 'completed' | 'requested' | 'blocked', text: string) => {
   const turnId = `TURN_SYNTHETIC_${String(index).padStart(3, '0')}`
   return {
     messageId: `MSG_SYNTHETIC_${String(index).padStart(3, '0')}`,
@@ -609,6 +611,32 @@ describe('学生演示闭环页面', () => {
     await wrapper.get('.support-record-row .app-button').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.fullPath).toBe(`/student/reports/${report.report_id}`)
+  })
+
+  it('研究草稿待核对时不误报为安全拦截或显示未发布正文', async () => {
+    const id = 'CONV_SYNTHETIC_HELD'
+    const message = {
+      ...conversationMessage(1, 'completed', '请介绍公开资料中的证据局限。'),
+      turn: {
+        ...conversationMessage(1, 'completed', '').turn,
+        status: 'blocked' as const,
+        action: 'CONTENT_REVIEW_HELD',
+      },
+    }
+    conversations.list.mockResolvedValue({ items: [conversationProjection(id)], total: 1, hasMore: false })
+    conversations.detail.mockResolvedValue(conversationDetail(id, [message], 0, 1))
+    const router = await makeRouter('/student/support')
+    const wrapper = mount(SupportChatView, {
+      props: { researchMode: true },
+      global: { plugins: [router], stubs: { StudentIndependentEducationReviews: true } },
+    })
+    await flushPromises()
+    await wrapper.get('.conversation-list__item').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('草稿待核对')
+    expect(wrapper.text()).toContain('这份生成草稿尚未发布')
+    expect(wrapper.text()).not.toContain('这条消息已暂停')
+    wrapper.unmount()
   })
 
   it('快速切换会话时丢弃较早详情请求的迟到结果与错误', async () => {
