@@ -1,5 +1,24 @@
 # PsyNova current execution state
 
+## Current checkpoint: 2026-10-16 16:11+08, no cutoff; native install defects fixed
+
+- Estimate86%; new0024 native workflow still pending. No new model calls.
+-6518368 aligns16 CHECK source-name projections and5 ORM unique names with
+  pinned0024 migration. Root112 migration/DB checks passed. AF actual schema
+  now CURRENT/66 BASE TABLES under corrected source, without DDL or reset:
+  D:/Dev/temp/psynova-af-schema-diagnosis-20261016-r1/post-name-alignment.json.
+- AG official install passed dependencies/workspace/schema/runtime identity;
+  application startup failed before seed verification. Diagnosis: Backend still
+  required0023 while actual DB0024. Fixed1e711b3;31 startup checks passed.
+  Evidence:D:/Dev/temp/psynova-ag-startup-diagnostic-20261016-r1/result.json.
+  AG app services were officially cleaned; DB3341 preserved. Failed installer
+  checkpoints and all AE/AF/AG targets remain unchanged; no model job retries.
+- Next: fresh AH latest-source install (planned DB3342/API8116/UI4206/CAT8194/
+  researchCAT57433), one fixed7B no-CAT draft, explicit per-draft consent,
+  assigned review, separate Output Safety, publication/withdraw and native UI,
+  encrypted0024 restore. Temporary QA helpers now distinguish canonical source
+  from lifecycle's actual isolated runtime repository; preparation is not PASS.
+
 ## Current checkpoint: 2026-10-16 15:34+08, no cutoff; clean-install defect corrected
 
 - Estimate86%; no formal/professional approval. Previous four review defects and
