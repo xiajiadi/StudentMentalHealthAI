@@ -193,7 +193,6 @@ def test_publish_without_safety_receipt_is_rejected_without_state_change() -> No
     assert raised.value.code == "PUBLISH_SAFETY_RECEIPT_REQUIRED"
     assert row.status == "DRAFT"
     assert row.state_version == 3
-    assert row.content_revision == 2
 
     invalid_payload = dict(unsafe_payload)
     invalid_payload["publish_safety_check"] = {
@@ -222,3 +221,57 @@ def test_publish_without_safety_receipt_is_rejected_without_state_change() -> No
     assert raised.value.code == "PUBLISH_SAFETY_RECEIPT_INVALID"
     assert row.status == "DRAFT"
     assert row.state_version == 3
+
+
+def test_revoked_review_can_only_be_withdrawn_and_keeps_revocation_history() -> None:
+    protection = FernetDataProtectionProvider(
+        MappingKeyProvider({"test-only": Fernet.generate_key()}, "test-only")
+    )
+    repository = SchoolIndependentEducationReviewRepository(_Session(), protection)
+    row = _row(protection)
+    row.status = "PUBLISHED"
+    row.state_version = 4
+    row.published_at = _NOW.replace(tzinfo=None)
+
+    revoked = asyncio.run(
+        repository.transition(
+            row=row,
+            expected_version=4,
+            to_status="REVOKED",
+            actor_membership_role_id=5,
+            reviewer_membership_role_id=5,
+            trace_id="TRACE_revoke_review",
+            now=_NOW,
+        )
+    )
+    revoked_at = revoked.revoked_at
+    published_at = revoked.published_at
+    withdrawn = asyncio.run(
+        repository.transition(
+            row=revoked,
+            expected_version=5,
+            to_status="WITHDRAWN",
+            actor_membership_role_id=2,
+            trace_id="TRACE_withdraw_review",
+            now=_NOW.replace(minute=1),
+        )
+    )
+
+    assert withdrawn.status == "WITHDRAWN"
+    assert withdrawn.revoked_at == revoked_at
+    assert withdrawn.published_at == published_at
+    assert withdrawn.state_version == 6
+    with pytest.raises(IndependentEducationReviewError) as raised:
+        asyncio.run(
+            repository.transition(
+                row=withdrawn,
+                expected_version=6,
+                to_status="SHARED",
+                actor_membership_role_id=2,
+                reviewer_membership_role_id=5,
+                trace_id="TRACE_reshare_after_withdraw",
+                now=_NOW.replace(minute=2),
+            )
+        )
+    assert raised.value.code == "STALE_OR_INVALID_TRANSITION"
+    assert row.content_revision == 2

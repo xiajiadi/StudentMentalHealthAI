@@ -119,6 +119,7 @@ def _detail() -> dict[str, object]:
 
 
 def _summary() -> dict[str, object]:
+    draft = _detail()["reviewed_draft"]
     return {
         "review_ref": "EDUREV_" + "e" * 32,
         "status": "PUBLISHED",
@@ -126,7 +127,13 @@ def _summary() -> dict[str, object]:
         "created_at": _NOW.isoformat().replace("+00:00", "Z"),
         "updated_at": _NOW.isoformat().replace("+00:00", "Z"),
         "reviewer_ref": None,
-        "published_content": None,
+        "published_content": {
+            "title": draft["title"],
+            "body": draft["body"],
+            "citations": draft["citations"],
+            "source_cards": draft["source_cards"],
+            "published_at": _NOW.isoformat().replace("+00:00", "Z"),
+        },
     }
 
 

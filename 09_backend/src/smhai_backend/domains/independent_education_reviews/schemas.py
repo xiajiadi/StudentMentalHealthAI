@@ -258,6 +258,12 @@ class IndependentEducationReviewSummaryDto(_StrictModel):
     reviewer_ref: StrictStr | None = Field(default=None, pattern=_REVIEWER_REF.pattern)
     published_content: IndependentEducationPublishedContentDto | None = None
 
+    @model_validator(mode="after")
+    def published_content_matches_status(self):
+        if (self.status == "PUBLISHED") != (self.published_content is not None):
+            raise ValueError("published content must match review status")
+        return self
+
 
 class IndependentEducationReviewPageDto(_StrictModel):
     items: list[IndependentEducationReviewSummaryDto]
@@ -368,6 +374,13 @@ class ShareEducationReviewRequest(_StrictModel):
     expected_version: StrictInt = Field(ge=1)
     reviewer_ref: StrictStr = Field(pattern=_REVIEWER_REF.pattern)
     consent: Literal[True]
+
+    @field_validator("consent", mode="before")
+    @classmethod
+    def require_explicit_boolean_consent(cls, value: object) -> object:
+        if value is not True:
+            raise ValueError("explicit consent is required")
+        return value
 
 
 class EducationReviewStateRequest(_StrictModel):

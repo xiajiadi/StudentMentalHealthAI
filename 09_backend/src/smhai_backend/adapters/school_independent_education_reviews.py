@@ -301,7 +301,9 @@ class SchoolIndependentEducationReviewsPersistenceAdapter:
         self._require_source_current(row)
         return account_id, actor_role_id, subject, session, row
 
-    async def _locked_staff_review(self, uow, actor, review_ref: str, now: datetime):
+    async def _locked_staff_review(
+        self, uow, actor, review_ref: str, now: datetime, *, allow_revoked: bool = False
+    ):
         account_id, role_id = await self._reviewer_scope(uow, actor, now)
         if uow.independent_education_reviews is None:
             raise error(ErrorCode.DEPENDENCY_UNAVAILABLE, detail="education review is unavailable")
@@ -311,7 +313,12 @@ class SchoolIndependentEducationReviewsPersistenceAdapter:
         if (
             row is None
             or row.reviewer_membership_role_id != role_id
-            or row.status not in {"SHARED", "DRAFT", "PUBLISHED"}
+            or row.status
+            not in ({"SHARED", "DRAFT", "PUBLISHED", "REVOKED"} if allow_revoked else {
+                "SHARED",
+                "DRAFT",
+                "PUBLISHED",
+            })
         ):
             raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="review was not found")
         await self._require_current_owner_self(uow, row, now)
@@ -617,8 +624,10 @@ class SchoolIndependentEducationReviewsPersistenceAdapter:
             ) = await self._load_student_review(uow, actor, conversation_id, review_ref, now)
             claim = await self._write_claim(uow, account_id, "share", review_ref, idempotency)
             if claim.replayed:
+                published = await self._published_for_student(uow, row)
                 return self._student_summary(
                     row,
+                    published_content=published,
                     reviewer_public_id=await self._public_reviewer_id(uow, row),
                 )
             role, _membership = await self._find_reviewer_role(uow, reviewer_ref, now)
@@ -699,13 +708,52 @@ class SchoolIndependentEducationReviewsPersistenceAdapter:
     async def _published_for_student(self, uow, row):
         if row.status != "PUBLISHED":
             return None
-        payload = await uow.independent_education_reviews.get_reviewed_payload(row)
+        repo = uow.independent_education_reviews
+        candidate = self._candidate(row, await repo.get_candidate_payload(row))
+        payload = await repo.get_reviewed_payload(row)
         try:
             draft = IndependentEducationDraftPayload.model_validate(payload, strict=True)
         except (TypeError, ValueError):
             raise error(
                 ErrorCode.DEPENDENCY_INVALID_RESPONSE, detail="review is unavailable"
             ) from None
+        if (
+            draft.candidate_content_sha256 != row.candidate_content_sha256
+            or draft.source_manifest_sha256 != row.source_manifest_sha256
+            or [item.model_dump(mode="python") for item in draft.citations]
+            != [item.model_dump(mode="python") for item in candidate.citations]
+            or [item.model_dump(mode="python") for item in draft.source_cards]
+            != [item.model_dump(mode="python") for item in candidate.source_cards]
+        ):
+            raise error(
+                ErrorCode.DEPENDENCY_INVALID_RESPONSE, detail="review is unavailable"
+            )
+        return self._published_content(draft, row)
+
+    async def _published_for_staff(self, uow, row):
+        """Return only a decryptable published draft still bound to its candidate."""
+        if row.status != "PUBLISHED":
+            return None
+        repo = uow.independent_education_reviews
+        candidate = self._candidate(row, await repo.get_candidate_payload(row))
+        payload = await repo.get_reviewed_payload(row)
+        try:
+            draft = IndependentEducationDraftPayload.model_validate(payload, strict=True)
+        except (TypeError, ValueError):
+            raise error(
+                ErrorCode.DEPENDENCY_INVALID_RESPONSE, detail="review is unavailable"
+            ) from None
+        if (
+            draft.candidate_content_sha256 != row.candidate_content_sha256
+            or draft.source_manifest_sha256 != row.source_manifest_sha256
+            or [item.model_dump(mode="python") for item in draft.citations]
+            != [item.model_dump(mode="python") for item in candidate.citations]
+            or [item.model_dump(mode="python") for item in draft.source_cards]
+            != [item.model_dump(mode="python") for item in candidate.source_cards]
+        ):
+            raise error(
+                ErrorCode.DEPENDENCY_INVALID_RESPONSE, detail="review is unavailable"
+            )
         return self._published_content(draft, row)
 
     async def staff_list(self, actor, *, offset: int, limit: int):
@@ -731,6 +779,7 @@ class SchoolIndependentEducationReviewsPersistenceAdapter:
                     raise error(
                         ErrorCode.DEPENDENCY_INVALID_RESPONSE, detail="review is unavailable"
                     )
+                await self._require_current_owner_self(uow, row, now)
                 self._require_source_current(row)
                 items.append(
                     {
@@ -825,7 +874,7 @@ class SchoolIndependentEducationReviewsPersistenceAdapter:
                     "created_at": _timestamp(row.created_at),
                     "updated_at": _timestamp(row.updated_at),
                     "reviewer_ref": None,
-                    "published_content": None,
+                    "published_content": await self._published_for_staff(uow, row),
                 }
             candidate = self._candidate(
                 row, await uow.independent_education_reviews.get_candidate_payload(row)
@@ -885,6 +934,7 @@ class SchoolIndependentEducationReviewsPersistenceAdapter:
             account_id, role_id, row = await self._locked_staff_review(uow, actor, review_ref, now)
             claim = await self._write_claim(uow, account_id, "publish", review_ref, idempotency)
             if claim.replayed:
+                published = await self._published_for_staff(uow, row)
                 return {
                     "review_ref": row.review_ref,
                     "status": row.status,
@@ -892,7 +942,7 @@ class SchoolIndependentEducationReviewsPersistenceAdapter:
                     "created_at": _timestamp(row.created_at),
                     "updated_at": _timestamp(row.updated_at),
                     "reviewer_ref": None,
-                    "published_content": None,
+                    "published_content": published,
                 }
             candidate = self._candidate(
                 row, await uow.independent_education_reviews.get_candidate_payload(row)
@@ -971,6 +1021,7 @@ class SchoolIndependentEducationReviewsPersistenceAdapter:
                 resource_ref=review_ref,
                 trace_id=trace_id,
             )
+            published = self._published_content(draft, updated)
             return {
                 "review_ref": updated.review_ref,
                 "status": updated.status,
@@ -978,7 +1029,7 @@ class SchoolIndependentEducationReviewsPersistenceAdapter:
                 "created_at": _timestamp(updated.created_at),
                 "updated_at": _timestamp(updated.updated_at),
                 "reviewer_ref": None,
-                "published_content": None,
+                "published_content": published,
             }
 
     async def revoke(
@@ -987,7 +1038,9 @@ class SchoolIndependentEducationReviewsPersistenceAdapter:
         review_ref = self._review_ref(review_ref)
         now = self._conversations._utc_now()
         async with self._conversations._uow() as uow:
-            account_id, role_id, row = await self._locked_staff_review(uow, actor, review_ref, now)
+            account_id, role_id, row = await self._locked_staff_review(
+                uow, actor, review_ref, now, allow_revoked=True
+            )
             claim = await self._write_claim(uow, account_id, "revoke", review_ref, idempotency)
             if claim.replayed:
                 return {

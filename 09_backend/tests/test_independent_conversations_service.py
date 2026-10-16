@@ -429,8 +429,9 @@ def _research_service(
     retrieval_action: str = "PROCEED",
     bad_manifest: bool = False,
     policy: ConversationLanePolicy | None = None,
+    persistence: FakePersistence | None = None,
 ):
-    persistence = FakePersistence()
+    persistence = persistence or FakePersistence()
     safety = FakeSafety(retrieval_action=retrieval_action)
     normalized_chunks = []
     source_cards = {}
@@ -488,6 +489,50 @@ def _research_service(
         source_cards=source_cards,
     )
     return service, persistence, safety, rag, llm
+
+
+@pytest.mark.asyncio
+async def test_research_lane_excludes_prior_conversation_history_but_university_keeps_it() -> None:
+    history = {
+        "turns": [{"turn_id": "TURN_prior", "status": "completed", "action": "PROCEED"}],
+        "messages": [
+            {
+                "kind": "user_input",
+                "payload": {"turn_id": "TURN_prior", "text": "PRIVATE_PRIOR_QUESTION"},
+            },
+            {
+                "kind": "approved_output",
+                "payload": {
+                    "turn_id": "TURN_prior",
+                    "content": {"summary": "PRIVATE_PRIOR_SUMMARY"},
+                },
+            },
+        ],
+    }
+    store = FakePersistence(history=history)
+    research, _, _, _, research_runtime = _research_service(
+        chunks=(_research_chunk(),), persistence=store
+    )
+
+    await _submit(research, "CURRENT_RESEARCH_REQUEST")
+
+    research_prompt = "\n".join(
+        item["content"] for item in research_runtime.calls[0]["messages"]
+    )
+    assert "CURRENT_RESEARCH_REQUEST" in research_prompt
+    assert "PRIVATE_PRIOR_QUESTION" not in research_prompt
+    assert "PRIVATE_PRIOR_SUMMARY" not in research_prompt
+
+    university, _, _, _, university_runtime = _service(
+        persistence=FakePersistence(history=history)
+    )
+    await _submit(university, "CURRENT_UNIVERSITY_REQUEST")
+    university_prompt = "\n".join(
+        item["content"] for item in university_runtime.calls[0]["messages"]
+    )
+    assert "CURRENT_UNIVERSITY_REQUEST" in university_prompt
+    assert "PRIVATE_PRIOR_QUESTION" in university_prompt
+    assert "PRIVATE_PRIOR_SUMMARY" in university_prompt
 
 
 def _prompt_for_source_metadata(*source_metadata: Mapping[str, Any]) -> str:

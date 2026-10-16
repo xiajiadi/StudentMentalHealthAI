@@ -429,8 +429,15 @@ class IndependentConversationService:
         conversation_id = str(conversation_id)
         turn_id = str(reservation["turn_id"])
         try:
-            history = await self._recent_approved_history(
-                actor, conversation_id, current_turn_id=turn_id
+            # Research-only conversations are independent requests. Never carry
+            # prior student questions or approved responses into a shareable
+            # research candidate; ordinary university support keeps its history.
+            history = (
+                []
+                if self.lane_policy.research_only
+                else await self._recent_approved_history(
+                    actor, conversation_id, current_turn_id=turn_id
+                )
             )
         except Exception as exc:
             await self._finish_dependency_failure(

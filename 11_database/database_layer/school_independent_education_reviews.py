@@ -66,7 +66,7 @@ _TRANSITIONS = {
     "SHARED": frozenset({"DRAFT", "WITHDRAWN"}),
     "DRAFT": frozenset({"DRAFT", "PUBLISHED", "WITHDRAWN"}),
     "PUBLISHED": frozenset({"REVOKED", "WITHDRAWN"}),
-    "REVOKED": frozenset(),
+    "REVOKED": frozenset({"WITHDRAWN"}),
     "WITHDRAWN": frozenset(),
 }
 
