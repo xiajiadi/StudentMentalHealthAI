@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import case, delete, exists, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .base import utc_now
@@ -20,6 +20,7 @@ from .models import (
     ReviewCase,
     ReviewEvent,
     SafetyDecision,
+    SchoolIndependentEducationReview,
     Subject,
     SubjectAccessGrant,
     SupportEvidence,
@@ -203,6 +204,38 @@ class SyntheticLifecycleService:
                 update(model).where(due_column.is_not(None), due_column <= before).values(**values)
             )
             total += result.rowcount  # type: ignore[reportAttributeAccessIssue]
+
+        # Migration 0024 keeps review rows, state, source/Safety hashes, and
+        # append-only events intact at retention time. The candidate ciphertext
+        # is NOT NULL and reviewed ciphertext participates in a state CHECK, so
+        # replace only existing ciphertext bytes with the empty BLOB instead of
+        # nulling columns or mutating workflow metadata. Restrict this new lane
+        # to synthetic subjects and skip already-purged rows for repeatability.
+        review = SchoolIndependentEducationReview
+        synthetic_subject = exists(
+            select(1).where(
+                Subject.id == review.subject_id,
+                Subject.data_origin == DataOrigin.SYNTHETIC.value,
+            )
+        )
+        candidate_ciphertext = review.candidate_payload_ciphertext
+        reviewed_ciphertext = review.reviewed_payload_ciphertext
+        due = review.retention_due_at.is_not(None) & (review.retention_due_at <= before)
+        has_ciphertext = (candidate_ciphertext != b"") | (
+            reviewed_ciphertext.is_not(None) & (reviewed_ciphertext != b"")
+        )
+        result = await self.session.execute(
+            update(review)
+            .where(due, synthetic_subject, has_ciphertext)
+            .values(
+                candidate_payload_ciphertext=b"",
+                reviewed_payload_ciphertext=case(
+                    (reviewed_ciphertext.is_not(None), b""),
+                    else_=reviewed_ciphertext,
+                ),
+            )
+        )
+        total += result.rowcount  # type: ignore[reportAttributeAccessIssue]
         await self.session.flush()
         audit = AuditRepository(self.session)
         await audit.append(
