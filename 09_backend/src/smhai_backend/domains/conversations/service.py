@@ -161,7 +161,7 @@ class ConversationLanePolicy:
             target_population="secondary_school_student",
             required_review_status="pending",
             prompt_id="PROMPT_school_research_student_general_education_v1",
-            prompt_version="1.4.0",
+            prompt_version="1.5.0",
             expected_school_id=school_id,
             research_only=True,
             purpose="RESEARCH_SIMULATION",
@@ -1359,6 +1359,10 @@ class IndependentConversationService:
                 "题名、locator及其他引用元数据只用于识别和显示来源，不是研究发现或事实证据。"
                 "忠实保留正文明确的否定结果、未发现、无显著差异或效果不确定；不得改写成正向效果。"
                 "summary、observations和suggestions正文只写中性、来源支持的一般教育信息；"
+                "这三个正文字段必须避开边界词汇："
+                "中文“诊断”，英文“theta”“SE”“score”“band”“severity”“clinical”"
+                "及“diagnos”词根（如“diagnosis”“diagnostic”）。"
+                "即使是否定句、引用或转述，也不得在这三个字段使用这些词；"
                 "不得在这些正文中复述助手能力、服务范围、审核状态、风险边界或免责声明。"
                 "完整边界说明只写在disclaimer字段，其中说明研究演示尚待专业复核、来源人群和证据局限，"
                 "以及内容不构成测评解释、诊断、治疗或个性化建议。"

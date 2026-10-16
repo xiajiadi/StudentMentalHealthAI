@@ -1000,6 +1000,40 @@ async def test_negated_diagnosis_claim_is_still_rejected_with_closed_boundary_me
     assert finish["safe_metadata"]["diagnostic_reason_code"] == (
         "STANDARD_CLAIM_BOUNDARY_REJECTED"
     )
+    assert (
+        finish["safe_metadata"]["claim_boundary_category"] == "DIAGNOSIS"
+    )
+    assert finish["safe_metadata"]["claim_boundary_field_kind"] == "SUMMARY"
+
+
+@pytest.mark.asyncio
+async def test_research_lane_keeps_existing_guard_on_negated_boundary_term_in_summary() -> None:
+    chunk = _research_chunk()
+    candidate = json.dumps(
+        {
+            "summary": "这不是诊断，也不代表存在心理问题。",
+            "observations": [],
+            "suggestions": [
+                {"text": "可以阅读这份一般教育资料。", "source_chunk_ids": [chunk.chunk_id]}
+            ],
+            "disclaimer": "本研究演示仍待专业复核。",
+        },
+        ensure_ascii=False,
+    )
+    service, persistence, _, _, runtime = _research_service(chunks=(chunk,))
+    runtime.candidate = candidate
+
+    result = await _submit(service)
+
+    assert result.status == "failed"
+    assert result.action == "CLAIM_REJECTED"
+    assert runtime.calls[0]["prompt_version"] == "1.5.0"
+    finish = persistence.finish_calls[-1]
+    assert finish.get("approved_content") is None
+    assert finish.get("citations", ()) == ()
+    assert finish["safe_metadata"]["diagnostic_reason_code"] == (
+        "STANDARD_CLAIM_BOUNDARY_REJECTED"
+    )
     assert finish["safe_metadata"]["claim_boundary_category"] == "DIAGNOSIS"
     assert finish["safe_metadata"]["claim_boundary_field_kind"] == "SUMMARY"
 
@@ -1268,7 +1302,7 @@ def test_research_prompt_prohibits_model_authored_reference_fields_only_in_resea
     )
     university_prompt = IndependentConversationService._system_prompt(bundle)
 
-    assert _research_policy().prompt_version == "1.4.0"
+    assert _research_policy().prompt_version == "1.5.0"
     assert "不要自行编写作者、期刊、卷期、文章号、页码、DOI、URL或参考文献" in research_prompt
     assert "完整来源由系统根据已核验的引用元数据单独显示" in research_prompt
     assert (
@@ -1281,6 +1315,20 @@ def test_research_prompt_prohibits_model_authored_reference_fields_only_in_resea
         "summary、observations和suggestions正文只写中性、来源支持的一般教育信息"
         in research_prompt
     )
+    for forbidden_term in (
+        "中文“诊断”",
+        "“theta”",
+        "“SE”",
+        "“score”",
+        "“band”",
+        "“severity”",
+        "“clinical”",
+        "“diagnos”",
+        "“diagnosis”",
+        "“diagnostic”",
+    ):
+        assert forbidden_term in research_prompt
+    assert "即使是否定句、引用或转述，也不得在这三个字段使用这些词" in research_prompt
     assert "完整边界说明只写在disclaimer字段" in research_prompt
     assert "不得夸大教育效果、因果关系或适用范围，也不得作个性化推断" in research_prompt
     assert "逐个source_chunk_id阅读和归纳正文，保持来源边界" in research_prompt
@@ -1331,8 +1379,8 @@ async def test_research_lane_passes_json_encoded_source_text_to_runtime_as_untru
     assert result.status == "blocked"
     assert result.action == "CONTENT_REVIEW_HELD"
     messages = runtime.calls[0]["messages"]
-    assert runtime.calls[0]["prompt_version"] == "1.4.0"
-    assert persistence.hold_calls[-1]["safe_metadata"]["prompt_version"] == "1.4.0"
+    assert runtime.calls[0]["prompt_version"] == "1.5.0"
+    assert persistence.hold_calls[-1]["safe_metadata"]["prompt_version"] == "1.5.0"
     assert [item["role"] for item in messages] == ["system", "user"]
     system_prompt = messages[0]["content"]
     assert "逐个source_chunk_id阅读和归纳正文，保持来源边界" in system_prompt
