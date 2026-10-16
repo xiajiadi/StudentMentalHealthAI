@@ -1,5 +1,35 @@
 # PsyNova current execution state
 
+## Current checkpoint: 2026-10-16, source catalogue and operations audit exercised
+
+- Product9d9db67 includes both new role pages, service/router wiring and strict
+  source-string mapping. Root18 Backend checks,9 frontend checks plus5 source
+  mapper checks,typecheck and full frontend build passed. Independent code review
+  found no material privacy/tenant/navigation regression; its coercion finding
+  was fixed. Default Backend import also works without the research RAG path.
+- Z was officially reloaded on e5b5ab2;9d9 differs only in frontend mapper/tests.
+  Stop/preflight/start/status each0, app services owned/ready. Manifest SHA
+  552dedd5e4f50b205cf10d7d8946a48532d30acb808a54be1c28dc692006262e.
+  D:/Dev/temp/psynova-z0023-sources-audit-reload-20261016-r1/.
+- Actual8-account browser/API QA:8 logins/logout succeed; alpha specialist reads
+  all5 source details and3 layers; other roles and beta specialist source access
+  return403. Admin operations list/filter/page works; both schools' non-admins
+  return403. Beta admin has0 events, so live cross-school event-set comparison
+  remains UNVERIFIED; targeted SQL cross-school/private-event exclusion passed.
+  QA is PARTIAL, not global acceptance. Root read result and viewed3 screenshots.
+  D:/Dev/temp/psynova-z-readonly-source-audit-qa-20261016-r3/run-r3/result.json.
+- Batch helper failure was nested-wrapper API composition, then a repaired pins
+  overwrite was caught before execution. Both fixed; new PLAN_ONLY and exactly
+  one enqueue POST succeeded for offset8/limit5. Metadata readback shows all5
+  round0 jobs attempt1 REVIEW_REQUIRED/SAFETY_BLOCKED, no automatic continuation
+  or publication. Task totals20 jobs:16 REVIEW_REQUIRED,2 ABSTAINED,1 FAILED,1 HELD;
+  input reviews12:5 PENDING,6 CONTINUATION_AUTHORIZED,1 CONSUMED. Active jobs0.
+  D:/Dev/temp/psynova-z0023-education-batch-20261016-r1/jobs-offset8-status-r2.json.
+- Root has assigned a bounded resumable800-round0 driver; implementation not yet
+  executed. Preserve existing terminal jobs and explicit review gates. Remaining
+  work includes full queue coverage, representative review outcomes and remaining
+  delivery acceptance; engineering estimate remains about80%, not production approval.
+
 ## Current checkpoint: 2026-10-16, feedback visibility and sealed recovery verified
 
 - Engineering estimate remains about80%; ACTIVE, no shutdown deadline. Root
