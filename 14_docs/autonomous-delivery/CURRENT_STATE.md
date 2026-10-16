@@ -1,5 +1,41 @@
 # PsyNova current execution state
 
+## Current checkpoint: 2026-10-16 19:50+08, delivery closure remains active
+
+- No cutoff; engineering estimate95%, not final acceptance.
+- AI primary entry http://127.0.0.1:4207/login was explicitly reloaded from
+  6dafe87 (functional FE revoked-withdraw fix included). Root fresh read-only
+  /health/ready data is ready; dependencies CAT/RAG/Runtime/Safety and four local
+  worker integrations report READY. This does not prove business-path completion.
+  Evidence:D:/Dev/temp/psynova-ai-refresh-3706e96-20261016-r1/root-health-data-proof.json.
+- R6 AH native student consent/share POST succeeded exactly once; both actors
+  logged out. Assigned candidate browser view and mutation closure are pending.
+  Preserve temporary harness failures; never replay share or model generation.
+  Native QA is pinned to read-only source checkout
+  D:/Projects/StudentMentalHealthAI-native-review-pin-20261016 at6dafe87; running
+  AH runtime remains unchanged while canonical receives unrelated delivery fixes.
+-95345c2 adds generation-job paging (previously only first20); one focused
+  component check and typecheck passed. Fresh rendered paging proof is pending.
+-61f6fa7 closes the credential preflight Windows USERNAME omission (getpass
+  otherwise imports unavailable Unix pwd). Root actual AI owned-workspace
+  validation and RAM-only account load passed, four registered role slots;
+  credentials were cleared without printing values. Nine focused checks pass.
+  Native GUI appearance remains unverified; passwords are hidden until user click.
+- Independent CAT audit found existing adult five-domain replay is not the
+  main800 PROMIS pediatric eight-item source. Main800 uses fixed min=max8.
+  4260980 adds independent full-eight-item GRM likelihood/EAP quadrature.
+  Actual800/800 complete, no failures, eight exposures per subject; RMSE4.60e-8.
+  Report:D:/Dev/datasets/psynova-public-research/research-runs/
+  promis-full-bank-eap-20261016-r1/summary.json. Root3 focused checks passed.
+  Same published parameters/observations/prior, no held-out split: this establishes
+  numerical consistency only, not shortening, population validity or predictivity.
+- Safety-case UI audit found existing specialist assigned-case view and Backend
+  assignment endpoint, but no admin assignment UI. That gap is being implemented;
+  a new controlled synthetic-crisis native case is being prepared separately.
+- Runner legacy task remains at claim limit with no active lease. Current Root
+  and active heartbeat continue authorized work; no claim of persistent Runner
+  execution, professional approval, production release or completed acceptance.
+
 ## Current checkpoint: 2026-10-16 18:51+08, native review release and new encrypted restore verified
 
 - Engineering estimate94%; remaining native browser mutation closure and unified
