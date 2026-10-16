@@ -1,5 +1,44 @@
 # PsyNova current execution state
 
+## Current checkpoint: 2026-10-16 14:10+08, no cutoff; installer recovered, independent review in progress
+
+- Latest user instruction cancels all shutdown deadlines. Goal and Runner remain
+  active. Engineering progress is approximately86%, not formal school readiness.
+- Main800-account cohort retains6400 public-observed answers. All799 permitted
+  round1 jobs are terminal:285 HELD/392 REVIEW_REQUIRED/105 ABSTAINED/17 FAILED.
+  Active0 was observed at05:06UTC; do not retry terminal failures or backfill the
+  one original job without a persisted input receipt. Queue-idle evidence:
+  D:/Dev/temp/psynova-z-queue-idle-watch-20261016-r1/result.json.
+- Final Z encrypted backup was sealed and read back at revision0023,64 tables:
+  backups/20261016-050716-d3eaa35abcdd44df901fa43d2265cf33.private.dpapi,
+  SHA046e6aac5eb2cead0d341d003a3fa24b1c9ac88275604584d45b544e415c78e7.
+  This exact latest backup has not yet received a new actual restore exercise.
+- Root officially restarted Z on sourcebe5d3bb, current manifest SHA
+  def363835a34c5d96bdd07ad1cc3f5754691a7ac3d416a22e1db5ca096bba455.
+  API8108 ready=true and anonymous private-route401;whole_ready=false remains.
+  Evidence:D:/Dev/temp/psynova-z-restart-root-official-20261016-r1/.
+- Installer repair495b816 preserves child error causes and permits explicitly
+  guarded dependency-only recovery. Root reviewed source and reran17 focused
+  checks; worker ran93 installer/research-profile checks. Original AD arguments
+  were recovered from execution evidence and matched the original profile hash;
+  no checkpoint pin edits. Single official resume exited0, all7 stages complete,
+  APP_AND_ROLE_BROWSER_VERIFIED, product/dependency sourcebe5d3bb,revision0023.
+  Tool revisiona7557d2 is separately recorded. This verifies install/auth/routes,
+  not complete four-role business. AD UUIDff5f4163b21f3c4e065d73fec7bc3166.
+  D:/Dev/temp/psynova-school-install-ad-20261016-retry-r2/completion-summary.json,
+  SHAcbd7744c9e03c856fbb49d3cf870ccbb134eeba0b9fab23e9a9deded30349c6d.
+- Independent research content review is required after r13's source overstatement.
+  New outputs will use a distinct CONTENT_REVIEW_HELD disposition without changing
+  real Safety decisions. Students explicitly share one encrypted generated draft
+  with one eligible specialist; private questions/history are excluded. Separate
+  reviewed content requires explicit publish and supports withdrawal/revocation.
+  FE465a262 is integrated locally (12 targeted checks/typecheck/lint), not deployed
+  or browser-verified. Backend/DB0024 and additive restore support are in isolated
+  worktrees and remain under implementation/review. No new model attempt yet.
+- Next:finish Backend/FE contract and permissions, restore ciphertext/round1 ordering
+  support, integrate and test once, then native no-CAT fixed-model review/release
+  and four-role business browser closure. No ENGINEERING_DEMO_READY claim yet.
+
 ## Current checkpoint: 2026-10-16 13:04+08, native feedback chain confirmed; cutoff cancelled
 
 - Root's first20 continuations reached8 HELD,3 ABSTAINED and9 OUTPUT reviews,
