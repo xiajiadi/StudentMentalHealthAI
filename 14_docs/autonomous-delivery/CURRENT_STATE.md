@@ -1,5 +1,29 @@
 # PsyNova current execution state
 
+## Current checkpoint: 2026-10-16 15:34+08, no cutoff; clean-install defect corrected
+
+- Estimate86%; no formal/professional approval. Previous four review defects and
+  inactive reviewer access corrected in ea17847/4cf73ec;33 integrated checks passed.
+- Fresh AE PLAN_READY at4cf73ec/schema0024, then official install failed at Backend
+  imports before workspace/DB creation: new adapter eagerly required sqlalchemy
+  from separate DB runtime. Root fixed lazy imports in aa4dd39 with14 checks;
+  8565eec rejects expired review access before payload reads (15 checks).
+  Preserve AE failed target/checkpoint/evidence without reset or pin editing:
+  D:/Dev/temp/psynova-school-install-ae-20261016-r1/.
+- Retention integration corrected in4230066/1b8d6c0: final source uses real
+  encrypted tombstones with matching envelopes, not empty BLOBs, preserving
+  restore authentication and workflow metadata. Missing workspace protection
+  fails before writes. Root reviewed final diff;11 integrated lifecycle/DB/import
+  checks passed. Actual MySQL retention/restore and native0024 remain unverified.
+- Z temporary business QA failed: no active context, business GET or screenshots.
+  R9 logged out its own four sessions; R8 admin logout remains unproven after
+  wrapper crash, no cookie/token retained. R9 does not close R8. QA processes
+  stopped; main800 records/terminal jobs unchanged. Evidence:
+  D:/Dev/temp/psynova-z-business-close-20261016-r8/ and r9/.
+- Next: compatible retention; fresh AF locked-source install; one fixed7B no-CAT
+  draft, explicit share/review/Output Safety/publish/own-read/other-denial/withdraw,
+  actual browser and encrypted restore. No terminal model retries.
+
 ## Current checkpoint: 2026-10-16 15:03+08,0024 integrated; independent review corrections pending
 
 - No cutoff. Estimate86%; all professional/formal approval flags remain false.
