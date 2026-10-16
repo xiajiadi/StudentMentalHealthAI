@@ -4196,15 +4196,15 @@ class SchoolIndependentEducationReview(ResourceIdentityMixin, TimestampMixin, Ba
 
     __tablename__ = "school_independent_education_reviews"
     __table_args__ = mysql_table_args(
-        UniqueConstraint("review_ref", name="independent_edu_review_ref_unique"),
-        UniqueConstraint("support_run_id", name="independent_edu_review_run_unique"),
-        UniqueConstraint("id", "school_id", name="independent_edu_review_id_school_unique"),
+        UniqueConstraint("review_ref", name="uq_school_independent_education_reviews_review_ref"),
+        UniqueConstraint("support_run_id", name="uq_school_independent_education_reviews_support_run_id"),
+        UniqueConstraint("id", "school_id", name="uq_school_independent_education_reviews_id_school"),
         UniqueConstraint(
             "id",
             "school_id",
             "subject_id",
             "support_session_id",
-            name="independent_edu_review_scope_unique",
+            name="uq_school_independent_education_reviews_scope",
         ),
         CheckConstraint(
             "status IN ('HELD', 'SHARED', 'DRAFT', 'PUBLISHED', 'REVOKED', 'WITHDRAWN')",
@@ -4368,7 +4368,7 @@ class SchoolIndependentEducationReviewEvent(ResourceIdentityMixin, Base):
 
     __tablename__ = "school_independent_education_review_events"
     __table_args__ = mysql_table_args(
-        UniqueConstraint("review_id", "state_version", name="independent_edu_review_event_version"),
+        UniqueConstraint("review_id", "state_version", name="uq_school_independent_education_review_events_version"),
         CheckConstraint(
             "event_type IN ('CREATED', 'SHARED', 'DRAFT_SAVED', 'PUBLISHED', 'REVOKED', 'WITHDRAWN')",
             name="event_type_allowed",

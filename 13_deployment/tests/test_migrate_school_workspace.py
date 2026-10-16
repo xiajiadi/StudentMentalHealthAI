@@ -1577,3 +1577,17 @@ def test_console_result_never_contains_secret_values(capsys, monkeypatch, prepar
     assert rc == 0
     assert BUILDER_PASSWORD not in output
     assert "DATABASE_URL" not in output
+
+
+def test_independent_review_checks_have_exact_migration_name_sources(prepared):
+    _repo, _workspace, _marker, db, _ops, _service, _settings, _reads = prepared
+    aliases = source_derived_school_check_names(db.expected_schema)
+    for table in (
+        "school_independent_education_reviews",
+        "school_independent_education_review_events",
+    ):
+        assert MIGRATION_CHECK_NAME_SOURCES[table] == (
+            "20261016_0024_student_independent_education_reviews.py",
+        )
+        canonical_checks = {name for name, *_ in db.expected_schema[table]["checks"]}
+        assert set(aliases[table].values()) == canonical_checks

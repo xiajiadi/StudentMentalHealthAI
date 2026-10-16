@@ -38,6 +38,12 @@ LEGACY_CHECK_NAME_DECLARATIONS: Mapping[str, tuple[str, ...]] = {
 # Only canonical names present as string literals in the table's listed
 # migration sources are eligible for the MySQL naming-convention projection.
 MIGRATION_CHECK_NAME_SOURCES: Mapping[str, tuple[str, ...]] = {
+    "school_independent_education_reviews": (
+        "20261016_0024_student_independent_education_reviews.py",
+    ),
+    "school_independent_education_review_events": (
+        "20261016_0024_student_independent_education_reviews.py",
+    ),
     "school_conversation_safety_cases": ("20261015_0019_school_conversation_safety_cases.py",),
     "school_conversation_safety_events": ("20261015_0019_school_conversation_safety_cases.py",),
     "school_research_case_assignments": (

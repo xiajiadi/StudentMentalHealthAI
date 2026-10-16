@@ -275,3 +275,24 @@ def test_revoked_review_can_only_be_withdrawn_and_keeps_revocation_history() -> 
         )
     assert raised.value.code == "STALE_OR_INVALID_TRANSITION"
     assert row.content_revision == 2
+
+
+def test_unique_constraint_names_match_pinned_migration_declarations():
+    from pathlib import Path
+
+    from database_layer.models import (
+        SchoolIndependentEducationReview,
+        SchoolIndependentEducationReviewEvent,
+    )
+    from sqlalchemy import UniqueConstraint
+
+    migration = (
+        Path(__file__).resolve().parents[1]
+        / "migrations"
+        / "versions"
+        / "20261016_0024_student_independent_education_reviews.py"
+    ).read_text(encoding="utf-8")
+    for model in (SchoolIndependentEducationReview, SchoolIndependentEducationReviewEvent):
+        for constraint in model.__table__.constraints:
+            if isinstance(constraint, UniqueConstraint):
+                assert f'name="{constraint.name}"' in migration
