@@ -24,7 +24,7 @@ _MANIFEST_SHA256 = "ac9cc1641faa565ff7a18866be1c2dbf8aaf16aff7155ea80c38bfd97942
 _MANIFEST_PATH = r"D:\Dev\datasets\student-research\manifest.json"
 
 
-def _settings():
+def _settings(*, worker_enabled=True):
     return BackendSettings(
         _env_file=None,
         environment="research",
@@ -62,6 +62,7 @@ def _settings():
         },
         research_general_education_draft={
             "enabled": True,
+            "worker_enabled": worker_enabled,
             "school_id": 17,
             "school_study_ref": _SCHOOL_STUDY_REF,
             "policy_hash": "c" * 64,
@@ -203,6 +204,38 @@ async def test_enabled_container_wires_held_worker_candidate_feedback_and_privat
             container.research_general_education_runtime_client
             is not container.research_programme_runtime_client
         )
+    finally:
+        await container.close()
+
+
+@pytest.mark.asyncio
+async def test_disabled_draft_worker_keeps_candidate_apis_and_reports_disabled(monkeypatch):
+    package = _pinned_package(datetime.now(UTC) + timedelta(days=10))
+    _patch_container_dependencies(monkeypatch, package=package)
+    container = build_container(_settings(worker_enabled=False))
+
+    try:
+        assert container.research_general_education_worker_manager is None
+        assert container.school_research_education_candidates is not None
+        assert container.school_research_education_candidates.persistence.enabled is True
+        assert container.school_research_feedback is not None
+        assert container.school_research_feedback.persistence.education_candidate_validator
+        assert (
+            container.school_research_feedback.persistence.education_candidate_lineage_validator
+        )
+
+        async def healthy(*_args, **_kwargs):
+            return {"status": "READY"}
+
+        monkeypatch.setattr(type(container.cat), "health", healthy)
+        monkeypatch.setattr(type(container.rag), "health", healthy)
+        monkeypatch.setattr(type(container.llm), "health", healthy)
+        monkeypatch.setattr(type(container.safety), "health", healthy)
+        matrix = await container.dependency_matrix(RequestContext("REQ_test", "TRACE_test"))
+        assert matrix["research_general_education_draft_worker"] == {
+            "status": "DISABLED",
+            "integration": "RESEARCH_GENERAL_EDUCATION_DRAFT_OUTBOX",
+        }
     finally:
         await container.close()
 

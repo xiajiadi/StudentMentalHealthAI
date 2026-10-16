@@ -181,6 +181,7 @@ def test_general_education_draft_maps_only_matching_source_study_and_8161_runtim
     assert settings["research_general_education_draft"] == {
         **draft.core_settings(),
         "input_review_continuation_enabled": True,
+        "worker_enabled": True,
     }
     assert research["research_programme_runtime"] == {
         "mode": "http",
@@ -195,8 +196,21 @@ def test_general_education_draft_maps_only_matching_source_study_and_8161_runtim
     monkeypatch.setenv("SMHAI_SCHOOL_CSRF_SECRET", "a" * 64)
     parsed = BackendSettings(_env_file=None, **settings)
     assert parsed.research_general_education_draft.enabled is True
+    assert parsed.research_general_education_draft.worker_enabled is True
     assert parsed.research_general_education_draft.input_review_continuation_enabled is True
     assert parsed.research_programme_runtime.timeout.read >= 65
+
+    args.disable_research_general_education_draft_worker = True
+    disabled_settings, _research = backend.build_cli_settings_kwargs(args)
+    draft_settings = disabled_settings["research_general_education_draft"]
+    assert draft_settings["enabled"] is True
+    assert draft_settings["worker_enabled"] is False
+    assert draft_settings["input_review_continuation_enabled"] is True
+    assert draft_settings["policy_hash"] == draft_sha
+    disabled = BackendSettings(_env_file=None, **disabled_settings)
+    assert disabled.research_general_education_draft.enabled is True
+    assert disabled.research_general_education_draft.worker_enabled is False
+    assert disabled.research_general_education_draft.input_review_continuation_enabled is True
 
 
 def test_general_education_draft_rejects_source_and_study_scope_mismatches(

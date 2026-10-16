@@ -145,6 +145,9 @@ RESEARCH_EDUCATION_DRAFT_CONFIG_FLAGS = {
     "research_education_draft_config_sha256": "--research-education-draft-config-sha256",
 }
 RESEARCH_EDUCATION_DRAFT_CONFIG_KEY = "research_education_draft_config"
+RESEARCH_EDUCATION_DRAFT_WORKER_DISABLED_FLAG = (
+    "--disable-research-general-education-draft-worker"
+)
 RESEARCH_GENERAL_EDUCATION_DRAFT_INTEGRATION = (
     "RESEARCH_GENERAL_EDUCATION_DRAFT_OUTBOX"
 )
@@ -192,9 +195,13 @@ def _validated_research_education_draft_config(
     research_config: ResearchProcessConfig | None,
     student_research_config: StudentResearchProcessConfig | None,
     input_review_continuation_enabled: bool = False,
+    worker_enabled: bool = True,
 ) -> ResearchEducationDraftProcessConfig | None:
-    if type(input_review_continuation_enabled) is not bool:
-        raise LifecycleError("Research education continuation opt-in is invalid")
+    if (
+        type(input_review_continuation_enabled) is not bool
+        or type(worker_enabled) is not bool
+    ):
+        raise LifecycleError("Research education execution flags are invalid")
     if value is None:
         if input_review_continuation_enabled:
             raise LifecycleError(
@@ -241,6 +248,7 @@ def _validated_research_education_draft_config(
     return ResearchEducationDraftProcessConfig(
         deployment,
         input_review_continuation_enabled=input_review_continuation_enabled,
+        worker_enabled=worker_enabled,
     )
 
 
@@ -255,8 +263,9 @@ def _research_education_draft_config_from_manifest(
     config_file = value.get("config_file")
     config_sha256 = value.get("config_sha256")
     continuation_enabled = value.get("input_review_continuation_enabled", False)
-    if type(continuation_enabled) is not bool:
-        raise LifecycleError("Lifecycle research education continuation flag is invalid")
+    worker_enabled = value.get("worker_enabled", True)
+    if type(continuation_enabled) is not bool or type(worker_enabled) is not bool:
+        raise LifecycleError("Lifecycle research education execution flags are invalid")
     if type(config_file) is not str or type(config_sha256) is not str:
         raise LifecycleError("Lifecycle research education draft config is invalid")
     try:
@@ -270,11 +279,14 @@ def _research_education_draft_config_from_manifest(
     expected_value = deployment.manifest_value()
     if "input_review_continuation_enabled" in value:
         expected_value["input_review_continuation_enabled"] = continuation_enabled
+    if "worker_enabled" in value:
+        expected_value["worker_enabled"] = worker_enabled
     if expected_value != value:
         raise LifecycleError("Lifecycle research education draft config pins changed")
     return ResearchEducationDraftProcessConfig(
         deployment,
         input_review_continuation_enabled=continuation_enabled,
+        worker_enabled=worker_enabled,
     )
 
 
@@ -430,10 +442,14 @@ class ResearchEducationDraftProcessConfig:
 
     deployment: ResearchEducationDraftConfig
     input_review_continuation_enabled: bool = False
+    worker_enabled: bool = True
 
     def __post_init__(self) -> None:
-        if type(self.input_review_continuation_enabled) is not bool:
-            raise LifecycleError("Research education continuation opt-in is invalid")
+        if (
+            type(self.input_review_continuation_enabled) is not bool
+            or type(self.worker_enabled) is not bool
+        ):
+            raise LifecycleError("Research education execution flags are invalid")
 
     def cli_arguments(self) -> list[str]:
         values = [
@@ -448,12 +464,15 @@ class ResearchEducationDraftProcessConfig:
         ]
         if self.input_review_continuation_enabled:
             values.append("--enable-research-education-input-review-continuation")
+        if not self.worker_enabled:
+            values.append(RESEARCH_EDUCATION_DRAFT_WORKER_DISABLED_FLAG)
         return values
 
     def manifest_value(self) -> dict[str, object]:
         return {
             **self.deployment.manifest_value(),
             "input_review_continuation_enabled": self.input_review_continuation_enabled,
+            "worker_enabled": self.worker_enabled,
         }
 
 
@@ -1630,6 +1649,7 @@ class SchoolAppLifecycle:
         student_research_config: Mapping[str, object] | None = None,
         research_education_draft_config: Mapping[str, object] | None = None,
         input_review_continuation_enabled: bool = False,
+        research_general_education_worker_enabled: bool = True,
         enable_standard_cat: bool = False,
         standard_cat_port: int = DEFAULT_STANDARD_CAT_PORT,
     ) -> dict[str, Any]:
@@ -1647,6 +1667,7 @@ class SchoolAppLifecycle:
             research_config=research_config,
             student_research_config=student_research_config,
             input_review_continuation_enabled=input_review_continuation_enabled,
+            worker_enabled=research_general_education_worker_enabled,
         )
         standard_cat_config = self._standard_cat_config(
             enable_standard_cat, standard_cat_port, backend_port, frontend_port
@@ -2106,20 +2127,27 @@ class SchoolAppLifecycle:
             manifest
         )
         if education_draft_config is not None:
-            backend_state = listeners.get("backend", {})
-            result["research_general_education_draft_worker"] = (
-                self._worker_dependency_status(
-                    int(manifest["backend_port"]),
-                    "research_general_education_draft_worker",
-                    RESEARCH_GENERAL_EDUCATION_DRAFT_INTEGRATION,
-                    enabled=True,
-                    backend_ready=(
-                        backend_state.get("owned_process") is True
-                        and backend_state.get("listener") == "OWNED"
-                        and backend_state.get("ready") is True
-                    ),
+            if education_draft_config.worker_enabled:
+                backend_state = listeners.get("backend", {})
+                result["research_general_education_draft_worker"] = (
+                    self._worker_dependency_status(
+                        int(manifest["backend_port"]),
+                        "research_general_education_draft_worker",
+                        RESEARCH_GENERAL_EDUCATION_DRAFT_INTEGRATION,
+                        enabled=True,
+                        backend_ready=(
+                            backend_state.get("owned_process") is True
+                            and backend_state.get("listener") == "OWNED"
+                            and backend_state.get("ready") is True
+                        ),
+                    )
                 )
-            )
+            else:
+                result["research_general_education_draft_worker"] = {
+                    "enabled": False,
+                    "status": "DISABLED",
+                    "integration": RESEARCH_GENERAL_EDUCATION_DRAFT_INTEGRATION,
+                }
             result["research_general_education_draft_worker"][
                 "input_review_continuation_enabled"
             ] = education_draft_config.input_review_continuation_enabled
@@ -3622,6 +3650,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--enable-research-education-input-review-continuation",
         action="store_true",
     )
+    start.add_argument(RESEARCH_EDUCATION_DRAFT_WORKER_DISABLED_FLAG, action="store_true")
     return parser
 
 
@@ -3719,6 +3748,9 @@ def main(argv: list[str] | None = None) -> int:
                 research_education_draft_config=research_education_draft_config,
                 input_review_continuation_enabled=(
                     args.enable_research_education_input_review_continuation
+                ),
+                research_general_education_worker_enabled=(
+                    not args.disable_research_general_education_draft_worker
                 ),
                 enable_standard_cat=args.enable_standard_cat,
                 standard_cat_port=args.standard_cat_port,

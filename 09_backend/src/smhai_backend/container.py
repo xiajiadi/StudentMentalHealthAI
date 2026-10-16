@@ -382,18 +382,21 @@ class BackendContainer:
             if self.research_programme_worker_manager is not None
             else {"status": "DISABLED", "integration": "RESEARCH_STAFF_PROGRAMME_OUTBOX"}
         )
-        statuses["research_general_education_draft_worker"] = (
-            self.research_general_education_worker_manager.dependency_status()
-            if self.research_general_education_worker_manager is not None
-            else {
-                "status": (
-                    "UNAVAILABLE"
-                    if self.settings.research_general_education_draft.enabled
-                    else "DISABLED"
-                ),
+        if self.research_general_education_worker_manager is not None:
+            statuses["research_general_education_draft_worker"] = (
+                self.research_general_education_worker_manager.dependency_status()
+            )
+        else:
+            draft_settings = self.settings.research_general_education_draft
+            worker_status = (
+                "DISABLED"
+                if not draft_settings.enabled or not draft_settings.worker_enabled
+                else "UNAVAILABLE"
+            )
+            statuses["research_general_education_draft_worker"] = {
+                "status": worker_status,
                 "integration": "RESEARCH_GENERAL_EDUCATION_DRAFT_OUTBOX",
             }
-        )
         return statuses
 
 
@@ -886,16 +889,17 @@ def build_container(
                         fallback=research_worker_lock,
                     )
                 )
-                research_general_education_worker_manager = (
-                    ResearchGeneralEducationWorkerManager(
-                        persistence=persistence,
-                        persistence_adapter=school_research_education_candidate_adapter,
-                        generation_service=generation_service,
-                        settings=education_draft_settings,
-                        concurrency_lock=concurrency_lock,
-                        source_valid_through=package.valid_through,
+                if education_draft_settings.worker_enabled:
+                    research_general_education_worker_manager = (
+                        ResearchGeneralEducationWorkerManager(
+                            persistence=persistence,
+                            persistence_adapter=school_research_education_candidate_adapter,
+                            generation_service=generation_service,
+                            settings=education_draft_settings,
+                            concurrency_lock=concurrency_lock,
+                            source_valid_through=package.valid_through,
+                        )
                     )
-                )
             else:
                 _LOGGER.warning(
                     "general-education worker disabled because its source package expired",

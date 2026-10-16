@@ -129,6 +129,20 @@ def test_cat_port_defaults_to_original_listener_and_cli_accepts_explicit_restore
     assert restored.cat_port == 8181
 
 
+def test_general_education_worker_disable_cli_is_explicit_and_opt_in():
+    defaults = backend.build_parser().parse_args(["--workspace", "C:/synthetic/workspace"])
+    disabled = backend.build_parser().parse_args(
+        [
+            "--workspace",
+            "C:/synthetic/workspace",
+            "--disable-research-general-education-draft-worker",
+        ]
+    )
+
+    assert defaults.disable_research_general_education_draft_worker is False
+    assert disabled.disable_research_general_education_draft_worker is True
+
+
 def test_explicit_cat_port_changes_only_the_copied_cat_endpoint():
     original_cat = dict(backend.MODULE_ENDPOINTS["cat"])
     original_endpoints = {name: dict(value) for name, value in backend.MODULE_ENDPOINTS.items()}

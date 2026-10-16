@@ -679,6 +679,7 @@ def test_standard_cat_cli_is_opt_in_and_keeps_default_port():
     )
     assert args.enable_standard_cat is False
     assert args.standard_cat_port == 8180
+    assert args.disable_research_general_education_draft_worker is False
 
     enabled = lifecycle.build_parser().parse_args(
         [
@@ -694,6 +695,18 @@ def test_standard_cat_cli_is_opt_in_and_keeps_default_port():
     )
     assert enabled.enable_standard_cat is True
     assert enabled.standard_cat_port == 8181
+
+    disabled_worker = lifecycle.build_parser().parse_args(
+        [
+            "start",
+            "--workspace",
+            "C:/synthetic/workspace",
+            "--frontend-mode",
+            "dev",
+            lifecycle.RESEARCH_EDUCATION_DRAFT_WORKER_DISABLED_FLAG,
+        ]
+    )
+    assert disabled_worker.disable_research_general_education_draft_worker is True
 
 
 def test_standard_cat_source_fingerprint_is_stable_for_crlf_worktrees(tmp_path):
@@ -930,6 +943,7 @@ def test_general_education_draft_config_roundtrips_argv_and_reports_own_status(
         {
             **draft_config.manifest_value(),
             "input_review_continuation_enabled": True,
+            "worker_enabled": True,
         }
     )
     restored = lifecycle._research_education_draft_config_from_manifest(manifest)
@@ -950,6 +964,19 @@ def test_general_education_draft_config_roundtrips_argv_and_reports_own_status(
     )
     assert legacy_restored is not None
     assert legacy_restored.input_review_continuation_enabled is False
+    legacy_worker_manifest = dict(manifest)
+    legacy_worker_draft = dict(
+        legacy_worker_manifest[lifecycle.RESEARCH_EDUCATION_DRAFT_CONFIG_KEY]
+    )
+    legacy_worker_draft.pop("worker_enabled")
+    legacy_worker_manifest[lifecycle.RESEARCH_EDUCATION_DRAFT_CONFIG_KEY] = (
+        legacy_worker_draft
+    )
+    legacy_worker_restored = lifecycle._research_education_draft_config_from_manifest(
+        legacy_worker_manifest
+    )
+    assert legacy_worker_restored is not None
+    assert legacy_worker_restored.worker_enabled is True
     assert started["research_general_education_draft_worker"]["status"] == "UNVERIFIED"
 
     status = app.status(workspace)
@@ -983,6 +1010,38 @@ def test_general_education_draft_config_roundtrips_argv_and_reports_own_status(
     assert restarted_manifest[lifecycle.RESEARCH_EDUCATION_DRAFT_CONFIG_KEY][
         "input_review_continuation_enabled"
     ] is True
+    app.stop(workspace)
+
+    app.start(
+        workspace,
+        frontend_mode="dev",
+        research_config=research_input,
+        student_research_config=student_input,
+        research_education_draft_config=draft_input,
+        research_general_education_worker_enabled=False,
+    )
+    disabled_backend_argv = ops.spawned[-2][0]
+    assert lifecycle.RESEARCH_EDUCATION_DRAFT_WORKER_DISABLED_FLAG in disabled_backend_argv
+    disabled_manifest = json.loads(
+        (workspace / lifecycle.MANIFEST_NAME).read_text(encoding="utf-8")
+    )
+    disabled_draft = disabled_manifest[lifecycle.RESEARCH_EDUCATION_DRAFT_CONFIG_KEY]
+    assert disabled_draft["config_sha256"] == draft_config.config_sha256
+    assert disabled_draft["worker_enabled"] is False
+    disabled_config = lifecycle._research_education_draft_config_from_manifest(
+        disabled_manifest
+    )
+    assert disabled_config is not None
+    assert disabled_config.worker_enabled is False
+    assert lifecycle.RESEARCH_EDUCATION_DRAFT_WORKER_DISABLED_FLAG in (
+        disabled_config.cli_arguments()
+    )
+    assert app.status(workspace)["research_general_education_draft_worker"] == {
+        "enabled": False,
+        "status": "DISABLED",
+        "integration": lifecycle.RESEARCH_GENERAL_EDUCATION_DRAFT_INTEGRATION,
+        "input_review_continuation_enabled": False,
+    }
     app.stop(workspace)
 
 

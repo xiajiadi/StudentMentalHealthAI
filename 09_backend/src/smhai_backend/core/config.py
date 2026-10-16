@@ -225,11 +225,12 @@ class ResearchEducationWorkerSettings(BaseModel):
 
 
 class ResearchGeneralEducationDraftSettings(BaseModel):
-    """Trusted pins and bounded worker settings for held education drafts."""
+    """Trusted pins, API lane and bounded worker settings for held drafts."""
 
     model_config = ConfigDict(extra="forbid")
 
     enabled: StrictBool = False
+    worker_enabled: StrictBool = True
     input_review_continuation_enabled: StrictBool = False
     school_id: StrictInt | None = None
     school_study_ref: StrictStr | None = Field(

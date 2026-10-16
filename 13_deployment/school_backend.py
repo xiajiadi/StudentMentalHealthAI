@@ -210,6 +210,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--research-education-draft-config-file", type=Path)
     parser.add_argument("--research-education-draft-config-sha256")
     parser.add_argument(
+        "--disable-research-general-education-draft-worker",
+        action="store_true",
+        help="Keep the research draft APIs enabled without starting its worker",
+    )
+    parser.add_argument(
         "--enable-research-education-input-review-continuation",
         action="store_true",
         help="Enable one-shot, explicitly authorized research input-review continuation",
@@ -242,7 +247,10 @@ def build_research_education_draft_settings_kwargs(
     continuation_enabled = getattr(
         args, "enable_research_education_input_review_continuation", False
     )
-    if type(continuation_enabled) is not bool:
+    worker_disabled = getattr(
+        args, "disable_research_general_education_draft_worker", False
+    )
+    if type(continuation_enabled) is not bool or type(worker_disabled) is not bool:
         raise ResearchCLIConfigError("research_education_draft_config_invalid")
     if config_file is None and config_sha256 is None:
         if continuation_enabled:
@@ -304,6 +312,7 @@ def build_research_education_draft_settings_kwargs(
         raise ResearchCLIConfigError("research_education_draft_study_mismatch") from None
     core_settings = draft.core_settings()
     core_settings["input_review_continuation_enabled"] = continuation_enabled
+    core_settings["worker_enabled"] = not worker_disabled
     return {"research_general_education_draft": core_settings}
 
 
