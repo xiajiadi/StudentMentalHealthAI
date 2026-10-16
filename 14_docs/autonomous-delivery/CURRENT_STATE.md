@@ -1,5 +1,29 @@
 # PsyNova current execution state
 
+## Current checkpoint: 2026-10-16 20:28+08, native independent release chain verified
+
+- Engineering estimate97%; no cutoff. R6 source-edited decision and three source
+  pins were checked before draft/publish. Actual UI draft saved once (DRAFT/v3),
+  publish once (PUBLISHED/v4), revoke once (REVOKED/v5), student withdraw once
+  (WITHDRAWN/v6). Each mutation returned200; no generation/share/draft replay.
+- Root inspected actual source/candidate, published student body with citations,
+  and withdrawn student screenshot. Assigned specialist detail after withdrawal
+  returned404; student body is absent; all involved sessions logged out.
+  Evidence:D:/Dev/temp/psynova-independent-education-release-chain-20261016-r11/
+  draft-reconciliation.json and r12/r13/r14 result.json. Native screenshots are
+  indexed in those reports under the AH browser-qa directory. Preserve earlier
+  harness failures, wrong parser assumptions and missing artifacts as failures.
+- New AI synthetic-crisis UI case triggered blocked/CRISIS_ROUTE. Admin then
+  assigned the existing case once through settings UI (ASSIGNED/v2,200), and its
+  detail GET was forbidden403. Specialist/teacher/student read-only continuation
+  and DB zero ordinary-generation evidence remain in progress; no case replay.
+  REVIEWER is not a supported context for these school safety-case routes; the
+  assigned psychological-specialist workflow must not be mislabeled REVIEWER.
+- Latest primary AI reload and new job-pagination native check are prepared but
+  intentionally wait for these in-flight sessions to finish; AHdeps is still
+  6dafe87. Canonical2b445d8 adds only corrected existing admin settings wording.
+  Dedicated origin is1725385; no protected/default branch or release changed.
+
 ## Current checkpoint: 2026-10-16 19:50+08, delivery closure remains active
 
 - No cutoff; engineering estimate95%, not final acceptance.
