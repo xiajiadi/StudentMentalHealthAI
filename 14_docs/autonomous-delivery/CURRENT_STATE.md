@@ -1,6 +1,6 @@
 # PsyNova current execution state
 
-## Current checkpoint: 2026-10-16, cohort processing and isolated output-review recovery
+## Current checkpoint: 2026-10-16 12:40+08, native feedback chain confirmed; shutdown deadline13:40
 
 - Root's first20 continuations reached8 HELD,3 ABSTAINED and9 OUTPUT reviews,
   all attempt1. Three abstentions have claim-boundary DIAGNOSIS field hits;
@@ -45,20 +45,55 @@
   6400 answers retained. Target output remains PENDING/v1,input AUTHORIZED/v2,
   candidate count0. Official result DATA_KEYS_RUNTIME_VERIFIED_REQUIRES_BROWSER;
   ready=false. D:/Dev/temp/psynova-z-output-review-ac-20261016-r1/.
-- Root integrated independently reviewed worker-off capability42700894 as85e51a0:
-  explicit disable CLI preserves candidate APIs and draft-file hashes;old manifests
-  retain default-enabled generation. Four focused integrated checks passed. AC
-  app/native CREATE_HELD proof pending;Z active queue remains untouched.
-- Root integrated independently reviewed Safety diagnostic a09d923 as a616892.
-  Twelve focused integrated checks passed with explicit Backend/DB import paths;
-  initial collection lacked DB dependencies and executed no tests. Private closed
-  failure categories do not reconstruct historical causes or enable retry. Z
-  process has not reloaded this code.
-- Next:start AC with workers disabled,prove output review on restored AC,observe
-  remaining jobs,then delivery acceptance. Z backend process remains e5b5ab2;
-  canonical source85e51a0 is not automatically loaded in that process. Lifecycle
-  manifest552dedd5;no shutdown deadline. Engineering estimate about80%,not school
-  production or professional approval.
+- Root integrated independently reviewed worker-off42700894 as85e51a0 and
+  private Safety diagnostics a09d923 as a616892;source checkpoint2bf717f pushed.
+  Four worker-disable and12 private-diagnostic integrated checks passed. Existing
+  draft-file hashes and old-manifest default-enabled behavior stay compatible.
+- AC actual Backend dependencies confirmed worker DISABLED with draft API enabled;
+  native single CREATE_HELD POST200 consumes outputv2/inputv3 and creates HELDv1,
+  preserving original content/Safety and correctly separating school/source pins.
+  Two citations bind successfully. Initial temporary helper failures were before
+  business POST;preserve them rather than overwrite. Root viewed candidate and
+  both cited source screenshots. D:/Dev/temp/psynova-ac-output-held-create-once-
+  20261016-r3/result.json SHA0abc571c7095fcfc2f07ff705f970fdf964ad65d51a5419d2c6f12d443624347.
+- Root found sleep-benefit wording stronger than the cited review. Original text
+  was NOT released unchanged. Root authored a source-faithful separate draft:
+  candidate ADOPTED as revision basis;explicitly labeled synthetic workflow case
+  OPEN→IN_REVIEW→APPROVED;draft→publish to exact fictional SELF→own read200/
+  other student404→revoke→own404. Seven business POSTs200,all logouts true,
+  model calls0. Original candidate hash/Safety unchanged;all professional and
+  formal-use approvals false. Current AC DB metadata proves REVOKEDv3/casev3,
+  encrypted note/payload,3 case events and3 feedback events. This is an engineering
+  state-machine exercise,not a human professional signature or school publication.
+  D:/Dev/temp/psynova-ac-root-feedback-chain-20261016-r1/result.json
+  SHA34d252c8dcb8326e2d42dc6c342e37666c2893f47c403593fc8abb762aac3ff9;
+  db-proof.json SHAa68f8fc3e9887028716d6f46e4e79db34047693624ef62061dc6c919007713b0.
+- Fresh exact-task browser shows engineering boundary and REVOKED feedback;
+  Root viewed actual screenshot. D:/Dev/temp/psynova-ac-revoked-feedback-ui-
+  readonly-20261016-r1/artifacts/ac-task04-revoked-feedback-case.png
+  SHA220f9d0e9a0c189e98bd91cacc9531b03655b33b6fbc73c42d5a86a1175faf78.
+  AC app officially STOPPED;DB3338 retained,manifest9e5b771d359bbc9103ada135f5993ea01e7c44d8a587329540ace886f4aa135e.
+  Z remains RUNNING;its process still uses e5b5ab2,not source2bf717f.
+- New explicit user cutoff:2026-10-16 13:40 Beijing/05:40UTC.13:25 stop dispatch,
+  13:30 gather workers/save/stop owned apps,13:35 pause Runner/automation/goal.
+  Five-minute heartbeat checks cutoff;progress reports about20 minutes. Do not
+  resume past cutoff without explicit user instruction. Local exact timing and
+  current85% engineering estimate in .autonomous/shutdown-checkpoint.json.
+  QUEUED jobs persist across Backend stop;LEASED drain default10s can expire to
+  terminal FAILED with max_attempt1,so prefer finish current lease before stop.
+  No terminal retry. Dedicated research Runtime8161 old owner proof differs from
+  current process;do not guess-kill. Databases remain preserved.
+- Latest main batch snapshot12:40+08:799 R1/107 active (106 QUEUED+1 LEASED),
+  251 HELD/332 REVIEW_REQUIRED/92 ABSTAINED/17 FAILED.692 terminal does not mean
+  692 successful reports.GPU94%/5565MiB.Original two staff-policy jobs excluded.
+  D:/Dev/temp/psynova-z0023-rounds-aggregate-20261016-r4/rounds-reconciliation.json
+  SHAaa3ba1c2903c5a3d2a95f2e65ca581693183286ce2c11d41919304a9d8e978a5.
+  Independent same-layer review of Root chain script/decision/result/DB proof
+  found no blocker;no reviewer rerun/API/model calls.
+  Next:observe real remaining batch outcomes without replay,save final snapshot
+  and backup;when idle reload current source through official lifecycle if time
+  permits,finish delivery acceptance then deadline pause.85% is an estimate,
+  not ENGINEERING_DEMO_READY/production/professional approval. No overall acceptance.
 
 ## Current checkpoint: 2026-10-16,800 input stops reconciled and20 continuations authorized
 
