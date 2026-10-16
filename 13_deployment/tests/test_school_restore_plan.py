@@ -70,7 +70,7 @@ def test_current_snapshot_requires_its_exact_table_layout_and_revision():
     package["tables"][restore_plan.REVISION_TABLE]["rows"] = [[CURRENT_SCHOOL_REVISION]]
     plan = restore_plan.plan_restore(package, restored_at=RESTORED_AT)
     assert plan["revision"] == CURRENT_SCHOOL_REVISION
-    assert len(plan["table_order"]) == 63
+    assert len(plan["table_order"]) == 65
     package["revision"] = SUPPORTED_REVISION
     with pytest.raises(ValueError, match="manifest mismatch"):
         restore_plan.plan_restore(package, restored_at=RESTORED_AT)
