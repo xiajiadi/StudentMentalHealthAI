@@ -10,6 +10,7 @@ from sqlalchemy import case, delete, exists, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .base import utc_now
+from .crypto import EncryptedPayload, FernetDataProtectionProvider
 from .enums import AuditResult, DataOrigin, SubjectStatus
 from .errors import NotFound, PersistenceError
 from .models import (
@@ -30,6 +31,8 @@ from .models import (
 )
 from .repositories import AuditRepository
 
+_EDUCATION_RETENTION_TOMBSTONE_SCHEMA = "independent-education-retention-tombstone.v1"
+
 
 @dataclass(frozen=True, slots=True)
 class PurgeResult:
@@ -41,8 +44,13 @@ class PurgeResult:
 class SyntheticLifecycleService:
     """Data-lifecycle service guarded against accidental real-data erasure."""
 
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        protection: FernetDataProtectionProvider | None = None,
+    ) -> None:
         self.session = session
+        self.protection = protection
 
     async def erase_subject(
         self,
@@ -141,6 +149,41 @@ class SyntheticLifecycleService:
 
         if not synthetic_only:
             raise PersistenceError("Round 1 retention routine requires synthetic_only=True")
+
+        review = SchoolIndependentEducationReview
+        synthetic_subject = exists(
+            select(1).where(
+                Subject.id == review.subject_id,
+                Subject.data_origin == DataOrigin.SYNTHETIC.value,
+            )
+        )
+        reviewed_ciphertext = review.reviewed_payload_ciphertext
+        due = review.retention_due_at.is_not(None) & (review.retention_due_at <= before)
+        needs_review_purge = (
+            review.candidate_payload_schema_version != _EDUCATION_RETENTION_TOMBSTONE_SCHEMA
+        ) | (
+            reviewed_ciphertext.is_not(None)
+            & (review.reviewed_payload_schema_version != _EDUCATION_RETENTION_TOMBSTONE_SCHEMA)
+        )
+        due_review_exists = await self.session.scalar(
+            select(
+                exists(
+                    select(1).select_from(review).where(due, synthetic_subject, needs_review_purge)
+                )
+            )
+        )
+        candidate_tombstone = None
+        reviewed_tombstone = None
+        if due_review_exists:
+            if self.protection is None:
+                # This check precedes all UPDATEs below; the caller must not
+                # partially purge legacy payloads while the new lane is unsafe.
+                raise PersistenceError(
+                    "independent education retention requires payload protection"
+                )
+            candidate_tombstone = self._retention_tombstone("candidate")
+            reviewed_tombstone = self._retention_tombstone("reviewed_draft")
+
         total = 0
         for model, field_names in (
             (
@@ -205,37 +248,42 @@ class SyntheticLifecycleService:
             )
             total += result.rowcount  # type: ignore[reportAttributeAccessIssue]
 
-        # Migration 0024 keeps review rows, state, source/Safety hashes, and
-        # append-only events intact at retention time. The candidate ciphertext
-        # is NOT NULL and reviewed ciphertext participates in a state CHECK, so
-        # replace only existing ciphertext bytes with the empty BLOB instead of
-        # nulling columns or mutating workflow metadata. Restrict this new lane
-        # to synthetic subjects and skip already-purged rows for repeatability.
-        review = SchoolIndependentEducationReview
-        synthetic_subject = exists(
-            select(1).where(
-                Subject.id == review.subject_id,
-                Subject.data_origin == DataOrigin.SYNTHETIC.value,
+        if due_review_exists:
+            if candidate_tombstone is None or reviewed_tombstone is None:
+                raise PersistenceError("independent education retention tombstones are unavailable")
+            result = await self.session.execute(
+                update(review)
+                .where(due, synthetic_subject, needs_review_purge)
+                .values(
+                    candidate_payload_ciphertext=candidate_tombstone.ciphertext,
+                    candidate_cipher_format_version=candidate_tombstone.cipher_format_version,
+                    candidate_key_version=candidate_tombstone.key_version,
+                    candidate_payload_schema_version=candidate_tombstone.payload_schema_version,
+                    reviewed_payload_ciphertext=case(
+                        (reviewed_ciphertext.is_not(None), reviewed_tombstone.ciphertext),
+                        else_=reviewed_ciphertext,
+                    ),
+                    reviewed_cipher_format_version=case(
+                        (
+                            reviewed_ciphertext.is_not(None),
+                            reviewed_tombstone.cipher_format_version,
+                        ),
+                        else_=review.reviewed_cipher_format_version,
+                    ),
+                    reviewed_key_version=case(
+                        (reviewed_ciphertext.is_not(None), reviewed_tombstone.key_version),
+                        else_=review.reviewed_key_version,
+                    ),
+                    reviewed_payload_schema_version=case(
+                        (
+                            reviewed_ciphertext.is_not(None),
+                            reviewed_tombstone.payload_schema_version,
+                        ),
+                        else_=review.reviewed_payload_schema_version,
+                    ),
+                )
             )
-        )
-        candidate_ciphertext = review.candidate_payload_ciphertext
-        reviewed_ciphertext = review.reviewed_payload_ciphertext
-        due = review.retention_due_at.is_not(None) & (review.retention_due_at <= before)
-        has_ciphertext = (candidate_ciphertext != b"") | (
-            reviewed_ciphertext.is_not(None) & (reviewed_ciphertext != b"")
-        )
-        result = await self.session.execute(
-            update(review)
-            .where(due, synthetic_subject, has_ciphertext)
-            .values(
-                candidate_payload_ciphertext=b"",
-                reviewed_payload_ciphertext=case(
-                    (reviewed_ciphertext.is_not(None), b""),
-                    else_=reviewed_ciphertext,
-                ),
-            )
-        )
-        total += result.rowcount  # type: ignore[reportAttributeAccessIssue]
+            total += result.rowcount  # type: ignore[reportAttributeAccessIssue]
         await self.session.flush()
         audit = AuditRepository(self.session)
         await audit.append(
@@ -247,6 +295,30 @@ class SyntheticLifecycleService:
             safe_metadata={"count": total, "state": "SYNTHETIC_ONLY"},
         )
         return total
+
+    def _retention_tombstone(self, payload_kind: str) -> EncryptedPayload:
+        if self.protection is None:
+            raise PersistenceError("independent education retention requires payload protection")
+        try:
+            encrypted = self.protection.encrypt_json(
+                {
+                    "schema_version": _EDUCATION_RETENTION_TOMBSTONE_SCHEMA,
+                    "payload_kind": payload_kind,
+                    "retention_purged": True,
+                },
+                payload_schema_version=_EDUCATION_RETENTION_TOMBSTONE_SCHEMA,
+            )
+        except Exception:
+            raise PersistenceError(
+                "independent education retention tombstone encryption failed"
+            ) from None
+        if (
+            not isinstance(encrypted, EncryptedPayload)
+            or not encrypted.ciphertext
+            or encrypted.payload_schema_version != _EDUCATION_RETENTION_TOMBSTONE_SCHEMA
+        ):
+            raise PersistenceError("independent education retention tombstone is invalid")
+        return encrypted
 
     async def _delete(self, statement: object) -> int:
         result = await self.session.execute(statement)  # type: ignore[arg-type]
