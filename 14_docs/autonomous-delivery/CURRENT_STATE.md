@@ -1,5 +1,38 @@
 # PsyNova current execution state
 
+## Current checkpoint: 2026-10-16 21:06+08, source integrity preserved; final role checks active
+
+- Engineering estimate98%; no cutoff. Root inspected R6 published and withdrawn
+  screenshots and r9 crisis-case detail. Real admin assignment200/v2, specialist
+  detail200, teacher/student detail403, student own status200; all sessions logout.
+  Actual same-trace DB metadata confirms BLOCKED/CRISIS_ROUTE and no retrieval,
+  generation or support evidence. This is an explicitly injected synthetic route,
+  not a claim about real crisis-detection accuracy. Evidence:
+  D:/Dev/temp/psynova-ai-synthetic-crisis-browser-20261016-r9/final-role-proof.json.
+- Newest-code AI reload exposed complete-package CAT hash drift: the new offline
+  EAP tool had been placed inside serving src. Initial PS start also incorrectly
+  converted an ISO date; both original failures are retained. No model replay or
+  data reset. Official verified-source6dafe startup restored AI4207 RUNNING;
+  manifest SHA936af1a5dda84e7bc1b79df8b4e36e5c7740ec74dcf52a83c0e2ff2cb3dcc5d6.
+-71e14f4 moves the new tool/tests into12_evaluation. Root fresh package fingerprint
+  again exactly7f12059a0223bfb2e006c4c30634026101e214ca3932be6b43d6e67a71cb7856;
+  no pin, validator, serving code, bank, parameter or frozen evidence was changed.
+  Root6 focused checks pass. Latest reload plan uses Python raw JSON strings.
+- The958 complete public-source rows reconstruct the original800 selection byte
+  for byte and retain158 disjoint complete rows,47 partial rows not imputed.
+  New158 aggregate comparisons all complete, zero failures, RMSE4.52699e-8:
+  D:/Dev/datasets/psynova-public-research/research-runs/
+  promis-800-complement-eap-20261016-r2/summary.json. This is a complement held out
+  from the800 engineering workflow, not from published parameter calibration;
+  it provides no shortening, prediction, population or measurement-validity claim.
+- Read-only native Z cohort/auth reconciliation covers800 distinct cohort
+  subjects/accounts on2026-10-14,803 session rows (repeats). It supports complete
+  account authentication coverage; sessions cannot be exactly allocated to the
+  historical799-full/1-smoke phases. No reauthentication or CAT replay needed.
+- Remaining: existing teacher completion-summary native read; one non-clinical
+  synthetic case note enteringIN_REVIEW; final71e14f4 primary reload and job-page
+  offset20 UI evidence. Do not restart AI while these role sessions are in flight.
+
 ## Current checkpoint: 2026-10-16 20:28+08, native independent release chain verified
 
 - Engineering estimate97%; no cutoff. R6 source-edited decision and three source
