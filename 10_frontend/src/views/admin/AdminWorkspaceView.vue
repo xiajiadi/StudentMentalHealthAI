@@ -27,7 +27,7 @@ const page = computed(() => ({
   overview: { eyebrow: '学校管理空间', title: '管理概览', intro: '管理班级、人员分配和测评任务，并查看本地服务能力。' },
   users: { eyebrow: '用户与角色', title: '班级与人员', intro: '管理当前学校的目录名称、合成账号和班级分配。' },
   audit: { eyebrow: '本校运营记录', title: '运营记录', intro: '查看能够通过本校对象归属验证的学校管理操作。' },
-  settings: { eyebrow: '系统设置', title: '服务能力状态', intro: '以下只读信息来自 Backend 公开的依赖健康端点，不包含配置写入或管理操作。' },
+  settings: { eyebrow: '系统设置', title: '服务状态与安全事项', intro: '查看服务状态，并将待处理安全事项分配给本校心理老师。' },
 }[section.value as 'overview' | 'users' | 'audit' | 'settings'] ?? { eyebrow: '学校管理空间', title: '管理概览', intro: '查看本地服务公开的依赖能力状态。' }))
 const healthRows = computed(() => Object.entries(dependencies.value ?? {}).map(([name, value]) => ({ name, status: value.status, integration: value.integration })))
 const healthLabel = (status: string) => status === 'READY' || status === 'AVAILABLE' ? '可用' : status === 'UNAVAILABLE' ? '不可用' : status === 'DEFERRED' ? '未配置' : status === 'DISABLED' ? '已关闭' : status || '未知'
@@ -97,7 +97,7 @@ watch(section, (value) => {
         </div>
         <div v-else class="health-message" role="status">端点未返回依赖条目；状态未知。</div>
       </AppCard>
-      <AppCard class="health-disclosure"><Building2 :size="18" aria-hidden="true" /><p>组织设置、账号权限和系统配置的读写操作尚不可用。依赖状态属于工程能力信息，不含学生数据或心理判断。</p></AppCard>
+      <AppCard class="health-disclosure"><Building2 :size="18" aria-hidden="true" /><p>班级与账号在“班级与人员”中管理。本页不展示个人测评结果、触发原因或对话内容。</p></AppCard>
       <SafetyAssignments :key="schoolScopeKey" />
     </template>
   </main>
