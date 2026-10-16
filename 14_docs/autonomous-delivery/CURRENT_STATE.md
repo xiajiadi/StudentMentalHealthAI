@@ -1,5 +1,54 @@
 # PsyNova current execution state
 
+## Current checkpoint: 2026-10-16, cohort-wide continuation and restored role access
+
+- Root's first20 continuations reached8 HELD,3 ABSTAINED and9 OUTPUT reviews,
+  all attempt1. Three abstentions have claim-boundary DIAGNOSIS field hits;
+  no model retry or relaxed guard. Root inspected actual rendered content and
+  sources, rejected one causal overstatement:one POST200,REJECTED/v2,original
+  content/Safety unchanged,actions absent in the actual UI. No publication.
+  D:/Dev/temp/psynova-z0023-output-review-reject-once-20261016-r2/result.json
+  and psynova-z0023-output-review-rejected-20261016-r5/.
+- Full inventory covers799 input reviews. One missing review belongs to an old
+  job created before receipt persistence was added; its runtime SHA is unknown.
+  Preserve it without backfill. Three historical prompt1.0 reviews remain intact.
+  Root verified772 eligible current receipts share the reviewed fixed public
+  request/context and exact pins; selected those exact refs in39 decisions,
+  all professional/clinical/ethics/publication flags false. All39 batches now
+  have772 POST reservations/772 responses/unique R1 bindings/logout=true.
+  D:/Dev/temp/psynova-z0023-root-batch-executor-20261016-r1/authorization-summary.json
+  SHA1659991bfeea6fdb1be4d395d868015ad66598926db30ecbbda4e10b16f63b57.
+  Failed temporary launchers are retained; no batch002 business replay after
+  its successful ledger. The final executor reused the reviewed helper with
+  only batch DIR/shared LOCK changes,not the unused generic wrapper.
+- Consistent read-only snapshot:8 tasks/800 sessions; general policy1599 jobs
+  =800 R0+799 R1. R1:649 QUEUED,1 LEASED,69 REVIEW_REQUIRED,52 HELD,22 ABSTAINED,
+  6 FAILED.650 active is a snapshot,not completion. Two additional staff-policy
+  jobs are excluded from this total.5 new failures locate to OUTPUT_SAFETY_UNAVAILABLE;
+  underlying transport/schema cause remains unknown.1 failed prompt1.0 job is
+  historical/unresolved. No terminal retry. RTX3060 snapshot95%/5565MiB used.
+  D:/Dev/temp/psynova-z0023-rounds-reconciliation-20261016-r1.json
+  SHA2df47775b4f80dfce182eb40add97c9bd7936186c884ee76ca25a6d593d5fe77.
+- Existing isolated restore3337 was officially started,passed real four-role
+  auth/routes/negative API checks and stopped; Root viewed all4 screenshots.
+  Main cohort remains800/6400;3 extra one-session tasks explain total803/6424.
+  All3 feedback rows remain REVOKED.Original Z stays RUNNING;whole_ready=false.
+  Canonical lock pins Playwright1.63,but local node_modules resolves1.64.
+  QA used byte-identical official AB harness with actual locked1.63/cache1243;
+  no version substitution,download or mutation of live Z dependencies.
+  D:/Dev/temp/psynova-z-backup-restore-app-closure-20261016-r3/.
+- Native CREATE_HELD for a separate reviewed output returned502,one POST only.
+  Read-only reconciliation confirms no candidate/resolve/idempotency row and
+  unchanged PENDING/v1/input-authorized state. Canonical repository writes
+  source_study_ref into candidate.study_ref while adapter requires the distinct
+  school study pin. This explains the rollback; fix assigned in a new isolated
+  worktree from eade77c. Preserve both pins and immutable content,do not weaken
+  adapter checks or restart Z while its generation queue is active.
+- Next:fix and verify school/source study separation,diagnose closed Safety
+  dependency failures,observe remaining jobs,then delivery acceptance. Backend
+  runtime e5b5ab2,lifecycle552dedd5;no shutdown deadline. Engineering estimate
+  remains about80%,not school production or professional approval.
+
 ## Current checkpoint: 2026-10-16,800 input stops reconciled and20 continuations authorized
 
 - Fresh read-only round aggregate shows all800 round0 jobs terminal:
