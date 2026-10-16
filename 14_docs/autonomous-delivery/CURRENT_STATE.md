@@ -1,5 +1,32 @@
 # PsyNova current execution state
 
+## Current checkpoint: 2026-10-16 17:20+08, active with no cutoff
+
+- Engineering estimate88%; no professional or school production approval.
+- AH sourceb155200 official clean installation completed with four-role browser
+  login/route/negative-access checks. Evidence:
+  D:/Dev/temp/psynova-school-install-ah-20261016-r1/completion-summary.json.
+- Final Z800 snapshot restored to AI (DB3343), migrated0023 to0024:64 original
+  tables/45,599 snapshot rows match,66 current tables,1558 encrypted cells freshly
+  decrypted and discarded in RAM. No queued jobs were consumed. AI application
+  startup is blocked at lifecycle research-config validation before any process;
+  standalone Backend preflight passes. Diagnosis continues without blind retry.
+- New independent-review native runs r1/r2 failed CLAIM_REJECTED; preserved.
+  Exact historical-query regression r3 returned HTTP500 and left REQUESTED,
+  no review or event. Model completion is unproven; session logout is unproven.
+  Do not replay or backfill those runs.
+- Confirmed root cause in independent review repository: its timestamp helper
+  rejected DatabaseLayer's native naive-UTC clock. Fix accepts trusted naive UTC
+  and normalizes aware clocks;8 targeted checks pass. AJ real MySQL default-clock
+  repository and adapter insert/flush succeed, then explicitly roll back all
+  review/event and run-finalization writes atomically. No model/API call used.
+  Evidence:D:/Dev/temp/psynova-aj-hold-mysql-diagnostic-20261016-r2/result.json
+  SHA256:2338b8fa5434d491880db13ffd4d5b1ced3bb67fb776bf46a21b394125dfe34b.
+- Next: deploy this fix explicitly to owned AH runtime, preserving its old install
+  proof; one new reference regression, native share/review/publish/withdraw and
+  encrypted new-payload restore. Resolve AI config startup and exact stale-session
+  cleanup. Main Z800 and terminal jobs remain unchanged. New commits not pushed.
+
 ## Current checkpoint: 2026-10-16 16:11+08, no cutoff; native install defects fixed
 
 - Estimate86%; new0024 native workflow still pending. No new model calls.

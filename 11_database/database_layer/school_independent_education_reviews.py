@@ -80,7 +80,13 @@ class IndependentEducationReviewError(ValueError):
 
 
 def _utc_naive(value: datetime) -> datetime:
-    if value.tzinfo is None or value.utcoffset() is None:
+    if not isinstance(value, datetime):
+        raise IndependentEducationReviewError("INVALID_TIMESTAMP")
+    # DatabaseLayer's trusted business clock already returns naive UTC for
+    # MySQL DATETIME(6). Accept it unchanged; normalize aware server clocks.
+    if value.tzinfo is None:
+        return value
+    if value.utcoffset() is None:
         raise IndependentEducationReviewError("INVALID_TIMESTAMP")
     return value.astimezone(UTC).replace(tzinfo=None)
 

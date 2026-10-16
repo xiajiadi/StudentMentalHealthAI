@@ -296,3 +296,29 @@ def test_unique_constraint_names_match_pinned_migration_declarations():
         for constraint in model.__table__.constraints:
             if isinstance(constraint, UniqueConstraint):
                 assert f'name="{constraint.name}"' in migration
+
+
+def test_review_repository_accepts_database_native_utc_clock():
+    from database_layer.base import utc_now
+    from database_layer.school_independent_education_reviews import _utc_naive
+
+    now = utc_now()
+    assert now.tzinfo is None
+    assert _utc_naive(now) == now
+
+
+def test_review_repository_normalizes_aware_server_clock():
+    from datetime import timedelta, timezone
+
+    from database_layer.school_independent_education_reviews import _utc_naive
+
+    local = datetime(2026, 10, 16, 17, 0, tzinfo=timezone(timedelta(hours=8)))
+    assert _utc_naive(local) == datetime(2026, 10, 16, 9, 0)
+    assert _utc_naive(local.astimezone(UTC)) == datetime(2026, 10, 16, 9, 0)
+
+
+def test_review_repository_rejects_non_datetime_clock():
+    from database_layer.school_independent_education_reviews import _utc_naive
+
+    with pytest.raises(IndependentEducationReviewError, match="INVALID_TIMESTAMP"):
+        _utc_naive("2026-10-16")
