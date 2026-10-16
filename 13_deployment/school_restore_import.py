@@ -14,6 +14,7 @@ from pathlib import Path
 from school_backup import encode_value
 from school_restore_plan import plan_restore, trusted_manifest
 from school_schema import (
+    INDEPENDENT_EDUCATION_REVIEW_REVISION,
     LEGACY_SCHOOL_SNAPSHOT_REVISION,
     RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION,
     RESEARCH_EDUCATION_OUTPUT_REVIEW_REVISION,
@@ -27,13 +28,14 @@ class RestoreImportError(RuntimeError):
 
 
 def _ordered_snapshot_rows(plan: dict):
-    """Yield 0022 rows in FK-safe order without disabling MySQL constraints."""
+    """Yield continuation rows in FK-safe order without disabling constraints."""
     round_one_jobs = []
     continuation_snapshot = (
         plan.get("revision")
         in {
             RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION,
             RESEARCH_EDUCATION_OUTPUT_REVIEW_REVISION,
+            INDEPENDENT_EDUCATION_REVIEW_REVISION,
         }
     )
     job_table = "school_research_education_jobs"

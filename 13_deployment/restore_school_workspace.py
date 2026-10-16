@@ -20,6 +20,25 @@ from school_restore_import import import_snapshot
 from school_restore_plan import plan_restore, trusted_manifest
 from school_schema import CURRENT_SCHOOL_REVISION, SCHOOL_REVISION_CHAIN
 
+CIPHERTEXT_METADATA_COLUMNS = {
+    (
+        "school_independent_education_reviews",
+        "candidate_payload_ciphertext",
+    ): (
+        "candidate_key_version",
+        "candidate_cipher_format_version",
+        "candidate_payload_schema_version",
+    ),
+    (
+        "school_independent_education_reviews",
+        "reviewed_payload_ciphertext",
+    ): (
+        "reviewed_key_version",
+        "reviewed_cipher_format_version",
+        "reviewed_payload_schema_version",
+    ),
+}
+
 
 def _record(target: Path, state: dict) -> None:
     path = target / "restore-state.json"
@@ -80,23 +99,29 @@ def _verify_ciphertexts(
         for table_name, columns in manifest.items():
             encrypted = [column for column in columns if column.endswith("_ciphertext")]
             for column in encrypted:
-                prefix = column.removesuffix("_ciphertext") + "_"
-                prefixed_metadata = (
-                    f"{prefix}key_version",
-                    f"{prefix}cipher_format_version",
-                    f"{prefix}payload_schema_version",
-                )
-                plain_metadata = (
-                    "key_version",
-                    "cipher_format_version",
-                    "payload_schema_version",
-                )
-                if all(name in columns for name in prefixed_metadata):
-                    key_version_column, cipher_format_column, schema_column = prefixed_metadata
-                elif all(name in columns for name in plain_metadata):
-                    key_version_column, cipher_format_column, schema_column = plain_metadata
+                mapped_metadata = CIPHERTEXT_METADATA_COLUMNS.get((table_name, column))
+                if mapped_metadata is not None:
+                    if not all(name in columns for name in mapped_metadata):
+                        raise RuntimeError("Trusted encrypted payload metadata is incomplete")
+                    key_version_column, cipher_format_column, schema_column = mapped_metadata
                 else:
-                    raise RuntimeError("Trusted encrypted payload metadata is incomplete")
+                    prefix = column.removesuffix("_ciphertext") + "_"
+                    prefixed_metadata = (
+                        f"{prefix}key_version",
+                        f"{prefix}cipher_format_version",
+                        f"{prefix}payload_schema_version",
+                    )
+                    plain_metadata = (
+                        "key_version",
+                        "cipher_format_version",
+                        "payload_schema_version",
+                    )
+                    if all(name in columns for name in prefixed_metadata):
+                        key_version_column, cipher_format_column, schema_column = prefixed_metadata
+                    elif all(name in columns for name in plain_metadata):
+                        key_version_column, cipher_format_column, schema_column = plain_metadata
+                    else:
+                        raise RuntimeError("Trusted encrypted payload metadata is incomplete")
                 cursor.execute(
                     f"SELECT `{column}`,`{key_version_column}`,`{cipher_format_column}`,"
                     f"`{schema_column}` "

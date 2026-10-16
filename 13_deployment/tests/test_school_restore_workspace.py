@@ -14,6 +14,7 @@ import restore_school_workspace as restore_module
 from school_restore_plan import trusted_manifest
 from school_schema import (
     CURRENT_SCHOOL_REVISION,
+    INDEPENDENT_EDUCATION_REVIEW_REVISION,
     PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
     RESEARCH_EDUCATION_JOBS_REVISION,
     RESEARCH_REVIEW_FEEDBACK_REVISION,
@@ -336,6 +337,85 @@ def test_0020_ciphertext_verification_includes_held_education_candidate(tmp_path
         for sql in connection.fake_cursor.queries
     )
     assert "school_research_education_candidate_events" in manifest
+
+
+def test_0024_ciphertext_verification_uses_exact_independent_review_metadata_columns(
+    tmp_path, monkeypatch
+):
+    table_name = "school_independent_education_reviews"
+    manifest = {
+        table_name: [
+            "candidate_payload_ciphertext",
+            "candidate_cipher_format_version",
+            "candidate_key_version",
+            "candidate_payload_schema_version",
+            "reviewed_payload_ciphertext",
+            "reviewed_cipher_format_version",
+            "reviewed_key_version",
+            "reviewed_payload_schema_version",
+        ],
+        "school_independent_education_review_events": ["id"],
+    }
+    def pinned_manifest(revision):
+        assert revision == INDEPENDENT_EDUCATION_REVIEW_REVISION
+        return manifest
+
+    monkeypatch.setattr(restore_module, "trusted_manifest", pinned_manifest)
+    connection = CiphertextConnection(
+        set(manifest),
+        {
+            (table_name, "candidate_payload_ciphertext"): [
+                (b"synthetic-candidate-payload", "key-v1", "fernet.v1", "candidate.v1")
+            ],
+            (table_name, "reviewed_payload_ciphertext"): [
+                (b"synthetic-reviewed-payload", "key-v1", "fernet.v1", "reviewed.v1")
+            ],
+        },
+    )
+    decrypted = []
+    install_fake_crypto(monkeypatch, decrypted)
+
+    checked = restore_module._verify_ciphertexts(
+        connection, tmp_path, tmp_path, INDEPENDENT_EDUCATION_REVIEW_REVISION
+    )
+
+    assert checked == 2
+    assert set(decrypted) == {b"synthetic-candidate-payload", b"synthetic-reviewed-payload"}
+    queries = connection.fake_cursor.queries
+    assert any(
+        "SELECT `candidate_payload_ciphertext`,`candidate_key_version`,"
+        "`candidate_cipher_format_version`,`candidate_payload_schema_version`" in sql
+        and f"FROM `{table_name}`" in sql
+        for sql in queries
+    )
+    assert any(
+        "SELECT `reviewed_payload_ciphertext`,`reviewed_key_version`,"
+        "`reviewed_cipher_format_version`,`reviewed_payload_schema_version`" in sql
+        and f"FROM `{table_name}`" in sql
+        for sql in queries
+    )
+
+
+def test_0024_ciphertext_verification_rejects_missing_special_metadata(tmp_path, monkeypatch):
+    table_name = "school_independent_education_reviews"
+    manifest = {
+        table_name: ["candidate_payload_ciphertext", "candidate_cipher_format_version",
+                     "candidate_payload_schema_version"],
+    }
+    monkeypatch.setattr(restore_module, "trusted_manifest", lambda _revision: manifest)
+    connection = CiphertextConnection(
+        set(manifest), {(table_name, "candidate_payload_ciphertext"): []}
+    )
+    decrypted = []
+    install_fake_crypto(monkeypatch, decrypted)
+
+    with pytest.raises(RuntimeError, match="Trusted encrypted payload metadata is incomplete"):
+        restore_module._verify_ciphertexts(
+            connection, tmp_path, tmp_path, INDEPENDENT_EDUCATION_REVIEW_REVISION
+        )
+
+    assert connection.fake_cursor.queries == []
+    assert decrypted == []
 
 
 def test_0016_ciphertext_verification_excludes_0017_tables(tmp_path, monkeypatch):

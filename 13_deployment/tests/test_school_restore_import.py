@@ -8,7 +8,10 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import school_restore_import as importer
-from school_schema import RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION
+from school_schema import (
+    INDEPENDENT_EDUCATION_REVIEW_REVISION,
+    RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION,
+)
 
 
 def test_0022_import_splits_only_continuation_jobs_around_reviews():
@@ -48,6 +51,47 @@ def test_0022_import_splits_only_continuation_jobs_around_reviews():
         ("school_research_education_input_review_events", "REVIEW_original"),
         ("school_research_education_jobs", 1),
         ("school_research_education_candidates", "REEDUC_candidate"),
+    ]
+
+
+def test_0024_import_orders_round_one_jobs_after_their_input_review_rows():
+    job_table = "school_research_education_jobs"
+    review_table = "school_research_education_input_reviews"
+    event_table = "school_research_education_input_review_events"
+    plan = {
+        "revision": INDEPENDENT_EDUCATION_REVIEW_REVISION,
+        "table_order": [job_table, review_table, event_table, "school_research_education_candidates"],
+        "tables": {
+            job_table: {
+                "columns": ["id", "school_id", "research_session_id", "job_ref", "generation_round", "input_review_id"],
+                "rows": [
+                    [101, 1, 401, "REJ_round0", 0, None],
+                    [102, 1, 402, "REJ_round1", 1, 501],
+                ],
+            },
+            review_table: {
+                "columns": ["id", "school_id", "research_session_id", "job_id"],
+                "rows": [[501, 1, 402, 102]],
+            },
+            event_table: {
+                "columns": ["id", "school_id", "review_id"],
+                "rows": [[601, 1, 501]],
+            },
+            "school_research_education_candidates": {
+                "columns": ["id", "generation_round"],
+                "rows": [[701, 0]],
+            },
+        },
+    }
+
+    rows = list(importer._ordered_snapshot_rows(plan))
+
+    assert rows == [
+        (job_table, [101, 1, 401, "REJ_round0", 0, None]),
+        (review_table, [501, 1, 402, 102]),
+        (event_table, [601, 1, 501]),
+        (job_table, [102, 1, 402, "REJ_round1", 1, 501]),
+        ("school_research_education_candidates", [701, 0]),
     ]
 
 
