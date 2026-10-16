@@ -1,5 +1,31 @@
 # PsyNova current execution state
 
+## Current checkpoint: 2026-10-16 18:03+08, restored four-role browser verified
+
+- Engineering estimate90%; remaining independent-review native closure is not PASS.
+- AI restored final Z800 backup on0024 and started using AHdeps898772e.
+  Fresh1558-cell decrypt proof, snapshot row reconciliation, queue0 and official
+  four-role login/route/negative API/logout/blank restore checks passed.
+  Browser report: D:/Projects/.StudentMentalHealthAI-school-restore-20261016-ai/
+  browser-qa/20261016T095924Z-4ff512fc6dba460f914d5599325ab76f/sanitized-report.json.
+  Root inspected actual admin screenshot. Auth checks are not model/business proof.
+- AH explicit runtime update898772e succeeded. Both manual restart launchers had
+  converted ISO study-end strings to localized PowerShell DateTime text; preserving
+  JSON strings corrected that preflight failure without changing product gates.
+- AH r4 new fixed-UTC reference generation failed CLAIM_REJECTED/DIAGNOSIS/SUMMARY;
+  no HTTP500, no returned content, logout true. Prior failures remain unchanged.
+  Student research prompt1.5 in f1c4269 now explicitly aligns field vocabulary
+  with the unchanged guard; worker49 checks and Root3 targeted checks passed.
+  No1.5 native generation yet. Sources/model/Safety/claim guard remain unchanged.
+- Z r8 old admin session is revoked (logout cause unproven); AH r3 exact historical
+  session row has naturally expired (fresh credential-slot linkage remains limited).
+  Safe proof:D:/Dev/temp/psynova-auth-session-expiry-check-20261016-r3/.
+- Reviewed47-file incremental diff for secret/data artifacts and safety bypass;
+  development branch pushed successfully through f1c4269. No release/default merge.
+- Next: explicit AH1.5 reload, one new reference generation, native assigned review,
+  separate Output Safety publication/own access/other denial/withdraw and new
+  encrypted payload restore. AI and Z retained; no deadline or terminal job retry.
+
 ## Current checkpoint: 2026-10-16 17:20+08, active with no cutoff
 
 - Engineering estimate88%; no professional or school production approval.
