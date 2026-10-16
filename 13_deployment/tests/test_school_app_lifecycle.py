@@ -128,13 +128,13 @@ class FakeOperations:
         self.spawned.append((list(argv), cwd, dict(env)))
         return FakeProcess(pid)
 
-    def wait_ready(self, process, port, path, timeout):
+    def wait_ready(self, process, port, path, timeout, *, require_research_cat=False):
         return self.ready.get(port, True)
 
     def wait_standard_cat_ready(self, process, port, timeout):
         return self.ready.get(port, False)
 
-    def http_ready(self, port, path):
+    def http_ready(self, port, path, *, require_research_cat=False):
         return self.ready.get(port, False)
 
     def standard_cat_ready(self, port):
@@ -1792,6 +1792,91 @@ def test_http_readiness_rejects_backend_core_still_starting(monkeypatch):
         lifecycle.urllib.request, "build_opener", lambda *_handlers: Opener()
     )
     assert lifecycle.LifecycleOperations().http_ready(8088, "/health/ready") is False
+
+
+@pytest.mark.parametrize(
+    "payload,expected",
+    [
+        (
+            {
+                "data": {
+                    "status": "ready",
+                    "core": {
+                        "configuration": "READY",
+                        "session_store": "READY",
+                        "research_cat": "READY",
+                    },
+                }
+            },
+            True,
+        ),
+        (
+            {
+                "data": {
+                    "status": "ready",
+                    "core": {"configuration": "READY", "session_store": "READY"},
+                }
+            },
+            False,
+        ),
+        (
+            {
+                "data": {
+                    "status": "ready",
+                    "core": {
+                        "configuration": "READY",
+                        "session_store": "READY",
+                        "research_cat": "UNAVAILABLE",
+                    },
+                }
+            },
+            False,
+        ),
+        (
+            {
+                "data": {
+                    "status": "starting",
+                    "core": {
+                        "configuration": "READY",
+                        "session_store": "READY",
+                        "research_cat": "READY",
+                    },
+                }
+            },
+            False,
+        ),
+        ({"data": {"status": "ready", "core": []}}, False),
+    ],
+)
+def test_http_readiness_requires_existing_research_core_attestation(
+    monkeypatch, payload, expected
+):
+    class Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, _limit):
+            return json.dumps(payload).encode("utf-8")
+
+    class Opener:
+        def open(self, _url, *, timeout):
+            assert timeout == 1.0
+            return Response()
+
+    monkeypatch.setattr(
+        lifecycle.urllib.request, "build_opener", lambda *_handlers: Opener()
+    )
+    assert (
+        lifecycle.LifecycleOperations().http_ready(
+            8088, "/health/ready", require_research_cat=True
+        )
+        is expected
+    )
 
 
 def test_invalid_ports_and_unknown_frontend_mode_rejected(prepared):

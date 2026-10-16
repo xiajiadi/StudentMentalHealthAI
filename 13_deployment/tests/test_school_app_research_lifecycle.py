@@ -31,6 +31,8 @@ class FakeOperations:
         self.research_port = None
         self.cleanup_research_on_backend_stop = True
         self.research_worker_status = None
+        self.research_cat_ready = True
+        self.require_research_cat_calls = []
 
     def port_is_free(self, port):
         return port not in self.bound
@@ -71,11 +73,15 @@ class FakeOperations:
         self.spawned.append((list(argv), cwd, dict(env)))
         return FakeProcess(pid)
 
-    def wait_ready(self, _process, _port, _path, _timeout):
-        return True
+    def wait_ready(
+        self, _process, _port, _path, _timeout, *, require_research_cat=False
+    ):
+        self.require_research_cat_calls.append(require_research_cat)
+        return not require_research_cat or self.research_cat_ready
 
-    def http_ready(self, _port, _path):
-        return True
+    def http_ready(self, _port, _path, *, require_research_cat=False):
+        self.require_research_cat_calls.append(require_research_cat)
+        return not require_research_cat or self.research_cat_ready
 
     def dependency_status(self, _port, dependency):
         assert dependency == "research_education_worker"
@@ -205,6 +211,66 @@ def test_start_passes_exact_research_flags_and_manifest_keeps_only_config_metada
     assert [entry["name"] for entry in manifest["services"]] == ["backend", "frontend"]
     assert result["research_cat"]["native_pid"] is None
     assert result["research_cat"]["listener"] == "NOT_INDEPENDENTLY_OBSERVED"
+    assert result["research_cat"]["owner"] == "BACKEND_MANAGER"
+    assert result["research_cat"]["readiness"] == "READY"
+    assert True in ops.require_research_cat_calls
+
+
+def test_status_only_attests_manager_readiness_for_owned_manifest_backend(prepared):
+    _repo, workspace, ops, app = prepared
+    app.start(
+        workspace, frontend_mode="dev", research_config=_research_config(workspace)
+    )
+    spawn_count = len(ops.spawned)
+    backend = json.loads((workspace / lifecycle.MANIFEST_NAME).read_text())[
+        "services"
+    ][0]
+    ops.processes[backend["pid"]]["CommandLine"] += " --identity-mismatch"
+    ops.research_cat_ready = True
+
+    status = app.status(workspace)
+
+    assert status["research_cat"]["owner"] == "BACKEND_MANAGER"
+    assert status["research_cat"]["readiness"] == "UNVERIFIED"
+    assert status["research_cat"]["native_pid"] is None
+    assert status["services"]["backend"]["owned_process"] is False
+    assert len(ops.spawned) == spawn_count
+
+
+def test_status_keeps_research_readiness_unverified_when_backend_core_is_not_ready(
+    prepared,
+):
+    _repo, workspace, ops, app = prepared
+    app.start(
+        workspace, frontend_mode="dev", research_config=_research_config(workspace)
+    )
+    spawn_count = len(ops.spawned)
+    ops.research_cat_ready = False
+
+    status = app.status(workspace)
+
+    assert status["research_cat"]["readiness"] == "UNVERIFIED"
+    assert status["services"]["backend"]["ready"] is False
+    assert len(ops.spawned) == spawn_count
+
+
+def test_status_rejects_manifest_outside_requested_workspace_before_readiness_probe(
+    prepared,
+):
+    _repo, workspace, ops, app = prepared
+    app.start(
+        workspace, frontend_mode="dev", research_config=_research_config(workspace)
+    )
+    spawn_count = len(ops.spawned)
+    manifest_path = workspace / lifecycle.MANIFEST_NAME
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["workspace"] = str(workspace.parent / "other-workspace")
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(lifecycle.LifecycleError, match="another workspace"):
+        app.status(workspace)
+
+    assert len(ops.spawned) == spawn_count
 
 
 def test_study_use_start_adds_exact_flags_and_manifest_nonsecret_fields(
@@ -305,6 +371,7 @@ def test_research_lifecycle_stop_checks_backend_manager_listener_without_killing
 
     assert stopped["status"] == "STOPPED"
     assert stopped["research_cat"]["listener"] == "ABSENT_AFTER_BACKEND_STOP"
+    assert stopped["research_cat"]["readiness"] == "STOPPED"
     assert 990 not in ops.terminated
     assert 58540 not in ops.bound
 

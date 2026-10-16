@@ -1247,7 +1247,9 @@ if ($null -eq $p) { 'null'; exit 0 }
         except OSError:
             raise LifecycleError("Workspace preview build output could not be verified") from None
 
-    def http_ready(self, port: int, path: str) -> bool:
+    def http_ready(
+        self, port: int, path: str, *, require_research_cat: bool = False
+    ) -> bool:
         try:
             url = f"http://127.0.0.1:{port}{path}"
             if not url.startswith(f"http://127.0.0.1:{port}/"):
@@ -1266,6 +1268,10 @@ if ($null -eq $p) { 'null'; exit 0 }
                         and isinstance(core, dict)
                         and core.get("configuration") == "READY"
                         and core.get("session_store") == "READY"
+                        and (
+                            not require_research_cat
+                            or core.get("research_cat") == "READY"
+                        )
                     )
                 return True
         except (OSError, urllib.error.URLError, urllib.error.HTTPError, ValueError):
@@ -1336,13 +1342,21 @@ if ($null -eq $p) { 'null'; exit 0 }
             return None
 
     def wait_ready(
-        self, process: subprocess.Popen, port: int, path: str, timeout: float
+        self,
+        process: subprocess.Popen,
+        port: int,
+        path: str,
+        timeout: float,
+        *,
+        require_research_cat: bool = False,
     ) -> bool:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if process.poll() is not None:
                 return False
-            if self.http_ready(port, path):
+            if self.http_ready(
+                port, path, require_research_cat=require_research_cat
+            ):
                 return True
             time.sleep(min(0.25, max(0.0, deadline - time.monotonic())))
         return False
@@ -1833,7 +1847,11 @@ class SchoolAppLifecycle:
                 parent_identity,
             )
             backend_ready = self.ops.wait_ready(
-                backend, backend_port, READY_PATHS["backend"], timeout
+                backend,
+                backend_port,
+                READY_PATHS["backend"],
+                timeout,
+                require_research_cat=research_config is not None,
             )
             if backend_ready:
                 backend_ready = self._confirm_service_listener(manifest["services"][-1])
@@ -2004,7 +2022,12 @@ class SchoolAppLifecycle:
                         self.ops.standard_cat_ready(port)
                         if service.get("name") == "standard_cat"
                         else self.ops.http_ready(
-                            port, READY_PATHS.get(service.get("name"), "/")
+                            port,
+                            READY_PATHS.get(service.get("name"), "/"),
+                            require_research_cat=(
+                                service.get("name") == "backend"
+                                and research_config is not None
+                            ),
                         )
                     )
                     if owned and listener_owned and bound
@@ -2120,7 +2143,12 @@ class SchoolAppLifecycle:
                 result["status"] = "STOP_PARTIAL"
             result["research_cat"] = {
                 "port": research_config.port,
-                "owner": "backend_manager",
+                "owner": "BACKEND_MANAGER",
+                "readiness": (
+                    "READY"
+                    if listeners.get("backend", {}).get("ready") is True
+                    else "UNVERIFIED"
+                ),
                 "listener": research_listener_state,
                 "native_pid": None,
             }
@@ -2451,7 +2479,8 @@ class SchoolAppLifecycle:
         if research_config is not None:
             result["research_cat"] = {
                 "port": research_config.port,
-                "owner": "backend_manager",
+                "owner": "BACKEND_MANAGER",
+                "readiness": "STOPPED",
                 "listener": "ABSENT_AFTER_BACKEND_STOP",
                 "native_pid": None,
             }
@@ -3477,7 +3506,20 @@ def _public_status(manifest: dict[str, Any]) -> dict[str, Any]:
     if "research_config" in manifest and "research_cat_port" in manifest:
         result["research_cat"] = {
             "port": manifest["research_cat_port"],
-            "owner": "backend_manager",
+            "owner": "BACKEND_MANAGER",
+            "readiness": (
+                "STOPPED"
+                if manifest.get("state") == "STOPPED"
+                else "READY"
+                if manifest.get("state") == "RUNNING"
+                and any(
+                    service.get("name") == "backend"
+                    and service.get("readiness") == "READY"
+                    for service in manifest.get("services", [])
+                    if isinstance(service, dict)
+                )
+                else "UNVERIFIED"
+            ),
             "listener": "NOT_INDEPENDENTLY_OBSERVED",
             "native_pid": None,
         }
