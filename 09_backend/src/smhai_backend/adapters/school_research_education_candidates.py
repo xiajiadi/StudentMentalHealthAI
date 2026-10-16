@@ -2155,6 +2155,7 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
         error_code=None,
         input_review=None,
         reason_code=None,
+        private_output_safety_failure=None,
         boundary_diagnostic=None,
         output_safety_diagnostic=None,
         output_review_payload=None,
@@ -2407,6 +2408,31 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
                         "reason_code": safe_reason_code,
                     },
                 )
+            output_failure = self._safe_private_output_safety_failure(
+                private_output_safety_failure,
+                status=disposition,
+                error_code=error_code if current else None,
+                reason_code=reason_code,
+                scope_current=current,
+            )
+            if output_failure is not None:
+                token = hashlib.sha256(
+                    f"{persisted.job_ref}:{persisted.attempt_count}".encode("ascii")
+                ).hexdigest()[:32]
+                from database_layer.enums import AuditResult
+
+                await uow.audit.append(
+                    action="school_research_education_job.output_safety_dependency",
+                    resource_type=_JOB_AUDIT_RESOURCE,
+                    resource_public_id=persisted.job_ref,
+                    result=AuditResult.FAILURE,
+                    trace_id=f"TRACE_{token}",
+                    safe_metadata={
+                        "source": _POLICY_VERSION,
+                        "state": "FAILED",
+                        "reason_code": f"OUTPUT_SAFETY_{output_failure}",
+                    },
+                )
             boundary_metadata = self._safe_claim_boundary_metadata(
                 boundary_diagnostic,
                 status=disposition,
@@ -2493,6 +2519,31 @@ class SchoolResearchEducationCandidatePersistenceAdapter(
         if reason_code in _SERVICE_OUTCOME_REASON_CODES:
             return reason_code
         return "UNCLASSIFIED_OUTCOME"
+
+    @staticmethod
+    def _safe_private_output_safety_failure(
+        diagnostic, *, status, error_code, reason_code, scope_current
+    ) -> str | None:
+        from database_layer.school_research_education_jobs import (
+            ResearchEducationJobErrorCode,
+        )
+
+        if (
+            not scope_current
+            or status != "FAILED"
+            or error_code is not ResearchEducationJobErrorCode.UPSTREAM_TRANSIENT
+            or reason_code != "OUTPUT_SAFETY_UNAVAILABLE"
+        ):
+            return None
+        if type(diagnostic) is not str or diagnostic not in {
+            "TIMEOUT",
+            "TRANSPORT",
+            "UPSTREAM_HTTP",
+            "INVALID_RESPONSE",
+            "OTHER",
+        }:
+            return None
+        return diagnostic
 
     @staticmethod
     def _safe_claim_boundary_metadata(

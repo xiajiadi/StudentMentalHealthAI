@@ -816,6 +816,87 @@ async def test_terminal_reason_audit_is_safe_and_same_uow(
     }
 
 
+async def test_private_output_safety_dependency_audit_is_closed_and_same_uow():
+    claim = _education_job_claim()
+    configured = adapter()
+    events = _finalize_harness(configured, claim)
+
+    disposition = await configured.finalize_education_job(
+        claim,
+        status="FAILED",
+        error_code=ResearchEducationJobErrorCode.UPSTREAM_TRANSIENT,
+        reason_code="OUTPUT_SAFETY_UNAVAILABLE",
+        private_output_safety_failure="TRANSPORT",
+    )
+
+    assert disposition == "FAILED"
+    assert [event[0] for event in events] == ["finish", "audit", "audit"]
+    assert events[0][2] is events[1][2] is events[2][2]
+    terminal = events[1][1]
+    diagnostic = events[2][1]
+    assert terminal["action"] == "school_research_education_job.terminal"
+    assert terminal["safe_metadata"]["reason_code"] == "OUTPUT_SAFETY_UNAVAILABLE"
+    assert diagnostic["action"] == "school_research_education_job.output_safety_dependency"
+    assert diagnostic["resource_type"] == "school_research_education_job"
+    assert diagnostic["resource_public_id"] == claim.job_ref
+    assert diagnostic["result"] is AuditResult.FAILURE
+    assert diagnostic["trace_id"] == terminal["trace_id"]
+    assert diagnostic["safe_metadata"] == {
+        "source": GENERAL_EDUCATION_POLICY_VERSION,
+        "state": "FAILED",
+        "reason_code": "OUTPUT_SAFETY_TRANSPORT",
+    }
+
+
+@pytest.mark.parametrize(
+    ("status", "error_code", "reason_code", "diagnostic"),
+    [
+        (
+            "FAILED",
+            ResearchEducationJobErrorCode.UPSTREAM_TRANSIENT,
+            "OUTPUT_SAFETY_UNAVAILABLE",
+            "secret response body",
+        ),
+        (
+            "FAILED",
+            ResearchEducationJobErrorCode.GENERATION_FAILED,
+            "OUTPUT_SAFETY_UNAVAILABLE",
+            "TIMEOUT",
+        ),
+        (
+            "ABSTAINED",
+            ResearchEducationJobErrorCode.GENERATION_FAILED,
+            "OUTPUT_SAFETY_UNAVAILABLE",
+            "TIMEOUT",
+        ),
+        (
+            "FAILED",
+            ResearchEducationJobErrorCode.UPSTREAM_TRANSIENT,
+            "RESEARCH_RUNTIME_FAILED",
+            "TIMEOUT",
+        ),
+    ],
+)
+async def test_invalid_private_output_safety_diagnostic_is_omitted(
+    status, error_code, reason_code, diagnostic
+):
+    claim = _education_job_claim()
+    configured = adapter()
+    events = _finalize_harness(configured, claim)
+
+    disposition = await configured.finalize_education_job(
+        claim,
+        status=status,
+        error_code=error_code,
+        reason_code=reason_code,
+        private_output_safety_failure=diagnostic,
+    )
+
+    assert disposition == status
+    assert [event[0] for event in events] == ["finish", "audit"]
+    assert all("secret response body" not in repr(event[1]) for event in events)
+
+
 async def test_boundary_diagnostic_audit_is_content_free_and_same_uow():
     claim = _education_job_claim()
     configured = adapter()

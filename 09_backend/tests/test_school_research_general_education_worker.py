@@ -757,6 +757,46 @@ async def test_worker_forwards_only_typed_output_safety_diagnostic():
     assert adapter.stored == []
 
 
+@pytest.mark.asyncio
+async def test_worker_forwards_private_output_dependency_class_only_when_present():
+    claim = _claim()
+    adapter = _Adapter()
+    outcome = ResearchGeneralEducationOutcome(
+        status="FAILED",
+        reason_code="OUTPUT_SAFETY_UNAVAILABLE",
+        private_output_safety_failure="UPSTREAM_HTTP",
+    )
+    worker = _worker(claim=claim, adapter=adapter, generation=_Generation(outcome))
+
+    result = await worker.run_once()
+
+    assert result is ResearchGeneralEducationWorkerResult.FAILED
+    assert adapter.finalized == [
+        (claim, "FAILED", ResearchEducationJobErrorCode.UPSTREAM_TRANSIENT)
+    ]
+    assert adapter.finalize_kwargs == [
+        {
+            "reason_code": "OUTPUT_SAFETY_UNAVAILABLE",
+            "private_output_safety_failure": "UPSTREAM_HTTP",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_worker_does_not_forward_private_diagnostic_for_unrelated_failure():
+    claim = _claim()
+    adapter = _Adapter()
+    outcome = ResearchGeneralEducationOutcome(
+        status="FAILED", reason_code="RESEARCH_RUNTIME_FAILED"
+    )
+    worker = _worker(claim=claim, adapter=adapter, generation=_Generation(outcome))
+
+    result = await worker.run_once()
+
+    assert result is ResearchGeneralEducationWorkerResult.FAILED
+    assert adapter.finalize_kwargs == [{"reason_code": "RESEARCH_RUNTIME_FAILED"}]
+
+
 @pytest.mark.parametrize(
     ("action", "requires_human", "status", "result"),
     [

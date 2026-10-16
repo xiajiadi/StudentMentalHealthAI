@@ -13,7 +13,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr
 
-from smhai_backend.core.errors import ErrorCode, error
+from smhai_backend.core.errors import BackendError, ErrorCode, error
 from smhai_backend.core.request_context import RequestContext, valid_correlation_id
 from smhai_backend.domains.conversations.service import _contains_unsupported_bibliography
 from smhai_backend.domains.support.schemas import GenerationContent
@@ -22,6 +22,7 @@ from smhai_backend.domains.support.service import (
     _contains_forbidden_generated_claim,
     _first_boundary_match,
 )
+from smhai_backend.integrations.common_http import UpstreamError
 from smhai_backend.integrations.evidence import (
     CitationBindingError,
     EligibilityPolicy,
@@ -460,8 +461,12 @@ class ResearchGeneralEducationDraftService:
             output_check = await self.safety.check_output(
                 output_context, generated.content_json, request_context
             )
-        except Exception:
-            return _outcome("FAILED", "OUTPUT_SAFETY_UNAVAILABLE")
+        except Exception as exc:
+            return _outcome(
+                "FAILED",
+                "OUTPUT_SAFETY_UNAVAILABLE",
+                private_output_safety_failure=_private_output_safety_failure(exc),
+            )
         output_codes = _safety_codes(output_check, "OUTPUT", request_context)
         if output_codes is None:
             return _outcome("FAILED", "OUTPUT_SAFETY_INVALID")
@@ -1141,6 +1146,7 @@ def _outcome(
     boundary_diagnostic: ResearchGeneralEducationBoundaryDiagnostic | None = None,
     output_safety_diagnostic: ResearchGeneralEducationOutputSafetyDiagnostic | None = None,
     output_review_payload: ResearchGeneralEducationOutputReviewPayload | None = None,
+    private_output_safety_failure: str | None = None,
 ) -> ResearchGeneralEducationOutcome:
     return ResearchGeneralEducationOutcome(
         status=status,
@@ -1148,4 +1154,29 @@ def _outcome(
         boundary_diagnostic=boundary_diagnostic,
         output_safety_diagnostic=output_safety_diagnostic,
         output_review_payload=output_review_payload,
+        private_output_safety_failure=private_output_safety_failure,
     )
+
+
+def _private_output_safety_failure(exc: BaseException) -> str:
+    """Project only a closed dependency class; never retain exception text."""
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    for _ in range(5):
+        if current is None or id(current) in seen:
+            break
+        seen.add(id(current))
+        if isinstance(current, UpstreamError):
+            if current.code is ErrorCode.DEPENDENCY_TIMEOUT:
+                return "TIMEOUT"
+            if current.code is ErrorCode.DEPENDENCY_UNAVAILABLE:
+                return "UPSTREAM_HTTP" if type(current.status_code) is int else "TRANSPORT"
+            if current.code is ErrorCode.DEPENDENCY_INVALID_RESPONSE:
+                return "INVALID_RESPONSE"
+        if isinstance(current, BackendError):
+            if current.code is ErrorCode.DEPENDENCY_TIMEOUT:
+                return "TIMEOUT"
+            if current.code is ErrorCode.DEPENDENCY_INVALID_RESPONSE:
+                return "INVALID_RESPONSE"
+        current = current.__cause__
+    return "OTHER"

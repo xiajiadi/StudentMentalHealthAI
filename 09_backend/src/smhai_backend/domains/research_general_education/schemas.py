@@ -357,6 +357,9 @@ class ResearchGeneralEducationOutcome(_StrictModel):
     boundary_diagnostic: ResearchGeneralEducationBoundaryDiagnostic | None = None
     output_safety_diagnostic: ResearchGeneralEducationOutputSafetyDiagnostic | None = None
     output_review_payload: ResearchGeneralEducationOutputReviewPayload | None = None
+    private_output_safety_failure: Literal[
+        "TIMEOUT", "TRANSPORT", "UPSTREAM_HTTP", "INVALID_RESPONSE", "OTHER"
+    ] | None = Field(default=None, exclude=True)
 
     def model_post_init(self, __context: object) -> None:
         if (self.status == "HELD") != (self.candidate is not None):
@@ -377,6 +380,12 @@ class ResearchGeneralEducationOutcome(_StrictModel):
             or self.output_safety_diagnostic.stopped_status != self.status
         ):
             raise ValueError("output Safety diagnostics must match the actual stop outcome")
+        if self.private_output_safety_failure is not None and (
+            self.status != "FAILED" or self.reason_code != "OUTPUT_SAFETY_UNAVAILABLE"
+        ):
+            raise ValueError(
+                "private output dependency diagnostics require an output Safety failure"
+            )
         if self.output_review_payload is not None and (
             self.status != "REVIEW_REQUIRED"
             or self.reason_code != "OUTPUT_SAFETY_STOP"

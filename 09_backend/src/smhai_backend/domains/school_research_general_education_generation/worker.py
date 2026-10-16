@@ -346,6 +346,7 @@ class ResearchGeneralEducationWorker:
                 status=status,
                 error_code=code,
                 reason_code=outcome.reason_code,
+                private_output_safety_failure=outcome.private_output_safety_failure,
                 boundary_diagnostic=outcome.boundary_diagnostic,
                 output_safety_diagnostic=outcome.output_safety_diagnostic,
                 output_review_payload=outcome.output_review_payload,
@@ -448,10 +449,16 @@ class ResearchGeneralEducationWorker:
         boundary_diagnostic=None,
         output_safety_diagnostic=None,
         output_review_payload=None,
+        private_output_safety_failure=None,
     ) -> ResearchGeneralEducationWorkerResult:
         try:
             review_kwargs = {} if input_review is None else {"input_review": input_review}
             reason_kwargs = {} if reason_code is None else {"reason_code": reason_code}
+            private_output_failure_kwargs = (
+                {}
+                if private_output_safety_failure is None
+                else {"private_output_safety_failure": private_output_safety_failure}
+            )
             boundary_kwargs = (
                 {}
                 if boundary_diagnostic is None
@@ -473,6 +480,7 @@ class ResearchGeneralEducationWorker:
                 error_code=error_code,
                 **review_kwargs,
                 **reason_kwargs,
+                **private_output_failure_kwargs,
                 **boundary_kwargs,
                 **output_safety_kwargs,
                 **output_review_kwargs,

@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from smhai_backend.adapters.school_research_education_candidates import (
     SchoolResearchEducationCandidatePersistenceAdapter,
 )
-from smhai_backend.core.errors import BackendError
+from smhai_backend.core.errors import BackendError, ErrorCode
 from smhai_backend.core.request_context import RequestContext
 from smhai_backend.domains.research_general_education.input_review_policy import (
     INPUT_REVIEW_CONTINUATION_POLICY_SHA256,
@@ -58,6 +58,7 @@ from smhai_backend.domains.research_general_education.service import (
     canonical_input_context_sha256,
     source_cards_from_package,
 )
+from smhai_backend.integrations.common_http import UpstreamError
 from smhai_backend.integrations.evidence import (
     EligibilityPolicy,
     build_retrieval_evidence_bundle,
@@ -268,6 +269,16 @@ class _OutputReviewSafety(_Safety):
         )
 
 
+class _OutputFailureSafety(_Safety):
+    def __init__(self, failure):
+        super().__init__()
+        self.failure = failure
+
+    async def check_output(self, context, candidate_text, request_context):
+        self.calls.append(("OUTPUT", context))
+        raise self.failure
+
+
 class _InputReviewSafety(_Safety):
     def __init__(
         self,
@@ -418,6 +429,73 @@ async def test_generation_returns_exact_cited_sources_held_and_pinned():
     assert retriever.call_args[0]["top_k"] == 3
     assert retriever.call_args[0]["required_layers"] == ("policy", "theory", "intervention")
     assert len(canonical_candidate_payload_sha256(result.candidate)) == 64
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("error_code", "status_code", "expected"),
+    [
+        (ErrorCode.DEPENDENCY_TIMEOUT, None, "TIMEOUT"),
+        (ErrorCode.DEPENDENCY_UNAVAILABLE, None, "TRANSPORT"),
+        (ErrorCode.DEPENDENCY_UNAVAILABLE, 503, "UPSTREAM_HTTP"),
+        (ErrorCode.DEPENDENCY_INVALID_RESPONSE, 502, "INVALID_RESPONSE"),
+    ],
+)
+async def test_output_safety_unavailable_keeps_terminal_reason_and_private_closed_class(
+    error_code, status_code, expected
+):
+    upstream = UpstreamError(error_code, status_code=status_code)
+    failure = BackendError(error_code)
+    failure.__cause__ = upstream
+    service, _ = _service(safety=_OutputFailureSafety(failure))
+
+    outcome = await service.generate(
+        caller_role="PSYCHOLOGICAL_SPECIALIST", request_context=CONTEXT
+    )
+
+    assert outcome.status == "FAILED"
+    assert outcome.reason_code == "OUTPUT_SAFETY_UNAVAILABLE"
+    assert outcome.private_output_safety_failure == expected
+    assert "private_output_safety_failure" not in outcome.model_dump()
+    assert "private_output_safety_failure" not in outcome.model_dump(mode="json")
+
+
+@pytest.mark.asyncio
+async def test_output_safety_unknown_exception_keeps_only_other_class_not_exception_text():
+    service, _ = _service(
+        safety=_OutputFailureSafety(RuntimeError("secret-body-must-not-be-retained"))
+    )
+
+    outcome = await service.generate(
+        caller_role="PSYCHOLOGICAL_SPECIALIST", request_context=CONTEXT
+    )
+
+    assert outcome.status == "FAILED"
+    assert outcome.reason_code == "OUTPUT_SAFETY_UNAVAILABLE"
+    assert outcome.private_output_safety_failure == "OTHER"
+    assert "secret-body-must-not-be-retained" not in repr(outcome)
+
+
+def test_private_output_safety_failure_field_is_closed_and_not_serialized():
+    with pytest.raises(ValueError):
+        ResearchGeneralEducationOutcome(
+            status="FAILED",
+            reason_code="RESEARCH_RUNTIME_FAILED",
+            private_output_safety_failure="TIMEOUT",
+        )
+    with pytest.raises(ValueError):
+        ResearchGeneralEducationOutcome(
+            status="FAILED",
+            reason_code="OUTPUT_SAFETY_UNAVAILABLE",
+            private_output_safety_failure="arbitrary exception text",
+        )
+    outcome = ResearchGeneralEducationOutcome(
+        status="FAILED",
+        reason_code="OUTPUT_SAFETY_UNAVAILABLE",
+        private_output_safety_failure="TIMEOUT",
+    )
+    assert "private_output_safety_failure" not in outcome.model_dump()
+    assert "private_output_safety_failure" not in outcome.model_dump_json()
 
 
 @pytest.mark.asyncio
