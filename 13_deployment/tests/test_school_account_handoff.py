@@ -45,6 +45,7 @@ def test_backend_preflight_uses_closed_safe_output_and_strips_secret_environment
     python.touch()
     monkeypatch.setattr(sys, "executable", str(pythonw))
     monkeypatch.setenv("DB_PASSWORD", "never-forward-this")
+    monkeypatch.setenv("USERNAME", "synthetic-local-operator")
     captured = {}
 
     def run(argv, **kwargs):
@@ -65,6 +66,7 @@ def test_backend_preflight_uses_closed_safe_output_and_strips_secret_environment
     assert captured["argv"][0] == str(python)
     assert captured["argv"][-1] == "--preflight-only"
     assert "DB_PASSWORD" not in captured["env"]
+    assert captured["env"]["USERNAME"] == "synthetic-local-operator"
 
 
 def test_backend_preflight_rejects_extra_output_fields_and_hides_child_output(

@@ -122,7 +122,18 @@ def _backend_preflight(workspace: Path, expected_marker: dict[str, Any]) -> None
         raise AccountHandoffError("OWNER_CHECK_FAILED")
     child_environment = {
         key: os.environ[key]
-        for key in ("PATH", "SystemRoot", "WINDIR", "TEMP", "TMP", "USERPROFILE")
+        for key in (
+            "PATH",
+            "SystemRoot",
+            "WINDIR",
+            "TEMP",
+            "TMP",
+            "USERPROFILE",
+            # PyMySQL calls getpass.getuser() while SQLAlchemy loads its MySQL
+            # driver. On Windows, getpass falls back to importing ``pwd`` if
+            # USERNAME is absent, which is a Unix-only module.
+            "USERNAME",
+        )
         if isinstance(os.environ.get(key), str)
     }
     script = REPO / "13_deployment" / "school_backend.py"
