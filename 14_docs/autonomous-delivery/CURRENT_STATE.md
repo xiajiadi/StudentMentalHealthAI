@@ -1,5 +1,27 @@
 # PsyNova current execution state
 
+## Current checkpoint: 2026-10-16 15:03+08,0024 integrated; independent review corrections pending
+
+- No cutoff. Estimate86%; all professional/formal approval flags remain false.
+- Integrated Backend103df53 (worker15711a4), additive schemaa56a565/b0a4845,
+  restore4bad94c (workera91ae04), frontend465a262/3e4cb72 and Root UX100d787/81b005c.
+  Root integrated checks:170 restore/import/workspace/migration,95 existing
+  conversation service/API/adapter,17 new review/DB,13 frontend review checks,
+  26 student-flow checks and typecheck passed. No native0024 or new model run yet.
+- Independent same-layer review found4 material gaps despite those checks:
+  research candidate generation may include previous ABSTAIN history; assigned
+  list lacks renewed owner SELF validation;publish/replay response omits published
+  content required by strict client;REVOKED cannot yet transition WITHDRAWN.
+  Root confirmed corrections and assigned the Backend owner a bounded fix commit.
+  Do not treat the previous test counts as approval to enable this new workflow.
+- Next:review/integrate those exact fixes,create latest-source AE installation
+  (planned DB3340/API8114/UI4204/standardCAT8192/researchCAT57431;not yet created),
+  then one new fixed7B research-only no-CAT generation and explicit per-draft
+  consent/review/Output Safety/publication/withdrawal,real browser permissions,
+  encrypted0024 backup/restore. Keep Z800/revision0023 unchanged and never retry
+  its terminal jobs. Other worker is completing bounded Z business-only GET QA;
+  failed temporary browser wrappers are not product/browser evidence.
+
 ## Current checkpoint: 2026-10-16 14:10+08, no cutoff; installer recovered, independent review in progress
 
 - Latest user instruction cancels all shutdown deadlines. Goal and Runner remain
