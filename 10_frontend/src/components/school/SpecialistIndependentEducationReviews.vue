@@ -193,7 +193,12 @@ async function executePending() {
     const successMessage = operation.label === '保存草稿' ? '修订草稿已保存。发布仍需单独确认。'
       : operation.label === '发布' ? '复核资料已发布给本人。此操作不代表任何专业或正式批准。'
         : '发布已撤回，学生将无法继续查看。'
-    await Promise.all([loadList(offset.value), openDetail(operation.reviewRef)])
+    if (operation.label === '撤回发布') {
+      clearDetail()
+      await loadList(offset.value)
+    } else {
+      await Promise.all([loadList(offset.value), openDetail(operation.reviewRef)])
+    }
     statusMessage.value = successMessage
   } catch (error) {
     if (accessLost(error)) {

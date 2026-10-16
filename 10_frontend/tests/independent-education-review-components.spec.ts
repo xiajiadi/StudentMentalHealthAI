@@ -234,4 +234,41 @@ describe('independent education review components', () => {
     expect(wrapper.text()).not.toContain('仅心理老师可见的合成原始候选摘要')
     wrapper.unmount()
   })
+
+  it('clears withdrawn detail and does not request the revoked review again', async () => {
+    const publishedSummary = { ...specialistSummary, status: 'PUBLISHED', state_version: 4 }
+    const publishedDetail = {
+      ...specialistDetail,
+      ...publishedSummary,
+      reviewed_draft: {
+        title: '合成已发布标题', body: '合成已发布正文', content_revision: 1,
+        citations: [], source_cards: [], updated_at: '2026-10-16T10:00:00Z',
+      },
+    }
+    services.specialistList
+      .mockResolvedValueOnce({ items: [publishedSummary], total: 1, offset: 0, limit: 20, has_more: false })
+      .mockResolvedValueOnce({ items: [], total: 0, offset: 0, limit: 20, has_more: false })
+    services.specialistGet.mockResolvedValue(publishedDetail)
+    services.specialistRevoke.mockResolvedValue(undefined)
+    const pinia = signIn('psychological_specialist')
+    const wrapper = mount(SpecialistIndependentEducationReviews, {
+      global: { plugins: [pinia] },
+    })
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text().includes('已发布'))!.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('合成已发布正文')
+
+    await wrapper.get('.independent-education-review-workspace__confirm input').setValue(true)
+    await wrapper.findAll('button').find((button) => button.text().trim() === '撤回发布')!.trigger('click')
+    await flushPromises()
+
+    expect(services.specialistRevoke).toHaveBeenCalledOnce()
+    expect(services.specialistGet).toHaveBeenCalledTimes(1)
+    expect(services.specialistList).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).not.toContain('合成已发布正文')
+    expect(wrapper.text()).not.toContain('原始内容保留不变')
+    expect(wrapper.text()).toContain('发布已撤回，学生将无法继续查看。')
+    wrapper.unmount()
+  })
 })
