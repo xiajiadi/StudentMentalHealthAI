@@ -80,6 +80,7 @@ def _verify_private_acl(workspace: Path, vault: Path) -> None:
             ["pwsh", "-NoProfile", "-NonInteractive", "-Command", _ACL_SCRIPT],
             capture_output=True,
             check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000),
             env=child_environment,
             text=True,
             timeout=10,

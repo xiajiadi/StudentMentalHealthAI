@@ -1,4 +1,5 @@
 import json
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -332,6 +333,7 @@ def test_acl_child_result_must_be_exact_and_private(tmp_path, monkeypatch):
 
     def run(argv, **kwargs):
         captured["env"] = kwargs["env"]
+        captured["creationflags"] = kwargs["creationflags"]
         return SimpleNamespace(
             returncode=0,
             stdout='{"workspace_private":true,"vault_private":true}',
@@ -342,6 +344,9 @@ def test_acl_child_result_must_be_exact_and_private(tmp_path, monkeypatch):
     monkeypatch.setattr("school_account_handoff.subprocess.run", run)
     _verify_private_acl(workspace, vault)
     assert "DB_PASSWORD" not in captured["env"]
+    assert captured["creationflags"] == getattr(
+        subprocess, "CREATE_NO_WINDOW", 0x08000000
+    )
 
     monkeypatch.setattr(
         "school_account_handoff.subprocess.run",
