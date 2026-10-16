@@ -1,5 +1,40 @@
 # PsyNova current execution state
 
+## Current checkpoint: 2026-10-16, all800 round0 jobs persisted
+
+- First800-driver attempt stopped before any POST because the specialist was
+  assigned only task01. Root authorized the normal administrator workflow:
+  exactly7 assignment POSTs for existing tasks02–08, each200; task01 unchanged.
+  Fresh specialist GET confirms all8 targets,100 eligible sessions each, with
+  first50 API/DB rows matching per task. No role escalation or direct DB grants.
+  D:/Dev/temp/psynova-z0023-education-batch-20261016-r1/specialist-assignment-proof-20261016-r1.json.
+- After independent lock/replay review and Root's final snapshot-race fix, driver
+  SHA62c78c3af45fd47d67aa18873583c6c45b0db1d6ad7e83d985baadf1943ba542
+  completed8 enqueue POST invocations/8 reservations/8 receipts, covering800
+  unique sessions.13 existing round0 jobs and7 round1 jobs were preserved;787
+  round0 jobs were newly created. Final active count765 is a point-in-time
+  snapshot, not completion of AI processing. Logout and OS lock release succeeded.
+  D:/Dev/temp/psynova-z0023-education-batch-20261016-r1/batch800-ledger-0cdadcb4f63e6df59662.json.
+- Source-catalogue initial viewport is visible at scrollY0; Root viewed the
+  masked screenshot. Earlier element screenshot clipping was a capture artifact,
+  not evidence of a CSS defect. No cosmetic rewrite was made.
+  D:/Dev/temp/psynova-z-source-initial-viewport-20261016-r4/.
+- Integrated39bed35 consumes existing Backend /health/ready research_cat proof
+  without changing health DTOs or claiming independent child PID ownership.
+  Root92 deployment checks passed. Actual official status reports owned Backend
+  plus research_cat owner BACKEND_MANAGER/readiness READY; listener remains
+  PRESENT_UNVERIFIED_OWNER/native_pid null,whole_ready/current_ready_proof false.
+  D:/Dev/temp/psynova-z-researchcat-attestation-20261016-r1.json.
+- Actual research Runtime8161 and Safety8191 /health each return200/READY without
+  generation. Earlier /health/ready probes returned404 because they targeted the
+  generic-module route rather than the research hosts; failed probes are retained.
+  D:/Dev/temp/psynova-z-runtime-safety-readiness-20261016-r3.json.
+- Active next:observe800 queue drain and diagnose actual throughput; inspect
+  real pending input receipts before explicit per-record engineering decisions.
+  Root caught inventory helper pin-key/eligibility/exit-code defects before any
+  inventory execution; worker is fixing them. No bulk approval, candidate
+  adoption or feedback publication has been added. No shutdown deadline.
+
 ## Current checkpoint: 2026-10-16, source catalogue and operations audit exercised
 
 - Product9d9db67 includes both new role pages, service/router wiring and strict
