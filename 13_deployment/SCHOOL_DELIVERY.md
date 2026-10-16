@@ -64,7 +64,17 @@ Lifecycle 只管理学校 Backend/Frontend 和明确启用的 CAT。安装成功
 
 官方浏览器 QA 在内存中读取并校验登记的合成账号，不会把密码作为命令参数或写入报告。这条路径用于自动验证，不是人工凭据交接。
 
-当前没有面向演示人员的安全凭据导出/交接命令。若操作者没有已授权的账号，应先由项目负责人安排受控凭据交付；不要解密后复制、打印或放入仓库。
+用源仓库的 `pythonw.exe` 启动本地窗口：
+
+```powershell
+$source = '<源仓库绝对路径>'
+& "$source\09_backend\.venv\Scripts\pythonw.exe" `
+  "$source\13_deployment\school_account_handoff.py"
+```
+
+在窗口输入外部 workspace 绝对路径和 `workspace.json` 中的 UUID。工具会先核对合成 workspace、Backend 的只读 owner/权限预检和账号文件 DACL，再显示登记的 alpha 四角色账号名；密码默认隐藏，只有选中一个账号并点击“显示所选账号密码”后才暂显。关闭或切换账号会清空显示控件；工具不写日志、文件、剪贴板或截图。
+
+该工具仅在创建这些 DPAPI 文件的 Windows 用户会话中可用。若操作者没有已授权账号，需由项目负责人安排受控凭据交付；不要解密后复制、打印或放入仓库。
 
 运行数据库身份与 workspace 创建身份分离，权限限定在本校 schema 的读写操作。不要复用、清空或恢复到已有 workspace；备份与恢复只能使用官方新目标流程。
 
