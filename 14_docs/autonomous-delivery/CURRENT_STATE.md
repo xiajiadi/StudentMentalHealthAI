@@ -1,5 +1,57 @@
 # PsyNova current execution state
 
+## Current checkpoint: 2026-10-16 21:29+08, local engineering demonstration ready
+
+- Controller concludes ENGINEERING_DEMO_READY for the defined local Windows,
+  fictional-school/public-research scope after independent gap review and actual
+  artifact inspection. This does not complete school production delivery,
+  psychometric validation or professional approval. No shutdown cutoff applies.
+- Final running product source is ec3badc45d988b82fa9145536092d4254a937a3d,
+  also pushed to origin/xiajiadi/autonomous-delivery-20261011. Later README/state
+  edits are documentation only; do not reload the product merely for these edits.
+  Primary entry: http://127.0.0.1:4207/login. Runtime checkout:
+  D:/Projects/StudentMentalHealthAI-school-install-deps-20261016-ah.
+  Workspace: D:/Projects/.StudentMentalHealthAI-school-restore-20261016-ai,
+  UUID02f28e8d8c3ec82aa5a84a0a06723ac3, DB3343/API8117/CAT8195, schema0024.
+  Final lifecycle manifest SHA256:
+  6dcc56cbce79b7cad07b13c43d3f3be7cb15ac6003e8242a12acccaf8fc14f9c.
+- Official lifecycle reports RUNNING, owned Backend/Frontend/standard CAT ready,
+  database VERIFIED. Actual /health/ready data is ready; CAT, RAG, local Runtime,
+  Safety and four worker integrations report READY. Generic lifecycle whole_ready
+  remains false; it is not rewritten or treated as whole-platform acceptance.
+  Evidence: D:/Dev/temp/psynova-ai-primary-reload-pagination-20261016-r5/
+  official-start-result-final.json and official-health-readonly-r1.json.
+- Final native specialist paging made real GET requests offset0 and20, limit20,
+  each200/20 rows, total199; UI showed1-20 and21-40. Existing synthetic safety
+  case remains IN_REVIEW/v3/CRISIS_ROUTE with the fixed non-clinical note after
+  restart; logout200, no business writes/model calls. Root inspected the actual
+  offset20 screenshot. Fixed-header overlap in tall component captures is a
+  screenshot limitation, not proof that every viewport state is unobstructed.
+  Evidence: D:/Dev/temp/psynova-ai-primary-reload-pagination-20261016-r6/
+  specialist-pagination-result.json, SHA256:
+  35cd644c13f17654a5f6882347f5200da3f89b525d811917b4409dfbae9b37ee.
+- Teacher native summary showed8 main classes with100/100 complete each; strict
+  completion-only fields,13 aggregate tasks total. Specialist note PUT happened
+  once, ASSIGNED/v2 to IN_REVIEW/v3, without clearing CRISIS_ROUTE. Root inspected
+  both screenshots. Evidence: D:/Dev/temp/
+  psynova-ai-synthetic-crisis-note-teacher-20261016-r1/final-proof.json.
+  Distinct800-account auth coverage and preserved6400 observed answers were
+  reconciled separately; R6 native reviewed publication/revoke/withdraw and
+  encrypted0024 restore proofs are indexed in the checkpoints below.
+- Preserve honest outcomes:799 permitted main R1 jobs ended285 HELD,
+  392 REVIEW_REQUIRED,105 ABSTAINED,17 FAILED; one older receipt remains absent.
+  These are not800 successful AI reports. Published eight-item research profile
+  remains min=max8; numerical baseline/complement consistency does not validate
+  shortened CAT or Chinese-school measurement applicability.
+- Remaining outside this bounded local demonstration: independent professional
+  review, target-school deployment/security/operations acceptance, suitable
+  language/population measurement validation, licensed asset distribution and
+  cross-user/machine provisioning. Current DPAPI recovery is same-user only;
+  models/services/caches are prerequisites, not a fully bundled installer.
+  Legacy Runner queue is not falsely marked DONE: no active lease, one old task
+  exhausted its claim budget. Observed heartbeat continuation is not OS-reboot
+  persistence. Preserve user-untracked files, frozen pins and all failed targets.
+
 ## Current checkpoint: 2026-10-16 21:06+08, source integrity preserved; final role checks active
 
 - Engineering estimate98%; no cutoff. Root inspected R6 published and withdrawn
