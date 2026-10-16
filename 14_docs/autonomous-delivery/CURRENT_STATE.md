@@ -20,7 +20,8 @@
   otherwise imports unavailable Unix pwd). Root actual AI owned-workspace
   validation and RAM-only account load passed, four registered role slots;
   credentials were cleared without printing values. Nine focused checks pass.
-  Native GUI appearance remains unverified; passwords are hidden until user click.
+  Independent native Tk dummy-only check passed masked default, explicit reveal,
+  switch clearing and close cleanup (444x410); no actual-password screenshot.
 - Independent CAT audit found existing adult five-domain replay is not the
   main800 PROMIS pediatric eight-item source. Main800 uses fixed min=max8.
   4260980 adds independent full-eight-item GRM likelihood/EAP quadrature.
@@ -29,9 +30,14 @@
   promis-full-bank-eap-20261016-r1/summary.json. Root3 focused checks passed.
   Same published parameters/observations/prior, no held-out split: this establishes
   numerical consistency only, not shortening, population validity or predictivity.
-- Safety-case UI audit found existing specialist assigned-case view and Backend
-  assignment endpoint, but no admin assignment UI. That gap is being implemented;
-  a new controlled synthetic-crisis native case is being prepared separately.
+  Independent read-only formula/report audit found matching source pins and no
+  numerical/claim discrepancy; it did not rerun800 or inspect response rows.
+- Safety-case initial UI search incorrectly reported missing admin assignment.
+  SafetyAssignments.vue already mounts in AdminWorkspaceView settings and uses
+  existing specialist/class lists and versioned assignment API. Duplicate work
+  was stopped; a new controlled synthetic-crisis native case will exercise this
+  existing admin-to-assigned-specialist path. No product gap is inferred merely
+  from the earlier incomplete search.
 - Runner legacy task remains at claim limit with no active lease. Current Root
   and active heartbeat continue authorized work; no claim of persistent Runner
   execution, professional approval, production release or completed acceptance.
