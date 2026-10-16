@@ -8,6 +8,7 @@ import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import SpecialistTaskReviews from '@/components/school/SpecialistTaskReviews.vue'
 import SpecialistResearchFeedback from '@/components/school/SpecialistResearchFeedback.vue'
 import SpecialistResearchProgrammeCandidates from '@/components/school/SpecialistResearchProgrammeCandidates.vue'
+import SpecialistIndependentEducationReviews from '@/components/school/SpecialistIndependentEducationReviews.vue'
 import SpecialistCatManagement from '@/components/school/SpecialistCatManagement.vue'
 import SchoolResearchManagement from '@/components/school/SchoolResearchManagement.vue'
 import SchoolResearchSourceCatalog from '@/components/school/SchoolResearchSourceCatalog.vue'
@@ -68,6 +69,7 @@ const page = computed(() => ({
       <SchoolConversationSafetyReviews />
       <SpecialistTaskReviews />
       <SpecialistResearchFeedback />
+      <SpecialistIndependentEducationReviews />
       <SpecialistResearchProgrammeCandidates />
     </template>
     <template v-else-if="section === 'cat'">

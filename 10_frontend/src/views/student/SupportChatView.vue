@@ -6,6 +6,7 @@ import AppBadge from '@/components/app/AppBadge.vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
+import StudentIndependentEducationReviews from '@/components/school/StudentIndependentEducationReviews.vue'
 import type { ReportSummary } from '@/api/client'
 import { frontendApi } from '@/services/mock-api'
 import {
@@ -32,6 +33,7 @@ const loadingList = ref(true)
 const loadingDetail = ref(false)
 const creating = ref(false)
 const sending = ref(false)
+const educationReviewRefreshToken = ref(0)
 const loadingMore = ref(false)
 const listError = ref('')
 const detailError = ref('')
@@ -146,7 +148,10 @@ const openConversation = async (conversationId: string, offset = 0) => {
     if (requestSequence === detailRequestSequence && selectedConversationId.value === conversationId) {
       detail.value = result
       const receiptTurn = receipt.value && result.messages.find((message) => message.turnId === receipt.value?.turnId)
-      if (receipt.value?.status === 'requested' && receiptTurn && receiptTurn.turn.status !== 'requested') receipt.value = null
+      if (receipt.value?.status === 'requested' && receiptTurn && receiptTurn.turn.status !== 'requested') {
+        receipt.value = null
+        if (props.researchMode) educationReviewRefreshToken.value += 1
+      }
     }
   } catch (error) {
     if (requestSequence === detailRequestSequence && selectedConversationId.value === conversationId) {
@@ -223,6 +228,9 @@ const handleSend = async () => {
       submission.text,
       submission.key,
     )
+    if (props.researchMode && selectedConversationId.value === conversationId && receipt.value.status !== 'requested') {
+      educationReviewRefreshToken.value += 1
+    }
     failedSubmission = null
     draft.value = ''
     await openConversation(conversationId, latestOffset)
@@ -519,6 +527,13 @@ onMounted(() => {
         </template>
       </AppCard>
     </div>
+
+    <StudentIndependentEducationReviews
+      v-if="props.researchMode && selectedConversation"
+      :key="selectedConversationId"
+      :conversation-id="selectedConversationId"
+      :refresh-token="educationReviewRefreshToken"
+    />
 
     <section v-if="!props.researchMode" class="support-records" aria-labelledby="support-records-title">
       <div class="support-records__heading">

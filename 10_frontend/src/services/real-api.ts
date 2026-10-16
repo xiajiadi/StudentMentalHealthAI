@@ -1323,6 +1323,14 @@ export interface IndependentConversationRequest {
   idempotencyKey?: string
 }
 
+export interface IndependentEducationReviewRequest {
+  method: 'GET' | 'POST'
+  path: string
+  query?: { offset?: number; limit?: number }
+  body?: Record<string, unknown>
+  idempotencyKey?: string
+}
+
 export class RealApiProvider implements FrontendApi {
   private csrfToken = ''
   private actorSubjectId: string | null = null
@@ -1431,6 +1439,41 @@ export class RealApiProvider implements FrontendApi {
     }
     if (input.method === 'POST' && !input.idempotencyKey?.trim()) {
       throw new RealApiError('API_INVALID_REQUEST', '教育支持请求缺少操作标识。')
+    }
+    if (input.method === 'POST') await this.ensureCsrfToken()
+    return unwrap<T>(() => apiClient.request({
+      method: input.method,
+      url: input.path,
+      ...(input.query ? { query: input.query } : {}),
+      ...(input.body ? { body: input.body } : {}),
+      headers: input.method === 'POST'
+        ? { 'Content-Type': 'application/json', ...mutationHeaders(this.csrfToken, input.idempotencyKey!) }
+        : {},
+    }))
+  }
+
+  async requestIndependentEducationReview<T>(input: IndependentEducationReviewRequest): Promise<ApiEnvelope<T>> {
+    const conversationRef = 'CONV_[A-Za-z0-9][A-Za-z0-9_.-]{0,122}'
+    const reviewRef = 'EDUREV_[0-9a-f]{32}'
+    const studentBase = new RegExp(`^/api/v1/student/research-conversations/${conversationRef}/education-reviews$`)
+    const studentReviewAction = new RegExp(`^/api/v1/student/research-conversations/${conversationRef}/education-reviews/${reviewRef}/(?:share|withdraw)$`)
+    const studentReviewers = new RegExp(`^/api/v1/student/research-conversations/${conversationRef}/education-reviewers$`)
+    const specialistPath = new RegExp(`^/api/v1/school/independent-education-reviews(?:/${reviewRef}(?:/(?:draft|publish|revoke))?)?$`)
+    const isStudentList = studentBase.test(input.path)
+    const isStudentReviewers = studentReviewers.test(input.path)
+    const isStudentMutation = studentReviewAction.test(input.path)
+    const isSpecialistPath = specialistPath.test(input.path)
+    const isSpecialistRead = isSpecialistPath
+      && !new RegExp(`^/api/v1/school/independent-education-reviews/${reviewRef}/(?:draft|publish|revoke)$`).test(input.path)
+    const isSpecialistMutation = new RegExp(`^/api/v1/school/independent-education-reviews/${reviewRef}/(?:draft|publish|revoke)$`).test(input.path)
+    const allowed = input.method === 'GET'
+      ? isStudentList || isStudentReviewers || isSpecialistRead
+      : isStudentMutation || isSpecialistMutation
+    if (!allowed) {
+      throw new RealApiError('API_INVALID_REQUEST', '独立研究教育复核请求地址无效。')
+    }
+    if (input.method === 'POST' && !input.idempotencyKey?.trim()) {
+      throw new RealApiError('API_INVALID_REQUEST', '独立研究教育复核请求缺少操作标识。')
     }
     if (input.method === 'POST') await this.ensureCsrfToken()
     return unwrap<T>(() => apiClient.request({
@@ -2293,6 +2336,9 @@ export const realApiProvider = new RealApiProvider()
 
 export const requestIndependentConversation = <T>(input: IndependentConversationRequest): Promise<ApiEnvelope<T>> =>
   realApiProvider.requestIndependentConversation<T>(input)
+
+export const requestIndependentEducationReview = <T>(input: IndependentEducationReviewRequest): Promise<ApiEnvelope<T>> =>
+  realApiProvider.requestIndependentEducationReview<T>(input)
 
 export const requestProfessionalReview = <T>(input: IndependentConversationRequest): Promise<ApiEnvelope<T>> =>
   realApiProvider.requestProfessionalReview<T>(input)
