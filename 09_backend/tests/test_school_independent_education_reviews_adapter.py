@@ -795,3 +795,15 @@ def test_source_expiry_treats_naive_database_clock_as_utc() -> None:
     valid._require_source_current()
     with pytest.raises(BackendError):
         expired._require_source_current()
+
+
+@pytest.mark.parametrize("aware", [True, False])
+def test_expired_review_rejected_before_payload_access(aware):
+    adapter = _adapter()
+    now = datetime(2026, 10, 16, tzinfo=UTC)
+    adapter._conversations._utc_now = lambda: now
+    due = now if aware else now.replace(tzinfo=None)
+    row = SimpleNamespace(retention_due_at=due)
+    with pytest.raises(BackendError) as exc:
+        adapter._require_source_current(row)
+    assert exc.value.code == ErrorCode.WORKFLOW_CONFLICT

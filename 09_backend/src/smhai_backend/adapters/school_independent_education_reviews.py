@@ -101,6 +101,13 @@ class SchoolIndependentEducationReviewsPersistenceAdapter:
     def _require_source_current(self, row=None) -> None:
         now = self._conversations._utc_now()
         current_utc = now.replace(tzinfo=UTC) if now.tzinfo is None else now.astimezone(UTC)
+        due = getattr(row, "retention_due_at", None)
+        if due is not None:
+            due_utc = due.replace(tzinfo=UTC) if due.tzinfo is None else due.astimezone(UTC)
+            if due_utc <= current_utc:
+                raise error(
+                    ErrorCode.WORKFLOW_CONFLICT, detail="education review is no longer available"
+                )
         if current_utc > self.valid_through or not self.source_cards:
             raise error(
                 ErrorCode.WORKFLOW_CONFLICT, detail="research source is no longer available"
