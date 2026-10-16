@@ -44,6 +44,7 @@ class FakeOperations:
         self.autoexit_parent_after_child = False
         self.exit_before_terminate_pid = None
         self.fail_backend_spawn = False
+        self.research_port = None
 
     def port_is_free(self, port):
         return port in self.free or port not in self.bound
@@ -88,6 +89,16 @@ class FakeOperations:
             if cat_environment
             else int(argv[argv.index("--port") + 1])
         )
+        if "--research-service-file" in argv:
+            service_file = Path(argv[argv.index("--research-service-file") + 1])
+            try:
+                service_doc = json.loads(service_file.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                service_doc = None
+            if isinstance(service_doc, dict) and isinstance(
+                service_doc.get("listener"), dict
+            ):
+                self.research_port = service_doc["listener"].get("port")
         listener_pid = pid
         backend_child = (
             self.backend_listener_child
@@ -159,6 +170,8 @@ class FakeOperations:
         if current and current[0].get("OwningProcess") == pid:
             self.bound.pop(service["port"], None)
         process = self.processes.pop(pid, None)
+        if service["name"] == "backend" and self.research_port is not None:
+            self.bound.pop(self.research_port, None)
         if pid == 900 and self.autoexit_parent_after_child and process:
             self.processes.pop(process["ParentProcessId"], None)
         return True
@@ -2142,3 +2155,331 @@ def test_cli_failure_projection_survives_unresolvable_source_path(
     assert "synthetic secret source path" not in captured.out
     assert str(source_path) not in captured.out
     assert captured.err == ""
+
+
+def test_resume_restores_research_student_draft_workers_and_standard_cat(
+    prepared, monkeypatch
+):
+    from school_research_education_draft_config import ResearchEducationDraftConfig
+    from school_research_student_config import R3_MANIFEST_SHA256, StudentResearchConfig
+
+    _repo, workspace, ops, app = prepared
+    runtime = workspace / "runtime.json"
+    service = workspace / "service.json"
+    study = workspace / "study-use.json"
+    cat_python = workspace / "research-python.exe"
+    cat_source = workspace / "research-cat-source"
+    cat_dependencies = workspace / "research-cat-dependencies"
+    programme_manifest = workspace / "programme-manifest.json"
+    for path in (runtime, study, cat_python, programme_manifest):
+        path.write_text("{}", encoding="utf-8")
+    cat_source.mkdir()
+    cat_dependencies.mkdir()
+    research_port = 58540
+    service.write_text(
+        json.dumps({"listener": {"host": "127.0.0.1", "port": research_port}}),
+        encoding="utf-8",
+    )
+    source = StudentResearchConfig(
+        config_file=str(workspace / "student-source.json"),
+        config_sha256="a" * 64,
+        school_id=7,
+        manifest_file=str(workspace / "source-r3.json"),
+        manifest_sha256=R3_MANIFEST_SHA256,
+    )
+    draft = ResearchEducationDraftConfig(
+        config_file=str(workspace / "education-draft.json"),
+        config_sha256="b" * 64,
+        school_id=7,
+        school_study_ref="school-study-r3",
+        student_source=source,
+    )
+    monkeypatch.setattr(
+        lifecycle,
+        "load_student_research_config",
+        lambda path, digest: (
+            source
+            if path == Path(source.config_file) and digest == source.config_sha256
+            else pytest.fail("unexpected student config pin")
+        ),
+    )
+    monkeypatch.setattr(
+        lifecycle,
+        "load_research_education_draft_config",
+        lambda path, digest: (
+            draft
+            if path == Path(draft.config_file) and digest == draft.config_sha256
+            else pytest.fail("unexpected draft config pin")
+        ),
+    )
+    programme = {
+        "enabled": True,
+        "package_manifest_file": str(programme_manifest),
+        "package_manifest_sha256": lifecycle.RESEARCH_PROGRAMME_MANIFEST_SHA256,
+        "processor_policy_sha256": lifecycle.RESEARCH_PROGRAMME_PROCESSOR_POLICY_SHA256,
+        "model_ref": lifecycle.RESEARCH_PROGRAMME_MODEL_REF,
+        "model_digest_sha256": lifecycle.RESEARCH_PROGRAMME_MODEL_DIGEST_SHA256,
+        "prompt_ref": lifecycle.RESEARCH_PROGRAMME_PROMPT_REF,
+        "prompt_version": lifecycle.RESEARCH_PROGRAMME_PROMPT_VERSION,
+        "poll_interval_seconds": 1.0,
+        "lease_seconds": 180,
+        "max_attempts": 5,
+        "shutdown_drain_seconds": 10.0,
+    }
+    runtime_sha = hashlib.sha256(runtime.read_bytes()).hexdigest()
+    service_sha = hashlib.sha256(service.read_bytes()).hexdigest()
+    study_sha = hashlib.sha256(study.read_bytes()).hexdigest()
+    research_settings = {
+        "school_research_runtime_file": str(runtime),
+        "school_research_runtime_sha256": runtime_sha,
+        "school_research_service_file": str(service),
+        "school_research_service_sha256": service_sha,
+        "school_research_cat_python": str(cat_python),
+        "school_research_cat_source": str(cat_source),
+        "school_research_cat_dependencies": str(cat_dependencies),
+        "school_research_base_url": f"http://127.0.0.1:{research_port}",
+        "school_research_study_use_file": str(study),
+        "school_research_study_use_sha256": study_sha,
+        "school_research_source_rights_verified": True,
+        "research_programme_runtime": {
+            "mode": "http",
+            "base_url": lifecycle.RESEARCH_PROGRAMME_RUNTIME_URL,
+        },
+        "research_programme_worker": programme,
+    }
+    monkeypatch.setattr(
+        lifecycle, "build_research_settings_kwargs", lambda *_args: research_settings
+    )
+    ops.dependency_status = lambda *_args: {
+        "status": "READY",
+        "integration": "RESEARCH_STAFF_PROGRAMME_OUTBOX",
+    }
+    ops.ready[8181] = True
+    research_input = {
+        "research_runtime_file": runtime,
+        "research_runtime_sha256": runtime_sha,
+        "research_service_file": service,
+        "research_service_sha256": service_sha,
+        "research_cat_python": cat_python,
+        "research_cat_source": cat_source,
+        "research_cat_dependencies": cat_dependencies,
+        "research_study_use_file": study,
+        "research_study_use_sha256": study_sha,
+        "research_source_rights_verified": True,
+        "research_latest_study_end": "2027-06-30T15:59:59Z",
+        lifecycle.RESEARCH_EDUCATION_WORKER_CONFIG_KEY: True,
+        lifecycle.RESEARCH_PROGRAMME_WORKER_ENABLED_INPUT_KEY: True,
+        "research_programme_manifest_file": programme_manifest,
+        "research_programme_manifest_sha256": lifecycle.RESEARCH_PROGRAMME_MANIFEST_SHA256,
+    }
+    app.start(
+        workspace,
+        frontend_mode="dev",
+        llm_profile="school-gpu-7b",
+        research_config=research_input,
+        student_research_config={
+            "research_student_config_file": Path(source.config_file),
+            "research_student_config_sha256": source.config_sha256,
+        },
+        research_education_draft_config={
+            "research_education_draft_config_file": Path(draft.config_file),
+            "research_education_draft_config_sha256": draft.config_sha256,
+        },
+        input_review_continuation_enabled=True,
+        research_general_education_worker_enabled=False,
+        enable_standard_cat=True,
+        standard_cat_port=8181,
+    )
+    original = json.loads(
+        (workspace / lifecycle.MANIFEST_NAME).read_text(encoding="utf-8")
+    )
+    for service_entry in original["services"]:
+        listener = ops.listeners(service_entry["port"])
+        if listener:
+            assert len(listener) == 1
+            assert listener[0]["OwningProcess"] == service_entry["listener"]["pid"]
+    app.stop(workspace)
+    spawn_count = len(ops.spawned)
+
+    plan = app.resume_plan(workspace)
+    assert plan["status"] == "PLAN_ONLY"
+    assert plan["resume_status"] == "SAVED_CONFIG_PREFLIGHT_READY"
+    assert plan["standard_cat_enabled"] is True and plan["standard_cat_port"] == 8181
+    assert plan["research_cat_port"] == research_port
+    assert plan["research_education_worker_enabled"] is True
+    assert plan["research_programme_worker_enabled"] is True
+    assert plan["student_research_enabled"] is True
+    assert plan["education_draft_enabled"] is True
+    assert plan["input_review_continuation_enabled"] is True
+    assert plan["education_draft_worker_enabled"] is False
+    assert plan["saved_config_pins_validated"] is True
+    assert plan["whole_ready"] is False and plan["side_effects"] == []
+    assert len(ops.spawned) == spawn_count
+    assert not any(key.endswith(("_sha256", "_file")) or key == "argv" for key in plan)
+
+    assert app.resume(workspace)["status"] == "RUNNING"
+    assert len(ops.spawned) == spawn_count + 3
+    restored = json.loads(
+        (workspace / lifecycle.MANIFEST_NAME).read_text(encoding="utf-8")
+    )
+    for key in (
+        "backend_port",
+        "frontend_port",
+        "llm_profile",
+        "frontend_mode",
+        "research_cat_port",
+        "research_config",
+        "research_student_config",
+        lifecycle.RESEARCH_EDUCATION_DRAFT_CONFIG_KEY,
+        lifecycle.STANDARD_CAT_CONFIG_KEY,
+    ):
+        assert restored.get(key) == original.get(key)
+    assert restored["research_config"]["research_latest_study_end"] == (
+        "2027-06-30T15:59:59Z"
+    )
+    backend_argv = next(
+        argv
+        for argv, _cwd, _env in ops.spawned[spawn_count:]
+        if Path(argv[1]).name == "school_backend.py"
+    )
+    for flag in (
+        "--enable-research-education-worker",
+        "--enable-research-programme-worker",
+        "--enable-research-education-input-review-continuation",
+        "--disable-research-general-education-draft-worker",
+    ):
+        assert flag in backend_argv
+    assert backend_argv[backend_argv.index("--research-latest-study-end") + 1] == (
+        "2027-06-30T15:59:59Z"
+    )
+    assert backend_argv[backend_argv.index("--llm-profile") + 1] == "school-gpu-7b"
+    assert any(
+        env.get("SMHAI_CAT_PORT") == "8181"
+        for _argv, _cwd, env in ops.spawned[spawn_count:]
+    )
+    app.stop(workspace)
+    spawn_count = len(ops.spawned)
+    legacy = json.loads(
+        (workspace / lifecycle.MANIFEST_NAME).read_text(encoding="utf-8")
+    )
+    legacy["research_config"][lifecycle.RESEARCH_PROGRAMME_WORKER_CONFIG_KEY][
+        "prompt_version"
+    ] = "1.1.1"
+    lifecycle._atomic_write(workspace / lifecycle.MANIFEST_NAME, legacy)
+    assert app.resume_plan(workspace)["failure_code"] == "RESUME_PREFLIGHT_FAILED"
+    with pytest.raises(lifecycle.LifecycleError):
+        app.resume(workspace)
+    assert len(ops.spawned) == spawn_count
+
+
+def test_resume_requires_stopped_manifest_and_preserves_no_research_cat_off(
+    prepared,
+):
+    _repo, workspace, ops, app = prepared
+    app.start(workspace, frontend_mode="dev")
+    app.stop(workspace)
+    spawn_count = len(ops.spawned)
+    plan = app.resume_plan(workspace)
+    assert plan["status"] == "PLAN_ONLY"
+    assert plan["research_enabled"] is False
+    assert plan["standard_cat_enabled"] is False
+    assert plan["standard_cat_port"] is None
+    assert len(ops.spawned) == spawn_count
+    manifest_path = workspace / lifecycle.MANIFEST_NAME
+    current = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for unsafe_state in ("PARTIAL_FAILURE", "STOP_PARTIAL"):
+        changed = dict(current)
+        changed["state"] = unsafe_state
+        lifecycle._atomic_write(manifest_path, changed)
+        assert app.resume_plan(workspace)["failure_code"] == "LIFECYCLE_NOT_STOPPED"
+        with pytest.raises(lifecycle.LifecycleError, match="completed stop"):
+            app.resume(workspace)
+        assert len(ops.spawned) == spawn_count
+    lifecycle._atomic_write(manifest_path, current)
+    assert app.resume(workspace)["status"] == "RUNNING"
+    assert len(ops.spawned) == spawn_count + 2
+    backend_argv = next(
+        argv
+        for argv, _cwd, _env in ops.spawned[spawn_count:]
+        if Path(argv[1]).name == "school_backend.py"
+    )
+    assert "--research-runtime-file" not in backend_argv
+    assert "--cat-port" not in backend_argv
+
+    spawn_count = len(ops.spawned)
+    plan = app.resume_plan(workspace)
+    assert plan["status"] == "BLOCKED"
+    assert plan["failure_code"] == "LIFECYCLE_NOT_STOPPED"
+    with pytest.raises(lifecycle.LifecycleError, match="completed stop"):
+        app.resume(workspace)
+    assert len(ops.spawned) == spawn_count
+
+
+def test_resume_rejects_workspace_pin_foreign_listener_and_missing_manifest(
+    prepared, monkeypatch
+):
+    _repo, workspace, ops, app = prepared
+    ops.ready[8180] = True
+    app.start(workspace, frontend_mode="dev", enable_standard_cat=True)
+    app.stop(workspace)
+    spawn_count = len(ops.spawned)
+    other = workspace.parent / "other"
+    other.mkdir()
+    (other / "workspace.json").write_text(
+        json.dumps({"workspace_id": "different"}), encoding="utf-8"
+    )
+    assert app.resume_plan(other)["failure_code"] == "RESUME_PREFLIGHT_FAILED"
+    with pytest.raises(lifecycle.LifecycleError):
+        app.resume(other)
+
+    manifest_path = workspace / lifecycle.MANIFEST_NAME
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest[lifecycle.STANDARD_CAT_CONFIG_KEY]["source_sha256"] = "0" * 64
+    lifecycle._atomic_write(manifest_path, manifest)
+    assert app.resume_plan(workspace)["failure_code"] == "RESUME_PREFLIGHT_FAILED"
+    with pytest.raises(lifecycle.LifecycleError):
+        app.resume(workspace)
+    assert len(ops.spawned) == spawn_count
+
+    # Restore the genuine test manifest, then test a listener left behind by a foreign owner.
+    manifest[lifecycle.STANDARD_CAT_CONFIG_KEY]["source_sha256"] = (
+        standard_cat.source_fingerprint(_repo)
+    )
+    lifecycle._atomic_write(manifest_path, manifest)
+    backend_port = manifest["backend_port"]
+    ops.bound[backend_port] = [
+        {"OwningProcess": 99999, "LocalAddress": "127.0.0.1", "LocalPort": backend_port}
+    ]
+    assert app.resume_plan(workspace)["failure_code"] == "RESUME_PREFLIGHT_FAILED"
+    with pytest.raises(lifecycle.LifecycleError):
+        app.resume(workspace)
+    assert len(ops.spawned) == spawn_count
+    ops.bound.pop(backend_port, None)
+
+    original_start = app.start
+
+    def remove_manifest_after_preflight(*args, **kwargs):
+        manifest_path.unlink()
+        return original_start(*args, **kwargs)
+
+    monkeypatch.setattr(app, "start", remove_manifest_after_preflight)
+    with pytest.raises(lifecycle.LifecycleError, match="disappeared after resume preflight"):
+        app.resume(workspace)
+    assert len(ops.spawned) == spawn_count
+
+
+def test_resume_cli_has_no_configuration_overrides(tmp_path):
+    with pytest.raises(SystemExit):
+        lifecycle.build_parser().parse_args(
+            ["resume", "--workspace", str(tmp_path), "--frontend-mode", "dev"]
+        )
+    with pytest.raises(SystemExit):
+        lifecycle.build_parser().parse_args(
+            [
+                "resume-plan",
+                "--workspace",
+                str(tmp_path),
+                "--research-runtime-file",
+                "x",
+            ]
+        )

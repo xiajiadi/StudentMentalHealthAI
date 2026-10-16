@@ -23,6 +23,17 @@ $workspace = '<绝对 workspace 路径>'
 & $py $life stop --workspace $workspace
 ```
 
+### 从已停止 manifest 恢复
+
+先用受支持的 `stop` 完成应用停止，再用 `resume-plan` 只读核对保存的端口、profile、CAT 与研究 worker；仅在返回 `PLAN_ONLY` 且保存配置 pins 通过校验时执行 `resume`。恢复命令只接受完整 `STOPPED` manifest，不接受启动参数覆盖，也不会替你停止仍在运行的进程。意外关机后 manifest 可能仍为 `RUNNING`；先用 `status` 核对归属，再按受支持的 `stop` 流程确认停止，不能直接 resume 或手改 manifest。部分失败、owner 不匹配、监听器残留或配置 pin 改变时，计划会阻止恢复。
+
+```powershell
+& $py $life resume-plan --workspace $workspace
+& $py $life resume --workspace $workspace
+```
+
+恢复会重新校验当前源码、配置文件和 CAT pin，并从保存配置启动 Backend/Frontend 与已启用的 CAT。它不启动 MySQL 或共享 Runtime、RAG、Safety、Ollama；这些依赖须按各自正式入口单独恢复。`resume-plan` 只给脱敏摘要，不打印路径、完整配置或命令行；`resume` 沿用现有启动检查，不代表 whole-ready。
+
 Backend、Frontend 和 CAT 端口可由启动参数指定；部署时选空闲端口并保持前后端配置一致。Lifecycle 的标准 CAT 默认端口是 `8180`；fresh installer 的默认值是 `8182`，以实际 checkpoint 为准。
 
 `school-gpu-7b` 明确选择本地 7B profile；模型不可用时不会自动切换到 CPU 测试模型。标准 CAT 只有在传入 `--enable-standard-cat` 后才由 lifecycle 管理。

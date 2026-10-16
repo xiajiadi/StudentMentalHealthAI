@@ -1652,6 +1652,7 @@ class SchoolAppLifecycle:
         research_general_education_worker_enabled: bool = True,
         enable_standard_cat: bool = False,
         standard_cat_port: int = DEFAULT_STANDARD_CAT_PORT,
+        _expected_resume_manifest: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         if not IS_WINDOWS:
             raise LifecycleError("Native school application lifecycle requires Windows")
@@ -1683,9 +1684,19 @@ class SchoolAppLifecycle:
             _validate_research_port(research_config.port, backend_port, frontend_port)
         manifest_path = target / MANIFEST_NAME
         previous_manifest = None
+        if _expected_resume_manifest is not None and not manifest_path.exists():
+            raise LifecycleError(
+                "Lifecycle manifest disappeared after resume preflight"
+            )
         if manifest_path.exists():
             previous_manifest = _read_manifest(manifest_path)
             self._validate_manifest_scope(previous_manifest, target)
+            if _expected_resume_manifest is not None and previous_manifest != dict(
+                _expected_resume_manifest
+            ):
+                raise LifecycleError(
+                    "Lifecycle manifest changed after resume preflight"
+                )
             stored_research = previous_manifest.get("research_config")
             stored_programme = (
                 stored_research.get(RESEARCH_PROGRAMME_WORKER_CONFIG_KEY)
@@ -1952,6 +1963,231 @@ class SchoolAppLifecycle:
             raise LifecycleError(
                 f"School application start incomplete ({type(exc).__name__}); inspect status before recovery"
             ) from None
+
+    def _restore_stopped_manifest(
+        self, target: Path, manifest: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Validate a stopped manifest and rebuild only typed lifecycle inputs."""
+        self._validate_manifest_scope(manifest, target)
+        if manifest.get("state") != "STOPPED":
+            raise LifecycleError("Lifecycle resume requires a completed stop")
+        self._validate_manifest_services(manifest, target)
+        self._require_stopped_manifest(manifest)
+
+        backend_port = manifest.get("backend_port")
+        frontend_port = manifest.get("frontend_port")
+        llm_profile = manifest.get("llm_profile")
+        frontend_mode = manifest.get("frontend_mode")
+        if type(backend_port) is not int or type(frontend_port) is not int:
+            raise LifecycleError("Lifecycle resume ports are invalid")
+        if type(llm_profile) is not str or type(frontend_mode) is not str:
+            raise LifecycleError("Lifecycle resume options are invalid")
+        _validate_ports(backend_port, frontend_port)
+        _validate_options(llm_profile, frontend_mode)
+
+        research_config = _research_config_from_manifest(
+            manifest, target, backend_port, frontend_port
+        )
+        student_config = _student_research_config_from_manifest(manifest)
+        draft_config = _research_education_draft_config_from_manifest(manifest)
+
+        standard_cat_config = None
+        standard_cat_value = manifest.get(STANDARD_CAT_CONFIG_KEY)
+        if standard_cat_value is not None:
+            try:
+                standard_cat_config = restore_standard_cat_config(
+                    self.repo, standard_cat_value
+                )
+            except StandardCATError:
+                raise LifecycleError(
+                    "Lifecycle standard CAT pins failed resume validation"
+                ) from None
+
+        research_values = None
+        if research_config is not None:
+            research_values = {
+                "research_runtime_file": Path(research_config.runtime_file),
+                "research_runtime_sha256": research_config.runtime_sha256,
+                "research_service_file": Path(research_config.service_file),
+                "research_service_sha256": research_config.service_sha256,
+                "research_cat_python": Path(research_config.cat_python),
+                "research_cat_source": Path(research_config.cat_source),
+                "research_cat_dependencies": Path(research_config.cat_dependencies),
+            }
+            if research_config.study_use_file is not None:
+                research_values.update(
+                    {
+                        "research_study_use_file": Path(
+                            research_config.study_use_file
+                        ),
+                        "research_study_use_sha256": research_config.study_use_sha256,
+                        "research_source_rights_verified": (
+                            research_config.source_rights_verified
+                        ),
+                        "research_latest_study_end": research_config.latest_study_end,
+                    }
+                )
+            if research_config.education_worker_enabled:
+                research_values[RESEARCH_EDUCATION_WORKER_CONFIG_KEY] = True
+            if research_config.programme_worker is not None:
+                research_values.update(
+                    {
+                        RESEARCH_PROGRAMME_WORKER_ENABLED_INPUT_KEY: True,
+                        "research_programme_manifest_file": Path(
+                            research_config.programme_worker.manifest_file
+                        ),
+                        "research_programme_manifest_sha256": (
+                            research_config.programme_worker.manifest_sha256
+                        ),
+                    }
+                )
+
+        student_values = None
+        if student_config is not None:
+            student_values = {
+                "research_student_config_file": Path(
+                    student_config.deployment.config_file
+                ),
+                "research_student_config_sha256": (
+                    student_config.deployment.config_sha256
+                ),
+            }
+
+        draft_values = None
+        if draft_config is not None:
+            draft_values = {
+                "research_education_draft_config_file": Path(
+                    draft_config.deployment.config_file
+                ),
+                "research_education_draft_config_sha256": (
+                    draft_config.deployment.config_sha256
+                ),
+            }
+
+        return {
+            "target": target,
+            "manifest": manifest,
+            "backend_port": backend_port,
+            "frontend_port": frontend_port,
+            "llm_profile": llm_profile,
+            "frontend_mode": frontend_mode,
+            "research_config": research_values,
+            "research_cat_port": (
+                research_config.port if research_config is not None else None
+            ),
+            "student_research_config": student_values,
+            "research_education_draft_config": draft_values,
+            "input_review_continuation_enabled": (
+                draft_config.input_review_continuation_enabled
+                if draft_config is not None
+                else False
+            ),
+            "research_general_education_worker_enabled": (
+                draft_config.worker_enabled if draft_config is not None else True
+            ),
+            "enable_standard_cat": standard_cat_config is not None,
+            "standard_cat_port": (
+                standard_cat_config.port
+                if standard_cat_config is not None
+                else DEFAULT_STANDARD_CAT_PORT
+            ),
+        }
+
+    def resume_plan(self, workspace: Path) -> dict[str, Any]:
+        """Read-only, sanitized summary of a valid STOPPED manifest."""
+        try:
+            target = self._workspace(workspace)
+            manifest = _read_manifest(target / MANIFEST_NAME)
+            self._validate_manifest_scope(manifest, target)
+        except Exception:  # noqa: BLE001 - resume plans never expose manifest diagnostics.
+            return {
+                "status": "BLOCKED",
+                "failure_code": "RESUME_PREFLIGHT_FAILED",
+                "side_effects": [],
+            }
+        if manifest.get("state") != "STOPPED":
+            return {
+                "status": "BLOCKED",
+                "failure_code": "LIFECYCLE_NOT_STOPPED",
+                "recovery_stage": "STOP_REQUIRED",
+                "side_effects": [],
+            }
+        try:
+            restored = self._restore_stopped_manifest(target, manifest)
+        except Exception:  # noqa: BLE001 - pin and owner failures share a closed plan result.
+            return {
+                "status": "BLOCKED",
+                "failure_code": "RESUME_PREFLIGHT_FAILED",
+                "side_effects": [],
+            }
+
+        research = restored["research_config"]
+        draft = restored["research_education_draft_config"]
+        return {
+            "status": "PLAN_ONLY",
+            "resume_status": "SAVED_CONFIG_PREFLIGHT_READY",
+            "workspace_id": manifest["workspace_id"],
+            "state": "STOPPED",
+            "backend_port": restored["backend_port"],
+            "frontend_port": restored["frontend_port"],
+            "llm_profile": restored["llm_profile"],
+            "frontend_mode": restored["frontend_mode"],
+            "standard_cat_enabled": restored["enable_standard_cat"],
+            "standard_cat_port": restored["standard_cat_port"]
+            if restored["enable_standard_cat"]
+            else None,
+            "research_enabled": research is not None,
+            "research_cat_port": restored["research_cat_port"],
+            "research_education_worker_enabled": bool(
+                research and RESEARCH_EDUCATION_WORKER_CONFIG_KEY in research
+            ),
+            "research_programme_worker_enabled": bool(
+                research and RESEARCH_PROGRAMME_WORKER_ENABLED_INPUT_KEY in research
+            ),
+            "student_research_enabled": (
+                restored["student_research_config"] is not None
+            ),
+            "education_draft_enabled": draft is not None,
+            "input_review_continuation_enabled": restored[
+                "input_review_continuation_enabled"
+            ],
+            "education_draft_worker_enabled": restored[
+                "research_general_education_worker_enabled"
+            ],
+            "saved_config_pins_validated": True,
+            "whole_ready": False,
+            "side_effects": [],
+        }
+
+    def resume(
+        self, workspace: Path, *, timeout: float = START_TIMEOUT_SECONDS
+    ) -> dict[str, Any]:
+        """Restart a fully stopped lifecycle from its validated manifest."""
+        target = self._workspace(workspace)
+        manifest = _read_manifest(target / MANIFEST_NAME)
+        restored = self._restore_stopped_manifest(target, manifest)
+        return self.start(
+            target,
+            backend_port=restored["backend_port"],
+            frontend_port=restored["frontend_port"],
+            llm_profile=restored["llm_profile"],
+            frontend_mode=restored["frontend_mode"],
+            timeout=timeout,
+            research_config=restored["research_config"],
+            student_research_config=restored["student_research_config"],
+            research_education_draft_config=restored[
+                "research_education_draft_config"
+            ],
+            input_review_continuation_enabled=restored[
+                "input_review_continuation_enabled"
+            ],
+            research_general_education_worker_enabled=restored[
+                "research_general_education_worker_enabled"
+            ],
+            enable_standard_cat=restored["enable_standard_cat"],
+            standard_cat_port=restored["standard_cat_port"],
+            _expected_resume_manifest=manifest,
+        )
 
     def status(self, workspace: Path) -> dict[str, Any]:
         target = self._workspace(workspace)
@@ -3595,6 +3831,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     plan = commands.add_parser("plan", help="Read-only command and requirement plan")
+    resume_plan = commands.add_parser(
+        "resume-plan", help="Read-only summary for resuming a stopped lifecycle"
+    )
+    resume = commands.add_parser(
+        "resume", help="Resume only a fully stopped lifecycle from its manifest"
+    )
     status = commands.add_parser("status", help="Inspect owned processes and readiness")
     start = commands.add_parser(
         "start", help="Start an optional standard CAT, Backend and Frontend"
@@ -3602,8 +3844,9 @@ def build_parser() -> argparse.ArgumentParser:
     stop = commands.add_parser(
         "stop", help="Stop only verified lifecycle-owned processes"
     )
-    for command in (plan, status, start, stop):
+    for command in (plan, resume_plan, resume, status, start, stop):
         command.add_argument("--workspace", type=Path, required=True)
+    resume.add_argument("--timeout", type=float, default=START_TIMEOUT_SECONDS)
     for command in (plan, start):
         command.add_argument("--backend-port", type=int, default=DEFAULT_BACKEND_PORT)
         command.add_argument("--frontend-port", type=int, default=DEFAULT_FRONTEND_PORT)
@@ -3668,6 +3911,10 @@ def main(argv: list[str] | None = None) -> int:
                 enable_standard_cat=args.enable_standard_cat,
                 standard_cat_port=args.standard_cat_port,
             )
+        elif args.command == "resume-plan":
+            result = lifecycle.resume_plan(args.workspace)
+        elif args.command == "resume":
+            result = lifecycle.resume(args.workspace, timeout=args.timeout)
         elif args.command == "start":
             supplied_research = {
                 name: getattr(args, name, None) for name in RESEARCH_CONFIG_ARGUMENTS
@@ -3767,6 +4014,7 @@ def main(argv: list[str] | None = None) -> int:
                 "PARTIAL_READINESS_UNOBSERVED",
                 "PARTIAL_FAILURE",
                 "STOP_PARTIAL",
+                "BLOCKED",
             }
             else 2
         )
