@@ -239,13 +239,19 @@ def fresh_workspace(tmp_path):
     return workspace, repo, marker
 
 
-@pytest.fixture
-def restored_install_pair(tmp_path, owned_workspace):
+@pytest.fixture(
+    params=(
+        ".StudentMentalHealthAI-school-install-20261015-q",
+        ".StudentMentalHealthAI-school-restore-20261017-test",
+    ),
+    ids=("install-target", "restore-target"),
+)
+def restored_install_pair(tmp_path, owned_workspace, request):
     source, repo, source_marker = owned_workspace
     source_marker["workspace_id"] = "a" * 32
     source_marker["port"] = 3324
     (source / "workspace.json").write_text(json.dumps(source_marker), encoding="utf-8")
-    target = source.parent / ".StudentMentalHealthAI-school-install-20261015-q"
+    target = source.parent / request.param
     data = target / "mysql-data"
     (data / "mysql").mkdir(parents=True)
     (data / "auto.cnf").write_text("restored-install", encoding="utf-8")
@@ -279,6 +285,27 @@ def restored_install_pair(tmp_path, owned_workspace):
     (target / "restore-state.json").write_text(json.dumps(restore_state), encoding="utf-8")
     prepare_runtime_artifacts(target, target_marker)
     return target, source, repo, target_marker, source_marker, restore_state
+
+
+def test_restore_named_target_requires_explicit_source_bound_mode(restored_install_pair):
+    target, _source, repo, target_marker, _source_marker, _state = restored_install_pair
+    expected = {
+        "expected_workspace": target,
+        "expected_port": target_marker["port"],
+        "expected_workspace_id": target_marker["workspace_id"],
+    }
+    is_restore_target = bool(resume._RESTORE_TARGET_NAME.fullmatch(target.name))
+
+    if is_restore_target:
+        with pytest.raises(resume.ResumeError, match="explicitly named install workspace"):
+            resume._validate_install_target_identity(target, repo, **expected)
+    else:
+        actual = resume._validate_install_target_identity(target, repo, **expected)
+        assert actual["workspace_id"] == target_marker["workspace_id"]
+
+    assert resume._validate_install_target_identity(
+        target, repo, allow_restore_target=True, **expected
+    )["workspace_id"] == target_marker["workspace_id"]
 
 
 def run_fresh_resume(workspace, repo, marker, ops, **kwargs):
@@ -1004,8 +1031,21 @@ def test_restore_state_is_revalidated_after_lock_is_acquired(restored_workspace_
 
 def test_restore_resume_cli_requires_explicit_workspace_and_port(monkeypatch):
     calls = []
-    monkeypatch.setattr(resume, "resume_restored_workspace", lambda *args, **kwargs: calls.append((args, kwargs)) or {"status": "STARTED"})
-    monkeypatch.setattr(sys, "argv", ["resume_school_workspace.py", "--restore-mode", "--workspace", r"D:\Projects\.StudentMentalHealthAI-school-restore-20261012-b"])
+    monkeypatch.setattr(
+        resume,
+        "resume_restored_workspace",
+        lambda *args, **kwargs: calls.append((args, kwargs)) or {"status": "STARTED"},
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "resume_school_workspace.py",
+            "--restore-mode",
+            "--workspace",
+            r"D:\Projects\.StudentMentalHealthAI-school-restore-20261012-b",
+        ],
+    )
 
     with pytest.raises(SystemExit) as caught:
         resume.main()
@@ -1025,7 +1065,14 @@ def test_restore_resume_cli_passes_explicit_workspace_and_port(monkeypatch, caps
     monkeypatch.setattr(
         sys,
         "argv",
-        ["resume_school_workspace.py", "--restore-mode", "--workspace", str(target), "--port", "3310"],
+        [
+            "resume_school_workspace.py",
+            "--restore-mode",
+            "--workspace",
+            str(target),
+            "--port",
+            "3310",
+        ],
     )
 
     assert resume.main() == 0
@@ -1056,11 +1103,16 @@ def test_restored_install_cli_requires_all_explicit_source_and_target_pins(monke
     assert resume.main() == 0
     assert calls == [
         (
-            (Path(r"D:\Projects\.StudentMentalHealthAI-school-install-20261015-q"), resume.DEFAULT_REPO),
+            (
+                Path(r"D:\Projects\.StudentMentalHealthAI-school-install-20261015-q"),
+                resume.DEFAULT_REPO,
+            ),
             {
                 "expected_port": 3325,
                 "expected_workspace_id": "b" * 32,
-                "source_workspace": Path(r"D:\Projects\.StudentMentalHealthAI-school-install-20261014-p"),
+                "source_workspace": Path(
+                    r"D:\Projects\.StudentMentalHealthAI-school-install-20261014-p"
+                ),
                 "source_port": 3324,
                 "expected_source_workspace_id": "a" * 32,
                 "timeout": 45.0,
@@ -1119,7 +1171,14 @@ def test_fresh_cli_requires_explicit_target_port_and_expected_id(monkeypatch):
     monkeypatch.setattr(
         sys,
         "argv",
-        ["resume_school_workspace.py", "--fresh-mode", "--workspace", r"D:\Projects\.StudentMentalHealthAI-school-install-20261013-g", "--port", "3315"],
+        [
+            "resume_school_workspace.py",
+            "--fresh-mode",
+            "--workspace",
+            r"D:\Projects\.StudentMentalHealthAI-school-install-20261013-g",
+            "--port",
+            "3315",
+        ],
     )
     with pytest.raises(SystemExit) as caught:
         resume.main()
@@ -1304,7 +1363,9 @@ def test_windows_quoted_paths_and_forward_slashes_match_exact_arguments(owned_wo
 
 
 def test_credential_environment_filter_is_case_insensitive():
-    assert resume.guardian_environment({"db_password": "fixture", "mysql_pwd": "fixture", "Path": "keep"}) == {"Path": "keep"}
+    assert resume.guardian_environment(
+        {"db_password": "fixture", "mysql_pwd": "fixture", "Path": "keep"}
+    ) == {"Path": "keep"}
 
 
 @pytest.mark.parametrize("timeout", [float("nan"), float("inf"), 0, 61])
