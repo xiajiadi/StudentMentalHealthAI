@@ -317,6 +317,7 @@ def validate_restored_install_workspace(
         expected_workspace=target_root,
         expected_port=expected_port,
         expected_workspace_id=expected_workspace_id,
+        allow_restore_target=True,
     )
     try:
         source_marker = validate_existing_workspace(
@@ -399,12 +400,14 @@ def _validate_install_target_identity(
     expected_workspace: Path,
     expected_port: int,
     expected_workspace_id: str,
+    allow_restore_target: bool = False,
 ) -> dict[str, Any]:
-    """Pin an install target to its operator-supplied path and ID.
+    """Pin an install or explicitly restored target to its path and ID.
 
     The JSON marker is not a cryptographic attestation. The explicit path and
     ID bind this invocation to one existing target; later DPAPI/process/database
-    checks provide runtime evidence.
+    checks provide runtime evidence. Restore-named paths are accepted only by
+    the explicit source-bound restored-install validation path.
     """
     _validate_expected_port(expected_port)
     if not isinstance(expected_workspace_id, str) or not _WORKSPACE_ID.fullmatch(
@@ -417,11 +420,14 @@ def _validate_install_target_identity(
     _reject_reparse_path(target)
     root = target.resolve(strict=True)
     repository = Path(repo).resolve(strict=True)
+    valid_name = bool(_FRESH_TARGET_NAME.fullmatch(root.name)) or (
+        allow_restore_target and bool(_RESTORE_TARGET_NAME.fullmatch(root.name))
+    )
     if (
         root == repository
         or root.is_relative_to(repository)
         or root == Path(DEFAULT_WORKSPACE).resolve(strict=False)
-        or not _FRESH_TARGET_NAME.fullmatch(root.name)
+        or not valid_name
         or root != Path(expected_workspace).resolve(strict=False)
     ):
         raise ResumeError("Target path is not an explicitly named install workspace")
@@ -1346,7 +1352,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--restore-mode", action="store_true")
     parser.add_argument("--fresh-mode", action="store_true")
     parser.add_argument("--prepared-install-mode", action="store_true")
-    parser.add_argument("--restored-install-mode", action="store_true")
+    parser.add_argument(
+        "--restored-install-mode",
+        action="store_true",
+        help="Resume a verified install/restore target bound to an explicit source workspace",
+    )
     parser.add_argument("--port", type=int)
     parser.add_argument("--expected-workspace-id")
     parser.add_argument("--source-workspace", type=Path)

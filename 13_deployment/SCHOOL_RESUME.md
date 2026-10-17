@@ -6,7 +6,7 @@
 - `--restore-mode`: an isolated restored copy, validated against its existing restore state.
 - `--fresh-mode`: an already initialized and migrated install target with no runtime or restore artifacts.
 - `--prepared-install-mode`: that install target after runtime provisioning has completed and its runtime identity is available.
-- `--restored-install-mode`: an install directory restored from an explicitly identified source workspace.
+- `--restored-install-mode`: an install or restore directory resumed from an explicitly identified source workspace.
 
 Fresh and prepared install modes require an absolute workspace path, its port, and the exact workspace ID supplied by the trusted install handoff. Replace these placeholders with the values from that handoff:
 
@@ -26,9 +26,12 @@ Resume only starts the existing data directory or verifies its exact running gua
 
 The `3308` legacy mode and `--restore-mode` retain their existing validation rules. Ports `3306` and `3307` are outside the accepted workspace range. Do not use this synthetic demo flow with real student data or treat its engineering checks as school deployment approval.
 
-## Restored install recovery
+## Restored workspace recovery
 
-Use this separate mode when an install directory contains a verified restore state.
+Use this explicit source-bound mode when a workspace directory contains a
+verified restore state. Both `.StudentMentalHealthAI-school-install-*` and
+`.StudentMentalHealthAI-school-restore-*` targets are accepted here; other
+resume modes remain install-only or retain their existing legacy source rules.
 Supply both identities from the trusted restore handoff; source and target IDs,
 ports and data directories must differ. The source directory must remain available;
 its database server need not be running.
@@ -43,8 +46,10 @@ its database server need not be running.
 ```
 
 The command binds the existing restore state, supported snapshot revision and
-current runtime revision to these identities. It retains the existing lock,
-private-directory, DPAPI, guardian, listener and database identity checks. It
-starts the existing data directory without reseeding or migrating it. Its result
-describes database recovery only; verify dependencies and use the application
-lifecycle command separately before claiming application readiness.
+current runtime revision to these identities. For restore-named targets the
+restore prefix is accepted only in this explicit source-bound mode. It retains
+the existing path, lock, private-directory, DPAPI, guardian, listener and
+database identity checks. It starts the existing data directory without
+reseeding or migrating it. Its result describes database recovery only; verify
+dependencies and use the application lifecycle command separately before
+claiming application readiness.
