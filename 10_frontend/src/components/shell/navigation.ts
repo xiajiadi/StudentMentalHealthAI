@@ -1,4 +1,4 @@
-import { Activity, BookOpenCheck, ClipboardList, FileCheck2, History, LayoutDashboard, Settings2, ShieldCheck, UsersRound } from '@lucide/vue'
+import { Activity, BookOpenCheck, ChartNoAxesColumnIncreasing, ClipboardList, FileCheck2, History, LayoutDashboard, Settings2, ShieldCheck, UsersRound } from '@lucide/vue'
 import { defineComponent, h } from 'vue'
 import type { Component } from 'vue'
 import type { Role } from '@/types/contracts'
@@ -38,7 +38,9 @@ export const workspaceConfig: Partial<Record<Role, WorkspaceConfig>> = {
   ] },
   teacher: { title: 'Teacher Workspace', home: '/teacher/overview', items: [
     { label: '工作概览', to: '/teacher/overview', icon: LayoutDashboard },
-    { label: '学生支持', to: '/teacher/students', icon: UsersRound },
+    { label: '班级进度', to: '/teacher/classes', icon: UsersRound },
+    { label: '测评任务', to: '/teacher/tasks', icon: ClipboardList },
+    { label: '数据分析', to: '/teacher/analytics', icon: ChartNoAxesColumnIncreasing },
   ] },
   psychological_specialist: { title: 'Counselor Workspace', home: '/specialist/overview', items: [
     { label: '工作概览', to: '/specialist/overview', icon: LayoutDashboard },
