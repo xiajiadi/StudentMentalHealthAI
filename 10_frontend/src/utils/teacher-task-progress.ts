@@ -47,6 +47,35 @@ const count = (value: number | null | undefined) => Math.max(0, Number.isFinite(
 
 export const shortTeacherRef = (value: string) => value.slice(-6)
 
+type TeacherTaskProgressWithDisplayLabels = TeacherTaskProgress & {
+  class_label?: string
+  task_label?: string
+  task_group?: string
+}
+
+export const teacherClassDisplayLabel = (classRef: string, rows: TeacherTaskProgress[]) => {
+  const label = rows
+    .filter((row) => row.class_ref === classRef)
+    .map((row) => (row as TeacherTaskProgressWithDisplayLabels).class_label?.trim())
+    .find((value): value is string => Boolean(value))
+  return label ?? `班级 ${shortTeacherRef(classRef)}`
+}
+
+export const teacherTaskDisplayLabel = (row: TeacherTaskProgress) => {
+  const label = (row as TeacherTaskProgressWithDisplayLabels).task_label?.trim()
+  return label || `任务 ${shortTeacherRef(row.task_ref)}`
+}
+
+export const teacherTaskHeatmapDimension = (row: TeacherTaskProgress) => {
+  const labeled = row as TeacherTaskProgressWithDisplayLabels
+  const group = labeled.task_group?.trim()
+  if (group) return { key: `group:${group}`, label: group }
+  return {
+    key: `task:${row.task_ref}`,
+    label: labeled.task_label?.trim() || `任务 ${shortTeacherRef(row.task_ref)}`,
+  }
+}
+
 export const taskProgressCount = (row: TeacherTaskProgress, key: keyof Pick<
   TeacherTaskProgress,
   | 'published_enrollment_count'
@@ -111,7 +140,7 @@ export const summarizeTeacherProgress = (rows: TeacherTaskProgress[], now = Date
   const classes = new Set(rows.map((row) => row.class_ref))
   const activeEnrollmentCount = rows.reduce((total, row) => total + taskProgressCount(row, 'active_enrollment_count'), 0)
   const completedCount = rows.reduce((total, row) => total + taskProgressCount(row, 'completed_count'), 0)
-  const pendingCount = Math.max(0, activeEnrollmentCount - completedCount)
+  const pendingCount = rows.reduce((total, row) => total + taskActionablePendingCount(row), 0)
   const currentTaskCount = rows.filter((row) => teacherTaskPhase(row, now) === 'in_progress').length
 
   return {
@@ -144,7 +173,7 @@ export const summarizeTeacherClasses = (rows: TeacherTaskProgress[]): TeacherCla
       taskCount: tasks.length,
       activeEnrollmentCount,
       completedCount,
-      pendingCount: Math.max(0, activeEnrollmentCount - completedCount),
+      pendingCount: tasks.reduce((total, row) => total + taskActionablePendingCount(row), 0),
       revokedCount: tasks.reduce((total, row) => total + taskProgressCount(row, 'revoked_enrollment_count'), 0),
       completionRate: activeEnrollmentCount === 0 ? 0 : Math.min(100, Math.round(completedCount / activeEnrollmentCount * 100)),
       tasks: [...tasks].sort((a, b) => (Date.parse(a.due_at ?? '') || Number.MAX_SAFE_INTEGER) - (Date.parse(b.due_at ?? '') || Number.MAX_SAFE_INTEGER)),

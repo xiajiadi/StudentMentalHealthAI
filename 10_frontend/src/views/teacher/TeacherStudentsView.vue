@@ -1,28 +1,26 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { ArrowRight, ArrowUpDown, ListChecks, RotateCcw, Search } from '@lucide/vue'
+import { ArrowRight, ArrowUpDown, ListChecks, RotateCcw, Search, UsersRound } from '@lucide/vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
-import StudentPageHero from '@/components/student/StudentPageHero.vue'
 import WorkspaceBreadcrumb from '@/components/student/WorkspaceBreadcrumb.vue'
 import { useTeacherTaskProgress } from '@/composables/useTeacherTaskProgress'
-import { shortTeacherRef, summarizeTeacherClasses } from '@/utils/teacher-task-progress'
-import { studentPageArt } from '@/data/student-feature-cards'
+import { summarizeTeacherClasses, teacherClassDisplayLabel } from '@/utils/teacher-task-progress'
 
 type ClassSort = 'name' | 'completion' | 'tasks'
 
-const { state, rows, errorMessage, refresh } = useTeacherTaskProgress()
+const { state, rows, errorMessage, refresh, isDemo } = useTeacherTaskProgress({ demoMode: true })
 const query = ref('')
 const sort = ref<ClassSort>('name')
 const classes = computed(() => {
   const normalizedQuery = query.value.trim().toLocaleLowerCase()
   return summarizeTeacherClasses(rows.value)
-    .filter((item) => !normalizedQuery || `班级 ${shortTeacherRef(item.classRef)}`.toLocaleLowerCase().includes(normalizedQuery) || item.classRef.toLocaleLowerCase().includes(normalizedQuery))
+    .filter((item) => !normalizedQuery || `${teacherClassDisplayLabel(item.classRef, rows.value)} ${item.classRef}`.toLocaleLowerCase().includes(normalizedQuery))
     .sort((a, b) => {
       if (sort.value === 'completion') return b.completionRate - a.completionRate || a.classRef.localeCompare(b.classRef, 'zh-CN')
       if (sort.value === 'tasks') return b.taskCount - a.taskCount || a.classRef.localeCompare(b.classRef, 'zh-CN')
-      return a.classRef.localeCompare(b.classRef, 'zh-CN')
+      return teacherClassDisplayLabel(a.classRef, rows.value).localeCompare(teacherClassDisplayLabel(b.classRef, rows.value), 'zh-CN')
     })
 })
 const classTo = (classRef: string) => `/teacher/classes/${encodeURIComponent(classRef)}`
@@ -31,20 +29,10 @@ const classTo = (classRef: string) => `/teacher/classes/${encodeURIComponent(cla
 <template>
   <main class="content-wrap teacher-classes">
     <WorkspaceBreadcrumb home-label="教师工作区" home-to="/teacher/overview" current="班级进度" />
-    <StudentPageHero
-      eyebrow="CLASS PROGRESS · SCOPE A"
-      title="班级进度"
-      subtitle="以班级为中心查看授权任务的整体进展。"
-      :image="studentPageArt.educationSupport"
-      image-position="center 48%"
-      light-text
-    />
-
-    <AppStatusCallout
-      tone="info"
-      title="仅展示班级汇总"
-      body="此页只呈现已授权任务的聚合进度，不包含学生身份、个人记录或测评内容；报名统计按人次汇总。"
-    />
+    <header class="teacher-page-heading">
+      <span class="teacher-page-heading__icon"><UsersRound :size="21" aria-hidden="true" /></span>
+      <div><h1>班级进度</h1><p>这是一个以班级为中心的页面，而不是学生心理档案。</p></div>
+    </header>
 
     <AppCard class="class-library">
       <header class="class-library__toolbar">
@@ -66,22 +54,27 @@ const classTo = (classRef: string) => `/teacher/classes/${encodeURIComponent(cla
           <thead><tr><th scope="col">班级名称</th><th scope="col">测评任务数</th><th scope="col">完成率</th><th scope="col"><span class="sr-only">操作</span>查看进度</th></tr></thead>
           <tbody>
             <tr v-for="item in classes" :key="item.classRef">
-              <th scope="row"><span class="class-library__name">班级 {{ shortTeacherRef(item.classRef) }}</span><small>授权汇总</small></th>
+              <th scope="row"><span class="class-library__name">{{ teacherClassDisplayLabel(item.classRef, rows) }}</span><small>授权汇总</small></th>
               <td><strong>{{ item.taskCount }}</strong><span class="class-library__unit">项</span></td>
-              <td><div class="class-library__completion"><span class="class-library__track" role="progressbar" :aria-valuenow="item.completionRate" aria-valuemin="0" aria-valuemax="100" :aria-label="`班级 ${shortTeacherRef(item.classRef)} 汇总完成率`"><span :style="{ width: `${item.completionRate}%` }"></span></span><strong>{{ item.completionRate }}%</strong></div><small>{{ item.completedCount }} / {{ item.activeEnrollmentCount }} 有效报名人次</small></td>
+              <td><div class="class-library__completion"><template v-if="item.activeEnrollmentCount > 0"><span class="class-library__track" role="progressbar" :aria-valuenow="item.completionRate" aria-valuemin="0" aria-valuemax="100" :aria-label="`班级 ${shortTeacherRef(item.classRef)} 汇总完成率`"><span :style="{ width: `${item.completionRate}%` }"></span></span><strong>{{ item.completionRate }}%</strong></template><strong v-else aria-label="无有效报名，完成率不可用">—</strong></div><small>{{ item.completedCount }} / {{ item.activeEnrollmentCount }} 有效报名人次</small></td>
               <td><RouterLink class="class-library__link" :to="classTo(item.classRef)">查看进度 <ArrowRight :size="15" aria-hidden="true" /></RouterLink></td>
             </tr>
           </tbody>
         </table>
       </div>
-      <footer v-if="state === 'ready' && classes.length" class="class-library__footer">{{ classes.length }} 个班级</footer>
+      <footer v-if="state === 'ready' && classes.length" class="class-library__footer">
+        {{ classes.length }} 个授权班级 · 点击班级可查看任务级进度、报名人次、截止时间与图表；不显示个人测评结果。<span v-if="isDemo">本地合成数据仅用于界面预览。</span>
+      </footer>
     </AppCard>
   </main>
 </template>
 
 <style scoped>
 .teacher-classes { display: grid; gap: 16px; padding-top: 0; padding-bottom: 56px; animation: page-in 220ms ease both; }
-.teacher-classes :deep(.student-page-hero) { margin-bottom: 0; }
+.teacher-page-heading { display: flex; align-items: center; gap: 13px; padding: 2px 0 4px; }
+.teacher-page-heading__icon { display: grid; width: 42px; height: 42px; flex: 0 0 42px; place-items: center; border-radius: 13px; color: var(--color-primary-active); background: #e8f8fc; }
+.teacher-page-heading h1 { margin: 0 0 4px; color: var(--color-text-primary); font-size: 22px; line-height: 1.2; }
+.teacher-page-heading p { margin: 0; color: var(--color-text-secondary); font-size: 13px; line-height: 1.5; }
 .class-library { display: grid; gap: 14px; padding: 20px 22px 14px; }
 .class-library__toolbar,.class-library__title,.class-library__actions { display: flex; align-items: center; gap: 12px; }
 .class-library__toolbar { justify-content: space-between; }
@@ -115,6 +108,7 @@ const classTo = (classRef: string) => `/teacher/classes/${encodeURIComponent(cla
 .class-library__link:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 3px; border-radius: 3px; }
 .class-library__footer { padding-top: 11px; border-top: 1px solid #edf0f2; color: var(--color-text-muted); font-size: 10px; text-align: right; }
 @keyframes page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 560px) { .teacher-page-heading h1 { font-size: 20px; }.teacher-page-heading p { font-size: 12px; } }
 @media (max-width: 850px) { .class-library__toolbar { align-items: flex-start; flex-direction: column; }.class-library__actions { width: 100%; }.class-library__search { flex: 1; }.class-library__search input { width: 100%; }.class-library__table td,.class-library__table th { padding-inline: 9px; } }
 @media (max-width: 560px) { .class-library { padding: 16px 13px 12px; }.class-library__actions { flex-wrap: wrap; gap: 8px; }.class-library__table { min-width: 570px; }.class-library__table th,.class-library__table td { padding: 12px 9px; } }
 </style>

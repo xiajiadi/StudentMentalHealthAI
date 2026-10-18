@@ -3,6 +3,11 @@ import type { TeacherTaskProgress } from '@/api/client'
 import { frontendApi } from '@/services/mock-api'
 
 export type TeacherTaskProgressState = 'loading' | 'ready' | 'error'
+const teacherPreviewSourceKey = 'psynova.teacher.preview.dataMode'
+const isLocalTeacherPreview = () => import.meta.env.DEV
+  && typeof window !== 'undefined'
+  && ['127.0.0.1', 'localhost'].includes(window.location.hostname)
+  && window.location.port === '4206'
 
 const errorMessageFor = (error: unknown) => {
   const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code).toLowerCase() : ''
@@ -12,10 +17,19 @@ const errorMessageFor = (error: unknown) => {
   return '暂时无法读取任务进度，请稍后重试。'
 }
 
-export function useTeacherTaskProgress(options: { autoLoad?: boolean } = {}) {
+export function useTeacherTaskProgress(options: { autoLoad?: boolean; demoMode?: boolean } = {}) {
   const state = ref<TeacherTaskProgressState>('loading')
   const rows = ref<TeacherTaskProgress[]>([])
   const errorMessage = ref('')
+  let demoSeed = 0
+  let useLocalDemo = false
+  if (options.demoMode && isLocalTeacherPreview()) {
+    try {
+      useLocalDemo = window.localStorage.getItem(teacherPreviewSourceKey) !== 'real'
+    } catch {
+      useLocalDemo = true
+    }
+  }
   let requestGeneration = 0
 
   const refresh = async () => {
@@ -23,6 +37,20 @@ export function useTeacherTaskProgress(options: { autoLoad?: boolean } = {}) {
     state.value = 'loading'
     errorMessage.value = ''
     rows.value = []
+
+    if (useLocalDemo) {
+      try {
+        const { createTeacherOverviewDemoRows } = await import('@/data/teacher-overview-demo-data')
+        if (generation !== requestGeneration) return
+        rows.value = createTeacherOverviewDemoRows(demoSeed++)
+        state.value = 'ready'
+      } catch {
+        if (generation !== requestGeneration) return
+        errorMessage.value = '无法载入本地示意数据。'
+        state.value = 'error'
+      }
+      return
+    }
 
     if (!frontendApi.listTeacherSchoolTaskProgress) {
       state.value = 'error'
@@ -45,5 +73,5 @@ export function useTeacherTaskProgress(options: { autoLoad?: boolean } = {}) {
   if (options.autoLoad !== false) onMounted(() => { void refresh() })
   onBeforeUnmount(() => { requestGeneration += 1 })
 
-  return { state, rows, errorMessage, refresh }
+  return { state, rows, errorMessage, refresh, isDemo: useLocalDemo }
 }

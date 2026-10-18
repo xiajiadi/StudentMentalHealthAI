@@ -4,9 +4,10 @@ import { Activity, CalendarClock, CheckCircle2, Clock3, UsersRound, XCircle } fr
 import type { TeacherTaskProgress } from '@/api/client'
 import {
   formatTeacherDate,
-  shortTeacherRef,
   taskCompletionRate,
   taskProgressCount,
+  teacherClassDisplayLabel,
+  teacherTaskDisplayLabel,
   teacherTaskPhase,
   teacherTaskPhaseLabel,
   teacherTaskStatusLabel,
@@ -21,11 +22,12 @@ import { studentPageArt } from '@/data/student-feature-cards'
 import { useRoute } from 'vue-router'
 
 const route = useRoute()
-const { state, rows, errorMessage, refresh } = useTeacherTaskProgress()
+const { state, rows, errorMessage, refresh, isDemo } = useTeacherTaskProgress({ demoMode: true })
 const classRef = computed(() => String(route.params.classRef ?? ''))
 const taskRef = computed(() => String(route.params.taskRef ?? ''))
 const task = computed(() => rows.value.find((row) => row.class_ref === classRef.value && row.task_ref === taskRef.value))
 const rate = computed(() => task.value ? taskCompletionRate(task.value) : 0)
+const hasActiveEnrollment = computed(() => Boolean(task.value && taskProgressCount(task.value, 'active_enrollment_count') > 0))
 
 const counts = computed(() => {
   const row = task.value
@@ -41,7 +43,7 @@ const counts = computed(() => {
   ]
 })
 
-const statusSummary = (row: TeacherTaskProgress) => `共 ${row.active_enrollment_count} 个当前有效报名，其中 ${row.completed_count} 个已完成。`
+const statusSummary = (row: TeacherTaskProgress) => `共 ${row.active_enrollment_count} 个当前有效报名人次，其中 ${row.completed_count} 人次已完成。`
 </script>
 
 <template>
@@ -49,7 +51,7 @@ const statusSummary = (row: TeacherTaskProgress) => `共 ${row.active_enrollment
     <WorkspaceBreadcrumb home-label="教师工作区" home-to="/teacher/overview" :parent="{ label: '测评任务', to: '/teacher/tasks' }" current="任务汇总" />
     <StudentPageHero
       eyebrow="TASK SUMMARY · SCOPE A"
-      :title="task ? `班级 ${shortTeacherRef(task.class_ref)} · 任务 ${shortTeacherRef(task.task_ref)}` : '任务汇总'"
+      :title="task ? `${teacherClassDisplayLabel(task.class_ref, rows)} · ${teacherTaskDisplayLabel(task)}` : '任务汇总'"
       subtitle="仅呈现该班级任务的整体状态计数与时间安排。"
       :image="studentPageArt.assessments"
       image-position="center 48%"
@@ -72,7 +74,7 @@ const statusSummary = (row: TeacherTaskProgress) => `共 ${row.active_enrollment
 
         <section class="completion-summary" aria-label="整体完成情况">
           <div><span>当前有效报名</span><strong>{{ task.active_enrollment_count }}</strong></div>
-          <div class="completion-summary__rate"><span>汇总完成率</span><strong>{{ rate }}<small>%</small></strong><span class="completion-track" role="progressbar" :aria-valuenow="rate" aria-valuemin="0" aria-valuemax="100" aria-label="任务汇总完成率"><i :style="{ width: `${rate}%` }"></i></span></div>
+          <div class="completion-summary__rate"><span>汇总完成率</span><strong v-if="hasActiveEnrollment">{{ rate }}<small>%</small></strong><strong v-else>—</strong><span v-if="hasActiveEnrollment" class="completion-track" role="progressbar" :aria-valuenow="rate" aria-valuemin="0" aria-valuemax="100" aria-label="任务汇总完成率"><i :style="{ width: `${rate}%` }"></i></span></div>
           <p>{{ statusSummary(task) }}</p>
         </section>
 
@@ -87,12 +89,14 @@ const statusSummary = (row: TeacherTaskProgress) => `共 ${row.active_enrollment
         </section>
       </template>
     </AppCard>
+    <p v-if="isDemo" class="task-detail-demo-note">当前为前端合成数据预览，不代表实际业务记录。</p>
   </main>
 </template>
 
 <style scoped>
 .teacher-task-detail { display: grid; gap: 16px; padding-top: 0; animation: page-in 220ms ease both; }
 .teacher-task-detail :deep(.student-page-hero) { margin-bottom: 0; }
+.task-detail-demo-note { margin: -4px 2px 0; color: var(--color-text-muted); font-size: 10px; line-height: 1.5; }
 .detail-panel { padding: 22px; }
 .detail-panel__heading,.status-section__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
 .detail-panel h2 { margin: 0 0 4px; color: var(--color-text-primary); font-size: 16px; }

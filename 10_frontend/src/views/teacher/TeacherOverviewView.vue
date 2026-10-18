@@ -22,7 +22,16 @@ type DataMode = 'demo' | 'real'
 type DashboardState = 'loading' | 'ready' | 'error'
 
 const isDevelopment = import.meta.env.DEV
-const dataMode = ref<DataMode>(isDevelopment ? 'demo' : 'real')
+const teacherPreviewSourceKey = 'psynova.teacher.preview.dataMode'
+const initialDataMode = (): DataMode => {
+  if (!isDevelopment) return 'real'
+  try {
+    return window.localStorage.getItem(teacherPreviewSourceKey) === 'real' ? 'real' : 'demo'
+  } catch {
+    return 'demo'
+  }
+}
+const dataMode = ref<DataMode>(initialDataMode())
 const selectedClass = ref('all')
 const demoRows = ref<TeacherOverviewProgressRow[]>([])
 const demoState = ref<DashboardState>(isDevelopment ? 'loading' : 'ready')
@@ -55,7 +64,9 @@ const loadDemoRows = async (seed: number) => {
 }
 
 onMounted(() => {
-  if (isDevelopment) void loadDemoRows(demoSeed.value)
+  if (!isDevelopment) return
+  if (dataMode.value === 'demo') void loadDemoRows(demoSeed.value)
+  else void refreshReal()
 })
 
 const sourceRows = computed<TeacherOverviewProgressRow[]>(() => dataMode.value === 'demo'
@@ -373,6 +384,7 @@ const isStatusEmpty = computed(() => activeEnrollmentCount.value === 0 || status
 
 const setDataMode = (mode: DataMode) => {
   if (!isDevelopment || dataMode.value === mode) return
+  try { window.localStorage.setItem(teacherPreviewSourceKey, mode) } catch { /* keep the current page mode if storage is unavailable */ }
   dataMode.value = mode
 }
 const handleRefresh = () => {
