@@ -33,7 +33,7 @@ const router = createRouter({
     { path: '/student/reports/:id', name: 'student-report-detail', component: () => import('@/views/student/StudentResultView.vue'), meta: { roles: ['student'], layout: 'workspace' } },
     { path: '/student/result/:id', name: 'student-result', component: () => import('@/views/student/StudentResultView.vue'), meta: { roles: ['student'], layout: 'workspace' } },
     { path: '/teacher', redirect: '/teacher/overview' },
-    { path: '/teacher/overview', name: 'teacher-overview', component: () => import('@/views/teacher/TeacherOverviewView.vue'), meta: { roles: ['teacher'], layout: 'workspace' } },
+    { path: '/teacher/overview', name: 'teacher-overview', component: () => import('@/views/teacher/TeacherOverviewView.vue'), meta: { roles: ['teacher'], layout: 'workspace', public: import.meta.env.DEV } },
     { path: '/teacher/classes', name: 'teacher-classes', component: () => import('@/views/teacher/TeacherStudentsView.vue'), meta: { roles: ['teacher'], layout: 'workspace' } },
     { path: '/teacher/classes/:classRef', name: 'teacher-class-detail', component: () => import('@/views/teacher/TeacherClassDetailView.vue'), meta: { roles: ['teacher'], layout: 'workspace' } },
     { path: '/teacher/tasks', name: 'teacher-tasks', component: () => import('@/views/teacher/TeacherAssessmentTasksView.vue'), meta: { roles: ['teacher'], layout: 'workspace' } },

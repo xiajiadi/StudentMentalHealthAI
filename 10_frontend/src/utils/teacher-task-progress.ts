@@ -1,5 +1,11 @@
 import type { TeacherTaskProgress } from '@/api/client'
 
+export interface TeacherOverviewProgressRow extends TeacherTaskProgress {
+  class_label?: string
+  task_label?: string
+  task_group?: string
+}
+
 export const teacherChartColors = {
   blue: '#2563eb',
   teal: '#0f766e',
@@ -59,6 +65,11 @@ export const taskCompletionRate = (row: TeacherTaskProgress) => {
   if (active === 0) return 0
   return Math.min(100, Math.round(taskProgressCount(row, 'completed_count') / active * 100))
 }
+
+export const taskActionablePendingCount = (row: TeacherTaskProgress) =>
+  taskProgressCount(row, 'not_started_count')
+  + taskProgressCount(row, 'created_count')
+  + taskProgressCount(row, 'in_progress_count')
 
 export const teacherTaskPhase = (row: TeacherTaskProgress, now = Date.now()): TeacherTaskPhase => {
   const status = row.task_status.trim().toUpperCase()
@@ -143,8 +154,8 @@ export const summarizeTeacherClasses = (rows: TeacherTaskProgress[]): TeacherCla
 
 export const teacherEnrollmentStatusBreakdown = (rows: TeacherTaskProgress[]) => {
   const totals = rows.reduce((result, row) => ({
-    notStarted: result.notStarted + taskProgressCount(row, 'not_started_count') + taskProgressCount(row, 'created_count'),
-    inProgress: result.inProgress + taskProgressCount(row, 'in_progress_count'),
+    notStarted: result.notStarted + taskProgressCount(row, 'not_started_count'),
+    inProgress: result.inProgress + taskProgressCount(row, 'created_count') + taskProgressCount(row, 'in_progress_count'),
     completed: result.completed + taskProgressCount(row, 'completed_count'),
     ended: result.ended + taskProgressCount(row, 'abandoned_count') + taskProgressCount(row, 'invalid_count'),
     revoked: result.revoked + taskProgressCount(row, 'revoked_enrollment_count'),

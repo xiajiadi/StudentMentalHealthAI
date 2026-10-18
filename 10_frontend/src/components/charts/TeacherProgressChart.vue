@@ -2,16 +2,16 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as echarts from 'echarts/core'
 import type { ECharts, EChartsOption } from 'echarts/core'
-import { BarChart, HeatmapChart, PieChart } from 'echarts/charts'
+import { BarChart, HeatmapChart, LineChart, PieChart } from 'echarts/charts'
 import { GridComponent, LegendComponent, TooltipComponent, VisualMapComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 
-echarts.use([BarChart, HeatmapChart, PieChart, GridComponent, LegendComponent, TooltipComponent, VisualMapComponent, CanvasRenderer])
+echarts.use([BarChart, HeatmapChart, LineChart, PieChart, GridComponent, LegendComponent, TooltipComponent, VisualMapComponent, CanvasRenderer])
 
 const props = withDefaults(defineProps<{
   option: EChartsOption
   label: string
-  summary: string
+  summary?: string
   height?: number
 }>(), { height: 270 })
 
@@ -44,7 +44,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="teacher-chart">
     <div ref="root" class="teacher-chart__canvas" :style="{ height: `${height}px` }" role="img" :aria-label="label"></div>
-    <p class="teacher-chart__summary">{{ summary }}</p>
+    <p v-if="summary" class="teacher-chart__summary">{{ summary }}</p>
   </div>
 </template>
 

@@ -12,7 +12,7 @@ const errorMessageFor = (error: unknown) => {
   return '暂时无法读取任务进度，请稍后重试。'
 }
 
-export function useTeacherTaskProgress() {
+export function useTeacherTaskProgress(options: { autoLoad?: boolean } = {}) {
   const state = ref<TeacherTaskProgressState>('loading')
   const rows = ref<TeacherTaskProgress[]>([])
   const errorMessage = ref('')
@@ -42,7 +42,7 @@ export function useTeacherTaskProgress() {
     }
   }
 
-  onMounted(() => { void refresh() })
+  if (options.autoLoad !== false) onMounted(() => { void refresh() })
   onBeforeUnmount(() => { requestGeneration += 1 })
 
   return { state, rows, errorMessage, refresh }
