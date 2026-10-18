@@ -174,7 +174,7 @@ const completionColorForRate = (rate: number | null) => {
 const classCompletionOption = computed<EChartsOption>(() => ({
   color: [teacherChartColors.sky],
   animation: false,
-  grid: { left: 36, right: 18, top: 34, bottom: classStats.value.length > 6 ? 54 : 38, containLabel: true },
+  grid: { left: 36, right: 18, top: 34, bottom: classStats.value.length > 6 ? 68 : 48, containLabel: true },
   tooltip: {
     ...overviewTooltipStyle,
     trigger: 'axis',
@@ -206,7 +206,7 @@ const classCompletionOption = computed<EChartsOption>(() => ({
     data: classStats.value.map((item) => item.label),
     axisTick: { show: false },
     axisLine: { lineStyle: { color: '#e2e8ee' } },
-    axisLabel: { color: '#8793a1', fontSize: 10, interval: 0, rotate: classStats.value.length > 6 ? 24 : 0, align: 'center' },
+    axisLabel: { color: '#8793a1', fontSize: 10, interval: 0, rotate: classStats.value.length > 6 ? 24 : 0, align: 'center', margin: classStats.value.length > 6 ? 18 : 14 },
   },
   yAxis: {
     type: 'value', min: 0, max: 100, interval: 25,
@@ -540,7 +540,7 @@ const handleRefresh = () => {
 .overview-mode-toggle:hover { text-decoration: underline; text-underline-offset: 3px; }
 .overview-board { display: grid; gap: 12px; padding: 14px; }
 .overview-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
-.overview-kpi { display: grid; align-content: start; gap: 7px; min-width: 0; min-height: 108px; padding: 15px 16px; border: 1px solid #e7edf2; border-radius: 12px; background: #fff; box-shadow: none; }
+.overview-kpi { display: grid; align-content: start; gap: 7px; min-width: 0; min-height: clamp(74px, 6vw, 86px); padding: 12px 16px; border: 1px solid #e7edf2; border-radius: 12px; background: #fff; box-shadow: none; }
 .overview-kpi__label { display: flex; align-items: center; gap: 7px; color: #8191a0; font-size: 10px; font-weight: 600; }
 .overview-kpi__label svg { color: #83a8b7; }
 .overview-kpi strong { color: #344657; font-size: 26px; font-weight: 650; line-height: 1.1; font-variant-numeric: tabular-nums; }
@@ -586,5 +586,5 @@ const handleRefresh = () => {
 @keyframes page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 @media (max-width: 1100px) { .overview-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }.overview-chart-card { min-height: 350px; } }
 @media (max-width: 850px) { .overview-page-header { align-items: flex-start; flex-direction: column; }.overview-toolbar { justify-content: flex-start; }.overview-chart-grid { grid-template-columns: minmax(0, 1fr); }.overview-chart-card { min-height: 338px; } }
-@media (max-width: 560px) { .overview-page-header { gap: 12px; }.overview-toolbar { width: 100%; gap: 7px; }.overview-class-filter { flex: 1; }.overview-board { gap: 9px; padding: 9px; }.overview-kpis { gap: 8px; }.overview-kpi { min-height: 99px; padding: 12px; }.overview-kpi strong { font-size: 23px; }.overview-kpi small { font-size: 8px; }.overview-chart-card { min-height: 330px; padding: 13px 12px 10px; }.overview-task-table-card { padding: 13px 11px; }.overview-task-table { min-width: 650px; }.overview-state--error { align-items: flex-start; flex-direction: column; }.overview-state__actions { flex-wrap: wrap; } }
+@media (max-width: 560px) { .overview-page-header { gap: 12px; }.overview-toolbar { width: 100%; gap: 7px; }.overview-class-filter { flex: 1; }.overview-board { gap: 9px; padding: 9px; }.overview-kpis { gap: 8px; }.overview-kpi { min-height: 74px; padding: 10px 12px; }.overview-kpi strong { font-size: 23px; }.overview-chart-card { min-height: 330px; padding: 13px 12px 10px; }.overview-task-table-card { padding: 13px 11px; }.overview-task-table { min-width: 650px; }.overview-state--error { align-items: flex-start; flex-direction: column; }.overview-state__actions { flex-wrap: wrap; } }
 </style>
