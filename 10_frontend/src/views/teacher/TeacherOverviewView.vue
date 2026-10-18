@@ -439,22 +439,18 @@ const handleRefresh = () => {
         <AppCard class="overview-kpi">
           <span class="overview-kpi__label"><UsersRound :size="15" aria-hidden="true" />{{ dataMode === 'demo' ? '负责班级' : '有任务班级' }}</span>
           <strong>{{ pageTitleClassCount }}</strong>
-          <small>{{ dataMode === 'demo' ? '本地示意授权范围' : '当前汇总中出现的授权班级' }}</small>
         </AppCard>
         <AppCard class="overview-kpi">
           <span class="overview-kpi__label"><ClipboardList :size="15" aria-hidden="true" />进行中任务</span>
           <strong>{{ currentTaskCount }}</strong>
-          <small>已开放且未超过截止时间</small>
         </AppCard>
         <AppCard class="overview-kpi overview-kpi--accent">
           <span class="overview-kpi__label"><Activity :size="15" aria-hidden="true" />测评完成率</span>
           <strong>{{ completionRateText }}</strong>
-          <small>{{ completedCount }} / {{ activeEnrollmentCount }} 有效报名人次</small>
         </AppCard>
         <AppCard class="overview-kpi">
           <span class="overview-kpi__label"><CalendarDays :size="15" aria-hidden="true" />待完成人次</span>
           <strong>{{ pendingEnrollmentCount }}</strong>
-          <small>未开始、准备中及进行中；不含已结束与撤销</small>
         </AppCard>
       </section>
 
@@ -548,7 +544,6 @@ const handleRefresh = () => {
 .overview-kpi__label { display: flex; align-items: center; gap: 7px; color: #8191a0; font-size: 10px; font-weight: 600; }
 .overview-kpi__label svg { color: #83a8b7; }
 .overview-kpi strong { color: #344657; font-size: 26px; font-weight: 650; line-height: 1.1; font-variant-numeric: tabular-nums; }
-.overview-kpi small { color: #a0acb7; font-size: 9px; line-height: 1.45; }
 .overview-kpi--accent strong,.overview-kpi--accent .overview-kpi__label svg { color: var(--color-primary); }
 .overview-chart-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
 .overview-chart-card { display: grid; align-content: start; gap: 8px; min-width: 0; min-height: 360px; padding: 15px 16px 12px; border: 1px solid #e7edf2; border-radius: 12px; background: #fff; box-shadow: none; }
