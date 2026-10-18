@@ -423,7 +423,6 @@ const handleRefresh = () => {
           <header class="overview-chart-card__header">
             <span class="overview-chart-card__icon"><ChartColumn :size="16" aria-hidden="true" /></span>
             <div><h2>班级完成率对比</h2><p>不同授权班级的测评任务完成情况</p></div>
-            <span class="overview-chart-card__type">竖向柱状图</span>
           </header>
           <TeacherProgressChart v-if="classStats.length" :option="classCompletionOption" label="授权班级测评完成率竖向柱状图" :height="282" />
           <div v-else class="overview-chart-empty">当前范围内没有有效报名人次。</div>
@@ -433,7 +432,6 @@ const handleRefresh = () => {
           <header class="overview-chart-card__header">
             <span class="overview-chart-card__icon overview-chart-card__icon--teal"><ChartPie :size="16" aria-hidden="true" /></span>
             <div><h2>测评状态分布</h2><p>当前有效报名人次构成</p></div>
-            <span class="overview-chart-card__type">环形图</span>
           </header>
           <TeacherProgressChart v-if="!isStatusEmpty" :option="statusOption" label="有效报名人次的测评状态环形图" :height="282" :summary="`已撤销报名 ${revokedEnrollmentCount} 人次另行统计。${statusCountsMatch ? '' : '状态明细与有效报名总数存在差异。'}`" />
           <div v-else class="overview-chart-empty">当前没有有效报名状态可供分布。</div>
@@ -450,7 +448,6 @@ const handleRefresh = () => {
                 <span>高完成率</span>
               </div>
             </div>
-            <span class="overview-chart-card__type">热力矩阵</span>
           </header>
           <TeacherProgressChart v-if="heatmapCells.data.length" :option="heatmapOption" label="授权班级与测评任务完成率热力矩阵" :height="Math.max(270, heatmapCells.classLabels.length * 42 + 54)" />
           <div v-else class="overview-chart-empty">当前没有可以比较的班级任务组合。</div>
@@ -460,7 +457,6 @@ const handleRefresh = () => {
           <header class="overview-chart-card__header">
             <span class="overview-chart-card__icon overview-chart-card__icon--amber"><CalendarDays :size="16" aria-hidden="true" /></span>
             <div><h2>近期任务截止压力</h2><p>未来 14 天的到期任务与待完成人次</p></div>
-            <span class="overview-chart-card__type">柱线组合图</span>
           </header>
           <TeacherProgressChart v-if="deadlineData.length" :option="deadlineOption" label="未来十四天到期任务数与待完成人次柱线组合图" :height="Math.max(270, heatmapCells.classLabels.length * 42 + 54)" />
           <div v-else class="overview-chart-empty">未来 14 天没有设置截止日期的已发布任务。</div>
@@ -525,7 +521,6 @@ const handleRefresh = () => {
 .overview-chart-card__header p,.overview-task-table-card__header p { margin: 0; color: #9aa7b3; font-size: 9px; line-height: 1.45; }
 .overview-chart-card__scale { display: flex; align-items: center; gap: 4px; color: #9aa7b3; font-size: 9px; line-height: 1.3; white-space: nowrap; }
 .overview-chart-card__scale-swatch { width: 10px; height: 7px; flex: 0 0 10px; border-radius: 2px; }
-.overview-chart-card__type { padding-top: 3px; color: #a2afba; font-size: 9px; white-space: nowrap; }
 .overview-chart-empty,.overview-table-empty { display: grid; min-height: 254px; place-items: center; padding: 20px; color: #98a6b2; font-size: 11px; text-align: center; }
 .overview-task-table-card { display: grid; gap: 10px; min-width: 0; padding: 16px; border: 1px solid #e7edf2; border-radius: 12px; background: #fff; box-shadow: none; }
 .overview-task-table-card__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
@@ -556,5 +551,5 @@ const handleRefresh = () => {
 @keyframes page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 @media (max-width: 1100px) { .overview-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }.overview-chart-card { min-height: 350px; } }
 @media (max-width: 850px) { .overview-page-header { align-items: flex-start; flex-direction: column; }.overview-toolbar { justify-content: flex-start; }.overview-chart-grid { grid-template-columns: minmax(0, 1fr); }.overview-chart-card { min-height: 338px; } }
-@media (max-width: 560px) { .overview-page-header { gap: 12px; }.overview-toolbar { width: 100%; gap: 7px; }.overview-class-filter { flex: 1; }.overview-board { gap: 9px; padding: 9px; }.overview-kpis { gap: 8px; }.overview-kpi { min-height: 99px; padding: 12px; }.overview-kpi strong { font-size: 23px; }.overview-kpi small { font-size: 8px; }.overview-chart-card { min-height: 330px; padding: 13px 12px 10px; }.overview-chart-card__type { font-size: 8px; }.overview-task-table-card { padding: 13px 11px; }.overview-task-table { min-width: 650px; }.overview-state--error { align-items: flex-start; flex-direction: column; }.overview-state__actions { flex-wrap: wrap; } }
+@media (max-width: 560px) { .overview-page-header { gap: 12px; }.overview-toolbar { width: 100%; gap: 7px; }.overview-class-filter { flex: 1; }.overview-board { gap: 9px; padding: 9px; }.overview-kpis { gap: 8px; }.overview-kpi { min-height: 99px; padding: 12px; }.overview-kpi strong { font-size: 23px; }.overview-kpi small { font-size: 8px; }.overview-chart-card { min-height: 330px; padding: 13px 12px 10px; }.overview-task-table-card { padding: 13px 11px; }.overview-task-table { min-width: 650px; }.overview-state--error { align-items: flex-start; flex-direction: column; }.overview-state__actions { flex-wrap: wrap; } }
 </style>
