@@ -191,8 +191,8 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutsidePoint
 .teacher-class-select { position: relative; width: 100%; min-width: 0; }
 .teacher-class-select__trigger { display: flex; width: 100%; min-width: 154px; height: 36px; align-items: center; justify-content: space-between; gap: 12px; padding: 0 11px 0 12px; border: 1px solid #dfe6eb; border-radius: 9px; color: #344657; background: #fff; font: inherit; font-size: 11px; text-align: left; cursor: pointer; transition: border-color 140ms ease, background-color 140ms ease; }
 .teacher-class-select__trigger:hover:not(:disabled) { border-color: #a5d2de; background: #fbfeff; }
-.teacher-class-select__trigger:focus,.teacher-class-select__trigger:focus-visible { border-color: #279de0; outline: 2px solid #279de0; outline-offset: 2px; }
-.teacher-class-select__trigger[aria-expanded='true'] { border-color: #79c9db; }
+.teacher-class-select__trigger:focus-visible { border-color: #279de0; outline: 2px solid #279de0; outline-offset: 2px; }
+.teacher-class-select__trigger[aria-expanded='true'] { border-color: #79c9db; outline: 2px solid #279de0; outline-offset: 2px; }
 .teacher-class-select__trigger:disabled { color: #98a6b2; background: #f7f9fa; cursor: not-allowed; }
 .teacher-class-select__value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .teacher-class-select__trigger > svg { flex: 0 0 auto; color: #758897; transition: transform 140ms ease; }

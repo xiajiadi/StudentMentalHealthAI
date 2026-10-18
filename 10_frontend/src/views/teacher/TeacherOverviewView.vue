@@ -527,7 +527,7 @@ const handleRefresh = () => {
 .overview-page-heading h1 { margin: 0; color: var(--color-text-secondary); font-size: 13px; font-weight: 600; line-height: 1.4; }
 .overview-toolbar { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .overview-class-filter { flex: 0 0 156px; }
-.overview-toolbar :deep(button:focus),.overview-toolbar :deep(button:focus-visible) { outline: 2px solid #279de0; outline-offset: 2px; }
+.overview-toolbar :deep(button:focus-visible) { outline: 2px solid #279de0; outline-offset: 2px; }
 .overview-mode-toggle:focus-visible { border-radius: 6px; }
 .overview-mode-toggle { min-height: 32px; padding: 0 8px; border: 0; color: var(--color-primary-active); background: transparent; font: inherit; font-size: 10px; font-weight: 650; cursor: pointer; }
 .overview-mode-toggle:hover { text-decoration: underline; text-underline-offset: 3px; }
