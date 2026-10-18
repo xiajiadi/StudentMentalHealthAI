@@ -32,11 +32,14 @@ export function useTeacherTaskProgress(options: { autoLoad?: boolean; demoMode?:
   }
   let requestGeneration = 0
 
-  const refresh = async () => {
+  const refresh = async (options: { preserveExisting?: boolean } = {}) => {
+    const preserveExisting = options.preserveExisting === true && state.value === 'ready'
     const generation = ++requestGeneration
-    state.value = 'loading'
     errorMessage.value = ''
-    rows.value = []
+    if (!preserveExisting) {
+      state.value = 'loading'
+      rows.value = []
+    }
 
     if (useLocalDemo) {
       try {
@@ -53,6 +56,10 @@ export function useTeacherTaskProgress(options: { autoLoad?: boolean; demoMode?:
     }
 
     if (!frontendApi.listTeacherSchoolTaskProgress) {
+      if (preserveExisting) {
+        errorMessage.value = '当前运行环境未提供教师任务汇总服务。'
+        return
+      }
       state.value = 'error'
       errorMessage.value = '当前运行环境未提供教师任务汇总服务。'
       return
@@ -66,7 +73,7 @@ export function useTeacherTaskProgress(options: { autoLoad?: boolean; demoMode?:
     } catch (error) {
       if (generation !== requestGeneration) return
       errorMessage.value = errorMessageFor(error)
-      state.value = 'error'
+      if (!preserveExisting) state.value = 'error'
     }
   }
 

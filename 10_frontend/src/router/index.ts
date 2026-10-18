@@ -11,6 +11,8 @@ declare module 'vue-router' {
   }
 }
 
+const teacherPreviewMeta = { public: import.meta.env.DEV }
+
 const router = createRouter({
   history: createWebHistory(),
   scrollBehavior: (to, _from, savedPosition) => savedPosition ?? (to.hash ? { el: to.hash, behavior: 'smooth' } : { top: 0 }),
@@ -33,12 +35,12 @@ const router = createRouter({
     { path: '/student/reports/:id', name: 'student-report-detail', component: () => import('@/views/student/StudentResultView.vue'), meta: { roles: ['student'], layout: 'workspace' } },
     { path: '/student/result/:id', name: 'student-result', component: () => import('@/views/student/StudentResultView.vue'), meta: { roles: ['student'], layout: 'workspace' } },
     { path: '/teacher', redirect: '/teacher/overview' },
-    { path: '/teacher/overview', name: 'teacher-overview', component: () => import('@/views/teacher/TeacherOverviewView.vue'), meta: { roles: ['teacher'], layout: 'workspace', public: import.meta.env.DEV } },
-    { path: '/teacher/classes', name: 'teacher-classes', component: () => import('@/views/teacher/TeacherStudentsView.vue'), meta: { roles: ['teacher'], layout: 'workspace' } },
-    { path: '/teacher/classes/:classRef', name: 'teacher-class-detail', component: () => import('@/views/teacher/TeacherClassDetailView.vue'), meta: { roles: ['teacher'], layout: 'workspace' } },
-    { path: '/teacher/tasks', name: 'teacher-tasks', component: () => import('@/views/teacher/TeacherAssessmentTasksView.vue'), meta: { roles: ['teacher'], layout: 'workspace' } },
-    { path: '/teacher/tasks/:classRef/:taskRef', name: 'teacher-task-detail', component: () => import('@/views/teacher/TeacherTaskDetailView.vue'), meta: { roles: ['teacher'], layout: 'workspace' } },
-    { path: '/teacher/analytics', name: 'teacher-analytics', component: () => import('@/views/teacher/TeacherAnalyticsView.vue'), meta: { roles: ['teacher'], layout: 'workspace' } },
+    { path: '/teacher/overview', name: 'teacher-overview', component: () => import('@/views/teacher/TeacherOverviewView.vue'), meta: { roles: ['teacher'], layout: 'workspace', ...teacherPreviewMeta } },
+    { path: '/teacher/classes', name: 'teacher-classes', component: () => import('@/views/teacher/TeacherStudentsView.vue'), meta: { roles: ['teacher'], layout: 'workspace', ...teacherPreviewMeta } },
+    { path: '/teacher/classes/:classRef', name: 'teacher-class-detail', component: () => import('@/views/teacher/TeacherClassDetailView.vue'), meta: { roles: ['teacher'], layout: 'workspace', ...teacherPreviewMeta } },
+    { path: '/teacher/tasks', name: 'teacher-tasks', component: () => import('@/views/teacher/TeacherAssessmentTasksView.vue'), meta: { roles: ['teacher'], layout: 'workspace', ...teacherPreviewMeta } },
+    { path: '/teacher/tasks/:classRef/:taskRef', name: 'teacher-task-detail', component: () => import('@/views/teacher/TeacherTaskDetailView.vue'), meta: { roles: ['teacher'], layout: 'workspace', ...teacherPreviewMeta } },
+    { path: '/teacher/analytics', name: 'teacher-analytics', component: () => import('@/views/teacher/TeacherAnalyticsView.vue'), meta: { roles: ['teacher'], layout: 'workspace', ...teacherPreviewMeta } },
     { path: '/teacher/students', redirect: '/teacher/classes' },
     { path: '/teacher/students/:id', redirect: '/teacher/classes' },
     { path: '/specialist', redirect: '/specialist/overview' },

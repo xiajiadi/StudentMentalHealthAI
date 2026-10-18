@@ -11,9 +11,30 @@ describe('角色路由守卫', () => {
   })
 
   it('未登录访问受保护页面会回到登录并保留目标地址', async () => {
-    await router.push('/teacher/overview')
+    await router.push('/student/home')
     expect(router.currentRoute.value.name).toBe('login')
-    expect(router.currentRoute.value.query.redirect).toBe('/teacher/overview')
+    expect(router.currentRoute.value.query.redirect).toBe('/student/home')
+  })
+
+  it('开发预览可直接打开教师工作区，其他环境仍保留角色校验', async () => {
+    const teacherPreviewRoutes = [
+      ['/teacher/overview', 'teacher-overview'],
+      ['/teacher/classes', 'teacher-classes'],
+      ['/teacher/classes/24G1', 'teacher-class-detail'],
+      ['/teacher/tasks', 'teacher-tasks'],
+      ['/teacher/tasks/24G1/TASK1', 'teacher-task-detail'],
+      ['/teacher/analytics', 'teacher-analytics'],
+    ] as const
+
+    for (const [path, name] of teacherPreviewRoutes) {
+      await router.push(path)
+      if (import.meta.env.DEV) {
+        expect(router.currentRoute.value.name).toBe(name)
+      } else {
+        expect(router.currentRoute.value.name).toBe('login')
+        expect(router.currentRoute.value.query.redirect).toBe(path)
+      }
+    }
   })
 
   it('角色不能跨越自己的工作区', async () => {

@@ -5,12 +5,21 @@ defineProps<{
   homeLabel?: string
   homeTo?: string
 }>()
+
+const emit = defineEmits<{
+  (event: 'home-click', mouseEvent: MouseEvent): void
+}>()
+
+const activateHome = (event: MouseEvent, navigate: (event?: MouseEvent) => unknown) => {
+  emit('home-click', event)
+  void navigate(event)
+}
 </script>
 
 <template>
   <nav class="workspace-breadcrumb" aria-label="当前位置">
     <ol>
-      <li><RouterLink :to="homeTo ?? '/student/home'">{{ homeLabel ?? '学生空间' }}</RouterLink></li>
+      <li><RouterLink :to="homeTo ?? '/student/home'" custom v-slot="{ href, navigate }"><a :href="href" @click="activateHome($event, navigate)">{{ homeLabel ?? '学生空间' }}</a></RouterLink></li>
       <template v-if="parent">
         <li class="workspace-breadcrumb__separator" aria-hidden="true">/</li>
         <li><RouterLink :to="parent.to">{{ parent.label }}</RouterLink></li>

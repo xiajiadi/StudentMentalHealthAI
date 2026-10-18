@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { EChartsOption } from 'echarts/core'
-import { Activity, CalendarDays, ChartColumn, ChartPie, ClipboardList, RotateCcw, UsersRound } from '@lucide/vue'
+import { Activity, CalendarDays, ChartColumn, ChartNoAxesCombined, ChartPie, ClipboardList, Grid3X3, ListChecks, UsersRound } from '@lucide/vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
 import TeacherClassSelect from '@/components/teacher/TeacherClassSelect.vue'
 import TeacherProgressChart from '@/components/charts/TeacherProgressChart.vue'
+import WorkspaceBreadcrumb from '@/components/student/WorkspaceBreadcrumb.vue'
 import { useTeacherTaskProgress } from '@/composables/useTeacherTaskProgress'
 import type { TeacherOverviewProgressRow } from '@/utils/teacher-task-progress'
 import {
@@ -22,6 +23,17 @@ type DataMode = 'demo' | 'real'
 type DashboardState = 'loading' | 'ready' | 'error'
 
 const isDevelopment = import.meta.env.DEV
+const AUTO_REFRESH_INTERVAL_MS = 60_000
+const previewModeCopy: { showActualSummary: string; showDemoData: string; switchToDemoData: string } = {
+  showActualSummary: '',
+  showDemoData: '',
+  switchToDemoData: '',
+}
+if (import.meta.env.DEV) {
+  previewModeCopy.showActualSummary = '查看实际汇总'
+  previewModeCopy.showDemoData = '查看示意数据'
+  previewModeCopy.switchToDemoData = '切到示意数据'
+}
 const teacherPreviewSourceKey = 'psynova.teacher.preview.dataMode'
 const initialDataMode = (): DataMode => {
   if (!isDevelopment) return 'real'
@@ -38,6 +50,8 @@ const demoState = ref<DashboardState>(isDevelopment ? 'loading' : 'ready')
 const demoError = ref('')
 const demoSeed = ref(0)
 let demoGeneration = 0
+let autoRefreshTimer: ReturnType<typeof window.setInterval> | undefined
+let autoRefreshPending = false
 
 const {
   state: realState,
@@ -63,10 +77,27 @@ const loadDemoRows = async (seed: number) => {
   }
 }
 
+const refreshRealQuietly = async () => {
+  if (dataMode.value !== 'real' || document.visibilityState !== 'visible' || autoRefreshPending) return
+  autoRefreshPending = true
+  try {
+    await refreshReal({ preserveExisting: true })
+  } finally {
+    autoRefreshPending = false
+  }
+}
+
 onMounted(() => {
-  if (!isDevelopment) return
-  if (dataMode.value === 'demo') void loadDemoRows(demoSeed.value)
-  else void refreshReal()
+  if (isDevelopment) {
+    if (dataMode.value === 'demo') void loadDemoRows(demoSeed.value)
+    else void refreshReal()
+  }
+  autoRefreshTimer = window.setInterval(() => { void refreshRealQuietly() }, AUTO_REFRESH_INTERVAL_MS)
+})
+
+onBeforeUnmount(() => {
+  if (autoRefreshTimer !== undefined) window.clearInterval(autoRefreshTimer)
+  demoGeneration += 1
 })
 
 const sourceRows = computed<TeacherOverviewProgressRow[]>(() => dataMode.value === 'demo'
@@ -410,15 +441,17 @@ const handleRefresh = () => {
     void refreshReal()
   }
 }
+const refreshFromBreadcrumb = (event: MouseEvent) => {
+  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+  handleRefresh()
+}
 </script>
 
 <template>
   <main class="content-wrap teacher-overview">
     <header class="overview-page-header">
-      <div class="overview-page-heading">
-        <h1>班级测评进度与近期任务</h1>
-      </div>
-      <div class="overview-toolbar" aria-label="数据筛选与刷新">
+      <WorkspaceBreadcrumb home-label="教师工作区" home-to="/teacher/overview" current="工作概览" @home-click="refreshFromBreadcrumb" />
+      <div class="overview-toolbar" aria-label="数据筛选">
         <TeacherClassSelect
           v-model="selectedClass"
           class="overview-class-filter"
@@ -426,11 +459,8 @@ const handleRefresh = () => {
           :disabled="pageState !== 'ready' || !classOptions.length"
           :aria-label="dataMode === 'demo' ? '按班级筛选' : '按授权班级筛选'"
         />
-        <AppButton variant="secondary" size="sm" :disabled="pageState === 'loading'" @click="handleRefresh">
-          <RotateCcw :size="14" aria-hidden="true" />{{ dataMode === 'demo' ? '刷新示意数据' : '刷新' }}
-        </AppButton>
         <button v-if="isDevelopment" class="overview-mode-toggle" type="button" @click="setDataMode(dataMode === 'demo' ? 'real' : 'demo')">
-          {{ dataMode === 'demo' ? '查看实际汇总' : '查看示意数据' }}
+          {{ dataMode === 'demo' ? previewModeCopy.showActualSummary : previewModeCopy.showDemoData }}
         </button>
       </div>
     </header>
@@ -440,14 +470,14 @@ const handleRefresh = () => {
       <div><strong>暂时无法载入工作概览</strong><p>{{ pageError }}</p></div>
       <div class="overview-state__actions">
         <AppButton variant="secondary" size="sm" @click="handleRefresh">重新读取</AppButton>
-        <button v-if="isDevelopment && dataMode === 'real'" class="overview-mode-toggle" type="button" @click="setDataMode('demo')">切到示意数据</button>
+        <button v-if="isDevelopment && dataMode === 'real'" class="overview-mode-toggle" type="button" @click="setDataMode('demo')">{{ previewModeCopy.switchToDemoData }}</button>
       </div>
     </div>
     <section v-else-if="!rows.length" class="overview-empty-state" role="status">
       <span class="overview-empty-state__icon"><ChartColumn :size="21" aria-hidden="true" /></span>
       <h2>暂无可展示的班级任务进度</h2>
       <p>有授权的班级任务后，完成率、状态分布和截止安排会显示在这里。</p>
-      <button v-if="isDevelopment && dataMode === 'real'" class="overview-mode-toggle" type="button" @click="setDataMode('demo')">查看示意数据</button>
+      <button v-if="isDevelopment && dataMode === 'real'" class="overview-mode-toggle" type="button" @click="setDataMode('demo')">{{ previewModeCopy.showDemoData }}</button>
     </section>
     <section v-else class="overview-board" aria-label="班级测评进度数据看板">
       <section class="overview-kpis" aria-label="关键指标">
@@ -490,7 +520,7 @@ const handleRefresh = () => {
 
         <AppCard class="overview-chart-card overview-chart-card--heatmap">
           <header class="overview-chart-card__header">
-            <span class="overview-chart-card__icon overview-chart-card__icon--teal"><ChartColumn :size="16" aria-hidden="true" /></span>
+            <span class="overview-chart-card__icon overview-chart-card__icon--teal"><Grid3X3 :size="16" aria-hidden="true" /></span>
             <div>
               <h2>班级 × 测评任务</h2>
               <div class="overview-chart-card__scale" role="img" aria-label="完成率由低到高，蓝色由浅变深">
@@ -506,7 +536,7 @@ const handleRefresh = () => {
 
         <AppCard class="overview-chart-card overview-chart-card--deadline">
           <header class="overview-chart-card__header">
-            <span class="overview-chart-card__icon overview-chart-card__icon--amber"><CalendarDays :size="16" aria-hidden="true" /></span>
+            <span class="overview-chart-card__icon overview-chart-card__icon--amber"><ChartNoAxesCombined :size="16" aria-hidden="true" /></span>
             <div><h2>近期任务截止压力</h2><p>未来 14 天的到期任务与待完成人次</p></div>
           </header>
           <TeacherProgressChart v-if="deadlineData.length" :option="deadlineOption" label="未来十四天到期任务数与待完成人次柱线组合图" :height="Math.max(270, heatmapCells.classLabels.length * 42 + 54)" />
@@ -516,6 +546,7 @@ const handleRefresh = () => {
 
       <AppCard class="overview-task-table-card">
         <header class="overview-task-table-card__header">
+          <span class="overview-chart-card__icon overview-chart-card__icon--teal"><ListChecks :size="16" aria-hidden="true" /></span>
           <h2>近期需要关注的任务</h2>
         </header>
         <div v-if="attentionRows.length" class="overview-task-table-wrap">
@@ -543,16 +574,16 @@ const handleRefresh = () => {
 </template>
 
 <style scoped>
-.teacher-overview { display: grid; gap: 12px; padding-top: 0; padding-bottom: 56px; animation: page-in 220ms ease both; }
-.overview-page-header { position: relative; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 0 2px 4px; }
-.overview-page-heading h1 { margin: 0; color: var(--color-text-secondary); font-size: 13px; font-weight: 600; line-height: 1.4; }
+.teacher-overview { display: grid; gap: 12px; padding-top: 0; padding-bottom: 28px; animation: page-in 220ms ease both; }
+.overview-page-header { position: relative; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 4px 2px 0; }
+.overview-page-header :deep(.workspace-breadcrumb) { align-self: flex-start; margin: -4px 0 0; }
 .overview-toolbar { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .overview-class-filter { flex: 0 0 156px; }
 .overview-toolbar :deep(button:focus-visible) { outline: 2px solid #279de0; outline-offset: 2px; }
 .overview-mode-toggle:focus-visible { border-radius: 6px; }
 .overview-mode-toggle { min-height: 32px; padding: 0 8px; border: 0; color: var(--color-primary-active); background: transparent; font: inherit; font-size: 10px; font-weight: 650; cursor: pointer; }
 .overview-mode-toggle:hover { text-decoration: underline; text-underline-offset: 3px; }
-.overview-board { display: grid; gap: 12px; padding: 14px; }
+.overview-board { display: grid; gap: 12px; padding: 0 14px 7px; }
 .overview-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .overview-kpi { display: grid; align-content: start; gap: 7px; min-width: 0; min-height: clamp(74px, 6vw, 86px); padding: 12px 16px; border: 1px solid #e7edf2; border-radius: 12px; background: #fff; box-shadow: none; }
 .overview-kpi__label { display: flex; align-items: center; gap: 7px; color: #8191a0; font-size: 10px; font-weight: 600; }
@@ -577,11 +608,12 @@ const handleRefresh = () => {
 .overview-chart-card__scale-swatch { width: 10px; height: 7px; flex: 0 0 10px; border-radius: 2px; }
 .overview-chart-empty,.overview-table-empty { display: grid; min-height: 254px; place-items: center; padding: 20px; color: #98a6b2; font-size: 11px; text-align: center; }
 .overview-task-table-card { display: grid; gap: 10px; min-width: 0; padding: 16px; border: 1px solid #e7edf2; border-radius: 12px; background: #fff; box-shadow: none; }
-.overview-task-table-card__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.overview-task-table-card__header { display: flex; align-items: center; justify-content: flex-start; gap: 9px; }
+.overview-task-table-card__header h2 { margin: 0; }
 .overview-task-table-wrap { min-width: 0; overflow-x: auto; }
 .overview-task-table { width: 100%; border-collapse: collapse; text-align: left; }
 .overview-task-table th,.overview-task-table td { padding: 9px 8px; border-top: 1px solid #edf1f4; color: #7d8d9a; font-size: 12px; white-space: nowrap; }
-.overview-task-table thead th { color: #98a6b2; font-size: 11px; font-weight: 600; }
+.overview-task-table thead th { color: #98a6b2; font-size: 13px; font-weight: 600; }
 .overview-task-table tbody th { font-weight: 600; }
 .overview-task-table tbody th a,.overview-task-table tbody th span { color: #536979; text-decoration: none; }
 .overview-task-table tbody th a:hover { color: var(--color-primary-active); text-decoration: underline; text-underline-offset: 2px; }
@@ -605,7 +637,7 @@ const handleRefresh = () => {
 @media (max-width: 1100px) { .overview-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }.overview-chart-card--status { min-height: 350px; } }
 @media (max-width: 1000px) { .overview-chart-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'status' 'completion' 'deadline' 'heatmap'; } }
 @media (max-width: 850px) { .overview-page-header { align-items: flex-start; flex-direction: column; }.overview-toolbar { justify-content: flex-start; }.overview-chart-card--status { min-height: 338px; } }
-@media (max-width: 560px) { .overview-page-header { gap: 12px; }.overview-toolbar { width: 100%; gap: 7px; }.overview-class-filter { flex: 1; }.overview-board { gap: 9px; padding: 9px; }.overview-kpis { gap: 8px; }.overview-kpi { min-height: 74px; padding: 10px 12px; }.overview-kpi strong { font-size: 23px; }.overview-chart-card { padding: 13px 12px 10px; }.overview-task-table-card { padding: 13px 11px; }.overview-task-table { min-width: 650px; }.overview-state--error { align-items: flex-start; flex-direction: column; }.overview-state__actions { flex-wrap: wrap; } }
-@media (max-width: 420px) { .overview-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; justify-content: initial; }.overview-class-filter { grid-column: 1; grid-row: 1; min-width: 0; }.overview-class-filter :deep(.teacher-class-select__trigger) { min-width: 0; }.overview-toolbar > :deep(.app-button) { grid-column: 2; grid-row: 1; }.overview-mode-toggle { grid-column: 1 / -1; justify-self: start; } }
+@media (max-width: 560px) { .teacher-overview { gap: 9px; }.overview-page-header { gap: 12px; }.overview-toolbar { width: 100%; gap: 7px; }.overview-class-filter { flex: 1; }.overview-board { gap: 9px; padding: 0 9px 4.5px; }.overview-kpis { gap: 8px; }.overview-kpi { min-height: 74px; padding: 10px 12px; }.overview-kpi strong { font-size: 23px; }.overview-chart-card { padding: 13px 12px 10px; }.overview-task-table-card { padding: 13px 11px; }.overview-task-table { min-width: 650px; }.overview-state--error { align-items: flex-start; flex-direction: column; }.overview-state__actions { flex-wrap: wrap; } }
+@media (max-width: 420px) { .overview-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; justify-content: initial; }.overview-class-filter { grid-column: 1; grid-row: 1; min-width: 0; }.overview-class-filter :deep(.teacher-class-select__trigger) { min-width: 0; }.overview-mode-toggle { grid-column: 2; grid-row: 1; justify-self: end; } }
 @media (max-width: 320px) { :global(html),:global(body) { min-width: 0; } }
 </style>

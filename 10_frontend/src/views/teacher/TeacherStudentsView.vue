@@ -6,7 +6,7 @@ import AppCard from '@/components/app/AppCard.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import WorkspaceBreadcrumb from '@/components/student/WorkspaceBreadcrumb.vue'
 import { useTeacherTaskProgress } from '@/composables/useTeacherTaskProgress'
-import { summarizeTeacherClasses, teacherClassDisplayLabel } from '@/utils/teacher-task-progress'
+import { shortTeacherRef, summarizeTeacherClasses, teacherClassDisplayLabel } from '@/utils/teacher-task-progress'
 
 type ClassSort = 'name' | 'completion' | 'tasks'
 
