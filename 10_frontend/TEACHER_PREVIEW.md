@@ -4,14 +4,14 @@
 
 - 4206 是开发预览，直接服务当前源码，修改后由 Vite 热更新。
 - 教师概览在 4206 使用合成演示数据，不需要先启动数据库或模型服务。
-- 重启电脑后，在 PowerShell 运行：
+- 重启电脑后，在 PowerShell 进入本项目工作树的 `10_frontend` 目录并运行：
 
   ```powershell
   Set-Location '<当前工作树>\10_frontend'
-  & '.\scripts\start-teacher-preview.ps1'
+  node .\scripts\start-teacher-preview.mjs
   ```
 
-  然后打开 `http://127.0.0.1:4206/teacher/overview`。脚本只在 4206 没有可用预览时启动 Vite；不会安装依赖、构建静态包、停止其他进程或启动整套后端。运行日志保存在 `%TEMP%\psynova-teacher-preview`。
+  然后打开 `http://127.0.0.1:4206/teacher/overview`。启动器只在 4206 没有可用预览时启动 Vite；不会安装依赖、构建静态包、停止其他进程或启动整套后端。运行日志保存在 `%TEMP%\psynova-teacher-preview`。
 
 ## 保存后的预览
 
