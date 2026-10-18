@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import type { EChartsOption } from 'echarts/core'
-import { Activity, ArrowRight, CalendarDays, ChartColumn, ChartPie, ClipboardList, RotateCcw, UsersRound } from '@lucide/vue'
+import { Activity, CalendarDays, ChartColumn, ChartPie, ClipboardList, RotateCcw, UsersRound } from '@lucide/vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
 import TeacherClassSelect from '@/components/teacher/TeacherClassSelect.vue'
@@ -178,7 +178,7 @@ const classCompletionOption = computed<EChartsOption>(() => ({
     data: classStats.value.map((item) => item.label),
     axisTick: { show: false },
     axisLine: { lineStyle: { color: '#e2e8ee' } },
-    axisLabel: { color: '#8793a1', fontSize: 10, interval: 0, rotate: classStats.value.length > 6 ? 24 : 0 },
+    axisLabel: { color: '#8793a1', fontSize: 10, interval: 0, rotate: classStats.value.length > 6 ? 24 : 0, align: 'center' },
   },
   yAxis: {
     type: 'value', min: 0, max: 100, interval: 25,
@@ -300,7 +300,7 @@ const deadlineData = computed(() => {
 const deadlineOption = computed<EChartsOption>(() => ({
   animation: false,
   color: ['#b8e0e8', '#00a9c7'],
-  grid: { left: 38, right: 40, top: 18, bottom: 36, containLabel: true },
+  grid: { left: 38, right: 40, top: 26, bottom: 36, containLabel: true },
   tooltip: {
     trigger: 'axis', axisPointer: { type: 'cross' },
     formatter: (params) => {
@@ -422,14 +422,7 @@ const handleRefresh = () => {
         <AppCard class="overview-chart-card">
           <header class="overview-chart-card__header">
             <span class="overview-chart-card__icon"><ChartColumn :size="16" aria-hidden="true" /></span>
-            <div>
-              <h2>班级完成率对比</h2>
-              <div class="overview-chart-card__scale" role="img" aria-label="完成率由低到高，颜色由浅变深">
-                <span>低完成率</span>
-                <span v-for="color in completionScaleColors" :key="color" class="overview-chart-card__scale-swatch" :style="{ backgroundColor: color }" aria-hidden="true"></span>
-                <span>高完成率</span>
-              </div>
-            </div>
+            <div><h2>班级完成率对比</h2><p>不同授权班级的测评任务完成情况</p></div>
             <span class="overview-chart-card__type">竖向柱状图</span>
           </header>
           <TeacherProgressChart v-if="classStats.length" :option="classCompletionOption" label="授权班级测评完成率竖向柱状图" :height="282" />
@@ -449,7 +442,14 @@ const handleRefresh = () => {
         <AppCard class="overview-chart-card">
           <header class="overview-chart-card__header">
             <span class="overview-chart-card__icon overview-chart-card__icon--teal"><ChartColumn :size="16" aria-hidden="true" /></span>
-            <div><h2>班级 × 测评任务</h2><p>颜色越深表示该班级任务完成率越高</p></div>
+            <div>
+              <h2>班级 × 测评任务</h2>
+              <div class="overview-chart-card__scale" role="img" aria-label="完成率由低到高，蓝色由浅变深">
+                <span>低完成率</span>
+                <span v-for="color in completionScaleColors" :key="color" class="overview-chart-card__scale-swatch" :style="{ backgroundColor: color }" aria-hidden="true"></span>
+                <span>高完成率</span>
+              </div>
+            </div>
             <span class="overview-chart-card__type">热力矩阵</span>
           </header>
           <TeacherProgressChart v-if="heatmapCells.data.length" :option="heatmapOption" label="授权班级与测评任务完成率热力矩阵" :height="Math.max(270, heatmapCells.classLabels.length * 42 + 54)" />
@@ -462,16 +462,14 @@ const handleRefresh = () => {
             <div><h2>近期任务截止压力</h2><p>未来 14 天的到期任务与待完成人次</p></div>
             <span class="overview-chart-card__type">柱线组合图</span>
           </header>
-          <TeacherProgressChart v-if="deadlineData.length" :option="deadlineOption" label="未来十四天到期任务数与待完成人次柱线组合图" :height="282" />
+          <TeacherProgressChart v-if="deadlineData.length" :option="deadlineOption" label="未来十四天到期任务数与待完成人次柱线组合图" :height="Math.max(270, heatmapCells.classLabels.length * 42 + 54)" />
           <div v-else class="overview-chart-empty">未来 14 天没有设置截止日期的已发布任务。</div>
         </AppCard>
       </section>
 
       <AppCard class="overview-task-table-card">
         <header class="overview-task-table-card__header">
-          <div><h2>近期需要关注的任务</h2><p>按截止时间排列，优先显示仍有待完成人次的任务</p></div>
-          <RouterLink v-if="dataMode === 'real'" class="overview-task-table-card__link" to="/teacher/tasks">任务汇总 <ArrowRight :size="14" aria-hidden="true" /></RouterLink>
-          <span v-else class="overview-task-table-card__link overview-task-table-card__link--muted">任务汇总 <ArrowRight :size="14" aria-hidden="true" /></span>
+          <h2>近期需要关注的任务</h2>
         </header>
         <div v-if="attentionRows.length" class="overview-task-table-wrap">
           <table class="overview-task-table">
@@ -531,9 +529,6 @@ const handleRefresh = () => {
 .overview-chart-empty,.overview-table-empty { display: grid; min-height: 254px; place-items: center; padding: 20px; color: #98a6b2; font-size: 11px; text-align: center; }
 .overview-task-table-card { display: grid; gap: 10px; min-width: 0; padding: 16px; border: 1px solid #e7edf2; border-radius: 12px; background: #fff; box-shadow: none; }
 .overview-task-table-card__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.overview-task-table-card__link { display: inline-flex; align-items: center; gap: 4px; color: var(--color-primary-active); font-size: 10px; font-weight: 650; text-decoration: none; white-space: nowrap; }
-.overview-task-table-card__link:hover { text-decoration: underline; }
-.overview-task-table-card__link--muted { color: #98a6b2; }
 .overview-task-table-wrap { min-width: 0; overflow-x: auto; }
 .overview-task-table { width: 100%; border-collapse: collapse; text-align: left; }
 .overview-task-table th,.overview-task-table td { padding: 9px 8px; border-top: 1px solid #edf1f4; color: #7d8d9a; font-size: 10px; white-space: nowrap; }
