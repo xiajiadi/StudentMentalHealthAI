@@ -152,6 +152,7 @@ const overviewTooltipStyle = {
   borderColor: '#dce8ed',
   borderWidth: 1,
   borderRadius: 10,
+  confine: true,
   padding: [10, 12],
   textStyle: {
     color: '#6f8191',
@@ -241,6 +242,19 @@ const statusOption = computed<EChartsOption>(() => ({
     emphasis: { scale: true, scaleSize: 5, label: { show: false } },
     data: statusRingItems.value.map((item) => ({ name: item.label, value: item.value })),
   }],
+  media: [{
+    query: { maxWidth: 360 },
+    option: {
+      legend: { right: 0, itemGap: 10 },
+      series: [{ radius: ['40%', '48%'], center: ['27%', '50%'] }],
+    },
+  }, {
+    query: { maxWidth: 260 },
+    option: {
+      legend: { orient: 'horizontal', left: 'center', right: null, top: '64%', width: '100%' },
+      series: [{ radius: ['32%', '44%'], center: ['50%', '34%'] }],
+    },
+  }],
 }))
 
 const heatmapCells = computed(() => {
@@ -308,6 +322,13 @@ const heatmapOption = computed<EChartsOption>(() => ({
         shadowOffsetX: 0,
         shadowOffsetY: 0,
       },
+    },
+  }],
+  media: [{
+    query: { maxWidth: 360 },
+    option: {
+      grid: { bottom: heatmapCells.value.taskLabels.length > 6 ? 62 : 50 },
+      xAxis: { axisLabel: { rotate: 45 } },
     },
   }],
 }))
@@ -463,7 +484,7 @@ const handleRefresh = () => {
             <span class="overview-chart-card__icon"><ChartColumn :size="16" aria-hidden="true" /></span>
             <div><h2>班级完成率对比</h2><p>不同授权班级的测评任务完成情况</p></div>
           </header>
-          <TeacherProgressChart v-if="classStats.length" :option="classCompletionOption" label="授权班级测评完成率竖向柱状图" :height="270" />
+          <TeacherProgressChart v-if="classStats.length" :option="classCompletionOption" label="授权班级测评完成率竖向柱状图" :height="282" />
           <div v-else class="overview-chart-empty">当前范围内没有有效报名人次。</div>
         </AppCard>
 
@@ -488,7 +509,7 @@ const handleRefresh = () => {
             <span class="overview-chart-card__icon overview-chart-card__icon--amber"><CalendarDays :size="16" aria-hidden="true" /></span>
             <div><h2>近期任务截止压力</h2><p>未来 14 天的到期任务与待完成人次</p></div>
           </header>
-          <TeacherProgressChart v-if="deadlineData.length" :option="deadlineOption" label="未来十四天到期任务数与待完成人次柱线组合图" :height="300" />
+          <TeacherProgressChart v-if="deadlineData.length" :option="deadlineOption" label="未来十四天到期任务数与待完成人次柱线组合图" :height="Math.max(270, heatmapCells.classLabels.length * 42 + 54)" />
           <div v-else class="overview-chart-empty">未来 14 天没有设置截止日期的已发布任务。</div>
         </AppCard>
       </section>
@@ -538,10 +559,12 @@ const handleRefresh = () => {
 .overview-kpi__label svg { color: #83a8b7; }
 .overview-kpi strong { color: #344657; font-size: 26px; font-weight: 650; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .overview-kpi--accent strong,.overview-kpi--accent .overview-kpi__label svg { color: var(--color-primary); }
-.overview-chart-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 11px; }
+.overview-chart-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: 'status completion' 'deadline heatmap'; align-items: stretch; gap: 11px; }
 .overview-chart-card { display: grid; align-content: start; gap: 8px; min-width: 0; min-height: 0; padding: 15px 16px 12px; border: 1px solid #e7edf2; border-radius: 12px; background: #fff; box-shadow: none; }
-.overview-chart-card--status { min-height: 360px; }
-.overview-chart-card--deadline { margin-top: -14px; }
+.overview-chart-card--status { grid-area: status; min-height: 360px; }
+.overview-chart-card--completion { grid-area: completion; }
+.overview-chart-card--deadline { grid-area: deadline; }
+.overview-chart-card--heatmap { grid-area: heatmap; }
 .overview-chart-card__header { display: flex; align-items: flex-start; gap: 9px; min-width: 0; min-height: 39px; }
 .overview-chart-card__icon { display: grid; width: 29px; height: 29px; flex: 0 0 29px; place-items: center; border-radius: 9px; color: var(--color-primary-active); background: #e9f7fa; }
 .overview-chart-card__icon--teal { color: #54a997; background: #edf8f5; }
@@ -580,6 +603,9 @@ const handleRefresh = () => {
 .overview-empty-state .overview-mode-toggle { margin-top: 8px; }
 @keyframes page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 @media (max-width: 1100px) { .overview-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }.overview-chart-card--status { min-height: 350px; } }
-@media (max-width: 850px) { .overview-page-header { align-items: flex-start; flex-direction: column; }.overview-toolbar { justify-content: flex-start; }.overview-chart-grid { grid-template-columns: minmax(0, 1fr); }.overview-chart-card--status { min-height: 338px; }.overview-chart-card--deadline { margin-top: 0; } }
+@media (max-width: 1000px) { .overview-chart-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'status' 'completion' 'deadline' 'heatmap'; } }
+@media (max-width: 850px) { .overview-page-header { align-items: flex-start; flex-direction: column; }.overview-toolbar { justify-content: flex-start; }.overview-chart-card--status { min-height: 338px; } }
 @media (max-width: 560px) { .overview-page-header { gap: 12px; }.overview-toolbar { width: 100%; gap: 7px; }.overview-class-filter { flex: 1; }.overview-board { gap: 9px; padding: 9px; }.overview-kpis { gap: 8px; }.overview-kpi { min-height: 74px; padding: 10px 12px; }.overview-kpi strong { font-size: 23px; }.overview-chart-card { padding: 13px 12px 10px; }.overview-task-table-card { padding: 13px 11px; }.overview-task-table { min-width: 650px; }.overview-state--error { align-items: flex-start; flex-direction: column; }.overview-state__actions { flex-wrap: wrap; } }
+@media (max-width: 420px) { .overview-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; justify-content: initial; }.overview-class-filter { grid-column: 1; grid-row: 1; min-width: 0; }.overview-class-filter :deep(.teacher-class-select__trigger) { min-width: 0; }.overview-toolbar > :deep(.app-button) { grid-column: 2; grid-row: 1; }.overview-mode-toggle { grid-column: 1 / -1; justify-self: start; } }
+@media (max-width: 320px) { :global(html),:global(body) { min-width: 0; } }
 </style>
