@@ -138,6 +138,7 @@ const statusCountTotal = computed(() => statusBreakdown.value.reduce((sum, item)
 const statusCountsMatch = computed(() => statusCountTotal.value === activeEnrollmentCount.value)
 
 const completionScaleColors = ['#e7f5f8', '#a5dce5', '#56bfd0', '#159bb6'] as const
+const heatmapCompletionColors = ['#f3f6f8', '#d4e6f0', '#68b0d4', '#0f5b97'] as const
 const overviewTooltipStyle = {
   backgroundColor: 'rgba(255, 255, 255, 0.98)',
   borderColor: '#dce8ed',
@@ -279,10 +280,19 @@ const heatmapOption = computed<EChartsOption>(() => ({
     type: 'category', inverse: true, data: heatmapCells.value.classLabels.map((item) => classLabel(item)), splitArea: { show: true },
     axisTick: { show: false }, axisLine: { lineStyle: { color: '#e5ecf0' } }, axisLabel: { color: '#8793a1', fontSize: 10 },
   },
-  visualMap: { min: 0, max: 100, calculable: false, show: false, inRange: { color: [...completionScaleColors] } },
+  visualMap: { dimension: 2, min: 0, max: 100, calculable: false, show: false, inRange: { color: [...heatmapCompletionColors] } },
   series: [{
     name: '完成率', type: 'heatmap', data: heatmapCells.value.data,
-    label: { show: true, formatter: (params) => `${Number((params.value as number[])[2]).toFixed(0)}%`, color: '#315d6a', fontSize: 9, fontWeight: 700 },
+    label: {
+      show: true,
+      formatter: (params) => {
+        const rate = Number((params.value as number[])[2])
+        return rate >= 82 ? `{high|${rate.toFixed(0)}%}` : `{base|${rate.toFixed(0)}%}`
+      },
+      rich: { high: { color: '#fff' }, base: { color: '#315d6a' } },
+      fontSize: 9,
+      fontWeight: 700,
+    },
     itemStyle: { borderColor: '#fff', borderWidth: 3, borderRadius: 6 },
     emphasis: {
       itemStyle: {
@@ -462,7 +472,7 @@ const handleRefresh = () => {
               <h2>班级 × 测评任务</h2>
               <div class="overview-chart-card__scale" role="img" aria-label="完成率由低到高，蓝色由浅变深">
                 <span>低完成率</span>
-                <span v-for="color in completionScaleColors" :key="color" class="overview-chart-card__scale-swatch" :style="{ backgroundColor: color }" aria-hidden="true"></span>
+                <span v-for="color in heatmapCompletionColors" :key="color" class="overview-chart-card__scale-swatch" :style="{ backgroundColor: color }" aria-hidden="true"></span>
                 <span>高完成率</span>
               </div>
             </div>
