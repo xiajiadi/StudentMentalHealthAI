@@ -144,9 +144,6 @@ const classStats = computed(() => {
 
 const statusBreakdown = computed(() => teacherEnrollmentStatusBreakdown(rows.value))
 const statusRingItems = computed(() => statusBreakdown.value.filter((item) => item.key !== 'revoked' && item.value > 0))
-const revokedEnrollmentCount = computed(() => statusBreakdown.value.find((item) => item.key === 'revoked')?.value ?? 0)
-const statusCountTotal = computed(() => statusBreakdown.value.reduce((sum, item) => sum + (item.key === 'revoked' ? 0 : item.value), 0))
-const statusCountsMatch = computed(() => statusCountTotal.value === activeEnrollmentCount.value)
 
 const completionScaleColors = ['#e7f5f8', '#a5dce5', '#56bfd0', '#159bb6'] as const
 const heatmapCompletionColors = ['#f3f6f8', '#d4e6f0', '#68b0d4', '#0f5b97'] as const
@@ -226,8 +223,8 @@ const statusOption = computed<EChartsOption>(() => ({
   animation: false,
   tooltip: { ...overviewTooltipStyle, trigger: 'item', formatter: '{b}<br/>{c} 人次（{d}%）' },
   legend: {
-    orient: 'vertical', right: 2, top: 'middle', itemWidth: 8, itemHeight: 8, itemGap: 13,
-    textStyle: { color: '#6f8191', fontSize: 10 },
+    orient: 'vertical', right: 18, top: 'middle', itemWidth: 10, itemHeight: 10, itemGap: 13,
+    textStyle: { color: '#6f8191', fontSize: 12 },
     formatter: (name) => {
       const item = statusRingItems.value.find((entry) => entry.label === name)
       return item ? `${name}    ${item.value}` : name
@@ -469,7 +466,7 @@ const handleRefresh = () => {
             <span class="overview-chart-card__icon overview-chart-card__icon--teal"><ChartPie :size="16" aria-hidden="true" /></span>
             <div><h2>测评状态分布</h2><p>当前有效报名人次构成</p></div>
           </header>
-          <TeacherProgressChart v-if="!isStatusEmpty" :option="statusOption" label="有效报名人次的测评状态环形图" :height="282" :summary="`已撤销报名 ${revokedEnrollmentCount} 人次另行统计。${statusCountsMatch ? '' : '状态明细与有效报名总数存在差异。'}`" />
+          <TeacherProgressChart v-if="!isStatusEmpty" :option="statusOption" label="有效报名人次的测评状态环形图" :height="282" />
           <div v-else class="overview-chart-empty">当前没有有效报名状态可供分布。</div>
         </AppCard>
 
