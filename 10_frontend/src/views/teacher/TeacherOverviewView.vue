@@ -138,6 +138,21 @@ const statusCountTotal = computed(() => statusBreakdown.value.reduce((sum, item)
 const statusCountsMatch = computed(() => statusCountTotal.value === activeEnrollmentCount.value)
 
 const completionScaleColors = ['#e7f5f8', '#a5dce5', '#56bfd0', '#159bb6'] as const
+const overviewTooltipStyle = {
+  backgroundColor: 'rgba(255, 255, 255, 0.98)',
+  borderColor: '#dce8ed',
+  borderWidth: 1,
+  borderRadius: 10,
+  padding: [10, 12],
+  textStyle: {
+    color: '#6f8191',
+    fontFamily: 'var(--font-sans)',
+    fontSize: 13,
+    fontWeight: 400,
+    lineHeight: 20,
+  },
+  extraCssText: 'box-shadow: 0 8px 22px rgba(52, 80, 96, 0.14);',
+}
 const completionColorForRate = (rate: number | null) => {
   const normalizedRate = Math.min(100, Math.max(0, rate ?? 0))
   const colorIndex = Math.min(completionScaleColors.length - 1, Math.floor(normalizedRate / 100 * completionScaleColors.length))
@@ -149,6 +164,7 @@ const classCompletionOption = computed<EChartsOption>(() => ({
   animation: false,
   grid: { left: 36, right: 18, top: 34, bottom: classStats.value.length > 6 ? 54 : 38, containLabel: true },
   tooltip: {
+    ...overviewTooltipStyle,
     trigger: 'axis',
     axisPointer: {
       type: 'shadow',
@@ -196,7 +212,7 @@ const classCompletionOption = computed<EChartsOption>(() => ({
 const statusOption = computed<EChartsOption>(() => ({
   color: ['#08a9c7', '#80cbbb', '#d7e6ed', '#aab8c2'],
   animation: false,
-  tooltip: { trigger: 'item', formatter: '{b}<br/>{c} 人次（{d}%）' },
+  tooltip: { ...overviewTooltipStyle, trigger: 'item', formatter: '{b}<br/>{c} 人次（{d}%）' },
   legend: {
     orient: 'vertical', right: 2, top: 'middle', itemWidth: 8, itemHeight: 8, itemGap: 13,
     textStyle: { color: '#6f8191', fontSize: 10 },
@@ -244,6 +260,7 @@ const heatmapOption = computed<EChartsOption>(() => ({
   animation: false,
   grid: { left: 78, right: 16, top: 12, bottom: heatmapCells.value.taskLabels.length > 6 ? 50 : 24, containLabel: true },
   tooltip: {
+    ...overviewTooltipStyle,
     position: 'top',
     formatter: (params) => {
       const point = Array.isArray(params) ? params[0] : params
@@ -302,6 +319,7 @@ const deadlineOption = computed<EChartsOption>(() => ({
   color: ['#b8e0e8', '#00a9c7'],
   grid: { left: 38, right: 40, top: 26, bottom: 36, containLabel: true },
   tooltip: {
+    ...overviewTooltipStyle,
     trigger: 'axis', axisPointer: { type: 'cross' },
     formatter: (params) => {
       const items = Array.isArray(params) ? params : [params]
