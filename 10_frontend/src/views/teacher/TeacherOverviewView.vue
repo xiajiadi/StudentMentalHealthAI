@@ -282,11 +282,11 @@ const heatmapOption = computed<EChartsOption>(() => ({
   xAxis: {
     type: 'category', data: heatmapCells.value.taskLabels, splitArea: { show: true },
     axisTick: { show: false }, axisLine: { lineStyle: { color: '#e5ecf0' } },
-    axisLabel: { color: '#8793a1', fontSize: 9, interval: 0, rotate: heatmapCells.value.taskLabels.length > 6 ? 24 : 0 },
+    axisLabel: { color: '#8793a1', fontSize: 10, interval: 0, rotate: heatmapCells.value.taskLabels.length > 6 ? 24 : 0 },
   },
   yAxis: {
     type: 'category', inverse: true, data: heatmapCells.value.classLabels.map((item) => classLabel(item)), splitArea: { show: true },
-    axisTick: { show: false }, axisLine: { lineStyle: { color: '#e5ecf0' } }, axisLabel: { color: '#8793a1', fontSize: 10 },
+    axisTick: { show: false }, axisLine: { lineStyle: { color: '#e5ecf0' } }, axisLabel: { color: '#8793a1', fontSize: 11 },
   },
   visualMap: { dimension: 2, min: 0, max: 100, calculable: false, show: false, inRange: { color: [...heatmapCompletionColors] } },
   series: [{
@@ -343,7 +343,7 @@ const deadlineOption = computed<EChartsOption>(() => ({
       return day ? `${day.label}<br/>到期任务：${day.taskCount} 项<br/>待完成人次：${day.pendingCount}<br/>涉及班级：${day.classes.size} 个` : ''
     },
   },
-  legend: { top: 0, right: 8, itemWidth: 9, itemHeight: 9, textStyle: { color: '#8a98a6', fontSize: 9 } },
+  legend: { top: 0, right: 8, itemWidth: 9, itemHeight: 9, textStyle: { color: '#8a98a6', fontSize: 10 } },
   xAxis: { type: 'category', data: deadlineData.value.map((item) => item.label), boundaryGap: true, axisTick: { show: false }, axisLine: { lineStyle: { color: '#e5ebef' } }, axisLabel: { color: '#8a98a6', fontSize: 9 } },
   yAxis: [
     { type: 'value', name: '任务数', minInterval: 1, nameTextStyle: { color: '#95a2ae', fontSize: 9 }, axisLabel: { color: '#95a2ae', fontSize: 9 }, splitLine: { lineStyle: { color: '#edf1f4' } } },
@@ -517,7 +517,6 @@ const handleRefresh = () => {
         </div>
         <div v-else class="overview-table-empty">目前没有临近的未完成任务。</div>
       </AppCard>
-      <p class="overview-footnote">{{ dataMode === 'demo' ? '此处为前端生成的示意数据，仅用于检查布局与图表；不会调用写入接口或代表真实业务记录。' : '仅显示授权班级与任务汇总，不包含学生个人心理信息。' }}</p>
     </section>
   </main>
 </template>
@@ -549,6 +548,7 @@ const handleRefresh = () => {
 .overview-chart-card__icon--amber { color: #af9c69; background: #f8f5ed; }
 .overview-chart-card__header > div { flex: 1; min-width: 0; }
 .overview-chart-card__header h2,.overview-task-table-card__header h2 { margin: 0 0 4px; color: #344657; font-size: 13px; font-weight: 700; }
+.overview-task-table-card__header h2 { font-size: 14px; }
 .overview-chart-card__header p,.overview-task-table-card__header p { margin: 0; color: #9aa7b3; font-size: 9px; line-height: 1.45; }
 .overview-chart-card__scale { display: flex; align-items: center; gap: 4px; color: #9aa7b3; font-size: 9px; line-height: 1.3; white-space: nowrap; }
 .overview-chart-card__scale-swatch { width: 10px; height: 7px; flex: 0 0 10px; border-radius: 2px; }
@@ -557,18 +557,17 @@ const handleRefresh = () => {
 .overview-task-table-card__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .overview-task-table-wrap { min-width: 0; overflow-x: auto; }
 .overview-task-table { width: 100%; border-collapse: collapse; text-align: left; }
-.overview-task-table th,.overview-task-table td { padding: 9px 8px; border-top: 1px solid #edf1f4; color: #7d8d9a; font-size: 10px; white-space: nowrap; }
-.overview-task-table thead th { color: #98a6b2; font-size: 9px; font-weight: 600; }
+.overview-task-table th,.overview-task-table td { padding: 9px 8px; border-top: 1px solid #edf1f4; color: #7d8d9a; font-size: 12px; white-space: nowrap; }
+.overview-task-table thead th { color: #98a6b2; font-size: 11px; font-weight: 600; }
 .overview-task-table tbody th { font-weight: 600; }
 .overview-task-table tbody th a,.overview-task-table tbody th span { color: #536979; text-decoration: none; }
 .overview-task-table tbody th a:hover { color: var(--color-primary-active); text-decoration: underline; text-underline-offset: 2px; }
 .overview-task-table__number { font-variant-numeric: tabular-nums; }
-.overview-task-status { display: inline-flex; align-items: center; min-height: 22px; padding: 0 8px; border-radius: 999px; font-size: 9px; }
+.overview-task-status { display: inline-flex; align-items: center; min-height: 22px; padding: 0 8px; border-radius: 999px; font-size: 11px; }
 .overview-task-status--active { color: #378e9f; background: #edf8fa; }
 .overview-task-status--upcoming { color: #6c8794; background: #eff4f6; }
 .overview-task-status--urgent { color: #a98243; background: #fbf4e9; }
 .overview-table-empty { min-height: 105px; border-top: 1px solid #edf1f4; }
-.overview-footnote { margin: 0 3px; color: #98a6b2; font-size: 9px; line-height: 1.5; }
 .overview-state { display: flex; align-items: center; justify-content: center; min-height: 155px; padding: 24px; border: 1px solid #e6edf2; border-radius: 14px; color: #718391; background: #fff; font-size: 12px; text-align: center; }
 .overview-state--error { justify-content: space-between; gap: 20px; text-align: left; }
 .overview-state--error strong { color: var(--color-text-primary); font-size: 13px; }
