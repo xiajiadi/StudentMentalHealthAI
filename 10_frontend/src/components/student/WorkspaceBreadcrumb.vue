@@ -27,7 +27,7 @@ defineProps<{
 .workspace-breadcrumb a, .workspace-breadcrumb__current { font-size: 14px; font-weight: 600; line-height: 1.3; text-decoration: none; }
 .workspace-breadcrumb a { color: #6a6e7b; }
 .workspace-breadcrumb a:hover { color: var(--color-primary); }
-.workspace-breadcrumb a:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 3px; border-radius: 2px; }
+.workspace-breadcrumb a:focus-visible { outline: 2px solid #279de0; outline-offset: 3px; border-radius: 2px; }
 .workspace-breadcrumb__separator { color: #9ba0aa; font-size: 14px; font-weight: 500; line-height: 1; }
 .workspace-breadcrumb__current { color: #1e1d29; }
 

@@ -4,8 +4,8 @@ import type { EChartsOption } from 'echarts/core'
 import { Activity, ArrowRight, CalendarDays, ChartColumn, ChartPie, ClipboardList, RotateCcw, UsersRound } from '@lucide/vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
+import TeacherClassSelect from '@/components/teacher/TeacherClassSelect.vue'
 import TeacherProgressChart from '@/components/charts/TeacherProgressChart.vue'
-import WorkspaceBreadcrumb from '@/components/student/WorkspaceBreadcrumb.vue'
 import { useTeacherTaskProgress } from '@/composables/useTeacherTaskProgress'
 import type { TeacherOverviewProgressRow } from '@/utils/teacher-task-progress'
 import {
@@ -73,6 +73,7 @@ const classOptions = computed(() => {
     .map(([value, label]) => ({ value, label }))
     .sort((a, b) => a.label.localeCompare(b.label, 'zh-CN'))
 })
+const classFilterOptions = computed(() => [{ value: 'all', label: '全部班级' }, ...classOptions.value])
 
 watch(dataMode, (mode) => {
   selectedClass.value = 'all'
@@ -142,7 +143,23 @@ const classCompletionOption = computed<EChartsOption>(() => ({
   grid: { left: 36, right: 18, top: 34, bottom: classStats.value.length > 6 ? 54 : 38, containLabel: true },
   tooltip: {
     trigger: 'axis',
-    axisPointer: { type: 'shadow' },
+    axisPointer: {
+      type: 'shadow',
+      shadowStyle: {
+        shadowBlur: 8,
+        shadowColor: 'rgba(0, 177, 226, 0.06)',
+        color: {
+          type: 'linear', x: 0, y: 0, x2: 1, y2: 0,
+          colorStops: [
+            { offset: 0, color: 'rgba(0, 177, 226, 0)' },
+            { offset: 0.14, color: 'rgba(0, 177, 226, 0.065)' },
+            { offset: 0.5, color: 'rgba(0, 177, 226, 0.11)' },
+            { offset: 0.86, color: 'rgba(0, 177, 226, 0.065)' },
+            { offset: 1, color: 'rgba(0, 177, 226, 0)' },
+          ],
+        },
+      },
+    },
     formatter: (params) => {
       const point = Array.isArray(params) ? params[0] : params
       const item = classStats.value.find((entry) => entry.label === String(point?.axisValue))
@@ -326,20 +343,18 @@ const handleRefresh = () => {
 
 <template>
   <main class="content-wrap teacher-overview">
-    <WorkspaceBreadcrumb home-label="教师工作区" home-to="/teacher/overview" current="工作概览" />
-
     <header class="overview-page-header">
       <div class="overview-page-heading">
         <h1>班级测评进度与近期任务</h1>
       </div>
       <div class="overview-toolbar" aria-label="数据筛选与刷新">
-        <label class="overview-class-filter">
-          <span class="sr-only">{{ dataMode === 'demo' ? '按班级筛选' : '按授权班级筛选' }}</span>
-          <select v-model="selectedClass" :disabled="pageState !== 'ready' || !classOptions.length">
-            <option value="all">全部班级</option>
-            <option v-for="option in classOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-          </select>
-        </label>
+        <TeacherClassSelect
+          v-model="selectedClass"
+          class="overview-class-filter"
+          :options="classFilterOptions"
+          :disabled="pageState !== 'ready' || !classOptions.length"
+          :aria-label="dataMode === 'demo' ? '按班级筛选' : '按授权班级筛选'"
+        />
         <AppButton variant="secondary" size="sm" :disabled="pageState === 'loading'" @click="handleRefresh">
           <RotateCcw :size="14" aria-hidden="true" />{{ dataMode === 'demo' ? '刷新示意数据' : '刷新' }}
         </AppButton>
@@ -462,12 +477,12 @@ const handleRefresh = () => {
 
 <style scoped>
 .teacher-overview { display: grid; gap: 12px; padding-top: 0; padding-bottom: 56px; animation: page-in 220ms ease both; }
-.overview-page-header { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 0 2px 4px; }
+.overview-page-header { position: relative; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 0 2px 4px; }
 .overview-page-heading h1 { margin: 0; color: var(--color-text-secondary); font-size: 13px; font-weight: 600; line-height: 1.4; }
 .overview-toolbar { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
-.overview-class-filter select { min-width: 142px; height: 36px; padding: 0 30px 0 11px; border: 1px solid #dfe6eb; border-radius: 9px; color: var(--color-text-primary); background: #fff; font: inherit; font-size: 11px; }
-.overview-class-filter select:focus-visible,.overview-mode-toggle:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 2px; }
-.overview-class-filter select:disabled { color: var(--color-text-muted); background: #f7f9fa; }
+.overview-class-filter { flex: 0 0 156px; }
+.overview-toolbar :deep(button:focus),.overview-toolbar :deep(button:focus-visible) { outline: 2px solid #279de0; outline-offset: 2px; }
+.overview-mode-toggle:focus-visible { border-radius: 6px; }
 .overview-mode-toggle { min-height: 32px; padding: 0 8px; border: 0; color: var(--color-primary-active); background: transparent; font: inherit; font-size: 10px; font-weight: 650; cursor: pointer; }
 .overview-mode-toggle:hover { text-decoration: underline; text-underline-offset: 3px; }
 .overview-board { display: grid; gap: 12px; padding: 14px; border: 1px solid #e6edf2; border-radius: 16px; background: #f5f8fb; }
@@ -521,5 +536,5 @@ const handleRefresh = () => {
 @keyframes page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 @media (max-width: 1100px) { .overview-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }.overview-chart-card { min-height: 350px; } }
 @media (max-width: 850px) { .overview-page-header { align-items: flex-start; flex-direction: column; }.overview-toolbar { justify-content: flex-start; }.overview-chart-grid { grid-template-columns: minmax(0, 1fr); }.overview-chart-card { min-height: 338px; } }
-@media (max-width: 560px) { .overview-page-header { gap: 12px; }.overview-toolbar { width: 100%; gap: 7px; }.overview-class-filter { flex: 1; }.overview-class-filter select { width: 100%; }.overview-board { gap: 9px; padding: 9px; border-radius: 13px; }.overview-kpis { gap: 8px; }.overview-kpi { min-height: 99px; padding: 12px; }.overview-kpi strong { font-size: 23px; }.overview-kpi small { font-size: 8px; }.overview-chart-card { min-height: 330px; padding: 13px 12px 10px; }.overview-chart-card__type { font-size: 8px; }.overview-task-table-card { padding: 13px 11px; }.overview-task-table { min-width: 650px; }.overview-state--error { align-items: flex-start; flex-direction: column; }.overview-state__actions { flex-wrap: wrap; } }
+@media (max-width: 560px) { .overview-page-header { gap: 12px; }.overview-toolbar { width: 100%; gap: 7px; }.overview-class-filter { flex: 1; }.overview-board { gap: 9px; padding: 9px; border-radius: 13px; }.overview-kpis { gap: 8px; }.overview-kpi { min-height: 99px; padding: 12px; }.overview-kpi strong { font-size: 23px; }.overview-kpi small { font-size: 8px; }.overview-chart-card { min-height: 330px; padding: 13px 12px 10px; }.overview-chart-card__type { font-size: 8px; }.overview-task-table-card { padding: 13px 11px; }.overview-task-table { min-width: 650px; }.overview-state--error { align-items: flex-start; flex-direction: column; }.overview-state__actions { flex-wrap: wrap; } }
 </style>
