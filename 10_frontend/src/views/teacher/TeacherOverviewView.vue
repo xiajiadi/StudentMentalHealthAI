@@ -267,7 +267,7 @@ const heatmapCells = computed(() => {
 })
 const heatmapOption = computed<EChartsOption>(() => ({
   animation: false,
-  grid: { left: 78, right: 16, top: 12, bottom: heatmapCells.value.taskLabels.length > 6 ? 50 : 24, containLabel: true },
+  grid: { left: 16, right: 64, top: 12, bottom: heatmapCells.value.taskLabels.length > 6 ? 50 : 24, containLabel: true },
   tooltip: {
     ...overviewTooltipStyle,
     position: 'top',
@@ -293,11 +293,8 @@ const heatmapOption = computed<EChartsOption>(() => ({
     name: '完成率', type: 'heatmap', data: heatmapCells.value.data,
     label: {
       show: true,
-      formatter: (params) => {
-        const rate = Number((params.value as number[])[2])
-        return rate >= 82 ? `{high|${rate.toFixed(0)}%}` : `{base|${rate.toFixed(0)}%}`
-      },
-      rich: { high: { color: '#fff' }, base: { color: '#315d6a' } },
+      formatter: (params) => `${Number((params.value as number[])[2]).toFixed(0)}%`,
+      color: '#fff',
       fontSize: 9,
       fontWeight: 700,
     },
@@ -335,7 +332,7 @@ const deadlineData = computed(() => {
 const deadlineOption = computed<EChartsOption>(() => ({
   animation: false,
   color: ['#b8e0e8', '#00a9c7'],
-  grid: { left: 38, right: 40, top: 26, bottom: 36, containLabel: true },
+  grid: { left: 38, right: 40, top: 22, bottom: 36, containLabel: true },
   tooltip: {
     ...overviewTooltipStyle,
     trigger: 'axis', axisPointer: { type: 'cross' },
@@ -346,11 +343,11 @@ const deadlineOption = computed<EChartsOption>(() => ({
       return day ? `${day.label}<br/>到期任务：${day.taskCount} 项<br/>待完成人次：${day.pendingCount}<br/>涉及班级：${day.classes.size} 个` : ''
     },
   },
-  legend: { top: 0, right: 0, itemWidth: 9, itemHeight: 9, textStyle: { color: '#8a98a6', fontSize: 9 } },
+  legend: { top: 0, right: 8, itemWidth: 9, itemHeight: 9, textStyle: { color: '#8a98a6', fontSize: 9 } },
   xAxis: { type: 'category', data: deadlineData.value.map((item) => item.label), boundaryGap: true, axisTick: { show: false }, axisLine: { lineStyle: { color: '#e5ebef' } }, axisLabel: { color: '#8a98a6', fontSize: 9 } },
   yAxis: [
     { type: 'value', name: '任务数', minInterval: 1, nameTextStyle: { color: '#95a2ae', fontSize: 9 }, axisLabel: { color: '#95a2ae', fontSize: 9 }, splitLine: { lineStyle: { color: '#edf1f4' } } },
-    { type: 'value', name: '人次', minInterval: 1, nameTextStyle: { color: '#95a2ae', fontSize: 9 }, axisLabel: { color: '#95a2ae', fontSize: 9 }, splitLine: { show: false } },
+    { type: 'value', minInterval: 1, axisLabel: { color: '#95a2ae', fontSize: 9 }, splitLine: { show: false } },
   ],
   series: [
     { name: '到期任务数（项）', type: 'bar', yAxisIndex: 0, barMaxWidth: 22, data: deadlineData.value.map((item) => item.taskCount), itemStyle: { color: '#b5dfe7', borderRadius: [4, 4, 0, 0] } },
@@ -452,7 +449,7 @@ const handleRefresh = () => {
       </section>
 
       <section class="overview-chart-grid" aria-label="完成进度与状态图表">
-        <AppCard class="overview-chart-card">
+        <AppCard class="overview-chart-card overview-chart-card--status">
           <header class="overview-chart-card__header">
             <span class="overview-chart-card__icon overview-chart-card__icon--teal"><ChartPie :size="16" aria-hidden="true" /></span>
             <div><h2>测评状态分布</h2><p>当前有效报名人次构成</p></div>
@@ -461,16 +458,16 @@ const handleRefresh = () => {
           <div v-else class="overview-chart-empty">当前没有有效报名状态可供分布。</div>
         </AppCard>
 
-        <AppCard class="overview-chart-card">
+        <AppCard class="overview-chart-card overview-chart-card--completion">
           <header class="overview-chart-card__header">
             <span class="overview-chart-card__icon"><ChartColumn :size="16" aria-hidden="true" /></span>
             <div><h2>班级完成率对比</h2><p>不同授权班级的测评任务完成情况</p></div>
           </header>
-          <TeacherProgressChart v-if="classStats.length" :option="classCompletionOption" label="授权班级测评完成率竖向柱状图" :height="282" />
+          <TeacherProgressChart v-if="classStats.length" :option="classCompletionOption" label="授权班级测评完成率竖向柱状图" :height="270" />
           <div v-else class="overview-chart-empty">当前范围内没有有效报名人次。</div>
         </AppCard>
 
-        <AppCard class="overview-chart-card">
+        <AppCard class="overview-chart-card overview-chart-card--heatmap">
           <header class="overview-chart-card__header">
             <span class="overview-chart-card__icon overview-chart-card__icon--teal"><ChartColumn :size="16" aria-hidden="true" /></span>
             <div>
@@ -486,12 +483,12 @@ const handleRefresh = () => {
           <div v-else class="overview-chart-empty">当前没有可以比较的班级任务组合。</div>
         </AppCard>
 
-        <AppCard class="overview-chart-card">
+        <AppCard class="overview-chart-card overview-chart-card--deadline">
           <header class="overview-chart-card__header">
             <span class="overview-chart-card__icon overview-chart-card__icon--amber"><CalendarDays :size="16" aria-hidden="true" /></span>
             <div><h2>近期任务截止压力</h2><p>未来 14 天的到期任务与待完成人次</p></div>
           </header>
-          <TeacherProgressChart v-if="deadlineData.length" :option="deadlineOption" label="未来十四天到期任务数与待完成人次柱线组合图" :height="Math.max(270, heatmapCells.classLabels.length * 42 + 54)" />
+          <TeacherProgressChart v-if="deadlineData.length" :option="deadlineOption" label="未来十四天到期任务数与待完成人次柱线组合图" :height="300" />
           <div v-else class="overview-chart-empty">未来 14 天没有设置截止日期的已发布任务。</div>
         </AppCard>
       </section>
@@ -542,8 +539,10 @@ const handleRefresh = () => {
 .overview-kpi__label svg { color: #83a8b7; }
 .overview-kpi strong { color: #344657; font-size: 26px; font-weight: 650; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .overview-kpi--accent strong,.overview-kpi--accent .overview-kpi__label svg { color: var(--color-primary); }
-.overview-chart-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
-.overview-chart-card { display: grid; align-content: start; gap: 8px; min-width: 0; min-height: 360px; padding: 15px 16px 12px; border: 1px solid #e7edf2; border-radius: 12px; background: #fff; box-shadow: none; }
+.overview-chart-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 11px; }
+.overview-chart-card { display: grid; align-content: start; gap: 8px; min-width: 0; min-height: 0; padding: 15px 16px 12px; border: 1px solid #e7edf2; border-radius: 12px; background: #fff; box-shadow: none; }
+.overview-chart-card--status { min-height: 360px; }
+.overview-chart-card--deadline { margin-top: -14px; }
 .overview-chart-card__header { display: flex; align-items: flex-start; gap: 9px; min-width: 0; min-height: 39px; }
 .overview-chart-card__icon { display: grid; width: 29px; height: 29px; flex: 0 0 29px; place-items: center; border-radius: 9px; color: var(--color-primary-active); background: #e9f7fa; }
 .overview-chart-card__icon--teal { color: #54a997; background: #edf8f5; }
@@ -581,7 +580,7 @@ const handleRefresh = () => {
 .overview-empty-state p { max-width: 440px; margin: 0; color: #93a0ab; font-size: 11px; line-height: 1.6; }
 .overview-empty-state .overview-mode-toggle { margin-top: 8px; }
 @keyframes page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-@media (max-width: 1100px) { .overview-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }.overview-chart-card { min-height: 350px; } }
-@media (max-width: 850px) { .overview-page-header { align-items: flex-start; flex-direction: column; }.overview-toolbar { justify-content: flex-start; }.overview-chart-grid { grid-template-columns: minmax(0, 1fr); }.overview-chart-card { min-height: 338px; } }
-@media (max-width: 560px) { .overview-page-header { gap: 12px; }.overview-toolbar { width: 100%; gap: 7px; }.overview-class-filter { flex: 1; }.overview-board { gap: 9px; padding: 9px; }.overview-kpis { gap: 8px; }.overview-kpi { min-height: 74px; padding: 10px 12px; }.overview-kpi strong { font-size: 23px; }.overview-chart-card { min-height: 330px; padding: 13px 12px 10px; }.overview-task-table-card { padding: 13px 11px; }.overview-task-table { min-width: 650px; }.overview-state--error { align-items: flex-start; flex-direction: column; }.overview-state__actions { flex-wrap: wrap; } }
+@media (max-width: 1100px) { .overview-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }.overview-chart-card--status { min-height: 350px; } }
+@media (max-width: 850px) { .overview-page-header { align-items: flex-start; flex-direction: column; }.overview-toolbar { justify-content: flex-start; }.overview-chart-grid { grid-template-columns: minmax(0, 1fr); }.overview-chart-card--status { min-height: 338px; }.overview-chart-card--deadline { margin-top: 0; } }
+@media (max-width: 560px) { .overview-page-header { gap: 12px; }.overview-toolbar { width: 100%; gap: 7px; }.overview-class-filter { flex: 1; }.overview-board { gap: 9px; padding: 9px; }.overview-kpis { gap: 8px; }.overview-kpi { min-height: 74px; padding: 10px 12px; }.overview-kpi strong { font-size: 23px; }.overview-chart-card { padding: 13px 12px 10px; }.overview-task-table-card { padding: 13px 11px; }.overview-task-table { min-width: 650px; }.overview-state--error { align-items: flex-start; flex-direction: column; }.overview-state__actions { flex-wrap: wrap; } }
 </style>
