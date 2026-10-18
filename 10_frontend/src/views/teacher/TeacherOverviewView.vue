@@ -331,8 +331,7 @@ const handleRefresh = () => {
 
     <header class="overview-page-header">
       <div class="overview-page-heading">
-        <h1>工作概览</h1>
-        <p>班级测评进度与近期任务</p>
+        <h1>班级测评进度与近期任务</h1>
       </div>
       <div class="overview-toolbar" aria-label="数据筛选与刷新">
         <label class="overview-class-filter">
@@ -465,9 +464,8 @@ const handleRefresh = () => {
 
 <style scoped>
 .teacher-overview { display: grid; gap: 12px; padding-top: 0; padding-bottom: 56px; animation: page-in 220ms ease both; }
-.overview-page-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; padding: 0 2px 4px; }
-.overview-page-heading h1 { margin: 0 0 5px; color: var(--color-text-primary); font-size: 21px; font-weight: 700; letter-spacing: -.02em; }
-.overview-page-heading p { margin: 0; color: var(--color-text-secondary); font-size: 12px; }
+.overview-page-header { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 0 2px 4px; }
+.overview-page-heading h1 { margin: 0; color: var(--color-text-secondary); font-size: 13px; font-weight: 600; line-height: 1.4; }
 .overview-toolbar { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .overview-class-filter select { min-width: 142px; height: 36px; padding: 0 30px 0 11px; border: 1px solid #dfe6eb; border-radius: 9px; color: var(--color-text-primary); background: #fff; font: inherit; font-size: 11px; }
 .overview-class-filter select:focus-visible,.overview-mode-toggle:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 2px; }
@@ -527,5 +525,5 @@ const handleRefresh = () => {
 @keyframes page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 @media (max-width: 1100px) { .overview-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }.overview-chart-card { min-height: 350px; } }
 @media (max-width: 850px) { .overview-page-header { align-items: flex-start; flex-direction: column; }.overview-toolbar { justify-content: flex-start; }.overview-chart-grid { grid-template-columns: minmax(0, 1fr); }.overview-chart-card { min-height: 338px; } }
-@media (max-width: 560px) { .overview-page-header { gap: 12px; }.overview-page-heading h1 { font-size: 19px; }.overview-toolbar { width: 100%; gap: 7px; }.overview-class-filter { flex: 1; }.overview-class-filter select { width: 100%; }.overview-source-pill { order: 3; }.overview-board { gap: 9px; padding: 9px; border-radius: 13px; }.overview-kpis { gap: 8px; }.overview-kpi { min-height: 99px; padding: 12px; }.overview-kpi strong { font-size: 23px; }.overview-kpi small { font-size: 8px; }.overview-chart-card { min-height: 330px; padding: 13px 12px 10px; }.overview-chart-card__type { font-size: 8px; }.overview-task-table-card { padding: 13px 11px; }.overview-task-table { min-width: 650px; }.overview-state--error { align-items: flex-start; flex-direction: column; }.overview-state__actions { flex-wrap: wrap; } }
+@media (max-width: 560px) { .overview-page-header { gap: 12px; }.overview-toolbar { width: 100%; gap: 7px; }.overview-class-filter { flex: 1; }.overview-class-filter select { width: 100%; }.overview-source-pill { order: 3; }.overview-board { gap: 9px; padding: 9px; border-radius: 13px; }.overview-kpis { gap: 8px; }.overview-kpi { min-height: 99px; padding: 12px; }.overview-kpi strong { font-size: 23px; }.overview-kpi small { font-size: 8px; }.overview-chart-card { min-height: 330px; padding: 13px 12px 10px; }.overview-chart-card__type { font-size: 8px; }.overview-task-table-card { padding: 13px 11px; }.overview-task-table { min-width: 650px; }.overview-state--error { align-items: flex-start; flex-direction: column; }.overview-state__actions { flex-wrap: wrap; } }
 </style>
