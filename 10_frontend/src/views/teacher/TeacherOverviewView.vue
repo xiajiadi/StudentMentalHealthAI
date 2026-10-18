@@ -213,7 +213,7 @@ const statusOption = computed<EChartsOption>(() => ({
       formatter: `${activeEnrollmentCount.value}\n有效报名人次`,
       color: '#8c9aa7', fontSize: 12, lineHeight: 21, fontWeight: 600,
     },
-    emphasis: { scale: true, scaleSize: 5, label: { show: true, fontSize: 14, fontWeight: 700 } },
+    emphasis: { scale: true, scaleSize: 5, label: { show: false } },
     data: statusRingItems.value.map((item) => ({ name: item.label, value: item.value })),
   }],
 }))
