@@ -454,20 +454,20 @@ const handleRefresh = () => {
       <section class="overview-chart-grid" aria-label="完成进度与状态图表">
         <AppCard class="overview-chart-card">
           <header class="overview-chart-card__header">
-            <span class="overview-chart-card__icon"><ChartColumn :size="16" aria-hidden="true" /></span>
-            <div><h2>班级完成率对比</h2><p>不同授权班级的测评任务完成情况</p></div>
-          </header>
-          <TeacherProgressChart v-if="classStats.length" :option="classCompletionOption" label="授权班级测评完成率竖向柱状图" :height="282" />
-          <div v-else class="overview-chart-empty">当前范围内没有有效报名人次。</div>
-        </AppCard>
-
-        <AppCard class="overview-chart-card">
-          <header class="overview-chart-card__header">
             <span class="overview-chart-card__icon overview-chart-card__icon--teal"><ChartPie :size="16" aria-hidden="true" /></span>
             <div><h2>测评状态分布</h2><p>当前有效报名人次构成</p></div>
           </header>
           <TeacherProgressChart v-if="!isStatusEmpty" :option="statusOption" label="有效报名人次的测评状态环形图" :height="282" />
           <div v-else class="overview-chart-empty">当前没有有效报名状态可供分布。</div>
+        </AppCard>
+
+        <AppCard class="overview-chart-card">
+          <header class="overview-chart-card__header">
+            <span class="overview-chart-card__icon"><ChartColumn :size="16" aria-hidden="true" /></span>
+            <div><h2>班级完成率对比</h2><p>不同授权班级的测评任务完成情况</p></div>
+          </header>
+          <TeacherProgressChart v-if="classStats.length" :option="classCompletionOption" label="授权班级测评完成率竖向柱状图" :height="282" />
+          <div v-else class="overview-chart-empty">当前范围内没有有效报名人次。</div>
         </AppCard>
 
         <AppCard class="overview-chart-card">
