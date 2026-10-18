@@ -2,7 +2,7 @@
 
 本文件是跨模块接口的规范来源。当前维护四项 v1 基线：assessment.v1、knowledge.v1、generation.v1、api.v1。
 
-公共 Contract 发布标签为 v0.1.0，状态为 FROZEN；完整冻结标记：v0.1.0 FROZEN。该状态依据 A_PHASE_ACCEPTANCE.md 中全部 A 阶段 Gate PASS 得出；它只冻结接口和治理边界，不代表 B 阶段功能、临床有效性或发布验收完成。
+公共 Contract 发布标签 v0.1.0 继续保持 FROZEN。当前本地工作分支为固定题表增加 `risk.level=not_assessed` 的工作扩展，用于明确表达“未进行风险分类”；该扩展不属于 v0.1.0 发布范围，也不代表测量学或专业批准。进入后续发布前必须完成兼容性与版本审查。
 
 ## 0.1 机器可读资产
 
@@ -184,7 +184,7 @@ ID 使用本文件 1.2 的对象前缀和稳定后缀。生成器必须保证同
 | provenance | 是 | 能回溯适配器、CAT 和题库版本 |
 | timestamps | 是 | 完成状态必须有 completed_at |
 
-risk.level 只允许 normal、attention、high、crisis。这是操作分流级别，不是疾病分级。
+risk.level 可为 normal、attention、high、crisis，或 `not_assessed`。这是操作分流字段，不是疾病分级；`not_assessed` 明确表示系统没有进行风险分类，不能解释为 normal 或其他心理状态。此类固定题表记录不进入测后个性化生成队列。
 
 若 risk.level 为 high 或 crisis，risk.need_human_review 必须为 true，且 Generation Contract 不得返回可自动发布的个性化建议。
 

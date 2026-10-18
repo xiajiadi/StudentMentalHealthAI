@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ArrowLeft } from '@lucide/vue'
 import { ArrowRight } from '@lucide/vue'
 import { BookOpen } from '@lucide/vue'
@@ -8,12 +8,13 @@ import { Info } from '@lucide/vue'
 import { RotateCcw } from '@lucide/vue'
 import { ShieldCheck } from '@lucide/vue'
 import DimensionRadar from '@/components/charts/DimensionRadar.vue'
-import AppBadge from '@/components/app/AppBadge.vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
-import AppPageHeader from '@/components/app/AppPageHeader.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import EvidenceItem from '@/components/evidence/EvidenceItem.vue'
+import StudentRecordDetailLayout from '@/components/student/StudentRecordDetailLayout.vue'
+import WorkspaceBreadcrumb from '@/components/student/WorkspaceBreadcrumb.vue'
+import { studentPageArt } from '@/data/student-feature-cards'
 import { frontendApi } from '@/services/mock-api'
 import type { StudentReportViewModel } from '@/types/view-models'
 import { useRoute, useRouter } from 'vue-router'
@@ -23,6 +24,7 @@ const router = useRouter()
 const state = ref<'loading' | 'ready' | 'error'>('loading')
 const data = ref<StudentReportViewModel | null>(null)
 const errorMessage = ref('')
+let requestGeneration = 0
 const canDisplayFeedback = computed(() => {
   const generation = data.value?.report.generation
   return generation?.status === 'generated' && Boolean(generation.content)
@@ -46,27 +48,38 @@ const feedbackNotice = computed(() => {
 })
 
 const load = async () => {
+  const generation = ++requestGeneration
   state.value = 'loading'
+  data.value = null
   errorMessage.value = ''
   try {
     const reportId = typeof route.params.id === 'string' ? route.params.id : ''
     if (!reportId) throw new Error('报告标识不可用，请从学生空间的历史记录重新打开。')
     const response = await frontendApi.getStudentReport(reportId)
+    if (generation !== requestGeneration) return
     data.value = response.data
     state.value = 'ready'
   } catch (error) {
+    if (generation !== requestGeneration) return
     state.value = 'error'
     errorMessage.value = error instanceof Error ? error.message : '结果页面暂时无法打开，请稍后重试。'
   }
 }
 
-const backHome = () => void router.push('/student/home')
+const formatDate = (value: string | null) => {
+  if (!value) return '时间未提供'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '时间暂不可用'
+  return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(date)
+}
 
-onMounted(load)
+watch(() => route.params.id, () => { void load() }, { immediate: true })
+onBeforeUnmount(() => { requestGeneration += 1 })
 </script>
 
 <template>
   <div class="content-wrap content-wrap--student result-page">
+    <WorkspaceBreadcrumb v-if="state !== 'ready' || !data || !canDisplayFeedback" current="支持反馈" :parent="{ label: '我的记录', to: '/student/history' }" />
     <div v-if="state === 'loading'" class="result-loading" aria-busy="true" aria-label="正在加载测评结果">
       <div class="skeleton skeleton--small"></div><div class="skeleton skeleton--title"></div><div class="skeleton skeleton--copy"></div>
       <div class="result-loading__grid"><div class="skeleton skeleton--panel"></div><div class="skeleton skeleton--panel"></div></div>
@@ -80,18 +93,26 @@ onMounted(load)
       <AppButton variant="quiet" size="sm" @click="router.push('/student/feedback')"><ArrowLeft :size="15" aria-hidden="true" />返回测评反馈</AppButton>
     </AppStatusCallout>
 
-    <template v-else-if="data">
-      <AppPageHeader eyebrow="学生结果" title="你的支持参考" intro="先看懂这份结果，再决定是否要做一个小行动。" :fixture-label="data.fixtureLabel">
-        <template #actions>
-          <AppButton variant="quiet" size="sm" @click="backHome"><ArrowLeft :size="15" aria-hidden="true" />返回首页</AppButton>
-        </template>
-      </AppPageHeader>
-
-      <div class="result-identity">
-        <div class="result-identity__mark" aria-hidden="true"><CheckCircle2 :size="22" /></div>
-        <div><strong>结构化支持参考已准备</strong><span>{{ data.report.reportId }} · {{ data.report.assessment.timestamps.completed_at || '完成时间不可用' }}</span></div>
-        <AppBadge tone="teal" dot>安全流程已完成</AppBadge>
-      </div>
+    <StudentRecordDetailLayout
+      v-else-if="data"
+      current="支持反馈"
+      :parent="{ label: '我的记录', to: '/student/history' }"
+      eyebrow="EDUCATION SUPPORT RECORD"
+      title="你的支持参考"
+      summary="结合本次测评整理的支持参考与相关记录。"
+      :image="studentPageArt.educationSupport"
+      :metadata="[{ label: '测评完成时间', value: formatDate(data.report.assessment.timestamps.completed_at) }]"
+      :badges="[data.fixtureLabel]"
+      :table-of-contents="[{ id: 'record', label: '记录概览' }, { id: 'meaning', label: '意义' }, { id: 'data', label: '数据' }, { id: 'action', label: '行动' }, { id: 'evidence', label: '依据' }]"
+    >
+      <section id="record" class="result-section" aria-labelledby="record-title">
+        <div class="result-section__heading"><span class="result-section__index">00</span><div><span class="section-label">RECORD</span><h2 id="record-title">记录概览</h2></div></div>
+        <div class="result-identity">
+          <div class="result-identity__mark" aria-hidden="true"><CheckCircle2 :size="22" /></div>
+          <div><strong>结构化支持参考已准备</strong><span>{{ data.report.reportId }} · {{ formatDate(data.report.assessment.timestamps.completed_at) }}</span></div>
+          <span class="result-identity__status">已生成</span>
+        </div>
+      </section>
 
       <section id="meaning" class="result-section result-section--meaning" aria-labelledby="meaning-title">
         <div class="result-section__heading"><span class="result-section__index">01</span><div><span class="section-label">Meaning · 意义</span><h2 id="meaning-title">{{ data.meaning.title }}</h2></div></div>
@@ -143,21 +164,22 @@ onMounted(load)
         </AppCard>
       </section>
 
-      <AppStatusCallout tone="support" title="给自己的提醒" body="测评和支持参考只用于帮助你整理下一步，不构成诊断或治疗建议。如果持续困扰或出现安全风险，请按照学校已审核的支持流程寻求专业帮助。">
+      <AppStatusCallout class="result-page__disclaimer" tone="support" title="给自己的提醒" body="测评和支持参考只用于帮助你整理下一步，不构成诊断或治疗建议。如果持续困扰或出现安全风险，请按照学校已审核的支持流程寻求专业帮助。">
         <ShieldCheck :size="16" aria-hidden="true" />
       </AppStatusCallout>
-    </template>
+    </StudentRecordDetailLayout>
   </div>
 </template>
 
 <style scoped>
 .result-page { animation: page-in 260ms ease both; }
-.result-identity { display: flex; align-items: center; gap: 12px; margin-bottom: 34px; padding: 13px 15px; border: 1px solid rgb(15 118 110 / 17%); border-radius: var(--radius-card); background: var(--color-support-wash); }
+.result-identity { display: flex; align-items: center; gap: 12px; padding: 13px 15px; border: 1px solid rgb(15 118 110 / 17%); border-radius: var(--radius-card); background: var(--color-support-wash); }
 .result-identity__mark { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; flex: 0 0 36px; border-radius: 50%; color: var(--color-support); background: var(--color-surface); }
 .result-identity > div:nth-child(2) { display: grid; flex: 1; min-width: 0; gap: 3px; }
 .result-identity strong { color: var(--color-text-primary); font-size: 13px; }
 .result-identity span { overflow: hidden; color: var(--color-text-secondary); font-family: var(--font-mono); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.result-section { margin-top: 54px; }
+.result-identity__status { flex: 0 0 auto; padding: 4px 8px; border-radius: 999px; color: #376e5f; background: #e5f3ec; font-size: 11px; font-weight: 650; }
+.result-section { margin-top: 0; scroll-margin-top: 86px; }
 .result-section--meaning { margin-top: 0; padding: 25px; border-left: 3px solid var(--color-primary); background: var(--color-surface); box-shadow: var(--shadow-rest); }
 .result-section__heading { display: flex; align-items: flex-start; gap: 15px; }
 .result-section__index { padding-top: 2px; color: var(--color-primary); font-family: var(--font-mono); font-size: 12px; font-weight: 700; }
@@ -192,8 +214,8 @@ onMounted(load)
 .evidence-empty svg { color: var(--color-attention); }
 .evidence-empty strong { margin-top: 13px; color: var(--color-text-primary); font-size: 14px; }
 .evidence-empty p { max-width: 360px; margin: 7px 0 17px; color: var(--color-text-secondary); font-size: 12px; line-height: 1.7; }
-.result-page > .status-callout { align-items: flex-start; margin-top: 34px; }
-.result-page > .status-callout :deep(svg) { order: -1; flex: 0 0 auto; margin-top: 1px; color: var(--color-support); }
+.result-page__disclaimer { align-items: flex-start; }
+.result-page__disclaimer :deep(svg) { order: -1; flex: 0 0 auto; margin-top: 1px; color: var(--color-support); }
 .result-loading { padding-top: 12px; }
 .skeleton { position: relative; overflow: hidden; border-radius: 7px; background: var(--color-surface-skeleton); }
 .skeleton::after { position: absolute; inset: 0; content: ""; background: linear-gradient(90deg, transparent, rgb(255 255 255 / 58%), transparent); animation: shimmer 1.4s infinite; transform: translateX(-100%); }
@@ -207,9 +229,9 @@ onMounted(load)
 
 @media (max-width: 700px) {
   .result-identity { align-items: flex-start; flex-wrap: wrap; }
-  .result-identity .app-badge { margin-left: 48px; }
+  .result-identity__status { margin-left: 48px; }
   .result-section--meaning { padding: 20px 17px; }
-  .result-section { margin-top: 43px; }
+  .result-section { margin-top: 0; }
   .result-section__description { margin-left: 0; }
   .data-panel, .result-loading__grid { grid-template-columns: 1fr; }
   .data-panel { padding: 15px 16px; }

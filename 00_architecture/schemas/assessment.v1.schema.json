@@ -203,7 +203,8 @@
             "normal",
             "attention",
             "high",
-            "crisis"
+            "crisis",
+            "not_assessed"
           ]
         },
         "need_human_review": {

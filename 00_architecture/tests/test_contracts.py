@@ -106,6 +106,14 @@ class ContractSchemaTests(unittest.TestCase):
         high_without_review["risk"]["need_human_review"] = False
         self.assert_invalid("assessment.v1.schema.json", high_without_review)
 
+        unclassified = deepcopy(assessment)
+        unclassified["risk"]["level"] = "not_assessed"
+        unclassified["risk"]["need_human_review"] = False
+        unclassified["dimensions"]["emotion"].update(
+            {"theta": None, "se": None, "score": None, "band": "unknown", "interpretation_status": "not_scored"}
+        )
+        self.assert_valid("assessment.v1.schema.json", unclassified)
+
     def test_knowledge_status_and_unknown_field_are_rejected(self) -> None:
         chunk = load_json(FIXTURES / "valid_knowledge_chunk.json")
         extra_field = deepcopy(chunk)

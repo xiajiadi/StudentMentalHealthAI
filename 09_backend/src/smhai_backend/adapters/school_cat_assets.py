@@ -16,6 +16,7 @@ from smhai_backend.integrations.cat_assets import (
     HttpCatAssetsClient,
     HttpCatSavedSimulationClient,
 )
+from smhai_backend.integrations.fixed_form import validate_who5_documents
 
 _BANK_SCHEMA = "school_cat_bank_document.v1"
 _PLAN_SCHEMA = "school_cat_config_document.v1"
@@ -185,6 +186,21 @@ class SchoolCatAssetsPersistenceAdapter:
                 ErrorCode.VALIDATION_FAILED, detail="CAT asset document exceeds the size limit"
             )
         context = get_request_context()
+        if bank_document.get("measurement_model") == "FIXED_FORM":
+            async def validate_fixed_form(_client: HttpCatAssetsClient) -> dict[str, Any]:
+                try:
+                    return validate_who5_documents(bank_document, config_document)
+                except (TypeError, ValueError) as exc:
+                    raise error(
+                        ErrorCode.VALIDATION_FAILED,
+                        detail="fixed-form assessment document is invalid",
+                    ) from exc
+
+            return await self._network_call(
+                actor,
+                "assets_validated",
+                validate_fixed_form,
+            )
         return await self._network_call(
             actor,
             "assets_validated",
@@ -1517,11 +1533,8 @@ class SchoolCatAssetsPersistenceAdapter:
         bank_document, config_document = await self._school_cat_assets_preflight_activation(
             actor, plan_version_ref
         )
-        context = get_request_context()
-        validated = await self._network_call(
-            actor,
-            "activation_assets_validated",
-            lambda client: client.validate_assets(bank_document, config_document, context=context),
+        validated = await self.school_cat_assets_validate(
+            actor, bank_document, config_document=config_document
         )
         if (
             validated.get("bank_document") != bank_document

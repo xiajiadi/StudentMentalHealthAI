@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { ArrowRight } from '@lucide/vue'
 import { RotateCcw } from '@lucide/vue'
 import { RadioGroupIndicator, RadioGroupItem, RadioGroupRoot } from 'reka-ui'
 import AppButton from '@/components/app/AppButton.vue'
@@ -140,10 +139,8 @@ onBeforeRouteLeave(saveSelectedResponse)
       <AppButton variant="secondary" size="sm" @click="load"><RotateCcw :size="15" aria-hidden="true" />重新准备</AppButton>
     </AppStatusCallout>
 
-    <section v-else-if="pageState === 'assigned'" class="assessment-assigned" aria-label="选择学校测评任务">
-      <h1>选择学校测评任务</h1>
-      <p>请选择当前开放的任务。已开始的测评可从本人记录中继续。</p>
-      <StudentAssignedTasks />
+    <section v-else-if="pageState === 'assigned'" class="assessment-assigned" aria-label="学校测评任务">
+      <StudentAssignedTasks focus-entry :auto-start-task="route.query.startAssigned === '1'" />
     </section>
 
     <template v-else-if="pageState === 'ready' && question">
@@ -154,6 +151,8 @@ onBeforeRouteLeave(saveSelectedResponse)
           <span class="question-card__number">{{ String(assessment.currentIndex + 1).padStart(2, '0') }}</span>
         </div>
         <h1 id="question-title">{{ question.prompt }}</h1>
+        <p v-if="question.instructions" class="question-card__instructions">{{ question.instructions }}</p>
+        <p v-if="question.source_attribution" class="question-card__source">{{ question.source_attribution }}</p>
 
         <RadioGroupRoot v-model="selectedResponse" class="answer-list" :aria-label="question.prompt" :disabled="isSubmitting || isCompleting">
           <label v-for="option in question.options" :key="option.value" class="answer-option" :class="{ 'answer-option--selected': selectedResponse === option.value }">
@@ -188,9 +187,7 @@ onBeforeRouteLeave(saveSelectedResponse)
           <AppButton variant="secondary" size="sm" @click="complete">重试</AppButton>
         </AppStatusCallout>
         <div class="question-card__footer">
-          <AppButton :loading="isCompleting" @click="complete">
-            完成 <ArrowRight :size="16" aria-hidden="true" />
-          </AppButton>
+          <AppButton :loading="isCompleting" @click="complete">完成</AppButton>
         </div>
       </section>
     </template>
@@ -203,10 +200,14 @@ onBeforeRouteLeave(saveSelectedResponse)
 .assessment-page :deep(.progress-wrap__label) { justify-content: flex-start; font-size: 12px; }
 .assessment-page :deep(.progress-wrap__label strong) { display: none; }
 .assessment-page :deep(.progress) { height: 5px; }
+.assessment-assigned { display: flex; width: 100%; align-items: center; justify-content: center; transform: translateY(clamp(8px, 2svh, 16px)); }
+.assessment-assigned :deep(.assigned-tasks) { width: min(100%, 760px); }
 .question-card { margin-top: clamp(8px, 1.5svh, 14px); padding: clamp(16px, 2.4svh, 24px) clamp(18px, 2vw, 28px); border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-surface); box-shadow: var(--shadow-raised); }
 .question-card__top { display: flex; align-items: center; }
 .question-card__number { color: var(--color-primary); font-family: var(--font-sans); font-size: 12px; font-variant-numeric: tabular-nums; font-weight: 700; }
 .question-card h1 { max-width: none; margin: clamp(8px, 1.4svh, 13px) 0 clamp(10px, 1.8svh, 16px); color: var(--color-text-primary); font-family: var(--font-display); font-size: clamp(20px, calc(0.9vw + 0.8svh + 14px), 26px); letter-spacing: -0.025em; line-height: 1.35; }
+.question-card__instructions { margin: -4px 0 14px; color: var(--color-text-secondary); font-size: 13px; line-height: 1.65; }
+.question-card__source { margin: -6px 0 14px; color: var(--color-text-muted); font-size: 10px; line-height: 1.5; }
 .assessment-complete-card h1 { margin: 0 0 8px; }
 .answer-list { display: grid; gap: clamp(6px, 0.9svh, 9px); margin-top: 0; }
 .answer-option { display: flex; align-items: center; gap: 11px; min-height: clamp(38px, 5.8svh, 50px); padding: clamp(6px, 0.9svh, 10px) 12px; border: 1px solid var(--color-border); border-radius: var(--radius-control); color: var(--color-text-primary); background: var(--color-surface); cursor: pointer; transition: border-color var(--motion-fast) ease, background-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease; }
@@ -235,6 +236,7 @@ onBeforeRouteLeave(saveSelectedResponse)
 }
 
 @media (max-height: 640px) {
+  .assessment-assigned { transform: translateY(6px); }
   .question-card { padding-block: 14px; }
   .question-card h1 { margin-block: 7px 9px; }
   .answer-option { min-height: 36px; padding-block: 5px; }

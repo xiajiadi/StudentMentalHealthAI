@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { BookOpenCheck, CalendarDays, ClipboardCheck, History, RotateCcw } from '@lucide/vue'
+import { BookOpenCheck, CalendarDays, ClipboardCheck, History } from '@lucide/vue'
 import { useRouter } from 'vue-router'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
+import AppLoadingDots from '@/components/app/AppLoadingDots.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
+import StudentRefreshButton from '@/components/app/StudentRefreshButton.vue'
 import type {
   ResearchSessionDiscoveryEntry,
   ResearchTaskDiscoveryEntry,
@@ -13,6 +15,7 @@ import { frontendApi } from '@/services/mock-api'
 import { useSessionStore } from '@/stores/session'
 
 const PAGE_SIZE = 30
+const props = withDefaults(defineProps<{ tasksOnly?: boolean }>(), { tasksOnly: false })
 const router = useRouter()
 const session = useSessionStore()
 const generation = ref(0)
@@ -51,6 +54,10 @@ const taskStatus = (task: ResearchTaskDiscoveryEntry) => {
   if (task.session_status === 'COMPLETED') return '已完成'
   if (task.session_status === 'FAILED' || task.session_status === 'ABANDONED') return '会话已结束'
   return task.status === 'PUBLISHED' ? '待开始' : '暂不可用'
+}
+const taskPoster = (task: ResearchTaskDiscoveryEntry) => {
+  const seed = [...task.task_ref].reduce((value, character) => (value * 31 + character.charCodeAt(0)) >>> 0, 0)
+  return `/assets/psynova/original-covers/flow-${String(seed % 28 + 1).padStart(2, '0')}.svg`
 }
 
 const openTask = async (task: ResearchTaskDiscoveryEntry) => {
@@ -103,7 +110,17 @@ const loadFirstPage = async () => {
   taskNextOffset.value = null
   sessionNextOffset.value = null
   taskState.value = 'loading'
-  sessionState.value = 'loading'
+  sessionState.value = props.tasksOnly ? 'ready' : 'loading'
+  if (props.tasksOnly) {
+    try {
+      await loadTasks(requestGeneration)
+    } catch {
+      if (requestGeneration !== generation.value) return
+      taskState.value = 'error'
+      taskError.value = '研究任务暂时无法读取；当前环境没有可用研究任务服务时，不会显示模拟数据。'
+    }
+    return
+  }
   const results = await Promise.allSettled([
     loadTasks(requestGeneration),
     loadSessions(requestGeneration),
@@ -162,61 +179,64 @@ onBeforeUnmount(() => {
     <header class="student-research__heading">
       <div>
         <span class="student-research__label"><BookOpenCheck :size="15" aria-hidden="true" />公开研究任务</span>
-        <h2 id="student-research-title">研究演示</h2>
-        <p>题目和选项按来源原文展示；此流程只记录作答进度，不生成个人分数或解释。</p>
+        <h2 id="student-research-title">{{ tasksOnly ? '分配给我的研究任务' : '研究演示' }}</h2>
+        <p>{{ tasksOnly ? '开放和截止时间由任务记录提供。' : '题目和选项按来源原文展示；此流程只记录作答进度，不生成个人分数或解释。' }}</p>
       </div>
-      <AppButton variant="secondary" size="sm" :disabled="taskState === 'loading' || sessionState === 'loading'" @click="loadFirstPage">
-        <RotateCcw :size="15" aria-hidden="true" />刷新
-      </AppButton>
+      <span v-if="tasksOnly && taskState === 'ready'" class="student-research__count">{{ tasks.length }} 项</span>
+      <StudentRefreshButton :loading="taskState === 'loading' || (!tasksOnly && sessionState === 'loading')" :label="tasksOnly ? '刷新任务' : '刷新'" @click="loadFirstPage" />
     </header>
 
     <AppStatusCallout tone="info" title="仅用于研究演示" body="任务的研究资格不代表量表有效性、临床批准或学校生产授权。" />
 
     <section class="student-research__section" aria-labelledby="research-tasks-heading">
-      <div class="student-research__subheading">
+      <div v-if="!tasksOnly" class="student-research__subheading">
         <div><h3 id="research-tasks-heading">分配给我的任务</h3><p>开放和截止时间由任务记录提供。</p></div>
         <span v-if="taskState === 'ready'" class="student-research__count">{{ tasks.length }} 项</span>
       </div>
-      <AppCard v-if="taskState === 'loading'" class="student-research__state" aria-busy="true">正在读取研究任务…</AppCard>
+      <AppCard v-if="taskState === 'loading'" class="student-research__state" aria-busy="true">正在读取研究任务<AppLoadingDots /></AppCard>
       <AppCard v-else-if="taskState === 'error'" class="student-research__state student-research__state--error" role="status">
         <span>{{ taskError }}</span><AppButton variant="secondary" size="sm" @click="loadFirstPage">重新读取</AppButton>
       </AppCard>
       <AppCard v-else-if="!tasks.length" class="student-research__state" role="status">当前没有分配给你的研究任务。</AppCard>
-      <div v-else class="student-research__list">
-        <AppCard v-for="task in tasks" :key="task.task_ref" class="student-research__task">
-          <span class="student-research__task-icon"><ClipboardCheck :size="18" aria-hidden="true" /></span>
-          <div class="student-research__task-main">
-            <div class="student-research__task-title"><h4>{{ task.instrument_id }}</h4><span>{{ taskStatus(task) }}</span></div>
+      <div v-else class="student-research__cards">
+        <AppCard v-for="task in tasks" :key="task.task_ref" class="student-research__task-card">
+          <div class="student-research__poster">
+            <img :src="taskPoster(task)" alt="" aria-hidden="true" />
+            <span>{{ taskStatus(task) }}</span>
+          </div>
+          <div class="student-research__task-body">
+            <span class="student-research__task-category">研究演示</span>
+            <h4>{{ task.instrument_id }}</h4>
             <p>{{ task.source_population_scope }} · {{ task.instrument_version }}</p>
             <p class="student-research__dates"><CalendarDays :size="14" aria-hidden="true" />{{ formatDate(task.opens_at) }} 至 {{ formatDate(task.due_at) }}</p>
             <small>公开来源研究演示 · 尚未批准用于发布或日常运营</small>
+            <AppButton
+              v-if="task.session_status === 'IN_PROGRESS' && task.session_ref"
+              :disabled="Boolean(pendingTask)"
+              :loading="pendingTask === task.session_ref"
+              @click="openSession(task.session_ref)"
+            >
+              继续任务
+            </AppButton>
+            <AppButton
+              v-else-if="!task.session_ref"
+              :disabled="Boolean(pendingTask) || task.status !== 'PUBLISHED'"
+              :loading="pendingTask === task.task_ref"
+              @click="openTask(task)"
+            >
+              开始研究任务
+            </AppButton>
+            <AppButton
+              v-else-if="task.session_status === 'COMPLETED' && task.session_ref"
+              variant="secondary"
+              :disabled="Boolean(pendingTask)"
+              :loading="pendingTask === task.session_ref"
+              @click="openSession(task.session_ref)"
+            >
+              查看完成记录
+            </AppButton>
+            <span v-else class="student-research__terminal">{{ task.session_status === 'COMPLETED' ? '完成记录已保存' : '此会话已结束' }}</span>
           </div>
-          <AppButton
-            v-if="task.session_status === 'IN_PROGRESS' && task.session_ref"
-            :disabled="Boolean(pendingTask)"
-            :loading="pendingTask === task.session_ref"
-            @click="openSession(task.session_ref)"
-          >
-            继续任务
-          </AppButton>
-          <AppButton
-            v-else-if="!task.session_ref"
-            :disabled="Boolean(pendingTask) || task.status !== 'PUBLISHED'"
-            :loading="pendingTask === task.task_ref"
-            @click="openTask(task)"
-          >
-            开始研究任务
-          </AppButton>
-          <AppButton
-            v-else-if="task.session_status === 'COMPLETED' && task.session_ref"
-            variant="secondary"
-            :disabled="Boolean(pendingTask)"
-            :loading="pendingTask === task.session_ref"
-            @click="openSession(task.session_ref)"
-          >
-            查看完成记录
-          </AppButton>
-          <span v-else class="student-research__terminal">{{ task.session_status === 'COMPLETED' ? '完成记录已保存' : '此会话已结束' }}</span>
         </AppCard>
       </div>
       <div v-if="taskNextOffset !== null && taskState === 'ready'" class="student-research__more">
@@ -225,12 +245,12 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <section class="student-research__section" aria-labelledby="research-history-heading">
+    <section v-if="!tasksOnly" class="student-research__section" aria-labelledby="research-history-heading">
       <div class="student-research__subheading">
         <div><h3 id="research-history-heading">研究会话记录</h3><p>这里只显示状态和时间，不展示原始作答。</p></div>
         <span v-if="sessionState === 'ready'" class="student-research__count"><History :size="14" aria-hidden="true" />{{ sessions.length }} 项</span>
       </div>
-      <AppCard v-if="sessionState === 'loading'" class="student-research__state" aria-busy="true">正在读取研究记录…</AppCard>
+      <AppCard v-if="sessionState === 'loading'" class="student-research__state" aria-busy="true">正在读取研究记录<AppLoadingDots /></AppCard>
       <AppCard v-else-if="sessionState === 'error'" class="student-research__state student-research__state--error" role="status">
         <span>{{ sessionError }}</span><AppButton variant="secondary" size="sm" @click="loadFirstPage">重新读取</AppButton>
       </AppCard>
@@ -263,15 +283,18 @@ onBeforeUnmount(() => {
 .student-research__state { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 54px; padding: 13px 15px; color: var(--color-text-secondary); font-size: 12px; }
 .student-research__state--error { color: #8f651d; }
 .student-research__list,.student-research__history { display: grid; gap: 8px; }
-.student-research__task { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 11px; padding: 13px 15px; }
-.student-research__task-icon { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 9px; color: #388576; background: #e8f4ef; }
-.student-research__task-main { min-width: 0; }
-.student-research__task-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.student-research__task-title h4 { margin: 0; color: var(--color-text-primary); font-size: 13px; font-weight: 650; overflow-wrap: anywhere; }
-.student-research__task-title span { padding: 3px 7px; border-radius: 999px; color: #42665c; background: #e8f4ef; font-size: 10px; }
-.student-research__task-main p { margin: 4px 0 0; color: var(--color-text-secondary); font-size: 11px; }
-.student-research__task-main .student-research__dates { display: flex; align-items: center; gap: 5px; color: var(--color-text-muted); }
-.student-research__task-main small { display: block; margin-top: 5px; color: var(--color-text-muted); font-size: 10px; }
+.student-research__cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+.student-research__task-card { overflow: hidden; border: 1px solid #e8edf1; box-shadow: none; }
+.student-research__poster { position: relative; overflow: hidden; aspect-ratio: 1.91 / 1; background: #eaf3f5; }
+.student-research__poster img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.student-research__poster > span { position: absolute; top: 12px; right: 12px; padding: 5px 10px; border-radius: 7px; color: #fff; background: #568f7d; font-size: 12px; font-weight: 600; }
+.student-research__task-body { display: grid; min-height: 220px; align-content: start; gap: 7px; padding: 15px 16px 16px; }
+.student-research__task-category { color: #00a9dd; font-size: 13px; }
+.student-research__task-body h4 { margin: 0; color: var(--color-text-primary); font-size: 16px; font-weight: 650; overflow-wrap: anywhere; }
+.student-research__task-body p { margin: 0; color: var(--color-text-secondary); font-size: 11px; line-height: 1.5; }
+.student-research__task-body .student-research__dates { display: flex; align-items: center; gap: 5px; color: var(--color-text-muted); }
+.student-research__task-body small { display: block; margin-top: 2px; color: var(--color-text-muted); font-size: 10px; line-height: 1.5; }
+.student-research__task-body > button { justify-self: start; margin-top: auto; }
 .student-research__terminal { color: var(--color-text-muted); font-size: 11px; }
 .student-research__record { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px; padding: 11px 14px; }
 .student-research__record strong { color: var(--color-text-primary); font-size: 12px; }
@@ -285,9 +308,10 @@ onBeforeUnmount(() => {
 @media(max-width:680px) {
   .student-research { padding: 16px; }
   .student-research__heading { align-items: flex-start; }
-  .student-research__task { grid-template-columns: 34px minmax(0, 1fr); }
-  .student-research__task > button { grid-column: 2; justify-self: start; }
+  .student-research__cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .student-research__task-body { min-height: 0; }
   .student-research__record { grid-template-columns: minmax(0, 1fr) auto; }
   .student-research__record > button { grid-column: 1 / -1; justify-self: start; }
 }
+@media(max-width:520px) { .student-research__cards { grid-template-columns: 1fr; } }
 </style>

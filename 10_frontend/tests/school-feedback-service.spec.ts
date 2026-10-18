@@ -124,9 +124,23 @@ describe('SchoolFeedbackService transport and mapping', () => {
     }
   })
 
+  it('reads one published student record through the student-scoped endpoint', async () => {
+    fetchMock.mockResolvedValueOnce(response(envelope(studentFeedback)))
+    const service = new SchoolFeedbackService()
+
+    await expect(service.getStudent('FEED_synthetic_1')).resolves.toMatchObject({
+      feedback_ref: 'FEED_synthetic_1', status: 'PUBLISHED', body: '只对当前学生可见的合成正文。',
+    })
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/v1/school/feedback/student/FEED_synthetic_1'),
+      expect.objectContaining({ method: 'GET', credentials: 'include' }),
+    )
+  })
+
   it('rejects fabricated references and invalid drafts before network access', async () => {
     const service = new SchoolFeedbackService()
     await expect(service.listCase('CASE_not_a_feedback_case')).rejects.toMatchObject({ code: 'API_INVALID_REQUEST' })
+    await expect(service.getStudent('PCR_not_a_feedback')).rejects.toMatchObject({ code: 'API_INVALID_REQUEST' })
     await expect(service.createDraft('PCR_synthetic_case', 3, ' ', 'body', 'key'))
       .rejects.toMatchObject({ code: 'VALIDATION_FAILED' })
     expect(fetchMock).not.toHaveBeenCalled()

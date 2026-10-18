@@ -1649,6 +1649,8 @@ class MySqlBackendAdapter:
                 at=at,
                 trace_id=trace_id,
             )
+            if session.status == "CREATED" and session.started_at is None:
+                session.started_at = at
             if existing_session is None:
                 session.cat_binding_mode = task.cat_binding_mode
             elif session.cat_binding_mode != task.cat_binding_mode:
@@ -2512,6 +2514,7 @@ class MySqlBackendAdapter:
             if (
                 previous_status in {"CREATED", "IN_PROGRESS"}
                 and next_status == "COMPLETED"
+                and record.assessment.get("risk", {}).get("level") != "not_assessed"
             ):
                 if uow.post_assessment_jobs is None:
                     raise RuntimeError("post-assessment job repository is unavailable")

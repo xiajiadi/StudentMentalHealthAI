@@ -3,8 +3,9 @@ import { onMounted, ref } from 'vue'
 import { ListChecks, LockKeyhole, RotateCcw } from '@lucide/vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
-import AppPageHeader from '@/components/app/AppPageHeader.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
+import StudentPageHero from '@/components/student/StudentPageHero.vue'
+import WorkspaceBreadcrumb from '@/components/student/WorkspaceBreadcrumb.vue'
 import type { TeacherTaskProgress } from '@/api/client'
 import { frontendApi } from '@/services/mock-api'
 
@@ -52,7 +53,13 @@ onMounted(() => { void load() })
 
 <template>
   <main class="content-wrap teacher-overview">
-    <AppPageHeader eyebrow="教师工作区" title="班级任务进度" intro="查看已分配班级的任务整体完成情况。" />
+    <WorkspaceBreadcrumb homeLabel="教师工作区" homeTo="/teacher/overview" current="班级任务进度" />
+    <StudentPageHero
+      eyebrow="教师工作区 · Scope A"
+      title="班级任务进度"
+      subtitle="查看已分配班级的任务整体完成情况。"
+      image="/assets/psynova/student-page-heroes/history-hero.webp"
+    />
     <AppStatusCallout tone="info" title="仅显示任务汇总" body="此页不会显示学生名单、个人测评记录、作答、报告或支持对话。" />
 
     <AppCard class="task-progress-panel">
@@ -73,27 +80,28 @@ onMounted(() => { void load() })
 </template>
 
 <style scoped>
-.teacher-overview { display: grid; gap: 14px; animation: page-in 220ms ease both; }
-.task-progress-panel { padding: 19px; }
+.teacher-overview { display: grid; gap: 16px; animation: page-in 220ms ease both; }
+.teacher-overview :deep(.student-page-hero) { margin-bottom: 0; }
+.task-progress-panel { padding: 22px; }
 .task-progress-panel__heading,.task-progress-panel__heading > div { display: flex; align-items: center; justify-content: space-between; gap: 11px; }
 .task-progress-panel__heading > div { justify-content: flex-start; color: var(--color-support); }
 .task-progress-panel__heading h2 { margin: 0 0 3px; color: var(--color-text-primary); font-size: 15px; }
 .task-progress-panel__heading p { margin: 0; color: var(--color-text-secondary); font-size: 11px; line-height: 1.5; }
-.task-progress-state { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 112px; margin-top: 15px; padding: 16px; border-radius: 10px; color: var(--color-text-secondary); background: #f8fafb; font-size: 12px; }
+.task-progress-state { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 112px; margin-top: 16px; padding: 18px; border-radius: 12px; color: var(--color-text-secondary); background: #f8fafb; font-size: 12px; }
 .task-progress-state--error { justify-content: space-between; color: #8f651d; background: #fcf7eb; }
 .task-progress-state--error > span { display: flex; align-items: center; gap: 8px; }
-.task-progress-list { display: grid; gap: 10px; margin-top: 16px; }
-.task-progress-row { padding: 15px; border: 1px solid #e8edf0; border-radius: 10px; }
+.task-progress-list { display: grid; gap: 12px; margin-top: 17px; }
+.task-progress-row { padding: 17px; border: 1px solid #e8edf0; border-radius: 14px; }
 .task-progress-row header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .task-progress-row__class { color: #54809c; font-size: 10px; font-weight: 750; }
 .task-progress-row h3 { margin: 4px 0 0; color: var(--color-text-primary); font-size: 14px; }
 .task-progress-row__status { padding: 4px 8px; border-radius: 999px; color: #287765; background: #e8f4ef; font-size: 10px; }
 .task-progress-row__dates { margin: 8px 0 12px; color: var(--color-text-secondary); font-size: 11px; }
 .task-progress-row dl { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 7px; margin: 0; }
-.task-progress-row dl > div { display: grid; gap: 3px; min-width: 0; padding: 9px; border-radius: 8px; background: #f7f8f9; }
+.task-progress-row dl > div { display: grid; gap: 4px; min-width: 0; padding: 10px; border-radius: 10px; background: #f7f8f9; }
 .task-progress-row dt { color: var(--color-text-muted); font-size: 10px; }
 .task-progress-row dd { margin: 0; color: var(--color-text-primary); font-size: 17px; font-weight: 700; }
 .task-progress-footnote { margin: 0 2px; color: var(--color-text-muted); font-size: 11px; line-height: 1.6; }
 @keyframes page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-@media(max-width:760px) { .task-progress-row dl { grid-template-columns: repeat(3,minmax(0,1fr)); }.task-progress-panel { padding: 15px; } }
+@media(max-width:760px) { .task-progress-row dl { grid-template-columns: repeat(3,minmax(0,1fr)); }.task-progress-panel { padding: 17px; } }
 </style>

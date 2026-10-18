@@ -430,7 +430,7 @@ export type AssessmentRiskDto = {
     /**
      * Level
      */
-    level: 'normal' | 'attention' | 'high' | 'crisis';
+    level: 'normal' | 'attention' | 'high' | 'crisis' | 'not_assessed';
     /**
      * Need Human Review
      */
@@ -588,6 +588,14 @@ export type CurrentItemDto = {
      * Options
      */
     options?: Array<CurrentItemOptionDto>;
+    /**
+     * Instructions
+     */
+    instructions?: string | null;
+    /**
+     * Source Attribution
+     */
+    source_attribution?: string | null;
 };
 
 /**

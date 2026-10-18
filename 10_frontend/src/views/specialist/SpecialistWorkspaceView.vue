@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { ArrowRight, BookOpenCheck, ClipboardCheck, LockKeyhole, Scale, ShieldCheck } from '@lucide/vue'
+import { ArrowRight, BookOpenCheck, ClipboardCheck, ShieldCheck } from '@lucide/vue'
 import AppCard from '@/components/app/AppCard.vue'
-import AppPageHeader from '@/components/app/AppPageHeader.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
+import StudentPageHero from '@/components/student/StudentPageHero.vue'
+import WorkspaceBreadcrumb from '@/components/student/WorkspaceBreadcrumb.vue'
 import SpecialistTaskReviews from '@/components/school/SpecialistTaskReviews.vue'
 import SpecialistResearchFeedback from '@/components/school/SpecialistResearchFeedback.vue'
 import SpecialistResearchProgrammeCandidates from '@/components/school/SpecialistResearchProgrammeCandidates.vue'
@@ -26,21 +27,23 @@ const page = computed(() => ({
 
 <template>
   <main class="content-wrap specialist-workspace">
-    <section class="specialist-hero" aria-labelledby="specialist-title">
-      <img class="specialist-hero__flow" :src="'/assets/heartbridge/hero-flow-original.png'" alt="" aria-hidden="true">
-      <div class="specialist-hero__copy">
-        <span class="specialist-kicker">HEARTBRIDGE · 专业协作</span>
-        <h1 id="specialist-title">让专业判断<br>始终留在人手中。</h1>
-        <p>这里用于查看专业协作功能的接入状态。系统不会替代专业人员作判断，也不会把演示内容当作个案资料。</p>
-        <div class="specialist-hero__tags"><span><Scale :size="15" aria-hidden="true" />人工判断优先</span><span><LockKeyhole :size="15" aria-hidden="true" />当前仅限演示</span></div>
-      </div>
-      <figure class="specialist-hero__art"><img :src="'/assets/heartbridge/card-specialist-original.png'" alt="" aria-hidden="true"><figcaption>专业支持协作空间</figcaption></figure>
-    </section>
+    <WorkspaceBreadcrumb :current="page.title" home-label="心理工作区" home-to="/specialist/overview" />
+    <StudentPageHero
+      class="specialist-page-hero"
+      :eyebrow="page.eyebrow"
+      :title="page.title"
+      :subtitle="page.intro"
+      image="/assets/heartbridge/hero-flow-original.png"
+      image-position="right center"
+    />
 
-    <AppPageHeader class="specialist-heading" :eyebrow="page.eyebrow" :title="page.title" :intro="page.intro" />
+    <AppStatusCallout
+      tone="info"
+      title="专业判断由人完成；当前仅为合成演示工作区"
+      body="此页面不含真实学生资料。系统不会替代专业人员作判断，也不会把演示内容当作个案资料；心理学审核、内容权利确认和真实研究许可均为独立流程，界面状态不构成任何批准。"
+    />
 
     <template v-if="section === 'overview'">
-      <AppStatusCallout tone="info" title="当前为合成演示工作区" body="此页面不含真实学生资料。心理学审核、内容权利确认和真实研究许可均为独立流程，界面状态不构成任何批准。" />
       <section class="specialist-grid" aria-label="专业工作区功能状态">
         <AppCard class="specialist-card">
           <span class="specialist-card__icon specialist-card__icon--teal"><BookOpenCheck :size="19" aria-hidden="true" /></span>
@@ -66,30 +69,56 @@ const page = computed(() => ({
     </template>
 
     <template v-else-if="section === 'tasks'">
-      <SchoolConversationSafetyReviews />
-      <SpecialistTaskReviews />
-      <SpecialistResearchFeedback />
-      <SpecialistIndependentEducationReviews />
-      <SpecialistResearchProgrammeCandidates />
+      <div class="specialist-workflow-stack">
+        <SchoolConversationSafetyReviews />
+        <SpecialistTaskReviews />
+        <SpecialistResearchFeedback />
+        <SpecialistIndependentEducationReviews />
+        <SpecialistResearchProgrammeCandidates />
+      </div>
     </template>
     <template v-else-if="section === 'cat'">
-      <SpecialistCatManagement />
-      <SchoolResearchManagement mode="specialist" />
+      <div class="specialist-workflow-stack">
+        <SpecialistCatManagement />
+        <SchoolResearchManagement mode="specialist" />
+      </div>
     </template>
   </main>
 </template>
 
 <style scoped>
-.specialist-workspace { padding-top: 26px; padding-bottom: 56px; animation: page-in 220ms ease both; }
-.specialist-hero { position: relative; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(230px, .8fr); align-items: center; min-height: 300px; overflow: hidden; padding: clamp(23px, 4vw, 42px); border: 1px solid #d7e8e2; border-radius: 20px; background: linear-gradient(112deg, #eef7f4 0%, #f8faf8 57%, #e9f3ef 100%); }
-.specialist-hero__flow { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .13; pointer-events: none; }
-.specialist-hero__copy { position: relative; z-index: 1; max-width: 570px; }.specialist-kicker { color: #438174; font-size: 10px; font-weight: 800; letter-spacing: .1em; }
-.specialist-hero h1 { margin: 14px 0 12px; color: #263e39; font-family: var(--font-display); font-size: clamp(30px, 4vw, 43px); font-weight: 650; letter-spacing: -.04em; line-height: 1.2; }
-.specialist-hero__copy > p { max-width: 450px; margin: 0; color: #556b64; font-size: 13px; line-height: 1.8; }.specialist-hero__tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 19px; }.specialist-hero__tags span { display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; border: 1px solid rgb(79 131 115 / 16%); border-radius: 999px; color: #42665c; background: rgb(255 255 255 / 65%); font-size: 10px; font-weight: 700; }
-.specialist-hero__art { position: relative; justify-self: end; width: min(100%, 240px); margin: 0; text-align: center; }.specialist-hero__art img { display: block; width: 100%; max-height: 195px; object-fit: contain; }.specialist-hero__art figcaption { margin-top: 5px; color: #648077; font-size: 10px; }
-.specialist-heading { margin-top: 30px; }.specialist-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; margin-top: 15px; }.specialist-card { position: relative; min-height: 173px; padding: 18px; }.specialist-card__icon { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 11px; color: #167e9b; background: #e8f6f9; }.specialist-card__icon--teal { color: #388576; background: #e8f4ef; }.specialist-card__state { position: absolute; top: 19px; right: 16px; padding: 5px 8px; border-radius: 999px; color: #996517; background: #fbf2de; font-size: 10px; font-weight: 750; }.specialist-card h2,.specialist-status-card h2 { margin: 13px 0 5px; color: var(--color-text-primary); font-size: 14px; }.specialist-card p,.specialist-status-card p { max-width: 590px; margin: 0; color: var(--color-text-secondary); font-size: 12px; line-height: 1.65; }.specialist-card a { display: inline-flex; align-items: center; gap: 5px; margin-top: 14px; color: #167e9b; font-size: 11px; font-weight: 750; }.specialist-card a:hover { text-decoration: underline; text-underline-offset: 3px; }
-.specialist-boundary { display: flex; gap: 13px; margin-top: 14px; padding: 19px; }.specialist-boundary__icon { display: grid; width: 36px; height: 36px; flex: 0 0 36px; place-items: center; border-radius: 10px; color: #167e9b; background: #e8f6f9; }.specialist-boundary h2,.specialist-resource-note h2,.specialist-blocked h2 { margin: 6px 0; color: var(--color-text-primary); font-size: 15px; }.specialist-boundary p,.specialist-resource-note p,.specialist-blocked p { max-width: 780px; margin: 0; color: var(--color-text-secondary); font-size: 12px; line-height: 1.7; }
-.specialist-status-card { display: flex; align-items: flex-start; gap: 14px; padding: 20px; }.specialist-status-card .specialist-card__state { position: static; display: inline-block; }.specialist-status-card h2 { margin-top: 8px; }.specialist-resource-note { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-height: 180px; margin-top: 14px; padding: 22px; overflow: hidden; border: 1px solid #dcebe5; border-radius: 15px; background: #f0f7f4; }.specialist-resource-note > div { max-width: 620px; }.specialist-resource-note img { width: min(28%, 155px); max-height: 145px; object-fit: contain; }.specialist-blocked { display: flex; gap: 14px; margin-bottom: 14px; padding: 21px; }.specialist-blocked__icon { display: grid; width: 42px; height: 42px; flex: 0 0 42px; place-items: center; border-radius: 12px; color: #9b6a1b; background: #fbf1dc; }.specialist-blocked h2 { margin-top: 7px; }.specialist-blocked__foot { display: block; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--color-border); color: var(--color-text-muted); font-size: 10px; }
+.specialist-workspace { display: grid; gap: 18px; padding-top: 18px; padding-bottom: 56px; animation: page-in 220ms ease both; }
+.specialist-page-hero { margin-bottom: 0; }
+.specialist-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.specialist-card { position: relative; min-height: 173px; padding: 20px; }
+.specialist-card__icon { display: grid; width: 40px; height: 40px; place-items: center; border-radius: 12px; color: #117e9b; background: #e8f6f9; }
+.specialist-card__icon--teal { color: #218a8a; background: #e8f6f4; }
+.specialist-card__state { position: absolute; top: 20px; right: 18px; padding: 6px 9px; border-radius: 999px; color: #865b13; background: #fbf2de; font-size: 11px; font-weight: 700; }
+.specialist-card h2,.specialist-status-card h2 { margin: 14px 0 6px; color: var(--color-text-primary); font-size: 15px; }
+.specialist-card p,.specialist-status-card p { max-width: 590px; margin: 0; color: var(--color-text-secondary); font-size: 13px; line-height: 1.65; }
+.specialist-card a { display: inline-flex; align-items: center; gap: 6px; margin-top: 15px; color: #117e9b; font-size: 12px; font-weight: 700; }
+.specialist-card a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.specialist-boundary { display: flex; gap: 14px; padding: 20px; }
+.specialist-boundary__icon { display: grid; width: 38px; height: 38px; flex: 0 0 38px; place-items: center; border-radius: 12px; color: #117e9b; background: #e8f6f9; }
+.specialist-boundary h2,.specialist-resource-note h2,.specialist-blocked h2 { margin: 6px 0; color: var(--color-text-primary); font-size: 15px; }
+.specialist-boundary p,.specialist-resource-note p,.specialist-blocked p { max-width: 780px; margin: 0; color: var(--color-text-secondary); font-size: 13px; line-height: 1.7; }
+.specialist-workflow-stack { display: grid; gap: 18px; min-width: 0; }
+.specialist-status-card { display: flex; align-items: flex-start; gap: 14px; padding: 20px; }
+.specialist-status-card .specialist-card__state { position: static; display: inline-block; }
+.specialist-status-card h2 { margin-top: 8px; }
+.specialist-resource-note { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-height: 180px; margin-top: 14px; padding: 22px; overflow: hidden; border: 1px solid #dcebe5; border-radius: 15px; background: #f0f7f4; }
+.specialist-resource-note > div { max-width: 620px; }
+.specialist-resource-note img { width: min(28%, 155px); max-height: 145px; object-fit: contain; }
+.specialist-blocked { display: flex; gap: 14px; margin-bottom: 14px; padding: 21px; }
+.specialist-blocked__icon { display: grid; width: 42px; height: 42px; flex: 0 0 42px; place-items: center; border-radius: 12px; color: #9b6a1b; background: #fbf1dc; }
+.specialist-blocked h2 { margin-top: 7px; }
+.specialist-blocked__foot { display: block; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--color-border); color: var(--color-text-muted); font-size: 11px; }
 @keyframes page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-@media(max-width:720px) { .specialist-workspace { padding-top: 18px; }.specialist-hero { grid-template-columns: 1fr; min-height: 0; }.specialist-hero__art { display: none; }.specialist-grid { grid-template-columns: 1fr; }.specialist-heading { margin-top: 24px; }.specialist-resource-note { min-height: 0; }.specialist-resource-note img { width: 92px; }.specialist-status-card,.specialist-blocked { padding: 16px; } }
+@media(max-width:720px) {
+  .specialist-workspace { gap: 15px; padding-top: 14px; }
+  .specialist-grid { grid-template-columns: 1fr; }
+  .specialist-resource-note { min-height: 0; }
+  .specialist-resource-note img { width: 92px; }
+  .specialist-status-card,.specialist-blocked { padding: 16px; }
+}
 </style>

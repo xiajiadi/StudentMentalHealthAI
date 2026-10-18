@@ -11,8 +11,8 @@ export interface CatAssetItemDocument extends JsonRecord {
   response_type: string
   response_options: string[]
   scoring: Record<string, number>
-  model: 'GRM'
-  parameters: { a: number; thresholds: number[] }
+  model: 'GRM' | 'FIXED_FORM'
+  parameters?: { a: number; thresholds: number[] }
   source: string
   status: 'published' | 'demo' | 'synthetic'
 }
@@ -22,14 +22,15 @@ export interface CatBankDocument extends JsonRecord {
   version: string
   instrument_id: string
   target_population: string
-  measurement_model: 'GRM'
+  measurement_model: 'GRM' | 'FIXED_FORM'
   dimensions: [string]
   items: CatAssetItemDocument[]
   status: 'draft' | 'published'
+  instructions?: string
   metadata: JsonRecord
 }
 
-export interface CatConfigDocument extends JsonRecord {
+export interface CatGrmConfigDocument extends JsonRecord {
   config_version: string
   model: 'GRM'
   estimator: 'EAP' | 'BM'
@@ -45,6 +46,17 @@ export interface CatConfigDocument extends JsonRecord {
   exposure_control: 'none'
   content_balancing: 'none'
 }
+
+export interface CatFixedFormConfigDocument extends JsonRecord {
+  config_version: string
+  model: 'FIXED_FORM'
+  selection_method: 'SEQUENTIAL'
+  min_items: number
+  max_items: number
+  scoring_rule: 'SUM'
+}
+
+export type CatConfigDocument = CatGrmConfigDocument | CatFixedFormConfigDocument
 
 export interface CatAssetTemplate {
   engineering_only: true
@@ -201,14 +213,17 @@ const utf8Size = (value: unknown): number => encodeURIComponent(JSON.stringify(v
 
 function mapBankDocument(value: unknown): CatBankDocument {
   const bank = record(value)
-  if (!exactKeys(bank, [
+  const fixedForm = bank.measurement_model === 'FIXED_FORM'
+  const bankKeys = [
     'item_bank_id', 'version', 'instrument_id', 'target_population', 'measurement_model',
     'dimensions', 'items', 'status', 'metadata',
-  ])) return invalid()
+  ]
+  if (fixedForm) bankKeys.push('instructions')
+  if (!exactKeys(bank, bankKeys)) return invalid()
   const metadata = record(bank.metadata)
   const dimensions = bank.dimensions
   const rawItems = bank.items
-  if (bank.measurement_model !== 'GRM'
+  if (!['GRM', 'FIXED_FORM'].includes(String(bank.measurement_model))
     || !Array.isArray(dimensions) || dimensions.length !== 1
     || !Array.isArray(rawItems) || rawItems.length < 1 || rawItems.length > MAX_ITEM_COUNT
     || !['draft', 'published'].includes(String(bank.status))
@@ -224,14 +239,15 @@ function mapBankDocument(value: unknown): CatBankDocument {
     const item = record(raw)
     if (!exactKeys(item, [
       'item_id', 'dimension', 'stem', 'response_type', 'response_options', 'scoring',
-      'model', 'parameters', 'source', 'status',
+      'model', 'source', 'status',
+      ...(fixedForm ? [] : ['parameters']),
     ])) return invalid()
     const itemId = text(item, 'item_id', 128)
     const responseOptions = item.response_options
     const scoringSource = record(item.scoring)
     if (!ITEM_REF.test(itemId) || seen.has(itemId)
       || item.dimension !== dimension
-      || item.model !== 'GRM'
+      || item.model !== (fixedForm ? 'FIXED_FORM' : 'GRM')
       || !['published', 'demo', 'synthetic'].includes(String(item.status))
       || !Array.isArray(responseOptions) || responseOptions.length < 2 || responseOptions.length > 10) return invalid()
     seen.add(itemId)
@@ -246,46 +262,71 @@ function mapBankDocument(value: unknown): CatBankDocument {
     if (scores.some((score) => typeof score !== 'number' || !Number.isSafeInteger(score) || score < 0 || score >= options.length)
       || new Set(scores).size !== options.length
       || scores.slice().sort((a, b) => a - b).some((score, index) => score !== index)) return invalid()
-    const parameters = record(item.parameters)
-    if (!exactKeys(parameters, ['a', 'thresholds'])) return invalid()
-    const a = finite(parameters, 'a', Number.MIN_VALUE, 10)
-    const rawThresholds = parameters.thresholds
-    if (!Array.isArray(rawThresholds) || rawThresholds.length !== options.length - 1) return invalid()
-    const thresholds = rawThresholds.map((threshold) => {
-      if (typeof threshold !== 'number' || !Number.isFinite(threshold)) return invalid()
-      return threshold
-    })
-    if (thresholds.some((threshold, index) => index > 0 && threshold <= thresholds[index - 1])) return invalid()
-    return {
+    let parameters: { a: number; thresholds: number[] } | undefined
+    if (fixedForm) {
+      if (Object.hasOwn(item, 'parameters')) return invalid()
+    } else {
+      const source = record(item.parameters)
+      if (!exactKeys(source, ['a', 'thresholds'])) return invalid()
+      const a = finite(source, 'a', Number.MIN_VALUE, 10)
+      const rawThresholds = source.thresholds
+      if (!Array.isArray(rawThresholds) || rawThresholds.length !== options.length - 1) return invalid()
+      const thresholds = rawThresholds.map((threshold) => {
+        if (typeof threshold !== 'number' || !Number.isFinite(threshold)) return invalid()
+        return threshold
+      })
+      if (thresholds.some((threshold, index) => index > 0 && threshold <= thresholds[index - 1])) return invalid()
+      parameters = { a, thresholds }
+    }
+    const mapped: CatAssetItemDocument = {
       item_id: itemId,
       dimension,
       stem: text(item, 'stem', 2000),
       response_type: item.response_type === 'likert' ? 'likert' : invalid(),
       response_options: options,
       scoring: Object.fromEntries(options.map((option, index) => [option, scores[index] as number])),
-      model: 'GRM',
-      parameters: { a, thresholds },
+      model: fixedForm ? 'FIXED_FORM' : 'GRM',
       source: text(item, 'source', 240),
       status: item.status as CatAssetItemDocument['status'],
     }
+    if (parameters) mapped.parameters = parameters
+    return mapped
   })
   const result: CatBankDocument = {
     item_bank_id: text(bank, 'item_bank_id', 128),
     version: text(bank, 'version', 120),
     instrument_id: text(bank, 'instrument_id', 120),
     target_population: text(bank, 'target_population', 120),
-    measurement_model: 'GRM',
+    measurement_model: fixedForm ? 'FIXED_FORM' : 'GRM',
     dimensions: [dimension],
     items,
     status: bank.status as CatBankDocument['status'],
     metadata: clone(metadata) as JsonRecord,
   }
+  if (fixedForm) result.instructions = text(bank, 'instructions', 500)
   if (utf8Size(result) > MAX_DOCUMENT_BYTES) return invalid()
   return result
 }
 
 function mapConfigDocument(value: unknown, bank?: CatBankDocument): CatConfigDocument {
   const config = record(value)
+  if (config.model === 'FIXED_FORM') {
+    if (!exactKeys(config, ['config_version', 'model', 'selection_method', 'min_items', 'max_items', 'scoring_rule'])
+      || config.selection_method !== 'SEQUENTIAL'
+      || config.scoring_rule !== 'SUM') return invalid()
+    const minItems = integer(config, 'min_items', 1, MAX_ITEM_COUNT)
+    const maxItems = integer(config, 'max_items', minItems, MAX_ITEM_COUNT)
+    if (bank && (bank.measurement_model !== 'FIXED_FORM'
+      || minItems !== bank.items.length || maxItems !== bank.items.length)) return invalid()
+    return {
+      config_version: text(config, 'config_version', 120),
+      model: 'FIXED_FORM',
+      selection_method: 'SEQUENTIAL',
+      min_items: minItems,
+      max_items: maxItems,
+      scoring_rule: 'SUM',
+    }
+  }
   if (!exactKeys(config, [
     'config_version', 'model', 'estimator', 'selection_method', 'min_items', 'max_items',
     'se_threshold', 'initial_theta', 'prior_mean', 'prior_sd', 'optimization_interval',
@@ -321,6 +362,55 @@ function mapConfigDocument(value: unknown, bank?: CatBankDocument): CatConfigDoc
   if (bank && (result.max_items > bank.items.length || bank.measurement_model !== result.model)) return invalid()
   if (utf8Size(result) > MAX_DOCUMENT_BYTES) return invalid()
   return result
+}
+
+export function createWho5EnglishBank(): CatBankDocument {
+  const options = [
+    'All of the time',
+    'Most of the time',
+    'More than half of the time',
+    'Less than half of the time',
+    'Some of the time',
+    'At no time',
+  ]
+  const scoring = Object.fromEntries(options.map((option, index) => [option, options.length - index - 1]))
+  const source = 'WHO. The World Health Organization-Five Well-Being Index (WHO-5), 2024. CC BY-NC-SA 3.0 IGO.'
+  const stems = [
+    'I have felt cheerful and in good spirits',
+    'I have felt calm and relaxed',
+    'I have felt active and vigorous',
+    'I woke up feeling fresh and rested',
+    'My daily life has been filled with things that interest me',
+  ]
+  return {
+    item_bank_id: 'WHO5_EN_2024',
+    version: '2024.1',
+    instrument_id: 'WHO5_2024_EN',
+    target_population: 'English-language respondents',
+    measurement_model: 'FIXED_FORM',
+    dimensions: ['wellbeing'],
+    items: stems.map((stem, index) => ({
+      item_id: `ITEM_WHO5_2024_${index + 1}`,
+      dimension: 'wellbeing',
+      stem,
+      response_type: 'likert',
+      response_options: [...options],
+      scoring: { ...scoring },
+      model: 'FIXED_FORM',
+      source,
+      status: 'published',
+    })),
+    status: 'published',
+    instructions: 'Please indicate for each of the five statements which is closest to how you have been feeling over the last two weeks. Notice that higher numbers mean better well-being.',
+    metadata: {
+      synthetic: true,
+      intended_use: 'engineering_test_only',
+      psychological_interpretation_allowed: false,
+      instrument_version: '2024.1',
+      psychometric_status: 'PENDING_PSYCHOMETRIC_CONFIRMATION',
+      notice: `${source} English original; no wording adaptation. Source: https://www.who.int/publications/m/item/WHO-UCN-MSD-MHE-2024.01`,
+    },
+  }
 }
 
 function mapTemplate(value: unknown): CatAssetTemplate {

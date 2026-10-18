@@ -46,6 +46,8 @@ export interface CatQuestion {
   item_id: string
   prompt: string
   options: Array<{ value: string; label: string }>
+  instructions?: string
+  source_attribution?: string
 }
 
 export interface CatSession {

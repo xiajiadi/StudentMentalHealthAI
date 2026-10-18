@@ -5,7 +5,7 @@ export interface SchoolRoleContext {
   schoolRef: string
 }
 
-export type RiskLevel = 'normal' | 'attention' | 'high' | 'crisis'
+export type RiskLevel = 'normal' | 'attention' | 'high' | 'crisis' | 'not_assessed'
 
 export type GenerationStatus =
   | 'requested'

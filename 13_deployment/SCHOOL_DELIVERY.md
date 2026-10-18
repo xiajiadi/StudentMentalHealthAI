@@ -2,6 +2,8 @@
 
 本指南用于在 Windows 本地安装、启动并演示合成数据版学校平台。它不代表 AI 全链路、测量学、伦理或生产验收。
 
+当前正式前端标准保存在本地分支 `xiajiadi/student-ui-standard-20261018`。从该分支所在的维护源仓库运行安装和生命周期入口；不要用历史/冻结工作树启动正式 workspace。`school_app_lifecycle.py` 以脚本所在仓库作为源码根目录，`start` 与 `resume` 的预览模式会从该仓库的 `10_frontend` 重新执行类型检查和构建。已运行的预览是静态快照，代码提交后需要下一次受支持的 `start`/`resume` 才会刷新。
+
 ## 安装与启动
 
 1. 从唯一维护的 PsyNova 源仓库运行 `13_deployment/school_install.py`。
@@ -14,6 +16,10 @@
 安装成功后，用 `09_backend/.venv` 运行官方生命周期。`plan` 只读；`status` 查看 Backend、Frontend 和 worker 状态；`stop` 只停止本 lifecycle 管理的应用进程，不停止 MySQL 或共享模块。
 
 ```powershell
+$expectedBranch = 'xiajiadi/student-ui-standard-20261018'
+$actualBranch = (git branch --show-current).Trim()
+if ($actualBranch -ne $expectedBranch) { throw "Run lifecycle from $expectedBranch; current branch is $actualBranch" }
+
 $py = '.\09_backend\.venv\Scripts\python.exe'
 $life = '.\13_deployment\school_app_lifecycle.py'
 $workspace = '<绝对 workspace 路径>'

@@ -1010,7 +1010,15 @@ const mapQuestion = (value: unknown): CatQuestion | null => {
       label: valueAsString(option.label, valueAsString(option.value)),
     })).filter((option) => option.value)
     : []
-  return { item_id: value.item_id, prompt: value.prompt, options }
+  const instructions = typeof value.instructions === 'string' ? value.instructions : undefined
+  const sourceAttribution = typeof value.source_attribution === 'string' ? value.source_attribution : undefined
+  return {
+    item_id: value.item_id,
+    prompt: value.prompt,
+    options,
+    ...(instructions ? { instructions } : {}),
+    ...(sourceAttribution ? { source_attribution: sourceAttribution } : {}),
+  }
 }
 
 const mapAssessmentState = (value: unknown): AssessmentState => {
@@ -1094,7 +1102,7 @@ const mapAssessment = (value: unknown, assessmentId: string): Assessment => {
     throw new RealApiError('API_INVALID_RESPONSE', '测评响应缺少有效风险信息，已停止展示该记录。')
   }
   const riskSource = source.risk
-  const allowedRiskLevels = new Set(['normal', 'attention', 'high', 'crisis'])
+  const allowedRiskLevels = new Set(['normal', 'attention', 'high', 'crisis', 'not_assessed'])
   if (typeof riskSource.level !== 'string' || !allowedRiskLevels.has(riskSource.level)) {
     throw new RealApiError('API_INVALID_RESPONSE', '测评响应包含无效风险等级，已停止展示该记录。')
   }

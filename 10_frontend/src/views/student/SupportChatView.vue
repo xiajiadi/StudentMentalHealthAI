@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { ArrowLeft, ArrowRight, BookOpen, MessageCircle, Plus, RotateCcw, Send } from '@lucide/vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
+import { MessageCircle, Plus, RotateCcw, Send } from '@lucide/vue'
 import AppBadge from '@/components/app/AppBadge.vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
+import AppLoadingDots from '@/components/app/AppLoadingDots.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import StudentIndependentEducationReviews from '@/components/school/StudentIndependentEducationReviews.vue'
-import type { ReportSummary } from '@/api/client'
-import { frontendApi } from '@/services/mock-api'
+import StudentPageHero from '@/components/student/StudentPageHero.vue'
+import WorkspaceBreadcrumb from '@/components/student/WorkspaceBreadcrumb.vue'
+import { studentPageArt, studentPageBannerCopy, studentPageTitles } from '@/data/student-feature-cards'
 import {
   independentConversations,
   researchConversations,
@@ -24,11 +25,9 @@ import {
 const props = withDefaults(defineProps<{ researchMode?: boolean }>(), { researchMode: false })
 const conversationApi = props.researchMode ? researchConversations : independentConversations
 const researchAvailable = ref(false)
-const router = useRouter()
 const conversations = ref<IndependentConversation[]>([])
 const selectedConversationId = ref('')
 const detail = ref<IndependentConversationDetail | null>(null)
-const reports = ref<ReportSummary[]>([])
 const loadingList = ref(true)
 const loadingDetail = ref(false)
 const creating = ref(false)
@@ -39,10 +38,15 @@ const listError = ref('')
 const detailError = ref('')
 const sendError = ref('')
 const createError = ref('')
-const legacyError = ref('')
 const draft = ref('')
 const receipt = ref<IndependentTurnReceipt | null>(null)
 const conversationHasMore = ref(false)
+const supportMessageInput = ref<HTMLTextAreaElement | null>(null)
+const suggestedPrompts = [
+  '帮我安排本周复习计划',
+  '学习压力大时，我可以怎么调整？',
+  '怎样把学习目标拆成小步骤？',
+]
 
 let conversationOffset = 0
 let pendingCreateKey = ''
@@ -210,6 +214,20 @@ const createConversation = async () => {
   }
 }
 
+const initializeConversation = async () => {
+  if (creating.value || sending.value) return
+  await loadConversations()
+  if (props.researchMode || listError.value || selectedConversationId.value) return
+
+  const resumable = conversations.value.find((conversation) => conversation.status === 'open' || conversation.status === 'active')
+  if (resumable) {
+    await openConversation(resumable.conversationId)
+    return
+  }
+
+  await createConversation()
+}
+
 const handleSend = async () => {
   if (!canSend.value) return
   const conversationId = selectedConversationId.value
@@ -253,22 +271,16 @@ const refreshConversation = async () => {
 
 const messageStateLabel = (message: IndependentConversationMessage): string => turnStatusText(message.turn)
 
-const loadLegacyRecords = async () => {
-  legacyError.value = ''
-  try {
-    reports.value = (await frontendApi.listReports()).data.items
-  } catch (error) {
-    reports.value = []
-    legacyError.value = error instanceof Error ? error.message : '测评关联记录暂时无法加载。'
-  }
+const useSuggestedPrompt = async (prompt: string) => {
+  if (!canSend.value || (failedSubmission && failedSubmission.conversationId === selectedConversationId.value)) return
+  draft.value = prompt
+  await nextTick()
+  supportMessageInput.value?.focus()
 }
 
-const openReport = (reportId: string) => void router.push(`/student/reports/${encodeURIComponent(reportId)}`)
-
 onMounted(() => {
-  void loadConversations()
+  void initializeConversation()
   if (!props.researchMode) {
-    void loadLegacyRecords()
     void researchConversationCapability().then((enabled) => { researchAvailable.value = enabled }).catch(() => {
       researchAvailable.value = false
     })
@@ -278,24 +290,43 @@ onMounted(() => {
 
 <template>
   <div class="content-wrap content-wrap--student education-support">
-    <header class="support-heading">
-      <div>
-        <span class="support-kicker">学生空间 · 教育支持</span>
-        <h1>{{ props.researchMode ? '高中场景教育支持' : '教育支持' }}</h1>
-        <p>围绕学习和日常生活中的问题，查看已保存的私密对话。</p>
-      </div>
-      <div>
-        <AppBadge tone="support" dot>{{ props.researchMode ? '研究演示' : '独立会话' }}</AppBadge>
-        <RouterLink v-if="researchAvailable" class="support-back" to="/student/research-support">进入高中场景研究演示</RouterLink>
-        <RouterLink v-if="props.researchMode" class="support-back" to="/student/support">返回教育支持</RouterLink>
-      </div>
-    </header>
+    <template v-if="props.researchMode">
+      <header class="support-heading">
+        <div>
+          <span class="support-kicker">学生空间 · 教育支持</span>
+          <h1>高中场景教育支持</h1>
+          <p>围绕学习和日常生活中的问题，查看已保存的私密对话。</p>
+        </div>
+        <div>
+          <AppBadge tone="support" dot>研究演示</AppBadge>
+          <RouterLink class="support-back" to="/student/support">返回教育支持</RouterLink>
+        </div>
+      </header>
+    </template>
+    <template v-else>
+      <WorkspaceBreadcrumb current="教育支持" />
+      <StudentPageHero
+        :eyebrow="studentPageBannerCopy.educationSupport.eyebrow"
+        :title="studentPageTitles.educationSupport"
+        :subtitle="studentPageBannerCopy.educationSupport.subtitle"
+        :image="studentPageArt.educationSupport"
+        image-position="center 48%"
+        light-text
+      >
+        <template #actions>
+          <div class="support-hero-actions">
+            <RouterLink v-if="researchAvailable" class="support-back" to="/student/research-support">进入高中场景研究演示</RouterLink>
+          </div>
+        </template>
+      </StudentPageHero>
+    </template>
 
     <AppStatusCallout
+      v-if="props.researchMode"
       class="support-boundary"
       tone="info"
-      :title="props.researchMode ? '14–17 岁虚构校园场景研究演示' : '这是一般教育支持'"
-      :body="props.researchMode ? '每条问题独立处理，不使用其他对话历史或测评答案。生成草稿需经单独分享与核对后才能发布；资料仅用于研究演示，不用于诊断或治疗。' : '对话不会读取测评答案，也不提供测评解释、诊断或治疗建议。'"
+      title="14–17 岁虚构校园场景研究演示"
+      body="每条问题独立处理，不使用其他对话历史或测评答案。生成草稿需经单独分享与核对后才能发布；资料仅用于研究演示，不用于诊断或治疗。"
     />
 
     <AppStatusCallout
@@ -310,18 +341,18 @@ onMounted(() => {
       <AppCard class="conversation-sidebar" aria-label="教育支持会话列表">
         <div class="conversation-sidebar__heading">
           <div><h2>我的会话</h2><span>仅当前账号可查看</span></div>
-          <AppButton size="sm" :loading="creating" :disabled="creating || sending" aria-label="新建会话" @click="createConversation">
+          <AppButton size="sm" :loading="creating" :disabled="creating || sending || loadingList" aria-label="新建会话" @click="createConversation">
             <Plus :size="15" aria-hidden="true" />新建
           </AppButton>
         </div>
-        <AppStatusCallout v-if="createError" tone="attention" title="创建未确认" :body="createError">
+        <AppStatusCallout v-if="createError && selectedConversationId" tone="attention" title="创建未确认" :body="createError">
           <AppButton size="sm" variant="secondary" :loading="creating" @click="createConversation">使用同一请求重试</AppButton>
         </AppStatusCallout>
-        <AppStatusCallout v-if="listError" tone="attention" title="会话列表暂不可用" :body="listError">
+        <AppStatusCallout v-if="listError && selectedConversationId" tone="attention" title="会话列表暂不可用" :body="listError">
           <AppButton size="sm" variant="secondary" :loading="loadingList" @click="loadConversations()">重试</AppButton>
         </AppStatusCallout>
-        <p v-if="loadingList && conversations.length === 0" class="conversation-muted" role="status">正在加载会话…</p>
-        <p v-else-if="!listError && conversations.length === 0" class="conversation-muted">还没有会话。你可以新建一段对话。</p>
+        <p v-if="loadingList && conversations.length === 0" class="conversation-muted" role="status">正在加载会话<AppLoadingDots /></p>
+        <p v-else-if="!listError && conversations.length === 0" class="conversation-muted" role="status">{{ creating ? '正在准备对话' : '暂无会话' }}<AppLoadingDots v-if="creating" /></p>
         <ul v-else class="conversation-list" aria-label="会话列表">
           <li v-for="(conversation, index) in conversations" :key="conversation.conversationId">
             <button
@@ -354,17 +385,18 @@ onMounted(() => {
       </AppCard>
 
       <AppCard class="conversation-panel" aria-label="当前教育支持对话">
-        <div v-if="!selectedConversationId" class="conversation-intro">
-          <span class="conversation-intro__icon"><MessageCircle :size="22" aria-hidden="true" /></span>
-          <h2>从你的问题开始</h2>
-          <p>新建会话后可以发送消息。你也可以之后再回来查看已保存的内容。</p>
-          <AppButton :loading="creating" :disabled="creating || sending" @click="createConversation">
-            <Plus :size="16" aria-hidden="true" />新建会话
-          </AppButton>
+        <div v-if="!selectedConversationId" class="conversation-starting">
+          <p v-if="loadingList || creating" class="conversation-muted" role="status">正在准备对话<AppLoadingDots /></p>
+          <AppStatusCallout v-else-if="listError" tone="attention" title="会话暂时无法打开" :body="listError">
+            <AppButton size="sm" variant="secondary" @click="initializeConversation">重试</AppButton>
+          </AppStatusCallout>
+          <AppStatusCallout v-else-if="createError" tone="attention" title="暂时无法开始对话" :body="createError">
+            <AppButton size="sm" variant="secondary" :loading="creating" @click="createConversation">使用同一请求重试</AppButton>
+          </AppStatusCallout>
         </div>
 
         <template v-else>
-          <header class="conversation-panel__header">
+          <header v-if="props.researchMode" class="conversation-panel__header">
             <div>
               <span class="support-kicker">当前会话</span>
               <h2>教育支持对话</h2>
@@ -383,12 +415,27 @@ onMounted(() => {
           <AppStatusCallout v-if="detailError" tone="attention" title="会话内容暂不可用" :body="detailError">
             <AppButton size="sm" variant="secondary" :loading="loadingDetail" @click="refreshConversation">重试加载</AppButton>
           </AppStatusCallout>
-          <p v-if="loadingDetail && !detail" class="conversation-muted" role="status">正在读取会话…</p>
+          <p v-if="loadingDetail && !detail" class="conversation-muted" role="status">正在读取会话<AppLoadingDots /></p>
           <div v-else-if="detail" class="conversation-thread" aria-live="polite">
             <AppButton v-if="hasEarlierMessages" variant="quiet" size="sm" :loading="loadingMore" :disabled="sending || creating" @click="loadMoreMessages('earlier')">加载更早的对话</AppButton>
             <AppButton v-if="hasLaterMessages" variant="quiet" size="sm" :loading="loadingMore" :disabled="sending || creating" @click="loadMoreMessages('later')">加载更多对话</AppButton>
             <div v-if="detail.messages.length === 0" class="conversation-thread__empty">
-              <p>这段会话还没有消息。可以在下方写下你的问题。</p>
+              <div class="conversation-thread__welcome">
+                <h3>有什么学习问题想一起梳理？</h3>
+                <p>可以从复习安排、学习压力或目标规划开始。</p>
+              </div>
+              <div class="conversation-suggestions" aria-label="问题示例">
+                <button
+                  v-for="prompt in suggestedPrompts"
+                  :key="prompt"
+                  type="button"
+                  class="conversation-suggestion"
+                  :disabled="!canSend || Boolean(failedSubmission && failedSubmission.conversationId === selectedConversationId)"
+                  @click="useSuggestedPrompt(prompt)"
+                >
+                  {{ prompt }}
+                </button>
+              </div>
             </div>
             <article
               v-for="message in detail.messages"
@@ -516,21 +563,23 @@ onMounted(() => {
           />
 
           <form v-if="selectedConversation && selectedConversation.status !== 'closed' && selectedConversation.status !== 'archived'" class="conversation-composer" @submit.prevent="handleSend">
-            <label for="support-message">写下你的问题</label>
+            <label class="sr-only" for="support-message">写下你的问题</label>
             <textarea
+              ref="supportMessageInput"
               id="support-message"
+              class="conversation-composer__input"
               v-model="draft"
               :disabled="sending || Boolean(failedSubmission && failedSubmission.conversationId === selectedConversationId)"
               maxlength="20000"
               rows="3"
-              placeholder="例如：我想把复习安排得更有条理，可以从哪里开始？"
+              placeholder="说说你想讨论的学习问题…"
               :aria-describedby="sendError ? 'support-message-error' : 'support-message-help'"
             />
             <div class="conversation-composer__footer">
               <p v-if="sendError" id="support-message-error" class="conversation-composer__error" role="alert">
                 {{ sendError }} 本次重试会沿用相同消息请求。
               </p>
-              <p v-else id="support-message-help">一般教育支持；请勿填写姓名、学号等身份信息。</p>
+              <p v-else id="support-message-help">AI 生成的回复仅供一般教育支持参考，不提供诊断或治疗建议。请勿填写姓名、学号等身份信息。</p>
               <AppButton type="submit" :loading="sending" :disabled="!canSend || (!draft.trim() && !failedSubmission)">
                 <Send :size="15" aria-hidden="true" />{{ failedSubmission ? '重试发送' : '发送消息' }}
               </AppButton>
@@ -548,35 +597,22 @@ onMounted(() => {
       :refresh-token="educationReviewRefreshToken"
     />
 
-    <section v-if="!props.researchMode" class="support-records" aria-labelledby="support-records-title">
-      <div class="support-records__heading">
-        <div><span class="support-kicker">已有记录</span><h2 id="support-records-title">测评关联支持记录</h2></div>
-      </div>
-      <AppStatusCallout v-if="legacyError" tone="attention" title="既有记录暂时无法加载" :body="legacyError">
-        <AppButton variant="secondary" size="sm" @click="loadLegacyRecords">重试</AppButton>
-      </AppStatusCallout>
-      <AppCard v-else-if="reports.length === 0" class="support-records__empty">
-        <BookOpen :size="20" aria-hidden="true" /><div><strong>暂无测评关联支持记录</strong><p>独立教育支持会话会显示在上方列表中。</p></div>
-      </AppCard>
-      <AppCard v-for="report in reports" :key="report.report_id" class="support-record-row">
-        <span class="support-record-row__icon"><BookOpen :size="17" aria-hidden="true" /></span>
-        <div><strong>{{ report.safety_action === 'CRISIS_ROUTE' ? '安全流程记录' : '教育支持记录' }}</strong><span>{{ report.created_at || '时间未提供' }} · {{ report.citation_count }} 条来源</span></div>
-        <AppButton variant="secondary" size="sm" @click="openReport(report.report_id)">查看记录 <ArrowRight :size="15" aria-hidden="true" /></AppButton>
-      </AppCard>
-    </section>
-
-    <RouterLink class="support-back" to="/student/home"><ArrowLeft :size="16" aria-hidden="true" />返回学生首页</RouterLink>
   </div>
 </template>
 
 <style scoped>
-.education-support { padding-top: 30px; padding-bottom: 64px; }
+.education-support { padding-top: 0; padding-bottom: 64px; }
 .support-heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
+.support-hero-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.support-hero-actions .support-back { margin-top: 0; color: #fff; }
+.support-hero-actions .support-back:hover { color: #e7fbff; }
 .support-kicker { color: var(--color-support); font-size: 11px; font-weight: 800; letter-spacing: .1em; }
 .support-heading h1 { margin: 8px 0 5px; color: var(--color-text-primary); font-family: var(--font-display); font-size: clamp(30px, 4vw, 40px); letter-spacing: -.04em; }
 .support-heading p { margin: 0; color: var(--color-text-secondary); font-size: 13px; line-height: 1.65; }
 .support-boundary { margin-bottom: 18px; }
-.conversation-workspace { display: grid; grid-template-columns: minmax(240px, 300px) minmax(0, 1fr); align-items: start; gap: 15px; }
+.conversation-workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); align-items: start; gap: 15px; }
+.conversation-sidebar { order: 2; }
+.conversation-panel { order: 1; }
 .conversation-sidebar, .conversation-panel { min-width: 0; padding: 18px; }
 .conversation-sidebar { display: grid; gap: 12px; }
 .conversation-sidebar__heading, .conversation-panel__header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -594,17 +630,21 @@ onMounted(() => {
 .conversation-more { justify-self: start; }
 .conversation-muted { margin: 0; color: var(--color-text-secondary); font-size: 13px; line-height: 1.65; }
 .conversation-panel { display: grid; gap: 15px; }
-.conversation-intro { display: grid; justify-items: start; gap: 12px; min-height: 310px; align-content: center; padding: 12px clamp(5px, 2vw, 24px); }
-.conversation-intro__icon { width: 44px; height: 44px; border-radius: 13px; }
-.conversation-intro h2 { margin: 0; color: var(--color-text-primary); font-family: var(--font-display); font-size: 22px; }
-.conversation-intro p { max-width: 440px; margin: 0; color: var(--color-text-secondary); font-size: 13px; line-height: 1.7; }
+.conversation-starting { display: grid; min-height: 340px; place-items: center; }
 .conversation-panel__header { padding-bottom: 12px; border-bottom: 1px solid var(--color-border); }
 .conversation-panel__header h2 { margin-top: 4px; }
 .conversation-panel__header p { margin: 4px 0 0; color: var(--color-text-muted); font-size: 11px; }
 .conversation-panel__actions { display: flex; align-items: center; gap: 9px; }
-.conversation-thread { display: grid; justify-items: start; gap: 12px; max-height: 55vh; min-height: 200px; overflow-y: auto; padding: 4px 2px 8px; }
-.conversation-thread__empty { display: grid; min-height: 185px; place-items: center; color: var(--color-text-secondary); font-size: 13px; text-align: center; }
-.conversation-thread__empty p { max-width: 310px; line-height: 1.7; }
+.conversation-thread { display: grid; justify-items: start; gap: 12px; max-height: min(64vh, 680px); min-height: clamp(220px, 30vh, 380px); overflow-y: auto; padding: 4px 2px 8px; }
+.conversation-thread__empty { display: grid; justify-items: center; align-content: center; gap: 18px; width: 100%; min-height: 180px; padding: 18px 8px; color: var(--color-text-secondary); text-align: center; }
+.conversation-thread__welcome { display: grid; gap: 8px; }
+.conversation-thread__welcome h3 { margin: 0; color: var(--color-text-primary); font-family: var(--font-display); font-size: clamp(21px, 2.4vw, 26px); font-weight: 700; letter-spacing: -.025em; }
+.conversation-thread__welcome p { max-width: 420px; margin: 0; color: var(--color-text-secondary); font-size: 13px; line-height: 1.7; }
+.conversation-suggestions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 660px; }
+.conversation-suggestion { padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 999px; color: var(--color-text-primary); background: var(--color-surface); font: inherit; font-size: 12px; line-height: 1.4; cursor: pointer; transition: border-color var(--motion-fast) ease, background-color var(--motion-fast) ease; }
+.conversation-suggestion:hover:not(:disabled) { border-color: rgb(0 177 226 / 38%); background: var(--color-info-wash); }
+.conversation-suggestion:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.conversation-suggestion:disabled { color: var(--color-text-muted); cursor: not-allowed; }
 .conversation-message { display: grid; gap: 8px; width: min(100%, 680px); padding: 12px 14px; border-radius: var(--radius-card); background: var(--color-surface-soft); }
 .conversation-message--student { justify-self: end; width: min(92%, 600px); background: var(--color-support-wash); }
 .conversation-message__meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; color: var(--color-text-muted); font-size: 10px; }
@@ -621,26 +661,14 @@ onMounted(() => {
 .conversation-citations li { display: grid; gap: 2px; min-width: 0; }
 .conversation-citations li span { color: var(--color-text-primary); font-size: 11px; font-weight: 650; overflow-wrap: anywhere; }
 .conversation-citations li small { color: var(--color-text-secondary); font-size: 10px; overflow-wrap: anywhere; }
-.conversation-composer { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--color-border); }
-.conversation-composer label { color: var(--color-text-primary); font-size: 12px; font-weight: 700; }
-.conversation-composer textarea { width: 100%; min-height: 84px; resize: vertical; padding: 11px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-control); color: var(--color-text-primary); background: var(--color-surface); font: inherit; font-size: 13px; line-height: 1.6; }
-.conversation-composer textarea:focus-visible { outline: 3px solid var(--color-focus-ring); outline-offset: 2px; }
-.conversation-composer textarea:disabled { color: var(--color-text-muted); background: var(--color-surface-soft); }
-.conversation-composer__footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.conversation-composer__footer p { flex: 1; margin: 0; color: var(--color-text-muted); font-size: 10px; line-height: 1.6; }
+.conversation-composer { display: grid; gap: 8px; padding: 10px 12px 11px; border: 1px solid var(--color-border-strong); border-radius: var(--radius-dialog); background: var(--color-surface); transition: border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease; }
+.conversation-composer:focus-within { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgb(0 177 226 / 14%); }
+.conversation-composer__input { width: 100%; min-height: 86px; resize: vertical; padding: 7px 6px; border: 0; border-radius: var(--radius-control); color: var(--color-text-primary); background: transparent; font: inherit; font-size: 13px; line-height: 1.6; }
+.conversation-composer__input:focus-visible { outline: none; box-shadow: none; }
+.conversation-composer__input:disabled { color: var(--color-text-muted); }
+.conversation-composer__footer { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding-top: 9px; border-top: 1px solid var(--color-border); }
+.conversation-composer__footer p { flex: 1; min-width: 0; margin: 0; color: var(--color-text-muted); font-size: 10px; line-height: 1.6; }
 .conversation-composer__footer .conversation-composer__error { color: var(--color-attention); }
-.support-records { display: grid; gap: 9px; margin-top: 34px; }
-.support-records__heading { display: flex; align-items: end; justify-content: space-between; margin-bottom: 5px; }
-.support-records__heading h2 { margin: 5px 0 0; color: var(--color-text-primary); font-family: var(--font-display); font-size: 20px; }
-.support-records__empty { display: flex; align-items: flex-start; gap: 12px; padding: 17px; color: var(--color-text-muted); }
-.support-records__empty > div { display: grid; gap: 4px; }
-.support-records__empty strong { color: var(--color-text-primary); font-size: 13px; }
-.support-records__empty p { margin: 0; color: var(--color-text-secondary); font-size: 11px; line-height: 1.6; }
-.support-record-row { display: flex; align-items: center; gap: 12px; padding: 13px 15px; }
-.support-record-row__icon { display: grid; place-items: center; width: 34px; height: 34px; flex: 0 0 34px; border-radius: 10px; color: var(--color-support); background: var(--color-support-wash); }
-.support-record-row > div { display: grid; min-width: 0; flex: 1; gap: 4px; }
-.support-record-row strong { color: var(--color-text-primary); font-size: 12px; }
-.support-record-row span:not(.support-record-row__icon) { color: var(--color-text-secondary); font-size: 10px; }
 .support-back { display: inline-flex; align-items: center; gap: 7px; margin-top: 26px; color: var(--color-text-secondary); font-size: 12px; text-decoration: none; }
 .support-back:hover { color: var(--color-primary); }
 @media (max-width: 780px) {
@@ -650,12 +678,8 @@ onMounted(() => {
   .conversation-thread { max-height: 60vh; }
 }
 @media (max-width: 600px) {
-  .education-support { padding-top: 17px; }
   .conversation-sidebar, .conversation-panel { padding: 14px; }
   .conversation-message--student { width: 96%; }
-  .conversation-composer__footer { align-items: flex-start; flex-direction: column; }
-  .support-record-row { align-items: flex-start; flex-wrap: wrap; }
-  .support-record-row > div { flex-basis: calc(100% - 48px); }
-  .support-record-row .app-button { margin-left: 46px; }
+  .conversation-composer__footer { align-items: flex-end; gap: 8px; }
 }
 </style>

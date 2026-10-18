@@ -1,5 +1,13 @@
 # PsyNova current execution state
 
+## Student UI standard checkpoint: 2026-10-18
+
+- The official local UI source branch is `xiajiadi/student-ui-standard-20261018`, based on `4593b89c`. The student portal is the visual reference; the teacher, psychological specialist, and school administrator overview pages now reuse its hero and breadcrumb components. Historic and frozen branch pointers were left unchanged.
+- The student history floating bar uses a symmetric, shorter divider fade near the tab-row edges. Student feedback/history/support flows and the other approved student page refinements are included with the three role-page layout changes.
+- Fresh `npm run build` passed with `VITE_API_MODE=real` and the local Backend URL: `vue-tsc --noEmit`, then Vite 8.2.2 transformed 3,262 modules and built successfully. `git diff --check` also passed before final staging.
+- The active lifecycle source checkout is this repository. `school_app_lifecycle.py` resolves its source root from its own file location; `start` and `resume` preview mode rebuild from that checkout. The currently running 4207 preview remains an older static snapshot and was not restarted; it is not evidence of the new version. The 4206 development page rendered the latest student history UI and its floating navigation during scroll inspection.
+- This checkpoint establishes frontend buildability and a local UI branch only. Staff pages were not browser-authenticated in this pass; no role permissions, whole-platform readiness, clinical validity, professional approval, or production approval is inferred.
+
 ## Final engineering checkpoint: 2026-10-16 22:15+08
 
 Controller completion audit: ENGINEERING_DEMO_READY for the full mandate's

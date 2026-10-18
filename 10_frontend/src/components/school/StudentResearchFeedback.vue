@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { RotateCcw } from '@lucide/vue'
 import AppBadge from '@/components/app/AppBadge.vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
+import AppLoadingDots from '@/components/app/AppLoadingDots.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
+import StudentRefreshButton from '@/components/app/StudentRefreshButton.vue'
 import ResearchFeedbackSources from '@/components/school/ResearchFeedbackSources.vue'
 import { schoolResearchFeedback, type StudentResearchFeedback } from '@/services/school-research-feedback'
 import { useSessionStore } from '@/stores/session'
@@ -86,10 +87,10 @@ onBeforeUnmount(() => {
   <section class="student-research-feedback" aria-labelledby="student-research-feedback-title">
     <header class="student-research-feedback__header">
       <div><span class="student-research-feedback__kicker">研究模拟 · 教育支持</span><h2 id="student-research-feedback-title">研究演示反馈</h2><p>这里只显示服务端已发布给当前合成演示账户的内容。</p></div>
-      <AppButton variant="quiet" size="sm" :disabled="state === 'loading'" aria-label="刷新研究演示反馈" @click="load(offset)"><RotateCcw :size="15" aria-hidden="true" />刷新</AppButton>
+      <StudentRefreshButton :loading="state === 'loading'" aria-label="刷新研究演示反馈" @click="load(offset)" />
     </header>
     <AppStatusCallout tone="info" title="仅限研究演示" body="内容属于一般教育支持，不是诊断、治疗或心理测量结论；当前流程未获准用于正式发布或运营。" />
-    <p v-if="state === 'loading'" class="student-research-feedback__state" role="status" aria-busy="true">正在读取已发布内容…</p>
+    <p v-if="state === 'loading'" class="student-research-feedback__state" role="status" aria-busy="true">正在读取已发布内容<AppLoadingDots /></p>
     <AppStatusCallout v-else-if="state === 'error'" tone="critical" title="研究演示反馈暂不可用" :body="requestError"><AppButton variant="secondary" size="sm" @click="load(offset)">重新加载</AppButton></AppStatusCallout>
     <AppCard v-else-if="state === 'ready' && !rows.length" class="student-research-feedback__empty"><strong>目前没有单独发布的研究演示反馈</strong><p>完成记录本身不会显示反馈正文；只有服务端明确发布的内容才会出现在这里。</p></AppCard>
     <div v-else class="student-research-feedback__list">

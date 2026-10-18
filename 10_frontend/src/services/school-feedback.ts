@@ -320,6 +320,18 @@ export class SchoolFeedbackService {
     })
     return mapPage(data, mapStudent, limit)
   }
+
+  async getStudent(feedbackRef: string): Promise<StudentSchoolFeedback> {
+    requireId(feedbackRef, 'FEED')
+    const data = await request({
+      method: 'GET', path: `/api/v1/school/feedback/student/${encodeURIComponent(feedbackRef)}`,
+    })
+    const row = mapStudent(data)
+    if (row.feedback_ref !== feedbackRef) {
+      throw new RealApiError('API_INVALID_RESPONSE', '反馈记录与当前页面不一致。')
+    }
+    return row
+  }
 }
 
 export const schoolFeedback = new SchoolFeedbackService()

@@ -14,7 +14,7 @@ withDefaults(defineProps<{
 <template>
   <header class="page-header">
     <div>
-      <span class="page-kicker">{{ eyebrow }}</span>
+      <span v-if="eyebrow" class="page-kicker">{{ eyebrow }}</span>
       <h1 class="page-title">{{ title }}</h1>
       <p v-if="intro" class="page-intro">{{ intro }}</p>
     </div>

@@ -1,29 +1,37 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { ArrowLeft, ArrowRight, BookOpen, CheckCircle2, ClipboardList, History, RotateCcw } from '@lucide/vue'
-import AppBadge from '@/components/app/AppBadge.vue'
+import { RotateCcw } from '@lucide/vue'
 import AppButton from '@/components/app/AppButton.vue'
-import AppCard from '@/components/app/AppCard.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
+import StudentRefreshButton from '@/components/app/StudentRefreshButton.vue'
+import StudentPageHero from '@/components/student/StudentPageHero.vue'
+import StudentHistoryLibrary from '@/components/student/StudentHistoryLibrary.vue'
+import StudentAssessmentsView from '@/views/student/StudentAssessmentsView.vue'
+import WorkspaceBreadcrumb from '@/components/student/WorkspaceBreadcrumb.vue'
+import { studentFeatureCards, studentPageArt, studentPageBannerCopy, studentPageTitles } from '@/data/student-feature-cards'
 import { frontendApi } from '@/services/mock-api'
+import { schoolFeedback, type StudentSchoolFeedback } from '@/services/school-feedback'
 import { userFacingApiError } from '@/utils/user-facing-errors'
-import type { AssessmentListEntry, ReportSummary } from '@/api/client'
+import type { ReportSummary } from '@/api/client'
+import type { StudentHistoryLibraryItem } from '@/components/student/history-library'
 import { useSessionStore } from '@/stores/session'
 import { useRoute, useRouter } from 'vue-router'
 
 const route = useRoute()
 const router = useRouter()
 const state = ref<'loading' | 'ready' | 'error'>('loading')
-const assessments = ref<AssessmentListEntry[]>([])
 const reports = ref<ReportSummary[]>([])
+const historyCategory = ref<'assessment' | 'feedback' | 'support'>('assessment')
 const errorMessage = ref('')
 const historyError = ref('')
-const loadMoreError = ref('')
-const assessmentPageSize = 30
-const nextAssessmentOffset = ref(0)
-const assessmentRequestGeneration = ref(0)
-const isLoadingMoreAssessments = ref(false)
-const hasMoreAssessments = ref(false)
+const historyRequestGeneration = ref(0)
+const feedbackRows = ref<StudentSchoolFeedback[]>([])
+const feedbackState = ref<'loading' | 'ready' | 'error'>('loading')
+const feedbackError = ref('')
+const feedbackLoadMoreError = ref('')
+const feedbackLoadingMore = ref(false)
+const feedbackTotal = ref(0)
+const feedbackRequestGeneration = ref(0)
 type StudentCarouselSlide =
   | { kind: 'welcome'; title: string; subtitle: string; image: string; imageAlt: string }
   | { kind: 'tip'; title: string; body: string; image: string; imageAlt: string; backgroundPosition?: string }
@@ -98,37 +106,6 @@ const wellbeingTipPool: Extract<StudentCarouselSlide, { kind: 'tip' }>[] = [
   },
 ]
 
-const featureCards = [
-  {
-    tag: '自我探索',
-    title: '从一次测评开始',
-    description: '一题一答之间，记下此刻的学习、生活与感受。',
-    image: '/assets/psynova/academy-feature-self-exploration.jpeg',
-    imageAlt: '蓝色、青色与粉色交织的流动渐变',
-  },
-  {
-    tag: '测评反馈',
-    title: '换个角度看自己',
-    description: '读一读已发布的反馈，从不同角度理解自己的近况。',
-    image: '/assets/psynova/academy-feature-assessment-feedback.png',
-    imageAlt: '绿色、青色与浅黄色交织的柔和渐变',
-  },
-  {
-    tag: '教育支持',
-    title: '有困惑，就聊聊',
-    description: '学习、生活与人际相处的难题，都可以从一次对话说起。',
-    image: '/assets/psynova/academy-feature-education-support.png',
-    imageAlt: '橙色、紫色与粉色交织的柔和渐变',
-  },
-  {
-    tag: '成长记录',
-    title: '回望来时路',
-    description: '翻看测评与支持记录，看看自己在不同阶段的变化。',
-    image: '/assets/psynova/academy-feature-growth-record.png',
-    imageAlt: '粉色、蓝色、紫色与淡金色交织的渐变',
-  },
-]
-
 const pickDailyTips = (tips: Extract<StudentCarouselSlide, { kind: 'tip' }>[], date = new Date()) => {
   const dayKey = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`
   let seed = Array.from(dayKey).reduce((value, char) => (value * 31 + char.charCodeAt(0)) >>> 0, 2166136261)
@@ -147,8 +124,8 @@ const pickDailyTips = (tips: Extract<StudentCarouselSlide, { kind: 'tip' }>[], d
 const carouselSlides = computed<StudentCarouselSlide[]>(() => [
   {
     kind: 'welcome',
-    title: 'Welcome back',
-    subtitle: "Let's unlock AI together",
+    title: '欢迎回来',
+    subtitle: '一起探索 AI 的更多可能',
     image: '/assets/psynova/academy-welcome-card.png',
     imageAlt: '柔和的蓝色、青色与粉色流动色彩',
   },
@@ -158,12 +135,49 @@ const academyCarouselArrowPath = 'M32 16C32 7.1776 24.824 0 16 0C7.1776 0 0 7.17
 const carouselIndex = ref(0)
 const carouselSlide = computed(() => carouselSlides.value[carouselIndex.value])
 const isHistory = computed(() => route.path === '/student/history')
+const historyCategoryOptions = [
+  { value: 'assessment', label: '我的测评' },
+  { value: 'feedback', label: '测评反馈' },
+  { value: 'support', label: '教育支持' },
+] as const
+const historyFloatingVisible = ref(false)
+const historyHeaderElement = ref<HTMLElement | null>(null)
+const historyTabsElement = ref<HTMLElement | null>(null)
+const historyFloatingBounds = ref({ left: 0, width: 0 })
 const carouselIntervalMs = 30_000
 let carouselTimer: number | undefined
+let historyScrollFrame: number | undefined
 let reducedMotionQuery: MediaQueryList | null = null
 let pointerPaused = false
 let focusPaused = false
 const carouselMounted = ref(false)
+
+const historyFloatingStyle = computed(() => ({
+  left: `${historyFloatingBounds.value.left}px`,
+  width: `${historyFloatingBounds.value.width}px`,
+}))
+
+const syncHistoryFloatingNav = () => {
+  const header = historyHeaderElement.value
+  const tabs = historyTabsElement.value
+  if (!isHistory.value || !header || !tabs) {
+    historyFloatingVisible.value = false
+    return
+  }
+
+  const headerBounds = header.getBoundingClientRect()
+  const topbarHeight = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--layout-topbar')) || 70
+  historyFloatingBounds.value = { left: headerBounds.left, width: headerBounds.width }
+  historyFloatingVisible.value = tabs.getBoundingClientRect().bottom <= topbarHeight
+}
+
+const scheduleHistoryFloatingNavSync = () => {
+  if (historyScrollFrame !== undefined) return
+  historyScrollFrame = window.requestAnimationFrame(() => {
+    historyScrollFrame = undefined
+    syncHistoryFloatingNav()
+  })
+}
 
 const clearCarouselTimer = () => {
   if (carouselTimer !== undefined) window.clearTimeout(carouselTimer)
@@ -187,108 +201,35 @@ const previousCarouselSlide = () => setCarouselSlide(carouselIndex.value - 1)
 const nextCarouselSlide = () => setCarouselSlide(carouselIndex.value + 1)
 
 const load = async () => {
-  const generation = ++assessmentRequestGeneration.value
+  const generation = ++historyRequestGeneration.value
   state.value = 'loading'
   errorMessage.value = ''
-  loadMoreError.value = ''
-  hasMoreAssessments.value = false
-  nextAssessmentOffset.value = 0
-  isLoadingMoreAssessments.value = false
-  assessments.value = []
   try {
-    if (isHistory.value) {
-      const rows = frontendApi.listAssessmentEntries
-        ? (await frontendApi.listAssessmentEntries({ limit: assessmentPageSize, skip: 0 })).data
-        : (await frontendApi.listAssessments({ limit: assessmentPageSize, skip: 0 })).data.map((assessment) => ({
-            assessment_id: assessment.assessment_id,
-            status: assessment.status,
-            items_answered: assessment.response_summary.items_answered,
-            started_at: assessment.timestamps.started_at,
-            completed_at: assessment.timestamps.completed_at,
-          }))
-      if (generation !== assessmentRequestGeneration.value) return
-      assessments.value = rows
-      nextAssessmentOffset.value = rows.length
-      hasMoreAssessments.value = rows.length === assessmentPageSize
-    }
     try {
       const reportResponse = await frontendApi.listReports()
-      if (generation !== assessmentRequestGeneration.value) return
+      if (generation !== historyRequestGeneration.value) return
       reports.value = reportResponse.data.items
       historyError.value = ''
     } catch (error) {
-      if (generation !== assessmentRequestGeneration.value) return
+      if (generation !== historyRequestGeneration.value) return
       reports.value = []
       historyError.value = userFacingApiError(error, '支持记录暂时无法加载。')
     }
-    if (generation !== assessmentRequestGeneration.value) return
+    if (generation !== historyRequestGeneration.value) return
     state.value = 'ready'
   } catch (error) {
-    if (generation !== assessmentRequestGeneration.value) return
+    if (generation !== historyRequestGeneration.value) return
     state.value = 'error'
     errorMessage.value = userFacingApiError(error, '页面暂时无法加载，请稍后重试。')
   }
 }
 
-const loadMoreAssessments = async () => {
-  if (isLoadingMoreAssessments.value || !hasMoreAssessments.value || state.value !== 'ready') return
-  const generation = assessmentRequestGeneration.value
-  isLoadingMoreAssessments.value = true
-  loadMoreError.value = ''
-  try {
-    const rows = frontendApi.listAssessmentEntries
-      ? (await frontendApi.listAssessmentEntries({ limit: assessmentPageSize, skip: nextAssessmentOffset.value })).data
-      : (await frontendApi.listAssessments({ limit: assessmentPageSize, skip: nextAssessmentOffset.value })).data.map((assessment) => ({
-          assessment_id: assessment.assessment_id,
-          status: assessment.status,
-          items_answered: assessment.response_summary.items_answered,
-          started_at: assessment.timestamps.started_at,
-          completed_at: assessment.timestamps.completed_at,
-        }))
-    if (generation !== assessmentRequestGeneration.value) return
-    const existingIds = new Set(assessments.value.map((item) => item.assessment_id))
-    assessments.value = [...assessments.value, ...rows.filter((item) => !existingIds.has(item.assessment_id))]
-    nextAssessmentOffset.value += rows.length
-    hasMoreAssessments.value = rows.length === assessmentPageSize
-  } catch (error) {
-    if (generation !== assessmentRequestGeneration.value) return
-    const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : ''
-    loadMoreError.value = userFacingApiError({ code }, '暂时无法加载更多测评记录，请重试。')
-  } finally {
-    if (generation === assessmentRequestGeneration.value) isLoadingMoreAssessments.value = false
-  }
-}
-
-const continueOrStart = (assessment?: AssessmentListEntry) => {
-  void router.push(assessment ? `/student/assessment/${encodeURIComponent(assessment.assessment_id)}` : '/student/assessment')
-}
-const openResult = (assessmentId: string) => void router.push(`/student/assessment/${encodeURIComponent(assessmentId)}/result`)
 const openSupportHistory = (reportId: string) => void router.push(`/student/reports/${encodeURIComponent(reportId)}`)
-const assessmentStatusLabel = (assessment: AssessmentListEntry) => {
-  if (assessment.status === 'created') return '待开始'
-  if (assessment.status === 'in_progress') return '进行中'
-  if (assessment.status === 'completed') return '已完成'
-  if (assessment.status === 'abandoned') return '已结束'
-  return '状态暂不可用'
-}
 const formatHistoryDate = (value: string | null | undefined) => {
   if (!value) return '时间未提供'
   const parsed = new Date(value)
   if (Number.isNaN(parsed.getTime())) return '时间暂不可用'
   return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(parsed)
-}
-const assessmentTimeLabel = (assessment: AssessmentListEntry) => assessment.status === 'created' && !assessment.started_at
-  ? '尚未开始'
-  : formatHistoryDate(assessment.completed_at || assessment.started_at)
-const assessmentActionLabel = (assessment: AssessmentListEntry) => {
-  if (assessment.status === 'created') return '开始测评'
-  if (assessment.status === 'in_progress') return '继续测评'
-  if (assessment.status === 'completed') return '查看结果'
-  return ''
-}
-const openAssessmentEntry = (assessment: AssessmentListEntry) => {
-  if (assessment.status === 'completed') openResult(assessment.assessment_id)
-  else if (assessment.status === 'created' || assessment.status === 'in_progress') continueOrStart(assessment)
 }
 const canOpenSupportReport = (report: ReportSummary) => report.status.toLowerCase() === 'generated' && report.safety_action !== 'CRISIS_ROUTE'
 const supportReportStatus = (report: ReportSummary) => {
@@ -300,6 +241,87 @@ const supportReportStatus = (report: ReportSummary) => {
   if (status === 'rejected') return '未获准发布'
   if (status === 'safety_blocked' || status === 'blocked') return '暂不可发布'
   return '处理中'
+}
+const supportReportLibraryStatus = (report: ReportSummary): StudentHistoryLibraryItem['status'] => {
+  if (report.safety_action === 'CRISIS_ROUTE') return 'completed'
+  const status = report.status.toLowerCase()
+  return ['generated', 'approved', 'closed', 'rejected', 'safety_blocked', 'blocked'].includes(status)
+    ? 'completed'
+    : 'in_progress'
+}
+const supportHistoryItems = computed<StudentHistoryLibraryItem[]>(() => reports.value.map((report) => ({
+  key: `support:${report.report_id}`,
+  kind: 'support-report',
+  ref: report.report_id,
+  status: supportReportLibraryStatus(report),
+  statusLabel: supportReportStatus(report),
+  category: '教育支持',
+  title: report.safety_action === 'CRISIS_ROUTE' ? '安全流程记录' : '支持反馈记录',
+  poster: '/assets/psynova/academy-feature-education-support.png',
+  dateLabel: formatHistoryDate(report.created_at),
+  actionLabel: canOpenSupportReport(report) ? '查看反馈' : undefined,
+  actionVariant: 'secondary',
+})))
+const feedbackHistoryItems = computed<StudentHistoryLibraryItem[]>(() => feedbackRows.value.map((feedback) => ({
+  key: `feedback:${feedback.feedback_ref}`,
+  kind: 'assessment-feedback',
+  ref: feedback.feedback_ref,
+  status: 'completed',
+  statusLabel: '已发布',
+  category: '测评反馈',
+  title: feedback.title,
+  poster: '/assets/psynova/academy-feature-assessment-feedback.png',
+  dateLabel: formatHistoryDate(feedback.published_at),
+  actionLabel: '查看详情',
+  actionVariant: 'secondary',
+})))
+const feedbackHasMore = computed(() => feedbackRows.value.length < feedbackTotal.value)
+const findFeedback = (feedbackRef: string) => feedbackRows.value.find((feedback) => feedback.feedback_ref === feedbackRef)
+
+const loadStudentFeedback = async (append = false) => {
+  if (append && (feedbackLoadingMore.value || !feedbackHasMore.value)) return
+  const generation = append ? feedbackRequestGeneration.value : ++feedbackRequestGeneration.value
+  const offset = append ? feedbackRows.value.length : 0
+  if (append) {
+    feedbackLoadingMore.value = true
+    feedbackLoadMoreError.value = ''
+  } else {
+    feedbackState.value = 'loading'
+    feedbackRows.value = []
+    feedbackTotal.value = 0
+    feedbackError.value = ''
+    feedbackLoadMoreError.value = ''
+  }
+  try {
+    const page = await schoolFeedback.listStudent(offset, 50)
+    if (generation !== feedbackRequestGeneration.value) return
+    const previousRefs = new Set(feedbackRows.value.map((item) => item.feedback_ref))
+    feedbackRows.value = append
+      ? [...feedbackRows.value, ...page.items.filter((item) => !previousRefs.has(item.feedback_ref))]
+      : page.items
+    feedbackTotal.value = page.total
+    feedbackState.value = 'ready'
+  } catch (error) {
+    if (generation !== feedbackRequestGeneration.value) return
+    const message = userFacingApiError(error, '测评反馈暂时无法加载。')
+    if (append) feedbackLoadMoreError.value = message
+    else {
+      feedbackRows.value = []
+      feedbackState.value = 'error'
+      feedbackError.value = message
+    }
+  } finally {
+    if (generation === feedbackRequestGeneration.value) feedbackLoadingMore.value = false
+  }
+}
+const activateSupportRecord = (item: StudentHistoryLibraryItem) => {
+  if (item.kind !== 'support-report') return
+  const report = reports.value.find((candidate) => candidate.report_id === item.ref)
+  if (report && canOpenSupportReport(report)) openSupportHistory(report.report_id)
+}
+const activateFeedbackRecord = (item: StudentHistoryLibraryItem) => {
+  if (item.kind !== 'assessment-feedback') return
+  void router.push({ name: 'student-feedback-detail', params: { id: item.ref } })
 }
 
 const pauseCarouselForPointer = () => {
@@ -327,18 +349,45 @@ const handleMotionPreferenceChange = () => scheduleCarouselRotation()
 watch(isHistory, () => {
   scheduleCarouselRotation()
   void load()
+  scheduleHistoryFloatingNavSync()
+})
+watch(
+  () => [session.user?.role ?? null, session.user?.userId ?? null, session.user?.activeContext?.schoolRef ?? null, session.user?.activeContext ?? null] as const,
+  (next, previous) => {
+    if (!previous || next.every((value, index) => value === previous[index])) return
+    feedbackRequestGeneration.value += 1
+    feedbackRows.value = []
+    feedbackTotal.value = 0
+    feedbackError.value = ''
+    feedbackLoadMoreError.value = ''
+    feedbackLoadingMore.value = false
+    if (next[0] === 'student' && isHistory.value && historyCategory.value === 'feedback') void loadStudentFeedback()
+    else feedbackState.value = 'ready'
+  },
+)
+watch(historyCategory, (category) => {
+  if (!isHistory.value) return
+  if (category === 'support') void load()
+  else if (category === 'feedback') void loadStudentFeedback()
 })
 onMounted(() => {
   carouselMounted.value = true
+  window.addEventListener('scroll', scheduleHistoryFloatingNavSync, { passive: true })
+  window.addEventListener('resize', scheduleHistoryFloatingNavSync)
   reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
   reducedMotionQuery.addEventListener('change', handleMotionPreferenceChange)
   document.addEventListener('visibilitychange', handleVisibilityChange)
   scheduleCarouselRotation()
+  scheduleHistoryFloatingNavSync()
   load()
 })
 onUnmounted(() => {
   carouselMounted.value = false
   clearCarouselTimer()
+  window.removeEventListener('scroll', scheduleHistoryFloatingNavSync)
+  window.removeEventListener('resize', scheduleHistoryFloatingNavSync)
+  if (historyScrollFrame !== undefined) window.cancelAnimationFrame(historyScrollFrame)
+  historyScrollFrame = undefined
   document.removeEventListener('visibilitychange', handleVisibilityChange)
   reducedMotionQuery?.removeEventListener('change', handleMotionPreferenceChange)
   reducedMotionQuery = null
@@ -347,10 +396,10 @@ onUnmounted(() => {
 
 <template>
   <div class="content-wrap content-wrap--student student-space">
-    <div v-if="state === 'loading'" class="student-loading" aria-busy="true" aria-label="正在加载学生空间">
+    <div v-if="state === 'loading' && !isHistory" class="student-loading" aria-busy="true" aria-label="正在加载学生空间">
       <div class="skeleton skeleton--short"></div><div class="skeleton skeleton--title"></div><div class="skeleton skeleton--body"></div>
     </div>
-    <AppStatusCallout v-else-if="state === 'error'" tone="critical" title="学生空间暂时无法加载" :body="errorMessage">
+    <AppStatusCallout v-else-if="state === 'error' && !isHistory" tone="critical" title="学生空间暂时无法加载" :body="errorMessage">
       <AppButton variant="secondary" size="sm" @click="load"><RotateCcw :size="15" aria-hidden="true" />重新加载</AppButton>
     </AppStatusCallout>
     <template v-else-if="!isHistory">
@@ -377,7 +426,7 @@ onUnmounted(() => {
             >
               <div class="student-carousel__copy">
                 <template v-if="carouselSlide.kind === 'welcome'">
-                  <h1 id="student-home-title" class="student-carousel__welcome-title">{{ carouselSlide.title }} {{ welcomeName }}</h1>
+                  <h1 id="student-home-title" class="student-carousel__welcome-title">{{ carouselSlide.title }}，{{ welcomeName }}</h1>
                   <p class="student-carousel__subtitle">{{ carouselSlide.subtitle }}</p>
                 </template>
                 <template v-else>
@@ -419,48 +468,95 @@ onUnmounted(() => {
       </section>
 
       <section class="student-feature" aria-labelledby="student-feature-title">
-        <h2 id="student-feature-title" class="student-feature__title">Build a better understanding of yourself with AI.</h2>
+        <h2 id="student-feature-title" class="student-feature__title">借助 AI，更好地认识自己。</h2>
         <div class="student-feature__grid">
-          <article v-for="card in featureCards" :key="card.tag" class="student-feature-card">
-            <img class="student-feature-card__image" :src="card.image" :alt="card.imageAlt" />
-            <div class="student-feature-card__content">
-              <span class="student-feature-card__tag">{{ card.tag }}</span>
-              <h3>{{ card.title }}</h3>
-              <p>{{ card.description }}</p>
-            </div>
-          </article>
+          <RouterLink v-for="card in studentFeatureCards" :key="card.tag" class="student-feature-card__link" :to="card.to" :aria-label="`${card.tag}，${card.title}。${card.description}`">
+            <article class="student-feature-card">
+              <img class="student-feature-card__image" :src="card.image" :alt="card.imageAlt" />
+              <div class="student-feature-card__content">
+                <span class="student-feature-card__tag">{{ card.tag }}</span>
+                <h3>{{ card.title }}</h3>
+                <p>{{ card.description }}</p>
+              </div>
+            </article>
+          </RouterLink>
         </div>
-        <RouterLink class="student-feature__action" to="/student/assessments">开始测评</RouterLink>
+        <RouterLink class="student-feature__action" :to="{ path: '/student/assessment', query: { startAssigned: '1' } }">开始测评</RouterLink>
       </section>
     </template>
     <template v-else>
-      <header class="history-heading">
-        <div><span class="student-kicker">学生空间 · 我的记录</span><h1>测评与支持记录</h1><p>这里仅显示当前登录账号有权访问的记录。</p></div>
-        <AppButton variant="secondary" @click="router.push('/student/home')"><ArrowLeft :size="16" aria-hidden="true" />返回首页</AppButton>
-      </header>
-      <section class="history-section" aria-labelledby="assessment-history-title">
-        <div class="history-section__heading"><div><span class="student-kicker">测评</span><h2 id="assessment-history-title">我的测评</h2></div><span>{{ hasMoreAssessments ? `已显示 ${assessments.length} 条` : `${assessments.length} 条` }}</span></div>
-        <AppCard v-if="assessments.length === 0" class="history-empty"><ClipboardList :size="21" aria-hidden="true" /><div><strong>还没有测评记录</strong><p>开始测评后，保存的记录会显示在这里。</p><AppButton size="sm" @click="continueOrStart()">开始测评 <ArrowRight :size="15" aria-hidden="true" /></AppButton></div></AppCard>
-        <AppCard v-for="item in assessments" :key="item.assessment_id" class="history-row">
-          <span class="history-row__icon" :class="{ 'history-row__icon--complete': item.status === 'completed' }"><CheckCircle2 v-if="item.status === 'completed'" :size="18" aria-hidden="true" /><History v-else :size="18" aria-hidden="true" /></span>
-          <div class="history-row__copy"><strong>{{ item.status === 'completed' ? '已完成的合成测评' : item.status === 'created' ? '尚未开始的合成测评' : '测评记录' }}</strong><span>{{ item.items_answered }} 项已记录 · {{ assessmentTimeLabel(item) }}</span></div>
-          <AppBadge :tone="item.status === 'completed' ? 'teal' : item.status === 'created' ? 'neutral' : 'blue'" dot>{{ assessmentStatusLabel(item) }}</AppBadge>
-          <AppButton v-if="assessmentActionLabel(item)" variant="secondary" size="sm" @click="openAssessmentEntry(item)">{{ assessmentActionLabel(item) }} <ArrowRight :size="15" aria-hidden="true" /></AppButton>
-        </AppCard>
-        <div v-if="hasMoreAssessments || loadMoreError" class="history-load-more">
-          <AppButton variant="secondary" :disabled="isLoadingMoreAssessments" @click="loadMoreAssessments">{{ isLoadingMoreAssessments ? '正在加载…' : '加载更多记录' }} <ArrowRight :size="15" aria-hidden="true" /></AppButton>
-          <p v-if="loadMoreError" role="alert">{{ loadMoreError }}</p>
+      <WorkspaceBreadcrumb current="我的记录" />
+      <div ref="historyHeaderElement" class="history-header">
+        <StudentPageHero
+          :eyebrow="studentPageBannerCopy.history.eyebrow"
+          :title="studentPageTitles.history"
+          :subtitle="studentPageBannerCopy.history.subtitle"
+          :image="studentPageArt.history"
+          image-position="center 48%"
+          light-text
+        />
+        <nav ref="historyTabsElement" class="history-tabs" aria-label="记录类别">
+          <div class="history-tabs__categories">
+            <button v-for="option in historyCategoryOptions" :key="option.value" type="button" :aria-pressed="historyCategory === option.value" @click="historyCategory = option.value">{{ option.label }}</button>
+          </div>
+        </nav>
+      </div>
+
+      <Transition name="history-floating">
+        <div v-if="historyFloatingVisible" class="history-floating-nav" :style="historyFloatingStyle">
+          <WorkspaceBreadcrumb current="我的记录" />
+          <nav class="history-tabs history-floating-nav__tabs" aria-label="记录类别快捷切换">
+            <div class="history-tabs__categories">
+              <button v-for="option in historyCategoryOptions" :key="option.value" type="button" :aria-pressed="historyCategory === option.value" @click="historyCategory = option.value">{{ option.label }}</button>
+            </div>
+          </nav>
         </div>
-      </section>
-      <section class="history-section" aria-labelledby="report-history-title">
-        <div class="history-section__heading"><div><span class="student-kicker">教育支持</span><h2 id="report-history-title">支持记录</h2></div><span>{{ reports.length }} 条</span></div>
-        <AppStatusCallout v-if="historyError" tone="attention" title="支持记录暂时无法加载" :body="historyError"><AppButton variant="secondary" size="sm" @click="load">重新加载</AppButton></AppStatusCallout>
-        <p v-else-if="reports.length === 0" class="history-empty-copy">还没有支持记录。独立支持生成目前受限；如果服务端已有可访问的记录，会显示在这里。</p>
-        <AppCard v-for="report in reports" :key="report.report_id" class="history-row">
-          <span class="history-row__icon history-row__icon--support"><BookOpen :size="18" aria-hidden="true" /></span>
-          <div class="history-row__copy"><strong>{{ report.safety_action === 'CRISIS_ROUTE' ? '安全流程记录' : '教育支持记录' }}</strong><span>{{ formatHistoryDate(report.created_at) }} · {{ supportReportStatus(report) }}</span></div>
-          <AppButton v-if="canOpenSupportReport(report)" variant="secondary" size="sm" @click="openSupportHistory(report.report_id)">查看反馈 <ArrowRight :size="15" aria-hidden="true" /></AppButton>
-        </AppCard>
+      </Transition>
+
+      <section class="history-collection" aria-label="成长记录内容">
+        <AppStatusCallout v-if="state === 'error'" tone="critical" title="成长记录暂时无法加载" :body="errorMessage">
+          <StudentRefreshButton :loading="state === 'loading'" label="重新加载" @click="load" />
+        </AppStatusCallout>
+        <Transition v-else name="history-panel" mode="out-in">
+        <StudentAssessmentsView v-if="historyCategory === 'assessment'" embedded />
+
+        <StudentHistoryLibrary
+          v-else-if="historyCategory === 'feedback'"
+          :items="feedbackHistoryItems"
+          :loading="feedbackState === 'loading'"
+          :error="feedbackError"
+          error-title="测评反馈暂时无法加载"
+          empty-title="目前没有已发布的测评反馈"
+          empty-description="只有学校审核发布给当前账号的反馈会显示在这里。"
+          empty-icon="feedback"
+          :has-more="feedbackHasMore"
+          :loading-more="feedbackLoadingMore"
+          :load-more-error="feedbackLoadMoreError"
+          @retry="loadStudentFeedback()"
+          @load-more="loadStudentFeedback(true)"
+          @activate="activateFeedbackRecord"
+        >
+          <template #details="{ item }">
+            <details v-if="findFeedback(item.ref)" class="history-feedback-details">
+              <summary>查看反馈正文</summary>
+              <p>{{ findFeedback(item.ref)?.body }}</p>
+            </details>
+          </template>
+        </StudentHistoryLibrary>
+
+        <StudentHistoryLibrary
+          v-else
+          :items="supportHistoryItems"
+          :loading="state === 'loading'"
+          :error="historyError"
+          error-title="教育支持记录暂时无法加载"
+          empty-title="目前没有教育支持记录"
+          empty-description="服务端已保存且当前账号可查看的记录会显示在这里。"
+          empty-icon="support"
+          @retry="load"
+          @activate="activateSupportRecord"
+        />
+        </Transition>
       </section>
     </template>
   </div>
@@ -492,13 +588,35 @@ onUnmounted(() => {
 .student-carousel-slide-enter-active, .student-carousel-slide-leave-active { transition: opacity 220ms ease, transform 220ms ease; }
 .student-carousel-slide-enter-from { opacity: 0; transform: translateX(12px); }
 .student-carousel-slide-leave-to { opacity: 0; transform: translateX(-12px); }
-.history-section { margin-top: 40px; }
-.history-section__heading { display: flex; align-items: end; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
-.history-section__heading h2 { margin: 5px 0 0; color: var(--color-text-primary); font-family: var(--font-display); font-size: 23px; }
+.history-header { overflow: hidden; border-radius: 12px; background: #fff; box-shadow: var(--shadow-rest); }
+.history-header :deep(.student-page-hero) { margin-bottom: 0; border-bottom: 0; border-radius: 12px 12px 0 0; box-shadow: none; }
+.history-floating-nav { position: fixed; z-index: 35; top: var(--layout-topbar); display: flex; flex-direction: column; overflow: hidden; border: 1px solid rgb(255 255 255 / 62%); border-radius: 0 0 12px 12px; background: rgb(255 255 255 / 76%); box-shadow: 0 14px 30px rgb(25 34 48 / 10%); backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px); }
+.history-floating-nav :deep(.workspace-breadcrumb) { margin: 0; padding: 12px 24px 8px; }
+.history-floating-nav .history-tabs { position: relative; --history-floating-divider-inset: 24px; --history-floating-divider-fade: 10px; min-height: 58px; padding: 8px 24px; border-top: 0; border-bottom: 0; background: transparent; }
+.history-floating-nav .history-tabs::before { position: absolute; top: 0; right: 0; left: 0; height: 1px; background: linear-gradient(90deg, transparent 0, transparent calc(var(--history-floating-divider-inset) - var(--history-floating-divider-fade)), rgb(15 23 42 / 8%) var(--history-floating-divider-inset), rgb(15 23 42 / 8%) calc(100% - var(--history-floating-divider-inset)), transparent calc(100% - var(--history-floating-divider-inset) + var(--history-floating-divider-fade)), transparent 100%); content: ""; pointer-events: none; }
+.history-floating-enter-active, .history-floating-leave-active { transition: opacity 180ms ease, transform 180ms ease; }
+.history-floating-enter-from, .history-floating-leave-to { opacity: 0; transform: translateY(-8px); }
+.history-collection { margin-top: 18px; overflow: hidden; border-radius: 12px; background: #fff; box-shadow: var(--shadow-rest); }
+.history-tabs { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 62px; padding: 10px 24px; border-bottom: 1px solid #eceef1; background: #fff; }
+.history-tabs__categories { display: flex; min-width: 0; align-items: center; gap: 8px; }
+.history-tabs button { min-height: 38px; flex: 0 0 auto; padding: 0 15px; border: 0; border-radius: 7px; color: #4e5663; background: transparent; cursor: pointer; font: inherit; font-size: 13px; font-weight: 600; transition: color var(--motion-fast), background-color var(--motion-fast); }
+.history-tabs button:hover { color: #1e1d29; background: #f4f6f8; }
+.history-tabs button[aria-pressed="true"] { color: #00a9dd; background: #e8f7fb; }
+.history-tabs button:focus-visible { outline: 2px solid #279de0; outline-offset: 2px; }
+:deep(.history-feedback-details) { padding-top: 8px; border-top: 1px solid var(--color-border); }
+:deep(.history-feedback-details summary) { color: var(--color-primary); font-size: 11px; font-weight: 600; cursor: pointer; }
+:deep(.history-feedback-details p) { margin: 8px 0 0; color: var(--color-text-secondary); font-size: 12px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.history-panel-enter-active, .history-panel-leave-active { transition: opacity 160ms ease, transform 160ms ease; }
+.history-panel-enter-from { opacity: 0; transform: translateY(4px); }
+.history-panel-leave-to { opacity: 0; transform: translateY(-3px); }
 .student-feature { margin-top: 40px; padding: 35px 59px 40px; overflow: hidden; border-radius: 12px; background: #fff; box-shadow: 0 0 26px rgb(0 0 0 / 5%); }
 .student-feature__title { margin: 0 0 16px; color: #1e1d29; font-family: var(--font-sans); font-size: 28px; font-weight: 600; line-height: 1.6; text-align: center; }
 .student-feature__grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; }
-.student-feature-card { display: flex; min-width: 0; min-height: 380px; flex-direction: column; overflow: hidden; border: 1px solid #f3f5f8; border-radius: 12px; background: #f7faff; box-shadow: 0 20px 12px rgb(0 0 0 / 2%), 0 9px 9px rgb(0 0 0 / 2%), 0 2px 5px rgb(0 0 0 / 2%); }
+.student-feature-card__link { display: flex; min-width: 0; color: inherit; text-decoration: none; }
+.student-feature-card { display: flex; width: 100%; min-width: 0; min-height: 380px; flex-direction: column; overflow: hidden; border: 1px solid #f3f5f8; border-radius: 12px; background: #f7faff; box-shadow: 0 20px 12px rgb(0 0 0 / 2%), 0 9px 9px rgb(0 0 0 / 2%), 0 2px 5px rgb(0 0 0 / 2%); transition: transform var(--motion-fast), border-color var(--motion-fast), box-shadow var(--motion-fast); }
+.student-feature-card__link:hover .student-feature-card { transform: translateY(-2px); border-color: #dbeef5; box-shadow: 0 21px 18px rgb(0 0 0 / 5%), 0 8px 10px rgb(0 0 0 / 3%); }
+.student-feature-card__link:focus-visible { border-radius: 12px; outline: 2px solid #249de0; outline-offset: 3px; }
+.student-feature-card__link:focus-visible .student-feature-card { border-color: #75cde6; }
 .student-feature-card__image { display: block; width: 100%; aspect-ratio: 2.4 / 1; flex: 0 0 auto; object-fit: cover; }
 .student-feature-card__content { display: grid; align-content: start; gap: 0; padding: 24px 28px 28px; }
 .student-feature-card__tag { color: #00a9dd; font-family: var(--font-sans); font-size: 16px; font-weight: 500; line-height: 1.6; }
@@ -507,30 +625,13 @@ onUnmounted(() => {
 .student-feature__action { display: flex; width: fit-content; min-height: 40px; align-items: center; justify-content: center; margin: 48px auto 0; padding: 9px 15px; border: 1px solid #41434b; border-radius: 8px; color: #1e1d29; background: #fff; font-family: var(--font-sans); font-size: 14px; font-weight: 600; line-height: 1.4; text-decoration: none; transition: background-color var(--motion-fast), color var(--motion-fast); }
 .student-feature__action:hover { color: #1e1d29; background: rgb(0 0 0 / 5%); }
 .student-feature__action:focus-visible { outline: 2px solid #249de0; outline-offset: 3px; }
-.history-row__icon { display: grid; place-items: center; width: 36px; height: 36px; flex: 0 0 36px; border-radius: 11px; color: #456f64; background: #eaf3ef; }
-.history-row__icon--complete { color: #397c67; background: #e8f3ec; }
-.history-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 15px 0 8px; }
-.history-heading h1 { margin: 8px 0 5px; color: var(--color-text-primary); font-family: var(--font-display); font-size: clamp(28px, 4vw, 38px); letter-spacing: -.035em; }
-.history-heading p { margin: 0; color: var(--color-text-secondary); font-size: 13px; }
-.history-section__heading > span { color: var(--color-text-muted); font-size: 11px; }
-.history-row { display: flex; align-items: center; gap: 13px; margin-top: 9px; padding: 14px 16px; }
-.history-row__icon--support { color: #957344; background: #f7f1e5; }
-.history-row__copy { display: grid; min-width: 0; flex: 1; gap: 4px; }
-.history-row__copy strong { color: var(--color-text-primary); font-size: 13px; }
-.history-row__copy span { overflow: hidden; color: var(--color-text-secondary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.history-load-more { display: grid; justify-items: center; gap: 8px; margin-top: 16px; }
-.history-load-more p { margin: 0; color: var(--color-critical); font-size: 12px; }
-.history-empty { display: flex; align-items: flex-start; gap: 13px; padding: 20px; color: #54766b; }
-.history-empty > div { display: grid; gap: 7px; }
-.history-empty strong { color: var(--color-text-primary); font-size: 13px; }
-.history-empty p, .history-empty-copy { margin: 0; color: var(--color-text-secondary); font-size: 12px; line-height: 1.6; }
-.history-empty-copy { padding: 12px 0; }
-.history-section > .status-callout { margin-top: 9px; }
 .student-loading { padding-top: 18px; }
-.skeleton { border-radius: 7px; background: var(--color-surface-skeleton); }
+.skeleton { position: relative; overflow: hidden; border-radius: 7px; background: var(--color-surface-skeleton); }
+.skeleton::after { position: absolute; inset: 0; content: ""; background: linear-gradient(100deg, transparent, rgb(255 255 255 / 62%), transparent); transform: translateX(-100%); animation: student-skeleton-shimmer 1.35s ease-in-out infinite; }
 .skeleton--short { width: 120px; height: 13px; }
 .skeleton--title { width: min(480px, 70%); height: 35px; margin-top: 17px; }
 .skeleton--body { width: min(620px, 90%); height: 16px; margin-top: 13px; }
+@keyframes student-skeleton-shimmer { to { transform: translateX(100%); } }
 
 @media (max-width: 760px) {
   .student-carousel__stage { height: 392px; }
@@ -557,11 +658,22 @@ onUnmounted(() => {
   .student-feature-card__content { padding: 20px 22px 24px; }
   .student-feature-card h3 { font-size: 24px; }
   .student-feature__action { margin-top: 32px; }
-  .history-heading { align-items: flex-start; flex-direction: column; }
-  .history-row { align-items: flex-start; flex-wrap: wrap; }
-  .history-row__copy { flex-basis: calc(100% - 52px); }
-  .history-row .app-badge { margin-left: 48px; }
-  .history-row .app-button { margin-left: 48px; }
+  .history-collection { margin-top: 14px; }
+  .history-tabs { min-height: 54px; gap: 4px; padding: 8px 12px; }
+  .history-tabs button { min-height: 36px; padding: 0 11px; font-size: 12px; }
+}
+
+@media (max-width: 680px) {
+  .history-tabs { align-items: flex-start; flex-direction: column; padding: 10px 16px; }
+  .history-tabs__categories { width: 100%; overflow-x: auto; }
+  .history-floating-nav :deep(.workspace-breadcrumb) { padding: 10px 16px 6px; }
+  .history-floating-nav .history-tabs { --history-floating-divider-inset: 16px; --history-floating-divider-fade: 8px; padding: 6px 16px 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .history-panel-enter-active, .history-panel-leave-active, .history-floating-enter-active, .history-floating-leave-active, .student-feature-card { transition: none; }
+  .history-floating-enter-from, .history-floating-leave-to { opacity: 1; transform: none; }
+  .student-feature-card__link:hover .student-feature-card { transform: none; }
 }
 @media (max-width: 620px) {
   .student-feature { padding-right: 20px; padding-left: 20px; }

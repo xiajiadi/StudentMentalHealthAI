@@ -4,6 +4,7 @@ import { RotateCcw } from '@lucide/vue'
 import AppBadge from '@/components/app/AppBadge.vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
+import AppLoadingDots from '@/components/app/AppLoadingDots.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import ResearchFeedbackSources from '@/components/school/ResearchFeedbackSources.vue'
 import {
@@ -224,7 +225,7 @@ onBeforeUnmount(() => {
     </header>
     <AppStatusCallout tone="info" title="按需分享一份资料" body="分享仅涉及这份生成草稿和公开来源，草稿可能反映问题中的信息。原始问题、其他消息、测评作答和报告不会共享。分享不表示内容已经核对或发布；撤回后，老师不能继续查看，已发布内容也会停止显示。" />
     <p v-if="statusMessage" class="independent-education-reviews__notice" role="status">{{ statusMessage }}</p>
-    <p v-if="state === 'loading'" class="independent-education-reviews__state" role="status" aria-busy="true">正在读取复核状态…</p>
+    <p v-if="state === 'loading'" class="independent-education-reviews__state" role="status" aria-busy="true">正在读取复核状态<AppLoadingDots /></p>
     <AppStatusCallout v-else-if="state === 'error'" tone="attention" title="研究复核状态暂不可用" :body="requestError"><AppButton variant="secondary" size="sm" @click="load(offset)">重新加载</AppButton></AppStatusCallout>
     <AppCard v-else-if="state === 'ready' && rows.length === 0" class="independent-education-reviews__empty"><strong>当前会话没有可显示的复核记录</strong><p>生成内容须经过独立分享与复核流程后才可能显示。</p></AppCard>
     <div v-else-if="state === 'ready'" class="independent-education-reviews__list">

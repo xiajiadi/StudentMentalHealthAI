@@ -47,7 +47,7 @@ class AssessmentDimensionDto(BaseModel):
 class AssessmentRiskDto(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    level: Literal["normal", "attention", "high", "crisis"]
+    level: Literal["normal", "attention", "high", "crisis", "not_assessed"]
     need_human_review: bool
     reason_codes: list[str]
     ruleset_id: str
@@ -105,6 +105,8 @@ class CurrentItemDto(BaseModel):
     item_id: str | None = None
     prompt: str | None = None
     options: list[CurrentItemOptionDto] = Field(default_factory=list)
+    instructions: str | None = None
+    source_attribution: str | None = None
 
 
 class AssessmentStateDto(BaseModel):

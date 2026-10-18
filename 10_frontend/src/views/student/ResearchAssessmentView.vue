@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, CheckCircle2, RotateCcw } from '@lucide/vue'
 import { RadioGroupIndicator, RadioGroupItem, RadioGroupRoot } from 'reka-ui'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
+import AppLoadingDots from '@/components/app/AppLoadingDots.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import { frontendApi } from '@/services/mock-api'
 import { useSessionStore } from '@/stores/session'
@@ -372,7 +373,7 @@ onBeforeUnmount(() => {
 
     <AppStatusCallout tone="info" title="按来源原文作答" body="题目和选项保持来源文字与原始数值；本页面不生成个人分数、解释或建议。" />
 
-    <AppCard v-if="state === 'loading'" class="research-cat__state" aria-busy="true">正在核对研究会话或本人完成记录…</AppCard>
+    <AppCard v-if="state === 'loading'" class="research-cat__state" aria-busy="true">正在核对研究会话或本人完成记录<AppLoadingDots /></AppCard>
     <AppStatusCallout v-else-if="state === 'error'" tone="critical" title="研究会话暂时不可用" :body="errorMessage">
       <AppButton variant="secondary" size="sm" :loading="pending" @click="sessionRef ? load() : start()">
         <RotateCcw :size="15" aria-hidden="true" />{{ sessionRef ? '重新读取会话' : '重试开始' }}

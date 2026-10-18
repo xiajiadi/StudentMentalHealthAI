@@ -15,6 +15,12 @@ from smhai_backend.domains.authorization import NativeAuthorizationProvider
 from smhai_backend.domains.models import Actor, AssessmentRecord
 from smhai_backend.domains.ports import AssessmentRepository
 from smhai_backend.integrations.cat import CatClient, CatStart
+from smhai_backend.integrations.fixed_form import (
+    advance_who5_session,
+    complete_who5_assessment,
+    is_who5_fixed_form,
+    start_who5_session,
+)
 
 from .schemas import AssessmentStartRequest, ResponseEvent
 
@@ -180,6 +186,7 @@ class AssessmentService:
         )
         if record.assessment["status"] not in {"created", "in_progress"}:
             raise error(ErrorCode.WORKFLOW_CONFLICT, detail="assessment is not accepting responses")
+        fixed_form = is_who5_fixed_form(record)
         if payload.item_id in record.responses:
             if not _same_json_value(record.responses[payload.item_id], payload.response):
                 raise error(
@@ -210,14 +217,25 @@ class AssessmentService:
             self._apply_state(record, session)
             return record
         session = await self._cat_session(record, request_id=request_id, trace_id=trace_id)
-        await self.cat.submit_response(
-            session,
-            item_id=payload.item_id,
-            response=payload.response,
-            request_id=request_id,
-            trace_id=trace_id,
-        )
-        session = await self.cat.state(session, request_id=request_id, trace_id=trace_id)
+        if fixed_form:
+            try:
+                session = advance_who5_session(
+                    session, item_id=payload.item_id, response=payload.response
+                )
+            except ValueError as exc:
+                raise error(
+                    ErrorCode.WORKFLOW_CONFLICT,
+                    detail="assessment response does not match the published fixed form",
+                ) from exc
+        else:
+            await self.cat.submit_response(
+                session,
+                item_id=payload.item_id,
+                response=payload.response,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
+            session = await self.cat.state(session, request_id=request_id, trace_id=trace_id)
         self._sessions[assessment_id] = session
         record = await self._fresh_authorized_record(
             actor, record, action="assessment:write", request_id=request_id, trace_id=trace_id
@@ -302,12 +320,21 @@ class AssessmentService:
                 ErrorCode.WORKFLOW_CONFLICT,
                 detail="assessment has not reached its configured stopping condition",
             )
-        result = await self.cat.complete(
-            session,
-            responses=record.responses,
-            request_id=request_id,
-            trace_id=trace_id,
-        )
+        if is_who5_fixed_form(record):
+            try:
+                result = complete_who5_assessment(record, session)
+            except ValueError as exc:
+                raise error(
+                    ErrorCode.WORKFLOW_CONFLICT,
+                    detail="assessment has not reached its fixed-form completion condition",
+                ) from exc
+        else:
+            result = await self.cat.complete(
+                session,
+                responses=record.responses,
+                request_id=request_id,
+                trace_id=trace_id,
+            )
         record = await self._fresh_authorized_record(
             actor, record, action="assessment:complete", request_id=request_id, trace_id=trace_id
         )
@@ -604,6 +631,14 @@ class AssessmentService:
         ):
             raise error(ErrorCode.WORKFLOW_CONFLICT, detail="CAT session binding changed")
         session = cached or expected_session
+        if is_who5_fixed_form(record):
+            try:
+                return start_who5_session(record, saved_binding or {})
+            except (TypeError, ValueError) as exc:
+                raise error(
+                    ErrorCode.WORKFLOW_CONFLICT,
+                    detail="saved fixed-form assessment binding is unavailable",
+                ) from exc
         try:
             session = await self.cat.state(session, request_id=request_id, trace_id=trace_id)
         except BackendError as exc:

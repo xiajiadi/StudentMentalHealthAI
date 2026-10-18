@@ -4,8 +4,9 @@ import { useRoute } from 'vue-router'
 import { Activity, ArrowRight, Building2, CircleHelp, ClipboardList, RefreshCw, Settings2, UsersRound } from '@lucide/vue'
 import type { DependencyStatusDto } from '@/api/generated/types.gen'
 import AppCard from '@/components/app/AppCard.vue'
-import AppPageHeader from '@/components/app/AppPageHeader.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
+import StudentPageHero from '@/components/student/StudentPageHero.vue'
+import WorkspaceBreadcrumb from '@/components/student/WorkspaceBreadcrumb.vue'
 import AdminSchoolDirectory from '@/components/school/AdminSchoolDirectory.vue'
 import AdminSchoolOperations from '@/components/school/AdminSchoolOperations.vue'
 import AdminOperationsAudit from '@/components/school/AdminOperationsAudit.vue'
@@ -53,18 +54,14 @@ watch(section, (value) => {
 
 <template>
   <main class="content-wrap admin-workspace">
-    <section class="admin-hero" aria-labelledby="admin-title">
-      <img class="admin-hero__flow" :src="'/assets/heartbridge/hero-flow-original.png'" alt="" aria-hidden="true">
-      <div class="admin-hero__copy">
-        <span class="admin-kicker">HEARTBRIDGE · SCHOOL ADMIN</span>
-        <h1 id="admin-title">清晰了解系统，<br>再管理组织事务。</h1>
-        <p>组织和任务操作由服务端按当前学校权限处理。此页面不展示个人测评内容或心理判断。</p>
-        <div class="admin-hero__note"><Activity :size="15" aria-hidden="true" />全链路验证仍在进行</div>
-      </div>
-      <figure class="admin-hero__art"><img :src="'/assets/heartbridge/card-admin-original.png'" alt="" aria-hidden="true"><figcaption>服务能力与组织管理入口</figcaption></figure>
-    </section>
-
-    <AppPageHeader class="admin-heading" :eyebrow="page.eyebrow" :title="page.title" :intro="page.intro" />
+    <WorkspaceBreadcrumb :current="page.title" home-label="学校管理员" home-to="/admin/overview" />
+    <StudentPageHero
+      :eyebrow="page.eyebrow"
+      :title="page.title"
+      :subtitle="page.intro"
+      image="/assets/heartbridge/card-admin-original.png"
+      image-position="center 48%"
+    />
 
     <template v-if="section === 'overview'">
       <AppStatusCallout tone="info" title="合成演示 · 验证进行中" body="班级和任务操作受当前学校权限约束。系统其他流程仍待端到端验证；本页不开放心理内容或安全复核权限。" />
@@ -104,9 +101,9 @@ watch(section, (value) => {
 </template>
 
 <style scoped>
-.admin-workspace { padding-top: 26px; padding-bottom: 56px; animation: page-in 220ms ease both; }.admin-hero { position: relative; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(225px, .8fr); align-items: center; min-height: 300px; overflow: hidden; padding: clamp(23px, 4vw, 42px); border: 1px solid #dbe8ef; border-radius: 20px; background: linear-gradient(112deg, #eef5fa 0%, #f7f9fb 56%, #eaf1f7 100%); }.admin-hero__flow { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .12; pointer-events: none; }.admin-hero__copy { position: relative; z-index: 1; max-width: 570px; }.admin-kicker { color: #54809c; font-size: 10px; font-weight: 800; letter-spacing: .1em; }.admin-hero h1 { margin: 14px 0 12px; color: #2b3d4b; font-family: var(--font-display); font-size: clamp(30px, 4vw, 43px); font-weight: 650; letter-spacing: -.04em; line-height: 1.2; }.admin-hero__copy > p { max-width: 450px; margin: 0; color: #586b79; font-size: 13px; line-height: 1.8; }.admin-hero__note { display: inline-flex; align-items: center; gap: 7px; margin-top: 19px; padding: 8px 11px; border: 1px solid rgb(183 121 31 / 18%); border-radius: 999px; color: #8f651d; background: rgb(255 255 255 / 65%); font-size: 10px; font-weight: 750; }.admin-hero__art { position: relative; justify-self: end; width: min(100%, 240px); margin: 0; text-align: center; }.admin-hero__art img { display: block; width: 100%; max-height: 195px; object-fit: contain; }.admin-hero__art figcaption { margin-top: 5px; color: #71808c; font-size: 10px; }.admin-heading { margin-top: 30px; }
-.admin-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; margin-top: 15px; }.admin-feature { position: relative; min-height: 170px; padding: 18px; }.admin-feature__icon { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 11px; color: #167e9b; background: #e8f6f9; }.admin-feature__icon--teal { color: #388576; background: #e8f4ef; }.admin-feature__state { position: absolute; top: 19px; right: 16px; padding: 5px 8px; border-radius: 999px; color: #996517; background: #fbf2de; font-size: 10px; font-weight: 750; }.admin-feature h2 { margin: 13px 0 5px; color: var(--color-text-primary); font-size: 14px; }.admin-feature p { margin: 0; color: var(--color-text-secondary); font-size: 12px; line-height: 1.65; }.admin-feature a { display: inline-flex; align-items: center; gap: 5px; margin-top: 13px; color: #167e9b; font-size: 11px; font-weight: 750; }
+.admin-workspace { padding-top: 30px; padding-bottom: 56px; animation: page-in 220ms ease both; }
+.admin-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 18px; }.admin-feature { position: relative; min-height: 170px; padding: 20px; }.admin-feature__icon { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 11px; color: var(--color-primary-active); background: #e8f8fc; }.admin-feature__icon--teal { color: #388576; background: #e8f4ef; }.admin-feature__state { position: absolute; top: 20px; right: 18px; padding: 5px 8px; border-radius: 999px; color: #996517; background: #fbf2de; font-size: 10px; font-weight: 750; }.admin-feature h2 { margin: 13px 0 5px; color: var(--color-text-primary); font-size: 14px; }.admin-feature p { margin: 0; color: var(--color-text-secondary); font-size: 12px; line-height: 1.65; }.admin-feature a { display: inline-flex; align-items: center; gap: 5px; margin-top: 13px; color: var(--color-primary-active); font-size: 11px; font-weight: 750; }
 .admin-blocked { display: flex; gap: 14px; margin-bottom: 14px; padding: 21px; }.admin-blocked__icon { display: grid; width: 42px; height: 42px; flex: 0 0 42px; place-items: center; border-radius: 12px; color: #9b6a1b; background: #fbf1dc; }.admin-blocked h2 { margin: 7px 0 6px; color: var(--color-text-primary); font-size: 15px; }.admin-blocked p { max-width: 780px; margin: 0; color: var(--color-text-secondary); font-size: 12px; line-height: 1.7; }.admin-blocked__foot { display: block; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--color-border); color: var(--color-text-muted); font-size: 10px; }
 .health-panel { margin-top: 0; padding: 20px; }.health-panel__heading { display: flex; align-items: center; gap: 12px; }.health-panel__heading h2 { margin: 4px 0; color: var(--color-text-primary); font-size: 15px; }.health-panel__heading p { margin: 0; color: var(--color-text-secondary); font-size: 11px; line-height: 1.6; }.health-refresh { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; margin-left: auto; padding: 0 10px; border: 1px solid var(--color-border); border-radius: 7px; color: var(--color-text-secondary); background: white; cursor: pointer; font-size: 11px; }.health-refresh:disabled { opacity: .6; cursor: wait; }.health-list { margin-top: 17px; border-top: 1px solid var(--color-border); }.health-row { display: grid; grid-template-columns: minmax(105px, .65fr) minmax(0, 1.3fr) 90px; align-items: center; gap: 12px; min-height: 48px; border-bottom: 1px solid var(--color-border); }.health-row__name { color: var(--color-text-primary); font-size: 12px; font-weight: 700; text-transform: capitalize; }.health-row__integration { overflow: hidden; color: var(--color-text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }.health-row__status { display: inline-flex; align-items: center; gap: 6px; justify-self: end; font-size: 10px; font-weight: 750; }.health-row__status i { width: 7px; height: 7px; border-radius: 50%; background: currentcolor; }.health-row__status--ready { color: #287765; }.health-row__status--down { color: #ac392d; }.health-row__status--unknown { color: #9b6a1b; }.health-message { display: flex; align-items: center; gap: 8px; min-height: 58px; margin-top: 14px; padding: 12px; border-radius: 9px; color: var(--color-text-secondary); background: #f7f8f9; font-size: 11px; }.health-message--error { color: #8f651d; background: #fcf7eb; }.health-disclosure { display: flex; align-items: flex-start; gap: 10px; margin-top: 13px; padding: 14px; color: #6d7c88; }.health-disclosure p { margin: 0; font-size: 11px; line-height: 1.65; }
-@keyframes page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } } @media(max-width:720px) { .admin-workspace { padding-top: 18px; }.admin-hero { grid-template-columns: 1fr; min-height: 0; }.admin-hero__art { display: none; }.admin-heading { margin-top: 24px; }.admin-summary { grid-template-columns: 1fr; }.admin-blocked,.health-panel { padding: 16px; }.health-panel__heading { align-items: flex-start; }.health-row { grid-template-columns: minmax(0,1fr) auto; gap: 5px 10px; padding: 9px 0; }.health-row__integration { grid-column: 1; grid-row: 2; }.health-row__status { grid-column: 2; grid-row: 1 / span 2; } }
+@keyframes page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } } @media(max-width:900px) { .admin-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } } @media(max-width:720px) { .admin-workspace { padding-top: 18px; }.admin-summary { grid-template-columns: 1fr; }.admin-blocked,.health-panel { padding: 16px; }.health-panel__heading { align-items: flex-start; }.health-row { grid-template-columns: minmax(0,1fr) auto; gap: 5px 10px; padding: 9px 0; }.health-row__integration { grid-column: 1; grid-row: 2; }.health-row__status { grid-column: 2; grid-row: 1 / span 2; } }
 </style>
