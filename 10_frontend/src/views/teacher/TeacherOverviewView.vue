@@ -137,6 +137,13 @@ const revokedEnrollmentCount = computed(() => statusBreakdown.value.find((item) 
 const statusCountTotal = computed(() => statusBreakdown.value.reduce((sum, item) => sum + (item.key === 'revoked' ? 0 : item.value), 0))
 const statusCountsMatch = computed(() => statusCountTotal.value === activeEnrollmentCount.value)
 
+const completionScaleColors = ['#e7f5f8', '#a5dce5', '#56bfd0', '#159bb6'] as const
+const completionColorForRate = (rate: number | null) => {
+  const normalizedRate = Math.min(100, Math.max(0, rate ?? 0))
+  const colorIndex = Math.min(completionScaleColors.length - 1, Math.floor(normalizedRate / 100 * completionScaleColors.length))
+  return completionScaleColors[colorIndex]
+}
+
 const classCompletionOption = computed<EChartsOption>(() => ({
   color: [teacherChartColors.sky],
   animation: false,
@@ -179,7 +186,7 @@ const classCompletionOption = computed<EChartsOption>(() => ({
     splitLine: { lineStyle: { color: '#edf1f5', type: 'solid' } },
   },
   series: [{
-    name: '完成率', type: 'bar', data: classStats.value.map((item) => item.rate), barMaxWidth: 42,
+    name: '完成率', type: 'bar', data: classStats.value.map((item) => ({ value: item.rate, itemStyle: { color: completionColorForRate(item.rate) } })), barMaxWidth: 42,
     itemStyle: { color: '#39b0c7', borderRadius: [5, 5, 0, 0] },
     label: { show: true, position: 'top', color: '#477f91', fontSize: 10, fontWeight: 700, formatter: (params) => `${Number(params.value).toFixed(1)}%` },
     emphasis: { focus: 'series', itemStyle: { color: '#16a5bf' } },
@@ -255,12 +262,21 @@ const heatmapOption = computed<EChartsOption>(() => ({
     type: 'category', inverse: true, data: heatmapCells.value.classLabels.map((item) => classLabel(item)), splitArea: { show: true },
     axisTick: { show: false }, axisLine: { lineStyle: { color: '#e5ecf0' } }, axisLabel: { color: '#8793a1', fontSize: 10 },
   },
-  visualMap: { min: 0, max: 100, calculable: false, show: false, inRange: { color: ['#e7f5f8', '#a5dce5', '#56bfd0', '#159bb6'] } },
+  visualMap: { min: 0, max: 100, calculable: false, show: false, inRange: { color: [...completionScaleColors] } },
   series: [{
     name: '完成率', type: 'heatmap', data: heatmapCells.value.data,
     label: { show: true, formatter: (params) => `${Number((params.value as number[])[2]).toFixed(0)}%`, color: '#315d6a', fontSize: 9, fontWeight: 700 },
     itemStyle: { borderColor: '#fff', borderWidth: 3, borderRadius: 6 },
-    emphasis: { itemStyle: { borderColor: '#078da9', borderWidth: 2, shadowBlur: 7, shadowColor: 'rgb(8 85 105 / 16%)' } },
+    emphasis: {
+      itemStyle: {
+        borderColor: 'rgba(0, 142, 171, 0.52)',
+        borderWidth: 1.25,
+        shadowBlur: 11,
+        shadowColor: 'rgba(0, 142, 171, 0.12)',
+        shadowOffsetX: 0,
+        shadowOffsetY: 0,
+      },
+    },
   }],
 }))
 
@@ -406,7 +422,14 @@ const handleRefresh = () => {
         <AppCard class="overview-chart-card">
           <header class="overview-chart-card__header">
             <span class="overview-chart-card__icon"><ChartColumn :size="16" aria-hidden="true" /></span>
-            <div><h2>班级完成率对比</h2><p>不同授权班级的测评任务完成情况</p></div>
+            <div>
+              <h2>班级完成率对比</h2>
+              <div class="overview-chart-card__scale" role="img" aria-label="完成率由低到高，颜色由浅变深">
+                <span>低完成率</span>
+                <span v-for="color in completionScaleColors" :key="color" class="overview-chart-card__scale-swatch" :style="{ backgroundColor: color }" aria-hidden="true"></span>
+                <span>高完成率</span>
+              </div>
+            </div>
             <span class="overview-chart-card__type">竖向柱状图</span>
           </header>
           <TeacherProgressChart v-if="classStats.length" :option="classCompletionOption" label="授权班级测评完成率竖向柱状图" :height="282" />
@@ -502,6 +525,8 @@ const handleRefresh = () => {
 .overview-chart-card__header > div { flex: 1; min-width: 0; }
 .overview-chart-card__header h2,.overview-task-table-card__header h2 { margin: 0 0 4px; color: #344657; font-size: 13px; font-weight: 700; }
 .overview-chart-card__header p,.overview-task-table-card__header p { margin: 0; color: #9aa7b3; font-size: 9px; line-height: 1.45; }
+.overview-chart-card__scale { display: flex; align-items: center; gap: 4px; color: #9aa7b3; font-size: 9px; line-height: 1.3; white-space: nowrap; }
+.overview-chart-card__scale-swatch { width: 10px; height: 7px; flex: 0 0 10px; border-radius: 2px; }
 .overview-chart-card__type { padding-top: 3px; color: #a2afba; font-size: 9px; white-space: nowrap; }
 .overview-chart-empty,.overview-table-empty { display: grid; min-height: 254px; place-items: center; padding: 20px; color: #98a6b2; font-size: 11px; text-align: center; }
 .overview-task-table-card { display: grid; gap: 10px; min-width: 0; padding: 16px; border: 1px solid #e7edf2; border-radius: 12px; background: #fff; box-shadow: none; }
