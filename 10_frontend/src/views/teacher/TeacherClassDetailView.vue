@@ -20,6 +20,7 @@ import {
   teacherTaskPhase,
   teacherTaskPhaseLabel,
   teacherTaskStatusLabel,
+  teacherTaskStatusPalette,
 } from '@/utils/teacher-task-progress'
 
 const route = useRoute()
@@ -44,11 +45,10 @@ const taskChartOption = computed<EChartsOption>(() => {
     },
     yAxis: { type: 'value', minInterval: 1, axisLabel: { color: '#75838a', fontSize: 10 }, splitLine: { lineStyle: { color: '#edf2f3' } } },
     series: [
-      { name: '未开始', type: 'bar', stack: 'events', barMaxWidth: 28, data: tasks.map((task) => taskProgressCount(task, 'not_started_count')), itemStyle: { color: '#c9e9f0' } },
-      { name: '准备中', type: 'bar', stack: 'events', barMaxWidth: 28, data: tasks.map((task) => taskProgressCount(task, 'created_count')), itemStyle: { color: '#8acbd9' } },
-      { name: '进行中', type: 'bar', stack: 'events', barMaxWidth: 28, data: tasks.map((task) => taskProgressCount(task, 'in_progress_count')), itemStyle: { color: '#36abc1' } },
-      { name: '已完成', type: 'bar', stack: 'events', barMaxWidth: 28, data: tasks.map((task) => taskProgressCount(task, 'completed_count')), itemStyle: { color: '#117f9a' } },
-      { name: '已结束 / 不可继续', type: 'bar', stack: 'events', barMaxWidth: 28, data: tasks.map(taskEndedCount), itemStyle: { color: '#aebfc7', borderRadius: [4, 4, 0, 0] } },
+      { name: '未开始', type: 'bar', stack: 'events', barMaxWidth: 28, data: tasks.map((task) => taskProgressCount(task, 'not_started_count')), itemStyle: { color: teacherTaskStatusPalette.notStarted.color } },
+      { name: '进行中', type: 'bar', stack: 'events', barMaxWidth: 28, data: tasks.map((task) => taskProgressCount(task, 'created_count') + taskProgressCount(task, 'in_progress_count')), itemStyle: { color: teacherTaskStatusPalette.inProgress.color } },
+      { name: '已完成', type: 'bar', stack: 'events', barMaxWidth: 28, data: tasks.map((task) => taskProgressCount(task, 'completed_count')), itemStyle: { color: teacherTaskStatusPalette.completed.color } },
+      { name: '已结束 / 不可继续', type: 'bar', stack: 'events', barMaxWidth: 28, data: tasks.map(taskEndedCount), itemStyle: { color: teacherTaskStatusPalette.ended.color, borderRadius: [4, 4, 0, 0] } },
     ],
   }
 })

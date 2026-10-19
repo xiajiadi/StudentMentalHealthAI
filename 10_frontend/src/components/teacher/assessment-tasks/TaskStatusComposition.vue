@@ -2,6 +2,7 @@
 import { computed, type Component } from 'vue'
 import { Activity, CalendarDays, Check, Clock3, RotateCcw } from '@lucide/vue'
 import type { PlannerTask } from '@/utils/teacher-assessment-planner'
+import { teacherTaskStatusPalette } from '@/utils/teacher-task-progress'
 
 const props = defineProps<{ task: PlannerTask }>()
 
@@ -10,13 +11,16 @@ interface StatusSegment {
   label: string
   value: number
   icon: Component
+  color: string
+  ink: string
+  wash: string
 }
 
 const segments = computed<StatusSegment[]>(() => [
-  { key: 'completed', label: '已完成', value: props.task.completedCount, icon: Check },
-  { key: 'in-progress', label: '进行中', value: props.task.inProgressCount, icon: Activity },
-  { key: 'not-started', label: '尚未开始', value: props.task.notStartedCount, icon: CalendarDays },
-  { key: 'ended', label: '已结束或不可继续', value: props.task.endedCount, icon: Clock3 },
+  { key: 'completed', label: '已完成', value: props.task.completedCount, icon: Check, ...teacherTaskStatusPalette.completed },
+  { key: 'in-progress', label: '进行中', value: props.task.inProgressCount, icon: Activity, ...teacherTaskStatusPalette.inProgress },
+  { key: 'not-started', label: '尚未开始', value: props.task.notStartedCount, icon: CalendarDays, ...teacherTaskStatusPalette.notStarted },
+  { key: 'ended', label: '已结束或不可继续', value: props.task.endedCount, icon: Clock3, ...teacherTaskStatusPalette.ended },
 ])
 
 const statusTotal = computed(() => segments.value.reduce((sum, segment) => sum + segment.value, 0))
@@ -35,8 +39,7 @@ const widthFor = (value: number) => `${statusTotal.value ? value / statusTotal.v
         v-for="segment in segments"
         :key="segment.key"
         class="task-status-composition__segment"
-        :class="`task-status-composition__segment--${segment.key}`"
-        :style="{ width: widthFor(segment.value) }"
+        :style="{ width: widthFor(segment.value), backgroundColor: segment.color }"
       ></span>
     </div>
 
@@ -45,9 +48,8 @@ const widthFor = (value: number) => `${statusTotal.value ? value / statusTotal.v
         v-for="segment in segments"
         :key="segment.key"
         class="task-status-composition__item"
-        :class="`task-status-composition__item--${segment.key}`"
       >
-        <span class="task-status-composition__icon" aria-hidden="true">
+        <span class="task-status-composition__icon" :style="{ color: segment.ink, backgroundColor: segment.wash }" aria-hidden="true">
           <component :is="segment.icon" :size="16" :stroke-width="2" />
         </span>
         <span class="task-status-composition__copy">
@@ -73,16 +75,9 @@ const widthFor = (value: number) => `${statusTotal.value ? value / statusTotal.v
 .task-status-composition__header > span { color: var(--color-text-muted); font-size: 10px; font-variant-numeric: tabular-nums; }
 .task-status-composition__bar { display: flex; height: 12px; overflow: hidden; border-radius: 999px; background: var(--color-surface-skeleton); }
 .task-status-composition__segment { height: 100%; min-width: 0; transition: width var(--motion-normal) ease; }
-.task-status-composition__segment--completed { background: var(--color-primary); }
-.task-status-composition__segment--in-progress { background: #42a792; }
-.task-status-composition__segment--not-started { background: #a8cfe1; }
-.task-status-composition__segment--ended { background: var(--color-attention); }
 .task-status-composition__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
 .task-status-composition__item { display: flex; min-width: 0; min-height: 57px; align-items: center; gap: 9px; padding: 9px 10px; border: 1px solid var(--color-border); border-radius: 9px; background: var(--color-surface); }
 .task-status-composition__icon { display: inline-grid; width: 28px; height: 28px; flex: 0 0 28px; place-items: center; border-radius: 8px; color: var(--color-primary-active); background: var(--color-info-wash); }
-.task-status-composition__item--in-progress .task-status-composition__icon { color: #19727d; background: var(--color-support-wash); }
-.task-status-composition__item--not-started .task-status-composition__icon { color: #477b88; background: #edf6fa; }
-.task-status-composition__item--ended .task-status-composition__icon { color: #8a5b17; background: var(--color-attention-wash); }
 .task-status-composition__copy { display: grid; min-width: 0; gap: 2px; color: var(--color-text-muted); font-size: 10px; }
 .task-status-composition__copy > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task-status-composition__copy strong { color: var(--color-text-primary); font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }

@@ -17,6 +17,13 @@ export const teacherChartColors = {
   muted: '#737985',
 } as const
 
+export const teacherTaskStatusPalette = {
+  completed: { color: '#079db7', ink: '#08798e', wash: '#e6f6f8' },
+  inProgress: { color: '#76c8b8', ink: '#27796c', wash: '#e9f6f2' },
+  notStarted: { color: '#5b97b4', ink: '#356d87', wash: '#e8f1f6' },
+  ended: { color: '#e1a76b', ink: '#875615', wash: '#fbf1e4' },
+} as const
+
 export type TeacherTaskPhase = 'upcoming' | 'in_progress' | 'ended' | 'cancelled' | 'unpublished'
 
 export interface TeacherClassSummary {

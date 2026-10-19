@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue'
 import TaskProgressRing from '@/components/teacher/assessment-tasks/TaskProgressRing.vue'
 import { formatPlannerDate, type PlannerFilterPhase, type PlannerTask } from '@/utils/teacher-assessment-planner'
+import { teacherTaskStatusPalette } from '@/utils/teacher-task-progress'
 
 export interface PlannerLane {
   phase: Exclude<PlannerFilterPhase, 'all'>
@@ -23,6 +24,11 @@ const laneSignature = () => props.lanes.map((lane) => `${lane.phase}:${lane.task
 const visibleTasks = (lane: PlannerLane) => lane.tasks.slice(0, pageSizes.value[lane.phase] ?? 8)
 const showMore = (phase: PlannerLane['phase']) => { pageSizes.value[phase] = (pageSizes.value[phase] ?? 8) + 8 }
 const taskPeriod = (task: PlannerTask) => `${formatPlannerDate(task.opensAt, '未设置开始日期')} — ${formatPlannerDate(task.dueAt, '未设置截止日期')}`
+const statusTone = (phase: PlannerTask['phase']) => {
+  if (phase === 'in_progress') return teacherTaskStatusPalette.inProgress
+  if (phase === 'upcoming') return teacherTaskStatusPalette.notStarted
+  return teacherTaskStatusPalette.ended
+}
 
 watch(laneSignature, () => { pageSizes.value = {} })
 </script>
@@ -32,7 +38,7 @@ watch(laneSignature, () => { pageSizes.value = {} })
     <div class="planner-kanban__lanes" :style="{ '--lane-count': lanes.length }">
       <section v-for="lane in lanes" :key="lane.phase" class="planner-kanban-lane" :class="`planner-kanban-lane--${lane.phase}`" :aria-label="`${lane.label} ${lane.tasks.length} 项`">
         <header class="planner-kanban-lane__header">
-          <span class="planner-kanban-lane__mark" aria-hidden="true"></span>
+          <span class="planner-kanban-lane__mark" :style="{ backgroundColor: statusTone(lane.phase).color }" aria-hidden="true"></span>
           <h2>{{ lane.label }}</h2>
           <span class="planner-kanban-lane__count">{{ lane.tasks.length }}</span>
         </header>
@@ -49,12 +55,12 @@ watch(laneSignature, () => { pageSizes.value = {} })
           >
             <span class="planner-kanban-card__top">
               <strong class="planner-kanban-card__name">{{ task.label }}</strong>
-              <TaskProgressRing :rate="task.completionRate" :label="`${task.label}完成率`" :size="56" />
+              <TaskProgressRing :rate="task.completionRate" :label="`${task.label}完成率`" :size="56" :value-size="16" />
             </span>
             <span class="planner-kanban-card__class">{{ task.classLabel }}</span>
             <span class="planner-kanban-card__dates">{{ taskPeriod(task) }}</span>
             <span class="planner-kanban-card__footer">
-              <span class="planner-task-status" :class="`planner-task-status--${task.phase}`">{{ task.phaseLabel }}</span>
+              <span class="planner-task-status" :style="{ color: statusTone(task.phase).ink, backgroundColor: statusTone(task.phase).wash }">{{ task.phaseLabel }}</span>
               <span class="planner-kanban-card__progress">{{ task.completedCount }} / {{ task.activeCount }}</span>
             </span>
           </button>
@@ -75,9 +81,6 @@ watch(laneSignature, () => { pageSizes.value = {} })
 .planner-kanban-lane { display: grid; min-width: 0; gap: 10px; padding: 12px; border: 1px solid var(--color-border); border-radius: var(--radius-card); background: var(--color-surface-blue); }
 .planner-kanban-lane__header { display: flex; min-width: 0; align-items: center; gap: 8px; padding: 0 2px 2px; }
 .planner-kanban-lane__mark { width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; background: #8ba0ad; }
-.planner-kanban-lane--in_progress .planner-kanban-lane__mark { background: var(--color-primary); }
-.planner-kanban-lane--upcoming .planner-kanban-lane__mark { background: #65adbf; }
-.planner-kanban-lane--ended .planner-kanban-lane__mark,.planner-kanban-lane--cancelled .planner-kanban-lane__mark,.planner-kanban-lane--unpublished .planner-kanban-lane__mark { background: #8c929c; }
 .planner-kanban-lane__header h2 { overflow: hidden; flex: 1; margin: 0; color: var(--color-text-primary); font-size: 12px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
 .planner-kanban-lane__count { display: inline-grid; min-width: 23px; height: 23px; place-items: center; padding: 0 6px; border-radius: 999px; color: var(--color-text-secondary); background: var(--color-surface); font-size: 10px; font-variant-numeric: tabular-nums; }
 .planner-kanban-lane__cards { display: grid; align-content: start; gap: 8px; }
@@ -86,13 +89,11 @@ watch(laneSignature, () => { pageSizes.value = {} })
 .planner-kanban-card:focus-visible,.planner-kanban-lane__more:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 .planner-kanban-card--selected { border-color: var(--color-primary); box-shadow: 0 0 0 2px rgb(0 177 226 / 10%); }
 .planner-kanban-card__top { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: 8px; }
-.planner-kanban-card__name { overflow: hidden; min-width: 0; padding-top: 2px; color: var(--color-text-primary); font-size: 12px; font-weight: 650; line-height: 1.4; text-overflow: ellipsis; }
-.planner-kanban-card__class,.planner-kanban-card__dates { overflow: hidden; color: var(--color-text-muted); font-size: 10px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+.planner-kanban-card__name { overflow: hidden; min-width: 0; padding-top: 2px; color: var(--color-text-primary); font-size: 14px; font-weight: 650; line-height: 1.4; text-overflow: ellipsis; }
+.planner-kanban-card__class,.planner-kanban-card__dates { overflow: hidden; color: var(--color-text-muted); font-size: 12px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
 .planner-kanban-card__footer { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; }
-.planner-kanban-card__progress { color: var(--color-text-muted); font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.planner-task-status { display: inline-flex; max-width: 100%; align-items: center; overflow: hidden; padding: 3px 7px; border-radius: 999px; color: #19727d; background: var(--color-support-wash); font-size: 9px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
-.planner-task-status--upcoming,.planner-task-status--unpublished { color: #236b88; background: var(--color-info-wash); }
-.planner-task-status--ended,.planner-task-status--cancelled { color: var(--color-text-muted); background: var(--color-surface-skeleton); }
+.planner-kanban-card__progress { color: var(--color-text-muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.planner-task-status { display: inline-flex; max-width: 100%; align-items: center; overflow: hidden; padding: 3px 7px; border-radius: 999px; font-size: 11px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
 .planner-kanban-lane__more { min-height: 32px; border: 1px dashed var(--color-border-strong); border-radius: 8px; color: var(--color-primary-active); background: transparent; font-size: 10px; cursor: pointer; }
 .planner-kanban-lane__more:hover { background: var(--color-info-wash); }
 .planner-kanban-lane__empty { display: grid; min-height: 94px; place-items: center; padding: 12px; border: 1px dashed var(--color-border-strong); border-radius: 9px; color: var(--color-text-muted); font-size: 10px; text-align: center; }

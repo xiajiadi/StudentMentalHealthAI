@@ -60,6 +60,11 @@ const phaseOptions = computed(() => {
   return options
 })
 
+const setPhaseFilter = (value: string) => {
+  const option = phaseOptions.value.find((candidate) => candidate.value === value)
+  if (option) phaseFilter.value = option.value
+}
+
 const filteredTasks = computed(() => {
   const query = searchQuery.value.trim().toLocaleLowerCase()
   return plannerTasks.value
@@ -158,12 +163,14 @@ watch(filteredTasks, (tasks) => {
         :aria-label="isDemo ? '按班级筛选（合成数据预览）' : '按授权班级筛选'"
       />
 
-      <label class="assessment-status-filter">
-        <span class="sr-only">按任务状态筛选</span>
-        <select v-model="phaseFilter" :disabled="state !== 'ready' || !rows.length" aria-label="按任务状态筛选">
-          <option v-for="option in phaseOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-        </select>
-      </label>
+      <TeacherClassSelect
+        class="assessment-status-filter"
+        :model-value="phaseFilter"
+        :options="phaseOptions"
+        :disabled="state !== 'ready' || !rows.length"
+        aria-label="按任务状态筛选"
+        @update:model-value="setPhaseFilter"
+      />
 
       <div class="assessment-view-switch" role="group" aria-label="任务视图">
         <button type="button" :aria-pressed="viewMode === 'calendar'" @click="viewMode = 'calendar'">
@@ -244,12 +251,13 @@ watch(filteredTasks, (tasks) => {
 .assessment-class-filter { min-width: 0; }
 .assessment-class-filter :deep(.teacher-class-select__trigger) { min-width: 0; min-height: 38px; border-radius: var(--radius-button); }
 .assessment-class-filter :deep(.teacher-class-select__menu) { z-index: 50; }
-.assessment-status-filter select { width: 100%; min-height: 38px; padding: 0 10px; border: 1px solid var(--color-border-strong); border-radius: var(--radius-button); color: var(--color-text-primary); background: var(--color-surface); font-size: 11px; cursor: pointer; }
-.assessment-status-filter select:disabled { cursor: not-allowed; opacity: .58; }
+.assessment-status-filter { min-width: 0; }
+.assessment-status-filter :deep(.teacher-class-select__trigger) { min-width: 0; min-height: 38px; border-radius: var(--radius-button); }
+.assessment-status-filter :deep(.teacher-class-select__menu) { z-index: 50; }
 .assessment-view-switch { display: flex; min-height: 38px; align-items: center; gap: 3px; padding: 3px; border-radius: var(--radius-button); background: var(--color-surface-blue); }
 .assessment-view-switch button { display: inline-flex; min-width: 62px; min-height: 31px; align-items: center; justify-content: center; gap: 5px; padding: 0 9px; border: 0; border-radius: 6px; color: var(--color-text-muted); background: transparent; font-size: 10px; cursor: pointer; transition: color var(--motion-fast) ease, background-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease; }
 .assessment-view-switch button[aria-pressed='true'] { color: var(--color-primary-active); background: var(--color-surface); box-shadow: 0 1px 4px rgb(31 63 78 / 12%); font-weight: 650; }
-.assessment-view-switch button:focus-visible,.assessment-status-filter select:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.assessment-view-switch button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 .assessment-clear-filters { justify-self: end; margin-top: -6px; padding: 3px 7px; border: 0; color: var(--color-primary-active); background: transparent; font-size: 10px; cursor: pointer; }
 .assessment-clear-filters:hover { text-decoration: underline; }
 .assessment-summary { display: flex; min-height: 22px; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; color: var(--color-text-muted); font-size: 11px; }

@@ -11,7 +11,8 @@ const props = withDefaults(defineProps<{
   rate: number | null
   label: string
   size?: number
-}>(), { size: 58 })
+  valueSize?: number
+}>(), { size: 58, valueSize: 14 })
 
 const root = ref<HTMLDivElement | null>(null)
 const chartHost = ref<HTMLDivElement | null>(null)
@@ -68,7 +69,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="root" class="task-progress-ring" :style="{ width: `${size}px`, height: `${size}px` }" role="img" :aria-label="`${label}：${centerLabel}`">
+  <div ref="root" class="task-progress-ring" :style="{ width: `${size}px`, height: `${size}px`, '--task-progress-ring-value-size': `${valueSize}px` }" role="img" :aria-label="`${label}：${centerLabel}`">
     <div ref="chartHost" class="task-progress-ring__chart" aria-hidden="true"></div>
     <span class="task-progress-ring__value" aria-hidden="true">{{ centerLabel }}</span>
   </div>
@@ -77,5 +78,5 @@ onBeforeUnmount(() => {
 <style scoped>
 .task-progress-ring { position: relative; flex: 0 0 auto; }
 .task-progress-ring__chart { position: absolute; inset: 0; }
-.task-progress-ring__value { position: absolute; inset: 0; display: grid; place-items: center; color: var(--color-primary-active); font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; pointer-events: none; }
+.task-progress-ring__value { position: absolute; inset: 0; display: grid; place-items: center; color: var(--color-primary-active); font-size: var(--task-progress-ring-value-size); font-weight: 700; font-variant-numeric: tabular-nums; pointer-events: none; }
 </style>

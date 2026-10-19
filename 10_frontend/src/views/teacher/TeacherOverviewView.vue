@@ -17,6 +17,7 @@ import {
   teacherEnrollmentStatusBreakdown,
   teacherTaskPhase,
   teacherTaskPhaseLabel,
+  teacherTaskStatusPalette,
 } from '@/utils/teacher-task-progress'
 
 type DataMode = 'demo' | 'real'
@@ -251,7 +252,6 @@ const classCompletionOption = computed<EChartsOption>(() => ({
 }))
 
 const statusOption = computed<EChartsOption>(() => ({
-  color: ['#08a9c7', '#80cbbb', '#d7e6ed', '#aab8c2'],
   animation: false,
   tooltip: { ...overviewTooltipStyle, trigger: 'item', formatter: '{b}<br/>{c} 人次（{d}%）' },
   legend: {
@@ -271,7 +271,11 @@ const statusOption = computed<EChartsOption>(() => ({
       color: '#8c9aa7', fontSize: 12, lineHeight: 21, fontWeight: 600,
     },
     emphasis: { scale: true, scaleSize: 5, label: { show: false } },
-    data: statusRingItems.value.map((item) => ({ name: item.label, value: item.value })),
+    data: statusRingItems.value.map((item) => ({
+      name: item.label,
+      value: item.value,
+      itemStyle: { color: teacherTaskStatusPalette[item.key as keyof typeof teacherTaskStatusPalette].color },
+    })),
   }],
   media: [{
     query: { maxWidth: 360 },

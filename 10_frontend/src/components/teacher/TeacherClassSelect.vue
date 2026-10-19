@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
 import { Check, ChevronDown } from '@lucide/vue'
 
 export interface TeacherClassOption {
@@ -26,7 +26,7 @@ const listbox = ref<HTMLElement | null>(null)
 const isOpen = ref(false)
 const isKeyboardMode = ref(false)
 const activeIndex = ref(0)
-const listboxId = 'teacher-class-select-listbox'
+const listboxId = `teacher-class-select-listbox-${useId()}`
 
 const selectedIndex = computed(() => props.options.findIndex((option) => option.value === props.modelValue))
 const selectedLabel = computed(() => props.options[selectedIndex.value]?.label ?? '')
