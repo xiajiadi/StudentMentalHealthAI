@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { CalendarDays } from '@lucide/vue'
 import type { PlannerAgendaItem } from '@/utils/teacher-assessment-planner'
 
 const props = defineProps<{
@@ -33,7 +34,7 @@ const eventText = (event: PlannerAgendaItem['events'][number]) => `${event.kind 
     </header>
 
     <div v-if="!items.length" class="planner-agenda__empty" role="status">
-      <span class="planner-agenda__empty-mark" aria-hidden="true"></span>
+      <span class="planner-agenda__empty-icon" aria-hidden="true"><CalendarDays :size="22" :stroke-width="1.8" /></span>
       <strong>当日没有任务安排</strong>
       <span>选择其他日期查看日程</span>
     </div>
@@ -95,10 +96,10 @@ const eventText = (event: PlannerAgendaItem['events'][number]) => `${event.kind 
 .planner-task-status--upcoming,.planner-task-status--unpublished { color: #236b88; background: var(--color-info-wash); }
 .planner-task-status--ended,.planner-task-status--cancelled { color: var(--color-text-muted); background: var(--color-surface-skeleton); }
 .planner-agenda-item__completion { color: var(--color-text-muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.planner-agenda__empty { display: grid; min-height: 170px; align-content: center; justify-items: center; gap: 7px; padding: 16px; color: var(--color-text-muted); text-align: center; }
-.planner-agenda__empty strong { color: var(--color-text-secondary); font-size: 12px; font-weight: 600; }
-.planner-agenda__empty > span:last-child { font-size: 10px; }
-.planner-agenda__empty-mark { width: 28px; height: 28px; border: 1px solid var(--color-border-strong); border-radius: 50%; background: var(--color-surface-soft); }
+.planner-agenda__empty { display: grid; min-height: 170px; align-content: center; justify-items: center; gap: 8px; padding: 16px; color: var(--color-text-muted); text-align: center; }
+.planner-agenda__empty strong { color: var(--color-text-secondary); font-size: 14px; font-weight: 600; }
+.planner-agenda__empty > span:last-child { font-size: 12px; }
+.planner-agenda__empty-icon { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 11px; color: var(--color-primary-active); background: var(--color-info-wash); }
 .planner-agenda__more { align-self: center; padding: 6px 9px; border: 0; border-radius: var(--radius-button); color: var(--color-primary-active); background: transparent; font-size: 10px; cursor: pointer; }
 .planner-agenda__more:hover { background: var(--color-info-wash); }
 </style>

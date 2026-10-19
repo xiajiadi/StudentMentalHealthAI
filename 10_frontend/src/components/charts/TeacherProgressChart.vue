@@ -2,18 +2,23 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as echarts from 'echarts/core'
 import type { ECharts, EChartsOption } from 'echarts/core'
-import { BarChart, HeatmapChart, LineChart, PieChart } from 'echarts/charts'
-import { GridComponent, LegendComponent, TooltipComponent, VisualMapComponent } from 'echarts/components'
+import { BarChart, HeatmapChart, LineChart, PieChart, ScatterChart } from 'echarts/charts'
+import { DataZoomComponent, GridComponent, LegendComponent, TooltipComponent, VisualMapComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 
-echarts.use([BarChart, HeatmapChart, LineChart, PieChart, GridComponent, LegendComponent, TooltipComponent, VisualMapComponent, CanvasRenderer])
+echarts.use([BarChart, HeatmapChart, LineChart, PieChart, ScatterChart, DataZoomComponent, GridComponent, LegendComponent, TooltipComponent, VisualMapComponent, CanvasRenderer])
 
 const props = withDefaults(defineProps<{
   option: EChartsOption
   label: string
   summary?: string
   height?: number
-}>(), { height: 270 })
+  interactive?: boolean
+}>(), { height: 270, interactive: false })
+
+const emit = defineEmits<{
+  select: [taskRef: string]
+}>()
 
 const root = ref<HTMLElement | null>(null)
 let chart: ECharts | null = null
@@ -23,9 +28,18 @@ const render = () => {
   if (chart) chart.setOption(props.option, true)
 }
 
+const onChartClick = (event: unknown) => {
+  if (!props.interactive || typeof event !== 'object' || event === null || !('data' in event)) return
+  const data = event.data
+  if (typeof data !== 'object' || data === null || !('taskRef' in data)) return
+  const taskRef = data.taskRef
+  if (typeof taskRef === 'string') emit('select', taskRef)
+}
+
 onMounted(() => {
   if (!root.value) return
   chart = echarts.init(root.value, undefined, { renderer: 'canvas' })
+  chart.on('click', onChartClick)
   render()
   resizeObserver = new ResizeObserver(() => chart?.resize())
   resizeObserver.observe(root.value)

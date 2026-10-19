@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
-import { Check, ChevronDown } from '@lucide/vue'
+import { Check, ChevronDown, Search } from '@lucide/vue'
 
 export interface TeacherClassOption {
   value: string
@@ -12,9 +12,11 @@ const props = withDefaults(defineProps<{
   options: TeacherClassOption[]
   ariaLabel?: string
   disabled?: boolean
+  searchable?: boolean
 }>(), {
   ariaLabel: '按班级筛选',
   disabled: false,
+  searchable: false,
 })
 
 const emit = defineEmits<{
@@ -23,24 +25,31 @@ const emit = defineEmits<{
 
 const root = ref<HTMLElement | null>(null)
 const listbox = ref<HTMLElement | null>(null)
+const trigger = ref<HTMLButtonElement | null>(null)
+const searchInput = ref<HTMLInputElement | null>(null)
 const isOpen = ref(false)
 const isKeyboardMode = ref(false)
 const activeIndex = ref(0)
+const searchQuery = ref('')
 const listboxId = `teacher-class-select-listbox-${useId()}`
 
 const selectedIndex = computed(() => props.options.findIndex((option) => option.value === props.modelValue))
 const selectedLabel = computed(() => props.options[selectedIndex.value]?.label ?? '')
-const activeDescendantId = computed(() => isOpen.value && props.options[activeIndex.value]
+const visibleOptions = computed(() => {
+  const query = searchQuery.value.trim().toLocaleLowerCase()
+  return props.options.filter((option) => !query || option.label.toLocaleLowerCase().includes(query))
+})
+const activeDescendantId = computed(() => isOpen.value && visibleOptions.value[activeIndex.value]
   ? `${listboxId}-option-${activeIndex.value}`
   : undefined)
 
 const setActiveIndex = (index: number) => {
-  if (!props.options.length) {
+  if (!visibleOptions.value.length) {
     activeIndex.value = 0
     return
   }
 
-  activeIndex.value = Math.max(0, Math.min(index, props.options.length - 1))
+  activeIndex.value = Math.max(0, Math.min(index, visibleOptions.value.length - 1))
   void nextTick(() => {
     listbox.value?.querySelector<HTMLElement>(`[data-option-index="${activeIndex.value}"]`)?.scrollIntoView({ block: 'nearest' })
   })
@@ -48,16 +57,20 @@ const setActiveIndex = (index: number) => {
 
 const openMenu = (index = selectedIndex.value) => {
   if (props.disabled || !props.options.length) return
+  searchQuery.value = ''
   isOpen.value = true
   setActiveIndex(index < 0 ? 0 : index)
+  if (props.searchable) void nextTick(() => searchInput.value?.focus())
 }
 
 const closeMenu = () => {
   isOpen.value = false
+  searchQuery.value = ''
+  isKeyboardMode.value = false
 }
 
 const commitOption = (index: number) => {
-  const option = props.options[index]
+  const option = visibleOptions.value[index]
   if (!option) return
   emit('update:modelValue', option.value)
   closeMenu()
@@ -80,6 +93,7 @@ const onTriggerKeydown = (event: KeyboardEvent) => {
   if (event.key === 'Escape' && isOpen.value) {
     event.preventDefault()
     closeMenu()
+    void nextTick(() => trigger.value?.focus())
     return
   }
 
@@ -93,7 +107,7 @@ const onTriggerKeydown = (event: KeyboardEvent) => {
   if (event.key === 'Home' || event.key === 'End') {
     event.preventDefault()
     if (!isOpen.value) isOpen.value = true
-    setActiveIndex(event.key === 'Home' ? 0 : props.options.length - 1)
+    setActiveIndex(event.key === 'Home' ? 0 : visibleOptions.value.length - 1)
     return
   }
 
@@ -113,6 +127,11 @@ const onListPointerMove = () => {
   isKeyboardMode.value = false
   if (selectedIndex.value >= 0) activeIndex.value = selectedIndex.value
 }
+
+watch(searchQuery, () => {
+  isKeyboardMode.value = false
+  setActiveIndex(0)
+})
 
 watch(() => props.modelValue, () => {
   if (selectedIndex.value >= 0) activeIndex.value = selectedIndex.value
@@ -144,6 +163,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutsidePoint
       :aria-controls="listboxId"
       :aria-activedescendant="activeDescendantId"
       :disabled="disabled"
+      ref="trigger"
       @click="toggleMenu"
       @keydown="onTriggerKeydown"
     >
@@ -153,6 +173,19 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutsidePoint
 
     <Transition name="teacher-class-select-menu">
       <div v-show="isOpen" class="teacher-class-select__menu">
+        <label v-if="searchable" class="teacher-class-select__search">
+          <Search :size="14" aria-hidden="true" />
+          <span class="sr-only">搜索授权班级</span>
+          <input
+            ref="searchInput"
+            v-model="searchQuery"
+            type="search"
+            autocomplete="off"
+            aria-label="搜索授权班级"
+            placeholder="搜索班级"
+            @keydown="onTriggerKeydown"
+          />
+        </label>
         <ul
           :id="listboxId"
           ref="listbox"
@@ -165,7 +198,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutsidePoint
           @pointerdown="isKeyboardMode = false"
         >
           <li
-            v-for="(option, index) in options"
+            v-for="(option, index) in visibleOptions"
             :id="`${listboxId}-option-${index}`"
             :key="option.value"
             class="teacher-class-select__option"
@@ -181,6 +214,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutsidePoint
             <span>{{ option.label }}</span>
             <Check v-if="option.value === modelValue" :size="14" aria-hidden="true" />
           </li>
+          <li v-if="searchable && visibleOptions.length === 0" class="teacher-class-select__empty" role="status">没有匹配的授权班级</li>
         </ul>
       </div>
     </Transition>
@@ -198,6 +232,11 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutsidePoint
 .teacher-class-select__trigger > svg { flex: 0 0 auto; color: #758897; transition: transform 140ms ease; }
 .teacher-class-select__trigger > svg.teacher-class-select__chevron--open { transform: rotate(180deg); }
 .teacher-class-select__menu { position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; min-width: max(100%, 176px); padding: 5px; border: 1px solid #e2ebef; border-radius: 12px; background: #fff; box-shadow: 0 12px 28px rgb(35 68 84 / 13%); transform-origin: top center; }
+.teacher-class-select__search { display: flex; min-height: 36px; align-items: center; gap: 7px; margin: 1px 1px 6px; padding: 0 9px; border: 1px solid #dfe7eb; border-radius: 8px; color: var(--color-text-muted); background: #fff; transition: border-color 140ms ease, box-shadow 140ms ease; }
+.teacher-class-select__search:focus-within { border-color: #72bfd0; box-shadow: 0 0 0 3px rgb(0 177 226 / 12%); }
+.teacher-class-select__search input { width: 100%; min-width: 0; border: 0; outline: 0; color: var(--color-text-primary); background: transparent; font: inherit; font-size: 11px; }
+.teacher-class-select__search input:focus-visible { outline: none; }
+.teacher-class-select__empty { padding: 12px 10px; color: var(--color-text-muted); font-size: 11px; }
 .teacher-class-select__options { max-height: min(288px, calc(100vh - 140px)); overflow-y: auto; margin: 0; padding: 0; list-style: none; overscroll-behavior: contain; scrollbar-width: none; }
 .teacher-class-select__options::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .teacher-class-select__option { display: flex; min-height: 36px; align-items: center; justify-content: space-between; gap: 12px; padding: 0 10px; border-radius: 8px; color: #536979; font-size: 12px; cursor: pointer; transition: color 120ms ease, background-color 120ms ease; }
@@ -210,6 +249,6 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutsidePoint
 .teacher-class-select-menu-enter-from,.teacher-class-select-menu-leave-to { opacity: 0; transform: translateY(-3px); }
 
 @media (prefers-reduced-motion: reduce) {
-  .teacher-class-select__trigger,.teacher-class-select__trigger > svg,.teacher-class-select__option,.teacher-class-select-menu-enter-active,.teacher-class-select-menu-leave-active { transition: none; }
+  .teacher-class-select__trigger,.teacher-class-select__trigger > svg,.teacher-class-select__option,.teacher-class-select__search,.teacher-class-select-menu-enter-active,.teacher-class-select-menu-leave-active { transition: none; }
 }
 </style>

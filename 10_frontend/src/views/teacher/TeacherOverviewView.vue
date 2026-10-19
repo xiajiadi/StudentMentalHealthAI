@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { EChartsOption } from 'echarts/core'
-import { Activity, CalendarDays, ChartColumn, ChartNoAxesCombined, ChartPie, ClipboardList, Grid3X3, ListChecks, UsersRound } from '@lucide/vue'
+import { Activity, CalendarDays, ChartColumn, ChartNoAxesCombined, ChartPie, ClipboardList, Grid3X3, UsersRound } from '@lucide/vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
 import TeacherClassSelect from '@/components/teacher/TeacherClassSelect.vue'
@@ -16,7 +16,6 @@ import {
   teacherChartColors,
   teacherEnrollmentStatusBreakdown,
   teacherTaskPhase,
-  teacherTaskPhaseLabel,
   teacherTaskStatusPalette,
 } from '@/utils/teacher-task-progress'
 
@@ -131,16 +130,9 @@ watch(classOptions, (options) => {
 
 const rows = computed(() => sourceRows.value.filter((row) => selectedClass.value === 'all' || row.class_ref === selectedClass.value))
 const classLabel = (classRef: string) => rows.value.find((row) => row.class_ref === classRef)?.class_label ?? `班级 ${shortTeacherRef(classRef)}`
-const taskLabel = (row: TeacherOverviewProgressRow) => row.task_label ?? `任务 ${shortTeacherRef(row.task_ref)}`
 const matrixTaskLabel = (row: TeacherOverviewProgressRow) => row.task_group ?? row.task_label ?? `任务 ${shortTeacherRef(row.task_ref)}`
 const formatPercent = (value: number | null) => value === null ? '—' : `${value.toFixed(1)}%`
 const percent = (completed: number, total: number) => total > 0 ? Math.round(completed / total * 1000) / 10 : null
-const formatDay = (value: string | null) => {
-  if (!value) return '未设置'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '时间待确认'
-  return `${date.getMonth() + 1}/${date.getDate()}`
-}
 const dateKey = (value: string) => {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
@@ -386,9 +378,8 @@ const deadlineData = computed(() => {
   return [...buckets.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([key, bucket]) => ({ key, label: dateLabel(key), ...bucket }))
 })
 const deadlineOption = computed<EChartsOption>(() => ({
-  animation: false,
   color: ['#b8e0e8', '#00a9c7'],
-  grid: { left: 38, right: 40, top: 22, bottom: 36, containLabel: true },
+  grid: { left: 38, right: 40, top: 30, bottom: heatmapCells.value.taskLabels.length > 6 ? 50 : 24, containLabel: true },
   tooltip: {
     ...overviewTooltipStyle,
     trigger: 'axis', axisPointer: { type: 'cross' },
@@ -400,7 +391,7 @@ const deadlineOption = computed<EChartsOption>(() => ({
     },
   },
   legend: { top: 0, right: 8, itemWidth: 9, itemHeight: 9, textStyle: { color: '#8a98a6', fontSize: 10 } },
-  xAxis: { type: 'category', data: deadlineData.value.map((item) => item.label), boundaryGap: true, axisTick: { show: false }, axisLine: { lineStyle: { color: '#e5ebef' } }, axisLabel: { color: '#8a98a6', fontSize: 9 } },
+  xAxis: { type: 'category', data: deadlineData.value.map((item) => item.label), boundaryGap: true, axisTick: { show: false }, axisLine: { lineStyle: { color: '#e5ebef' } }, axisLabel: { color: '#8a98a6', fontSize: 9, hideOverlap: true } },
   yAxis: [
     { type: 'value', name: '任务数', minInterval: 1, nameTextStyle: { color: '#95a2ae', fontSize: 9 }, axisLabel: { color: '#95a2ae', fontSize: 9 }, splitLine: { lineStyle: { color: '#edf1f4' } } },
     { type: 'value', minInterval: 1, axisLabel: { color: '#95a2ae', fontSize: 9 }, splitLine: { show: false } },
@@ -409,24 +400,14 @@ const deadlineOption = computed<EChartsOption>(() => ({
     { name: '到期任务数（项）', type: 'bar', yAxisIndex: 0, barMaxWidth: 22, data: deadlineData.value.map((item) => item.taskCount), itemStyle: { color: '#b5dfe7', borderRadius: [4, 4, 0, 0] } },
     { name: '待完成人次（人次）', type: 'line', yAxisIndex: 1, data: deadlineData.value.map((item) => item.pendingCount), smooth: false, symbol: 'circle', symbolSize: 6, lineStyle: { width: 2.5, color: '#00a9c7' }, itemStyle: { color: '#00a9c7', borderColor: '#fff', borderWidth: 2 } },
   ],
+  media: [{
+    query: { maxWidth: 360 },
+    option: {
+      grid: { bottom: heatmapCells.value.taskLabels.length > 6 ? 62 : 50 },
+      xAxis: { axisLabel: { rotate: 45 } },
+    },
+  }],
 }))
-
-const attentionRows = computed(() => rows.value
-  .filter((row) => ['in_progress', 'upcoming'].includes(teacherTaskPhase(row)) && taskActionablePendingCount(row) > 0)
-  .sort((a, b) => {
-    const dueA = a.due_at ? Date.parse(a.due_at) : Number.POSITIVE_INFINITY
-    const dueB = b.due_at ? Date.parse(b.due_at) : Number.POSITIVE_INFINITY
-    return dueA - dueB || taskActionablePendingCount(b) - taskActionablePendingCount(a)
-  })
-  .slice(0, 6))
-const urgencyLabel = (row: TeacherOverviewProgressRow) => {
-  const phase = teacherTaskPhase(row)
-  if (phase === 'upcoming') return { label: '待开始', tone: 'upcoming' }
-  if (!row.due_at) return { label: '进行中', tone: 'active' }
-  const untilDue = Date.parse(row.due_at) - Date.now()
-  if (untilDue >= 0 && untilDue <= 72 * 60 * 60 * 1000) return { label: '即将截止', tone: 'urgent' }
-  return { label: '进行中', tone: 'active' }
-}
 
 const pageTitleClassCount = computed(() => new Set(rows.value.map((row) => row.class_ref)).size)
 const completionRateText = computed(() => formatPercent(overallCompletionRate.value))
@@ -548,31 +529,6 @@ const refreshFromBreadcrumb = (event: MouseEvent) => {
         </AppCard>
       </section>
 
-      <AppCard class="overview-task-table-card">
-        <header class="overview-task-table-card__header">
-          <span class="overview-chart-card__icon overview-chart-card__icon--teal"><ListChecks :size="16" aria-hidden="true" /></span>
-          <h2>近期需要关注的任务</h2>
-        </header>
-        <div v-if="attentionRows.length" class="overview-task-table-wrap">
-          <table class="overview-task-table">
-            <thead><tr><th scope="col">测评任务</th><th scope="col">班级</th><th scope="col">完成率</th><th scope="col">待完成人次</th><th scope="col">截止日期</th><th scope="col">状态</th></tr></thead>
-            <tbody>
-              <tr v-for="row in attentionRows" :key="`${row.class_ref}:${row.task_ref}`">
-                <th scope="row">
-                  <RouterLink v-if="dataMode === 'real'" :to="`/teacher/tasks/${encodeURIComponent(row.class_ref)}/${encodeURIComponent(row.task_ref)}`">{{ taskLabel(row) }}</RouterLink>
-                  <span v-else>{{ taskLabel(row) }}</span>
-                </th>
-                <td>{{ classLabel(row.class_ref) }}</td>
-                <td class="overview-task-table__number">{{ formatPercent(percent(taskProgressCount(row, 'completed_count'), taskProgressCount(row, 'active_enrollment_count'))) }}</td>
-                <td class="overview-task-table__number">{{ taskActionablePendingCount(row) }}</td>
-                <td>{{ formatDay(row.due_at) }}</td>
-                <td><span class="overview-task-status" :class="`overview-task-status--${urgencyLabel(row).tone}`">{{ urgencyLabel(row).label }}</span></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div v-else class="overview-table-empty">目前没有临近的未完成任务。</div>
-      </AppCard>
     </section>
   </main>
 </template>
@@ -605,28 +561,11 @@ const refreshFromBreadcrumb = (event: MouseEvent) => {
 .overview-chart-card__icon--teal { color: #54a997; background: #edf8f5; }
 .overview-chart-card__icon--amber { color: #af9c69; background: #f8f5ed; }
 .overview-chart-card__header > div { flex: 1; min-width: 0; }
-.overview-chart-card__header h2,.overview-task-table-card__header h2 { margin: 0 0 4px; color: #344657; font-size: 13px; font-weight: 700; }
-.overview-task-table-card__header h2 { font-size: 14px; }
-.overview-chart-card__header p,.overview-task-table-card__header p { margin: 0; color: #9aa7b3; font-size: 9px; line-height: 1.45; }
+.overview-chart-card__header h2 { margin: 0 0 4px; color: #344657; font-size: 13px; font-weight: 700; }
+.overview-chart-card__header p { margin: 0; color: #9aa7b3; font-size: 9px; line-height: 1.45; }
 .overview-chart-card__scale { display: flex; align-items: center; gap: 4px; color: #9aa7b3; font-size: 9px; line-height: 1.3; white-space: nowrap; }
 .overview-chart-card__scale-swatch { width: 10px; height: 7px; flex: 0 0 10px; border-radius: 2px; }
-.overview-chart-empty,.overview-table-empty { display: grid; min-height: 254px; place-items: center; padding: 20px; color: #98a6b2; font-size: 11px; text-align: center; }
-.overview-task-table-card { display: grid; gap: 10px; min-width: 0; padding: 16px; border: 1px solid #e7edf2; border-radius: 12px; background: #fff; box-shadow: none; }
-.overview-task-table-card__header { display: flex; align-items: center; justify-content: flex-start; gap: 9px; }
-.overview-task-table-card__header h2 { margin: 0; }
-.overview-task-table-wrap { min-width: 0; overflow-x: auto; }
-.overview-task-table { width: 100%; border-collapse: collapse; text-align: left; }
-.overview-task-table th,.overview-task-table td { padding: 9px 8px; border-top: 1px solid #edf1f4; color: #7d8d9a; font-size: 12px; white-space: nowrap; }
-.overview-task-table thead th { color: #98a6b2; font-size: 13px; font-weight: 600; }
-.overview-task-table tbody th { font-weight: 600; }
-.overview-task-table tbody th a,.overview-task-table tbody th span { color: #536979; text-decoration: none; }
-.overview-task-table tbody th a:hover { color: var(--color-primary-active); text-decoration: underline; text-underline-offset: 2px; }
-.overview-task-table__number { font-variant-numeric: tabular-nums; }
-.overview-task-status { display: inline-flex; align-items: center; min-height: 22px; padding: 0 8px; border-radius: 999px; font-size: 11px; }
-.overview-task-status--active { color: #378e9f; background: #edf8fa; }
-.overview-task-status--upcoming { color: #6c8794; background: #eff4f6; }
-.overview-task-status--urgent { color: #a98243; background: #fbf4e9; }
-.overview-table-empty { min-height: 105px; border-top: 1px solid #edf1f4; }
+.overview-chart-empty { display: grid; min-height: 254px; place-items: center; padding: 20px; color: #98a6b2; font-size: 11px; text-align: center; }
 .overview-state { display: flex; align-items: center; justify-content: center; min-height: 155px; padding: 24px; border: 1px solid #e6edf2; border-radius: 14px; color: #718391; background: #fff; font-size: 12px; text-align: center; }
 .overview-state--error { justify-content: space-between; gap: 20px; text-align: left; }
 .overview-state--error strong { color: var(--color-text-primary); font-size: 13px; }
@@ -641,7 +580,7 @@ const refreshFromBreadcrumb = (event: MouseEvent) => {
 @media (max-width: 1100px) { .overview-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }.overview-chart-card--status { min-height: 350px; } }
 @media (max-width: 1000px) { .overview-chart-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'status' 'completion' 'deadline' 'heatmap'; } }
 @media (max-width: 850px) { .overview-page-header { align-items: flex-start; flex-direction: column; }.overview-toolbar { justify-content: flex-start; }.overview-chart-card--status { min-height: 338px; } }
-@media (max-width: 560px) { .teacher-overview { gap: 9px; }.overview-page-header { gap: 12px; }.overview-toolbar { width: 100%; gap: 7px; }.overview-class-filter { flex: 1; }.overview-board { gap: 9px; padding: 0 9px 4.5px; }.overview-kpis { gap: 8px; }.overview-kpi { min-height: 74px; padding: 10px 12px; }.overview-kpi strong { font-size: 23px; }.overview-chart-card { padding: 13px 12px 10px; }.overview-task-table-card { padding: 13px 11px; }.overview-task-table { min-width: 650px; }.overview-state--error { align-items: flex-start; flex-direction: column; }.overview-state__actions { flex-wrap: wrap; } }
+@media (max-width: 560px) { .teacher-overview { gap: 9px; }.overview-page-header { gap: 12px; }.overview-toolbar { width: 100%; gap: 7px; }.overview-class-filter { flex: 1; }.overview-board { gap: 9px; padding: 0 9px 4.5px; }.overview-kpis { gap: 8px; }.overview-kpi { min-height: 74px; padding: 10px 12px; }.overview-kpi strong { font-size: 23px; }.overview-chart-card { padding: 13px 12px 10px; }.overview-state--error { align-items: flex-start; flex-direction: column; }.overview-state__actions { flex-wrap: wrap; } }
 @media (max-width: 420px) { .overview-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; justify-content: initial; }.overview-class-filter { grid-column: 1; grid-row: 1; min-width: 0; }.overview-class-filter :deep(.teacher-class-select__trigger) { min-width: 0; }.overview-mode-toggle { grid-column: 2; grid-row: 1; justify-self: end; } }
 @media (max-width: 320px) { :global(html),:global(body) { min-width: 0; } }
 </style>
