@@ -72,6 +72,7 @@
 - 修改前基线：`03d329b7f74d4494baa35e05cc06d5983759cb3e`，工作分支 `xiajiadi/admin-specialist-frontend-20261020`。
 - 学生端与普通教师端既有实现来自该基线，本轮未改写其页面；改动集中于管理员、心理专业人员、共享工作区控件、受影响测试和相关依赖。
 - 实现、测试和截图提交：`12e8f014ca5f411d556d735301895ba814f92c86`。
-- 推送目标：`origin/xiajiadi/admin-specialist-frontend-20261020`。基础集成分支 `xiajiadi/student-ui-standard-20261018` 保持在基线 SHA；本轮没有合并或改写默认/受控分支。
+- 已推送到 `origin/xiajiadi/admin-specialist-frontend-20261020`；`git ls-remote` 已确认推送后的分支头为 `8fa2697e1af1eb53a4da09f4efb39cada8114fe1`。
+- 基础集成分支 `xiajiadi/student-ui-standard-20261018` 保持在基线 SHA；本轮没有合并或改写默认/受控分支。
 - 只推送本轮命名开发分支，不强推、不部署生产。
 - 本地生成的 `.school-dependency-preparation-state.json`、`.school-deps-*.npmrc`、`.playwright-cli/` 和 Playwright 临时报告不纳入版本控制。
