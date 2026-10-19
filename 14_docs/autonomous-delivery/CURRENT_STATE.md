@@ -1,5 +1,12 @@
 # PsyNova current execution state
 
+## Teacher workspace checkpoint: 2026-10-19
+
+- Teacher analytics and workspace refinements were committed as `f4aa7a9ec1b3d95ff286635805629a9392971036` on `xiajiadi/student-ui-standard-20261018` and pushed to `origin`.
+- `npm run build` passed in `10_frontend` with `VITE_API_MODE=real` and the existing Backend base URL `http://127.0.0.1:8088`; Vue type checking passed and Vite 8.2.2 transformed 3,306 modules.
+- The 4207 preview serves this checkout's `10_frontend/dist`: its index hash matched the local build, and the teacher analytics route, JS chunk, and CSS chunk returned HTTP 200. The 4206 browser interaction check confirmed the paired-task list hides its scrollbar while retaining wheel and keyboard scrolling.
+- Backend port 8088 was not listening during the 4207 check, so API-backed behavior was not revalidated there. No full-stack readiness is inferred. Local dependency-preparation state and npmrc files remain uncommitted.
+
 ## Student UI standard checkpoint: 2026-10-18
 
 - The official UI source branch is `xiajiadi/student-ui-standard-20261018`, based on `4593b89c`, pushed to `origin` at `ba2a1d0d881212b7f4a941cdef1c2b04dd4d7c3d`. The student portal is the visual reference; teacher, psychological specialist, and school administrator overview pages reuse its hero and breadcrumb components. Old UI-only refs were retained under `archive/frontend/*`; no D4 or general `main` history was rewritten.
