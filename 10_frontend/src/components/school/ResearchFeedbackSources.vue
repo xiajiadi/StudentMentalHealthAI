@@ -19,11 +19,11 @@ function sourceUrl(value: string): string | undefined {
     <h4>{{ title }}</h4>
     <details v-for="source in sourceCards" :key="source.chunk_id">
       <summary>{{ source.title }}</summary>
-      <p>{{ source.organization }} · {{ source.record_locator }} · 记录 {{ source.record_id }} · 来源 {{ source.source_id }}</p>
+      <p>{{ source.organization }}，{{ source.record_locator }}，记录 {{ source.record_id }}，来源 {{ source.source_id }}</p>
       <p>研究涉及人群：{{ source.source_population_scope }}；本功能面向 {{ source.consumer_age_min }}–{{ source.consumer_age_max }} 岁；原文语言：{{ source.source_language }}</p>
       <blockquote>{{ source.excerpt_text }}</blockquote>
       <p>{{ source.attribution }}</p>
-      <p><a v-if="sourceUrl(source.canonical_url)" :href="sourceUrl(source.canonical_url)" target="_blank" rel="noopener noreferrer">查看原始来源</a><span v-else>来源链接不可用</span> · <a v-if="sourceUrl(source.license_url)" :href="sourceUrl(source.license_url)" target="_blank" rel="noopener noreferrer">{{ source.license }}</a><span v-else>{{ source.license }}</span></p>
+      <p><a v-if="sourceUrl(source.canonical_url)" :href="sourceUrl(source.canonical_url)" target="_blank" rel="noopener noreferrer">查看原始来源</a><span v-else>来源链接不可用</span>，<a v-if="sourceUrl(source.license_url)" :href="sourceUrl(source.license_url)" target="_blank" rel="noopener noreferrer">{{ source.license }}</a><span v-else>{{ source.license }}</span></p>
     </details>
   </section>
 </template>

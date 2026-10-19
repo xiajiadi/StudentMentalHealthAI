@@ -42,7 +42,7 @@ const classSelectOptions = computed(() => [
 const taskOptions = computed(() => rows.value
   .filter((row) => selectedClass.value === 'all' || row.class_ref === selectedClass.value)
   .sort((a, b) => a.class_ref.localeCompare(b.class_ref, 'zh-CN') || a.task_ref.localeCompare(b.task_ref, 'zh-CN')))
-const taskOptionLabel = (row: (typeof rows.value)[number]) => `${teacherClassDisplayLabel(row.class_ref, rows.value)} · ${teacherTaskDisplayLabel(row)}`
+const taskOptionLabel = (row: (typeof rows.value)[number]) => `${teacherClassDisplayLabel(row.class_ref, rows.value)}，${teacherTaskDisplayLabel(row)}`
 
 watch([selectedClass, taskOptions], () => {
   if (selectedTask.value !== 'all' && !taskOptions.value.some((row) => taskKey(row) === selectedTask.value)) selectedTask.value = 'all'
@@ -203,7 +203,7 @@ const heatmapOption = computed<EChartsOption>(() => {
     tooltip: { position: 'top', formatter: (params) => {
       const point = Array.isArray(params) ? params[0] : params
       const value = Array.isArray(point.value) ? point.value : []
-      return `${classLabels[Number(value[1])] ?? '班级'} · ${taskDimensions[Number(value[0])]?.label ?? '任务'}<br/>有效报名：${value[3] ?? 0} 人次<br/>已完成：${value[4] ?? 0} 人次<br/>完成率：${value[2] ?? 0}%`
+      return `${classLabels[Number(value[1])] ?? '班级'}，${taskDimensions[Number(value[0])]?.label ?? '任务'}<br/>有效报名：${value[3] ?? 0} 人次<br/>已完成：${value[4] ?? 0} 人次<br/>完成率：${value[2] ?? 0}%`
     } },
     xAxis: { type: 'category', data: taskDimensions.map((item) => item.label), splitArea: { show: true }, axisLabel: { color: '#656b76', interval: 0, rotate: taskDimensions.length > 5 ? 24 : 0 } },
     yAxis: { type: 'category', data: classLabels, splitArea: { show: true }, axisLabel: { color: '#656b76' } },
@@ -244,7 +244,7 @@ const formatPercent = (value: number, denominator = progressSummary.value.active
     <template v-else>
       <section class="analytics-summary" aria-label="所选范围的汇总指标">
         <AppCard class="summary-card"><span>班级</span><strong>{{ progressSummary.classCount }}</strong><small>个班级</small></AppCard>
-        <AppCard class="summary-card"><span>任务</span><strong>{{ filteredRows.length }}</strong><small>项任务 · {{ timeSummary }}</small></AppCard>
+        <AppCard class="summary-card"><span>任务</span><strong>{{ filteredRows.length }}</strong><small>项任务，{{ timeSummary }}</small></AppCard>
         <AppCard class="summary-card"><span>待完成人次</span><strong>{{ progressSummary.pendingCount }}</strong><small>有效报名中尚未完成</small></AppCard>
         <AppCard class="summary-card summary-card--accent"><span>整体完成率</span><strong>{{ formatPercent(progressSummary.completionRate) }}</strong><small>{{ progressSummary.completedCount }} / {{ progressSummary.activeEnrollmentCount }} 人次已完成</small></AppCard>
       </section>

@@ -66,7 +66,7 @@ async function assertSessionBoundary(page: Page) {
 
 async function completeStudentAssessment(page: Page) {
   await page.getByRole('button', { name: '开始测评' }).click()
-  await expect(page.getByText('第 1 题 · 测评进行中')).toBeVisible()
+  await expect(page.getByText('第 1 题，测评进行中')).toBeVisible()
 
   const completeButton = page.getByRole('button', { name: /完成并查看结构/ })
   for (let index = 0; index < 12; index += 1) {

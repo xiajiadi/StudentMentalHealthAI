@@ -67,7 +67,7 @@ const canTransition = computed(() => authorized.value && Boolean(selected.value 
 const actionLabel = (action: AssignedSafetyCase['action']) => action === 'CRISIS_ROUTE' ? '安全升级流程已触发' : '需要人工复核'
 const statusLabel = (status: AssignedSafetyCase['status']) => ({
   ASSIGNED: '等待专业人员查看', IN_REVIEW: '专业人员处理中', REVIEWED: '流程已标记复核',
-  ESCALATION_NEEDED: '仍需更多信息', CLOSED: '流程已结束 · 安全状态未解除',
+  ESCALATION_NEEDED: '仍需更多信息', CLOSED: '流程已结束，安全状态未解除',
 }[status])
 const transitionLabel = (status: SafetyTransitionStatus) => ({
   IN_REVIEW: '开始或继续复核', REVIEWED: '标记已复核',
@@ -269,7 +269,7 @@ onBeforeUnmount(() => { mounted = false; clearPrivateState() })
         <AppButton variant="quiet" size="sm" :disabled="listState === 'loading' || busy || Boolean(failedMutation)" @click="loadPage(offset)"><RotateCcw :size="15" aria-hidden="true" />刷新</AppButton>
         <AppButton variant="quiet" size="sm" :disabled="!hasPrevious || listState === 'loading' || busy || Boolean(failedMutation)" @click="loadPage(Math.max(0, offset - pageSize))">上一页</AppButton>
         <AppButton variant="quiet" size="sm" :disabled="!hasNext || listState === 'loading' || busy || Boolean(failedMutation)" @click="loadPage(offset + pageSize)">下一页</AppButton>
-        <span v-if="listState === 'ready'">第 {{ pageNumber }} / {{ pageCount }} 页 · 共 {{ total }} 项</span>
+        <span v-if="listState === 'ready'">第 {{ pageNumber }} / {{ pageCount }} 页，共 {{ total }} 项</span>
       </div>
     </header>
     <AppStatusCallout tone="info" title="流程记录与专业结论不同" body="动作与原因代码仅说明安全流程进入复核，不代表诊断、风险已经解除或专业结论。若仅凭当前元数据无法判断，可记录需要更多信息；任何结束或升级标记都不会关闭学生端安全提示。" />

@@ -57,7 +57,7 @@ const canAssign = (row: UnassignedSafetyCase) => Boolean(
   && specialistUserId.value && caseClassValue(row),
 )
 const specialistLabel = (person: SafetySpecialist, index: number) =>
-  person.display_name?.trim() || `心理老师 · ${person.user_id.slice(-6) || `编号 ${index + 1}`}`
+  person.display_name?.trim() || `心理老师，${person.user_id.slice(-6) || `编号 ${index + 1}`}`
 
 function setClass(caseRef: string, event: Event) {
   const target = event.target
@@ -221,13 +221,13 @@ onBeforeUnmount(() => { mounted = false; clearScopeData() })
       <li v-for="row in cases" :key="row.case_ref" class="safety-assignments__row">
         <div class="safety-assignments__case">
           <strong>{{ row.case_ref }}</strong><span>待分配</span>
-          <small>状态版本 {{ row.state_version }} · 更新于 {{ new Date(row.updated_at).toLocaleString('zh-CN') }}</small>
+          <small>状态版本 {{ row.state_version }}，更新于 {{ new Date(row.updated_at).toLocaleString('zh-CN') }}</small>
         </div>
         <label class="safety-assignments__field">
           <span>班级</span>
           <select :value="caseClassValue(row)" :disabled="busy || Boolean(failedOperation) || !classes.length" @change="setClass(row.case_ref, $event)">
             <option value="">选择班级</option>
-            <option v-for="item in classes" :key="item.class_ref" :value="item.class_ref">{{ classLabel(item) }} · {{ item.class_ref }}</option>
+            <option v-for="item in classes" :key="item.class_ref" :value="item.class_ref">{{ classLabel(item) }}，{{ item.class_ref }}</option>
           </select>
         </label>
         <label class="safety-assignments__field">
@@ -241,7 +241,7 @@ onBeforeUnmount(() => { mounted = false; clearScopeData() })
       </li>
     </ul>
     <div v-if="state === 'ready' && total > 20" class="safety-assignments__paging" aria-label="待分配事项分页">
-      <span>第 {{ pageNumber }} / {{ pageCount }} 页 · 共 {{ total }} 项</span>
+      <span>第 {{ pageNumber }} / {{ pageCount }} 页，共 {{ total }} 项</span>
       <div><AppButton variant="quiet" size="sm" :disabled="!hasPrevious || state === 'loading' || busy || Boolean(failedOperation)" @click="load(Math.max(0, offset - 20))">上一页</AppButton><AppButton variant="quiet" size="sm" :disabled="!hasNext || state === 'loading' || busy || Boolean(failedOperation)" @click="load(offset + 20)">下一页</AppButton></div>
     </div>
     <p v-if="state === 'ready' && !classes.length" class="safety-assignments__hint">当前没有可用班级，无法分配。</p>

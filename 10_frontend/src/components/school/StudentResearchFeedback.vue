@@ -86,7 +86,7 @@ onBeforeUnmount(() => {
 <template>
   <section class="student-research-feedback" aria-labelledby="student-research-feedback-title">
     <header class="student-research-feedback__header">
-      <div><span class="student-research-feedback__kicker">研究模拟 · 教育支持</span><h2 id="student-research-feedback-title">研究演示反馈</h2><p>这里只显示服务端已发布给当前合成演示账户的内容。</p></div>
+      <div><span class="student-research-feedback__kicker">研究模拟，教育支持</span><h2 id="student-research-feedback-title">研究演示反馈</h2><p>这里只显示服务端已发布给当前合成演示账户的内容。</p></div>
       <StudentRefreshButton :loading="state === 'loading'" aria-label="刷新研究演示反馈" @click="load(offset)" />
     </header>
     <AppStatusCallout tone="info" title="仅限研究演示" body="内容属于一般教育支持，不是诊断、治疗或心理测量结论；当前流程未获准用于正式发布或运营。" />

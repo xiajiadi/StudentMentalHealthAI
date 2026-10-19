@@ -80,7 +80,7 @@ describe('specialist research source catalog', () => {
     await flushPromises()
     expect(api.listResearchSourceCatalog).toHaveBeenCalledWith(expect.objectContaining({ limit: 20, offset: 0 }))
     expect(wrapper.text()).toContain('固定来源包')
-    expect(wrapper.text()).toContain('AI_ENGINEERING · pending')
+    expect(wrapper.text()).toContain('AI_ENGINEERING，pending')
     expect(wrapper.text()).toContain('Public policy source')
 
     await wrapper.get('.source-row').trigger('click')

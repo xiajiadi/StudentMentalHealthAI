@@ -76,7 +76,6 @@ const selectDate = (dateKey: string) => emit('select-date', dateKey)
               :aria-label="eventLabel(event)"
               @click.stop="emit('open-task', event.task.key)"
             >
-              <span class="planner-calendar-event__kind">{{ event.kind === 'start' ? '始' : '止' }} ·</span>
               <span class="planner-calendar-event__name">{{ event.task.label }}</span>
             </button>
             <button
@@ -90,6 +89,13 @@ const selectDate = (dateKey: string) => emit('select-date', dateKey)
         </div>
       </div>
     </div>
+
+    <div class="planner-calendar__legend" aria-label="日历图例">
+      <span><i class="planner-calendar__legend-mark planner-calendar__legend-mark--start" aria-hidden="true"></i>开始时间</span>
+      <span><i class="planner-calendar__legend-mark planner-calendar__legend-mark--due" aria-hidden="true"></i>截止时间</span>
+      <span><i class="planner-calendar__legend-mark planner-calendar__legend-mark--urgent" aria-hidden="true"></i>临近截止</span>
+      <span><i class="planner-calendar__legend-mark planner-calendar__legend-mark--inactive" aria-hidden="true"></i>已取消或未发布</span>
+    </div>
   </section>
 </template>
 
@@ -102,37 +108,43 @@ const selectDate = (dateKey: string) => emit('select-date', dateKey)
 .planner-calendar__navigation button:hover { border-color: var(--color-primary); color: var(--color-primary-active); background: var(--color-info-wash); }
 .planner-calendar__navigation .planner-calendar__today { min-width: 42px; }
 .planner-calendar__weekdays,.planner-calendar__week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
-.planner-calendar__weekdays { min-height: 34px; align-items: center; border-bottom: 1px solid var(--color-border); color: var(--color-text-muted); background: var(--color-surface-soft); font-size: 10px; text-align: center; }
+.planner-calendar__weekdays { min-height: 38px; align-items: center; border-bottom: 1px solid var(--color-border); color: var(--color-text-muted); background: var(--color-surface-soft); font-size: 12px; text-align: center; }
 .planner-calendar__weeks { display: grid; }
-.planner-calendar__day { display: flex; min-width: 0; min-height: 90px; flex-direction: column; gap: 3px; padding: 6px 5px; border-right: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); background: var(--color-surface); transition: background-color var(--motion-fast) ease; }
+.planner-calendar__day { display: flex; min-width: 0; min-height: 96px; flex-direction: column; gap: 3px; padding: 6px 5px; border-right: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); background: var(--color-surface); transition: background-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease; }
 .planner-calendar__day:nth-child(7) { border-right: 0; }
 .planner-calendar__day--outside { background: var(--color-surface-soft); }
-.planner-calendar__day--selected { background: var(--color-surface-blue); box-shadow: inset 0 0 0 1px var(--color-primary); }
-.planner-calendar__date { display: inline-grid; width: 22px; height: 22px; flex: 0 0 22px; place-items: center; padding: 0; border: 1px solid transparent; border-radius: 6px; color: var(--color-text-secondary); background: transparent; font-size: 11px; font-variant-numeric: tabular-nums; cursor: pointer; }
+.planner-calendar__day:hover { background: var(--color-surface-blue); }
+.planner-calendar__day--selected { background: var(--color-info-wash); box-shadow: inset 0 0 0 2px rgb(0 177 226 / 38%); }
+.planner-calendar__date { display: inline-grid; width: 24px; height: 24px; flex: 0 0 24px; place-items: center; padding: 0; border: 1px solid transparent; border-radius: 7px; color: var(--color-text-secondary); background: transparent; font-size: 13px; font-variant-numeric: tabular-nums; cursor: pointer; transition: color var(--motion-fast) ease, background-color var(--motion-fast) ease, border-color var(--motion-fast) ease; }
+.planner-calendar__date:hover { color: var(--color-primary-active); border-color: rgb(0 177 226 / 34%); background: var(--color-surface); }
 .planner-calendar__day--outside .planner-calendar__date { color: #9aa3ad; }
 .planner-calendar__day--today .planner-calendar__date { color: #fff; border-color: var(--color-primary-active); background: var(--color-primary-active); font-weight: 700; }
-.planner-calendar__day--selected:not(.planner-calendar__day--today) .planner-calendar__date { color: var(--color-primary-active); border-color: rgb(0 177 226 / 26%); background: var(--color-surface); font-weight: 700; }
+.planner-calendar__day--selected:not(.planner-calendar__day--today) .planner-calendar__date { color: var(--color-primary-active); border-color: rgb(0 177 226 / 44%); background: var(--color-surface); font-weight: 700; }
 .planner-calendar__events { display: grid; min-width: 0; align-content: start; gap: 3px; }
-.planner-calendar-event { display: flex; min-width: 0; height: 18px; align-items: center; gap: 3px; overflow: hidden; padding: 0 4px; border: 0; border-radius: 4px; color: #477b88; background: var(--color-support-wash); font-size: 9px; line-height: 1; text-align: left; cursor: pointer; }
+.planner-calendar-event { display: flex; min-width: 0; height: 20px; align-items: center; overflow: hidden; padding: 0 4px; border: 0; border-radius: 4px; color: #477b88; background: var(--color-support-wash); font-size: 11px; line-height: 1.15; text-align: left; cursor: pointer; }
 .planner-calendar-event--due { color: var(--color-primary-active); background: var(--color-info-wash); }
 .planner-calendar-event--urgent { color: #8a5b17; background: var(--color-attention-wash); }
 .planner-calendar-event--cancelled,.planner-calendar-event--unpublished { color: var(--color-text-muted); background: var(--color-surface-skeleton); text-decoration: line-through; }
-.planner-calendar-event__kind { flex: 0 0 auto; font-size: 8px; font-weight: 700; }
 .planner-calendar-event__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .planner-calendar-event:hover { filter: saturate(1.18); }
-.planner-calendar__more { width: fit-content; padding: 1px 3px; border: 0; color: var(--color-primary-active); background: transparent; font-size: 9px; text-align: left; cursor: pointer; }
+.planner-calendar__more { width: fit-content; padding: 1px 3px; border: 0; color: var(--color-primary-active); background: transparent; font-size: 11px; text-align: left; cursor: pointer; }
 .planner-calendar__more:hover { text-decoration: underline; }
+.planner-calendar__legend { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px 14px; padding: 10px 13px; border-top: 1px solid var(--color-border); color: var(--color-text-muted); background: var(--color-surface); font-size: 10px; }
+.planner-calendar__legend > span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.planner-calendar__legend-mark { width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; background: #70b8a4; }
+.planner-calendar__legend-mark--due { background: var(--color-primary); }
+.planner-calendar__legend-mark--urgent { background: var(--color-attention); }
+.planner-calendar__legend-mark--inactive { background: #9aa3ad; }
 .planner-calendar__date:focus-visible,.planner-calendar-event:focus-visible,.planner-calendar__more:focus-visible,.planner-calendar__navigation button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
 @media (max-width: 560px) {
   .planner-calendar__header { min-height: 54px; padding: 10px 11px; }
   .planner-calendar__header h2 { font-size: 16px; }
-  .planner-calendar__weekdays { min-height: 31px; font-size: 9px; }
-  .planner-calendar__day { min-height: 76px; padding: 4px 2px; }
-  .planner-calendar__date { width: 20px; height: 20px; flex-basis: 20px; font-size: 10px; }
-  .planner-calendar-event { height: 18px; gap: 2px; padding: 0 2px; font-size: 8px; }
-  .planner-calendar-event__kind { font-size: 8px; }
-  .planner-calendar-event__name { display: none; }
-  .planner-calendar__more { padding-left: 1px; font-size: 8px; }
+  .planner-calendar__weekdays { min-height: 35px; font-size: 11px; }
+  .planner-calendar__day { min-height: 82px; padding: 4px 2px; }
+  .planner-calendar__date { width: 24px; height: 24px; flex-basis: 24px; font-size: 12px; }
+  .planner-calendar-event { height: 18px; padding: 0 2px; font-size: 10px; }
+  .planner-calendar__more { padding-left: 1px; font-size: 10px; }
+  .planner-calendar__legend { justify-content: flex-start; gap: 6px 10px; padding: 9px 10px; font-size: 9px; }
 }
-@media (prefers-reduced-motion: reduce) { .planner-calendar__navigation button { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .planner-calendar__navigation button,.planner-calendar__date,.planner-calendar__day { transition: none; } }
 </style>

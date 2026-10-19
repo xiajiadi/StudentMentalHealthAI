@@ -311,7 +311,7 @@ describe('学校测评任务页面', () => {
     await wrapper.get('.school-task-activation button').trigger('click')
     await flushPromises()
     expect(api.listActivations).toHaveBeenLastCalledWith({ skip: 1, limit: 30 })
-    expect(wrapper.text()).toContain('合成方案 v2 · 合成题库 v3')
+    expect(wrapper.text()).toContain('合成方案 v2，合成题库 v3')
     expect(wrapper.text()).not.toContain(eligibleActivation.activation_ref)
     await wrapper.get('#school-task-activation').setValue(eligibleActivation.activation_ref)
     await wrapper.get('#school-task-opens').setValue('2026-10-15T09:00')

@@ -207,9 +207,9 @@ onBeforeUnmount(() => {
           <div class="student-research__task-body">
             <span class="student-research__task-category">研究演示</span>
             <h4>{{ task.instrument_id }}</h4>
-            <p>{{ task.source_population_scope }} · {{ task.instrument_version }}</p>
+            <p>{{ task.source_population_scope }}，{{ task.instrument_version }}</p>
             <p class="student-research__dates"><CalendarDays :size="14" aria-hidden="true" />{{ formatDate(task.opens_at) }} 至 {{ formatDate(task.due_at) }}</p>
-            <small>公开来源研究演示 · 尚未批准用于发布或日常运营</small>
+            <small>公开来源研究演示，尚未批准用于发布或日常运营</small>
             <AppButton
               v-if="task.session_status === 'IN_PROGRESS' && task.session_ref"
               :disabled="Boolean(pendingTask)"
@@ -257,7 +257,7 @@ onBeforeUnmount(() => {
       <AppCard v-else-if="!sessions.length" class="student-research__state" role="status">还没有研究会话记录。</AppCard>
       <div v-else class="student-research__history">
         <AppCard v-for="item in sessions" :key="item.session_ref" class="student-research__record">
-          <div><strong>研究任务 {{ item.task_ref.slice(-6) }}</strong><p>{{ item.items_answered }} 项已记录<span v-if="item.completed_at"> · {{ formatDate(item.completed_at) }}</span></p></div>
+          <div><strong>研究任务 {{ item.task_ref.slice(-6) }}</strong><p>{{ item.items_answered }} 项已记录<span v-if="item.completed_at">，{{ formatDate(item.completed_at) }}</span></p></div>
           <span>{{ item.status === 'IN_PROGRESS' ? '进行中' : item.status === 'COMPLETED' ? '已完成' : '会话已结束' }}</span>
           <AppButton v-if="item.status === 'IN_PROGRESS'" variant="secondary" size="sm" :disabled="Boolean(pendingTask)" @click="openSession(item.session_ref)">继续</AppButton>
           <AppButton v-else-if="item.status === 'COMPLETED'" variant="secondary" size="sm" :disabled="Boolean(pendingTask)" @click="openSession(item.session_ref)">查看记录</AppButton>

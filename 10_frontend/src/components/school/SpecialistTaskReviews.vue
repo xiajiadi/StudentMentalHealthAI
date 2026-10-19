@@ -304,7 +304,7 @@ onMounted(() => { void loadTasks() })
 
 <template>
   <section class="professional-reviews" aria-label="任务专业复核">
-    <AppStatusCallout tone="info" title="合成演示 · 工作流记录" body="此处只处理已指派任务中的完成记录。决定用于演示任务工作流，不构成心理学结论，也不会发布学生报告。" />
+    <AppStatusCallout tone="info" title="合成演示，工作流记录" body="此处只处理已指派任务中的完成记录。决定用于演示任务工作流，不构成心理学结论，也不会发布学生报告。" />
 
     <div class="reviews-toolbar">
       <div><span class="reviews-kicker">任务范围</span><h2>已指派的工作事项</h2><p>选择任务后查看可处理的完成记录与已有复核记录。</p></div>
@@ -317,7 +317,7 @@ onMounted(() => { void loadTasks() })
     <div v-else class="task-list" aria-label="已指派任务">
       <button v-for="(task, index) in tasks" :key="task.task_ref" class="task-option" :class="{ 'task-option--active': selectedTaskRef === task.task_ref }" type="button" :aria-pressed="selectedTaskRef === task.task_ref" :disabled="mutationBusy || Boolean(failedRequest)" @click="selectTask(task.task_ref)">
         <span class="task-option__number">{{ String(index + 1).padStart(2, '0') }}</span>
-        <span class="task-option__copy"><strong>{{ task.class_display_name || `任务 ${String(index + 1).padStart(2, '0')}` }}</strong><small>已发布 · {{ formatDate(task.published_at) }}</small></span>
+        <span class="task-option__copy"><strong>{{ task.class_display_name || `任务 ${String(index + 1).padStart(2, '0')}` }}</strong><small>已发布，{{ formatDate(task.published_at) }}</small></span>
         <ClipboardCheck :size="17" aria-hidden="true" />
       </button>
     </div>

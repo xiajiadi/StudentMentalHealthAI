@@ -134,7 +134,7 @@ onBeforeUnmount(() => {
   <section class="source-catalog" aria-labelledby="source-catalog-title">
     <header class="source-catalog__heading">
       <div>
-        <span class="source-catalog__eyebrow">AI_ENGINEERING · 只读目录</span>
+        <span class="source-catalog__eyebrow">AI_ENGINEERING，只读目录</span>
         <h2 id="source-catalog-title">研究教育来源</h2>
         <p>展示当前固定来源包的文献信息、权利记录和适用范围，不包含片段正文。</p>
       </div>
@@ -159,7 +159,7 @@ onBeforeUnmount(() => {
         <div><span>固定来源包</span><strong>{{ page.source_package_ref }}</strong></div>
         <div><span>Manifest SHA-256</span><code>{{ page.manifest_sha256 }}</code></div>
         <div><span>研究通道年龄范围</span><strong>{{ page.consumer_age_min }}–{{ page.consumer_age_max }} 岁</strong></div>
-        <div><span>包内审核元数据</span><strong>{{ page.review.reviewer_kind }} · {{ page.review.review_status }}</strong></div>
+        <div><span>包内审核元数据</span><strong>{{ page.review.reviewer_kind }}，{{ page.review.review_status }}</strong></div>
       </AppCard>
 
       <div class="source-layout">
@@ -175,7 +175,7 @@ onBeforeUnmount(() => {
             @click="openDetail(item)"
           >
             <span class="source-row__title">{{ item.title }}</span>
-            <span class="source-row__organization">{{ item.organization }} · {{ item.publication_date }}</span>
+            <span class="source-row__organization">{{ item.organization }}，{{ item.publication_date }}</span>
             <span class="source-row__meta">
               <span>{{ rightsLabel(item.rights_status) }}</span>
               <span>{{ item.retrieval_eligible ? '当前包检索标记：是' : '当前包检索标记：否' }}</span>
@@ -200,18 +200,18 @@ onBeforeUnmount(() => {
             <div class="source-detail__heading">
               <span class="source-detail__eyebrow"><ShieldCheck :size="14" aria-hidden="true" />来源元数据</span>
               <h3>{{ detail.title }}</h3>
-              <p>{{ detail.organization }} · {{ detail.publication_date }}</p>
+              <p>{{ detail.organization }}，{{ detail.publication_date }}</p>
             </div>
             <dl class="source-fields">
               <div><dt>来源范围</dt><dd>{{ detail.source_population_scope }}</dd></div>
               <div><dt>来源语言</dt><dd>{{ detail.source_language }}</dd></div>
               <div><dt>配置研究通道</dt><dd>{{ page.consumer_age_min }}–{{ page.consumer_age_max }} 岁；不代表原始研究样本年龄</dd></div>
               <div><dt>来源分类</dt><dd>{{ detail.layers.length ? detail.layers.map(layerLabel).join('、') : '未分类' }}</dd></div>
-              <div><dt>权利记录</dt><dd>{{ rightsLabel(detail.rights_status) }} · {{ detail.license }}</dd></div>
+              <div><dt>权利记录</dt><dd>{{ rightsLabel(detail.rights_status) }}，{{ detail.license }}</dd></div>
               <div><dt>权利范围说明</dt><dd>{{ detail.rights_scope_note }}</dd></div>
               <div><dt>归属信息</dt><dd>{{ detail.attribution }}</dd></div>
               <div><dt>来源包状态</dt><dd>{{ detail.review.package_status }}</dd></div>
-              <div><dt>包内审核元数据</dt><dd>{{ detail.review.reviewer_kind }} · {{ detail.review.review_status }}</dd></div>
+              <div><dt>包内审核元数据</dt><dd>{{ detail.review.reviewer_kind }}，{{ detail.review.review_status }}</dd></div>
               <div><dt>专业、伦理、临床及测量学批准</dt><dd>均未授予</dd></div>
               <div><dt>正式发布 / 生产使用</dt><dd>未批准</dd></div>
               <div><dt>当前包检索标记</dt><dd>{{ detail.retrieval_eligible ? '是' : '否' }}；不等于权利或专业批准</dd></div>

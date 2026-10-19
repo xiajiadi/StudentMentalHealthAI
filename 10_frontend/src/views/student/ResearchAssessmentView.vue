@@ -368,7 +368,7 @@ onBeforeUnmount(() => {
   <main class="research-cat content-wrap content-wrap--student" aria-labelledby="research-cat-title">
     <header class="research-cat__heading">
       <RouterLink to="/student/assessments" class="research-cat__back"><ArrowLeft :size="15" aria-hidden="true" />返回我的测评</RouterLink>
-      <div><span class="research-cat__tag">仅研究演示 · 未获发布或运营批准</span><h1 id="research-cat-title">公开研究任务</h1></div>
+      <div><span class="research-cat__tag">仅研究演示，未获发布或运营批准</span><h1 id="research-cat-title">公开研究任务</h1></div>
     </header>
 
     <AppStatusCallout tone="info" title="按来源原文作答" body="题目和选项保持来源文字与原始数值；本页面不生成个人分数、解释或建议。" />

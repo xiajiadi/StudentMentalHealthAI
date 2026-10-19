@@ -96,7 +96,7 @@ describe('research feedback views', () => {
     expect(service.transitionCase).toHaveBeenCalledWith(
       task.task_ref, reviewCase.case_ref, 1, 'IN_REVIEW', '合成流程备注', 'research-feedback-synthetic-key',
     )
-    expect(wrapper.text()).toContain('研究模拟 · 教育支持工作流')
+    expect(wrapper.text()).toContain('研究模拟，教育支持工作流')
     wrapper.unmount()
   })
 

@@ -148,13 +148,13 @@ onBeforeUnmount(() => { alive = false; clear() })
     <p v-if="notice" role="status">{{ notice }}</p>
     <p v-if="jobTotal" role="status">本任务共 {{ jobTotal }} 项生成任务：<span v-for="(count,name) in jobCounts" :key="name"><template v-if="count">{{ jobLabel(String(name)) }} {{ count }} 项；</template></span></p>
     <details v-if="jobs.length">
-      <summary>查看生成状态（第 {{ jobOffset + 1 }}–{{ jobOffset + jobs.length }} 项，共 {{ jobTotal }} 项）</summary><ul><li v-for="(job,index) in jobs" :key="job.job_ref">任务 {{ jobOffset + index + 1 }}：{{ jobRoundLabel(job) }} · {{ jobLabel(job.status) }} · 已尝试 {{ job.attempt_count }} 次<small v-if="jobExplanation(job)">{{ jobExplanation(job) }}</small></li></ul>
+      <summary>查看生成状态（第 {{ jobOffset + 1 }}–{{ jobOffset + jobs.length }} 项，共 {{ jobTotal }} 项）</summary><ul><li v-for="(job,index) in jobs" :key="job.job_ref">任务 {{ jobOffset + index + 1 }}：{{ jobRoundLabel(job) }}，{{ jobLabel(job.status) }}，已尝试 {{ job.attempt_count }} 次<small v-if="jobExplanation(job)">{{ jobExplanation(job) }}</small></li></ul>
       <nav v-if="jobOffset || jobsHaveMore" aria-label="生成任务分页"><AppButton variant="quiet" size="sm" :disabled="busy || Boolean(pending) || jobOffset === 0" @click="load(offset,Math.max(0,jobOffset-20))">上一页任务</AppButton><AppButton variant="quiet" size="sm" :disabled="busy || Boolean(pending) || !jobsHaveMore" @click="load(offset,jobOffset+20)">下一页任务</AppButton></nav>
     </details>
     <p v-if="busy" role="status" aria-busy="true">正在处理…</p>
     <AppStatusCallout v-if="errorMessage" tone="critical" title="候选操作未完成" :body="errorMessage"><AppButton v-if="pending" size="sm" :disabled="busy" @click="mutate(pending!)">使用相同请求重试</AppButton></AppStatusCallout>
     <p v-if="!busy && !rows.length && !errorMessage">当前没有此状态的候选。</p>
-    <div class="education-candidates__rows"><AppButton v-for="(row,index) in rows" :key="row.candidate_ref" variant="secondary" size="sm" :disabled="!canWrite" @click="open(row)">候选 {{ offset + index + 1 }}{{ row.session_ref === sessionRef ? ' · 当前复核记录' : '' }}</AppButton></div>
+    <div class="education-candidates__rows"><AppButton v-for="(row,index) in rows" :key="row.candidate_ref" variant="secondary" size="sm" :disabled="!canWrite" @click="open(row)">候选 {{ offset + index + 1 }}{{ row.session_ref === sessionRef ? '，当前复核记录' : '' }}</AppButton></div>
     <nav v-if="offset || hasMore" aria-label="教育候选分页"><AppButton variant="quiet" size="sm" :disabled="busy || Boolean(pending) || offset === 0" @click="load(Math.max(0,offset-20))">上一页</AppButton><AppButton variant="quiet" size="sm" :disabled="busy || Boolean(pending) || !hasMore" @click="load(offset+20)">下一页</AppButton></nav>
     <section v-if="detail" class="education-candidates__original" aria-label="原始生成候选">
       <h4>原始生成内容</h4><p>{{ detail.candidate_payload.content.summary }}</p>

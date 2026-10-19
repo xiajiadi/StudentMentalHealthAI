@@ -309,14 +309,14 @@ onBeforeUnmount(() => {
         <div class="directory-panel__heading"><h3>同校账号名称</h3><span>{{ directory.members.length }} 个账号</span></div>
         <div v-if="!directory.members.length" class="directory-empty">当前学校没有账号。</div>
         <div v-for="member in directory.members" :key="`${member.user_id}:${member.role}`" class="directory-name-row">
-          <label :for="`member-name-${member.user_id}-${member.role}`">{{ roleLabel(member.role) }} · {{ shortRef(member.user_id) }}</label>
+          <label :for="`member-name-${member.user_id}-${member.role}`">{{ roleLabel(member.role) }}，{{ shortRef(member.user_id) }}</label>
           <input :id="`member-name-${member.user_id}-${member.role}`" v-model="memberNames[member.user_id]" maxlength="120" autocomplete="off">
           <AppButton variant="secondary" size="sm" :disabled="Boolean(pending)" :loading="pending === `name-member-${member.user_id}`" @click="saveName('member', member.user_id)">保存</AppButton>
         </div>
       </AppCard>
 
       <AppCard class="directory-panel directory-panel--wide">
-        <div class="directory-panel__heading"><h3>批量创建合成账号</h3><span>CSV · 最多 100 行</span></div>
+        <div class="directory-panel__heading"><h3>批量创建合成账号</h3><span>CSV，最多 100 行</span></div>
         <p class="directory-hint">文件列必须为 login_name、display_name、role。密码列会被拒绝；账号导入后需分别设置登录密码。</p>
         <label class="directory-field" for="school-account-class">可选班级</label>
         <select id="school-account-class" v-model="selectedClassRef" :disabled="Boolean(pending)">
@@ -333,14 +333,14 @@ onBeforeUnmount(() => {
         </div>
         <div v-if="preview" class="directory-preview" role="status">
           <strong>{{ preview.valid && previewErrors.length === 0 ? `通过 ${preview.row_count} 行` : `检查 ${preview.row_count} 行，${previewErrors.length} 个问题` }}</strong>
-          <ul v-if="previewErrors.length"><li v-for="item in previewErrors" :key="`${item.row_no}-${item.code}`">第 {{ item.row_no }} 行 · {{ item.code }}</li></ul>
+          <ul v-if="previewErrors.length"><li v-for="item in previewErrors" :key="`${item.row_no}-${item.code}`">第 {{ item.row_no }} 行，{{ item.code }}</li></ul>
         </div>
       </AppCard>
 
       <AppCard v-if="pendingAccounts.length" class="directory-panel directory-panel--wide">
         <div class="directory-panel__heading"><h3>待激活账号</h3><span>{{ pendingAccounts.length }} 个</span></div>
         <div v-for="account in pendingAccounts" :key="account.user_id" class="directory-account-row">
-          <div><strong>{{ account.display_name || `账号 ${shortRef(account.user_id)}` }}</strong><span>{{ roleLabel(account.role) }} · {{ provisioningLabel('PENDING_ACTIVATION') }}</span></div>
+          <div><strong>{{ account.display_name || `账号 ${shortRef(account.user_id)}` }}</strong><span>{{ roleLabel(account.role) }}，{{ provisioningLabel('PENDING_ACTIVATION') }}</span></div>
           <AppButton variant="secondary" size="sm" :disabled="Boolean(pending)" @click="chooseActivation(account.user_id)">设置登录密码</AppButton>
         </div>
         <form v-if="activationUserId" class="directory-activation" @submit.prevent="activateAccount">

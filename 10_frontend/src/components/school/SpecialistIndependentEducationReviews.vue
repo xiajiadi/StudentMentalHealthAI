@@ -266,7 +266,7 @@ onBeforeUnmount(() => {
   <section class="independent-education-review-workspace" aria-labelledby="independent-education-review-title">
     <AppStatusCallout tone="info" title="独立研究教育内容复核" body="仅显示学生明确分享的一份生成草稿和公开来源，不展示原始问题或私密对话。请核对内容与来源后单独发布；保存草稿不会发布。这些资料仅用于研究演示。" />
     <header class="independent-education-review-workspace__header">
-      <div><span class="independent-education-review-workspace__kicker">指定分享 · 单稿复核</span><h2 id="independent-education-review-title">研究教育复核</h2><p>仅显示当前账号被明确指派的分享记录。</p></div>
+      <div><span class="independent-education-review-workspace__kicker">指定分享，单稿复核</span><h2 id="independent-education-review-title">研究教育复核</h2><p>仅显示当前账号被明确指派的分享记录。</p></div>
       <AppButton variant="quiet" size="sm" :disabled="listState === 'loading' || mutationBusy" aria-label="刷新独立研究教育复核列表" @click="loadList(offset)"><RotateCcw :size="15" aria-hidden="true" />刷新列表</AppButton>
     </header>
     <p v-if="statusMessage" class="independent-education-review-workspace__notice" role="status">{{ statusMessage }}</p>
@@ -302,13 +302,13 @@ onBeforeUnmount(() => {
             <details class="independent-education-review-workspace__provenance">
               <summary>工程追溯信息</summary>
               <dl>
-                <div><dt>研究来源</dt><dd>{{ detail.candidate.provenance.source_package_ref }} · {{ detail.candidate.provenance.source_study_ref }}</dd></div>
+                <div><dt>研究来源</dt><dd>{{ detail.candidate.provenance.source_package_ref }}，{{ detail.candidate.provenance.source_study_ref }}</dd></div>
                 <div><dt>来源清单 SHA-256</dt><dd>{{ detail.candidate.provenance.source_manifest_sha256 }}</dd></div>
-                <div><dt>检索</dt><dd>{{ detail.candidate.provenance.retrieval_id }} · {{ detail.candidate.provenance.retrieval_bundle_sha256 }}</dd></div>
-                <div><dt>生成提示</dt><dd>{{ detail.candidate.provenance.prompt_id }} v{{ detail.candidate.provenance.prompt_version }} · {{ detail.candidate.provenance.prompt_sha256 ?? '未提供静态提示摘要' }}</dd></div>
-                <div><dt>模型与运行时</dt><dd>{{ detail.candidate.provenance.model_id }} / {{ detail.candidate.provenance.logical_model_id }} · {{ detail.candidate.provenance.model_version }} · {{ detail.candidate.provenance.runtime_version }}</dd></div>
+                <div><dt>检索</dt><dd>{{ detail.candidate.provenance.retrieval_id }}，{{ detail.candidate.provenance.retrieval_bundle_sha256 }}</dd></div>
+                <div><dt>生成提示</dt><dd>{{ detail.candidate.provenance.prompt_id }} v{{ detail.candidate.provenance.prompt_version }}，{{ detail.candidate.provenance.prompt_sha256 ?? '未提供静态提示摘要' }}</dd></div>
+                <div><dt>模型与运行时</dt><dd>{{ detail.candidate.provenance.model_id }} / {{ detail.candidate.provenance.logical_model_id }}，{{ detail.candidate.provenance.model_version }}，{{ detail.candidate.provenance.runtime_version }}</dd></div>
                 <div><dt>原始安全检查</dt><dd>输入 {{ detail.candidate.provenance.input_safety_action }}（{{ detail.candidate.provenance.input_safety_reason_codes.join('、') || '无原因码' }}）；检索 {{ detail.candidate.provenance.retrieval_safety_action }}；输出 {{ detail.candidate.provenance.output_safety_action }}</dd></div>
-                <div><dt>边界与引用</dt><dd>{{ detail.candidate.provenance.claim_boundary_status }} · {{ detail.candidate.provenance.citation_binding_status }}</dd></div>
+                <div><dt>边界与引用</dt><dd>{{ detail.candidate.provenance.claim_boundary_status }}，{{ detail.candidate.provenance.citation_binding_status }}</dd></div>
               </dl>
             </details>
           </AppCard>
@@ -339,7 +339,7 @@ onBeforeUnmount(() => {
             </div>
             <AppStatusCallout v-if="pendingMutation && mutationError" tone="attention" title="操作状态未确认" :body="mutationError"><AppButton variant="secondary" size="sm" :disabled="mutationBusy" :loading="mutationBusy" @click="executePending">使用同一请求重试</AppButton></AppStatusCallout>
             <AppStatusCallout v-else-if="mutationError" tone="attention" title="复核状态已变化" :body="mutationError" />
-            <p v-if="detail.reviewed_draft" class="independent-education-review-workspace__muted">修订于 {{ formatDate(detail.reviewed_draft.updated_at) }} · 内容版本 {{ detail.reviewed_draft.content_revision }}</p>
+            <p v-if="detail.reviewed_draft" class="independent-education-review-workspace__muted">修订于 {{ formatDate(detail.reviewed_draft.updated_at) }}，内容版本 {{ detail.reviewed_draft.content_revision }}</p>
           </AppCard>
         </template>
       </div>

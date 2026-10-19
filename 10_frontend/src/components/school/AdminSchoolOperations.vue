@@ -343,7 +343,7 @@ onBeforeUnmount(() => { disposed = true; activationRequestGeneration += 1 })
           <label class="school-form__label" for="school-class-select">当前班级</label>
           <select id="school-class-select" v-model="selectedClassRef" :disabled="!classes.length || Boolean(pending)">
             <option value="" disabled>请选择班级</option>
-            <option v-for="item in classes" :key="item.class_ref" :value="item.class_ref">{{ item.display_name?.trim() || classLabel(item.class_ref) }} · 学生 {{ item.active_student_count }} · 教师 {{ item.active_teacher_count }}</option>
+            <option v-for="item in classes" :key="item.class_ref" :value="item.class_ref">{{ item.display_name?.trim() || classLabel(item.class_ref) }}，学生 {{ item.active_student_count }}，教师 {{ item.active_teacher_count }}</option>
           </select>
           <p v-if="!classes.length" class="school-empty">当前没有可用班级。创建班级后，可分配同校人员并发布任务。</p>
         </AppCard>
@@ -379,7 +379,7 @@ onBeforeUnmount(() => { disposed = true; activationRequestGeneration += 1 })
               <label for="school-task-activation">已启用版本</label>
               <select id="school-task-activation" v-model="selectedActivationRef" :disabled="!activeClass || Boolean(pending) || activationState !== 'ready' || !eligibleActivations.length">
                 <option value="">请选择版本</option>
-                <option v-for="activation in eligibleActivations" :key="activation.activation_ref" :value="activation.activation_ref">{{ activation.plan_name }} v{{ activation.plan_version_number }} · {{ activation.bank_name }} v{{ activation.bank_version_number }}</option>
+                <option v-for="activation in eligibleActivations" :key="activation.activation_ref" :value="activation.activation_ref">{{ activation.plan_name }} v{{ activation.plan_version_number }}，{{ activation.bank_name }} v{{ activation.bank_version_number }}</option>
               </select>
               <p v-if="activationState === 'ready' && !eligibleActivations.length" class="school-form__hint">当前没有可用于新任务的启用版本。</p>
               <AppButton v-if="activationHasMore" variant="secondary" size="sm" type="button" :disabled="activationState === 'loading'" @click="loadEligibleActivations(false)">读取更多版本</AppButton>
@@ -391,12 +391,12 @@ onBeforeUnmount(() => { disposed = true; activationRequestGeneration += 1 })
         <div v-else-if="taskState === 'error'" class="school-empty school-empty--error" role="alert">{{ taskError }}<AppButton variant="secondary" size="sm" @click="loadTasks">重新读取</AppButton></div>
         <div v-else-if="tasks.length" class="school-task-list">
           <article v-for="task in tasks" :key="task.task_ref" class="school-task">
-            <div><strong>{{ taskLabel(task.task_ref) }}</strong><span class="school-task__status">{{ statusLabel(task.status) }}</span><p>{{ formatDate(task.opens_at) }} 至 {{ formatDate(task.due_at) }}</p><small>报名 {{ task.published_enrollment_count }} · 有效 {{ task.active_enrollment_count }} · 已撤销 {{ task.revoked_enrollment_count }}</small></div>
+            <div><strong>{{ taskLabel(task.task_ref) }}</strong><span class="school-task__status">{{ statusLabel(task.status) }}</span><p>{{ formatDate(task.opens_at) }} 至 {{ formatDate(task.due_at) }}</p><small>报名 {{ task.published_enrollment_count }}，有效 {{ task.active_enrollment_count }}，已撤销 {{ task.revoked_enrollment_count }}</small></div>
             <AppButton variant="secondary" size="sm" @click="toggleEnrollments(task.task_ref)">{{ enrollmentTask === task.task_ref ? '收起报名' : '管理报名' }}</AppButton>
             <div v-if="enrollmentTask === task.task_ref" class="school-task__enrollments">
               <div v-if="enrollmentLoadingTask === task.task_ref" class="school-form__hint" aria-busy="true">正在读取报名情况…</div>
               <div v-else-if="!enrollmentsByTask[task.task_ref]?.length" class="school-form__hint">当前没有可管理的报名记录。</div>
-              <template v-else><div v-for="enrollment in enrollmentsByTask[task.task_ref]" :key="enrollment.enrollment_ref" class="school-task__enrollment"><span>报名 {{ shortRef(enrollment.enrollment_ref) }} · {{ statusLabel(enrollment.status) }}</span><AppButton v-if="!['revoked','REVOKED'].includes(enrollment.status)" variant="quiet" size="sm" :disabled="Boolean(pending)" :loading="pending === `revoke-${enrollment.enrollment_ref}`" @click="revokeEnrollment(task.task_ref, enrollment.enrollment_ref)">撤销</AppButton></div></template>
+              <template v-else><div v-for="enrollment in enrollmentsByTask[task.task_ref]" :key="enrollment.enrollment_ref" class="school-task__enrollment"><span>报名 {{ shortRef(enrollment.enrollment_ref) }}，{{ statusLabel(enrollment.status) }}</span><AppButton v-if="!['revoked','REVOKED'].includes(enrollment.status)" variant="quiet" size="sm" :disabled="Boolean(pending)" :loading="pending === `revoke-${enrollment.enrollment_ref}`" @click="revokeEnrollment(task.task_ref, enrollment.enrollment_ref)">撤销</AppButton></div></template>
             </div>
           </article>
         </div>

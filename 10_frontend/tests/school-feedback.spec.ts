@@ -236,7 +236,7 @@ describe('StudentFeedbackView published feedback section', () => {
     })
     await flushPromises()
     expect(wrapper.text()).toContain('已发布的学生反馈')
-    expect(wrapper.text()).toContain('合成演示 · L3')
+    expect(wrapper.text()).toContain('合成演示，L3')
     expect(wrapper.text()).toContain('只对当前学生可见的合成正文。')
     expect(wrapper.text()).toContain('已完成的合成测评')
     expect(wrapper.text()).toContain('发布于')

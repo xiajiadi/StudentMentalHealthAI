@@ -83,7 +83,7 @@ onBeforeUnmount(() => { requestGeneration += 1 })
       :image="studentPageArt.feedback"
       image-position="center 48%"
       :metadata="[{ label: isPreviewRoute() ? '内容状态' : '发布时间', value: isPreviewRoute() ? '本地预览' : formatDate(feedback.published_at) }]"
-      :badges="[isPreviewRoute() ? '本地合成预览 · 非正式反馈' : '合成演示 · L3']"
+      :badges="[isPreviewRoute() ? '本地合成预览，非正式反馈' : '合成演示，L3']"
       :table-of-contents="[{ id: 'feedback-content', label: '反馈内容' }, { id: 'feedback-record', label: '记录信息' }]"
     >
       <section id="feedback-content" class="feedback-detail__section" aria-labelledby="feedback-content-title">

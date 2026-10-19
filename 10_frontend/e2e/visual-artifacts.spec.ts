@@ -46,7 +46,7 @@ test('保存四档代表性页面视口证据', async ({ browser }) => {
     await expectNoHorizontalOverflow(page)
     await page.screenshot({ path: path.join(artifactRoot, String(width), 'student-home.png'), fullPage: true })
     await page.getByRole('button', { name: '开始测评' }).click()
-    await expect(page.getByText('第 1 题 · 测评进行中')).toBeVisible()
+    await expect(page.getByText('第 1 题，测评进行中')).toBeVisible()
     await expectNoHorizontalOverflow(page)
     await page.screenshot({ path: path.join(artifactRoot, String(width), 'cat-focus.png'), fullPage: true })
     const completeButton = page.getByRole('button', { name: /完成并查看结构/ })

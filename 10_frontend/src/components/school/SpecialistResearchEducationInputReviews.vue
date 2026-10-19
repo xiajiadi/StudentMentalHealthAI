@@ -232,7 +232,7 @@ onBeforeUnmount(() => {
           :disabled="busy || Boolean(pending)"
           @click="open(item)"
         >
-          <span>记录 {{ offset + index + 1 }} · {{ statusLabel(item.status) }}</span>
+          <span>记录 {{ offset + index + 1 }}，{{ statusLabel(item.status) }}</span>
           <small>到期 {{ dateLabel(item.expires_at) }}</small>
         </button>
       </li>

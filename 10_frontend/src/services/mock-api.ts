@@ -349,7 +349,7 @@ export class MockApiProvider implements FrontendApi {
         evidence: clone(reviewEvidence),
         safeAssessment: {
           assessmentId: 'ASSESS_demo_review_001',
-          completion: '已完成 · 仅摘要',
+          completion: '已完成，仅摘要',
           dataBoundary: '只展示授权摘要，不含原始回答或身份信息。',
           dimensionNote: '维度名称与数值为合成结构，占位展示，不作心理学解释。',
         },

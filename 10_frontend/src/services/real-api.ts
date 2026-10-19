@@ -75,7 +75,7 @@ import type {
 
 type UnknownRecord = Record<string, unknown>
 
-const SYNTHETIC_FIXTURE_LABEL = '真实接口 · 合成数据 · 仅用于工程验证'
+const SYNTHETIC_FIXTURE_LABEL = '真实接口，合成数据，仅用于工程验证'
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/'
 const apiClient = createClient(createConfig({
   baseUrl: apiBaseUrl,
@@ -1264,9 +1264,9 @@ const mapReport = (rawReport: unknown, rawAssessment: unknown): StudentReportVie
   })) || []
   const dimensions = Object.entries(assessment.dimensions).map(([key, dimension], index) => ({
     key,
-    label: `维度 ${String.fromCharCode(65 + index)} · 合成占位`,
+    label: `维度 ${String.fromCharCode(65 + index)}，合成占位`,
     value: dimension.score ?? Math.max(0, Math.min(100, Math.round(50 + dimension.theta * 12))),
-    helper: '结构估计 · 非诊断',
+    helper: '结构估计，非诊断',
   }))
   return {
     fixtureLabel: SYNTHETIC_FIXTURE_LABEL,
@@ -2310,7 +2310,7 @@ export class RealApiProvider implements FrontendApi {
         evidence: [],
         safeAssessment: {
           assessmentId: valueAsString((response.data as UnknownRecord).assessment_id, 'ASSESS_REDACTED'),
-          completion: '已完成 · 仅摘要',
+          completion: '已完成，仅摘要',
           dataBoundary: '只展示授权摘要，不含原始回答或身份信息。',
           dimensionNote: '维度名称与数值为合成结构，占位展示，不作心理学解释。',
         },

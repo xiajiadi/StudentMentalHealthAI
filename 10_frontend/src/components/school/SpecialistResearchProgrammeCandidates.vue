@@ -468,7 +468,7 @@ onBeforeUnmount(() => {
     <AppStatusCallout tone="info" title="教职工参考资料" body="候选内容仅供授权教职工在研究模拟中查看。采纳不代表专业审核或正式发布，也不会生成学生反馈。" />
 
     <div class="programme-candidates__toolbar">
-      <div><span class="programme-candidates__kicker">研究模拟 · 工作事项范围</span><h2>方案参考候选</h2><p>只显示服务端已保存的候选；排队完成后，新候选会显示在此处。</p></div>
+      <div><span class="programme-candidates__kicker">研究模拟，工作事项范围</span><h2>方案参考候选</h2><p>只显示服务端已保存的候选；排队完成后，新候选会显示在此处。</p></div>
       <AppButton variant="quiet" size="sm" :disabled="taskState === 'loading' || mutationBusy || generationBusy || batchBusy" @click="loadTasks"><RotateCcw :size="15" aria-hidden="true" />刷新授权</AppButton>
     </div>
     <p v-if="accessNotice" class="programme-candidates__notice" role="status">{{ accessNotice }}</p>
@@ -481,7 +481,7 @@ onBeforeUnmount(() => {
       <div class="programme-candidates__tasks" aria-label="授权研究工作事项">
         <button v-for="(task, index) in tasks" :key="task.task_ref" type="button" class="programme-candidates__task" :class="{ 'programme-candidates__task--active': selectedTaskRef === task.task_ref }" :aria-pressed="selectedTaskRef === task.task_ref" :disabled="mutationBusy || Boolean(retryAction) || generationBusy || Boolean(generationRetry) || batchBusy || Boolean(batchRetry)" @click="selectTask(task.task_ref)">
           <span class="programme-candidates__task-index">{{ String(index + 1).padStart(2, '0') }}</span>
-          <span><strong>{{ task.class_display_name || `授权工作事项 ${index + 1}` }}</strong><small>仅限此事项范围 · {{ formatDate(task.published_at) }}</small></span>
+          <span><strong>{{ task.class_display_name || `授权工作事项 ${index + 1}` }}</strong><small>仅限此事项范围，{{ formatDate(task.published_at) }}</small></span>
           <ShieldCheck :size="17" aria-hidden="true" />
         </button>
       </div>
@@ -507,11 +507,11 @@ onBeforeUnmount(() => {
           <p v-else-if="detailState === 'loading'" class="programme-candidates__state" role="status" aria-busy="true">正在读取候选详情…</p>
           <AppStatusCallout v-else-if="detailState === 'error'" tone="critical" title="候选详情暂不可用" :body="detailError"><AppButton variant="secondary" size="sm" @click="selectedCandidateRef && loadDetail(selectedCandidateRef)">重新加载</AppButton></AppStatusCallout>
           <template v-else-if="detail">
-            <header class="programme-candidates__detail-head"><div><span class="programme-candidates__kicker">教职工参考 · 研究模拟</span><h3>{{ detail.content.title }}</h3><p>状态：{{ statusLabel(detail.status) }} · {{ formatDate(detail.created_at) }}</p></div><AppBadge :tone="detail.status === 'ADOPTED' ? 'teal' : detail.status === 'DISCARDED' ? 'amber' : 'neutral'" dot>{{ statusLabel(detail.status) }}</AppBadge></header>
-            <p v-if="detail.content.content_origin === 'VERIFIED_SOURCE_METADATA' && detail.content.generation_mode === 'MODEL_SOURCE_SELECTION'" class="programme-candidates__origin programme-candidates__origin--metadata">来源索引 · 模型仅选择来源。标题与目录正文来自已校验来源元数据，不是模型撰写建议。</p>
+            <header class="programme-candidates__detail-head"><div><span class="programme-candidates__kicker">教职工参考，研究模拟</span><h3>{{ detail.content.title }}</h3><p>状态：{{ statusLabel(detail.status) }}，{{ formatDate(detail.created_at) }}</p></div><AppBadge :tone="detail.status === 'ADOPTED' ? 'teal' : detail.status === 'DISCARDED' ? 'amber' : 'neutral'" dot>{{ statusLabel(detail.status) }}</AppBadge></header>
+            <p v-if="detail.content.content_origin === 'VERIFIED_SOURCE_METADATA' && detail.content.generation_mode === 'MODEL_SOURCE_SELECTION'" class="programme-candidates__origin programme-candidates__origin--metadata">来源索引，模型仅选择来源。标题与目录正文来自已校验来源元数据，不是模型撰写建议。</p>
             <p v-else class="programme-candidates__origin programme-candidates__origin--legacy">旧版模型撰写文本。以下正文由模型撰写，仅作历史研究候选查看，不代表专业审核或批准。</p>
             <p class="programme-candidates__body">{{ detail.content.body }}</p>
-            <section class="programme-candidates__citations" aria-labelledby="programme-citations-heading"><h4 id="programme-citations-heading">来源</h4><ol><li v-for="citation in detail.content.citations" :key="citation.citation_id"><a :href="citation.source_url" target="_blank" rel="noopener noreferrer">{{ citation.source_title }}</a><span>{{ citation.source_organization }}<template v-if="citation.source_locator"> · {{ citation.source_locator }}</template></span></li></ol></section>
+            <section class="programme-candidates__citations" aria-labelledby="programme-citations-heading"><h4 id="programme-citations-heading">来源</h4><ol><li v-for="citation in detail.content.citations" :key="citation.citation_id"><a :href="citation.source_url" target="_blank" rel="noopener noreferrer">{{ citation.source_title }}</a><span>{{ citation.source_organization }}<template v-if="citation.source_locator">，{{ citation.source_locator }}</template></span></li></ol></section>
             <p class="programme-candidates__boundary">采纳只表示将此候选保留为教职工参考资料；不表示专业、心理测量学、伦理或正式发布批准。该内容不适用于学生发布。</p>
             <template v-if="detail.status === 'HELD'">
               <label class="programme-candidates__confirm"><input v-model="confirmation" type="checkbox" :disabled="!canAct"><span>我确认此操作仅用于授权工作事项中的教职工参考资料。</span></label>
@@ -522,7 +522,7 @@ onBeforeUnmount(() => {
       </div>
 
       <AppCard v-if="selectedTask" class="programme-candidates__queue">
-        <div><span class="programme-candidates__kicker">研究模拟 · 服务端排队</span><h3>生成教职工参考候选</h3><p>系统将按此授权事项的服务端规则选择输入并排队。此操作不发布内容，也不创建学生反馈。</p></div>
+        <div><span class="programme-candidates__kicker">研究模拟，服务端排队</span><h3>生成教职工参考候选</h3><p>系统将按此授权事项的服务端规则选择输入并排队。此操作不发布内容，也不创建学生反馈。</p></div>
         <label v-if="!generationReceipt" class="programme-candidates__confirm"><input v-model="generationConfirmation" type="checkbox" :disabled="generationBusy || Boolean(generationRetry)"><span>我确认请求仅用于此授权事项中的教职工参考资料。</span></label>
         <AppButton v-if="!generationReceipt" size="sm" :loading="generationBusy" :disabled="!canQueueGeneration || !generationConfirmation" @click="queueGeneration()">请求生成参考候选</AppButton>
         <div v-if="generationReceipt" class="programme-candidates__receipt" role="status"><AppBadge :tone="generationReceipt.status === 'HELD' ? 'teal' : ['FAILED', 'ABSTAINED', 'REVIEW_REQUIRED', 'CRISIS_ROUTED', 'CANCELLED'].includes(generationReceipt.status) ? 'amber' : 'neutral'" dot>{{ generationStatusLabel(generationReceipt.status) }}</AppBadge><span>任务范围：{{ selectedTask.class_display_name || '当前授权工作事项' }}。结果仅供教职工参考，未获准用于学生发布或正式运营。</span></div>
@@ -547,11 +547,11 @@ onBeforeUnmount(() => {
         <template v-else-if="generationJobsState === 'ready' && generationJobStatusCounts">
           <p class="programme-candidates__job-total">共 {{ generationJobsTotal }} 项任务</p>
           <div class="programme-candidates__job-counts" aria-label="任务状态汇总">
-            <span v-for="status in GENERATION_JOB_STATUSES" :key="status"><AppBadge :tone="status === 'HELD' ? 'teal' : ['FAILED', 'ABSTAINED', 'REVIEW_REQUIRED', 'CRISIS_ROUTED', 'CANCELLED'].includes(status) ? 'amber' : 'neutral'" dot>{{ generationStatusLabel(status) }} · {{ generationJobStatusCounts[status] }}</AppBadge></span>
+            <span v-for="status in GENERATION_JOB_STATUSES" :key="status"><AppBadge :tone="status === 'HELD' ? 'teal' : ['FAILED', 'ABSTAINED', 'REVIEW_REQUIRED', 'CRISIS_ROUTED', 'CANCELLED'].includes(status) ? 'amber' : 'neutral'" dot>{{ generationStatusLabel(status) }}，{{ generationJobStatusCounts[status] }}</AppBadge></span>
           </div>
           <p v-if="generationJobs.length === 0" class="programme-candidates__empty">当前没有生成任务。</p>
           <ul v-else class="programme-candidates__job-list">
-            <li v-for="(job, index) in generationJobs" :key="job.job_ref"><span><strong>任务 {{ generationJobsOffset + index + 1 }}</strong><small>最近更新：{{ formatDate(job.updated_at) }} · 已尝试 {{ job.attempt_count }} 次</small></span><AppBadge :tone="job.status === 'HELD' ? 'teal' : ['FAILED', 'ABSTAINED', 'REVIEW_REQUIRED', 'CRISIS_ROUTED', 'CANCELLED'].includes(job.status) ? 'amber' : 'neutral'" dot>{{ generationStatusLabel(job.status) }}</AppBadge></li>
+            <li v-for="(job, index) in generationJobs" :key="job.job_ref"><span><strong>任务 {{ generationJobsOffset + index + 1 }}</strong><small>最近更新：{{ formatDate(job.updated_at) }}，已尝试 {{ job.attempt_count }} 次</small></span><AppBadge :tone="job.status === 'HELD' ? 'teal' : ['FAILED', 'ABSTAINED', 'REVIEW_REQUIRED', 'CRISIS_ROUTED', 'CANCELLED'].includes(job.status) ? 'amber' : 'neutral'" dot>{{ generationStatusLabel(job.status) }}</AppBadge></li>
           </ul>
           <AppButton v-if="generationJobsHasMore" variant="secondary" size="sm" :loading="generationJobsState === 'loading'" :disabled="batchBusy || generationBusy" @click="loadGenerationJobs(generationJobsOffset + GENERATION_JOB_PAGE_SIZE, true)">加载更多任务</AppButton>
         </template>

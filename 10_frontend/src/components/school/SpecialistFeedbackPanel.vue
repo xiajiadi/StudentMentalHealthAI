@@ -203,7 +203,7 @@ onBeforeUnmount(() => {
 
     <AppStatusCallout
       tone="info"
-      title="仅限合成演示 · L3"
+      title="仅限合成演示，L3"
       body="发布表示确认这条合成工作流记录可由当前学生查看，不代表测量学验证或临床批准。此处不提供 L2 反馈目录。"
     />
 
@@ -220,11 +220,11 @@ onBeforeUnmount(() => {
       <ol v-else class="feedback-revisions" aria-label="反馈修订">
         <li v-for="item in rows" :key="item.feedback_ref" class="feedback-revision">
           <header class="feedback-revision__header">
-            <div><h4>{{ item.title }}</h4><small>修订 {{ item.content_revision }} · 状态版本 {{ item.state_version }}</small></div>
+            <div><h4>{{ item.title }}</h4><small>修订 {{ item.content_revision }}，状态版本 {{ item.state_version }}</small></div>
             <AppBadge :tone="item.status === 'PUBLISHED' ? 'teal' : item.status === 'REVOKED' ? 'amber' : 'neutral'" dot>{{ statusLabel(item.status) }}</AppBadge>
           </header>
           <p class="feedback-revision__body">{{ item.body }}</p>
-          <p class="feedback-revision__time">建立于 {{ formatDate(item.created_at) }}<span v-if="item.published_at"> · 发布于 {{ formatDate(item.published_at) }}</span><span v-if="item.revoked_at"> · 撤回于 {{ formatDate(item.revoked_at) }}</span></p>
+          <p class="feedback-revision__time">建立于 {{ formatDate(item.created_at) }}<span v-if="item.published_at">，发布于 {{ formatDate(item.published_at) }}</span><span v-if="item.revoked_at">，撤回于 {{ formatDate(item.revoked_at) }}</span></p>
           <label v-if="item.status === 'DRAFT' && props.caseStatus === 'APPROVED'" class="feedback-confirmation">
             <input v-model="confirmation" type="radio" :value="`publish:${item.feedback_ref}`" :disabled="busy || Boolean(failedRequest)">
             <span>我确认仅在本任务的合成演示中发布这条反馈。</span>
@@ -256,7 +256,7 @@ onBeforeUnmount(() => {
         <input id="feedback-title" v-model="title" maxlength="120" required :disabled="busy || Boolean(failedRequest)" placeholder="输入简短标题">
         <label for="feedback-body">正文</label>
         <textarea id="feedback-body" v-model="body" maxlength="2000" rows="4" required :disabled="busy || Boolean(failedRequest)" placeholder="只写可供当前学生查看的合成教育反馈，不要粘贴复核备注。" />
-        <div class="feedback-draft__footer"><small>{{ title.length }}/120 · {{ body.length }}/2000</small><AppButton type="submit" size="sm" :loading="busy" :disabled="!title.trim() || !body.trim() || Boolean(failedRequest)">建立草稿</AppButton></div>
+        <div class="feedback-draft__footer"><small>{{ title.length }}/120，{{ body.length }}/2000</small><AppButton type="submit" size="sm" :loading="busy" :disabled="!title.trim() || !body.trim() || Boolean(failedRequest)">建立草稿</AppButton></div>
       </form>
     </template>
 

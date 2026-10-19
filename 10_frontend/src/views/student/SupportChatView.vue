@@ -293,7 +293,7 @@ onMounted(() => {
     <template v-if="props.researchMode">
       <header class="support-heading">
         <div>
-          <span class="support-kicker">学生空间 · 教育支持</span>
+          <span class="support-kicker">学生空间，教育支持</span>
           <h1>高中场景教育支持</h1>
           <p>围绕学习和日常生活中的问题，查看已保存的私密对话。</p>
         </div>

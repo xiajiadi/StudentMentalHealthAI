@@ -15,7 +15,7 @@ import WorkspaceBreadcrumb from '@/components/student/WorkspaceBreadcrumb.vue'
       current="个体记录不可见"
     />
     <StudentPageHero
-      eyebrow="教师工作区 · 隐私范围"
+      eyebrow="教师工作区，隐私范围"
       title="个体记录不可见"
       subtitle="教师角色只查看获授权任务的整体完成进度。"
       image="/assets/psynova/student-page-heroes/feedback-hero.webp"

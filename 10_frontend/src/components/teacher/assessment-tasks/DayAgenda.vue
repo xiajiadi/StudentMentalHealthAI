@@ -77,24 +77,24 @@ const eventText = (event: PlannerAgendaItem['events'][number]) => `${event.kind 
 <style scoped>
 .planner-agenda { display: flex; min-width: 0; flex-direction: column; gap: 11px; padding: 15px; border: 1px solid var(--color-border); border-radius: var(--radius-card); background: var(--color-surface); }
 .planner-agenda__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--color-border); }
-.planner-agenda__eyebrow { color: var(--color-text-muted); font-size: 10px; }
+.planner-agenda__eyebrow { color: var(--color-primary-active); font-size: 13px; font-weight: 650; }
 .planner-agenda__header h2 { margin: 3px 0 0; color: var(--color-text-primary); font-size: 17px; line-height: 1.35; }
-.planner-agenda__count { padding: 4px 7px; border-radius: 999px; color: var(--color-primary-active); background: var(--color-info-wash); font-size: 10px; white-space: nowrap; }
+.planner-agenda__count { padding: 4px 7px; border-radius: 999px; color: var(--color-primary-active); background: var(--color-info-wash); font-size: 11px; white-space: nowrap; }
 .planner-agenda__list { display: grid; align-content: start; gap: 8px; }
 .planner-agenda-item { display: grid; gap: 5px; min-width: 0; padding: 10px 11px; border: 1px solid var(--color-border); border-radius: 9px; color: inherit; background: var(--color-surface); text-align: left; cursor: pointer; transition: border-color var(--motion-fast) ease, background-color var(--motion-fast) ease; }
 .planner-agenda-item:hover { border-color: rgb(0 177 226 / 36%); background: var(--color-surface-blue); }
 .planner-agenda-item:focus-visible,.planner-agenda__more:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 .planner-agenda-item__events { display: flex; flex-wrap: wrap; gap: 4px; }
-.planner-agenda-item__time { padding: 2px 5px; border-radius: 4px; color: #477b88; background: var(--color-support-wash); font-size: 9px; }
+.planner-agenda-item__time { padding: 3px 6px; border-radius: 4px; color: #477b88; background: var(--color-support-wash); font-size: 11px; }
 .planner-agenda-item__time--due { color: var(--color-primary-active); background: var(--color-info-wash); }
 .planner-agenda-item__time--urgent { color: #8a5b17; background: var(--color-attention-wash); }
-.planner-agenda-item__name { overflow: hidden; color: var(--color-text-primary); font-size: 12px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
-.planner-agenda-item__class { overflow: hidden; color: var(--color-text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.planner-agenda-item__name { overflow: hidden; color: var(--color-text-primary); font-size: 14px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.planner-agenda-item__class { overflow: hidden; color: var(--color-text-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .planner-agenda-item__footer { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2px; }
-.planner-task-status { display: inline-flex; max-width: 100%; align-items: center; overflow: hidden; padding: 3px 7px; border-radius: 999px; color: #19727d; background: var(--color-support-wash); font-size: 9px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.planner-task-status { display: inline-flex; max-width: 100%; align-items: center; overflow: hidden; padding: 4px 8px; border-radius: 999px; color: #19727d; background: var(--color-support-wash); font-size: 11px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
 .planner-task-status--upcoming,.planner-task-status--unpublished { color: #236b88; background: var(--color-info-wash); }
 .planner-task-status--ended,.planner-task-status--cancelled { color: var(--color-text-muted); background: var(--color-surface-skeleton); }
-.planner-agenda-item__completion { color: var(--color-text-muted); font-size: 9px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.planner-agenda-item__completion { color: var(--color-text-muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .planner-agenda__empty { display: grid; min-height: 170px; align-content: center; justify-items: center; gap: 7px; padding: 16px; color: var(--color-text-muted); text-align: center; }
 .planner-agenda__empty strong { color: var(--color-text-secondary); font-size: 12px; font-weight: 600; }
 .planner-agenda__empty > span:last-child { font-size: 10px; }

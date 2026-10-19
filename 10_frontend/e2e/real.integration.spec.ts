@@ -111,7 +111,7 @@ test('真实接口：登录 → CAT → 结果 → 支持报告 → 刷新后历
   await expect(page.getByRole('button', { name: '开始测评' })).toBeEnabled()
 
   await page.getByRole('button', { name: '开始测评' }).click()
-  await expect(page.getByText('第 1 题 · 测评进行中')).toBeVisible()
+  await expect(page.getByText('第 1 题，测评进行中')).toBeVisible()
 
   const completeButton = page.getByRole('button', { name: /完成并查看结构/ })
   for (let index = 0; index < 8; index += 1) {
@@ -161,7 +161,7 @@ test('真实接口：Safety 不可用时页面保留可恢复的错误状态', a
   test.setTimeout(60_000)
   await loginAsSyntheticStudent(page)
   await page.getByRole('button', { name: '开始测评' }).click()
-  await expect(page.getByText('第 1 题 · 测评进行中')).toBeVisible()
+  await expect(page.getByText('第 1 题，测评进行中')).toBeVisible()
 
   const completeButton = page.getByRole('button', { name: /完成并查看结构/ })
   for (let index = 0; index < 8; index += 1) {

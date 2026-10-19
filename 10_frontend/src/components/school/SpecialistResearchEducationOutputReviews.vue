@@ -244,8 +244,8 @@ onBeforeUnmount(() => {
           :disabled="busy || disabled"
           @click="open(item)"
         >
-          <span>记录 {{ offset + index + 1 }} · {{ statusLabel(item.status) }}</span>
-          <small>生成 {{ dateLabel(item.created_at) }} · 到期 {{ dateLabel(item.expires_at) }}</small>
+          <span>记录 {{ offset + index + 1 }}，{{ statusLabel(item.status) }}</span>
+          <small>生成 {{ dateLabel(item.created_at) }}，到期 {{ dateLabel(item.expires_at) }}</small>
         </button>
       </li>
     </ul>
@@ -284,8 +284,8 @@ onBeforeUnmount(() => {
       <details class="output-reviews__provenance">
         <summary>生成与安全处理信息</summary>
         <dl>
-          <div><dt>来源范围</dt><dd>{{ detail.review_payload.provenance.source_package_ref }} · {{ detail.review_payload.provenance.source_study_ref }} · {{ detail.review_payload.provenance.source_age_scope }} 岁</dd></div>
-          <div><dt>生成模型</dt><dd>{{ detail.review_payload.provenance.model_id }} · {{ detail.review_payload.provenance.model_version }}</dd></div>
+          <div><dt>来源范围</dt><dd>{{ detail.review_payload.provenance.source_package_ref }}，{{ detail.review_payload.provenance.source_study_ref }}，{{ detail.review_payload.provenance.source_age_scope }} 岁</dd></div>
+          <div><dt>生成模型</dt><dd>{{ detail.review_payload.provenance.model_id }}，{{ detail.review_payload.provenance.model_version }}</dd></div>
           <div><dt>提示版本</dt><dd>{{ detail.review_payload.provenance.prompt_version }}</dd></div>
           <div><dt>Safety 结果</dt><dd>输入 {{ detail.review_payload.provenance.input_safety_action }}；检索 {{ detail.review_payload.provenance.retrieval_safety_action }}；输出 {{ detail.review_payload.provenance.output_safety_action }}（需要人工复核）</dd></div>
         </dl>

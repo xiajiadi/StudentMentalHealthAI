@@ -95,7 +95,7 @@ const activeClasses = computed(() => classes.value.filter((item) => item.status 
 
 const instrumentLabel = (instrumentId: string, populationScope = '') => {
   const identity = `${instrumentId} ${populationScope}`.toUpperCase()
-  if (identity.includes('PROMIS') && identity.includes('ANXIETY')) return 'PROMIS 儿童青少年焦虑 · 8 题研究子集'
+  if (identity.includes('PROMIS') && identity.includes('ANXIETY')) return 'PROMIS 儿童青少年焦虑，8 题研究子集'
   if (identity.includes('PROMIS') && (identity.includes('DEPRESS') || identity.includes('DEPRESSION'))) return 'PROMIS 儿童青少年抑郁症状研究资料'
   if (identity.includes('NHANES') && (identity.includes('DPQ') || identity.includes('PHQ'))) return 'NHANES 成人抑郁症状问卷（P_DPQ）'
   if (identity.includes('SAPA') && (identity.includes('EXTRAVERSION') || identity.includes('IPIP'))) return 'SAPA 外向性公开作答研究子集'
@@ -485,7 +485,7 @@ watch(selectedProfileRef, (profileRef) => {
           <select id="research-profile" v-model="selectedProfileRef" :disabled="pending !== '' || profiles.length === 0">
             <option value="" disabled>选择一个候选资料</option>
             <option v-for="profile in profiles" :key="profile.profile_ref" :value="profile.profile_ref">
-              {{ instrumentLabel(profile.instrument_id, profile.source_population_scope ?? '') }} · {{ populationLabel(profile.source_population_scope, profile.instrument_id) }} · {{ candidateStateLabel(profile.catalog_state) }}
+              {{ instrumentLabel(profile.instrument_id, profile.source_population_scope ?? '') }}，{{ populationLabel(profile.source_population_scope, profile.instrument_id) }}，{{ candidateStateLabel(profile.catalog_state) }}
             </option>
           </select>
           <p v-if="selectedProfile" class="research-form__hint">
@@ -496,7 +496,7 @@ watch(selectedProfileRef, (profileRef) => {
           <select id="research-profile-registered-version" v-model.number="selectedRegisteredVersionNumber" :disabled="pending !== '' || registeredVersions.length === 0 || versionsState === 'loading'">
             <option :value="null" disabled>选择已登记版本</option>
             <option v-for="version in registeredVersions" :key="version.version_number" :value="version.version_number">
-              v{{ version.version_number }} · {{ rightsLabel(version.rights_status) }} · {{ executionLabel(version.execution_status) }}
+              v{{ version.version_number }}，{{ rightsLabel(version.rights_status) }}，{{ executionLabel(version.execution_status) }}
             </option>
           </select>
           <div v-if="versionsState === 'loading'" class="research-message" role="status">正在读取已登记版本…</div>
@@ -504,7 +504,7 @@ watch(selectedProfileRef, (profileRef) => {
             {{ versionsError || '已登记版本目录当前不可读取。' }}
           </div>
           <p v-if="selectedRegisteredVersion" class="research-form__hint">
-            {{ instrumentLabel(selectedRegisteredVersion.instrument_id, selectedRegisteredVersion.source_population_scope) }} · {{ populationLabel(selectedRegisteredVersion.source_population_scope, selectedRegisteredVersion.instrument_id) }} · {{ rightsLabel(selectedRegisteredVersion.rights_status) }} · {{ executionLabel(selectedRegisteredVersion.execution_status) }}。实际使用由服务端重新核验。
+            {{ instrumentLabel(selectedRegisteredVersion.instrument_id, selectedRegisteredVersion.source_population_scope) }}，{{ populationLabel(selectedRegisteredVersion.source_population_scope, selectedRegisteredVersion.instrument_id) }}，{{ rightsLabel(selectedRegisteredVersion.rights_status) }}，{{ executionLabel(selectedRegisteredVersion.execution_status) }}。实际使用由服务端重新核验。
           </p>
           <AppButton v-if="versionsNextOffset !== null" variant="secondary" size="sm" :disabled="versionsState === 'loading' || pending !== ''" @click="loadMoreVersions">
             加载更多已登记版本（{{ registeredVersions.length }} / {{ versionsTotal }}）
@@ -528,7 +528,7 @@ watch(selectedProfileRef, (profileRef) => {
         </form>
         <div v-if="state === 'ready' && profiles.length === 0" class="research-message">服务端当前没有可导入的候选资料。</div>
         <div v-if="enabledReceipt" class="research-receipt" role="status">
-          <strong>服务端已登记限期仿真资格 · v{{ enabledReceipt.version_number }}</strong>
+          <strong>服务端已登记限期仿真资格，v{{ enabledReceipt.version_number }}</strong>
           <span>有效期至 {{ new Date(enabledReceipt.policy_expires_at).toLocaleString('zh-CN') }}；实际使用仍由服务端重新核验。</span>
           <span>临床 / 伦理 / 心理测量学批准：均未授予</span>
         </div>
@@ -541,18 +541,18 @@ watch(selectedProfileRef, (profileRef) => {
           <select id="research-class" v-model="selectedClassRef" :disabled="pending !== '' || activeClasses.length === 0">
             <option value="" disabled>选择班级</option>
             <option v-for="item in activeClasses" :key="item.class_ref" :value="item.class_ref">
-              {{ item.display_name || `班级 ${item.class_ref.slice(-6)}` }} · {{ item.active_student_count }} 名在册学生
+              {{ item.display_name || `班级 ${item.class_ref.slice(-6)}` }}，{{ item.active_student_count }} 名在册学生
             </option>
           </select>
           <label for="research-binding">服务端当前列出的研究绑定</label>
           <select id="research-binding" v-model="selectedBindingChoice" :disabled="pending !== ''">
             <option value="" disabled>选择绑定</option>
             <option v-for="binding in bindings" :key="bindingChoiceKey(binding)" :value="bindingChoiceKey(binding)">
-              {{ instrumentLabel(binding.instrument_id, binding.source_population_scope) }} · v{{ binding.profile_version_number }} · {{ populationLabel(binding.source_population_scope, binding.instrument_id) }}
+              {{ instrumentLabel(binding.instrument_id, binding.source_population_scope) }}，v{{ binding.profile_version_number }}，{{ populationLabel(binding.source_population_scope, binding.instrument_id) }}
             </option>
           </select>
           <p v-if="selectedBinding" class="research-form__hint">
-            {{ instrumentLabel(selectedBinding.instrument_id, selectedBinding.source_population_scope) }} · {{ populationLabel(selectedBinding.source_population_scope, selectedBinding.instrument_id) }} · 已登记版本 v{{ selectedBinding.profile_version_number }} · 历史公开作答研究回放 · 未批准正式发布。实际使用仍由服务端核验。
+            {{ instrumentLabel(selectedBinding.instrument_id, selectedBinding.source_population_scope) }}，{{ populationLabel(selectedBinding.source_population_scope, selectedBinding.instrument_id) }}，已登记版本 v{{ selectedBinding.profile_version_number }}，历史公开作答研究回放，未批准正式发布。实际使用仍由服务端核验。
           </p>
           <label for="research-task-ref">系统生成的任务编号</label>
           <input id="research-task-ref" :value="taskRef" type="text" readonly aria-readonly="true" :disabled="pending !== ''">
@@ -571,8 +571,8 @@ watch(selectedProfileRef, (profileRef) => {
         <div v-if="activeClasses.length === 0" class="research-message">本校没有可供选择的有效班级；没有创建或填充班级数据。</div>
         <div v-if="publicationReceipt" class="research-receipt" role="status">
           <strong>研究任务已由服务端发布</strong>
-          <span>{{ publicationClassLabel }} · {{ instrumentLabel(publicationReceipt.instrument_id, publicationReceipt.source_population_scope) }} · 已建立 {{ publicationReceipt.published_enrollment_count }} 条报名记录</span>
-          <span>公开历史作答回放 · 研究仿真 · 未批准发布</span>
+          <span>{{ publicationClassLabel }}，{{ instrumentLabel(publicationReceipt.instrument_id, publicationReceipt.source_population_scope) }}，已建立 {{ publicationReceipt.published_enrollment_count }} 条报名记录</span>
+          <span>公开历史作答回放，研究仿真，未批准发布</span>
         </div>
       </template>
 

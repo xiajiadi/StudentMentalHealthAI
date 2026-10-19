@@ -17,7 +17,7 @@ test('Mock UI 流程：登录 → 学生测评 → 结果 → 支持报告 → �
   await expect(page.getByRole('heading', { name: '合成演示工作区' })).toBeVisible()
 
   await page.getByRole('button', { name: '开始测评' }).click()
-  await expect(page.getByText('第 1 题 · 测评进行中')).toBeVisible()
+  await expect(page.getByText('第 1 题，测评进行中')).toBeVisible()
   for (let index = 0; index < 3; index += 1) {
     await page.getByRole('radio').first().click()
     const saveButton = page.getByRole('button', { name: /保存并继续/ })
@@ -30,7 +30,7 @@ test('Mock UI 流程：登录 → 学生测评 → 结果 → 支持报告 → �
   await page.getByRole('button', { name: /完成并查看结构/ }).click()
   await expect(page).toHaveURL(/\/student\/assessment\/ASSESS_.*\/result/)
   await expect(page.getByRole('heading', { name: '本次合成测评已完成' })).toBeVisible()
-  await expect(page.getByText('教育用途 · 非诊断')).toBeVisible()
+  await expect(page.getByText('教育用途，非诊断')).toBeVisible()
   await expect(page.locator('body')).not.toContainText('theta')
 
   await page.getByRole('button', { name: /进入 AI 支持对话/ }).click()

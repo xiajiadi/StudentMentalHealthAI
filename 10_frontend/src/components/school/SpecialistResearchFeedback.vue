@@ -418,7 +418,7 @@ onBeforeUnmount(() => {
   <section class="research-feedback" aria-label="研究模拟教育反馈工作流">
     <AppStatusCallout
       tone="info"
-      title="研究模拟 · 教育支持工作流"
+      title="研究模拟，教育支持工作流"
       body="只处理已完成记录的服务端元数据与独立教育反馈文本，不展示测评分数或原始回答。页面状态不构成临床、心理测量学、伦理或正式研究批准。"
     />
 
@@ -433,7 +433,7 @@ onBeforeUnmount(() => {
     <div v-else class="research-feedback__tasks" aria-label="研究工作事项">
       <button v-for="(task, index) in tasks" :key="task.task_ref" type="button" class="research-feedback__task" :class="{ 'research-feedback__task--active': selectedTaskRef === task.task_ref }" :aria-pressed="selectedTaskRef === task.task_ref" :disabled="mutationBusy || Boolean(failedRequest)" @click="selectTask(task.task_ref)">
         <span class="research-feedback__task-index">{{ String(index + 1).padStart(2, '0') }}</span>
-        <span><strong>{{ task.class_display_name || `研究任务 ${index + 1}` }}</strong><small>已发布 · {{ formatDate(task.published_at) }}</small></span>
+        <span><strong>{{ task.class_display_name || `研究任务 ${index + 1}` }}</strong><small>已发布，{{ formatDate(task.published_at) }}</small></span>
         <ShieldCheck :size="17" aria-hidden="true" />
       </button>
     </div>
@@ -448,7 +448,7 @@ onBeforeUnmount(() => {
           <p v-else-if="!sessions.length" class="research-feedback__empty">此任务当前没有可处理的完成记录。</p>
           <div v-else class="research-feedback__rows">
             <button v-for="(item, index) in sessions" :key="item.session_ref" type="button" class="research-feedback__row" :class="{ 'research-feedback__row--active': selectedSessionRef === item.session_ref }" :aria-pressed="selectedSessionRef === item.session_ref" :disabled="mutationBusy || Boolean(failedRequest)" @click="selectSession(item)">
-              <span>记录 {{ sessionOffset + index + 1 }}</span><small>{{ formatDate(item.completed_at) }} · {{ item.items_answered }} 项</small><AppBadge :tone="item.case_ref ? 'neutral' : 'teal'" dot>{{ item.case_ref ? '已有复核记录' : '可建立复核' }}</AppBadge>
+              <span>记录 {{ sessionOffset + index + 1 }}</span><small>{{ formatDate(item.completed_at) }}，{{ item.items_answered }} 项</small><AppBadge :tone="item.case_ref ? 'neutral' : 'teal'" dot>{{ item.case_ref ? '已有复核记录' : '可建立复核' }}</AppBadge>
             </button>
           </div>
           <footer v-if="sessionTotal > PAGE_SIZE" class="research-feedback__pager"><span>{{ sessions.length ? `${sessionOffset + 1}–${sessionOffset + sessions.length} / ${sessionTotal}` : `共 ${sessionTotal} 条` }}</span><span><AppButton variant="quiet" size="sm" :disabled="sessionOffset === 0 || sessionsState === 'loading'" @click="loadTaskData({ sessionOffset: Math.max(0, sessionOffset - PAGE_SIZE) })">上一页</AppButton><AppButton variant="quiet" size="sm" :disabled="!sessionHasMore || sessionsState === 'loading'" @click="loadTaskData({ sessionOffset: sessionOffset + PAGE_SIZE })">下一页</AppButton></span></footer>
@@ -477,7 +477,7 @@ onBeforeUnmount(() => {
         <p v-if="caseState === 'loading'" class="research-feedback__state" role="status" aria-busy="true">正在读取复核内容…</p>
         <AppStatusCallout v-else-if="caseState === 'error'" tone="critical" title="复核内容暂不可用" :body="caseError"><AppButton variant="secondary" size="sm" @click="refreshCurrent">重新加载</AppButton></AppStatusCallout>
         <template v-else-if="selectedCase">
-          <header class="research-feedback__detail-head"><div><span class="research-feedback__kicker">研究模拟 · 独立教育反馈</span><h3>复核工作记录</h3><p>版本 {{ selectedCase.version }} · 更新于 {{ formatDate(selectedCase.updated_at) }}</p></div><AppBadge :tone="selectedCase.status === 'APPROVED' ? 'teal' : selectedCase.status === 'REJECTED' ? 'amber' : 'neutral'" dot>{{ caseStatusLabel(selectedCase.status) }}</AppBadge></header>
+          <header class="research-feedback__detail-head"><div><span class="research-feedback__kicker">研究模拟，独立教育反馈</span><h3>复核工作记录</h3><p>版本 {{ selectedCase.version }}，更新于 {{ formatDate(selectedCase.updated_at) }}</p></div><AppBadge :tone="selectedCase.status === 'APPROVED' ? 'teal' : selectedCase.status === 'REJECTED' ? 'amber' : 'neutral'" dot>{{ caseStatusLabel(selectedCase.status) }}</AppBadge></header>
           <p v-if="selectedCase.status === 'APPROVED'" class="research-feedback__boundary">复核流程已完成。此状态不代表心理测量学、临床或正式研究批准。学生可见反馈仍需单独发布。</p>
           <label class="research-feedback__field"><span>复核备注</span><textarea v-model="reviewNote" maxlength="4000" rows="3" :disabled="!canMutate || selectedCaseIsTerminal" placeholder="记录工作流备注；不要粘贴原始作答或身份信息。" /><small>{{ reviewNote.length }}/4000</small></label>
           <div v-if="!selectedCaseIsTerminal" class="research-feedback__actions">
@@ -492,10 +492,10 @@ onBeforeUnmount(() => {
             <p v-else-if="!feedbackRows.length" class="research-feedback__empty">尚无单独建立的学生反馈。</p>
             <ol v-else class="research-feedback__versions-list">
               <li v-for="item in feedbackRows" :key="item.feedback_ref" class="research-feedback__version">
-                <header><div><h5>{{ item.title }}</h5><small>修订 {{ item.content_revision }} · 状态版本 {{ item.state_version }}</small></div><AppBadge :tone="item.status === 'PUBLISHED' ? 'teal' : item.status === 'REVOKED' ? 'amber' : 'neutral'" dot>{{ feedbackStatusLabel(item.status) }}</AppBadge></header>
+                <header><div><h5>{{ item.title }}</h5><small>修订 {{ item.content_revision }}，状态版本 {{ item.state_version }}</small></div><AppBadge :tone="item.status === 'PUBLISHED' ? 'teal' : item.status === 'REVOKED' ? 'amber' : 'neutral'" dot>{{ feedbackStatusLabel(item.status) }}</AppBadge></header>
                 <p class="research-feedback__body">{{ item.body }}</p>
                 <ResearchFeedbackSources :source-cards="item.source_cards ?? []" />
-                <p class="research-feedback__time">建立于 {{ formatDate(item.created_at) }}<span v-if="item.published_at"> · 发布于 {{ formatDate(item.published_at) }}</span><span v-if="item.revoked_at"> · 撤回于 {{ formatDate(item.revoked_at) }}</span></p>
+                <p class="research-feedback__time">建立于 {{ formatDate(item.created_at) }}<span v-if="item.published_at">，发布于 {{ formatDate(item.published_at) }}</span><span v-if="item.revoked_at">，撤回于 {{ formatDate(item.revoked_at) }}</span></p>
                 <label v-if="item.status === 'DRAFT' && selectedCase.status === 'APPROVED'" class="research-feedback__confirm"><input v-model="confirmation" type="radio" :value="`publish:${item.feedback_ref}`" :disabled="!canMutate"><span>我确认只在当前合成演示账户中提供这条内容。</span></label>
                 <AppButton v-if="item.status === 'DRAFT' && selectedCase.status === 'APPROVED'" size="sm" :disabled="!canMutate || confirmation !== `publish:${item.feedback_ref}`" @click="publish(item)">发布到演示学生账户</AppButton>
                 <label v-if="item.status === 'PUBLISHED'" class="research-feedback__confirm"><input v-model="confirmation" type="radio" :value="`revoke:${item.feedback_ref}`" :disabled="!canMutate"><span>我确认撤回这条学生可见版本。</span></label>
@@ -509,7 +509,7 @@ onBeforeUnmount(() => {
             <p v-if="draftCandidateRef">已关联当前记录的候选来源。请核对并修订正文，原始候选保持不变。<AppButton variant="quiet" size="sm" :disabled="!canMutate" @click="draftCandidateRef = undefined">取消来源关联</AppButton></p>
             <label for="research-feedback-title">标题</label><input id="research-feedback-title" v-model="draftTitle" maxlength="120" required :disabled="!canMutate" placeholder="输入简短标题">
             <label for="research-feedback-body">正文</label><textarea id="research-feedback-body" v-model="draftBody" maxlength="4000" rows="4" required :disabled="!canMutate" placeholder="填写供当前合成学生账户查看的教育支持内容。" />
-            <div class="research-feedback__draft-footer"><small>{{ draftTitle.length }}/120 · {{ draftBody.length }}/4000</small><AppButton type="submit" size="sm" :disabled="!canMutate || !draftTitle.trim() || !draftBody.trim() || draftTitle.length > 120 || draftBody.length > 4000">建立草稿</AppButton></div>
+            <div class="research-feedback__draft-footer"><small>{{ draftTitle.length }}/120，{{ draftBody.length }}/4000</small><AppButton type="submit" size="sm" :disabled="!canMutate || !draftTitle.trim() || !draftBody.trim() || draftTitle.length > 120 || draftBody.length > 4000">建立草稿</AppButton></div>
           </form>
         </template>
       </AppCard>

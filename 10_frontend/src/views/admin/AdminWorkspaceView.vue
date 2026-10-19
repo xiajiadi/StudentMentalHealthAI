@@ -64,7 +64,7 @@ watch(section, (value) => {
     />
 
     <template v-if="section === 'overview'">
-      <AppStatusCallout tone="info" title="合成演示 · 验证进行中" body="班级和任务操作受当前学校权限约束。系统其他流程仍待端到端验证；本页不开放心理内容或安全复核权限。" />
+      <AppStatusCallout tone="info" title="合成演示，验证进行中" body="班级和任务操作受当前学校权限约束。系统其他流程仍待端到端验证；本页不开放心理内容或安全复核权限。" />
       <section class="admin-summary" aria-label="管理功能可用状态">
         <AppCard class="admin-feature"><span class="admin-feature__icon"><UsersRound :size="19" aria-hidden="true" /></span><span class="admin-feature__state">按学校授权</span><h2>班级与人员</h2><p>从同校的在用账号中分配教师和学生。</p><RouterLink to="/admin/users">管理班级人员 <ArrowRight :size="15" aria-hidden="true" /></RouterLink></AppCard>
         <AppCard class="admin-feature"><span class="admin-feature__icon admin-feature__icon--teal"><Settings2 :size="19" aria-hidden="true" /></span><span class="admin-feature__state">只读状态</span><h2>服务能力</h2><p>仅读取公开的依赖健康端点，不提供配置变更操作。</p><RouterLink to="/admin/settings">查看服务状态 <ArrowRight :size="15" aria-hidden="true" /></RouterLink></AppCard>
@@ -86,7 +86,7 @@ watch(section, (value) => {
 
     <template v-else>
       <AppCard class="health-panel">
-        <div class="health-panel__heading"><span class="admin-feature__icon admin-feature__icon--teal"><Activity :size="19" aria-hidden="true" /></span><div><span class="admin-kicker">Backend · GET /health/dependencies</span><h2>依赖能力状态</h2><p>只读公开端点；健康状态不代表 M0 全链路或生产就绪。</p></div><button class="health-refresh" type="button" :disabled="healthState === 'loading'" @click="loadHealth"><RefreshCw :size="15" aria-hidden="true" />刷新</button></div>
+        <div class="health-panel__heading"><span class="admin-feature__icon admin-feature__icon--teal"><Activity :size="19" aria-hidden="true" /></span><div><span class="admin-kicker">Backend：GET /health/dependencies</span><h2>依赖能力状态</h2><p>只读公开端点；健康状态不代表 M0 全链路或生产就绪。</p></div><button class="health-refresh" type="button" :disabled="healthState === 'loading'" @click="loadHealth"><RefreshCw :size="15" aria-hidden="true" />刷新</button></div>
         <div v-if="healthState === 'loading'" class="health-message" aria-live="polite">正在读取服务端状态…</div>
         <div v-else-if="healthState === 'error'" class="health-message health-message--error" role="status"><CircleHelp :size="17" aria-hidden="true" />当前无法读取健康端点；状态未知，不以本地占位值代替。</div>
         <div v-else-if="healthRows.length" class="health-list" aria-label="Backend 返回的依赖状态">

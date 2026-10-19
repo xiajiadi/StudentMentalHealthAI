@@ -109,19 +109,19 @@ onBeforeUnmount(() => { requestGeneration += 1 })
         <div class="result-section__heading"><span class="result-section__index">00</span><div><span class="section-label">RECORD</span><h2 id="record-title">记录概览</h2></div></div>
         <div class="result-identity">
           <div class="result-identity__mark" aria-hidden="true"><CheckCircle2 :size="22" /></div>
-          <div><strong>结构化支持参考已准备</strong><span>{{ data.report.reportId }} · {{ formatDate(data.report.assessment.timestamps.completed_at) }}</span></div>
+          <div><strong>结构化支持参考已准备</strong><span>{{ data.report.reportId }}，{{ formatDate(data.report.assessment.timestamps.completed_at) }}</span></div>
           <span class="result-identity__status">已生成</span>
         </div>
       </section>
 
       <section id="meaning" class="result-section result-section--meaning" aria-labelledby="meaning-title">
-        <div class="result-section__heading"><span class="result-section__index">01</span><div><span class="section-label">Meaning · 意义</span><h2 id="meaning-title">{{ data.meaning.title }}</h2></div></div>
+        <div class="result-section__heading"><span class="result-section__index">01</span><div><span class="section-label">Meaning / 意义</span><h2 id="meaning-title">{{ data.meaning.title }}</h2></div></div>
         <p class="result-section__lead">{{ data.meaning.body }}</p>
         <div class="result-section__note"><Info :size="16" aria-hidden="true" /><span>{{ data.meaning.note }}</span></div>
       </section>
 
       <section id="data" class="result-section" aria-labelledby="data-title">
-        <div class="result-section__heading"><span class="result-section__index">02</span><div><span class="section-label">Data · 数据</span><h2 id="data-title">{{ data.data.title }}</h2></div></div>
+        <div class="result-section__heading"><span class="result-section__index">02</span><div><span class="section-label">Data / 数据</span><h2 id="data-title">{{ data.data.title }}</h2></div></div>
         <p class="result-section__description">{{ data.data.body }}</p>
         <AppCard class="data-panel" raised>
           <div class="data-panel__chart"><DimensionRadar :dimensions="data.data.dimensions" /></div>
@@ -136,7 +136,7 @@ onBeforeUnmount(() => { requestGeneration += 1 })
       </section>
 
       <section id="action" class="result-section" aria-labelledby="action-title">
-        <div class="result-section__heading"><span class="result-section__index">03</span><div><span class="section-label">Action · 行动</span><h2 id="action-title">从一个能完成的动作开始</h2></div></div>
+        <div class="result-section__heading"><span class="result-section__index">03</span><div><span class="section-label">Action / 行动</span><h2 id="action-title">从一个能完成的动作开始</h2></div></div>
         <p class="result-section__description">下面的建议是教育支持场景中的合成示例。选择一项就够了，不需要一次完成所有事情。</p>
         <div v-if="data.report.generation.content" class="action-list">
           <AppCard v-for="action in data.actions" :key="action.number" class="action-item">
@@ -149,7 +149,7 @@ onBeforeUnmount(() => { requestGeneration += 1 })
       </section>
 
       <section id="evidence" class="result-section" aria-labelledby="evidence-title">
-        <div class="result-section__heading"><span class="result-section__index">04</span><div><span class="section-label">Evidence · 依据</span><h2 id="evidence-title">为什么会看到这些建议</h2></div></div>
+        <div class="result-section__heading"><span class="result-section__index">04</span><div><span class="section-label">Evidence / 依据</span><h2 id="evidence-title">为什么会看到这些建议</h2></div></div>
         <p class="result-section__description">每条支持建议都应能回到经过审核的资料片段。以下顺序与本次结果返回的引用顺序一致。</p>
         <AppCard class="evidence-panel">
           <div v-if="data.evidence.length">

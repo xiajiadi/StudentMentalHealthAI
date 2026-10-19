@@ -22,7 +22,7 @@ defineProps<{
         <div v-if="citation.locator"><dt>定位</dt><dd>{{ citation.locator }}</dd></div>
         <div><dt>片段</dt><dd class="evidence-item__mono">{{ citation.chunk_id }}</dd></div>
       </dl>
-      <span class="evidence-item__trace"><ExternalLink :size="13" aria-hidden="true" /> 已审核引用 · 合成资料</span>
+      <span class="evidence-item__trace"><ExternalLink :size="13" aria-hidden="true" /> 已审核引用，合成资料</span>
     </div>
   </article>
 </template>

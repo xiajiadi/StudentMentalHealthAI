@@ -321,7 +321,7 @@ const heatmapOption = computed<EChartsOption>(() => ({
       const value = Array.isArray(point?.value) ? point.value : []
       const task = heatmapCells.value.taskLabels[Number(value[0])] ?? '任务'
       const className = heatmapCells.value.classLabels[Number(value[1])] ?? '班级'
-      return `${className} · ${task}<br/>完成率：${Number(value[2]).toFixed(1)}%<br/>已完成：${value[4]} / ${value[3]} 人次`
+      return `${className}，${task}<br/>完成率：${Number(value[2]).toFixed(1)}%<br/>已完成：${value[4]} / ${value[3]} 人次`
     },
   },
   xAxis: {

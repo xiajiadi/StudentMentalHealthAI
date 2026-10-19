@@ -23,7 +23,7 @@ async function isTeacherPreviewReady() {
   try {
     const response = await fetch(previewUrl, { signal: AbortSignal.timeout(1000) })
     const html = await response.text()
-    return response.status === 200 && html.includes('PsyNova · 教育支持工作台') && html.includes('/@vite/client')
+    return response.status === 200 && html.includes('PsyNova 教育支持工作台') && html.includes('/@vite/client')
   } catch {
     return false
   }

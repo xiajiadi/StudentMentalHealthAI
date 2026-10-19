@@ -157,7 +157,7 @@ const schoolTaskCrossesYear = (task: StudentSchoolTask) => {
 }
 
 const schoolTaskDateRange = (task: StudentSchoolTask) => {
-  if (!task.due_at) return `${compactTaskDateTime(task.opens_at)} · 未设截止时间`
+  if (!task.due_at) return `${compactTaskDateTime(task.opens_at)}，未设截止时间`
   const startsAt = new Date(task.opens_at)
   const dueAt = new Date(task.due_at)
   if (Number.isNaN(startsAt.getTime()) || Number.isNaN(dueAt.getTime())) {
@@ -210,7 +210,7 @@ const assessmentCards = computed<AssessmentLibraryCard[]>(() => {
         item,
         task: null,
         status: item.status,
-        category: '演示数据 · 仅预览',
+        category: '演示数据，仅预览',
         title: `虚拟测评记录 ${String(index + 1).padStart(2, '0')}`,
         poster: `/assets/psynova/original-covers/${posterImages[(index + 18) % posterImages.length]}`,
         previewOnly: true,

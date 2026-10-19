@@ -147,7 +147,7 @@ const submit = async () => {
             <select id="school-context" v-model="selectedContext" class="login-input" aria-label="School workspace">
               <option disabled value="">Select a school and role</option>
               <option v-for="(context, index) in pendingContext.availableContexts" :key="`${context.schoolRef}:${context.role}`" :value="String(index)">
-                {{ context.schoolRef }} · {{ roleLabels[context.role] }}
+                {{ context.schoolRef }}，{{ roleLabels[context.role] }}
               </option>
             </select>
             <p v-if="errorMessage" class="login-form__error" role="alert">{{ errorMessage }}</p>

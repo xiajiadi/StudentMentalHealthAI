@@ -40,7 +40,7 @@ const availableSpecialists = computed(() => specialists.value.filter((person) =>
 
 const taskOptionLabel = (task: SchoolTask) => {
   const index = props.tasks.findIndex((item) => item.task_ref === task.task_ref)
-  return `第 ${index + 1} 项 · ${formatDate(task.opens_at)} 至 ${formatDate(task.due_at)}`
+  return `第 ${index + 1} 项，${formatDate(task.opens_at)} 至 ${formatDate(task.due_at)}`
 }
 
 const formatDate = (value: string | null) => {
@@ -229,7 +229,7 @@ onBeforeUnmount(() => {
         <select id="professional-assignment-specialist" v-model="selectedSpecialistId" :disabled="!selectedTask || specialistsState !== 'ready' || !availableSpecialists.length || pending">
           <option value="">选择专员</option>
           <option v-for="(specialist, index) in specialists" :key="specialist.user_id" :value="specialist.user_id" :disabled="activeSpecialistIds.has(specialist.user_id)">
-            {{ specialist.display_name?.trim() || `专员 ${index + 1}` }}{{ activeSpecialistIds.has(specialist.user_id) ? ' · 已分配' : '' }}
+            {{ specialist.display_name?.trim() || `专员 ${index + 1}` }}{{ activeSpecialistIds.has(specialist.user_id) ? '，已分配' : '' }}
           </option>
         </select>
         <AppButton size="sm" :disabled="!selectedTask || !selectedSpecialistId || pending || specialistsState !== 'ready' || assignmentsState !== 'ready'" :loading="pending && failedOperation?.kind === 'assign'" @click="assign">分配</AppButton>
@@ -249,7 +249,7 @@ onBeforeUnmount(() => {
         <div>
           <strong>{{ specialistLabel(assignment.specialist_user_id) }}</strong>
           <span :class="['professional-assignments__status', { 'professional-assignments__status--revoked': assignment.status === 'REVOKED' }]">{{ statusLabel(assignment.status) }}</span>
-          <p>分配于 {{ formatDate(assignment.assigned_at) }}<template v-if="assignment.revoked_at"> · 撤销于 {{ formatDate(assignment.revoked_at) }}</template></p>
+          <p>分配于 {{ formatDate(assignment.assigned_at) }}<template v-if="assignment.revoked_at">，撤销于 {{ formatDate(assignment.revoked_at) }}</template></p>
         </div>
         <AppButton v-if="assignment.status === 'ACTIVE'" variant="quiet" size="sm" :disabled="pending" :loading="pending && failedOperation?.kind === 'revoke' && failedOperation.assignmentRef === assignment.assignment_ref" @click="revoke(assignment)">撤销分配</AppButton>
       </li>

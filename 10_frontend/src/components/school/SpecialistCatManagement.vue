@@ -274,7 +274,7 @@ onBeforeUnmount(() => {
         <AppCard class="cat-run-panel">
           <header class="cat-panel-heading cat-panel-heading--run">
             <span class="cat-panel-heading__icon cat-panel-heading__icon--run"><Beaker :size="18" aria-hidden="true" /></span>
-            <div><p class="cat-overline">固定配置 · 合成数据</p><h2>运行工程模拟</h2></div>
+            <div><p class="cat-overline">固定配置，合成数据</p><h2>运行工程模拟</h2></div>
           </header>
           <p class="cat-run-intro">选择样本量后手动开始一次运行。相同条件可再次运行并比较聚合结果。</p>
           <fieldset class="cat-sample-picker" :disabled="simulationState === 'running'">
@@ -303,7 +303,7 @@ onBeforeUnmount(() => {
 
       <section v-if="simulation" class="cat-results" aria-labelledby="cat-results-title" aria-live="polite">
         <header class="cat-results__heading">
-          <div><p class="cat-overline">服务端返回 · 聚合值</p><h2 id="cat-results-title">模拟结果</h2><p>样本量 {{ simulation.n_examinees.toLocaleString('zh-CN') }} · 题库 {{ simulation.item_bank_version }} · 配置 {{ simulation.config_version }}</p></div>
+          <div><p class="cat-overline">服务端返回，聚合值</p><h2 id="cat-results-title">模拟结果</h2><p>样本量 {{ simulation.n_examinees.toLocaleString('zh-CN') }}，题库 {{ simulation.item_bank_version }}，配置 {{ simulation.config_version }}</p></div>
           <span class="cat-result-chip"><ShieldCheck :size="14" aria-hidden="true" />仅供工程验证</span>
         </header>
         <p v-if="hasRepeatabilityComparison" class="cat-comparison" role="status">{{ comparisonText }}</p>

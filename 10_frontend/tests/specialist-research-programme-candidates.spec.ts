@@ -113,7 +113,7 @@ describe('specialist research programme candidates', () => {
     await flushPromises()
     expect(service.get).toHaveBeenCalledWith(task.task_ref, candidate.candidate_ref)
     expect(wrapper.text()).toContain(detail.content.title)
-    expect(wrapper.text()).toContain('来源索引 · 模型仅选择来源')
+    expect(wrapper.text()).toContain('来源索引，模型仅选择来源')
     expect(wrapper.text()).not.toContain('旧版模型撰写文本')
     expect(wrapper.text()).toContain('公开来源标题')
 
@@ -150,7 +150,7 @@ describe('specialist research programme candidates', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('旧版模型撰写文本')
-    expect(wrapper.text()).not.toContain('来源索引 · 模型仅选择来源')
+    expect(wrapper.text()).not.toContain('来源索引，模型仅选择来源')
     wrapper.unmount()
   })
 
@@ -256,8 +256,8 @@ describe('specialist research programme candidates', () => {
     expect(service.queueGenerationBatch).toHaveBeenCalledWith(task.task_ref, 'programme-batch-page-1', 25, null)
     expect(service.listGenerationJobs).toHaveBeenLastCalledWith(task.task_ref, 0, 25)
     expect(wrapper.text()).toContain('回执包含 2 项任务记录（可能包含已有任务）')
-    expect(wrapper.text()).toContain('已排队 · 1')
-    expect(wrapper.text()).toContain('待重试 · 1')
+    expect(wrapper.text()).toContain('已排队，1')
+    expect(wrapper.text()).toContain('待重试，1')
     expect(wrapper.text()).toContain('共 2 项任务')
     expect(wrapper.text()).not.toContain(batchReceipt.batch_ref)
     wrapper.unmount()
@@ -399,8 +399,8 @@ describe('specialist research programme candidates', () => {
 
     expect(wrapper.text()).toContain('第二合成事项')
     expect(wrapper.text()).toContain('共 2 项任务')
-    expect(wrapper.text()).toContain('处理失败 · 2')
-    expect(wrapper.text()).not.toContain('候选已保存 · 1')
+    expect(wrapper.text()).toContain('处理失败，2')
+    expect(wrapper.text()).not.toContain('候选已保存，1')
     wrapper.unmount()
   })
 

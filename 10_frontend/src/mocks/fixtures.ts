@@ -7,7 +7,7 @@ import type {
   TeacherOverviewViewModel,
 } from '@/types/view-models'
 
-export const SYNTHETIC_FIXTURE_LABEL = '合成演示案例 · 仅用于工程验证'
+export const SYNTHETIC_FIXTURE_LABEL = '合成演示案例，仅用于工程验证'
 
 export const syntheticAssessment: Assessment = {
   schema_version: 'assessment.v1',
@@ -138,7 +138,7 @@ export const studentHomeFixture: StudentHomeViewModel = {
   },
   recent: {
     label: '最近一次测评',
-    status: '已完成 · 可查看参考',
+    status: '已完成，可查看参考',
     date: '2026 年 9 月 5 日',
     reportId: 'REPORT_demo_student_001',
   },
@@ -219,10 +219,10 @@ export const studentReportFixture: StudentReportViewModel = {
     title: '本次测评的结构',
     body: '下面的图表只帮助你看到页面如何承载测评结构；维度名称和数值均来自合成 fixture，不代表经过确认的心理学维度。',
     dimensions: [
-      { key: 'emotion', label: '维度 A · 合成占位', value: 58, helper: '结构估计 · 非诊断' },
-      { key: 'learning', label: '维度 B · 合成占位', value: 66, helper: '结构估计 · 非诊断' },
-      { key: 'support', label: '维度 C · 合成占位', value: 48, helper: '界面示例 · 非诊断' },
-      { key: 'action', label: '维度 D · 合成占位', value: 72, helper: '界面示例 · 非诊断' },
+      { key: 'emotion', label: '维度 A，合成占位', value: 58, helper: '结构估计，非诊断' },
+      { key: 'learning', label: '维度 B，合成占位', value: 66, helper: '结构估计，非诊断' },
+      { key: 'support', label: '维度 C，合成占位', value: 48, helper: '界面示例，非诊断' },
+      { key: 'action', label: '维度 D，合成占位', value: 72, helper: '界面示例，非诊断' },
     ],
   },
   actions: [

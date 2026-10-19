@@ -50,8 +50,8 @@ const statusSummary = (row: TeacherTaskProgress) => `共 ${row.active_enrollment
   <main class="teacher-task-detail content-wrap">
     <WorkspaceBreadcrumb home-label="教师工作区" home-to="/teacher/overview" :parent="{ label: '测评任务', to: '/teacher/tasks' }" current="任务汇总" />
     <StudentPageHero
-      eyebrow="TASK SUMMARY · SCOPE A"
-      :title="task ? `${teacherClassDisplayLabel(task.class_ref, rows)} · ${teacherTaskDisplayLabel(task)}` : '任务汇总'"
+      eyebrow="TASK SUMMARY / SCOPE A"
+      :title="task ? `${teacherClassDisplayLabel(task.class_ref, rows)}，${teacherTaskDisplayLabel(task)}` : '任务汇总'"
       subtitle="仅呈现该班级任务的整体状态计数与时间安排。"
       :image="studentPageArt.assessments"
       image-position="center 48%"

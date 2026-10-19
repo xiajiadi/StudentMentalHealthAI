@@ -66,7 +66,7 @@ onBeforeUnmount(() => { requestGeneration += 1 })
       :summary="resultSummary"
       :image="studentPageArt.assessments"
       :metadata="[{ label: '完成时间', value: formatDate(assessment.timestamps.completed_at) }]"
-      :badges="[isWho5 ? 'WHO-5 · ENGLISH ORIGINAL · 2024' : '合成演示 · 教育用途']"
+      :badges="[isWho5 ? 'WHO-5 英文原版（2024）' : '合成演示，教育用途']"
       :table-of-contents="[{ id: 'assessment-summary', label: '测评记录' }, { id: 'assessment-notes', label: '记录说明' }]"
     >
       <section id="assessment-summary" class="assessment-result__section" aria-labelledby="assessment-summary-title">
@@ -79,7 +79,7 @@ onBeforeUnmount(() => { requestGeneration += 1 })
       <section id="assessment-notes" class="assessment-result__section" aria-labelledby="assessment-notes-title">
         <div class="assessment-result__section-heading"><span>NOTES</span><h2 id="assessment-notes-title">记录说明</h2></div>
         <AppStatusCallout v-if="!isWho5" tone="info" title="如何理解此页" body="这是工程演示中的测量记录，不代表真实心理量表的有效测量，不构成心理诊断或治疗建议。页面不对测量值作心理学解释。" />
-        <p v-if="isWho5" class="assessment-result__source">来源：World Health Organization, WHO-5 (2024) · CC BY-NC-SA 3.0 IGO</p>
+        <p v-if="isWho5" class="assessment-result__source">来源：World Health Organization, WHO-5 (2024), CC BY-NC-SA 3.0 IGO</p>
         <AppStatusCallout v-else tone="attention" title="独立教育支持暂不可用" body="当前后端需要测评关联，常规支持生成会在 CLAIM_BOUNDARY 阻断。此演示不会生成占位回答或引用。" />
       </section>
     </StudentRecordDetailLayout>

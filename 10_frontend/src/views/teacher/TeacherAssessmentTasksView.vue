@@ -142,14 +142,6 @@ watch(filteredTasks, (tasks) => {
   <main class="teacher-assessment-page content-wrap" aria-label="教师工作区，测评任务">
     <WorkspaceBreadcrumb home-label="教师工作区" home-to="/teacher/overview" current="测评任务" />
 
-    <header class="assessment-page-heading">
-      <div>
-        <h1>测评任务</h1>
-        <p>按时间与执行状态查看任务安排</p>
-      </div>
-      <span class="assessment-page-heading__badge">{{ isDemo ? '合成数据预览 · 只读' : '教师视图 · 只读' }}</span>
-    </header>
-
     <section class="assessment-filterbar" aria-label="任务筛选与视图切换">
       <label class="assessment-search">
         <Search :size="16" aria-hidden="true" />
@@ -238,21 +230,12 @@ watch(filteredTasks, (tasks) => {
       <TaskKanbanBoard v-else :lanes="boardLanes" :selected-task-key="selectedTaskKey" @open-task="openTask" />
     </template>
 
-    <p class="assessment-page-note">
-      日历展示任务开始与截止日期，统计按授权任务计算；不包含学生个人心理记录
-      <span v-if="isDemo"> · 当前使用合成数据预览</span>
-    </p>
-
-    <TeacherTaskDrawer :open="Boolean(selectedTask)" :task="selectedTask" :is-demo="isDemo" @update:open="updateDrawerOpen" />
+    <TeacherTaskDrawer :open="Boolean(selectedTask)" :task="selectedTask" @update:open="updateDrawerOpen" />
   </main>
 </template>
 
 <style scoped>
 .teacher-assessment-page { display: grid; gap: 13px; padding-top: 0; padding-bottom: 32px; }
-.assessment-page-heading { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 16px; padding: 2px 2px 3px; }
-.assessment-page-heading h1 { margin: 0 0 4px; color: var(--color-text-primary); font-size: 22px; font-weight: 700; line-height: 1.25; }
-.assessment-page-heading p { margin: 0; color: var(--color-text-muted); font-size: 12px; }
-.assessment-page-heading__badge { flex: 0 0 auto; padding: 7px 10px; border-radius: 999px; color: var(--color-text-muted); background: var(--color-surface-blue); font-size: 10px; white-space: nowrap; }
 .assessment-filterbar { display: grid; grid-template-columns: minmax(220px, 1.4fr) minmax(155px, .85fr) minmax(135px, .7fr) auto; align-items: center; gap: 8px; padding: 11px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-card); background: var(--color-surface); }
 .assessment-search { display: flex; min-width: 0; min-height: 38px; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid var(--color-border-strong); border-radius: var(--radius-button); color: var(--color-text-muted); background: var(--color-surface); }
 .assessment-search:focus-within { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgb(0 177 226 / 12%); }
@@ -283,7 +266,6 @@ watch(filteredTasks, (tasks) => {
 .assessment-state--empty strong { color: var(--color-text-secondary); font-size: 12px; font-weight: 650; }
 .assessment-state--empty span:last-child { font-size: 10px; }
 .assessment-state__mark { width: 30px; height: 30px; border: 1px solid var(--color-border-strong); border-radius: 50%; background: var(--color-surface-soft); }
-.assessment-page-note { margin: 0 2px; color: var(--color-text-muted); font-size: 10px; line-height: 1.55; }
 @keyframes assessment-spin { to { transform: rotate(360deg); } }
 @media (max-width: 1060px) { .assessment-calendar-layout { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 900px) {
@@ -293,9 +275,6 @@ watch(filteredTasks, (tasks) => {
 }
 @media (max-width: 560px) {
   .teacher-assessment-page { gap: 11px; padding-bottom: 28px; }
-  .assessment-page-heading { align-items: flex-start; }
-  .assessment-page-heading h1 { font-size: 20px; }
-  .assessment-page-heading__badge { padding: 6px 8px; font-size: 9px; }
   .assessment-filterbar { grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 10px; }
   .assessment-view-switch { display: grid; width: 100%; grid-template-columns: 1fr 1fr; }
   .assessment-view-switch button { width: 100%; }
