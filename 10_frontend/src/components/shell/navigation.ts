@@ -1,4 +1,4 @@
-import { Activity, BookOpenCheck, ChartNoAxesCombined, ClipboardList, FileCheck2, History, LayoutDashboard, Settings2, ShieldCheck, UsersRound } from '@lucide/vue'
+import { Activity, BookOpenCheck, ChartNoAxesCombined, ClipboardList, FileCheck2, History, LayoutDashboard, ListChecks, Server, ShieldCheck, UsersRound } from '@lucide/vue'
 import { defineComponent, h } from 'vue'
 import type { Component } from 'vue'
 import type { Role } from '@/types/contracts'
@@ -50,9 +50,10 @@ export const workspaceConfig: Partial<Record<Role, WorkspaceConfig>> = {
   ] },
   school_admin: { title: 'Admin Workspace', home: '/admin/overview', items: [
     { label: '管理概览', to: '/admin/overview', icon: LayoutDashboard },
-    { label: '用户与角色', to: '/admin/users', icon: UsersRound },
-    { label: '运营记录', to: '/admin/audit', icon: ClipboardList },
-    { label: '系统设置', to: '/admin/settings', icon: Settings2 },
+    { label: '班级与账号', to: '/admin/users', icon: UsersRound },
+    { label: '测评任务', to: '/admin/tasks', icon: ClipboardList },
+    { label: '运营事务', to: '/admin/audit', icon: ListChecks },
+    { label: '系统状态', to: '/admin/settings', icon: Server },
   ] },
   reviewer: { title: 'Safety Review Workspace', home: '/reviewer/queue', items: [
     { label: '复核队列', to: '/reviewer/queue', icon: ShieldCheck },

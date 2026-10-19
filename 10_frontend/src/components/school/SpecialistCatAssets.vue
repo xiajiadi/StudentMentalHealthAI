@@ -90,8 +90,6 @@ const hasRole = () => session.role === 'psychological_specialist'
 const active = computed(() => props.active !== false)
 const resources = computed(() => tab.value === 'banks' ? banks.value : plans.value)
 const selectedBankDocument = computed(() => selectedBankVersion.value?.bank_document ?? null)
-const isFixedForm = computed(() => selectedBankDocument.value?.measurement_model === 'FIXED_FORM'
-  || bankDraft.value?.measurement_model === 'FIXED_FORM')
 const activeActivation = computed(() => activationHistory.value.find((item) => item.status === 'ACTIVE') ?? null)
 const inputLocked = computed(() => state.value === 'loading' || busy.value || Boolean(pendingIntent.value)
   || Boolean(pendingActivationIntent.value) || activationBusy.value || simulationState.value === 'running')
@@ -794,14 +792,14 @@ onBeforeUnmount(() => { disposed = true; sequence += 1; clearPrivate() })
             <div v-if="activationState === 'ready' && !activeActivation && activationHasMore" class="asset-activation__state">请先读取完整历史记录，确认当前启用状态。</div>
             <div v-if="activationState === 'ready' && !activeActivation && !activationHasMore" class="asset-activation__actions">
               <button class="asset-button asset-button--primary" type="button" :disabled="!canCreateActivation" @click="enableSelectedVersion">{{ activationBusy ? '处理中…' : '启用此版本' }}</button>
-               <span>管理员可在发布新任务时选择此版本。</span>
+              <span>管理员可在发布新任务时选择此版本。</span>
             </div>
             <div class="asset-activation__actions">
               <button v-if="activationHasMore || activationState === 'error' || activationConflict" class="asset-button asset-button--quiet" type="button" :disabled="activationBusy" @click="loadActivationHistory(activationConflict || activationState === 'error')">{{ activationState === 'loading' ? '读取中…' : activationConflict ? '重新读取并核对' : activationHasMore ? '读取更多记录' : '重新读取' }}</button>
               <button v-if="pendingActivationIntent" class="asset-button asset-button--quiet" type="button" :disabled="activationBusy" @click="retryActivationSameRequest">{{ activationBusy ? '正在重试…' : '使用同一请求重试' }}</button>
             </div>
           </section>
-          <section v-if="planDetail && selectedPlanVersion?.config_document.model === 'GRM'" class="asset-simulation" aria-label="已保存 CAT 方案版本的合成工程模拟">
+          <section v-if="planDetail && (selectedPlanVersion?.config_document.model === 'GRM' || (!selectedPlanVersion && configDraft?.model === 'GRM'))" class="asset-simulation" aria-label="已保存 CAT 方案版本的合成工程模拟">
             <header><div><h3>运行已保存版本</h3><p>从上方历史中选择一个版本后，再运行对应的合成工程模拟。</p></div><ShieldCheck :size="17" /></header>
             <p class="asset-inline-note">模拟只读取已保存的方案和题库版本；未保存的当前表单配置不会用于模拟。</p>
             <p v-if="!selectedPlanVersion" class="asset-inline-note">请先选择方案历史版本。</p>

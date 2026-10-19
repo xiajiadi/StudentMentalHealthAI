@@ -42,9 +42,9 @@ describe('Specialist 与学校管理员工作区', () => {
     professionalReviewTransport.request.mockReset()
   })
 
-  it('管理员学校上下文变化时重建任务组件，清除上一个学校的本地选择', async () => {
+  it('管理员学校上下文变化时重建任务页组件，清除上一个学校的本地选择', async () => {
     health.readDependencyHealth.mockResolvedValue({})
-    const wrapper = await mountAt('/admin/overview', AdminWorkspaceView)
+    const wrapper = await mountAt('/admin/tasks', AdminWorkspaceView)
     const session = useSessionStore(wrapper.vm.$pinia)
     session.signIn({
       userId: 'USER_synthetic_admin', role: 'school_admin', subjectId: null,
@@ -128,31 +128,29 @@ describe('Specialist 与学校管理员工作区', () => {
     expect(health.readDependencyHealth).not.toHaveBeenCalled()
   })
 
-  it('专业资料页不把未审核资料呈现为可用内容', async () => {
+  it('专业资料页明确区分工程审核元数据与专业批准', async () => {
     const wrapper = await mountAt('/specialist/resources', SpecialistWorkspaceView)
 
-    expect(wrapper.text()).toContain('资料目录当前不可读取')
-    expect(wrapper.text()).toContain('来源、权利状态和专业审核状态未在此确认')
+    expect(wrapper.text()).toContain('工程审核状态不等于专业批准')
+    expect(wrapper.text()).toContain('当前无法读取经过校验的来源目录')
     expect(wrapper.findAll('a[href*="resource"]')).toHaveLength(0)
   })
 
-  it('两个角色都展示各自的原始插画资源', async () => {
+  it('两个角色工作区呈现各自的工作入口', async () => {
     const specialist = await mountAt('/specialist/overview', SpecialistWorkspaceView)
     const admin = await mountAt('/admin/overview', AdminWorkspaceView)
 
-    expect(specialist.findAll('img').map((image) => image.attributes('src'))).toContain('/assets/heartbridge/card-specialist-original.png')
-    expect(admin.findAll('img').map((image) => image.attributes('src'))).toContain('/assets/heartbridge/card-admin-original.png')
-    expect(specialist.findAll('img').map((image) => image.attributes('src'))).toContain('/assets/heartbridge/hero-flow-original.png')
-    expect(admin.findAll('img').map((image) => image.attributes('src'))).toContain('/assets/heartbridge/hero-flow-original.png')
+    expect(specialist.text()).toContain('专业复核与反馈')
+    expect(admin.text()).toContain('班级管理')
   })
 
   it('学校账号页面在缺少组织接口时显示不可用，不返回演示账号或成功状态', async () => {
     const wrapper = await mountAt('/admin/users', AdminWorkspaceView)
 
-    expect(wrapper.text()).toContain('当前运行环境未提供学校组织服务')
+    expect(wrapper.text()).toContain('当前运行环境没有提供学校目录服务')
     expect(wrapper.text()).not.toContain('USER_')
     expect(wrapper.text()).not.toContain('已加入班级')
-    expect(wrapper.text()).toContain('安全复核员（REVIEWER）是独立角色')
+    expect(wrapper.text()).toContain('目录暂时无法读取')
     expect(health.readDependencyHealth).not.toHaveBeenCalled()
   })
 
@@ -161,7 +159,7 @@ describe('Specialist 与学校管理员工作区', () => {
     const wrapper = await mountAt('/admin/settings', AdminWorkspaceView)
 
     expect(wrapper.text()).toContain('GET /health/dependencies')
-    expect(wrapper.text()).toContain('状态未知，不以本地占位值代替')
+    expect(wrapper.text()).toContain('当前各项状态均未知')
     expect(wrapper.text()).not.toContain('Backend 可用')
     expect(health.readDependencyHealth).toHaveBeenCalledTimes(1)
   })
@@ -170,7 +168,7 @@ describe('Specialist 与学校管理员工作区', () => {
     health.readDependencyHealth.mockResolvedValueOnce(undefined)
     const wrapper = await mountAt('/admin/settings', AdminWorkspaceView)
 
-    expect(wrapper.text()).toContain('状态未知，不以本地占位值代替')
+    expect(wrapper.text()).toContain('当前各项状态均未知')
     expect(wrapper.text()).not.toContain('正在读取服务端状态')
   })
 })

@@ -146,7 +146,7 @@ const openFirstResult = async () => {
       </div>
     </header>
     <RoleSidebar v-model:mobile-open="sidebarOpen" :role="currentRole" />
-    <main class="workspace-main" :class="{ 'workspace-main--teacher-overview': route.name === 'teacher-overview', 'workspace-main--teacher-classes': route.name === 'teacher-classes', 'workspace-main--teacher-tasks': route.name === 'teacher-tasks', 'workspace-main--teacher-analytics': route.name === 'teacher-analytics' }">
+    <main class="workspace-main" :class="{ 'workspace-main--teacher-overview': route.name === 'teacher-overview', 'workspace-main--teacher-classes': route.name === 'teacher-classes', 'workspace-main--teacher-tasks': route.name === 'teacher-tasks', 'workspace-main--teacher-analytics': route.name === 'teacher-analytics', 'workspace-main--admin-overview': route.name === 'admin-workspace' && route.params.section === 'overview' }">
       <div v-if="logoutError" class="workspace-error" role="alert">{{ logoutError }}</div>
       <slot />
       <footer class="workspace-footer">
@@ -240,9 +240,11 @@ const openFirstResult = async () => {
 .account-menu__logout:disabled { opacity: .55; cursor: wait; }
 .workspace-topbar__menu { display: none; }
 .workspace-main { display: flex; flex-direction: column; width: calc(100% - var(--layout-sidebar)); max-width: var(--layout-content-max); min-height: 100vh; margin-left: var(--layout-sidebar); padding-top: var(--layout-topbar); background: transparent; }
+.workspace-main--admin-overview { min-height: auto; }
 .workspace-error { width: calc(100% - 30px); max-width: var(--layout-content-max); margin: 16px 30px 0 0; padding: 12px 14px; border: 0; border-radius: 8px; color: #8f1d14; background: #fff3f1; font-size: 13px; }
 .workspace-footer { display: flex; align-items: center; justify-content: flex-end; gap: clamp(26px, 4vw, 52px); width: 100%; max-width: var(--layout-content-max); margin-top: auto; padding: 70px 30px 30px 0; color: #656b76; font-size: 14px; font-weight: 500; }
 .workspace-main--teacher-overview .workspace-footer { padding-top: 35px; }
+.workspace-main--admin-overview .workspace-footer { padding-top: 35px; }
 .workspace-main--teacher-classes .workspace-footer { padding-top: 35px; }
 .workspace-main--teacher-tasks .workspace-footer { padding-top: 35px; }
 .workspace-main--teacher-analytics .workspace-footer { padding-top: 35px; }
@@ -288,6 +290,7 @@ const openFirstResult = async () => {
   .workspace-error { width: calc(100% - 36px); margin: 14px 18px 0; }
   .workspace-footer { align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 14px 24px; padding: 34px 18px 22px; font-size: 11px; }
   .workspace-main--teacher-overview .workspace-footer { padding-top: 17px; }
+  .workspace-main--admin-overview .workspace-footer { padding-top: 17px; }
   .workspace-main--teacher-analytics .workspace-footer { padding-top: 17px; }
   .workspace-main--teacher-tasks .workspace-footer { padding-top: 17px; }
   .workspace-footer__links { justify-content: flex-end; flex-wrap: wrap; gap: 12px 16px; }

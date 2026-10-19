@@ -278,7 +278,7 @@ onBeforeUnmount(() => {
 <template>
   <section class="school-directory" aria-labelledby="school-directory-title">
     <header class="school-directory__heading">
-      <div><span class="school-directory__eyebrow">学校目录</span><h2 id="school-directory-title">学校、班级与账号</h2><p>此处仅管理当前学校的显示名称和合成账号。</p></div>
+      <div><span class="school-directory__eyebrow">学校目录</span><h2 id="school-directory-title">本校组织与账号</h2><p>此处仅管理当前学校的显示名称和合成账号。</p></div>
       <AppButton variant="secondary" size="sm" :disabled="state === 'loading' || Boolean(pending)" @click="load">刷新目录</AppButton>
     </header>
     <AppStatusCallout v-if="errorMessage" tone="critical" title="操作未完成" :body="errorMessage" role="alert" />

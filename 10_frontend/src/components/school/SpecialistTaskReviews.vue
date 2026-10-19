@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RotateCcw, ClipboardCheck, ChevronLeft, ChevronRight, ShieldCheck } from '@lucide/vue'
 import AppCard from '@/components/app/AppCard.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
@@ -300,6 +300,20 @@ async function refreshCaseAfterConflict() {
 }
 
 onMounted(() => { void loadTasks() })
+onBeforeUnmount(() => {
+  ++tasksSequence
+  clearPrivateState()
+  tasks.value = []
+  tasksError.value = ''
+  enrollmentsState.value = 'idle'
+  enrollmentsError.value = ''
+  casesState.value = 'idle'
+  casesError.value = ''
+  mutationBusy.value = false
+  mutationError.value = ''
+  mutationConflict.value = false
+  accessMessage.value = ''
+})
 </script>
 
 <template>
@@ -402,6 +416,6 @@ onMounted(() => { void loadTasks() })
 .case-create,.case-detail { display: grid; gap: 13px; padding-top: 14px; }.case-create p,.case-help,.publication-note,.terminal-summary p { margin: 0; color: var(--color-text-secondary); font-size: 12px; line-height: 1.6; }.publication-note { padding: 9px 11px; border-radius: 9px; color: #526f64; background: #eff6f2; }.note-field { display: grid; gap: 7px; }.note-field span { font-size: 12px; font-weight: 750; }.note-field textarea { width: 100%; min-height: 106px; resize: vertical; padding: 11px 12px; border: 1px solid #d7e3de; border-radius: 10px; color: var(--color-text-primary); background: #fff; font: inherit; font-size: 12px; line-height: 1.6; }.note-field textarea:focus-visible { outline: 3px solid rgb(67 142 123 / 20%); border-color: #438e7b; }.note-field textarea:disabled { background: #f5f7f6; }.note-field small { justify-self: end; color: var(--color-text-muted); font-size: 10px; }.decision-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .reviews-button,.reviews-icon-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 36px; padding: 8px 12px; border: 1px solid transparent; border-radius: 9px; font: inherit; font-size: 11px; font-weight: 750; cursor: pointer; }.reviews-button:disabled,.reviews-icon-button:disabled { opacity: .48; cursor: not-allowed; }.reviews-button--primary { color: #fff; background: #357c6b; }.reviews-button--primary:hover:not(:disabled) { background: #286b5a; }.reviews-button--secondary { color: #6e5944; border-color: #e8d9c8; background: #fbf5ed; }.reviews-button--quiet { color: #4c6c61; border-color: #dce8e3; background: #fff; }.reviews-button--quiet:hover:not(:disabled) { background: #f3f8f5; }.reviews-icon-button { width: 31px; min-height: 30px; padding: 5px; color: #58756a; border-color: #e1eae5; background: #fff; }
 .terminal-summary { padding: 12px; border: 1px solid #dce9e2; border-radius: 10px; background: #f5f9f6; }.terminal-summary strong { display: block; margin-bottom: 5px; color: #357c6b; font-size: 12px; }.reviews-state,.reviews-empty { padding: 16px 10px; color: var(--color-text-secondary); font-size: 12px; text-align: center; }.access-message { margin: 0; padding: 10px 12px; border: 1px solid #e9dfc9; border-radius: 10px; color: #6b5637; background: #fbf8ef; font-size: 12px; line-height: 1.6; }.reviews-error,.mutation-error,.retry-strip { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid #ecd8d0; border-radius: 11px; color: #785449; background: #fff8f5; font-size: 12px; }.reviews-error button { color: #347969; border: 0; background: transparent; font: inherit; font-weight: 750; cursor: pointer; }.mutation-error p { margin: 4px 0 0; line-height: 1.55; }.mutation-error strong { color: #754b3f; }.retry-strip { align-items: center; color: #6b5637; border-color: #e9dfc9; background: #fbf8ef; }.retry-strip span { line-height: 1.6; }
-@media(max-width:760px) { .reviews-toolbar { align-items: flex-start; }.review-columns { grid-template-columns: 1fr; }.review-panel,.case-workspace { padding: 15px; }.retry-strip,.mutation-error { align-items: flex-start; flex-direction: column; }.task-list { grid-template-columns: 1fr; } }
+@media(max-width:760px) { .reviews-toolbar { align-items: flex-start; flex-wrap: wrap; }.reviews-toolbar > button { flex: 0 0 auto; white-space: nowrap; }.review-columns { grid-template-columns: 1fr; }.review-panel,.case-workspace { padding: 15px; }.retry-strip,.mutation-error { align-items: flex-start; flex-direction: column; }.task-list { grid-template-columns: 1fr; } }
 @media(prefers-reduced-motion:reduce) { .task-option { transition: none; } }
 </style>

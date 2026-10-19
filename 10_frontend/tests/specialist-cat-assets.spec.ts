@@ -11,11 +11,15 @@ const api = vi.hoisted(() => ({
   simulateSavedPlanVersion: vi.fn(),
   listActivations: vi.fn(), createActivation: vi.fn(), revokeActivation: vi.fn(),
 }))
-vi.mock('@/services/school-cat-assets', () => ({
-  schoolCatAssets: api,
-  latestCatAssetVersion: (versions: Array<{ version_number: number }>) => versions.reduce((latest, version) => version.version_number > latest.version_number ? version : latest),
-  newCatAssetIdempotencyKey: vi.fn(() => 'cat-asset-stable-test-key'),
-}))
+vi.mock('@/services/school-cat-assets', async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    schoolCatAssets: api,
+    latestCatAssetVersion: (versions: Array<{ version_number: number }>) => versions.reduce((latest, version) => version.version_number > latest.version_number ? version : latest),
+    newCatAssetIdempotencyKey: vi.fn(() => 'cat-asset-stable-test-key'),
+  }
+})
 vi.mock('@/services/school-cat-activations', () => ({
   schoolCatActivations: {
     list: api.listActivations,
@@ -169,7 +173,7 @@ describe('specialist CAT asset editor', () => {
       await plansTab.trigger('click')
       await flushPromises()
       expect(plansTab.attributes('aria-pressed')).toBe('true')
-      expect(wrapper.find('.asset-list h2').text()).toBe('CAT 方案')
+      expect(wrapper.find('.asset-list h2').text()).toBe('测评方案')
       expect(wrapper.find('.asset-list__items').text()).toContain(planMeta.display_name)
       expect(api.getBank).toHaveBeenCalledOnce()
     } finally {
@@ -193,7 +197,7 @@ describe('specialist CAT asset editor', () => {
     await wrapper.get('.asset-list .asset-button').trigger('click')
     await flushPromises()
     expect(wrapper.text()).toContain('题干')
-    expect(wrapper.text()).toContain('GRM 区分参数 a')
+    expect(wrapper.text()).toContain('本题组不含 IRT 参数')
     await wrapper.get('.asset-editor textarea').setValue('更新后的合成题干')
     api.createBank.mockRejectedValueOnce(new Error('private network response detail'))
       .mockResolvedValueOnce({ ...detail(), version_ref: 'CBVER_synthetic' })

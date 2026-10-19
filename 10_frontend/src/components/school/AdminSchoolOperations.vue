@@ -5,11 +5,12 @@ import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import AdminProfessionalAssignments from '@/components/school/AdminProfessionalAssignments.vue'
+import WorkspaceDetailSheet from '@/components/workspace/WorkspaceDetailSheet.vue'
 import type { SchoolClass, SchoolMember, SchoolTask, SchoolTaskEnrollment } from '@/api/client'
 import { frontendApi } from '@/services/mock-api'
 import { schoolCatActivations, type CatActivationMetadata } from '@/services/school-cat-activations'
 
-const props = withDefaults(defineProps<{ mode?: 'all' | 'members' }>(), { mode: 'all' })
+const props = withDefaults(defineProps<{ mode?: 'all' | 'members' | 'tasks' }>(), { mode: 'all' })
 type LoadState = 'loading' | 'ready' | 'error'
 
 const state = ref<LoadState>('loading')
@@ -22,6 +23,10 @@ const selectedStudent = ref('')
 const selectedTeacher = ref('')
 const opensAt = ref('')
 const dueAt = ref('')
+const publishStep = ref(0)
+const taskSearch = ref('')
+const taskDetailOpen = ref(false)
+const selectedTaskRef = ref('')
 const taskBindingMode = ref<'FIXTURE' | 'SAVED_VERSION'>('FIXTURE')
 const selectedActivationRef = ref('')
 const eligibleActivations = ref<CatActivationMetadata[]>([])
@@ -42,11 +47,58 @@ let activationRequestGeneration = 0
 let disposed = false
 
 const activeClass = computed(() => classes.value.find((item) => item.class_ref === selectedClassRef.value) ?? null)
-const methodsAvailable = computed(() => Boolean(
-  frontendApi.listSchoolClasses && frontendApi.listSchoolMembers && frontendApi.createSchoolClass &&
-  frontendApi.assignSchoolStudent && frontendApi.assignSchoolTeacher && frontendApi.listSchoolTasks &&
-  frontendApi.publishSchoolTask && frontendApi.listSchoolTaskEnrollments && frontendApi.revokeSchoolTaskEnrollment,
-))
+const selectedTask = computed(() => tasks.value.find((item) => item.task_ref === selectedTaskRef.value) ?? null)
+const visibleTasks = computed(() => {
+  const query = taskSearch.value.trim().toLocaleLowerCase()
+  const ordered = [...tasks.value].sort((first, second) => {
+    const firstTime = Date.parse(first.published_at)
+    const secondTime = Date.parse(second.published_at)
+    return (Number.isFinite(secondTime) ? secondTime : 0) - (Number.isFinite(firstTime) ? firstTime : 0)
+  })
+  if (!query) return ordered
+  return ordered.filter((item) => `${taskLabel(item.task_ref)} ${statusLabel(item.status)}`.toLocaleLowerCase().includes(query))
+})
+const methodsAvailable = computed(() => props.mode === 'tasks'
+  ? Boolean(frontendApi.listSchoolClasses && frontendApi.listSchoolTasks && frontendApi.publishSchoolTask
+    && frontendApi.listSchoolTaskEnrollments && frontendApi.revokeSchoolTaskEnrollment)
+  : Boolean(
+    frontendApi.listSchoolClasses && frontendApi.listSchoolMembers && frontendApi.createSchoolClass &&
+    frontendApi.assignSchoolStudent && frontendApi.assignSchoolTeacher && frontendApi.listSchoolTasks &&
+    frontendApi.publishSchoolTask && frontendApi.listSchoolTaskEnrollments && frontendApi.revokeSchoolTaskEnrollment,
+  ))
+const publishSteps = ['班级与配置', '开放时间', '确认发布']
+const selectedActivation = computed(() => eligibleActivations.value.find((item) =>
+  item.activation_ref === selectedActivationRef.value && item.status === 'ACTIVE',
+) ?? null)
+const publishStepCanContinue = computed(() => {
+  if (publishStep.value === 0) return Boolean(selectedClassRef.value)
+    && (taskBindingMode.value === 'FIXTURE'
+      || (activationState.value === 'ready' && Boolean(selectedActivation.value)))
+  if (publishStep.value === 1) {
+    if (!opensAt.value) return false
+    const opens = new Date(opensAt.value)
+    const due = dueAt.value ? new Date(dueAt.value) : null
+    return !Number.isNaN(opens.getTime())
+      && (!due || (!Number.isNaN(due.getTime()) && due.getTime() >= opens.getTime()))
+  }
+  if (publishStep.value === 2) return Boolean(selectedClassRef.value && opensAt.value)
+  return false
+})
+const publishStepHint = computed(() => {
+  if (publishStep.value === 0) {
+    if (!selectedClassRef.value) return '先选择班级。'
+    if (taskBindingMode.value === 'SAVED_VERSION' && activationState.value === 'loading') return '正在读取服务端列出的可用版本。'
+    if (taskBindingMode.value === 'SAVED_VERSION' && activationState.value === 'error') return '可用版本列表暂不可用，请重新读取后继续。'
+    if (taskBindingMode.value === 'SAVED_VERSION' && !selectedActivation.value) return '请选择一个仍处于启用状态的版本。'
+  }
+  if (publishStep.value === 1) {
+    if (!opensAt.value) return '请设置开放时间。'
+    const opens = new Date(opensAt.value)
+    const due = dueAt.value ? new Date(dueAt.value) : null
+    if (Number.isNaN(opens.getTime()) || (due && (Number.isNaN(due.getTime()) || due.getTime() < opens.getTime()))) return '截止时间不能早于开放时间。'
+  }
+  return ''
+})
 
 const requestMessage = (error: unknown, fallback: string) => {
   const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code).toLowerCase() : ''
@@ -140,14 +192,19 @@ const load = async () => {
     return
   }
   try {
-    const [classResult, studentResult, teacherResult] = await Promise.all([
-      frontendApi.listSchoolClasses!(),
-      frontendApi.listSchoolMembers!('student'),
-      frontendApi.listSchoolMembers!('teacher'),
-    ])
+    const classResult = await frontendApi.listSchoolClasses!()
     classes.value = classResult.data
-    students.value = studentResult.data
-    teachers.value = teacherResult.data
+    if (props.mode === 'tasks') {
+      students.value = []
+      teachers.value = []
+    } else {
+      const [studentResult, teacherResult] = await Promise.all([
+        frontendApi.listSchoolMembers!('student'),
+        frontendApi.listSchoolMembers!('teacher'),
+      ])
+      students.value = studentResult.data
+      teachers.value = teacherResult.data
+    }
     if (!classes.value.some((item) => item.class_ref === selectedClassRef.value)) {
       selectedClassRef.value = classes.value[0]?.class_ref ?? ''
     }
@@ -210,10 +267,8 @@ const assignMember = async (role: 'student' | 'teacher') => {
 }
 
 const publishTask = async () => {
-  if (!selectedClassRef.value || pending.value || !frontendApi.publishSchoolTask) return
-  const activation = taskBindingMode.value === 'SAVED_VERSION'
-    ? eligibleActivations.value.find((item) => item.activation_ref === selectedActivationRef.value && item.status === 'ACTIVE')
-    : undefined
+  if (publishStep.value !== 2 || !publishStepCanContinue.value || !selectedClassRef.value || pending.value || !frontendApi.publishSchoolTask) return
+  const activation = taskBindingMode.value === 'SAVED_VERSION' ? selectedActivation.value ?? undefined : undefined
   if (taskBindingMode.value === 'SAVED_VERSION'
     && (activationState.value !== 'ready' || !activation)) {
     errorMessage.value = activationState.value === 'error'
@@ -244,6 +299,8 @@ const publishTask = async () => {
       )
     opensAt.value = ''
     dueAt.value = ''
+    publishStep.value = 0
+    taskDetailOpen.value = false
     const selectedPlan = result.data.plan_name && result.data.plan_version_number
       ? `；绑定 ${result.data.plan_name} v${result.data.plan_version_number}`
       : ''
@@ -254,6 +311,13 @@ const publishTask = async () => {
     errorMessage.value = requestMessage(error, '任务暂时无法发布，没有显示为成功。')
   } finally { pending.value = '' }
 }
+
+const openTaskDetail = (task: SchoolTask) => {
+  selectedTaskRef.value = task.task_ref
+  taskDetailOpen.value = true
+}
+
+const formatTaskInputDate = (value: string) => value ? value.replace('T', ' ') : '未设置'
 
 const loadClassesOnly = async () => {
   if (!frontendApi.listSchoolClasses) return
@@ -315,6 +379,10 @@ watch(taskBindingMode, (mode) => {
 })
 watch(selectedClassRef, () => {
   enrollmentTask.value = ''
+  taskSearch.value = ''
+  selectedTaskRef.value = ''
+  taskDetailOpen.value = false
+  publishStep.value = 0
   void loadTasks()
   if (taskBindingMode.value === 'SAVED_VERSION') void loadEligibleActivations(true)
 })
@@ -325,17 +393,17 @@ onBeforeUnmount(() => { disposed = true; activationRequestGeneration += 1 })
 <template>
   <section class="school-operations" aria-labelledby="school-operations-title">
     <header class="school-operations__heading">
-      <div><span class="school-operations__eyebrow">学校组织</span><h2 id="school-operations-title">班级与任务</h2><p>组织调整只影响所选学校内的合成账号和任务。</p></div>
+      <div><span class="school-operations__eyebrow">{{ props.mode === 'tasks' ? '任务调度' : '学校组织' }}</span><h2 id="school-operations-title">{{ props.mode === 'tasks' ? '测评任务' : '班级与任务' }}</h2><p>{{ props.mode === 'tasks' ? '按步骤确认班级、配置和时间；发布结果以服务端响应为准。' : '组织调整只影响所选学校内的账号和任务。' }}</p></div>
       <AppButton variant="secondary" size="sm" :disabled="state === 'loading'" @click="load"><RotateCcw :size="15" aria-hidden="true" />刷新</AppButton>
     </header>
 
     <AppStatusCallout v-if="errorMessage && state !== 'error'" tone="critical" title="操作未完成" :body="errorMessage" role="alert" />
     <AppStatusCallout v-if="notice" tone="info" title="已收到服务端确认" :body="notice" role="status" />
 
-    <AppCard v-if="state === 'loading'" class="school-panel" aria-busy="true"><p>正在读取班级和同校人员…</p></AppCard>
+    <AppCard v-if="state === 'loading'" class="school-panel" aria-busy="true"><p>{{ props.mode === 'tasks' ? '正在读取班级与任务服务…' : '正在读取班级和同校人员…' }}</p></AppCard>
     <AppCard v-else-if="state === 'error'" class="school-panel school-panel--empty" role="status"><CircleHelp :size="19" aria-hidden="true" /><p>{{ errorMessage }}</p></AppCard>
     <template v-else>
-      <div class="school-grid">
+      <div v-if="props.mode !== 'tasks'" class="school-grid">
         <AppCard class="school-panel">
           <div class="school-panel__heading"><UsersRound :size="18" aria-hidden="true" /><div><h3>班级</h3><p>创建班级并查看当前分配人数。</p></div></div>
           <p class="school-form__hint">创建后会显示班级短号，完整编号由系统管理。</p>
@@ -361,49 +429,119 @@ onBeforeUnmount(() => { disposed = true; activationRequestGeneration += 1 })
         </AppCard>
       </div>
 
-      <AppCard v-if="props.mode === 'all'" class="school-panel school-panel--tasks">
-        <div class="school-panel__heading"><div><h3>测评任务</h3><p>发布时会按当时的班级名册建立报名记录。</p></div></div>
+      <AppCard v-if="props.mode === 'all' || props.mode === 'tasks'" class="school-panel school-panel--tasks">
+        <div class="school-panel__heading"><div><h3>测评任务</h3><p>选择班级和服务端可用的配置，再确认开放时间后发布。</p></div></div>
+        <ol class="school-task-steps" aria-label="发布测评任务步骤">
+          <li v-for="(step, index) in publishSteps" :key="step" :class="{ 'school-task-steps__item--active': publishStep === index, 'school-task-steps__item--done': publishStep > index }" :aria-current="publishStep === index ? 'step' : undefined">
+            <span>{{ publishStep > index ? '✓' : index + 1 }}</span><strong>{{ step }}</strong>
+          </li>
+        </ol>
         <form class="school-form school-form--dates" @submit.prevent="publishTask">
-          <label for="school-task-opens">开放时间</label><input id="school-task-opens" v-model="opensAt" type="datetime-local" :disabled="!activeClass || Boolean(pending)" required>
-          <label for="school-task-due">截止时间（可选）</label><input id="school-task-due" v-model="dueAt" type="datetime-local" :disabled="!activeClass || Boolean(pending)">
-          <fieldset class="school-task-mode" :disabled="Boolean(pending)">
-            <legend>任务题目来源</legend>
-            <label><input id="school-task-mode-fixture" v-model="taskBindingMode" type="radio" value="FIXTURE">固定工程模板</label>
-            <label><input id="school-task-mode-saved" v-model="taskBindingMode" type="radio" value="SAVED_VERSION">已启用的合成版本</label>
-          </fieldset>
-          <div v-if="taskBindingMode === 'SAVED_VERSION'" class="school-task-activation">
-            <p class="school-form__hint">只列出当前学校可用于新任务的版本。此选择不会向管理员显示题目正文或配置参数。</p>
-            <div v-if="activationState === 'loading'" class="school-empty" role="status" aria-busy="true">正在读取可用版本…</div>
-            <div v-else-if="activationState === 'error'" class="school-empty school-empty--error" role="alert">{{ activationError }}<AppButton variant="secondary" size="sm" type="button" @click="loadEligibleActivations(true)">重新读取</AppButton></div>
-            <template v-else>
-              <label for="school-task-activation">已启用版本</label>
-              <select id="school-task-activation" v-model="selectedActivationRef" :disabled="!activeClass || Boolean(pending) || activationState !== 'ready' || !eligibleActivations.length">
-                <option value="">请选择版本</option>
-                <option v-for="activation in eligibleActivations" :key="activation.activation_ref" :value="activation.activation_ref">{{ activation.plan_name }} v{{ activation.plan_version_number }}，{{ activation.bank_name }} v{{ activation.bank_version_number }}</option>
-              </select>
-              <p v-if="activationState === 'ready' && !eligibleActivations.length" class="school-form__hint">当前没有可用于新任务的启用版本。</p>
-              <AppButton v-if="activationHasMore" variant="secondary" size="sm" type="button" :disabled="activationState === 'loading'" @click="loadEligibleActivations(false)">读取更多版本</AppButton>
-            </template>
+          <section v-if="publishStep === 0" class="school-task-step-panel" aria-labelledby="school-task-step-title">
+            <div><span class="school-task-step-panel__eyebrow">第一步</span><h4 id="school-task-step-title">选择班级与测评配置</h4></div>
+            <label for="school-task-class">发布班级</label>
+            <select id="school-task-class" v-model="selectedClassRef" :disabled="!classes.length || Boolean(pending)" required>
+              <option value="" disabled>请选择班级</option>
+              <option v-for="item in classes" :key="item.class_ref" :value="item.class_ref">{{ item.display_name?.trim() || classLabel(item.class_ref) }}，学生 {{ item.active_student_count }}，教师 {{ item.active_teacher_count }}</option>
+            </select>
+            <fieldset class="school-task-mode" :disabled="Boolean(pending)">
+              <legend>测评配置</legend>
+              <label><input id="school-task-mode-fixture" v-model="taskBindingMode" type="radio" value="FIXTURE">固定工程模板</label>
+              <label><input id="school-task-mode-saved" v-model="taskBindingMode" type="radio" value="SAVED_VERSION">已启用的合成版本</label>
+            </fieldset>
+            <div v-if="taskBindingMode === 'SAVED_VERSION'" class="school-task-activation">
+              <p class="school-form__hint">只列出当前学校可用于新任务的版本。此选择不会向管理员展示题目正文或配置参数。</p>
+              <div v-if="activationState === 'loading'" class="school-empty" role="status" aria-busy="true">正在读取可用版本…</div>
+              <div v-else-if="activationState === 'error'" class="school-empty school-empty--error" role="alert">{{ activationError }}<AppButton variant="secondary" size="sm" type="button" @click="loadEligibleActivations(true)">重新读取</AppButton></div>
+              <template v-else>
+                <label for="school-task-activation">已启用版本</label>
+                <select id="school-task-activation" v-model="selectedActivationRef" :disabled="!activeClass || Boolean(pending) || activationState !== 'ready' || !eligibleActivations.length">
+                  <option value="">请选择版本</option>
+                  <option v-for="activation in eligibleActivations" :key="activation.activation_ref" :value="activation.activation_ref">{{ activation.plan_name }} v{{ activation.plan_version_number }}，{{ activation.bank_name }} v{{ activation.bank_version_number }}</option>
+                </select>
+                <p v-if="activationState === 'ready' && !eligibleActivations.length" class="school-form__hint">当前没有可用于新任务的启用版本。</p>
+                <AppButton v-if="activationHasMore" variant="secondary" size="sm" type="button" :disabled="activationState === 'loading'" @click="loadEligibleActivations(false)">读取更多版本</AppButton>
+              </template>
+            </div>
+          </section>
+
+          <section v-else-if="publishStep === 1" class="school-task-step-panel" aria-labelledby="school-task-step-title">
+            <div><span class="school-task-step-panel__eyebrow">第二步</span><h4 id="school-task-step-title">设置开放与截止时间</h4></div>
+            <label for="school-task-opens">开放时间（本地时间）</label><input id="school-task-opens" v-model="opensAt" type="datetime-local" :disabled="!activeClass || Boolean(pending)" required>
+            <label for="school-task-due">截止时间（可选，本地时间）</label><input id="school-task-due" v-model="dueAt" type="datetime-local" :disabled="!activeClass || Boolean(pending)">
+            <p class="school-form__hint">页面按你填写的本地时间展示；服务端会按既有接口约定保存时间。</p>
+          </section>
+
+          <section v-else class="school-task-step-panel" aria-labelledby="school-task-step-title">
+            <div><span class="school-task-step-panel__eyebrow">第三步</span><h4 id="school-task-step-title">确认发布范围</h4></div>
+            <dl class="school-task-summary">
+              <div><dt>班级</dt><dd>{{ activeClass?.display_name?.trim() || (activeClass ? classLabel(activeClass.class_ref) : '未选择') }}</dd></div>
+              <div><dt>配置</dt><dd>{{ selectedActivation ? `${selectedActivation.plan_name} v${selectedActivation.plan_version_number} · ${selectedActivation.bank_name} v${selectedActivation.bank_version_number}` : '固定工程模板' }}</dd></div>
+              <div><dt>开放时间</dt><dd>{{ formatTaskInputDate(opensAt) }}（本地时间）</dd></div>
+              <div><dt>截止时间</dt><dd>{{ dueAt ? `${formatTaskInputDate(dueAt)}（本地时间）` : '未设置' }}</dd></div>
+              <div><dt>报名范围</dt><dd>以发布时班级名册为准</dd></div>
+            </dl>
+          </section>
+
+          <p v-if="publishStepHint" class="school-task-step-hint" role="status">{{ publishStepHint }}</p>
+          <div class="school-task-step-actions">
+            <AppButton v-if="publishStep > 0" variant="secondary" type="button" :disabled="Boolean(pending)" @click="publishStep -= 1">上一步</AppButton>
+            <AppButton v-if="publishStep < 2" type="button" :disabled="!publishStepCanContinue || Boolean(pending)" @click="publishStep += 1">下一步</AppButton>
+            <AppButton v-else type="submit" :disabled="!publishStepCanContinue || Boolean(pending)" :loading="pending === 'publish-task'">确认并发布</AppButton>
           </div>
-          <AppButton type="submit" :disabled="!activeClass || (taskBindingMode === 'SAVED_VERSION' && (activationState !== 'ready' || !selectedActivationRef))" :loading="pending === 'publish-task'">发布任务</AppButton>
         </form>
         <div v-if="taskState === 'loading'" class="school-empty" aria-busy="true">正在读取当前班级任务…</div>
         <div v-else-if="taskState === 'error'" class="school-empty school-empty--error" role="alert">{{ taskError }}<AppButton variant="secondary" size="sm" @click="loadTasks">重新读取</AppButton></div>
-        <div v-else-if="tasks.length" class="school-task-list">
-          <article v-for="task in tasks" :key="task.task_ref" class="school-task">
-            <div><strong>{{ taskLabel(task.task_ref) }}</strong><span class="school-task__status">{{ statusLabel(task.status) }}</span><p>{{ formatDate(task.opens_at) }} 至 {{ formatDate(task.due_at) }}</p><small>报名 {{ task.published_enrollment_count }}，有效 {{ task.active_enrollment_count }}，已撤销 {{ task.revoked_enrollment_count }}</small></div>
-            <AppButton variant="secondary" size="sm" @click="toggleEnrollments(task.task_ref)">{{ enrollmentTask === task.task_ref ? '收起报名' : '管理报名' }}</AppButton>
-            <div v-if="enrollmentTask === task.task_ref" class="school-task__enrollments">
-              <div v-if="enrollmentLoadingTask === task.task_ref" class="school-form__hint" aria-busy="true">正在读取报名情况…</div>
-              <div v-else-if="!enrollmentsByTask[task.task_ref]?.length" class="school-form__hint">当前没有可管理的报名记录。</div>
-              <template v-else><div v-for="enrollment in enrollmentsByTask[task.task_ref]" :key="enrollment.enrollment_ref" class="school-task__enrollment"><span>报名 {{ shortRef(enrollment.enrollment_ref) }}，{{ statusLabel(enrollment.status) }}</span><AppButton v-if="!['revoked','REVOKED'].includes(enrollment.status)" variant="quiet" size="sm" :disabled="Boolean(pending)" :loading="pending === `revoke-${enrollment.enrollment_ref}`" @click="revokeEnrollment(task.task_ref, enrollment.enrollment_ref)">撤销</AppButton></div></template>
-            </div>
-          </article>
+        <div v-else-if="tasks.length" class="school-task-list-wrap">
+          <div class="school-task-list-heading"><div><h4>已发布任务</h4><p>当前班级的服务端记录，按发布时间从近到远排列。</p></div><label class="school-task-search"><span class="sr-only">按任务编号或状态搜索</span><input v-model="taskSearch" type="search" placeholder="搜索任务编号或状态" aria-label="按任务编号或状态搜索"></label></div>
+          <div v-if="visibleTasks.length" class="school-task-list">
+            <article v-for="task in visibleTasks" :key="task.task_ref" class="school-task">
+              <div><strong>{{ taskLabel(task.task_ref) }}</strong><span class="school-task__status">{{ statusLabel(task.status) }}</span><p>{{ formatDate(task.opens_at) }} 至 {{ formatDate(task.due_at) }}</p><small>报名 {{ task.published_enrollment_count }}，有效 {{ task.active_enrollment_count }}，已撤销 {{ task.revoked_enrollment_count }}</small></div>
+              <div class="school-task__actions"><AppButton variant="quiet" size="sm" @click="openTaskDetail(task)">任务详情</AppButton><AppButton variant="secondary" size="sm" @click="toggleEnrollments(task.task_ref)">{{ enrollmentTask === task.task_ref ? '收起报名' : '管理报名' }}</AppButton></div>
+              <div v-if="enrollmentTask === task.task_ref" class="school-task__enrollments">
+                <div v-if="enrollmentLoadingTask === task.task_ref" class="school-form__hint" aria-busy="true">正在读取报名情况…</div>
+                <div v-else-if="!enrollmentsByTask[task.task_ref]?.length" class="school-form__hint">当前没有可管理的报名记录。</div>
+                <template v-else><div v-for="enrollment in enrollmentsByTask[task.task_ref]" :key="enrollment.enrollment_ref" class="school-task__enrollment"><span>报名 {{ shortRef(enrollment.enrollment_ref) }}，{{ statusLabel(enrollment.status) }}</span><AppButton v-if="!['revoked','REVOKED'].includes(enrollment.status)" variant="quiet" size="sm" :disabled="Boolean(pending)" :loading="pending === `revoke-${enrollment.enrollment_ref}`" @click="revokeEnrollment(task.task_ref, enrollment.enrollment_ref)">撤销</AppButton></div></template>
+              </div>
+            </article>
+          </div>
+          <div v-else class="school-empty">没有符合当前搜索条件的任务。</div>
         </div>
         <div v-else class="school-empty">{{ activeClass ? '这个班级目前没有已发布任务。' : '先创建或选择一个班级。' }}</div>
         <AdminProfessionalAssignments v-if="taskState === 'ready'" :tasks="tasks" />
       </AppCard>
     </template>
+
+    <WorkspaceDetailSheet
+      :open="taskDetailOpen"
+      :title="selectedTask ? taskLabel(selectedTask.task_ref) : '任务详情'"
+      description="当前班级的任务记录与报名状态"
+      @update:open="taskDetailOpen = $event"
+    >
+      <template v-if="selectedTask">
+        <dl class="school-task-detail">
+          <div><dt>任务状态</dt><dd>{{ statusLabel(selectedTask.status) }}</dd></div>
+          <div><dt>测评配置</dt><dd>{{ selectedTask.plan_name ? `${selectedTask.plan_name} v${selectedTask.plan_version_number ?? '—'}` : `${selectedTask.instrument_id} v${selectedTask.instrument_version}` }}</dd></div>
+          <div><dt>发布时间</dt><dd>{{ formatDate(selectedTask.published_at) }}</dd></div>
+          <div><dt>开放时间</dt><dd>{{ formatDate(selectedTask.opens_at) }}</dd></div>
+          <div><dt>截止时间</dt><dd>{{ formatDate(selectedTask.due_at) }}</dd></div>
+          <div><dt>报名</dt><dd>{{ selectedTask.published_enrollment_count }}</dd></div>
+          <div><dt>有效报名</dt><dd>{{ selectedTask.active_enrollment_count }}</dd></div>
+          <div><dt>已撤销</dt><dd>{{ selectedTask.revoked_enrollment_count }}</dd></div>
+        </dl>
+        <AppButton variant="secondary" size="sm" :disabled="enrollmentLoadingTask === selectedTask.task_ref" @click="toggleEnrollments(selectedTask.task_ref)">{{ enrollmentTask === selectedTask.task_ref ? '收起报名记录' : '读取报名记录' }}</AppButton>
+        <div v-if="enrollmentTask === selectedTask.task_ref" class="school-task-detail__enrollments" aria-live="polite">
+          <p v-if="enrollmentLoadingTask === selectedTask.task_ref" role="status" aria-busy="true">正在读取报名情况…</p>
+          <p v-else-if="!enrollmentsByTask[selectedTask.task_ref]?.length">当前没有可管理的报名记录。</p>
+          <div v-else v-for="enrollment in enrollmentsByTask[selectedTask.task_ref]" :key="enrollment.enrollment_ref" class="school-task-detail__enrollment">
+            <span>报名 {{ shortRef(enrollment.enrollment_ref) }}，{{ statusLabel(enrollment.status) }}</span>
+            <AppButton v-if="!['revoked','REVOKED'].includes(enrollment.status)" variant="quiet" size="sm" :disabled="Boolean(pending)" :loading="pending === `revoke-${enrollment.enrollment_ref}`" @click="revokeEnrollment(selectedTask.task_ref, enrollment.enrollment_ref)">撤销报名</AppButton>
+          </div>
+        </div>
+        <p class="school-task-detail__scope">报名记录只显示编号尾段与状态，不展示姓名、登录名或心理测评内容。</p>
+      </template>
+      <AppStatusCallout v-else tone="attention" title="任务记录已更新" body="当前列表中已没有这条任务。请关闭详情并重新读取任务列表。" />
+    </WorkspaceDetailSheet>
   </section>
 </template>
 
@@ -424,9 +562,9 @@ onBeforeUnmount(() => { disposed = true; activationRequestGeneration += 1 })
 .school-form input:focus-visible,.school-form select:focus-visible,.school-panel > select:focus-visible { outline: 2px solid #279de0; outline-offset: 2px; }
 .school-create-class { justify-self: start; }
 .school-form__row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; }
-.school-form--dates { grid-template-columns: repeat(2,minmax(0,1fr)); align-items: end; padding: 14px; border-radius: 10px; background: #f8fafb; }
-.school-form--dates label { align-self: end; }
-.school-form--dates button { grid-column: 1 / -1; justify-self: start; }
+.school-form--dates { grid-template-columns: 1fr; align-items: stretch; padding: 0; background: transparent; }
+.school-form--dates > label { align-self: end; }
+.school-form--dates > button { justify-self: start; }
 .school-task-mode,.school-task-activation { display: grid; grid-column: 1 / -1; gap: 8px; min-width: 0; margin: 0; padding: 10px; border: 1px solid var(--color-border); border-radius: 9px; background: #fff; }
 .school-task-mode legend { padding: 0 4px; color: var(--color-text-secondary); font-size: 12px; font-weight: 650; }
 .school-task-mode label { display: flex; align-items: center; gap: 7px; color: var(--color-text-secondary); font-size: 12px; }
@@ -442,7 +580,44 @@ onBeforeUnmount(() => { disposed = true; activationRequestGeneration += 1 })
 .school-task__status { display: inline-block; margin-left: 8px; padding: 3px 7px; border-radius: 999px; color: #287765; background: #e8f4ef; font-size: 10px; }
 .school-task p { margin: 6px 0 3px; color: var(--color-text-secondary); font-size: 11px; }
 .school-task small { color: var(--color-text-muted); font-size: 10px; }
+.school-task-steps { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
+.school-task-steps__item { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 9px 10px; border: 1px solid #e5ece8; border-radius: 10px; color: #708179; background: #f9fbfa; }
+.school-task-steps__item > span { display: grid; width: 25px; height: 25px; flex: 0 0 25px; place-items: center; border-radius: 50%; color: #6b8178; background: #e9efec; font-size: 11px; font-weight: 750; }
+.school-task-steps__item strong { overflow: hidden; color: inherit; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.school-task-steps__item--active { border-color: #add0c2; color: #286c5d; background: #f2f8f5; }
+.school-task-steps__item--active > span,.school-task-steps__item--done > span { color: #fff; background: #438e7b; }
+.school-task-steps__item--done { color: #438174; }
+.school-task-step-panel { display: grid; gap: 10px; padding: 17px; border: 1px solid #e4ece7; border-radius: 12px; background: #fbfcfb; }
+.school-task-step-panel__eyebrow { color: #578475; font-size: 10px; font-weight: 760; }
+.school-task-step-panel h4 { margin: 3px 0 1px; color: var(--color-text-primary); font-size: 16px; }
+.school-task-step-panel > label { margin-top: 3px; color: var(--color-text-secondary); font-size: 12px; font-weight: 650; }
+.school-task-step-panel > select,.school-task-step-panel > input { width: 100%; min-height: 42px; padding: 8px 11px; border: 1px solid var(--color-border); border-radius: 9px; color: var(--color-text-primary); background: #fff; font: inherit; font-size: 13px; }
+.school-task-step-panel > select:focus-visible,.school-task-step-panel > input:focus-visible { outline: 3px solid rgb(48 145 124 / 18%); border-color: #5a9a88; }
+.school-task-summary { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1px; overflow: hidden; margin: 0; border: 1px solid #e5ece8; border-radius: 10px; background: #e5ece8; }
+.school-task-summary > div { display: grid; gap: 5px; min-width: 0; padding: 12px 13px; background: #fff; }
+.school-task-summary dt { color: var(--color-text-muted); font-size: 11px; }
+.school-task-summary dd { margin: 0; color: var(--color-text-primary); font-size: 13px; font-weight: 650; line-height: 1.5; overflow-wrap: anywhere; }
+.school-task-step-hint { margin: 0; color: #7b6537; font-size: 12px; line-height: 1.55; }
+.school-task-step-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.school-task-list-wrap { display: grid; gap: 12px; }
+.school-task-list-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.school-task-list-heading h4 { margin: 0; color: var(--color-text-primary); font-size: 14px; }
+.school-task-list-heading p { margin: 4px 0 0; color: var(--color-text-muted); font-size: 11px; }
+.school-task-search { width: min(100%,280px); }
+.school-task-search input { width: 100%; min-height: 38px; padding: 8px 11px; border: 1px solid var(--color-border); border-radius: 9px; color: var(--color-text-primary); background: #fff; font: inherit; font-size: 12px; }
+.school-task-search input:focus-visible { outline: 3px solid rgb(48 145 124 / 18%); border-color: #5a9a88; }
+.school-task__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .school-task__enrollments { display: grid; grid-column: 1 / -1; gap: 5px; padding-top: 8px; border-top: 1px solid var(--color-border); }
 .school-task__enrollment { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--color-text-secondary); font-size: 11px; }
-@media(max-width:760px) { .school-grid { grid-template-columns: 1fr; }.school-form--dates { grid-template-columns: 1fr; }.school-form--dates button { grid-column: auto; }.school-task { grid-template-columns: 1fr; }.school-task > button { justify-self: start; } }
+.school-task-detail { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1px; overflow: hidden; margin: 0 0 15px; border: 1px solid #e5ece8; border-radius: 11px; background: #e5ece8; }
+.school-task-detail > div { display: grid; gap: 5px; min-width: 0; padding: 12px; background: #fff; }
+.school-task-detail dt { color: var(--color-text-muted); font-size: 11px; }
+.school-task-detail dd { margin: 0; color: var(--color-text-primary); font-size: 13px; font-weight: 650; line-height: 1.5; overflow-wrap: anywhere; }
+.school-task-detail__enrollments { display: grid; gap: 7px; margin-top: 13px; padding-top: 12px; border-top: 1px solid var(--color-border); }
+.school-task-detail__enrollments > p { margin: 0; color: var(--color-text-secondary); font-size: 12px; line-height: 1.6; }
+.school-task-detail__enrollment { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--color-text-secondary); font-size: 12px; }
+.school-task-detail__scope { margin: 14px 0 0; color: var(--color-text-muted); font-size: 11px; line-height: 1.6; }
+.school-operations :deep(button:focus-visible) { outline: 3px solid rgb(39 157 224 / 24%); outline-offset: 2px; }
+@media(max-width:760px) { .school-grid { grid-template-columns: 1fr; }.school-task { grid-template-columns: 1fr; }.school-task__actions { justify-content: flex-start; }.school-task-steps { gap: 5px; }.school-task-steps__item { align-items: flex-start; flex-direction: column; gap: 5px; padding: 8px; }.school-task-steps__item strong { white-space: normal; }.school-task-list-heading { align-items: stretch; flex-direction: column; }.school-task-search { width: 100%; } }
+@media(max-width:460px) { .school-task-summary,.school-task-detail { grid-template-columns: 1fr; }.school-task-step-panel { padding: 14px; } }
 </style>

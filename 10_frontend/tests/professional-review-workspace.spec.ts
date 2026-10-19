@@ -1,11 +1,14 @@
 import { flushPromises, mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import SpecialistTaskReviews from '@/components/school/SpecialistTaskReviews.vue'
+import { useSessionStore } from '@/stores/session'
 
 const reviewApi = vi.hoisted(() => ({
   listTasks: vi.fn(), listEligibleEnrollments: vi.fn(), listCases: vi.fn(), getCase: vi.fn(),
   createCase: vi.fn(), openCase: vi.fn(), decideCase: vi.fn(), newKey: vi.fn(),
 }))
+const feedbackApi = vi.hoisted(() => ({ listCase: vi.fn(), createDraft: vi.fn(), publish: vi.fn(), revoke: vi.fn() }))
 vi.mock('@/services/professional-reviews', () => ({
   professionalReviews: {
     listTasks: reviewApi.listTasks,
@@ -17,6 +20,15 @@ vi.mock('@/services/professional-reviews', () => ({
     decideCase: reviewApi.decideCase,
   },
   newProfessionalReviewIdempotencyKey: reviewApi.newKey,
+}))
+vi.mock('@/services/school-feedback', () => ({
+  schoolFeedback: {
+    listCase: feedbackApi.listCase,
+    createDraft: feedbackApi.createDraft,
+    publish: feedbackApi.publish,
+    revoke: feedbackApi.revoke,
+  },
+  newSchoolFeedbackIdempotencyKey: vi.fn(() => 'stable-feedback-test-key'),
 }))
 
 const task = { task_ref: 'TASK_SYNTHETIC_1', class_ref: 'CLASS_SYNTHETIC_1', class_display_name: null as string | null, published_at: '2026-10-12T00:00:00Z' }
@@ -30,12 +42,20 @@ const reviewCase = {
 const page = (items: unknown[]) => ({ items, total: items.length })
 
 function prepare() {
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  useSessionStore(pinia).signIn({
+    userId: 'USER_SYNTHETIC_SPECIALIST', role: 'psychological_specialist', subjectId: null,
+    displayName: '合成心理老师', initials: '专',
+    activeContext: { role: 'psychological_specialist', schoolRef: 'SCHOOL_SYNTHETIC_A' },
+  })
   reviewApi.listTasks.mockResolvedValue([task])
   reviewApi.listEligibleEnrollments.mockResolvedValue(page([enrollment]))
   reviewApi.listCases.mockResolvedValue(page([]))
   reviewApi.getCase.mockResolvedValue(reviewCase)
   reviewApi.newKey.mockReturnValue('stable-synthetic-key')
-  return mount(SpecialistTaskReviews)
+  feedbackApi.listCase.mockResolvedValue({ items: [], total: 0 })
+  return mount(SpecialistTaskReviews, { global: { plugins: [pinia] } })
 }
 
 async function selectFirstRecord(wrapper: ReturnType<typeof mount>) {
