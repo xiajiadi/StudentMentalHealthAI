@@ -23,7 +23,6 @@ import {
 import {
   DialogClose as DrawerDialogClose,
   DialogContent as DrawerDialogContent,
-  DialogDescription as DrawerDialogDescription,
   DialogOverlay as DrawerDialogOverlay,
   DialogPortal as DrawerDialogPortal,
   DialogRoot as DrawerDialogRoot,
@@ -97,7 +96,6 @@ const memberFilter = ref<MemberFilter>('all')
 const searchTerm = ref('')
 const selectedMemberId = ref('')
 const selectedClassRef = ref('')
-const stackedClassRef = ref('')
 const detailOpen = ref(false)
 const drawerExitMessage = ref('')
 type DirectoryFlightOrigin = { x: number; y: number; width: number; height: number; coverOcclusion?: number }
@@ -140,8 +138,6 @@ let detailCloseFinalizing = false
 
 const shortRef = (value: string) => value.slice(-6)
 const roleLabel = (role: 'student' | 'teacher') => role === 'student' ? '学生' : '教师'
-const accountName = (account: Pick<DirectoryAccount, 'display_name' | 'role' | 'user_id'>) =>
-  account.display_name?.trim() || `${roleLabel(account.role)}账号 ${shortRef(account.user_id)}`
 const className = (item: SchoolClass) => item.display_name?.trim() || `班级 ${shortRef(item.class_ref)}`
 
 const apiErrorCode = (error: unknown) => {
@@ -357,7 +353,6 @@ const finishDetailClose = async () => {
     window.clearTimeout(detailCloseTimer)
     detailCloseTimer = undefined
   }
-  const closingClassRef = selectedClassRef.value
   const returnFocusTo = detailSourceElement.value
   const scrollPosition = detailScrollPosition.value
   detailOpen.value = false
@@ -374,7 +369,6 @@ const finishDetailClose = async () => {
   drawerExitMessage.value = ''
   detailSourceElement.value = null
   detailScrollPosition.value = { x: 0, y: 0 }
-  if (closingClassRef && stackedClassRef.value === closingClassRef) stackedClassRef.value = ''
   detailCloseFinalizing = false
 }
 
@@ -477,7 +471,6 @@ const openMember = (member: DirectoryMember, event?: MouseEvent) => {
   detailCloseFinalizing = false
   closingDetail.value = false
   detailPaperOrigins.value = []
-  stackedClassRef.value = ''
   captureDetailReturnTarget(event?.currentTarget instanceof HTMLElement ? event.currentTarget : undefined)
   drawerExitMessage.value = ''
   selectedClassRef.value = ''
@@ -491,7 +484,6 @@ const openPendingMember = (account: PendingAccount, event?: MouseEvent) => {
   detailCloseFinalizing = false
   closingDetail.value = false
   detailPaperOrigins.value = []
-  stackedClassRef.value = ''
   captureDetailReturnTarget(event?.currentTarget instanceof HTMLElement ? event.currentTarget : undefined)
   drawerExitMessage.value = ''
   selectedClassRef.value = ''
@@ -502,14 +494,13 @@ const openPendingMember = (account: PendingAccount, event?: MouseEvent) => {
   memberNameEditing.value = false
 }
 
-const openClass = (item: SchoolClass, editName = false, draft = item.display_name ?? '', papers: DirectoryFlightOrigin[] = [], paperIndex = 1, source?: HTMLButtonElement) => {
+const openClass = (item: SchoolClass, editName = false, draft = item.display_name ?? '', source?: HTMLButtonElement) => {
   detailCloseFinalizing = false
   closingDetail.value = false
   captureDetailReturnTarget(source)
   drawerExitMessage.value = ''
-  detailPaperOrigins.value = papers
-  selectedPaperIndex.value = Math.max(0, Math.min(paperIndex, papers.length - 1))
-  stackedClassRef.value = item.class_ref
+  detailPaperOrigins.value = []
+  selectedPaperIndex.value = 0
   selectedMemberId.value = ''
   selectedClassRef.value = item.class_ref
   detailOpen.value = true
@@ -531,7 +522,7 @@ const handleDetailOpen = (open: boolean) => {
     return
   }
   closingDetail.value = true
-  detailCloseTimer = window.setTimeout(() => { void finishDetailClose() }, selectedPaperOrigin.value ? 900 : 250)
+  detailCloseTimer = window.setTimeout(() => { void finishDetailClose() }, selectedClass.value ? 0 : selectedPaperOrigin.value ? 900 : 250)
 }
 
 const cancelMemberNameEdit = () => {
@@ -1127,10 +1118,8 @@ onBeforeUnmount(() => {
             :key="item.class_ref"
             :folder="folderForClass(item)"
             :active="selectedClassRef === item.class_ref"
-            :stacked="stackedClassRef === item.class_ref"
-            :active-paper-index="selectedClassRef === item.class_ref ? selectedPaperIndex : null"
             :disabled="directoryStale"
-            @open="(_folder, source, papers, index) => openClass(item, false, item.display_name ?? '', papers, index, source)"
+            @open="(_folder, source) => openClass(item, false, item.display_name ?? '', source)"
           />
         </div>
         <div v-else class="directory-studio__empty directory-studio__empty--class">
@@ -1158,21 +1147,21 @@ onBeforeUnmount(() => {
 
   <DrawerDialogRoot :open="detailOpen" @update:open="handleDetailOpen">
     <DrawerDialogPortal>
-      <DrawerDialogOverlay class="directory-detail__overlay" :class="{ 'directory-detail__overlay--opening': !closingDetail, 'directory-detail__overlay--closing': closingDetail }" />
+      <DrawerDialogOverlay class="directory-detail__overlay" :class="{ 'directory-detail__overlay--opening': !closingDetail, 'directory-detail__overlay--closing': closingDetail, 'directory-detail__overlay--instant': Boolean(selectedClass) }" />
       <span v-if="selectedPaperOrigin" :key="`${selectedMemberId}:${selectedClassRef}:${selectedPaperIndex}`" class="directory-detail__paper" :class="{ 'directory-detail__paper--closing': closingDetail }" :style="{ ...detailPaperStyle, '--paper-surface': detailPalette.surface, '--paper-accent': detailPalette.accent }" aria-hidden="true" @animationend="handleDetailPaperAnimationEnd">
         <i class="directory-detail__paper-mark" /><i class="directory-detail__paper-line" /><i class="directory-detail__paper-line directory-detail__paper-line--short" />
       </span>
       <DrawerDialogContent class="directory-detail__panel" :class="[{ 'directory-detail__panel--member': Boolean(selectedMember), 'directory-detail__panel--class': Boolean(selectedClass) }, { 'directory-detail__panel--closing': closingDetail }]" :style="{ ...detailPanelStyle, '--directory-detail-accent': detailPalette.accent }" :aria-label="selectedMember ? '人员详情卡片' : '班级管理卡片'" @animationend="handleDetailPanelAnimationEnd">
         <header class="directory-drawer__header">
-          <div><span class="directory-drawer__eyebrow">{{ selectedMember ? '学校人员' : '组织目录' }}</span><DrawerDialogTitle class="directory-drawer__title">{{ selectedMember ? accountName(selectedMember) : selectedClass ? className(selectedClass) : '详情' }}</DrawerDialogTitle><DrawerDialogDescription class="directory-drawer__description">{{ selectedMember ? '账号资料与可用操作' : '班级汇总与人员分配' }}</DrawerDialogDescription></div>
+          <div><span class="directory-drawer__eyebrow">{{ selectedMember ? '学校人员' : '组织目录' }}</span><DrawerDialogTitle class="directory-drawer__title">{{ selectedMember ? '账号详情' : selectedClass ? '班级详情' : '详情' }}</DrawerDialogTitle></div>
           <DrawerDialogClose as-child><button type="button" class="directory-drawer__close" aria-label="关闭详情" :disabled="closingDetail"><X :size="18" aria-hidden="true" /></button></DrawerDialogClose>
         </header>
         <div v-if="drawerExitMessage" class="directory-drawer__message" role="status">{{ drawerExitMessage }}</div>
         <div class="directory-drawer__body">
           <template v-if="selectedMember">
             <section class="directory-drawer__identity">
-              <span class="directory-drawer__avatar" :class="`directory-drawer__avatar--${selectedMember.role}`">{{ selectedMember.display_name?.trim()?.slice(0, 1) || roleLabel(selectedMember.role).slice(0, 1) }}</span>
-              <div><strong>{{ accountName(selectedMember) }}</strong><span class="directory-studio__role" :class="`directory-studio__role--${selectedMember.role}`">{{ roleLabel(selectedMember.role) }}</span></div>
+              <span class="directory-drawer__avatar" :class="`directory-drawer__avatar--${selectedMember.role}`"><template v-if="selectedMember.display_name?.trim()">{{ selectedMember.display_name.trim().slice(0, 1) }}</template><UsersRound v-else :size="18" aria-hidden="true" /></span>
+              <div><strong>{{ roleLabel(selectedMember.role) }}账号</strong></div>
             </section>
             <dl class="directory-drawer__facts">
               <div><dt>账号编号</dt><dd>…{{ shortRef(selectedMember.user_id) }}</dd></div>
@@ -1438,6 +1427,7 @@ onBeforeUnmount(() => {
 .directory-studio__classes { padding-top: 6px; }
 .directory-studio__classes-heading { display: flex; align-items: center; justify-content: flex-end; gap: 14px; margin: 0 0 20px; }
 .directory-studio__class-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 19px; padding: 5px 2px 10px; }
+.directory-studio__class-grid :deep(.workspace-folder__layer),.directory-studio__class-grid :deep(.workspace-folder__cover) { transition: none; }
 .directory-studio__empty { display: flex; min-height: 260px; flex-direction: column; align-items: center; justify-content: center; gap: 9px; padding: 28px; border: 1px dashed #dbe6ea; border-radius: 12px; background: #fff; text-align: center; }
 .directory-studio__empty h2 { margin: 4px 0 0; color: #344f5f; font-size: 14px; }
 .directory-studio__empty p { max-width: 390px; margin: 0 0 7px; color: #82949d; font-size: 11px; line-height: 1.6; }
@@ -1469,60 +1459,61 @@ onBeforeUnmount(() => {
 .directory-detail__overlay { position: fixed; inset: 0; z-index: 80; background: rgb(25 41 54 / 23%); backdrop-filter: blur(3px); }
 .directory-detail__overlay--opening { animation: directory-detail-overlay-in 180ms ease both; }
 .directory-detail__overlay--closing { animation: directory-detail-overlay-out 380ms ease both; }
+.directory-detail__overlay--instant { animation: none; }
 .directory-detail__paper { position: fixed; z-index: 92; display: flex; flex-direction: column; gap: 4px; padding: 5px 6px; border: 1px solid color-mix(in srgb, var(--paper-accent,#168fae) 24%, white); border-radius: 7px; opacity: .95; background: var(--paper-surface,#fff); box-shadow: 0 7px 16px rgb(37 69 85 / 14%); transform-origin: center; animation: directory-detail-paper-fly 460ms linear both; pointer-events: none; }
 .directory-detail__paper--closing { animation-name: directory-detail-paper-return; animation-duration: 460ms; animation-delay: 330ms; animation-timing-function: linear; }
 .directory-detail__paper-mark { width: 11px; height: 3px; flex: 0 0 3px; border-radius: 3px; background: var(--paper-accent,#168fae); }.directory-detail__paper-line { display: block; width: 100%; height: 2px; border-radius: 3px; background: color-mix(in srgb, var(--paper-accent,#168fae) 24%, white); }.directory-detail__paper-line--short { width: 68%; }
-.directory-detail__panel { position: fixed; top: 50%; left: 50%; z-index: 90; display: flex; width: min(620px,calc(100vw - 36px)); max-height: min(84dvh,720px); flex-direction: column; overflow: hidden; border: 1px solid #dfe8eb; border-top: 2px solid var(--directory-detail-accent,#168fae); border-radius: 18px; color: var(--directory-ink); background: #fff; box-shadow: 0 25px 75px rgb(25 50 66 / 24%); outline: none; transform: translate(-50%,-50%); transform-origin: center; animation: directory-detail-open 500ms cubic-bezier(.4,0,.2,1) 280ms both; }
-.directory-detail__panel--member { width: min(520px,calc(100vw - 36px)); }
+.directory-detail__panel { position: fixed; top: 50%; left: 50%; z-index: 90; display: flex; width: min(600px,calc(100vw - 36px)); max-height: min(82dvh,680px); flex-direction: column; overflow: hidden; border: 1px solid #dfe8eb; border-top: 2px solid var(--directory-detail-accent,#168fae); border-radius: 18px; color: var(--directory-ink); background: #fff; box-shadow: 0 25px 75px rgb(25 50 66 / 24%); outline: none; transform: translate(-50%,-50%); transform-origin: center; animation: directory-detail-open 500ms cubic-bezier(.4,0,.2,1) 280ms both; }
+.directory-detail__panel--member { width: min(480px,calc(100vw - 36px)); }
+.directory-detail__panel--class,.directory-detail__panel--class.directory-detail__panel--closing { width: min(600px,calc(100vw - 36px)); animation: none; }
 .directory-detail__panel--member { animation: directory-member-card-in 180ms cubic-bezier(.2,.75,.2,1) both; }
 .directory-detail__panel--closing { animation-direction: reverse; animation-duration: 330ms; animation-delay: 0ms; animation-timing-function: cubic-bezier(.4,0,.2,1); pointer-events: none; }
 .directory-detail__panel--member.directory-detail__panel--closing { animation: directory-member-card-out 150ms ease-in both; }
-.directory-drawer__header { display: flex; min-height: 100px; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 23px 22px 17px; border-bottom: 1px solid #edf1f2; background: #fbfdfd; }
-.directory-drawer__eyebrow { display: block; margin-bottom: 6px; color: #70909c; font-size: 9px; font-weight: 680; }
-.directory-drawer__title { display: block; overflow: hidden; max-width: 340px; color: #254254; font-family: var(--font-display); font-size: 18px; font-weight: 730; text-overflow: ellipsis; white-space: nowrap; }
-.directory-drawer__description { display: block; margin-top: 5px; color: #84969e; font-size: 10px; }
+.directory-drawer__header { display: flex; min-height: 78px; align-items: center; justify-content: space-between; gap: 16px; padding: 15px 20px 13px; border-bottom: 1px solid #edf1f2; background: #fbfdfd; }
+.directory-drawer__eyebrow { display: block; margin-bottom: 4px; color: #70909c; font-size: 11px; font-weight: 680; }
+.directory-drawer__title { display: block; overflow: hidden; max-width: 340px; color: #254254; font-family: var(--font-display); font-size: 20px; font-weight: 730; text-overflow: ellipsis; white-space: nowrap; }
 .directory-drawer__close,.directory-activation-dialog__close { display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; border: 1px solid #e1e9ec; border-radius: 9px; color: #738792; background: #fff; cursor: pointer; }
 .directory-drawer__close:hover,.directory-activation-dialog__close:hover { border-color: #c7e0e7; color: #167e98; background: #f5fafb; }
-.directory-drawer__body { display: grid; align-content: start; gap: 19px; overflow-y: auto; padding: 19px 22px 28px; overscroll-behavior: contain; }
-.directory-drawer__identity { display: flex; align-items: center; gap: 12px; }
-.directory-drawer__avatar { width: 43px; height: 43px; flex-basis: 43px; border-radius: 13px; font-size: 16px; }
-.directory-drawer__identity > div { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; min-width: 0; }
-.directory-drawer__identity strong { overflow: hidden; color: #2c485a; font-size: 14px; font-weight: 720; text-overflow: ellipsis; white-space: nowrap; }
-.directory-drawer__facts { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; margin: 0; padding: 13px; border: 1px solid #e7edef; border-radius: 10px; background: #fbfcfc; }
+.directory-drawer__body { display: grid; align-content: start; gap: 15px; overflow-y: auto; padding: 16px 20px 20px; overscroll-behavior: contain; }
+.directory-drawer__identity { display: flex; align-items: center; gap: 11px; }
+.directory-drawer__avatar { width: 40px; height: 40px; flex-basis: 40px; border-radius: 12px; font-size: 16px; }
+.directory-drawer__identity > div { display: flex; flex-wrap: wrap; align-items: center; min-width: 0; }
+.directory-drawer__identity strong { overflow: hidden; color: #2c485a; font-size: 16px; font-weight: 720; text-overflow: ellipsis; white-space: nowrap; }
+.directory-drawer__facts { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 9px; margin: 0; padding: 13px; border: 1px solid #e7edef; border-radius: 10px; background: #fbfcfc; }
 .directory-drawer__facts > div { display: grid; align-content: start; gap: 6px; min-width: 0; }
 .directory-drawer__facts > div:first-child { grid-column: 1 / -1; padding-bottom: 10px; border-bottom: 1px solid #e9eff1; }
-.directory-drawer__facts dt { color: #8b9ca4; font-size: 9px; }
-.directory-drawer__facts dd { overflow: hidden; margin: 0; color: #405a68; font-size: 10px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
-.directory-drawer__section { display: grid; gap: 12px; padding: 15px; border: 1px solid #e6edef; border-radius: 10px; background: #fff; }
+.directory-drawer__facts dt { color: #81949d; font-size: 11px; }
+.directory-drawer__facts dd { overflow: hidden; margin: 0; color: #405a68; font-size: 13px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.directory-drawer__section { display: grid; gap: 11px; padding: 13px; border: 1px solid #e6edef; border-radius: 10px; background: #fff; }
 .directory-drawer__section > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.directory-drawer__section h3 { margin: 0; color: #355060; font-size: 11px; font-weight: 700; }
-.directory-drawer__section header p { margin: 4px 0 0; color: #8a9ba3; font-size: 9px; line-height: 1.5; }
-.directory-drawer__text-action { display: inline-flex; min-height: 28px; align-items: center; gap: 5px; padding: 0 7px; border: 0; border-radius: 6px; color: #19809a; background: #eff8fa; font: inherit; font-size: 9px; font-weight: 650; cursor: pointer; }
+.directory-drawer__section h3 { margin: 0; color: #355060; font-size: 13px; font-weight: 700; }
+.directory-drawer__section header p { margin: 4px 0 0; color: #82959d; font-size: 11px; line-height: 1.5; }
+.directory-drawer__text-action { display: inline-flex; min-height: 30px; align-items: center; gap: 5px; padding: 0 8px; border: 0; border-radius: 6px; color: #19809a; background: #eff8fa; font: inherit; font-size: 11px; font-weight: 650; cursor: pointer; }
 .directory-drawer__text-action:disabled { opacity: .5; cursor: not-allowed; }
-.directory-drawer__value { margin: 0; color: #405b69; font-size: 12px; }
+.directory-drawer__value { margin: 0; color: #405b69; font-size: 14px; }
 .directory-drawer__edit-form { display: grid; gap: 7px; }
-.directory-drawer__edit-form input,.directory-dialog-form input,.directory-dialog-form select { width: 100%; min-height: 40px; padding: 0 11px; border: 1px solid #d9e5e9; border-radius: 8px; outline: none; color: #2c4859; background: #fff; font: inherit; font-size: 12px; }
+.directory-drawer__edit-form input,.directory-dialog-form input,.directory-dialog-form select { width: 100%; min-height: 40px; padding: 0 11px; border: 1px solid #d9e5e9; border-radius: 8px; outline: none; color: #2c4859; background: #fff; font: inherit; font-size: 14px; }
 .directory-drawer__edit-form input:focus,.directory-dialog-form input:focus,.directory-dialog-form select:focus { border-color: #77c4d4; box-shadow: 0 0 0 3px rgb(11 150 184 / 9%); }
-.directory-drawer__edit-form p,.directory-dialog-form > p { margin: 0; color: #8b9ba3; font-size: 9px; line-height: 1.5; }
+.directory-drawer__edit-form p,.directory-dialog-form > p { margin: 0; color: #81939b; font-size: 11px; line-height: 1.5; }
 .directory-drawer__edit-form > div,.directory-dialog-form__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 .directory-drawer__activation-card { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 10px; padding: 13px; border: 1px solid #eee5ce; border-radius: 10px; background: #fcfaf4; }
 .directory-drawer__activation-icon { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 9px; color: #9c792d; background: #f6f0df; }
-.directory-drawer__activation-card strong { color: #62583e; font-size: 10px; }
-.directory-drawer__activation-card p { margin: 4px 0 0; color: #92886e; font-size: 9px; line-height: 1.5; }
-.directory-drawer__class-summary { display: grid; gap: 15px; }
-.directory-drawer__class-ref { display: flex; align-items: center; gap: 7px; color: #6e8996; font-size: 10px; }
+.directory-drawer__activation-card strong { color: #62583e; font-size: 12px; }
+.directory-drawer__activation-card p { margin: 4px 0 0; color: #887e62; font-size: 11px; line-height: 1.5; }
+.directory-drawer__class-summary { display: grid; gap: 12px; }
+.directory-drawer__class-ref { display: flex; align-items: center; gap: 7px; color: #6e8996; font-size: 12px; }
 .directory-drawer__class-ref > svg { color: #1585a1; }
-.directory-drawer__class-ref span { overflow: hidden; margin-left: auto; color: #7e929b; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.directory-drawer__class-ref span { overflow: hidden; margin-left: auto; color: #718791; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .directory-drawer__class-metrics { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
-.directory-drawer__class-metrics > div { display: grid; gap: 7px; padding: 13px; border: 1px solid #e5edef; border-radius: 10px; background: #fbfcfc; }
-.directory-drawer__class-metrics span { color: #7e929c; font-size: 9px; }
-.directory-drawer__class-metrics strong { color: #2d5264; font-size: 20px; font-weight: 730; font-variant-numeric: tabular-nums; }
+.directory-drawer__class-metrics > div { display: grid; gap: 6px; padding: 12px; border: 1px solid #e5edef; border-radius: 10px; background: #fbfcfc; }
+.directory-drawer__class-metrics span { color: #718791; font-size: 11px; }
+.directory-drawer__class-metrics strong { color: #2d5264; font-size: 22px; font-weight: 730; font-variant-numeric: tabular-nums; }
 .directory-drawer__assignment { gap: 10px; }
-.directory-drawer__candidate-state { padding: 10px 11px; border-radius: 8px; color: #7f929a; background: #f7f9fa; font-size: 10px; line-height: 1.55; }
+.directory-drawer__candidate-state { padding: 10px 11px; border-radius: 8px; color: #728790; background: #f7f9fa; font-size: 12px; line-height: 1.55; }
 .directory-drawer__candidate-state--error { color: #8c623d; background: #fbf6ee; }
 .directory-drawer__candidate-state button { margin-left: 6px; border: 0; color: #18819a; background: transparent; font: inherit; font-weight: 700; cursor: pointer; }
 .directory-drawer__assign-row { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 8px; }
-.directory-drawer__message { margin: 11px 18px 0; padding: 9px 11px; border-radius: 8px; color: #876635; background: #faf5e8; font-size: 10px; line-height: 1.5; }
+.directory-drawer__message { margin: 11px 18px 0; padding: 9px 11px; border-radius: 8px; color: #876635; background: #faf5e8; font-size: 12px; line-height: 1.5; }
 .directory-dialog-form { display: grid; gap: 9px; }
 .directory-dialog-form label { color: #556f7c; font-size: 11px; font-weight: 650; }
 .directory-dialog-form__actions { margin-top: 7px; }
@@ -1676,8 +1667,8 @@ onBeforeUnmount(() => {
   .directory-studio__table th:last-child { width: 48px; }
   .directory-studio__table td { height: 62px; }
   .directory-studio__provisioning { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
-  .directory-drawer__header { min-height: 91px; padding: 19px 17px 14px; }
-  .directory-drawer__body { gap: 14px; padding: 15px 16px 24px; }
+  .directory-drawer__header { min-height: 70px; padding: 14px 16px 12px; }
+  .directory-drawer__body { gap: 13px; padding: 14px 16px 18px; }
   .directory-drawer__assign-row { grid-template-columns: minmax(0,1fr); }
   .directory-drawer__assign-row > :deep(.app-button) { justify-self: end; }
   .directory-drawer__activation-card { grid-template-columns: auto minmax(0,1fr); }
