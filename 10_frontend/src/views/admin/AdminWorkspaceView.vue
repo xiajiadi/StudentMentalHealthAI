@@ -6,12 +6,10 @@ import type { DependencyStatusDto } from '@/api/generated/types.gen'
 import AppCard from '@/components/app/AppCard.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import WorkspaceBreadcrumb from '@/components/student/WorkspaceBreadcrumb.vue'
-import WorkspaceTabs from '@/components/workspace/WorkspaceTabs.vue'
 import AdminSchoolOperations from '@/components/school/AdminSchoolOperations.vue'
 import AdminTaskDispatch from '@/components/school/AdminTaskDispatch.vue'
-import AdminOperationsAudit from '@/components/school/AdminOperationsAudit.vue'
+import AdminOperationsWorkspace from '@/components/school/AdminOperationsWorkspace.vue'
 import SchoolResearchManagement from '@/components/school/SchoolResearchManagement.vue'
-import SafetyAssignments from '@/components/school/SafetyAssignments.vue'
 import AdminOperationsDesk from '@/components/admin/AdminOperationsDesk.vue'
 import AdminDirectoryStudio from '@/components/school/AdminDirectoryStudio.vue'
 import { readDependencyHealth } from '@/views/admin/health'
@@ -24,11 +22,6 @@ const schoolScopeKey = computed(() => [
   session.user?.activeContext?.schoolRef ?? '', session.user?.activeContext?.role ?? '',
 ].join('|'))
 const section = computed(() => String(route.params.section ?? 'overview'))
-const auditTab = ref<'assignments' | 'records'>('assignments')
-const auditTabs = [
-  { value: 'assignments', label: '待处理事项' },
-  { value: 'records', label: '操作记录' },
-] as const
 const healthState = ref<'loading' | 'ready' | 'error'>('loading')
 const dependencies = ref<Record<string, DependencyStatusDto>>({})
 const pageTitle = computed(() => ({
@@ -61,9 +54,8 @@ const loadHealth = async () => {
   }
 }
 
-watch([section, () => route.hash], ([value, hash]) => {
+watch([section, () => route.hash], ([value]) => {
   if (value === 'settings') void loadHealth()
-  if (value === 'audit') auditTab.value = hash === '#operations-audit' ? 'records' : 'assignments'
 }, { immediate: true })
 </script>
 
@@ -99,14 +91,7 @@ watch([section, () => route.hash], ([value, hash]) => {
 
       <template v-else-if="section === 'audit'">
         <section class="admin-audit" aria-label="学校运营事务">
-          <WorkspaceTabs v-model="auditTab" id="admin-audit-tabs" label="运营事务类型" :tabs="auditTabs">
-            <template #panel="{ tab }">
-              <section class="admin-audit__panel">
-                <SafetyAssignments v-if="tab.value === 'assignments'" :key="schoolScopeKey" />
-                <AdminOperationsAudit v-else :key="schoolScopeKey" :scope-key="schoolScopeKey" />
-              </section>
-            </template>
-          </WorkspaceTabs>
+          <AdminOperationsWorkspace :key="schoolScopeKey" :scope-key="schoolScopeKey" />
         </section>
       </template>
 

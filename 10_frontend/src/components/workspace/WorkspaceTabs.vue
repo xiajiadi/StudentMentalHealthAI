@@ -12,6 +12,7 @@ defineProps<{
   tabs: readonly WorkspaceTabOption[]
   label: string
   id?: string
+  keepMounted?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -49,6 +50,7 @@ const emit = defineEmits<{
       :key="`${tab.value}-panel`"
       class="workspace-tabs__panel"
       :value="tab.value"
+      :force-mount="keepMounted || undefined"
     >
       <slot name="panel" :tab="tab" />
     </TabsContent>
