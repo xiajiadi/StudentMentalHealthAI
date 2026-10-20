@@ -2,7 +2,6 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  ArrowRight,
   Search,
   X,
 } from '@lucide/vue'
@@ -179,9 +178,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleGlobalKeydown)
             <p class="specialist-atlas__lens-group">{{ selectedEntry.groupLabel }}</p>
             <h3>{{ selectedEntry.title }}</h3>
             <p class="specialist-atlas__lens-description">{{ selectedEntry.description }}</p>
-            <p class="specialist-atlas__lens-route">{{ selectedEntry.routeLabel }}</p>
             <RouterLink class="specialist-atlas__enter" :to="selectedEntry.to">
-              进入此功能 <ArrowRight :size="16" aria-hidden="true" />
+              进入此功能
             </RouterLink>
           </div>
         </Transition>
@@ -243,7 +241,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleGlobalKeydown)
               <strong>{{ entry.title }}</strong>
               <small>{{ entry.groupLabel }} · {{ entry.summary }}</small>
             </span>
-            <ArrowRight :size="15" class="specialist-quick__arrow" aria-hidden="true" />
           </button>
           <p v-if="!filteredEntries.length" class="specialist-quick__empty">没有匹配的工作入口</p>
         </div>
@@ -304,7 +301,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleGlobalKeydown)
 .specialist-atlas__lens-group { margin: 7px 0 2px; color: var(--atlas-accent); font-size: 12px; font-weight: 700; letter-spacing: .04em; }
 .specialist-atlas__lens-content h3 { margin: 1px 0 5px; color: var(--color-text-primary); font-size: 19px; font-weight: 720; line-height: 1.35; }
 .specialist-atlas__lens-description { max-width: 310px; min-height: 38px; margin: 0; color: var(--color-text-muted); font-size: 13px; line-height: 1.65; }
-.specialist-atlas__lens-route { max-width: 100%; margin: 7px 0 12px; overflow-wrap: anywhere; color: #9aa7b0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.4; }
 .specialist-atlas__enter { display: inline-flex; min-height: 36px; align-items: center; justify-content: center; gap: 8px; margin-top: auto; padding: 0 15px; border: 1px solid color-mix(in srgb, var(--color-primary) 30%, #fff); border-radius: 9px; color: var(--color-primary-active); background: #fff; box-shadow: 0 3px 10px rgb(12 116 142 / 6%); font-size: 13px; font-weight: 700; text-decoration: none; transition: border-color 180ms ease, background-color 180ms ease, transform 180ms ease; }
 .specialist-atlas__enter:hover { border-color: var(--color-primary); background: #f2fbfd; transform: translateY(-1px); }
 .specialist-atlas__enter:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
@@ -338,7 +334,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleGlobalKeydown)
 .specialist-quick__result-copy { display: grid; min-width: 0; gap: 3px; }
 .specialist-quick__result-copy strong { color: #3a4f5b; font-size: 12px; font-weight: 690; }
 .specialist-quick__result-copy small { color: #8c9ba4; font-size: 10px; }
-.specialist-quick__arrow { flex: 0 0 auto; margin-left: auto; color: #9aabb4; }
 .specialist-quick__empty { margin: 0; padding: 24px 12px; color: #8a9aa3; font-size: 12px; text-align: center; }
 .specialist-quick__footer { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 10px; padding: 11px 4px 0; border-top: 1px solid #edf1f4; color: #8a9aa3; font-size: 10px; }
 .specialist-quick__footer span { display: inline-flex; align-items: center; gap: 4px; }
@@ -350,7 +345,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleGlobalKeydown)
   .specialist-atlas__lens { min-height: 0; flex-direction: row; align-items: center; justify-content: center; gap: 18px; padding: 18px 24px; border-top: 1px solid #edf0f3; border-left: 0; }
   .specialist-atlas__lens-heading { position: absolute; top: 13px; right: 20px; width: auto; gap: 12px; }
   .specialist-atlas__lens-content { display: grid; width: 100%; grid-template-columns: 104px minmax(0, 1fr) auto; align-items: center; gap: 4px 16px; padding: 12px 0 0; text-align: left; }
-  .specialist-atlas__orbit { width: 96px; height: 96px; grid-row: span 4; }
+  .specialist-atlas__orbit { width: 96px; height: 96px; grid-row: span 3; }
   .specialist-atlas__orbit-ring--outer { inset: 4px; }
   .specialist-atlas__orbit-ring--inner { inset: 13px; }
   .specialist-atlas__lens-icon { width: 56px; height: 56px; }
@@ -358,7 +353,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleGlobalKeydown)
   .specialist-atlas__lens-group { grid-column: 2; margin: 0; align-self: end; }
   .specialist-atlas__lens-content h3 { grid-column: 2; align-self: start; margin: 0; }
   .specialist-atlas__lens-description { grid-column: 2; grid-row: 3; min-height: 0; }
-  .specialist-atlas__lens-route { grid-column: 2; grid-row: 4; margin: 1px 0 0; }
   .specialist-atlas__enter { grid-column: 3; grid-row: 2 / span 2; margin: 0; }
 }
 @media (max-width: 700px) {
@@ -381,18 +375,17 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleGlobalKeydown)
   .specialist-atlas__lens { display: block; padding: 16px 18px 18px; }
   .specialist-atlas__lens-heading { top: 13px; right: 17px; }
   .specialist-atlas__lens-content { grid-template-columns: 78px minmax(0, 1fr); gap: 3px 12px; padding-top: 14px; }
-  .specialist-atlas__orbit { width: 78px; height: 78px; grid-row: 1 / span 5; }
+  .specialist-atlas__orbit { width: 78px; height: 78px; grid-row: 1 / span 4; }
   .specialist-atlas__orbit-ring--outer { inset: 2px; }
   .specialist-atlas__orbit-ring--inner { inset: 10px; }
   .specialist-atlas__lens-icon { width: 47px; height: 47px; }
   .specialist-atlas__lens-icon svg { width: 25px; height: 25px; }
   .specialist-atlas__orbit-point { top: 9px; right: 14px; width: 5px; height: 5px; }
-  .specialist-atlas__lens-group,.specialist-atlas__lens-content h3,.specialist-atlas__lens-description,.specialist-atlas__lens-route { grid-column: 2; }
+  .specialist-atlas__lens-group,.specialist-atlas__lens-content h3,.specialist-atlas__lens-description { grid-column: 2; }
   .specialist-atlas__lens-group { grid-row: 1; align-self: end; }
   .specialist-atlas__lens-content h3 { grid-row: 2; }
   .specialist-atlas__lens-description { grid-row: 3; }
-  .specialist-atlas__lens-route { grid-row: 4; margin: 2px 0 5px; }
-  .specialist-atlas__enter { grid-column: 2; grid-row: 5; justify-self: start; min-height: 34px; }
+  .specialist-atlas__enter { grid-column: 2; grid-row: 4; justify-self: start; min-height: 34px; }
   .specialist-quick__dialog { padding: 12px; }
   .specialist-quick__footer { gap: 9px; }
 }

@@ -33,7 +33,6 @@ export type SpecialistAtlasEntry = {
   icon: Component
   accent: SpecialistAtlasAccent
   to: RouteLocationRaw
-  routeLabel: string
   focus?: SpecialistAtlasFocus
 }
 
@@ -69,7 +68,6 @@ export const specialistAtlasEntries: SpecialistAtlasEntry[] = [
     accent: 'cyan',
     focus: 'task-reviews',
     to: taskTarget('task-reviews'),
-    routeLabel: '/specialist/tasks?focus=task-reviews',
   },
   {
     id: 'research-feedback',
@@ -82,7 +80,6 @@ export const specialistAtlasEntries: SpecialistAtlasEntry[] = [
     accent: 'violet',
     focus: 'research-feedback',
     to: taskTarget('research-feedback'),
-    routeLabel: '/specialist/tasks?focus=research-feedback',
   },
   {
     id: 'education-review',
@@ -95,7 +92,6 @@ export const specialistAtlasEntries: SpecialistAtlasEntry[] = [
     accent: 'lavender',
     focus: 'education-review',
     to: taskTarget('education-review'),
-    routeLabel: '/specialist/tasks?focus=education-review',
   },
   {
     id: 'research-candidates',
@@ -108,7 +104,6 @@ export const specialistAtlasEntries: SpecialistAtlasEntry[] = [
     accent: 'sky',
     focus: 'research-candidates',
     to: taskTarget('research-candidates'),
-    routeLabel: '/specialist/tasks?focus=research-candidates',
   },
   {
     id: 'resources',
@@ -120,7 +115,6 @@ export const specialistAtlasEntries: SpecialistAtlasEntry[] = [
     icon: BookMarked,
     accent: 'cyan',
     to: { path: '/specialist/resources' },
-    routeLabel: '/specialist/resources',
   },
   {
     id: 'assigned-safety',
@@ -133,7 +127,6 @@ export const specialistAtlasEntries: SpecialistAtlasEntry[] = [
     accent: 'amber',
     focus: 'assigned-safety',
     to: taskTarget('assigned-safety'),
-    routeLabel: '/specialist/tasks?focus=assigned-safety',
   },
   {
     id: 'simulation',
@@ -146,7 +139,6 @@ export const specialistAtlasEntries: SpecialistAtlasEntry[] = [
     accent: 'mint',
     focus: 'simulation',
     to: catTarget('simulation'),
-    routeLabel: '/specialist/cat?focus=simulation',
   },
   {
     id: 'research-management',
@@ -159,6 +151,5 @@ export const specialistAtlasEntries: SpecialistAtlasEntry[] = [
     accent: 'teal',
     focus: 'research-management',
     to: catTarget('research-management'),
-    routeLabel: '/specialist/cat?focus=research-management',
   },
 ]
