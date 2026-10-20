@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Search } from '@lucide/vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import StudentPageHero from '@/components/student/StudentPageHero.vue'
 import WorkspaceBreadcrumb from '@/components/student/WorkspaceBreadcrumb.vue'
@@ -44,7 +43,6 @@ const page = computed(() => ({
 const taskGroup = ref<TaskGroup>('professional')
 const taskWorkflow = ref<TaskWorkflow>('task-review')
 const catPanel = ref<'laboratory' | 'research'>('laboratory')
-const atlasRef = ref<InstanceType<typeof SpecialistWorkspaceAtlas> | null>(null)
 const taskGroups = [
   { value: 'professional', label: '专业复核与反馈' },
   { value: 'education', label: '教育内容与候选' },
@@ -164,10 +162,6 @@ function updateCatPanel(value: string) {
   void syncFocus(value === 'research' ? 'research-management' : 'simulation')
 }
 
-function openAtlasQuickSearch() {
-  atlasRef.value?.openPalette()
-}
-
 watch(specialistScopeKey, () => {
   taskGroup.value = 'professional'
   taskWorkflow.value = 'task-review'
@@ -180,18 +174,7 @@ watch(specialistScopeKey, () => {
   <main class="content-wrap specialist-workspace">
     <WorkspaceBreadcrumb :current="page.title" home-label="心理工作区" home-to="/specialist/overview" />
     <template v-if="section === 'overview'">
-      <header class="specialist-overview-heading">
-        <div>
-          <h1>{{ page.title }}</h1>
-          <p>{{ page.intro }}</p>
-        </div>
-        <button class="specialist-quick-trigger" type="button" @click="openAtlasQuickSearch">
-          <Search :size="16" aria-hidden="true" />
-          <span>快速直达</span>
-          <kbd>Ctrl K</kbd>
-        </button>
-      </header>
-      <SpecialistWorkspaceAtlas ref="atlasRef" />
+      <SpecialistWorkspaceAtlas />
     </template>
 
     <template v-else>
@@ -252,19 +235,11 @@ watch(specialistScopeKey, () => {
 <style scoped>
 .specialist-workspace { display: grid; gap: 18px; padding-top: 18px; padding-bottom: 56px; animation: page-in 220ms ease both; }
 .specialist-page-hero { margin-bottom: 0; }
-.specialist-overview-heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
-.specialist-overview-heading h1 { margin: 0; color: var(--color-text-primary); font-size: 24px; font-weight: 730; line-height: 1.3; }
-.specialist-overview-heading p { margin: 5px 0 0; color: var(--color-text-muted); font-size: 13px; line-height: 1.5; }
-.specialist-quick-trigger { display: inline-flex; min-height: 38px; flex: 0 0 auto; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid #dfe7ed; border-radius: 9px; color: #4d6371; background: #fff; cursor: pointer; font: inherit; font-size: 12px; font-weight: 640; box-shadow: 0 2px 8px rgb(30 60 75 / 3%); transition: border-color 180ms ease, color 180ms ease, background-color 180ms ease; }
-.specialist-quick-trigger:hover { border-color: #a7dce8; color: var(--color-primary-active); background: #f7fcfd; }
-.specialist-quick-trigger:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
-.specialist-quick-trigger svg { color: var(--color-primary-active); }
-.specialist-quick-trigger kbd { padding: 2px 5px; border: 1px solid #e1e8ed; border-radius: 5px; color: #7e8e99; background: #f8fafb; font-family: inherit; font-size: 9px; font-weight: 600; }
 .specialist-task-workspace,.specialist-cat-workspace { display: grid; gap: 14px; min-width: 0; }
 .specialist-task-workspace__group { display: grid; gap: 14px; min-width: 0; }
 .specialist-task-workspace__content,.specialist-cat-workspace__panel,.specialist-resources { min-width: 0; }
 .specialist-task-workspace__content:focus-visible,.specialist-task-workspace__group:focus-visible,.specialist-cat-workspace__panel:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 3px; border-radius: 10px; }
 @keyframes page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-@media (max-width: 640px) { .specialist-workspace { gap: 15px; padding-top: 14px; }.specialist-overview-heading { align-items: flex-start; }.specialist-overview-heading h1 { font-size: 21px; }.specialist-overview-heading p { max-width: 210px; font-size: 12px; }.specialist-quick-trigger { min-height: 35px; gap: 6px; padding: 0 8px; font-size: 11px; }.specialist-quick-trigger kbd { display: none; } }
+@media (max-width: 640px) { .specialist-workspace { gap: 15px; padding-top: 14px; } }
 @media (prefers-reduced-motion: reduce) { .specialist-workspace { animation: none; } }
 </style>
