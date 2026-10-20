@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { CalendarDays, ChevronLeft, ChevronRight, Clock3, ListChecks, Plus, RefreshCw, Search, X } from '@lucide/vue'
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Clock3, ListChecks, Plus, RefreshCw, Search, X } from '@lucide/vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
 import AppDialog from '@/components/app/AppDialog.vue'
@@ -711,11 +711,14 @@ onBeforeUnmount(() => {
     <AppDialog :open="publishOpen" title="发布测评" description="选择班级和测评配置，设置开放时间后确认发布" @update:open="setPublishOpen">
       <div class="publish-dialog">
         <ol class="publish-steps" aria-label="发布测评步骤">
-          <li v-for="(step, index) in publishSteps" :key="step" :class="{ 'publish-steps__item--active': publishStep === index, 'publish-steps__item--done': publishStep > index }" :aria-current="publishStep === index ? 'step' : undefined"><span>{{ publishStep > index ? '✓' : index + 1 }}</span><strong>{{ step }}</strong></li>
+          <li v-for="(step, index) in publishSteps" :key="step" :class="{ 'publish-steps__item--active': publishStep === index, 'publish-steps__item--done': publishStep > index }" :aria-current="publishStep === index ? 'step' : undefined"><span class="publish-steps__number">{{ publishStep > index ? '✓' : index + 1 }}</span><strong class="publish-steps__label">{{ step }}</strong></li>
         </ol>
         <section v-if="publishStep === 0" class="publish-step-panel">
           <label for="admin-publish-class">目标班级</label>
-          <select id="admin-publish-class" v-model="publishClassRef" :disabled="publishPending || !classes.length"><option value="" disabled>请选择班级</option><option v-for="item in classes" :key="item.class_ref" :value="item.class_ref">{{ classLabel(item) }}</option></select>
+          <div class="publish-select">
+            <select id="admin-publish-class" v-model="publishClassRef" :disabled="publishPending || !classes.length"><option value="" disabled>请选择班级</option><option v-for="item in classes" :key="item.class_ref" :value="item.class_ref">{{ classLabel(item) }}</option></select>
+            <ChevronDown :size="16" aria-hidden="true" />
+          </div>
           <span class="publish-step-panel__label">测评配置</span>
           <div class="publish-config-choice" role="group" aria-label="测评配置来源">
             <button type="button" :aria-pressed="bindingMode === 'FIXTURE'" :disabled="publishPending" @click="chooseBindingMode('FIXTURE')"><strong>默认工程模板</strong><small>使用当前服务端默认配置</small></button>
@@ -723,7 +726,10 @@ onBeforeUnmount(() => {
           </div>
           <template v-if="bindingMode === 'SAVED_VERSION'">
             <label for="admin-publish-activation">测评版本</label>
-            <select id="admin-publish-activation" v-model="selectedActivationRef" :disabled="activationState !== 'ready' || !activations.length || publishPending"><option value="">请选择已启用版本</option><option v-for="item in activations" :key="item.activation_ref" :value="item.activation_ref">{{ item.plan_name }} v{{ item.plan_version_number }} · {{ item.bank_name }} v{{ item.bank_version_number }}</option></select>
+            <div class="publish-select">
+              <select id="admin-publish-activation" v-model="selectedActivationRef" :disabled="activationState !== 'ready' || !activations.length || publishPending"><option value="">请选择已启用版本</option><option v-for="item in activations" :key="item.activation_ref" :value="item.activation_ref">{{ item.plan_name }} v{{ item.plan_version_number }} · {{ item.bank_name }} v{{ item.bank_version_number }}</option></select>
+              <ChevronDown :size="16" aria-hidden="true" />
+            </div>
             <div v-if="activationState === 'loading'" class="publish-step-panel__message" role="status" aria-busy="true">正在读取已启用版本</div>
             <div v-else-if="activationState === 'error'" class="publish-step-panel__message publish-step-panel__message--error" role="alert">{{ activationError }}<button type="button" @click="loadActivations(true)">重新读取</button></div>
             <div v-else-if="activationState === 'ready' && !activations.length" class="publish-step-panel__message">当前没有可用的已启用版本</div>
@@ -748,7 +754,7 @@ onBeforeUnmount(() => {
         <p v-if="publishError" class="publish-error" role="alert">{{ publishError }}</p>
         <div class="publish-dialog__actions">
           <AppButton variant="secondary" :disabled="publishPending" @click="publishStep === 0 ? setPublishOpen(false) : publishStep -= 1">{{ publishStep === 0 ? '取消' : '上一步' }}</AppButton>
-          <AppButton v-if="publishStep < 2" variant="primary" :disabled="publishPending || !publishStepCanContinue" @click="publishStep += 1">下一步<ChevronRight :size="15" aria-hidden="true" /></AppButton>
+          <AppButton v-if="publishStep < 2" variant="primary" :disabled="publishPending || !publishStepCanContinue" @click="publishStep += 1">下一步</AppButton>
           <AppButton v-else variant="primary" :disabled="publishPending || !publishStepCanContinue" :loading="publishPending" @click="publishTask">确认发布</AppButton>
         </div>
       </div>
@@ -917,15 +923,20 @@ onBeforeUnmount(() => {
 .task-workbench__state--error { color: #8d3b34; }
 .task-skeleton { width: 17px; height: 17px; border: 2px solid #e5eff2; border-top-color: #21a5c1; border-radius: 50%; animation: task-spin 900ms linear infinite; }
 .publish-dialog { display: grid; gap: 14px; }
-.publish-steps { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; margin: 0; padding: 0; list-style: none; }
-.publish-steps__item { display: flex; align-items: center; gap: 6px; min-width: 0; color: #89989f; }
-.publish-steps__item > span { display: grid; width: 23px; height: 23px; flex: 0 0 23px; place-items: center; border: 1px solid #dfe8eb; border-radius: 50%; color: #748892; background: #fff; font-size: 12px; font-weight: 700; }
-.publish-steps__item strong { overflow: hidden; font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.publish-steps__item--active { color: var(--color-primary-active); }.publish-steps__item--active > span,.publish-steps__item--done > span { border-color: var(--color-primary-active); color: #fff; background: var(--color-primary-active); }.publish-steps__item--done { color: #4b8b7d; }
+.publish-steps { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); align-items: stretch; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.publish-steps__item { display: grid; width: 100%; grid-template-rows: 23px auto; align-content: center; justify-items: center; gap: 3px; min-width: 0; min-height: 48px; padding: 5px 4px; border: 1px solid transparent; border-radius: 9px; color: #7b8f98; background: #f7fafb; text-align: center; }
+.publish-steps__number { display: grid; justify-self: center; width: 23px; height: 23px; place-items: center; border: 1px solid #d6e3e7; border-radius: 50%; color: #70858e; background: #fff; font-size: 12px; font-weight: 700; }
+.publish-steps__label { display: block; width: max-content; justify-self: center; max-width: 100%; overflow: hidden; color: #7b8f98; font-size: 12px; font-weight: 600; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.publish-steps__item--active { border-color: #c9eaf0; color: #087f9b; background: #eff9fb; }.publish-steps__item--active .publish-steps__number { border-color: #00a9ca; color: #fff; background: #00a9ca; }.publish-steps__item--active .publish-steps__label { color: #087f9b; }.publish-steps__item--done { color: #4b8276; }.publish-steps__item--done .publish-steps__number { border-color: #4b9b87; color: #fff; background: #4b9b87; }.publish-steps__item--done .publish-steps__label { color: #4b8276; }
 .publish-step-panel { display: grid; gap: 9px; padding: 14px; border: 1px solid #e7eef1; border-radius: 10px; background: #fbfcfd; }
 .publish-step-panel > label,.publish-step-panel__label { margin-top: 2px; color: #536c78; font-size: 13px; font-weight: 680; }
-.publish-step-panel > select,.publish-step-panel > input { width: 100%; min-height: 39px; padding: 7px 10px; border: 1px solid #dce6ea; border-radius: 8px; color: #354e5b; background: #fff; font: inherit; font-size: 12px; }
-.publish-step-panel > select:focus-visible,.publish-step-panel > input:focus-visible { outline: 2px solid rgb(0 177 226 / 27%); border-color: var(--color-primary); }
+.publish-step-panel > input { width: 100%; min-height: 39px; padding: 7px 10px; border: 1px solid #dce6ea; border-radius: 8px; color: #354e5b; background: #fff; font: inherit; font-size: 12px; }
+.publish-step-panel > input:focus-visible { outline: 2px solid rgb(0 177 226 / 27%); border-color: var(--color-primary); }
+.publish-select { position: relative; width: 100%; min-width: 0; }
+.publish-select > select { display: block; width: 100%; min-width: 0; min-height: 42px; appearance: none; padding: 8px 36px 8px 11px; border: 1px solid #d5e4e8; border-radius: 9px; color: var(--color-text-primary); background: linear-gradient(180deg,#fff 0%,#f9fcfd 100%); font: inherit; font-size: 13px; line-height: 1.4; cursor: pointer; transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease; }
+.publish-select > svg { position: absolute; top: 50%; right: 11px; color: #66828d; pointer-events: none; transform: translateY(-50%); }
+.publish-select > select:focus-visible { outline: 2px solid rgb(0 177 226 / 24%); border-color: #12a9c8; box-shadow: 0 0 0 3px rgb(0 177 226 / 8%); }
+.publish-select > select:disabled { color: #87979e; background: #f2f6f7; cursor: not-allowed; }
 .publish-config-choice { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; }
 .publish-config-choice button { display: grid; gap: 4px; min-width: 0; padding: 9px; border: 1px solid #e4ebee; border-radius: 8px; color: #526a76; background: #fff; text-align: left; cursor: pointer; }
 .publish-config-choice button[aria-pressed='true'] { border-color: #82c7d6; color: #297b91; background: #f0fafc; box-shadow: inset 0 0 0 1px rgb(50 167 194 / 9%); }
@@ -985,9 +996,9 @@ onBeforeUnmount(() => {
   .task-detail__assignments :deep(.professional-assignments__form) { grid-template-columns: 1fr; }
   :deep(.workspace-tabs__tab) { font-size: 14px; }
   .publish-steps { gap: 3px; }
-  .publish-steps__item { gap: 4px; }
-  .publish-steps__item > span { width: 21px; height: 21px; flex-basis: 21px; }
-  .publish-steps__item strong { font-size: 11px; }
+  .publish-steps__item { gap: 3px; }
+  .publish-steps__number { width: 21px; height: 21px; flex-basis: 21px; }
+  .publish-steps__label { font-size: 11px; }
   .publish-step-panel { padding: 11px; }
   .publish-summary { grid-template-columns: minmax(0,1fr); }
 }
