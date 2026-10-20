@@ -164,6 +164,25 @@ describe('Specialist 与学校管理员工作区', () => {
     expect(health.readDependencyHealth).toHaveBeenCalledTimes(1)
   })
 
+  it('管理员任务、运营和系统状态页不显示 banner 与已移除说明卡', async () => {
+    health.readDependencyHealth.mockResolvedValue({})
+
+    const tasks = await mountAt('/admin/tasks', AdminWorkspaceView)
+    expect(tasks.find('.student-page-hero').exists()).toBe(false)
+    tasks.unmount()
+
+    const audit = await mountAt('/admin/audit', AdminWorkspaceView)
+    expect(audit.find('.student-page-hero').exists()).toBe(false)
+    expect(audit.text()).not.toContain('按事务类型查看')
+    audit.unmount()
+
+    const settings = await mountAt('/admin/settings', AdminWorkspaceView)
+    expect(settings.find('.student-page-hero').exists()).toBe(false)
+    expect(settings.find('.health-disclosure').exists()).toBe(false)
+    expect(settings.find('.health-scope').exists()).toBe(false)
+    settings.unmount()
+  })
+
   it('健康端点返回非对象时显示未知状态，不在渲染中抛错', async () => {
     health.readDependencyHealth.mockResolvedValueOnce(undefined)
     const wrapper = await mountAt('/admin/settings', AdminWorkspaceView)

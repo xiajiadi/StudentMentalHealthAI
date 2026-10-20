@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { Activity, ArrowRight, Building2, CircleHelp, RefreshCw } from '@lucide/vue'
+import { Activity, CircleHelp, RefreshCw } from '@lucide/vue'
 import type { DependencyStatusDto } from '@/api/generated/types.gen'
 import AppCard from '@/components/app/AppCard.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
-import StudentPageHero from '@/components/student/StudentPageHero.vue'
 import WorkspaceBreadcrumb from '@/components/student/WorkspaceBreadcrumb.vue'
 import WorkspaceTabs from '@/components/workspace/WorkspaceTabs.vue'
 import AdminSchoolOperations from '@/components/school/AdminSchoolOperations.vue'
@@ -31,13 +30,13 @@ const auditTabs = [
 ] as const
 const healthState = ref<'loading' | 'ready' | 'error'>('loading')
 const dependencies = ref<Record<string, DependencyStatusDto>>({})
-const page = computed(() => ({
-  overview: { eyebrow: '学校管理空间', title: '管理概览', intro: '学校事务，从这里开始。' },
-  users: { eyebrow: '学校组织与人员目录', title: '班级与账号', intro: '有序管理学校组织与人员，减少重复操作。' },
-  tasks: { eyebrow: '学校任务管理', title: '测评任务', intro: '在同一工作区设置班级、配置和时间，并查看服务端返回的任务记录。' },
-  audit: { eyebrow: '学校运营事务', title: '运营事务', intro: '处理待分配事项，或查看能够验证本校归属的操作记录。' },
-  settings: { eyebrow: '系统状态', title: '服务健康目录', intro: '查看健康端点当前返回的依赖状态和集成说明。' },
-}[section.value as 'overview' | 'users' | 'tasks' | 'audit' | 'settings'] ?? { eyebrow: '学校管理空间', title: '管理概览', intro: '查看本地服务公开的依赖能力状态。' }))
+const pageTitle = computed(() => ({
+  overview: '管理概览',
+  users: '班级与账号',
+  tasks: '测评任务',
+  audit: '运营事务',
+  settings: '服务健康目录',
+}[section.value as 'overview' | 'users' | 'tasks' | 'audit' | 'settings'] ?? '管理概览'))
 const healthRows = computed(() => Object.entries(dependencies.value ?? {}).map(([name, value]) => ({ name, status: value.status, integration: value.integration })))
 const healthSummary = computed(() => ({
   total: healthRows.value.length,
@@ -69,7 +68,7 @@ watch([section, () => route.hash], ([value, hash]) => {
 
 <template>
   <main class="content-wrap admin-workspace" :class="{ 'admin-workspace--overview': section === 'overview' }">
-    <WorkspaceBreadcrumb :current="page.title" home-label="学校管理员" home-to="/admin/overview" />
+    <WorkspaceBreadcrumb :current="pageTitle" home-label="学校管理员" home-to="/admin/overview" />
     <template v-if="section === 'overview'">
       <section class="admin-overview" aria-label="管理概览">
         <AdminOperationsDesk :key="schoolScopeKey" />
@@ -91,14 +90,6 @@ watch([section, () => route.hash], ([value, hash]) => {
     </template>
 
     <template v-else>
-      <StudentPageHero
-        :eyebrow="page.eyebrow"
-        :title="page.title"
-        :subtitle="page.intro"
-        image="/assets/heartbridge/card-admin-original.png"
-        image-position="center 48%"
-      />
-
       <template v-if="section === 'tasks'">
         <section class="admin-task-dispatch" aria-label="测评任务调度">
           <AppStatusCallout tone="info" title="任务发布" body="班级、可用配置和任务状态来自服务端。发布后以服务端确认及任务列表为准。" />
@@ -108,7 +99,6 @@ watch([section, () => route.hash], ([value, hash]) => {
 
       <template v-else-if="section === 'audit'">
         <section class="admin-audit" aria-label="学校运营事务">
-          <AppStatusCallout tone="info" title="按事务类型查看" body="待处理安全事项和学校运营记录仍由各自的服务端工作流管理。" />
           <WorkspaceTabs v-model="auditTab" id="admin-audit-tabs" label="运营事务类型" :tabs="auditTabs">
             <template #panel="{ tab }">
               <section class="admin-audit__panel">
@@ -150,12 +140,6 @@ watch([section, () => route.hash], ([value, hash]) => {
             </template>
             <div v-else class="health-message" role="status">健康端点未返回依赖条目，当前没有可展示的服务状态。</div>
           </AppCard>
-
-          <AppCard class="health-disclosure">
-            <div><span class="health-disclosure__eyebrow">运营工作流</span><h2>待分配安全事项</h2><p>从运营事务页进入待处理事项。当前页面不提供服务启停、重启或数据库维护操作。</p></div>
-            <RouterLink to="/admin/audit#safety-assignments">打开待处理事项 <ArrowRight :size="15" aria-hidden="true" /></RouterLink>
-          </AppCard>
-          <AppCard class="health-scope"><Building2 :size="18" aria-hidden="true" /><p>服务状态仅描述健康端点当前返回的依赖信息；它不代表心理学审核、测量学验证或生产就绪。</p></AppCard>
         </section>
       </template>
     </template>
@@ -175,7 +159,7 @@ watch([section, () => route.hash], ([value, hash]) => {
 .health-panel__heading > div { min-width: 0; }
 .health-panel__heading h2 { margin: 3px 0 4px; color: var(--color-text-primary); font-size: 17px; }
 .health-panel__heading p { margin: 0; color: var(--color-text-secondary); font-size: 12px; line-height: 1.6; }
-.health-panel__eyebrow,.health-disclosure__eyebrow { color: #548275; font-size: 10px; font-weight: 760; letter-spacing: .04em; }
+.health-panel__eyebrow { color: #548275; font-size: 10px; font-weight: 760; letter-spacing: .04em; }
 .health-refresh { display: inline-flex; align-items: center; gap: 6px; min-height: 37px; margin-left: auto; padding: 0 12px; border: 1px solid var(--color-border); border-radius: 9px; color: var(--color-text-secondary); background: white; cursor: pointer; font: inherit; font-size: 12px; font-weight: 650; white-space: nowrap; }
 .health-refresh:hover:not(:disabled) { border-color: #b8d6cd; color: #286c5d; background: #f8fbf9; }
 .health-refresh:disabled { opacity: .6; cursor: wait; }
@@ -198,11 +182,6 @@ watch([section, () => route.hash], ([value, hash]) => {
 .health-row__detail span { color: var(--color-text-muted); font-weight: 650; }.health-row__detail p { margin: 0; }
 .health-message { display: flex; align-items: center; gap: 9px; min-height: 64px; margin-top: 16px; padding: 15px; border-radius: 10px; color: var(--color-text-secondary); background: #f7f8f9; font-size: 13px; line-height: 1.55; }
 .health-message--error { color: #8f651d; background: #fcf7eb; }
-.health-disclosure { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 0; padding: 19px 21px; }
-.health-disclosure h2 { margin: 4px 0; color: var(--color-text-primary); font-size: 15px; }.health-disclosure p { margin: 0; color: var(--color-text-secondary); font-size: 12px; line-height: 1.6; }
-.health-disclosure a { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; padding: 9px 12px; border: 1px solid #d5e6df; border-radius: 9px; color: #286c5d; background: #f7fbf8; font-size: 12px; font-weight: 700; text-decoration: none; }
-.health-disclosure a:focus-visible { outline: 3px solid var(--color-focus-ring); outline-offset: 2px; }
-.health-scope { display: flex; align-items: flex-start; gap: 10px; padding: 14px 17px; color: #6d7c88; }.health-scope p { margin: 0; font-size: 12px; line-height: 1.65; }
 @keyframes page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-@media(max-width:720px) { .admin-workspace { padding-top: 18px; }.admin-overview__workflow { margin-top: 28px; }.health-panel { padding: 16px; }.health-panel__heading { align-items: flex-start; flex-wrap: wrap; }.health-refresh { margin-left: 52px; }.health-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }.health-row summary { grid-template-columns: minmax(0,1fr) auto; gap: 5px 10px; padding: 9px 0; }.health-row__integration { grid-column: 1; }.health-row__status { grid-column: 2; grid-row: 1 / span 2; }.health-row summary::after { grid-column: 2; grid-row: 3; justify-self: end; }.health-row__detail { grid-template-columns: 1fr; gap: 4px; padding: 0 4px 14px; }.health-disclosure { align-items: flex-start; flex-direction: column; padding: 16px; } }
+@media(max-width:720px) { .admin-workspace { padding-top: 18px; }.admin-overview__workflow { margin-top: 28px; }.health-panel { padding: 16px; }.health-panel__heading { align-items: flex-start; flex-wrap: wrap; }.health-refresh { margin-left: 52px; }.health-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }.health-row summary { grid-template-columns: minmax(0,1fr) auto; gap: 5px 10px; padding: 9px 0; }.health-row__integration { grid-column: 1; }.health-row__status { grid-column: 2; grid-row: 1 / span 2; }.health-row summary::after { grid-column: 2; grid-row: 3; justify-self: end; }.health-row__detail { grid-template-columns: 1fr; gap: 4px; padding: 0 4px 14px; } }
 </style>
