@@ -382,7 +382,6 @@ onBeforeUnmount(() => document.removeEventListener('keydown', handleGlobalKeydow
                 <strong>{{ command.label }}</strong>
                 <small>{{ command.description }}</small>
               </span>
-              <ArrowRight :size="15" class="specialist-flowstage__command-result-arrow" aria-hidden="true" />
             </button>
             <p v-if="!filteredCommands.length" class="specialist-flowstage__command-empty" role="status">没有匹配的工作流或已加载事项。</p>
           </div>
@@ -486,7 +485,8 @@ onBeforeUnmount(() => document.removeEventListener('keydown', handleGlobalKeydow
 .specialist-flowstage__filmstrip-state { display: flex; align-items: center; gap: 8px; min-height: 55px; padding: 8px 11px; color: var(--color-text-muted); font-size: 12px; }
 .specialist-flowstage__state-pulse { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: var(--color-primary); box-shadow: 0 0 0 3px color-mix(in srgb,var(--color-primary) 10%,transparent); animation: specialist-flowstage-pulse 1.6s ease-in-out infinite; }
 .specialist-flowstage__business { min-width: 0; padding: 14px 18px 18px; border-top: 1px solid var(--color-border); scroll-margin-top: calc(var(--layout-topbar) + 12px); }
-.specialist-flowstage__business:focus { outline: 2px solid var(--color-focus-ring); outline-offset: -2px; border-radius: 8px; }
+.specialist-flowstage__business:focus:not(:focus-visible) { outline: none; }
+.specialist-flowstage__business:focus-visible { outline: 1px solid color-mix(in srgb,var(--color-primary-active) 55%,var(--color-border)); outline-offset: -1px; border-radius: var(--radius-card); box-shadow: inset 0 0 0 3px color-mix(in srgb,var(--color-primary-active) 5%,transparent); }
 .specialist-flowstage__business-heading { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
 .specialist-flowstage__business-heading span { color: var(--color-primary-active); font-size: 15px; font-weight: 730; letter-spacing: .11em; }
 .specialist-flowstage__command-overlay { position: fixed; inset: 0; z-index: 120; background: color-mix(in srgb,var(--color-text-primary) 42%,transparent); backdrop-filter: blur(3px); }
@@ -504,10 +504,9 @@ onBeforeUnmount(() => document.removeEventListener('keydown', handleGlobalKeydow
 .specialist-flowstage__command-result:hover,.specialist-flowstage__command-result--active { background: var(--color-info-wash); }
 .specialist-flowstage__command-result:focus-visible { outline: 2px solid var(--color-primary-active); outline-offset: -2px; }
 .specialist-flowstage__command-result-icon { display: grid; width: 30px; height: 30px; flex: 0 0 30px; place-items: center; border: 1px solid var(--color-border); border-radius: var(--radius-button); color: var(--color-primary-active); background: var(--color-surface); }
-.specialist-flowstage__command-result-copy { display: grid; gap: 3px; min-width: 0; }
+.specialist-flowstage__command-result-copy { display: grid; flex: 1; gap: 3px; min-width: 0; }
 .specialist-flowstage__command-result-copy strong { overflow: hidden; color: var(--color-text-primary); font-size: 12px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
 .specialist-flowstage__command-result-copy small { overflow: hidden; color: var(--color-text-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.specialist-flowstage__command-result-arrow { flex: 0 0 auto; margin-left: auto; color: var(--color-text-muted); }
 .specialist-flowstage__command-empty { padding: 24px 10px; color: var(--color-text-muted); font-size: 12px; text-align: center; }
 .specialist-flowstage__command-footer { display: flex; align-items: center; gap: 14px; padding: 9px 7px 2px; border-top: 1px solid var(--color-border); color: var(--color-text-muted); font-size: 11px; }
 .specialist-flowstage__command-footer span { display: inline-flex; align-items: center; gap: 3px; }
