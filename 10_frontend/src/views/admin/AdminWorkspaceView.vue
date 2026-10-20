@@ -68,7 +68,7 @@ watch([section, () => route.hash], ([value, hash]) => {
 </script>
 
 <template>
-  <main class="content-wrap admin-workspace" :class="{ 'admin-workspace--overview': section === 'overview' }">
+  <main class="content-wrap admin-workspace" :class="{ 'admin-workspace--overview': section === 'overview', 'admin-workspace--tasks': section === 'tasks' }">
     <WorkspaceBreadcrumb :current="pageTitle" home-label="学校管理员" home-to="/admin/overview" />
     <template v-if="section === 'overview'">
       <section class="admin-overview" aria-label="管理概览">
@@ -149,6 +149,7 @@ watch([section, () => route.hash], ([value, hash]) => {
 <style scoped>
 .admin-workspace { padding-top: 30px; padding-bottom: 56px; animation: page-in 220ms ease both; }
 .admin-workspace--overview { padding-bottom: 28px; }
+.admin-workspace--tasks { padding-bottom: 0; }
 .admin-overview { min-width: 0; }
 .admin-overview__workflow { margin-top: 36px; scroll-margin-top: calc(var(--layout-topbar) + 20px); }.admin-overview__workflow-heading { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }.admin-overview__workflow-heading > span { color: #6f95a5; font-size: 10px; font-weight: 680; }.admin-overview__workflow-heading h2 { margin: 0; color: var(--color-text-primary); font-size: 19px; font-weight: 720; }
 .admin-task-dispatch,.admin-audit,.admin-settings { display: grid; gap: 16px; min-width: 0; }
