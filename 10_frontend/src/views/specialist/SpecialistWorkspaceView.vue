@@ -35,7 +35,7 @@ const specialistScopeKey = computed(() => [
 
 const page = computed(() => ({
   overview: { eyebrow: '心理专业工作区', title: '工作概览', intro: '八个功能入口，一步直达。' },
-  resources: { eyebrow: '专业资料', title: '研究教育来源目录', intro: '查看固定来源包的公开元数据、权利记录和工程审核范围。' },
+  resources: { eyebrow: '专业资料', title: '专业资料', intro: '研究来源、权利信息与专业引用目录' },
   tasks: { eyebrow: '专业工作事项', title: '复核与协作', intro: '按工作类型查看服务端允许访问的记录，并在对应流程中完成处理。' },
   cat: { eyebrow: 'CAT 工程管理', title: '测评方案与模拟', intro: '管理服务端配置的合成题库、方案和工程模拟。' },
 }[section.value as 'overview' | 'resources' | 'tasks' | 'cat'] ?? { eyebrow: '心理专业工作区', title: '专业工作台', intro: '查看当前可用的专业工作入口。' }))
@@ -179,6 +179,7 @@ watch(specialistScopeKey, () => {
 
     <template v-else>
       <StudentPageHero
+        v-if="section !== 'resources'"
         class="specialist-page-hero"
         :eyebrow="page.eyebrow"
         :title="page.title"
@@ -188,7 +189,7 @@ watch(specialistScopeKey, () => {
       />
 
       <template v-if="section === 'resources'">
-        <section class="specialist-resources" aria-label="研究教育来源目录">
+        <section class="specialist-resources" aria-label="专业资料">
           <SchoolResearchSourceCatalog />
         </section>
       </template>
