@@ -13,8 +13,7 @@ import SpecialistTaskReviews from '@/components/school/SpecialistTaskReviews.vue
 import SpecialistResearchFeedback from '@/components/school/SpecialistResearchFeedback.vue'
 import SpecialistResearchProgrammeCandidates from '@/components/school/SpecialistResearchProgrammeCandidates.vue'
 import SpecialistIndependentEducationReviews from '@/components/school/SpecialistIndependentEducationReviews.vue'
-import SpecialistCatManagement from '@/components/school/SpecialistCatManagement.vue'
-import SchoolResearchManagement from '@/components/school/SchoolResearchManagement.vue'
+import SpecialistCatWorkspace from '@/components/school/SpecialistCatWorkspace.vue'
 import SchoolResearchSourceCatalog from '@/components/school/SchoolResearchSourceCatalog.vue'
 import SchoolConversationSafetyReviews from '@/components/school/SchoolConversationSafetyReviews.vue'
 import { useSessionStore } from '@/stores/session'
@@ -37,12 +36,11 @@ const page = computed(() => ({
   overview: { eyebrow: '心理专业工作区', title: '工作概览', intro: '八个功能入口，一步直达。' },
   resources: { eyebrow: '专业资料', title: '专业资料', intro: '研究来源、权利信息与专业引用目录' },
   tasks: { eyebrow: '专业工作事项', title: '复核与协作', intro: '按工作类型查看服务端允许访问的记录，并在对应流程中完成处理。' },
-  cat: { eyebrow: 'CAT 工程管理', title: '测评方案与模拟', intro: '管理服务端配置的合成题库、方案和工程模拟。' },
+  cat: { eyebrow: '心理工作区', title: 'CAT 实验室', intro: '题库管理、自适应测验工程模拟与研究配置' },
 }[section.value as 'overview' | 'resources' | 'tasks' | 'cat'] ?? { eyebrow: '心理专业工作区', title: '专业工作台', intro: '查看当前可用的专业工作入口。' }))
 
 const taskGroup = ref<TaskGroup>('professional')
 const taskWorkflow = ref<TaskWorkflow>('task-review')
-const catPanel = ref<'laboratory' | 'research'>('laboratory')
 const taskGroups = [
   { value: 'professional', label: '专业复核与反馈' },
   { value: 'education', label: '教育内容与候选' },
@@ -69,11 +67,6 @@ const workflowComponent = computed(() => ({
   'research-candidates': SpecialistResearchProgrammeCandidates,
   'safety-review': SchoolConversationSafetyReviews,
 })[taskWorkflow.value])
-const catTabs = [
-  { value: 'laboratory', label: 'CAT 实验室' },
-  { value: 'research', label: '研究管理' },
-] as const
-
 const workflowByFocus: Partial<Record<SpecialistAtlasFocus, { group: TaskGroup; workflow: TaskWorkflow }>> = {
   'task-reviews': { group: 'professional', workflow: 'task-review' },
   'research-feedback': { group: 'professional', workflow: 'research-feedback' },
@@ -120,13 +113,6 @@ function applyRouteSelection() {
       taskWorkflow.value = 'task-review'
     }
   }
-  if (currentSection === 'cat') {
-    if (hasFocusParameter) {
-      catPanel.value = focus === 'research-management' ? 'research' : 'laboratory'
-      return
-    }
-    catPanel.value = route.hash === '#research' ? 'research' : 'laboratory'
-  }
 }
 
 watch([section, () => route.query.focus, () => route.hash], applyRouteSelection, { immediate: true })
@@ -156,16 +142,9 @@ function updateTaskWorkflow(value: string) {
   void syncFocus(focusByWorkflow[taskWorkflow.value])
 }
 
-function updateCatPanel(value: string) {
-  if (value !== 'laboratory' && value !== 'research') return
-  catPanel.value = value
-  void syncFocus(value === 'research' ? 'research-management' : 'simulation')
-}
-
 watch(specialistScopeKey, () => {
   taskGroup.value = 'professional'
   taskWorkflow.value = 'task-review'
-  catPanel.value = 'laboratory'
   applyRouteSelection()
 }, { flush: 'sync' })
 </script>
@@ -179,7 +158,7 @@ watch(specialistScopeKey, () => {
 
     <template v-else>
       <StudentPageHero
-        v-if="section !== 'resources'"
+        v-if="section !== 'resources' && section !== 'cat'"
         class="specialist-page-hero"
         :eyebrow="page.eyebrow"
         :title="page.title"
@@ -218,16 +197,7 @@ watch(specialistScopeKey, () => {
       </template>
 
       <template v-else-if="section === 'cat'">
-        <section class="specialist-cat-workspace" aria-label="CAT 实验与研究管理">
-          <WorkspaceTabs :model-value="catPanel" id="specialist-cat-tabs" label="CAT 管理功能" :tabs="catTabs" @update:model-value="updateCatPanel">
-            <template #panel="{ tab }">
-              <div class="specialist-cat-workspace__panel">
-                <SpecialistCatManagement v-if="tab.value === 'laboratory'" :key="specialistScopeKey" />
-                <SchoolResearchManagement v-else :key="specialistScopeKey" mode="specialist" />
-              </div>
-            </template>
-          </WorkspaceTabs>
-        </section>
+        <SpecialistCatWorkspace />
       </template>
     </template>
   </main>
@@ -236,10 +206,10 @@ watch(specialistScopeKey, () => {
 <style scoped>
 .specialist-workspace { display: grid; gap: 18px; padding-top: 18px; padding-bottom: 56px; animation: page-in 220ms ease both; }
 .specialist-page-hero { margin-bottom: 0; }
-.specialist-task-workspace,.specialist-cat-workspace { display: grid; gap: 14px; min-width: 0; }
+.specialist-task-workspace { display: grid; gap: 14px; min-width: 0; }
 .specialist-task-workspace__group { display: grid; gap: 14px; min-width: 0; }
-.specialist-task-workspace__content,.specialist-cat-workspace__panel,.specialist-resources { min-width: 0; }
-.specialist-task-workspace__content:focus-visible,.specialist-task-workspace__group:focus-visible,.specialist-cat-workspace__panel:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 3px; border-radius: 10px; }
+.specialist-task-workspace__content,.specialist-resources { min-width: 0; }
+.specialist-task-workspace__content:focus-visible,.specialist-task-workspace__group:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 3px; border-radius: 10px; }
 @keyframes page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 @media (max-width: 640px) { .specialist-workspace { gap: 15px; padding-top: 14px; } }
 @media (prefers-reduced-motion: reduce) { .specialist-workspace { animation: none; } }
