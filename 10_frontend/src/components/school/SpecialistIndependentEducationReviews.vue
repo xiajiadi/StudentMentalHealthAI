@@ -14,6 +14,10 @@ import {
 } from '@/services/independent-education-reviews'
 import { useSessionStore } from '@/stores/session'
 import { userFacingApiError } from '@/utils/user-facing-errors'
+import type {
+  SpecialistFlowstageItem,
+  SpecialistFlowstageListState,
+} from '@/views/specialist/specialist-workflow-flowstage'
 
 const PAGE_SIZE = 20
 const session = useSessionStore()
@@ -44,6 +48,18 @@ const hasMore = computed(() => offset.value + rows.value.length < total.value)
 const canEditDraft = computed(() => Boolean(detail.value && ['SHARED', 'DRAFT'].includes(detail.value.status)))
 const canPublish = computed(() => detail.value?.status === 'DRAFT' && detail.value.reviewed_draft !== null)
 const canRevoke = computed(() => detail.value?.status === 'PUBLISHED')
+const flowstageItems = computed<SpecialistFlowstageItem[]>(() => rows.value.map((item, index) => ({
+  key: item.review_ref,
+  label: `教育内容 ${String(offset.value + index + 1).padStart(2, '0')}`,
+  status: statusLabel(item.status),
+  meta: `更新于 ${formatDate(item.updated_at)}`,
+})))
+const flowstageState = computed<SpecialistFlowstageListState>(() => listState.value)
+const flowstageCountLabel = computed(() => listState.value === 'ready'
+  ? `本页 ${rows.value.length} 项 / 共 ${total.value} 项`
+  : '')
+const flowstageEmptyMessage = '当前没有服务端返回的独立教育内容。'
+const flowstageSelectedKey = computed(() => selectedRef.value)
 
 function clearPrivateState() {
   rows.value = []
@@ -168,6 +184,10 @@ async function openDetail(reviewRef: string) {
   }
 }
 
+async function selectFlowstageItem(key: string) {
+  if (rows.value.some((item) => item.review_ref === key)) await openDetail(key)
+}
+
 function setPending(label: string, run: (key: string) => Promise<unknown>) {
   if (mutationBusy.value || pendingMutation.value || !detail.value) return
   const key = newIndependentEducationReviewIdempotencyKey()
@@ -259,6 +279,15 @@ onMounted(() => {
 onBeforeUnmount(() => {
   mounted = false
   clearPrivateState()
+})
+
+defineExpose({
+  flowstageItems,
+  flowstageState,
+  flowstageCountLabel,
+  flowstageEmptyMessage,
+  flowstageSelectedKey,
+  selectFlowstageItem,
 })
 </script>
 

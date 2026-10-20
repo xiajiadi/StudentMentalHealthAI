@@ -4,6 +4,10 @@ import { RotateCcw, ClipboardCheck, ChevronLeft, ChevronRight, ShieldCheck } fro
 import AppCard from '@/components/app/AppCard.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import SpecialistFeedbackPanel from '@/components/school/SpecialistFeedbackPanel.vue'
+import type {
+  SpecialistFlowstageItem,
+  SpecialistFlowstageListState,
+} from '@/views/specialist/specialist-workflow-flowstage'
 import {
   newProfessionalReviewIdempotencyKey,
   professionalReviews,
@@ -47,6 +51,15 @@ const selectedTaskLabel = computed(() => {
   if (!selectedTask.value) return ''
   return selectedTask.value.class_display_name || `任务 ${String(tasks.value.indexOf(selectedTask.value) + 1).padStart(2, '0')}`
 })
+const flowstageItems = computed<SpecialistFlowstageItem[]>(() => tasks.value.map((task, index) => ({
+  key: task.task_ref,
+  label: task.class_display_name || `任务 ${String(index + 1).padStart(2, '0')}`,
+  status: '已指派',
+})))
+const flowstageState = computed<SpecialistFlowstageListState>(() => tasksState.value)
+const flowstageCountLabel = computed(() => tasksState.value === 'ready' ? `已指派 ${tasks.value.length} 项` : '')
+const flowstageEmptyMessage = '当前没有服务端返回的已指派任务。'
+const flowstageSelectedKey = computed(() => selectedTaskRef.value)
 const currentEnrollment = computed(() => enrollments.value.find((item) => item.enrollment_ref === selectedEnrollmentRef.value) ?? null)
 const canWrite = computed(() => !mutationBusy.value && !failedRequest.value && Boolean(selectedTaskRef.value))
 const enrollmentHasMore = computed(() => enrollmentOffset.value + enrollments.value.length < enrollmentTotal.value)
@@ -298,6 +311,19 @@ async function refreshCaseAfterConflict() {
   await loadTaskData()
   mutationConflict.value = false
 }
+
+async function selectFlowstageItem(key: string) {
+  if (tasks.value.some((task) => task.task_ref === key)) await selectTask(key)
+}
+
+defineExpose({
+  flowstageItems,
+  flowstageState,
+  flowstageCountLabel,
+  flowstageEmptyMessage,
+  flowstageSelectedKey,
+  selectFlowstageItem,
+})
 
 onMounted(() => { void loadTasks() })
 onBeforeUnmount(() => {

@@ -5,6 +5,10 @@ import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import { useSessionStore } from '@/stores/session'
+import type {
+  SpecialistFlowstageItem,
+  SpecialistFlowstageListState,
+} from '@/views/specialist/specialist-workflow-flowstage'
 import {
   newConversationSafetyIdempotencyKey,
   schoolConversationSafety,
@@ -48,6 +52,17 @@ const hasNext = computed(() => offset.value + cases.value.length < total.value)
 const pageNumber = computed(() => Math.floor(offset.value / pageSize) + 1)
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
 const noteDirty = computed(() => selected.value && selected.value.review_note !== note.value)
+const flowstageItems = computed<SpecialistFlowstageItem[]>(() => cases.value.map((item, index) => ({
+  key: item.case_ref,
+  label: `安全事项 ${String(offset.value + index + 1).padStart(2, '0')}`,
+  status: statusLabel(item.status),
+})))
+const flowstageState = computed<SpecialistFlowstageListState>(() => listState.value)
+const flowstageCountLabel = computed(() => listState.value === 'ready'
+  ? `当前页 ${cases.value.length} 项 / 共 ${total.value} 项`
+  : '')
+const flowstageEmptyMessage = '当前没有服务端返回的已指派安全事项。'
+const flowstageSelectedKey = computed(() => selectedRef.value)
 const canSaveNote = computed(() => authorized.value && Boolean(selected.value && noteDirty.value)
   && note.value.trim().length > 0 && note.value.length <= 4000
   && !busy.value && !failedMutation.value && ['ASSIGNED', 'IN_REVIEW', 'ESCALATION_NEEDED'].includes(selected.value?.status ?? ''))
@@ -172,6 +187,10 @@ async function selectCase(caseRef: string) {
   }
 }
 
+async function selectFlowstageItem(key: string) {
+  if (cases.value.some((item) => item.case_ref === key)) await selectCase(key)
+}
+
 async function execute(label: string, operationKey: string, run: () => Promise<AssignedSafetyCase>) {
   if (!authorized.value || busy.value || !selected.value) return
   const scope = scopeKey.value
@@ -259,6 +278,14 @@ watch(scopeKey, () => {
 watch(selectedTransition, () => { confirmUnresolved.value = false })
 onMounted(() => { void loadPage(0) })
 onBeforeUnmount(() => { mounted = false; clearPrivateState() })
+defineExpose({
+  flowstageItems,
+  flowstageState,
+  flowstageCountLabel,
+  flowstageEmptyMessage,
+  flowstageSelectedKey,
+  selectFlowstageItem,
+})
 </script>
 
 <template>

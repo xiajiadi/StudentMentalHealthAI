@@ -21,6 +21,10 @@ import {
 import type { ResearchReviewTask } from '@/services/school-research-feedback'
 import { useSessionStore } from '@/stores/session'
 import { userFacingApiError } from '@/utils/user-facing-errors'
+import type {
+  SpecialistFlowstageItem,
+  SpecialistFlowstageListState,
+} from '@/views/specialist/specialist-workflow-flowstage'
 
 const PAGE_SIZE = 20
 const GENERATION_JOB_PAGE_SIZE = 25
@@ -77,6 +81,15 @@ let mounted = false
 const isSpecialist = computed(() => session.user?.role === 'psychological_specialist')
 const selectedTask = computed(() => tasks.value.find((task) => task.task_ref === selectedTaskRef.value) ?? null)
 const selectedCandidate = computed(() => candidates.value.find((item) => item.candidate_ref === selectedCandidateRef.value) ?? null)
+const flowstageItems = computed<SpecialistFlowstageItem[]>(() => tasks.value.map((task, index) => ({
+  key: task.task_ref,
+  label: task.class_display_name || `授权任务 ${String(index + 1).padStart(2, '0')}`,
+  meta: `研究工作范围 · ${formatDate(task.published_at)}`,
+})))
+const flowstageState = computed<SpecialistFlowstageListState>(() => taskState.value)
+const flowstageCountLabel = computed(() => taskState.value === 'ready' ? `授权研究任务 ${tasks.value.length} 项` : '')
+const flowstageEmptyMessage = '当前没有服务端返回的授权研究任务。'
+const flowstageSelectedKey = computed(() => selectedTaskRef.value)
 const canAct = computed(() => isSpecialist.value && Boolean(detail.value?.status === 'HELD') && !mutationBusy.value && !retryAction.value)
 const canQueueGeneration = computed(() => isSpecialist.value && Boolean(selectedTaskRef.value)
   && !generationBusy.value && !generationReceipt.value && !generationRetry.value
@@ -324,6 +337,10 @@ function selectTask(taskRef: string) {
   void loadGenerationJobs()
 }
 
+async function selectFlowstageItem(key: string) {
+  if (tasks.value.some((task) => task.task_ref === key)) selectTask(key)
+}
+
 async function queueGeneration(key = newProgrammeCandidateIdempotencyKey()) {
   const taskRef = selectedTaskRef.value
   if (!taskRef || !isSpecialist.value || !generationConfirmation.value || generationReceipt.value) return
@@ -460,6 +477,15 @@ onMounted(() => {
 onBeforeUnmount(() => {
   mounted = false
   clearAll()
+})
+
+defineExpose({
+  flowstageItems,
+  flowstageState,
+  flowstageCountLabel,
+  flowstageEmptyMessage,
+  flowstageSelectedKey,
+  selectFlowstageItem,
 })
 </script>
 

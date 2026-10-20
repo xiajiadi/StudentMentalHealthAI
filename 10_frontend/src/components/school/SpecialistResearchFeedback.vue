@@ -18,6 +18,10 @@ import {
 } from '@/services/school-research-feedback'
 import { useSessionStore } from '@/stores/session'
 import { userFacingApiError } from '@/utils/user-facing-errors'
+import type {
+  SpecialistFlowstageItem,
+  SpecialistFlowstageListState,
+} from '@/views/specialist/specialist-workflow-flowstage'
 
 const PAGE_SIZE = 20
 const session = useSessionStore()
@@ -61,6 +65,14 @@ let mounted = false
 
 const isSpecialist = computed(() => session.user?.role === 'psychological_specialist')
 const selectedTask = computed(() => tasks.value.find((task) => task.task_ref === selectedTaskRef.value) ?? null)
+const flowstageItems = computed<SpecialistFlowstageItem[]>(() => tasks.value.map((task, index) => ({
+  key: task.task_ref,
+  label: task.class_display_name || `研究任务 ${String(index + 1).padStart(2, '0')}`,
+})))
+const flowstageState = computed<SpecialistFlowstageListState>(() => tasksState.value)
+const flowstageCountLabel = computed(() => tasksState.value === 'ready' ? `服务端返回 ${tasks.value.length} 项研究任务` : '')
+const flowstageEmptyMessage = '当前没有服务端返回的研究反馈任务。'
+const flowstageSelectedKey = computed(() => selectedTaskRef.value)
 const selectedSession = computed(() => sessions.value.find((item) => item.session_ref === selectedSessionRef.value) ?? null)
 const sessionHasMore = computed(() => sessionOffset.value + sessions.value.length < sessionTotal.value)
 const caseHasMore = computed(() => caseOffset.value + cases.value.length < caseTotal.value)
@@ -211,6 +223,10 @@ async function selectTask(taskRef: string) {
   reviewNote.value = ''
   ++detailSequence
   await loadTaskData()
+}
+
+async function selectFlowstageItem(key: string) {
+  if (tasks.value.some((task) => task.task_ref === key)) await selectTask(key)
 }
 
 async function selectSession(item: ResearchEligibleSession) {
@@ -411,6 +427,15 @@ onBeforeUnmount(() => {
   mounted = false
   ++taskSequence
   clearPrivateState()
+})
+
+defineExpose({
+  flowstageItems,
+  flowstageState,
+  flowstageCountLabel,
+  flowstageEmptyMessage,
+  flowstageSelectedKey,
+  selectFlowstageItem,
 })
 </script>
 
