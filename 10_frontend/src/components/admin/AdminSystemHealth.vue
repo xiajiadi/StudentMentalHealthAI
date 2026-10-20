@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Activity, Check, CircleHelp, RefreshCw, Search, Server, X, ChevronDown } from '@lucide/vue'
 import type { DependencyStatusDto } from '@/api/generated/types.gen'
 import AppBadge from '@/components/app/AppBadge.vue'
@@ -54,7 +54,41 @@ const failureKind = ref<DependencyHealthReadErrorKind>('request')
 const searchQuery = ref('')
 const statusFilter = ref<StatusFilter>('all')
 const selectedKey = ref('')
+const statusFilterContainer = ref<HTMLElement | null>(null)
+const statusFilterButtons = new Map<StatusFilter, HTMLButtonElement>()
+const statusFilterIndicator = ref({ x: 0, y: 0, width: 0, height: 0, visible: false })
+const statusFilterIndicatorStyle = computed(() => ({
+  width: `${statusFilterIndicator.value.width}px`,
+  height: `${statusFilterIndicator.value.height}px`,
+  transform: `translate(${statusFilterIndicator.value.x}px, ${statusFilterIndicator.value.y}px)`,
+  opacity: statusFilterIndicator.value.visible ? '1' : '0',
+}))
 let requestSequence = 0
+
+const setStatusFilterButton = (value: StatusFilter, element: unknown) => {
+  if (element instanceof HTMLButtonElement) statusFilterButtons.set(value, element)
+  else statusFilterButtons.delete(value)
+}
+
+const updateStatusFilterIndicator = async () => {
+  await nextTick()
+  const container = statusFilterContainer.value
+  const button = statusFilterButtons.get(statusFilter.value)
+  if (!container || !button) {
+    statusFilterIndicator.value = { ...statusFilterIndicator.value, visible: false }
+    return
+  }
+
+  const containerRect = container.getBoundingClientRect()
+  const buttonRect = button.getBoundingClientRect()
+  statusFilterIndicator.value = {
+    x: buttonRect.left - containerRect.left,
+    y: buttonRect.top - containerRect.top,
+    width: buttonRect.width,
+    height: buttonRect.height,
+    visible: true,
+  }
+}
 
 function describeStatus(rawStatus: string): Pick<HealthRow, 'category' | 'label' | 'tone' | 'summary'> {
   const status = rawStatus.trim().toUpperCase()
@@ -148,6 +182,10 @@ watch(filteredRows, (visibleRows) => {
     selectedKey.value = visibleRows[0]?.key ?? ''
   }
 }, { immediate: true })
+watch(statusFilter, () => void updateStatusFilterIndicator(), { flush: 'post' })
+watch(pageState, (state) => {
+  if (state === 'ready') void updateStatusFilterIndicator()
+}, { flush: 'post' })
 
 const selectedRow = computed(() => filteredRows.value.find((row) => row.key === selectedKey.value) ?? null)
 const busy = computed(() => requestInFlight.value || pageState.value === 'loading' || pageState.value === 'refreshing')
@@ -193,20 +231,18 @@ async function refreshHealth() {
   }
 }
 
-onMounted(() => { void refreshHealth() })
-onBeforeUnmount(() => { requestSequence += 1 })
+onMounted(() => {
+  void refreshHealth()
+  window.addEventListener('resize', updateStatusFilterIndicator)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateStatusFilterIndicator)
+  requestSequence += 1
+})
 </script>
 
 <template>
-  <section class="system-health" aria-labelledby="system-health-title">
-    <header class="system-health__heading">
-      <div>
-        <h1 id="system-health-title">系统状态</h1>
-        <p>依赖服务的当前检查结果</p>
-      </div>
-      <AppButton variant="secondary" size="sm" :loading="busy" @click="refreshHealth">刷新状态</AppButton>
-    </header>
-
+  <section class="system-health" aria-label="系统状态">
     <div class="system-health__snapshot" :class="`system-health__snapshot--${pageState}`" role="status" aria-live="polite">
       <span class="system-health__snapshot-icon" aria-hidden="true">
         <RefreshCw v-if="busy" :size="16" />
@@ -278,10 +314,12 @@ onBeforeUnmount(() => { requestSequence += 1 })
             <input v-model="searchQuery" type="text" autocomplete="off" aria-label="搜索服务名称" placeholder="搜索服务名称…">
             <button v-if="searchQuery" type="button" aria-label="清空服务搜索" @click="searchQuery = ''"><X :size="15" aria-hidden="true" /></button>
           </label>
-          <div class="system-health__filters" role="group" aria-label="按状态筛选">
+          <div ref="statusFilterContainer" class="system-health__filters" role="group" aria-label="按状态筛选">
+            <span class="system-health__filters-indicator" :style="statusFilterIndicatorStyle" aria-hidden="true"></span>
             <button
               v-for="filter in statusFilters"
               :key="filter.value"
+              :ref="(element) => setStatusFilterButton(filter.value, element)"
               type="button"
               :aria-pressed="statusFilter === filter.value"
               :class="{ 'system-health__filter--active': statusFilter === filter.value }"
@@ -293,7 +331,7 @@ onBeforeUnmount(() => { requestSequence += 1 })
         <div class="system-health__body">
           <section class="system-health__directory" aria-label="依赖服务目录">
             <header class="system-health__directory-heading"><h3>服务目录</h3><span>{{ filteredRows.length }} / {{ rows.length }}</span></header>
-            <ul v-if="filteredRows.length" class="system-health__list">
+            <ul v-if="filteredRows.length" class="system-health__list" tabindex="0" aria-label="服务目录，可使用鼠标滚轮或方向键浏览">
               <li v-for="row in filteredRows" :key="row.key">
                 <button
                   type="button"
@@ -359,22 +397,20 @@ onBeforeUnmount(() => { requestSequence += 1 })
 
 <style scoped>
 .system-health { --health-normal: #168475; --health-attention: #b7791f; --health-unknown: #82909a; --health-unconfigured: #9cafba; display: grid; gap: 14px; min-width: 0; }
-.system-health__heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; min-width: 0; }
-.system-health__heading h1 { margin: 0; color: var(--color-text-primary); font-size: 25px; font-weight: 740; line-height: 1.2; }
-.system-health__heading p { margin: 6px 0 0; color: var(--color-text-muted); font-size: 13px; line-height: 1.5; }
 .system-health__snapshot { display: flex; min-height: 43px; align-items: center; gap: 10px; padding: 0 13px; border: 1px solid #e5ecef; border-radius: 9px; color: #536a75; background: #fff; }
 .system-health__snapshot-icon { display: grid; width: 20px; height: 20px; flex: 0 0 20px; place-items: center; color: var(--color-support); }
 .system-health__snapshot--loading .system-health__snapshot-icon,.system-health__snapshot--refreshing .system-health__snapshot-icon { color: var(--color-primary-active); animation: system-health-spin 900ms linear infinite; }
 .system-health__snapshot--error .system-health__snapshot-icon { color: var(--color-attention); }
 .system-health__snapshot-copy { display: flex; min-width: 0; flex: 1; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
-.system-health__snapshot-copy strong { color: #425b66; font-size: 12px; font-weight: 650; }
-.system-health__snapshot-copy > span { color: #87969e; font-size: 11px; }
+.system-health__snapshot-copy strong { color: #425b66; font-size: 14px; font-weight: 650; }
+.system-health__snapshot-copy > span { color: #87969e; font-size: 13px; }
+.system-health__snapshot :deep(.app-badge),.system-health__workbench-heading :deep(.app-badge) { font-size: 14px; }
 .system-health__summary { padding: 8px 17px; }
 .system-health__summary dl { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); margin: 0; }
 .system-health__summary dl > div { display: grid; gap: 5px; min-width: 0; padding: 6px 17px; border-left: 1px solid #edf0f2; }
 .system-health__summary dl > div:first-child { padding-left: 2px; border-left: 0; }
-.system-health__summary dt { color: var(--color-text-muted); font-size: 12px; }
-.system-health__summary dd { margin: 0; color: #304b58; font-size: 22px; font-weight: 730; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.system-health__summary dt { color: var(--color-text-muted); font-size: 14px; }
+.system-health__summary dd { margin: 0; color: #304b58; font-size: 23px; font-weight: 730; font-variant-numeric: tabular-nums; line-height: 1.15; }
 .system-health__summary dl > div:nth-child(2) dd { color: var(--health-normal); }
 .system-health__summary dl > div:nth-child(3) dd { color: var(--health-attention); }
 .system-health__summary dl > div:nth-child(4) dd { color: #71818b; }
@@ -383,19 +419,20 @@ onBeforeUnmount(() => { requestSequence += 1 })
 .system-health__state-icon--spin { animation: system-health-spin 900ms linear infinite; }
 .system-health__state--error .system-health__state-icon { color: var(--color-attention); }
 .system-health__state-copy { min-width: 0; flex: 1; }
-.system-health__state strong { color: #344d59; font-size: 15px; font-weight: 700; }
-.system-health__state p { margin: 5px 0 0; color: var(--color-text-muted); font-size: 13px; line-height: 1.55; }
+.system-health__state strong { color: #344d59; font-size: 16px; font-weight: 700; }
+.system-health__state p { margin: 5px 0 0; color: var(--color-text-muted); font-size: 15px; line-height: 1.55; }
+.system-health__state :deep(.app-button) { font-size: 15px; }
 .system-health__workbench { min-width: 0; }
 .system-health__workbench-heading { display: flex; min-height: 72px; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 19px; border-bottom: 1px solid #e9eef1; }
 .system-health__workbench-title { display: flex; min-width: 0; align-items: center; gap: 11px; }
 .system-health__workbench-icon,.system-health__detail-icon { display: grid; width: 37px; height: 37px; flex: 0 0 37px; place-items: center; border-radius: 11px; color: #008eb5; background: #eaf7fa; }
-.system-health__workbench-title h2 { margin: 0; color: #2c4654; font-size: 16px; font-weight: 720; }
-.system-health__workbench-title p { margin: 4px 0 0; color: #81909a; font-size: 12px; }
+.system-health__workbench-title h2 { margin: 0; color: #2c4654; font-size: 17px; font-weight: 720; }
+.system-health__workbench-title p { margin: 4px 0 0; color: #81909a; font-size: 14px; }
 .system-health__workbench-content { padding: 15px 18px 17px; }
 .system-health__distribution { display: grid; gap: 8px; }
 .system-health__distribution-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.system-health__distribution-heading strong { color: #445d68; font-size: 12px; font-weight: 690; }
-.system-health__distribution-heading span { color: #87969d; font-size: 11px; }
+.system-health__distribution-heading strong { color: #445d68; font-size: 14px; font-weight: 690; }
+.system-health__distribution-heading span { color: #87969d; font-size: 13px; }
 .system-health__bar { display: flex; height: 8px; overflow: hidden; border-radius: 99px; background: #eff2f4; }
 .system-health__bar-segment { display: block; min-width: 2px; transition: width 180ms ease; }
 .system-health__bar-segment--normal { background: var(--health-normal); }
@@ -403,31 +440,36 @@ onBeforeUnmount(() => { requestSequence += 1 })
 .system-health__bar-segment--unknown { background: var(--health-unknown); }
 .system-health__bar-segment--unconfigured { background: var(--health-unconfigured); }
 .system-health__bar-empty { width: 100%; background: #e8edf0; }
-.system-health__legend { display: flex; flex-wrap: wrap; gap: 6px 16px; color: #74858d; font-size: 11px; }
+.system-health__legend { display: flex; flex-wrap: wrap; gap: 6px 16px; color: #74858d; font-size: 13px; }
 .system-health__legend > span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .system-health__legend-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .system-health__legend-dot--normal { color: var(--health-normal); }.system-health__legend-dot--attention { color: #d39a3c; }.system-health__legend-dot--unknown { color: var(--health-unknown); }.system-health__legend-dot--unconfigured { color: var(--health-unconfigured); }
-.system-health__distribution-empty { margin: 0; color: #84929a; font-size: 11px; }
+.system-health__distribution-empty { margin: 0; color: #84929a; font-size: 13px; }
 .system-health__toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 16px 0 13px; }
 .system-health__search { display: flex; width: min(360px,100%); min-width: 190px; height: 38px; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid #dfe7eb; border-radius: 8px; color: #81939c; background: #fff; transition: border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease; }
 .system-health__search:focus-within { border-color: #75bfce; box-shadow: 0 0 0 3px rgb(0 177 226 / 10%); }
-.system-health__search input { width: 100%; min-width: 0; height: 34px; padding: 0; border: 0; outline: none; color: var(--color-text-primary); background: transparent; font: inherit; font-size: 13px; }
+.system-health__search input { width: 100%; min-width: 0; height: 34px; padding: 0; border: 0; outline: none; color: var(--color-text-primary); background: transparent; font: inherit; font-size: 15px; }
 .system-health__search input::placeholder { color: #96a2a8; }
 .system-health__search input:focus-visible { outline: none; }
 .system-health__search button { display: grid; width: 24px; height: 24px; flex: 0 0 24px; place-items: center; padding: 0; border: 0; border-radius: 6px; color: #788a93; background: transparent; cursor: pointer; }
 .system-health__search button:hover { color: #344f5b; background: #f0f5f6; }
-.system-health__filters { display: inline-flex; max-width: 100%; align-items: center; gap: 2px; padding: 3px; border: 1px solid #e4eaed; border-radius: 9px; background: #f6f8f9; }
-.system-health__filters button { display: inline-flex; min-height: 30px; align-items: center; justify-content: center; gap: 5px; padding: 0 9px; border: 1px solid transparent; border-radius: 7px; color: #73848d; background: transparent; font: inherit; font-size: 11px; white-space: nowrap; cursor: pointer; transition: color var(--motion-fast) ease, background-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease; }
-.system-health__filters button span { color: #8b989e; font-size: 10px; font-variant-numeric: tabular-nums; }
-.system-health__filters button:hover { color: #385664; }
-.system-health__filters button.system-health__filter--active { border-color: #e5ecef; color: #237b91; background: #fff; box-shadow: 0 1px 2px rgb(32 65 78 / 6%); }
-.system-health__filters button.system-health__filter--active span { color: #4e8997; }
+.system-health__filters { position: relative; display: grid; width: min(360px,100%); max-width: 100%; grid-template-columns: repeat(4,minmax(0,1fr)); align-items: center; padding: 4px; border-radius: 9px; background: #fafbfd; box-shadow: inset 0 0 0 1px #eceef1; isolation: isolate; }
+.system-health__filters-indicator { position: absolute; z-index: 0; top: 0; left: 0; border-radius: 7px; background: #00addf; box-shadow: 0 2px 6px rgb(0 136 178 / 20%); pointer-events: none; transition: transform 360ms cubic-bezier(.2,.8,.2,1), width 360ms cubic-bezier(.2,.8,.2,1), height 220ms ease, opacity var(--motion-fast); }
+.system-health__filters button { position: relative; z-index: 1; display: inline-flex; min-width: 0; min-height: 36px; align-items: center; justify-content: center; gap: 5px; padding: 0 8px; border: 0; border-radius: 7px; color: #596574; background: transparent; font: inherit; font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; transition: color var(--motion-fast) ease; }
+.system-health__filters button span { color: #8b989e; font-size: 12px; font-variant-numeric: tabular-nums; }
+.system-health__filters button:hover:not(.system-health__filter--active) { color: #263b4c; }
+.system-health__filters button.system-health__filter--active { color: #fff; background: transparent; }
+.system-health__filters button.system-health__filter--active span { color: rgb(255 255 255 / 84%); }
+.system-health__filters button:focus-visible { outline: 2px solid #279de0; outline-offset: 2px; }
 .system-health__body { display: grid; grid-template-columns: minmax(0,1.06fr) minmax(0,.94fr); min-width: 0; min-height: 355px; border: 1px solid #e8eef1; border-radius: 11px; }
 .system-health__directory { display: flex; min-width: 0; flex-direction: column; padding: 14px 14px 12px; border-right: 1px solid #e8eef1; }
 .system-health__directory-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 7px; padding: 0 2px; }
-.system-health__directory-heading h3 { margin: 0; color: #415a65; font-size: 13px; font-weight: 700; }
-.system-health__directory-heading span { color: #87959c; font-size: 11px; font-variant-numeric: tabular-nums; }
-.system-health__list { display: grid; align-content: start; gap: 4px; max-height: 460px; overflow-y: auto; margin: 0; padding: 0; list-style: none; scrollbar-color: #d6e0e4 transparent; scrollbar-width: thin; }
+.system-health__directory-heading h3 { margin: 0; color: #415a65; font-size: 15px; font-weight: 700; }
+.system-health__directory-heading span { color: #87959c; font-size: 13px; font-variant-numeric: tabular-nums; }
+.system-health__list { display: grid; min-height: 0; align-content: start; gap: 7px; max-height: 460px; overflow-y: auto; overscroll-behavior-y: contain; scroll-behavior: smooth; scroll-snap-type: y proximity; margin: 0; padding: 2px 3px 2px 0; list-style: none; scrollbar-width: none; }
+.system-health__list::-webkit-scrollbar { display: none; }
+.system-health__list:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; border-radius: 9px; }
+.system-health__list li { min-width: 0; scroll-snap-align: start; scroll-margin-block: 3px; }
 .system-health__service { position: relative; display: grid; width: 100%; grid-template-columns: 34px minmax(0,1fr) auto; align-items: center; gap: 9px; min-width: 0; min-height: 62px; padding: 9px 9px 9px 11px; border: 1px solid transparent; border-radius: 9px; color: inherit; background: transparent; text-align: left; cursor: pointer; transition: border-color var(--motion-fast) ease, background-color var(--motion-fast) ease; }
 .system-health__service::before { position: absolute; top: 11px; bottom: 11px; left: 0; width: 2px; border-radius: 2px; background: transparent; content: ''; }
 .system-health__service:hover { background: #f7fafb; }
@@ -436,41 +478,41 @@ onBeforeUnmount(() => { requestSequence += 1 })
 .system-health__service-icon { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 9px; color: #6e8791; background: #f0f4f6; }
 .system-health__service--selected .system-health__service-icon { color: #0789a8; background: #e1f3f7; }
 .system-health__service-copy { display: grid; min-width: 0; gap: 4px; }
-.system-health__service-copy strong { overflow: hidden; color: #314b58; font-size: 13px; font-weight: 680; text-overflow: ellipsis; white-space: nowrap; }
-.system-health__service-copy > span { overflow: hidden; color: #809099; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.system-health__service :deep(.app-badge) { min-height: 23px; padding-inline: 7px; font-size: 10px; }
+.system-health__service-copy strong { overflow: hidden; color: #314b58; font-size: 15px; font-weight: 680; text-overflow: ellipsis; white-space: nowrap; }
+.system-health__service-copy > span { overflow: hidden; color: #809099; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.system-health__service :deep(.app-badge) { min-height: 25px; padding-inline: 7px; font-size: 12px; }
 .system-health__service :deep(.app-badge__dot) { width: 5px; height: 5px; }
 .system-health__empty { display: grid; justify-items: center; align-content: center; gap: 7px; flex: 1; min-height: 170px; padding: 18px; color: #82929a; text-align: center; }
 .system-health__empty > svg { color: #8da0a8; }
-.system-health__empty strong { color: #4b626d; font-size: 13px; font-weight: 680; }
-.system-health__empty > span { font-size: 11px; line-height: 1.5; }
-.system-health__empty > button { margin-top: 2px; padding: 4px 6px; border: 0; color: #187d96; background: transparent; font: inherit; font-size: 11px; cursor: pointer; }
+.system-health__empty strong { color: #4b626d; font-size: 15px; font-weight: 680; }
+.system-health__empty > span { font-size: 13px; line-height: 1.5; }
+.system-health__empty > button { margin-top: 2px; padding: 4px 6px; border: 0; color: #187d96; background: transparent; font: inherit; font-size: 13px; cursor: pointer; }
 .system-health__detail { display: flex; min-width: 0; flex-direction: column; gap: 16px; padding: 18px; }
 .system-health__detail-heading { display: flex; min-width: 0; align-items: center; gap: 10px; }
 .system-health__detail-icon { width: 36px; height: 36px; flex-basis: 36px; }
 .system-health__detail-heading > div { display: grid; min-width: 0; flex: 1; gap: 3px; }
-.system-health__detail-heading > div > span { color: #87969d; font-size: 10px; }
-.system-health__detail-heading h3 { overflow: hidden; margin: 0; color: #2c4654; font-size: 16px; font-weight: 720; text-overflow: ellipsis; white-space: nowrap; }
-.system-health__detail-heading :deep(.app-badge) { min-height: 24px; padding-inline: 8px; font-size: 10px; }
+.system-health__detail-heading > div > span { color: #87969d; font-size: 12px; }
+.system-health__detail-heading h3 { overflow: hidden; margin: 0; color: #2c4654; font-size: 17px; font-weight: 720; text-overflow: ellipsis; white-space: nowrap; }
+.system-health__detail-heading :deep(.app-badge) { min-height: 26px; padding-inline: 8px; font-size: 12px; }
 .system-health__facts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1px; overflow: hidden; margin: 0; border: 1px solid #e8eef1; border-radius: 9px; background: #e8eef1; }
 .system-health__facts > div { display: grid; align-content: start; gap: 5px; min-width: 0; min-height: 67px; padding: 10px 11px; background: #fff; }
-.system-health__facts dt { color: #84939b; font-size: 10px; }
-.system-health__facts dd { overflow-wrap: anywhere; margin: 0; color: #3d5662; font-size: 12px; font-weight: 620; line-height: 1.45; }
-.system-health__facts dd code { color: #526b76; font-size: 10px; }
-.system-health__facts small { overflow-wrap: anywhere; color: #8b989e; font-family: var(--font-mono); font-size: 9px; }
+.system-health__facts dt { color: #84939b; font-size: 12px; }
+.system-health__facts dd { overflow-wrap: anywhere; margin: 0; color: #3d5662; font-size: 14px; font-weight: 620; line-height: 1.45; }
+.system-health__facts dd code { color: #526b76; font-size: 12px; }
+.system-health__facts small { overflow-wrap: anywhere; color: #8b989e; font-family: var(--font-mono); font-size: 11px; }
 .system-health__check-summary { display: grid; gap: 8px; }
-.system-health__check-summary h4 { margin: 0; color: #435b66; font-size: 12px; font-weight: 700; }
-.system-health__check-summary p { margin: 0; padding: 13px 14px; border: 1px solid #ebf0f2; border-radius: 9px; color: #5e737d; background: #f7f9fa; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.system-health__check-summary h4 { margin: 0; color: #435b66; font-size: 14px; font-weight: 700; }
+.system-health__check-summary p { margin: 0; padding: 13px 14px; border: 1px solid #ebf0f2; border-radius: 9px; color: #5e737d; background: #f7f9fa; font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
 .system-health__limits { border-top: 1px solid #edf0f2; color: #7d8d95; }
-.system-health__limits summary { display: flex; min-height: 40px; align-items: center; justify-content: space-between; gap: 10px; color: #637982; font-size: 11px; font-weight: 650; cursor: pointer; list-style: none; }
+.system-health__limits summary { display: flex; min-height: 40px; align-items: center; justify-content: space-between; gap: 10px; color: #637982; font-size: 13px; font-weight: 650; cursor: pointer; list-style: none; }
 .system-health__limits summary::-webkit-details-marker { display: none; }
 .system-health__limits summary > svg { flex: 0 0 auto; color: #84969e; transition: transform var(--motion-fast) ease; }
 .system-health__limits[open] summary > svg { transform: rotate(180deg); }
-.system-health__limits p { margin: 0; padding: 0 1px 12px; color: #819098; font-size: 11px; line-height: 1.6; }
+.system-health__limits p { margin: 0; padding: 0 1px 12px; color: #819098; font-size: 13px; line-height: 1.6; }
 .system-health__detail-empty { display: grid; flex: 1; align-content: center; justify-items: center; gap: 8px; min-height: 260px; color: #88979e; text-align: center; }
 .system-health__detail-empty > svg { color: #8ba0a8; }
-.system-health__detail-empty strong { color: #4d6671; font-size: 14px; font-weight: 690; }
-.system-health__detail-empty span { font-size: 11px; line-height: 1.5; }
+.system-health__detail-empty strong { color: #4d6671; font-size: 15px; font-weight: 690; }
+.system-health__detail-empty span { font-size: 13px; line-height: 1.5; }
 @keyframes system-health-spin { to { transform: rotate(360deg); } }
 @media (max-width: 1000px) {
   .system-health__toolbar { align-items: stretch; flex-direction: column; }
@@ -478,40 +520,36 @@ onBeforeUnmount(() => { requestSequence += 1 })
   .system-health__filters { align-self: flex-start; }
 }
 @media (max-width: 760px) {
-  .system-health__heading { align-items: flex-start; }
-  .system-health__heading h1 { font-size: 22px; }
   .system-health__summary { padding: 9px 12px; }
   .system-health__summary dl { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px 0; }
   .system-health__summary dl > div { padding: 5px 12px; }
   .system-health__summary dl > div:first-child { padding-left: 12px; border-left: 1px solid #edf0f2; }
   .system-health__summary dl > div:nth-child(odd) { padding-left: 0; border-left: 0; }
-  .system-health__summary dd { font-size: 20px; }
+  .system-health__summary dd { font-size: 21px; }
   .system-health__workbench-heading { min-height: 66px; padding: 12px 14px; }
   .system-health__workbench-content { padding: 13px 12px; }
   .system-health__body { grid-template-columns: minmax(0,1fr); }
   .system-health__directory { border-right: 0; border-bottom: 1px solid #e8eef1; }
-  .system-health__list { max-height: 300px; }
+  .system-health__list { max-height: none; overflow: visible; scroll-snap-type: none; }
   .system-health__detail { min-height: 300px; padding: 15px; }
 }
 @media (max-width: 480px) {
-  .system-health__heading { flex-wrap: wrap; }
-  .system-health__heading > :deep(.app-button) { align-self: flex-end; }
   .system-health__snapshot { align-items: flex-start; padding-block: 9px; }
   .system-health__snapshot-copy { gap: 3px; flex-direction: column; }
   .system-health__summary dl > div { padding-inline: 9px; }
   .system-health__summary dl > div:first-child { padding-left: 9px; }
-  .system-health__filters { width: 100%; justify-content: space-between; }
-  .system-health__filters button { flex: 1; padding-inline: 6px; }
   .system-health__service { grid-template-columns: 30px minmax(0,1fr) auto; gap: 7px; padding-inline: 8px; }
   .system-health__service-icon { width: 29px; height: 29px; }
-  .system-health__service-copy strong { font-size: 12px; }
-  .system-health__service-copy > span { font-size: 10px; }
-  .system-health__service :deep(.app-badge) { min-height: 21px; padding-inline: 6px; font-size: 9px; }
+  .system-health__service-copy strong { font-size: 14px; }
+  .system-health__service-copy > span { font-size: 12px; }
+  .system-health__service :deep(.app-badge) { min-height: 23px; padding-inline: 6px; font-size: 11px; }
+  .system-health__filters button { padding-inline: 4px; }
   .system-health__facts { grid-template-columns: minmax(0,1fr); }
   .system-health__facts > div { min-height: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .system-health__snapshot--loading .system-health__snapshot-icon,.system-health__snapshot--refreshing .system-health__snapshot-icon,.system-health__state-icon--spin { animation: none; }
-  .system-health__bar-segment,.system-health__service,.system-health__filters button,.system-health__search,.system-health__limits summary > svg { transition: none; }
+  .system-health__bar-segment,.system-health__service,.system-health__filters-indicator,.system-health__filters button,.system-health__search,.system-health__limits summary > svg { transition: none; }
+  .system-health__list { scroll-behavior: auto; scroll-snap-type: none; }
 }
 </style>
