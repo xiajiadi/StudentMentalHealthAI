@@ -291,17 +291,17 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleGlobalKeydown)
 .specialist-atlas__lens { position: relative; display: flex; min-width: 0; min-height: 320px; flex-direction: column; align-items: center; justify-content: flex-start; padding: 16px 24px 16px; border-left: 1px solid #edf0f3; background: linear-gradient(145deg, #fbfcfd, #f8fbfc 66%, #fafafd); text-align: center; }
 .specialist-atlas__lens-heading { display: flex; width: 100%; align-items: center; justify-content: space-between; color: #6f828f; font-size: 13px; font-weight: 650; }
 .specialist-atlas__lens-count { color: #93a3ad; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: .08em; }
-.specialist-atlas__lens-content { display: flex; width: 100%; min-height: 0; flex: 1; flex-direction: column; align-items: center; padding-top: 8px; }
+.specialist-atlas__lens-content { display: grid; width: 100%; min-height: 0; flex: 1; grid-template-columns: minmax(0, 1fr); align-content: center; justify-items: center; gap: 8px; padding-top: 8px; text-align: center; }
 .specialist-atlas__orbit { position: relative; display: grid; width: 126px; height: 126px; flex: 0 0 126px; place-items: center; color: var(--atlas-accent); }
 .specialist-atlas__orbit-ring { position: absolute; border: 1px solid color-mix(in srgb, var(--atlas-accent) 16%, #fff); border-radius: 50%; }
 .specialist-atlas__orbit-ring--outer { inset: 1px; border-style: dashed; animation: atlas-orbit 34s linear infinite; }
 .specialist-atlas__orbit-ring--inner { inset: 13px; border-color: color-mix(in srgb, var(--atlas-accent) 10%, #fff); }
 .specialist-atlas__lens-icon { position: relative; z-index: 1; display: grid; width: 72px; height: 72px; place-items: center; border: 1px solid color-mix(in srgb, var(--atlas-accent) 19%, #fff); border-radius: 50%; background: radial-gradient(circle at 32% 24%, #fff 0, color-mix(in srgb, var(--atlas-wash) 84%, #fff) 68%, var(--atlas-wash) 100%); box-shadow: inset 0 1px 4px #fff, 0 8px 23px color-mix(in srgb, var(--atlas-accent) 11%, transparent); animation: atlas-float 5.4s ease-in-out infinite; }
 .specialist-atlas__orbit-point { position: absolute; top: 12px; right: 21px; width: 6px; height: 6px; border-radius: 50%; background: color-mix(in srgb, var(--atlas-accent) 48%, #fff); box-shadow: 0 0 0 4px color-mix(in srgb, var(--atlas-accent) 9%, transparent); }
-.specialist-atlas__lens-group { margin: 7px 0 2px; color: var(--atlas-accent); font-size: 12px; font-weight: 700; letter-spacing: .04em; }
-.specialist-atlas__lens-content h3 { margin: 1px 0 5px; color: var(--color-text-primary); font-size: 19px; font-weight: 720; line-height: 1.35; }
-.specialist-atlas__lens-description { max-width: 310px; min-height: 38px; margin: 0; color: var(--color-text-muted); font-size: 13px; line-height: 1.65; }
-.specialist-atlas__enter { display: inline-flex; min-height: 36px; align-items: center; justify-content: center; gap: 8px; margin-top: auto; padding: 0 15px; border: 1px solid color-mix(in srgb, var(--color-primary) 30%, #fff); border-radius: 9px; color: var(--color-primary-active); background: #fff; box-shadow: 0 3px 10px rgb(12 116 142 / 6%); font-size: 13px; font-weight: 700; text-decoration: none; transition: border-color 180ms ease, background-color 180ms ease, transform 180ms ease; }
+.specialist-atlas__lens-group { margin: 0; color: var(--atlas-accent); font-size: 12px; font-weight: 700; letter-spacing: .04em; }
+.specialist-atlas__lens-content h3 { margin: 0; color: var(--color-text-primary); font-size: 19px; font-weight: 720; line-height: 1.35; }
+.specialist-atlas__lens-description { max-width: 320px; min-height: 0; margin: 0; color: var(--color-text-muted); font-size: 13px; line-height: 1.55; }
+.specialist-atlas__enter { display: inline-flex; min-height: 36px; align-items: center; justify-content: center; gap: 8px; margin: 0; padding: 0 15px; border: 1px solid color-mix(in srgb, var(--color-primary) 30%, #fff); border-radius: 9px; color: var(--color-primary-active); background: #fff; box-shadow: 0 3px 10px rgb(12 116 142 / 6%); font-size: 13px; font-weight: 700; text-decoration: none; transition: border-color 180ms ease, background-color 180ms ease, transform 180ms ease; }
 .specialist-atlas__enter:hover { border-color: var(--color-primary); background: #f2fbfd; transform: translateY(-1px); }
 .specialist-atlas__enter:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
 .specialist-atlas-lens-enter-active,.specialist-atlas-lens-leave-active { transition: opacity 160ms ease, transform 160ms ease; }
@@ -344,7 +344,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleGlobalKeydown)
   .specialist-atlas__workbench { grid-template-columns: minmax(0, 1fr); }
   .specialist-atlas__lens { min-height: 0; flex-direction: row; align-items: center; justify-content: center; gap: 18px; padding: 18px 24px; border-top: 1px solid #edf0f3; border-left: 0; }
   .specialist-atlas__lens-heading { position: absolute; top: 13px; right: 20px; width: auto; gap: 12px; }
-  .specialist-atlas__lens-content { display: grid; width: 100%; grid-template-columns: 104px minmax(0, 1fr) auto; align-items: center; gap: 4px 16px; padding: 12px 0 0; text-align: left; }
+  .specialist-atlas__lens-content { width: 100%; grid-template-columns: 104px minmax(0, 1fr) auto; align-content: center; justify-items: stretch; align-items: center; gap: 4px 16px; padding: 12px 0 0; text-align: left; }
   .specialist-atlas__orbit { width: 96px; height: 96px; grid-row: span 3; }
   .specialist-atlas__orbit-ring--outer { inset: 4px; }
   .specialist-atlas__orbit-ring--inner { inset: 13px; }
