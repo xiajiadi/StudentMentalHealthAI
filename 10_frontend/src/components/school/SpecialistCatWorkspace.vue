@@ -37,14 +37,6 @@ async function selectMode(value: string) {
 
 <template>
   <section class="cat-lab" aria-label="CAT 实验室">
-    <header class="cat-lab__heading">
-      <div>
-        <h1>CAT 实验室</h1>
-        <p>题库管理、自适应测验工程模拟与研究配置</p>
-      </div>
-      <span class="cat-lab__environment"><i aria-hidden="true" />合成工程环境</span>
-    </header>
-
     <section class="cat-lab__banner" aria-label="CAT 实验室介绍">
       <div class="cat-lab__banner-copy">
         <p class="cat-lab__eyebrow">COMPUTERIZED ADAPTIVE TESTING / LAB</p>
@@ -92,11 +84,6 @@ async function selectMode(value: string) {
 
 <style scoped>
 .cat-lab { display: grid; gap: 16px; min-width: 0; color: var(--color-text-primary); }
-.cat-lab__heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.cat-lab__heading h1 { margin: 0; color: var(--color-text-primary); font-size: clamp(23px, 2.4vw, 29px); font-weight: 760; letter-spacing: -.035em; line-height: 1.2; }
-.cat-lab__heading p { margin: 5px 0 0; color: var(--color-text-secondary); font-size: 13px; line-height: 1.5; }
-.cat-lab__environment { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; padding: 8px 11px; border: 1px solid var(--color-border); border-radius: 999px; color: var(--color-text-secondary); background: rgb(255 255 255 / 82%); font-size: 11px; font-weight: 650; }
-.cat-lab__environment i { width: 7px; height: 7px; border-radius: 50%; background: var(--color-primary); box-shadow: 0 0 0 3px rgb(0 177 226 / 10%); }
 .cat-lab__banner { position: relative; display: flex; align-items: center; min-height: 122px; overflow: hidden; padding: 22px 26px; border: 1px solid #dce9ee; border-radius: var(--radius-card); background: linear-gradient(108deg, #fafdfe 0%, #f4fafc 68%, #edf7fa 100%); }
 .cat-lab__banner::before { position: absolute; inset: 0; background-image: radial-gradient(#b9d7e0 0.7px, transparent 0.7px); background-size: 17px 17px; opacity: .28; content: ''; mask-image: linear-gradient(90deg, transparent 0%, #000 66%); }
 .cat-lab__banner-copy { position: relative; z-index: 1; }
@@ -120,6 +107,6 @@ async function selectMode(value: string) {
 .cat-lab__panel[data-state="inactive"] { display: none; }
 .cat-lab__boundary { margin: 0; padding: 11px 17px 13px; border-top: 1px solid #eef2f4; color: var(--color-text-muted); font-size: 11px; line-height: 1.5; }
 @media (max-width: 700px) { .cat-lab { gap: 13px; }.cat-lab__banner { min-height: 112px; padding: 18px 20px; }.cat-lab__instrument { right: 18px; transform: translateY(-50%) scale(.78); transform-origin: right center; }.cat-lab__panel { padding: 12px; } }
-@media (max-width: 480px) { .cat-lab__heading { align-items: flex-start; flex-direction: column; gap: 10px; }.cat-lab__environment { padding: 6px 9px; }.cat-lab__banner { min-height: 118px; padding-right: 18px; }.cat-lab__instrument { right: 4px; opacity: .35; }.cat-lab__tabs-list { padding-inline: 7px; }.cat-lab__tab { padding-inline: 5px; font-size: 12px; } }
+@media (max-width: 480px) { .cat-lab__banner { min-height: 118px; padding-right: 18px; }.cat-lab__instrument { right: 4px; opacity: .35; }.cat-lab__tabs-list { padding-inline: 7px; }.cat-lab__tab { padding-inline: 5px; font-size: 12px; } }
 @media (prefers-reduced-motion: reduce) { .cat-lab__tabs-indicator,.cat-lab__tab { transition-duration: .01ms; } }
 </style>
