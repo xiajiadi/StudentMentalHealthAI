@@ -256,7 +256,7 @@ defineExpose({ refresh: load })
 .operations-audit__search { display: flex; min-width: 0; min-height: 40px; align-items: center; gap: 8px; padding: 0 11px; border: 1px solid var(--color-border); border-radius: 9px; color: #82939b; background: #fff; }
 .operations-audit__search:focus-within { border-color: #78c4d4; box-shadow: 0 0 0 3px rgb(0 177 226 / 9%); }
 .operations-audit__search input { width: 100%; min-width: 0; height: 36px; padding: 0; border: 0; outline: 0; color: var(--color-text-primary); background: transparent; font: inherit; font-size: 15px; }
-.operations-audit__search input::placeholder { color: #94a1a9; }
+.operations-audit__search input::placeholder { color: #94a1a9; font-size: 14px; }
 .operations-audit__search button { display: grid; width: 25px; height: 25px; flex: 0 0 25px; place-items: center; padding: 0; border: 0; border-radius: 6px; color: #7d8e98; background: transparent; cursor: pointer; }
 .operations-audit__toolbar :deep(.teacher-class-select__trigger) { height: 40px; font-size: 13px; }
 .operations-audit__toolbar :deep(.teacher-class-select__option) { font-size: 14px; }

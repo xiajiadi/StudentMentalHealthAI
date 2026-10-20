@@ -283,7 +283,6 @@ defineExpose({ refresh })
 
 <template>
   <section class="safety-assignments" aria-label="事项分配" :aria-busy="state === 'loading'">
-    <header class="safety-assignments__section-heading"><h2>事项分配</h2><span>本校待分配队列</span></header>
     <label class="safety-assignments__search">
       <span class="sr-only">搜索待分配事项</span>
       <Search :size="16" aria-hidden="true" />
@@ -364,13 +363,10 @@ defineExpose({ refresh })
 
 <style scoped>
 .safety-assignments { display: grid; gap: 8px; min-width: 0; }
-.safety-assignments__section-heading { display: flex; align-items: baseline; gap: 10px; padding-bottom: 2px; }
-.safety-assignments__section-heading h2 { margin: 0; color: #294655; font-size: 18px; font-weight: 720; }
-.safety-assignments__section-heading span { color: #82939a; font-size: 13px; }
 .safety-assignments__search { display: flex; min-width: 0; min-height: 40px; align-items: center; gap: 8px; margin-top: 8px; padding: 0 11px; border: 1px solid var(--color-border); border-radius: 9px; color: #82939b; background: #fff; }
 .safety-assignments__search:focus-within { border-color: #78c4d4; box-shadow: 0 0 0 3px rgb(0 177 226 / 9%); }
 .safety-assignments__search input { width: 100%; min-width: 0; height: 36px; padding: 0; border: 0; outline: 0; color: var(--color-text-primary); background: transparent; font: inherit; font-size: 15px; }
-.safety-assignments__search input::placeholder { color: #94a1a9; }
+.safety-assignments__search input::placeholder { color: #94a1a9; font-size: 14px; }
 .safety-assignments__search button { display: grid; width: 25px; height: 25px; flex: 0 0 25px; place-items: center; padding: 0; border: 0; border-radius: 6px; color: #7d8e98; background: transparent; cursor: pointer; }
 .safety-assignments__layout { display: grid; grid-template-columns: minmax(0,1.05fr) minmax(300px,.95fr); align-items: stretch; gap: 12px; min-width: 0; }
 .safety-assignments__list-panel { display: flex; min-width: 0; flex-direction: column; overflow: hidden; padding: 0; }
