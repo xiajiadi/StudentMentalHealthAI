@@ -566,12 +566,6 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="admin-task-page" aria-label="测评任务调度" :aria-busy="pageState === 'loading'">
-    <header class="task-page-actions" aria-label="任务操作">
-      <AppButton class="task-publish-button" variant="primary" :disabled="pageState !== 'ready' || !classes.length || publishPending" @click="openPublish">
-        <Plus :size="16" aria-hidden="true" />发布测评
-      </AppButton>
-    </header>
-
     <AppStatusCallout v-if="listError && pageState !== 'error'" tone="attention" title="任务列表未完整更新" :body="listError" role="status" />
     <AppStatusCallout v-if="pageState === 'error'" tone="critical" title="任务列表不可用" :body="listError" role="alert" />
     <AppStatusCallout v-if="notice" tone="info" title="服务端已确认" :body="notice" role="status" />
@@ -596,6 +590,9 @@ onBeforeUnmount(() => {
       </div>
       <TeacherClassSelect v-model="classFilter" :options="classOptions" aria-label="按班级筛选" :disabled="pageState !== 'ready' || !classes.length" />
       <TeacherClassSelect v-model="statusFilterModel" :options="statusOptions" aria-label="按任务状态筛选" :disabled="pageState !== 'ready' || !entries.length" />
+      <AppButton class="task-publish-button" variant="primary" :disabled="pageState !== 'ready' || !classes.length || publishPending" @click="openPublish">
+        <Plus :size="16" aria-hidden="true" />发布测评
+      </AppButton>
       <div class="task-view-switch" role="group" aria-label="任务视图" :class="`task-view-switch--${viewMode}`">
         <span class="task-view-switch__indicator" aria-hidden="true" />
         <button type="button" :aria-pressed="viewMode === 'timeline'" @click="setViewMode('timeline')"><ListChecks :size="14" aria-hidden="true" />时间轴</button>
@@ -772,8 +769,6 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .admin-task-page { display: grid; gap: 16px; min-width: 0; padding: 2px 0; color: var(--color-text-primary); }
-.task-page-actions { display: flex; justify-content: flex-end; }
-.task-page-actions :deep(.task-publish-button) { font-size: 14px; }
 .task-summary { display: grid; grid-template-columns: minmax(140px,.75fr) minmax(0,3fr); align-items: center; gap: 14px; padding: 14px 18px; }
 .task-summary__scope { display: grid; gap: 5px; min-width: 0; }
 .task-summary__scope > span { color: #355060; font-size: 15px; font-weight: 700; }
@@ -785,7 +780,8 @@ onBeforeUnmount(() => {
 .task-summary__metrics > div:nth-child(2) dd { color: #168a78; }
 .task-summary__metrics > div:nth-child(3) dd { color: #418eae; }
 .task-summary__metrics > div:nth-child(4) dd { color: #7d8891; }
-.task-filterbar { display: grid; grid-template-columns: minmax(220px,1.4fr) minmax(150px,.85fr) minmax(135px,.72fr) auto; align-items: center; gap: 9px; padding: 11px 12px; }
+.task-filterbar { display: grid; grid-template-columns: minmax(170px,1.45fr) minmax(125px,.82fr) minmax(120px,.78fr) auto minmax(132px,.92fr); align-items: center; gap: 9px; padding: 11px 12px; }
+.task-filterbar :deep(.task-publish-button) { justify-self: start; min-height: 38px; padding-inline: 11px; font-size: 13px; white-space: nowrap; }
 .task-search { position: relative; display: flex; min-width: 0; min-height: 38px; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid var(--color-border-strong); border-radius: var(--radius-button); color: var(--color-text-muted); background: var(--color-surface); transition: border-color 160ms ease, box-shadow 160ms ease; }
 .task-search:focus-within { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgb(0 177 226 / 12%); }
 .task-search > svg { flex: 0 0 auto; color: #78909d; }
@@ -962,8 +958,9 @@ onBeforeUnmount(() => {
 
 @keyframes task-spin { to { transform: rotate(360deg); } }
 @media (max-width: 1000px) {
-  .task-filterbar { grid-template-columns: minmax(180px,1fr) minmax(140px,.7fr) minmax(130px,.65fr); }
-  .task-view-switch { grid-column: 1 / -1; justify-self: end; width: min(220px,100%); }
+  .task-filterbar { grid-template-columns: minmax(0,1.3fr) minmax(120px,.85fr) minmax(115px,.8fr); }
+  .task-filterbar :deep(.task-publish-button) { grid-column: 1; }
+  .task-view-switch { grid-column: 2 / -1; justify-self: end; width: min(220px,100%); }
   .task-filterbar__clear { grid-column: 1 / -1; }
   .task-workbench__body { grid-template-columns: minmax(0,1fr); }
   .task-workbench__list { border-right: 0; border-bottom: 1px solid #edf0f2; }
@@ -971,7 +968,6 @@ onBeforeUnmount(() => {
 }
 @media (max-width: 660px) {
   .admin-task-page { gap: 12px; }
-  .task-page-actions :deep(.task-publish-button) { min-height: 36px; padding-inline: 10px; font-size: 11px; }
   .task-summary { grid-template-columns: minmax(0,1fr); gap: 11px; padding: 12px; }
   .task-summary__metrics > div { padding-inline: 9px; }
   .task-summary__metrics > div:first-child { border-left: 0; padding-left: 0; }
@@ -980,7 +976,8 @@ onBeforeUnmount(() => {
   .task-filterbar { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; padding: 10px; }
   .task-search { grid-column: 1 / -1; }
   .task-filterbar > :deep(.teacher-class-select) { grid-column: span 1; }
-  .task-view-switch { grid-column: 1 / -1; justify-self: stretch; width: 100%; }
+  .task-filterbar :deep(.task-publish-button) { grid-column: 1; justify-self: stretch; width: 100%; padding-inline: 8px; font-size: 12px; }
+  .task-view-switch { grid-column: 2; justify-self: stretch; width: 100%; }
   .task-workbench__header { padding: 14px; }
   .task-workbench__list,.task-workbench__detail { padding: 12px; }
   .task-timeline__item { grid-template-columns: 36px minmax(0,1fr); gap: 7px; }

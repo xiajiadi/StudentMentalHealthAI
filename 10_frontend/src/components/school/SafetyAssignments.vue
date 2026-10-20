@@ -366,7 +366,7 @@ defineExpose({ refresh })
 .safety-assignments__search { display: flex; min-width: 0; min-height: 40px; align-items: center; gap: 8px; margin-top: 8px; padding: 0 11px; border: 1px solid var(--color-border); border-radius: 9px; color: #82939b; background: #fff; }
 .safety-assignments__search:focus-within { border-color: #78c4d4; box-shadow: 0 0 0 3px rgb(0 177 226 / 9%); }
 .safety-assignments__search input { width: 100%; min-width: 0; height: 36px; padding: 0; border: 0; outline: 0; color: var(--color-text-primary); background: transparent; font: inherit; font-size: 15px; }
-.safety-assignments__search input::placeholder { color: #94a1a9; font-size: 14px; }
+.safety-assignments__search input::placeholder { color: #94a1a9; font-size: 13px; }
 .safety-assignments__search button { display: grid; width: 25px; height: 25px; flex: 0 0 25px; place-items: center; padding: 0; border: 0; border-radius: 6px; color: #7d8e98; background: transparent; cursor: pointer; }
 .safety-assignments__layout { display: grid; grid-template-columns: minmax(0,1.05fr) minmax(300px,.95fr); align-items: stretch; gap: 12px; min-width: 0; }
 .safety-assignments__list-panel { display: flex; min-width: 0; flex-direction: column; overflow: hidden; padding: 0; }
@@ -401,7 +401,7 @@ defineExpose({ refresh })
 .safety-assignments__detail dd { margin: 0; color: #415c69; font-size: 14px; font-weight: 620; text-align: right; overflow-wrap: anywhere; }
 .safety-assignments__privacy { margin: 14px 0; padding-top: 12px; border-top: 1px solid #edf1f3; color: #83939a; font-size: 13px; line-height: 1.55; }
 .safety-assignments__detail > :deep(.app-button) { align-self: flex-start; }
-.safety-assignments__detail-empty { display: grid; min-height: 230px; align-content: center; justify-items: center; gap: 7px; color: #81919a; text-align: center; }
+.safety-assignments__detail-empty { display: grid; flex: 1; min-height: 240px; align-content: center; justify-items: center; gap: 7px; color: #81919a; text-align: center; }
 .safety-assignments__detail-empty strong { color: #435e6c; font-size: 16px; }
 .safety-assignments__detail-empty span { font-size: 14px; line-height: 1.5; }
 .safety-assignments__dialog { display: grid; gap: 9px; }

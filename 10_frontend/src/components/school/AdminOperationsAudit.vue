@@ -256,7 +256,7 @@ defineExpose({ refresh: load })
 .operations-audit__search { display: flex; min-width: 0; min-height: 40px; align-items: center; gap: 8px; padding: 0 11px; border: 1px solid var(--color-border); border-radius: 9px; color: #82939b; background: #fff; }
 .operations-audit__search:focus-within { border-color: #78c4d4; box-shadow: 0 0 0 3px rgb(0 177 226 / 9%); }
 .operations-audit__search input { width: 100%; min-width: 0; height: 36px; padding: 0; border: 0; outline: 0; color: var(--color-text-primary); background: transparent; font: inherit; font-size: 15px; }
-.operations-audit__search input::placeholder { color: #94a1a9; font-size: 14px; }
+.operations-audit__search input::placeholder { color: #94a1a9; font-size: 13px; }
 .operations-audit__search button { display: grid; width: 25px; height: 25px; flex: 0 0 25px; place-items: center; padding: 0; border: 0; border-radius: 6px; color: #7d8e98; background: transparent; cursor: pointer; }
 .operations-audit__toolbar :deep(.teacher-class-select__trigger) { height: 40px; font-size: 13px; }
 .operations-audit__toolbar :deep(.teacher-class-select__option) { font-size: 14px; }
@@ -302,7 +302,7 @@ defineExpose({ refresh: load })
 .operations-audit__detail dl > div { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; padding: 12px 0; border-bottom: 1px solid #f0f3f5; }
 .operations-audit__detail dt { color: #84949c; font-size: 13px; }
 .operations-audit__detail dd { margin: 0; color: #405c69; font-size: 14px; font-weight: 620; text-align: right; overflow-wrap: anywhere; }
-.operations-audit__detail-empty { display: grid; min-height: 220px; align-content: center; justify-items: center; gap: 7px; color: #81919a; text-align: center; }
+.operations-audit__detail-empty { display: grid; flex: 1; min-height: 230px; align-content: center; justify-items: center; gap: 7px; color: #81919a; text-align: center; }
 .operations-audit__detail-empty strong { color: #435e6c; font-size: 16px; }
 .operations-audit__detail-empty span { font-size: 14px; line-height: 1.5; }
 .operations-audit :deep(.status-callout h2) { font-size: 16px; }
