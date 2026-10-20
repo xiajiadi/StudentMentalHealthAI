@@ -219,11 +219,13 @@ onBeforeUnmount(() => {
     <AppStatusCallout v-if="notice" tone="info" title="服务端已确认" :body="notice" role="status" />
 
     <div class="professional-assignments__form">
-      <label for="professional-assignment-task">任务</label>
-      <select id="professional-assignment-task" v-model="selectedTaskRef" :disabled="!props.tasks.length || pending">
-        <option value="" disabled>请选择任务</option>
-        <option v-for="task in props.tasks" :key="task.task_ref" :value="task.task_ref">{{ taskOptionLabel(task) }}</option>
-      </select>
+      <template v-if="props.tasks.length > 1">
+        <label for="professional-assignment-task">任务</label>
+        <select id="professional-assignment-task" v-model="selectedTaskRef" :disabled="!props.tasks.length || pending">
+          <option value="" disabled>请选择任务</option>
+          <option v-for="task in props.tasks" :key="task.task_ref" :value="task.task_ref">{{ taskOptionLabel(task) }}</option>
+        </select>
+      </template>
       <label for="professional-assignment-specialist">同校专员</label>
       <div class="professional-assignments__action">
         <select id="professional-assignment-specialist" v-model="selectedSpecialistId" :disabled="!selectedTask || specialistsState !== 'ready' || !availableSpecialists.length || pending">

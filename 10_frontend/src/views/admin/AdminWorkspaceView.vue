@@ -8,6 +8,7 @@ import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import WorkspaceBreadcrumb from '@/components/student/WorkspaceBreadcrumb.vue'
 import WorkspaceTabs from '@/components/workspace/WorkspaceTabs.vue'
 import AdminSchoolOperations from '@/components/school/AdminSchoolOperations.vue'
+import AdminTaskDispatch from '@/components/school/AdminTaskDispatch.vue'
 import AdminOperationsAudit from '@/components/school/AdminOperationsAudit.vue'
 import SchoolResearchManagement from '@/components/school/SchoolResearchManagement.vue'
 import SafetyAssignments from '@/components/school/SafetyAssignments.vue'
@@ -92,8 +93,7 @@ watch([section, () => route.hash], ([value, hash]) => {
     <template v-else>
       <template v-if="section === 'tasks'">
         <section class="admin-task-dispatch" aria-label="测评任务调度">
-          <AppStatusCallout tone="info" title="任务发布" body="班级、可用配置和任务状态来自服务端。发布后以服务端确认及任务列表为准。" />
-          <AdminSchoolOperations :key="schoolScopeKey" mode="tasks" />
+          <AdminTaskDispatch :key="schoolScopeKey" />
         </section>
       </template>
 
