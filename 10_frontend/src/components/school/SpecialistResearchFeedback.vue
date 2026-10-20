@@ -441,12 +441,6 @@ defineExpose({
 
 <template>
   <section class="research-feedback" aria-label="研究模拟教育反馈工作流">
-    <AppStatusCallout
-      tone="info"
-      title="研究模拟，教育支持工作流"
-      body="只处理已完成记录的服务端元数据与独立教育反馈文本，不展示测评分数或原始回答。页面状态不构成临床、心理测量学、伦理或正式研究批准。"
-    />
-
     <div class="research-feedback__toolbar">
       <div><span class="research-feedback__kicker">独立研究工作流</span><h2>研究教育反馈</h2><p>选择研究任务，查看已完成记录并单独管理学生可见的演示反馈。</p></div>
       <AppButton variant="quiet" size="sm" :disabled="tasksState === 'loading' || mutationBusy" @click="loadTasks"><RotateCcw :size="15" aria-hidden="true" />刷新任务</AppButton>
@@ -549,7 +543,7 @@ defineExpose({
 </template>
 
 <style scoped>
-.research-feedback { display: grid; gap: 15px; margin-top: 24px; }
+.research-feedback { display: grid; gap: 15px; margin-top: 0; }
 .research-feedback__toolbar,.research-feedback__panel-head,.research-feedback__detail-head,.research-feedback__versions>header,.research-feedback__version>header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
 .research-feedback__toolbar h2,.research-feedback__panel-head h3,.research-feedback__detail h3,.research-feedback__versions h4,.research-feedback__version h5,.research-feedback__draft h4 { margin: 4px 0; color: var(--color-text-primary); }
 .research-feedback__toolbar h2 { font-family: var(--font-display); font-size: 22px; }

@@ -93,7 +93,7 @@ watch(specialistScopeKey, () => {
 </script>
 
 <template>
-  <main class="content-wrap specialist-workspace">
+  <main class="content-wrap specialist-workspace" :class="{ 'specialist-workspace--tasks': section === 'tasks' }">
     <WorkspaceBreadcrumb :current="page.title" home-label="心理工作区" home-to="/specialist/overview" />
     <template v-if="section === 'overview'">
       <SpecialistWorkspaceAtlas />
@@ -134,9 +134,11 @@ watch(specialistScopeKey, () => {
 
 <style scoped>
 .specialist-workspace { display: grid; gap: 18px; padding-top: 18px; padding-bottom: 56px; animation: page-in 220ms ease both; }
+.specialist-workspace--tasks { gap: 8px; }
+.specialist-workspace--tasks :deep(.workspace-breadcrumb) { margin-bottom: 0; }
 .specialist-page-hero { margin-bottom: 0; }
 .specialist-resources { min-width: 0; }
 @keyframes page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-@media (max-width: 640px) { .specialist-workspace { gap: 15px; padding-top: 14px; } }
+@media (max-width: 640px) { .specialist-workspace { gap: 15px; padding-top: 14px; }.specialist-workspace--tasks { gap: 8px; } }
 @media (prefers-reduced-motion: reduce) { .specialist-workspace { animation: none; } }
 </style>
