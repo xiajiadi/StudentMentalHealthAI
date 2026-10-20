@@ -133,7 +133,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleGlobalKeydown)
             <h3 :id="'specialist-atlas-path-' + group.id">{{ group.title }}</h3>
           </header>
           <div class="specialist-atlas__nodes">
-            <span class="specialist-atlas__connector" :class="{ 'specialist-atlas__connector--animated': groupIndex === 0 }" aria-hidden="true" />
+            <span
+              class="specialist-atlas__connector specialist-atlas__connector--animated"
+              :style="{ '--atlas-flow-delay': (groupIndex * -4) + 's' }"
+              aria-hidden="true"
+            />
             <RouterLink
               v-for="entry in specialistAtlasEntries.filter((item) => item.group === group.id)"
               :key="entry.id"
@@ -269,11 +273,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleGlobalKeydown)
 .specialist-atlas__path-heading h3 { margin: 5px 0 0; color: #334654; font-size: 15px; font-weight: 680; line-height: 1.4; }
 .specialist-atlas__nodes { position: relative; display: flex; min-width: 0; align-items: flex-start; justify-content: space-around; gap: 2px; }
 .specialist-atlas__connector { position: absolute; z-index: 0; top: 26px; right: 11%; left: 11%; height: 1px; background: linear-gradient(90deg, #d7e5e8, #dedfeb 48%, #dce9e4); pointer-events: none; }
-.specialist-atlas__connector::after { position: absolute; top: -1px; left: -10%; width: 19%; height: 3px; border-radius: 99px; background: linear-gradient(90deg, transparent, rgb(0 177 226 / 29%), transparent); content: ''; opacity: 0; }
-.specialist-atlas__connector--animated::after { opacity: .8; animation: atlas-flow 12s ease-in-out infinite; }
+.specialist-atlas__connector::after { position: absolute; top: -1px; left: -10%; width: 24%; height: 3px; border-radius: 99px; background: linear-gradient(90deg, transparent, rgb(0 177 226 / 38%), transparent); content: ''; opacity: 0; }
+.specialist-atlas__connector--animated::after { opacity: .8; animation: atlas-flow 12s ease-in-out infinite; animation-delay: var(--atlas-flow-delay, 0s); }
 .specialist-atlas__node { position: relative; z-index: 1; display: flex; width: 33.333%; min-width: 74px; flex-direction: column; align-items: center; gap: 5px; padding: 3px 5px 5px; border-radius: 12px; color: inherit; text-align: center; text-decoration: none; transition: background-color 180ms ease, transform 180ms ease; }
-.specialist-atlas__node:hover,.specialist-atlas__node--active { background: rgb(255 255 255 / 74%); }
-.specialist-atlas__node:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; background: #fff; }
+.specialist-atlas__node:hover,.specialist-atlas__node--active { background: color-mix(in srgb, var(--atlas-wash) 42%, transparent); }
+.specialist-atlas__node:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; background: color-mix(in srgb, var(--atlas-wash) 42%, transparent); }
 .specialist-atlas__node-icon { position: relative; display: grid; width: 52px; height: 52px; flex: 0 0 52px; place-items: center; border: 1px solid color-mix(in srgb, var(--atlas-accent) 18%, #fff); border-radius: 50%; color: var(--atlas-accent); background: radial-gradient(circle at 32% 26%, #fff 0, color-mix(in srgb, var(--atlas-wash) 78%, #fff) 68%, var(--atlas-wash) 100%); box-shadow: inset 0 1px 3px rgb(255 255 255 / 92%), 0 4px 13px color-mix(in srgb, var(--atlas-accent) 7%, transparent); transition: transform 190ms ease, box-shadow 190ms ease, color 190ms ease; }
 .specialist-atlas__node-icon::after { position: absolute; inset: -5px; border: 1px solid color-mix(in srgb, var(--atlas-accent) 34%, transparent); border-radius: 50%; content: ''; opacity: 0; transform: scale(.9); transition: opacity 190ms ease, transform 190ms ease; }
 .specialist-atlas__node:hover .specialist-atlas__node-icon,.specialist-atlas__node--active .specialist-atlas__node-icon,.specialist-atlas__node:focus-visible .specialist-atlas__node-icon { box-shadow: inset 0 1px 3px #fff, 0 4px 14px color-mix(in srgb, var(--atlas-accent) 15%, transparent); transform: scale(1.045); }
@@ -393,7 +397,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleGlobalKeydown)
   .specialist-quick__footer { gap: 9px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .specialist-atlas__connector--animated::after,.specialist-atlas__orbit-ring--outer,.specialist-atlas__lens-icon { animation: none; }
+  .specialist-atlas__connector--animated::after { animation: none; opacity: 0; }
+  .specialist-atlas__orbit-ring--outer,.specialist-atlas__lens-icon { animation: none; }
   .specialist-atlas__node,.specialist-atlas__node-icon,.specialist-atlas__node-icon::after,.specialist-atlas__enter,.specialist-atlas-lens-enter-active,.specialist-atlas-lens-leave-active { transition-duration: .01ms; }
 }
 </style>
