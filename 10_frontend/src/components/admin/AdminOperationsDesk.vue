@@ -282,7 +282,7 @@ const makeClassChart = (classes: Array<{ label: string; students: number; teache
   animationDuration: 420,
   color: ['#009fbe', '#7abfce'],
   legend: { top: 0, left: 4, itemWidth: 10, itemHeight: 8, textStyle: { color: '#6d8390', fontSize: 11 } },
-  grid: { left: 28, right: 14, top: 31, bottom: 50, containLabel: true },
+  grid: { left: 28, right: 14, top: 31, bottom: classes.length > 6 ? 68 : 48, containLabel: true },
   tooltip: {
     ...adminTooltipStyle,
     trigger: 'axis',
@@ -296,7 +296,13 @@ const makeClassChart = (classes: Array<{ label: string; students: number; teache
   xAxis: {
     type: 'category',
     data: classes.map((item) => item.label),
-    axisLabel: { color: '#8295a0', fontSize: 10, interval: 0, rotate: classes.length > 6 ? 20 : 0, hideOverlap: true },
+    axisLabel: {
+      color: '#8295a0', fontSize: 10, interval: 0,
+      rotate: classes.length > 6 ? 24 : 0,
+      align: 'center',
+      margin: classes.length > 6 ? 18 : 14,
+      hideOverlap: true,
+    },
     axisLine: { lineStyle: { color: '#e2e8ee' } },
     axisTick: { show: false },
   },
@@ -310,9 +316,9 @@ const makeClassChart = (classes: Array<{ label: string; students: number; teache
     splitLine: { lineStyle: { color: '#e8eef1' } },
   },
   series: [
-    { type: 'bar', name: '学生', stack: 'members', data: classes.map((item) => item.students), barMaxWidth: 28, itemStyle: { color: '#129db9' } },
+    { type: 'bar', name: '学生', stack: 'members', data: classes.map((item) => item.students), barMaxWidth: 42, itemStyle: { color: '#129db9' } },
     {
-      type: 'bar', name: '教师', stack: 'members', data: classes.map((item) => item.teachers), barMaxWidth: 28,
+      type: 'bar', name: '教师', stack: 'members', data: classes.map((item) => item.teachers), barMaxWidth: 42,
       itemStyle: { color: '#7abfce', borderRadius: [4, 4, 0, 0] },
       label: { show: true, position: 'top', color: '#536a78', fontSize: 10, formatter: (params) => formatCount((classes[params.dataIndex]?.students ?? 0) + Number(params.value ?? 0)) },
     },
@@ -376,7 +382,10 @@ const summarizeClasses = async (): Promise<AdminPreviewSummary> => {
     }))
   }
 
-  const ranked = [...rows].sort((a, b) => b.students + b.teachers - (a.students + a.teachers)).slice(0, 8)
+  const ranked = [...rows]
+    .sort((a, b) => b.students + b.teachers - (a.students + a.teachers))
+    .slice(0, 8)
+    .sort((a, b) => a.label.localeCompare(b.label, 'zh-CN'))
   const studentCount = rows.reduce((sum, item) => sum + item.students, 0)
   const teacherCount = rows.reduce((sum, item) => sum + item.teachers, 0)
   const hasMemberCounts = ranked.some((item) => item.students + item.teachers > 0)
