@@ -180,14 +180,6 @@ const pageRangeLabel = computed(() => {
   return first + '–' + last + ' / ' + page.value.total
 })
 
-const searchScopeLabel = computed(() => {
-  if (!page.value) return '检索、筛选和排序只作用于当前服务端分页结果。'
-  const loadedRange = page.value.total > 0 && page.value.items.length > 0
-    ? '当前页 ' + (page.value.offset + 1) + '–' + (page.value.offset + page.value.items.length) + ' 条'
-    : '当前页没有资料'
-  return loadedRange + '；目录共 ' + page.value.total + ' 条。检索、筛选和标题排序仅作用于本页。'
-})
-
 function topicCount(topic: TopicFilter): number {
   if (!page.value) return 0
   if (topic === 'all') return page.value.items.length
@@ -377,24 +369,14 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="source-catalog" aria-labelledby="source-catalog-title">
-    <header class="source-catalog__heading">
-      <div class="source-catalog__heading-copy">
-        <h1 id="source-catalog-title">专业资料</h1>
-        <p>研究来源、权利信息与专业引用目录</p>
-      </div>
-      <div class="source-catalog__heading-actions">
-        <span class="source-catalog__readonly"><ShieldCheck :size="14" aria-hidden="true" />只读目录</span>
-        <AppButton variant="quiet" size="sm" :disabled="state === 'loading'" :loading="state === 'loading'" @click="loadCatalog(page?.offset ?? 0)">
-          <RefreshCw :size="15" aria-hidden="true" />刷新目录
-        </AppButton>
-      </div>
-    </header>
-
     <section class="source-catalog__banner" aria-label="研究资料档案馆">
       <div class="source-catalog__banner-copy">
-        <span class="source-catalog__eyebrow">RESEARCH ARCHIVE</span>
-        <h2>从来源出发，追溯每一份资料</h2>
-        <p>整理研究档案，而不是堆积文件。</p>
+        <div class="source-catalog__banner-meta">
+          <span class="source-catalog__eyebrow">RESEARCH ARCHIVE</span>
+          <span class="source-catalog__readonly"><ShieldCheck :size="14" aria-hidden="true" />只读目录</span>
+        </div>
+        <h1 id="source-catalog-title">追溯每一份资料</h1>
+        <p>整理研究档案。</p>
       </div>
       <div class="source-catalog__books" aria-hidden="true">
         <span class="source-catalog__book source-catalog__book--mint"></span>
@@ -459,7 +441,7 @@ onBeforeUnmount(() => {
           </RightsSelectPortal>
         </RightsSelectRoot>
 
-        <p id="source-search-scope" class="source-workbench__scope">{{ searchScopeLabel }}</p>
+        <span id="source-search-scope" class="sr-only">检索、权利筛选和排序仅作用于已加载的服务端分页结果。</span>
       </div>
 
       <aside class="source-topics" aria-labelledby="source-topics-title">
@@ -482,7 +464,6 @@ onBeforeUnmount(() => {
             <span class="source-topics__count">{{ topicCount(topic.value) }}</span>
           </button>
         </nav>
-        <p class="source-topics__note">目录主题来自来源层级字段，不根据标题推断。</p>
       </aside>
 
       <section class="source-index" aria-labelledby="source-index-title">
@@ -495,7 +476,12 @@ onBeforeUnmount(() => {
             </p>
             <p v-else>服务端分页目录</p>
           </div>
-          <span v-if="page" class="source-index__total">目录 {{ page.total }} 项</span>
+          <div class="source-index__actions">
+            <span v-if="page" class="source-index__total">目录 {{ page.total }} 项</span>
+            <AppButton variant="quiet" size="sm" :disabled="state === 'loading'" :loading="state === 'loading'" @click="loadCatalog(page?.offset ?? 0)">
+              <RefreshCw :size="15" aria-hidden="true" />刷新目录
+            </AppButton>
+          </div>
         </header>
 
         <div v-if="state === 'loading'" class="source-index__state" role="status" aria-busy="true">
@@ -753,17 +739,14 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .source-catalog { display: grid; min-width: 0; gap: 14px; }
-.source-catalog__heading { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 16px; }
-.source-catalog__heading-copy h1 { margin: 0; color: var(--color-text-primary); font-size: 23px; font-weight: 740; line-height: 1.25; }
-.source-catalog__heading-copy p { margin: 5px 0 0; color: var(--color-text-muted); font-size: 13px; line-height: 1.5; }
-.source-catalog__heading-actions { display: flex; align-items: center; gap: 8px; }
 .source-catalog__readonly { display: inline-flex; min-height: 30px; align-items: center; gap: 6px; padding: 0 9px; border: 1px solid #d8e9ed; border-radius: 999px; color: #47727e; background: #f7fbfc; font-size: 11px; font-weight: 650; white-space: nowrap; }
 .source-catalog__readonly svg { color: var(--color-primary-active); }
 
 .source-catalog__banner { position: relative; display: flex; min-height: 128px; align-items: center; justify-content: space-between; gap: 20px; overflow: hidden; padding: 19px 28px; border: 1px solid #e1edf0; border-radius: var(--radius-card); background: linear-gradient(104deg, #fff 0%, #f8fbfc 62%, #f0f8fa 100%); }
 .source-catalog__banner-copy { position: relative; z-index: 1; min-width: 0; }
+.source-catalog__banner-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .source-catalog__eyebrow { color: #43869a; font-size: 10px; font-weight: 800; letter-spacing: .11em; }
-.source-catalog__banner h2 { margin: 6px 0 4px; color: #284453; font-size: 19px; font-weight: 720; line-height: 1.35; }
+.source-catalog__banner h1 { margin: 6px 0 4px; color: #284453; font-size: 19px; font-weight: 720; line-height: 1.35; }
 .source-catalog__banner p { margin: 0; color: #758892; font-size: 12px; line-height: 1.5; }
 .source-catalog__books { position: relative; display: flex; min-width: 190px; height: 106px; align-items: flex-end; justify-content: center; gap: 7px; padding: 0 13px 10px; }
 .source-catalog__books::after { position: absolute; right: 0; bottom: 8px; left: 0; height: 1px; background: #bfd0d5; box-shadow: 0 3px 7px rgb(74 100 110 / 10%); content: ''; }
@@ -787,8 +770,6 @@ onBeforeUnmount(() => {
 .source-workbench__search input::-webkit-search-cancel-button { display: none; }
 .source-workbench__clear { display: grid; width: 26px; height: 26px; flex: 0 0 26px; place-items: center; border: 0; border-radius: 50%; color: #72838d; background: transparent; cursor: pointer; }
 .source-workbench__clear:hover { color: var(--color-text-primary); background: #eef4f6; }
-.source-workbench__scope { grid-column: 1 / -1; margin: 0; color: var(--color-text-muted); font-size: 11px; line-height: 1.45; }
-
 .source-catalog .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; clip-path: inset(50%); }
 
 :global(.source-workbench__select-content) { z-index: 150; width: var(--reka-select-trigger-width, 100%); min-width: min(var(--reka-select-trigger-width, 100%), calc(100vw - 32px)); max-width: calc(100vw - 32px); overflow: hidden; border: 1px solid #dce8ed; border-radius: 10px; background: #fff; box-shadow: 0 14px 32px rgb(34 67 83 / 14%); }
@@ -816,13 +797,12 @@ onBeforeUnmount(() => {
 .source-topics__item--active > svg { color: var(--color-primary-active); }
 .source-topics__count { color: #94a2a9; font-size: 10px; font-variant-numeric: tabular-nums; }
 .source-topics__item--active .source-topics__count { color: #4c8a99; }
-.source-topics__note { margin: 15px 7px 0; color: #99a5ab; font-size: 10px; line-height: 1.55; }
-
 .source-index { display: flex; min-width: 0; min-height: 0; grid-column: 2; grid-row: 2; flex-direction: column; border-right: 1px solid #e8edf0; }
 .source-index__heading { display: flex; min-height: 72px; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px 12px; }
 .source-index__heading h2 { margin: 0; color: var(--color-text-primary); font-size: 16px; font-weight: 720; }
 .source-index__heading p { margin: 4px 0 0; color: var(--color-text-muted); font-size: 11px; }
 .source-index__heading p strong { color: #247c91; font-size: 12px; }
+.source-index__actions { display: flex; align-items: center; gap: 8px; }
 .source-index__total { color: #7e8d95; font-size: 11px; white-space: nowrap; }
 .source-index__rows { min-height: 0; max-height: 500px; flex: 1; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 0 10px; border-top: 1px solid #edf1f3; border-bottom: 1px solid #edf1f3; list-style: none; }
 .source-record { margin: 2px 0; }
@@ -933,10 +913,8 @@ onBeforeUnmount(() => {
 }
 @media (max-width: 760px) {
   .source-catalog { gap: 12px; }
-  .source-catalog__heading { align-items: flex-start; }
-  .source-catalog__heading-actions { flex-wrap: wrap; justify-content: flex-end; }
   .source-catalog__banner { min-height: 116px; padding: 16px 18px; }
-  .source-catalog__banner h2 { max-width: 430px; font-size: 17px; }
+  .source-catalog__banner h1 { max-width: 430px; font-size: 17px; }
   .source-catalog__books { min-width: 145px; transform: scale(.84); transform-origin: right center; }
   .source-workbench { grid-template-columns: minmax(0,1fr); grid-template-rows: auto auto minmax(460px,auto) auto; }
   .source-workbench__toolbar { grid-column: 1; grid-row: 1; grid-template-columns: minmax(0,1fr) minmax(0,1fr); padding: 12px 12px 7px; }
@@ -945,7 +923,6 @@ onBeforeUnmount(() => {
   .source-topics__heading { padding: 0 3px 7px; }
   .source-topics__list { display: flex; gap: 5px; overflow-x: auto; padding: 1px 1px 4px; scrollbar-width: thin; }
   .source-topics__item { width: auto; min-width: max-content; min-height: 36px; grid-template-columns: 16px auto auto; gap: 6px; padding: 0 9px; }
-  .source-topics__note { margin: 6px 3px 0; }
   .source-index { grid-column: 1; grid-row: 3; min-height: 460px; border-right: 0; border-bottom: 1px solid #e8edf0; }
   .source-index__heading { min-height: 64px; padding-inline: 14px; }
   .source-index__rows { max-height: 440px; padding-inline: 7px; }
@@ -956,18 +933,16 @@ onBeforeUnmount(() => {
   .source-inspector__tab-panel { min-height: 300px; }
 }
 @media (max-width: 480px) {
-  .source-catalog__heading { flex-direction: column; gap: 10px; }
-  .source-catalog__heading-actions { width: 100%; justify-content: space-between; }
   .source-catalog__banner { min-height: 110px; gap: 7px; padding: 14px 13px; }
-  .source-catalog__banner h2 { max-width: 235px; font-size: 16px; }
+  .source-catalog__banner h1 { max-width: 235px; font-size: 16px; }
   .source-catalog__banner p { max-width: 230px; font-size: 11px; }
   .source-catalog__books { min-width: 88px; height: 96px; gap: 4px; padding-inline: 3px; transform: scale(.68); transform-origin: right center; }
   .source-catalog__book { width: 23px; flex-basis: 23px; }
   .source-workbench__toolbar { grid-template-columns: 1fr; gap: 8px; }
-  .source-workbench__search,.source-workbench__scope { grid-column: 1; }
+  .source-workbench__search { grid-column: 1; }
   .source-workbench__select { min-height: 40px; }
   .source-index__heading { align-items: flex-start; }
-  .source-index__total { padding-top: 3px; }
+  .source-index__actions { flex-direction: column; align-items: flex-end; gap: 4px; }
   .source-record__body { gap: 4px; }
   .source-record__title { font-size: 11px; }
   .source-record__meta,.source-record__layers { font-size: 9px; }
