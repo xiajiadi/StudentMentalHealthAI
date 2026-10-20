@@ -283,13 +283,13 @@ defineExpose({ refresh })
 
 <template>
   <section class="safety-assignments" aria-label="事项分配" :aria-busy="state === 'loading'">
+    <header class="safety-assignments__section-heading"><h2>事项分配</h2><span>本校待分配队列</span></header>
     <label class="safety-assignments__search">
       <span class="sr-only">搜索待分配事项</span>
       <Search :size="16" aria-hidden="true" />
-      <input v-model="searchQuery" type="search" autocomplete="off" placeholder="搜索事项编号或班级">
+      <input v-model="searchQuery" type="search" autocomplete="off" placeholder="搜索本页事项编号或班级">
       <button v-if="searchQuery" type="button" aria-label="清空搜索" @click="searchQuery = ''"><X :size="15" aria-hidden="true" /></button>
     </label>
-    <p class="safety-assignments__scope">仅筛选当前服务端页；本校待分配队列由服务端分页。已分配事项由授权专业人员查看。</p>
 
     <AppStatusCallout v-if="errorMessage" tone="critical" title="分配队列不可用" :body="errorMessage" role="alert" />
     <AppStatusCallout v-if="notice" tone="info" title="服务端已确认" :body="notice" role="status" />
@@ -364,17 +364,19 @@ defineExpose({ refresh })
 
 <style scoped>
 .safety-assignments { display: grid; gap: 8px; min-width: 0; }
-.safety-assignments__search { display: flex; min-width: 0; min-height: 40px; align-items: center; gap: 8px; padding: 0 11px; border: 1px solid var(--color-border); border-radius: 9px; color: #82939b; background: #fff; }
+.safety-assignments__section-heading { display: flex; align-items: baseline; gap: 10px; padding-bottom: 2px; }
+.safety-assignments__section-heading h2 { margin: 0; color: #294655; font-size: 18px; font-weight: 720; }
+.safety-assignments__section-heading span { color: #82939a; font-size: 13px; }
+.safety-assignments__search { display: flex; min-width: 0; min-height: 40px; align-items: center; gap: 8px; margin-top: 8px; padding: 0 11px; border: 1px solid var(--color-border); border-radius: 9px; color: #82939b; background: #fff; }
 .safety-assignments__search:focus-within { border-color: #78c4d4; box-shadow: 0 0 0 3px rgb(0 177 226 / 9%); }
-.safety-assignments__search input { width: 100%; min-width: 0; height: 36px; padding: 0; border: 0; outline: 0; color: var(--color-text-primary); background: transparent; font: inherit; font-size: 13px; }
+.safety-assignments__search input { width: 100%; min-width: 0; height: 36px; padding: 0; border: 0; outline: 0; color: var(--color-text-primary); background: transparent; font: inherit; font-size: 15px; }
 .safety-assignments__search input::placeholder { color: #94a1a9; }
 .safety-assignments__search button { display: grid; width: 25px; height: 25px; flex: 0 0 25px; place-items: center; padding: 0; border: 0; border-radius: 6px; color: #7d8e98; background: transparent; cursor: pointer; }
-.safety-assignments__scope { margin: 0 2px 3px; color: var(--color-text-muted); font-size: 11px; line-height: 1.5; }
 .safety-assignments__layout { display: grid; grid-template-columns: minmax(0,1.05fr) minmax(300px,.95fr); align-items: stretch; gap: 12px; min-width: 0; }
 .safety-assignments__list-panel { display: flex; min-width: 0; flex-direction: column; overflow: hidden; padding: 0; }
-.safety-assignments__list-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 58px; padding: 12px 16px; border-bottom: 1px solid #edf1f3; color: #83939b; font-size: 11px; }
+.safety-assignments__list-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 58px; padding: 12px 16px; border-bottom: 1px solid #edf1f3; color: #83939b; font-size: 13px; }
 .safety-assignments__list-heading > div { display: flex; align-items: center; gap: 10px; }
-.safety-assignments__list-heading h2 { display: inline-flex; align-items: center; gap: 7px; margin: 0; color: #2d4857; font-size: 15px; font-weight: 700; }
+.safety-assignments__list-heading h2 { display: inline-flex; align-items: center; gap: 7px; margin: 0; color: #2d4857; font-size: 17px; font-weight: 700; }
 .safety-assignments__list-heading h2 svg { color: var(--color-primary-active); }
 .safety-assignments__list { display: grid; gap: 7px; margin: 0; padding: 12px; list-style: none; }
 .safety-assignments__item { display: grid; gap: 6px; width: 100%; min-width: 0; padding: 12px; border: 1px solid #e7edf0; border-radius: 9px; color: inherit; background: #fff; text-align: left; cursor: pointer; transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease; }
@@ -382,36 +384,39 @@ defineExpose({ refresh })
 .safety-assignments__item:focus-visible { outline: 2px solid #4cb5cc; outline-offset: 2px; }
 .safety-assignments__item--selected { border-color: #8acbda; background: #f1fafc; box-shadow: inset 3px 0 #3aaec6; }
 .safety-assignments__item-main { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
-.safety-assignments__item-main > strong { overflow: hidden; color: #3c5664; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
-.safety-assignments__item-meta { overflow: hidden; color: #82939a; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.safety-assignments__status { display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 999px; color: #93671e; background: #f8f2e6; font-size: 10px; font-weight: 700; white-space: nowrap; }
+.safety-assignments__item-main > strong { overflow: hidden; color: #3c5664; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.safety-assignments__item-meta { overflow: hidden; color: #82939a; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.safety-assignments__status { display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 999px; color: #93671e; background: #f8f2e6; font-size: 12px; font-weight: 700; white-space: nowrap; }
 .safety-assignments__state { display: grid; min-height: 240px; align-content: center; justify-items: center; gap: 7px; padding: 22px; color: #728690; text-align: center; }
-.safety-assignments__state strong { color: #435e6c; font-size: 14px; }
-.safety-assignments__state span { font-size: 12px; line-height: 1.5; }
-.safety-assignments__paging { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: auto; padding: 11px 14px; border-top: 1px solid #edf1f3; color: #81919a; font-size: 11px; }
+.safety-assignments__state strong { color: #435e6c; font-size: 16px; }
+.safety-assignments__state span { font-size: 14px; line-height: 1.5; }
+.safety-assignments__paging { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: auto; padding: 11px 14px; border-top: 1px solid #edf1f3; color: #81919a; font-size: 13px; }
 .safety-assignments__paging > div { display: flex; gap: 6px; }
-.safety-assignments__paging button { display: inline-flex; min-height: 31px; align-items: center; gap: 4px; padding: 0 8px; border: 1px solid var(--color-border); border-radius: 7px; color: #536b77; background: #fff; font: inherit; font-size: 11px; cursor: pointer; }
+.safety-assignments__paging button { display: inline-flex; min-height: 31px; align-items: center; gap: 4px; padding: 0 8px; border: 1px solid var(--color-border); border-radius: 7px; color: #536b77; background: #fff; font: inherit; font-size: 13px; cursor: pointer; }
 .safety-assignments__paging button:disabled { opacity: .48; cursor: default; }
 .safety-assignments__detail { display: flex; min-width: 0; flex-direction: column; padding: 18px; }
 .safety-assignments__detail > header { display: grid; gap: 6px; padding-bottom: 14px; border-bottom: 1px solid #edf1f3; }
-.safety-assignments__detail > header > span { color: #75909b; font-size: 11px; }
-.safety-assignments__detail h3 { overflow-wrap: anywhere; margin: 0; color: #2e4a58; font-size: 17px; }
-.safety-assignments__detail code { color: #91a0a7; font-family: var(--font-mono); font-size: 10px; }
+.safety-assignments__detail > header > span { color: #75909b; font-size: 13px; }
+.safety-assignments__detail h3 { overflow-wrap: anywhere; margin: 0; color: #2e4a58; font-size: 19px; }
+.safety-assignments__detail code { color: #91a0a7; font-family: var(--font-mono); font-size: 12px; }
 .safety-assignments__detail dl { display: grid; margin: 8px 0 0; }
 .safety-assignments__detail dl > div { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; padding: 11px 0; border-bottom: 1px solid #f0f3f5; }
-.safety-assignments__detail dt { color: #83939b; font-size: 11px; }
-.safety-assignments__detail dd { margin: 0; color: #415c69; font-size: 12px; font-weight: 620; text-align: right; overflow-wrap: anywhere; }
-.safety-assignments__privacy { margin: 14px 0; padding-top: 12px; border-top: 1px solid #edf1f3; color: #83939a; font-size: 11px; line-height: 1.55; }
+.safety-assignments__detail dt { color: #83939b; font-size: 13px; }
+.safety-assignments__detail dd { margin: 0; color: #415c69; font-size: 14px; font-weight: 620; text-align: right; overflow-wrap: anywhere; }
+.safety-assignments__privacy { margin: 14px 0; padding-top: 12px; border-top: 1px solid #edf1f3; color: #83939a; font-size: 13px; line-height: 1.55; }
 .safety-assignments__detail > :deep(.app-button) { align-self: flex-start; }
 .safety-assignments__detail-empty { display: grid; min-height: 230px; align-content: center; justify-items: center; gap: 7px; color: #81919a; text-align: center; }
-.safety-assignments__detail-empty strong { color: #435e6c; font-size: 14px; }
-.safety-assignments__detail-empty span { font-size: 12px; line-height: 1.5; }
+.safety-assignments__detail-empty strong { color: #435e6c; font-size: 16px; }
+.safety-assignments__detail-empty span { font-size: 14px; line-height: 1.5; }
 .safety-assignments__dialog { display: grid; gap: 9px; }
-.safety-assignments__dialog-ref { margin: 0 0 3px; color: #526b77; font-family: var(--font-mono); font-size: 12px; }
-.safety-assignments__dialog label { margin-top: 3px; color: #536c78; font-size: 12px; font-weight: 650; }
-.safety-assignments__dialog select { width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text-primary); background: #fff; font: inherit; font-size: 13px; }
+.safety-assignments__dialog-ref { margin: 0 0 3px; color: #526b77; font-family: var(--font-mono); font-size: 14px; }
+.safety-assignments__dialog label { margin-top: 3px; color: #536c78; font-size: 14px; font-weight: 650; }
+.safety-assignments__dialog select { width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text-primary); background: #fff; font: inherit; font-size: 15px; }
 .safety-assignments__dialog select:focus-visible { outline: 2px solid #38a4bf; outline-offset: 1px; }
 .safety-assignments__dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 9px; padding-top: 13px; border-top: 1px solid #edf1f3; }
+.safety-assignments__detail :deep(.app-button),.safety-assignments__dialog :deep(.app-button) { font-size: 16px; }
+.safety-assignments :deep(.status-callout h2),.safety-assignments__dialog :deep(.status-callout h2) { font-size: 16px; }
+.safety-assignments :deep(.status-callout p),.safety-assignments__dialog :deep(.status-callout p) { font-size: 15px; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 @media (max-width: 900px) { .safety-assignments__layout { grid-template-columns: minmax(0,1fr); }.safety-assignments__detail { min-height: 260px; } }
 @media (max-width: 660px) { .safety-assignments__list-heading { padding-inline: 12px; }.safety-assignments__list { padding: 10px; }.safety-assignments__detail { padding: 15px; } }

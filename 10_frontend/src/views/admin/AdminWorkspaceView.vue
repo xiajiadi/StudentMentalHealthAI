@@ -138,7 +138,6 @@ watch([section, () => route.hash], ([value]) => {
 .admin-overview { min-width: 0; }
 .admin-overview__workflow { margin-top: 36px; scroll-margin-top: calc(var(--layout-topbar) + 20px); }.admin-overview__workflow-heading { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }.admin-overview__workflow-heading > span { color: #6f95a5; font-size: 10px; font-weight: 680; }.admin-overview__workflow-heading h2 { margin: 0; color: var(--color-text-primary); font-size: 19px; font-weight: 720; }
 .admin-task-dispatch,.admin-audit,.admin-settings { display: grid; gap: 16px; min-width: 0; }
-.admin-audit__panel { min-width: 0; }
 .health-panel { padding: 21px; }
 .health-panel__heading { display: flex; align-items: center; gap: 13px; }
 .health-panel__icon { display: grid; width: 40px; height: 40px; flex: 0 0 40px; place-items: center; border-radius: 12px; color: #287d70; background: #eaf5f1; }
