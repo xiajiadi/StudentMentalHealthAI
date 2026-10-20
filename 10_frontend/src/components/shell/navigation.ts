@@ -50,7 +50,7 @@ export const workspaceConfig: Partial<Record<Role, WorkspaceConfig>> = {
   ] },
   school_admin: { title: 'Admin Workspace', home: '/admin/overview', items: [
     { label: '管理概览', to: '/admin/overview', icon: LayoutDashboard },
-    { label: '班级与账号', to: '/admin/users', icon: UsersRound },
+    { label: '账号管理', to: '/admin/users', icon: UsersRound },
     { label: '测评任务', to: '/admin/tasks', icon: ClipboardList },
     { label: '运营事务', to: '/admin/audit', icon: ListChecks },
     { label: '系统状态', to: '/admin/settings', icon: Server },

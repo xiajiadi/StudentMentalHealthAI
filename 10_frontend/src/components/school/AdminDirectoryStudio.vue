@@ -1001,7 +1001,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="directory-studio" aria-label="班级与账号">
+  <section class="directory-studio" aria-label="账号管理">
     <header class="directory-studio__header">
       <div class="directory-studio__header-actions">
         <button

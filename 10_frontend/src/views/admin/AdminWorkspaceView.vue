@@ -26,7 +26,7 @@ const healthState = ref<'loading' | 'ready' | 'error'>('loading')
 const dependencies = ref<Record<string, DependencyStatusDto>>({})
 const pageTitle = computed(() => ({
   overview: '管理概览',
-  users: '班级与账号',
+  users: '账号管理',
   tasks: '测评任务',
   audit: '运营事务',
   settings: '服务健康目录',
@@ -61,7 +61,7 @@ watch([section, () => route.hash], ([value]) => {
 
 <template>
   <main class="content-wrap admin-workspace" :class="{ 'admin-workspace--overview': section === 'overview', 'admin-workspace--tasks': section === 'tasks' }">
-    <WorkspaceBreadcrumb :current="pageTitle" home-label="学校管理员" home-to="/admin/overview" />
+    <WorkspaceBreadcrumb :current="pageTitle" home-label="管理员工作区" home-to="/admin/overview" />
     <template v-if="section === 'overview'">
       <section class="admin-overview" aria-label="管理概览">
         <AdminOperationsDesk :key="schoolScopeKey" />
