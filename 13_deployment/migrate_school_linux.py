@@ -11,6 +11,19 @@ from pathlib import Path
 EXPECTED_REVISION = "20261016_0024"
 EXPECTED_DATABASE = "smhai_school_demo"
 MIGRATION_CREDENTIAL = "school-migration.json"
+_MIGRATION_PHASES = frozenset(
+    {
+        "startup",
+        "source_validation",
+        "credential_load",
+        "mysql_connect",
+        "mysql_identity",
+        "mysql_grants",
+        "migration_history",
+        "alembic_upgrade",
+        "schema_verification",
+    }
+)
 _FORBIDDEN_DATABASE_ENV = {
     "DB_USER",
     "DB_PASSWORD",
@@ -80,6 +93,19 @@ def _verify_migration_grants(grants: list[str], current_role: str) -> None:
             raise RuntimeError("migration account privileges are unexpected")
     if scopes != {"*.*", f"`{EXPECTED_DATABASE}`.*"} or privileges != expected:
         raise RuntimeError("migration account privileges are unexpected")
+
+
+def _run_alembic_upgrade(repository_root: Path, connection) -> None:
+    """Run the existing migration chain over an already authenticated connection."""
+    from alembic import command
+    from alembic.config import Config
+
+    config = Config(str(repository_root / "11_database" / "alembic.ini"))
+    config.set_main_option(
+        "script_location", str(repository_root / "11_database" / "migrations")
+    )
+    config.attributes["connection"] = connection
+    command.upgrade(config, EXPECTED_REVISION)
 
 
 def _verify_schema_structure(connection) -> dict[str, int]:
@@ -172,91 +198,118 @@ def _verify_schema_structure(connection) -> dict[str, int]:
 
 
 def migrate(repository_root: Path) -> dict[str, object]:
-    repo = repository_root.resolve(strict=True)
-    sys.path.insert(0, str(repo / "11_database"))
-    sys.path.insert(0, str(repo / "13_deployment"))
-    _verify_migration_environment()
-
-    from database_layer.systemd_auth import load_systemd_school_database_credential
-    from linux_school_runtime import _supported_mysql_version, mysql_url
-
-    credential = load_systemd_school_database_credential(
-        MIGRATION_CREDENTIAL, role="migrator"
-    )
-    import pymysql
-
-    connection = pymysql.connect(
-        host=credential.host,
-        port=credential.port,
-        user=credential.username,
-        password=credential.password,
-        database=credential.database,
-        connect_timeout=5,
-        read_timeout=10,
-        write_timeout=10,
-        autocommit=True,
-    )
+    phase = "startup"
     try:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT VERSION(), @@port, DATABASE(), CURRENT_USER(), CURRENT_ROLE()"
-            )
-            identity = cursor.fetchone()
-            if identity is None or len(identity) != 5:
-                raise RuntimeError("migration database identity could not be verified")
-            version, port, database, current_user, current_role = identity
-            if (
-                not isinstance(version, str)
-                or not _supported_mysql_version(version)
-                or port != 3306
-                or database != EXPECTED_DATABASE
-                or current_user != credential.username + "@127.0.0.1"
-            ):
-                raise RuntimeError("migration target or MySQL version is unsupported")
-            cursor.execute("SHOW GRANTS FOR CURRENT_USER()")
-            _verify_migration_grants(
-                [grant[0] for grant in cursor.fetchall()], current_role
-            )
-        current_revision, tables = _revision_and_tables(connection)
-        if not tables or current_revision == EXPECTED_REVISION:
-            pass
-        else:
-            raise RuntimeError(
-                "migration target is nonempty and is not at the expected current revision"
-            )
-    finally:
-        connection.close()
+        phase = "source_validation"
+        repo = repository_root.resolve(strict=True)
+        sys.path.insert(0, str(repo / "11_database"))
+        sys.path.insert(0, str(repo / "13_deployment"))
+        _verify_migration_environment()
 
-    if not tables:
-        os.environ["DATABASE_URL"] = mysql_url(credential)
-        from alembic import command
-        from alembic.config import Config
+        phase = "credential_load"
+        from database_layer.systemd_auth import load_systemd_school_database_credential
+        from linux_school_runtime import _supported_mysql_version, mysql_url
 
-        config = Config(str(repo / "11_database" / "alembic.ini"))
-        command.upgrade(config, EXPECTED_REVISION)
+        credential = load_systemd_school_database_credential(
+            MIGRATION_CREDENTIAL, role="migrator"
+        )
+        import pymysql
 
-    # Reconnect after DDL and verify revision, tables, constraints, engine and collation.
-    from sqlalchemy import create_engine
-    from sqlalchemy.engine import make_url
+        phase = "mysql_connect"
+        connection = pymysql.connect(
+            host=credential.host,
+            port=credential.port,
+            user=credential.username,
+            password=credential.password,
+            database=credential.database,
+            connect_timeout=5,
+            read_timeout=10,
+            write_timeout=10,
+            autocommit=True,
+        )
+        try:
+            phase = "mysql_identity"
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT VERSION(), @@port, DATABASE(), CURRENT_USER(), CURRENT_ROLE()"
+                )
+                identity = cursor.fetchone()
+                if identity is None or len(identity) != 5:
+                    raise RuntimeError("migration database identity could not be verified")
+                version, port, database, current_user, current_role = identity
+                if (
+                    not isinstance(version, str)
+                    or not _supported_mysql_version(version)
+                    or port != 3306
+                    or database != EXPECTED_DATABASE
+                    or current_user != credential.username + "@127.0.0.1"
+                ):
+                    raise RuntimeError("migration target or MySQL version is unsupported")
+                phase = "mysql_grants"
+                cursor.execute("SHOW GRANTS FOR CURRENT_USER()")
+                _verify_migration_grants(
+                    [grant[0] for grant in cursor.fetchall()], current_role
+                )
+            phase = "migration_history"
+            current_revision, tables = _revision_and_tables(connection)
+            if tables and current_revision != EXPECTED_REVISION:
+                raise RuntimeError(
+                    "migration target is nonempty and is not at the expected current revision"
+                )
+        finally:
+            connection.close()
 
-    inspection_url = make_url(mysql_url(credential)).set(drivername="mysql+pymysql")
-    engine = create_engine(inspection_url, pool_pre_ping=True)
-    try:
-        with engine.connect() as inspection_connection:
-            revision, _ = _revision_and_tables(
-                inspection_connection.connection.driver_connection
+        if not tables:
+            phase = "alembic_upgrade"
+            from sqlalchemy import create_engine
+            from sqlalchemy.engine import make_url
+
+            migration_url = make_url(mysql_url(credential)).set(
+                drivername="mysql+pymysql"
             )
-            if revision != EXPECTED_REVISION:
-                raise RuntimeError("expected Alembic head was not applied")
-            structure = _verify_schema_structure(inspection_connection)
-    finally:
-        engine.dispose()
-    return {
-        "migration": "VERIFIED",
-        "revision": EXPECTED_REVISION,
-        "mysql_version": version,
-        **structure,
-    }
+            migration_engine = create_engine(migration_url, pool_pre_ping=True)
+            try:
+                with migration_engine.connect() as migration_connection:
+                    _run_alembic_upgrade(repo, migration_connection)
+            finally:
+                migration_engine.dispose()
+
+        # Reconnect after DDL and verify revision, tables, constraints, engine and collation.
+        phase = "schema_verification"
+        from sqlalchemy import create_engine
+        from sqlalchemy.engine import make_url
+
+        inspection_url = make_url(mysql_url(credential)).set(
+            drivername="mysql+pymysql"
+        )
+        engine = create_engine(inspection_url, pool_pre_ping=True)
+        try:
+            with engine.connect() as inspection_connection:
+                revision, _ = _revision_and_tables(
+                    inspection_connection.connection.driver_connection
+                )
+                if revision != EXPECTED_REVISION:
+                    raise RuntimeError("expected Alembic head was not applied")
+                structure = _verify_schema_structure(inspection_connection)
+        finally:
+            engine.dispose()
+        return {
+            "migration": "VERIFIED",
+            "revision": EXPECTED_REVISION,
+            "mysql_version": version,
+            **structure,
+        }
+    except Exception as exc:  # noqa: BLE001 - expose only a bounded type and phase.
+        error = _MigrationStageError(phase, type(exc).__name__)
+        raise error from None
+
+
+class _MigrationStageError(Exception):
+    def __init__(self, phase: str, error_type: str) -> None:
+        if phase not in _MIGRATION_PHASES or not error_type.isidentifier():
+            phase, error_type = "startup", "InternalError"
+        self.phase = phase
+        self.error_type = error_type
 
 
 def main() -> int:
@@ -268,10 +321,26 @@ def main() -> int:
     try:
         print(json.dumps(migrate(args.repo_root), sort_keys=True))
         return 0
+    except _MigrationStageError as exc:
+        print(
+            json.dumps(
+                {
+                    "migration": "BLOCKED",
+                    "phase": exc.phase,
+                    "error_type": exc.error_type,
+                },
+                sort_keys=True,
+            )
+        )
+        return 2
     except Exception as exc:  # noqa: BLE001 - credential and SQL details must stay private.
         print(
             json.dumps(
-                {"migration": "BLOCKED", "error_type": type(exc).__name__},
+                {
+                    "migration": "BLOCKED",
+                    "phase": "startup",
+                    "error_type": type(exc).__name__,
+                },
                 sort_keys=True,
             )
         )
