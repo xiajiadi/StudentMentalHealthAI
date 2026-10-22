@@ -44,7 +44,9 @@ BUNDLE_PATH = Path(
     "/home/psynova/apps/psynova/staging/linux-school-demo/"
     "psynova-school-deepseek-83620b8.tar.gz"
 )
-BUNDLE_SHA256 = "d99f10cb151b2dcf1cda638346d8e80745a924d2981ef7d00cfd96259002fccb"
+BUNDLE_SHA256 = "ad0d89b613029122b6b38f710ad4771f4b5ba959b174fa76c00f743726387e59"
+PREVIOUS_BUNDLE_SHA256 = "d99f10cb151b2dcf1cda638346d8e80745a924d2981ef7d00cfd96259002fccb"
+PREVIOUS_PAYLOAD_FINGERPRINT = "35dbe4020173b09abfc71ce10a49114f4aeb0cb37f403aa76a658f5b79e22269"
 PYTHON_VERSION = "3.12.3"
 MODEL_ID = "deepseek-flash"
 LOGICAL_MODEL_ID = "deepseek-flash-education-support"
@@ -76,6 +78,7 @@ REQUIRED_FILES = {
     "release/README.md",
     "release/pyproject.toml",
     "release/uv.lock",
+    "release/config/runtime.v1.json",
     "release/config/models.deepseek.v1.json",
     "systemd/psynova-school-llm.service",
     "systemd/psynova-school-demo-llm.conf",
@@ -413,6 +416,7 @@ def _load_bundle() -> tuple[dict[str, Any], dict[str, bytes]]:
         raise GateError("bundle_payload_fingerprint_mismatch", "bundle_preflight")
     try:
         model = json.loads(files["release/config/models.deepseek.v1.json"])
+        runtime = json.loads(files["release/config/runtime.v1.json"])
     except (UnicodeError, json.JSONDecodeError):
         raise GateError("deepseek_model_config_invalid", "bundle_preflight") from None
     if (
@@ -426,6 +430,8 @@ def _load_bundle() -> tuple[dict[str, Any], dict[str, bytes]]:
         or model["models"][0].get("fallback_eligible") is not False
     ):
         raise GateError("deepseek_model_scope_mismatch", "bundle_preflight")
+    if type(runtime) is not dict or runtime.get("cloud_fallback") is not False:
+        raise GateError("llm_runtime_config_scope_mismatch", "bundle_preflight")
     _check_unit(files)
     return manifest, files
 
@@ -447,7 +453,7 @@ def _read_state() -> dict[str, Any] | None:
         or state.get("schema") != "psynova.school-deepseek-install-state.v1"
         or state.get("source_commit") != SOURCE_COMMIT
         or state.get("base_revision") != BASE_REVISION
-        or state.get("bundle_sha256") != BUNDLE_SHA256
+        or state.get("bundle_sha256") not in {BUNDLE_SHA256, PREVIOUS_BUNDLE_SHA256}
         or state.get("phase") not in PHASES
         or type(state.get("checks")) is not dict
     ):
@@ -567,13 +573,65 @@ def _write_payload_file(path: Path, data: bytes, mode: int = 0o644) -> None:
         raise GateError("payload_write_failed", "payload_install") from None
 
 
-def _install_payload(files: dict[str, bytes]) -> None:
+def _replace_payload_manifest(path: Path, data: bytes, *, allow_bundle_upgrade: bool) -> None:
+    if not os.path.lexists(path):
+        _write_payload_file(path, data)
+        return
+    try:
+        metadata = path.stat(follow_symlinks=False)
+        current = path.read_bytes()
+    except OSError:
+        raise GateError("existing_payload_unavailable", "payload_install") from None
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_uid != 0
+        or stat.S_IMODE(metadata.st_mode) != 0o644
+    ):
+        raise GateError("existing_payload_metadata_mismatch", "payload_install")
+    if current == data:
+        return
+    if not allow_bundle_upgrade:
+        raise GateError("existing_payload_content_mismatch", "payload_install")
+    try:
+        existing = json.loads(current)
+        expected = json.loads(data)
+    except (UnicodeError, json.JSONDecodeError):
+        raise GateError("payload_manifest_upgrade_rejected", "payload_install") from None
+    if (
+        type(existing) is not dict
+        or type(expected) is not dict
+        or existing.get("source_commit") != SOURCE_COMMIT
+        or expected.get("source_commit") != SOURCE_COMMIT
+        or existing.get("payload_fingerprint")
+        not in {PREVIOUS_PAYLOAD_FINGERPRINT, expected.get("payload_fingerprint")}
+    ):
+        raise GateError("payload_manifest_upgrade_rejected", "payload_install")
+    temp = path.parent / f".{path.name}.{os.getpid()}.upgrade.tmp"
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(temp, flags, 0o644)
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chown(temp, 0, 0)
+        os.chmod(temp, 0o644)
+        os.replace(temp, path)
+    except FileExistsError:
+        raise GateError("payload_manifest_temporary_path_exists", "payload_install") from None
+    except OSError:
+        raise GateError("payload_manifest_upgrade_failed", "payload_install") from None
+
+
+def _install_payload(
+    files: dict[str, bytes], *, allow_bundle_upgrade: bool = False
+) -> None:
     _require_root_directory(SERVICE_ROOT.parent, "service_parent_metadata_mismatch")
     _ensure_root_directory(SERVICE_ROOT)
     _ensure_root_directory(RELEASE_ROOT)
     for name, data in files.items():
         if name == "PAYLOAD_MANIFEST.json":
-            _write_payload_file(RELEASE_ROOT / name, data)
+            continue
         elif name.startswith("release/"):
             relative = PurePosixPath(name).relative_to("release")
             path = RELEASE_ROOT.joinpath(*relative.parts)
@@ -586,6 +644,11 @@ def _install_payload(files: dict[str, bytes]) -> None:
             _write_payload_file(BACKEND_DROPIN, data)
         else:
             raise GateError("payload_path_unexpected", "payload_install")
+    _replace_payload_manifest(
+        RELEASE_ROOT / "PAYLOAD_MANIFEST.json",
+        files["PAYLOAD_MANIFEST.json"],
+        allow_bundle_upgrade=allow_bundle_upgrade,
+    )
 
 
 def _uv() -> Path:
@@ -807,9 +870,11 @@ def _credential_from_state(
                 raise GateError("credential_checkpoint_object_missing", "credentials_verify")
             return False
     _validate_credential(path, name, kind, expected)
+    changed = state.get(state_hash_key) != expected or pending_hash_key in state
     state.pop(pending_hash_key, None)
     state[state_hash_key] = expected
-    _checkpoint(state, ready_phase)
+    if changed:
+        _checkpoint(state, ready_phase)
     return True
 
 
@@ -856,31 +921,124 @@ def _uncheckpointed_objects_exist() -> bool:
     return bool(any(CREDENTIAL_ROOT.glob(".*.encrypted-stage")))
 
 
+def _installed_payload_path(name: str) -> Path:
+    if name.startswith("release/"):
+        return RELEASE_ROOT.joinpath(*PurePosixPath(name).relative_to("release").parts)
+    if name == "systemd/psynova-school-llm.service":
+        return UNIT_PATH
+    if name == "systemd/psynova-school-demo-llm.conf":
+        return BACKEND_DROPIN
+    raise GateError("bundle_path_unexpected", "checkpoint_verify")
+
+
+def _verify_upgrade_payload_file(name: str, record: dict[str, Any]) -> None:
+    path = _installed_payload_path(name)
+    try:
+        metadata = path.stat(follow_symlinks=False)
+    except OSError:
+        raise GateError("installed_payload_unavailable", "checkpoint_verify") from None
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_uid != 0
+        or stat.S_IMODE(metadata.st_mode) != 0o644
+        or metadata.st_size != record.get("size_bytes")
+        or _sha256_file(path) != record.get("sha256")
+    ):
+        raise GateError("installed_payload_mismatch", "checkpoint_verify")
+
+
+def _verify_previous_bundle_upgrade(state: dict[str, Any], files: dict[str, bytes]) -> None:
+    if state.get("bundle_sha256") != PREVIOUS_BUNDLE_SHA256:
+        return
+    if PHASES.index(state["phase"]) > PHASES.index("LLM_SERVICE_STARTED"):
+        raise GateError("bundle_upgrade_checkpoint_phase_rejected", "checkpoint_verify")
+    try:
+        manifest_path = RELEASE_ROOT / "PAYLOAD_MANIFEST.json"
+        metadata = manifest_path.stat(follow_symlinks=False)
+        installed_bytes = manifest_path.read_bytes()
+        installed_manifest = json.loads(installed_bytes)
+        next_manifest = json.loads(files["PAYLOAD_MANIFEST.json"])
+    except (OSError, UnicodeError, json.JSONDecodeError, KeyError):
+        raise GateError("bundle_upgrade_manifest_unavailable", "checkpoint_verify") from None
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_uid != 0
+        or stat.S_IMODE(metadata.st_mode) != 0o644
+        or type(installed_manifest) is not dict
+        or type(next_manifest) is not dict
+        or installed_manifest.get("source_commit") != SOURCE_COMMIT
+        or next_manifest.get("source_commit") != SOURCE_COMMIT
+        or next_manifest.get("payload_fingerprint") != _payload_fingerprint(
+            {name: data for name, data in files.items() if name != "PAYLOAD_MANIFEST.json"}
+        )
+        or type(installed_manifest.get("files")) is not list
+        or type(next_manifest.get("files")) is not list
+    ):
+        raise GateError("bundle_upgrade_manifest_mismatch", "checkpoint_verify")
+    previous_records = {
+        item.get("path"): item
+        for item in installed_manifest["files"]
+        if type(item) is dict and isinstance(item.get("path"), str)
+    }
+    next_records = {
+        item.get("path"): item
+        for item in next_manifest["files"]
+        if type(item) is dict and isinstance(item.get("path"), str)
+    }
+    if (
+        len(previous_records) != len(installed_manifest["files"])
+        or len(next_records) != len(next_manifest["files"])
+    ):
+        raise GateError("bundle_upgrade_manifest_mismatch", "checkpoint_verify")
+    if installed_manifest.get("payload_fingerprint") == PREVIOUS_PAYLOAD_FINGERPRINT:
+        if set(next_records) - set(previous_records) != {"release/config/runtime.v1.json"}:
+            raise GateError("bundle_upgrade_file_delta_mismatch", "checkpoint_verify")
+        if set(previous_records) != set(next_records) - {"release/config/runtime.v1.json"}:
+            raise GateError("bundle_upgrade_file_delta_mismatch", "checkpoint_verify")
+        for name, record in previous_records.items():
+            if not isinstance(name, str) or type(record) is not dict:
+                raise GateError("bundle_upgrade_manifest_mismatch", "checkpoint_verify")
+            if record != next_records.get(name):
+                raise GateError("bundle_upgrade_existing_file_changed", "checkpoint_verify")
+            _verify_upgrade_payload_file(name, record)
+        added_record = next_records["release/config/runtime.v1.json"]
+        if type(added_record) is not dict:
+            raise GateError("bundle_upgrade_manifest_mismatch", "checkpoint_verify")
+        added_path = _installed_payload_path("release/config/runtime.v1.json")
+        if os.path.lexists(added_path):
+            _verify_upgrade_payload_file("release/config/runtime.v1.json", added_record)
+    elif (
+        installed_bytes == files["PAYLOAD_MANIFEST.json"]
+        and installed_manifest.get("payload_fingerprint")
+        == next_manifest.get("payload_fingerprint")
+    ):
+        for name, record in next_records.items():
+            if not isinstance(name, str) or type(record) is not dict:
+                raise GateError("bundle_upgrade_manifest_mismatch", "checkpoint_verify")
+            _verify_upgrade_payload_file(name, record)
+    else:
+        raise GateError("bundle_upgrade_manifest_mismatch", "checkpoint_verify")
+
+
 def _check_state_objects(state: dict[str, Any], files: dict[str, bytes]) -> None:
     phase_index = PHASES.index(state["phase"])
     if phase_index >= PHASES.index("PAYLOAD_READY"):
-        for name, data in files.items():
-            if name == "PAYLOAD_MANIFEST.json":
-                path = RELEASE_ROOT / name
-            elif name.startswith("release/"):
-                path = RELEASE_ROOT.joinpath(*PurePosixPath(name).relative_to("release").parts)
-            elif name == "systemd/psynova-school-llm.service":
-                path = UNIT_PATH
-            elif name == "systemd/psynova-school-demo-llm.conf":
-                path = BACKEND_DROPIN
-            else:
-                raise GateError("bundle_path_unexpected", "checkpoint_verify")
-            try:
-                metadata = path.stat(follow_symlinks=False)
-            except OSError:
-                raise GateError("installed_payload_unavailable", "checkpoint_verify") from None
-            if (
-                not stat.S_ISREG(metadata.st_mode)
-                or metadata.st_uid != 0
-                or stat.S_IMODE(metadata.st_mode) != 0o644
-                or _sha256_file(path) != _sha256_bytes(data)
-            ):
-                raise GateError("installed_payload_mismatch", "checkpoint_verify")
+        if state.get("bundle_sha256") == PREVIOUS_BUNDLE_SHA256:
+            _verify_previous_bundle_upgrade(state, files)
+        else:
+            for name, data in files.items():
+                path = RELEASE_ROOT / name if name == "PAYLOAD_MANIFEST.json" else _installed_payload_path(name)
+                try:
+                    metadata = path.stat(follow_symlinks=False)
+                except OSError:
+                    raise GateError("installed_payload_unavailable", "checkpoint_verify") from None
+                if (
+                    not stat.S_ISREG(metadata.st_mode)
+                    or metadata.st_uid != 0
+                    or stat.S_IMODE(metadata.st_mode) != 0o644
+                    or _sha256_file(path) != _sha256_bytes(data)
+                ):
+                    raise GateError("installed_payload_mismatch", "checkpoint_verify")
     if phase_index >= PHASES.index("DEPENDENCIES_READY"):
         facts = _verify_dependencies()
         if facts != state.get("dependency_facts"):
@@ -912,7 +1070,12 @@ def _check_state_objects(state: dict[str, Any], files: dict[str, bytes]) -> None
         if _sha256_file(UNIT_PATH) != state.get("unit_sha256") or _sha256_file(BACKEND_DROPIN) != state.get("backend_dropin_sha256"):
             raise GateError("systemd_payload_mismatch", "checkpoint_verify")
     if phase_index >= PHASES.index("LLM_SERVICE_STARTED"):
-        _verify_llm_service(require_enabled=True)
+        if state["phase"] == "LLM_SERVICE_STARTED" and not _unit_active(SERVICE_NAME):
+            if not _unit_enabled(SERVICE_NAME):
+                raise GateError("llm_service_not_enabled", "checkpoint_verify")
+            _verify_unit_files()
+        else:
+            _verify_llm_service(require_enabled=True)
     if phase_index >= PHASES.index("BACKEND_SWITCHED") and not _unit_active(BACKEND_SERVICE):
         raise GateError("backend_service_inactive", "checkpoint_verify")
     if phase_index >= PHASES.index("BACKEND_HTTP_VERIFIED"):
@@ -1008,7 +1171,8 @@ def _install_or_verify_dependencies(state: dict[str, Any]) -> None:
     verified = _verify_dependencies()
     if verified != facts:
         raise GateError("dependency_checkpoint_mismatch", "dependency_verify")
-    _checkpoint(state, "DEPENDENCIES_READY")
+    if PHASES.index(state["phase"]) < PHASES.index("DEPENDENCIES_READY"):
+        _checkpoint(state, "DEPENDENCIES_READY")
 
 
 def _store_api_credential(state: dict[str, Any]) -> None:
@@ -1280,6 +1444,14 @@ def _verify_llm_port_for_checkpoint(state: dict[str, Any] | None) -> None:
         and PHASES.index(state["phase"]) >= PHASES.index("LLM_SERVICE_STARTED")
     )
     listeners = _listeners_for_port(LLM_PORT)
+    if (
+        state is not None
+        and state["phase"] == "LLM_SERVICE_STARTED"
+        and not _unit_active(SERVICE_NAME)
+    ):
+        if listeners:
+            raise GateError("llm_port_occupied_after_service_failure", "listener_check")
+        return
     if not service_started:
         if listeners:
             raise GateError("llm_port_unexpectedly_in_use", "listener_check")
@@ -1298,7 +1470,7 @@ def _inspect(state: dict[str, Any] | None, files: dict[str, bytes]) -> int:
         deepseek = _verify_llm_service()
         print(json.dumps({"deepseek_service": "PASS", "phase": "HTTP_VERIFIED", "source_commit": SOURCE_COMMIT, "bundle_sha256": BUNDLE_SHA256, **deepseek, "writes": False}, sort_keys=True))
     else:
-        print(json.dumps({"deepseek_service": "PARTIAL", "phase": state["phase"], "source_commit": SOURCE_COMMIT, "bundle_sha256": BUNDLE_SHA256, "writes": False}, sort_keys=True))
+        print(json.dumps({"deepseek_service": "PARTIAL", "phase": state["phase"], "source_commit": SOURCE_COMMIT, "bundle_sha256": BUNDLE_SHA256, "bundle_upgrade_required": state.get("bundle_sha256") == PREVIOUS_BUNDLE_SHA256, "writes": False}, sort_keys=True))
     return 0
 
 
@@ -1313,6 +1485,7 @@ def _dry_run(state: dict[str, Any] | None, files: dict[str, bytes]) -> int:
         "current_phase": "NOT_STARTED" if state is None else state["phase"],
         "remaining_phases": remaining,
         "api_key_required": not API_CREDENTIAL.exists(),
+        "bundle_upgrade_required": state is not None and state.get("bundle_sha256") == PREVIOUS_BUNDLE_SHA256,
         "source_commit": SOURCE_COMMIT,
         "bundle_sha256": BUNDLE_SHA256,
         "model_id": MODEL_ID,
@@ -1327,16 +1500,25 @@ def _resume(state: dict[str, Any] | None, files: dict[str, bytes]) -> int:
         _ensure_root_snapshot_targets_absent(state)
         state = _new_state()
         _write_state(state)
+        bundle_upgrade = False
     else:
         _check_state_objects(state, files)
+        bundle_upgrade = state.get("bundle_sha256") == PREVIOUS_BUNDLE_SHA256
     if state["phase"] == "HTTP_VERIFIED":
         checks = _verify_llm_service()
         print(json.dumps({"deepseek_service": "PASS", "phase": "HTTP_VERIFIED", "checks": checks, "writes": False}, sort_keys=True))
         return 0
     resume_phase_index = PHASES.index(state["phase"])
 
-    _install_payload(files)
-    _checkpoint(state, "PAYLOAD_READY", checks={"source_fingerprints_verified": True, "synthetic_demo_only": True})
+    _install_payload(files, allow_bundle_upgrade=bundle_upgrade)
+    if bundle_upgrade:
+        state["bundle_sha256"] = BUNDLE_SHA256
+        state["bundle_upgrade_from"] = PREVIOUS_BUNDLE_SHA256
+        state["checks"]["bundle_manifest_upgraded"] = True
+        state["updated_at_epoch"] = int(time.time())
+        _write_state(state)
+    elif resume_phase_index < PHASES.index("PAYLOAD_READY"):
+        _checkpoint(state, "PAYLOAD_READY", checks={"source_fingerprints_verified": True, "synthetic_demo_only": True})
     _install_or_verify_dependencies(state)
     _store_api_credential(state)
     _store_runtime_credential(state)
@@ -1349,11 +1531,17 @@ def _resume(state: dict[str, Any] | None, files: dict[str, bytes]) -> int:
         )
     _install_unit_and_dropin(files)
     _verify_unit_files()
-    _checkpoint(state, "UNIT_READY", checks={"systemd_unit_verified": True, "credentials_host_encrypted": True})
+    if resume_phase_index < PHASES.index("UNIT_READY"):
+        _checkpoint(state, "UNIT_READY", checks={"systemd_unit_verified": True, "credentials_host_encrypted": True})
     if resume_phase_index < PHASES.index("LLM_SERVICE_STARTED"):
         _run(["systemctl", "daemon-reload"], phase="systemd_reload")
         _run(["systemctl", "enable", "--now", SERVICE_NAME], phase="llm_service_start", timeout=240)
         _checkpoint(state, "LLM_SERVICE_STARTED", checks={"systemd_unit_verified": True, "enabled": True})
+    else:
+        _run(["systemctl", "daemon-reload"], phase="systemd_reload")
+        if not _unit_active(SERVICE_NAME):
+            _run(["systemctl", "reset-failed", SERVICE_NAME], phase="llm_service_reset_failed")
+            _run(["systemctl", "restart", SERVICE_NAME], phase="llm_service_restart", timeout=240)
     _wait_for_llm_service(timeout=180)
     if resume_phase_index < PHASES.index("BACKEND_SWITCHED"):
         _run(["systemctl", "restart", BACKEND_SERVICE], phase="backend_restart", timeout=180)

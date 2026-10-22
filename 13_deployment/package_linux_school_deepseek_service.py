@@ -18,6 +18,7 @@ SOURCE_FILES = (
     "06_llm-runtime/README.md",
     "06_llm-runtime/pyproject.toml",
     "06_llm-runtime/uv.lock",
+    "06_llm-runtime/config/runtime.v1.json",
     "06_llm-runtime/config/models.deepseek.v1.json",
     "13_deployment/systemd/psynova-school-llm.service",
     "13_deployment/systemd/psynova-school-demo-llm.conf",
@@ -94,6 +95,7 @@ def build_bundle(repo: Path, output: Path) -> dict[str, object]:
         "release/README.md",
         "release/pyproject.toml",
         "release/uv.lock",
+        "release/config/runtime.v1.json",
         "release/config/models.deepseek.v1.json",
         "release/src/llm_runtime/api/app.py",
         "release/src/llm_runtime/cli.py",
@@ -103,6 +105,7 @@ def build_bundle(repo: Path, output: Path) -> dict[str, object]:
     }.issubset(payload):
         raise BundleError("required_source_missing")
     model = json.loads(payload["release/config/models.deepseek.v1.json"])
+    runtime = json.loads(payload["release/config/runtime.v1.json"])
     if (
         type(model) is not dict
         or model.get("cloud_fallback") is not False
@@ -113,6 +116,8 @@ def build_bundle(repo: Path, output: Path) -> dict[str, object]:
         or model["models"][0].get("fallback_eligible") is not False
     ):
         raise BundleError("model_registry_scope_mismatch")
+    if type(runtime) is not dict or runtime.get("cloud_fallback") is not False:
+        raise BundleError("runtime_config_scope_mismatch")
     unit = payload["systemd/psynova-school-llm.service"].decode("utf-8")
     if (
         "LoadCredentialEncrypted=deepseek-api-key:" not in unit
