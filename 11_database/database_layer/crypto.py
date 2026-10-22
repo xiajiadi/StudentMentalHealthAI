@@ -6,7 +6,11 @@ import base64
 import ctypes
 import json
 import os
+import re
+import stat
+import sys
 from collections.abc import Mapping
+from contextlib import ExitStack
 from ctypes import wintypes
 from dataclasses import dataclass
 from pathlib import Path
@@ -292,6 +296,156 @@ class WindowsDpapiKeyProvider:
 
     def get_key(self, version: str) -> bytes:
         return self._delegate.get_key(version)
+
+    def versions(self) -> tuple[str, ...]:
+        return self._delegate.versions()
+
+
+_MAX_SYSTEMD_CREDENTIAL_BYTES = 64 * 1024
+_SYSTEMD_CREDENTIAL_ERROR = "Linux systemd encryption credential is unavailable or invalid"
+
+
+def _is_linux_posix() -> bool:
+    return os.name == "posix" and sys.platform == "linux"
+
+
+def _parse_systemd_key_payload(plaintext: bytes) -> MappingKeyProvider:
+    payload = json.loads(plaintext.decode("utf-8"), object_pairs_hook=_unique_json_object)
+    if not isinstance(payload, dict) or set(payload) != {"active_version", "keys"}:
+        raise ValueError
+    active = payload["active_version"]
+    encoded_keys = payload["keys"]
+    if (
+        not isinstance(active, str)
+        or not active
+        or not isinstance(encoded_keys, dict)
+        or not encoded_keys
+    ):
+        raise ValueError
+    keys: dict[str, bytes] = {}
+    for version, value in encoded_keys.items():
+        if not isinstance(version, str) or not version or not isinstance(value, str):
+            raise ValueError
+        encoded = value.encode("ascii")
+        decoded = base64.b64decode(encoded, altchars=b"-_", validate=True)
+        if len(decoded) != 32 or base64.urlsafe_b64encode(decoded) != encoded:
+            raise ValueError
+        keys[version] = encoded
+    return MappingKeyProvider(keys, active)
+
+
+class LinuxSystemdCredentialKeyProvider:
+    """Read-only Linux provider for credentials injected by LoadCredentialEncrypted.
+
+    The service manager, not this reader, guarantees encrypted-at-rest provenance.
+    Only the effective service UID may own the runtime directory and credential.
+    """
+
+    def __init__(
+        self, credentials_directory: Path, credential_name: str = "database-keys.json"
+    ) -> None:
+        try:
+            if not _is_linux_posix():
+                raise ValueError
+            if (
+                not isinstance(credential_name, str)
+                or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", credential_name) is None
+                or ".." in credential_name
+            ):
+                raise ValueError
+            directory = Path(credentials_directory)
+            if (
+                not directory.is_absolute()
+                or directory.anchor != "/"
+                or ".." in directory.parts
+                or directory == Path("/")
+            ):
+                raise ValueError
+            # Lexical containment plus descriptor-relative opens avoids resolving links.
+            if (directory / credential_name).parent != directory:
+                raise ValueError
+            uid = os.geteuid()
+            directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+            with ExitStack() as handles:
+                descriptor = os.open("/", directory_flags)
+                handles.callback(os.close, descriptor)
+                # Anchor every component to an open directory; reject symlinks in
+                # ancestors too, without a check-then-open race.
+                for component in directory.parts[1:]:
+                    descriptor = os.open(component, directory_flags, dir_fd=descriptor)
+                    handles.callback(os.close, descriptor)
+                directory_stat = os.fstat(descriptor)
+                if (
+                    not stat.S_ISDIR(directory_stat.st_mode)
+                    or directory_stat.st_uid != uid
+                    or stat.S_IMODE(directory_stat.st_mode) not in {0o500, 0o700}
+                ):
+                    raise ValueError
+                # NONBLOCK prevents FIFO/device substitution from blocking startup.
+                key_fd = os.open(
+                    credential_name,
+                    os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK,
+                    dir_fd=descriptor,
+                )
+                handles.callback(os.close, key_fd)
+                before = os.fstat(key_fd)
+                if (
+                    not stat.S_ISREG(before.st_mode)
+                    or before.st_uid != uid
+                    or stat.S_IMODE(before.st_mode) not in {0o400, 0o600}
+                    or before.st_nlink != 1
+                    or not 0 < before.st_size <= _MAX_SYSTEMD_CREDENTIAL_BYTES
+                ):
+                    raise ValueError
+                remaining = _MAX_SYSTEMD_CREDENTIAL_BYTES + 1
+                chunks: list[bytes] = []
+                while remaining:
+                    chunk = os.read(key_fd, remaining)
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                    remaining -= len(chunk)
+                plaintext = b"".join(chunks)
+                after = os.fstat(key_fd)
+                directory_after = os.fstat(descriptor)
+                stable_fields = (
+                    "st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_nlink",
+                    "st_size", "st_mtime_ns", "st_ctime_ns",
+                )
+                if (
+                    directory_after.st_uid != directory_stat.st_uid
+                    or directory_after.st_mode != directory_stat.st_mode
+                    or len(plaintext) != before.st_size
+                    or len(plaintext) > _MAX_SYSTEMD_CREDENTIAL_BYTES
+                    or any(getattr(before, name) != getattr(after, name) for name in stable_fields)
+                ):
+                    raise ValueError
+                delegate = _parse_systemd_key_payload(plaintext)
+        except Exception:
+            # Do not propagate paths, JSON values, key versions or OS exceptions.
+            raise EncryptionKeyUnavailable(_SYSTEMD_CREDENTIAL_ERROR) from None
+        self._delegate = delegate
+
+    @classmethod
+    def from_env(cls) -> LinuxSystemdCredentialKeyProvider:
+        try:
+            configured = os.environ.get("CREDENTIALS_DIRECTORY")
+            if not configured or not configured.strip():
+                raise ValueError
+            credential_name = os.environ.get("DATABASE_KEY_FILE", "database-keys.json")
+            return cls(Path(configured), credential_name)
+        except Exception:
+            raise EncryptionKeyUnavailable(_SYSTEMD_CREDENTIAL_ERROR) from None
+
+    @property
+    def active_version(self) -> str:
+        return self._delegate.active_version
+
+    def get_key(self, version: str) -> bytes:
+        try:
+            return self._delegate.get_key(version)
+        except Exception:
+            raise EncryptionKeyUnavailable(_SYSTEMD_CREDENTIAL_ERROR) from None
 
     def versions(self) -> tuple[str, ...]:
         return self._delegate.versions()

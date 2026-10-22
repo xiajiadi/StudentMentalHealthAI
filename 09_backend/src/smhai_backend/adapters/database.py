@@ -17,6 +17,7 @@ import hashlib
 import hmac
 import os
 import secrets
+import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -61,13 +62,22 @@ def _create_data_protection_provider(identity_profile: str, repository_root: Pat
     from database_layer import (
         DevLocalKeyProvider,
         FernetDataProtectionProvider,
-        WindowsDpapiKeyProvider,
     )
 
     if identity_profile == "school_tenant":
-        return FernetDataProtectionProvider(
-            WindowsDpapiKeyProvider.from_env(repository_root=repository_root)
-        )
+        if os.name == "nt":
+            from database_layer import WindowsDpapiKeyProvider
+
+            key_provider = WindowsDpapiKeyProvider.from_env(repository_root=repository_root)
+        elif os.name == "posix" and sys.platform == "linux":
+            from database_layer import LinuxSystemdCredentialKeyProvider
+
+            key_provider = LinuxSystemdCredentialKeyProvider.from_env()
+        else:
+            from database_layer.errors import EncryptionKeyUnavailable
+
+            raise EncryptionKeyUnavailable("school_tenant encryption platform is unsupported")
+        return FernetDataProtectionProvider(key_provider)
 
     return FernetDataProtectionProvider(
         DevLocalKeyProvider.from_env(repository_root=repository_root)

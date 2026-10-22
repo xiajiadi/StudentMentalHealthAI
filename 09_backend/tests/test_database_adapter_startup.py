@@ -275,6 +275,7 @@ async def test_school_tenant_ignores_legacy_identity_environment_and_creates_no_
 
 
 def test_school_tenant_selects_explicit_dpapi_provider_without_legacy_fallback(monkeypatch):
+    monkeypatch.setattr(database_adapter, "os", SimpleNamespace(name="nt"))
     dpapi_roots: list[Path] = []
     legacy_calls: list[Path] = []
 

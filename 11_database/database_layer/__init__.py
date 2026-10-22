@@ -7,6 +7,7 @@ from .crypto import (
     EncryptedPayload,
     FernetDataProtectionProvider,
     KeyProvider,
+    LinuxSystemdCredentialKeyProvider,
     MappingKeyProvider,
     WindowsDpapiKeyProvider,
 )
@@ -84,6 +85,7 @@ __all__ = [
     "EncryptedPayload",
     "FernetDataProtectionProvider",
     "KeyProvider",
+    "LinuxSystemdCredentialKeyProvider",
     "MappingKeyProvider",
     "PasswordHasher",
     "PROVENANCE_REGISTRY",
