@@ -13,7 +13,13 @@ from .models import ModelEntry
 class ModelRegistry:
     """Resolve logical model IDs without embedding provider-specific branches."""
 
-    def __init__(self, entries: Iterable[ModelEntry], *, registry_version: str = "0.1.0") -> None:
+    def __init__(
+        self,
+        entries: Iterable[ModelEntry],
+        *,
+        registry_version: str = "0.1.0",
+        allow_remote: bool = False,
+    ) -> None:
         self.registry_version = registry_version
         self.cloud_fallback = False
         self._entries: dict[str, ModelEntry] = {}
@@ -28,7 +34,7 @@ class ModelRegistry:
             provider_model_id = entry.provider_model_id.lower()
             if provider_model_id == "latest" or provider_model_id.endswith(":latest"):
                 raise ValueError("latest is not a formal model identity")
-            if not entry.local_only:
+            if not entry.local_only and not allow_remote:
                 raise ValueError(
                     "cloud model entries are not permitted in the local runtime registry"
                 )
@@ -39,7 +45,7 @@ class ModelRegistry:
             self._entries[entry.logical_model_id] = entry
 
     @classmethod
-    def from_file(cls, path: str | Path) -> ModelRegistry:
+    def from_file(cls, path: str | Path, *, allow_remote: bool = False) -> ModelRegistry:
         data = json.loads(Path(path).read_text(encoding="utf-8"))
         if data.get("schema_version") != "llm-runtime.models.v1":
             raise ValueError("unsupported model registry schema")
@@ -48,6 +54,7 @@ class ModelRegistry:
         return cls(
             (ModelEntry.from_dict(value) for value in data.get("models", [])),
             registry_version=str(data.get("registry_version", "0.1.0")),
+            allow_remote=allow_remote,
         )
 
     def all(self) -> tuple[ModelEntry, ...]:

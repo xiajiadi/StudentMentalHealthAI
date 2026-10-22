@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import httpx
 import pytest
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 from smhai_backend.adapters.memory.repositories import InMemorySessionStore
 from smhai_backend.container import build_container
@@ -438,6 +438,7 @@ async def test_long_lived_httpx_local_policy_and_explicit_timeouts(monkeypatch):
         support_deadline_seconds = settings.support_deadline_seconds
 
         assert runtime_request_budget_seconds == 60.0
+        assert llm_read_timeout_seconds is not None
         assert llm_read_timeout_seconds >= runtime_request_budget_seconds
         assert support_deadline_seconds > llm_read_timeout_seconds
     finally:
@@ -492,7 +493,46 @@ async def test_http_llm_runtime_keeps_default_for_base_module_settings() -> None
             trace_id="TRACE_llm_settings_compat",
         )
         assert captured_payload["logical_model_id"] == "qwen2.5-0.5b-engineering"
-        assert "context_length" not in captured_payload["config"]
+        config = captured_payload["config"]
+        assert isinstance(config, dict)
+        assert "context_length" not in config
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_http_llm_runtime_sends_only_configured_internal_bearer() -> None:
+    token = "internal-test-token-" + "x" * 32
+    client = HttpLLMRuntimeClient(
+        LLMModuleClientSettings(
+            mode="http",
+            base_url="http://127.0.0.1:8160",
+            internal_auth_token=SecretStr(token),
+        )
+    )
+    captured_headers: dict[str, str] = {}
+
+    async def capture_post_json(path, payload, *, context, headers=None):
+        captured_headers.update(headers or {})
+        return {
+            "data": {
+                "text": "{}",
+                "model_id": "MODEL_test",
+                "model_version": "1.0",
+                "runtime_version": "runtime-test",
+            }
+        }
+
+    client.post_json = capture_post_json
+    try:
+        await client.generate(
+            prompt="Synthetic authentication check.",
+            model_id="MODEL_test",
+            provider_class="local",
+            trace_id="TRACE_llm_internal_auth",
+        )
+        assert captured_headers == {"Authorization": f"Bearer {token}"}
+        assert token not in repr(client.settings)
     finally:
         await client.close()
 

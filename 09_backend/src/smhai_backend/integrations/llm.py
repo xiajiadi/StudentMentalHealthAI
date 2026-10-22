@@ -184,7 +184,12 @@ class HttpLLMRuntimeClient(LongLivedHttpClient):
         if context_length is not None:
             payload["config"]["context_length"] = context_length
         try:
-            response = await self.post_json("/internal/llm/generations", payload, context=context)
+            response = await self.post_json(
+                "/internal/llm/generations",
+                payload,
+                context=context,
+                headers=self._internal_auth_headers(),
+            )
             data = response.get("data")
             if not isinstance(data, dict) or not isinstance(data.get("text"), str):
                 raise ValueError("LLM Runtime response has no text")
@@ -210,10 +215,19 @@ class HttpLLMRuntimeClient(LongLivedHttpClient):
     async def health(self) -> dict[str, Any]:
         try:
             return await self.get_json(
-                "/health/ready", context=RequestContext("REQ_llm_health", "TRACE_llm_health")
+                "/health/ready",
+                context=RequestContext("REQ_llm_health", "TRACE_llm_health"),
+                headers=self._internal_auth_headers(),
             )
         except UpstreamError as exc:
             raise translate_upstream_error(exc) from exc
+
+    def _internal_auth_headers(self) -> dict[str, str] | None:
+        token = getattr(self.settings, "internal_auth_token", None)
+        if token is None:
+            return None
+        value = token.get_secret_value() if hasattr(token, "get_secret_value") else str(token)
+        return {"Authorization": f"Bearer {value}"}
 
 
 def _generation_content_schema() -> dict[str, Any]:

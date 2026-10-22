@@ -1,0 +1,48 @@
+{
+  "schema_version": "llm-runtime.models.v1",
+  "registry_version": "school-demo-deepseek-v1",
+  "cloud_fallback": false,
+  "models": [
+    {
+      "logical_model_id": "deepseek-flash-education-support",
+      "contract_model_id": "MODEL_deepseek_flash_education_support",
+      "display_name": "DeepSeek Flash (synthetic education demo)",
+      "family": "DeepSeek",
+      "parameters": null,
+      "provider": "deepseek",
+      "provider_model_id": "deepseek-flash",
+      "source": "DeepSeek API",
+      "source_repository": "https://api-docs.deepseek.com/api/create-chat-completion/",
+      "revision": "deepseek-flash",
+      "digest": null,
+      "format": "hosted-api",
+      "quantization": null,
+      "license": null,
+      "size_bytes": null,
+      "capabilities": {
+        "chat": true,
+        "stream": false,
+        "structured_output": true,
+        "json_schema": false,
+        "tools": false,
+        "vision": false,
+        "reasoning": false,
+        "embeddings": false
+      },
+      "hardware_profile": "UNKNOWN",
+      "compatibility": "UNKNOWN",
+      "status": "UNAVAILABLE",
+      "validation_status": "API_PROVIDER_INTEGRATION_PENDING",
+      "fallback_model_id": null,
+      "provider_version": "deepseek-api",
+      "notes": "Synthetic demo only; no cloud fallback or formal model validation.",
+      "priority": 0,
+      "enabled": true,
+      "fallback_eligible": false,
+      "context_limit": null,
+      "structured_output_supported": true,
+      "local_only": false,
+      "expected_digest": null
+    }
+  ]
+}

@@ -233,6 +233,30 @@ def test_fastapi_lifespan_routes_and_buffered_generation(hardware, request_facto
     assert service.state is RuntimeState.STOPPED
 
 
+def test_deepseek_internal_routes_require_bearer_before_body_validation(hardware):
+    provider = MockProvider(("primary",))
+    registry = ModelRegistry([_entry("primary", "primary")])
+    service = RuntimeService(registry, {"mock": provider}, hardware=hardware)
+    token = "a" * 48
+    app = create_app(runtime=Runtime(service), internal_auth_token=token)
+
+    with TestClient(app) as client:
+        assert client.get("/health/live").status_code == 200
+        assert client.get("/docs").status_code == 404
+        assert client.get("/internal/llm/models").status_code == 401
+        assert client.get(
+            "/internal/llm/models",
+            headers={"Authorization": "Bearer wrong-token"},
+        ).status_code == 401
+        assert client.get(
+            "/internal/llm/models",
+            headers={"Authorization": f"Bearer {token}"},
+        ).status_code == 200
+        assert client.post("/internal/llm/generations", json={}).status_code == 401
+
+    assert service.state is RuntimeState.STOPPED
+
+
 def test_managed_process_does_not_use_shell(tmp_path):
     manager = ManagedProcess(
         [sys.executable, "-c", "import time; time.sleep(30)"],

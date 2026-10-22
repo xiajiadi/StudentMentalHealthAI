@@ -10,6 +10,7 @@ from pathlib import Path
 from .domain.models import GenerationConfig, GenerationRequest
 from .domain.registry import ModelRegistry
 from .hardware.detector import HardwareDetector
+from .providers.deepseek import DeepSeekProvider
 from .providers.llama_cpp import LlamaCppProvider
 from .providers.mock import MockProvider
 from .providers.ollama import OllamaProvider
@@ -23,6 +24,12 @@ _RUNTIME_PROFILE_FILES = {
 
 
 def build_service(profile_name: str | None = None) -> RuntimeService:
+    provider_mode = os.environ.get("SMHAI_LLM_PROVIDER", "local").strip().lower()
+    if provider_mode == "deepseek":
+        return _build_deepseek_service(profile_name)
+    if provider_mode != "local":
+        raise ValueError("unknown LLM provider mode")
+
     registry = ModelRegistry.from_file(MODULE_ROOT / "config" / "models.v1.json")
     runtime = json.loads((MODULE_ROOT / "config" / "runtime.v1.json").read_text(encoding="utf-8"))
     selected_profile = profile_name or os.environ.get("SMHAI_LLM_RUNTIME_PROFILE", "default")
@@ -74,6 +81,35 @@ def build_service(profile_name: str | None = None) -> RuntimeService:
         max_attempts=int(retry["max_attempts"]),
         backoff_seconds=tuple(float(value) for value in retry["backoff_seconds"]),
         default_model_id=str(runtime["default_model_id"]),
+    )
+
+
+def _build_deepseek_service(profile_name: str | None) -> RuntimeService:
+    selected_profile = profile_name or os.environ.get("SMHAI_LLM_RUNTIME_PROFILE", "default")
+    if selected_profile != "default":
+        raise ValueError("DeepSeek deployment does not use local-model runtime profiles")
+    credentials_directory = os.environ.get("CREDENTIALS_DIRECTORY")
+    if not credentials_directory:
+        raise ValueError("DeepSeek system credential directory is required")
+    credential_file = Path(credentials_directory) / "deepseek-api-key"
+
+    registry = ModelRegistry.from_file(
+        MODULE_ROOT / "config" / "models.deepseek.v1.json",
+        allow_remote=True,
+    )
+    provider = DeepSeekProvider.from_credential_file(
+        credential_file,
+        timeout_seconds=45.0,
+    )
+    runtime = json.loads((MODULE_ROOT / "config" / "runtime.v1.json").read_text(encoding="utf-8"))
+    return RuntimeService(
+        registry,
+        {"deepseek": provider},
+        hardware=HardwareDetector().detect(),
+        runtime_version=str(runtime["runtime_version"]),
+        max_attempts=1,
+        backoff_seconds=(),
+        default_model_id="deepseek-flash-education-support",
     )
 
 

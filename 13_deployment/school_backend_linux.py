@@ -16,6 +16,8 @@ DEFAULT_CAT_PORT = 8180
 _DNS_HOST_RE = re.compile(
     r"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$"
 )
+_INTERNAL_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
+_LLM_RUNTIME_AUTH_CREDENTIAL = "llm-runtime-auth.json"
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -28,6 +30,8 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _build_school_backend_settings(csrf_secret: str):
+    from pydantic import SecretStr
+
     from smhai_backend.core.config import (
         BackendSettings,
         LLMModuleClientSettings,
@@ -35,6 +39,17 @@ def _build_school_backend_settings(csrf_secret: str):
     )
 
     public_origin, public_host = _public_web_origin()
+    llm_model_id = os.environ.get(
+        "PSYNOVA_LLM_MODEL_ID", "qwen2.5-0.5b-engineering"
+    ).strip()
+    if llm_model_id not in {
+        "qwen2.5-0.5b-engineering",
+        "deepseek-flash-education-support",
+    }:
+        raise ValueError("school LLM model identity is not registered")
+    llm_runtime_token = _load_llm_runtime_auth_token(
+        required=llm_model_id == "deepseek-flash-education-support"
+    )
     return BackendSettings(
         _env_file=None,
         environment="demo",
@@ -67,7 +82,14 @@ def _build_school_backend_settings(csrf_secret: str):
             mode="http", base_url=f"http://127.0.0.1:{DEFAULT_CAT_PORT}"
         ),
         rag=ModuleClientSettings(mode="http", base_url="http://127.0.0.1:8170"),
-        llm=LLMModuleClientSettings(mode="http", base_url="http://127.0.0.1:8160"),
+        llm=LLMModuleClientSettings(
+            mode="http",
+            base_url="http://127.0.0.1:8160",
+            internal_auth_token=(
+                SecretStr(llm_runtime_token) if llm_runtime_token is not None else None
+            ),
+            logical_model_id=llm_model_id,
+        ),
         safety=ModuleClientSettings(mode="http", base_url="http://127.0.0.1:8190"),
         post_assessment_worker={"enabled": False},
         research_education_worker={"enabled": False},
@@ -108,6 +130,34 @@ def _public_web_origin() -> tuple[str | None, str | None]:
     return f"https://{normalized_host}", normalized_host
 
 
+def _load_llm_runtime_auth_token(*, required: bool) -> str | None:
+    credentials_directory = os.environ.get("CREDENTIALS_DIRECTORY")
+    if not credentials_directory:
+        if required:
+            raise ValueError("school LLM Runtime auth credential is unavailable")
+        return None
+    try:
+        raw = bytearray(
+            (Path(credentials_directory) / _LLM_RUNTIME_AUTH_CREDENTIAL).read_bytes()
+        )
+    except OSError:
+        if required:
+            raise ValueError("school LLM Runtime auth credential is unavailable") from None
+        return None
+    try:
+        while raw.endswith((b"\n", b"\r")):
+            raw.pop()
+        token = raw.decode("ascii", errors="strict")
+    except (UnicodeDecodeError, ValueError):
+        raise ValueError("school LLM Runtime auth credential is malformed") from None
+    finally:
+        for index in range(len(raw)):
+            raw[index] = 0
+    if not _INTERNAL_TOKEN_RE.fullmatch(token):
+        raise ValueError("school LLM Runtime auth credential is malformed")
+    return token
+
+
 def main() -> int:
     args = _parser().parse_args()
     try:
@@ -125,6 +175,8 @@ def main() -> int:
 
         configure_import_paths(repo)
         credentials = load_school_runtime_credentials()
+        if credentials.csrf_secret is None:
+            raise ValueError("school CSRF credential is unavailable")
         key_version = validate_key_credential()
         database = verify_mysql_school_schema(credentials)
 

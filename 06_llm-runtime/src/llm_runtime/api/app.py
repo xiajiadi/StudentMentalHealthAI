@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import hmac
 import os
+import re
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from llm_runtime.cli import build_service
@@ -101,7 +105,15 @@ class Runtime:
         return _result_payload(result)
 
 
-def create_app(*, runtime: Runtime | None = None) -> FastAPI:
+def create_app(
+    *,
+    runtime: Runtime | None = None,
+    internal_auth_token: str | None = None,
+) -> FastAPI:
+    if internal_auth_token is None:
+        internal_auth_token = _load_internal_auth_token()
+    elif not re.fullmatch(r"[A-Za-z0-9_-]{32,128}", internal_auth_token):
+        raise ValueError("LLM Runtime internal-auth credential is malformed")
     runtime = runtime or Runtime()
 
     @asynccontextmanager
@@ -117,9 +129,27 @@ def create_app(*, runtime: Runtime | None = None) -> FastAPI:
         title="StudentMentalHealthAI LLM Runtime",
         version="0.1.0",
         description="Loopback buffered local-model generation boundary.",
+        docs_url=None if internal_auth_token is not None else "/docs",
+        redoc_url=None if internal_auth_token is not None else "/redoc",
+        openapi_url=None if internal_auth_token is not None else "/openapi.json",
         lifespan=lifespan,
     )
     app.state.llm_runtime = runtime
+
+    if internal_auth_token is not None:
+
+        @app.middleware("http")
+        async def require_internal_bearer(request: Request, call_next):
+            if request.url.path.startswith("/internal/"):
+                supplied = request.headers.get("Authorization", "")
+                expected = f"Bearer {internal_auth_token}"
+                if not hmac.compare_digest(supplied, expected):
+                    return JSONResponse(
+                        status_code=401,
+                        content={"detail": "internal authentication required"},
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+            return await call_next(request)
 
     @app.get("/health/live", operation_id="llmLiveHealth")
     async def health_live() -> dict[str, Any]:
@@ -164,6 +194,30 @@ def create_app(*, runtime: Runtime | None = None) -> FastAPI:
     return app
 
 
+def _load_internal_auth_token() -> str | None:
+    if os.environ.get("SMHAI_LLM_PROVIDER", "local").strip().lower() != "deepseek":
+        return None
+    credential_path = os.environ.get("SMHAI_LLM_RUNTIME_AUTH_FILE")
+    if not credential_path:
+        raise ValueError("LLM Runtime internal-auth credential path is required")
+    try:
+        raw = bytearray(Path(credential_path).read_bytes())
+    except OSError:
+        raise ValueError("LLM Runtime internal-auth credential is unavailable") from None
+    try:
+        while raw.endswith((b"\n", b"\r")):
+            raw.pop()
+        token = raw.decode("ascii", errors="strict")
+    except (UnicodeDecodeError, ValueError):
+        raise ValueError("LLM Runtime internal-auth credential is malformed") from None
+    finally:
+        for index in range(len(raw)):
+            raw[index] = 0
+    if not re.fullmatch(r"[A-Za-z0-9_-]{32,128}", token):
+        raise ValueError("LLM Runtime internal-auth credential is malformed")
+    return token
+
+
 def _result_payload(result: GenerationResult) -> dict[str, Any]:
     trace = result.trace.to_dict()
     return {
@@ -203,7 +257,13 @@ app = create_app()
 
 
 def main() -> None:
-    uvicorn.run(app, host="127.0.0.1", port=int(os.environ.get("SMHAI_LLM_PORT", "8160")))
+    uvicorn.run(
+        app,
+        host="127.0.0.1",
+        port=int(os.environ.get("SMHAI_LLM_PORT", "8160")),
+        access_log=False,
+        log_config=None,
+    )
 
 
 if __name__ == "__main__":

@@ -95,6 +95,7 @@ class ModuleClientSettings(BaseModel):
 class LLMModuleClientSettings(ModuleClientSettings):
     """Keep the Runtime request window when launcher env overrides other LLM fields."""
 
+    internal_auth_token: SecretStr | None = Field(default=None, repr=False)
     logical_model_id: str = Field(
         default="qwen2.5-0.5b-engineering",
         min_length=1,
