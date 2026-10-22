@@ -34,6 +34,8 @@ def test_school_backend_builds_valid_mysql_settings_for_all_http_clients(monkeyp
     assert settings.cat.base_url == "http://127.0.0.1:8180"
     assert settings.rag.base_url == "http://127.0.0.1:8170"
     assert settings.safety.base_url == "http://127.0.0.1:8190"
+    assert settings.safety.timeout.read == 30.0
+    assert settings.support_deadline_seconds == 80.0
     assert settings.allowed_origins == ["http://127.0.0.1:4178"]
     assert settings.auth.cookie_name == "psynova_school_session"
     assert settings.auth.secure_cookie is False

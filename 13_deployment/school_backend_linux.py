@@ -13,6 +13,8 @@ from urllib.parse import urlsplit
 DEFAULT_BACKEND_PORT = 8088
 DEFAULT_FRONTEND_PORT = 4178
 DEFAULT_CAT_PORT = 8180
+# CPU-only Safety checks on the school ECS take 16–22s; the shared default is 8s.
+SCHOOL_SAFETY_READ_TIMEOUT_SECONDS = 30.0
 _DNS_HOST_RE = re.compile(
     r"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$"
 )
@@ -31,11 +33,11 @@ def _parser() -> argparse.ArgumentParser:
 
 def _build_school_backend_settings(csrf_secret: str):
     from pydantic import SecretStr
-
     from smhai_backend.core.config import (
         BackendSettings,
         LLMModuleClientSettings,
         ModuleClientSettings,
+        TimeoutSettings,
     )
 
     public_origin, public_host = _public_web_origin()
@@ -90,7 +92,11 @@ def _build_school_backend_settings(csrf_secret: str):
             ),
             logical_model_id=llm_model_id,
         ),
-        safety=ModuleClientSettings(mode="http", base_url="http://127.0.0.1:8190"),
+        safety=ModuleClientSettings(
+            mode="http",
+            base_url="http://127.0.0.1:8190",
+            timeout=TimeoutSettings(read=SCHOOL_SAFETY_READ_TIMEOUT_SECONDS),
+        ),
         post_assessment_worker={"enabled": False},
         research_education_worker={"enabled": False},
     )
