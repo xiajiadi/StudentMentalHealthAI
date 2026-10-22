@@ -3,11 +3,55 @@
 from __future__ import annotations
 
 import base64
+import hashlib
+import io
 import json
+import pathlib
 import subprocess
+import tarfile
 
 import pytest
 import recover_linux_school_demo as recovery
+
+
+def test_release_fingerprint_matches_pinned_source_revision():
+    repository_root = pathlib.Path(__file__).resolve().parents[2]
+    archive_bytes = subprocess.check_output(
+        ["git", "-C", str(repository_root), "archive", recovery.EXPECTED_SOURCE_REVISION]
+    )
+    source_files = {}
+    with tarfile.open(fileobj=io.BytesIO(archive_bytes), mode="r:") as archive:
+        for member in archive.getmembers():
+            if not member.isfile():
+                continue
+            content = archive.extractfile(member)
+            assert content is not None
+            source_files[member.name] = content.read()
+
+    selected_files = {}
+    for relative in recovery._RELEASE_PATHS:
+        selected_files.update(
+            {
+                name: content
+                for name, content in source_files.items()
+                if name == relative or name.startswith(relative.rstrip("/") + "/")
+            }
+        )
+    selected_files["SOURCE_REVISION"] = (
+        recovery.EXPECTED_SOURCE_REVISION + "\n"
+    ).encode("ascii")
+
+    digest = hashlib.sha256()
+    for relative, content in sorted(selected_files.items()):
+        digest.update(
+            relative.encode("utf-8")
+            + b"\0"
+            + hashlib.sha256(content).digest()
+            + b"\n"
+        )
+
+    assert len(selected_files) == 266
+    assert digest.hexdigest() == recovery.EXPECTED_RELEASE_FINGERPRINT
 
 
 def _key_payload() -> bytes:
