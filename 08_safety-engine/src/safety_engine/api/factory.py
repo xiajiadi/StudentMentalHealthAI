@@ -32,7 +32,7 @@ def module_root() -> Path:
 def build_default_bundle(*, root: Path | None = None) -> RuntimeBundle:
     root = root or module_root()
     policies = root / "policies"
-    runtime = root / "runtime"
+    runtime = Path(os.environ.get("SMHAI_OPA_RUNTIME_DIR", root / "runtime"))
     opa_url = os.environ.get("SMHAI_OPA_URL", "http://127.0.0.1:8181")
     policy = PolicyClient(base_url=opa_url, policy_dir=policies)
     opa_manager = None
