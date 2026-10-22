@@ -5,12 +5,17 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
 
 DEFAULT_BACKEND_PORT = 8088
 DEFAULT_FRONTEND_PORT = 4178
 DEFAULT_CAT_PORT = 8180
+_DNS_HOST_RE = re.compile(
+    r"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$"
+)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -29,6 +34,7 @@ def _build_school_backend_settings(csrf_secret: str):
         ModuleClientSettings,
     )
 
+    public_origin, public_host = _public_web_origin()
     return BackendSettings(
         _env_file=None,
         environment="demo",
@@ -38,8 +44,25 @@ def _build_school_backend_settings(csrf_secret: str):
         port=DEFAULT_BACKEND_PORT,
         docs_enabled=False,
         school_csrf_secret=csrf_secret,
-        allowed_origins=[f"http://127.0.0.1:{DEFAULT_FRONTEND_PORT}"],
-        auth={"cookie_name": "psynova_school_session"},
+        allowed_origins=(
+            [public_origin]
+            if public_origin is not None
+            else [f"http://127.0.0.1:{DEFAULT_FRONTEND_PORT}"]
+        ),
+        allowed_hosts=(
+            [public_host, "127.0.0.1", "localhost"]
+            if public_host is not None
+            else ["127.0.0.1", "localhost", "testserver", "test"]
+        ),
+        auth=(
+            {
+                "cookie_name": "__Host-smhai_session",
+                "secure_cookie": True,
+                "same_site": "lax",
+            }
+            if public_origin is not None
+            else {"cookie_name": "psynova_school_session"}
+        ),
         cat=ModuleClientSettings(
             mode="http", base_url=f"http://127.0.0.1:{DEFAULT_CAT_PORT}"
         ),
@@ -49,6 +72,40 @@ def _build_school_backend_settings(csrf_secret: str):
         post_assessment_worker={"enabled": False},
         research_education_worker={"enabled": False},
     )
+
+
+def _public_web_origin() -> tuple[str | None, str | None]:
+    """Return a strictly validated HTTPS origin and DNS host, if configured."""
+
+    raw_origin = os.environ.get("PSYNOVA_PUBLIC_ORIGIN")
+    if raw_origin is None or not raw_origin.strip():
+        return None, None
+    if raw_origin != raw_origin.strip():
+        raise ValueError("public origin configuration is invalid")
+
+    try:
+        parsed = urlsplit(raw_origin)
+        host = parsed.hostname
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("public origin configuration is invalid") from exc
+
+    if (
+        parsed.scheme != "https"
+        or host is None
+        or port not in {None, 443}
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError("public origin must be one HTTPS DNS origin")
+
+    normalized_host = host.lower().rstrip(".")
+    if not _DNS_HOST_RE.fullmatch(normalized_host):
+        raise ValueError("public origin host is invalid")
+    return f"https://{normalized_host}", normalized_host
 
 
 def main() -> int:
