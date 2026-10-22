@@ -234,7 +234,7 @@ def _llm_args() -> dict[str, Any]:
 
 
 def _client_settings(base_url: str) -> ModuleClientSettings:
-    return ModuleClientSettings(mode="http", base_url=base_url, timeout=TimeoutSettings(read=65.0))
+    return ModuleClientSettings(mode="http", base_url=base_url, timeout=TimeoutSettings(read=135.0))
 
 
 _TEST_RUNTIME_TOKEN = "synthetic_runtime_token_" + "x" * 32
@@ -246,7 +246,7 @@ def _deepseek_client_settings() -> LLMModuleClientSettings:
         base_url=_LLM_BASE_URL,
         internal_auth_token=_TEST_RUNTIME_TOKEN,
         logical_model_id="deepseek-flash-education-support",
-        timeout=TimeoutSettings(read=65.0),
+        timeout=TimeoutSettings(read=135.0),
     )
 
 
@@ -287,7 +287,7 @@ def test_independent_client_rejects_non_allowlisted_destination_before_transport
     assert initialized == []
 
 
-@pytest.mark.parametrize("read_timeout", [8.0, 60.0, 64.999])
+@pytest.mark.parametrize("read_timeout", [8.0, 60.0, 124.999])
 def test_independent_llm_client_rejects_short_http_read_timeout_before_transport(
     read_timeout, monkeypatch
 ):
@@ -305,7 +305,7 @@ def test_independent_llm_client_rejects_short_http_read_timeout_before_transport
         base_url=_LLM_BASE_URL,
         timeout=TimeoutSettings(read=read_timeout),
     )
-    with pytest.raises(ValueError, match="read timeout must be at least 65"):
+    with pytest.raises(ValueError, match="read timeout must be at least 125"):
         IndependentLLMRuntimeClient(settings)
     assert initialized == []
 
@@ -448,7 +448,7 @@ async def test_independent_llm_posts_fixed_server_identity_and_returns_strict_re
         "temperature": 0.1,
         "top_p": 0.9,
         "context_length": 8192,
-        "timeout_seconds": 60.0,
+        "timeout_seconds": 120.0,
     }
     assert body["request_id"] == CONTEXT.request_id
     assert body["trace_id"] == CONTEXT.trace_id
@@ -481,7 +481,7 @@ def test_independent_llm_rejects_unallowlisted_configured_model_before_transport
         mode="http",
         base_url=_LLM_BASE_URL,
         logical_model_id="unregistered-school-model",
-        timeout=TimeoutSettings(read=65.0),
+        timeout=TimeoutSettings(read=135.0),
     )
     with pytest.raises(ValueError, match="model identity is not allowlisted"):
         IndependentLLMRuntimeClient(settings)

@@ -15,6 +15,8 @@ DEFAULT_FRONTEND_PORT = 4178
 DEFAULT_CAT_PORT = 8180
 # CPU-only Safety checks on the school ECS take 16–22s; the shared default is 8s.
 SCHOOL_SAFETY_READ_TIMEOUT_SECONDS = 30.0
+# Keep the Backend's Runtime read window above the fixed 120-second model request deadline.
+SCHOOL_LLM_READ_TIMEOUT_SECONDS = 135.0
 _DNS_HOST_RE = re.compile(
     r"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$"
 )
@@ -91,6 +93,7 @@ def _build_school_backend_settings(csrf_secret: str):
                 SecretStr(llm_runtime_token) if llm_runtime_token is not None else None
             ),
             logical_model_id=llm_model_id,
+            timeout=TimeoutSettings(read=SCHOOL_LLM_READ_TIMEOUT_SECONDS),
         ),
         safety=ModuleClientSettings(
             mode="http",

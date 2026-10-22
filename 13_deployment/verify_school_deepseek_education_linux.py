@@ -33,6 +33,8 @@ CONVERSATION_KEY = "psynova-synthetic-deepseek-conversation-v1"
 MESSAGE_KEY = "psynova-synthetic-deepseek-education-turn-v1"
 _RUN_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 EXPECTED_MODEL_ID = "MODEL_deepseek_flash_education_support"
+GENERATION_REQUEST_TIMEOUT_SECONDS = 180
+GENERATION_STATUS_TIMEOUT_SECONDS = 180
 QUESTION = (
     "我想更有条理地完成一周的学习任务。请基于可用资料，给我一个简短的一周学习计划，"
     "包含每天一个可执行步骤和每周复盘方法；这是一般学习支持，不要诊断或推断个人心理状态。"
@@ -530,7 +532,7 @@ def _resume(
                         "Idempotency-Key": MESSAGE_KEY,
                         "Accept": "application/json",
                     },
-                    timeout=90,
+                    timeout=GENERATION_REQUEST_TIMEOUT_SECONDS,
                 )
             except httpx.TimeoutException:
                 checks["last_transport_error"] = "timeout"
@@ -560,7 +562,7 @@ def _resume(
             _write_state(state)
         if turn is None:
             raise GateError("conversation_turn_state_unavailable", "checkpoint_reconcile")
-        deadline = time.monotonic() + 90
+        deadline = time.monotonic() + GENERATION_STATUS_TIMEOUT_SECONDS
         while turn.get("status") == "requested" and isinstance(turn_id, str):
             if time.monotonic() >= deadline:
                 raise GateError("deepseek_education_request_pending", "generation")

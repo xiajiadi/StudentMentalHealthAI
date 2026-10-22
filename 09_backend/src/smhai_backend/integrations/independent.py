@@ -43,8 +43,8 @@ _SCHOOL_MODEL_DIGEST = "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d63
 # Native 7B retrieval-context verification exhausted the previous 256-token cap.
 _MAX_OUTPUT_TOKENS = 768
 _CONTEXT_LENGTH = 8192
-_GENERATION_TIMEOUT_SECONDS = 60.0
-_MIN_LLM_HTTP_READ_TIMEOUT_SECONDS = 65.0
+_GENERATION_TIMEOUT_SECONDS = 120.0
+_MIN_LLM_HTTP_READ_TIMEOUT_SECONDS = 125.0
 
 
 class _StrictModel(BaseModel):
@@ -311,7 +311,7 @@ class IndependentLLMRuntimeClient(LongLivedHttpClient):
     def __init__(self, settings: ModuleClientSettings) -> None:
         _require_local_destination(settings, _LLM_BASE_URL)
         if settings.timeout.read < _MIN_LLM_HTTP_READ_TIMEOUT_SECONDS:
-            raise ValueError("independent Runtime HTTP read timeout must be at least 65 seconds")
+            raise ValueError("independent Runtime HTTP read timeout must be at least 125 seconds")
         self.model_identity = _runtime_model_identity(settings)
         super().__init__(settings)
 

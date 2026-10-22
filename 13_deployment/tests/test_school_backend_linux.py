@@ -30,6 +30,7 @@ def test_school_backend_builds_valid_mysql_settings_for_all_http_clients(monkeyp
     assert settings.llm.mode == "http"
     assert settings.llm.base_url == "http://127.0.0.1:8160"
     assert settings.llm.logical_model_id == "qwen2.5-0.5b-engineering"
+    assert settings.llm.timeout.read == 135.0
     assert settings.llm.context_length is None
     assert settings.cat.base_url == "http://127.0.0.1:8180"
     assert settings.rag.base_url == "http://127.0.0.1:8170"
@@ -64,6 +65,7 @@ def test_school_backend_can_pin_the_registered_deepseek_demo_model(monkeypatch, 
     settings = school_backend_linux._build_school_backend_settings("a" * 64)
 
     assert settings.llm.logical_model_id == "deepseek-flash-education-support"
+    assert settings.llm.timeout.read == 135.0
     assert settings.llm.internal_auth_token is not None
     assert settings.llm.internal_auth_token.get_secret_value() == "x" * 48
     assert "x" * 48 not in repr(settings.llm)

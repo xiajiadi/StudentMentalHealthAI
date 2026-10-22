@@ -90,6 +90,11 @@ def test_http_error_diagnostic_keeps_only_allowlisted_backend_code() -> None:
     assert verifier._safe_http_error_code(Response({"error": {"code": "private text"}})) is None
 
 
+def test_generation_http_windows_exceed_internal_model_deadline() -> None:
+    assert verifier.GENERATION_REQUEST_TIMEOUT_SECONDS == 180
+    assert verifier.GENERATION_STATUS_TIMEOUT_SECONDS == 180
+
+
 def test_turn_diagnostic_contains_no_generated_text() -> None:
     turn = _completed_turn()
     turn["content"]["summary"] = "synthetic answer body"
