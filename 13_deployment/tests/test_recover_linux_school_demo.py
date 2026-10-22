@@ -7,8 +7,10 @@ import hashlib
 import io
 import json
 import pathlib
+import stat
 import subprocess
 import tarfile
+from types import SimpleNamespace
 
 import pytest
 import recover_linux_school_demo as recovery
@@ -119,6 +121,137 @@ def test_mysql_client_suppresses_login_path_without_unsupported_option(monkeypat
     assert "--no-login-paths" not in captured["args"]
     assert captured["args"][1] == "--no-defaults"
     assert captured["env"] == {"MYSQL_TEST_LOGIN_FILE": "/dev/null"}
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid_value", "error_code"),
+    [
+        (0, "admin@localhost", "mysql_current_user_mismatch"),
+        (1, "8.4.0", "mysql_version_mismatch"),
+        (2, "3307", "mysql_port_mismatch"),
+        (3, "0.0.0.0", "mysql_bind_address_mismatch"),
+        (4, "1", "mysql_general_log_policy_mismatch"),
+        (5, "1", "mysql_log_raw_policy_mismatch"),
+        (6, "UNKNOWN", "mysql_binary_log_state_invalid"),
+    ],
+)
+def test_mysql_identity_policy_reports_each_field_separately(field, invalid_value, error_code):
+    identity = ["root@localhost", "8.0.46.0", "3306", "127.0.0.1", "0", "0", "1"]
+    identity[field] = invalid_value
+
+    with pytest.raises(recovery.RecoveryError, match=error_code):
+        recovery._validate_mysql_identity_policy(identity)
+
+
+def test_mysql_identity_policy_accepts_secure_binary_logging():
+    identity = ["root@localhost", "8.0.46.0", "3306", "127.0.0.1", "0", "0", "1"]
+    assert recovery._validate_mysql_identity_policy(identity) is True
+    identity[6] = "OFF"
+    assert recovery._validate_mysql_identity_policy(identity) is False
+
+
+def test_mysql_binary_log_is_preserved_only_with_restricted_file_access(
+    monkeypatch, tmp_path
+):
+    log_directory = tmp_path / "mysql"
+    log_directory.mkdir()
+    base = log_directory / "binlog"
+    index = log_directory / "binlog.index"
+    (log_directory / "binlog.000001").write_bytes(b"")
+    index.write_bytes(b"")
+
+    def read_single_row(sql, *, fields):
+        if "replication_connection_configuration" in sql:
+            return ["0"]
+        if "@@global.gtid_mode" in sql:
+            return ["OFF", "2592000", "1", "1"]
+        if "log_bin_basename" in sql:
+            return [str(base), str(index)]
+        raise AssertionError("unexpected metadata query")
+
+    def fake_mysql(sql, *, check=True):
+        assert check is True
+        if sql == "SHOW REPLICAS":
+            return ""
+        if sql == "SHOW BINARY LOGS":
+            return "binlog.000001\t180\tNo"
+        raise AssertionError("unexpected MySQL statement")
+
+    def fake_command(args, *, check=True):
+        if args[1:3] == ["passwd", "mysql"]:
+            output = b"mysql:x:111:117::/nonexistent:/usr/sbin/nologin\n"
+        elif args[1:3] == ["group", "mysql"]:
+            output = b"mysql:x:117:\n"
+        else:
+            raise AssertionError("unexpected system command")
+        return subprocess.CompletedProcess(args, 0, output, b"")
+
+    metadata = {
+        log_directory: SimpleNamespace(
+            st_uid=111, st_gid=117, st_mode=stat.S_IFDIR | 0o700, st_nlink=1
+        ),
+        index: SimpleNamespace(
+            st_uid=111, st_gid=117, st_mode=stat.S_IFREG | 0o640, st_nlink=1
+        ),
+        log_directory / "binlog.000001": SimpleNamespace(
+            st_uid=111, st_gid=117, st_mode=stat.S_IFREG | 0o640, st_nlink=1
+        ),
+    }
+    monkeypatch.setattr(recovery, "_read_single_row", read_single_row)
+    monkeypatch.setattr(recovery, "_mysql", fake_mysql)
+    monkeypatch.setattr(recovery, "_command", fake_command)
+    monkeypatch.setattr(recovery, "_path_stat", lambda path: metadata[path])
+    monkeypatch.setattr(recovery, "_require_no_extended_acl", lambda _path: None)
+
+    result = recovery._validate_mysql_binary_log_policy(True)
+
+    assert result == {
+        "enabled": True,
+        "protected_files": 2,
+        "replication_channels": 0,
+        "registered_replicas": 0,
+        "gtid_mode": "OFF",
+        "expiration_seconds": 2592000,
+        "server_id": 1,
+        "replica_updates": True,
+    }
+    metadata[log_directory].st_mode = stat.S_IFDIR | 0o750
+    with pytest.raises(
+        recovery.RecoveryError,
+        match="mysql_binary_log_directory_permissions_mismatch",
+    ):
+        recovery._validate_mysql_binary_log_policy(True)
+
+
+def test_recovery_main_acquires_single_instance_lock_before_inspection(monkeypatch, capsys):
+    events = []
+    monkeypatch.setattr(recovery, "_verify_executable_snapshot", lambda _sha: events.append("sha"))
+    monkeypatch.setattr(recovery, "_acquire_recovery_lock", lambda: events.append("lock"))
+    monkeypatch.setattr(
+        recovery,
+        "_make_plan",
+        lambda *_args, **_kwargs: events.append("inspect") or {"status": "READY"},
+    )
+    monkeypatch.setattr(
+        recovery.sys,
+        "argv",
+        ["recover_linux_school_demo.py", "--inspect", "--expected-sha256", "a" * 64],
+    )
+
+    assert recovery.main() == 0
+    assert events == ["sha", "lock", "inspect"]
+    assert '"inspect":"PASS"' in capsys.readouterr().out
+
+
+def test_runtime_password_rotation_uses_account_ddl(monkeypatch):
+    statements = []
+    monkeypatch.setattr(recovery, "_mysql", lambda sql: statements.append(sql))
+
+    recovery._rotate_runtime_password("synthetic-runtime-password-1234567890")
+
+    assert len(statements) == 1
+    assert statements[0].startswith("ALTER USER ")
+    assert "UPDATE mysql.user" not in statements[0]
 
 
 def test_staging_after_migrator_lock_never_recreates_migration_credential(monkeypatch):

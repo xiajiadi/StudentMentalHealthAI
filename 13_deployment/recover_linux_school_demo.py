@@ -50,6 +50,7 @@ CREDSTORE = Path("/etc/credstore.encrypted")
 HOST_CREDENTIAL_KEY = Path("/var/lib/systemd/credential.secret")
 SYSTEMD_UNITS = Path("/etc/systemd/system")
 RUN_UNITS = Path("/run/systemd/system")
+RECOVERY_LOCK_PATH = Path("/run/psynova-school-demo-recovery.lock")
 STATE_ROOT = Path("/var/lib/psynova-school-demo")
 STATE_FILE = STATE_ROOT / "recovery-state.cred"
 STATE_NEXT_FILE = STATE_ROOT / "recovery-state.next.cred"
@@ -150,6 +151,7 @@ _DECISION_REQUIRED_CODES = {
     "untracked_schema_privilege_account",
     "mysql_schema_privilege_shape_invalid",
     "mysql_schema_privilege_inventory_invalid",
+    "mysql_replication_topology_requires_review",
     "database_account_identity_mismatch",
     "runtime_grants_not_minimal",
     "migration_grants_not_minimal",
@@ -185,6 +187,7 @@ class RecoveryError(RuntimeError):
 
 
 _CURRENT_PHASE = "startup"
+_RECOVERY_LOCK_FD: int | None = None
 
 
 def _emit(event: str, **fields: object) -> None:
@@ -202,6 +205,57 @@ def _set_phase(phase: str) -> None:
     if phase not in _PHASES:
         raise RecoveryError("checkpoint_phase_invalid")
     _CURRENT_PHASE = phase
+
+
+def _acquire_recovery_lock() -> None:
+    """Hold a root-owned, nonblocking process lock for the lifetime of this invocation."""
+    global _RECOVERY_LOCK_FD
+    if _RECOVERY_LOCK_FD is not None:
+        return
+    lock_directory = RECOVERY_LOCK_PATH.parent
+    try:
+        directory_metadata = lock_directory.stat(follow_symlinks=False)
+    except OSError:
+        raise RecoveryError("recovery_lock_directory_unavailable") from None
+    if (
+        lock_directory.is_symlink()
+        or not stat.S_ISDIR(directory_metadata.st_mode)
+        or directory_metadata.st_uid != 0
+        or directory_metadata.st_mode & 0o022
+    ):
+        raise RecoveryError("recovery_lock_directory_unsafe")
+
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(
+            RECOVERY_LOCK_PATH,
+            os.O_RDWR | os.O_CREAT | _LINUX_OS.O_CLOEXEC | _LINUX_OS.O_NOFOLLOW,
+            0o600,
+        )
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != 0
+            or stat.S_IMODE(metadata.st_mode) != 0o600
+            or metadata.st_nlink != 1
+            or metadata.st_size != 0
+        ):
+            raise RecoveryError("recovery_lock_file_unsafe")
+        fcntl = cast(Any, importlib.import_module("fcntl"))
+        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        if descriptor is not None:
+            os.close(descriptor)
+        raise RecoveryError("another_recovery_instance_active") from None
+    except RecoveryError:
+        if descriptor is not None:
+            os.close(descriptor)
+        raise
+    except Exception:
+        if descriptor is not None:
+            os.close(descriptor)
+        raise RecoveryError("recovery_lock_unavailable") from None
+    _RECOVERY_LOCK_FD = descriptor
 
 
 def _command(
@@ -280,6 +334,158 @@ def _read_single_row(sql: str, *, fields: int) -> list[str]:
     if len(rows) != 1 or len(rows[0]) != fields:
         raise RecoveryError("mysql_metadata_shape_invalid")
     return rows[0]
+
+
+def _validate_mysql_identity_policy(identity: Sequence[str]) -> bool:
+    if len(identity) != 7:
+        raise RecoveryError("mysql_identity_metadata_shape_invalid")
+    user, mysql_version, port, bind_address, general_log, log_raw, log_bin = identity
+    if user != "root@localhost":
+        raise RecoveryError("mysql_current_user_mismatch")
+    if not mysql_version.startswith("8.0.46"):
+        raise RecoveryError("mysql_version_mismatch")
+    if port != str(MYSQL_PORT):
+        raise RecoveryError("mysql_port_mismatch")
+    if bind_address != "127.0.0.1":
+        raise RecoveryError("mysql_bind_address_mismatch")
+    if general_log not in {"0", "OFF"}:
+        raise RecoveryError("mysql_general_log_policy_mismatch")
+    if log_raw not in {"0", "OFF"}:
+        raise RecoveryError("mysql_log_raw_policy_mismatch")
+    if log_bin not in {"0", "OFF", "1", "ON"}:
+        raise RecoveryError("mysql_binary_log_state_invalid")
+    return log_bin in {"1", "ON"}
+
+
+def _validate_mysql_binary_log_directory(path: Path, uid: int, gid: int) -> None:
+    try:
+        resolved_path = path.resolve(strict=False)
+    except OSError:
+        raise RecoveryError("mysql_binary_log_path_invalid") from None
+    if path.is_symlink() or not path.is_absolute() or resolved_path != path:
+        raise RecoveryError("mysql_binary_log_path_invalid")
+    metadata = _path_stat(path)
+    if metadata is None or not stat.S_ISDIR(metadata.st_mode):
+        raise RecoveryError("mysql_binary_log_directory_invalid")
+    mode = stat.S_IMODE(metadata.st_mode)
+    if (
+        metadata.st_uid != uid
+        or metadata.st_gid != gid
+        or mode & 0o077
+        or mode & 0o700 != 0o700
+    ):
+        raise RecoveryError("mysql_binary_log_directory_permissions_mismatch")
+    _require_no_extended_acl(path)
+
+
+def _validate_mysql_binary_log_file(path: Path, uid: int, gid: int) -> None:
+    try:
+        resolved_path = path.resolve(strict=False)
+    except OSError:
+        raise RecoveryError("mysql_binary_log_path_invalid") from None
+    if path.is_symlink() or not path.is_absolute() or resolved_path != path:
+        raise RecoveryError("mysql_binary_log_path_invalid")
+    metadata = _path_stat(path)
+    if (
+        metadata is None
+        or not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_nlink != 1
+    ):
+        raise RecoveryError("mysql_binary_log_file_invalid")
+    mode = stat.S_IMODE(metadata.st_mode)
+    if (
+        metadata.st_uid != uid
+        or metadata.st_gid != gid
+        or mode & 0o600 != 0o600
+        or mode & 0o037
+    ):
+        raise RecoveryError("mysql_binary_log_file_permissions_mismatch")
+    _require_no_extended_acl(path)
+
+
+def _validate_mysql_binary_log_policy(enabled: bool) -> dict[str, object]:
+    replication_channels = _read_single_row(
+        "SELECT COUNT(*) FROM performance_schema.replication_connection_configuration",
+        fields=1,
+    )[0]
+    registered_replicas = len(_mysql("SHOW REPLICAS").splitlines())
+    gtid_mode, expiration, server_id, replica_updates = _read_single_row(
+        "SELECT @@global.gtid_mode, @@global.binlog_expire_logs_seconds, "
+        "@@global.server_id, @@global.log_replica_updates",
+        fields=4,
+    )
+    if replication_channels != "0" or registered_replicas != 0:
+        raise RecoveryError("mysql_replication_topology_requires_review")
+
+    protected_files = 0
+    if enabled:
+        mysql_user = _command(["getent", "passwd", "mysql"], check=False)
+        mysql_group = _command(["getent", "group", "mysql"], check=False)
+        if mysql_user.returncode != 0 or mysql_group.returncode != 0:
+            raise RecoveryError("mysql_binary_log_service_identity_unavailable")
+        user_fields = _text(mysql_user).split(":")
+        group_fields = _text(mysql_group).split(":")
+        if (
+            len(user_fields) != 7
+            or user_fields[0] != "mysql"
+            or len(group_fields) != 4
+            or group_fields[0] != "mysql"
+            or not user_fields[2].isdigit()
+            or not group_fields[2].isdigit()
+        ):
+            raise RecoveryError("mysql_binary_log_service_identity_invalid")
+        mysql_uid = int(user_fields[2])
+        mysql_gid = int(group_fields[2])
+        base_name, index_name = _read_single_row(
+            "SELECT @@global.log_bin_basename, @@global.log_bin_index", fields=2
+        )
+        base_path = Path(base_name)
+        index_path = Path(index_name)
+        if (
+            not base_path.is_absolute()
+            or not index_path.is_absolute()
+            or not base_path.name
+            or not index_path.name
+        ):
+            raise RecoveryError("mysql_binary_log_path_invalid")
+        log_directory = base_path.parent
+        _validate_mysql_binary_log_directory(log_directory, mysql_uid, mysql_gid)
+        _validate_mysql_binary_log_directory(index_path.parent, mysql_uid, mysql_gid)
+        _validate_mysql_binary_log_file(index_path, mysql_uid, mysql_gid)
+
+        binary_logs = _mysql("SHOW BINARY LOGS")
+        rows = [line.split("\t") for line in binary_logs.splitlines() if line]
+        if not rows:
+            raise RecoveryError("mysql_binary_log_inventory_empty")
+        for row in rows:
+            if (
+                len(row) != 3
+                or not row[1].isdigit()
+                or row[2] not in {"Yes", "No"}
+            ):
+                raise RecoveryError("mysql_binary_log_inventory_invalid")
+            name = Path(row[0])
+            if name.is_absolute():
+                log_path = name
+            elif name.name == row[0] and row[0] not in {".", ".."}:
+                log_path = log_directory / name
+            else:
+                raise RecoveryError("mysql_binary_log_path_invalid")
+            if log_path.parent != log_directory:
+                raise RecoveryError("mysql_binary_log_path_invalid")
+            _validate_mysql_binary_log_file(log_path, mysql_uid, mysql_gid)
+        protected_files = len(rows) + 1
+
+    return {
+        "enabled": enabled,
+        "protected_files": protected_files,
+        "replication_channels": int(replication_channels),
+        "registered_replicas": registered_replicas,
+        "gtid_mode": gtid_mode,
+        "expiration_seconds": int(expiration),
+        "server_id": int(server_id),
+        "replica_updates": replica_updates in {"1", "ON"},
+    }
 
 
 def _read_credential(name: str, path: Path) -> bytes:
@@ -557,17 +763,9 @@ def _base_host_preflight() -> dict[str, object]:
         "@@global.general_log, @@global.log_raw, @@global.log_bin",
         fields=7,
     )
-    user, mysql_version, port, bind_address, general_log, log_raw, log_bin = mysql_identity
-    if (
-        user != "root@localhost"
-        or not mysql_version.startswith("8.0.46")
-        or port != str(MYSQL_PORT)
-        or bind_address != "127.0.0.1"
-        or general_log not in {"0", "OFF"}
-        or log_raw not in {"0", "OFF"}
-        or log_bin not in {"0", "OFF"}
-    ):
-        raise RecoveryError("mysql_server_identity_or_log_policy_mismatch")
+    binary_log_enabled = _validate_mysql_identity_policy(mysql_identity)
+    binary_log_policy = _validate_mysql_binary_log_policy(binary_log_enabled)
+    mysql_version = mysql_identity[1]
     audit_plugins = _mysql(
         "SELECT PLUGIN_NAME FROM information_schema.PLUGINS "
         "WHERE PLUGIN_STATUS='ACTIVE' AND PLUGIN_NAME LIKE '%audit%'"
@@ -594,6 +792,7 @@ def _base_host_preflight() -> dict[str, object]:
         "mysql_listener": mysql_listeners,
         "backend_listener": backend_listeners,
         "systemd_version": systemd_version,
+        "mysql_binary_log": binary_log_policy,
     }
 
 
@@ -2618,6 +2817,7 @@ def main() -> int:
     sys.dont_write_bytecode = True
     try:
         _verify_executable_snapshot(args.expected_sha256)
+        _acquire_recovery_lock()
         if args.inspect or args.dry_run:
             result = _make_plan(
                 args.expected_sha256,
