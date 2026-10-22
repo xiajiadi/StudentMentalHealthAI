@@ -961,14 +961,16 @@ def _verify_runtime_grants(grants: Sequence[str]) -> None:
         raise RecoveryError("runtime_grants_not_minimal")
 
 
+_MIGRATOR_SCHEMA_GRANT = (
+    "GRANT ALTER, CREATE, DELETE, INDEX, INSERT, REFERENCES, SELECT, UPDATE "
+    "ON SMHAI_SCHOOL_DEMO.*"
+)
+
+
 def _verify_migration_grants(grants: Sequence[str], *, allow_usage_only: bool = False) -> None:
     usage = "GRANT USAGE ON *.*"
-    migration = (
-        "GRANT ALTER, CREATE, DELETE, INDEX, INSERT, REFERENCES, SELECT, UPDATE "
-        "ON SMHAI_SCHOOL_DEMO.*"
-    )
     actual = {_normalize_grant(grant) for grant in grants}
-    valid = [{usage, migration}]
+    valid = [{usage, _MIGRATOR_SCHEMA_GRANT}]
     if allow_usage_only:
         valid.append({usage})
     if len(grants) not in {len(expected) for expected in valid} or actual not in valid:
@@ -2281,11 +2283,7 @@ def _strict_state(
         migrator = _account(account_list, migrator_name)
         if migrator is not None:
             normalized = {_normalize_grant(item) for item in _grants_for(migrator_name)}
-            migration_database_grant = (
-                "GRANT CREATE, ALTER, INDEX, REFERENCES, SELECT, INSERT, UPDATE, DELETE "
-                "ON SMHAI_SCHOOL_DEMO.*"
-            )
-            if migration_database_grant in normalized:
+            if _MIGRATOR_SCHEMA_GRANT in normalized:
                 expected_schema_privileges.add(("SCHEMA", migrator_name, "127.0.0.1"))
     if {tuple(row) for row in schema_privileges} != expected_schema_privileges:
         raise RecoveryError("untracked_schema_privilege_account")

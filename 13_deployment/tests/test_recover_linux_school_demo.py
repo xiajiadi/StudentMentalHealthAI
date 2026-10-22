@@ -390,6 +390,19 @@ def test_mysql_show_grants_privilege_order_is_canonicalized():
     ]
 
     recovery._verify_migration_grants(mysql_canonical_order)
+    assert (
+        recovery._normalize_grant(mysql_canonical_order[1])
+        == recovery._MIGRATOR_SCHEMA_GRANT
+    )
+
+
+def test_runtime_show_grants_privilege_order_is_canonicalized():
+    recovery._verify_runtime_grants(
+        [
+            "GRANT USAGE ON *.* TO runtime",
+            "GRANT SELECT, INSERT, UPDATE, DELETE ON `smhai_school_demo`.* TO runtime",
+        ]
+    )
 
 
 def test_mysql_show_grants_privilege_order_keeps_expansion_rejected():
