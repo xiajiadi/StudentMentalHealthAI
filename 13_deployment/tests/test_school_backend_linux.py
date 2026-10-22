@@ -132,6 +132,21 @@ def test_deepseek_runtime_unit_keeps_secrets_and_egress_scoped():
     assert "0.0.0.0/0" not in unit
 
 
+def test_deepseek_backend_dropin_uses_only_the_encrypted_runtime_credential():
+    dropin = (
+        Path(__file__).resolve().parents[1]
+        / "systemd"
+        / "psynova-school-demo-llm.conf"
+    ).read_text(encoding="utf-8")
+    assert "PSYNOVA_LLM_MODEL_ID=deepseek-flash-education-support" in dropin
+    assert (
+        "LoadCredentialEncrypted=llm-runtime-auth.json:/etc/credstore.encrypted/"
+        "psynova-school-llm-runtime-auth.cred"
+    ) in dropin
+    assert "TOKEN=" not in dropin
+    assert "API_KEY=" not in dropin
+
+
 def test_nginx_front_door_keeps_backend_and_database_on_loopback():
     config = (
         Path(__file__).resolve().parents[1]
