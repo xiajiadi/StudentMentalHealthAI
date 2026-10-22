@@ -61,7 +61,10 @@ RUNTIME_CREDENTIAL_NAME = "school-runtime.json"
 MIGRATION_CREDENTIAL_NAME = "school-migration.json"
 KEY_CREDENTIAL_NAME = "database-keys.json"
 SEED_CREDENTIAL_NAME = "school-seed-accounts.json"
-_ACCOUNT_RE = re.compile(r"psynova_(?:runtime|migrator)_[a-f0-9]{16}\Z")
+_ACCOUNT_RE = re.compile(
+    r"(?:psynova_runtime_[a-f0-9]{16}|psynova_migrator_[a-f0-9]{15,16})\Z"
+)
+_LEGACY_OVERSIZED_MIGRATOR_RE = re.compile(r"psynova_migrator_[a-f0-9]{16}\Z")
 _PASSWORD_RE = re.compile(r"[!-~]{20,128}\Z")
 _CSRF_RE = re.compile(r"[a-f0-9]{64}\Z")
 _CREDENTIALS = {
@@ -143,6 +146,9 @@ _PHASES = (
     "HTTP_STARTED",
     "HTTP_VERIFIED",
 )
+MIGRATOR_REPAIR_NEXT = ".psynova-school-migration.cred.repair-next"
+MIGRATOR_REPAIR_BACKUP = ".psynova-school-migration.cred.repair-original"
+MIGRATOR_REPAIR_TEMP = ".psynova-school-migration.cred.repair-writing"
 _DECISION_REQUIRED_CODES = {
     "target_schema_missing_or_incompatible",
     "unexpected_database_object_type",
@@ -157,6 +163,14 @@ _DECISION_REQUIRED_CODES = {
     "migration_grants_not_minimal",
     "migrator_existing_account_authentication_failed",
     "migrator_lock_state_mismatch",
+    "migrator_repair_schema_not_empty",
+    "migrator_repair_requires_absent_account",
+    "migrator_repair_original_credential_missing",
+    "untracked_migrator_repair_object",
+    "migrator_repair_credential_identity_mismatch",
+    "migrator_repair_credential_invalid",
+    "migrator_repair_credential_layout_invalid",
+    "migrator_repair_checkpoint_phase_invalid",
     "duplicate_database_account",
     "initial_partial_install_state_mismatch",
     "untracked_migrator_account_found",
@@ -251,7 +265,7 @@ def _acquire_recovery_lock() -> None:
         if descriptor is not None:
             os.close(descriptor)
         raise
-    except Exception:
+    except Exception:  # noqa: BLE001 - convert OS lock failures to a sanitized status.
         if descriptor is not None:
             os.close(descriptor)
         raise RecoveryError("recovery_lock_unavailable") from None
@@ -1018,8 +1032,11 @@ def _validate_state(value: object) -> dict[str, object]:
         "created_at",
         "updated_at",
     }
-    if set(value) != required:
+    allowed = required | {"migrator_repaired_from"}
+    if frozenset(value) not in {frozenset(required), frozenset(allowed)}:
         raise RecoveryError("checkpoint_format_invalid")
+    repaired_from = value.get("migrator_repaired_from")
+    repair_checkpoint = "migrator_repaired_from" in value
     if (
         value.get("schema") != STATE_SCHEMA
         or value.get("source_revision") != EXPECTED_SOURCE_REVISION
@@ -1035,6 +1052,16 @@ def _validate_state(value: object) -> dict[str, object]:
         or sequence < 1
         or not isinstance(value.get("created_at"), str)
         or not isinstance(value.get("updated_at"), str)
+        or (
+            repair_checkpoint
+            and (
+                value.get("phase") not in {"MIGRATOR_PREPARED", "MIGRATOR_AUTH_VERIFIED"}
+                or not isinstance(repaired_from, str)
+                or _LEGACY_OVERSIZED_MIGRATOR_RE.fullmatch(repaired_from) is None
+                or repaired_from == value.get("migrator_user")
+                or len(str(value.get("migrator_user"))) > 32
+            )
+        )
     ):
         raise RecoveryError("checkpoint_format_invalid")
     return cast(dict[str, object], value)
@@ -1147,9 +1174,11 @@ def _now() -> str:
 
 def _new_state(host: Mapping[str, object]) -> dict[str, object]:
     while True:
-        migration_user = "psynova_migrator_" + secrets.token_hex(8)
+        migration_user = "psynova_migrator_" + secrets.token_hex(8)[:15]
         if _ACCOUNT_RE.fullmatch(migration_user) is None:
             raise RecoveryError("generated_database_account_name_invalid")
+        if len(migration_user) > 32:
+            raise RecoveryError("generated_database_account_name_too_long")
         existing = _mysql(f"SELECT User FROM mysql.user WHERE User='{migration_user}'")
         if not existing:
             break
@@ -1166,6 +1195,49 @@ def _new_state(host: Mapping[str, object]) -> dict[str, object]:
         "created_at": timestamp,
         "updated_at": timestamp,
     }
+
+
+def _begin_migrator_identity_repair(
+    state: dict[str, object], database: Mapping[str, object]
+) -> dict[str, object]:
+    if state.get("phase") != "MIGRATOR_PREPARED" or "migrator_repaired_from" in state:
+        return state
+    old_user = str(state["migrator_user"])
+    if _LEGACY_OVERSIZED_MIGRATOR_RE.fullmatch(old_user) is None:
+        return state
+    if _schema_state(database) != "EMPTY":
+        raise RecoveryError("migrator_repair_schema_not_empty")
+    existing_migrators = [
+        account
+        for account in _database_accounts(database)
+        if str(account.get("user", "")).startswith("psynova_migrator_")
+    ]
+    if existing_migrators:
+        raise RecoveryError("migrator_repair_requires_absent_account")
+    raw = _read_credential_candidates(MIGRATION_CREDENTIAL_NAME)
+    if raw is None:
+        raise RecoveryError("migrator_repair_original_credential_missing")
+    _decode_migration_payload(raw, expected_user=old_user)
+    for path in (
+        _migrator_repair_next_path(),
+        _migrator_repair_backup_path(),
+        _migrator_repair_temp_path(state),
+    ):
+        if path.exists() or path.is_symlink():
+            raise RecoveryError("untracked_migrator_repair_object")
+
+    while True:
+        new_user = "psynova_migrator_" + secrets.token_hex(8)[:15]
+        if _ACCOUNT_RE.fullmatch(new_user) is None or len(new_user) > 32:
+            raise RecoveryError("generated_database_account_name_invalid")
+        if not _mysql(f"SELECT User FROM mysql.user WHERE User='{new_user}'"):
+            break
+    updated = dict(state)
+    updated["migrator_user"] = new_user
+    updated["migrator_repaired_from"] = old_user
+    saved = _save_state(updated)
+    _emit("checkpoint", checkpoint=str(saved["phase"]), sequence=saved["sequence"])
+    return saved
 
 
 def _set_state_phase(state: dict[str, object], phase: str) -> dict[str, object]:
@@ -1187,6 +1259,20 @@ def _credential_path(logical_name: str) -> Path:
 def _credential_staging_path(logical_name: str) -> Path:
     path = _credential_path(logical_name)
     return path.with_name(f".{path.name}.recovery-next")
+
+
+def _migrator_repair_next_path() -> Path:
+    return CREDSTORE / MIGRATOR_REPAIR_NEXT
+
+
+def _migrator_repair_backup_path() -> Path:
+    return CREDSTORE / MIGRATOR_REPAIR_BACKUP
+
+
+def _migrator_repair_temp_path(state: Mapping[str, object]) -> Path:
+    if re.fullmatch(r"[a-f0-9]{32}", str(state.get("operation_id", ""))) is None:
+        raise RecoveryError("recovery_operation_id_invalid")
+    return CREDSTORE / MIGRATOR_REPAIR_TEMP
 
 
 def _sync_directory(path: Path) -> None:
@@ -1350,6 +1436,204 @@ def _decode_migration_payload(raw: bytes, *, expected_user: str) -> dict[str, st
     ):
         raise RecoveryError("migration_credential_invalid")
     return {"user": payload["database"]["user"], "password": payload["database"]["password"]}
+
+
+def _read_optional_migrator_repair_credential(
+    path: Path,
+) -> dict[str, str] | None:
+    if not (path.exists() or path.is_symlink()):
+        return None
+    _require_root_owned(path, mode=0o600, regular=True)
+    _require_no_extended_acl(path)
+    raw = _read_credential(MIGRATION_CREDENTIAL_NAME, path)
+    try:
+        value = json.loads(raw.decode("ascii"))
+        username = value["database"]["user"]
+    except (UnicodeError, json.JSONDecodeError, KeyError, TypeError):
+        raise RecoveryError("migrator_repair_credential_invalid") from None
+    if not isinstance(username, str) or _ACCOUNT_RE.fullmatch(username) is None:
+        raise RecoveryError("migrator_repair_credential_invalid")
+    return _decode_migration_payload(raw, expected_user=username)
+
+
+def _validate_migrator_repair_objects(state: Mapping[str, object]) -> None:
+    if "migrator_repaired_from" not in state:
+        for path in (
+            _migrator_repair_next_path(),
+            _migrator_repair_backup_path(),
+            _migrator_repair_temp_path(state),
+        ):
+            if path.exists() or path.is_symlink():
+                raise RecoveryError("untracked_migrator_repair_object")
+        return
+
+    old_user = str(state["migrator_repaired_from"])
+    new_user = str(state["migrator_user"])
+    phase = str(state["phase"])
+    target_path = _credential_path(MIGRATION_CREDENTIAL_NAME)
+    normal_staging_path = _credential_staging_path(MIGRATION_CREDENTIAL_NAME)
+    next_path = _migrator_repair_next_path()
+    backup_path = _migrator_repair_backup_path()
+    temp_path = _migrator_repair_temp_path(state)
+    if normal_staging_path.exists() or normal_staging_path.is_symlink():
+        raise RecoveryError("untracked_credential_staging_object")
+
+    target = _read_optional_migrator_repair_credential(target_path)
+    staged = _read_optional_migrator_repair_credential(next_path)
+    backup = _read_optional_migrator_repair_credential(backup_path)
+    temporary = _read_optional_migrator_repair_credential(temp_path)
+    target_user = None if target is None else target["user"]
+    staged_user = None if staged is None else staged["user"]
+    backup_user = None if backup is None else backup["user"]
+    temporary_user = None if temporary is None else temporary["user"]
+
+    if any(
+        user is not None and user not in {old_user, new_user}
+        for user in (target_user, staged_user, backup_user, temporary_user)
+    ):
+        raise RecoveryError("migrator_repair_credential_identity_mismatch")
+    if staged_user not in {None, new_user} or temporary_user not in {None, new_user}:
+        raise RecoveryError("migrator_repair_credential_identity_mismatch")
+    if backup_user not in {None, old_user}:
+        raise RecoveryError("migrator_repair_credential_identity_mismatch")
+
+    if phase == "MIGRATOR_PREPARED":
+        original_retained = target_user == old_user and backup is None
+        handoff_interrupted = (
+            target is None
+            and backup_user == old_user
+            and staged_user == new_user
+            and temporary is None
+        )
+        handoff_complete = (
+            target_user == new_user
+            and backup_user == old_user
+            and staged is None
+            and temporary is None
+        )
+        if not (original_retained or handoff_interrupted or handoff_complete):
+            raise RecoveryError("migrator_repair_credential_layout_invalid")
+        if original_retained and staged is not None and temporary is not None:
+            raise RecoveryError("migrator_repair_credential_layout_invalid")
+    elif phase == "MIGRATOR_AUTH_VERIFIED":
+        if target_user != new_user or staged is not None or temporary is not None:
+            raise RecoveryError("migrator_repair_credential_layout_invalid")
+        if backup_user not in {None, old_user}:
+            raise RecoveryError("migrator_repair_credential_layout_invalid")
+    else:
+        raise RecoveryError("migrator_repair_checkpoint_phase_invalid")
+
+
+def _write_migrator_repair_temporary_credential(
+    state: Mapping[str, object], payload: bytes
+) -> Path:
+    path = _migrator_repair_temp_path(state)
+    if path.exists() or path.is_symlink():
+        existing = _read_optional_migrator_repair_credential(path)
+        if existing is None or existing["user"] != state["migrator_user"]:
+            raise RecoveryError("migrator_repair_credential_identity_mismatch")
+        return path
+    encrypted = _encrypt_credential(MIGRATION_CREDENTIAL_NAME, payload)
+    try:
+        descriptor = os.open(
+            path,
+            os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(encrypted)
+            stream.flush()
+            os.fsync(stream.fileno())
+        _LINUX_OS.chown(path, 0, 0)
+        os.chmod(path, 0o600)
+        _sync_directory(path.parent)
+    except OSError:
+        raise RecoveryError("migrator_repair_credential_staging_failed") from None
+    _require_root_owned(path, mode=0o600, regular=True)
+    _require_no_extended_acl(path)
+    if _read_credential(MIGRATION_CREDENTIAL_NAME, path) != payload:
+        raise RecoveryError("migrator_repair_credential_roundtrip_failed")
+    return path
+
+
+def _resume_migrator_credential_repair(state: dict[str, object]) -> dict[str, object]:
+    if "migrator_repaired_from" not in state:
+        return state
+    _validate_migrator_repair_objects(state)
+    old_user = str(state["migrator_repaired_from"])
+    new_user = str(state["migrator_user"])
+    target = _credential_path(MIGRATION_CREDENTIAL_NAME)
+    staged_path = _migrator_repair_next_path()
+    backup = _migrator_repair_backup_path()
+
+    if state["phase"] == "MIGRATOR_AUTH_VERIFIED":
+        if backup.exists() or backup.is_symlink():
+            original = _read_optional_migrator_repair_credential(backup)
+            if original is None or original["user"] != old_user:
+                raise RecoveryError("migrator_repair_credential_identity_mismatch")
+            try:
+                backup.unlink()
+            except OSError:
+                raise RecoveryError("migrator_repair_backup_cleanup_failed") from None
+            _sync_directory(CREDSTORE)
+        updated = dict(state)
+        updated.pop("migrator_repaired_from", None)
+        saved = _save_state(updated)
+        _emit("checkpoint", checkpoint=str(saved["phase"]), sequence=saved["sequence"])
+        return saved
+
+    target_value = _read_optional_migrator_repair_credential(target)
+    staged_value = _read_optional_migrator_repair_credential(staged_path)
+    backup_value = _read_optional_migrator_repair_credential(backup)
+    temporary_path = _migrator_repair_temp_path(state)
+
+    if target_value is None and backup_value is None:
+        raise RecoveryError("migrator_repair_original_credential_missing")
+    if target_value is not None and target_value["user"] == old_user:
+        if staged_value is None:
+            if temporary_path.exists() or temporary_path.is_symlink():
+                temporary_value = _read_optional_migrator_repair_credential(temporary_path)
+                if temporary_value is None or temporary_value["user"] != new_user:
+                    raise RecoveryError("migrator_repair_credential_identity_mismatch")
+            else:
+                password = secrets.token_urlsafe(48)
+                payload = _new_database_credential(new_user, password, csrf=None)
+                _write_migrator_repair_temporary_credential(state, payload)
+            if not staged_path.exists():
+                try:
+                    os.replace(temporary_path, staged_path)
+                except OSError:
+                    raise RecoveryError("migrator_repair_credential_handoff_failed") from None
+                _sync_directory(staged_path.parent)
+            staged_value = _read_optional_migrator_repair_credential(staged_path)
+        if staged_value is None or staged_value["user"] != new_user:
+            raise RecoveryError("migrator_repair_credential_identity_mismatch")
+        if backup.exists() or backup.is_symlink():
+            raise RecoveryError("migrator_repair_credential_layout_invalid")
+        try:
+            os.replace(target, backup)
+        except OSError:
+            raise RecoveryError("migrator_repair_credential_handoff_failed") from None
+        _sync_directory(CREDSTORE)
+        target_value = None
+        backup_value = _read_optional_migrator_repair_credential(backup)
+
+    if target_value is None:
+        if backup_value is None or backup_value["user"] != old_user:
+            raise RecoveryError("migrator_repair_original_credential_missing")
+        staged_value = _read_optional_migrator_repair_credential(staged_path)
+        if staged_value is None or staged_value["user"] != new_user:
+            raise RecoveryError("migrator_repair_staged_credential_missing")
+        try:
+            os.replace(staged_path, target)
+        except OSError:
+            raise RecoveryError("migrator_repair_credential_handoff_failed") from None
+        _sync_directory(CREDSTORE)
+        target_value = _read_optional_migrator_repair_credential(target)
+
+    if target_value is None or target_value["user"] != new_user:
+        raise RecoveryError("migrator_repair_credential_promotion_failed")
+    return state
 
 
 def _new_database_credential(username: str, password: str, *, csrf: str | None) -> bytes:
@@ -1539,7 +1823,7 @@ def _ensure_mysql_auth(username: str, password: str) -> tuple[bool, list[str]]:
             connection.close()
     except RecoveryError:
         raise
-    except Exception:
+    except Exception:  # noqa: BLE001 - authentication driver errors are expected here.
         return False, []
 
 
@@ -1582,6 +1866,32 @@ def _ensure_runtime_account(
     return _set_state_phase(state, "RUNTIME_AUTH_VERIFIED")
 
 
+def _finish_migrator_identity_repair(state: dict[str, object]) -> dict[str, object]:
+    if "migrator_repaired_from" not in state:
+        return state
+    if state["phase"] == "MIGRATOR_PREPARED":
+        state = _set_state_phase(state, "MIGRATOR_AUTH_VERIFIED")
+    if state["phase"] != "MIGRATOR_AUTH_VERIFIED":
+        raise RecoveryError("migrator_repair_checkpoint_phase_invalid")
+    _validate_migrator_repair_objects(state)
+    old_user = str(state["migrator_repaired_from"])
+    backup = _migrator_repair_backup_path()
+    if backup.exists() or backup.is_symlink():
+        original = _read_optional_migrator_repair_credential(backup)
+        if original is None or original["user"] != old_user:
+            raise RecoveryError("migrator_repair_credential_identity_mismatch")
+        try:
+            backup.unlink()
+        except OSError:
+            raise RecoveryError("migrator_repair_backup_cleanup_failed") from None
+        _sync_directory(CREDSTORE)
+    updated = dict(state)
+    updated.pop("migrator_repaired_from", None)
+    saved = _save_state(updated)
+    _emit("checkpoint", checkpoint=str(saved["phase"]), sequence=saved["sequence"])
+    return saved
+
+
 def _ensure_migrator_account(
     state: dict[str, object], credentials: Mapping[str, str]
 ) -> dict[str, object]:
@@ -1622,6 +1932,8 @@ def _ensure_migrator_account(
             if not authenticated:
                 raise RecoveryError("migrator_authentication_unverified")
     _verify_migration_grants(grants)
+    if "migrator_repaired_from" in state:
+        return _finish_migrator_identity_repair(state)
     if phase in {"RUNTIME_AUTH_VERIFIED", "MIGRATOR_PREPARED"}:
         return _set_state_phase(state, "MIGRATOR_AUTH_VERIFIED")
     if phase not in _PHASES[_PHASES.index("MIGRATOR_AUTH_VERIFIED") :]:
@@ -1860,7 +2172,7 @@ def _verify_migrated_schema() -> dict[str, int | str]:
             engine.dispose()
     except RecoveryError:
         raise
-    except Exception:
+    except Exception:  # noqa: BLE001 - avoid exposing SQLAlchemy and schema details.
         raise RecoveryError("migrated_schema_validation_failed") from None
     return {"revision": EXPECTED_REVISION, **structure}
 
@@ -1880,6 +2192,7 @@ def _strict_state(
     database: Mapping[str, object],
     state: Mapping[str, object] | None,
 ) -> dict[str, object]:
+    migrator_repair_active = state is not None and "migrator_repaired_from" in state
     account_list = _database_accounts(database)
     table_value = database.get("tables")
     if not isinstance(table_value, list) or any(
@@ -1995,7 +2308,10 @@ def _strict_state(
         for logical in _CREDENTIALS
     }
     if state is not None:
+        _validate_migrator_repair_objects(state)
         for logical in _CREDENTIALS:
+            if migrator_repair_active and logical == MIGRATION_CREDENTIAL_NAME:
+                continue
             for path in (_credential_path(logical), _credential_staging_path(logical)):
                 if path.exists() or path.is_symlink():
                     _require_root_owned(path, mode=0o600, regular=True, single_link=False)
@@ -2009,7 +2325,7 @@ def _strict_state(
                         expected_migrator=str(state["migrator_user"]),
                     )
                     _require_no_extended_acl(path)
-        for _logical, staging_present in credential_staging_status.items():
+        for staging_present in credential_staging_status.values():
             if staging_present and str(state["phase"]) not in {
                 "CREDENTIALS_STAGING",
                 "MIGRATOR_LOCKED",
@@ -2070,6 +2386,14 @@ def _strict_state(
         if (
             any(credential_status.values())
             or any(credential_staging_status.values())
+            or any(
+                path.exists() or path.is_symlink()
+                for path in (
+                    _migrator_repair_next_path(),
+                    _migrator_repair_backup_path(),
+                    CREDSTORE / MIGRATOR_REPAIR_TEMP,
+                )
+            )
             or any(unit_status.values())
             or migration_unit_present
             or any(unit_staging_status.values())
@@ -2108,15 +2432,14 @@ def _strict_state(
             raise RecoveryError("untracked_credential_staging_object")
         migration_credential_present = credential_status[MIGRATION_CREDENTIAL_NAME]
         migration_credential_staged = credential_staging_status[MIGRATION_CREDENTIAL_NAME]
-        if phase_index < _PHASES.index("CREDENTIALS_STAGED"):
-            pass
-        elif phase_index < _PHASES.index("MIGRATOR_LOCKED"):
-            if not migration_credential_present or migration_credential_staged:
-                raise RecoveryError("migration_credential_missing_before_lock")
-        elif phase_index == _PHASES.index("MIGRATOR_LOCKED"):
-            pass
-        elif migration_credential_present or migration_credential_staged:
-            raise RecoveryError("migration_credential_state_mismatch")
+        if not migrator_repair_active and phase_index >= _PHASES.index("CREDENTIALS_STAGED"):
+            if phase_index < _PHASES.index("MIGRATOR_LOCKED"):
+                if not migration_credential_present or migration_credential_staged:
+                    raise RecoveryError("migration_credential_missing_before_lock")
+            elif phase_index > _PHASES.index("MIGRATOR_LOCKED") and (
+                migration_credential_present or migration_credential_staged
+            ):
+                raise RecoveryError("migration_credential_state_mismatch")
         unit_stage = phase_index >= _PHASES.index("SYSTEMD_UNITS_INSTALLED")
         install_started = phase_index >= _PHASES.index("SYSTEMD_UNITS_INSTALLING")
         if unit_stage and not all(unit_status.values()):
@@ -2167,9 +2490,12 @@ def _strict_state(
             and service_status.get("LoadState") == "not-found"
         ):
             raise RecoveryError("backend_unit_not_loaded")
-        if not backend_started and not backend_start_pending:
-            if service_status.get("ActiveState") == "active":
-                raise RecoveryError("backend_started_before_checkpoint")
+        if (
+            not backend_started
+            and not backend_start_pending
+            and service_status.get("ActiveState") == "active"
+        ):
+            raise RecoveryError("backend_started_before_checkpoint")
     return {
         "server": dict(host),
         "schema": {
@@ -2217,6 +2543,17 @@ def _plan_actions(state: Mapping[str, object] | None, report: Mapping[str, objec
     phase = None if state is None else str(state["phase"])
     start = -1 if phase is None else _PHASES.index(phase)
     actions: list[str] = []
+    if (
+        state is not None
+        and phase == "MIGRATOR_PREPARED"
+        and "migrator_repaired_from" not in state
+        and len(str(state["migrator_user"])) > 32
+    ):
+        actions.append(
+            "checkpoint a recoverable replacement migrator identity within MySQL's 32-character limit"
+        )
+    if state is not None and "migrator_repaired_from" in state:
+        actions.append("resume the authenticated encrypted migrator credential handoff")
     if phase is None:
         actions.append("create an authenticated encrypted recovery checkpoint")
     if start < _PHASES.index("CREDENTIALS_STAGED"):
@@ -2581,6 +2918,9 @@ def _run_resume(*, expected_hash: str, verifier: Path, verifier_hash: str) -> di
         _emit("checkpoint", checkpoint="INITIALIZED", sequence=state["sequence"])
 
     _set_phase(str(state["phase"]))
+    state = _begin_migrator_identity_repair(state, database)
+    if "migrator_repaired_from" in state:
+        state = _resume_migrator_credential_repair(state)
     if state["phase"] == "INITIALIZED":
         state = _set_state_phase(state, "CREDENTIALS_STAGING")
     credentials = _ensure_staged_credentials(state)

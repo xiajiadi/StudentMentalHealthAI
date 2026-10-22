@@ -79,6 +79,41 @@ def _seed_payload() -> bytes:
     ).encode("ascii")
 
 
+def _checkpoint(*, phase="MIGRATOR_PREPARED", migrator_user="psynova_migrator_0123456789abcdef"):
+    return {
+        "schema": recovery.STATE_SCHEMA,
+        "operation_id": "a" * 32,
+        "source_revision": recovery.EXPECTED_SOURCE_REVISION,
+        "hostname": recovery.EXPECTED_HOSTNAME,
+        "runtime_user": recovery.RUNTIME_USER,
+        "migrator_user": migrator_user,
+        "phase": phase,
+        "sequence": 6,
+        "created_at": "2026-10-22T00:00:00+00:00",
+        "updated_at": "2026-10-22T00:00:00+00:00",
+    }
+
+
+def _repair_crypto_mocks(monkeypatch, tmp_path):
+    credstore = tmp_path / "credstore"
+    credstore.mkdir()
+    monkeypatch.setattr(recovery, "CREDSTORE", credstore)
+    monkeypatch.setattr(
+        recovery,
+        "_encrypt_credential",
+        lambda _name, payload: b"encrypted:" + base64.b64encode(payload),
+    )
+    monkeypatch.setattr(
+        recovery,
+        "_read_credential",
+        lambda _name, path: base64.b64decode(path.read_bytes().removeprefix(b"encrypted:")),
+    )
+    monkeypatch.setattr(recovery, "_require_root_owned", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(recovery, "_require_no_extended_acl", lambda _path: None)
+    monkeypatch.setattr(recovery, "_sync_directory", lambda _path: None)
+    monkeypatch.setattr(recovery._LINUX_OS, "chown", lambda *_args: None, raising=False)
+
+
 def test_command_does_not_inherit_or_forward_secret_environment(monkeypatch):
     captured = {}
 
@@ -377,3 +412,157 @@ def test_seed_account_payload_is_synthetic_and_has_exact_eight_slots():
     assert set(accounts) == set(recovery._SEED_SLOTS)
     assert len(accounts) == 8
     assert all(login.startswith("SYNTHETIC_") for login, _ in accounts.values())
+
+
+def test_mysql_account_regex_keeps_new_migrator_names_within_limit():
+    assert recovery._ACCOUNT_RE.fullmatch("psynova_runtime_" + "a" * 16)
+    assert recovery._ACCOUNT_RE.fullmatch("psynova_migrator_" + "b" * 15)
+    assert recovery._ACCOUNT_RE.fullmatch("psynova_migrator_" + "c" * 16)
+    assert not recovery._ACCOUNT_RE.fullmatch("psynova_migrator_" + "d" * 17)
+    assert len("psynova_migrator_" + "b" * 15) == 32
+
+
+def test_new_recovery_state_generates_mysql_compatible_migrator_name(monkeypatch):
+    monkeypatch.setattr(recovery.secrets, "token_hex", lambda _n: "e" * 32)
+    monkeypatch.setattr(recovery, "_mysql", lambda _sql: "")
+
+    state = recovery._new_state({"hostname": recovery.EXPECTED_HOSTNAME})
+
+    assert state["migrator_user"] == "psynova_migrator_" + "e" * 15
+    assert len(str(state["migrator_user"])) == 32
+
+
+def test_checkpoint_validates_only_the_authenticated_legacy_username_repair():
+    old_user = "psynova_migrator_" + "a" * 16
+    state = _checkpoint(migrator_user=old_user)
+    assert recovery._validate_state(state) == state
+
+    repaired = _checkpoint(migrator_user="psynova_migrator_" + "b" * 15)
+    repaired["migrator_repaired_from"] = old_user
+    assert recovery._validate_state(repaired) == repaired
+
+    repaired["phase"] = "MIGRATION_STARTED"
+    with pytest.raises(recovery.RecoveryError, match="checkpoint_format_invalid"):
+        recovery._validate_state(repaired)
+
+
+def test_begin_migrator_repair_checkpoints_new_identity_without_database_mutation(
+    monkeypatch,
+):
+    old_user = "psynova_migrator_" + "a" * 16
+    state = _checkpoint(migrator_user=old_user)
+    old_payload = recovery._new_database_credential(
+        old_user, "legacy-migration-password-012345", csrf=None
+    )
+    saved = []
+    sql_calls = []
+    monkeypatch.setattr(recovery, "_schema_state", lambda _database: "EMPTY")
+    monkeypatch.setattr(
+        recovery,
+        "_database_accounts",
+        lambda _database: [{"user": recovery.RUNTIME_USER}],
+    )
+    monkeypatch.setattr(recovery, "_read_credential_candidates", lambda _name: old_payload)
+    monkeypatch.setattr(recovery.secrets, "token_hex", lambda _n: "b" * 32)
+    monkeypatch.setattr(
+        recovery, "_mysql", lambda sql: sql_calls.append(sql) or ""
+    )
+    monkeypatch.setattr(
+        recovery, "_save_state", lambda value: saved.append(dict(value)) or value
+    )
+    monkeypatch.setattr(recovery, "_emit", lambda *_args, **_kwargs: None)
+
+    result = recovery._begin_migrator_identity_repair(state, {})
+
+    assert result["migrator_user"] == "psynova_migrator_" + "b" * 15
+    assert result["migrator_repaired_from"] == old_user
+    assert len(str(result["migrator_user"])) == 32
+    assert saved == [result]
+    assert len(sql_calls) == 1 and sql_calls[0].startswith("SELECT User FROM mysql.user")
+
+
+@pytest.mark.parametrize("fail_on_replace", [1, 2, 3])
+def test_migrator_credential_handoff_resumes_after_each_atomic_rename(
+    monkeypatch, tmp_path, fail_on_replace
+):
+    _repair_crypto_mocks(monkeypatch, tmp_path)
+    old_user = "psynova_migrator_" + "a" * 16
+    new_user = "psynova_migrator_" + "b" * 15
+    state = _checkpoint(migrator_user=new_user)
+    state["migrator_repaired_from"] = old_user
+    target = recovery._credential_path(recovery.MIGRATION_CREDENTIAL_NAME)
+    old_payload = recovery._new_database_credential(
+        old_user, "legacy-migration-password-012345", csrf=None
+    )
+    target.write_bytes(recovery._encrypt_credential(recovery.MIGRATION_CREDENTIAL_NAME, old_payload))
+
+    real_replace = recovery.os.replace
+    replace_count = 0
+
+    def interrupted_replace(source, destination):
+        nonlocal replace_count
+        replace_count += 1
+        if replace_count == fail_on_replace:
+            raise OSError("simulated interruption")
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(recovery.os, "replace", interrupted_replace)
+    with pytest.raises(
+        recovery.RecoveryError, match="migrator_repair_credential_handoff_failed"
+    ):
+        recovery._resume_migrator_credential_repair(state)
+
+    recovery._validate_migrator_repair_objects(state)
+    monkeypatch.setattr(recovery.os, "replace", real_replace)
+    recovery._resume_migrator_credential_repair(state)
+    recovery._validate_migrator_repair_objects(state)
+
+    current = recovery._read_optional_migrator_repair_credential(target)
+    original = recovery._read_optional_migrator_repair_credential(
+        recovery._migrator_repair_backup_path()
+    )
+    assert current is not None and current["user"] == new_user
+    assert original is not None and original["user"] == old_user
+
+
+def test_migrator_repair_cleanup_waits_for_authenticated_checkpoint(monkeypatch, tmp_path):
+    _repair_crypto_mocks(monkeypatch, tmp_path)
+    old_user = "psynova_migrator_" + "a" * 16
+    new_user = "psynova_migrator_" + "b" * 15
+    state = _checkpoint(migrator_user=new_user)
+    state["migrator_repaired_from"] = old_user
+    target = recovery._credential_path(recovery.MIGRATION_CREDENTIAL_NAME)
+    backup = recovery._migrator_repair_backup_path()
+    target.write_bytes(
+        recovery._encrypt_credential(
+            recovery.MIGRATION_CREDENTIAL_NAME,
+            recovery._new_database_credential(
+                new_user, "new-migration-password-012345", csrf=None
+            ),
+        )
+    )
+    backup.write_bytes(
+        recovery._encrypt_credential(
+            recovery.MIGRATION_CREDENTIAL_NAME,
+            recovery._new_database_credential(
+                old_user, "legacy-migration-password-012345", csrf=None
+            ),
+        )
+    )
+    saved = []
+    monkeypatch.setattr(
+        recovery,
+        "_set_state_phase",
+        lambda value, phase: dict(value, phase=phase),
+    )
+    monkeypatch.setattr(
+        recovery, "_save_state", lambda value: saved.append(dict(value)) or value
+    )
+    monkeypatch.setattr(recovery, "_emit", lambda *_args, **_kwargs: None)
+
+    result = recovery._finish_migrator_identity_repair(state)
+
+    assert result["phase"] == "MIGRATOR_AUTH_VERIFIED"
+    assert "migrator_repaired_from" not in result
+    assert not backup.exists()
+    assert len(saved) == 1 and "migrator_repaired_from" not in saved[0]
