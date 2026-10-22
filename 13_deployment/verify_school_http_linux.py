@@ -25,7 +25,7 @@ ROLE_PROJECTION = {
         "PSYCHOLOGICAL_SPECIALIST",
         "PSYCHOLOGICAL_SPECIALIST",
     ),
-    "admin": ("SCHOOL_ADMIN", "ADMIN"),
+    "admin": ("ADMIN", "ADMIN"),
 }
 
 

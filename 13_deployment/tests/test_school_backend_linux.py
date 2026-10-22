@@ -9,6 +9,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "09_backend" / "src"))
 
 import school_backend_linux
+import verify_school_http_linux
+from smhai_backend.domains.models import BackendRole
 
 
 def test_school_backend_builds_valid_mysql_settings_for_all_http_clients():
@@ -26,3 +28,10 @@ def test_school_backend_builds_valid_mysql_settings_for_all_http_clients():
     assert settings.cat.base_url == "http://127.0.0.1:8180"
     assert settings.rag.base_url == "http://127.0.0.1:8170"
     assert settings.safety.base_url == "http://127.0.0.1:8190"
+
+
+def test_http_verifier_role_projection_matches_backend_role_contract():
+    assert verify_school_http_linux.ROLE_PROJECTION["admin"] == (
+        BackendRole.ADMIN.value,
+        BackendRole.ADMIN.value,
+    )
