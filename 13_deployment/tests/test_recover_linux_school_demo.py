@@ -67,6 +67,223 @@ def test_release_fingerprint_matches_pinned_source_revision():
     assert digest.hexdigest() == recovery.EXPECTED_RELEASE_FINGERPRINT
 
 
+def _prepare_release_patch_workspace(tmp_path, monkeypatch):
+    commit = "a" * 40
+    before_fingerprint = "before-release-fingerprint"
+    after_fingerprint = "after-release-fingerprint"
+    release_root = tmp_path / "release"
+    stage_root = tmp_path / "stage"
+    app_root = tmp_path / "app"
+    source_root = stage_root / "release-patches" / commit
+    targets = {
+        "11_database/migrations/env.py": b"old alembic environment\n",
+        "13_deployment/migrate_school_linux.py": b"old migrator\n",
+    }
+    patches = {
+        "11_database/migrations/env.py": b"patched alembic environment\n",
+        "13_deployment/migrate_school_linux.py": b"patched migrator\n",
+    }
+    stage_root.mkdir(parents=True)
+    app_root.mkdir()
+    patch_metadata = {
+        relative: {
+            "before_sha256": hashlib.sha256(targets[relative]).hexdigest(),
+            "source_sha256": hashlib.sha256(patches[relative]).hexdigest(),
+        }
+        for relative in targets
+    }
+    for relative, content in targets.items():
+        target = release_root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+        source = source_root / relative
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_bytes(patches[relative])
+    monkeypatch.setattr(recovery, "RELEASE_ROOT", release_root)
+    monkeypatch.setattr(recovery, "SOURCE_STAGE", stage_root)
+    monkeypatch.setattr(recovery, "APP_ROOT", app_root)
+    monkeypatch.setattr(recovery, "RELEASE_PATCH_COMMIT", commit)
+    monkeypatch.setattr(recovery, "PREVIOUS_RELEASE_FINGERPRINT", before_fingerprint)
+    monkeypatch.setattr(recovery, "EXPECTED_RELEASE_FINGERPRINT", after_fingerprint)
+    monkeypatch.setattr(recovery, "RELEASE_PATCH_FILES", patch_metadata)
+    patch_parent = app_root / "release-patches"
+    monkeypatch.setattr(recovery, "RELEASE_PATCH_PARENT", patch_parent)
+    monkeypatch.setattr(
+        recovery, "RELEASE_PATCH_PENDING", patch_parent / f".{commit}.pending"
+    )
+    monkeypatch.setattr(recovery, "RELEASE_PATCH_ROOT", patch_parent / commit)
+    monkeypatch.setattr(
+        recovery,
+        "_base_host_preflight",
+        lambda **kwargs: {"release_fingerprint_checked": kwargs.get("verify_release_fingerprint")},
+    )
+    monkeypatch.setattr(recovery, "_require_no_extended_acl", lambda _path: None)
+    monkeypatch.setattr(recovery, "_sync_directory", lambda _path: None)
+    monkeypatch.setattr(recovery.os, "geteuid", lambda: 0, raising=False)
+    monkeypatch.setattr(
+        recovery,
+        "_LINUX_OS",
+        SimpleNamespace(
+            geteuid=lambda: 0,
+            chown=lambda *_args: None,
+            fchown=lambda *_args: None,
+            fchmod=lambda *_args: None,
+        ),
+    )
+
+    def fake_path_stat(path):
+        path = pathlib.Path(path)
+        try:
+            actual = path.stat(follow_symlinks=False)
+        except FileNotFoundError:
+            return None
+        owner = 1000 if path == stage_root or path.is_relative_to(stage_root) else 0
+        if path == stage_root or path == patch_parent or path == patch_parent / f".{commit}.pending" or path == patch_parent / commit:
+            mode = stat.S_IFDIR | 0o700
+        elif path.is_dir():
+            mode = stat.S_IFDIR | 0o755
+        elif path.name.endswith(".before") or path.name == "manifest.json" or path.name == "manifest.json.next":
+            mode = stat.S_IFREG | 0o600
+        else:
+            mode = stat.S_IFREG | 0o644
+        return SimpleNamespace(st_uid=owner, st_mode=mode, st_nlink=actual.st_nlink)
+
+    def fake_require_root_owned(path, *, mode, regular=None, single_link=True):
+        metadata = fake_path_stat(path)
+        if metadata is None or metadata.st_uid != 0 or stat.S_IMODE(metadata.st_mode) != mode:
+            raise recovery.RecoveryError("test_root_owned_check_failed")
+        if regular is True and not pathlib.Path(path).is_file():
+            raise recovery.RecoveryError("test_regular_file_check_failed")
+        if regular is False and not pathlib.Path(path).is_dir():
+            raise recovery.RecoveryError("test_directory_check_failed")
+        return metadata
+
+    def fake_fingerprint():
+        current = {
+            relative: (release_root / relative).read_bytes()
+            for relative in targets
+        }
+        if current == targets:
+            return before_fingerprint
+        if current == patches:
+            return after_fingerprint
+        return "partially-patched-release"
+
+    monkeypatch.setattr(recovery, "_path_stat", fake_path_stat)
+    monkeypatch.setattr(recovery, "_require_root_owned", fake_require_root_owned)
+    monkeypatch.setattr(recovery, "_release_fingerprint", fake_fingerprint)
+    return release_root, patch_parent, targets, patches
+
+
+def test_pinned_release_patch_is_backed_up_and_idempotent(tmp_path, monkeypatch):
+    release_root, patch_parent, targets, patches = _prepare_release_patch_workspace(
+        tmp_path, monkeypatch
+    )
+
+    result = recovery._install_pinned_release_patch()
+
+    assert result["release_patch"] == "VERIFIED"
+    assert result["idempotent"] is False
+    assert all(
+        (release_root / relative).read_bytes() == content
+        for relative, content in patches.items()
+    )
+    for relative, content in targets.items():
+        backup = patch_parent / recovery.RELEASE_PATCH_COMMIT / (
+            relative.replace("/", "__") + ".before"
+        )
+        assert backup.read_bytes() == content
+
+    repeated = recovery._install_pinned_release_patch()
+
+    assert repeated["release_patch"] == "VERIFIED"
+    assert repeated["idempotent"] is True
+
+
+def test_pinned_release_patch_resumes_after_one_target_was_replaced(
+    tmp_path, monkeypatch
+):
+    release_root, _patch_parent, targets, patches = _prepare_release_patch_workspace(
+        tmp_path, monkeypatch
+    )
+    real_replace = recovery.os.replace
+    second_target = release_root / "13_deployment/migrate_school_linux.py"
+    failed = False
+
+    def fail_second_target_once(source, destination):
+        nonlocal failed
+        if pathlib.Path(destination) == second_target and not failed:
+            failed = True
+            raise OSError("synthetic interruption")
+        real_replace(source, destination)
+
+    monkeypatch.setattr(recovery.os, "replace", fail_second_target_once)
+    with pytest.raises(recovery.RecoveryError, match="release_patch_publish_failed"):
+        recovery._install_pinned_release_patch()
+    assert failed
+    assert (release_root / "11_database/migrations/env.py").read_bytes() == patches[
+        "11_database/migrations/env.py"
+    ]
+    assert second_target.read_bytes() == targets["13_deployment/migrate_school_linux.py"]
+
+    monkeypatch.setattr(recovery.os, "replace", real_replace)
+    result = recovery._install_pinned_release_patch()
+
+    assert result["release_patch"] == "VERIFIED"
+    assert all(
+        (release_root / relative).read_bytes() == content
+        for relative, content in patches.items()
+    )
+
+
+@pytest.mark.parametrize("interrupted_object", ["manifest", "backup", "release_staging"])
+def test_pinned_release_patch_recovers_partial_root_owned_staging_objects(
+    tmp_path, monkeypatch, interrupted_object
+):
+    release_root, patch_parent, targets, patches = _prepare_release_patch_workspace(
+        tmp_path, monkeypatch
+    )
+    pending = patch_parent / f".{recovery.RELEASE_PATCH_COMMIT}.pending"
+    pending.mkdir(parents=True, mode=0o700)
+
+    if interrupted_object == "manifest":
+        partial_path = pending / "manifest.json.next"
+    else:
+        manifest = json.dumps(
+            recovery._release_patch_manifest("PREPARING"),
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("ascii")
+        (pending / "manifest.json").write_bytes(manifest)
+        first_relative = next(iter(targets))
+        if interrupted_object == "backup":
+            partial_path = pending / (
+                first_relative.replace("/", "__") + ".before"
+            )
+        else:
+            first_target = release_root / first_relative
+            partial_path = first_target.with_name(
+                f".{first_target.name}.{recovery.RELEASE_PATCH_COMMIT}.next"
+            )
+
+    partial_path.write_bytes(b'{"partial":')
+
+    result = recovery._install_pinned_release_patch()
+
+    assert result["release_patch"] == "VERIFIED"
+    assert result["idempotent"] is False
+    assert all(
+        (release_root / relative).read_bytes() == content
+        for relative, content in patches.items()
+    )
+    assert not partial_path.exists()
+    for relative, content in targets.items():
+        backup = patch_parent / recovery.RELEASE_PATCH_COMMIT / (
+            relative.replace("/", "__") + ".before"
+        )
+        assert backup.read_bytes() == content
+
+
 def _key_payload() -> bytes:
     key = base64.urlsafe_b64encode(bytes(range(32))).decode("ascii")
     return json.dumps(

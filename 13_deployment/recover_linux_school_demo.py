@@ -41,6 +41,18 @@ SERVICE_GID = 988
 EXPECTED_HOSTNAME = "iZ0xic24d9gxb9udjbfo0kZ"
 EXPECTED_SOURCE_REVISION = "f3047642aa3466f9b4f210f4f704d57fd2cdf3cc"
 EXPECTED_RELEASE_FINGERPRINT = "71cd06d531a95c370c11bf7bfe9a7a5a39cc58325ba2de5d2112a9679a08569e"
+PREVIOUS_RELEASE_FINGERPRINT = "0dafbda9a01f0eb0360c3b58a962ad3a7a8aca47af8b90a10ad969620e0774a6"
+RELEASE_PATCH_COMMIT = "5a23b2701bc0c03c53f25fc72bafe1adb26d3ebd"
+RELEASE_PATCH_FILES = {
+    "11_database/migrations/env.py": {
+        "before_sha256": "5a70d3719a66330b4bc4de1c2b6e78acc818328b943aad371de007a2b615de97",
+        "source_sha256": "91a85ac464e3241aed77c7802526bbbd68c7100b6a6738ec794d4931c86a90c6",
+    },
+    "13_deployment/migrate_school_linux.py": {
+        "before_sha256": "ddccc2169c6e4d41c8cda9cbd4413f8e79cc87d0cac5e19f14bf871a496b4d24",
+        "source_sha256": "313b4996a04846f959bcca5d8f9c6704fe3afd358663c8595126de3a6f980bf8",
+    },
+}
 EXPECTED_RELEASE_PATCHES = (
     ("11_database/database_layer/crypto.py", "000abe407e4ffebc70b9e3b1acf3545d01e804f3"),
     ("11_database/database_layer/systemd_auth.py", "5718cd9c67df136c9afca13c9e39541197d2abbf"),
@@ -66,6 +78,9 @@ MYSQL_PORT = 3306
 BACKEND_PORT = 8088
 CREDSTORE = Path("/etc/credstore.encrypted")
 HOST_CREDENTIAL_KEY = Path("/var/lib/systemd/credential.secret")
+RELEASE_PATCH_PARENT = APP_ROOT / "release-patches"
+RELEASE_PATCH_PENDING = RELEASE_PATCH_PARENT / f".{RELEASE_PATCH_COMMIT}.pending"
+RELEASE_PATCH_ROOT = RELEASE_PATCH_PARENT / RELEASE_PATCH_COMMIT
 SYSTEMD_UNITS = Path("/etc/systemd/system")
 RUN_UNITS = Path("/run/systemd/system")
 RECOVERY_LOCK_PATH = Path("/run/psynova-school-demo-recovery.lock")
@@ -676,6 +691,343 @@ def _release_fingerprint() -> str:
     return digest.hexdigest()
 
 
+def _release_patch_manifest(phase: str) -> dict[str, object]:
+    if phase not in {"PREPARING", "VERIFIED"}:
+        raise RecoveryError("release_patch_manifest_phase_invalid")
+    files = {
+        relative: {
+            **hashes,
+            "backup": relative.replace("/", "__") + ".before",
+        }
+        for relative, hashes in RELEASE_PATCH_FILES.items()
+    }
+    return {
+        "schema": "psynova.school-release-patch.v1",
+        "source_revision": EXPECTED_SOURCE_REVISION,
+        "source_commit": RELEASE_PATCH_COMMIT,
+        "before_fingerprint": PREVIOUS_RELEASE_FINGERPRINT,
+        "after_fingerprint": EXPECTED_RELEASE_FINGERPRINT,
+        "phase": phase,
+        "files": files,
+    }
+
+
+def _release_patch_source_files() -> dict[str, bytes]:
+    source_root = SOURCE_STAGE / "release-patches" / RELEASE_PATCH_COMMIT
+    if SOURCE_STAGE.is_symlink() or source_root.is_symlink() or not source_root.is_dir():
+        raise RecoveryError("release_patch_source_unavailable")
+    stage_owner = _path_stat(SOURCE_STAGE)
+    if stage_owner is None or stage_owner.st_uid == 0 or stage_owner.st_mode & 0o077:
+        raise RecoveryError("release_patch_source_directory_unsafe")
+
+    result: dict[str, bytes] = {}
+    for relative, hashes in RELEASE_PATCH_FILES.items():
+        path = source_root / relative
+        parents = []
+        parent = path.parent
+        while parent != SOURCE_STAGE:
+            parents.append(parent)
+            parent = parent.parent
+        for parent in parents:
+            metadata = _path_stat(parent)
+            if (
+                metadata is None
+                or not stat.S_ISDIR(metadata.st_mode)
+                or metadata.st_uid != stage_owner.st_uid
+                or metadata.st_mode & 0o022
+            ):
+                raise RecoveryError("release_patch_source_directory_unsafe")
+        metadata = _path_stat(path)
+        if (
+            metadata is None
+            or not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != stage_owner.st_uid
+            or metadata.st_mode & 0o022
+        ):
+            raise RecoveryError("release_patch_source_file_unsafe")
+        try:
+            content = path.read_bytes()
+        except OSError:
+            raise RecoveryError("release_patch_source_unavailable") from None
+        if hashlib.sha256(content).hexdigest() != hashes["source_sha256"]:
+            raise RecoveryError("release_patch_source_hash_mismatch")
+        result[relative] = content
+    return result
+
+
+def _ensure_root_patch_directory(
+    path: Path, *, mode: int | None, create: bool = False
+) -> None:
+    metadata = _path_stat(path)
+    if metadata is None and create:
+        create_mode = 0o700 if mode is None else mode
+        try:
+            os.mkdir(path, create_mode)
+            _LINUX_OS.chown(path, 0, 0)
+            os.chmod(path, create_mode)
+            _sync_directory(path.parent)
+        except OSError:
+            raise RecoveryError("release_patch_directory_create_failed") from None
+        metadata = _path_stat(path)
+    if (
+        metadata is None
+        or not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != 0
+        or metadata.st_mode & 0o022
+        or (mode is not None and stat.S_IMODE(metadata.st_mode) != mode)
+    ):
+        raise RecoveryError("release_patch_directory_ownership_mismatch")
+    _require_no_extended_acl(path)
+
+
+def _write_root_patch_file(path: Path, payload: bytes, *, mode: int) -> None:
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(
+            path,
+            os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0),
+            mode,
+        )
+        _LINUX_OS.fchown(descriptor, 0, 0)
+        _LINUX_OS.fchmod(descriptor, mode)
+        with os.fdopen(descriptor, "wb") as stream:
+            descriptor = None
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        _sync_directory(path.parent)
+    except OSError:
+        if descriptor is not None:
+            os.close(descriptor)
+        raise RecoveryError("release_patch_file_write_failed") from None
+    _require_root_owned(path, mode=mode, regular=True)
+    _require_no_extended_acl(path)
+
+
+def _replace_known_root_patch_file(path: Path, payload: bytes, *, mode: int) -> None:
+    if path.exists() or path.is_symlink():
+        _require_root_owned(path, mode=mode, regular=True)
+        _require_no_extended_acl(path)
+        try:
+            path.unlink()
+            _sync_directory(path.parent)
+        except OSError:
+            raise RecoveryError("release_patch_staging_repair_failed") from None
+    _write_root_patch_file(path, payload, mode=mode)
+
+
+def _write_release_patch_manifest(directory: Path, phase: str) -> None:
+    manifest_path = directory / "manifest.json"
+    staging_path = directory / "manifest.json.next"
+    expected = json.dumps(
+        _release_patch_manifest(phase), sort_keys=True, separators=(",", ":")
+    ).encode("ascii")
+    if staging_path.exists() or staging_path.is_symlink():
+        _require_root_owned(staging_path, mode=0o600, regular=True)
+        _require_no_extended_acl(staging_path)
+        if staging_path.read_bytes() != expected:
+            _replace_known_root_patch_file(staging_path, expected, mode=0o600)
+    else:
+        _write_root_patch_file(staging_path, expected, mode=0o600)
+    if manifest_path.exists() or manifest_path.is_symlink():
+        _require_root_owned(manifest_path, mode=0o600, regular=True)
+        _require_no_extended_acl(manifest_path)
+    try:
+        os.replace(staging_path, manifest_path)
+        _sync_directory(directory)
+    except OSError:
+        raise RecoveryError("release_patch_manifest_publish_failed") from None
+
+
+def _read_release_patch_manifest(directory: Path) -> dict[str, object] | None:
+    path = directory / "manifest.json"
+    if not path.exists() and not path.is_symlink():
+        return None
+    _require_root_owned(path, mode=0o600, regular=True)
+    _require_no_extended_acl(path)
+    try:
+        raw = path.read_bytes()
+        value = json.loads(raw.decode("ascii"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        raise RecoveryError("release_patch_manifest_invalid") from None
+    if type(value) is not dict or value not in (
+        _release_patch_manifest("PREPARING"),
+        _release_patch_manifest("VERIFIED"),
+    ):
+        raise RecoveryError("release_patch_manifest_identity_mismatch")
+    return cast(dict[str, object], value)
+
+
+def _install_pinned_release_patch() -> dict[str, object]:
+    global _CURRENT_PHASE
+    _CURRENT_PHASE = "release_patch"
+    if not callable(getattr(os, "geteuid", None)) or _LINUX_OS.geteuid() != 0:
+        raise RecoveryError("linux_root_execution_required")
+    _base_host_preflight(verify_release_fingerprint=False)
+    source_files = _release_patch_source_files()
+    _ensure_root_patch_directory(RELEASE_PATCH_PARENT, mode=None, create=True)
+
+    if RELEASE_PATCH_ROOT.exists() or RELEASE_PATCH_ROOT.is_symlink():
+        _ensure_root_patch_directory(RELEASE_PATCH_ROOT, mode=0o700)
+        manifest = _read_release_patch_manifest(RELEASE_PATCH_ROOT)
+        if (
+            manifest != _release_patch_manifest("VERIFIED")
+            or _release_fingerprint() != EXPECTED_RELEASE_FINGERPRINT
+        ):
+            raise RecoveryError("release_patch_state_unrecognized")
+        expected_names = {
+            "manifest.json",
+            *(relative.replace("/", "__") + ".before" for relative in RELEASE_PATCH_FILES),
+        }
+        if {path.name for path in RELEASE_PATCH_ROOT.iterdir()} != expected_names:
+            raise RecoveryError("release_patch_directory_has_unknown_objects")
+        for relative, hashes in RELEASE_PATCH_FILES.items():
+            backup = RELEASE_PATCH_ROOT / (relative.replace("/", "__") + ".before")
+            _require_root_owned(backup, mode=0o600, regular=True)
+            _require_no_extended_acl(backup)
+            if hashlib.sha256(backup.read_bytes()).hexdigest() != hashes["before_sha256"]:
+                raise RecoveryError("release_patch_backup_hash_mismatch")
+        return {
+            "release_patch": "VERIFIED",
+            "source_commit": RELEASE_PATCH_COMMIT,
+            "fingerprint": EXPECTED_RELEASE_FINGERPRINT,
+            "files": len(RELEASE_PATCH_FILES),
+            "idempotent": True,
+        }
+
+    pending_metadata = _path_stat(RELEASE_PATCH_PENDING)
+    if pending_metadata is None:
+        if _release_fingerprint() != PREVIOUS_RELEASE_FINGERPRINT:
+            raise RecoveryError("release_patch_state_unrecognized")
+        for relative, hashes in RELEASE_PATCH_FILES.items():
+            target = RELEASE_ROOT / relative
+            _require_root_owned(target, mode=0o644, regular=True)
+            _require_no_extended_acl(target)
+            if hashlib.sha256(target.read_bytes()).hexdigest() != hashes["before_sha256"]:
+                raise RecoveryError("release_patch_original_hash_mismatch")
+        _ensure_root_patch_directory(RELEASE_PATCH_PENDING, mode=0o700, create=True)
+        _write_release_patch_manifest(RELEASE_PATCH_PENDING, "PREPARING")
+    else:
+        _ensure_root_patch_directory(RELEASE_PATCH_PENDING, mode=0o700)
+        manifest = _read_release_patch_manifest(RELEASE_PATCH_PENDING)
+        if manifest is None:
+            manifest_staging = RELEASE_PATCH_PENDING / "manifest.json.next"
+            if manifest_staging.exists() or manifest_staging.is_symlink():
+                _require_root_owned(manifest_staging, mode=0o600, regular=True)
+                _require_no_extended_acl(manifest_staging)
+                preparing_manifest = json.dumps(
+                    _release_patch_manifest("PREPARING"),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("ascii")
+                if manifest_staging.read_bytes() != preparing_manifest:
+                    if _release_fingerprint() != PREVIOUS_RELEASE_FINGERPRINT:
+                        raise RecoveryError("release_patch_manifest_staging_mismatch")
+                    _replace_known_root_patch_file(
+                        manifest_staging, preparing_manifest, mode=0o600
+                    )
+                try:
+                    os.replace(
+                        manifest_staging,
+                        RELEASE_PATCH_PENDING / "manifest.json",
+                    )
+                    _sync_directory(RELEASE_PATCH_PENDING)
+                except OSError:
+                    raise RecoveryError("release_patch_manifest_publish_failed") from None
+            elif tuple(sorted(path.name for path in RELEASE_PATCH_PENDING.iterdir())):
+                raise RecoveryError("release_patch_state_unrecognized")
+            else:
+                _write_release_patch_manifest(RELEASE_PATCH_PENDING, "PREPARING")
+        elif manifest not in (
+            _release_patch_manifest("PREPARING"),
+            _release_patch_manifest("VERIFIED"),
+        ):
+            raise RecoveryError("release_patch_state_unrecognized")
+
+    manifest = _read_release_patch_manifest(RELEASE_PATCH_PENDING)
+    if manifest is None:
+        raise RecoveryError("release_patch_manifest_unavailable")
+    allowed_names = {
+        "manifest.json",
+        "manifest.json.next",
+        *(relative.replace("/", "__") + ".before" for relative in RELEASE_PATCH_FILES),
+    }
+    pending_names = {path.name for path in RELEASE_PATCH_PENDING.iterdir()}
+    if pending_names - allowed_names:
+        raise RecoveryError("release_patch_directory_has_unknown_objects")
+
+    for relative, hashes in RELEASE_PATCH_FILES.items():
+        target = RELEASE_ROOT / relative
+        _require_root_owned(target, mode=0o644, regular=True)
+        _require_no_extended_acl(target)
+        backup_name = relative.replace("/", "__") + ".before"
+        backup = RELEASE_PATCH_PENDING / backup_name
+        current = target.read_bytes()
+        current_hash = hashlib.sha256(current).hexdigest()
+        if current_hash not in {hashes["before_sha256"], hashes["source_sha256"]}:
+            raise RecoveryError("release_patch_target_hash_mismatch")
+        if backup.exists() or backup.is_symlink():
+            _require_root_owned(backup, mode=0o600, regular=True)
+            _require_no_extended_acl(backup)
+            if hashlib.sha256(backup.read_bytes()).hexdigest() != hashes["before_sha256"]:
+                if current_hash != hashes["before_sha256"]:
+                    raise RecoveryError("release_patch_backup_hash_mismatch")
+                _replace_known_root_patch_file(backup, current, mode=0o600)
+        elif current_hash == hashes["before_sha256"]:
+            _write_root_patch_file(backup, current, mode=0o600)
+        else:
+            raise RecoveryError("release_patch_backup_missing_after_replace")
+
+    for relative, content in source_files.items():
+        target = RELEASE_ROOT / relative
+        hashes = RELEASE_PATCH_FILES[relative]
+        _require_root_owned(target, mode=0o644, regular=True)
+        _require_no_extended_acl(target)
+        current_hash = hashlib.sha256(target.read_bytes()).hexdigest()
+        staging = target.with_name(f".{target.name}.{RELEASE_PATCH_COMMIT}.next")
+        if current_hash == hashes["source_sha256"]:
+            if staging.exists() or staging.is_symlink():
+                raise RecoveryError("release_patch_staging_object_unexpected")
+            _require_root_owned(target, mode=0o644, regular=True)
+            continue
+        if current_hash != hashes["before_sha256"]:
+            raise RecoveryError("release_patch_target_hash_mismatch")
+        _require_root_owned(target.parent, mode=0o755, regular=False)
+        _require_no_extended_acl(target.parent)
+        if staging.exists() or staging.is_symlink():
+            _require_root_owned(staging, mode=0o644, regular=True)
+            _require_no_extended_acl(staging)
+            if hashlib.sha256(staging.read_bytes()).hexdigest() != hashes["source_sha256"]:
+                _replace_known_root_patch_file(staging, content, mode=0o644)
+        else:
+            _write_root_patch_file(staging, content, mode=0o644)
+        try:
+            os.replace(staging, target)
+            _sync_directory(target.parent)
+        except OSError:
+            raise RecoveryError("release_patch_publish_failed") from None
+        _require_root_owned(target, mode=0o644, regular=True)
+        _require_no_extended_acl(target)
+        if hashlib.sha256(target.read_bytes()).hexdigest() != hashes["source_sha256"]:
+            raise RecoveryError("release_patch_publish_verification_failed")
+
+    if _release_fingerprint() != EXPECTED_RELEASE_FINGERPRINT:
+        raise RecoveryError("release_patch_fingerprint_mismatch")
+    _write_release_patch_manifest(RELEASE_PATCH_PENDING, "VERIFIED")
+    try:
+        os.rename(RELEASE_PATCH_PENDING, RELEASE_PATCH_ROOT)
+        _sync_directory(RELEASE_PATCH_PARENT)
+    except OSError:
+        raise RecoveryError("release_patch_checkpoint_publish_failed") from None
+    return {
+        "release_patch": "VERIFIED",
+        "source_commit": RELEASE_PATCH_COMMIT,
+        "fingerprint": EXPECTED_RELEASE_FINGERPRINT,
+        "files": len(RELEASE_PATCH_FILES),
+        "idempotent": False,
+    }
+
+
 def _verify_executable_snapshot(expected_sha256: str) -> Path:
     if re.fullmatch(r"[0-9a-f]{64}", expected_sha256) is None:
         raise RecoveryError("snapshot_hash_invalid")
@@ -705,7 +1057,7 @@ def _verify_http_verifier(path: Path, expected_sha256: str) -> Path:
     return resolved
 
 
-def _base_host_preflight() -> dict[str, object]:
+def _base_host_preflight(*, verify_release_fingerprint: bool = True) -> dict[str, object]:
     if (
         not callable(getattr(os, "geteuid", None))
         or _LINUX_OS.geteuid() != 0
@@ -738,7 +1090,7 @@ def _base_host_preflight() -> dict[str, object]:
     if source_revision != EXPECTED_SOURCE_REVISION or release_revision != source_revision:
         raise RecoveryError("source_revision_mismatch")
     fingerprint = _release_fingerprint()
-    if fingerprint != EXPECTED_RELEASE_FINGERPRINT:
+    if verify_release_fingerprint and fingerprint != EXPECTED_RELEASE_FINGERPRINT:
         raise RecoveryError("release_fingerprint_mismatch")
 
     python = VENV_ROOT / "bin/python"
@@ -3195,6 +3547,11 @@ def main() -> int:
     modes.add_argument("--inspect", action="store_true", help="read-only state report")
     modes.add_argument("--dry-run", action="store_true", help="read-only recovery plan")
     modes.add_argument("--resume", action="store_true", help="perform the controlled recovery")
+    modes.add_argument(
+        "--patch-release",
+        action="store_true",
+        help="install only the hash-pinned migration release patch",
+    )
     parser.add_argument("--expected-sha256", required=True)
     parser.add_argument("--http-verifier", type=Path)
     parser.add_argument("--http-verifier-sha256")
@@ -3203,6 +3560,10 @@ def main() -> int:
     try:
         _verify_executable_snapshot(args.expected_sha256)
         _acquire_recovery_lock()
+        if args.patch_release:
+            result = _install_pinned_release_patch()
+            print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+            return 0
         if args.inspect or args.dry_run:
             result = _make_plan(
                 args.expected_sha256,
