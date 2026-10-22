@@ -255,9 +255,12 @@ class CatRuntime:
             )
         try:
             self.service.submit_response(session, request.response)
-            if session.status.value == "IN_PROGRESS" and session.selected_item_id is None:
-                if not self._should_stop(session):
-                    self.service.next_item(session)
+            if (
+                session.status.value == "IN_PROGRESS"
+                and session.selected_item_id is None
+                and not self._should_stop(session)
+            ):
+                self.service.next_item(session)
         except Exception as exc:
             raise _domain_error(exc) from exc
         return self.state(session)
@@ -385,7 +388,7 @@ def _read_json(path: Path) -> dict[str, Any]:
 
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
-        raise ValueError(f"CAT configuration must be an object: {path}")
+        raise TypeError(f"CAT configuration must be an object: {path}")
     return value
 
 
@@ -514,7 +517,15 @@ app = create_app()
 
 
 def main() -> None:
-    uvicorn.run(app, host="127.0.0.1", port=int(os.environ.get("SMHAI_CAT_PORT", "8180")))
+    uvicorn.run(
+        app,
+        host="127.0.0.1",
+        port=int(os.environ.get("SMHAI_CAT_PORT", "8180")),
+        log_level="info",
+        access_log=False,
+        server_header=False,
+        date_header=False,
+    )
 
 
 if __name__ == "__main__":

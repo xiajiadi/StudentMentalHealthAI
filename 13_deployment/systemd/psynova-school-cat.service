@@ -1,0 +1,55 @@
+[Unit]
+Description=PsyNova synthetic CAT engine
+After=network.target
+StartLimitIntervalSec=120
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=psynova-school-demo
+Group=psynova-school-demo
+WorkingDirectory=/opt/psynova-school-demo/services/cat/release
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/opt/psynova-school-demo/services/cat/release/src
+Environment=SMHAI_CAT_PORT=8180
+Environment=SMHAI_CAT_CONFIG=/opt/psynova-school-demo/services/cat/release/fixtures/demo_cat_config.v1.json
+Environment=SMHAI_CAT_ITEM_BANK=/opt/psynova-school-demo/services/cat/release/fixtures/synthetic_item_bank.v1.json
+ExecStartPre=/opt/psynova-school-demo/services/cat/venv/bin/python -c "import adaptivetesting, cat_engine, fastapi, numpy, scipy, uvicorn"
+ExecStart=/opt/psynova-school-demo/services/cat/venv/bin/python -m cat_engine.api.app
+Restart=on-failure
+RestartSec=3
+TimeoutStartSec=120
+TimeoutStopSec=25
+KillSignal=SIGINT
+UMask=0077
+LimitCORE=0
+MemoryMax=2G
+MemorySwapMax=0
+CPUQuota=100%
+TasksMax=96
+RuntimeDirectory=psynova-school-cat
+RuntimeDirectoryMode=0700
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectHostname=yes
+ProtectClock=yes
+ProtectProc=invisible
+ProcSubset=pid
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET
+IPAddressDeny=any
+IPAddressAllow=127.0.0.1/32
+ReadWritePaths=/run/psynova-school-cat
+
+[Install]
+WantedBy=multi-user.target
