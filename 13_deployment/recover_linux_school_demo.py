@@ -933,7 +933,15 @@ def _normalize_grant(grant: str) -> str:
     cleaned = re.sub(r"\s+", " ", cleaned.strip())
     if " TO " not in cleaned or "WITH GRANT OPTION" in cleaned.upper():
         raise RecoveryError("database_grant_state_unexpected")
-    return cleaned.split(" TO ", 1)[0].upper()
+    prefix = cleaned.split(" TO ", 1)[0].upper()
+    match = re.fullmatch(r"GRANT (.+) ON (.+)", prefix)
+    if match is None:
+        raise RecoveryError("database_grant_state_unexpected")
+    privileges, scope = match.groups()
+    canonical_privileges = ", ".join(
+        sorted(privilege.strip() for privilege in privileges.split(","))
+    )
+    return f"GRANT {canonical_privileges} ON {scope}"
 
 
 def _grants_for(username: str) -> list[str]:
@@ -947,7 +955,7 @@ def _verify_runtime_grants(grants: Sequence[str]) -> None:
     actual = {_normalize_grant(grant) for grant in grants}
     expected = {
         "GRANT USAGE ON *.*",
-        "GRANT SELECT, INSERT, UPDATE, DELETE ON SMHAI_SCHOOL_DEMO.*",
+        "GRANT DELETE, INSERT, SELECT, UPDATE ON SMHAI_SCHOOL_DEMO.*",
     }
     if len(grants) != 2 or actual != expected:
         raise RecoveryError("runtime_grants_not_minimal")
@@ -956,7 +964,7 @@ def _verify_runtime_grants(grants: Sequence[str]) -> None:
 def _verify_migration_grants(grants: Sequence[str], *, allow_usage_only: bool = False) -> None:
     usage = "GRANT USAGE ON *.*"
     migration = (
-        "GRANT CREATE, ALTER, INDEX, REFERENCES, SELECT, INSERT, UPDATE, DELETE "
+        "GRANT ALTER, CREATE, DELETE, INDEX, INSERT, REFERENCES, SELECT, UPDATE "
         "ON SMHAI_SCHOOL_DEMO.*"
     )
     actual = {_normalize_grant(grant) for grant in grants}

@@ -379,6 +379,32 @@ def test_migrator_prepared_resume_finishes_usage_only_grant(monkeypatch):
     assert result["phase"] == "MIGRATOR_AUTH_VERIFIED"
 
 
+def test_mysql_show_grants_privilege_order_is_canonicalized():
+    username = "psynova_migrator_0123456789abcde"
+    mysql_canonical_order = [
+        "GRANT USAGE ON *.* TO " + f"'{username}'@'127.0.0.1'",
+        (
+            "GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, REFERENCES, INDEX, ALTER "
+            "ON `smhai_school_demo`.* TO " + f"'{username}'@'127.0.0.1'"
+        ),
+    ]
+
+    recovery._verify_migration_grants(mysql_canonical_order)
+
+
+def test_mysql_show_grants_privilege_order_keeps_expansion_rejected():
+    grants = [
+        "GRANT USAGE ON *.* TO migrator",
+        (
+            "GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, REFERENCES, INDEX, ALTER, "
+            "DROP ON smhai_school_demo.* TO migrator"
+        ),
+    ]
+
+    with pytest.raises(recovery.RecoveryError, match="migration_grants_not_minimal"):
+        recovery._verify_migration_grants(grants)
+
+
 def test_credential_candidate_reader_rejects_unlinked_conflicting_sidecar(monkeypatch, tmp_path):
     target = tmp_path / "runtime.cred"
     staging = tmp_path / ".runtime.cred.recovery-next"
