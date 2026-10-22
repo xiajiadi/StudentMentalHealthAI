@@ -139,6 +139,13 @@ def test_pending_generation_fails_closed_on_ambiguous_or_missing_turn() -> None:
         verifier._existing_turn([first], expected_turn_id="TURN_missing")
 
 
+def test_read_only_reconciliation_never_allows_a_generation_post() -> None:
+    with pytest.raises(verifier.GateError, match="read_only_reconciliation_no_post"):
+        verifier._require_generation_submission_allowed(reconcile_only=True)
+
+    verifier._require_generation_submission_allowed(reconcile_only=False)
+
+
 @pytest.mark.parametrize("run_id", ["", "A" * 32, "a" * 31, "a" * 33, "../" + "a" * 30])
 def test_generation_run_id_rejects_noncanonical_values(run_id: str) -> None:
     with pytest.raises(verifier.GateError, match="run_id_invalid"):

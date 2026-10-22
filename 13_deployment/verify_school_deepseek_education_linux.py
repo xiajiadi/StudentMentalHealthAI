@@ -245,6 +245,11 @@ def _existing_turn(
     return candidate
 
 
+def _require_generation_submission_allowed(*, reconcile_only: bool) -> None:
+    if reconcile_only:
+        raise GateError("read_only_reconciliation_no_post", "checkpoint_reconcile")
+
+
 def _safe_http_error_code(response: Any) -> str | None:
     try:
         payload = response.json()
@@ -433,7 +438,9 @@ def _preflight(httpx: Any) -> None:
         raise GateError("account_verifier_fingerprint_mismatch", "preflight")
 
 
-def _resume(state: dict[str, Any] | None) -> dict[str, Any]:
+def _resume(
+    state: dict[str, Any] | None, *, reconcile_only: bool = False
+) -> dict[str, Any]:
     sys.path.insert(0, str(RELEASE_ROOT / "13_deployment"))
     httpx: Any = importlib.import_module("httpx")
     verifier: Any = importlib.import_module("verify_school_http_linux")
@@ -509,6 +516,7 @@ def _resume(state: dict[str, Any] | None) -> dict[str, Any]:
                 _write_state(state)
 
         if turn is None:
+            _require_generation_submission_allowed(reconcile_only=reconcile_only)
             checks.pop("last_http_status", None)
             checks.pop("last_backend_error_code", None)
             _checkpoint(state, "GENERATION_REQUEST_PENDING", conversation_id=conversation_id)
@@ -657,6 +665,7 @@ def main() -> int:
     actions = parser.add_mutually_exclusive_group(required=True)
     actions.add_argument("--inspect", action="store_true")
     actions.add_argument("--dry-run", action="store_true")
+    actions.add_argument("--reconcile-only", action="store_true")
     actions.add_argument("--resume", action="store_true")
     args = parser.parse_args()
     try:
@@ -668,7 +677,12 @@ def main() -> int:
                 return _inspect(state)
             if args.dry_run:
                 return _dry_run(state)
-            result = _resume(state)
+            if args.reconcile_only and (
+                state is None
+                or state.get("phase") not in {"CONVERSATION_CREATED", "GENERATION_REQUEST_PENDING"}
+            ):
+                raise GateError("reconciliation_checkpoint_unavailable", "checkpoint_reconcile")
+            result = _resume(state, reconcile_only=args.reconcile_only)
             print(json.dumps(result, sort_keys=True))
             return 0
     except GateError as exc:
