@@ -11,7 +11,7 @@ DynamicUser=yes
 WorkingDirectory=/opt/psynova-school-demo/release/06_llm-runtime
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=PYTHONUNBUFFERED=1
-Environment=PYTHONPATH=/opt/psynova-school-demo/release/06_llm-runtime/src
+Environment=PYTHONPATH=/opt/psynova-school-demo/release/13_deployment:/opt/psynova-school-demo/release/06_llm-runtime/src
 Environment=SMHAI_LLM_PROVIDER=deepseek
 Environment=SMHAI_LLM_PORT=8160
 Environment=SMHAI_LLM_RUNTIME_AUTH_FILE=%d/llm-runtime-auth.json
