@@ -48,6 +48,16 @@ def test_bundle_validator_accepts_pinned_real_api_site() -> None:
     assert files["web/index.html"].startswith(b"<!doctype html>")
 
 
+def test_frontend_build_command_handles_windows_command_wrapper() -> None:
+    assert site._frontend_build_command("nt") == [
+        "cmd.exe",
+        "/d",
+        "/c",
+        "npm run build",
+    ]
+    assert site._frontend_build_command("posix") == ["npm", "run", "build"]
+
+
 def test_bundle_validator_rejects_mock_api_manifest() -> None:
     with pytest.raises(site.DeployError, match="bundle_manifest_invalid"):
         site._validate_bundle_bytes(_bundle(_site_files(), mode="mock"))

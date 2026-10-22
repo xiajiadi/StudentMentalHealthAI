@@ -143,9 +143,10 @@ def _package_files(repo_root: Path) -> tuple[dict[str, bytes], str]:
     environment = os.environ.copy()
     environment["VITE_API_MODE"] = "real"
     environment["VITE_API_BASE_URL"] = "/"
+    build_command = _frontend_build_command()
     try:
         result = subprocess.run(
-            ["npm", "run", "build"],
+            build_command,
             cwd=frontend_root,
             env=environment,
             capture_output=True,
@@ -173,6 +174,14 @@ def _package_files(repo_root: Path) -> tuple[dict[str, bytes], str]:
     files["nginx/https.conf"] = (root / HTTPS_CONFIG_PATH).read_bytes()
     _make_manifest(files, source_commit)
     return files, source_commit
+
+
+def _frontend_build_command(platform: str | None = None) -> list[str]:
+    current_platform = os.name if platform is None else platform
+    if current_platform == "nt":
+        # npm is installed as npm.cmd on Windows; CreateProcess cannot launch it directly.
+        return ["cmd.exe", "/d", "/c", "npm run build"]
+    return ["npm", "run", "build"]
 
 
 def build_package(repo_root: Path, output: Path) -> dict[str, object]:
