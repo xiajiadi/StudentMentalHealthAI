@@ -10,6 +10,7 @@ from .crypto import (
     LinuxSystemdCredentialKeyProvider,
     MappingKeyProvider,
     WindowsDpapiKeyProvider,
+    read_linux_systemd_credential,
 )
 from .models import (
     SchoolCatActivation,
@@ -138,4 +139,5 @@ __all__ = [
     "create_engine",
     "create_session_factory",
     "seed_synthetic_school_contexts",
+    "read_linux_systemd_credential",
 ]

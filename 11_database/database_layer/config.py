@@ -7,6 +7,7 @@ intentionally rejected by the production/integration configuration path.
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass, field
 
 from sqlalchemy import URL, make_url
@@ -18,6 +19,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from .errors import ConfigurationError
+from .systemd_auth import load_systemd_school_database_credential
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,8 +34,32 @@ class DatabaseSettings:
 
     @classmethod
     def from_env(cls) -> DatabaseSettings:
-        url = os.environ.get("DATABASE_URL")
-        if not url:
+        credential_name = os.environ.get("DATABASE_AUTH_CREDENTIAL")
+        if credential_name:
+            if os.name != "posix" or sys.platform != "linux":
+                raise ConfigurationError("Systemd database credentials require Linux")
+            if any(
+                name.startswith("DB_")
+                or (
+                    name.startswith("DATABASE_")
+                    and name not in {"DATABASE_AUTH_CREDENTIAL", "DATABASE_KEY_FILE"}
+                )
+                for name in os.environ
+            ):
+                raise ConfigurationError("Ambiguous school database credential configuration")
+            credential = load_systemd_school_database_credential(credential_name)
+            url = URL.create(
+                "mysql+aiomysql",
+                username=credential.username,
+                password=credential.password,
+                host=credential.host,
+                port=credential.port,
+                database=credential.database,
+                query={"charset": "utf8mb4"},
+            ).render_as_string(hide_password=False)
+        else:
+            url = os.environ.get("DATABASE_URL")
+        if not credential_name and not url:
             user = os.environ.get("DB_USER")
             password = os.environ.get("DB_PASSWORD")
             host = os.environ.get("DB_HOST", "127.0.0.1")
@@ -53,6 +79,8 @@ class DatabaseSettings:
                 query={"charset": "utf8mb4"},
             ).render_as_string(hide_password=False)
 
+        if not url:
+            raise ConfigurationError("Database URL is unavailable")
         parsed = make_url(url)
         if parsed.drivername.startswith("sqlite"):
             raise ConfigurationError("SQLite is not an acceptance database")

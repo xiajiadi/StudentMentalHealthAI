@@ -1,0 +1,53 @@
+[Unit]
+Description=PsyNova synthetic school demo backend
+After=mysql.service
+Requires=mysql.service
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=psynova-school-demo
+Group=psynova-school-demo
+WorkingDirectory=/opt/psynova-school-demo/release
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/opt/psynova-school-demo/release/13_deployment:/opt/psynova-school-demo/release/09_backend/src:/opt/psynova-school-demo/release/11_database
+Environment=DATABASE_AUTH_CREDENTIAL=school-runtime.json
+Environment=DATABASE_KEY_FILE=database-keys.json
+LoadCredentialEncrypted=school-runtime.json:/etc/credstore.encrypted/psynova-school-runtime.cred
+LoadCredentialEncrypted=database-keys.json:/etc/credstore.encrypted/psynova-school-database-keys.cred
+ExecStartPre=/opt/psynova-school-demo/venv/bin/python /opt/psynova-school-demo/release/13_deployment/school_backend_linux.py --repo-root /opt/psynova-school-demo/release --preflight-only
+ExecStart=/opt/psynova-school-demo/venv/bin/python /opt/psynova-school-demo/release/13_deployment/school_backend_linux.py --repo-root /opt/psynova-school-demo/release
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=90
+TimeoutStopSec=30
+KillSignal=SIGINT
+UMask=0077
+LimitCORE=0
+RuntimeDirectory=psynova-school-demo
+RuntimeDirectoryMode=0700
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectHostname=yes
+ProtectClock=yes
+ProtectProc=invisible
+ProcSubset=pid
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET
+IPAddressDeny=any
+IPAddressAllow=127.0.0.1/32
+ReadWritePaths=/run/psynova-school-demo
+
+[Install]
+WantedBy=multi-user.target

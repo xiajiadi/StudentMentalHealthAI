@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 from cryptography.fernet import Fernet
-from database_layer import LinuxSystemdCredentialKeyProvider, crypto
+from database_layer import LinuxSystemdCredentialKeyProvider, crypto, read_linux_systemd_credential
 from database_layer.crypto import FernetDataProtectionProvider
 from database_layer.errors import EncryptionKeyUnavailable
 
@@ -136,6 +136,90 @@ def test_valid_simulated_posix_round_trip_and_read_only(credentials, directory_m
         provider.get_key("SYNTHETIC_VERSION_SENTINEL")
     assert str(caught.value) == ERROR
     assert caught.value.__cause__ is None
+
+
+def test_generic_systemd_reader_returns_only_the_named_credential_bytes(credentials):
+    assert read_linux_systemd_credential(NAME) == credentials.content
+
+
+@pytest.mark.parametrize(
+    ("directory_mode", "owner_permissions"),
+    [(0o550, "r-x"), (0o750, "rwx")],
+)
+def test_accepts_systemd_root_owned_credentials_with_exact_service_acl(
+    credentials, monkeypatch, directory_mode, owner_permissions
+):
+    directory = credentials.nodes[DIRECTORY]
+    key_file = credentials.nodes[DIRECTORY + "/" + NAME]
+    directory.st_uid = key_file.st_uid = 0
+    directory.st_gid = key_file.st_gid = 0
+    directory.st_mode = stat.S_IFDIR | directory_mode
+    key_file.st_mode = stat.S_IFREG | 0o440
+
+    def read_acl(descriptor):
+        path = credentials.descriptors[descriptor]
+        if path == DIRECTORY:
+            return (
+                f"user::{owner_permissions}",
+                "user:1001:r-x",
+                "group::---",
+                "mask::r-x",
+                "other::---",
+            )
+        if path == DIRECTORY + "/" + NAME:
+            return (
+                "user::r--",
+                "user:1001:r--",
+                "group::---",
+                "mask::r--",
+                "other::---",
+            )
+        raise AssertionError("ACL should only be inspected for final systemd credential objects")
+
+    monkeypatch.setattr(crypto, "_read_posix_acl", read_acl)
+    provider = LinuxSystemdCredentialKeyProvider.from_env()
+    assert provider.active_version == "synthetic-v1"
+    assert provider.get_key("synthetic-v1") == credentials.key
+
+
+@pytest.mark.parametrize(
+    "file_acl",
+    [
+        ("user::r--", "user:1001:rw-", "group::---", "mask::rw-", "other::---"),
+        ("user::r--", "user:1002:r--", "group::---", "mask::r--", "other::---"),
+        (
+            "user::r--",
+            "user:1001:r--",
+            "group::r--",
+            "mask::r--",
+            "other::---",
+        ),
+    ],
+)
+def test_rejects_root_owned_systemd_credential_acls_with_extra_access(
+    credentials, monkeypatch, file_acl
+):
+    directory = credentials.nodes[DIRECTORY]
+    key_file = credentials.nodes[DIRECTORY + "/" + NAME]
+    directory.st_uid = key_file.st_uid = 0
+    directory.st_gid = key_file.st_gid = 0
+    directory.st_mode = stat.S_IFDIR | 0o750
+    key_file.st_mode = stat.S_IFREG | 0o440
+
+    def read_acl(descriptor):
+        path = credentials.descriptors[descriptor]
+        if path == DIRECTORY:
+            return (
+                "user::rwx",
+                "user:1001:r-x",
+                "group::---",
+                "mask::r-x",
+                "other::---",
+            )
+        return file_acl
+
+    monkeypatch.setattr(crypto, "_read_posix_acl", read_acl)
+    reject()
 
 
 @pytest.mark.parametrize("value", [None, "", " ", "relative", "/", "/run/../credentials"])

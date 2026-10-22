@@ -1,0 +1,33 @@
+[Unit]
+Description=Apply the PsyNova synthetic school schema migrations
+After=mysql.service
+Requires=mysql.service
+
+[Service]
+Type=oneshot
+User=psynova-school-demo
+Group=psynova-school-demo
+WorkingDirectory=/opt/psynova-school-demo/release
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/opt/psynova-school-demo/release/13_deployment:/opt/psynova-school-demo/release/09_backend/src:/opt/psynova-school-demo/release/11_database
+Environment=DATABASE_AUTH_CREDENTIAL=school-migration.json
+LoadCredentialEncrypted=school-migration.json:/etc/credstore.encrypted/psynova-school-migration.cred
+ExecStart=/opt/psynova-school-demo/venv/bin/python /opt/psynova-school-demo/release/13_deployment/migrate_school_linux.py --repo-root /opt/psynova-school-demo/release
+UMask=0077
+LimitCORE=0
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectProc=invisible
+ProcSubset=pid
+LockPersonality=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET
+IPAddressDeny=any
+IPAddressAllow=127.0.0.1/32

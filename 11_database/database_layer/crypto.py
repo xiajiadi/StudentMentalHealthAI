@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import ctypes
+import ctypes.util
 import json
 import os
 import re
@@ -14,7 +15,7 @@ from contextlib import ExitStack
 from ctypes import wintypes
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol, cast
 
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -152,9 +153,7 @@ def _dpapi_transform_current_user(data: bytes, *, decrypt: bool) -> bytes:
         raise EncryptionKeyUnavailable("DPAPI input is invalid")
 
     source_buffer = (ctypes.c_ubyte * len(data)).from_buffer_copy(data)
-    source = _DataBlob(
-        len(data), ctypes.cast(source_buffer, ctypes.POINTER(ctypes.c_ubyte))
-    )
+    source = _DataBlob(len(data), ctypes.cast(source_buffer, ctypes.POINTER(ctypes.c_ubyte)))
     target = _DataBlob()
     crypt32 = ctypes.WinDLL("crypt32", use_last_error=True)
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -218,9 +217,7 @@ def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
 
 def _parse_dpapi_key_payload(plaintext: bytes) -> MappingKeyProvider:
     try:
-        payload = json.loads(
-            plaintext.decode("utf-8"), object_pairs_hook=_unique_json_object
-        )
+        payload = json.loads(plaintext.decode("utf-8"), object_pairs_hook=_unique_json_object)
         if not isinstance(payload, dict) or set(payload) != {"active_version", "keys"}:
             raise ValueError
         active_version = payload["active_version"]
@@ -334,11 +331,205 @@ def _parse_systemd_key_payload(plaintext: bytes) -> MappingKeyProvider:
     return MappingKeyProvider(keys, active)
 
 
+def _read_posix_acl(fd: int) -> tuple[str, ...]:
+    """Return the access ACL on an already-open Linux inode using libacl."""
+    library_name = ctypes.util.find_library("acl")
+    if not library_name:
+        raise OSError("POSIX ACL inspection is unavailable")
+    library = ctypes.CDLL(library_name, use_errno=True)
+    library.acl_get_fd.argtypes = [ctypes.c_int]
+    library.acl_get_fd.restype = ctypes.c_void_p
+    library.acl_to_text.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_ssize_t)]
+    library.acl_to_text.restype = ctypes.c_void_p
+    library.acl_free.argtypes = [ctypes.c_void_p]
+    library.acl_free.restype = ctypes.c_int
+
+    acl = library.acl_get_fd(fd)
+    if not acl:
+        raise OSError("POSIX ACL inspection failed")
+    text = None
+    try:
+        length = ctypes.c_ssize_t()
+        text = library.acl_to_text(acl, ctypes.byref(length))
+        if not text or length.value <= 0 or length.value > 4096:
+            raise OSError("POSIX ACL inspection failed")
+        raw = ctypes.string_at(text, length.value)
+        return tuple(raw.decode("ascii").splitlines())
+    finally:
+        if text:
+            library.acl_free(text)
+        library.acl_free(acl)
+
+
+def _matches_systemd_acl(fd: int, uid: int, *, directory: bool) -> bool:
+    """Accept systemd's root-owned, service-UID ACL without granting writes."""
+    try:
+        entries = _read_posix_acl(fd)
+        if len(entries) != 5:
+            return False
+        by_tag: dict[str, str] = {}
+        for entry in entries:
+            parts = entry.split(":")
+            if len(parts) != 3:
+                return False
+            tag = parts[0] if not parts[1] else f"{parts[0]}:{parts[1]}"
+            permissions = parts[2]
+            if tag in by_tag:
+                return False
+            by_tag[tag] = permissions
+        if directory:
+            return by_tag == {
+                "user": "r-x",
+                f"user:{uid}": "r-x",
+                "group": "---",
+                "mask": "r-x",
+                "other": "---",
+            } or by_tag == {
+                "user": "rwx",
+                f"user:{uid}": "r-x",
+                "group": "---",
+                "mask": "r-x",
+                "other": "---",
+            }
+        return by_tag == {
+            "user": "r--",
+            f"user:{uid}": "r--",
+            "group": "---",
+            "mask": "r--",
+            "other": "---",
+        }
+    except Exception:
+        return False
+
+
+def _valid_directory_owner_and_mode(fd: int, metadata: os.stat_result, uid: int) -> bool:
+    if not stat.S_ISDIR(metadata.st_mode):
+        return False
+    mode = stat.S_IMODE(metadata.st_mode)
+    if metadata.st_uid == uid:
+        return mode in {0o500, 0o700}
+    return (
+        uid != 0
+        and metadata.st_uid == 0
+        and metadata.st_gid == 0
+        and mode in {0o550, 0o750}
+        and _matches_systemd_acl(fd, uid, directory=True)
+    )
+
+
+def _valid_file_owner_and_mode(fd: int, metadata: os.stat_result, uid: int) -> bool:
+    if not stat.S_ISREG(metadata.st_mode):
+        return False
+    mode = stat.S_IMODE(metadata.st_mode)
+    if metadata.st_uid == uid:
+        return mode in {0o400, 0o600}
+    return (
+        uid != 0
+        and metadata.st_uid == 0
+        and metadata.st_gid == 0
+        and mode == 0o440
+        and _matches_systemd_acl(fd, uid, directory=False)
+    )
+
+
+def _read_systemd_credential_bytes(credentials_directory: Path, credential_name: str) -> bytes:
+    if (
+        not isinstance(credential_name, str)
+        or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", credential_name) is None
+        or ".." in credential_name
+    ):
+        raise ValueError
+    directory = Path(credentials_directory)
+    if (
+        not directory.is_absolute()
+        or directory.anchor != "/"
+        or ".." in directory.parts
+        or directory == Path("/")
+        or (directory / credential_name).parent != directory
+    ):
+        raise ValueError
+
+    linux_os = cast(Any, os)
+    uid = linux_os.geteuid()
+    directory_flags = os.O_RDONLY | linux_os.O_DIRECTORY | linux_os.O_NOFOLLOW | linux_os.O_CLOEXEC
+    with ExitStack() as handles:
+        descriptor = os.open("/", directory_flags)
+        handles.callback(os.close, descriptor)
+        for component in directory.parts[1:]:
+            descriptor = os.open(component, directory_flags, dir_fd=descriptor)
+            handles.callback(os.close, descriptor)
+        directory_stat = os.fstat(descriptor)
+        if not _valid_directory_owner_and_mode(descriptor, directory_stat, uid):
+            raise ValueError
+
+        key_fd = os.open(
+            credential_name,
+            os.O_RDONLY | linux_os.O_NOFOLLOW | linux_os.O_CLOEXEC | linux_os.O_NONBLOCK,
+            dir_fd=descriptor,
+        )
+        handles.callback(os.close, key_fd)
+        before = os.fstat(key_fd)
+        if (
+            not _valid_file_owner_and_mode(key_fd, before, uid)
+            or before.st_nlink != 1
+            or not 0 < before.st_size <= _MAX_SYSTEMD_CREDENTIAL_BYTES
+        ):
+            raise ValueError
+
+        remaining = _MAX_SYSTEMD_CREDENTIAL_BYTES + 1
+        chunks: list[bytes] = []
+        while remaining:
+            chunk = os.read(key_fd, remaining)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        plaintext = b"".join(chunks)
+        after = os.fstat(key_fd)
+        directory_after = os.fstat(descriptor)
+        stable_fields = (
+            "st_dev",
+            "st_ino",
+            "st_mode",
+            "st_uid",
+            "st_gid",
+            "st_nlink",
+            "st_size",
+            "st_mtime_ns",
+            "st_ctime_ns",
+        )
+        if (
+            directory_after.st_uid != directory_stat.st_uid
+            or directory_after.st_gid != directory_stat.st_gid
+            or directory_after.st_mode != directory_stat.st_mode
+            or directory_after.st_ctime_ns != directory_stat.st_ctime_ns
+            or len(plaintext) != before.st_size
+            or len(plaintext) > _MAX_SYSTEMD_CREDENTIAL_BYTES
+            or any(getattr(before, name) != getattr(after, name) for name in stable_fields)
+        ):
+            raise ValueError
+        return plaintext
+
+
+def read_linux_systemd_credential(credential_name: str) -> bytes:
+    """Read a named systemd credential without exposing paths or OS details."""
+    try:
+        if not _is_linux_posix():
+            raise ValueError
+        directory = os.environ.get("CREDENTIALS_DIRECTORY")
+        if not directory or not directory.strip():
+            raise ValueError
+        return _read_systemd_credential_bytes(Path(directory), credential_name)
+    except Exception:
+        raise EncryptionKeyUnavailable(_SYSTEMD_CREDENTIAL_ERROR) from None
+
+
 class LinuxSystemdCredentialKeyProvider:
     """Read-only Linux provider for credentials injected by LoadCredentialEncrypted.
 
     The service manager, not this reader, guarantees encrypted-at-rest provenance.
-    Only the effective service UID may own the runtime directory and credential.
+    The effective service UID may own the credential directly, or systemd may
+    grant it through the exact read-only ACL it installs on root-owned files.
     """
 
     def __init__(
@@ -347,80 +538,8 @@ class LinuxSystemdCredentialKeyProvider:
         try:
             if not _is_linux_posix():
                 raise ValueError
-            if (
-                not isinstance(credential_name, str)
-                or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", credential_name) is None
-                or ".." in credential_name
-            ):
-                raise ValueError
-            directory = Path(credentials_directory)
-            if (
-                not directory.is_absolute()
-                or directory.anchor != "/"
-                or ".." in directory.parts
-                or directory == Path("/")
-            ):
-                raise ValueError
-            # Lexical containment plus descriptor-relative opens avoids resolving links.
-            if (directory / credential_name).parent != directory:
-                raise ValueError
-            uid = os.geteuid()
-            directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
-            with ExitStack() as handles:
-                descriptor = os.open("/", directory_flags)
-                handles.callback(os.close, descriptor)
-                # Anchor every component to an open directory; reject symlinks in
-                # ancestors too, without a check-then-open race.
-                for component in directory.parts[1:]:
-                    descriptor = os.open(component, directory_flags, dir_fd=descriptor)
-                    handles.callback(os.close, descriptor)
-                directory_stat = os.fstat(descriptor)
-                if (
-                    not stat.S_ISDIR(directory_stat.st_mode)
-                    or directory_stat.st_uid != uid
-                    or stat.S_IMODE(directory_stat.st_mode) not in {0o500, 0o700}
-                ):
-                    raise ValueError
-                # NONBLOCK prevents FIFO/device substitution from blocking startup.
-                key_fd = os.open(
-                    credential_name,
-                    os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK,
-                    dir_fd=descriptor,
-                )
-                handles.callback(os.close, key_fd)
-                before = os.fstat(key_fd)
-                if (
-                    not stat.S_ISREG(before.st_mode)
-                    or before.st_uid != uid
-                    or stat.S_IMODE(before.st_mode) not in {0o400, 0o600}
-                    or before.st_nlink != 1
-                    or not 0 < before.st_size <= _MAX_SYSTEMD_CREDENTIAL_BYTES
-                ):
-                    raise ValueError
-                remaining = _MAX_SYSTEMD_CREDENTIAL_BYTES + 1
-                chunks: list[bytes] = []
-                while remaining:
-                    chunk = os.read(key_fd, remaining)
-                    if not chunk:
-                        break
-                    chunks.append(chunk)
-                    remaining -= len(chunk)
-                plaintext = b"".join(chunks)
-                after = os.fstat(key_fd)
-                directory_after = os.fstat(descriptor)
-                stable_fields = (
-                    "st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_nlink",
-                    "st_size", "st_mtime_ns", "st_ctime_ns",
-                )
-                if (
-                    directory_after.st_uid != directory_stat.st_uid
-                    or directory_after.st_mode != directory_stat.st_mode
-                    or len(plaintext) != before.st_size
-                    or len(plaintext) > _MAX_SYSTEMD_CREDENTIAL_BYTES
-                    or any(getattr(before, name) != getattr(after, name) for name in stable_fields)
-                ):
-                    raise ValueError
-                delegate = _parse_systemd_key_payload(plaintext)
+            plaintext = _read_systemd_credential_bytes(credentials_directory, credential_name)
+            delegate = _parse_systemd_key_payload(plaintext)
         except Exception:
             # Do not propagate paths, JSON values, key versions or OS exceptions.
             raise EncryptionKeyUnavailable(_SYSTEMD_CREDENTIAL_ERROR) from None
