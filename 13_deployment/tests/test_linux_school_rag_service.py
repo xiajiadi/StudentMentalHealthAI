@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+INSTALLER_PATH = REPO_ROOT / "13_deployment" / "install_linux_school_rag_service.py"
+INSTALLER_SPEC = importlib.util.spec_from_file_location("school_rag_installer", INSTALLER_PATH)
+assert INSTALLER_SPEC is not None and INSTALLER_SPEC.loader is not None
+INSTALLER = importlib.util.module_from_spec(INSTALLER_SPEC)
+INSTALLER_SPEC.loader.exec_module(INSTALLER)
 
 
 def test_school_rag_service_is_loopback_only_and_sandboxed() -> None:
@@ -39,3 +45,15 @@ def test_school_rag_config_uses_only_isolated_demo_bm25_index() -> None:
     index_path = config["stores"]["bm25_path"]
     assert index_path == "/var/lib/psynova-school-rag/indexes/bm25"
     assert index_path.startswith("/var/lib/")
+
+
+def test_school_rag_installer_rejects_unsafe_archive_paths() -> None:
+    safe_member_name = INSTALLER._safe_member_name
+    allowed_payload_path = INSTALLER._allowed_payload_path
+
+    assert safe_member_name("rag/src/rag_engine/api/app.py")
+    assert not safe_member_name("/etc/systemd/system/psynova.service")
+    assert not safe_member_name("rag/../../etc/passwd")
+    assert not safe_member_name("rag\\src\\rag_engine\\app.py")
+    assert allowed_payload_path("systemd/psynova-school-rag.service")
+    assert not allowed_payload_path("systemd/other.service")
