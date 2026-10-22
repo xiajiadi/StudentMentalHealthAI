@@ -121,6 +121,24 @@ def test_new_generation_run_id_uses_distinct_checkpoint_and_idempotency_keys(
     assert verifier.MESSAGE_KEY.endswith("a" * 32)
 
 
+def test_pending_generation_reuses_the_durable_turn_without_reposting() -> None:
+    turn = {"turn_id": "TURN_synthetic", "status": "requested"}
+
+    assert verifier._existing_turn([turn]) is turn
+    assert verifier._existing_turn([], expected_turn_id=None) is None
+    assert verifier._existing_turn([turn], expected_turn_id="TURN_synthetic") is turn
+
+
+def test_pending_generation_fails_closed_on_ambiguous_or_missing_turn() -> None:
+    first = {"turn_id": "TURN_first", "status": "requested"}
+    second = {"turn_id": "TURN_second", "status": "requested"}
+
+    with pytest.raises(verifier.GateError, match="conversation_turn_state_ambiguous"):
+        verifier._existing_turn([first, second])
+    with pytest.raises(verifier.GateError, match="stored_turn_reconciliation_failed"):
+        verifier._existing_turn([first], expected_turn_id="TURN_missing")
+
+
 @pytest.mark.parametrize("run_id", ["", "A" * 32, "a" * 31, "a" * 33, "../" + "a" * 30])
 def test_generation_run_id_rejects_noncanonical_values(run_id: str) -> None:
     with pytest.raises(verifier.GateError, match="run_id_invalid"):

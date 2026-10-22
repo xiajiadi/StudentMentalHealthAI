@@ -15,7 +15,7 @@ import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 APP_ROOT = Path("/opt/psynova-school-demo")
 RELEASE_ROOT = APP_ROOT / "release"
@@ -212,6 +212,37 @@ def _data(response: Any) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise GateError("backend_response_contract_mismatch", "http_verification")
     return data
+
+
+def _existing_turn(
+    turns: object, *, expected_turn_id: object = None
+) -> dict[str, Any] | None:
+    if not isinstance(turns, list):
+        raise GateError("conversation_persistence_contract_failed", "checkpoint_reconcile")
+    if expected_turn_id is not None:
+        if not isinstance(expected_turn_id, str):
+            raise GateError("stored_turn_id_invalid", "checkpoint_reconcile")
+        matches = [
+            item
+            for item in turns
+            if type(item) is dict and item.get("turn_id") == expected_turn_id
+        ]
+        if len(matches) != 1:
+            raise GateError("stored_turn_reconciliation_failed", "checkpoint_reconcile")
+        candidate = matches[0]
+    else:
+        if not turns:
+            return None
+        if len(turns) != 1:
+            raise GateError("conversation_turn_state_ambiguous", "checkpoint_reconcile")
+        candidate = turns[0]
+    if (
+        type(candidate) is not dict
+        or not isinstance(candidate.get("turn_id"), str)
+        or not candidate["turn_id"].startswith("TURN_")
+    ):
+        raise GateError("conversation_turn_state_invalid", "checkpoint_reconcile")
+    return candidate
 
 
 def _safe_http_error_code(response: Any) -> str | None:
@@ -453,34 +484,74 @@ def _resume(state: dict[str, Any] | None) -> dict[str, Any]:
             _checkpoint(state, "CONVERSATION_CREATED", conversation_id=conversation_id)
 
         checks = state.setdefault("checks", {})
-        checks.pop("last_http_status", None)
-        checks.pop("last_backend_error_code", None)
-        _checkpoint(state, "GENERATION_REQUEST_PENDING", conversation_id=conversation_id)
-        response = client.post(
-            f"/api/v1/student/conversations/{conversation_id}/messages",
-            json={"text": QUESTION},
-            headers={
-                "Origin": "http://127.0.0.1:4178",
-                "X-CSRF-Token": csrf,
-                "Idempotency-Key": MESSAGE_KEY,
-                "Accept": "application/json",
-            },
-        )
-        if response.status_code not in {200, 202}:
-            state.setdefault("checks", {})["last_http_status"] = response.status_code
-            error_code = _safe_http_error_code(response)
-            if error_code is not None:
-                state["checks"]["last_backend_error_code"] = error_code
+        turn_id = state.get("turn_id")
+        turn: dict[str, Any] | None = None
+        if state.get("phase") == "GENERATION_REQUEST_PENDING":
+            try:
+                detail_response = client.get(
+                    f"/api/v1/student/conversations/{conversation_id}",
+                    headers={"Accept": "application/json"},
+                )
+            except httpx.TimeoutException:
+                raise GateError("conversation_reconciliation_timeout", "checkpoint_reconcile") from None
+            except httpx.TransportError:
+                raise GateError(
+                    "conversation_reconciliation_unavailable", "checkpoint_reconcile"
+                ) from None
+            if detail_response.status_code != 200:
+                raise GateError("conversation_reconciliation_read_failed", "checkpoint_reconcile")
+            detail = verifier_data(detail_response)
+            turn = _existing_turn(detail.get("turns"), expected_turn_id=turn_id)
+            if turn is not None:
+                turn_id = turn["turn_id"]
+                state["turn_id"] = turn_id
+                checks["last_turn_diagnostic"] = _safe_turn_diagnostic(turn)
+                _write_state(state)
+
+        if turn is None:
+            checks.pop("last_http_status", None)
+            checks.pop("last_backend_error_code", None)
+            _checkpoint(state, "GENERATION_REQUEST_PENDING", conversation_id=conversation_id)
+            try:
+                response = client.post(
+                    f"/api/v1/student/conversations/{conversation_id}/messages",
+                    json={"text": QUESTION},
+                    headers={
+                        "Origin": "http://127.0.0.1:4178",
+                        "X-CSRF-Token": csrf,
+                        "Idempotency-Key": MESSAGE_KEY,
+                        "Accept": "application/json",
+                    },
+                    timeout=90,
+                )
+            except httpx.TimeoutException:
+                checks["last_transport_error"] = "timeout"
+                _write_state(state)
+                raise GateError("deepseek_education_request_timeout", "generation") from None
+            except httpx.TransportError:
+                checks["last_transport_error"] = "unavailable"
+                _write_state(state)
+                raise GateError("deepseek_education_request_transport_failure", "generation") from None
+            if response.status_code not in {200, 202}:
+                state.setdefault("checks", {})["last_http_status"] = response.status_code
+                error_code = _safe_http_error_code(response)
+                if error_code is not None:
+                    state["checks"]["last_backend_error_code"] = error_code
+                _write_state(state)
+                raise GateError(
+                    f"deepseek_education_request_http_{response.status_code}", "generation"
+                )
+            turn_value = verifier_data(response)
+            if type(turn_value) is not dict:
+                raise GateError("deepseek_turn_contract_invalid", "http_verification")
+            turn = cast(dict[str, Any], turn_value)
+            turn_id = turn.get("turn_id")
+            if isinstance(turn_id, str):
+                state["turn_id"] = turn_id
+            state.setdefault("checks", {})["last_turn_diagnostic"] = _safe_turn_diagnostic(turn)
             _write_state(state)
-            raise GateError(
-                f"deepseek_education_request_http_{response.status_code}", "generation"
-            )
-        turn = verifier_data(response)
-        turn_id = turn.get("turn_id")
-        if isinstance(turn_id, str):
-            state["turn_id"] = turn_id
-        state.setdefault("checks", {})["last_turn_diagnostic"] = _safe_turn_diagnostic(turn)
-        _write_state(state)
+        if turn is None:
+            raise GateError("conversation_turn_state_unavailable", "checkpoint_reconcile")
         deadline = time.monotonic() + 90
         while turn.get("status") == "requested" and isinstance(turn_id, str):
             if time.monotonic() >= deadline:
