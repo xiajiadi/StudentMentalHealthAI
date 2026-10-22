@@ -42,7 +42,7 @@ NGINX_SERVICE = "nginx.service"
 BACKEND_HEALTH_URL = "http://127.0.0.1:8088/api/v1/health"
 HTTP_PROBE_URL = "http://127.0.0.1/"
 ACME_ROOT = Path("/var/www/letsencrypt")
-LOCK_PATH = Path("/run/lock/psynova-school-public-site.lock")
+LOCK_PATH = Path("/run/psynova-school-public-deploy/public-site.lock")
 ACME_CONFIG_PATH = Path("13_deployment/nginx/psynova-school-demo-acme.conf")
 HTTPS_CONFIG_PATH = Path("13_deployment/nginx/psynova-school-demo.conf")
 MAX_BUNDLE_BYTES = 50_000_000
@@ -841,7 +841,7 @@ def _parser() -> argparse.ArgumentParser:
 def _exclusive_lock() -> Iterator[None]:
     import fcntl
 
-    _ensure_directory(LOCK_PATH.parent, 0o755)
+    _ensure_directory(LOCK_PATH.parent, 0o700)
     try:
         descriptor = os.open(LOCK_PATH, os.O_CREAT | os.O_RDWR, 0o600)
         os.fchown(descriptor, 0, 0)

@@ -58,6 +58,10 @@ def test_frontend_build_command_handles_windows_command_wrapper() -> None:
     assert site._frontend_build_command("posix") == ["npm", "run", "build"]
 
 
+def test_deploy_lock_uses_private_runtime_directory() -> None:
+    assert site.LOCK_PATH == Path("/run/psynova-school-public-deploy/public-site.lock")
+
+
 def test_bundle_validator_rejects_mock_api_manifest() -> None:
     with pytest.raises(site.DeployError, match="bundle_manifest_invalid"):
         site._validate_bundle_bytes(_bundle(_site_files(), mode="mock"))
