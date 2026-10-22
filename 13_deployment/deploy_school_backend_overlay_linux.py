@@ -17,11 +17,11 @@ from pathlib import Path
 from typing import Any
 
 BASE_RELEASE_REVISION = "f3047642aa3466f9b4f210f4f704d57fd2cdf3cc"
-SOURCE_COMMIT = "4eb7896da53a8ec3b4fc81374e43d7e5115c5834"
+SOURCE_COMMIT = "7b3e4ad1543bb59ce084609cbc0d14f13a89c5dc"
 APP_ROOT = Path("/opt/psynova-school-demo")
 RELEASE_ROOT = APP_ROOT / "release"
 STATE_ROOT = Path("/var/lib/psynova-school-demo")
-STATE_PATH = STATE_ROOT / "backend-overlay-independent-auth-state.json"
+STATE_PATH = STATE_ROOT / "backend-overlay-generation-timeouts-state.json"
 BACKUP_ROOT = APP_ROOT / "backups" / f"backend-overlay-{SOURCE_COMMIT}"
 BUNDLE_PATH = Path(
     "/home/psynova/apps/psynova/staging/linux-school-demo/"
@@ -45,12 +45,12 @@ FILES = {
         "target": "5058c6dd699dec691395fdd6bd76428751bacbaac0f100b1c7762d10c4c6372a",
     },
     "09_backend/src/smhai_backend/integrations/independent.py": {
-        "previous": "62ba1398b9cc296e78398b99d8a6199a0f96b678a5ae57ae1844c528deaf0b0c",
-        "target": "4787031dd4a0240b7308db0c9e97f7fbb6d45f93935829ca7906dc92329380ee",
+        "previous": "4787031dd4a0240b7308db0c9e97f7fbb6d45f93935829ca7906dc92329380ee",
+        "target": "ed1a005c5f24777415055681c65011c375979a112baf3bb244ebf0d0d9e8481e",
     },
     "13_deployment/school_backend_linux.py": {
         "previous": "2935d170d8a61ff2cd8a1c335eb861bb41d21b65da95a042424273841a16641e",
-        "target": "2935d170d8a61ff2cd8a1c335eb861bb41d21b65da95a042424273841a16641e",
+        "target": "e6037c43490738e987fc9839ab4ecb2dcc061006d9c1b26caca05e3db8a9d06c",
     },
 }
 ALLOWED_BUNDLE_NAMES = {"manifest.json", *FILES}
