@@ -15,6 +15,7 @@ Environment=PYTHONPATH=/opt/psynova-school-demo/services/cat/release/src
 Environment=SMHAI_CAT_PORT=8180
 Environment=SMHAI_CAT_CONFIG=/opt/psynova-school-demo/services/cat/release/fixtures/demo_cat_config.v1.json
 Environment=SMHAI_CAT_ITEM_BANK=/opt/psynova-school-demo/services/cat/release/fixtures/synthetic_item_bank.v1.json
+Environment=MPLCONFIGDIR=/tmp/mplconfig
 ExecStartPre=/opt/psynova-school-demo/services/cat/venv/bin/python -c "import adaptivetesting, cat_engine, fastapi, numpy, scipy, uvicorn"
 ExecStart=/opt/psynova-school-demo/services/cat/venv/bin/python -m cat_engine.api.app
 Restart=on-failure
@@ -28,8 +29,6 @@ MemoryMax=2G
 MemorySwapMax=0
 CPUQuota=100%
 TasksMax=96
-RuntimeDirectory=psynova-school-cat
-RuntimeDirectoryMode=0700
 NoNewPrivileges=yes
 PrivateTmp=yes
 PrivateDevices=yes
@@ -49,7 +48,6 @@ RestrictSUIDSGID=yes
 RestrictAddressFamilies=AF_UNIX AF_INET
 IPAddressDeny=any
 IPAddressAllow=127.0.0.1/32
-ReadWritePaths=/run/psynova-school-cat
 
 [Install]
 WantedBy=multi-user.target
