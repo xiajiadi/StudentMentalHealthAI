@@ -44,6 +44,23 @@ def test_bundle_path_validation_accepts_nested_relative_files():
     assert installer._safe_member_name("release/src/safety_engine/api/app.py") is True
 
 
+def test_model_cache_inventory_accepts_only_pinned_repo_and_hub_metadata(tmp_path, monkeypatch):
+    hub_cache = tmp_path / "hub"
+    lock_directory = hub_cache / ".locks" / "models--Qwen--Qwen3Guard-Gen-0.6B"
+    lock_directory.mkdir(parents=True)
+    monkeypatch.setattr(installer, "MODEL_HUB_CACHE", hub_cache)
+
+    installer._validate_hub_cache_inventory(
+        {".locks", "CACHEDIR.TAG", "models--Qwen--Qwen3Guard-Gen-0.6B"}
+    )
+
+    with pytest.raises(installer.GateError) as error:
+        installer._validate_hub_cache_inventory(
+            {".locks", "models--Qwen--Qwen3Guard-Gen-0.6B", "models--unrelated"}
+        )
+    assert error.value.code == "model_cache_inventory_mismatch"
+
+
 def test_live_safety_acceptance_requires_all_components_and_rejects_injection(monkeypatch):
     health = {
         "status": "READY",

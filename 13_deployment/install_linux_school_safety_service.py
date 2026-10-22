@@ -643,6 +643,21 @@ def _model_snapshot_path() -> Path:
     )
 
 
+def _validate_hub_cache_inventory(entries: set[str]) -> None:
+    model_directory = "models--Qwen--Qwen3Guard-Gen-0.6B"
+    allowed = {".locks", "CACHEDIR.TAG", "version.txt", model_directory}
+    if model_directory not in entries or not entries.issubset(allowed):
+        raise GateError("model_cache_inventory_mismatch", "model_verify")
+    lock_root = MODEL_HUB_CACHE / ".locks"
+    if lock_root.exists():
+        try:
+            lock_directories = {path.name for path in lock_root.iterdir() if path.is_dir()}
+        except OSError:
+            raise GateError("model_cache_lock_inventory_unreadable", "model_verify") from None
+        if lock_directories != {model_directory}:
+            raise GateError("model_cache_lock_inventory_mismatch", "model_verify")
+
+
 def _verify_model_cache(group_id: int, *, apply_permissions: bool = True) -> None:
     snapshot = _model_snapshot_path()
     try:
@@ -652,11 +667,11 @@ def _verify_model_cache(group_id: int, *, apply_permissions: bool = True) -> Non
         raise GateError("model_snapshot_unavailable", "model_verify") from None
     if not resolved_snapshot.is_relative_to(resolved_root):
         raise GateError("model_snapshot_escaped_cache", "model_verify")
-    hub_entries = {path.name for path in MODEL_HUB_CACHE.iterdir()}
-    if not hub_entries.issubset(
-        {".locks", "models--Qwen--Qwen3Guard-Gen-0.6B", "version.txt"}
-    ):
-        raise GateError("model_cache_inventory_mismatch", "model_verify")
+    try:
+        hub_entries = {path.name for path in MODEL_HUB_CACHE.iterdir()}
+    except OSError:
+        raise GateError("model_cache_inventory_unreadable", "model_verify") from None
+    _validate_hub_cache_inventory(hub_entries)
     try:
         present = {path.name for path in snapshot.iterdir() if path.is_file()}
     except OSError:
