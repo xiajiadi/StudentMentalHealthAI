@@ -571,6 +571,42 @@ def _verify_static_release(release_dir: Path, files: dict[str, bytes]) -> None:
             raise DeployError("web_asset_fingerprint_mismatch")
 
 
+def _web_release_hash(target: Path) -> str | None:
+    resolved_target = target.resolve(strict=False)
+    resolved_root = WEB_RELEASES_ROOT.resolve(strict=False)
+    try:
+        relative = resolved_target.relative_to(resolved_root)
+    except ValueError:
+        return None
+    if (
+        len(relative.parts) != 1
+        or len(relative.name) != 64
+        or any(char not in "0123456789abcdef" for char in relative.name)
+    ):
+        return None
+    return relative.name
+
+
+def _validate_existing_web_root() -> Path:
+    if not WEB_ROOT.is_symlink():
+        raise DeployError("web_root_unrecognized")
+    target = WEB_ROOT.resolve(strict=False)
+    previous_bundle_sha = _web_release_hash(target)
+    if previous_bundle_sha is None:
+        raise DeployError("web_root_unrecognized")
+    state = _load_state(previous_bundle_sha)
+    if state is None:
+        raise DeployError("web_root_checkpoint_missing")
+    manifest, previous_files = _read_bundle(previous_bundle_sha)
+    if state["source_commit"] != manifest["source_commit"]:
+        raise DeployError("web_root_checkpoint_mismatch")
+    _require_owned(target, mode=0o755)
+    if not stat.S_ISDIR(target.lstat().st_mode):
+        raise DeployError("web_release_type_invalid")
+    _verify_static_release(target, previous_files)
+    return target
+
+
 def _write_web_release(bundle_sha: str, files: dict[str, bytes]) -> Path:
     _ensure_directory(WEB_RELEASES_ROOT, 0o755)
     release_dir = WEB_RELEASES_ROOT / bundle_sha
@@ -593,9 +629,11 @@ def _write_web_release(bundle_sha: str, files: dict[str, bytes]) -> Path:
 
 def _switch_web_root(release_dir: Path) -> None:
     if os.path.lexists(WEB_ROOT):
-        if not WEB_ROOT.is_symlink() or WEB_ROOT.resolve(strict=True) != release_dir:
+        current_release = _validate_existing_web_root()
+        if current_release == release_dir:
+            return
+        if _web_release_hash(current_release) is None:
             raise DeployError("web_root_unrecognized")
-        return
     temporary = APP_ROOT / f".web-{release_dir.name}.tmp"
     if os.path.lexists(temporary):
         raise DeployError("web_root_temporary_path_exists")
@@ -647,11 +685,10 @@ def _install_site_config(content: bytes) -> None:
 
 def _check_known_targets(bundle_sha: str, files: dict[str, bytes]) -> None:
     expected_web_link = WEB_RELEASES_ROOT / bundle_sha
-    if os.path.lexists(WEB_ROOT) and (
-        not WEB_ROOT.is_symlink()
-        or WEB_ROOT.resolve(strict=False) != expected_web_link
-    ):
-        raise DeployError("web_root_unrecognized")
+    if os.path.lexists(WEB_ROOT):
+        current_release = _validate_existing_web_root()
+        if current_release != expected_web_link and _web_release_hash(current_release) is None:
+            raise DeployError("web_root_unrecognized")
     if os.path.lexists(NGINX_AVAILABLE):
         _require_owned(NGINX_AVAILABLE, mode=0o644, regular=True)
         if NGINX_AVAILABLE.read_bytes() not in {files["nginx/acme.conf"], files["nginx/https.conf"]}:

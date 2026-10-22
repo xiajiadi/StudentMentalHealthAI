@@ -155,6 +155,18 @@ def test_static_release_verifier_rejects_unlisted_file(tmp_path: Path) -> None:
         site._verify_static_release(release, files)
 
 
+def test_web_release_hash_accepts_only_direct_versioned_children(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "web-releases"
+    monkeypatch.setattr(site, "WEB_RELEASES_ROOT", root)
+    digest = "a" * 64
+
+    assert site._web_release_hash(root / digest) == digest
+    assert site._web_release_hash(root / digest / "nested") is None
+    assert site._web_release_hash(tmp_path / digest) is None
+
+
 def test_loopback_listener_check_rejects_wildcard_exposure(monkeypatch: pytest.MonkeyPatch) -> None:
     listeners = [
         "State Recv-Q Send-Q Local Address:Port Peer Address:Port",
