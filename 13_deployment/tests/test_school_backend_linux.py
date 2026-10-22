@@ -123,7 +123,8 @@ def test_deepseek_runtime_unit_keeps_secrets_and_egress_scoped():
     assert "CREDENTIALS_DIRECTORY" not in unit
     assert "API_KEY=" not in unit
     assert "LoadCredentialEncrypted=llm-runtime-auth.json:" in unit
-    assert "release/13_deployment:/opt/psynova-school-demo/release/06_llm-runtime/src" in unit
+    assert "release/13_deployment:/opt/psynova-school-demo/services/llm/release/src" in unit
+    assert "/opt/psynova-school-demo/services/llm/venv/bin/python" in unit
     assert "IPAddressDeny=any" in unit
     assert "IPAddressAllow=127.0.0.1/32" in unit
     assert "IPAddressAllow=3.173.21.63/32" in unit

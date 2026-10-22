@@ -8,17 +8,17 @@ StartLimitBurst=3
 [Service]
 Type=simple
 DynamicUser=yes
-WorkingDirectory=/opt/psynova-school-demo/release/06_llm-runtime
+WorkingDirectory=/opt/psynova-school-demo/services/llm/release
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=PYTHONUNBUFFERED=1
-Environment=PYTHONPATH=/opt/psynova-school-demo/release/13_deployment:/opt/psynova-school-demo/release/06_llm-runtime/src
+Environment=PYTHONPATH=/opt/psynova-school-demo/release/13_deployment:/opt/psynova-school-demo/services/llm/release/src
 Environment=SMHAI_LLM_PROVIDER=deepseek
 Environment=SMHAI_LLM_PORT=8160
 Environment=SMHAI_LLM_RUNTIME_AUTH_FILE=%d/llm-runtime-auth.json
 LoadCredentialEncrypted=deepseek-api-key:/etc/credstore.encrypted/psynova-school-deepseek-api-key.cred
 LoadCredentialEncrypted=llm-runtime-auth.json:/etc/credstore.encrypted/psynova-school-llm-runtime-auth.cred
-ExecStartPre=/opt/psynova-school-demo/venv/bin/python -c "from llm_runtime.api.app import app; print('LLM_CONFIG=PASS')"
-ExecStart=/opt/psynova-school-demo/venv/bin/python -m llm_runtime.api.app
+ExecStartPre=/opt/psynova-school-demo/services/llm/venv/bin/python -c "from llm_runtime.api.app import app; print('LLM_CONFIG=PASS')"
+ExecStart=/opt/psynova-school-demo/services/llm/venv/bin/python -m llm_runtime.api.app
 Restart=on-failure
 RestartSec=5
 TimeoutStartSec=90
