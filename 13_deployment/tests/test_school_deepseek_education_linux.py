@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -12,7 +13,7 @@ verifier = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(verifier)
 
 
-def _completed_turn() -> dict[str, object]:
+def _completed_turn() -> dict[str, Any]:
     return {
         "status": "completed",
         "safe_metadata": {
@@ -105,6 +106,25 @@ def test_turn_diagnostic_contains_no_generated_text() -> None:
         "summary",
     ]
     assert "synthetic answer body" not in repr(diagnostic)
+
+
+def test_new_generation_run_id_uses_distinct_checkpoint_and_idempotency_keys(
+    monkeypatch,
+) -> None:
+    for name in ("STATE_PATH", "OPERATION_ID", "CONVERSATION_KEY", "MESSAGE_KEY"):
+        monkeypatch.setattr(verifier, name, getattr(verifier, name))
+    verifier._configure_run_id("a" * 32)
+
+    assert verifier.STATE_PATH.name == f"deepseek-generation-{'a' * 32}.json"
+    assert verifier.OPERATION_ID.endswith("a" * 32)
+    assert verifier.CONVERSATION_KEY.endswith("a" * 32)
+    assert verifier.MESSAGE_KEY.endswith("a" * 32)
+
+
+@pytest.mark.parametrize("run_id", ["", "A" * 32, "a" * 31, "a" * 33, "../" + "a" * 30])
+def test_generation_run_id_rejects_noncanonical_values(run_id: str) -> None:
+    with pytest.raises(verifier.GateError, match="run_id_invalid"):
+        verifier._configure_run_id(run_id)
 
 
 def test_failed_turn_diagnostic_contains_only_safe_stage_codes() -> None:

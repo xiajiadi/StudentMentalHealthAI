@@ -31,6 +31,7 @@ BACKEND_REVISION = "f3047642aa3466f9b4f210f4f704d57fd2cdf3cc"
 OPERATION_ID = "synthetic-student-education-turn-v1"
 CONVERSATION_KEY = "psynova-synthetic-deepseek-conversation-v1"
 MESSAGE_KEY = "psynova-synthetic-deepseek-education-turn-v1"
+_RUN_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 EXPECTED_MODEL_ID = "MODEL_deepseek_flash_education_support"
 QUESTION = (
     "我想更有条理地完成一周的学习任务。请基于可用资料，给我一个简短的一周学习计划，"
@@ -51,6 +52,16 @@ class GateError(RuntimeError):
         super().__init__(code)
         self.code = code
         self.phase = phase
+
+
+def _configure_run_id(run_id: str) -> None:
+    if _RUN_ID_RE.fullmatch(run_id) is None:
+        raise GateError("run_id_invalid", "startup")
+    global STATE_PATH, OPERATION_ID, CONVERSATION_KEY, MESSAGE_KEY
+    OPERATION_ID = f"synthetic-student-education-turn-{run_id}"
+    CONVERSATION_KEY = f"psynova-synthetic-deepseek-conversation-{run_id}"
+    MESSAGE_KEY = f"psynova-synthetic-deepseek-education-turn-{run_id}"
+    STATE_PATH = Path("/var/lib/psynova-school-demo") / f"deepseek-generation-{run_id}.json"
 
 
 def _sha256_file(path: Path) -> str:
@@ -571,12 +582,14 @@ def _dry_run(state: dict[str, Any] | None) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--run-id", required=True)
     actions = parser.add_mutually_exclusive_group(required=True)
     actions.add_argument("--inspect", action="store_true")
     actions.add_argument("--dry-run", action="store_true")
     actions.add_argument("--resume", action="store_true")
     args = parser.parse_args()
     try:
+        _configure_run_id(args.run_id)
         _require_root_snapshot()
         with _lock():
             state = _read_state()
