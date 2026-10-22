@@ -289,7 +289,7 @@ def _preflight(httpx: Any) -> None:
             raise GateError("required_service_unavailable", "preflight") from None
         if response.status_code != 200:
             raise GateError("required_service_not_ready", "preflight")
-    _require_root_file(ACCOUNT_CREDENTIAL, mode=0o400)
+    _require_root_file(ACCOUNT_CREDENTIAL, mode=0o600)
     _require_root_file(BACKEND_HTTP_VERIFIER, mode=0o644)
     if _sha256_file(BACKEND_HTTP_VERIFIER) != BACKEND_HTTP_VERIFIER_SHA256:
         raise GateError("account_verifier_fingerprint_mismatch", "preflight")
