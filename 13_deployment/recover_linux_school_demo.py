@@ -40,17 +40,13 @@ SERVICE_UID = 999
 SERVICE_GID = 988
 EXPECTED_HOSTNAME = "iZ0xic24d9gxb9udjbfo0kZ"
 EXPECTED_SOURCE_REVISION = "f3047642aa3466f9b4f210f4f704d57fd2cdf3cc"
-EXPECTED_RELEASE_FINGERPRINT = "71cd06d531a95c370c11bf7bfe9a7a5a39cc58325ba2de5d2112a9679a08569e"
-PREVIOUS_RELEASE_FINGERPRINT = "0dafbda9a01f0eb0360c3b58a962ad3a7a8aca47af8b90a10ad969620e0774a6"
-RELEASE_PATCH_COMMIT = "5a23b2701bc0c03c53f25fc72bafe1adb26d3ebd"
+EXPECTED_RELEASE_FINGERPRINT = "c23aa63d726b3a477137be7bcd5be7f504f82496c472c9b776a3b2430501b42b"
+PREVIOUS_RELEASE_FINGERPRINT = "71cd06d531a95c370c11bf7bfe9a7a5a39cc58325ba2de5d2112a9679a08569e"
+RELEASE_PATCH_COMMIT = "23d74f7f923eff66851b09b3378f7891997240d0"
 RELEASE_PATCH_FILES = {
-    "11_database/migrations/env.py": {
-        "before_sha256": "5a70d3719a66330b4bc4de1c2b6e78acc818328b943aad371de007a2b615de97",
-        "source_sha256": "91a85ac464e3241aed77c7802526bbbd68c7100b6a6738ec794d4931c86a90c6",
-    },
-    "13_deployment/migrate_school_linux.py": {
-        "before_sha256": "ddccc2169c6e4d41c8cda9cbd4413f8e79cc87d0cac5e19f14bf871a496b4d24",
-        "source_sha256": "313b4996a04846f959bcca5d8f9c6704fe3afd358663c8595126de3a6f980bf8",
+    "13_deployment/school_backend_linux.py": {
+        "before_sha256": "9dfe1609cd2dc2891f9457849f1df210ed07ba3b382f516bc11ed060e50afdbf",
+        "source_sha256": "929d8c9d504779c7eb1ccd6cbf06cecde4b3ecba02d756dc5895cf4f7e6d22f5",
     },
 }
 EXPECTED_RELEASE_PATCHES = (
@@ -58,6 +54,7 @@ EXPECTED_RELEASE_PATCHES = (
     ("11_database/database_layer/systemd_auth.py", "5718cd9c67df136c9afca13c9e39541197d2abbf"),
     ("11_database/migrations/env.py", "5a23b2701bc0c03c53f25fc72bafe1adb26d3ebd"),
     ("13_deployment/migrate_school_linux.py", "5a23b2701bc0c03c53f25fc72bafe1adb26d3ebd"),
+    ("13_deployment/school_backend_linux.py", "23d74f7f923eff66851b09b3378f7891997240d0"),
     (
         "13_deployment/systemd/psynova-school-credential-probe.service",
         "8fdd56602870ff417e50fc8afbd992d475d7a3b6",
