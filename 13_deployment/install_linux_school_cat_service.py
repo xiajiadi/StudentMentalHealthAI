@@ -537,6 +537,13 @@ def _uv_environment() -> dict[str, str]:
     )
 
 
+def _python_install_environment() -> dict[str, str]:
+    return _safe_command_environment(
+        UV_CACHE_DIR=str(UV_CACHE_ROOT),
+        UV_PYTHON_INSTALL_DIR=str(PYTHON_ROOT),
+    )
+
+
 def _find_managed_python() -> Path:
     result = _run(
         [str(_uv()), "python", "list", "--only-installed", "--output-format", "json", "--managed-python"],
@@ -630,7 +637,6 @@ def _install_dependencies() -> dict[str, Any]:
     _ensure_root_directory(PYTHON_ROOT)
     _ensure_root_directory(UV_CACHE_ROOT.parent)
     _ensure_root_directory(UV_CACHE_ROOT, mode=0o700)
-    environment = _uv_environment()
     _run(
         [
             str(uv), "python", "install", PYTHON_VERSION,
@@ -638,7 +644,7 @@ def _install_dependencies() -> dict[str, Any]:
         ],
         phase="python_install",
         timeout=1200,
-        env=environment,
+        env=_python_install_environment(),
     )
     python = _find_managed_python()
     if os.path.lexists(VENV_ROOT):
@@ -798,8 +804,7 @@ def _host_preflight(*, state: dict[str, Any] | None, require_closed_ingress: boo
         raise GateError("service_account_identity_mismatch", "host_preflight")
     for port in (3306, 8088, 8170, 8181, 8190):
         _require_port_loopback(port, allow_absent=False)
-    install_complete = state is not None and state["phase"] == "HTTP_VERIFIED"
-    _require_port_loopback(CAT_PORT, allow_absent=state is None or install_complete)
+    _verify_cat_port_for_checkpoint(state)
     if state is None and (_unit_active(SERVICE_NAME) or _unit_enabled(SERVICE_NAME)):
         raise GateError("uncheckpointed_cat_unit", "host_preflight")
     if require_closed_ingress and (
@@ -819,6 +824,20 @@ def _host_preflight(*, state: dict[str, Any] | None, require_closed_ingress: boo
         raise GateError("host_resources_unavailable", "host_preflight") from None
     if available_kib < 2_000_000 or free_bytes < 3 * 1024 * 1024 * 1024:
         raise GateError("host_resource_floor_not_met", "host_preflight")
+
+
+def _verify_cat_port_for_checkpoint(state: dict[str, Any] | None) -> None:
+    service_started = (
+        state is not None
+        and PHASES.index(state["phase"]) >= PHASES.index("SERVICE_STARTED")
+    )
+    listeners = _listeners_for_port(CAT_PORT)
+    if not service_started:
+        if listeners:
+            raise GateError("cat_port_unexpectedly_in_use", "listener_check")
+        return
+    if not listeners or any(address != "127.0.0.1:8180" for address in listeners):
+        raise GateError("service_listener_not_loopback", "listener_check")
 
 
 def _verify_unit_file(files: dict[str, bytes]) -> None:

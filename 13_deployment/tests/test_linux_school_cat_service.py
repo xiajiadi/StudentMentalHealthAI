@@ -86,6 +86,28 @@ def test_payload_allowlist_rejects_unpinned_files() -> None:
     assert not installer._allowed_payload_path("systemd/other.service")
 
 
+def test_python_download_disabled_only_after_managed_python_install() -> None:
+    assert "UV_PYTHON_DOWNLOADS" not in installer._python_install_environment()
+    assert installer._uv_environment()["UV_PYTHON_DOWNLOADS"] == "never"
+
+
+def test_cat_port_policy_tracks_checkpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    state = {"phase": "PAYLOAD_READY"}
+    monkeypatch.setattr(installer, "_listeners_for_port", lambda port: [])
+    installer._verify_cat_port_for_checkpoint(state)
+
+    monkeypatch.setattr(installer, "_listeners_for_port", lambda port: ["0.0.0.0:8180"])
+    with pytest.raises(installer.GateError, match="cat_port_unexpectedly_in_use"):
+        installer._verify_cat_port_for_checkpoint(state)
+
+    state["phase"] = "SERVICE_STARTED"
+    monkeypatch.setattr(installer, "_listeners_for_port", lambda port: ["127.0.0.1:8180"])
+    installer._verify_cat_port_for_checkpoint(state)
+    monkeypatch.setattr(installer, "_listeners_for_port", lambda port: ["0.0.0.0:8180"])
+    with pytest.raises(installer.GateError, match="service_listener_not_loopback"):
+        installer._verify_cat_port_for_checkpoint(state)
+
+
 def test_systemd_contract_rejects_public_listener() -> None:
     unit = (REPO_ROOT / "13_deployment/systemd/psynova-school-cat.service").read_bytes()
     installer._check_unit_bytes({"systemd/psynova-school-cat.service": unit})
