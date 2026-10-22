@@ -904,10 +904,42 @@ def _uncheckpointed_objects_exist() -> bool:
         for path in (
             SERVICE_ROOT,
             UNIT_PATH,
+            STATE_DIRECTORY,
             MODEL_CACHE_ROOT,
             UV_CACHE_ROOT,
         )
     )
+
+
+def _prepare_service_state_directory(group_id: int) -> None:
+    try:
+        import pwd
+
+        service_uid = pwd.getpwnam("psynova-school-demo").pw_uid
+    except KeyError:
+        raise GateError("service_account_unavailable", "filesystem_prepare") from None
+    if os.path.lexists(STATE_DIRECTORY):
+        try:
+            metadata = STATE_DIRECTORY.stat(follow_symlinks=False)
+        except OSError:
+            raise GateError("service_state_directory_unavailable", "filesystem_prepare") from None
+        if (
+            not stat.S_ISDIR(metadata.st_mode)
+            or metadata.st_uid not in {0, service_uid}
+            or metadata.st_gid != group_id
+            or stat.S_IMODE(metadata.st_mode) != 0o750
+        ):
+            raise GateError("service_state_directory_metadata_mismatch", "filesystem_prepare")
+        return
+    if not STATE_DIRECTORY.parent.is_dir() or STATE_DIRECTORY.parent.is_symlink():
+        raise GateError("service_state_parent_unavailable", "filesystem_prepare")
+    _require_root_owned_directory(STATE_DIRECTORY.parent, "service_state_parent_metadata_mismatch")
+    try:
+        STATE_DIRECTORY.mkdir(mode=0o750)
+        os.chown(STATE_DIRECTORY, 0, group_id)
+        os.chmod(STATE_DIRECTORY, 0o750)
+    except OSError:
+        raise GateError("service_state_directory_create_failed", "filesystem_prepare") from None
 
 
 def _host_preflight(*, allow_installed_service: bool) -> None:
@@ -971,7 +1003,6 @@ def _install_unit_files(files: dict[str, bytes]) -> None:
 
 def _install_or_verify_bundle(files: dict[str, bytes]) -> None:
     _install_payload(files)
-    _run(["systemd-analyze", "verify", str(UNIT_PATH)], phase="unit_verify")
 
 
 def _service_state_is_complete(state: dict[str, Any]) -> bool:
@@ -1007,6 +1038,23 @@ def _check_state_objects(state: dict[str, Any], files: dict[str, bytes]) -> None
         except KeyError:
             raise GateError("service_group_unavailable", "checkpoint_verify") from None
         _verify_model_cache(group_id, apply_permissions=False)
+    if phase_index >= PHASES.index("UNIT_READY"):
+        try:
+            import grp
+            import pwd
+
+            group_id = grp.getgrnam("psynova-school-demo").gr_gid
+            service_uid = pwd.getpwnam("psynova-school-demo").pw_uid
+            metadata = STATE_DIRECTORY.stat(follow_symlinks=False)
+        except (KeyError, OSError):
+            raise GateError("service_state_directory_unavailable", "checkpoint_verify") from None
+        if (
+            not stat.S_ISDIR(metadata.st_mode)
+            or metadata.st_uid not in {0, service_uid}
+            or metadata.st_gid != group_id
+            or stat.S_IMODE(metadata.st_mode) != 0o750
+        ):
+            raise GateError("service_state_directory_metadata_mismatch", "checkpoint_verify")
 
 
 def _inspect_result(state: dict[str, Any] | None, files: dict[str, bytes]) -> int:
@@ -1090,6 +1138,7 @@ def _install_resume(state: dict[str, Any] | None, files: dict[str, bytes]) -> in
         _verify_model_cache(group_id, apply_permissions=False)
         _checkpoint(state, "MODEL_READY")
 
+    _prepare_service_state_directory(group_id)
     _install_unit_files(files)
     _checkpoint(state, "UNIT_READY", checks={"systemd_unit_verified": True})
     _run(["systemctl", "daemon-reload"], phase="systemd_reload")

@@ -122,6 +122,24 @@ def test_safety_unit_uses_loopback_and_cpu_only_hardening():
     assert "0.0.0.0" not in unit
 
 
+def test_bundle_stage_defers_systemd_validation_until_runtime_dependencies_exist(monkeypatch):
+    installed = []
+
+    def install_payload(files):
+        installed.append(files)
+
+    monkeypatch.setattr(installer, "_install_payload", install_payload)
+    monkeypatch.setattr(
+        installer,
+        "_run",
+        lambda *args, **kwargs: pytest.fail("unit verification must wait for the venv"),
+    )
+
+    installer._install_or_verify_bundle({"PAYLOAD_MANIFEST.json": b"{}"})
+
+    assert installed == [{"PAYLOAD_MANIFEST.json": b"{}"}]
+
+
 def test_bundle_hash_is_sha256_lowercase():
     assert len(installer.MODEL_WEIGHT_SHA256) == hashlib.sha256().digest_size * 2
     assert installer.MODEL_WEIGHT_SHA256 == installer.MODEL_WEIGHT_SHA256.lower()
