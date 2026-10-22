@@ -647,6 +647,16 @@ def _wait_ready() -> None:
     raise DeployError("services_not_ready_after_restart")
 
 
+def _wait_llm_ready() -> None:
+    deadline = time.monotonic() + HEALTH_WAIT_SECONDS
+    while time.monotonic() < deadline:
+        if _service_active(LLM_SERVICE) and _health_ready(LLM_READY_URL, backend=False):
+            _require_loopback_listeners()
+            return
+        time.sleep(2)
+    raise DeployError("llm_service_not_ready_after_restart")
+
+
 def _resume(state: dict[str, Any] | None, bundle_sha: str, files: dict[str, bytes]) -> int:
     if state is not None and state["bundle_sha256"] != bundle_sha:
         raise DeployError("bundle_checkpoint_mismatch")
@@ -655,6 +665,7 @@ def _resume(state: dict[str, Any] | None, bundle_sha: str, files: dict[str, byte
         _wait_ready()
         print(json.dumps({"status": "PASS", "phase": "VERIFIED", "route": "LOOPBACK_AUTHENTICATED", "database_ddl": False}, sort_keys=True))
         return 0
+    prior_phase = state["phase"] if state is not None else None
     if state is None:
         state = {"phase": "PREPARED"}
         _write_state("PREPARED", bundle_sha)
@@ -673,12 +684,23 @@ def _resume(state: dict[str, Any] | None, bundle_sha: str, files: dict[str, byte
         )
     _write_state("PAYLOAD_INSTALLED", bundle_sha)
     _run(["systemctl", "daemon-reload"], "systemd_reload_failed")
-    _run(["systemctl", "restart", LLM_SERVICE], "llm_service_restart_failed", timeout=180)
-    _write_state("LLM_RESTARTED", bundle_sha)
-    if not _service_active(LLM_SERVICE) or not _health_ready(LLM_READY_URL, backend=False):
-        raise DeployError("llm_service_not_ready")
-    _run(["systemctl", "restart", BACKEND_SERVICE], "backend_service_restart_failed", timeout=180)
-    _write_state("BACKEND_RESTARTED", bundle_sha)
+    llm_already_ready = (
+        prior_phase in {"LLM_RESTARTED", "BACKEND_RESTARTED"}
+        and _service_active(LLM_SERVICE)
+        and _health_ready(LLM_READY_URL, backend=False)
+    )
+    if not llm_already_ready:
+        _run(["systemctl", "restart", LLM_SERVICE], "llm_service_restart_failed", timeout=180)
+        _write_state("LLM_RESTARTED", bundle_sha)
+        _wait_llm_ready()
+    backend_already_ready = (
+        prior_phase == "BACKEND_RESTARTED"
+        and _service_active(BACKEND_SERVICE)
+        and _health_ready(BACKEND_HEALTH_URL, backend=True)
+    )
+    if not backend_already_ready:
+        _run(["systemctl", "restart", BACKEND_SERVICE], "backend_service_restart_failed", timeout=180)
+        _write_state("BACKEND_RESTARTED", bundle_sha)
     _wait_ready()
     _write_state("VERIFIED", bundle_sha)
     print(

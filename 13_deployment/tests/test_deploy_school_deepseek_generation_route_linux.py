@@ -112,3 +112,27 @@ def test_bundle_rejects_wrong_commit_or_base_revision() -> None:
     with pytest.raises(deployer.DeployError, match="bundle_scope_mismatch"):
         deployer._validate_bundle(wrong_base, file_specs=specs)
 
+
+def test_resume_after_llm_restart_checkpoint_does_not_restart_llm_twice(monkeypatch) -> None:
+    bundle_sha = "a" * 64
+    state = {"phase": "LLM_RESTARTED", "bundle_sha256": bundle_sha}
+    phases: list[str] = []
+    commands: list[list[str]] = []
+    target_status = {name: "TARGET" for name in deployer.PACKAGE_FILES}
+    monkeypatch.setattr(deployer, "_target_status", lambda _state: target_status)
+    monkeypatch.setattr(deployer, "_backup_backend_file", lambda **_kwargs: None)
+    monkeypatch.setattr(deployer, "_write_state", lambda phase, _sha: phases.append(phase))
+    monkeypatch.setattr(deployer, "_run", lambda args, _code, **_kwargs: commands.append(args))
+    monkeypatch.setattr(deployer, "_service_active", lambda _service: True)
+    monkeypatch.setattr(deployer, "_health_ready", lambda _url, *, backend: True)
+    monkeypatch.setattr(deployer, "_wait_ready", lambda: None)
+
+    result = deployer._resume(state, bundle_sha, {})
+
+    assert result == 0
+    assert commands == [
+        ["systemctl", "daemon-reload"],
+        ["systemctl", "restart", deployer.BACKEND_SERVICE],
+    ]
+    assert phases == ["PAYLOAD_INSTALLED", "BACKEND_RESTARTED", "VERIFIED"]
+
