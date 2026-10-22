@@ -223,6 +223,7 @@ def _command(
         "PYTHONPATH",
         "DATABASE_AUTH_CREDENTIAL",
         "DATABASE_KEY_FILE",
+        "MYSQL_TEST_LOGIN_FILE",
         "SYSTEMD_PAGER",
         "SYSTEMD_COLORS",
     }
@@ -259,7 +260,6 @@ def _mysql(sql: str, *, check: bool = True) -> str:
         [
             client,
             "--no-defaults",
-            "--no-login-paths",
             "--protocol=socket",
             "--user=root",
             "--batch",
@@ -269,6 +269,7 @@ def _mysql(sql: str, *, check: bool = True) -> str:
         input_bytes=sql.encode("utf-8"),
         timeout=60,
         check=check,
+        env={"MYSQL_TEST_LOGIN_FILE": "/dev/null"},
     )
     return _text(result)
 

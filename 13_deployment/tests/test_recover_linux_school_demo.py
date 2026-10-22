@@ -89,12 +89,36 @@ def test_command_does_not_inherit_or_forward_secret_environment(monkeypatch):
     monkeypatch.setenv("PYTHONPATH", "UNTRUSTED")
     monkeypatch.setattr(recovery.subprocess, "run", fake_run)
 
-    recovery._command(["true"], env={"MYSQL_PWD": "DO_NOT_FORWARD"})
+    recovery._command(
+        ["true"],
+        env={
+            "MYSQL_PWD": "DO_NOT_FORWARD",
+            "MYSQL_TEST_LOGIN_FILE": "/dev/null",
+        },
+    )
 
     assert "MYSQL_PWD" not in captured
     assert "LD_PRELOAD" not in captured
+    assert captured["MYSQL_TEST_LOGIN_FILE"] == "/dev/null"
     assert captured["PATH"] == ("/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
     assert captured["PYTHONDONTWRITEBYTECODE"] == "1"
+
+
+def test_mysql_client_suppresses_login_path_without_unsupported_option(monkeypatch):
+    captured = {}
+
+    def fake_command(args, **kwargs):
+        captured["args"] = args
+        captured.update(kwargs)
+        return subprocess.CompletedProcess(args, 0, b"result\n", b"")
+
+    monkeypatch.setattr(recovery.shutil, "which", lambda _name: "/usr/bin/mysql")
+    monkeypatch.setattr(recovery, "_command", fake_command)
+
+    assert recovery._mysql("SELECT 1") == "result"
+    assert "--no-login-paths" not in captured["args"]
+    assert captured["args"][1] == "--no-defaults"
+    assert captured["env"] == {"MYSQL_TEST_LOGIN_FILE": "/dev/null"}
 
 
 def test_staging_after_migrator_lock_never_recreates_migration_credential(monkeypatch):
