@@ -105,3 +105,25 @@ def test_turn_diagnostic_contains_no_generated_text() -> None:
         "summary",
     ]
     assert "synthetic answer body" not in repr(diagnostic)
+
+
+def test_failed_turn_diagnostic_contains_only_safe_stage_codes() -> None:
+    turn = {
+        "status": "failed",
+        "action": "DEPENDENCY_FAILURE",
+        "safe_metadata": {
+            "stage": "input_safety",
+            "failure_code": "DEPENDENCY_FAILURE",
+            "dependency_error_code": "DEPENDENCY_UNAVAILABLE",
+            "private": "do not echo",
+        },
+    }
+
+    diagnostic = verifier._safe_turn_diagnostic(turn)
+
+    assert diagnostic["turn_status"] == "failed"
+    assert diagnostic["stage"] == "input_safety"
+    assert diagnostic["turn_action"] == "DEPENDENCY_FAILURE"
+    assert diagnostic["failure_code"] == "DEPENDENCY_FAILURE"
+    assert diagnostic["dependency_error_code"] == "DEPENDENCY_UNAVAILABLE"
+    assert "private" not in repr(diagnostic)

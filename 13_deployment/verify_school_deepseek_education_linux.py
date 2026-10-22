@@ -254,6 +254,20 @@ def _safe_turn_diagnostic(turn: dict[str, Any]) -> dict[str, Any]:
         "turn_status": safe_status,
         "stage": stage if isinstance(stage, str) and stage in allowed_stages else "other",
         "configured_model_selected": metadata.get("model_id") == EXPECTED_MODEL_ID,
+        "turn_action": turn.get("action")
+        if isinstance(turn.get("action"), str)
+        and turn.get("action") in {"DEPENDENCY_FAILURE", "INVALID_OUTPUT", "SAFETY_BLOCK"}
+        else "other",
+        "failure_code": metadata.get("failure_code")
+        if isinstance(metadata.get("failure_code"), str)
+        and metadata.get("failure_code")
+        in {"DEPENDENCY_FAILURE", "INVALID_OUTPUT", "CLAIM_REJECTED"}
+        else "other",
+        "dependency_error_code": metadata.get("dependency_error_code")
+        if isinstance(metadata.get("dependency_error_code"), str)
+        and metadata.get("dependency_error_code")
+        in {"DEPENDENCY_TIMEOUT", "DEPENDENCY_UNAVAILABLE", "DEPENDENCY_INVALID_RESPONSE"}
+        else "other",
         "citation_count": len(citations) if isinstance(citations, list) else 0,
         "content_fields": sorted(key for key in content if isinstance(key, str))
         if type(content) is dict
