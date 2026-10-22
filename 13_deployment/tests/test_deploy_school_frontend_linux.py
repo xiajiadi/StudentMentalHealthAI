@@ -6,6 +6,8 @@ import json
 import stat
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Self
 
 import pytest
 
@@ -60,6 +62,67 @@ def test_frontend_build_command_handles_windows_command_wrapper() -> None:
 
 def test_deploy_lock_uses_private_runtime_directory() -> None:
     assert site.LOCK_PATH == Path("/run/psynova-school-public-deploy/public-site.lock")
+
+
+def test_health_probe_waits_through_transient_startup_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    attempts = 0
+
+    class Response:
+        status = 200
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+    def fake_urlopen(_url: str, *, timeout: float) -> Response:
+        nonlocal attempts
+        assert timeout == 3
+        attempts += 1
+        if attempts == 1:
+            raise site.urllib.error.URLError("not ready")
+        return Response()
+
+    monkeypatch.setattr(site.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(site.time, "sleep", lambda _seconds: None)
+
+    assert site._health_ready(timeout_seconds=10, poll_interval=0.1)
+    assert attempts == 2
+
+
+def test_health_probe_stops_at_its_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    attempts = 0
+
+    def fake_urlopen(_url: str, *, timeout: float) -> None:
+        nonlocal attempts
+        attempts += 1
+        raise site.urllib.error.URLError("not ready")
+
+    monkeypatch.setattr(site.urllib.request, "urlopen", fake_urlopen)
+
+    assert not site._health_ready(timeout_seconds=0)
+    assert attempts == 1
+
+
+def test_running_backend_origin_check_reads_only_expected_environment_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        site.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=0, stdout="4242\n"),
+    )
+    monkeypatch.setattr(
+        site.Path,
+        "read_bytes",
+        lambda _path: b"PATH=/usr/bin\0PSYNOVA_PUBLIC_ORIGIN=https://psynova.top\0",
+    )
+
+    assert site._backend_process_has_public_origin()
+    assert site._process_has_public_origin(b"PSYNOVA_PUBLIC_ORIGIN=https://evil.test\0") is False
 
 
 def test_bundle_validator_rejects_mock_api_manifest() -> None:

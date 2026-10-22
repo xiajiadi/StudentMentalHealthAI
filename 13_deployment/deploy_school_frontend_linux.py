@@ -54,6 +54,7 @@ STATE_PHASES = {
     "WEB_INSTALLED",
     "ORIGIN_INSTALLED",
     "HTTP_CONFIGURED",
+    "BACKEND_RESTART_REQUESTED",
     "BACKEND_RESTARTED",
     "HTTP_READY",
     "HTTPS_CONFIGURED",
@@ -487,12 +488,46 @@ def _run(arguments: list[str], error_code: str, timeout: int = 120) -> str:
     return result.stdout.strip()
 
 
-def _health_ready() -> bool:
+def _health_ready(*, timeout_seconds: float = 90.0, poll_interval: float = 2.0) -> bool:
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        try:
+            with urllib.request.urlopen(BACKEND_HEALTH_URL, timeout=3) as response:
+                if response.status == 200:
+                    return True
+        except (OSError, urllib.error.URLError):
+            pass
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(poll_interval, remaining))
+
+
+_PUBLIC_ORIGIN_ENV = b"PSYNOVA_PUBLIC_ORIGIN=https://psynova.top"
+
+
+def _process_has_public_origin(environment: bytes) -> bool:
+    return _PUBLIC_ORIGIN_ENV in environment.split(b"\0")
+
+
+def _backend_process_has_public_origin() -> bool:
     try:
-        with urllib.request.urlopen(BACKEND_HEALTH_URL, timeout=3) as response:
-            return response.status == 200
-    except (OSError, urllib.error.URLError):
+        result = subprocess.run(
+            ["systemctl", "show", "--property=MainPID", "--value", BACKEND_SERVICE],
+            capture_output=True,
+            timeout=10,
+            check=False,
+            text=True,
+        )
+        if result.returncode != 0:
+            return False
+        main_pid = result.stdout.strip()
+        if not main_pid.isdecimal() or main_pid == "0":
+            return False
+        environment = Path(f"/proc/{main_pid}/environ").read_bytes()
+    except (OSError, subprocess.SubprocessError):
         return False
+    return _process_has_public_origin(environment)
 
 
 def _http_status(host: str, path: str = "/") -> int:
@@ -689,11 +724,18 @@ def _install_frontend(bundle_sha: str, manifest: dict[str, Any], files: dict[str
         state = _load_state(bundle_sha)
     _run(["systemctl", "daemon-reload"], "systemd_reload_failed")
     if state is None or state["phase"] != "BACKEND_RESTARTED":
-        _run(["systemctl", "restart", BACKEND_SERVICE], "backend_restart_failed", timeout=180)
-        if not _health_ready():
-            raise DeployError("backend_health_failed_after_public_origin")
+        if not _backend_process_has_public_origin():
+            _write_state(
+                bundle_sha,
+                manifest,
+                "BACKEND_RESTART_REQUESTED",
+                default_saved=state_default_saved,
+            )
+            _run(["systemctl", "restart", BACKEND_SERVICE], "backend_restart_failed", timeout=180)
         _write_state(bundle_sha, manifest, "BACKEND_RESTARTED", default_saved=state_default_saved)
         state = _load_state(bundle_sha)
+    if not _health_ready():
+        raise DeployError("backend_health_failed_after_public_origin")
     _run(["nginx", "-t"], "nginx_configuration_invalid")
     if _service_active(NGINX_SERVICE):
         _run(["systemctl", "reload", NGINX_SERVICE], "nginx_reload_failed")
