@@ -222,6 +222,68 @@ def test_rejects_root_owned_systemd_credential_acls_with_extra_access(
     reject()
 
 
+@pytest.mark.parametrize(
+    ("is_directory", "service_permissions", "mask_permissions"),
+    [(True, "r-x", "r-x"), (False, "r--", "r--")],
+)
+def test_accepts_systemd_named_acl_qualifier_for_effective_uid(
+    monkeypatch, is_directory, service_permissions, mask_permissions
+):
+    entries = (
+        (
+            "user::rwx" if is_directory else "user::r--",
+            f"user:synthetic-service:{service_permissions}",
+            "group::---",
+            f"mask::{mask_permissions}",
+            "other::---",
+        )
+    )
+    monkeypatch.setattr(crypto, "_read_posix_acl", lambda _fd: entries)
+    monkeypatch.setattr(
+        crypto,
+        "_acl_user_qualifier_matches_uid",
+        lambda qualifier, uid: qualifier == "synthetic-service" and uid == 1001,
+    )
+
+    assert crypto._matches_systemd_acl(10, 1001, directory=is_directory)
+
+
+def test_rejects_systemd_named_acl_qualifier_for_another_uid(monkeypatch):
+    monkeypatch.setattr(
+        crypto,
+        "_read_posix_acl",
+        lambda _fd: (
+            "user::r-x",
+            "user:other-service:r-x",
+            "group::---",
+            "mask::r-x",
+            "other::---",
+        ),
+    )
+    monkeypatch.setattr(
+        crypto,
+        "_acl_user_qualifier_matches_uid",
+        lambda qualifier, uid: qualifier == "synthetic-service" and uid == 1001,
+    )
+
+    assert not crypto._matches_systemd_acl(10, 1001, directory=True)
+
+
+def test_acl_user_qualifier_resolves_name_to_exact_uid(monkeypatch):
+    monkeypatch.setitem(
+        sys.modules,
+        "pwd",
+        SimpleNamespace(
+            getpwnam=lambda name: SimpleNamespace(
+                pw_uid=1001 if name == "synthetic-service" else 1002
+            )
+        ),
+    )
+
+    assert crypto._acl_user_qualifier_matches_uid("synthetic-service", 1001)
+    assert not crypto._acl_user_qualifier_matches_uid("other-service", 1001)
+
+
 @pytest.mark.parametrize("value", [None, "", " ", "relative", "/", "/run/../credentials"])
 def test_requires_explicit_absolute_directory(credentials, value):
     if value is None:

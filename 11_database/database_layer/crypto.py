@@ -374,6 +374,10 @@ def _matches_systemd_acl(fd: int, uid: int, *, directory: bool) -> bool:
                 return False
             tag = parts[0] if not parts[1] else f"{parts[0]}:{parts[1]}"
             permissions = parts[2]
+            if tag.startswith("user:") and _acl_user_qualifier_matches_uid(
+                tag.removeprefix("user:"), uid
+            ):
+                tag = f"user:{uid}"
             if tag in by_tag:
                 return False
             by_tag[tag] = permissions
@@ -398,6 +402,22 @@ def _matches_systemd_acl(fd: int, uid: int, *, directory: bool) -> bool:
             "mask": "r--",
             "other": "---",
         }
+    except Exception:
+        return False
+
+
+def _acl_user_qualifier_matches_uid(qualifier: str, uid: int) -> bool:
+    """Resolve libacl's NSS-formatted user qualifier without widening access."""
+    if re.fullmatch(r"[0-9]+", qualifier) is not None:
+        try:
+            return int(qualifier) == uid
+        except ValueError:
+            return False
+    if not qualifier or uid < 0:
+        return False
+    try:
+        passwd = __import__("pwd")
+        return passwd.getpwnam(qualifier).pw_uid == uid
     except Exception:
         return False
 
