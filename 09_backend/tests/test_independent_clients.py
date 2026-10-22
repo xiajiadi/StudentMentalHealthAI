@@ -6,7 +6,11 @@ from typing import Any
 import httpx
 import pytest
 
-from smhai_backend.core.config import ModuleClientSettings, TimeoutSettings
+from smhai_backend.core.config import (
+    LLMModuleClientSettings,
+    ModuleClientSettings,
+    TimeoutSettings,
+)
 from smhai_backend.core.errors import BackendError, ErrorCode
 from smhai_backend.core.request_context import RequestContext
 from smhai_backend.integrations.independent import (
@@ -132,6 +136,43 @@ def _runtime_response(**overrides: Any) -> dict[str, Any]:
     return response
 
 
+def _deepseek_runtime_response(**overrides: Any) -> dict[str, Any]:
+    logical_model_id = "deepseek-flash-education-support"
+    contract_model_id = "MODEL_deepseek_flash_education_support"
+    provider_model_id = "deepseek-flash"
+    attempt = _runtime_attempt(
+        provider_id="deepseek",
+        logical_model_id=logical_model_id,
+        provider_model_id=provider_model_id,
+    )
+    trace = _runtime_trace(attempt)
+    trace.update(
+        {
+            "provider": "deepseek",
+            "logical_model": logical_model_id,
+            "requested_model": logical_model_id,
+            "actual_model": logical_model_id,
+            "provider_model": provider_model_id,
+            "digest": None,
+        }
+    )
+    response = _runtime_response(
+        data={
+            "model_id": contract_model_id,
+            "logical_model_id": logical_model_id,
+            "model_version": provider_model_id,
+            "trace": trace,
+            "synthetic_fixture_only": False,
+        }
+    )
+    for key, value in overrides.items():
+        if key == "data":
+            response["data"].update(value)
+        else:
+            response[key] = value
+    return response
+
+
 def _fake_http(
     client: IndependentRagClient | IndependentLLMRuntimeClient,
     handler: Callable[[httpx.Request], httpx.Response],
@@ -194,6 +235,15 @@ def _llm_args() -> dict[str, Any]:
 
 def _client_settings(base_url: str) -> ModuleClientSettings:
     return ModuleClientSettings(mode="http", base_url=base_url, timeout=TimeoutSettings(read=65.0))
+
+
+def _deepseek_client_settings() -> LLMModuleClientSettings:
+    return LLMModuleClientSettings(
+        mode="http",
+        base_url=_LLM_BASE_URL,
+        logical_model_id="deepseek-flash-education-support",
+        timeout=TimeoutSettings(read=65.0),
+    )
 
 
 @pytest.mark.parametrize(
@@ -401,6 +451,38 @@ async def test_independent_llm_posts_fixed_server_identity_and_returns_strict_re
 
 
 @pytest.mark.asyncio
+async def test_independent_llm_uses_configured_deepseek_identity_without_fallback():
+    client = IndependentLLMRuntimeClient(_deepseek_client_settings())
+    requests, http_client = _fake_http(
+        client, lambda request: _json(_deepseek_runtime_response())
+    )
+    try:
+        result = await client.generate(**_llm_args())
+    finally:
+        await http_client.aclose()
+
+    assert result.model_id == "MODEL_deepseek_flash_education_support"
+    assert result.logical_model_id == "deepseek-flash-education-support"
+    assert result.synthetic_fixture_only is False
+    assert result.trace["provider"] == "deepseek"
+    assert result.trace["provider_model"] == "deepseek-flash"
+    assert result.trace["digest"] is None
+    assert result.trace["fallback_attempted"] is False
+    assert len(requests) == 1
+
+
+def test_independent_llm_rejects_unallowlisted_configured_model_before_transport():
+    settings = LLMModuleClientSettings(
+        mode="http",
+        base_url=_LLM_BASE_URL,
+        logical_model_id="unregistered-school-model",
+        timeout=TimeoutSettings(read=65.0),
+    )
+    with pytest.raises(ValueError, match="model identity is not allowlisted"):
+        IndependentLLMRuntimeClient(settings)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "response",
     [
@@ -434,6 +516,22 @@ async def test_independent_llm_posts_fixed_server_identity_and_returns_strict_re
 )
 async def test_independent_llm_rejects_unexpected_or_mismatched_response(response):
     client = IndependentLLMRuntimeClient(_client_settings(_LLM_BASE_URL))
+    requests, http_client = _fake_http(client, lambda request: _json(response))
+    try:
+        with pytest.raises(BackendError) as caught:
+            await client.generate(**_llm_args())
+    finally:
+        await http_client.aclose()
+    assert caught.value.code is ErrorCode.DEPENDENCY_INVALID_RESPONSE
+    assert len(requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_independent_llm_rejects_wrong_deepseek_attempt_identity():
+    client = IndependentLLMRuntimeClient(_deepseek_client_settings())
+    response = _deepseek_runtime_response(
+        data={"trace": _runtime_trace(_runtime_attempt(provider_id="ollama"))}
+    )
     requests, http_client = _fake_http(client, lambda request: _json(response))
     try:
         with pytest.raises(BackendError) as caught:

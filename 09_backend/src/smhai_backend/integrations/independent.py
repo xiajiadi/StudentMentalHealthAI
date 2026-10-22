@@ -6,7 +6,7 @@ import json
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, NoReturn
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, ValidationError
 
@@ -150,7 +150,44 @@ class GenerationResult:
     trace: Mapping[str, Any]
 
 
-def _raise_invalid(component: str, exc: Exception) -> None:
+@dataclass(frozen=True, slots=True)
+class _RuntimeModelIdentity:
+    logical_model_id: str
+    contract_model_id: str
+    provider_id: str
+    provider_model_id: str
+    digest: str | None
+
+
+_RUNTIME_MODEL_IDENTITIES = {
+    _SCHOOL_LOGICAL_MODEL_ID: _RuntimeModelIdentity(
+        logical_model_id=_SCHOOL_LOGICAL_MODEL_ID,
+        contract_model_id=_SCHOOL_CONTRACT_MODEL_ID,
+        provider_id=_SCHOOL_PROVIDER_ID,
+        provider_model_id=_SCHOOL_PROVIDER_MODEL_ID,
+        digest=_SCHOOL_MODEL_DIGEST,
+    ),
+    "deepseek-flash-education-support": _RuntimeModelIdentity(
+        logical_model_id="deepseek-flash-education-support",
+        contract_model_id="MODEL_deepseek_flash_education_support",
+        provider_id="deepseek",
+        provider_model_id="deepseek-flash",
+        digest=None,
+    ),
+}
+
+
+def _runtime_model_identity(settings: ModuleClientSettings) -> _RuntimeModelIdentity:
+    logical_model_id = getattr(settings, "logical_model_id", _SCHOOL_LOGICAL_MODEL_ID)
+    if not isinstance(logical_model_id, str):
+        raise ValueError("independent Runtime model identity is invalid")
+    identity = _RUNTIME_MODEL_IDENTITIES.get(logical_model_id)
+    if identity is None:
+        raise ValueError("independent Runtime model identity is not allowlisted")
+    return identity
+
+
+def _raise_invalid(component: str, exc: Exception) -> NoReturn:
     raise error(
         ErrorCode.DEPENDENCY_INVALID_RESPONSE,
         status_code=502,
@@ -275,6 +312,7 @@ class IndependentLLMRuntimeClient(LongLivedHttpClient):
         _require_local_destination(settings, _LLM_BASE_URL)
         if settings.timeout.read < _MIN_LLM_HTTP_READ_TIMEOUT_SECONDS:
             raise ValueError("independent Runtime HTTP read timeout must be at least 65 seconds")
+        self.model_identity = _runtime_model_identity(settings)
         super().__init__(settings)
 
     async def generate(
@@ -351,8 +389,9 @@ class IndependentLLMRuntimeClient(LongLivedHttpClient):
                 not isinstance(text, str)
                 or not text.strip()
                 or not isinstance(model_id, str)
-                or model_id != _SCHOOL_CONTRACT_MODEL_ID
-                or logical_model_id != _SCHOOL_LOGICAL_MODEL_ID
+                or model_id != self.model_identity.contract_model_id
+                or not isinstance(logical_model_id, str)
+                or logical_model_id != self.model_identity.logical_model_id
                 or not isinstance(model_version, str)
                 or not model_version.strip()
                 or not isinstance(runtime_version, str)
@@ -365,28 +404,30 @@ class IndependentLLMRuntimeClient(LongLivedHttpClient):
             if (
                 trace.get("request_id") != context.request_id
                 or trace.get("trace_id") != context.trace_id
-                or trace.get("provider") != _SCHOOL_PROVIDER_ID
-                or trace.get("logical_model") != _SCHOOL_LOGICAL_MODEL_ID
-                or trace.get("requested_model") != _SCHOOL_LOGICAL_MODEL_ID
-                or trace.get("actual_model") != _SCHOOL_LOGICAL_MODEL_ID
-                or trace.get("provider_model") != _SCHOOL_PROVIDER_MODEL_ID
-                or trace.get("digest") != _SCHOOL_MODEL_DIGEST
+                or trace.get("provider") != self.model_identity.provider_id
+                or trace.get("logical_model") != self.model_identity.logical_model_id
+                or trace.get("requested_model") != self.model_identity.logical_model_id
+                or trace.get("actual_model") != self.model_identity.logical_model_id
+                or trace.get("provider_model") != self.model_identity.provider_model_id
+                or trace.get("digest") != self.model_identity.digest
                 or trace.get("retry_count") != 0
                 or trace.get("fallback_count") != 0
                 or trace.get("fallback_attempted") is not False
                 or not isinstance(trace.get("attempts"), list)
                 or len(trace["attempts"]) != 1
-                or not _is_expected_successful_attempt(trace["attempts"][0])
+                or not _is_expected_successful_attempt(
+                    trace["attempts"][0], self.model_identity
+                )
             ):
                 raise ValueError("Runtime trace identity or attempt policy does not match")
             safe_trace = {
                 "request_id": context.request_id,
                 "trace_id": context.trace_id,
-                "requested_model": _SCHOOL_LOGICAL_MODEL_ID,
-                "actual_model": _SCHOOL_LOGICAL_MODEL_ID,
-                "provider": _SCHOOL_PROVIDER_ID,
-                "provider_model": _SCHOOL_PROVIDER_MODEL_ID,
-                "digest": _SCHOOL_MODEL_DIGEST,
+                "requested_model": self.model_identity.logical_model_id,
+                "actual_model": self.model_identity.logical_model_id,
+                "provider": self.model_identity.provider_id,
+                "provider_model": self.model_identity.provider_model_id,
+                "digest": self.model_identity.digest,
                 "runtime_version": runtime_version,
                 "retry_count": 0,
                 "fallback_count": 0,
@@ -413,7 +454,9 @@ class IndependentLLMRuntimeClient(LongLivedHttpClient):
             _raise_invalid("LLM Runtime", exc)
 
 
-def _is_expected_successful_attempt(value: Any) -> bool:
+def _is_expected_successful_attempt(
+    value: Any, identity: _RuntimeModelIdentity
+) -> bool:
     """Validate the exact Runtime GenerationAttempt success projection."""
     expected_fields = {
         "attempt_index",
@@ -431,9 +474,9 @@ def _is_expected_successful_attempt(value: Any) -> bool:
         isinstance(value, Mapping)
         and set(value) == expected_fields
         and value.get("attempt_index") == 1
-        and value.get("provider_id") == _SCHOOL_PROVIDER_ID
-        and value.get("logical_model_id") == _SCHOOL_LOGICAL_MODEL_ID
-        and value.get("provider_model_id") == _SCHOOL_PROVIDER_MODEL_ID
+        and value.get("provider_id") == identity.provider_id
+        and value.get("logical_model_id") == identity.logical_model_id
+        and value.get("provider_model_id") == identity.provider_model_id
         and isinstance(value.get("started_at"), str)
         and bool(value.get("started_at"))
         and isinstance(value.get("ended_at"), str)
