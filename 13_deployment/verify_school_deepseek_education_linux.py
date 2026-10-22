@@ -219,27 +219,92 @@ def _safe_http_error_code(response: Any) -> str | None:
     return None
 
 
+def _safe_turn_diagnostic(turn: dict[str, Any]) -> dict[str, Any]:
+    metadata = turn.get("safe_metadata")
+    metadata = metadata if type(metadata) is dict else {}
+    status = turn.get("status")
+    safe_status = (
+        status
+        if isinstance(status, str) and status in {"requested", "completed", "blocked", "failed"}
+        else "unknown"
+    )
+    stage = metadata.get("stage")
+    allowed_stages = {
+        "input_safety",
+        "retrieval",
+        "retrieval_safety",
+        "generation",
+        "output_safety",
+        "claim_boundary",
+        "citation_validation",
+        "completed",
+    }
+    citations = turn.get("citations")
+    content = turn.get("content")
+    actions = {
+        "PROCEED",
+        "PROCEED_WITH_BOUNDARY",
+        "CRISIS_ROUTE",
+        "BLOCK",
+        "ESCALATE_TO_HUMAN",
+        "ABSTAIN",
+        "PROHIBIT",
+    }
+    diagnostic: dict[str, Any] = {
+        "turn_status": safe_status,
+        "stage": stage if isinstance(stage, str) and stage in allowed_stages else "other",
+        "configured_model_selected": metadata.get("model_id") == EXPECTED_MODEL_ID,
+        "citation_count": len(citations) if isinstance(citations, list) else 0,
+        "content_fields": sorted(key for key in content if isinstance(key, str))
+        if type(content) is dict
+        else [],
+    }
+    for source, destination in (
+        ("input_safety_action", "input_safety"),
+        ("retrieval_safety_action", "retrieval_safety"),
+        ("output_safety_action", "output_safety"),
+    ):
+        value = metadata.get(source)
+        diagnostic[destination] = (
+            value if isinstance(value, str) and value in actions else "unknown"
+        )
+    for field in ("evidence_count", "attempt_count"):
+        value = metadata.get(field)
+        diagnostic[field] = value if type(value) is int else None
+    return diagnostic
+
+
 def _validate_completed_turn(turn: dict[str, Any]) -> dict[str, Any]:
     metadata = turn.get("safe_metadata")
     citations = turn.get("citations")
     content = turn.get("content")
-    if (
-        turn.get("status") != "completed"
-        or type(metadata) is not dict
-        or metadata.get("stage") != "completed"
-        or metadata.get("model_id") != EXPECTED_MODEL_ID
-        or metadata.get("attempt_count") != 1
-        or type(metadata.get("evidence_count")) is not int
-        or metadata.get("evidence_count", 0) < 1
-        or type(metadata.get("attempt_count")) is not int
-        or metadata.get("input_safety_action") not in ALLOWED_SAFETY_ACTIONS
-        or metadata.get("retrieval_safety_action") not in ALLOWED_SAFETY_ACTIONS
-        or metadata.get("output_safety_action") not in ALLOWED_SAFETY_ACTIONS
-        or not isinstance(citations, list)
-        or not citations
-        or type(content) is not dict
+    status = turn.get("status")
+    if status != "completed":
+        safe_status = (
+            status
+            if isinstance(status, str) and status in {"requested", "blocked", "failed"}
+            else "unknown"
+        )
+        raise GateError(f"deepseek_turn_status_{safe_status}", "http_verification")
+    if type(metadata) is not dict:
+        raise GateError("deepseek_turn_metadata_missing", "http_verification")
+    if metadata.get("stage") != "completed":
+        raise GateError("deepseek_turn_stage_incomplete", "http_verification")
+    if metadata.get("model_id") != EXPECTED_MODEL_ID:
+        raise GateError("deepseek_model_id_contract_failed", "http_verification")
+    if type(metadata.get("attempt_count")) is not int or metadata["attempt_count"] != 1:
+        raise GateError("deepseek_attempt_count_contract_failed", "http_verification")
+    if type(metadata.get("evidence_count")) is not int or metadata["evidence_count"] < 1:
+        raise GateError("deepseek_evidence_missing", "http_verification")
+    if any(
+        metadata.get(field) not in ALLOWED_SAFETY_ACTIONS
+        for field in ("input_safety_action", "retrieval_safety_action", "output_safety_action")
     ):
-        raise GateError("deepseek_education_turn_contract_failed", "http_verification")
+        raise GateError("deepseek_safety_action_contract_failed", "http_verification")
+    if not isinstance(citations, list) or not citations:
+        raise GateError("deepseek_citations_missing", "http_verification")
+    if type(content) is not dict:
+        raise GateError("deepseek_content_missing", "http_verification")
     if (
         not isinstance(content.get("summary"), str)
         or not content["summary"].strip()
@@ -389,7 +454,8 @@ def _resume(state: dict[str, Any] | None) -> dict[str, Any]:
         turn_id = turn.get("turn_id")
         if isinstance(turn_id, str):
             state["turn_id"] = turn_id
-            _write_state(state)
+        state.setdefault("checks", {})["last_turn_diagnostic"] = _safe_turn_diagnostic(turn)
+        _write_state(state)
         deadline = time.monotonic() + 90
         while turn.get("status") == "requested" and isinstance(turn_id, str):
             if time.monotonic() >= deadline:

@@ -87,3 +87,21 @@ def test_http_error_diagnostic_keeps_only_allowlisted_backend_code() -> None:
         == "DEPENDENCY_UNAVAILABLE"
     )
     assert verifier._safe_http_error_code(Response({"error": {"code": "private text"}})) is None
+
+
+def test_turn_diagnostic_contains_no_generated_text() -> None:
+    turn = _completed_turn()
+    turn["content"]["summary"] = "synthetic answer body"
+
+    diagnostic = verifier._safe_turn_diagnostic(turn)
+
+    assert diagnostic["turn_status"] == "completed"
+    assert diagnostic["configured_model_selected"] is True
+    assert diagnostic["citation_count"] == 1
+    assert diagnostic["content_fields"] == [
+        "disclaimer",
+        "observations",
+        "suggestions",
+        "summary",
+    ]
+    assert "synthetic answer body" not in repr(diagnostic)
