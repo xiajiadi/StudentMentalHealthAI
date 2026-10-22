@@ -295,6 +295,12 @@ def _command(
     except (OSError, subprocess.SubprocessError):
         raise RecoveryError("required_command_unavailable") from None
     if check and result.returncode != 0:
+        if args and Path(args[0]).name == "mysql":
+            mysql_output = (result.stderr or b"") + b"\n" + (result.stdout or b"")
+            match = re.search(rb"\bERROR\s+(\d{3,5})\s+\([A-Z0-9]+\)", mysql_output)
+            if match is not None:
+                raise RecoveryError(f"mysql_statement_error_{match.group(1).decode('ascii')}")
+            raise RecoveryError("mysql_command_failed")
         raise RecoveryError("required_command_failed")
     return result
 

@@ -150,6 +150,24 @@ def test_mysql_identity_policy_accepts_secure_binary_logging():
     assert recovery._validate_mysql_identity_policy(identity) is False
 
 
+def test_mysql_command_failure_exposes_only_the_server_error_number(monkeypatch):
+    def fake_run(args, **kwargs):
+        return subprocess.CompletedProcess(
+            args,
+            1,
+            b"",
+            b"ERROR 1819 (HY000): rejected SYNTHETIC_DO_NOT_EXPOSE\n",
+        )
+
+    monkeypatch.setattr(recovery.subprocess, "run", fake_run)
+
+    with pytest.raises(recovery.RecoveryError) as error:
+        recovery._command(["/usr/bin/mysql", "--batch"], check=True)
+
+    assert str(error.value) == "mysql_statement_error_1819"
+    assert "SYNTHETIC_DO_NOT_EXPOSE" not in str(error.value)
+
+
 def test_mysql_binary_log_is_preserved_only_with_restricted_file_access(
     monkeypatch, tmp_path
 ):
