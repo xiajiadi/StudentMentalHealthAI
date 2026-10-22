@@ -14,7 +14,10 @@ from .errors import ConfigurationError
 
 _CREDENTIAL_SCHEMA = "psynova.school-runtime.v1"
 _DATABASE_NAME = "smhai_school_demo"
-_DATABASE_USER = re.compile(r"psynova_(?:runtime|migrator)_[a-f0-9]{16}\Z")
+_DATABASE_USER_BY_ROLE = {
+    "runtime": re.compile(r"psynova_runtime_[a-f0-9]{16}\Z"),
+    "migrator": re.compile(r"psynova_migrator_[a-f0-9]{15}\Z"),
+}
 _DATABASE_PASSWORD = re.compile(r"[!-~]{20,128}\Z")
 _CSRF_SECRET = re.compile(r"[a-f0-9]{64}\Z")
 
@@ -75,7 +78,7 @@ def load_systemd_school_database_credential(
             or database["port"] != 3306
             or database.get("name") != _DATABASE_NAME
             or not isinstance(user, str)
-            or _DATABASE_USER.fullmatch(user) is None
+            or _DATABASE_USER_BY_ROLE[role].fullmatch(user) is None
             or not user.startswith(f"psynova_{role}_")
             or not isinstance(database.get("password"), str)
             or _DATABASE_PASSWORD.fullmatch(database["password"]) is None

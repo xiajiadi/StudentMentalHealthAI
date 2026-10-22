@@ -14,7 +14,7 @@ CSRF_SENTINEL = "a" * 64
 
 
 def _credential(*, role: str = "runtime") -> dict[str, object]:
-    suffix = "0123456789abcdef"
+    suffix = "0123456789abcdef" if role == "runtime" else "0123456789abcde"
     user_prefix = "psynova_runtime" if role == "runtime" else "psynova_migrator"
     result: dict[str, object] = {
         "schema": "psynova.school-runtime.v1",
@@ -53,10 +53,21 @@ def test_runtime_credential_is_strict_and_secret_safe(monkeypatch):
 def test_migrator_credential_must_be_explicitly_requested(monkeypatch):
     _patch_credential(monkeypatch, _credential(role="migrator"))
     credential = systemd_auth.load_systemd_school_database_credential(role="migrator")
-    assert credential.username == "psynova_migrator_0123456789abcdef"
+    assert credential.username == "psynova_migrator_0123456789abcde"
     assert credential.csrf_secret is None
     with pytest.raises(ConfigurationError):
         systemd_auth.load_systemd_school_database_credential(role="runtime")
+
+
+def test_migrator_credential_rejects_usernames_over_mysql_limit(monkeypatch):
+    payload = _credential(role="migrator")
+    database = payload["database"]
+    assert isinstance(database, dict)
+    database["user"] = "psynova_migrator_0123456789abcdef"
+    _patch_credential(monkeypatch, payload)
+
+    with pytest.raises(ConfigurationError):
+        systemd_auth.load_systemd_school_database_credential(role="migrator")
 
 
 @pytest.mark.parametrize(
