@@ -1,0 +1,57 @@
+[Unit]
+Description=PsyNova synthetic M0 RAG service
+After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=psynova-school-demo
+Group=psynova-school-demo
+WorkingDirectory=/opt/psynova-school-demo/services/rag
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/opt/psynova-school-demo/services/rag/src
+Environment=SMHAI_RAG_CONFIG=/opt/psynova-school-demo/services/rag/config/school_m0_demo_bm25.v1.json
+Environment=SMHAI_RAG_CORPUS=/opt/psynova-school-demo/services/rag/data/m0-demo/embedding_ready.jsonl
+Environment=SMHAI_RAG_DOCUMENTS=/opt/psynova-school-demo/services/rag/data/m0-demo/knowledge_documents.jsonl
+Environment=SMHAI_RAG_REVIEW_QUEUE=/opt/psynova-school-demo/services/rag/data/m0-demo/review_queue.jsonl
+Environment=SMHAI_RAG_PORT=8170
+ExecStartPre=/opt/psynova-school-demo/venv/bin/python -c "import bm25s, fastapi, numpy, uvicorn"
+ExecStart=/opt/psynova-school-demo/venv/bin/python -m rag_engine.api.app
+Restart=on-failure
+RestartSec=3
+TimeoutStartSec=90
+TimeoutStopSec=20
+KillSignal=SIGINT
+UMask=0077
+LimitCORE=0
+MemoryMax=1G
+CPUQuota=100%
+StateDirectory=psynova-school-rag
+StateDirectoryMode=0700
+RuntimeDirectory=psynova-school-rag
+RuntimeDirectoryMode=0700
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectHostname=yes
+ProtectClock=yes
+ProtectProc=invisible
+ProcSubset=pid
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET
+IPAddressDeny=any
+IPAddressAllow=127.0.0.1/32
+ReadWritePaths=/var/lib/psynova-school-rag /run/psynova-school-rag
+
+[Install]
+WantedBy=multi-user.target
