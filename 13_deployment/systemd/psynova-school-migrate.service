@@ -5,6 +5,7 @@ Requires=mysql.service
 
 [Service]
 Type=oneshot
+RemainAfterExit=yes
 User=psynova-school-demo
 Group=psynova-school-demo
 WorkingDirectory=/opt/psynova-school-demo/release

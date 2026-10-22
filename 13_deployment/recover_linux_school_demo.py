@@ -2078,17 +2078,29 @@ def _unit_invocation_json(unit_name: str, *, expected_key: str) -> dict[str, obj
     return rows[-1]
 
 
-def _start_oneshot(unit_name: str, *, timeout: int = 300) -> dict[str, object]:
+def _start_oneshot(
+    unit_name: str, *, expected_key: str, timeout: int = 300
+) -> dict[str, object]:
+    status = _unit_show(unit_name)
+    if status.get("LoadState") != "loaded":
+        raise RecoveryError("systemd_oneshot_unit_unavailable")
+    if status.get("ActiveState") == "active":
+        if status.get("SubState") != "exited":
+            raise RecoveryError("systemd_oneshot_unit_already_running")
+        _command(["systemctl", "stop", unit_name], timeout=timeout)
+    elif status.get("ActiveState") == "failed":
+        _command(["systemctl", "reset-failed", unit_name], timeout=timeout)
+    elif status.get("ActiveState") != "inactive":
+        raise RecoveryError("systemd_oneshot_unit_state_unexpected")
     _command(["systemctl", "start", unit_name], timeout=timeout)
-    return _unit_invocation_json(
-        unit_name, expected_key="migration" if "migrate" in unit_name else "seed"
-    )
+    return _unit_invocation_json(unit_name, expected_key=expected_key)
 
 
 def _run_probe() -> dict[str, object]:
-    _command(["systemctl", "start", "psynova-school-credential-probe.service"], timeout=120)
-    result = _unit_invocation_json(
-        "psynova-school-credential-probe.service", expected_key="systemd_credential_injection"
+    result = _start_oneshot(
+        "psynova-school-credential-probe.service",
+        expected_key="systemd_credential_injection",
+        timeout=120,
     )
     if (
         result.get("systemd_credential_injection") != "PASS"
@@ -2112,8 +2124,9 @@ def _verify_seed_result(result: Mapping[str, object]) -> dict[str, object]:
 
 
 def _seed_systemd_unit() -> dict[str, object]:
-    _command(["systemctl", "start", "psynova-school-seed.service"], timeout=300)
-    result = _unit_invocation_json("psynova-school-seed.service", expected_key="seed")
+    result = _start_oneshot(
+        "psynova-school-seed.service", expected_key="seed", timeout=300
+    )
     return _verify_seed_result(result)
 
 
@@ -2972,7 +2985,9 @@ def _run_resume(*, expected_hash: str, verifier: Path, verifier_hash: str) -> di
             if str(state["phase"]) != "MIGRATION_STARTED":
                 state = _set_state_phase(state, "MIGRATION_STARTED")
             _set_phase("MIGRATION_STARTED")
-            migration_result = _start_oneshot(_MIGRATION_UNIT, timeout=1800)
+            migration_result = _start_oneshot(
+                _MIGRATION_UNIT, expected_key="migration", timeout=1800
+            )
             if (
                 migration_result.get("migration") != "VERIFIED"
                 or migration_result.get("revision") != EXPECTED_REVISION

@@ -390,6 +390,71 @@ def test_migrator_prepared_resume_finishes_usage_only_grant(monkeypatch):
     assert result["phase"] == "MIGRATOR_AUTH_VERIFIED"
 
 
+def test_start_oneshot_restarts_a_remained_completed_unit(monkeypatch):
+    unit_name = "psynova-school-seed.service"
+    calls = []
+    monkeypatch.setattr(
+        recovery,
+        "_unit_show",
+        lambda _unit: {
+            "LoadState": "loaded",
+            "ActiveState": "active",
+            "SubState": "exited",
+        },
+    )
+    monkeypatch.setattr(
+        recovery, "_command", lambda command, **_kwargs: calls.append(command)
+    )
+    monkeypatch.setattr(
+        recovery,
+        "_unit_invocation_json",
+        lambda _unit, *, expected_key: {expected_key: "VERIFIED"},
+    )
+
+    result = recovery._start_oneshot(
+        unit_name, expected_key="seed", timeout=300
+    )
+
+    assert result == {"seed": "VERIFIED"}
+    assert calls == [
+        ["systemctl", "stop", unit_name],
+        ["systemctl", "start", unit_name],
+    ]
+
+
+def test_start_oneshot_refuses_a_running_unit(monkeypatch):
+    monkeypatch.setattr(
+        recovery,
+        "_unit_show",
+        lambda _unit: {
+            "LoadState": "loaded",
+            "ActiveState": "active",
+            "SubState": "running",
+        },
+    )
+    monkeypatch.setattr(
+        recovery, "_command", lambda *_args, **_kwargs: pytest.fail("unexpected command")
+    )
+
+    with pytest.raises(
+        recovery.RecoveryError, match="systemd_oneshot_unit_already_running"
+    ):
+        recovery._start_oneshot("psynova-school-seed.service", expected_key="seed")
+
+
+@pytest.mark.parametrize(
+    "unit_name",
+    [
+        "psynova-school-credential-probe.service",
+        "psynova-school-migrate.service",
+        "psynova-school-seed.service",
+    ],
+)
+def test_recovery_oneshot_units_retain_invocation_metadata(unit_name):
+    unit_path = pathlib.Path(__file__).resolve().parents[1] / "systemd" / unit_name
+    assert "Type=oneshot\nRemainAfterExit=yes\n" in unit_path.read_text()
+
+
 def test_mysql_show_grants_privilege_order_is_canonicalized():
     username = "psynova_migrator_0123456789abcde"
     mysql_canonical_order = [
