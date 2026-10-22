@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
+import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, NoReturn
@@ -45,6 +47,7 @@ _MAX_OUTPUT_TOKENS = 768
 _CONTEXT_LENGTH = 8192
 _GENERATION_TIMEOUT_SECONDS = 120.0
 _MIN_LLM_HTTP_READ_TIMEOUT_SECONDS = 125.0
+_LOGGER = logging.getLogger(__name__)
 
 
 class _StrictModel(BaseModel):
@@ -342,12 +345,42 @@ class IndependentLLMRuntimeClient(LongLivedHttpClient):
                 messages=messages,
                 structured_schema=structured_schema,
             )
-            response = await self.post_json(
-                LLM_ROUTE,
-                payload.model_dump(mode="json"),
-                context=context,
-                headers=self._internal_auth_headers(),
-            )
+            generation_started_at = time.monotonic()
+            try:
+                response = await self.post_json(
+                    LLM_ROUTE,
+                    payload.model_dump(mode="json"),
+                    context=context,
+                    headers=self._internal_auth_headers(),
+                )
+            except UpstreamError as exc:
+                safe_code = (
+                    exc.code.value
+                    if type(exc.code) is ErrorCode
+                    and exc.code
+                    in {
+                        ErrorCode.DEPENDENCY_TIMEOUT,
+                        ErrorCode.DEPENDENCY_UNAVAILABLE,
+                        ErrorCode.DEPENDENCY_INVALID_RESPONSE,
+                    }
+                    else "unknown"
+                )
+                status_code = (
+                    exc.status_code
+                    if type(exc.status_code) is int and 100 <= exc.status_code <= 599
+                    else 0
+                )
+                _LOGGER.warning(
+                    "independent_runtime_http_failure code=%s http_status=%d "
+                    "llm_read_timeout_seconds=%.0f runtime_request_timeout_seconds=%.0f "
+                    "elapsed_ms=%d",
+                    safe_code,
+                    status_code,
+                    self.settings.timeout.read,
+                    _GENERATION_TIMEOUT_SECONDS,
+                    int((time.monotonic() - generation_started_at) * 1000),
+                )
+                raise
             data = _envelope(response, request_id=context.request_id, trace_id=context.trace_id)
             expected_outer = {
                 "request_id": context.request_id,

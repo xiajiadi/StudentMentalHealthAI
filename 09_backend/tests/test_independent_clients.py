@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from typing import Any
 
@@ -474,6 +475,29 @@ async def test_independent_llm_uses_configured_deepseek_identity_without_fallbac
     assert result.trace["fallback_attempted"] is False
     assert len(requests) == 1
     assert requests[0].headers["Authorization"] == f"Bearer {_TEST_RUNTIME_TOKEN}"
+
+
+@pytest.mark.asyncio
+async def test_independent_llm_timeout_log_excludes_request_content(caplog):
+    client = IndependentLLMRuntimeClient(_deepseek_client_settings())
+
+    def timeout(_request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("synthetic_private_prompt_marker")
+
+    requests, http_client = _fake_http(client, timeout)
+    caplog.set_level(logging.WARNING, logger="smhai_backend.integrations.independent")
+    try:
+        with pytest.raises(BackendError) as caught:
+            await client.generate(**_llm_args())
+    finally:
+        await http_client.aclose()
+
+    assert caught.value.code is ErrorCode.DEPENDENCY_TIMEOUT
+    assert len(requests) == 1
+    assert "code=dependency_timeout" in caplog.text
+    assert "llm_read_timeout_seconds=135" in caplog.text
+    assert "runtime_request_timeout_seconds=120" in caplog.text
+    assert "synthetic_private_prompt_marker" not in caplog.text
 
 
 def test_independent_llm_rejects_unallowlisted_configured_model_before_transport():
