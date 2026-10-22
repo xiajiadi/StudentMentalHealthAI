@@ -20,8 +20,10 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+import xml.etree.ElementTree as ET
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import Any, cast
 
 SOURCE_STAGE = Path("/home/psynova/apps/psynova/staging/linux-school-demo")
 APP_ROOT = Path("/opt/psynova-school-demo")
@@ -70,6 +72,8 @@ _RELEASE_PATHS = (
     "13_deployment/systemd/psynova-school-migrate.service",
     "13_deployment/systemd/psynova-school-seed.service",
 )
+_INSTALL_PHASE = "not_started"
+_LINUX_OS = cast(Any, os)
 
 
 class InstallError(RuntimeError):
@@ -109,20 +113,22 @@ def _output(result: subprocess.CompletedProcess[bytes]) -> str:
         raise InstallError("host command returned invalid metadata") from None
 
 
-def _mysql(sql: str, *, timeout: int = 30) -> str:
+def _mysql(sql: str, *, timeout: int = 30, xml_output: bool = False) -> str:
     client = shutil.which("mysql")
     if not client:
         raise InstallError("MySQL client is unavailable")
+    args = [
+        client,
+        "--no-defaults",
+        "--protocol=socket",
+        "--user=root",
+    ]
+    if xml_output:
+        args.append("--xml")
+    else:
+        args.extend(["--batch", "--skip-column-names", "--raw"])
     result = _command(
-        [
-            client,
-            "--no-defaults",
-            "--protocol=socket",
-            "--user=root",
-            "--batch",
-            "--skip-column-names",
-            "--raw",
-        ],
+        args,
         input_bytes=sql.encode("utf-8"),
         env={
             name: value
@@ -140,7 +146,7 @@ def _require_empty_output(sql: str) -> None:
 
 
 def _check_host_preconditions() -> dict[str, str]:
-    if os.geteuid() != 0:
+    if _LINUX_OS.geteuid() != 0:
         raise InstallError(
             "--install must be run through interactive sudo by the operator"
         )
@@ -236,15 +242,15 @@ def _copy_source(revision: str) -> None:
         else:
             shutil.copy2(source, destination, follow_symlinks=False)
     (RELEASE_ROOT / "SOURCE_REVISION").write_text(revision + "\n", encoding="ascii")
-    for parent, directories, files in os.walk(APP_ROOT, followlinks=False):
+    for parent, _directories, files in os.walk(APP_ROOT, followlinks=False):
         current = Path(parent)
-        os.chown(current, 0, 0)
+        _LINUX_OS.chown(current, 0, 0)
         os.chmod(current, 0o755)
         for name in files:
             item = current / name
             if item.is_symlink():
                 raise InstallError("installed release contains a symlink")
-            os.chown(item, 0, 0)
+            _LINUX_OS.chown(item, 0, 0)
             os.chmod(item, 0o644)
 
 
@@ -324,7 +330,7 @@ def _provision_python() -> Path:
     for item in (VENV_ROOT, *VENV_ROOT.rglob("*")):
         if item.is_symlink():
             continue
-        os.chown(item, 0, 0)
+        _LINUX_OS.chown(item, 0, 0)
         if item.is_dir():
             os.chmod(item, 0o755)
         elif item.is_file():
@@ -400,7 +406,7 @@ def _store_encrypted_credential(name: str, filename: str, plaintext: bytes) -> N
             stream.write(ciphertext)
             stream.flush()
             os.fsync(stream.fileno())
-        os.chown(destination, 0, 0)
+        _LINUX_OS.chown(destination, 0, 0)
         os.chmod(destination, 0o600)
     except OSError:
         try:
@@ -429,15 +435,30 @@ def _credential_payload(
 
 
 def _parse_generated_password(result: str, username: str) -> str:
-    rows = [line.split("\t") for line in result.splitlines() if line]
-    if len(rows) != 1 or len(rows[0]) < 3:
+    try:
+        root = ET.fromstring(result)
+    except ET.ParseError:
+        raise InstallError("MySQL generated-account result is malformed") from None
+    rows = root.findall("row") if root.tag == "resultset" else []
+    if len(rows) != 1:
         raise InstallError("MySQL did not return the generated account secret")
-    if rows[0][0] != username or rows[0][1] != "127.0.0.1":
+    fields: dict[str, str] = {}
+    for field in rows[0].findall("field"):
+        name = field.get("name")
+        if not name or name in fields:
+            raise InstallError("MySQL generated an unexpected account result")
+        fields[name] = "".join(field.itertext())
+    if fields.get("user") != username or fields.get("host") != "127.0.0.1":
         raise InstallError("MySQL generated an unexpected account identity")
-    password = rows[0][2]
-    if re.fullmatch(r"[!-~]{20,255}", password) is None:
+    password = fields.get("generated password", "")
+    if re.fullmatch(r"[ -~]{20,255}", password) is None:
         raise InstallError("MySQL generated an unsupported account secret format")
     return password
+
+
+def _set_install_phase(phase: str) -> None:
+    global _INSTALL_PHASE
+    _INSTALL_PHASE = phase
 
 
 def _install_systemd_unit(name: str, *, runtime: bool = False) -> Path:
@@ -447,7 +468,7 @@ def _install_systemd_unit(name: str, *, runtime: bool = False) -> Path:
     if source.is_symlink() or not source.is_file() or destination.exists():
         raise InstallError("systemd unit source or destination is unavailable")
     shutil.copyfile(source, destination, follow_symlinks=False)
-    os.chown(destination, 0, 0)
+    _LINUX_OS.chown(destination, 0, 0)
     os.chmod(destination, 0o644)
     _command(["systemctl", "daemon-reload"])
     return destination
@@ -506,11 +527,13 @@ def _wait_backend() -> None:
 
 def install() -> dict[str, object]:
     os.umask(0o077)
+    _set_install_phase("environment_sanitization")
     for name in tuple(os.environ):
         if name.startswith(
             ("DB_", "DATABASE_", "MYSQL_", "SMHAI_", "PYTHON", "UV_", "PIP_")
         ) or name in {"VIRTUAL_ENV", "CONDA_PREFIX"}:
             os.environ.pop(name, None)
+    _set_install_phase("preflight")
     preflight = _check_host_preconditions()
     runtime_user = "psynova_runtime_" + secrets.token_hex(8)
     migration_user = "psynova_migrator_" + secrets.token_hex(8)
@@ -523,9 +546,13 @@ def install() -> dict[str, object]:
     runtime_password: str | None = None
     migration_password: str | None = None
 
+    _set_install_phase("source_copy")
     _copy_source(preflight["source_revision"])
+    _set_install_phase("python_provision")
     python = _provision_python()
+    _set_install_phase("service_account")
     _ensure_service_account()
+    _set_install_phase("credential_store")
     _ensure_credential_store()
 
     for account_name, grant_sql in (
@@ -546,6 +573,9 @@ def install() -> dict[str, object]:
     ):
         if not re.fullmatch(r"psynova_(?:runtime|migrator)_[a-f0-9]{16}", account_name):
             raise InstallError("generated database account name is invalid")
+        account_phase = (
+            "mysql_runtime_account" if account_name == runtime_user else "mysql_migration_account"
+        )
         if account_name == runtime_user:
             sql = (
                 f"CREATE DATABASE `{DATABASE_NAME}` CHARACTER SET utf8mb4 "
@@ -558,7 +588,10 @@ def install() -> dict[str, object]:
                 f"CREATE USER '{account_name}'@'127.0.0.1' IDENTIFIED BY RANDOM PASSWORD;\n"
                 + grant_sql
             )
-        generated_password = _parse_generated_password(_mysql(sql), account_name)
+        _set_install_phase(f"{account_phase}_sql")
+        generated_result = _mysql(sql, xml_output=True)
+        _set_install_phase(f"{account_phase}_result_parse")
+        generated_password = _parse_generated_password(generated_result, account_name)
         if account_name == runtime_user:
             runtime_password = generated_password
         else:
@@ -595,6 +628,7 @@ def install() -> dict[str, object]:
         separators=(",", ":"),
     ).encode("ascii")
 
+    _set_install_phase("credential_creation")
     _store_encrypted_credential(
         "database-keys.json", _CRED_FILES["database-keys.json"], key_payload
     )
@@ -610,13 +644,17 @@ def install() -> dict[str, object]:
         seed_payload,
     )
 
+    _set_install_phase("systemd_unit_installation")
     _install_systemd_unit("psynova-school-credential-probe.service")
     _install_systemd_unit("psynova-school-demo.service")
     _install_systemd_unit("psynova-school-seed.service")
     _install_systemd_unit("psynova-school-migrate.service", runtime=True)
+    _set_install_phase("credential_probe")
     _start_and_verify_unit("psynova-school-credential-probe.service")
+    _set_install_phase("schema_migration")
     _start_and_verify_unit("psynova-school-migrate.service", timeout=1800)
 
+    _set_install_phase("migration_account_lock")
     _mysql(f"ALTER USER '{migration_user}'@'127.0.0.1' ACCOUNT LOCK;")
     locked = _mysql(
         f"SELECT account_locked FROM mysql.user WHERE User='{migration_user}' "
@@ -627,12 +665,15 @@ def install() -> dict[str, object]:
     (RUN_UNITS / "psynova-school-migrate.service").unlink()
     (CREDSTORE / _CRED_FILES["school-migration.json"]).unlink()
     _command(["systemctl", "daemon-reload"])
+    _set_install_phase("synthetic_seed")
     _start_and_verify_unit("psynova-school-seed.service", timeout=300)
 
+    _set_install_phase("backend_start")
     _command(
         ["systemctl", "enable", "--now", "psynova-school-demo.service"], timeout=180
     )
     _wait_backend()
+    _set_install_phase("http_verification")
     http_smoke_result = _command(
         [
             str(python),
@@ -673,6 +714,7 @@ def install() -> dict[str, object]:
         for line in backend_listeners.splitlines()
     ):
         raise InstallError("Backend listener is not restricted to loopback")
+    _set_install_phase("complete")
     return {
         "deployment": "INSTALLED",
         "source_revision": preflight["source_revision"],
@@ -744,6 +786,7 @@ def main() -> int:
         )
         return 0
     try:
+        _set_install_phase("starting")
         result = install()
         print(json.dumps(result, sort_keys=True))
         return 0
@@ -753,7 +796,11 @@ def main() -> int:
                 {
                     "deployment": "BLOCKED",
                     "error_type": type(exc).__name__,
-                    "recovery": "Preserve existing files and database state for inspection; do not rerun blindly.",
+                    "phase": _INSTALL_PHASE,
+                    "recovery": (
+                        "Preserve existing files and database state for inspection; "
+                        "do not rerun blindly."
+                    ),
                 },
                 sort_keys=True,
             )

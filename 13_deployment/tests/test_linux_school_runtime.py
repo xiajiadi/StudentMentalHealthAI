@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import os
+import sys
+from xml.sax.saxutils import escape
 
 import bootstrap_linux_school_demo as bootstrap
 import linux_school_runtime as runtime
@@ -114,15 +117,53 @@ def test_bootstrap_runtime_credential_matches_database_reader(monkeypatch):
     assert credential.password == password
 
 
-def test_mysql_generated_password_result_is_parsed_in_memory_only():
+def test_mysql_generated_password_xml_result_is_parsed_in_memory_only():
     username = "psynova_runtime_0123456789abcdef"
-    password = "iOeqf>Mh9:;XD&qn(Hl}"
+    password = " p&<>" + "A" * 14 + " "
+    fields = {
+        "user": username,
+        "host": "127.0.0.1",
+        "generated password": password,
+        "auth_factor": "1",
+    }
+    result = (
+        "<resultset><row>"
+        + "".join(
+            f'<field name="{escape(name)}">{escape(value)}</field>'
+            for name, value in fields.items()
+        )
+        + "</row></resultset>"
+    )
     assert (
         bootstrap._parse_generated_password(
-            f"{username}\t127.0.0.1\t{password}\t1", username
+            result, username
         )
         == password
     )
+
+
+def test_mysql_generated_password_rejects_unexpected_xml_shape():
+    with pytest.raises(bootstrap.InstallError, match="unexpected account identity"):
+        bootstrap._parse_generated_password(
+            "<resultset><row><field name='user'>wrong</field></row></resultset>",
+            "psynova_runtime_0123456789abcdef",
+        )
+
+
+def test_install_error_reports_fixed_phase_without_command_output(
+    monkeypatch, capsys
+):
+    def fail_in_parse():
+        bootstrap._set_install_phase("mysql_runtime_account_result_parse")
+        raise bootstrap.InstallError("SQL_OUTPUT_SECRET_SENTINEL")
+
+    monkeypatch.setattr(bootstrap, "install", fail_in_parse)
+    monkeypatch.setattr(sys, "argv", ["bootstrap_linux_school_demo.py", "--install"])
+    assert bootstrap.main() == 2
+    output = capsys.readouterr().out
+    payload = json.loads(output)
+    assert payload["phase"] == "mysql_runtime_account_result_parse"
+    assert "SQL_OUTPUT_SECRET_SENTINEL" not in output
 
 
 def test_direct_or_verbose_database_environment_is_rejected(

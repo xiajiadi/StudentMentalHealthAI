@@ -13,6 +13,7 @@ from typing import Any
 
 BACKEND = "http://127.0.0.1:8088"
 ACCOUNT_CREDENTIAL = Path("/etc/credstore.encrypted/psynova-school-seed-accounts.cred")
+SEED_CREDENTIAL_NAME = "school-seed-accounts.json"
 EXPECTED_SCHOOL = {
     "alpha": "SYNTHETIC_SCHOOL_SEED_ALPHA_V1",
     "beta": "SYNTHETIC_SCHOOL_SEED_BETA_V1",
@@ -48,7 +49,15 @@ def _run(args: list[str], *, timeout: int = 120) -> subprocess.CompletedProcess[
 
 
 def _read_accounts() -> dict[str, tuple[str, str]]:
-    result = _run(["systemd-creds", "decrypt", str(ACCOUNT_CREDENTIAL), "-"])
+    result = _run(
+        [
+            "systemd-creds",
+            "decrypt",
+            f"--name={SEED_CREDENTIAL_NAME}",
+            str(ACCOUNT_CREDENTIAL),
+            "-",
+        ]
+    )
     try:
         payload = json.loads(result.stdout.decode("utf-8"))
     except (UnicodeError, json.JSONDecodeError):
@@ -116,28 +125,41 @@ def _login(httpx, slot: str, account: tuple[str, str]):
     ):
         client.close()
         raise SmokeError(f"synthetic account role projection failed: {slot}")
-    active = actor.get("active_context")
-    if (
-        not isinstance(active, dict)
-        or active.get("school_ref") != EXPECTED_SCHOOL[school]
-    ):
-        selected = client.post(
-            "/api/v1/auth/active-context",
-            json={"role": context_role, "school_ref": EXPECTED_SCHOOL[school]},
-            headers={
-                "Origin": "http://127.0.0.1:4178",
-                "X-CSRF-Token": csrf,
-                "Accept": "application/json",
-            },
-        )
-        if selected.status_code != 200:
-            client.close()
-            raise SmokeError(f"synthetic school context selection failed: {slot}")
-        actor = _data(selected)
+    selected = client.post(
+        "/api/v1/auth/active-context",
+        json={"role": context_role, "school_ref": EXPECTED_SCHOOL[school]},
+        headers={
+            "Origin": "http://127.0.0.1:4178",
+            "X-CSRF-Token": csrf,
+            "Accept": "application/json",
+        },
+    )
+    if selected.status_code != 200:
+        client.close()
+        raise SmokeError(f"synthetic school context selection failed: {slot}")
+    actor = _data(selected)
     if actor.get("active_context", {}).get("school_ref") != EXPECTED_SCHOOL[school]:
         client.close()
         raise SmokeError(f"synthetic school context verification failed: {slot}")
     return {"client": client, "actor": actor, "csrf": csrf, "slot": slot}
+
+
+def _require_csrf_rejection(session) -> None:
+    school, role = session["slot"].split(".", 1)
+    _, context_role = ROLE_PROJECTION[role]
+    response = session["client"].post(
+        "/api/v1/auth/active-context",
+        json={"role": context_role, "school_ref": EXPECTED_SCHOOL[school]},
+        headers={
+            "Origin": "http://127.0.0.1:4178",
+            "Accept": "application/json",
+        },
+    )
+    if response.status_code != 403:
+        raise SmokeError(f"CSRF authorization check failed: {session['slot']}")
+    me = session["client"].get("/api/v1/auth/me")
+    if me.status_code != 200:
+        raise SmokeError(f"session failed after CSRF denial: {session['slot']}")
 
 
 def _require_status(session, method: str, path: str, expected: int, label: str) -> None:
@@ -180,6 +202,7 @@ def run(repository_root: Path) -> dict[str, object]:
                 or _data(me).get("user_id") != sessions[slot]["actor"]["user_id"]
             ):
                 raise SmokeError(f"authenticated actor read failed: {slot}")
+            _require_csrf_rejection(sessions[slot])
 
         for school in ("alpha", "beta"):
             teacher = sessions[f"{school}.teacher"]
@@ -289,6 +312,7 @@ def run(repository_root: Path) -> dict[str, object]:
             "authenticated_accounts": len(sessions),
             "role_boundaries": "PASS",
             "cross_school_subject_denial": "PASS",
+            "csrf_enforcement": "PASS",
             "session_after_restart": "PASS",
             "response_bodies_or_credentials_logged": False,
         }
