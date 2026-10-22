@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import tarfile
 from pathlib import Path
@@ -54,6 +55,19 @@ def test_api_key_shape_is_checked_without_echo_or_persistence() -> None:
     assert not installer._valid_api_key(b"not-a-key")
     assert not installer._valid_api_key(b"sk-short")
     assert not installer._valid_api_key(b"sk-" + b"a" * 300)
+
+
+@pytest.mark.parametrize("separator", [b"\n", b"\r\n", b"\n\r"])
+def test_api_key_input_discards_sudo_line_terminators(
+    monkeypatch: pytest.MonkeyPatch, separator: bytes
+) -> None:
+    api_key = b"sk-" + b"a" * 32
+    stdin = io.TextIOWrapper(io.BytesIO(separator + api_key + b"\r\n"), encoding="utf-8")
+    monkeypatch.setattr(installer.sys, "stdin", stdin)
+
+    received = installer._await_api_key()
+
+    assert received == api_key
 
 
 def test_runtime_bearer_token_requires_expected_alphabet_and_length() -> None:

@@ -819,6 +819,8 @@ def _await_api_key() -> bytearray:
         value = bytearray(sys.stdin.buffer.read(257))
     except OSError:
         raise GateError("credential_input_unavailable", "credential_input") from None
+    while value.startswith((b"\r", b"\n")):
+        value.pop(0)
     while value.endswith((b"\r", b"\n")):
         value.pop()
     if len(value) > 256 or not _valid_api_key(bytes(value)):
