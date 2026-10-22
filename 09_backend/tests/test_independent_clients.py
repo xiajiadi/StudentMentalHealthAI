@@ -237,10 +237,14 @@ def _client_settings(base_url: str) -> ModuleClientSettings:
     return ModuleClientSettings(mode="http", base_url=base_url, timeout=TimeoutSettings(read=65.0))
 
 
+_TEST_RUNTIME_TOKEN = "synthetic_runtime_token_" + "x" * 32
+
+
 def _deepseek_client_settings() -> LLMModuleClientSettings:
     return LLMModuleClientSettings(
         mode="http",
         base_url=_LLM_BASE_URL,
+        internal_auth_token=_TEST_RUNTIME_TOKEN,
         logical_model_id="deepseek-flash-education-support",
         timeout=TimeoutSettings(read=65.0),
     )
@@ -469,6 +473,7 @@ async def test_independent_llm_uses_configured_deepseek_identity_without_fallbac
     assert result.trace["digest"] is None
     assert result.trace["fallback_attempted"] is False
     assert len(requests) == 1
+    assert requests[0].headers["Authorization"] == f"Bearer {_TEST_RUNTIME_TOKEN}"
 
 
 def test_independent_llm_rejects_unallowlisted_configured_model_before_transport():

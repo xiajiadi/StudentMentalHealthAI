@@ -346,6 +346,7 @@ class IndependentLLMRuntimeClient(LongLivedHttpClient):
                 LLM_ROUTE,
                 payload.model_dump(mode="json"),
                 context=context,
+                headers=self._internal_auth_headers(),
             )
             data = _envelope(response, request_id=context.request_id, trace_id=context.trace_id)
             expected_outer = {
@@ -452,6 +453,13 @@ class IndependentLLMRuntimeClient(LongLivedHttpClient):
             raise translate_upstream_error(exc) from exc
         except (TypeError, ValueError, ValidationError, KeyError) as exc:
             _raise_invalid("LLM Runtime", exc)
+
+    def _internal_auth_headers(self) -> dict[str, str] | None:
+        token = getattr(self.settings, "internal_auth_token", None)
+        if token is None:
+            return None
+        value = token.get_secret_value() if hasattr(token, "get_secret_value") else str(token)
+        return {"Authorization": f"Bearer {value}"}
 
 
 def _is_expected_successful_attempt(
