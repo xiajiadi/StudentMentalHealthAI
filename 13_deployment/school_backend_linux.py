@@ -22,6 +22,35 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _build_school_backend_settings(csrf_secret: str):
+    from smhai_backend.core.config import (
+        BackendSettings,
+        LLMModuleClientSettings,
+        ModuleClientSettings,
+    )
+
+    return BackendSettings(
+        _env_file=None,
+        environment="demo",
+        identity_profile="school_tenant",
+        persistence_mode="mysql",
+        host="127.0.0.1",
+        port=DEFAULT_BACKEND_PORT,
+        docs_enabled=False,
+        school_csrf_secret=csrf_secret,
+        allowed_origins=[f"http://127.0.0.1:{DEFAULT_FRONTEND_PORT}"],
+        auth={"cookie_name": "psynova_school_session"},
+        cat=ModuleClientSettings(
+            mode="http", base_url=f"http://127.0.0.1:{DEFAULT_CAT_PORT}"
+        ),
+        rag=ModuleClientSettings(mode="http", base_url="http://127.0.0.1:8170"),
+        llm=LLMModuleClientSettings(mode="http", base_url="http://127.0.0.1:8160"),
+        safety=ModuleClientSettings(mode="http", base_url="http://127.0.0.1:8190"),
+        post_assessment_worker={"enabled": False},
+        research_education_worker={"enabled": False},
+    )
+
+
 def main() -> int:
     args = _parser().parse_args()
     try:
@@ -53,28 +82,7 @@ def main() -> int:
         os.environ["DATABASE_KEY_FILE"] = "database-keys.json"
 
         from smhai_backend.app_factory import create_app
-        from smhai_backend.core.config import BackendSettings, ModuleClientSettings
-
-        settings = BackendSettings(
-            _env_file=None,
-            environment="demo",
-            identity_profile="school_tenant",
-            persistence_mode="mysql",
-            host="127.0.0.1",
-            port=DEFAULT_BACKEND_PORT,
-            docs_enabled=False,
-            school_csrf_secret=credentials.csrf_secret,
-            allowed_origins=[f"http://127.0.0.1:{DEFAULT_FRONTEND_PORT}"],
-            auth={"cookie_name": "psynova_school_session"},
-            cat=ModuleClientSettings(
-                mode="http", base_url=f"http://127.0.0.1:{DEFAULT_CAT_PORT}"
-            ),
-            rag=ModuleClientSettings(mode="http", base_url="http://127.0.0.1:8170"),
-            llm=ModuleClientSettings(mode="http", base_url="http://127.0.0.1:8160"),
-            safety=ModuleClientSettings(mode="http", base_url="http://127.0.0.1:8190"),
-            post_assessment_worker={"enabled": False},
-            research_education_worker={"enabled": False},
-        )
+        settings = _build_school_backend_settings(credentials.csrf_secret)
         app = create_app(settings=settings)
         summary = {
             "backend": "school_tenant",
