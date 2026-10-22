@@ -200,6 +200,8 @@ def test_unit_and_backend_dropin_keep_secrets_external_and_listener_private() ->
             "systemd/psynova-school-demo-llm.conf": dropin,
         }
     )
+    assert installer.RESOLVER_DROPIN_DATA == b"[Service]\nIPAddressAllow=127.0.0.53/32\n"
+    assert b"IPAddressAllow=0.0.0.0/0" not in installer.RESOLVER_DROPIN_DATA
     unsafe = unit.replace(b"IPAddressAllow=3.173.21.63/32", b"IPAddressAllow=0.0.0.0/0")
     with pytest.raises(installer.GateError, match="llm_unit_scope_mismatch"):
         installer._check_unit(

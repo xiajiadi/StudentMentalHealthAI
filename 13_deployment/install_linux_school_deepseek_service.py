@@ -31,6 +31,10 @@ UNIT_PATH = Path("/etc/systemd/system/psynova-school-llm.service")
 BACKEND_DROPIN = Path(
     "/etc/systemd/system/psynova-school-demo.service.d/20-llm.conf"
 )
+RESOLVER_DROPIN = Path(
+    "/etc/systemd/system/psynova-school-llm.service.d/10-resolver.conf"
+)
+RESOLVER_DROPIN_DATA = b"[Service]\nIPAddressAllow=127.0.0.53/32\n"
 STATE_PATH = Path("/var/lib/psynova-school-demo/deepseek-install-state.json")
 LOCK_PATH = Path("/run/lock/psynova-school-llm-install.lock")
 CREDENTIAL_ROOT = Path("/etc/credstore.encrypted")
@@ -910,6 +914,7 @@ def _uncheckpointed_objects_exist() -> bool:
             SERVICE_ROOT,
             UNIT_PATH,
             BACKEND_DROPIN,
+            RESOLVER_DROPIN,
             API_CREDENTIAL,
             RUNTIME_CREDENTIAL,
             UV_CACHE_ROOT.parent,
@@ -1069,11 +1074,33 @@ def _check_state_objects(state: dict[str, Any], files: dict[str, bytes]) -> None
                 raise GateError("systemd_payload_unavailable", "checkpoint_verify")
         if _sha256_file(UNIT_PATH) != state.get("unit_sha256") or _sha256_file(BACKEND_DROPIN) != state.get("backend_dropin_sha256"):
             raise GateError("systemd_payload_mismatch", "checkpoint_verify")
+        resolver_digest = state.get("resolver_dropin_sha256")
+        if resolver_digest is None:
+            if state["phase"] != "LLM_SERVICE_STARTED" or os.path.lexists(RESOLVER_DROPIN):
+                raise GateError("resolver_dropin_checkpoint_missing", "checkpoint_verify")
+        else:
+            try:
+                metadata = RESOLVER_DROPIN.stat(follow_symlinks=False)
+            except OSError:
+                raise GateError("resolver_dropin_unavailable", "checkpoint_verify") from None
+            if (
+                not stat.S_ISREG(metadata.st_mode)
+                or metadata.st_uid != 0
+                or stat.S_IMODE(metadata.st_mode) != 0o644
+                or _sha256_file(RESOLVER_DROPIN) != resolver_digest
+                or resolver_digest != _sha256_bytes(RESOLVER_DROPIN_DATA)
+            ):
+                raise GateError("resolver_dropin_mismatch", "checkpoint_verify")
     if phase_index >= PHASES.index("LLM_SERVICE_STARTED"):
-        if state["phase"] == "LLM_SERVICE_STARTED" and not _unit_active(SERVICE_NAME):
+        if state["phase"] == "LLM_SERVICE_STARTED":
             if not _unit_enabled(SERVICE_NAME):
                 raise GateError("llm_service_not_enabled", "checkpoint_verify")
             _verify_unit_files()
+            if _unit_active(SERVICE_NAME):
+                try:
+                    _verify_llm_service(require_enabled=True)
+                except GateError:
+                    _require_loopback_port(LLM_PORT, allow_absent=False)
         else:
             _verify_llm_service(require_enabled=True)
     if phase_index >= PHASES.index("BACKEND_SWITCHED") and not _unit_active(BACKEND_SERVICE):
@@ -1530,6 +1557,14 @@ def _resume(state: dict[str, Any] | None, files: dict[str, bytes]) -> int:
             backend_dropin_sha256=_sha256_bytes(files["systemd/psynova-school-demo-llm.conf"]),
         )
     _install_unit_and_dropin(files)
+    resolver_dropin_sha256 = _install_resolver_dropin()
+    recorded_resolver_hash = state.get("resolver_dropin_sha256")
+    if recorded_resolver_hash not in {None, resolver_dropin_sha256}:
+        raise GateError("resolver_dropin_checkpoint_mismatch", "checkpoint_verify")
+    if recorded_resolver_hash is None:
+        state["resolver_dropin_sha256"] = resolver_dropin_sha256
+        state["updated_at_epoch"] = int(time.time())
+        _write_state(state)
     _verify_unit_files()
     if resume_phase_index < PHASES.index("UNIT_READY"):
         _checkpoint(state, "UNIT_READY", checks={"systemd_unit_verified": True, "credentials_host_encrypted": True})
@@ -1539,7 +1574,13 @@ def _resume(state: dict[str, Any] | None, files: dict[str, bytes]) -> int:
         _checkpoint(state, "LLM_SERVICE_STARTED", checks={"systemd_unit_verified": True, "enabled": True})
     else:
         _run(["systemctl", "daemon-reload"], phase="systemd_reload")
-        if not _unit_active(SERVICE_NAME):
+        service_ready = False
+        try:
+            _verify_llm_service(require_enabled=True)
+            service_ready = True
+        except GateError:
+            service_ready = False
+        if not service_ready:
             _run(["systemctl", "reset-failed", SERVICE_NAME], phase="llm_service_reset_failed")
             _run(["systemctl", "restart", SERVICE_NAME], phase="llm_service_restart", timeout=240)
     _wait_for_llm_service(timeout=180)
@@ -1608,6 +1649,12 @@ def _install_unit_and_dropin(files: dict[str, bytes]) -> None:
 
 def _verify_unit_files() -> None:
     _run(["systemd-analyze", "verify", str(UNIT_PATH), str(Path("/etc/systemd/system/psynova-school-demo.service"))], phase="unit_verify")
+
+
+def _install_resolver_dropin() -> str:
+    _ensure_root_directory(RESOLVER_DROPIN.parent)
+    _write_payload_file(RESOLVER_DROPIN, RESOLVER_DROPIN_DATA)
+    return _sha256_bytes(RESOLVER_DROPIN_DATA)
 
 
 def _wait_for_llm_service(*, timeout: int) -> None:
