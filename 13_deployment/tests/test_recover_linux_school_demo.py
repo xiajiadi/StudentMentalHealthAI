@@ -39,6 +39,17 @@ def test_release_fingerprint_matches_pinned_source_revision():
                 if name == relative or name.startswith(relative.rstrip("/") + "/")
             }
         )
+    for relative, patch_revision in recovery.EXPECTED_RELEASE_PATCHES:
+        patch_archive = subprocess.check_output(
+            ["git", "-C", str(repository_root), "archive", patch_revision, relative]
+        )
+        with tarfile.open(fileobj=io.BytesIO(patch_archive), mode="r:") as archive:
+            patch_file = next(
+                member for member in archive.getmembers() if member.isfile()
+            )
+            content = archive.extractfile(patch_file)
+            assert content is not None
+            selected_files[relative] = content.read()
     selected_files["SOURCE_REVISION"] = (
         recovery.EXPECTED_SOURCE_REVISION + "\n"
     ).encode("ascii")
