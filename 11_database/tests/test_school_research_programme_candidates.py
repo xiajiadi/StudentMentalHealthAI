@@ -164,7 +164,7 @@ def test_candidate_schema_is_task_scoped_encrypted_and_nonpublishable():
         table.c.publication_status.server_default.arg
         == "not_approved_for_publication_or_operational_use"
     )
-    assert len(Base.metadata.tables) == 59
+    assert len(Base.metadata.tables) == 65
     pin_columns = {
         tuple(column.name for column in constraint.columns)
         for constraint in table.constraints

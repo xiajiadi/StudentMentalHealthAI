@@ -167,7 +167,7 @@ def test_models_have_exact_research_session_scope_and_metadata_only_events():
     assert "case_note_ciphertext" not in SchoolResearchReviewEvent.__table__.columns
     assert "payload_ciphertext" not in SchoolResearchFeedbackEvent.__table__.columns
     assert "psychological_interpretation_allowed" in SchoolResearchFeedbackRecord.__table__.columns
-    assert len(Base.metadata.tables) == 59
+    assert len(Base.metadata.tables) == 65
 
 
 def test_unit_of_work_exposes_new_repositories():

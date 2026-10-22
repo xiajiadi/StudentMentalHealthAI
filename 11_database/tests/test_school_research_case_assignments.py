@@ -56,7 +56,7 @@ def _load_migration():
 
 
 def test_assignment_schema_is_private_exactly_scoped_and_mysql_compilable():
-    assert len(Base.metadata.tables) == 59
+    assert len(Base.metadata.tables) == 65
     binding = SchoolResearchTaskBinding.__table__
     assignment = SchoolResearchCaseAssignment.__table__
     assert binding.c.corpus_sha256.nullable is True
