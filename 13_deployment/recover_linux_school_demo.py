@@ -40,9 +40,21 @@ SERVICE_UID = 999
 SERVICE_GID = 988
 EXPECTED_HOSTNAME = "iZ0xic24d9gxb9udjbfo0kZ"
 EXPECTED_SOURCE_REVISION = "f3047642aa3466f9b4f210f4f704d57fd2cdf3cc"
-EXPECTED_RELEASE_FINGERPRINT = "30eabcb55dde49eab76eda89e7e9245da2bc966a5330bbf3dc3e04375104aa9c"
+EXPECTED_RELEASE_FINGERPRINT = "a489689630ae277008ae1f2cba49a639f10abdecc5f9d9b6ba2e23d223b519e3"
 EXPECTED_RELEASE_PATCHES = (
     ("11_database/database_layer/crypto.py", "000abe407e4ffebc70b9e3b1acf3545d01e804f3"),
+    (
+        "13_deployment/systemd/psynova-school-credential-probe.service",
+        "8fdd56602870ff417e50fc8afbd992d475d7a3b6",
+    ),
+    (
+        "13_deployment/systemd/psynova-school-migrate.service",
+        "8fdd56602870ff417e50fc8afbd992d475d7a3b6",
+    ),
+    (
+        "13_deployment/systemd/psynova-school-seed.service",
+        "8fdd56602870ff417e50fc8afbd992d475d7a3b6",
+    ),
 )
 DATABASE_NAME = "smhai_school_demo"
 DATABASE_COLLATION = "utf8mb4_0900_ai_ci"
