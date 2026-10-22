@@ -70,3 +70,20 @@ def test_completed_deepseek_turn_fails_closed_on_missing_contract(
 
     with pytest.raises(verifier.GateError):
         verifier._validate_completed_turn(turn)
+
+
+def test_http_error_diagnostic_keeps_only_allowlisted_backend_code() -> None:
+    class Response:
+        def __init__(self, payload: object) -> None:
+            self.payload = payload
+
+        def json(self) -> object:
+            return self.payload
+
+    assert (
+        verifier._safe_http_error_code(
+            Response({"error": {"code": "DEPENDENCY_UNAVAILABLE", "message": "private"}})
+        )
+        == "DEPENDENCY_UNAVAILABLE"
+    )
+    assert verifier._safe_http_error_code(Response({"error": {"code": "private text"}})) is None

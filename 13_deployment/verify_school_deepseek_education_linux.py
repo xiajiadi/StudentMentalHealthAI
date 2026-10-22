@@ -7,6 +7,7 @@ import hashlib
 import importlib
 import json
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -202,6 +203,22 @@ def _data(response: Any) -> dict[str, Any]:
     return data
 
 
+def _safe_http_error_code(response: Any) -> str | None:
+    try:
+        payload = response.json()
+    except (TypeError, ValueError):
+        return None
+    if type(payload) is not dict:
+        return None
+    error_value = payload.get("error")
+    if type(error_value) is not dict:
+        return None
+    code = error_value.get("code")
+    if isinstance(code, str) and re.fullmatch(r"[A-Z][A-Z0-9_]{1,63}", code):
+        return code
+    return None
+
+
 def _validate_completed_turn(turn: dict[str, Any]) -> dict[str, Any]:
     metadata = turn.get("safe_metadata")
     citations = turn.get("citations")
@@ -345,6 +362,9 @@ def _resume(state: dict[str, Any] | None) -> dict[str, Any]:
                 raise GateError("conversation_creation_contract_failed", "conversation_create")
             _checkpoint(state, "CONVERSATION_CREATED", conversation_id=conversation_id)
 
+        checks = state.setdefault("checks", {})
+        checks.pop("last_http_status", None)
+        checks.pop("last_backend_error_code", None)
         _checkpoint(state, "GENERATION_REQUEST_PENDING", conversation_id=conversation_id)
         response = client.post(
             f"/api/v1/student/conversations/{conversation_id}/messages",
@@ -357,7 +377,14 @@ def _resume(state: dict[str, Any] | None) -> dict[str, Any]:
             },
         )
         if response.status_code not in {200, 202}:
-            raise GateError("deepseek_education_request_failed", "generation")
+            state.setdefault("checks", {})["last_http_status"] = response.status_code
+            error_code = _safe_http_error_code(response)
+            if error_code is not None:
+                state["checks"]["last_backend_error_code"] = error_code
+            _write_state(state)
+            raise GateError(
+                f"deepseek_education_request_http_{response.status_code}", "generation"
+            )
         turn = verifier_data(response)
         turn_id = turn.get("turn_id")
         if isinstance(turn_id, str):
