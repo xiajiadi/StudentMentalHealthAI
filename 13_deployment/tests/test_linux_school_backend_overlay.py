@@ -111,3 +111,13 @@ def test_checkpoint_planner_only_accepts_known_pre_and_post_hashes(monkeypatch) 
         {"a.py": target["a.py"], "b.py": "e" * 64},
         {"phase": "BACKUP_VERIFIED"},
     ) == ("BLOCKED", "release_file_fingerprint_mismatch")
+
+
+def test_safety_timeout_overlay_is_pinned_to_the_verified_backend_launcher() -> None:
+    assert overlay.SOURCE_COMMIT == "29f92ecb8ec82a45718fab0943b064482b18bb5f"
+    assert overlay.FILES == {
+        "13_deployment/school_backend_linux.py": {
+            "previous": "e6037c43490738e987fc9839ab4ecb2dcc061006d9c1b26caca05e3db8a9d06c",
+            "target": "f9c1a6d90b1a48748926645df6b9366345999671e81aef2c444b04da5d65e994",
+        }
+    }

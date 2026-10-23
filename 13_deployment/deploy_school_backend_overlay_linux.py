@@ -17,15 +17,15 @@ from pathlib import Path
 from typing import Any
 
 BASE_RELEASE_REVISION = "f3047642aa3466f9b4f210f4f704d57fd2cdf3cc"
-SOURCE_COMMIT = "f8f61eba781781b7379212caa82591af2bae06e3"
+SOURCE_COMMIT = "29f92ecb8ec82a45718fab0943b064482b18bb5f"
 APP_ROOT = Path("/opt/psynova-school-demo")
 RELEASE_ROOT = APP_ROOT / "release"
 STATE_ROOT = Path("/var/lib/psynova-school-demo")
-STATE_PATH = STATE_ROOT / "backend-overlay-safe-timeout-diagnostics-state.json"
-BACKUP_ROOT = APP_ROOT / "backups" / f"backend-overlay-{SOURCE_COMMIT}"
+STATE_PATH = STATE_ROOT / f"backend-overlay-safety-timeout-{SOURCE_COMMIT[:12]}-state.json"
+BACKUP_ROOT = APP_ROOT / "backups" / f"backend-overlay-safety-timeout-{SOURCE_COMMIT}"
 BUNDLE_PATH = Path(
     "/home/psynova/apps/psynova/staging/linux-school-demo/"
-    f"backend-overlay-{SOURCE_COMMIT}.zip"
+    f"backend-overlay-safety-timeout-{SOURCE_COMMIT}.zip"
 )
 SERVICE_NAME = "psynova-school-demo.service"
 HEALTH_URL = "http://127.0.0.1:8088/api/v1/health"
@@ -36,21 +36,9 @@ MAX_MEMBER_BYTES = 1_000_000
 HEALTH_WAIT_SECONDS = 90
 
 FILES = {
-    "09_backend/src/smhai_backend/core/config.py": {
-        "previous": "6def055ccd62758229de19811656ceb2bcd36ebb464eb43d191b2f932e1a4956",
-        "target": "6def055ccd62758229de19811656ceb2bcd36ebb464eb43d191b2f932e1a4956",
-    },
-    "09_backend/src/smhai_backend/integrations/llm.py": {
-        "previous": "5058c6dd699dec691395fdd6bd76428751bacbaac0f100b1c7762d10c4c6372a",
-        "target": "5058c6dd699dec691395fdd6bd76428751bacbaac0f100b1c7762d10c4c6372a",
-    },
-    "09_backend/src/smhai_backend/integrations/independent.py": {
-        "previous": "ed1a005c5f24777415055681c65011c375979a112baf3bb244ebf0d0d9e8481e",
-        "target": "6e181b4a967153593852b2d7208d7c0cd8984ff4e1a96d02ecd9d708d8a741a1",
-    },
     "13_deployment/school_backend_linux.py": {
         "previous": "e6037c43490738e987fc9839ab4ecb2dcc061006d9c1b26caca05e3db8a9d06c",
-        "target": "e6037c43490738e987fc9839ab4ecb2dcc061006d9c1b26caca05e3db8a9d06c",
+        "target": "f9c1a6d90b1a48748926645df6b9366345999671e81aef2c444b04da5d65e994",
     },
 }
 ALLOWED_BUNDLE_NAMES = {"manifest.json", *FILES}
