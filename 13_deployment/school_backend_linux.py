@@ -13,8 +13,10 @@ from urllib.parse import urlsplit
 DEFAULT_BACKEND_PORT = 8088
 DEFAULT_FRONTEND_PORT = 4178
 DEFAULT_CAT_PORT = 8180
-# CPU-only Safety checks on the school ECS take 16–22s; the shared default is 8s.
-SCHOOL_SAFETY_READ_TIMEOUT_SECONDS = 30.0
+# The school Safety service runs CPU-only checks. Its acceptance probe allows 75s;
+# keep the live Backend read window aligned so slow output screening fails closed
+# only after the same bounded service budget.
+SCHOOL_SAFETY_READ_TIMEOUT_SECONDS = 75.0
 # Keep the Backend's Runtime read window above the fixed 120-second model request deadline.
 SCHOOL_LLM_READ_TIMEOUT_SECONDS = 135.0
 _DNS_HOST_RE = re.compile(

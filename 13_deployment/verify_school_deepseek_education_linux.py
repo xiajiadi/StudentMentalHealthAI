@@ -21,6 +21,8 @@ APP_ROOT = Path("/opt/psynova-school-demo")
 RELEASE_ROOT = APP_ROOT / "release"
 BACKEND = "http://127.0.0.1:8088"
 LLM = "http://127.0.0.1:8160"
+PUBLIC_BACKEND = "https://psynova.top"
+PUBLIC_ORIGIN = "https://psynova.top"
 ACCOUNT_CREDENTIAL = Path("/etc/credstore.encrypted/psynova-school-seed-accounts.cred")
 ACCOUNT_CREDENTIAL_NAME = "school-seed-accounts.json"
 STATE_PATH = Path("/var/lib/psynova-school-demo/deepseek-generation-state.json")
@@ -252,6 +254,47 @@ def _require_generation_submission_allowed(*, reconcile_only: bool) -> None:
         raise GateError("read_only_reconciliation_no_post", "checkpoint_reconcile")
 
 
+def _login_public(httpx: Any, verifier_data: Any, account: tuple[str, str]) -> dict[str, Any]:
+    client = httpx.Client(base_url=PUBLIC_BACKEND, timeout=15, trust_env=False)
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"username": account[0], "password": account[1]},
+        headers={"Origin": PUBLIC_ORIGIN, "Accept": "application/json"},
+    )
+    if response.status_code != 200:
+        client.close()
+        raise GateError("synthetic_student_authentication_failed", "authentication")
+    login_data = verifier_data(response)
+    actor = login_data.get("actor")
+    csrf = login_data.get("csrf_token")
+    if (
+        not isinstance(actor, dict)
+        or actor.get("role") != "STUDENT"
+        or not isinstance(actor.get("user_id"), str)
+        or not isinstance(csrf, str)
+        or not csrf
+    ):
+        client.close()
+        raise GateError("synthetic_student_authentication_failed", "authentication")
+    selected = client.post(
+        "/api/v1/auth/active-context",
+        json={"role": "STUDENT", "school_ref": "SYNTHETIC_SCHOOL_SEED_ALPHA_V1"},
+        headers={
+            "Origin": PUBLIC_ORIGIN,
+            "X-CSRF-Token": csrf,
+            "Accept": "application/json",
+        },
+    )
+    if selected.status_code != 200:
+        client.close()
+        raise GateError("synthetic_student_context_selection_failed", "authentication")
+    selected_data = verifier_data(selected)
+    if selected_data.get("active_context", {}).get("school_ref") != "SYNTHETIC_SCHOOL_SEED_ALPHA_V1":
+        client.close()
+        raise GateError("synthetic_student_context_selection_failed", "authentication")
+    return {"client": client, "actor": selected_data, "csrf": csrf}
+
+
 def _safe_http_error_code(response: Any) -> str | None:
     try:
         payload = response.json()
@@ -447,7 +490,6 @@ def _resume(
     httpx: Any = importlib.import_module("httpx")
     verifier: Any = importlib.import_module("verify_school_http_linux")
     verifier_data = verifier._data
-    login = verifier._login
     read_accounts = verifier._read_accounts
 
     _preflight(httpx)
@@ -465,7 +507,7 @@ def _resume(
     if account is None:
         raise GateError("synthetic_student_account_missing", "authentication")
     try:
-        session = login(httpx, "alpha.student", account)
+        session = _login_public(httpx, verifier_data, account)
     except Exception:  # noqa: BLE001 - redact account authentication errors
         raise GateError("synthetic_student_authentication_failed", "authentication") from None
     client = session["client"]
@@ -478,7 +520,7 @@ def _resume(
                 "/api/v1/student/conversations",
                 json={},
                 headers={
-                    "Origin": "http://127.0.0.1:4178",
+                    "Origin": PUBLIC_ORIGIN,
                     "X-CSRF-Token": csrf,
                     "Idempotency-Key": CONVERSATION_KEY,
                     "Accept": "application/json",
@@ -527,7 +569,7 @@ def _resume(
                     f"/api/v1/student/conversations/{conversation_id}/messages",
                     json={"text": QUESTION},
                     headers={
-                        "Origin": "http://127.0.0.1:4178",
+                        "Origin": PUBLIC_ORIGIN,
                         "X-CSRF-Token": csrf,
                         "Idempotency-Key": MESSAGE_KEY,
                         "Accept": "application/json",

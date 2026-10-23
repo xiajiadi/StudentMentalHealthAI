@@ -151,6 +151,64 @@ def test_read_only_reconciliation_never_allows_a_generation_post() -> None:
     verifier._require_generation_submission_allowed(reconcile_only=False)
 
 
+def test_public_generation_verifier_uses_https_for_secure_session_cookies():
+    assert verifier.PUBLIC_BACKEND == "https://psynova.top"
+    assert verifier.PUBLIC_ORIGIN == "https://psynova.top"
+
+
+def test_public_student_login_uses_https_origin_and_validates_school_context():
+    calls = []
+
+    class Response:
+        status_code = 200
+
+        def __init__(self, data: dict[str, Any]) -> None:
+            self.data = data
+
+    class Client:
+        def __init__(self, *, base_url: str, timeout: int, trust_env: bool) -> None:
+            calls.append(("client", base_url, timeout, trust_env))
+
+        def post(self, path: str, *, json: dict[str, str], headers: dict[str, str]):
+            calls.append((path, headers["Origin"], headers.get("X-CSRF-Token")))
+            if path.endswith("/login"):
+                return Response(
+                    {
+                        "actor": {"role": "STUDENT", "user_id": "synthetic-user"},
+                        "csrf_token": "synthetic-csrf-token",
+                    }
+                )
+            return Response(
+                {
+                    "active_context": {
+                        "school_ref": "SYNTHETIC_SCHOOL_SEED_ALPHA_V1"
+                    }
+                }
+            )
+
+        def close(self) -> None:
+            pass
+
+    def data(response: Response) -> dict[str, Any]:
+        return response.data
+
+    httpx = type("Httpx", (), {"Client": Client})
+    session = verifier._login_public(
+        httpx, data, ("SYNTHETIC_ALPHA_STUDENT_TEST", "synthetic-password")
+    )
+
+    assert session["csrf"] == "synthetic-csrf-token"
+    assert calls == [
+        ("client", "https://psynova.top", 15, False),
+        ("/api/v1/auth/login", "https://psynova.top", None),
+        (
+            "/api/v1/auth/active-context",
+            "https://psynova.top",
+            "synthetic-csrf-token",
+        ),
+    ]
+
+
 @pytest.mark.parametrize("run_id", ["", "A" * 32, "a" * 31, "a" * 33, "../" + "a" * 30])
 def test_generation_run_id_rejects_noncanonical_values(run_id: str) -> None:
     with pytest.raises(verifier.GateError, match="run_id_invalid"):

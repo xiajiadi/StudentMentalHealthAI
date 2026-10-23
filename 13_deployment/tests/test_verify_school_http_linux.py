@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from types import SimpleNamespace
 
 import pytest
 import verify_school_http_linux as verifier
@@ -82,3 +83,69 @@ def test_missing_csrf_header_is_rejected_without_losing_session():
     path, _, headers = client.post_calls[0]
     assert path == "/api/v1/auth/active-context"
     assert "X-CSRF-Token" not in headers
+
+
+def test_public_https_base_defaults_origin_to_its_origin():
+    assert verifier._verification_origin("https://psynova.top") == "https://psynova.top"
+
+
+def test_loopback_default_keeps_local_frontend_origin():
+    assert verifier._verification_origin(verifier.BACKEND) == verifier.DEFAULT_UI_ORIGIN
+
+
+def test_mismatched_public_origin_is_rejected():
+    with pytest.raises(verifier.SmokeError, match="does not match"):
+        verifier._verification_origin("https://psynova.top", "https://evil.example")
+
+
+def test_login_uses_public_https_base_and_origin():
+    calls = []
+
+    class Response:
+        status_code = 200
+
+        def __init__(self, data):
+            self.data = data
+
+        def json(self):
+            return {"data": self.data}
+
+    class Client:
+        def __init__(self, *, base_url, timeout, trust_env):
+            calls.append(("client", base_url, timeout, trust_env))
+
+        def post(self, path, *, json, headers):
+            calls.append((path, headers["Origin"]))
+            if path.endswith("/login"):
+                return Response(
+                    {
+                        "actor": {"role": "STUDENT", "user_id": "synthetic-user"},
+                        "csrf_token": "synthetic-csrf-token",
+                    }
+                )
+            return Response(
+                {
+                    "active_context": {
+                        "school_ref": verifier.EXPECTED_SCHOOL["alpha"]
+                    }
+                }
+            )
+
+        def close(self):
+            pass
+
+    httpx = SimpleNamespace(Client=Client)
+    session = verifier._login(
+        httpx,
+        "alpha.student",
+        ("SYNTHETIC_ALPHA_STUDENT_TEST", "synthetic-password"),
+        base_url="https://psynova.top",
+        origin="https://psynova.top",
+    )
+
+    assert session["slot"] == "alpha.student"
+    assert calls == [
+        ("client", "https://psynova.top", 15, False),
+        ("/api/v1/auth/login", "https://psynova.top"),
+        ("/api/v1/auth/active-context", "https://psynova.top"),
+    ]

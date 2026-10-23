@@ -10,8 +10,10 @@ import time
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 BACKEND = "http://127.0.0.1:8088"
+DEFAULT_UI_ORIGIN = "http://127.0.0.1:4178"
 ACCOUNT_CREDENTIAL = Path("/etc/credstore.encrypted/psynova-school-seed-accounts.cred")
 SEED_CREDENTIAL_NAME = "school-seed-accounts.json"
 EXPECTED_SCHOOL = {
@@ -101,12 +103,19 @@ def _data(response) -> dict[str, Any]:
     return data
 
 
-def _login(httpx, slot: str, account: tuple[str, str]):
-    client = httpx.Client(base_url=BACKEND, timeout=15, trust_env=False)
+def _login(
+    httpx,
+    slot: str,
+    account: tuple[str, str],
+    *,
+    base_url: str = BACKEND,
+    origin: str = DEFAULT_UI_ORIGIN,
+):
+    client = httpx.Client(base_url=base_url, timeout=15, trust_env=False)
     response = client.post(
         "/api/v1/auth/login",
         json={"username": account[0], "password": account[1]},
-        headers={"Origin": "http://127.0.0.1:4178", "Accept": "application/json"},
+        headers={"Origin": origin, "Accept": "application/json"},
     )
     if response.status_code != 200:
         client.close()
@@ -129,7 +138,7 @@ def _login(httpx, slot: str, account: tuple[str, str]):
         "/api/v1/auth/active-context",
         json={"role": context_role, "school_ref": EXPECTED_SCHOOL[school]},
         headers={
-            "Origin": "http://127.0.0.1:4178",
+            "Origin": origin,
             "X-CSRF-Token": csrf,
             "Accept": "application/json",
         },
@@ -144,14 +153,14 @@ def _login(httpx, slot: str, account: tuple[str, str]):
     return {"client": client, "actor": actor, "csrf": csrf, "slot": slot}
 
 
-def _require_csrf_rejection(session) -> None:
+def _require_csrf_rejection(session, *, origin: str = DEFAULT_UI_ORIGIN) -> None:
     school, role = session["slot"].split(".", 1)
     _, context_role = ROLE_PROJECTION[role]
     response = session["client"].post(
         "/api/v1/auth/active-context",
         json={"role": context_role, "school_ref": EXPECTED_SCHOOL[school]},
         headers={
-            "Origin": "http://127.0.0.1:4178",
+            "Origin": origin,
             "Accept": "application/json",
         },
     )
@@ -185,8 +194,55 @@ def _restart_backend() -> None:
     raise SmokeError("Backend did not recover after the persistence restart")
 
 
-def run(repository_root: Path) -> dict[str, object]:
+def _verification_origin(base_url: str, origin: str | None = None) -> str:
+    try:
+        base = urlsplit(base_url)
+        if (
+            base.scheme not in {"http", "https"}
+            or not base.hostname
+            or base.username is not None
+            or base.password is not None
+            or base.path not in {"", "/"}
+            or base.query
+            or base.fragment
+        ):
+            raise ValueError
+        base_port = base.port
+    except ValueError:
+        raise SmokeError("verification base URL is invalid") from None
+
+    if origin is None:
+        if base_url.rstrip("/") == BACKEND:
+            return DEFAULT_UI_ORIGIN
+        return f"{base.scheme}://{base.netloc}"
+
+    try:
+        supplied = urlsplit(origin)
+        if (
+            supplied.scheme not in {"http", "https"}
+            or not supplied.hostname
+            or supplied.username is not None
+            or supplied.password is not None
+            or supplied.path not in {"", "/"}
+            or supplied.query
+            or supplied.fragment
+            or (supplied.scheme, supplied.hostname, supplied.port)
+            != (base.scheme, base.hostname, base_port)
+        ):
+            raise ValueError
+    except ValueError:
+        raise SmokeError("verification origin does not match the base URL") from None
+    return f"{supplied.scheme}://{supplied.netloc}"
+
+
+def run(
+    repository_root: Path,
+    *,
+    base_url: str = BACKEND,
+    origin: str | None = None,
+) -> dict[str, object]:
     repo = repository_root.resolve(strict=True)
+    request_origin = _verification_origin(base_url, origin)
     sys.path.insert(0, str(repo / "09_backend" / "src"))
     sys.path.insert(0, str(repo / "11_database"))
     import httpx
@@ -195,14 +251,20 @@ def run(repository_root: Path) -> dict[str, object]:
     sessions: dict[str, dict[str, Any]] = {}
     try:
         for slot, account in accounts.items():
-            sessions[slot] = _login(httpx, slot, account)
+            sessions[slot] = _login(
+                httpx,
+                slot,
+                account,
+                base_url=base_url,
+                origin=request_origin,
+            )
             me = sessions[slot]["client"].get("/api/v1/auth/me")
             if (
                 me.status_code != 200
                 or _data(me).get("user_id") != sessions[slot]["actor"]["user_id"]
             ):
                 raise SmokeError(f"authenticated actor read failed: {slot}")
-            _require_csrf_rejection(sessions[slot])
+            _require_csrf_rejection(sessions[slot], origin=request_origin)
 
         for school in ("alpha", "beta"):
             teacher = sessions[f"{school}.teacher"]
@@ -309,6 +371,7 @@ def run(repository_root: Path) -> dict[str, object]:
 
         return {
             "http_smoke": "PASS",
+            "base_url": base_url,
             "authenticated_accounts": len(sessions),
             "role_boundaries": "PASS",
             "cross_school_subject_denial": "PASS",
@@ -322,7 +385,7 @@ def run(repository_root: Path) -> dict[str, object]:
                 session["client"].post(
                     "/api/v1/auth/logout",
                     headers={
-                        "Origin": "http://127.0.0.1:4178",
+                        "Origin": request_origin,
                         "X-CSRF-Token": session["csrf"],
                         "Accept": "application/json",
                     },
@@ -336,9 +399,16 @@ def main() -> int:
     parser.add_argument(
         "--repo-root", type=Path, default=Path(__file__).resolve().parents[1]
     )
+    parser.add_argument("--base-url", default=BACKEND)
+    parser.add_argument("--origin")
     args = parser.parse_args()
     try:
-        print(json.dumps(run(args.repo_root), sort_keys=True))
+        print(
+            json.dumps(
+                run(args.repo_root, base_url=args.base_url, origin=args.origin),
+                sort_keys=True,
+            )
+        )
         return 0
     except Exception as exc:  # noqa: BLE001 - credentials, tokens, response data stay private.
         print(
