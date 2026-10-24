@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import secrets
+from datetime import timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -34,7 +36,7 @@ class SchoolDirectoryPersistenceAdapter:
         self,
         uow,
         *,
-        actor_account_id: int,
+        actor_account_id: int | None,
         action: str,
         resource_type: str,
         resource_public_id: str | None,
@@ -149,6 +151,132 @@ class SchoolDirectoryPersistenceAdapter:
                     .order_by(m.MembershipRole.role_code, m.Account.public_id)
                 )
             ).all()
+            class_refs_by_member: dict[str, set[str]] = {}
+            provisioned_student_classes = (
+                await uow.session.execute(
+                    self._select(m.Account.public_id, m.SchoolClass.class_ref)
+                    .join(
+                        m.SchoolAccountProvision,
+                        m.SchoolAccountProvision.account_id == m.Account.id,
+                    )
+                    .join(
+                        m.SchoolAccountBatch,
+                        m.SchoolAccountBatch.id == m.SchoolAccountProvision.batch_id,
+                    )
+                    .join(m.SchoolClass, m.SchoolClass.id == m.SchoolAccountBatch.class_id)
+                    .where(
+                        m.SchoolAccountProvision.school_id == actor.school_id,
+                        m.SchoolAccountProvision.role_code == "student",
+                        m.SchoolAccountProvision.status.in_(
+                            ("PENDING_ACTIVATION", "ACTIVE")
+                        ),
+                        m.SchoolClass.school_id == actor.school_id,
+                        m.SchoolClass.status == "ACTIVE",
+                    )
+                    .order_by(m.Account.public_id, m.SchoolClass.class_ref)
+                )
+            ).all()
+            assigned_student_classes = (
+                await uow.session.execute(
+                    self._select(m.Account.public_id, m.SchoolClass.class_ref)
+                    .join(
+                        m.AccountSchoolMembership,
+                        m.AccountSchoolMembership.account_id == m.Account.id,
+                    )
+                    .join(
+                        m.MembershipRole,
+                        m.MembershipRole.membership_id == m.AccountSchoolMembership.id,
+                    )
+                    .join(
+                        m.SubjectAccessGrant,
+                        (m.SubjectAccessGrant.principal_account_id == m.Account.id)
+                        & (m.SubjectAccessGrant.school_id == actor.school_id)
+                        & (m.SubjectAccessGrant.relationship_type == "SELF"),
+                    )
+                    .join(
+                        m.SchoolClassStudent,
+                        m.SchoolClassStudent.subject_id == m.SubjectAccessGrant.subject_id,
+                    )
+                    .join(m.SchoolClass, m.SchoolClass.id == m.SchoolClassStudent.class_id)
+                    .where(
+                        m.AccountSchoolMembership.school_id == actor.school_id,
+                        m.AccountSchoolMembership.status == "ACTIVE",
+                        m.AccountSchoolMembership.revoked_at.is_(None),
+                        m.AccountSchoolMembership.valid_from <= now,
+                        (m.AccountSchoolMembership.valid_until.is_(None))
+                        | (m.AccountSchoolMembership.valid_until >= now),
+                        m.MembershipRole.school_id == actor.school_id,
+                        m.MembershipRole.role_code == "student",
+                        m.MembershipRole.status == "ACTIVE",
+                        m.MembershipRole.revoked_at.is_(None),
+                        m.MembershipRole.valid_from <= now,
+                        (m.MembershipRole.valid_until.is_(None))
+                        | (m.MembershipRole.valid_until >= now),
+                        m.SubjectAccessGrant.status == "ACTIVE",
+                        m.SubjectAccessGrant.revoked_at.is_(None),
+                        m.SubjectAccessGrant.valid_from <= now,
+                        (m.SubjectAccessGrant.valid_until.is_(None))
+                        | (m.SubjectAccessGrant.valid_until >= now),
+                        m.SchoolClassStudent.school_id == actor.school_id,
+                        m.SchoolClassStudent.status == "ACTIVE",
+                        m.SchoolClassStudent.revoked_at.is_(None),
+                        m.SchoolClassStudent.valid_from <= now,
+                        (m.SchoolClassStudent.valid_until.is_(None))
+                        | (m.SchoolClassStudent.valid_until >= now),
+                        m.SchoolClass.school_id == actor.school_id,
+                        m.SchoolClass.status == "ACTIVE",
+                    )
+                    .order_by(m.Account.public_id, m.SchoolClass.class_ref)
+                )
+            ).all()
+            assigned_teacher_classes = (
+                await uow.session.execute(
+                    self._select(m.Account.public_id, m.SchoolClass.class_ref)
+                    .join(
+                        m.AccountSchoolMembership,
+                        m.AccountSchoolMembership.account_id == m.Account.id,
+                    )
+                    .join(
+                        m.MembershipRole,
+                        m.MembershipRole.membership_id == m.AccountSchoolMembership.id,
+                    )
+                    .join(
+                        m.SchoolClassTeacher,
+                        m.SchoolClassTeacher.membership_role_id == m.MembershipRole.id,
+                    )
+                    .join(m.SchoolClass, m.SchoolClass.id == m.SchoolClassTeacher.class_id)
+                    .where(
+                        m.AccountSchoolMembership.school_id == actor.school_id,
+                        m.AccountSchoolMembership.status == "ACTIVE",
+                        m.AccountSchoolMembership.revoked_at.is_(None),
+                        m.AccountSchoolMembership.valid_from <= now,
+                        (m.AccountSchoolMembership.valid_until.is_(None))
+                        | (m.AccountSchoolMembership.valid_until >= now),
+                        m.MembershipRole.school_id == actor.school_id,
+                        m.MembershipRole.role_code == "teacher",
+                        m.MembershipRole.status == "ACTIVE",
+                        m.MembershipRole.revoked_at.is_(None),
+                        m.MembershipRole.valid_from <= now,
+                        (m.MembershipRole.valid_until.is_(None))
+                        | (m.MembershipRole.valid_until >= now),
+                        m.SchoolClassTeacher.school_id == actor.school_id,
+                        m.SchoolClassTeacher.status == "ACTIVE",
+                        m.SchoolClassTeacher.revoked_at.is_(None),
+                        m.SchoolClassTeacher.valid_from <= now,
+                        (m.SchoolClassTeacher.valid_until.is_(None))
+                        | (m.SchoolClassTeacher.valid_until >= now),
+                        m.SchoolClass.school_id == actor.school_id,
+                        m.SchoolClass.status == "ACTIVE",
+                    )
+                    .order_by(m.Account.public_id, m.SchoolClass.class_ref)
+                )
+            ).all()
+            for public_id, class_ref in (
+                *provisioned_student_classes,
+                *assigned_student_classes,
+                *assigned_teacher_classes,
+            ):
+                class_refs_by_member.setdefault(public_id, set()).add(class_ref)
             return {
                 "school": {"school_ref": school.school_ref, "display_name": school.display_name},
                 "classes": [
@@ -168,6 +296,7 @@ class SchoolDirectoryPersistenceAdapter:
                         "role": row[2],
                         "account_status": row[3],
                         "provisioning_status": row[4],
+                        "class_refs": sorted(class_refs_by_member.get(row[0], set())),
                     }
                     for row in member_rows
                 ],
@@ -513,168 +642,864 @@ class SchoolDirectoryPersistenceAdapter:
                 detail="account import conflicted with another update",
             ) from exc
 
-    async def school_directory_activate_account(
-        self, actor: Any, user_ref: str, new_password: str, *, trace_id: str
+    async def _school_roster_preflight_errors(
+        self, uow, actor: Any, rows, *, lock_classes: bool
+    ) -> tuple[list[dict[str, object]], dict[str, Any]]:
+        from sqlalchemy import func
+
+        m = self._db_models
+        class_refs = sorted({row.class_ref for row in rows})
+        class_query = self._select(m.SchoolClass).where(
+            m.SchoolClass.school_id == actor.school_id,
+            m.SchoolClass.class_ref.in_(class_refs),
+            m.SchoolClass.status == "ACTIVE",
+        ).order_by(m.SchoolClass.class_ref)
+        if lock_classes:
+            class_query = class_query.with_for_update()
+        classes = list((await uow.session.scalars(class_query)).all())
+        classes_by_ref = {school_class.class_ref: school_class for school_class in classes}
+        errors: list[dict[str, object]] = []
+        login_names: list[str] = []
+        for row in rows:
+            school_class = classes_by_ref.get(row.class_ref)
+            if school_class is None:
+                errors.append({"row_no": row.row_no, "code": "CLASS_UNAVAILABLE"})
+            elif (
+                row.grade_level is not None
+                and school_class.grade_level is not None
+                and row.grade_level.casefold() != school_class.grade_level.casefold()
+            ):
+                errors.append({"row_no": row.row_no, "code": "GRADE_LEVEL_MISMATCH"})
+            login_names.append(self._roster_login_name(actor.school_ref, row.student_number))
+
+        if login_names:
+            found = set(
+                (
+                    await uow.session.scalars(
+                        self._select(func.lower(m.Account.login_name)).where(
+                            func.lower(m.Account.login_name).in_(
+                                [name.casefold() for name in login_names]
+                            )
+                        )
+                    )
+                ).all()
+            )
+            for row in rows:
+                login_name = self._roster_login_name(actor.school_ref, row.student_number)
+                if login_name.casefold() in found:
+                    errors.append(
+                        {"row_no": row.row_no, "code": "STUDENT_NUMBER_UNAVAILABLE"}
+                    )
+        return errors, classes_by_ref
+
+    @staticmethod
+    def _roster_login_name(school_ref: str, student_number: str) -> str:
+        from smhai_backend.domains.school_directory.service import roster_login_name
+
+        return roster_login_name(school_ref, student_number)
+
+    async def school_roster_import_preview(
+        self, actor: Any, rows, *, source_sha256: str | None = None
+    ) -> dict[str, Any]:
+        del source_sha256  # A preview is read-only and the digest is not a validation input.
+        now = self._utc_now()
+        async with self._uow() as uow:
+            await self._school_actor_role(uow, actor, "admin", now)
+            errors, _classes = await self._school_roster_preflight_errors(
+                uow, actor, rows, lock_classes=False
+            )
+            return {"valid": not errors, "row_count": len(rows), "errors": errors}
+
+    async def _school_roster_import_result(self, uow, actor: Any, run_ref: str):
+        m = self._db_models
+        run = await uow.session.scalar(
+            self._select(m.SchoolRosterImportRun).where(
+                m.SchoolRosterImportRun.run_ref == run_ref,
+                m.SchoolRosterImportRun.school_id == actor.school_id,
+            )
+        )
+        if run is None:
+            raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="roster import was not found")
+        batch_links = (
+            await uow.session.execute(
+                self._select(
+                    m.SchoolRosterImportRunBatch.batch_id,
+                    m.SchoolAccountBatch.batch_ref,
+                )
+                .join(
+                    m.SchoolAccountBatch,
+                    m.SchoolAccountBatch.id == m.SchoolRosterImportRunBatch.batch_id,
+                )
+                .where(
+                    m.SchoolRosterImportRunBatch.run_id == run.id,
+                    m.SchoolRosterImportRunBatch.school_id == actor.school_id,
+                )
+                .order_by(m.SchoolAccountBatch.batch_ref)
+            )
+        ).all()
+        batch_ids = [record[0] for record in batch_links]
+        records = (
+            await uow.session.execute(
+                self._select(
+                    m.SchoolAccountProvision.row_no,
+                    m.Account.public_id,
+                    m.AccountSchoolMembership.display_name,
+                    m.SchoolClass.class_ref,
+                    m.SchoolAccountProvision.status,
+                )
+                .join(m.Account, m.Account.id == m.SchoolAccountProvision.account_id)
+                .join(
+                    m.AccountSchoolMembership,
+                    m.AccountSchoolMembership.id == m.SchoolAccountProvision.membership_id,
+                )
+                .join(
+                    m.SchoolAccountBatch,
+                    m.SchoolAccountBatch.id == m.SchoolAccountProvision.batch_id,
+                )
+                .join(m.SchoolClass, m.SchoolClass.id == m.SchoolAccountBatch.class_id)
+                .where(
+                    m.SchoolAccountProvision.school_id == actor.school_id,
+                    m.SchoolAccountBatch.id.in_(batch_ids),
+                )
+                .order_by(m.SchoolAccountProvision.row_no)
+            )
+        ).all()
+        return {
+            "run_ref": run.run_ref,
+            "row_count": run.row_count,
+            "created_count": run.created_count,
+            "status": run.status,
+            "child_batch_refs": [record[1] for record in batch_links],
+            "summary": dict(run.summary),
+            "accounts": [
+                {
+                    "row_no": record[0],
+                    "user_id": f"USER_{record[1]}",
+                    "display_name": record[2],
+                    "class_ref": record[3],
+                    "status": record[4],
+                }
+                for record in records
+            ],
+        }
+
+    async def school_roster_import_get(self, actor: Any, run_ref: str) -> dict[str, Any]:
+        now = self._utc_now()
+        async with self._uow() as uow:
+            await self._school_actor_role(uow, actor, "admin", now)
+            return await self._school_roster_import_result(uow, actor, run_ref)
+
+    async def school_roster_import(
+        self,
+        actor: Any,
+        rows,
+        *,
+        source_sha256: str | None,
+        idempotency,
+        trace_id: str,
     ) -> dict[str, Any]:
         from pwdlib import PasswordHash
 
-        try:
-            public_id = _database_public_id(user_ref, "USER")
-        except ValueError:
-            raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="account was not found") from None
-        at = self._utc_now()
         m = self._db_models
-        async with self._uow() as uow:
-            actor_account_id, admin_role_id = await self._school_actor_role(uow, actor, "admin", at)
-            account = await uow.session.scalar(
-                self._select(m.Account).where(m.Account.public_id == public_id).with_for_update()
-            )
-            if account is None:
-                raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="account was not found")
-            provision = await uow.session.scalar(
-                self._select(m.SchoolAccountProvision)
-                .where(
-                    m.SchoolAccountProvision.account_id == account.id,
-                    m.SchoolAccountProvision.school_id == actor.school_id,
+        e = self._db_enums
+        at = self._utc_now()
+        try:
+            async with self._uow() as uow:
+                actor_account_id, admin_role_id = await self._school_actor_role(
+                    uow, actor, "admin", at
                 )
-                .with_for_update()
+                claim = await self._school_idempotency_begin(uow, idempotency)
+                if claim.replayed:
+                    if (
+                        claim.record.result_resource_type != "school_roster_import_run"
+                        or claim.record.result_public_id is None
+                    ):
+                        raise error(
+                            ErrorCode.WORKFLOW_CONFLICT,
+                            detail="roster import result is unavailable",
+                        )
+                    return await self._school_roster_import_result(
+                        uow, actor, claim.record.result_public_id
+                    )
+
+                errors, classes_by_ref = await self._school_roster_preflight_errors(
+                    uow, actor, rows, lock_classes=True
+                )
+                if errors:
+                    raise SchoolDirectoryImportRejected(errors)
+
+                from collections import defaultdict
+
+                grouped: dict[str, list[Any]] = defaultdict(list)
+                for row in rows:
+                    grouped[row.class_ref].append(row)
+
+                run_ref = f"ROSTER_{uuid4().hex}"
+                child_batches: list[tuple[Any, list[Any], str]] = []
+                for class_ref in sorted(grouped):
+                    school_class = classes_by_ref[class_ref]
+                    class_rows = grouped[class_ref]
+                    for offset in range(0, len(class_rows), 100):
+                        batch_rows = class_rows[offset : offset + 100]
+                        batch_ref = f"BATCH_{uuid4().hex}"
+                        batch = m.SchoolAccountBatch(
+                            batch_ref=batch_ref,
+                            school_id=actor.school_id,
+                            created_by_membership_role_id=admin_role_id,
+                            class_id=school_class.id,
+                            row_count=len(batch_rows),
+                        )
+                        uow.session.add(batch)
+                        await uow.session.flush()
+                        child_batches.append((batch, batch_rows, class_ref))
+
+                hasher = PasswordHash.recommended()
+                for batch, batch_rows, _class_ref in child_batches:
+                    for row in batch_rows:
+                        account = m.Account(
+                            login_name=self._roster_login_name(
+                                actor.school_ref, row.student_number
+                            ),
+                            password_hash=hasher.hash(secrets.token_urlsafe(48)),
+                            status=e.AccountStatus.SUSPENDED.value,
+                        )
+                        uow.session.add(account)
+                        await uow.session.flush()
+                        membership = m.AccountSchoolMembership(
+                            account_id=account.id,
+                            school_id=actor.school_id,
+                            display_name=row.display_name,
+                            status="ACTIVE",
+                            valid_from=at,
+                        )
+                        uow.session.add(membership)
+                        await uow.session.flush()
+                        membership_role = await uow.memberships.add_role(
+                            membership_id=membership.id,
+                            school_id=actor.school_id,
+                            role_code="student",
+                            valid_from=at,
+                            status="ACTIVE",
+                        )
+                        subject = await uow.subjects.create(
+                            subject_ref=f"SUBJ_{uuid4().hex}",
+                            school_id=actor.school_id,
+                            data_origin=e.DataOrigin.SYNTHETIC,
+                        )
+                        uow.session.add(
+                            m.SubjectAccessGrant(
+                                principal_account_id=account.id,
+                                subject_id=subject.id,
+                                school_id=actor.school_id,
+                                relationship_type=e.RelationshipType.SELF.value,
+                                status=e.GrantStatus.ACTIVE.value,
+                                valid_from=at,
+                            )
+                        )
+                        uow.session.add(
+                            m.SchoolAccountProvision(
+                                school_id=actor.school_id,
+                                batch_id=batch.id,
+                                account_id=account.id,
+                                membership_id=membership.id,
+                                membership_role_id=membership_role.id,
+                                row_no=row.row_no,
+                                role_code="student",
+                                status="PENDING_ACTIVATION",
+                                activated_at=None,
+                            )
+                        )
+                await uow.session.flush()
+
+                summary = {
+                    "class_count": len(grouped),
+                    "batch_count": len(child_batches),
+                    "student_count": len(rows),
+                }
+                run = m.SchoolRosterImportRun(
+                    run_ref=run_ref,
+                    school_id=actor.school_id,
+                    created_by_membership_role_id=admin_role_id,
+                    idempotency_key_hash=hashlib.sha256(
+                        idempotency[0].encode("utf-8")
+                    ).digest(),
+                    request_fingerprint=bytes.fromhex(idempotency[1]),
+                    source_sha256=bytes.fromhex(source_sha256) if source_sha256 else None,
+                    row_count=len(rows),
+                    created_count=len(rows),
+                    status="COMPLETED",
+                    summary=summary,
+                    trace_id=trace_id,
+                )
+                uow.session.add(run)
+                await uow.session.flush()
+                for batch, batch_rows, class_ref in child_batches:
+                    uow.session.add(
+                        m.SchoolRosterImportRunBatch(
+                            run_id=run.id,
+                            school_id=actor.school_id,
+                            batch_id=batch.id,
+                            class_id=classes_by_ref[class_ref].id,
+                            row_count=len(batch_rows),
+                        )
+                    )
+                await uow.session.flush()
+                await self._school_idempotency_complete(
+                    uow,
+                    claim,
+                    resource_type="school_roster_import_run",
+                    result_ref=run_ref,
+                )
+                await self._school_directory_audit(
+                    uow,
+                    actor_account_id=actor_account_id,
+                    action="school_directory.import_roster",
+                    resource_type="school_roster_import_run",
+                    resource_public_id=run_ref,
+                    trace_id=trace_id,
+                    count=len(rows),
+                )
+                return await self._school_roster_import_result(uow, actor, run_ref)
+        except SchoolDirectoryImportRejected as rejected:
+            return {"valid": False, "row_count": len(rows), "errors": rejected.errors}
+        except self._integrity_error as exc:
+            raise error(
+                ErrorCode.WORKFLOW_CONFLICT,
+                detail="roster import conflicted with another update",
+            ) from exc
+
+    async def _revoke_account_sessions(self, uow, account_id: int, at) -> None:
+        m = self._db_models
+        sessions = list(
+            (
+                await uow.session.scalars(
+                    self._select(m.AuthSession)
+                    .where(
+                        m.AuthSession.account_id == account_id,
+                        m.AuthSession.revoked_at.is_(None),
+                    )
+                    .order_by(m.AuthSession.id)
+                    .with_for_update()
+                )
+            ).all()
+        )
+        for session in sessions:
+            session.revoked_at = at
+            session.revocation_reason = "INITIAL_CREDENTIAL_COMPLETED"
+
+    @staticmethod
+    def _initial_credential_conflict():
+        return error(
+            ErrorCode.WORKFLOW_CONFLICT,
+            detail="one or more accounts cannot receive an initial credential",
+        )
+
+    async def school_directory_issue_initial_credentials(
+        self,
+        actor: Any,
+        user_refs: list[str],
+        *,
+        ttl_seconds: int,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        m = self._db_models
+        e = self._db_enums
+        at = self._utc_now()
+        if not isinstance(ttl_seconds, int) or isinstance(ttl_seconds, bool) or ttl_seconds <= 0:
+            raise error(ErrorCode.VALIDATION_FAILED, detail="credential expiry is invalid")
+        try:
+            public_ids = [_database_public_id(ref, "USER") for ref in user_refs]
+        except (TypeError, ValueError):
+            raise self._initial_credential_conflict() from None
+        if not user_refs or len(user_refs) > 200 or len(set(public_ids)) != len(public_ids):
+            raise error(ErrorCode.VALIDATION_FAILED, detail="invalid credential targets")
+
+        async with self._uow() as uow:
+            actor_account_id, admin_role_id = await self._school_actor_role(
+                uow, actor, "admin", at
             )
-            if provision is None:
-                raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="pending account was not found")
-            if (
-                provision.status != "PENDING_ACTIVATION"
-                or account.status != self._db_enums.AccountStatus.SUSPENDED.value
-            ):
-                raise error(ErrorCode.WORKFLOW_CONFLICT, detail="account cannot be activated")
+            accounts = list(
+                (
+                    await uow.session.scalars(
+                        self._select(m.Account)
+                        .where(m.Account.public_id.in_(public_ids))
+                        .order_by(m.Account.id)
+                        .with_for_update()
+                    )
+                ).all()
+            )
+            accounts_by_public_id = {account.public_id: account for account in accounts}
+            if set(accounts_by_public_id) != set(public_ids):
+                raise self._initial_credential_conflict()
+            account_ids = [account.id for account in accounts]
+
+            provisions = list(
+                (
+                    await uow.session.scalars(
+                        self._select(m.SchoolAccountProvision)
+                        .where(
+                            m.SchoolAccountProvision.school_id == actor.school_id,
+                            m.SchoolAccountProvision.account_id.in_(account_ids),
+                        )
+                        .order_by(m.SchoolAccountProvision.account_id)
+                        .with_for_update()
+                    )
+                ).all()
+            )
+            provision_by_account = {provision.account_id: provision for provision in provisions}
+            if set(provision_by_account) != set(account_ids):
+                raise self._initial_credential_conflict()
+
             memberships = list(
                 (
                     await uow.session.scalars(
                         self._select(m.AccountSchoolMembership)
-                        .where(m.AccountSchoolMembership.account_id == account.id)
+                        .where(m.AccountSchoolMembership.account_id.in_(account_ids))
+                        .order_by(
+                            m.AccountSchoolMembership.account_id,
+                            m.AccountSchoolMembership.school_id,
+                        )
                         .with_for_update()
                     )
                 ).all()
             )
-            if (
-                len(memberships) != 1
-                or memberships[0].id != provision.membership_id
-                or memberships[0].school_id != actor.school_id
-                or memberships[0].status != "ACTIVE"
-                or memberships[0].revoked_at is not None
-                or memberships[0].valid_from > at
-                or (memberships[0].valid_until is not None and memberships[0].valid_until < at)
-            ):
-                raise error(ErrorCode.FORBIDDEN, detail="account activation scope is invalid")
-            membership_role = await uow.session.scalar(
-                self._select(m.MembershipRole)
-                .where(
-                    m.MembershipRole.id == provision.membership_role_id,
-                    m.MembershipRole.membership_id == provision.membership_id,
-                    m.MembershipRole.school_id == actor.school_id,
-                    m.MembershipRole.role_code == provision.role_code,
-                    m.MembershipRole.status == "ACTIVE",
-                    m.MembershipRole.revoked_at.is_(None),
-                    m.MembershipRole.valid_from <= at,
-                    (m.MembershipRole.valid_until.is_(None)) | (m.MembershipRole.valid_until >= at),
-                )
-                .with_for_update()
-            )
-            role_ids = list(
+            roles = list(
                 (
                     await uow.session.scalars(
-                        self._select(m.MembershipRole.id)
-                        .where(m.MembershipRole.membership_id == provision.membership_id)
+                        self._select(m.MembershipRole)
+                        .where(
+                            m.MembershipRole.membership_id.in_(
+                                [membership.id for membership in memberships]
+                            )
+                        )
+                        .order_by(m.MembershipRole.membership_id, m.MembershipRole.id)
                         .with_for_update()
                     )
                 ).all()
             )
+            memberships_by_account: dict[int, list[Any]] = {}
+            roles_by_membership: dict[int, list[Any]] = {}
+            for membership in memberships:
+                memberships_by_account.setdefault(membership.account_id, []).append(membership)
+            for role in roles:
+                roles_by_membership.setdefault(role.membership_id, []).append(role)
+
+            batches = list(
+                (
+                    await uow.session.scalars(
+                        self._select(m.SchoolAccountBatch)
+                        .where(
+                            m.SchoolAccountBatch.id.in_(
+                                [provision.batch_id for provision in provisions]
+                            ),
+                            m.SchoolAccountBatch.school_id == actor.school_id,
+                        )
+                        .order_by(m.SchoolAccountBatch.id)
+                        .with_for_update()
+                    )
+                ).all()
+            )
+            batches_by_id = {batch.id: batch for batch in batches}
+            class_ids = sorted({batch.class_id for batch in batches if batch.class_id is not None})
+            school_classes = list(
+                (
+                    await uow.session.scalars(
+                        self._select(m.SchoolClass)
+                        .where(
+                            m.SchoolClass.id.in_(class_ids),
+                            m.SchoolClass.school_id == actor.school_id,
+                            m.SchoolClass.status == "ACTIVE",
+                        )
+                        .order_by(m.SchoolClass.id)
+                        .with_for_update()
+                    )
+                ).all()
+            ) if class_ids else []
+            classes_by_id = {school_class.id: school_class for school_class in school_classes}
+
+            ordered_accounts = [accounts_by_public_id[public_id] for public_id in public_ids]
+            result_rows: list[dict[str, Any]] = []
+            for account in ordered_accounts:
+                provision = provision_by_account[account.id]
+                account_memberships = memberships_by_account.get(account.id, [])
+                if (
+                    len(account_memberships) != 1
+                    or account_memberships[0].id != provision.membership_id
+                    or account_memberships[0].school_id != actor.school_id
+                    or account_memberships[0].status != "ACTIVE"
+                    or account_memberships[0].revoked_at is not None
+                    or account_memberships[0].valid_from > at
+                    or (
+                        account_memberships[0].valid_until is not None
+                        and account_memberships[0].valid_until < at
+                    )
+                ):
+                    raise self._initial_credential_conflict()
+                membership = account_memberships[0]
+                membership_roles = roles_by_membership.get(membership.id, [])
+                role = next(
+                    (
+                        row
+                        for row in membership_roles
+                        if row.id == provision.membership_role_id
+                        and row.school_id == actor.school_id
+                        and row.role_code == provision.role_code
+                        and row.status == "ACTIVE"
+                        and row.revoked_at is None
+                        and row.valid_from <= at
+                        and (row.valid_until is None or row.valid_until >= at)
+                    ),
+                    None,
+                )
+                if (
+                    role is None
+                    or len(membership_roles) != 1
+                    or provision.role_code not in {"student", "teacher"}
+                ):
+                    raise self._initial_credential_conflict()
+                batch = batches_by_id.get(provision.batch_id)
+                if batch is None:
+                    raise self._initial_credential_conflict()
+                school_class = (
+                    classes_by_id.get(batch.class_id) if batch.class_id is not None else None
+                )
+                if batch.class_id is not None and school_class is None:
+                    raise self._initial_credential_conflict()
+
+                pending = (
+                    provision.status == "PENDING_ACTIVATION"
+                    and account.status == e.AccountStatus.SUSPENDED.value
+                    and not account.must_change_password
+                )
+                reissue = (
+                    provision.status == "ACTIVE"
+                    and account.status == e.AccountStatus.ACTIVE.value
+                    and account.must_change_password
+                )
+                if account.password_changed_at is not None or not (pending or reissue):
+                    raise self._initial_credential_conflict()
+                result_rows.append(
+                    {
+                        "account": account,
+                        "provision": provision,
+                        "membership": membership,
+                        "role": role,
+                        "batch": batch,
+                        "school_class": school_class,
+                        "pending": pending,
+                    }
+                )
+
+            expires_at = at + timedelta(seconds=ttl_seconds)
+            response_credentials: list[dict[str, Any]] = []
+            for row in result_rows:
+                account = row["account"]
+                provision = row["provision"]
+                membership = row["membership"]
+                role = row["role"]
+                batch = row["batch"]
+                school_class = row["school_class"]
+                if row["pending"]:
+                    account.status = e.AccountStatus.ACTIVE.value
+                    account.must_change_password = True
+                    provision.status = "ACTIVE"
+                    provision.activated_at = at
+                    if school_class is not None:
+                        if provision.role_code == "student":
+                            subject_ids = list(
+                                (
+                                    await uow.session.scalars(
+                                        self._select(m.Subject.id)
+                                        .join(
+                                            m.SubjectAccessGrant,
+                                            m.SubjectAccessGrant.subject_id == m.Subject.id,
+                                        )
+                                        .where(
+                                            m.SubjectAccessGrant.principal_account_id == account.id,
+                                            m.SubjectAccessGrant.school_id == actor.school_id,
+                                            m.SubjectAccessGrant.relationship_type
+                                            == e.RelationshipType.SELF.value,
+                                m.SubjectAccessGrant.status
+                                == e.GrantStatus.ACTIVE.value,
+                                            m.SubjectAccessGrant.revoked_at.is_(None),
+                                            m.SubjectAccessGrant.valid_from <= at,
+                                            (m.SubjectAccessGrant.valid_until.is_(None))
+                                            | (m.SubjectAccessGrant.valid_until >= at),
+                                            m.Subject.school_id == actor.school_id,
+                                            m.Subject.status == e.SubjectStatus.ACTIVE.value,
+                                            m.Subject.data_origin == e.DataOrigin.SYNTHETIC.value,
+                                        )
+                                        .with_for_update()
+                                    )
+                                ).all()
+                            )
+                            if len(subject_ids) != 1:
+                                raise self._initial_credential_conflict()
+                            await uow.school_operations.add_student_subject_to_class(
+                                school_id=actor.school_id,
+                                class_id=school_class.id,
+                                subject_id=int(subject_ids[0]),
+                                admin_membership_role_id=admin_role_id,
+                                at=at,
+                            )
+                        else:
+                            await uow.school_operations.add_teacher_role_to_class(
+                                school_id=actor.school_id,
+                                class_id=school_class.id,
+                                teacher_membership_role_id=role.id,
+                                admin_membership_role_id=admin_role_id,
+                                at=at,
+                            )
+
+                old_credentials = list(
+                    (
+                        await uow.session.scalars(
+                            self._select(m.SchoolAccountCredential)
+                            .where(
+                                m.SchoolAccountCredential.account_id == account.id,
+                                m.SchoolAccountCredential.school_id == actor.school_id,
+                                m.SchoolAccountCredential.purpose == "INITIAL_ACTIVATION",
+                                m.SchoolAccountCredential.status == "ISSUED",
+                            )
+                            .order_by(m.SchoolAccountCredential.id)
+                            .with_for_update()
+                        )
+                    ).all()
+                )
+                for old in old_credentials:
+                    old.status = "REVOKED"
+                    old.revoked_at = at
+
+                raw_credential = secrets.token_urlsafe(32)
+                credential_ref = f"CRED_{uuid4().hex}"
+                credential = m.SchoolAccountCredential(
+                    credential_ref=credential_ref,
+                    account_id=account.id,
+                    school_id=actor.school_id,
+                    issued_by_membership_role_id=admin_role_id,
+                    purpose="INITIAL_ACTIVATION",
+                    resource_ref=provision.public_id,
+                    token_hash=hashlib.sha256(raw_credential.encode("utf-8")).digest(),
+                    status="ISSUED",
+                    delivery_channel="MANUAL",
+                    expires_at=expires_at,
+                    consumed_at=None,
+                    revoked_at=None,
+                    trace_id=trace_id,
+                )
+                uow.session.add(credential)
+                await uow.session.flush()
+                await self._revoke_account_sessions(uow, account.id, at)
+                await self._school_directory_audit(
+                    uow,
+                    actor_account_id=actor_account_id,
+                    action="school_directory.issue_initial_credential",
+                    resource_type="school_account_credential",
+                    resource_public_id=credential.public_id,
+                    trace_id=trace_id,
+                    count=1,
+                )
+                response_credentials.append(
+                    {
+                        "user_id": f"USER_{account.public_id}",
+                        "login_name": account.login_name,
+                        "display_name": membership.display_name,
+                        "class_ref": school_class.class_ref if school_class is not None else None,
+                        "credential": raw_credential,
+                        "expires_at": expires_at,
+                    }
+                )
+            await uow.session.flush()
+            return {
+                "credentials": response_credentials,
+                "delivery_status": "MANUAL_HANDOFF_REQUIRED",
+            }
+
+    async def school_directory_complete_initial_credential(
+        self,
+        *,
+        username: str,
+        school_ref: str,
+        token_hash: bytes,
+        new_password: str,
+        trace_id: str,
+    ) -> dict[str, str]:
+        from pwdlib import PasswordHash
+        from sqlalchemy import func
+
+        from smhai_backend.core.errors import ErrorCode
+
+        invalid = error(
+            ErrorCode.AUTH_INVALID_CREDENTIALS,
+            detail="initial credential is invalid or expired",
+        )
+        if (
+            not isinstance(username, str)
+            or not username.strip()
+            or not isinstance(school_ref, str)
+            or not school_ref.strip()
+            or not isinstance(token_hash, bytes)
+            or len(token_hash) != 32
+        ):
+            raise invalid
+        m = self._db_models
+        e = self._db_enums
+        at = self._utc_now()
+        normalized_username = username.strip().casefold()
+        async with self._uow() as uow:
+            identity = await uow.session.execute(
+                self._select(m.Account.id, m.School.id)
+                .join(
+                    m.AccountSchoolMembership,
+                    m.AccountSchoolMembership.account_id == m.Account.id,
+                )
+                .join(m.School, m.School.id == m.AccountSchoolMembership.school_id)
+                .where(
+                    func.lower(m.Account.login_name) == normalized_username,
+                    m.School.school_ref == school_ref.strip(),
+                    m.School.status == "ACTIVE",
+                    m.School.data_origin == e.DataOrigin.SYNTHETIC.value,
+                    m.AccountSchoolMembership.status == "ACTIVE",
+                    m.AccountSchoolMembership.revoked_at.is_(None),
+                    m.AccountSchoolMembership.valid_from <= at,
+                    (m.AccountSchoolMembership.valid_until.is_(None))
+                    | (m.AccountSchoolMembership.valid_until >= at),
+                )
+                .limit(1)
+            )
+            identity_row = identity.first()
+            if identity_row is None:
+                raise invalid
+            account_id, school_id = identity_row
+            account = await uow.session.scalar(
+                self._select(m.Account)
+                .where(m.Account.id == account_id)
+                .with_for_update()
+            )
             if (
-                membership_role is None
-                or role_ids != [provision.membership_role_id]
+                account is None
+                or account.status != e.AccountStatus.ACTIVE.value
+                or not account.must_change_password
+                or account.password_changed_at is not None
+            ):
+                raise invalid
+
+            memberships = list(
+                (
+                    await uow.session.scalars(
+                        self._select(m.AccountSchoolMembership)
+                        .where(
+                            m.AccountSchoolMembership.account_id == account.id,
+                            m.AccountSchoolMembership.school_id == school_id,
+                        )
+                        .order_by(m.AccountSchoolMembership.id)
+                        .with_for_update()
+                    )
+                ).all()
+            )
+            if len(memberships) != 1:
+                raise invalid
+            membership = memberships[0]
+            if (
+                membership.status != "ACTIVE"
+                or membership.revoked_at is not None
+                or membership.valid_from > at
+                or (membership.valid_until is not None and membership.valid_until < at)
+            ):
+                raise invalid
+            provisions = list(
+                (
+                    await uow.session.scalars(
+                        self._select(m.SchoolAccountProvision)
+                        .where(
+                            m.SchoolAccountProvision.account_id == account.id,
+                            m.SchoolAccountProvision.school_id == school_id,
+                        )
+                        .with_for_update()
+                    )
+                ).all()
+            )
+            if len(provisions) != 1:
+                raise invalid
+            provision = provisions[0]
+            if (
+                provision.status != "ACTIVE"
+                or provision.membership_id != membership.id
                 or provision.role_code not in {"student", "teacher"}
             ):
-                raise error(ErrorCode.FORBIDDEN, detail="account activation scope is invalid")
-            batch = await uow.session.scalar(
-                self._select(m.SchoolAccountBatch)
+                raise invalid
+            membership_roles = list(
+                (
+                    await uow.session.scalars(
+                        self._select(m.MembershipRole)
+                        .where(m.MembershipRole.membership_id == membership.id)
+                        .order_by(m.MembershipRole.id)
+                        .with_for_update()
+                    )
+                ).all()
+            )
+            role = next(
+                (
+                    item
+                    for item in membership_roles
+                    if item.id == provision.membership_role_id
+                    and item.school_id == school_id
+                    and item.role_code == provision.role_code
+                    and item.status == "ACTIVE"
+                    and item.revoked_at is None
+                    and item.valid_from <= at
+                    and (item.valid_until is None or item.valid_until >= at)
+                ),
+                None,
+            )
+            if role is None or len(membership_roles) != 1:
+                raise invalid
+
+            credential = await uow.session.scalar(
+                self._select(m.SchoolAccountCredential)
                 .where(
-                    m.SchoolAccountBatch.id == provision.batch_id,
-                    m.SchoolAccountBatch.school_id == actor.school_id,
+                    m.SchoolAccountCredential.account_id == account.id,
+                    m.SchoolAccountCredential.school_id == school_id,
+                    m.SchoolAccountCredential.token_hash == token_hash,
+                    m.SchoolAccountCredential.purpose == "INITIAL_ACTIVATION",
                 )
                 .with_for_update()
             )
-            if batch is None:
-                raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="account batch was not found")
-            school_class = None
-            if batch.class_id is not None:
-                school_class = await uow.session.scalar(
-                    self._select(m.SchoolClass)
-                    .where(
-                        m.SchoolClass.id == batch.class_id,
-                        m.SchoolClass.school_id == actor.school_id,
-                        m.SchoolClass.status == "ACTIVE",
-                    )
-                    .with_for_update()
-                )
-                if school_class is None:
-                    raise error(ErrorCode.WORKFLOW_CONFLICT, detail="account class is unavailable")
+            if (
+                credential is None
+                or credential.status != "ISSUED"
+                or credential.revoked_at is not None
+                or credential.consumed_at is not None
+                or credential.expires_at <= at
+            ):
+                raise invalid
 
             account.password_hash = PasswordHash.recommended().hash(new_password)
-            account.status = self._db_enums.AccountStatus.ACTIVE.value
-            provision.status = "ACTIVE"
-            provision.activated_at = at
-            if school_class is not None:
-                if provision.role_code == "student":
-                    subject_ids = list(
-                        (
-                            await uow.session.scalars(
-                                self._select(m.Subject.id)
-                                .join(
-                                    m.SubjectAccessGrant,
-                                    m.SubjectAccessGrant.subject_id == m.Subject.id,
-                                )
-                                .where(
-                                    m.SubjectAccessGrant.principal_account_id == account.id,
-                                    m.SubjectAccessGrant.school_id == actor.school_id,
-                                    m.SubjectAccessGrant.relationship_type
-                                    == self._db_enums.RelationshipType.SELF.value,
-                                    m.SubjectAccessGrant.status == "ACTIVE",
-                                    m.SubjectAccessGrant.revoked_at.is_(None),
-                                    m.SubjectAccessGrant.valid_from <= at,
-                                    (m.SubjectAccessGrant.valid_until.is_(None))
-                                    | (m.SubjectAccessGrant.valid_until >= at),
-                                    m.Subject.school_id == actor.school_id,
-                                    m.Subject.status == self._db_enums.SubjectStatus.ACTIVE.value,
-                                    m.Subject.data_origin
-                                    == self._db_enums.DataOrigin.SYNTHETIC.value,
-                                )
-                                .with_for_update()
-                            )
-                        ).all()
-                    )
-                    if len(subject_ids) != 1:
-                        raise error(ErrorCode.FORBIDDEN, detail="student subject scope is invalid")
-                    await uow.school_operations.add_student_subject_to_class(
-                        school_id=actor.school_id,
-                        class_id=school_class.id,
-                        subject_id=int(subject_ids[0]),
-                        admin_membership_role_id=admin_role_id,
-                        at=at,
-                    )
-                else:
-                    await uow.school_operations.add_teacher_role_to_class(
-                        school_id=actor.school_id,
-                        class_id=school_class.id,
-                        teacher_membership_role_id=membership_role.id,
-                        admin_membership_role_id=admin_role_id,
-                        at=at,
-                    )
+            account.status = e.AccountStatus.ACTIVE.value
+            account.must_change_password = False
+            account.password_changed_at = at
+            account.failed_login_count = 0
+            account.locked_until = None
+            credential.status = "CONSUMED"
+            credential.consumed_at = at
+            await self._revoke_account_sessions(uow, account.id, at)
             await uow.session.flush()
             await self._school_directory_audit(
                 uow,
-                actor_account_id=actor_account_id,
-                action="school_directory.activate_account",
-                resource_type="school_account",
-                resource_public_id=account.public_id,
+                actor_account_id=None,
+                action="school_directory.complete_initial_credential",
+                resource_type="school_account_credential",
+                resource_public_id=credential.public_id,
                 trace_id=trace_id,
+                count=1,
             )
-            return {"user_id": user_ref, "status": "ACTIVE"}
+            return {"status": "PASSWORD_SET"}
+
+    async def school_directory_activate_account(
+        self, actor: Any, user_ref: str, new_password: str, *, trace_id: str
+    ) -> dict[str, Any]:
+        del actor, user_ref, new_password, trace_id
+        raise error(
+            ErrorCode.WORKFLOW_CONFLICT,
+            detail="initial credentials must be issued before the account can set its password",
+        )

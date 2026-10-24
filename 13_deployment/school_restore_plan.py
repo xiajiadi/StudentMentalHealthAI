@@ -29,12 +29,13 @@ from school_schema import (
     RESEARCH_COHORTS_REVISION,
     RESEARCH_EDUCATION_CANDIDATES_REVISION,
     RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION,
-    RESEARCH_EDUCATION_OUTPUT_REVIEW_REVISION,
     RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION,
     RESEARCH_EDUCATION_JOBS_REVISION,
+    RESEARCH_EDUCATION_OUTPUT_REVIEW_REVISION,
     RESEARCH_PARAMETER_PROVENANCE_REVISION,
     RESEARCH_PROGRAMME_CANDIDATES_REVISION,
     RESEARCH_REVIEW_FEEDBACK_REVISION,
+    SCHOOL_ACCOUNT_LIFECYCLE_REVISION,
     SCHOOL_FEEDBACK_PUBLICATION_REVISION,
 )
 
@@ -123,6 +124,26 @@ INDEPENDENT_EDUCATION_REVIEW_TABLES = frozenset({
     "school_independent_education_reviews",
     "school_independent_education_review_events",
 })
+SCHOOL_ACCOUNT_LIFECYCLE_TABLES = frozenset(
+    {
+        "school_roster_import_runs",
+        "school_roster_import_run_batches",
+        "school_account_credentials",
+        "school_staff_invitations",
+        "school_staff_invitation_classes",
+        "school_password_recovery_tickets",
+    }
+)
+SCHOOL_ACCOUNT_LIFECYCLE_COLUMNS = {
+    "accounts": (
+        "failed_login_count",
+        "must_change_password",
+        "locked_until",
+        "password_changed_at",
+    ),
+    "auth_sessions": ("reauthenticated_at",),
+    "school_classes": ("grade_level",),
+}
 RESEARCH_PROGRAMME_CANDIDATE_REVISIONS = frozenset(
     {
         RESEARCH_PROGRAMME_CANDIDATES_REVISION,
@@ -248,15 +269,15 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
         | RESEARCH_EDUCATION_INPUT_REVIEW_TABLES
         | RESEARCH_EDUCATION_OUTPUT_REVIEW_TABLES
         | INDEPENDENT_EDUCATION_REVIEW_TABLES
+        | SCHOOL_ACCOUNT_LIFECYCLE_TABLES
     )
     if revision not in SUPPORTED_BACKUP_REVISIONS:
         raise ValueError("Unsupported restore revision")
-    # 0024 only adds independent-review tables. All pre-existing tables retain
-    # the exact 0023 physical column/FK layouts, including ALTER TABLE order.
-    # Keep the requested revision separately so old backups never acquire the
-    # newly added tables or accidentally accept unknown schema revisions.
+    # 0024 and 0025 add tables without changing earlier physical layouts.
+    # Keep the requested revision so older backups never acquire tables or
+    # columns introduced by a later migration.
     requested_revision = revision
-    if revision == INDEPENDENT_EDUCATION_REVIEW_REVISION:
+    if revision == SCHOOL_ACCOUNT_LIFECYCLE_REVISION or revision == INDEPENDENT_EDUCATION_REVIEW_REVISION:
         revision = RESEARCH_EDUCATION_OUTPUT_REVIEW_REVISION
     if (
         len(metadata_tables) != len(expected_current)
@@ -269,7 +290,13 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
     for table_name, table in metadata_tables.items():
         if (
             table_name in INDEPENDENT_EDUCATION_REVIEW_TABLES
-            and requested_revision != INDEPENDENT_EDUCATION_REVIEW_REVISION
+            and requested_revision
+            not in {INDEPENDENT_EDUCATION_REVIEW_REVISION, SCHOOL_ACCOUNT_LIFECYCLE_REVISION}
+        ):
+            continue
+        if (
+            table_name in SCHOOL_ACCOUNT_LIFECYCLE_TABLES
+            and requested_revision != SCHOOL_ACCOUNT_LIFECYCLE_REVISION
         ):
             continue
         if revision not in {
@@ -450,6 +477,10 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
             continue
         columns = tuple(column.name for column in table.columns)
         nullable = frozenset(column.name for column in table.columns if column.nullable)
+        lifecycle_columns = SCHOOL_ACCOUNT_LIFECYCLE_COLUMNS.get(table_name, ())
+        if requested_revision != SCHOOL_ACCOUNT_LIFECYCLE_REVISION:
+            columns = tuple(column for column in columns if column not in lifecycle_columns)
+            nullable = nullable - set(lifecycle_columns)
         if revision not in {
             RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION,
             RESEARCH_EDUCATION_OUTPUT_REVIEW_REVISION,
@@ -573,6 +604,11 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
         if revision == SUPPORTED_REVISION and table_name in DIRECTORY_NAME_TABLES:
             columns = tuple(column for column in columns if column != "display_name")
             nullable = nullable - {"display_name"}
+        if requested_revision == SCHOOL_ACCOUNT_LIFECYCLE_REVISION and lifecycle_columns:
+            # 0025 appends these fields with ALTER TABLE. Match MySQL's physical
+            # order rather than the declarative ORM order.
+            columns = tuple(column for column in columns if column not in lifecycle_columns)
+            columns += tuple(column for column in lifecycle_columns if column in table.c)
         primary_key = tuple(column.name for column in table.primary_key.columns)
         foreign_keys = tuple(
             ForeignKeySpec(

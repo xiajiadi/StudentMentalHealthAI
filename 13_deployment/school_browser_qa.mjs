@@ -30,11 +30,24 @@ const FORBIDDEN_ROUTE_FAILURES = new Map([
   ['destination_check', 'UNEXPECTED_DESTINATION'],
 ]);
 const RESTORE_DIAGNOSTIC_FAILURES = new Set([
+  'student_history|route|ROUTE_NOT_REACHED',
+  'student_history|route|LINK_NOT_VISIBLE',
+  'student_history|route|LINK_CLICK_FAILED',
   'student_history|metadata_response|RESPONSE_NOT_RECEIVED',
+  'student_history|metadata_response|REQUEST_NOT_STARTED',
+  'student_history|metadata_response|REQUEST_FAILED',
+  'student_history|metadata_response|REQUEST_PENDING_PROBE_200',
+  'student_history|metadata_response|REQUEST_PENDING_PROBE_FAILED',
+  'student_history|metadata_response|REQUEST_PENDING_PROBE_EVALUATION_FAILED',
+  'student_history|metadata_response|REQUEST_NOT_STARTED',
+  'student_history|metadata_response|REQUEST_FAILED',
   'student_history|metadata_response|HTTP_STATUS',
   'student_history|metadata_response|BODY_READ_FAILED',
   'student_history|metadata_response|ENVELOPE_INVALID',
   'student_history|metadata_response|DTO_INVALID',
+  'student_history|metadata_render|ASSESSMENT_LIBRARY_NOT_VISIBLE',
+  'student_history|metadata_render|ASSESSMENT_LOADING_DID_NOT_SETTLE',
+  'student_history|metadata_render|CARD_COUNT_MISMATCH',
   'student_history|metadata_render|ROW_COUNT_MISMATCH',
   'student_history|metadata_render|STATUS_LABEL_MISMATCH',
   'student_history|metadata_render|ITEM_COUNT_LABEL_MISMATCH',
@@ -42,10 +55,9 @@ const RESTORE_DIAGNOSTIC_FAILURES = new Set([
   'student_history|metadata_render|NULL_TIME_LABEL_MISMATCH',
   'student_history|metadata_render|EMPTY_STATE_MISMATCH',
   'student_feedback|route|ROUTE_NOT_REACHED',
-  'student_feedback|assessment_request|RESPONSE_NOT_RECEIVED',
-  'student_feedback|assessment_request|HTTP_STATUS',
-  'student_feedback|reports_request|RESPONSE_NOT_RECEIVED',
-  'student_feedback|reports_request|HTTP_STATUS',
+  'student_feedback|feedback_request|RESPONSE_NOT_RECEIVED',
+  'student_feedback|feedback_request|HTTP_STATUS',
+  'student_feedback|feedback_request|ENVELOPE_INVALID',
   'student_feedback|content_state|CONTENT_NOT_RENDERED',
 ]);
 const safeMetadataDate = (value) => typeof value === 'string' && value.length <= 64
@@ -90,23 +102,31 @@ export function studentHistoryMetadataFailureCode(responseStatus, envelope) {
   return null;
 }
 
-export function studentHistoryRenderedMismatch(metadata, statusLabels, summaries, expectedTimes) {
-  if (!Array.isArray(metadata) || !Array.isArray(statusLabels) || !Array.isArray(summaries)
-    || !Array.isArray(expectedTimes) || metadata.length !== statusLabels.length
-    || metadata.length !== summaries.length || metadata.length !== expectedTimes.length) return 'ROW_COUNT_MISMATCH';
-  for (let index = 0; index < metadata.length; index += 1) {
-    const item = metadata[index];
-    const expectedStatus = item.status === 'completed'
-      ? '已完成的合成测评' : item.status === 'created' ? '尚未开始的合成测评' : '测评记录';
-    if (statusLabels[index] !== expectedStatus) return 'STATUS_LABEL_MISMATCH';
-    const prefix = `${item.items_answered} 项已记录 · `;
-    const summary = summaries[index];
-    if (typeof summary !== 'string' || !summary.startsWith(prefix)) return 'ITEM_COUNT_LABEL_MISMATCH';
-    if (summary.slice(prefix.length) !== expectedTimes[index]) {
-      const nullTime = (item.status === 'created' && item.started_at === null)
-        || (item.started_at === null && item.completed_at === null);
-      return nullTime ? 'NULL_TIME_LABEL_MISMATCH' : 'DATE_LABEL_MISMATCH';
+export function studentHistoryRenderedMismatch(metadata, cardTexts, emptyStateVisible) {
+  if (!Array.isArray(metadata) || !Array.isArray(cardTexts)
+    || typeof emptyStateVisible !== 'boolean') return 'ROW_COUNT_MISMATCH';
+  if (emptyStateVisible !== (cardTexts.length === 0)) return 'EMPTY_STATE_MISMATCH';
+  if (cardTexts.length < metadata.length) return 'CARD_COUNT_MISMATCH';
+  const usedCards = new Set();
+  const formatter = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' });
+  for (const item of metadata) {
+    const expectedStatus = {
+      created: '待开始', in_progress: '进行中', completed: '已完成',
+      abandoned: '已结束', invalid: '不可用',
+    }[item.status];
+    const timestamp = item.completed_at || item.started_at;
+    const expectedTime = timestamp ? formatter.format(new Date(timestamp)) : '时间未提供';
+    const matchingIndex = cardTexts.findIndex((text, index) => !usedCards.has(index)
+      && text.includes(expectedStatus)
+      && text.includes(`${item.items_answered} 项已记录`)
+      && text.includes(expectedTime));
+    if (matchingIndex >= 0) {
+      usedCards.add(matchingIndex);
+      continue;
     }
+    if (!cardTexts.some((text) => text.includes(expectedStatus))) return 'STATUS_LABEL_MISMATCH';
+    if (!cardTexts.some((text) => text.includes(`${item.items_answered} 项已记录`))) return 'ITEM_COUNT_LABEL_MISMATCH';
+    return 'DATE_LABEL_MISMATCH';
   }
   return null;
 }
@@ -274,11 +294,12 @@ async function checkAccount(browser, payload, slot) {
   let page;
   let loginSubmitted = false;
   let logoutConfirmed = false;
+  let studentHistoryCheckpoint = 'not_started';
   try {
     page = await context.newPage();
     await page.goto(`${payload.frontend_url}/login`, { waitUntil: 'domcontentloaded' });
-    const usernameInput = page.getByRole('textbox', { name: 'Username' });
-    const passwordInput = page.getByLabel('Password');
+    const usernameInput = page.locator('#account');
+    const passwordInput = page.locator('#password');
     await usernameInput.waitFor({ state: 'visible' });
     if ((await usernameInput.inputValue()) !== '' || (await passwordInput.inputValue()) !== '') {
       throw new Error('InitialFormNotBlank');
@@ -288,7 +309,7 @@ async function checkAccount(browser, payload, slot) {
     await usernameInput.fill(payload.credentials[slot].username);
     await passwordInput.fill(payload.credentials[slot].password);
     loginSubmitted = true;
-    await page.getByRole('button', { name: 'Continue', exact: true }).click();
+    await page.getByRole('button', { name: '登录', exact: true }).click();
 
     // Some deployments activate the single registered role in the API adapter;
     // if the actual UI presents its sole context, select it through that UI.
@@ -301,7 +322,7 @@ async function checkAccount(browser, payload, slot) {
         throw new Error('ExpectedSingleSchoolContext');
       }
       await contextPicker.selectOption(contextValues[0]);
-      await page.getByRole('button', { name: 'Continue', exact: true }).click();
+      await page.getByRole('button', { name: '继续', exact: true }).click();
     }
     stages.real_login = 'PASS';
 
@@ -351,12 +372,33 @@ async function checkAccount(browser, payload, slot) {
 
     if (slot === 'alpha.student') {
       let legacyListRequested = false;
+      let schoolHistoryRequestObserved = false;
+      let schoolHistoryRequestFailed = false;
+      let schoolHistoryResponseEvent = null;
       const observeList = (request) => {
-        if (request.method() === 'GET' && new URL(request.url()).pathname === '/api/v1/assessments') {
-          legacyListRequested = true;
-        }
+        if (request.method() !== 'GET') return;
+        const pathname = new URL(request.url()).pathname;
+        if (pathname === '/api/v1/assessments') legacyListRequested = true;
+        if (pathname === '/api/v1/school/assessments') schoolHistoryRequestObserved = true;
       };
       page.on('request', observeList);
+      page.on('requestfailed', (request) => {
+        if (request.method() !== 'GET') return;
+        try {
+          if (new URL(request.url()).pathname === '/api/v1/school/assessments') {
+            schoolHistoryRequestFailed = true;
+          }
+        } catch { /* Keep failure evidence limited to a boolean */ }
+      });
+      page.on('response', (response) => {
+        if (response.request().method() !== 'GET') return;
+        try {
+          if (new URL(response.url()).pathname === '/api/v1/school/assessments') {
+            schoolHistoryResponseEvent = response;
+          }
+        } catch { /* Keep failure evidence limited to the response object */ }
+      });
+      studentHistoryCheckpoint = 'listeners_ready';
       failureDiagnostic = safeRestoreDiagnostic(
         'student_history', 'metadata_response', 'RESPONSE_NOT_RECEIVED', safePathname(page),
       );
@@ -364,9 +406,65 @@ async function checkAccount(browser, payload, slot) {
         && new URL(response.url()).pathname === '/api/v1/school/assessments', { timeout: 30000 }).then(
         (response) => response, () => null,
       );
-      await page.getByRole('link', { name: '我的记录', exact: true }).click();
-      const historyResponse = await historyResponsePromise;
-      if (!historyResponse) throw new Error('StudentHistoryUnavailable');
+      const historyLinkSelector = 'a[href="/student/history"]:visible';
+      const historyLink = page.locator(historyLinkSelector).first();
+      if (await page.locator(historyLinkSelector).count() === 0) {
+        failureDiagnostic = safeRestoreDiagnostic(
+          'student_history', 'route', 'LINK_NOT_VISIBLE', safePathname(page),
+        );
+        throw new Error('StudentHistoryLinkUnavailable');
+      }
+      studentHistoryCheckpoint = 'link_visible';
+      try {
+        await historyLink.click({ timeout: 10000 });
+        studentHistoryCheckpoint = 'link_clicked';
+      } catch {
+        failureDiagnostic = safeRestoreDiagnostic(
+          'student_history', 'route', 'LINK_CLICK_FAILED', safePathname(page),
+        );
+        throw new Error('StudentHistoryLinkUnavailable');
+      }
+      await page.waitForURL((url) => url.pathname === '/student/history', { timeout: 10000 }).catch(() => {
+        failureDiagnostic = safeRestoreDiagnostic(
+          'student_history', 'route', 'ROUTE_NOT_REACHED', safePathname(page),
+        );
+        throw new Error('StudentHistoryRouteUnavailable');
+      });
+      studentHistoryCheckpoint = 'route_reached';
+      const historyResponse = await historyResponsePromise ?? schoolHistoryResponseEvent;
+      studentHistoryCheckpoint = 'response_wait_completed';
+      if (!historyResponse) {
+        let failureCode = schoolHistoryRequestFailed
+          ? 'REQUEST_FAILED' : schoolHistoryRequestObserved ? 'RESPONSE_NOT_RECEIVED' : 'REQUEST_NOT_STARTED';
+        if (failureCode === 'RESPONSE_NOT_RECEIVED') {
+          try {
+            const probeStatus = await page.evaluate(async (backendUrl) => {
+              const controller = new AbortController();
+              const timeout = window.setTimeout(() => controller.abort(), 8000);
+              try {
+                const response = await fetch(`${backendUrl}/api/v1/school/assessments?limit=30&skip=0`, {
+                  credentials: 'include',
+                  headers: { Accept: 'application/json' },
+                  signal: controller.signal,
+                });
+                return response.status;
+              } catch {
+                return 0;
+              } finally {
+                window.clearTimeout(timeout);
+              }
+            }, payload.backend_url);
+            failureCode = probeStatus === 200 ? 'REQUEST_PENDING_PROBE_200' : 'REQUEST_PENDING_PROBE_FAILED';
+          } catch {
+            failureCode = 'REQUEST_PENDING_PROBE_EVALUATION_FAILED';
+          }
+        }
+        studentHistoryCheckpoint = 'probe_completed';
+        failureDiagnostic = safeRestoreDiagnostic(
+          'student_history', 'metadata_response', failureCode, safePathname(page),
+        );
+        throw new Error('StudentHistoryUnavailable');
+      }
       const historyStatus = historyResponse.status();
       if (historyStatus !== 200) {
         failureDiagnostic = safeRestoreDiagnostic(
@@ -389,63 +487,43 @@ async function checkAccount(browser, payload, slot) {
         );
         throw new Error('StudentHistoryUnavailable');
       }
+      studentHistoryCheckpoint = 'response_validated';
       const historyMetadata = historyEnvelope.data.map((item) => ({
         status: item.status,
         items_answered: item.items_answered,
         started_at: item.started_at,
         completed_at: item.completed_at,
       }));
-      await page.locator('#assessment-history-title').waitFor({ state: 'visible' });
-      await page.locator('.student-loading').waitFor({ state: 'hidden' });
-      const historySection = page.locator('section[aria-labelledby="assessment-history-title"]');
-      const historyRows = historySection.locator('.history-row');
-      const actualRowCount = await historyRows.count();
-      if (actualRowCount !== historyMetadata.length) {
-        failureDiagnostic = safeRestoreDiagnostic(
-          'student_history', 'metadata_render', 'ROW_COUNT_MISMATCH', safePathname(page),
-        );
+      const assessmentLibrary = page.locator('.assessment-library');
+      failureDiagnostic = safeRestoreDiagnostic(
+        'student_history', 'metadata_render', 'ASSESSMENT_LIBRARY_NOT_VISIBLE', safePathname(page),
+      );
+      try {
+        await assessmentLibrary.waitFor({ state: 'visible' });
+      } catch {
         throw new Error('StudentHistoryUnavailable');
       }
-      if (historyMetadata.length === 0) {
-        if (await historySection.locator('.history-empty').count() !== 1) {
-          failureDiagnostic = safeRestoreDiagnostic(
-            'student_history', 'metadata_render', 'EMPTY_STATE_MISMATCH', safePathname(page),
-          );
-          throw new Error('StudentHistoryUnavailable');
-        }
-        await historySection.locator('.history-empty').waitFor({ state: 'visible' });
-      } else {
-        await historyRows.first().waitFor({ state: 'visible' });
-        if (await historySection.locator('.history-empty').count() !== 0) {
-          failureDiagnostic = safeRestoreDiagnostic(
-            'student_history', 'metadata_render', 'EMPTY_STATE_MISMATCH', safePathname(page),
-          );
-          throw new Error('StudentHistoryUnavailable');
-        }
-        const expectedTimes = await page.evaluate((items) => {
-          const formatter = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' });
-          const formatHistoryDate = (value) => {
-            if (!value) return '时间未提供';
-            const parsed = new Date(value);
-            if (Number.isNaN(parsed.getTime())) return '时间暂不可用';
-            return formatter.format(parsed);
-          };
-          return items.map((item) => item.status === 'created' && !item.started_at
-            ? '尚未开始' : formatHistoryDate(item.completed_at || item.started_at));
-        }, historyMetadata);
-        const actualStatusLabels = (await historyRows.locator('.history-row__copy strong').allInnerTexts())
-          .map((value) => value.trim());
-        const summaries = (await historyRows.locator('.history-row__copy > span').allInnerTexts())
-          .map((value) => value.trim());
-        const renderFailure = studentHistoryRenderedMismatch(
-          historyMetadata, actualStatusLabels, summaries, expectedTimes,
+      studentHistoryCheckpoint = 'assessment_library_visible';
+      failureDiagnostic = safeRestoreDiagnostic(
+        'student_history', 'metadata_render', 'ASSESSMENT_LOADING_DID_NOT_SETTLE', safePathname(page),
+      );
+      try {
+        await assessmentLibrary.locator('.assessment-loading').waitFor({ state: 'hidden' });
+      } catch {
+        throw new Error('StudentHistoryUnavailable');
+      }
+      studentHistoryCheckpoint = 'assessment_library_loaded';
+      const historyCards = assessmentLibrary.locator('.assessment-card');
+      const cardTexts = await historyCards.allInnerTexts();
+      const emptyStateVisible = await assessmentLibrary.locator('.assessment-empty').isVisible().catch(() => false);
+      const renderFailure = studentHistoryRenderedMismatch(
+        historyMetadata, cardTexts, emptyStateVisible,
+      );
+      if (renderFailure !== null) {
+        failureDiagnostic = safeRestoreDiagnostic(
+          'student_history', 'metadata_render', renderFailure, safePathname(page),
         );
-        if (renderFailure !== null) {
-          failureDiagnostic = safeRestoreDiagnostic(
-            'student_history', 'metadata_render', renderFailure, safePathname(page),
-          );
-          throw new Error('StudentHistoryUnavailable');
-        }
+        throw new Error('StudentHistoryUnavailable');
       }
       failureDiagnostic = null;
       await page.screenshot({ path: path.join(payload.artifact_dir, 'student-history.png'),
@@ -453,12 +531,8 @@ async function checkAccount(browser, payload, slot) {
       failureDiagnostic = safeRestoreDiagnostic(
         'student_feedback', 'route', 'ROUTE_NOT_REACHED', safePathname(page),
       );
-      const feedbackAssessmentPromise = page.waitForResponse((response) => response.request().method() === 'GET'
-        && new URL(response.url()).pathname === '/api/v1/school/assessments', { timeout: 30000 }).then(
-        (response) => response, () => null,
-      );
-      const feedbackReportsPromise = page.waitForResponse((response) => response.request().method() === 'GET'
-        && new URL(response.url()).pathname === '/api/v1/reports', { timeout: 30000 }).then(
+      const feedbackResponsePromise = page.waitForResponse((response) => response.request().method() === 'GET'
+        && new URL(response.url()).pathname === '/api/v1/school/feedback/student', { timeout: 30000 }).then(
         (response) => response, () => null,
       );
       await page.getByRole('link', { name: '测评反馈', exact: true }).click();
@@ -469,42 +543,51 @@ async function checkAccount(browser, payload, slot) {
         );
         throw new Error('StudentFeedbackUnavailable');
       }
-      const [feedbackAssessmentResponse, feedbackReportsResponse] = await Promise.all([
-        feedbackAssessmentPromise, feedbackReportsPromise,
-      ]);
-      if (!feedbackAssessmentResponse) {
+      const feedbackResponse = await feedbackResponsePromise;
+      if (!feedbackResponse) {
         failureDiagnostic = safeRestoreDiagnostic(
-          'student_feedback', 'assessment_request', 'RESPONSE_NOT_RECEIVED', safePathname(page),
+          'student_feedback', 'feedback_request', 'RESPONSE_NOT_RECEIVED', safePathname(page),
         );
         throw new Error('StudentFeedbackUnavailable');
       }
-      if (!feedbackReportsResponse) {
+      if (feedbackResponse.status() !== 200) {
         failureDiagnostic = safeRestoreDiagnostic(
-          'student_feedback', 'reports_request', 'RESPONSE_NOT_RECEIVED', safePathname(page),
+          'student_feedback', 'feedback_request', 'HTTP_STATUS', safePathname(page),
         );
         throw new Error('StudentFeedbackUnavailable');
       }
-      if (feedbackAssessmentResponse.status() !== 200) {
+      let feedbackEnvelope;
+      try { feedbackEnvelope = await feedbackResponse.json(); }
+      catch {
         failureDiagnostic = safeRestoreDiagnostic(
-          'student_feedback', 'assessment_request', 'HTTP_STATUS', safePathname(page),
+          'student_feedback', 'feedback_request', 'ENVELOPE_INVALID', safePathname(page),
         );
         throw new Error('StudentFeedbackUnavailable');
       }
-      if (feedbackReportsResponse.status() !== 200) {
+      const feedbackData = feedbackEnvelope?.data;
+      if (!Array.isArray(feedbackData?.items) || !Number.isSafeInteger(feedbackData?.total)
+        || feedbackData.total < feedbackData.items.length) {
         failureDiagnostic = safeRestoreDiagnostic(
-          'student_feedback', 'reports_request', 'HTTP_STATUS', safePathname(page),
+          'student_feedback', 'feedback_request', 'ENVELOPE_INVALID', safePathname(page),
         );
         throw new Error('StudentFeedbackUnavailable');
       }
-      await page.locator('#reports-title').waitFor({ state: 'visible' });
-      await page.locator('.feedback-loading').waitFor({ state: 'hidden' });
-      if (await page.locator('.feedback-row, .feedback-empty').count() === 0) {
+      await page.locator('#published-feedback-title').waitFor({ state: 'visible' });
+      await page.locator('.history-library__count').waitFor({ state: 'visible' });
+      const feedbackRows = page.locator('.history-library__cards .history-library__card');
+      const feedbackEmpty = page.locator('.history-library__empty');
+      if (await feedbackRows.count() === 0 && !(await feedbackEmpty.isVisible())) {
         failureDiagnostic = safeRestoreDiagnostic(
           'student_feedback', 'content_state', 'CONTENT_NOT_RENDERED', safePathname(page),
         );
         throw new Error('StudentFeedbackUnavailable');
       }
-      await page.locator('.feedback-row, .feedback-empty').first().waitFor({ state: 'visible' });
+      if (feedbackData.items.length > 0 && await feedbackRows.count() === 0) {
+        failureDiagnostic = safeRestoreDiagnostic(
+          'student_feedback', 'content_state', 'CONTENT_NOT_RENDERED', safePathname(page),
+        );
+        throw new Error('StudentFeedbackUnavailable');
+      }
       if (legacyListRequested) throw new Error('LegacyPrivateListRequested');
       failureDiagnostic = null;
       await page.screenshot({ path: path.join(payload.artifact_dir, 'student-feedback.png'),
@@ -550,8 +633,8 @@ async function checkAccount(browser, payload, slot) {
     const meAfterLogout = await browserActor(page, payload.backend_url);
     if (meAfterLogout?.status !== 401) throw new Error('LogoutSessionStillAuthorized');
     if (
-      (await page.getByRole('textbox', { name: 'Username' }).inputValue()) !== '' ||
-      (await page.getByLabel('Password').inputValue()) !== ''
+      (await page.locator('#account').inputValue()) !== '' ||
+      (await page.locator('#password').inputValue()) !== ''
     ) throw new Error('LoginFormNotRestoredBlank');
     stages.blank_restore = 'PASS';
 
@@ -561,7 +644,12 @@ async function checkAccount(browser, payload, slot) {
     output.expected_path = expected.path;
   } catch {
     // Retain only fixed stage booleans; do not return exception details.
-    if (failureDiagnostic) output.diagnostic = failureDiagnostic;
+    if (failureDiagnostic) {
+      output.diagnostic = failureDiagnostic;
+      if (failureDiagnostic.stage === 'student_history') {
+        output.diagnostic.checkpoint = studentHistoryCheckpoint;
+      }
+    }
   } finally {
     await bestEffortSessionLogout(page, payload.backend_url, loginSubmitted, logoutConfirmed);
     await context.close();

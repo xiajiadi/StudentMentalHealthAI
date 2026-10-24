@@ -151,7 +151,9 @@ def test_explicit_cat_port_changes_only_the_copied_cat_endpoint():
 
     assert settings["cat"] == {"mode": "http", "base_url": "http://127.0.0.1:8181"}
     assert settings["rag"] == original_endpoints["rag"]
-    assert settings["llm"] == original_endpoints["llm"]
+    assert settings["llm"]["mode"] == original_endpoints["llm"]["mode"]
+    assert settings["llm"]["base_url"] == original_endpoints["llm"]["base_url"]
+    assert settings["llm"]["timeout"] == {"read": 135.0}
     assert settings["safety"] == original_endpoints["safety"]
     assert backend.MODULE_ENDPOINTS["cat"] == original_cat
     assert backend.MODULE_ENDPOINTS == original_endpoints
@@ -166,6 +168,7 @@ def test_cat_port_keeps_the_selected_llm_profile_unchanged():
     assert settings["llm"] == {
         "mode": "http",
         "base_url": "http://127.0.0.1:8160",
+        "timeout": {"read": 135.0},
         "logical_model_id": "qwen2.5-7b-instruct-school-demo",
         "context_length": 8192,
     }

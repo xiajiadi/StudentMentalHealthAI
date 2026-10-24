@@ -42,7 +42,7 @@ from smhai_backend.domains.models import (
 )
 
 REQUIRED_DATABASE_REVISION = "20261011_0005"
-REQUIRED_SCHOOL_TENANT_DATABASE_REVISION = "20261016_0024"
+REQUIRED_SCHOOL_TENANT_DATABASE_REVISION = "20261024_0025"
 _SCHOOL_CAT_BANK_DOCUMENT_SCHEMA = "school_cat_bank_document.v1"
 _SCHOOL_CAT_CONFIG_DOCUMENT_SCHEMA = "school_cat_config_document.v1"
 _SCHOOL_POST_ASSESSMENT_POLICY_VERSION = "NO_PERSONALIZED_POLICY_V1"
@@ -2030,7 +2030,12 @@ class MySqlBackendAdapter:
     async def _user_from_account(self, uow, account) -> SyntheticUser | None:
         m = self._db_models
         e = self._db_enums
-        if account.status != e.AccountStatus.ACTIVE.value:
+        if (
+            account.status != e.AccountStatus.ACTIVE.value
+            or account.must_change_password
+        ):
+            return None
+        if account.locked_until is not None and account.locked_until > self._utc_now():
             return None
         roles = list(
             (
@@ -2148,6 +2153,59 @@ class MySqlBackendAdapter:
             account = await uow.accounts.get_by_login_name(username)
             return await self._user_from_account(uow, account) if account else None
 
+    async def record_login_failure(
+        self, username: str, *, threshold: int, lock_seconds: int
+    ) -> None:
+        """Apply a tenant-independent account lock without disclosing lookup results."""
+        from sqlalchemy import func
+
+        normalized = username.strip().casefold()
+        if not normalized:
+            return
+        now = self._utc_now()
+        m = self._db_models
+        async with self._uow() as uow:
+            account = await uow.session.scalar(
+                self._select(m.Account)
+                .where(func.lower(m.Account.login_name) == normalized)
+                .with_for_update()
+            )
+            if (
+                account is None
+                or account.status != self._db_enums.AccountStatus.ACTIVE.value
+                or account.must_change_password
+            ):
+                return
+            if account.locked_until is not None:
+                if account.locked_until > now:
+                    return
+                account.locked_until = None
+                account.failed_login_count = 0
+            account.failed_login_count += 1
+            if account.failed_login_count >= threshold:
+                account.locked_until = now + timedelta(seconds=lock_seconds)
+            await uow.session.flush()
+
+    async def record_login_success(self, user_id: str) -> None:
+        try:
+            public_id = _database_public_id(user_id, "USER")
+        except ValueError:
+            return
+        now = self._utc_now()
+        async with self._uow() as uow:
+            account = await uow.session.scalar(
+                self._select(self._db_models.Account)
+                .where(self._db_models.Account.public_id == public_id)
+                .with_for_update()
+            )
+            if account is None or account.status != self._db_enums.AccountStatus.ACTIVE.value:
+                return
+            if account.locked_until is not None and account.locked_until > now:
+                return
+            account.failed_login_count = 0
+            account.locked_until = None
+            await uow.session.flush()
+
     async def _get_user(self, user_id: str) -> SyntheticUser | None:
         try:
             public_id = _database_public_id(user_id, "USER")
@@ -2196,6 +2254,11 @@ class MySqlBackendAdapter:
             active_context_id=(
                 str(record.active_membership_role_id)
                 if record.active_membership_role_id is not None
+                else None
+            ),
+            reauthenticated_at=(
+                _as_timestamp(record.reauthenticated_at)
+                if record.reauthenticated_at is not None
                 else None
             ),
         )
@@ -2261,6 +2324,36 @@ class MySqlBackendAdapter:
             if account is None:
                 return None
             record.account = account
+            return self._session_record(session_id, record)
+
+    async def mark_reauthenticated(
+        self, session_id: str, at: float
+    ) -> SessionRecord | None:
+        """Record a recent password recheck on a still-live session."""
+        reauthenticated_at = datetime.fromtimestamp(at, UTC)
+        async with self._uow() as uow:
+            record = await uow.session.scalar(
+                self._select(self._db_models.AuthSession)
+                .where(
+                    self._db_models.AuthSession.session_token_hash == _hash_token(session_id)
+                )
+                .with_for_update()
+            )
+            if record is None:
+                return None
+            now = self._utc_now()
+            if (
+                record.revoked_at is not None
+                or record.idle_expires_at <= now
+                or record.absolute_expires_at <= now
+            ):
+                return None
+            record.reauthenticated_at = reauthenticated_at
+            account = await uow.session.get(self._db_models.Account, record.account_id)
+            if account is None:
+                return None
+            record.account = account
+            await uow.session.flush()
             return self._session_record(session_id, record)
 
     async def touch(self, session_id: str, ttl_seconds: int) -> SessionRecord | None:

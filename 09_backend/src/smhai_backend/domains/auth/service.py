@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from pwdlib import PasswordHash
 
 from smhai_backend.core.async_utils import maybe_await
@@ -45,6 +47,13 @@ class AuthService:
             except (ValueError, TypeError):
                 valid = False
         if not valid:
+            await maybe_await(
+                self.users.record_login_failure(
+                    username,
+                    threshold=self.settings.login_lock_threshold,
+                    lock_seconds=self.settings.login_lock_duration_seconds,
+                )
+            )
             await self.audit.record(
                 event="LOGIN_FAILURE",
                 actor=None,
@@ -58,6 +67,7 @@ class AuthService:
                 detail="username or password is invalid",
             )
         assert user is not None
+        await maybe_await(self.users.record_login_success(user.user_id))
         if old_session_id:
             await maybe_await(self.sessions.revoke(old_session_id))
         active_context_id = user.default_context_id
@@ -128,6 +138,54 @@ class AuthService:
             await maybe_await(self.sessions.revoke(session_id))
             raise error(ErrorCode.AUTH_SESSION_REVOKED, detail="authentication is required")
         return actor, touched
+
+    async def reauthenticate(
+        self,
+        session_id: str | None,
+        *,
+        actor: Actor,
+        current_password: str,
+        request_id: str,
+        trace_id: str,
+    ) -> SessionRecord:
+        if not session_id:
+            raise error(ErrorCode.AUTH_SESSION_EXPIRED, detail="authentication is required")
+        user = await maybe_await(self.users.get(actor.user_id))
+        valid = False
+        if user is not None:
+            try:
+                valid = self.password_hash.verify(current_password, user.password_hash)
+            except (ValueError, TypeError):
+                valid = False
+        if not valid:
+            await self.audit.record(
+                event="REAUTHENTICATION_FAILURE",
+                actor=actor,
+                request_id=request_id,
+                trace_id=trace_id,
+                outcome="denied",
+                metadata={},
+            )
+            raise error(
+                ErrorCode.AUTH_INVALID_CREDENTIALS,
+                detail="current password is invalid",
+            )
+
+        reauthenticated_at = datetime.now(UTC).timestamp()
+        session = await maybe_await(
+            self.sessions.mark_reauthenticated(session_id, reauthenticated_at)
+        )
+        if session is None or session.user_id != actor.user_id:
+            raise error(ErrorCode.AUTH_SESSION_REVOKED, detail="authentication is required")
+        await self.audit.record(
+            event="REAUTHENTICATION_SUCCESS",
+            actor=actor,
+            request_id=request_id,
+            trace_id=trace_id,
+            outcome="accepted",
+            metadata={},
+        )
+        return session
 
     async def switch_active_context(
         self,

@@ -114,6 +114,7 @@ export interface SchoolDirectory {
     role: SchoolMemberRole
     account_status: string
     provisioning_status: string | null
+    class_refs?: string[]
   }>
 }
 
@@ -167,6 +168,95 @@ export interface SchoolAccountBatch {
   batch_ref: string
   created_count: number
   accounts: SchoolProvisionedAccount[]
+}
+
+export interface LifecycleRosterRow {
+  row_no: number
+  student_number: string
+  display_name: string
+  class_ref: string
+  grade_level?: string
+}
+export interface LifecycleRosterPreview {
+  valid: boolean
+  row_count: number
+  errors: Array<{ row_no: number; code: string; message?: string }>
+  class_groups?: Array<{ class_ref: string; row_count: number }>
+}
+export interface LifecycleRosterImport extends LifecycleRosterPreview {
+  run_ref: string
+  created_count: number
+  skipped_count: number
+  status: string
+}
+export interface LifecycleAccountSummary {
+  total_accounts: number
+  active_accounts: number
+  pending_activation: number
+  suspended_accounts: number
+  classes: number
+  invitations_issued: number
+  invitations_accepted: number
+  invitations_expired: number
+  invitations_revoked: number
+  recovery_queue_count: number
+}
+export interface LifecycleCredential {
+  user_id: string
+  login_name: string
+  display_name: string
+  class_ref: string
+  credential: string
+  expires_at: string
+}
+export interface LifecycleInvitationInput {
+  employee_ref: string
+  display_name: string
+  role: 'teacher' | 'psychological_specialist'
+  work_contact: string
+  verified: true
+  class_refs: string[]
+  delivery_channel: 'MANUAL'
+}
+export interface LifecycleInvitationResult {
+  invitation_ref: string
+  user_id: string
+  login_name: string
+  status: 'ISSUED'
+  delivery_channel: 'MANUAL_HANDOFF_REQUIRED'
+  credential: string
+  expires_at: string
+}
+export interface LifecycleStaffInvitation {
+  invitation_ref: string
+  user_id: string
+  login_name: string
+  display_name: string | null
+  employee_ref: string
+  role: 'teacher' | 'psychological_specialist'
+  status: 'ISSUED' | 'ACCEPTED' | 'EXPIRED' | 'REVOKED'
+  delivery_channel: 'MANUAL'
+  class_refs: string[]
+  created_at: string
+  expires_at: string
+}
+export interface LifecycleStaffRecoveryCredential {
+  user_id: string
+  login_name: string
+  status: 'ISSUED'
+  delivery_channel: 'MANUAL_HANDOFF_REQUIRED'
+  credential: string
+  expires_at: string
+}
+export interface LifecycleRecoveryTicket {
+  ticket_ref: string
+  user_id: string
+  username: string
+  display_name: string
+  class_ref: string | null
+  role: string
+  status: string
+  created_at: string
 }
 
 export interface SchoolTask {
@@ -491,7 +581,6 @@ export interface FrontendApi {
   previewSchoolAccountImport?(classRef: string | null, rows: SchoolAccountImportRow[]): Promise<ApiEnvelope<SchoolAccountPreview>>
   importSchoolAccounts?(classRef: string | null, rows: SchoolAccountImportRow[], idempotencyKey: string): Promise<ApiEnvelope<SchoolAccountBatch>>
   getSchoolAccountBatch?(batchRef: string): Promise<ApiEnvelope<SchoolAccountBatch>>
-  activateSchoolAccount?(userId: string, newPassword: string): Promise<ApiEnvelope<unknown>>
   createSchoolClass?(classRef: string): Promise<ApiEnvelope<SchoolClass>>
   assignSchoolStudent?(classRef: string, studentUserId: string): Promise<ApiEnvelope<unknown>>
   assignSchoolTeacher?(classRef: string, teacherUserId: string): Promise<ApiEnvelope<unknown>>
@@ -516,4 +605,26 @@ export interface FrontendApi {
   listTeacherSchoolTaskProgress?(): Promise<ApiEnvelope<TeacherTaskProgress[]>>
   listSchoolTaskEnrollments?(taskRef: string): Promise<ApiEnvelope<SchoolTaskEnrollment[]>>
   revokeSchoolTaskEnrollment?(taskRef: string, enrollmentRef: string): Promise<ApiEnvelope<SchoolTaskEnrollment>>
+  previewLifecycleRoster?(rows: LifecycleRosterRow[]): Promise<ApiEnvelope<LifecycleRosterPreview>>
+  importLifecycleRoster?(rows: LifecycleRosterRow[], idempotencyKey: string): Promise<ApiEnvelope<LifecycleRosterImport>>
+  getLifecycleRosterImport?(runRef: string): Promise<ApiEnvelope<LifecycleRosterImport>>
+  getLifecycleAccountSummary?(): Promise<ApiEnvelope<LifecycleAccountSummary>>
+  issueLifecycleCredentials?(userIds: string[]): Promise<ApiEnvelope<{ credentials: LifecycleCredential[] }>>
+  inviteSchoolStaff?(input: LifecycleInvitationInput): Promise<ApiEnvelope<LifecycleInvitationResult>>
+  listStaffInvitations?(): Promise<ApiEnvelope<LifecycleStaffInvitation[]>>
+  revokeStaffInvitation?(invitationRef: string, reasonCode: string): Promise<ApiEnvelope<{ status: string }>>
+  reissueStaffInvitation?(invitationRef: string, reasonCode: string): Promise<ApiEnvelope<LifecycleInvitationResult>>
+  issueStaffRecoveryCredential?(
+    userId: string,
+    input: { reason_code: string; verification_method: 'IN_PERSON' | 'VERIFIED_WORK_CONTACT'; identity_verified: true },
+  ): Promise<ApiEnvelope<LifecycleStaffRecoveryCredential>>
+  acceptStaffInvitation?(input: { invitation_ref: string; credential: string; new_password: string; confirm_password: string }): Promise<ApiEnvelope<unknown>>
+  completeFirstLogin?(input: { school_ref: string; username: string; credential: string; new_password: string; confirm_password: string }): Promise<ApiEnvelope<unknown>>
+  createRecoveryRequest?(input: { school_ref: string; username: string; class_ref: string; reason_code: string }): Promise<ApiEnvelope<unknown>>
+  listRecoveryRequests?(): Promise<ApiEnvelope<LifecycleRecoveryTicket[]>>
+  verifyRecoveryRequest?(ticketRef: string, reasonCode: string): Promise<ApiEnvelope<unknown>>
+  approveRecoveryRequest?(ticketRef: string, reasonCode: string): Promise<ApiEnvelope<{ credential: string; expires_at: string }>>
+  completePasswordReset?(input: { school_ref: string; username: string; credential: string; new_password: string; confirm_password: string }): Promise<ApiEnvelope<unknown>>
+  updateSchoolAccountStatus?(userId: string, status: 'ACTIVE' | 'DISABLED', reasonCode: string): Promise<ApiEnvelope<unknown>>
+  reauthenticate?(password: string): Promise<ApiEnvelope<unknown>>
 }

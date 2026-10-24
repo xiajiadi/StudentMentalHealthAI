@@ -117,6 +117,16 @@ class AuthSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     session_ttl_seconds: int = Field(default=1800, ge=60, le=86_400)
+    reauthentication_ttl_seconds: int = Field(default=300, ge=60, le=3600)
+    login_lock_threshold: int = Field(default=5, ge=2, le=20)
+    login_lock_duration_seconds: int = Field(default=900, ge=60, le=86_400)
+    initial_credential_ttl_seconds: int = Field(
+        default=604_800, ge=3600, le=1_209_600
+    )
+    staff_invitation_ttl_seconds: int = Field(
+        default=604_800, ge=3600, le=1_209_600
+    )
+    password_reset_ttl_seconds: int = Field(default=900, ge=600, le=900)
     cookie_name: str = "smhai_dev_session"
     production_cookie_name: str = "__Host-smhai_session"
     secure_cookie: bool = False

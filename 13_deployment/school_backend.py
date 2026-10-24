@@ -37,6 +37,9 @@ from school_schema import CURRENT_SCHOOL_REVISION, SUPPORTED_SNAPSHOT_REVISIONS
 DEFAULT_BACKEND_PORT = 8088
 DEFAULT_FRONTEND_PORT = 4178
 DEFAULT_CAT_PORT = 8180
+# The independent Runtime client enforces a 125-second minimum; keep this
+# launcher aligned with the Linux service's bounded Runtime request window.
+SCHOOL_LLM_READ_TIMEOUT_SECONDS = 135.0
 MIN_SERVICE_PORT = 1024
 MAX_SERVICE_PORT = 65535
 MODULE_ENDPOINTS = {
@@ -160,6 +163,7 @@ def build_school_settings_kwargs(
     cat_settings = dict(MODULE_ENDPOINTS["cat"])
     cat_settings["base_url"] = f"http://127.0.0.1:{cat_port}"
     llm_settings = dict(MODULE_ENDPOINTS["llm"])
+    llm_settings["timeout"] = {"read": SCHOOL_LLM_READ_TIMEOUT_SECONDS}
     if llm_profile == "school-gpu-7b":
         llm_settings.update(
             {

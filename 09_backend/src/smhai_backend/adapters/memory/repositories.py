@@ -31,10 +31,14 @@ class InMemoryUserRepository:
         password_hash: PasswordHash | None = None,
         *,
         identity_profile: str = "legacy_demo",
+        clock=time.time,
     ) -> None:
         hasher = password_hash or PasswordHash.recommended()
+        self._clock = clock
         self._users: dict[str, SyntheticUser] = {}
         self._by_username: dict[str, SyntheticUser] = {}
+        self._failure_counts: dict[str, int] = {}
+        self._locked_until: dict[str, float] = {}
         if identity_profile != "legacy_demo":
             return
         self._add(
@@ -82,10 +86,40 @@ class InMemoryUserRepository:
         self._by_username[user.username] = user
 
     def get_by_username(self, username: str) -> SyntheticUser | None:
-        return self._by_username.get(username)
+        normalized = username.strip().casefold()
+        user = self._by_username.get(normalized)
+        if user is None:
+            user = self._by_username.get(username)
+        if user is None:
+            return None
+        if self._locked_until.get(user.user_id, 0) > self._clock():
+            return None
+        return user
 
     def get(self, user_id: str) -> SyntheticUser | None:
         return self._users.get(user_id)
+
+    def record_login_failure(
+        self, username: str, *, threshold: int, lock_seconds: int
+    ) -> None:
+        user = self._by_username.get(username.strip().casefold()) or self._by_username.get(username)
+        if user is None:
+            return
+        now = self._clock()
+        locked_until = self._locked_until.get(user.user_id)
+        if locked_until is not None and locked_until > now:
+            return
+        if locked_until is not None:
+            self._locked_until.pop(user.user_id, None)
+            self._failure_counts[user.user_id] = 0
+        count = self._failure_counts.get(user.user_id, 0) + 1
+        self._failure_counts[user.user_id] = count
+        if count >= threshold:
+            self._locked_until[user.user_id] = now + lock_seconds
+
+    def record_login_success(self, user_id: str) -> None:
+        self._failure_counts.pop(user_id, None)
+        self._locked_until.pop(user_id, None)
 
 
 class InMemorySessionStore:
@@ -138,6 +172,13 @@ class InMemorySessionStore:
         now = self._clock()
         session.last_seen_at = now
         session.expires_at = now + ttl_seconds
+        return session
+
+    def mark_reauthenticated(self, session_id: str, at: float) -> SessionRecord | None:
+        session = self.get(session_id)
+        if session is None:
+            return None
+        session.reauthenticated_at = at
         return session
 
     def set_active_context(self, session_id: str, context_id: str) -> SessionRecord | None:

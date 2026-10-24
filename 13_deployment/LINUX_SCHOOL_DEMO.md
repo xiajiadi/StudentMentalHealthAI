@@ -17,7 +17,7 @@ sudo /usr/bin/python3.12 /home/psynova/apps/psynova/staging/linux-school-demo/13
 - `/opt/psynova-school-demo/release` 保存 root 所有、服务账号不可写的后端和数据库源码；独立 Python 3.12 虚拟环境从两个已锁定的 `uv.lock` 安装依赖。
 - 创建非登录账号 `psynova-school-demo`。systemd 服务只读取 `LoadCredentialEncrypted` 注入的运行账号、Fernet 密钥和合成演示账号凭据。
 - 建立 utf8mb4 Schema `smhai_school_demo`。应用账号仅有该 Schema 的 `SELECT/INSERT/UPDATE/DELETE`；迁移账号仅在该 Schema 获得 `CREATE/ALTER/INDEX/REFERENCES` 和所需 DML 权限，不授予 `DROP` 或 `GRANT OPTION`。迁移成功后账号锁定，加密迁移凭据删除。
-- 使用现有 Alembic 迁移链到 `20261016_0024`，核对表、外键、CHECK、唯一约束、InnoDB 和排序规则。任何非空且不在预期 head 的状态都停止，保留现场。
+- 使用现有 Alembic 迁移链到 `20261024_0025`，核对表、列、外键、CHECK、唯一约束、InnoDB 和排序规则。精确 `20261016_0024` 仅在完整结构核验通过后允许增量升级；其他非空或状态不一致的数据库均停止并保留现场。
 - 使用现有合成学校种子创建 2 所学校、2 个主题、8 个四角色账号；在同一服务运行中执行两次以验证幂等。账号密码保存在 systemd 加密凭据，不写进日志或安装摘要。
 - 执行真实 `LoadCredentialEncrypted` Provider 探针；启动前检查 MySQL 身份、版本、运行账号授权和 revision。启动后通过 HTTP 测四角色登录、角色拒绝、跨学校主题拒绝，并用登录会话验证后端重启后的数据库持久性。
 - Backend 只监听 `127.0.0.1:8088`，MySQL 只监听 `127.0.0.1:3306`。不启用或改动 Nginx。

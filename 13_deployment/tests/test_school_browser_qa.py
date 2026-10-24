@@ -227,6 +227,135 @@ def test_auth_sanitizer_fails_closed_on_duplicate_missing_unknown_or_malformed_s
         assert all(item["status"] == "FAIL" for item in result["results"])
 
 
+def test_auth_sanitizer_retains_only_allowlisted_browser_diagnostics(tmp_path):
+    artifact_dir = tmp_path / "browser-qa"
+    artifact_dir.mkdir()
+    (artifact_dir / "alpha-student.png").write_bytes(b"masked synthetic screenshot")
+    children = []
+    for slot in qa.ACCOUNT_SLOTS:
+        stages = _passed_stages()
+        item = {"slot": slot, "status": "PASS", "stages": stages}
+        if slot == "alpha.student":
+            stages["forbidden_route"] = "FAIL"
+            item["status"] = "FAIL"
+            item["diagnostic"] = {
+                "stage": "forbidden_route",
+                "substage": "role_redirect",
+                "code": "ROLE_REDIRECT_NOT_COMPLETED",
+                "current_path": "admin_overview",
+                "message": "sensitive detail must not pass through",
+            }
+        elif slot == "alpha.psychological_specialist":
+            stages["forbidden_route"] = "FAIL"
+            item["status"] = "FAIL"
+            item["diagnostic"] = {
+                "stage": "student_history",
+                "substage": "metadata_response",
+                "code": "DTO_INVALID",
+                "current_path": "student_home",
+                "message": "sensitive detail must not pass through",
+            }
+        children.append(item)
+
+    result = qa.sanitize_child_output(
+        json.dumps({"results": children}), artifact_dir=artifact_dir, child_exit_code=0
+    )
+
+    student = result["results"][0]
+    assert student["stages"]["screenshot"] == "PASS"
+    assert student["stages"]["forbidden_route"] == "FAIL"
+    assert student["failure"] == {
+        "stage": "forbidden_route",
+        "substage": "role_redirect",
+        "code": "ROLE_REDIRECT_NOT_COMPLETED",
+        "current_path": "admin_overview",
+    }
+    specialist = result["results"][2]
+    assert specialist["failure"] == {
+        "stage": "student_history",
+        "substage": "metadata_response",
+        "code": "DTO_INVALID",
+        "current_path": "student_home",
+    }
+    assert "message" not in json.dumps(result)
+
+
+def test_student_history_request_diagnostics_remain_fixed_and_allowlisted():
+    for code in (
+        "REQUEST_NOT_STARTED",
+        "REQUEST_FAILED",
+        "REQUEST_PENDING_PROBE_200",
+        "REQUEST_PENDING_PROBE_FAILED",
+        "REQUEST_PENDING_PROBE_EVALUATION_FAILED",
+    ):
+        diagnostic = qa._sanitize_auth_diagnostic({
+            "stage": "student_history",
+            "substage": "metadata_response",
+            "code": code,
+            "current_path": "student_history",
+        })
+        assert diagnostic == {
+            "stage": "student_history",
+            "substage": "metadata_response",
+            "code": code,
+            "current_path": "student_history",
+        }
+    for code in (
+        "ASSESSMENT_LIBRARY_NOT_VISIBLE",
+        "ASSESSMENT_LOADING_DID_NOT_SETTLE",
+        "CARD_COUNT_MISMATCH",
+    ):
+        assert qa._sanitize_auth_diagnostic({
+            "stage": "student_history",
+            "substage": "metadata_render",
+            "code": code,
+            "current_path": "student_history",
+        }) == {
+            "stage": "student_history",
+            "substage": "metadata_render",
+            "code": code,
+            "current_path": "student_history",
+        }
+    diagnostic = qa._sanitize_auth_diagnostic({
+        "stage": "student_history",
+        "substage": "metadata_response",
+        "code": "RESPONSE_NOT_RECEIVED",
+        "current_path": "student_home",
+        "checkpoint": "response_wait_completed",
+        "message": "discarded",
+    })
+    assert diagnostic == {
+        "stage": "student_history",
+        "substage": "metadata_response",
+        "code": "RESPONSE_NOT_RECEIVED",
+        "current_path": "student_home",
+        "checkpoint": "response_wait_completed",
+    }
+    assert qa._sanitize_auth_diagnostic({
+        "stage": "student_history",
+        "substage": "route",
+        "code": "ROUTE_NOT_REACHED",
+        "current_path": "student_home",
+    }) == {
+        "stage": "student_history",
+        "substage": "route",
+        "code": "ROUTE_NOT_REACHED",
+        "current_path": "student_home",
+    }
+    for code in ("RESPONSE_NOT_RECEIVED", "HTTP_STATUS", "ENVELOPE_INVALID"):
+        assert qa._sanitize_auth_diagnostic({
+            "stage": "student_feedback",
+            "substage": "feedback_request",
+            "code": code,
+            "current_path": "student_feedback",
+        }) == {
+            "stage": "student_feedback",
+            "substage": "feedback_request",
+            "code": code,
+            "current_path": "student_feedback",
+        }
+
+
 def test_child_pass_without_expected_screenshot_is_reported_failed(tmp_path):
     result = qa.sanitize_child_output(
         json.dumps({
@@ -527,6 +656,28 @@ def test_node_environment_excludes_database_and_application_secrets():
     })
 
     assert environment == {"PATH": "node-path", "SystemRoot": "windows-root"}
+
+
+def test_node_environment_discovers_local_playwright_cache_only_for_current_process(monkeypatch, tmp_path):
+    monkeypatch.setattr(qa.os, "environ", {"PATH": "node-path", "SystemRoot": "windows-root"})
+    monkeypatch.setattr(qa.Path, "home", lambda: tmp_path)
+    original_is_dir = qa.Path.is_dir
+
+    def is_dir_without_shared_cache(path):
+        if str(path).casefold() == "d:\\dev\\tools\\playwright-browsers":
+            return False
+        return original_is_dir(path)
+
+    monkeypatch.setattr(qa.Path, "is_dir", is_dir_without_shared_cache)
+    cache = tmp_path / "AppData" / "Local" / "ms-playwright"
+    cache.mkdir(parents=True)
+    environment = qa.safe_node_environment()
+
+    assert environment == {
+        "PATH": "node-path",
+        "SystemRoot": "windows-root",
+        "PLAYWRIGHT_BROWSERS_PATH": str(cache),
+    }
 
 
 def test_browser_prerequisite_diagnostic_is_closed_and_contains_no_paths(tmp_path):

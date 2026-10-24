@@ -1,4 +1,10 @@
 @import "tailwindcss";
+@import "@radix-ui/colors/slate.css";
+@import "@radix-ui/colors/cyan.css";
+@import "@radix-ui/colors/teal.css";
+@import "@radix-ui/colors/amber.css";
+@import "@radix-ui/colors/red.css";
+@import "@radix-ui/colors/indigo.css";
 @import "./tokens.css";
 
 @font-face {
@@ -178,7 +184,7 @@ a {
 
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity var(--motion-fast) ease;
+  transition: opacity var(--motion-fast) ease-out;
 }
 
 .fade-enter-from,
@@ -240,3 +246,12 @@ a {
     transition-duration: 1ms !important;
   }
 }
+
+/* Keep the account-directory dialogs on the same Radix palette and type scale. */
+body:has(.directory-studio) .dialog-overlay { background: color-mix(in srgb, var(--slate-12) 35%, transparent); }
+body:has(.directory-studio) .dialog-content.dialog-content { border: 0.5px solid var(--slate-5); border-radius: var(--radius-dialog); background: var(--slate-1); box-shadow: var(--shadow-raised); }
+body:has(.directory-studio) .dialog-title.dialog-title { color: var(--slate-12); font-size: 16px; }
+body:has(.directory-studio) .dialog-description.dialog-description { color: var(--slate-11); font-size: 12px; }
+body:has(.directory-studio) .dialog-close.dialog-close { border: 0.5px solid var(--slate-5); border-radius: 4px; color: var(--slate-11); background: var(--slate-1); }
+body:has(.directory-studio) .dialog-close.dialog-close:hover { border-color: var(--cyan-7); color: var(--cyan-11); background: var(--cyan-2); }
+body:has(.directory-studio) .app-button.app-button { font-size: 12px; }

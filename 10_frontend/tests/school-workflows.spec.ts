@@ -14,7 +14,6 @@ const api = vi.hoisted(() => ({
   previewSchoolAccountImport: vi.fn(),
   importSchoolAccounts: vi.fn(),
   getSchoolAccountBatch: vi.fn(),
-  activateSchoolAccount: vi.fn(),
   listSchoolClasses: vi.fn(),
   listSchoolMembers: vi.fn(),
   createSchoolClass: vi.fn(),
@@ -32,6 +31,9 @@ const api = vi.hoisted(() => ({
 }))
 
 vi.mock('@/services/mock-api', () => ({ frontendApi: api }))
+vi.mock('@/components/charts/TeacherProgressChart.vue', () => ({
+  default: { template: '<div aria-hidden="true" />' },
+}))
 vi.mock('@/services/school-cat-activations', () => ({
   schoolCatActivations: { list: api.listActivations },
 }))
@@ -99,7 +101,6 @@ beforeEach(() => {
     { row_no: 2, user_id: 'USER_new_teacher', display_name: '新合成教师', role: 'teacher', status: 'PENDING_ACTIVATION' },
   ] }))
   api.getSchoolAccountBatch.mockResolvedValue(envelope({ batch_ref: 'BATCH_123456', created_count: 0, accounts: [] }))
-  api.activateSchoolAccount.mockResolvedValue(envelope({ activated: true }))
   api.listSchoolClasses.mockResolvedValue(envelope([{ class_ref: task.class_ref, status: 'ACTIVE', active_student_count: 1, active_teacher_count: 1 }]))
   api.listSchoolMembers.mockImplementation(async (role: string) => envelope([
     { user_id: role === 'student' ? 'USER_student' : 'USER_teacher', role, subject_id: role === 'student' ? 'SUBJ_student' : null },
@@ -162,7 +163,7 @@ describe('学校测评任务页面', () => {
     wrapper.unmount()
   })
 
-  it('CSV服务端预览后整批幂等导入，并在激活完成后立即清除密码', async () => {
+  it('CSV服务端预览后整批幂等导入，并将待首次登录账号交给一次性凭据流程', async () => {
     vi.stubGlobal('crypto', { randomUUID: () => 'import-test-uuid' })
     api.importSchoolAccounts
       .mockRejectedValueOnce(new Error('network unavailable after submit'))
@@ -196,40 +197,25 @@ describe('学校测评任务页面', () => {
     expect(api.importSchoolAccounts.mock.calls[0]![2]).toBe(api.importSchoolAccounts.mock.calls[1]![2])
     expect(wrapper.text()).toContain('新合成学生')
     expect(wrapper.text()).toContain('待激活')
-
+    expect(wrapper.text()).toContain('一次性凭据中批量发行登录凭据')
+    expect(wrapper.find('input[type="password"]').exists()).toBe(false)
     await wrapper.get('.directory-account-row .app-button').trigger('click')
-    await wrapper.get('#school-account-new-password').setValue('Synthetic-Test-Password-42!')
-    await wrapper.get('.directory-activation').trigger('submit')
-    await flushPromises()
-    expect(api.activateSchoolAccount).toHaveBeenCalledWith('USER_new_student', 'Synthetic-Test-Password-42!')
-    expect(wrapper.find('#school-account-new-password').exists()).toBe(false)
-    expect(wrapper.text()).not.toContain('Synthetic-Test-Password-42!')
+    expect(wrapper.emitted('open-credentials')).toHaveLength(1)
     wrapper.unmount()
   })
 
-  it('激活失败后清除密码并要求重新输入；取消也会清除输入', async () => {
+  it('待首次登录账号提供一次性凭据入口，目录中不再收集密码', async () => {
     api.getSchoolAdminDirectory.mockResolvedValue(envelope({
       school: { school_ref: 'SCHOOL_synthetic', display_name: '合成学校' },
       classes: [],
       members: [{ user_id: 'USER_pending', display_name: '待激活学生', role: 'student', account_status: 'SUSPENDED', provisioning_status: 'PENDING_ACTIVATION' }],
     }))
-    api.activateSchoolAccount.mockRejectedValueOnce(new Error('synthetic validation failure'))
     const wrapper = mount(AdminSchoolDirectory)
     await flushPromises()
+    expect(wrapper.text()).toContain('在一次性凭据中批量发行登录凭据')
+    expect(wrapper.find('input[type="password"]').exists()).toBe(false)
     await wrapper.get('.directory-account-row .app-button').trigger('click')
-    const passwordInput = wrapper.get('#school-account-new-password')
-    expect(passwordInput.attributes('autocomplete')).toBe('new-password')
-    await passwordInput.setValue('Synthetic-Only-Passphrase-123!')
-    await wrapper.get('.directory-activation').trigger('submit')
-    await flushPromises()
-    expect(wrapper.text()).toContain('账号激活未完成')
-    expect((wrapper.get('#school-account-new-password').element as { value: string }).value).toBe('')
-    expect(wrapper.text()).not.toContain('Synthetic-Only-Passphrase-123!')
-
-    await wrapper.get('#school-account-new-password').setValue('Another-Synthetic-Passphrase-456!')
-    await wrapper.get('.directory-activation button[type="button"]').trigger('click')
-    expect(wrapper.find('#school-account-new-password').exists()).toBe(false)
-    expect(wrapper.text()).not.toContain('Another-Synthetic-Passphrase-456!')
+    expect(wrapper.emitted('open-credentials')).toHaveLength(1)
     wrapper.unmount()
   })
 
@@ -363,37 +349,32 @@ describe('学校测评任务页面', () => {
     expect(wrapper.text()).not.toContain('当前没有分配给你的任务')
   })
 
-  it('学生历史空列表和拒绝访问分别显示对应状态', async () => {
-    api.listStudentSchoolTaskHistory.mockResolvedValueOnce(envelope([]))
+  it('学生任务空态和访问拒绝分别显示对应状态', async () => {
+    api.listStudentSchoolTasks.mockResolvedValueOnce(envelope([]))
     const emptyWrapper = mount(StudentAssignedTasks)
     await flushPromises()
-    expect(emptyWrapper.find('.task-history').text()).toContain('当前没有任务历史')
+    expect(emptyWrapper.find('.assigned-tasks__state').text()).toContain('当前没有分配给你的任务')
     emptyWrapper.unmount()
 
-    api.listStudentSchoolTaskHistory.mockRejectedValueOnce({ code: 'forbidden' })
+    api.listStudentSchoolTasks.mockRejectedValueOnce({ code: 'forbidden' })
     const deniedWrapper = mount(StudentAssignedTasks)
     await flushPromises()
-    expect(deniedWrapper.find('.task-history').text()).toContain('当前账号暂时无法查看任务历史')
-    expect(deniedWrapper.find('.task-history').text()).not.toContain('当前没有任务历史')
+    expect(deniedWrapper.find('.assigned-tasks__state').text()).toContain('当前任务暂不可访问')
+    expect(deniedWrapper.find('.assigned-tasks__state').text()).not.toContain('当前没有分配给你的任务')
     deniedWrapper.unmount()
   })
 
-  it('学生历史仅显示生命周期元数据，不提供测评或报告链接', async () => {
-    api.listStudentSchoolTaskHistory.mockResolvedValueOnce(envelope([{
-      task_ref: 'TASK_synthetic_987654', class_ref: 'CLASS_synthetic_123456',
-      task_status: 'EXPIRED', enrollment_status: 'REVOKED', assessment_status: 'completed',
-      started_at: '2026-10-01T09:00:00Z', completed_at: '2026-10-01T09:12:00Z',
+  it('学生任务卡片不展示测评分数或原始回答', async () => {
+    api.listStudentSchoolTasks.mockResolvedValueOnce(envelope([{
+      ...task, task_ref: 'TASK_synthetic_987654', assessment_id: 'ASSESS_synthetic_987654',
+      assessment_status: 'completed',
     }]))
     const wrapper = mount(StudentAssignedTasks)
     await flushPromises()
-    const history = wrapper.find('.task-history')
-    expect(history.text()).toContain('任务 987654')
-    expect(history.text()).toContain('报名已撤销')
-    expect(history.text()).toContain('开始于')
-    expect(history.text()).toContain('完成于')
-    expect(history.findAll('a')).toHaveLength(0)
-    expect(history.findAll('button')).toHaveLength(1) // 刷新历史
-    expect(history.text()).not.toMatch(/测评结果|查看报告|分数|得分/)
+    expect(wrapper.text()).toContain('班级任务 987654')
+    expect(wrapper.text()).toContain('已完成')
+    expect(wrapper.text()).not.toMatch(/测评结果|查看报告|分数|得分|原始回答/)
+    expect(api.listStudentSchoolTaskHistory).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 
@@ -422,12 +403,19 @@ describe('学校测评任务页面', () => {
   })
 
   it('教师只看到任务级汇总，DOM不含个体标识字段', async () => {
-    const wrapper = mount(TeacherOverviewView)
+    window.localStorage.removeItem('psynova.teacher.preview.dataMode')
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/teacher/overview', component: TeacherOverviewView }],
+    })
+    await router.push('/teacher/overview')
+    await router.isReady()
+    const wrapper = mount(TeacherOverviewView, { global: { plugins: [router] } })
     await flushPromises()
+    await vi.waitFor(() => expect(wrapper.find('.overview-board').exists()).toBe(true))
 
-    expect(wrapper.text()).toContain('已分配任务')
-    expect(wrapper.text()).toContain('已撤销')
-    expect(wrapper.text()).toContain('1')
+    expect(wrapper.text()).toContain('进行中任务')
+    expect(wrapper.text()).toContain('测评完成率')
     expect(wrapper.text()).not.toContain('SUBJ_')
     expect(wrapper.text()).not.toContain('ASSESS_')
     expect(wrapper.text()).not.toContain('USER_')

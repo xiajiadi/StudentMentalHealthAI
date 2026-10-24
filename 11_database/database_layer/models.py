@@ -40,9 +40,9 @@ from .enums import (
     DataOrigin,
     GrantStatus,
     IdempotencyState,
+    ResearchEducationOutputReviewStatus,
     ReviewPriority,
     ReviewStatus,
-    ResearchEducationOutputReviewStatus,
     SubjectStatus,
     SupportRunStatus,
     SupportStatus,
@@ -54,6 +54,9 @@ class Account(ResourceIdentityMixin, TimestampMixin, Base):
     __tablename__ = "accounts"
     __table_args__ = mysql_table_args(
         CheckConstraint("status IN ('ACTIVE', 'SUSPENDED', 'DISABLED')", name="status_allowed"),
+        CheckConstraint(
+            "failed_login_count BETWEEN 0 AND 32767", name="failed_login_count_allowed"
+        ),
     )
 
     login_name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
@@ -61,6 +64,14 @@ class Account(ResourceIdentityMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default=AccountStatus.ACTIVE.value
     )
+    must_change_password: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    failed_login_count: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=0, server_default="0"
+    )
+    locked_until: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    password_changed_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
 
 
 class Role(ResourceIdentityMixin, TimestampMixin, Base):
@@ -273,6 +284,328 @@ class SchoolAccountProvision(ResourceIdentityMixin, TimestampMixin, Base):
     activated_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
 
 
+class SchoolRosterImportRun(ResourceIdentityMixin, TimestampMixin, Base):
+    """Atomic parent receipt for a multi-class roster import.
+
+    Child SchoolAccountBatch rows remain capped at 100. The parent records the
+    single preview/confirm result; a scoped link table binds child batches
+    without copying student identifiers or source-file contents.
+    """
+
+    __tablename__ = "school_roster_import_runs"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("run_ref", name="school_roster_import_run_ref_unique"),
+        UniqueConstraint("id", "school_id", name="school_roster_import_run_id_school_unique"),
+        ForeignKeyConstraint(
+            ["created_by_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_school_roster_import_runs_creator_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["school_id"], ["schools.id"], name="fk_school_roster_import_runs_school",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint("row_count BETWEEN 1 AND 200", name="row_count_allowed"),
+        CheckConstraint("created_count BETWEEN 0 AND row_count", name="created_count_allowed"),
+        CheckConstraint("status = 'COMPLETED'", name="status_allowed"),
+        Index("ix_school_roster_import_runs_school_created", "school_id", "created_at"),
+    )
+
+    run_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    created_by_membership_role_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    idempotency_key_hash: Mapped[bytes] = mapped_column(BINARY(32), nullable=False)
+    request_fingerprint: Mapped[bytes] = mapped_column(BINARY(32), nullable=False)
+    source_sha256: Mapped[bytes | None] = mapped_column(BINARY(32), nullable=True)
+    row_count: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    created_count: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="COMPLETED")
+    summary: Mapped[dict[str, object]] = mapped_column(mysql.JSON(), nullable=False)
+    trace_id: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+
+
+class SchoolRosterImportRunBatch(ResourceIdentityMixin, TimestampMixin, Base):
+    __tablename__ = "school_roster_import_run_batches"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("run_id", "batch_id", name="school_roster_run_batch_unique"),
+        ForeignKeyConstraint(
+            ["run_id", "school_id"],
+            ["school_roster_import_runs.id", "school_roster_import_runs.school_id"],
+            name="fk_school_roster_run_batches_run_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["batch_id", "school_id", "class_id"],
+            [
+                "school_account_batches.id",
+                "school_account_batches.school_id",
+                "school_account_batches.class_id",
+            ],
+            name="fk_school_roster_run_batches_batch_school_class",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint("row_count BETWEEN 1 AND 100", name="row_count_allowed"),
+        Index("ix_school_roster_run_batches_run", "run_id", "school_id"),
+    )
+
+    run_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    batch_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    class_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    row_count: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+
+
+class SchoolAccountCredential(ResourceIdentityMixin, TimestampMixin, Base):
+    """One-time verifier for account activation and password recovery.
+
+    The plaintext secret is returned once to an authorized caller and is never
+    stored. Only a SHA-256 verifier is persisted; callers generate at least 256
+    bits of entropy before hashing.
+    """
+
+    __tablename__ = "school_account_credentials"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("credential_ref", name="school_account_credential_ref_unique"),
+        UniqueConstraint("token_hash", name="school_account_credential_token_hash_unique"),
+        ForeignKeyConstraint(
+            ["account_id", "school_id"],
+            ["account_school_memberships.account_id", "account_school_memberships.school_id"],
+            name="fk_school_account_credentials_account_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["issued_by_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_school_account_credentials_issuer_school",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint(
+            "purpose IN ('INITIAL_ACTIVATION', 'STAFF_INVITATION', 'PASSWORD_RESET')",
+            name="purpose_allowed",
+        ),
+        CheckConstraint("status IN ('ISSUED', 'CONSUMED', 'REVOKED')", name="status_allowed"),
+        CheckConstraint(
+            "delivery_channel IN ('MANUAL', 'EMAIL', 'SMS')", name="delivery_channel_allowed"
+        ),
+        CheckConstraint(
+            "(status = 'ISSUED' AND consumed_at IS NULL AND revoked_at IS NULL) OR "
+            "(status = 'CONSUMED' AND consumed_at IS NOT NULL AND revoked_at IS NULL) OR "
+            "(status = 'REVOKED' AND revoked_at IS NOT NULL)",
+            name="status_matches_timestamps",
+        ),
+        Index(
+            "ix_school_account_credentials_account_purpose_status",
+            "account_id", "purpose", "status", "expires_at",
+        ),
+        Index(
+            "ix_school_account_credentials_school_status",
+            "school_id", "status", "created_at",
+        ),
+    )
+
+    credential_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    account_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    issued_by_membership_role_id: Mapped[int | None] = mapped_column(unsigned_id(), nullable=True)
+    purpose: Mapped[str] = mapped_column(String(24), nullable=False)
+    resource_ref: Mapped[str | None] = mapped_column(ascii_id(128), nullable=True)
+    token_hash: Mapped[bytes] = mapped_column(BINARY(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="ISSUED")
+    delivery_channel: Mapped[str] = mapped_column(String(16), nullable=False, default="MANUAL")
+    expires_at: Mapped[datetime] = mapped_column(utc_datetime(), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    trace_id: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+
+
+class SchoolStaffInvitation(ResourceIdentityMixin, TimestampMixin, Base):
+    __tablename__ = "school_staff_invitations"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("invitation_ref", name="school_staff_invitation_ref_unique"),
+        UniqueConstraint("id", "school_id", name="school_staff_invitation_id_school_unique"),
+        UniqueConstraint("account_id", name="school_staff_invitation_account_unique"),
+        UniqueConstraint(
+            "school_id", "employee_ref", name="school_staff_invitation_employee_unique"
+        ),
+        ForeignKeyConstraint(
+            ["account_id", "school_id"],
+            ["account_school_memberships.account_id", "account_school_memberships.school_id"],
+            name="fk_school_staff_invitations_account_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_school_staff_invitations_membership_role_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["membership_id", "account_id", "school_id"],
+            [
+                "account_school_memberships.id",
+                "account_school_memberships.account_id",
+                "account_school_memberships.school_id",
+            ],
+            name="fk_school_staff_invitations_membership_account_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["membership_role_id", "membership_id", "school_id"],
+            ["membership_roles.id", "membership_roles.membership_id", "membership_roles.school_id"],
+            name="fk_school_staff_invitations_role_membership_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["issued_by_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_school_staff_invitations_issuer_school",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint(
+            "role_code IN ('teacher', 'psychological_specialist')", name="role_allowed"
+        ),
+        CheckConstraint(
+            "status IN ('ISSUED', 'ACCEPTED', 'REVOKED', 'EXPIRED')", name="status_allowed"
+        ),
+        CheckConstraint(
+            "delivery_channel IN ('MANUAL', 'EMAIL', 'SMS')", name="delivery_channel_allowed"
+        ),
+        CheckConstraint(
+            "(status = 'ISSUED' AND accepted_at IS NULL AND revoked_at IS NULL) OR "
+            "(status = 'ACCEPTED' AND accepted_at IS NOT NULL AND revoked_at IS NULL) OR "
+            "(status = 'REVOKED' AND revoked_at IS NOT NULL) OR status = 'EXPIRED'",
+            name="status_matches_timestamps",
+        ),
+        Index("ix_school_staff_invitations_school_status", "school_id", "status", "created_at"),
+    )
+
+    invitation_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    account_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    membership_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    membership_role_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    issued_by_membership_role_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    role_code: Mapped[str] = mapped_column(ascii_id(32), nullable=False)
+    employee_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="ISSUED")
+    delivery_channel: Mapped[str] = mapped_column(String(16), nullable=False, default="MANUAL")
+    work_contact_ciphertext: Mapped[bytes] = mapped_column(mysql.MEDIUMBLOB(), nullable=False)
+    work_contact_cipher_format_version: Mapped[str] = mapped_column(ascii_id(32), nullable=False)
+    work_contact_key_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    work_contact_payload_schema_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    work_contact_verified_at: Mapped[datetime] = mapped_column(utc_datetime(), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(utc_datetime(), nullable=False)
+    accepted_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    trace_id: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+
+
+class SchoolStaffInvitationClass(ResourceIdentityMixin, TimestampMixin, Base):
+    __tablename__ = "school_staff_invitation_classes"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("invitation_id", "class_id", name="invitation_class_unique"),
+        ForeignKeyConstraint(
+            ["invitation_id", "school_id"],
+            ["school_staff_invitations.id", "school_staff_invitations.school_id"],
+            name="fk_school_staff_invitation_classes_invitation_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["class_id", "school_id"],
+            ["school_classes.id", "school_classes.school_id"],
+            name="fk_school_staff_invitation_classes_class_school",
+            ondelete="RESTRICT",
+        ),
+    )
+
+    invitation_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    class_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+
+
+class SchoolPasswordRecoveryTicket(ResourceIdentityMixin, TimestampMixin, Base):
+    __tablename__ = "school_password_recovery_tickets"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("ticket_ref", name="school_password_recovery_ticket_ref_unique"),
+        UniqueConstraint(
+            "id", "school_id", name="school_password_recovery_ticket_id_school_unique"
+        ),
+        ForeignKeyConstraint(
+            ["account_id", "school_id"],
+            ["account_school_memberships.account_id", "account_school_memberships.school_id"],
+            name="fk_school_password_recovery_tickets_account_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["class_id", "school_id"],
+            ["school_classes.id", "school_classes.school_id"],
+            name="fk_school_password_recovery_tickets_class_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["verified_by_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_school_password_recovery_tickets_verifier_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["approved_by_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_school_password_recovery_tickets_approver_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["credential_ref"], ["school_account_credentials.credential_ref"],
+            name="fk_school_password_recovery_tickets_credential_ref",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint(
+            "status IN ('REQUESTED', 'TEACHER_VERIFIED', 'APPROVED', 'REJECTED', "
+            "'COMPLETED', 'EXPIRED')",
+            name="status_allowed",
+        ),
+        CheckConstraint(
+            "reason_code IN ('CREDENTIAL_LOST', 'ACCOUNT_LOCKED', 'ACCESS_PROBLEM', 'OTHER')",
+            name="reason_allowed",
+        ),
+        CheckConstraint(
+            "(status = 'REQUESTED' AND verified_at IS NULL AND approved_at IS NULL "
+            "AND completed_at IS NULL) OR "
+            "(status = 'TEACHER_VERIFIED' AND verified_at IS NOT NULL AND approved_at IS NULL "
+            "AND completed_at IS NULL) OR "
+            "(status = 'APPROVED' AND verified_at IS NOT NULL AND approved_at IS NOT NULL "
+            "AND completed_at IS NULL) OR "
+            "(status = 'REJECTED' AND completed_at IS NULL) OR "
+            "(status = 'COMPLETED' AND completed_at IS NOT NULL) OR status = 'EXPIRED'",
+            name="status_matches_timestamps",
+        ),
+        Index(
+            "ix_school_password_recovery_tickets_school_status",
+            "school_id", "status", "created_at",
+        ),
+        Index(
+            "ix_school_password_recovery_tickets_account_status",
+            "account_id", "status", "created_at",
+        ),
+    )
+
+    ticket_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    account_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    class_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    reason_code: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="REQUESTED")
+    verified_by_membership_role_id: Mapped[int | None] = mapped_column(unsigned_id(), nullable=True)
+    approved_by_membership_role_id: Mapped[int | None] = mapped_column(unsigned_id(), nullable=True)
+    verified_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    credential_ref: Mapped[str | None] = mapped_column(ascii_id(128), nullable=True)
+    trace_id: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+
+
 class AccountRole(ResourceIdentityMixin, TimestampMixin, Base):
     __tablename__ = "account_roles"
     __table_args__ = mysql_table_args(
@@ -397,6 +730,7 @@ class SchoolClass(ResourceIdentityMixin, TimestampMixin, Base):
     school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
     class_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
     display_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    grade_level: Mapped[str | None] = mapped_column(ascii_id(32), nullable=True)
     created_by_membership_role_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="ACTIVE", server_default="ACTIVE"
@@ -642,6 +976,7 @@ class AuthSession(ResourceIdentityMixin, TimestampMixin, Base):
     absolute_expires_at: Mapped[datetime] = mapped_column(utc_datetime(), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
     revocation_reason: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    reauthenticated_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
 
 
 class AssessmentSession(ResourceIdentityMixin, TimestampMixin, Base):

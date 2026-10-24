@@ -105,11 +105,11 @@ export const adminWorkspaceActions: AdminWorkspaceAction[] = [
   },
   {
     id: 'admin-activate-accounts',
-    label: '激活账号',
-    description: '查看待激活账号并逐个设置密码。',
+    label: '批量发行一次性凭据',
+    description: '为待首次登录账号批量发行凭据。',
     group: '账号管理',
-    to: '/admin/users?directoryAction=activate-account',
-    keywords: ['账号', '待激活', '设置密码', '学生', '教师'],
+    to: '/admin/users?directoryAction=issue-credentials',
+    keywords: ['账号', '待首次登录', '一次性凭据', '批量发行', '学生', '教师'],
   },
   {
     id: 'admin-publish-task',

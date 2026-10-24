@@ -20,6 +20,9 @@ from smhai_backend.adapters.memory.repositories import (
     InMemorySessionStore,
     InMemoryUserRepository,
 )
+from smhai_backend.adapters.school_account_lifecycle import (
+    SchoolAccountLifecyclePersistenceAdapter,
+)
 from smhai_backend.adapters.school_cat_assets import SchoolCatAssetsPersistenceAdapter
 from smhai_backend.adapters.school_cat_management import SchoolCatManagementPersistenceAdapter
 from smhai_backend.adapters.school_conversation_safety import (
@@ -39,7 +42,11 @@ from smhai_backend.adapters.school_professional_reviews import (
     SchoolProfessionalReviewPersistenceAdapter,
 )
 from smhai_backend.core.async_utils import maybe_await
-from smhai_backend.core.config import BackendSettings, ModuleClientSettings
+from smhai_backend.core.config import (
+    BackendSettings,
+    LLMModuleClientSettings,
+    ModuleClientSettings,
+)
 from smhai_backend.core.rate_limit import InMemoryRateLimiter
 from smhai_backend.domains.assessment.service import AssessmentService
 from smhai_backend.domains.audit import AuditService
@@ -55,6 +62,9 @@ from smhai_backend.domains.independent_education_reviews.service import (
     IndependentEducationReviewService,
 )
 from smhai_backend.domains.professional_reviews.service import SchoolProfessionalReviewService
+from smhai_backend.domains.school_account_lifecycle.service import (
+    SchoolAccountLifecycleService,
+)
 from smhai_backend.domains.school_directory.service import SchoolDirectoryService
 from smhai_backend.domains.school_feedback.service import SchoolFeedbackService
 from smhai_backend.domains.school_tasks.service import SchoolTaskService
@@ -94,6 +104,32 @@ def _shared_worker_concurrency_lock(
     return fallback if fallback is not None else asyncio.Lock()
 
 
+def _independent_llm_client_settings(
+    settings: LLMModuleClientSettings,
+) -> ModuleClientSettings | LLMModuleClientSettings:
+    """Separate the independent lane's pinned model from the shared LLM default.
+
+    The shared Runtime default is the engineering 0.5B model, while the
+    independent-generation contract is pinned to the school 7B model unless
+    an explicitly registered provider such as DeepSeek is selected. Keep the
+    shared client unchanged and let the independent client use its own pinned
+    identity. Its Runtime deadline is 120 seconds, so its HTTP read timeout
+    must be at least 125 seconds.
+    """
+    if settings.logical_model_id != "qwen2.5-0.5b-engineering":
+        return settings
+    timeout = settings.timeout.model_copy(
+        update={"read": max(settings.timeout.read, 125.0)}
+    )
+    return ModuleClientSettings(
+        mode=settings.mode,
+        base_url=settings.base_url,
+        timeout=timeout,
+        max_connections=settings.max_connections,
+        max_keepalive_connections=settings.max_keepalive_connections,
+    )
+
+
 @dataclass(slots=True)
 class BackendContainer:
     settings: BackendSettings
@@ -118,6 +154,7 @@ class BackendContainer:
     teacher_dashboard: TeacherDashboardService
     school_tasks: SchoolTaskService
     school_directory: SchoolDirectoryService
+    school_account_lifecycle: SchoolAccountLifecycleService
     rate_limiter: InMemoryRateLimiter
     professional_reviews: SchoolProfessionalReviewService | None = None
     school_feedback: SchoolFeedbackService | None = None
@@ -528,6 +565,13 @@ def build_container(
         SchoolDirectoryPersistenceAdapter(persistence) if persistence is not None else None
     )
     school_directory = SchoolDirectoryService(persistence=directory_persistence)
+    school_account_lifecycle = SchoolAccountLifecycleService(
+        persistence=(
+            SchoolAccountLifecyclePersistenceAdapter(persistence)
+            if persistence is not None
+            else None
+        )
+    )
     professional_reviews = SchoolProfessionalReviewService(
         persistence=SchoolProfessionalReviewPersistenceAdapter(persistence)
         if persistence is not None and settings.identity_profile == "school_tenant"
@@ -724,7 +768,9 @@ def build_container(
         if settings.safety.base_url != "http://127.0.0.1:8190":
             raise ValueError("independent conversation Safety must use the local school endpoint")
         independent_rag = IndependentRagClient(settings.rag)
-        independent_llm = IndependentLLMRuntimeClient(settings.llm)
+        independent_llm = IndependentLLMRuntimeClient(
+            _independent_llm_client_settings(settings.llm)
+        )
         independent_conversations = IndependentConversationService(
             persistence=SchoolConversationsPersistenceAdapter(persistence),
             safety=safety,
@@ -986,6 +1032,7 @@ def build_container(
         teacher_dashboard=teacher_dashboard,
         school_tasks=school_tasks,
         school_directory=school_directory,
+        school_account_lifecycle=school_account_lifecycle,
         school_research=school_research,
         school_research_profiles=school_research_profiles,
         school_research_tasks=school_research_tasks,

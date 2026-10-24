@@ -15,6 +15,7 @@ from smhai_backend.domains.auth.dependencies import (
     CSRF_SECURITY_OPENAPI_EXTRA,
     CsrfActor,
     CurrentActor,
+    RecentReauthenticatedCsrfActor,
 )
 
 from .schemas import (
@@ -23,7 +24,12 @@ from .schemas import (
     AccountBatchRequest,
     AccountImportPreviewDto,
     DisplayNameRequest,
+    InitialCredentialIssueDto,
+    InitialCredentialIssueRequest,
     SchoolDirectoryDto,
+    SchoolRosterImportDto,
+    SchoolRosterImportPreviewDto,
+    SchoolRosterImportRequest,
 )
 
 router = APIRouter(prefix="/school/admin", tags=["school-directory"])
@@ -141,6 +147,35 @@ def _batch_idempotency(actor, key: str, request_payload: dict[str, object]):
     return key, fingerprint(request_payload), operation_scope
 
 
+def _roster_idempotency(actor, key: str, request_payload: dict[str, object]):
+    operation_scope = fingerprint(
+        {
+            "actor": actor.user_id,
+            "school_id": actor.school_id,
+            "school_ref": actor.school_ref,
+            "role": actor.role.value,
+            "operation": "school_directory:roster_import",
+        }
+    )
+    return key, fingerprint(request_payload), operation_scope
+
+
+def _roster_import_responses():
+    responses = _responses(
+        ErrorCode.AUTH_SESSION_EXPIRED,
+        ErrorCode.FORBIDDEN,
+        ErrorCode.CSRF_FAILED,
+        ErrorCode.VALIDATION_FAILED,
+        ErrorCode.WORKFLOW_CONFLICT,
+        ErrorCode.RESOURCE_NOT_FOUND,
+    )
+    responses[409] = {
+        "model": ApiEnvelope[SchoolRosterImportPreviewDto] | ProblemDetails,
+        "description": "Whole-roster preflight rejection or an idempotency/workflow conflict",
+    }
+    return responses
+
+
 @router.post(
     "/accounts/preview",
     response_model=ApiEnvelope[AccountImportPreviewDto],
@@ -179,6 +214,61 @@ async def import_accounts(request: Request, payload: AccountBatchRequest, actor:
     return JSONResponse(_envelope(request, AccountBatchDto.model_validate(result)), status_code=201)
 
 
+@router.post(
+    "/roster/preview",
+    response_model=ApiEnvelope[SchoolRosterImportPreviewDto],
+    responses=_responses(ErrorCode.AUTH_SESSION_EXPIRED, ErrorCode.FORBIDDEN),
+)
+async def preview_roster(request: Request, payload: SchoolRosterImportRequest, actor: CurrentActor):
+    result = await request.app.state.container.school_directory.preview_roster_import(
+        actor, payload.rows, source_sha256=payload.source_sha256
+    )
+    return JSONResponse(
+        _envelope(request, SchoolRosterImportPreviewDto.model_validate(result))
+    )
+
+
+@router.post(
+    "/roster/import",
+    response_model=ApiEnvelope[SchoolRosterImportDto],
+    status_code=201,
+    openapi_extra=CSRF_SECURITY_OPENAPI_EXTRA,
+    responses=_roster_import_responses(),
+)
+async def import_roster(request: Request, payload: SchoolRosterImportRequest, actor: CsrfActor):
+    key = request_key(request)
+    if key is None:
+        from smhai_backend.core.errors import error
+
+        raise error(ErrorCode.VALIDATION_FAILED, detail="Idempotency-Key is required")
+    result = await request.app.state.container.school_directory.import_roster(
+        actor,
+        payload.rows,
+        source_sha256=payload.source_sha256,
+        idempotency=_roster_idempotency(actor, key, payload.model_dump(mode="json")),
+        trace_id=_trace_id(request),
+    )
+    if "errors" in result:
+        preview = SchoolRosterImportPreviewDto.model_validate(result)
+        return JSONResponse(_envelope(request, preview), status_code=409)
+    roster = SchoolRosterImportDto.model_validate(result)
+    return JSONResponse(_envelope(request, roster), status_code=201)
+
+
+@router.get(
+    "/roster/imports/{run_ref}",
+    response_model=ApiEnvelope[SchoolRosterImportDto],
+    responses=_responses(
+        ErrorCode.AUTH_SESSION_EXPIRED, ErrorCode.FORBIDDEN, ErrorCode.RESOURCE_NOT_FOUND
+    ),
+)
+async def get_roster_import(request: Request, run_ref: str, actor: CurrentActor):
+    result = await request.app.state.container.school_directory.get_roster_import(
+        actor, run_ref
+    )
+    return JSONResponse(_envelope(request, SchoolRosterImportDto.model_validate(result)))
+
+
 @router.get(
     "/accounts/batches/{batch_ref}",
     response_model=ApiEnvelope[AccountBatchDto],
@@ -189,6 +279,39 @@ async def import_accounts(request: Request, payload: AccountBatchRequest, actor:
 async def get_account_batch(request: Request, batch_ref: str, actor: CurrentActor):
     result = await request.app.state.container.school_directory.get_batch(actor, batch_ref)
     return JSONResponse(_envelope(request, AccountBatchDto.model_validate(result)))
+
+
+@router.post(
+    "/accounts/credentials/issue",
+    response_model=ApiEnvelope[InitialCredentialIssueDto],
+    status_code=201,
+    openapi_extra=CSRF_SECURITY_OPENAPI_EXTRA,
+    responses=_responses(
+        ErrorCode.AUTH_SESSION_EXPIRED,
+        ErrorCode.FORBIDDEN,
+        ErrorCode.CSRF_FAILED,
+        ErrorCode.VALIDATION_FAILED,
+        ErrorCode.WORKFLOW_CONFLICT,
+        ErrorCode.RESOURCE_NOT_FOUND,
+    ),
+)
+async def issue_initial_credentials(
+    request: Request,
+    payload: InitialCredentialIssueRequest,
+    actor: RecentReauthenticatedCsrfActor,
+):
+    result = await request.app.state.container.school_directory.issue_initial_credentials(
+        actor,
+        payload.user_ids,
+        ttl_seconds=request.app.state.container.settings.auth.initial_credential_ttl_seconds,
+        trace_id=_trace_id(request),
+    )
+    response = JSONResponse(
+        _envelope(request, InitialCredentialIssueDto.model_validate(result)),
+        status_code=201,
+        headers={"Cache-Control": "no-store"},
+    )
+    return response
 
 
 @router.post(

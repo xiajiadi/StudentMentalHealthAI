@@ -541,7 +541,9 @@ def _normalize_check_sql(value: Any) -> str:
     return render(expression)
 
 
-def _trusted_current_schema(database_root: Path) -> dict[str, Any]:
+def _trusted_current_schema(
+    database_root: Path, revision: str = CURRENT_SCHOOL_REVISION
+) -> dict[str, Any]:
     try:
         for dependency_path in (
             database_root / ".venv" / "Lib" / "site-packages",
@@ -561,22 +563,30 @@ def _trusted_current_schema(database_root: Path) -> dict[str, Any]:
         if resolved_root not in model_path.parents:
             raise ValueError
         metadata = Base.metadata
-        manifest = trusted_manifest(CURRENT_SCHOOL_REVISION)
-        model_tables = {name: table for name, table in metadata.tables.items()}
-        expected_names = set(model_tables) | {"database_alembic_version"}
+        manifest = trusted_manifest(revision)
+        all_model_tables = {name: table for name, table in metadata.tables.items()}
+        expected_names = set(manifest)
+        expected_model_names = expected_names - {"database_alembic_version"}
+        model_tables = {
+            name: table
+            for name, table in all_model_tables.items()
+            if name in expected_model_names
+        }
         if (
             not isinstance(manifest, dict)
             or not manifest
             or set(manifest) != expected_names
-            or set(model_tables) != set(metadata.tables)
+            or set(model_tables) != expected_model_names
         ):
             raise ValueError
 
         dialect = mysql.dialect()
         schema: dict[str, Any] = {}
         for table_name, table in model_tables.items():
+            allowed_columns = set(manifest[table_name])
             columns: dict[str, dict[str, Any]] = {}
-            for column in table.columns:
+            for column_name in manifest[table_name]:
+                column = table.c[column_name]
                 key = column.name.casefold()
                 if key in columns:
                     raise ValueError
@@ -596,9 +606,18 @@ def _trusted_current_schema(database_root: Path) -> dict[str, Any]:
                 )
                 for constraint in table.constraints
                 if isinstance(constraint, UniqueConstraint)
+                and {column.name for column in constraint.columns} <= allowed_columns
             }
             foreign_keys = set()
             for constraint in table.foreign_key_constraints:
+                local_columns = {
+                    element.parent.name for element in constraint.elements
+                }
+                if (
+                    not local_columns <= allowed_columns
+                    or constraint.referred_table.name not in model_tables
+                ):
+                    continue
                 if not constraint.name:
                     raise ValueError
                 remote_columns = tuple(
@@ -626,6 +645,7 @@ def _trusted_current_schema(database_root: Path) -> dict[str, Any]:
                 )
                 for constraint in table.constraints
                 if isinstance(constraint, CheckConstraint)
+                and {column.name for column in constraint.columns} <= allowed_columns
             }
             indexes = set()
             for index in table.indexes:
@@ -634,7 +654,11 @@ def _trusted_current_schema(database_root: Path) -> dict[str, Any]:
                     for expression in index.expressions
                     if getattr(expression, "name", None)
                 )
-                if len(index_columns) != len(index.expressions) or not index.name:
+                if (
+                    len(index_columns) != len(index.expressions)
+                    or not index.name
+                    or not set(index_columns) <= {name.casefold() for name in allowed_columns}
+                ):
                     raise ValueError
                 indexes.add((index.name.casefold(), index_columns, bool(index.unique)))
             schema[table_name.casefold()] = {
@@ -820,8 +844,9 @@ def _verify_current_schema(
     has_other_objects: bool,
     cursor: Any,
     database_root: Path,
+    revision: str = CURRENT_SCHOOL_REVISION,
 ) -> None:
-    expected = _trusted_current_schema(database_root)
+    expected = _trusted_current_schema(database_root, revision)
     try:
         inspected_tables = set(actual_tables)
         actual = _inspect_actual_schema(cursor, inspected_tables)
@@ -1008,8 +1033,15 @@ def _database_state(
             cursor.execute("SELECT version_num FROM database_alembic_version")
             revisions = [str(row[0]) for row in cursor.fetchall()]
             if revisions == [CURRENT_SCHOOL_REVISION]:
-                _verify_current_schema(tables, other_objects, cursor, database_root)
+                _verify_current_schema(
+                    tables, other_objects, cursor, database_root, CURRENT_SCHOOL_REVISION
+                )
                 return "CURRENT"
+            if revisions == ["20261016_0024"]:
+                _verify_current_schema(
+                    tables, other_objects, cursor, database_root, "20261016_0024"
+                )
+                return "UPGRADEABLE_0024"
             if not revisions:
                 raise MigrationError("PARTIAL_SCHEMA")
             raise MigrationError("UNSUPPORTED_SCHEMA_REVISION")
@@ -1373,7 +1405,7 @@ class SchoolWorkspaceMigrator:
                     "revision": CURRENT_SCHOOL_REVISION,
                     "side_effects": [],
                 }
-            if state != "EMPTY":
+            if state not in {"EMPTY", "UPGRADEABLE_0024"}:
                 raise MigrationError("DATABASE_STATE_UNSUPPORTED")
             _require_unprepared_workspace_files(Path(workspace))
 

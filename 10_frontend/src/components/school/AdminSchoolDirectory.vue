@@ -28,8 +28,9 @@ const preview = ref<SchoolAccountPreview | null>(null)
 const previewErrors = ref<Array<{ row_no: number; code: string }>>([])
 const importKey = ref('')
 const importedBatch = ref<SchoolAccountBatch | null>(null)
-const activationUserId = ref('')
-const newPassword = ref('')
+const emit = defineEmits<{
+  'open-credentials': []
+}>()
 
 const apiAvailable = computed(() => Boolean(
   frontendApi.getSchoolAdminDirectory
@@ -38,8 +39,7 @@ const apiAvailable = computed(() => Boolean(
   && frontendApi.updateSchoolMemberDisplayName
   && frontendApi.previewSchoolAccountImport
   && frontendApi.importSchoolAccounts
-  && frontendApi.getSchoolAccountBatch
-  && frontendApi.activateSchoolAccount,
+  && frontendApi.getSchoolAccountBatch,
 ))
 
 const pendingAccounts = computed(() => {
@@ -77,8 +77,6 @@ const clearImportState = () => {
   previewErrors.value = []
   importKey.value = ''
   importedBatch.value = null
-  activationUserId.value = ''
-  newPassword.value = ''
 }
 
 watch(selectedClassRef, () => {
@@ -230,49 +228,12 @@ const importAccounts = async () => {
   }
 }
 
-const chooseActivation = (userId: string) => {
-  activationUserId.value = userId
-  newPassword.value = ''
-  errorMessage.value = ''
-}
-
-const cancelActivation = () => {
-  activationUserId.value = ''
-  newPassword.value = ''
-  errorMessage.value = ''
-}
-
-const activateAccount = async () => {
-  const account = pendingAccounts.value.find((item) => item.user_id === activationUserId.value)
-  if (pending.value || !account || !newPassword.value || !frontendApi.activateSchoolAccount) return
-  const password = newPassword.value
-  pending.value = `activate-${account.user_id}`
-  errorMessage.value = ''
-  notice.value = ''
-  try {
-    await frontendApi.activateSchoolAccount(account.user_id, password)
-    newPassword.value = ''
-    importedBatch.value = null
-    activationUserId.value = ''
-    await load()
-    notice.value = `账号 ${account.display_name || account.user_id.slice(-6)} 已激活。`
-  } catch {
-    errorMessage.value = '账号激活未完成。请确认密码要求后重新输入，再提交一次。'
-  } finally {
-    newPassword.value = ''
-    pending.value = ''
-  }
-}
-
 const shortRef = (value: string) => value.slice(-6)
 const roleLabel = (role: 'student' | 'teacher') => role === 'student' ? '学生' : '教师'
 const provisioningLabel = (status: string | null) => status === 'PENDING_ACTIVATION' ? '待激活' : status === 'ACTIVE' ? '可用' : '状态待确认'
 
 onMounted(() => { void load() })
-onBeforeUnmount(() => {
-  newPassword.value = ''
-  clearImportState()
-})
+onBeforeUnmount(clearImportState)
 </script>
 
 <template>
@@ -317,7 +278,7 @@ onBeforeUnmount(() => {
 
       <AppCard class="directory-panel directory-panel--wide">
         <div class="directory-panel__heading"><h3>批量创建合成账号</h3><span>CSV，最多 100 行</span></div>
-        <p class="directory-hint">文件列必须为 login_name、display_name、role。密码列会被拒绝；账号导入后需分别设置登录密码。</p>
+        <p class="directory-hint">文件列必须为 login_name、display_name、role。密码列会被拒绝；首次登录凭据需在一次性凭据中批量发行。</p>
         <label class="directory-field" for="school-account-class">可选班级</label>
         <select id="school-account-class" v-model="selectedClassRef" :disabled="Boolean(pending)">
           <option value="">不关联班级</option>
@@ -338,18 +299,11 @@ onBeforeUnmount(() => {
       </AppCard>
 
       <AppCard v-if="pendingAccounts.length" class="directory-panel directory-panel--wide">
-        <div class="directory-panel__heading"><h3>待激活账号</h3><span>{{ pendingAccounts.length }} 个</span></div>
+        <div class="directory-panel__heading"><div><h3>待首次登录账号</h3><p>在一次性凭据中批量发行登录凭据。</p></div><span>{{ pendingAccounts.length }} 个</span></div>
         <div v-for="account in pendingAccounts" :key="account.user_id" class="directory-account-row">
           <div><strong>{{ account.display_name || `账号 ${shortRef(account.user_id)}` }}</strong><span>{{ roleLabel(account.role) }}，{{ provisioningLabel('PENDING_ACTIVATION') }}</span></div>
-          <AppButton variant="secondary" size="sm" :disabled="Boolean(pending)" @click="chooseActivation(account.user_id)">设置登录密码</AppButton>
+          <AppButton variant="secondary" size="sm" @click="emit('open-credentials')">前往一次性凭据</AppButton>
         </div>
-        <form v-if="activationUserId" class="directory-activation" @submit.prevent="activateAccount">
-          <label for="school-account-new-password">新登录密码</label>
-          <input id="school-account-new-password" v-model="newPassword" type="password" autocomplete="new-password" required>
-          <p>密码只发送给服务端验证并设置，不会显示在账号列表中。</p>
-          <AppButton type="submit" :disabled="Boolean(pending) || !newPassword" :loading="pending.startsWith('activate-')">激活账号</AppButton>
-          <AppButton type="button" variant="secondary" :disabled="Boolean(pending)" @click="cancelActivation">取消</AppButton>
-        </form>
       </AppCard>
     </div>
   </section>
@@ -359,7 +313,7 @@ onBeforeUnmount(() => {
 .school-directory { display: grid; gap: 13px; margin-bottom: 16px; }
 .school-directory__heading,.directory-panel__heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .school-directory__heading h2 { margin: 4px 0; color: var(--color-text-primary); font-size: 19px; }
-.school-directory__heading p,.directory-hint,.directory-activation p { margin: 0; color: var(--color-text-secondary); font-size: 11px; line-height: 1.6; }
+.school-directory__heading p,.directory-hint { margin: 0; color: var(--color-text-secondary); font-size: 11px; line-height: 1.6; }
 .school-directory__eyebrow { color: #54809c; font-size: 10px; font-weight: 800; letter-spacing: .08em; }
 .school-directory__grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 13px; }
 .directory-panel { display: grid; align-content: start; gap: 12px; min-width: 0; padding: 17px; }
@@ -367,9 +321,9 @@ onBeforeUnmount(() => {
 .directory-panel__heading h3 { margin: 0; color: var(--color-text-primary); font-size: 14px; }
 .directory-panel__heading span { color: var(--color-text-muted); font-size: 10px; }
 .directory-name-row { display: grid; grid-template-columns: minmax(110px,.5fr) minmax(0,1fr) auto; align-items: center; gap: 8px; }
-.directory-name-row label,.directory-field,.directory-activation label { color: var(--color-text-secondary); font-size: 11px; font-weight: 650; }
-.directory-name-row input,.directory-panel select,.directory-panel input[type="file"],.directory-activation input { width: 100%; min-width: 0; min-height: 38px; padding: 7px 9px; border: 1px solid var(--color-border); border-radius: 7px; color: var(--color-text-primary); background: #fff; font: inherit; font-size: 12px; }
-.directory-name-row input:focus-visible,.directory-panel select:focus-visible,.directory-panel input[type="file"]:focus-visible,.directory-activation input:focus-visible { outline: 2px solid #279de0; outline-offset: 2px; }
+.directory-name-row label,.directory-field { color: var(--color-text-secondary); font-size: 11px; font-weight: 650; }
+.directory-name-row input,.directory-panel select,.directory-panel input[type="file"] { width: 100%; min-width: 0; min-height: 38px; padding: 7px 9px; border: 1px solid var(--color-border); border-radius: 7px; color: var(--color-text-primary); background: #fff; font: inherit; font-size: 12px; }
+.directory-name-row input:focus-visible,.directory-panel select:focus-visible,.directory-panel input[type="file"]:focus-visible { outline: 2px solid #279de0; outline-offset: 2px; }
 .directory-hint { margin-top: -5px; }
 .directory-field { margin-bottom: -7px; }
 .directory-actions { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -381,7 +335,5 @@ onBeforeUnmount(() => {
 .directory-account-row > div { display: grid; gap: 3px; min-width: 0; }
 .directory-account-row strong { color: var(--color-text-primary); font-size: 12px; }
 .directory-account-row span { color: var(--color-text-muted); font-size: 10px; }
-.directory-activation { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.5fr) auto auto; align-items: center; gap: 9px; padding-top: 11px; border-top: 1px solid var(--color-border); }
-.directory-activation p { grid-column: 1 / -1; }
-@media(max-width:700px) { .school-directory__grid { grid-template-columns: 1fr; }.directory-panel--wide { grid-column: auto; }.directory-name-row { grid-template-columns: minmax(0,1fr) auto; }.directory-name-row label { grid-column: 1 / -1; }.directory-activation { grid-template-columns: 1fr; }.directory-activation p { grid-column: auto; } }
+@media(max-width:700px) { .school-directory__grid { grid-template-columns: 1fr; }.directory-panel--wide { grid-column: auto; }.directory-name-row { grid-template-columns: minmax(0,1fr) auto; }.directory-name-row label { grid-column: 1 / -1; } }
 </style>

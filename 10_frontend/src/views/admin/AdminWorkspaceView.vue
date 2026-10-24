@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import WorkspaceBreadcrumb from '@/components/student/WorkspaceBreadcrumb.vue'
 import AdminSchoolOperations from '@/components/school/AdminSchoolOperations.vue'
@@ -9,10 +9,12 @@ import SchoolResearchManagement from '@/components/school/SchoolResearchManageme
 import AdminOperationsDesk from '@/components/admin/AdminOperationsDesk.vue'
 import AdminDirectoryStudio from '@/components/school/AdminDirectoryStudio.vue'
 import AdminSystemHealth from '@/components/admin/AdminSystemHealth.vue'
+import AccountLifecycleWorkspace from '@/views/admin/AccountLifecycleWorkspace.vue'
 import { useSessionStore } from '@/stores/session'
 
 const route = useRoute()
 const session = useSessionStore()
+const lifecycleWorkspace = ref<InstanceType<typeof AccountLifecycleWorkspace> | null>(null)
 const schoolScopeKey = computed(() => [
   session.user?.userId ?? '', session.role ?? '',
   session.user?.activeContext?.schoolRef ?? '', session.user?.activeContext?.role ?? '',
@@ -25,6 +27,10 @@ const pageTitle = computed(() => ({
   audit: '运营事务',
   settings: '系统状态',
 }[section.value as 'overview' | 'users' | 'tasks' | 'audit' | 'settings'] ?? '管理概览'))
+const openCredentials = async () => {
+  await nextTick()
+  lifecycleWorkspace.value?.openCredentials()
+}
 </script>
 
 <template>
@@ -47,7 +53,11 @@ const pageTitle = computed(() => ({
     </template>
 
     <template v-else-if="section === 'users'">
-      <AdminDirectoryStudio :key="schoolScopeKey" />
+      <AccountLifecycleWorkspace ref="lifecycleWorkspace" :key="`${schoolScopeKey}-lifecycle`" />
+      <details class="admin-directory-details">
+        <summary>学校目录维护</summary>
+        <AdminDirectoryStudio :key="schoolScopeKey" @open-credentials="openCredentials" />
+      </details>
     </template>
 
     <template v-else>
@@ -79,6 +89,7 @@ const pageTitle = computed(() => ({
 .admin-overview { min-width: 0; }
 .admin-overview__workflow { margin-top: 36px; scroll-margin-top: calc(var(--layout-topbar) + 20px); }.admin-overview__workflow-heading { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }.admin-overview__workflow-heading > span { color: #6f95a5; font-size: 10px; font-weight: 680; }.admin-overview__workflow-heading h2 { margin: 0; color: var(--color-text-primary); font-size: 19px; font-weight: 720; }
 .admin-task-dispatch,.admin-audit,.admin-settings { display: grid; gap: 16px; min-width: 0; }
+.admin-directory-details { margin: 20px 0; border-top: 1px solid var(--color-border); }.admin-directory-details > summary { padding: 14px 0; color: var(--color-text-secondary); cursor: pointer; font-size: 14px; }.admin-directory-details > summary:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 2px; }
 @keyframes page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 @media(max-width:720px) { .admin-workspace { padding-top: 18px; }.admin-overview__workflow { margin-top: 28px; } }
 </style>

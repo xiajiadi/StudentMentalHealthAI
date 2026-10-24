@@ -729,7 +729,7 @@ def test_schema_state_distinguishes_empty_target_and_unrecognized_revision():
     assert recovery._schema_state({"tables": [], "revision": None}) == "EMPTY"
     assert (
         recovery._schema_state(
-            {"tables": ["database_alembic_version"], "revision": "20261016_0024"}
+            {"tables": ["database_alembic_version"], "revision": "20261024_0025"}
         )
         == "TARGET_REVISION"
     )

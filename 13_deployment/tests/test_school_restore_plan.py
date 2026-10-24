@@ -22,9 +22,9 @@ from school_schema import (
     CAT_TASK_BINDING_REVISION,
     CONVERSATION_SAFETY_CASES_REVISION,
     CURRENT_SCHOOL_MIGRATION_FILE,
-    INDEPENDENT_EDUCATION_REVIEW_REVISION,
     CURRENT_SCHOOL_REVISION,
     DIRECTORY_SCHOOL_REVISION,
+    INDEPENDENT_EDUCATION_REVIEW_REVISION,
     POST_ASSESSMENT_JOB_OUTBOX_REVISION,
     PROFESSIONAL_REVIEW_REVISION,
     PUBLIC_OBSERVED_CASE_ASSIGNMENTS_REVISION,
@@ -38,6 +38,7 @@ from school_schema import (
     RESEARCH_PARAMETER_PROVENANCE_REVISION,
     RESEARCH_PROGRAMME_CANDIDATES_REVISION,
     RESEARCH_REVIEW_FEEDBACK_REVISION,
+    SCHOOL_ACCOUNT_LIFECYCLE_REVISION,
     SCHOOL_FEEDBACK_PUBLICATION_REVISION,
     SCHOOL_REVISION_CHAIN,
     SUPPORTED_SNAPSHOT_REVISIONS,
@@ -70,7 +71,7 @@ def test_current_snapshot_requires_its_exact_table_layout_and_revision():
     package["tables"][restore_plan.REVISION_TABLE]["rows"] = [[CURRENT_SCHOOL_REVISION]]
     plan = restore_plan.plan_restore(package, restored_at=RESTORED_AT)
     assert plan["revision"] == CURRENT_SCHOOL_REVISION
-    assert len(plan["table_order"]) == 65
+    assert len(plan["table_order"]) == 71
     package["revision"] = SUPPORTED_REVISION
     with pytest.raises(ValueError, match="manifest mismatch"):
         restore_plan.plan_restore(package, restored_at=RESTORED_AT)
@@ -306,11 +307,11 @@ def test_research_revision_adds_three_isolated_tables_and_preserves_0011_layout(
 
 def test_parameter_provenance_revision_preserves_0012_snapshot_shape():
     assert RESEARCH_PARAMETER_PROVENANCE_REVISION in SCHOOL_REVISION_CHAIN
-    assert SCHOOL_REVISION_CHAIN[-3:-1] == (
+    assert SCHOOL_REVISION_CHAIN[-4:-2] == (
         RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION,
         RESEARCH_EDUCATION_OUTPUT_REVIEW_REVISION,
     )
-    assert SCHOOL_REVISION_CHAIN[-10:-1] == (
+    assert SCHOOL_REVISION_CHAIN[-11:-2] == (
         RESEARCH_COHORTS_REVISION,
         RESEARCH_EDUCATION_JOBS_REVISION,
         RESEARCH_REVIEW_FEEDBACK_REVISION,
@@ -400,11 +401,11 @@ def test_public_observed_revision_preserves_0013_snapshots_and_adds_exact_assign
 
 def test_sealed_cohort_revision_preserves_0014_snapshot_and_adds_only_cohort_projection():
     assert RESEARCH_COHORTS_REVISION in SCHOOL_REVISION_CHAIN
-    assert SCHOOL_REVISION_CHAIN[-3:-1] == (
+    assert SCHOOL_REVISION_CHAIN[-4:-2] == (
         RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION,
         RESEARCH_EDUCATION_OUTPUT_REVIEW_REVISION,
     )
-    assert SCHOOL_REVISION_CHAIN[-10:-1] == (
+    assert SCHOOL_REVISION_CHAIN[-11:-2] == (
         RESEARCH_COHORTS_REVISION,
         RESEARCH_EDUCATION_JOBS_REVISION,
         RESEARCH_REVIEW_FEEDBACK_REVISION,
@@ -477,11 +478,11 @@ def test_sealed_cohort_revision_preserves_0014_snapshot_and_adds_only_cohort_pro
 def test_research_education_jobs_revision_adds_one_table_and_preserves_0015_rows():
     assert RESEARCH_EDUCATION_JOBS_REVISION in SCHOOL_REVISION_CHAIN
     assert RESEARCH_EDUCATION_JOBS_REVISION in SUPPORTED_SNAPSHOT_REVISIONS
-    assert SCHOOL_REVISION_CHAIN[-3:-1] == (
+    assert SCHOOL_REVISION_CHAIN[-4:-2] == (
         RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION,
         RESEARCH_EDUCATION_OUTPUT_REVIEW_REVISION,
     )
-    assert SCHOOL_REVISION_CHAIN[-10:-1] == (
+    assert SCHOOL_REVISION_CHAIN[-11:-2] == (
         RESEARCH_COHORTS_REVISION,
         RESEARCH_EDUCATION_JOBS_REVISION,
         RESEARCH_REVIEW_FEEDBACK_REVISION,
@@ -596,8 +597,6 @@ def test_research_education_jobs_revision_adds_one_table_and_preserves_0015_rows
 def test_research_review_feedback_revision_adds_four_tables_and_preserves_0016():
     assert RESEARCH_REVIEW_FEEDBACK_REVISION in SCHOOL_REVISION_CHAIN
     assert RESEARCH_REVIEW_FEEDBACK_REVISION in SUPPORTED_SNAPSHOT_REVISIONS
-    assert CURRENT_SCHOOL_REVISION == INDEPENDENT_EDUCATION_REVIEW_REVISION
-    assert CURRENT_SCHOOL_MIGRATION_FILE == "20261016_0024_student_independent_education_reviews.py"
 
     previous = restore_plan._load_trusted_tables(RESEARCH_EDUCATION_JOBS_REVISION)
     current = restore_plan._load_trusted_tables(RESEARCH_REVIEW_FEEDBACK_REVISION)
@@ -635,11 +634,9 @@ def test_research_review_feedback_revision_adds_four_tables_and_preserves_0016()
 
 
 def test_0018_candidate_revision_preserves_0017_snapshot_and_adds_encrypted_candidate():
-    assert CURRENT_SCHOOL_REVISION == INDEPENDENT_EDUCATION_REVIEW_REVISION
     assert SCHOOL_REVISION_CHAIN.index(RESEARCH_PROGRAMME_CANDIDATES_REVISION) - 1 == (
         SCHOOL_REVISION_CHAIN.index(RESEARCH_REVIEW_FEEDBACK_REVISION)
     )
-    assert CURRENT_SCHOOL_MIGRATION_FILE == "20261016_0024_student_independent_education_reviews.py"
     previous = restore_plan._load_trusted_tables(RESEARCH_REVIEW_FEEDBACK_REVISION)
     current = restore_plan._load_trusted_tables(RESEARCH_PROGRAMME_CANDIDATES_REVISION)
     candidate_table = "school_research_programme_candidates"
@@ -671,8 +668,6 @@ def test_0018_candidate_revision_preserves_0017_snapshot_and_adds_encrypted_cand
 def test_0019_conversation_safety_revision_preserves_0018_and_adds_only_metadata_cases():
     assert CONVERSATION_SAFETY_CASES_REVISION in SCHOOL_REVISION_CHAIN
     assert CONVERSATION_SAFETY_CASES_REVISION in SUPPORTED_SNAPSHOT_REVISIONS
-    assert CURRENT_SCHOOL_REVISION == INDEPENDENT_EDUCATION_REVIEW_REVISION
-    assert CURRENT_SCHOOL_MIGRATION_FILE == "20261016_0024_student_independent_education_reviews.py"
     assert SCHOOL_REVISION_CHAIN.index(CONVERSATION_SAFETY_CASES_REVISION) - 1 == (
         SCHOOL_REVISION_CHAIN.index(RESEARCH_PROGRAMME_CANDIDATES_REVISION)
     )
@@ -777,9 +772,7 @@ def test_0020_education_candidate_revision_preserves_0019_and_adds_exact_lineage
 def test_0021_input_review_revision_preserves_0020_and_adds_only_review_tables():
     assert RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION in SCHOOL_REVISION_CHAIN
     assert RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION in SUPPORTED_SNAPSHOT_REVISIONS
-    assert CURRENT_SCHOOL_REVISION == INDEPENDENT_EDUCATION_REVIEW_REVISION
-    assert CURRENT_SCHOOL_MIGRATION_FILE == "20261016_0024_student_independent_education_reviews.py"
-    assert SCHOOL_REVISION_CHAIN[-5:-1] == (
+    assert SCHOOL_REVISION_CHAIN[-6:-2] == (
         RESEARCH_EDUCATION_CANDIDATES_REVISION,
         RESEARCH_EDUCATION_INPUT_REVIEWS_REVISION,
         RESEARCH_EDUCATION_INPUT_REVIEW_CONTINUATION_REVISION,
@@ -1003,10 +996,10 @@ def test_0023_output_review_snapshot_preserves_0022_and_adds_encrypted_tables_an
 
 
 def test_0024_independent_review_is_additive_and_preserves_all_0023_layouts():
-    assert CURRENT_SCHOOL_REVISION == INDEPENDENT_EDUCATION_REVIEW_REVISION
-    assert SCHOOL_REVISION_CHAIN[-2:] == (
+    assert SCHOOL_REVISION_CHAIN[-3:] == (
         RESEARCH_EDUCATION_OUTPUT_REVIEW_REVISION,
         INDEPENDENT_EDUCATION_REVIEW_REVISION,
+        SCHOOL_ACCOUNT_LIFECYCLE_REVISION,
     )
     previous = restore_plan._load_trusted_tables(RESEARCH_EDUCATION_OUTPUT_REVIEW_REVISION)
     current = restore_plan._load_trusted_tables(INDEPENDENT_EDUCATION_REVIEW_REVISION)
@@ -1044,6 +1037,40 @@ def test_0024_independent_review_is_additive_and_preserves_all_0023_layouts():
             assert order.index("school_independent_education_reviews") < order.index(
                 "school_independent_education_review_events"
             )
+
+
+def test_0025_lifecycle_revision_preserves_0024_and_appends_only_known_schema():
+    assert CURRENT_SCHOOL_REVISION == SCHOOL_ACCOUNT_LIFECYCLE_REVISION
+    assert CURRENT_SCHOOL_MIGRATION_FILE == "20261024_0025_school_account_lifecycle.py"
+    previous = restore_plan._load_trusted_tables(INDEPENDENT_EDUCATION_REVIEW_REVISION)
+    current = restore_plan._load_trusted_tables(SCHOOL_ACCOUNT_LIFECYCLE_REVISION)
+    added_tables = restore_plan.SCHOOL_ACCOUNT_LIFECYCLE_TABLES
+    assert len(previous) == 66
+    assert len(current) == 72
+    assert set(current) - set(previous) == added_tables
+    assert all(
+        current[name] == spec
+        for name, spec in previous.items()
+        if name not in restore_plan.SCHOOL_ACCOUNT_LIFECYCLE_COLUMNS
+    )
+    for table_name, added_columns in restore_plan.SCHOOL_ACCOUNT_LIFECYCLE_COLUMNS.items():
+        assert current[table_name].columns == previous[table_name].columns + added_columns
+        assert current[table_name].primary_key == previous[table_name].primary_key
+        assert current[table_name].foreign_keys == previous[table_name].foreign_keys
+
+    package = empty_package()
+    package["revision"] = INDEPENDENT_EDUCATION_REVIEW_REVISION
+    old_manifest = restore_plan.trusted_manifest(INDEPENDENT_EDUCATION_REVIEW_REVISION)
+    package["tables"] = {
+        name: {"create_sql": "opaque archived DDL", "columns": columns, "rows": []}
+        for name, columns in old_manifest.items()
+    }
+    package["tables"][restore_plan.REVISION_TABLE]["rows"] = [
+        [INDEPENDENT_EDUCATION_REVIEW_REVISION]
+    ]
+    restored = restore_plan.plan_restore(package, restored_at=RESTORED_AT)
+    assert restored["revision"] == INDEPENDENT_EDUCATION_REVIEW_REVISION
+    assert len(restored["table_order"]) == 65
 
 
 def empty_package():

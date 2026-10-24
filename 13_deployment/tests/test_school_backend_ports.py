@@ -34,7 +34,11 @@ def test_settings_follow_cli_ports_and_keep_loopback_module_endpoints():
     assert settings["allowed_origins"] == ["http://127.0.0.1:4179"]
     assert settings["cat"] == {"mode": "http", "base_url": "http://127.0.0.1:8180"}
     assert settings["rag"] == {"mode": "http", "base_url": "http://127.0.0.1:8170"}
-    assert settings["llm"] == {"mode": "http", "base_url": "http://127.0.0.1:8160"}
+    assert settings["llm"] == {
+        "mode": "http",
+        "base_url": "http://127.0.0.1:8160",
+        "timeout": {"read": 135.0},
+    }
     assert settings["safety"] == {"mode": "http", "base_url": "http://127.0.0.1:8190"}
 
 
@@ -44,6 +48,7 @@ def test_school_gpu_profile_uses_fixed_loopback_and_explicit_model_settings():
     assert settings["llm"] == {
         "mode": "http",
         "base_url": "http://127.0.0.1:8160",
+        "timeout": {"read": 135.0},
         "logical_model_id": "qwen2.5-7b-instruct-school-demo",
         "context_length": 8192,
     }
@@ -58,6 +63,26 @@ def test_school_gpu_profile_uses_fixed_loopback_and_explicit_model_settings():
     )
     assert backend_settings.llm.logical_model_id == "qwen2.5-7b-instruct-school-demo"
     assert backend_settings.llm.context_length == 8192
+    assert backend_settings.llm.timeout.read == 135.0
+
+
+def test_default_school_settings_meet_the_independent_runtime_timeout_contract():
+    from smhai_backend.container import _independent_llm_client_settings
+    from smhai_backend.integrations.independent import IndependentLLMRuntimeClient
+
+    settings = BackendSettings(
+        _env_file=None,
+        school_csrf_secret="a" * 64,
+        **backend.build_school_settings_kwargs(8088, 4178),
+    )
+
+    independent_settings = _independent_llm_client_settings(settings.llm)
+    client = IndependentLLMRuntimeClient(independent_settings)
+
+    assert client.label == "REAL_HTTP_INDEPENDENT"
+    assert client.model_identity.logical_model_id == "qwen2.5-7b-instruct-school-demo"
+    assert independent_settings.timeout.read == 135.0
+    assert settings.llm.timeout.read == 135.0
 
 
 def test_default_profile_preserves_0_5b_and_unset_context_length():

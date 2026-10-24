@@ -34,6 +34,9 @@ from smhai_backend.domains.independent_education_reviews.router import (
     student_router as student_independent_education_reviews_router,
 )
 from smhai_backend.domains.professional_reviews.router import router as professional_reviews_router
+from smhai_backend.domains.school_account_lifecycle.router import (
+    router as school_account_lifecycle_router,
+)
 from smhai_backend.domains.school_conversation_safety.router import (
     router as school_conversation_safety_router,
 )
@@ -133,6 +136,11 @@ def create_app(
         school_research_profiles_router, prefix=settings.api_prefix, include_in_schema=False
     )
     app.include_router(school_directory_router, prefix=settings.api_prefix, include_in_schema=False)
+    app.include_router(
+        school_account_lifecycle_router,
+        prefix=settings.api_prefix,
+        include_in_schema=False,
+    )
     app.include_router(
         school_research_sources_router, prefix=settings.api_prefix, include_in_schema=False
     )

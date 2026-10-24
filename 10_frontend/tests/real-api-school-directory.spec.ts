@@ -31,14 +31,14 @@ describe('RealApiProvider school directory', () => {
       return envelope({
         school: { school_ref: 'SCHOOL_1', display_name: '合成学校' },
         classes: [{ class_ref: 'CLASS_1', status: 'ACTIVE', active_student_count: 2, active_teacher_count: 1, display_name: '一年级一班' }],
-        members: [{ user_id: 'USER_1', display_name: '合成学生', role: 'student', account_status: 'SUSPENDED', provisioning_status: 'PENDING_ACTIVATION' }],
+        members: [{ user_id: 'USER_1', display_name: '合成学生', role: 'student', account_status: 'SUSPENDED', provisioning_status: 'PENDING_ACTIVATION', class_refs: ['CLASS_1'] }],
       })
     })
     await expect(provider.getSchoolAdminDirectory()).resolves.toMatchObject({
       data: {
         school: { school_ref: 'SCHOOL_1', display_name: '合成学校' },
         classes: [{ class_ref: 'CLASS_1', display_name: '一年级一班', active_student_count: 2 }],
-        members: [{ user_id: 'USER_1', display_name: '合成学生', role: 'student', provisioning_status: 'PENDING_ACTIVATION' }],
+        members: [{ user_id: 'USER_1', display_name: '合成学生', role: 'student', provisioning_status: 'PENDING_ACTIVATION', class_refs: ['CLASS_1'] }],
       },
     })
   })
@@ -195,19 +195,20 @@ describe('RealApiProvider school directory', () => {
     expect(previewWrite.headers.get('Idempotency-Key')).toBeNull()
   })
 
-  it('sends activation password only in the one-time body, never URL or idempotency receipt', async () => {
-    const password = 'Synthetic-Only-Passphrase-123!'
-    const { provider, fetchMock } = await createProvider((request) => {
-      const url = new URLConstructor(request.url)
-      if (url.pathname === '/api/v1/auth/csrf') return envelope({ csrf_token: 'csrf-synthetic' })
-      if (url.pathname.endsWith('/activate')) return envelope({ activated: true })
-      throw new Error('unexpected route')
-    })
-    await provider.activateSchoolAccount('USER_pending', password)
-    const request = fetchMock.mock.calls.map(([item]) => item).find((item) => item.method === 'POST')!
-    expect(new URLConstructor(request.url).search).toBe('')
-    expect(request.headers.get('X-CSRF-Token')).toBe('csrf-synthetic')
-    expect(request.headers.get('Idempotency-Key')).toBeNull()
-    await expect(request.clone().json()).resolves.toEqual({ new_password: password })
+  it('maps an optional class scope and rejects malformed or duplicate class refs', async () => {
+    const member = { user_id: 'USER_1', display_name: '合成学生', role: 'student', account_status: 'ACTIVE', provisioning_status: null, class_refs: ['CLASS_1'] }
+    const { provider } = await createProvider(() => envelope({
+      school: { school_ref: 'SCHOOL_1', display_name: '合成学校' },
+      classes: [{ class_ref: 'CLASS_1', status: 'ACTIVE', active_student_count: 1, active_teacher_count: 0, display_name: '合成班级' }],
+      members: [member],
+    }))
+    await expect(provider.getSchoolAdminDirectory()).resolves.toMatchObject({ data: { members: [{ class_refs: ['CLASS_1'] }] } })
+
+    const { provider: invalidProvider } = await createProvider(() => envelope({
+      school: { school_ref: 'SCHOOL_1', display_name: '合成学校' },
+      classes: [],
+      members: [{ ...member, class_refs: ['CLASS_1', 'CLASS_1'] }],
+    }))
+    await expect(invalidProvider.getSchoolAdminDirectory()).rejects.toMatchObject({ code: 'API_INVALID_RESPONSE' })
   })
 })

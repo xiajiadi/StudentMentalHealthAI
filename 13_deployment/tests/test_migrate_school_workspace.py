@@ -338,8 +338,16 @@ def prepared(tmp_path, monkeypatch):
     database = FakeDatabase(data_directory)
     trusted_database_root = Path(__file__).resolve().parents[2] / "11_database"
     expected_schema = migration._trusted_current_schema(trusted_database_root)
+    previous_schema = migration._trusted_current_schema(
+        trusted_database_root, "20261016_0024"
+    )
     monkeypatch.setattr(
-        migration, "_trusted_current_schema", lambda _root: expected_schema
+        migration,
+        "_trusted_current_schema",
+        lambda _root, revision=migration.CURRENT_SCHOOL_REVISION: {
+            migration.CURRENT_SCHOOL_REVISION: expected_schema,
+            "20261016_0024": previous_schema,
+        }[revision],
     )
     operations = FakeOperations(marker, database)
     database.expected_schema = expected_schema
@@ -434,6 +442,47 @@ def test_empty_owned_schema_migrates_only_to_pinned_revision(prepared):
     assert service.private_values == [{}]
     assert not ops.lock_active
     assert ops.lock_acquisitions == 1
+
+
+def test_exact_0024_schema_upgrades_additively_to_0025(prepared):
+    _repo, workspace, _marker, db, ops, service, _settings, _reads = prepared
+    previous_schema = migration._trusted_current_schema(
+        Path(__file__).resolve().parents[2] / "11_database", "20261016_0024"
+    )
+    db.schema = deepcopy(previous_schema)
+    db.tables = list(db.schema)
+    db.columns = {
+        table: list(contract["columns"]) for table, contract in db.schema.items()
+    }
+    db.revisions = ["20261016_0024"]
+
+    result = service.upgrade(workspace, expected_port=PORT, workspace_id=WORKSPACE_ID)
+
+    assert result["status"] == "MIGRATED"
+    assert result["revision"] == migration.CURRENT_SCHOOL_REVISION
+    assert len(ops.migrations) == 1
+    assert db.revisions == [migration.CURRENT_SCHOOL_REVISION]
+    assert ops.connects == 2
+
+
+def test_0024_revision_with_unexpected_objects_fails_before_alembic(prepared):
+    _repo, workspace, _marker, db, ops, service, _settings, _reads = prepared
+    previous_schema = migration._trusted_current_schema(
+        Path(__file__).resolve().parents[2] / "11_database", "20261016_0024"
+    )
+    db.schema = deepcopy(previous_schema)
+    db.tables = list(db.schema) + ["unowned_extra_table"]
+    db.columns = {
+        table: list(contract["columns"]) for table, contract in db.schema.items()
+    }
+    db.revisions = ["20261016_0024"]
+
+    with pytest.raises(migration.MigrationError) as blocked:
+        service.upgrade(workspace, expected_port=PORT, workspace_id=WORKSPACE_ID)
+
+    assert blocked.value.code == "CURRENT_SCHEMA_DRIFT"
+    assert ops.migrations == []
+    assert db.revisions == ["20261016_0024"]
 
 
 def test_competing_workspace_upgrade_lock_fails_before_secret_or_database_access(

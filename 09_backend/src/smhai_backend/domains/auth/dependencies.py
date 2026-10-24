@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+import time
 from typing import Annotated
 
 from fastapi import Depends, Request, Security
@@ -57,6 +59,24 @@ async def csrf_protected(
     return actor
 
 
+async def recent_reauthenticated_csrf_protected(
+    request: Request,
+    actor: Annotated[Actor, Depends(csrf_protected)],
+) -> Actor:
+    session = getattr(request.state, "session", None)
+    reauthenticated_at = getattr(session, "reauthenticated_at", None)
+    ttl_seconds = container_for(request).settings.auth.reauthentication_ttl_seconds
+    now = time.time()
+    if (
+        not isinstance(reauthenticated_at, (int, float))
+        or not math.isfinite(reauthenticated_at)
+        or reauthenticated_at > now
+        or now - reauthenticated_at > ttl_seconds
+    ):
+        raise error(ErrorCode.FORBIDDEN, detail="recent reauthentication is required")
+    return actor
+
+
 def require_role(*roles: BackendRole):
     async def dependency(actor: Annotated[Actor, Depends(csrf_protected)]) -> Actor:
         if actor.role not in roles:
@@ -68,3 +88,6 @@ def require_role(*roles: BackendRole):
 
 CurrentActor = Annotated[Actor, Depends(current_actor)]
 CsrfActor = Annotated[Actor, Depends(csrf_protected)]
+RecentReauthenticatedCsrfActor = Annotated[
+    Actor, Depends(recent_reauthenticated_csrf_protected)
+]

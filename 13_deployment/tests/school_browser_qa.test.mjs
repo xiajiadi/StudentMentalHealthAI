@@ -92,23 +92,31 @@ test('student history diagnostics follow the metadata DTO and bind null-time dis
     stage: 'student_history', substage: 'metadata_render',
     code: 'NULL_TIME_LABEL_MISMATCH', current_path: 'student_history',
   });
+  assert.equal(safeRestoreDiagnostic('student_history', 'metadata_response', 'REQUEST_NOT_STARTED', '/student/home')?.code, 'REQUEST_NOT_STARTED');
+  assert.equal(safeRestoreDiagnostic('student_history', 'metadata_response', 'REQUEST_FAILED', '/student/history')?.code, 'REQUEST_FAILED');
+  assert.equal(safeRestoreDiagnostic('student_history', 'route', 'ROUTE_NOT_REACHED', '/student/home')?.code, 'ROUTE_NOT_REACHED');
+  assert.equal(safeRestoreDiagnostic('student_history', 'route', 'LINK_NOT_VISIBLE', '/student/home')?.code, 'LINK_NOT_VISIBLE');
+  assert.equal(safeRestoreDiagnostic('student_history', 'route', 'LINK_CLICK_FAILED', '/student/home')?.code, 'LINK_CLICK_FAILED');
   assert.equal(safeRestoreDiagnostic('student_history', 'metadata_render', 'PRIVATE_TEXT', '/student/history'), null);
 });
 
-test('history row comparison preserves API order and rejects wrong counts or dates', () => {
+test('student assessment metadata matches the current assessment cards and empty state', () => {
   const metadata = [
     { status: 'completed', items_answered: 3, started_at: '2026-10-12T10:00:00Z', completed_at: '2026-10-12T10:05:00Z' },
     { status: 'created', items_answered: 0, started_at: null, completed_at: null },
   ];
   const formatter = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' });
-  const expectedTimes = [formatter.format(new Date(metadata[0].completed_at)), '尚未开始'];
-  const statusLabels = ['已完成的合成测评', '尚未开始的合成测评'];
-  const summaries = [`3 项已记录 · ${expectedTimes[0]}`, '0 项已记录 · 尚未开始'];
-  assert.equal(studentHistoryRenderedMismatch(metadata, statusLabels, summaries, expectedTimes), null);
-  assert.equal(studentHistoryRenderedMismatch(metadata, [...statusLabels].reverse(), summaries, expectedTimes), 'STATUS_LABEL_MISMATCH');
-  assert.equal(studentHistoryRenderedMismatch(metadata, statusLabels, ['0 项已记录 · 尚未开始', summaries[0]], expectedTimes), 'ITEM_COUNT_LABEL_MISMATCH');
-  assert.equal(studentHistoryRenderedMismatch(metadata, statusLabels, ['3 项已记录 · wrong-date', summaries[1]], expectedTimes), 'DATE_LABEL_MISMATCH');
-  assert.equal(studentHistoryRenderedMismatch(metadata, statusLabels, [summaries[0], '0 项已记录 · 时间未提供'], expectedTimes), 'NULL_TIME_LABEL_MISMATCH');
+  const cards = [
+    `已完成 3 项已记录 ${formatter.format(new Date(metadata[0].completed_at))}`,
+    '待开始 0 项已记录 时间未提供',
+  ];
+  assert.equal(studentHistoryRenderedMismatch(metadata, cards, false), null);
+  assert.equal(studentHistoryRenderedMismatch(metadata, [], false), 'EMPTY_STATE_MISMATCH');
+  assert.equal(studentHistoryRenderedMismatch(metadata, [cards[0]], false), 'CARD_COUNT_MISMATCH');
+  assert.equal(studentHistoryRenderedMismatch(metadata, ['进行中 3 项已记录 ${formatter.format(new Date(metadata[0].completed_at))}', cards[1]], false), 'STATUS_LABEL_MISMATCH');
+  assert.equal(studentHistoryRenderedMismatch(metadata, ['已完成 4 项已记录 ${formatter.format(new Date(metadata[0].completed_at))}', cards[1]], false), 'ITEM_COUNT_LABEL_MISMATCH');
+  assert.equal(studentHistoryRenderedMismatch(metadata, ['已完成 3 项已记录 wrong-date', cards[1]], false), 'DATE_LABEL_MISMATCH');
+  assert.equal(studentHistoryRenderedMismatch([], [], true), null);
 });
 
 test('rejects non-loopback, missing, malformed, or decorated origins', () => {

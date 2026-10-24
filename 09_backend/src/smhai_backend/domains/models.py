@@ -105,6 +105,7 @@ class SessionRecord:
     expires_at: float
     last_seen_at: float
     active_context_id: str | None = None
+    reauthenticated_at: float | None = None
 
 
 @dataclass(slots=True)

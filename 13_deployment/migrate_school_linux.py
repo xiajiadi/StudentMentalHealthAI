@@ -8,7 +8,8 @@ import os
 import sys
 from pathlib import Path
 
-EXPECTED_REVISION = "20261016_0024"
+EXPECTED_REVISION = "20261024_0025"
+PREVIOUS_REVISION = "20261016_0024"
 EXPECTED_DATABASE = "smhai_school_demo"
 MIGRATION_CREDENTIAL = "school-migration.json"
 _MIGRATION_PHASES = frozenset(
@@ -60,6 +61,32 @@ def _revision_and_tables(connection) -> tuple[str | None, set[str]]:
         if len(rows) != 1 or not isinstance(rows[0][0], str):
             raise RuntimeError("school migration state is inconsistent")
         return rows[0][0], tables
+
+
+def _verify_owned_revision_shape(connection, tables: set[str], repository_root: Path, revision: str):
+    """Require the exact trusted physical layout before and after migration."""
+    from migrate_school_workspace import _verify_current_schema
+
+    with connection.cursor() as cursor:
+        has_other_objects = False
+        for metadata_table, schema_column in (
+            ("ROUTINES", "ROUTINE_SCHEMA"),
+            ("EVENTS", "EVENT_SCHEMA"),
+            ("TRIGGERS", "TRIGGER_SCHEMA"),
+        ):
+            cursor.execute(
+                f"SELECT 1 FROM information_schema.{metadata_table} "
+                f"WHERE {schema_column}=%s LIMIT 1",
+                (EXPECTED_DATABASE,),
+            )
+            has_other_objects = has_other_objects or bool(cursor.fetchall())
+        _verify_current_schema(
+            {name: "BASE TABLE" for name in tables},
+            has_other_objects,
+            cursor,
+            repository_root / "11_database",
+            revision,
+        )
 
 
 def _verify_migration_grants(grants: list[str], current_role: str) -> None:
@@ -252,14 +279,21 @@ def migrate(repository_root: Path) -> dict[str, object]:
                 )
             phase = "migration_history"
             current_revision, tables = _revision_and_tables(connection)
-            if tables and current_revision != EXPECTED_REVISION:
-                raise RuntimeError(
-                    "migration target is nonempty and is not at the expected current revision"
-                )
+            upgrade_required = False
+            if current_revision == EXPECTED_REVISION:
+                _verify_owned_revision_shape(connection, tables, repo, EXPECTED_REVISION)
+            elif current_revision == PREVIOUS_REVISION:
+                _verify_owned_revision_shape(connection, tables, repo, PREVIOUS_REVISION)
+                upgrade_required = True
+            elif current_revision is None:
+                if tables:
+                    raise RuntimeError("migration target contains unversioned objects")
+            else:
+                raise RuntimeError("migration target revision is unsupported")
         finally:
             connection.close()
 
-        if not tables:
+        if not tables or upgrade_required:
             phase = "alembic_upgrade"
             from sqlalchemy import create_engine
             from sqlalchemy.engine import make_url

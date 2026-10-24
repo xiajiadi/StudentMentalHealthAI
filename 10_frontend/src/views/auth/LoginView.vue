@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { nextTick, onMounted, ref, watch } from 'vue'
 import { CircleHelp, X } from '@lucide/vue'
 import {
   DialogClose,
@@ -30,6 +30,24 @@ const helpOpen = ref(false)
 const errorMessage = ref('')
 const accountError = ref('')
 const passwordError = ref('')
+const authMode = ref<'login' | 'first' | 'recovery' | 'reset' | 'invite'>('login')
+const authSchoolRef = ref('')
+const authUsername = ref('')
+const authClassRef = ref('')
+const authReasonCode = ref('')
+const authCredential = ref('')
+const authInvitationRef = ref('')
+const newPassword = ref('')
+const confirmPassword = ref('')
+const authNotice = ref('')
+const authModeHeading = ref<HTMLElement | null>(null)
+watch(authMode, async (mode) => {
+  if (mode !== 'login') { await nextTick(); authModeHeading.value?.focus() }
+})
+const returnToLogin = () => {
+  authMode.value = 'login'; authCredential.value = ''; newPassword.value = ''; confirmPassword.value = ''
+  errorMessage.value = ''; authNotice.value = ''
+}
 
 const roleHome: Record<string, string> = {
   student: '/student/home', teacher: '/teacher/overview',
@@ -37,7 +55,7 @@ const roleHome: Record<string, string> = {
 }
 
 const roleLabels: Record<string, string> = {
-  student: 'Student', teacher: 'Teacher', psychological_specialist: 'Psychological specialist', school_admin: 'School administrator',
+  student: '学生', teacher: '教师', psychological_specialist: '心理老师', school_admin: '学校管理员',
 }
 
 onMounted(() => {
@@ -64,14 +82,52 @@ const chooseContext = async () => {
     await enterWorkspace(result.data)
     pendingContext.value = null
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : 'Workspace selection could not be completed'
+    errorMessage.value = error instanceof Error ? error.message : '学校与角色选择未完成，请重试'
   } finally { isLoading.value = false }
 }
 
 const submit = async () => {
   errorMessage.value = ''
-  accountError.value = account.value.trim() ? '' : 'Enter your username'
-  passwordError.value = password.value ? '' : 'Enter your password'
+  authNotice.value = ''
+  if (authMode.value !== 'login') {
+    if (authMode.value !== 'invite' && (!authSchoolRef.value.trim() || !authUsername.value.trim())) {
+      errorMessage.value = '请填写学校编号和账号'
+      return
+    }
+    if (authMode.value === 'recovery') {
+      if (!authClassRef.value.trim() || !authReasonCode.value.trim()) { errorMessage.value = '请填写班级编号和申请原因代码'; return }
+    } else if (authMode.value === 'invite' && !authInvitationRef.value.trim()) {
+      errorMessage.value = '请填写邀请编号'; return
+    } else if (authMode.value !== 'recovery' && (!authCredential.value || !newPassword.value || newPassword.value !== confirmPassword.value)) {
+      errorMessage.value = '请填写一次性凭据，并确认两次新密码一致'; return
+    }
+    isLoading.value = true
+    try {
+      if (authMode.value === 'first') {
+        if (!frontendApi.completeFirstLogin) throw new Error('首次登录服务暂不可用')
+        await frontendApi.completeFirstLogin({ school_ref: authSchoolRef.value.trim(), username: authUsername.value.trim(), credential: authCredential.value, new_password: newPassword.value, confirm_password: confirmPassword.value })
+        authNotice.value = '密码已更新，请返回登录'
+      } else if (authMode.value === 'recovery') {
+        if (!frontendApi.createRecoveryRequest) throw new Error('账号恢复服务暂不可用')
+        await frontendApi.createRecoveryRequest({ school_ref: authSchoolRef.value.trim(), username: authUsername.value.trim(), class_ref: authClassRef.value.trim(), reason_code: authReasonCode.value.trim() })
+        authNotice.value = '申请已提交，请联系教师核验身份'
+      } else if (authMode.value === 'reset') {
+        if (!frontendApi.completePasswordReset) throw new Error('密码重置服务暂不可用')
+        await frontendApi.completePasswordReset({ school_ref: authSchoolRef.value.trim(), username: authUsername.value.trim(), credential: authCredential.value, new_password: newPassword.value, confirm_password: confirmPassword.value })
+        authNotice.value = '密码已重置，请返回登录'
+      } else {
+        if (!frontendApi.acceptStaffInvitation) throw new Error('邀请接受服务暂不可用')
+        await frontendApi.acceptStaffInvitation({ invitation_ref: authInvitationRef.value.trim(), credential: authCredential.value, new_password: newPassword.value, confirm_password: confirmPassword.value })
+        authNotice.value = '邀请已接受，请使用新密码登录'
+      }
+      authCredential.value = ''; newPassword.value = ''; confirmPassword.value = ''
+    } catch (error) {
+      errorMessage.value = error instanceof Error ? error.message : '请求未完成，请稍后重试'
+    } finally { isLoading.value = false }
+    return
+  }
+  accountError.value = account.value.trim() ? '' : '请输入账号'
+  passwordError.value = password.value ? '' : '请输入密码'
   if (accountError.value || passwordError.value) return
 
   isLoading.value = true
@@ -84,8 +140,7 @@ const submit = async () => {
     }
     await enterWorkspace(response.data)
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Sign in could not be completed. Try again later'
-    errorMessage.value = message.replace(/[。.]$/, '')
+    errorMessage.value = error instanceof Error ? error.message : '登录未完成，请稍后重试'
   } finally { isLoading.value = false }
 }
 </script>
@@ -98,7 +153,7 @@ const submit = async () => {
       <section class="login-visual" aria-label="PsyNova Workspace">
         <div class="login-visual__tile" aria-hidden="true">
           <img class="login-visual__flow-track" src="/assets/psynova/gentle-rightward-flow.svg" alt="" aria-hidden="true">
-          <span>PsyNova Workspace</span>
+          <span>PsyNova 心理工作区</span>
         </div>
       </section>
 
@@ -108,9 +163,9 @@ const submit = async () => {
             <img src="/assets/psynova/mark.png" alt="" aria-hidden="true">
           </div>
           <div class="login-card__head">
-            <h1 id="login-title">Enter your workspace</h1>
+            <h1 id="login-title">登录工作区</h1>
           </div>
-          <form v-if="!pendingContext" class="login-form" novalidate @submit.prevent="submit">
+          <form v-if="!pendingContext && authMode === 'login'" class="login-form" novalidate @submit.prevent="submit">
             <div class="login-field">
               <input
                 id="account"
@@ -118,8 +173,8 @@ const submit = async () => {
                 class="login-input"
                 type="text"
                 autocomplete="username"
-                placeholder="Enter your username"
-                aria-label="Username"
+                placeholder="请输入账号"
+                aria-label="账号"
                 :aria-invalid="Boolean(accountError)"
                 :aria-describedby="accountError ? 'account-error' : undefined"
               >
@@ -132,32 +187,56 @@ const submit = async () => {
                 class="login-input"
                 type="password"
                 autocomplete="current-password"
-                placeholder="Enter your password"
-                aria-label="Password"
+                placeholder="请输入密码"
+                aria-label="密码"
                 :aria-invalid="Boolean(passwordError)"
                 :aria-describedby="passwordError ? 'password-error' : undefined"
               >
               <p v-if="passwordError" id="password-error" class="login-field__error" role="alert">{{ passwordError }}</p>
             </div>
             <p v-if="errorMessage" class="login-form__error" role="alert" aria-live="assertive">{{ errorMessage }}</p>
-            <AppButton class="login-submit" type="submit" size="md" block :loading="isLoading">Continue</AppButton>
+            <p v-if="authNotice" class="login-form__success" role="status">{{ authNotice }}</p>
+            <AppButton class="login-submit" type="submit" size="md" block :loading="isLoading">登录</AppButton>
+          </form>
+          <form v-else-if="!pendingContext" class="login-form login-lifecycle-form" novalidate @submit.prevent="submit">
+            <h2 ref="authModeHeading" tabindex="-1">{{ authMode === 'first' ? '首次登录' : authMode === 'recovery' ? '申请账号恢复' : authMode === 'reset' ? '重置密码' : '接受教职工邀请' }}</h2>
+            <label v-if="authMode !== 'invite'">学校编号<input v-model.trim="authSchoolRef" required autocomplete="organization" aria-label="学校编号"></label>
+            <label v-if="authMode !== 'invite'">账号<input v-model.trim="authUsername" required autocomplete="username" aria-label="账号"></label>
+            <label v-if="authMode === 'recovery'">班级编号<input v-model.trim="authClassRef" required aria-label="班级编号"></label>
+            <label v-if="authMode === 'recovery'">申请原因代码<input v-model.trim="authReasonCode" required aria-label="申请原因代码"></label>
+            <label v-if="authMode === 'invite'">邀请编号<input v-model.trim="authInvitationRef" required aria-label="邀请编号"></label>
+            <template v-if="authMode !== 'recovery'">
+              <label>一次性凭据<input v-model="authCredential" required autocomplete="one-time-code" aria-label="一次性凭据"></label>
+              <label>新密码<input v-model="newPassword" required type="password" autocomplete="new-password" aria-label="新密码"></label>
+              <label>确认新密码<input v-model="confirmPassword" required type="password" autocomplete="new-password" aria-label="确认新密码"></label>
+            </template>
+            <p v-if="errorMessage" class="login-form__error" role="alert" aria-live="assertive">{{ errorMessage }}</p>
+            <p v-if="authNotice" class="login-form__success" role="status" aria-live="polite">{{ authNotice }}</p>
+            <AppButton class="login-submit" type="submit" size="md" block :loading="isLoading">提交</AppButton>
+            <button class="login-mode-back" type="button" @click="returnToLogin">返回登录</button>
           </form>
           <form v-else class="login-form school-context-choice" @submit.prevent="chooseContext">
-            <label for="school-context">Choose your workspace</label>
-            <select id="school-context" v-model="selectedContext" class="login-input" aria-label="School workspace">
-              <option disabled value="">Select a school and role</option>
+            <label for="school-context">选择学校与角色</label>
+            <select id="school-context" v-model="selectedContext" class="login-input" aria-label="学校与角色">
+              <option disabled value="">请选择</option>
               <option v-for="(context, index) in pendingContext.availableContexts" :key="`${context.schoolRef}:${context.role}`" :value="String(index)">
                 {{ context.schoolRef }}，{{ roleLabels[context.role] }}
               </option>
             </select>
             <p v-if="errorMessage" class="login-form__error" role="alert">{{ errorMessage }}</p>
-            <AppButton class="login-submit" type="submit" size="md" block :loading="isLoading" :disabled="!selectedContext || !frontendApi.switchActiveContext">Continue</AppButton>
+            <AppButton class="login-submit" type="submit" size="md" block :loading="isLoading" :disabled="!selectedContext || !frontendApi.switchActiveContext">继续</AppButton>
           </form>
+          <nav v-if="!pendingContext && authMode === 'login'" class="login-lifecycle-links" aria-label="账号帮助">
+            <button type="button" @click="authMode = 'first'; errorMessage = ''; authNotice = ''">首次登录</button>
+            <button type="button" @click="authMode = 'recovery'; errorMessage = ''; authNotice = ''">忘记密码</button>
+            <button type="button" @click="authMode = 'invite'; errorMessage = ''; authNotice = ''">接受教职工邀请</button>
+          </nav>
+          <button v-if="!pendingContext && authMode === 'recovery'" class="login-mode-switch" type="button" @click="authMode = 'reset'; errorMessage = ''; authNotice = ''">已有管理员批准的恢复凭据？重置密码</button>
         </div>
       </section>
     </div>
 
-    <button class="login-help-trigger" type="button" aria-label="Help" @click="helpOpen = true">
+    <button class="login-help-trigger" type="button" aria-label="帮助" @click="helpOpen = true">
       <CircleHelp :size="18" aria-hidden="true" />
     </button>
 
@@ -166,17 +245,17 @@ const submit = async () => {
         <DialogOverlay class="login-help-overlay" />
         <DialogContent class="login-help-dialog">
           <DialogClose as-child>
-            <button class="login-help-close" type="button" aria-label="Close">
+            <button class="login-help-close" type="button" aria-label="关闭">
               <X :size="18" aria-hidden="true" />
             </button>
           </DialogClose>
           <div class="login-help-content">
-            <DialogTitle class="login-help-title">Help</DialogTitle>
+            <DialogTitle class="login-help-title">登录帮助</DialogTitle>
             <DialogDescription id="login-help-copy" class="login-help-copy">
-              Use the username and password provided by your school. Contact your school administrator if you cannot sign in or access your workspace
+              账号或密码无法使用时，请联系学校管理员
             </DialogDescription>
             <DialogClose as-child>
-              <button class="login-help-confirm" type="button">Got it</button>
+              <button class="login-help-confirm" type="button">知道了</button>
             </DialogClose>
           </div>
         </DialogContent>
@@ -193,10 +272,10 @@ const submit = async () => {
   min-height: 100svh;
   place-items: center;
   padding: 60px 40px;
-  background: linear-gradient(276deg, #f7f7f7 2.53%, #f1f1f3 97.25%);
-  color: #1e1d29;
+  background: var(--color-bg-gradient);
+  color: var(--color-text-primary);
   font-family: Inter, -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Segoe UI", "Noto Sans", ui-sans-serif, system-ui, sans-serif;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 500;
   line-height: 1.6;
 }
@@ -235,8 +314,8 @@ const submit = async () => {
   aspect-ratio: 31 / 27;
   place-items: center;
   overflow: hidden;
-  color: #fff;
-  background-color: #118edb;
+  color: var(--color-text-inverse);
+  background-color: var(--color-primary);
 }
 
 .login-visual__flow-track {
@@ -252,13 +331,12 @@ const submit = async () => {
 .login-visual__tile span {
   position: relative;
   z-index: 1;
-  color: rgb(255 255 255 / 94%);
-  font-size: clamp(25px, 1.35vw, 26px);
+  color: var(--color-text-inverse);
+  font-size: 24px;
   font-weight: 600;
   letter-spacing: -.035em;
   line-height: 1.2;
   text-align: center;
-  text-shadow: 0 1px 10px rgb(8 31 91 / 24%);
 }
 
 .login-side {
@@ -275,9 +353,9 @@ const submit = async () => {
   gap: clamp(20px, 1.15vw, 22px);
   padding: clamp(40px, 2.2vw, 44px) clamp(30px, 1.67vw, 32px) clamp(50px, 2.8vw, 54px);
   border: 0;
-  border-radius: 12px;
-  background: #fff;
-  box-shadow: 0 20px 12px rgb(0 0 0 / 2%), 0 9px 9px rgb(0 0 0 / 2%), 0 2px 5px rgb(0 0 0 / 2%);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-rest);
 }
 
 .login-card__brand {
@@ -287,7 +365,7 @@ const submit = async () => {
   flex: 0 0 50px;
   place-items: center;
   overflow: hidden;
-  border-radius: 12px;
+  border-radius: var(--radius-card);
 }
 
 .login-card__brand img {
@@ -305,8 +383,8 @@ const submit = async () => {
 
 .login-card__head h1 {
   margin: 0;
-  color: #1e1d29;
-  font-size: clamp(21px, 1.1vw, 22px);
+  color: var(--color-text-primary);
+  font-size: 24px;
   font-weight: 600;
   line-height: 1.3;
 }
@@ -317,6 +395,15 @@ const submit = async () => {
   gap: 10px;
 }
 
+.login-lifecycle-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 16px; margin-top: 14px; }
+.login-lifecycle-links button, .login-mode-switch, .login-mode-back { padding: 4px; border: 0; color: var(--color-primary); background: transparent; cursor: pointer; font: inherit; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
+.login-lifecycle-form { max-height: min(62vh, 560px); overflow-y: auto; padding: 2px; }
+.login-lifecycle-form h2 { margin: 0 0 2px; font-size: 16px; }
+.login-lifecycle-form label { display: grid; gap: 4px; color: var(--color-text-secondary); font-size: 12px; }
+.login-lifecycle-form input { min-height: 38px; padding: 7px 10px; border: .5px solid var(--color-border-strong); border-radius: var(--radius-control); color: var(--color-text-primary); background: var(--color-surface); font: inherit; font-size: 12px; }
+.login-lifecycle-form input:focus-visible, .login-lifecycle-links button:focus-visible, .login-mode-switch:focus-visible, .login-mode-back:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 2px; }
+.login-form__success { margin: 0; padding: 9px 11px; border: .5px solid var(--color-support); color: var(--color-support); background: var(--color-support-wash); font-size: 12px; }
+
 .login-field {
   display: grid;
   gap: 6px;
@@ -326,38 +413,38 @@ const submit = async () => {
   display: inline-block;
   position: relative;
   width: 100%;
-  padding: clamp(13px, 0.7vw, 14px) 20px;
-  border: 1px solid transparent;
-  border-radius: 6px;
+  padding: 12px 20px;
+  border: .5px solid transparent;
+  border-radius: var(--radius-control);
   outline: none;
-  color: #1e1d29;
-  background: rgb(24 26 31 / 7%);
+  color: var(--color-text-primary);
+  background: var(--color-surface-muted);
   font: inherit;
-  font-size: clamp(16px, 0.9vw, 17px);
+  font-size: 16px;
   font-weight: 500;
   line-height: 1.3;
-  transition: all 0.2s ease-in-out;
+  transition: all var(--motion-normal) ease-out;
 }
 
 .login-input::placeholder {
-  color: #a0a3ab;
+  color: var(--color-text-muted);
   opacity: 1;
 }
 
 .login-input:focus,
 .login-input:focus-visible {
-  border-color: #3f424a;
+  border-color: var(--color-primary);
   outline: none;
-  color: #1e1d29;
+  color: var(--color-text-primary);
 }
 
 .login-input[aria-invalid='true'] {
-  border-color: #d53633;
+  border-color: var(--color-critical);
 }
 
 .login-field__error {
   margin: 0 2px;
-  color: #d53633;
+  color: var(--color-critical);
   font-size: 12px;
   line-height: 1.4;
 }
@@ -365,10 +452,10 @@ const submit = async () => {
 .login-form__error {
   margin: 0;
   padding: 9px 11px;
-  border: 1px solid rgb(213 54 51 / 18%);
-  border-radius: 6px;
-  color: #a3261b;
-  background: #fff3f1;
+  border: .5px solid var(--color-critical);
+  border-radius: var(--radius-control);
+  color: var(--color-critical);
+  background: var(--color-critical-wash);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -377,34 +464,34 @@ const submit = async () => {
   width: 100%;
   min-height: 0;
   padding: 10px 20px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  color: #fff;
-  background: #00b1e2;
+  border: .5px solid transparent;
+  border-radius: var(--radius-button);
+  color: var(--color-text-inverse);
+  background: var(--color-primary);
   box-shadow: none;
   font-family: inherit;
   font-size: 16px;
   font-weight: 600;
   line-height: 1.3;
-  transition: all 0.2s ease-in-out;
+  transition: all var(--motion-normal) ease-out;
 }
 
 .login-card :deep(.login-submit:hover:not(:disabled)) {
   transform: none;
-  color: #fff;
-  background: #33c1e8;
+  color: var(--color-text-inverse);
+  background: var(--color-primary-hover);
   box-shadow: none;
 }
 
 .login-card :deep(.login-submit:active:not(:disabled)) {
   transform: none;
-  color: #fff;
-  background: #008eb5;
+  color: var(--color-text-inverse);
+  background: var(--color-primary-active);
   box-shadow: none;
 }
 
 .login-card :deep(.login-submit:focus-visible) {
-  outline: 2px solid #3f424a;
+  outline: 2px solid var(--color-focus-ring);
   outline-offset: 1px;
 }
 
@@ -420,25 +507,25 @@ const submit = async () => {
   justify-content: center;
   padding: 5px;
   border: 0;
-  border-radius: 4px;
-  color: #656b76;
+  border-radius: var(--radius-control);
+  color: var(--color-text-secondary);
   background: transparent;
   cursor: pointer;
-  transition: all 0.2s ease-in-out;
+  transition: all var(--motion-normal) ease-out;
 }
 
 .login-help-trigger:hover {
-  background: #f1f1f3;
+  background: var(--color-surface-muted);
 }
 
 .login-help-trigger:active {
-  background: #e6e6e8;
+  background: var(--color-border);
 }
 
 .login-help-trigger:focus-visible,
 .login-help-close:focus-visible,
 .login-help-confirm:focus-visible {
-  outline: 2px solid #3f424a;
+  outline: 2px solid var(--color-focus-ring);
   outline-offset: 1px;
 }
 
@@ -446,9 +533,9 @@ const submit = async () => {
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: rgb(0 0 0 / 80%);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: color-mix(in srgb, var(--color-text-primary) 82%, transparent);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 
 .login-help-dialog {
@@ -460,9 +547,9 @@ const submit = async () => {
   min-height: 300px;
   padding: 60px 30px 30px;
   border: 0;
-  border-radius: 12px;
+  border-radius: var(--radius-dialog);
   outline: none;
-  background: #fff;
+  background: var(--color-surface);
   box-shadow: none;
   transform: translate(-50%, -50%);
 }
@@ -478,11 +565,11 @@ const submit = async () => {
   justify-content: center;
   padding: 11px;
   border: 0;
-  border-radius: 50%;
-  color: #1e1d29;
+  border-radius: var(--radius-control);
+  color: var(--color-text-primary);
   background: transparent;
   cursor: pointer;
-  transition: all 0.2s ease-in-out;
+  transition: all var(--motion-normal) ease-out;
 }
 
 .login-help-content {
@@ -496,7 +583,7 @@ const submit = async () => {
 .login-help-title {
   display: block;
   margin: 0;
-  color: #1e1d29;
+  color: var(--color-text-primary);
   font-size: 24px;
   font-weight: 600;
   line-height: 1.3;
@@ -507,7 +594,7 @@ const submit = async () => {
   display: flex;
   align-items: center;
   margin: 0;
-  color: #3f424a;
+  color: var(--color-text-secondary);
   font-size: 16px;
   font-weight: 500;
   line-height: 1.6;
@@ -520,24 +607,24 @@ const submit = async () => {
   align-items: center;
   justify-content: center;
   padding: 10px 15px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  color: #fff;
-  background: #00b1e2;
+  border: .5px solid transparent;
+  border-radius: var(--radius-button);
+  color: var(--color-text-inverse);
+  background: var(--color-primary);
   cursor: pointer;
   font: inherit;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   line-height: 1.3;
-  transition: all 0.2s ease-in-out;
+  transition: all var(--motion-normal) ease-out;
 }
 
 .login-help-confirm:hover {
-  background: #33c1e8;
+  background: var(--color-primary-hover);
 }
 
 .login-help-confirm:active {
-  background: #008eb5;
+  background: var(--color-primary-active);
 }
 
 @media (max-width: 1024px) {
@@ -578,7 +665,7 @@ const submit = async () => {
   }
 
   .login-visual__tile span {
-    font-size: clamp(19px, 5.8vw, 24px);
+    font-size: 16px;
   }
 
   .login-card {

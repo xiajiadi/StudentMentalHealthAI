@@ -72,9 +72,41 @@ SAFE_FAILURE_CLASSES = {
     "ProtocolError", "TargetClosedError", "WorkflowResponseError",
 }
 FAILURE_ROUTE_MODES = {
-    "login", "student_home", "student_assessments", "student_assessment_new",
+    "login", "student_home", "student_history", "student_feedback", "student_assessments", "student_assessment_new",
     "student_assessment_session", "student_assessment_result", "teacher_overview",
-    "admin_overview", "other",
+    "specialist_overview", "admin_overview", "reviewer_queue", "other", "unknown",
+}
+FORBIDDEN_ROUTE_FAILURES = {
+    "direct_navigation": "NAVIGATION_FAILED",
+    "role_redirect": "ROLE_REDIRECT_NOT_COMPLETED",
+    "destination_check": "UNEXPECTED_DESTINATION",
+}
+RESTORE_DIAGNOSTIC_FAILURES = {
+    ("student_history", "metadata_response", "RESPONSE_NOT_RECEIVED"),
+    ("student_history", "metadata_response", "REQUEST_NOT_STARTED"),
+    ("student_history", "metadata_response", "REQUEST_FAILED"),
+    ("student_history", "metadata_response", "REQUEST_PENDING_PROBE_200"),
+    ("student_history", "metadata_response", "REQUEST_PENDING_PROBE_FAILED"),
+    ("student_history", "metadata_response", "REQUEST_PENDING_PROBE_EVALUATION_FAILED"),
+    ("student_history", "metadata_response", "HTTP_STATUS"),
+    ("student_history", "metadata_response", "BODY_READ_FAILED"),
+    ("student_history", "metadata_response", "ENVELOPE_INVALID"),
+    ("student_history", "metadata_response", "DTO_INVALID"),
+    ("student_history", "metadata_render", "ASSESSMENT_LIBRARY_NOT_VISIBLE"),
+    ("student_history", "metadata_render", "ASSESSMENT_LOADING_DID_NOT_SETTLE"),
+    ("student_history", "metadata_render", "CARD_COUNT_MISMATCH"),
+    ("student_history", "metadata_render", "ROW_COUNT_MISMATCH"),
+    ("student_history", "metadata_render", "STATUS_LABEL_MISMATCH"),
+    ("student_history", "metadata_render", "ITEM_COUNT_LABEL_MISMATCH"),
+    ("student_history", "metadata_render", "DATE_LABEL_MISMATCH"),
+    ("student_history", "metadata_render", "NULL_TIME_LABEL_MISMATCH"),
+    ("student_history", "metadata_render", "EMPTY_STATE_MISMATCH"),
+    ("student_history", "route", "ROUTE_NOT_REACHED"),
+    ("student_feedback", "route", "ROUTE_NOT_REACHED"),
+    ("student_feedback", "feedback_request", "RESPONSE_NOT_RECEIVED"),
+    ("student_feedback", "feedback_request", "HTTP_STATUS"),
+    ("student_feedback", "feedback_request", "ENVELOPE_INVALID"),
+    ("student_feedback", "content_state", "CONTENT_NOT_RENDERED"),
 }
 CAT_FAILURE_SUBSTAGES = {
     "task_row", "task_click", "task_route", "question_ready", "progress",
@@ -96,6 +128,18 @@ SAFE_BROWSER_PREREQUISITE_CODES = {
     "HEADLESS_SHELL_EXECUTABLE_MISSING",
     "BROWSER_LAYOUT_UNRECOGNIZED",
     "INVALID_DIAGNOSTIC",
+}
+SAFE_AUTH_DIAGNOSTIC_CHECKPOINTS = {
+    "not_started",
+    "listeners_ready",
+    "link_visible",
+    "link_clicked",
+    "route_reached",
+    "response_wait_completed",
+    "probe_completed",
+    "response_validated",
+    "assessment_library_visible",
+    "assessment_library_loaded",
 }
 
 
@@ -459,6 +503,9 @@ def sanitize_child_output(
         if not passed:
             # Never forward a child exception name/message; use one fixed label.
             row["failure_class"] = "BrowserCheckFailed"
+            diagnostic = _sanitize_auth_diagnostic(child.get("diagnostic"))
+            if diagnostic is not None:
+                row["failure"] = diagnostic
         safe["results"].append(row)
         if passed:
             safe["pass_count"] += 1
@@ -533,6 +580,41 @@ def safe_error_result(stage: str, exc: BaseException) -> dict[str, Any]:
     }
 
 
+def _sanitize_auth_diagnostic(value: object) -> dict[str, str] | None:
+    if not isinstance(value, dict):
+        return None
+    stage = value.get("stage")
+    substage = value.get("substage")
+    code = value.get("code")
+    current_path = value.get("current_path")
+    if (
+        not isinstance(stage, str)
+        or not isinstance(substage, str)
+        or not isinstance(code, str)
+        or current_path not in FAILURE_ROUTE_MODES
+    ):
+        return None
+    if stage == "forbidden_route" and FORBIDDEN_ROUTE_FAILURES.get(substage) == code:
+        return {
+            "stage": stage,
+            "substage": substage,
+            "code": code,
+            "current_path": current_path,
+        }
+    if (stage, substage, code) in RESTORE_DIAGNOSTIC_FAILURES:
+        result = {
+            "stage": stage,
+            "substage": substage,
+            "code": code,
+            "current_path": current_path,
+        }
+        checkpoint = value.get("checkpoint")
+        if checkpoint in SAFE_AUTH_DIAGNOSTIC_CHECKPOINTS:
+            result["checkpoint"] = checkpoint
+        return result
+    return None
+
+
 def safe_node_environment(source: dict[str, str] | None = None) -> dict[str, str]:
     """Give Node only Windows process essentials, not runtime or user secrets."""
     source = os.environ if source is None else source
@@ -541,7 +623,18 @@ def safe_node_environment(source: dict[str, str] | None = None) -> dict[str, str
         "userprofile", "appdata", "programfiles", "programfiles(x86)",
         "playwright_browsers_path",
     }
-    return {key: value for key, value in source.items() if key.casefold() in allowed}
+    result = {key: value for key, value in source.items() if key.casefold() in allowed}
+    if source is os.environ and not any(
+        key.casefold() == "playwright_browsers_path" for key in result
+    ):
+        browser_candidates = (
+            Path("D:/Dev/tools/playwright-browsers"),
+            Path.home() / "AppData/Local/ms-playwright",
+        )
+        browser_cache = next((path for path in browser_candidates if path.is_dir()), None)
+        if browser_cache is not None:
+            result["PLAYWRIGHT_BROWSERS_PATH"] = str(browser_cache)
+    return result
 
 
 def create_artifact_run_dir(workspace: Path) -> Path:

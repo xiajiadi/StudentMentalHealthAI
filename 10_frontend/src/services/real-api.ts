@@ -71,6 +71,16 @@ import type {
   SchoolAccountImportRow,
   SchoolAccountPreview,
   SchoolAccountBatch,
+  LifecycleRosterRow,
+  LifecycleRosterPreview,
+  LifecycleRosterImport,
+  LifecycleAccountSummary,
+  LifecycleCredential,
+  LifecycleInvitationInput,
+  LifecycleInvitationResult,
+  LifecycleStaffInvitation,
+  LifecycleStaffRecoveryCredential,
+  LifecycleRecoveryTicket,
 } from '@/api/client'
 
 type UnknownRecord = Record<string, unknown>
@@ -749,7 +759,7 @@ const mapSchoolDirectory = (value: unknown): SchoolDirectory => {
   })
   const memberKeys = new Set<string>()
   const members = value.members.map((item) => {
-    const allowed = new Set(['user_id', 'display_name', 'role', 'account_status', 'provisioning_status'])
+    const allowed = new Set(['user_id', 'display_name', 'role', 'account_status', 'provisioning_status', 'class_refs'])
     if (!isRecord(item) || Object.keys(item).some((key) => !allowed.has(key))
       || (item.role !== 'student' && item.role !== 'teacher')) {
       throw new RealApiError('API_INVALID_RESPONSE', '学校目录人员包含不支持的信息。')
@@ -764,12 +774,20 @@ const mapSchoolDirectory = (value: unknown): SchoolDirectory => {
     if (item.provisioning_status !== null && item.provisioning_status !== 'PENDING_ACTIVATION' && item.provisioning_status !== 'ACTIVE') {
       throw new RealApiError('API_INVALID_RESPONSE', '学校目录账号状态无法识别。')
     }
+    const memberClassRefs = item.class_refs
+    if (memberClassRefs !== undefined
+      && (!Array.isArray(memberClassRefs)
+        || memberClassRefs.some((classRef) => typeof classRef !== 'string' || !classRef.trim())
+        || new Set(memberClassRefs).size !== memberClassRefs.length)) {
+      throw new RealApiError('API_INVALID_RESPONSE', '学校目录人员班级范围无法识别。')
+    }
     return {
       user_id: userId,
       display_name: nullableDisplayName(item.display_name),
       role: item.role,
       account_status: requiredString(item, 'account_status'),
       provisioning_status: nullableDisplayName(item.provisioning_status),
+      ...(memberClassRefs === undefined ? {} : { class_refs: [...memberClassRefs] }),
     }
   })
   return { school, classes, members }
@@ -1867,17 +1885,6 @@ export class RealApiProvider implements FrontendApi {
     return { ...response, data: mapSchoolAccountBatch(response.data) }
   }
 
-  async activateSchoolAccount(userId: string, newPassword: string): Promise<ApiEnvelope<unknown>> {
-    await this.ensureCsrfToken()
-    return unwrap<unknown>(() => apiClient.request({
-      method: 'POST',
-      url: `/api/v1/school/admin/accounts/${encodeURIComponent(userId)}/activate`,
-      body: { new_password: newPassword },
-      parseAs: 'json',
-      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrfToken },
-    }))
-  }
-
   async listSchoolClasses(params: { signal?: AbortSignal } = {}): Promise<ApiEnvelope<SchoolClass[]>> {
     const response = await unwrap<unknown>(() => apiClient.request({
       method: 'GET', url: '/api/v1/school/classes', signal: params.signal, parseAs: 'json',
@@ -2337,6 +2344,138 @@ export class RealApiProvider implements FrontendApi {
     }
     this.reviewCases.set(reportId, caseData)
     return { ...response, data: caseData }
+  }
+
+  private async lifecycleWrite<T>(path: string, body: Record<string, unknown>, idempotencyKey?: string): Promise<ApiEnvelope<T>> {
+    await this.ensureCsrfToken()
+    return unwrap<T>(() => apiClient.request({
+      method: 'POST', url: path, body, parseAs: 'json',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(idempotencyKey ? mutationHeaders(this.csrfToken, idempotencyKey) : { 'X-CSRF-Token': this.csrfToken }),
+      },
+    }))
+  }
+
+  private async lifecyclePublicWrite<T>(path: string, body: Record<string, unknown>): Promise<ApiEnvelope<T>> {
+    return unwrap<T>(() => apiClient.request({
+      method: 'POST', url: path, body, parseAs: 'json',
+      headers: { 'Content-Type': 'application/json' },
+    }))
+  }
+
+  async previewLifecycleRoster(rows: LifecycleRosterRow[]): Promise<ApiEnvelope<LifecycleRosterPreview>> {
+    return this.lifecycleWrite('/api/v1/school/admin/roster/preview', { rows })
+  }
+
+  async importLifecycleRoster(rows: LifecycleRosterRow[], idempotencyKey: string): Promise<ApiEnvelope<LifecycleRosterImport>> {
+    return this.lifecycleWrite('/api/v1/school/admin/roster/import', { rows }, idempotencyKey)
+  }
+
+  async getLifecycleRosterImport(runRef: string): Promise<ApiEnvelope<LifecycleRosterImport>> {
+    return unwrap(() => apiClient.request({ method: 'GET', url: `/api/v1/school/admin/roster/imports/${encodeURIComponent(runRef)}`, parseAs: 'json' }))
+  }
+
+  async getLifecycleAccountSummary(): Promise<ApiEnvelope<LifecycleAccountSummary>> {
+    return unwrap(() => apiClient.request({ method: 'GET', url: '/api/v1/school/admin/accounts/summary', parseAs: 'json' }))
+  }
+
+  async listStaffInvitations(): Promise<ApiEnvelope<LifecycleStaffInvitation[]>> {
+    const response = await unwrap<unknown>(() => apiClient.request({
+      method: 'GET', url: '/api/v1/school/admin/staff/invitations', parseAs: 'json',
+    }))
+    if (!Array.isArray(response.data)) throw new RealApiError('API_INVALID_RESPONSE', '教职工邀请列表格式无法识别。')
+    const invitations = response.data.map((value): LifecycleStaffInvitation => {
+      const allowed = new Set([
+        'invitation_ref', 'user_id', 'login_name', 'display_name', 'employee_ref', 'role',
+        'status', 'delivery_channel', 'class_refs', 'created_at', 'expires_at',
+      ])
+      if (!isRecord(value) || Object.keys(value).some((key) => !allowed.has(key))
+        || (value.role !== 'teacher' && value.role !== 'psychological_specialist')
+        || !['ISSUED', 'ACCEPTED', 'EXPIRED', 'REVOKED'].includes(String(value.status))
+        || value.delivery_channel !== 'MANUAL'
+        || !Array.isArray(value.class_refs)
+        || value.class_refs.some((classRef) => typeof classRef !== 'string' || !classRef.trim())
+        || new Set(value.class_refs).size !== value.class_refs.length) {
+        throw new RealApiError('API_INVALID_RESPONSE', '教职工邀请记录格式无法识别。')
+      }
+      return {
+        invitation_ref: requiredString(value, 'invitation_ref'),
+        user_id: requiredString(value, 'user_id'),
+        login_name: requiredString(value, 'login_name'),
+        display_name: nullableDisplayName(value.display_name),
+        employee_ref: requiredString(value, 'employee_ref'),
+        role: value.role,
+        status: value.status as LifecycleStaffInvitation['status'],
+        delivery_channel: 'MANUAL',
+        class_refs: [...value.class_refs] as string[],
+        created_at: requiredTimestamp(value, 'created_at')!,
+        expires_at: requiredTimestamp(value, 'expires_at')!,
+      }
+    })
+    return { ...response, data: invitations }
+  }
+
+  async revokeStaffInvitation(invitationRef: string, reasonCode: string): Promise<ApiEnvelope<{ status: string }>> {
+    return this.lifecycleWrite(`/api/v1/school/admin/staff/invitations/${encodeURIComponent(invitationRef)}/revoke`, { reason_code: reasonCode })
+  }
+
+  async reissueStaffInvitation(invitationRef: string, reasonCode: string): Promise<ApiEnvelope<LifecycleInvitationResult>> {
+    return this.lifecycleWrite(`/api/v1/school/admin/staff/invitations/${encodeURIComponent(invitationRef)}/reissue`, { reason_code: reasonCode })
+  }
+
+  async issueStaffRecoveryCredential(
+    userId: string,
+    input: { reason_code: string; verification_method: 'IN_PERSON' | 'VERIFIED_WORK_CONTACT'; identity_verified: true },
+  ): Promise<ApiEnvelope<LifecycleStaffRecoveryCredential>> {
+    return this.lifecycleWrite(
+      `/api/v1/school/admin/staff/${encodeURIComponent(userId)}/recovery-credential`,
+      input,
+    )
+  }
+
+  async issueLifecycleCredentials(userIds: string[]): Promise<ApiEnvelope<{ credentials: LifecycleCredential[] }>> {
+    return this.lifecycleWrite('/api/v1/school/admin/accounts/credentials/issue', { user_ids: userIds })
+  }
+
+  async inviteSchoolStaff(input: LifecycleInvitationInput): Promise<ApiEnvelope<LifecycleInvitationResult>> {
+    return this.lifecycleWrite('/api/v1/school/admin/staff/invitations', input as unknown as Record<string, unknown>)
+  }
+
+  async acceptStaffInvitation(input: { invitation_ref: string; credential: string; new_password: string; confirm_password: string }): Promise<ApiEnvelope<unknown>> {
+    return this.lifecyclePublicWrite('/api/v1/auth/staff-invitations/accept', input)
+  }
+
+  async completeFirstLogin(input: { school_ref: string; username: string; credential: string; new_password: string; confirm_password: string }): Promise<ApiEnvelope<unknown>> {
+    return this.lifecyclePublicWrite('/api/v1/auth/first-login', input)
+  }
+
+  async createRecoveryRequest(input: { school_ref: string; username: string; class_ref: string; reason_code: string }): Promise<ApiEnvelope<unknown>> {
+    return this.lifecyclePublicWrite('/api/v1/auth/recovery-requests', input)
+  }
+
+  async listRecoveryRequests(): Promise<ApiEnvelope<LifecycleRecoveryTicket[]>> {
+    return unwrap(() => apiClient.request({ method: 'GET', url: '/api/v1/school/admin/recovery-requests', parseAs: 'json' }))
+  }
+
+  async verifyRecoveryRequest(ticketRef: string, reasonCode: string): Promise<ApiEnvelope<unknown>> {
+    return this.lifecycleWrite(`/api/v1/school/teacher/recovery-requests/${encodeURIComponent(ticketRef)}/verify`, { reason_code: reasonCode })
+  }
+
+  async approveRecoveryRequest(ticketRef: string, reasonCode: string): Promise<ApiEnvelope<{ credential: string; expires_at: string }>> {
+    return this.lifecycleWrite(`/api/v1/school/admin/recovery-requests/${encodeURIComponent(ticketRef)}/approve`, { reason_code: reasonCode })
+  }
+
+  async completePasswordReset(input: { school_ref: string; username: string; credential: string; new_password: string; confirm_password: string }): Promise<ApiEnvelope<unknown>> {
+    return this.lifecyclePublicWrite('/api/v1/auth/password/reset/complete', input)
+  }
+
+  async updateSchoolAccountStatus(userId: string, status: 'ACTIVE' | 'DISABLED', reasonCode: string): Promise<ApiEnvelope<unknown>> {
+    return this.lifecycleWrite(`/api/v1/school/admin/accounts/${encodeURIComponent(userId)}/status`, { status, reason_code: reasonCode })
+  }
+
+  async reauthenticate(password: string): Promise<ApiEnvelope<unknown>> {
+    return this.lifecycleWrite('/api/v1/auth/reauthenticate', { current_password: password })
   }
 }
 

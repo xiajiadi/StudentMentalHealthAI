@@ -28,7 +28,7 @@ def _preflight_result() -> dict:
         "workspace_id": WORKSPACE_ID,
         "data_directory": "synthetic-fixture-only",
         "identity_profile": "school_tenant",
-        "schema_revision": "20261016_0024",
+        "schema_revision": "20261024_0025",
         "purpose": "application",
         "scope": "APPLICATION_CURRENT_REVISION",
         "preflight": "PASS",

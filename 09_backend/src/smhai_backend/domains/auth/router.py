@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -20,10 +23,14 @@ from .dependencies import (
 from .schemas import (
     ActiveContextRequest,
     ActorDto,
+    CompleteInitialLoginRequest,
+    CompleteInitialLoginResponse,
     CsrfResponse,
     LoginRequest,
     LoginResponse,
     LogoutResponse,
+    ReauthenticateRequest,
+    ReauthenticateResponse,
     RoleContextDto,
 )
 
@@ -99,6 +106,47 @@ async def login(request: Request, payload: LoginRequest) -> JSONResponse:
 
 
 @router.post(
+    "/first-login",
+    operation_id="authCompleteFirstLogin",
+    response_model=ApiEnvelope[CompleteInitialLoginResponse],
+    openapi_extra=PUBLIC_SECURITY_OPENAPI_EXTRA,
+    include_in_schema=False,
+    responses=problem_responses(
+        ErrorCode.AUTH_INVALID_CREDENTIALS,
+        ErrorCode.RATE_LIMITED,
+        ErrorCode.VALIDATION_FAILED,
+    ),
+    summary="Consume a one-time school credential and set the user's password",
+)
+async def complete_first_login(
+    request: Request, payload: CompleteInitialLoginRequest
+) -> JSONResponse:
+    container = request.app.state.container
+    validate_mutation_origin(request, container.settings)
+    client_host = request.client.host if request.client else "unknown"
+    container.rate_limiter.check(
+        "login",
+        f"{client_host}:{credential_identity(payload.username)}",
+    )
+    context = current_request_context(request)
+    result = await container.school_directory.complete_initial_credential(
+        username=payload.username,
+        school_ref=payload.school_ref,
+        token_hash=hashlib.sha256(
+            payload.credential.get_secret_value().encode("utf-8")
+        ).digest(),
+        new_password=payload.new_password.get_secret_value(),
+        trace_id=context.trace_id,
+    )
+    response = JSONResponse(
+        content=envelope(request, CompleteInitialLoginResponse.model_validate(result)),
+        status_code=200,
+        headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
+    )
+    return response
+
+
+@router.post(
     "/logout",
     operation_id="authLogout",
     response_model=ApiEnvelope[LogoutResponse],
@@ -126,6 +174,39 @@ async def logout(request: Request, actor: CsrfActor) -> JSONResponse:
         samesite=container.settings.auth.same_site,
     )
     return response
+
+
+@router.post(
+    "/reauthenticate",
+    operation_id="authReauthenticate",
+    response_model=ApiEnvelope[ReauthenticateResponse],
+    openapi_extra=CSRF_SECURITY_OPENAPI_EXTRA,
+    include_in_schema=False,
+    responses=problem_responses(
+        ErrorCode.AUTH_SESSION_EXPIRED,
+        ErrorCode.AUTH_SESSION_REVOKED,
+        ErrorCode.AUTH_INVALID_CREDENTIALS,
+        ErrorCode.CSRF_FAILED,
+    ),
+    summary="Reauthenticate the current session with the current password",
+)
+async def reauthenticate(
+    request: Request, payload: ReauthenticateRequest, actor: CsrfActor
+) -> JSONResponse:
+    container = request.app.state.container
+    context = current_request_context(request)
+    session = await container.auth.reauthenticate(
+        request.cookies.get(container.settings.cookie_name),
+        actor=actor,
+        current_password=payload.current_password.get_secret_value(),
+        request_id=context.request_id,
+        trace_id=context.trace_id,
+    )
+    assert session.reauthenticated_at is not None
+    data = ReauthenticateResponse(
+        reauthenticated_at=datetime.fromtimestamp(session.reauthenticated_at, UTC)
+    )
+    return JSONResponse(content=envelope(request, data), status_code=200)
 
 
 @router.get(

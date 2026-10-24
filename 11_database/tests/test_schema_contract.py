@@ -21,6 +21,7 @@ from database_layer.models import (  # noqa: F401
     SafetyDecision,
     School,
     SchoolAccountBatch,
+    SchoolAccountCredential,
     SchoolAccountProvision,
     SchoolCatActivation,
     SchoolCatItemBank,
@@ -36,6 +37,7 @@ from database_layer.models import (  # noqa: F401
     SchoolConversationSafetyEvent,
     SchoolFeedbackEvent,
     SchoolFeedbackRecord,
+    SchoolPasswordRecoveryTicket,
     SchoolPostAssessmentJob,
     SchoolProfessionalReviewCase,
     SchoolProfessionalReviewEvent,
@@ -45,6 +47,10 @@ from database_layer.models import (  # noqa: F401
     SchoolResearchFeedbackRecord,
     SchoolResearchReviewCase,
     SchoolResearchReviewEvent,
+    SchoolRosterImportRun,
+    SchoolRosterImportRunBatch,
+    SchoolStaffInvitation,
+    SchoolStaffInvitationClass,
     SchoolTaskSpecialistAssignment,
     Subject,
     SubjectAccessGrant,
@@ -60,7 +66,7 @@ from sqlalchemy.schema import CreateTable
 
 
 def test_domain_table_count_and_explicit_mysql_defaults() -> None:
-    assert len(Base.metadata.tables) == 65
+    assert len(Base.metadata.tables) == 71
     assert set(Base.metadata.tables) == {
         "accounts",
         "roles",
@@ -69,6 +75,12 @@ def test_domain_table_count_and_explicit_mysql_defaults() -> None:
         "school_classes",
         "school_account_batches",
         "school_account_provisions",
+        "school_roster_import_runs",
+        "school_roster_import_run_batches",
+        "school_account_credentials",
+        "school_staff_invitations",
+        "school_staff_invitation_classes",
+        "school_password_recovery_tickets",
         "school_class_students",
         "school_class_teachers",
         "measurement_tasks",

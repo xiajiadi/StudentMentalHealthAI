@@ -18,8 +18,8 @@ describe('登录页认证边界', () => {
       expect((wrapper.get('#account').element as unknown as { value: string }).value).toBe('')
       expect((wrapper.get('#password').element as unknown as { value: string }).value).toBe('')
       expect(wrapper.find('.role-picker').exists()).toBe(false)
-      expect(wrapper.get('h1').text()).toBe('Enter your workspace')
-      expect(wrapper.get('button[type="submit"]').text()).toBe('Continue')
+      expect(wrapper.get('h1').text()).toBe('登录工作区')
+      expect(wrapper.get('button[type="submit"]').text()).toBe('登录')
     } finally {
       wrapper.unmount()
     }

@@ -187,7 +187,7 @@ class CiphertextConnection:
         return self.fake_cursor
 
 
-def install_fake_crypto(monkeypatch, decrypted):
+def install_fake_crypto(monkeypatch, decrypted, *, contact_payload=None):
     crypto = types.ModuleType("database_layer.crypto")
 
     class EncryptedPayload:
@@ -203,6 +203,8 @@ def install_fake_crypto(monkeypatch, decrypted):
 
         def decrypt_json(self, payload):
             decrypted.append(payload.ciphertext)
+            if payload.payload_schema_version == "school-staff-contact.v1":
+                return contact_payload or {"contact": "staff@example.test"}
             return {"synthetic": True}
 
     crypto.EncryptedPayload = EncryptedPayload
@@ -337,6 +339,105 @@ def test_0020_ciphertext_verification_includes_held_education_candidate(tmp_path
         for sql in connection.fake_cursor.queries
     )
     assert "school_research_education_candidate_events" in manifest
+
+
+def test_0025_verifies_encrypted_staff_contact_envelope_and_metadata(
+    tmp_path, monkeypatch
+):
+    table_name = "school_staff_invitations"
+    manifest = trusted_manifest(CURRENT_SCHOOL_REVISION)
+    assert {
+        "work_contact_ciphertext",
+        "work_contact_cipher_format_version",
+        "work_contact_key_version",
+        "work_contact_payload_schema_version",
+    } <= set(manifest[table_name])
+    connection = CiphertextConnection(
+        set(manifest),
+        {
+            (table_name, "work_contact_ciphertext"): [
+                (b"synthetic-encrypted-contact", "key-v1", "fernet.v1", "school-staff-contact.v1")
+            ],
+        },
+    )
+    decrypted = []
+    install_fake_crypto(monkeypatch, decrypted)
+
+    checked = restore_module._verify_ciphertexts(
+        connection, tmp_path, tmp_path, CURRENT_SCHOOL_REVISION
+    )
+
+    assert checked == 1
+    assert decrypted == [b"synthetic-encrypted-contact"]
+    assert any(
+        "SELECT `work_contact_ciphertext`,`work_contact_key_version`,"
+        "`work_contact_cipher_format_version`,`work_contact_payload_schema_version`"
+        in sql
+        and "FROM `school_staff_invitations`" in sql
+        for sql in connection.fake_cursor.queries
+    )
+
+
+def test_0025_rejects_unsupported_staff_contact_envelope(tmp_path, monkeypatch):
+    table_name = "school_staff_invitations"
+    manifest = {
+        table_name: [
+            "work_contact_ciphertext",
+            "work_contact_cipher_format_version",
+            "work_contact_key_version",
+            "work_contact_payload_schema_version",
+        ],
+        "database_alembic_version": ["version_num"],
+    }
+    monkeypatch.setattr(restore_module, "trusted_manifest", lambda _revision: manifest)
+    connection = CiphertextConnection(
+        set(manifest),
+        {
+            (table_name, "work_contact_ciphertext"): [
+                (b"synthetic-encrypted-contact", "key-v1", "fernet.v1", "unexpected.v1")
+            ],
+        },
+    )
+    decrypted = []
+    install_fake_crypto(monkeypatch, decrypted)
+
+    with pytest.raises(RuntimeError, match="schema version"):
+        restore_module._verify_ciphertexts(
+            connection, tmp_path, tmp_path, CURRENT_SCHOOL_REVISION
+        )
+    assert decrypted == []
+
+
+def test_0025_rejects_extra_fields_in_staff_contact_envelope(tmp_path, monkeypatch):
+    table_name = "school_staff_invitations"
+    manifest = {
+        table_name: [
+            "work_contact_ciphertext",
+            "work_contact_cipher_format_version",
+            "work_contact_key_version",
+            "work_contact_payload_schema_version",
+        ],
+        "database_alembic_version": ["version_num"],
+    }
+    monkeypatch.setattr(restore_module, "trusted_manifest", lambda _revision: manifest)
+    connection = CiphertextConnection(
+        set(manifest),
+        {
+            (table_name, "work_contact_ciphertext"): [
+                (b"synthetic-encrypted-contact", "key-v1", "fernet.v1", "school-staff-contact.v1")
+            ],
+        },
+    )
+    install_fake_crypto(
+        monkeypatch,
+        [],
+        contact_payload={"contact": "staff@example.test", "unexpected": "value"},
+    )
+
+    with pytest.raises(TypeError, match="encrypted object"):
+        restore_module._verify_ciphertexts(
+            connection, tmp_path, tmp_path, CURRENT_SCHOOL_REVISION
+        )
 
 
 def test_0024_ciphertext_verification_uses_exact_independent_review_metadata_columns(

@@ -37,6 +37,21 @@ CIPHERTEXT_METADATA_COLUMNS = {
         "reviewed_cipher_format_version",
         "reviewed_payload_schema_version",
     ),
+    (
+        "school_staff_invitations",
+        "work_contact_ciphertext",
+    ): (
+        "work_contact_key_version",
+        "work_contact_cipher_format_version",
+        "work_contact_payload_schema_version",
+    ),
+}
+CIPHERTEXT_PAYLOAD_CONTRACTS = {
+    ("school_staff_invitations", "work_contact_ciphertext"): {
+        "payload_schema_version": "school-staff-contact.v1",
+        "exact_fields": frozenset({"contact"}),
+        "string_fields": frozenset({"contact"}),
+    },
 }
 
 
@@ -128,11 +143,26 @@ def _verify_ciphertexts(
                     f"FROM `{table_name}` WHERE `{column}` IS NOT NULL"
                 )
                 for ciphertext, key_version, cipher_format, payload_schema in cursor.fetchall():
+                    contract = CIPHERTEXT_PAYLOAD_CONTRACTS.get((table_name, column))
+                    if (
+                        contract is not None
+                        and payload_schema != contract["payload_schema_version"]
+                    ):
+                        raise RuntimeError("Encrypted payload schema version is unsupported")
                     value = protection.decrypt_json(EncryptedPayload(
                         ciphertext=ciphertext, key_version=key_version,
                         cipher_format_version=cipher_format, payload_schema_version=payload_schema,
                     ))
                     if not isinstance(value, dict):
+                        raise TypeError("Restored encrypted object is invalid")
+                    if contract is not None and (
+                        set(value) != contract["exact_fields"]
+                        or any(
+                            not isinstance(value[field_name], str)
+                            or not value[field_name]
+                            for field_name in contract["string_fields"]
+                        )
+                    ):
                         raise TypeError("Restored encrypted object is invalid")
                     checked += 1
                     del value
