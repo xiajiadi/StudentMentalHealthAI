@@ -799,7 +799,11 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(result, sort_keys=True))
         if args.resume and result.get("status") == "ROLLED_BACK":
             return 1
-        return 0 if result.get("status") in {"PASS", "READY", "ROLLED_BACK"} else 2
+        return (
+            0
+            if result.get("status") in {"PACKAGED", "PASS", "READY", "ROLLED_BACK"}
+            else 2
+        )
     except DeployError as exc:
         print(json.dumps({"status": "BLOCKED", "error_code": exc.code}, sort_keys=True))
         return 2

@@ -43,6 +43,19 @@ def test_pinned_source_file_and_package_build_are_reproducible(tmp_path):
     assert packaged_source == source
 
 
+def test_package_cli_returns_success_for_packaged_output(tmp_path, capsys):
+    output = tmp_path / "overlay.zip"
+
+    exit_code = deploy.main(
+        ["--package", "--repo-root", str(REPO_ROOT), "--output", str(output)]
+    )
+    result = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert result["status"] == "PACKAGED"
+    assert output.is_file()
+
+
 def test_bundle_rejects_an_unapproved_file_path_or_changed_source():
     source = deploy._git_bytes(REPO_ROOT, deploy.SOURCE_COMMIT, deploy.TARGET_PATH)
     valid = _bundle(source)
