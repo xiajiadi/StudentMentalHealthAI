@@ -646,6 +646,103 @@ async def test_credential_issue_activates_provision_blocks_login_then_first_logi
 
 
 @pytest.mark.asyncio
+async def test_active_uninitialized_synthetic_import_can_receive_credential(
+    roster_scope,
+):
+    service, imported = await _import_one_student(roster_scope)
+    account = roster_scope.session.scalar(
+        select(db_models.Account).where(
+            db_models.Account.public_id == imported["user_id"].removeprefix("USER_")
+        )
+    )
+    provision = roster_scope.session.query(db_models.SchoolAccountProvision).one()
+    account.status = "ACTIVE"
+    account.must_change_password = False
+    account.password_changed_at = None
+    original_hash = account.password_hash
+    provision.status = "ACTIVE"
+    provision.activated_at = NOW
+    session = db_models.AuthSession(
+        public_id="uninitialized-import-session",
+        account_id=account.id,
+        session_token_hash=b"u" * 32,
+        idle_expires_at=NOW + timedelta(hours=1),
+        absolute_expires_at=NOW + timedelta(hours=8),
+    )
+    roster_scope.session.add(session)
+    roster_scope.session.commit()
+
+    issued = await _issue_one_credential(service, roster_scope, imported["user_id"])
+
+    assert issued["login_name"] == account.login_name
+    assert issued["credential"]
+    assert account.status == "ACTIVE"
+    assert account.must_change_password is True
+    assert account.password_changed_at is None
+    assert account.password_hash == original_hash
+    assert provision.status == "ACTIVE"
+    assert session.revoked_at == NOW
+    assert session.revocation_reason == "INITIAL_CREDENTIAL_ISSUED"
+    credential = roster_scope.session.query(db_models.SchoolAccountCredential).one()
+    assert credential.purpose == "INITIAL_ACTIVATION"
+    assert credential.status == "ISSUED"
+    assert issued["credential"] not in repr(credential.__dict__)
+    result = await service.complete_initial_credential(
+        issued["login_name"],
+        "SCHOOL_A",
+        hashlib.sha256(issued["credential"].encode()).digest(),
+        "New-Synthetic-Password-4",
+        "TRACE_RECOVERED_FIRST_LOGIN",
+    )
+    assert result == {"status": "PASSWORD_SET"}
+    assert account.must_change_password is False
+    assert account.password_changed_at == NOW
+    assert account.password_hash != original_hash
+    assert credential.status == "CONSUMED"
+
+
+@pytest.mark.asyncio
+async def test_initial_credential_recovery_rejects_non_synthetic_or_previously_issued_accounts(
+    roster_scope,
+):
+    service, imported = await _import_one_student(roster_scope)
+    account = roster_scope.session.scalar(
+        select(db_models.Account).where(
+            db_models.Account.public_id == imported["user_id"].removeprefix("USER_")
+        )
+    )
+    provision = roster_scope.session.query(db_models.SchoolAccountProvision).one()
+    account.status = "ACTIVE"
+    account.must_change_password = False
+    account.password_changed_at = None
+    provision.status = "ACTIVE"
+    provision.activated_at = NOW
+    roster_scope.session.commit()
+
+    school = roster_scope.session.scalar(
+        select(db_models.School).where(db_models.School.school_ref == "SCHOOL_A")
+    )
+    school.data_origin = "PRODUCTION_PENDING"
+    roster_scope.session.commit()
+    with pytest.raises(BackendError) as non_synthetic:
+        await _issue_one_credential(service, roster_scope, imported["user_id"])
+    assert non_synthetic.value.code is ErrorCode.FORBIDDEN
+
+    school.data_origin = "SYNTHETIC"
+    roster_scope.session.commit()
+    first = await _issue_one_credential(service, roster_scope, imported["user_id"])
+    credential = roster_scope.session.query(db_models.SchoolAccountCredential).one()
+    assert first["credential"]
+    account.must_change_password = False
+    account.password_changed_at = None
+    roster_scope.session.commit()
+    with pytest.raises(BackendError) as previously_issued:
+        await _issue_one_credential(service, roster_scope, imported["user_id"])
+    assert previously_issued.value.code is ErrorCode.WORKFLOW_CONFLICT
+    assert credential.status == "ISSUED"
+
+
+@pytest.mark.asyncio
 async def test_credential_resigning_revokes_old_token_and_legacy_activation_is_disabled(
     roster_scope,
 ):

@@ -208,6 +208,8 @@ export interface LifecycleCredential {
   class_ref: string
   credential: string
   expires_at: string
+  role?: 'student' | 'teacher'
+  invitation_ref?: string
 }
 export interface LifecycleInvitationInput {
   employee_ref: string

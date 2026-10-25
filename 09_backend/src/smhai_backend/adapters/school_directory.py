@@ -968,7 +968,9 @@ class SchoolDirectoryPersistenceAdapter:
                 detail="roster import conflicted with another update",
             ) from exc
 
-    async def _revoke_account_sessions(self, uow, account_id: int, at) -> None:
+    async def _revoke_account_sessions(
+        self, uow, account_id: int, at, *, reason: str = "INITIAL_CREDENTIAL_COMPLETED"
+    ) -> None:
         m = self._db_models
         sessions = list(
             (
@@ -985,7 +987,7 @@ class SchoolDirectoryPersistenceAdapter:
         )
         for session in sessions:
             session.revoked_at = at
-            session.revocation_reason = "INITIAL_CREDENTIAL_COMPLETED"
+            session.revocation_reason = reason
 
     @staticmethod
     def _initial_credential_conflict():
@@ -1100,6 +1102,23 @@ class SchoolDirectoryPersistenceAdapter:
                 ).all()
             )
             batches_by_id = {batch.id: batch for batch in batches}
+            school_data_origin = await uow.session.scalar(
+                self._select(m.School.data_origin).where(m.School.id == actor.school_id)
+            )
+            is_synthetic_school = school_data_origin == e.DataOrigin.SYNTHETIC.value
+            prior_initial_credentials = set(
+                (
+                    await uow.session.scalars(
+                        self._select(m.SchoolAccountCredential.account_id)
+                        .where(
+                            m.SchoolAccountCredential.school_id == actor.school_id,
+                            m.SchoolAccountCredential.account_id.in_(account_ids),
+                            m.SchoolAccountCredential.purpose == "INITIAL_ACTIVATION",
+                        )
+                        .with_for_update()
+                    )
+                ).all()
+            )
             class_ids = sorted({batch.class_id for batch in batches if batch.class_id is not None})
             school_classes = list(
                 (
@@ -1176,7 +1195,16 @@ class SchoolDirectoryPersistenceAdapter:
                     and account.status == e.AccountStatus.ACTIVE.value
                     and account.must_change_password
                 )
-                if account.password_changed_at is not None or not (pending or reissue):
+                synthetic_uninitialized = (
+                    is_synthetic_school
+                    and provision.status == "ACTIVE"
+                    and account.status == e.AccountStatus.ACTIVE.value
+                    and not account.must_change_password
+                    and account.id not in prior_initial_credentials
+                )
+                if account.password_changed_at is not None or not (
+                    pending or reissue or synthetic_uninitialized
+                ):
                     raise self._initial_credential_conflict()
                 result_rows.append(
                     {
@@ -1250,6 +1278,10 @@ class SchoolDirectoryPersistenceAdapter:
                                 admin_membership_role_id=admin_role_id,
                                 at=at,
                             )
+                else:
+                    # Reissued and recovered synthetic accounts must establish
+                    # a fresh password before they can authenticate again.
+                    account.must_change_password = True
 
                 old_credentials = list(
                     (
@@ -1289,7 +1321,9 @@ class SchoolDirectoryPersistenceAdapter:
                 )
                 uow.session.add(credential)
                 await uow.session.flush()
-                await self._revoke_account_sessions(uow, account.id, at)
+                await self._revoke_account_sessions(
+                    uow, account.id, at, reason="INITIAL_CREDENTIAL_ISSUED"
+                )
                 await self._school_directory_audit(
                     uow,
                     actor_account_id=actor_account_id,

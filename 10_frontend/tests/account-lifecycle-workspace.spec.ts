@@ -75,6 +75,7 @@ describe('管理员账号生命周期工作区', () => {
     expect(api.inviteSchoolStaff).toHaveBeenCalledWith(expect.objectContaining({ verified: true, delivery_channel: 'MANUAL' }))
     expect(api.reauthenticate).toHaveBeenCalledOnce()
     expect(wrapper.text()).toContain('加密下载')
+    expect(wrapper.text()).toContain('INV_SYNTHETIC')
     expect(wrapper.text()).not.toContain('secret-once')
     wrapper.unmount()
   })
@@ -113,6 +114,34 @@ describe('管理员账号生命周期工作区', () => {
     wrapper.unmount()
   })
 
+  it('筛选并批量签发活跃的合成学生与普通教师账号', async () => {
+    api.getSchoolAdminDirectory.mockResolvedValue(envelope({
+      school: { school_ref: 'SCHOOL_SYNTHETIC', display_name: '合成学校' },
+      classes: [{ class_ref: 'CLASS_SYNTHETIC', status: 'ACTIVE', active_student_count: 1, active_teacher_count: 1, display_name: '合成班级' }],
+      members: [
+        { user_id: 'USER_STUDENT', display_name: '合成学生', role: 'student', account_status: 'ACTIVE', provisioning_status: 'ACTIVE', class_refs: ['CLASS_SYNTHETIC'] },
+        { user_id: 'USER_TEACHER', display_name: '合成教师', role: 'teacher', account_status: 'ACTIVE', provisioning_status: 'ACTIVE', class_refs: ['CLASS_SYNTHETIC'] },
+      ],
+    }))
+    api.issueLifecycleCredentials.mockResolvedValue(envelope({ credentials: [{ user_id: 'USER_TEACHER', login_name: 'TEACHER_SYNTHETIC', display_name: '合成教师', class_ref: 'CLASS_SYNTHETIC', credential: 'synthetic-once', expires_at: '2026-10-25T00:00:00Z' }] }))
+    const wrapper = mount(AccountLifecycleWorkspace)
+    await flushPromises()
+    await wrapper.findAll('[role="tab"]')[4]!.trigger('click')
+    expect(wrapper.text()).toContain('普通教师')
+    expect(wrapper.text()).toContain('合成教师')
+    await wrapper.findAll('select')[0]!.setValue('teacher')
+    await wrapper.findAll('button').find((button) => button.text() === '选择筛选结果')!.trigger('click')
+    expect(wrapper.text()).toContain('已选择 1 人')
+    await wrapper.get('input[type="password"]').setValue('synthetic-admin-password')
+    await wrapper.findAll('button').find((button) => button.text() === '发行凭据')!.trigger('click')
+    await flushPromises()
+    expect(api.reauthenticate).toHaveBeenCalledOnce()
+    expect(api.issueLifecycleCredentials).toHaveBeenCalledWith(['USER_TEACHER'])
+    expect(wrapper.text()).toContain('合成教师')
+    expect(wrapper.text()).not.toContain('synthetic-once')
+    wrapper.unmount()
+  })
+
   it('邀请记录仅展示元数据，重签后把一次性凭据送入加密下载页', async () => {
     api.listStaffInvitations.mockResolvedValue(envelope([{
       invitation_ref: 'INV_SYNTHETIC', user_id: 'USER_STAFF', login_name: 'STAFF_SYNTHETIC',
@@ -138,6 +167,7 @@ describe('管理员账号生命周期工作区', () => {
     expect(api.reissueStaffInvitation).toHaveBeenCalledWith('INV_SYNTHETIC', 'ADMINISTRATIVE_REISSUE')
     expect(wrapper.findAll('[role="tab"]')[4]!.attributes('aria-selected')).toBe('true')
     expect(wrapper.text()).toContain('凭据已暂存')
+    expect(wrapper.text()).toContain('INV_SYNTHETIC')
     expect(wrapper.find('.lifecycle__credential-records').exists()).toBe(true)
     expect(wrapper.find('.lifecycle__issues').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('secret-once')

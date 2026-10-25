@@ -49,6 +49,7 @@ const credentialRows = ref<LifecycleCredential[]>([])
 const passphrase = ref('')
 const credentialSearch = ref('')
 const credentialClassFilter = ref('')
+const credentialRoleFilter = ref<'all' | 'student' | 'teacher'>('all')
 const credentialPage = ref(1)
 const invitation = ref({ employee_ref: '', display_name: '', role: 'teacher' as 'teacher' | 'psychological_specialist', work_contact: '', class_refs: [] as string[] })
 const invitationVerified = ref(false)
@@ -63,11 +64,13 @@ const recoveryReason = ref('')
 const reauthPassword = ref('')
 const recoveryReasons = ref<Record<string, string>>({})
 const schoolRef = computed(() => directory.value?.school.school_ref ?? '')
-const students = computed(() => directory.value?.members.filter((member) => member.role === 'student') ?? [])
 const credentialCandidates = computed(() => {
   const query = credentialSearch.value.trim().toLocaleLowerCase()
-  return students.value.filter((member) => {
-    if (member.account_status === 'DISABLED' || member.provisioning_status !== 'PENDING_ACTIVATION') return false
+  return (directory.value?.members ?? []).filter((member) => {
+    if (member.role !== 'student' && member.role !== 'teacher') return false
+    if (credentialRoleFilter.value !== 'all' && member.role !== credentialRoleFilter.value) return false
+    if (member.account_status === 'DISABLED' || member.account_status === 'LOCKED') return false
+    if (member.provisioning_status !== 'PENDING_ACTIVATION' && member.provisioning_status !== 'ACTIVE') return false
     if (credentialClassFilter.value === '__unassigned__' && (member.class_refs?.length ?? 0) > 0) return false
     if (credentialClassFilter.value && credentialClassFilter.value !== '__unassigned__'
       && !member.class_refs?.includes(credentialClassFilter.value)) return false
@@ -97,7 +100,7 @@ const statusPageRows = computed(() => statusCandidates.value.slice(
   statusPage.value * statusPageSize,
 ))
 const statusReason = ref('')
-watch([credentialSearch, credentialClassFilter], () => { credentialPage.value = 1 })
+watch([credentialSearch, credentialClassFilter, credentialRoleFilter], () => { credentialPage.value = 1 })
 watch(credentialCandidates, () => {
   if (credentialPage.value > credentialPageCount.value) credentialPage.value = credentialPageCount.value
 })
@@ -139,6 +142,13 @@ const toggleCredentialUser = (userId: string, checked: boolean) => {
 }
 const selectCurrentCredentialPage = () => {
   credentialUsers.value = [...new Set([...credentialUsers.value, ...credentialPageRows.value.map((item) => item.user_id)])]
+}
+const selectCredentialCandidates = () => {
+  if (credentialCandidates.value.length > 200) {
+    error.value = '每批最多签发 200 个账号，请按角色分批操作'
+    return
+  }
+  credentialUsers.value = credentialCandidates.value.map((item) => item.user_id)
 }
 const updateInvitationRole = () => {
   if (invitation.value.role === 'psychological_specialist') invitation.value.class_refs = []
@@ -269,7 +279,7 @@ const inviteStaff = async () => {
     if (!invitationVerified.value) throw new Error('请先完成校内身份核验')
     await requireRecentReauthentication()
     const result = (await frontendApi.inviteSchoolStaff({ ...invitation.value, verified: invitationVerified.value, delivery_channel: 'MANUAL' })).data
-    credentialRows.value = [{ user_id: result.user_id, login_name: result.login_name, display_name: invitation.value.display_name, class_ref: invitation.value.class_refs.join(', '), credential: result.credential, expires_at: result.expires_at }]
+    credentialRows.value = [{ user_id: result.user_id, login_name: result.login_name, display_name: invitation.value.display_name, class_ref: invitation.value.class_refs.join(', '), credential: result.credential, expires_at: result.expires_at, invitation_ref: result.invitation_ref }]
     passphrase.value = ''
     section.value = 'credentials'
     await refreshStaffInvitations()
@@ -302,7 +312,7 @@ const reissueStaffInvitation = async (item: LifecycleStaffInvitation) => {
       user_id: result.user_id, login_name: result.login_name,
       display_name: item.display_name ?? item.login_name,
       class_ref: item.class_refs.join(', '), credential: result.credential,
-      expires_at: result.expires_at,
+      expires_at: result.expires_at, invitation_ref: result.invitation_ref,
     }]
     passphrase.value = ''
     section.value = 'credentials'
@@ -358,9 +368,14 @@ const issueCredentials = async () => {
   clearFeedback(); busy.value = true; credentialRows.value = []
   try {
     if (!frontendApi.issueLifecycleCredentials || credentialUsers.value.length === 0) throw new Error('请选择待签发账号')
+    if (credentialUsers.value.length > 200) throw new Error('每批最多签发 200 个账号，请按角色分批操作')
     await requireRecentReauthentication()
     const result = await frontendApi.issueLifecycleCredentials(credentialUsers.value)
-    credentialRows.value = result.data.credentials
+    credentialRows.value = result.data.credentials.map((row) => ({
+      ...row,
+      role: directory.value?.members.find((member) => member.user_id === row.user_id)?.role as 'student' | 'teacher' | undefined,
+    }))
+    credentialUsers.value = []
     passphrase.value = ''
     notice.value = `已暂存 ${credentialRows.value.length} 份一次性凭据，离开页面后将清除，请立即加密下载`
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '凭据签发失败' }
@@ -465,7 +480,7 @@ onUnmounted(() => { credentialRows.value = []; passphrase.value = ''; rows.value
     <div v-else-if="section === 'staff'" class="lifecycle__body">
       <h3>教职工邀请</h3><p>交付方式：校内人工交付，不发送短信或邮件</p>
       <form class="lifecycle__form" @submit.prevent="inviteStaff">
-        <label>教职工编号<input v-model.trim="invitation.employee_ref" required maxlength="128"></label><label>姓名<input v-model.trim="invitation.display_name" required maxlength="120"></label>
+        <label>教职工编号<input v-model.trim="invitation.employee_ref" required maxlength="128" pattern="[\x20-\x7E]+" placeholder="PSY-001" title="请使用英文编号"></label><label>姓名<input v-model.trim="invitation.display_name" required maxlength="120"></label>
         <label>角色<select v-model="invitation.role" @change="updateInvitationRole"><option value="teacher">普通教师</option><option value="psychological_specialist">心理老师</option></select></label><label>校内联系方式<input v-model.trim="invitation.work_contact" required maxlength="160"></label>
         <label v-if="invitation.role === 'teacher'" class="lifecycle__field">任教班级<select v-model="invitation.class_refs" multiple size="4"><option v-for="item in directory?.classes ?? []" :key="item.class_ref" :value="item.class_ref">{{ item.display_name || item.class_ref }}</option></select></label>
         <label class="lifecycle__check"><input v-model="invitationVerified" type="checkbox">已核验身份与工作联系方式</label>
@@ -475,7 +490,7 @@ onUnmounted(() => { credentialRows.value = []; passphrase.value = ''; rows.value
       <h3>邀请记录</h3>
       <div v-if="staffInvitations.length" class="lifecycle__invitation-list">
         <article v-for="item in staffInvitations" :key="item.invitation_ref" class="lifecycle__invitation">
-          <div class="lifecycle__invitation-identity"><strong>{{ item.display_name || item.login_name }}</strong><span>编号 {{ item.employee_ref }}，账号 {{ item.login_name }}</span></div>
+          <div class="lifecycle__invitation-identity"><strong>{{ item.display_name || item.login_name }}</strong><span>编号 {{ item.employee_ref }}，账号 {{ item.login_name }}，邀请编号 {{ item.invitation_ref }}</span></div>
           <div><span>{{ roleLabel(item.role) }}</span><span>{{ item.class_refs.length ? item.class_refs.map(classLabel).join('、') : '未分配班级' }}</span></div>
           <div><strong>{{ invitationStatusLabel(item.status) }}</strong><span>有效期至 {{ item.expires_at }}</span></div>
           <div class="lifecycle__invitation-actions">
@@ -513,18 +528,20 @@ onUnmounted(() => { credentialRows.value = []; passphrase.value = ''; rows.value
     <div v-else-if="section === 'credentials'" class="lifecycle__body">
       <h3>一次性凭据</h3><p>凭据仅暂存在本页，下载文件经过加密</p>
       <div class="lifecycle__credential-tools">
+        <label>账号角色<select v-model="credentialRoleFilter"><option value="all">全部</option><option value="student">学生</option><option value="teacher">普通教师</option></select></label>
         <label>班级筛选<select v-model="credentialClassFilter"><option value="">全部班级</option><option value="__unassigned__">未分配班级</option><option v-for="item in directory?.classes ?? []" :key="item.class_ref" :value="item.class_ref">{{ item.display_name || item.class_ref }}</option></select></label>
         <label>搜索账号<input v-model.trim="credentialSearch" type="search" autocomplete="off" placeholder="姓名或账号编号"></label>
       </div>
-      <div class="lifecycle__selection-tools"><span>已选择 {{ selectedCredentialCount }} 人</span><button type="button" class="lifecycle__secondary" :disabled="!credentialPageRows.length" @click="selectCurrentCredentialPage">选择当前页</button><button type="button" class="lifecycle__secondary" :disabled="!credentialUsers.length" @click="credentialUsers = []">清空选择</button></div>
-      <div v-if="credentialPageRows.length" class="lifecycle__table-wrap"><table><thead><tr><th scope="col">选择</th><th scope="col">学生</th><th scope="col">班级</th><th scope="col">账号</th></tr></thead><tbody><tr v-for="item in credentialPageRows" :key="item.user_id"><td><input type="checkbox" :checked="credentialUsers.includes(item.user_id)" :aria-label="`选择${item.display_name || item.user_id}`" @change="toggleCredentialUser(item.user_id, ($event.target as HTMLInputElement).checked)"></td><td>{{ item.display_name || '未填写姓名' }}</td><td>{{ item.class_refs?.map(classLabel).join('、') || '未分配' }}</td><td>{{ item.user_id }}</td></tr></tbody></table></div>
-      <p v-else class="lifecycle__empty">没有符合条件的待签发账号</p>
+      <div class="lifecycle__selection-tools"><span>符合筛选 {{ credentialCandidates.length }} 人，已选择 {{ selectedCredentialCount }} 人</span><button type="button" class="lifecycle__secondary" :disabled="!credentialPageRows.length" @click="selectCurrentCredentialPage">选择当前页</button><button type="button" class="lifecycle__secondary" :disabled="!credentialCandidates.length || credentialCandidates.length > 200" @click="selectCredentialCandidates">选择筛选结果</button><button type="button" class="lifecycle__secondary" :disabled="!credentialUsers.length" @click="credentialUsers = []">清空选择</button></div>
+      <p v-if="credentialCandidates.length > 200" class="lifecycle__empty">每批最多签发 200 个账号，请按角色分批操作</p>
+      <div v-if="credentialPageRows.length" class="lifecycle__table-wrap"><table><thead><tr><th scope="col">选择</th><th scope="col">姓名</th><th scope="col">角色</th><th scope="col">班级</th><th scope="col">账号编号</th></tr></thead><tbody><tr v-for="item in credentialPageRows" :key="item.user_id"><td><input type="checkbox" :checked="credentialUsers.includes(item.user_id)" :aria-label="`选择${item.display_name || item.user_id}`" @change="toggleCredentialUser(item.user_id, ($event.target as HTMLInputElement).checked)"></td><td>{{ item.display_name || '未填写姓名' }}</td><td>{{ roleLabel(item.role) }}</td><td>{{ item.class_refs?.map(classLabel).join('、') || '未分配' }}</td><td>{{ item.user_id }}</td></tr></tbody></table></div>
+      <p v-else class="lifecycle__empty">没有符合条件的账号</p>
       <div class="lifecycle__selection-tools" aria-label="凭据名单分页"><span>第 {{ credentialPage }} / {{ credentialPageCount }} 页</span><button type="button" class="lifecycle__secondary" :disabled="credentialPage <= 1" @click="credentialPage -= 1">上一页</button><button type="button" class="lifecycle__secondary" :disabled="credentialPage >= credentialPageCount" @click="credentialPage += 1">下一页</button></div>
       <label>管理员当前密码<input v-model="reauthPassword" type="password" autocomplete="current-password" required></label>
       <button type="button" class="lifecycle__primary" :disabled="busy || !credentialUsers.length" @click="issueCredentials">发行凭据</button>
       <label v-if="credentialRows.length" class="lifecycle__field">加密口令（至少 12 位）<input v-model="passphrase" type="password" autocomplete="new-password" minlength="12"></label>
       <button v-if="credentialRows.length" type="button" class="lifecycle__primary" :disabled="passphrase.length < 12" @click="downloadEncryptedCredentials">加密下载</button>
-      <ul v-if="credentialRows.length" class="lifecycle__credential-records"><li v-for="row in credentialRows" :key="row.user_id">{{ row.display_name }}（{{ row.login_name }}），凭据已暂存，有效期至 {{ row.expires_at }}</li></ul>
+      <ul v-if="credentialRows.length" class="lifecycle__credential-records"><li v-for="row in credentialRows" :key="row.user_id">{{ row.display_name }}（{{ roleLabel(row.role ?? 'student') }}，{{ row.login_name }}）<template v-if="row.invitation_ref">，邀请编号 {{ row.invitation_ref }}</template>，凭据已暂存，有效期至 {{ row.expires_at }}</li></ul>
     </div>
 
     <div v-else class="lifecycle__body">
