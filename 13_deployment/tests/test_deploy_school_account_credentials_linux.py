@@ -68,3 +68,79 @@ def test_bundle_rejects_an_unapproved_file_path_or_changed_source():
         archive.writestr("../outside.py", source)
     with pytest.raises(deploy.DeployError, match="bundle_inventory_mismatch"):
         deploy._validate_bundle_bytes(buffer.getvalue())
+
+
+def test_resume_installs_restarts_checks_health_and_records_completion(
+    tmp_path, monkeypatch
+):
+    previous = deploy._git_bytes(
+        REPO_ROOT, deploy.PREVIOUS_FILE_REVISION, deploy.TARGET_PATH
+    )
+    target_bytes = deploy._git_bytes(
+        REPO_ROOT, deploy.SOURCE_COMMIT, deploy.TARGET_PATH
+    )
+    target = tmp_path.joinpath(*Path(deploy.TARGET_PATH).parts)
+    target.parent.mkdir(parents=True)
+    target.write_bytes(previous)
+    state = None
+    service_commands: list[str] = []
+
+    class Lock:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+    monkeypatch.setattr(deploy, "_require_root", lambda: None)
+    monkeypatch.setattr(deploy, "_require_snapshot", lambda: None)
+    monkeypatch.setattr(
+        deploy, "_assert_no_conflicting_deployment_process", lambda: None
+    )
+    monkeypatch.setattr(deploy, "_service_active", lambda: True)
+    monkeypatch.setattr(deploy, "_ExclusiveLock", Lock)
+    monkeypatch.setattr(
+        deploy,
+        "_require_server_and_release",
+        lambda: (target, deploy._sha256(target.read_bytes())),
+    )
+    monkeypatch.setattr(
+        deploy,
+        "_read_bundle",
+        lambda: (
+            {"source_commit": deploy.SOURCE_COMMIT},
+            target_bytes,
+            "b" * 64,
+        ),
+    )
+    monkeypatch.setattr(
+        deploy,
+        "_ensure_backup",
+        lambda content: assert_backup_hash(content, deploy.PREVIOUS_SHA256),
+    )
+
+    def write_state(bundle_hash: str, phase: str) -> None:
+        nonlocal state
+        state = {"bundle_sha256": bundle_hash, "phase": phase}
+
+    monkeypatch.setattr(deploy, "_write_state", write_state)
+    monkeypatch.setattr(deploy, "_load_state", lambda: state)
+    monkeypatch.setattr(
+        deploy, "_atomic_write", lambda path, content: path.write_bytes(content)
+    )
+    monkeypatch.setattr(
+        deploy, "_run_systemctl", lambda action: service_commands.append(action)
+    )
+    monkeypatch.setattr(deploy, "_wait_for_health", lambda: True)
+
+    result = deploy.resume()
+
+    assert result["status"] == "PASS"
+    assert result["phase"] == "HTTP_VERIFIED"
+    assert deploy._sha256(target.read_bytes()) == deploy.TARGET_SHA256
+    assert service_commands == ["restart"]
+    assert state == {"bundle_sha256": "b" * 64, "phase": "HTTP_VERIFIED"}
+
+
+def assert_backup_hash(content: bytes, expected: str) -> None:
+    assert deploy._sha256(content) == expected

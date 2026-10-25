@@ -19,6 +19,7 @@ from typing import Any, cast
 
 BASE_RELEASE_REVISION = "f3047642aa3466f9b4f210f4f704d57fd2cdf3cc"
 SOURCE_COMMIT = "2a6418cbe212c0cc77125ac53ea4bb7055265db8"
+PREVIOUS_FILE_REVISION = "1e5f177ab8837cda531ba2f92529151fb0e4dd2b"
 SERVER_HOSTNAME = "iZ0xic24d9gxb9udjbfo0kZ"
 APP_ROOT = Path("/opt/psynova-school-demo")
 RELEASE_ROOT = APP_ROOT / "release"
@@ -91,6 +92,7 @@ def _manifest(file_bytes: bytes) -> dict[str, Any]:
             {
                 "path": TARGET_PATH,
                 "size_bytes": len(file_bytes),
+                "previous_sha256": PREVIOUS_SHA256,
                 "sha256": TARGET_SHA256,
             }
         ],
@@ -683,6 +685,9 @@ def resume() -> dict[str, object]:
             elif current_hash != TARGET_SHA256:
                 raise DeployError("release_state_mismatch")
             _write_state(bundle_hash, "FILES_INSTALLED")
+            state = _load_state()
+            if state is None:
+                raise DeployError("checkpoint_missing")
             current_hash = TARGET_SHA256
         if state["phase"] in {"FILES_INSTALLED", "RESTARTING"}:
             if current_hash != TARGET_SHA256:
