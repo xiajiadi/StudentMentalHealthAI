@@ -207,7 +207,7 @@ def _verification_origin(base_url: str, origin: str | None = None) -> str:
             or base.fragment
         ):
             raise ValueError
-        base_port = base.port
+        _ = base.port
     except ValueError:
         raise SmokeError("verification base URL is invalid") from None
 
@@ -226,8 +226,6 @@ def _verification_origin(base_url: str, origin: str | None = None) -> str:
             or supplied.path not in {"", "/"}
             or supplied.query
             or supplied.fragment
-            or (supplied.scheme, supplied.hostname, supplied.port)
-            != (base.scheme, base.hostname, base_port)
         ):
             raise ValueError
     except ValueError:

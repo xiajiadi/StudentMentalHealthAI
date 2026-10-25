@@ -24,7 +24,10 @@ def test_seed_accounts_decrypt_uses_embedded_credential_name(monkeypatch):
 
     def fake_run(args, *, timeout=120):
         calls.append((args, timeout))
-        payload = {"schema": "psynova.school-seed-accounts.v1", "credentials": credentials}
+        payload = {
+            "schema": "psynova.school-seed-accounts.v1",
+            "credentials": credentials,
+        }
         return subprocess.CompletedProcess(args, 0, json.dumps(payload).encode(), b"")
 
     monkeypatch.setattr(verifier, "_run", fake_run)
@@ -93,9 +96,22 @@ def test_loopback_default_keeps_local_frontend_origin():
     assert verifier._verification_origin(verifier.BACKEND) == verifier.DEFAULT_UI_ORIGIN
 
 
-def test_mismatched_public_origin_is_rejected():
+def test_loopback_backend_can_use_explicit_public_browser_origin():
+    assert (
+        verifier._verification_origin(
+            verifier.BACKEND,
+            "https://psynova.top",
+        )
+        == "https://psynova.top"
+    )
+
+
+@pytest.mark.parametrize(
+    "origin", ["https://psynova.top/path", "https://user@psynova.top"]
+)
+def test_explicit_origin_rejects_non_origin_url_components(origin):
     with pytest.raises(verifier.SmokeError, match="does not match"):
-        verifier._verification_origin("https://psynova.top", "https://evil.example")
+        verifier._verification_origin(verifier.BACKEND, origin)
 
 
 def test_login_uses_public_https_base_and_origin():
@@ -124,11 +140,7 @@ def test_login_uses_public_https_base_and_origin():
                     }
                 )
             return Response(
-                {
-                    "active_context": {
-                        "school_ref": verifier.EXPECTED_SCHOOL["alpha"]
-                    }
-                }
+                {"active_context": {"school_ref": verifier.EXPECTED_SCHOOL["alpha"]}}
             )
 
         def close(self):
