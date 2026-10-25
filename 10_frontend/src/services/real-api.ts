@@ -78,6 +78,8 @@ import type {
   LifecycleCredential,
   LifecycleInvitationInput,
   LifecycleInvitationResult,
+  LifecycleStaffRosterImport,
+  LifecycleStaffRosterRow,
   LifecycleStaffInvitation,
   LifecycleStaffRecoveryCredential,
   LifecycleRecoveryTicket,
@@ -735,13 +737,18 @@ const mapSchoolMember = (value: unknown): SchoolMember => {
 const mapSchoolDirectory = (value: unknown): SchoolDirectory => {
   const rootKeys = new Set(['school', 'classes', 'members'])
   if (!isRecord(value) || Object.keys(value).some((key) => !rootKeys.has(key))
-    || !isRecord(value.school) || Object.keys(value.school).some((key) => !['school_ref', 'display_name'].includes(key))
+    || !isRecord(value.school) || Object.keys(value.school).some((key) => !['school_ref', 'display_name', 'data_origin'].includes(key))
     || !Array.isArray(value.classes) || !Array.isArray(value.members)) {
     throw new RealApiError('API_INVALID_RESPONSE', '学校目录格式无法识别。')
+  }
+  const dataOrigin = value.school.data_origin ?? 'PRODUCTION_PENDING'
+  if (dataOrigin !== 'SYNTHETIC' && dataOrigin !== 'PRODUCTION_PENDING') {
+    throw new RealApiError('API_INVALID_RESPONSE', '学校数据来源无法识别。')
   }
   const school = {
     school_ref: requiredString(value.school, 'school_ref'),
     display_name: nullableDisplayName(value.school.display_name),
+    data_origin: dataOrigin,
   }
   const classRefs = new Set<string>()
   const classes = value.classes.map((item) => {
@@ -2436,6 +2443,39 @@ export class RealApiProvider implements FrontendApi {
 
   async issueLifecycleCredentials(userIds: string[]): Promise<ApiEnvelope<{ credentials: LifecycleCredential[] }>> {
     return this.lifecycleWrite('/api/v1/school/admin/accounts/credentials/issue', { user_ids: userIds })
+  }
+
+  async importLifecycleStaff(rows: LifecycleStaffRosterRow[]): Promise<ApiEnvelope<LifecycleStaffRosterImport>> {
+    const response = await this.lifecycleWrite<unknown>('/api/v1/school/admin/staff/import', { rows })
+    const data = response.data
+    if (!isRecord(data) || !Array.isArray(data.credentials)
+      || data.delivery_status !== 'MANUAL_HANDOFF_REQUIRED'
+      || !Number.isSafeInteger(data.created_count) || data.created_count !== data.credentials.length) {
+      throw new RealApiError('API_INVALID_RESPONSE', '教职工导入结果格式无法识别。')
+    }
+    const credentials = data.credentials.map((item): LifecycleStaffRosterImport['credentials'][number] => {
+      const allowed = new Set([
+        'invitation_ref', 'user_id', 'login_name', 'display_name', 'role', 'class_refs', 'credential', 'expires_at',
+      ])
+      if (!isRecord(item) || Object.keys(item).some((key) => !allowed.has(key))
+        || (item.role !== 'teacher' && item.role !== 'psychological_specialist')
+        || !Array.isArray(item.class_refs)
+        || item.class_refs.some((classRef) => typeof classRef !== 'string' || !classRef.trim())
+        || new Set(item.class_refs).size !== item.class_refs.length) {
+        throw new RealApiError('API_INVALID_RESPONSE', '教职工导入账号格式无法识别。')
+      }
+      return {
+        invitation_ref: requiredString(item, 'invitation_ref'),
+        user_id: requiredString(item, 'user_id'),
+        login_name: requiredString(item, 'login_name'),
+        display_name: requiredString(item, 'display_name'),
+        role: item.role,
+        class_refs: [...item.class_refs] as string[],
+        credential: requiredString(item, 'credential'),
+        expires_at: requiredTimestamp(item, 'expires_at')!,
+      }
+    })
+    return { ...response, data: { created_count: data.created_count as number, credentials, delivery_status: 'MANUAL_HANDOFF_REQUIRED' } }
   }
 
   async inviteSchoolStaff(input: LifecycleInvitationInput): Promise<ApiEnvelope<LifecycleInvitationResult>> {

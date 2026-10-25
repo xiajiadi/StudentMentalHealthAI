@@ -42,6 +42,14 @@ class SchoolAccountLifecycleService:
             actor, payload, ttl_seconds=ttl_seconds, trace_id=trace_id
         )
 
+    async def import_school_staff_roster(
+        self, actor: Actor, rows: list[Any], *, ttl_seconds: int, trace_id: str
+    ) -> dict[str, Any]:
+        self._require_school_role(actor, BackendRole.ADMIN)
+        return await self._require_store().import_school_staff_roster(
+            actor, rows, ttl_seconds=ttl_seconds, trace_id=trace_id
+        )
+
     async def list_staff_invitations(self, actor: Actor) -> list[dict[str, Any]]:
         self._require_school_role(actor, BackendRole.ADMIN)
         return await self._require_store().list_staff_invitations(actor)

@@ -28,6 +28,7 @@ from smhai_backend.adapters.school_account_lifecycle import (  # noqa: E402
 from smhai_backend.core.errors import BackendError, ErrorCode  # noqa: E402
 from smhai_backend.domains.school_account_lifecycle.schemas import (  # noqa: E402
     StaffInvitationRequest,
+    StaffRosterImportRequest,
 )
 
 pytest_plugins = ["tests.test_school_roster_import"]
@@ -51,6 +52,7 @@ class _ProtectedTransaction:
     async def __aenter__(self):
         await self.base.__aenter__()
         self.session = self.base.session
+        self.school_operations = self.base.school_operations
         return self
 
     async def __aexit__(self, exc_type, exc, traceback):
@@ -174,6 +176,99 @@ async def test_staff_invitation_is_encrypted_one_time_and_activates_only_on_acce
             trace_id="trace-invitation-replay",
         )
     assert replay.value.code is ErrorCode.AUTH_INVALID_CREDENTIALS
+
+
+@pytest.mark.asyncio
+async def test_synthetic_staff_roster_import_credentials_complete_first_login(lifecycle_scope):
+    scope = lifecycle_scope
+    payload = StaffRosterImportRequest.model_validate(
+        {
+            "rows": [
+                {
+                    "row_no": 1,
+                    "employee_ref": "TEACHER-ROSTER-01",
+                    "display_name": "合成普通教师",
+                    "role": "teacher",
+                    "class_refs": ["CLASS_A"],
+                },
+                {
+                    "row_no": 2,
+                    "employee_ref": "PSY-ROSTER-01",
+                    "display_name": "合成心理教师",
+                    "role": "psychological_specialist",
+                    "class_refs": [],
+                },
+            ]
+        }
+    )
+
+    result = await scope.adapter.import_school_staff_roster(
+        scope.actor,
+        payload.rows,
+        ttl_seconds=86_400,
+        trace_id="trace-staff-roster-import",
+    )
+    assert result["created_count"] == 2
+    assert {row["role"] for row in result["credentials"]} == {
+        "teacher",
+        "psychological_specialist",
+    }
+    for row in result["credentials"]:
+        account = (
+            scope.session.query(db_models.Account)
+            .filter_by(login_name=row["login_name"])
+            .one()
+        )
+        invitation = (
+            scope.session.query(db_models.SchoolStaffInvitation)
+            .filter_by(account_id=account.id)
+            .one()
+        )
+        credential = (
+            scope.session.query(db_models.SchoolAccountCredential)
+            .filter_by(account_id=account.id)
+            .one()
+        )
+        assert account.status == db_enums.AccountStatus.SUSPENDED.value
+        assert invitation.status == "ISSUED"
+        assert credential.purpose == "STAFF_INVITATION"
+        assert credential.token_hash == hashlib.sha256(row["credential"].encode()).digest()
+        assert row["credential"].encode() not in credential.token_hash
+
+        completed = await scope.adapter._directory.school_directory_complete_initial_credential(
+            username=row["login_name"],
+            school_ref=scope.actor.school_ref,
+            token_hash=hashlib.sha256(row["credential"].encode()).digest(),
+            new_password="SyntheticNewPassword123!",
+            trace_id="trace-staff-roster-first-login",
+        )
+        assert completed == {"status": "PASSWORD_SET"}
+        scope.session.refresh(account)
+        scope.session.refresh(invitation)
+        scope.session.refresh(credential)
+        assert account.status == db_enums.AccountStatus.ACTIVE.value
+        assert account.must_change_password is False
+        assert invitation.status == "ACCEPTED"
+        assert credential.status == "CONSUMED"
+
+    assert (
+        scope.session.query(db_models.SchoolClassTeacher)
+        .join(db_models.MembershipRole)
+        .filter(db_models.MembershipRole.role_code == "teacher")
+        .count()
+        == 1
+    )
+
+    before = scope.session.query(db_models.Account).count()
+    with pytest.raises(BackendError) as duplicate:
+        await scope.adapter.import_school_staff_roster(
+            scope.actor,
+            payload.rows,
+            ttl_seconds=86_400,
+            trace_id="trace-staff-roster-duplicate",
+        )
+    assert duplicate.value.code is ErrorCode.WORKFLOW_CONFLICT
+    assert scope.session.query(db_models.Account).count() == before
 
 
 @pytest.mark.asyncio

@@ -146,7 +146,7 @@ const submit = async () => {
 </script>
 
 <template>
-  <main class="login-page">
+  <main class="login-page" :class="{ 'login-page--lifecycle': !pendingContext && authMode !== 'login' }">
     <img class="login-page__brand" src="/assets/psynova/wordmark.png" alt="PsyNova">
 
     <div class="login-content">
@@ -200,15 +200,15 @@ const submit = async () => {
           </form>
           <form v-else-if="!pendingContext" class="login-form login-lifecycle-form" novalidate @submit.prevent="submit">
             <h2 ref="authModeHeading" tabindex="-1">{{ authMode === 'first' ? '首次登录' : authMode === 'recovery' ? '申请账号恢复' : authMode === 'reset' ? '重置密码' : '接受教职工邀请' }}</h2>
-            <label v-if="authMode !== 'invite'">学校编号<input v-model.trim="authSchoolRef" required autocomplete="organization" aria-label="学校编号"></label>
-            <label v-if="authMode !== 'invite'">账号<input v-model.trim="authUsername" required autocomplete="username" aria-label="账号"></label>
-            <label v-if="authMode === 'recovery'">班级编号<input v-model.trim="authClassRef" required aria-label="班级编号"></label>
-            <label v-if="authMode === 'recovery'">申请原因代码<input v-model.trim="authReasonCode" required aria-label="申请原因代码"></label>
-            <label v-if="authMode === 'invite'">邀请编号<input v-model.trim="authInvitationRef" required aria-label="邀请编号"></label>
+            <label v-if="authMode !== 'invite'">学校编号<input class="login-input" v-model.trim="authSchoolRef" required autocomplete="organization" aria-label="学校编号"></label>
+            <label v-if="authMode !== 'invite'">账号<input class="login-input" v-model.trim="authUsername" required autocomplete="username" aria-label="账号"></label>
+            <label v-if="authMode === 'recovery'">班级编号<input class="login-input" v-model.trim="authClassRef" required aria-label="班级编号"></label>
+            <label v-if="authMode === 'recovery'">申请原因代码<input class="login-input" v-model.trim="authReasonCode" required aria-label="申请原因代码"></label>
+            <label v-if="authMode === 'invite'">邀请编号<input class="login-input" v-model.trim="authInvitationRef" required aria-label="邀请编号"></label>
             <template v-if="authMode !== 'recovery'">
-              <label>一次性凭据<input v-model="authCredential" required autocomplete="one-time-code" aria-label="一次性凭据"></label>
-              <label>新密码<input v-model="newPassword" required type="password" autocomplete="new-password" aria-label="新密码"></label>
-              <label>确认新密码<input v-model="confirmPassword" required type="password" autocomplete="new-password" aria-label="确认新密码"></label>
+              <label>{{ authMode === 'first' ? '初始密码' : '一次性凭据' }}<input class="login-input" v-model="authCredential" required type="password" autocomplete="one-time-code" :aria-label="authMode === 'first' ? '初始密码' : '一次性凭据'"></label>
+              <label>新密码<input class="login-input" v-model="newPassword" required type="password" autocomplete="new-password" aria-label="新密码"></label>
+              <label>确认新密码<input class="login-input" v-model="confirmPassword" required type="password" autocomplete="new-password" aria-label="确认新密码"></label>
             </template>
             <p v-if="errorMessage" class="login-form__error" role="alert" aria-live="assertive">{{ errorMessage }}</p>
             <p v-if="authNotice" class="login-form__success" role="status" aria-live="polite">{{ authNotice }}</p>
@@ -398,11 +398,15 @@ const submit = async () => {
 
 .login-lifecycle-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 16px; margin-top: 14px; }
 .login-lifecycle-links button, .login-mode-switch, .login-mode-back { padding: 4px; border: 0; color: var(--color-primary); background: transparent; cursor: pointer; font: inherit; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
-.login-lifecycle-form { max-height: min(62vh, 560px); overflow-y: auto; padding: 2px; }
+.login-page--lifecycle { padding-top: 24px; padding-bottom: 24px; }
+.login-page--lifecycle .login-card { gap: 14px; padding-top: 24px; padding-bottom: 24px; }
+.login-lifecycle-form { gap: 8px; }
 .login-lifecycle-form h2 { margin: 0 0 2px; font-size: 16px; }
-.login-lifecycle-form label { display: grid; gap: 4px; color: var(--color-text-secondary); font-size: 12px; }
-.login-lifecycle-form input { min-height: 38px; padding: 7px 10px; border: .5px solid var(--color-border-strong); border-radius: var(--radius-control); color: var(--color-text-primary); background: var(--color-surface); font: inherit; font-size: 12px; }
-.login-lifecycle-form input:focus-visible, .login-lifecycle-links button:focus-visible, .login-mode-switch:focus-visible, .login-mode-back:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 2px; }
+.login-lifecycle-form h2:focus { outline: none; }
+.login-lifecycle-form label { display: grid; gap: 5px; color: var(--color-text-secondary); font-size: 13px; }
+.login-lifecycle-form .login-input { min-height: 46px; padding: 11px 20px; font-size: 16px; }
+.login-lifecycle-form .login-input:focus, .login-lifecycle-form .login-input:focus-visible { border-color: var(--color-primary); outline: none; }
+.login-lifecycle-links button:focus-visible, .login-mode-switch:focus-visible, .login-mode-back:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 2px; }
 .login-form__success { margin: 0; padding: 9px 11px; border: .5px solid var(--color-support); color: var(--color-support); background: var(--color-support-wash); font-size: 12px; }
 
 .login-field {
@@ -646,6 +650,8 @@ const submit = async () => {
     align-content: start;
     padding: 100px 22px 36px;
   }
+
+  .login-page--lifecycle { padding: 100px 22px 24px; }
 
   .login-page__brand {
     top: 20px;

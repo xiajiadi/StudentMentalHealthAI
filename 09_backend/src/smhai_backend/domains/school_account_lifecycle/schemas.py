@@ -65,6 +65,13 @@ class StaffInvitationRequest(RequestModel):
             raise ValueError("field must not be blank")
         return normalized
 
+    @field_validator("employee_ref")
+    @classmethod
+    def require_database_compatible_employee_ref(cls, value: str) -> str:
+        if not value.isascii() or not value.isprintable():
+            raise ValueError("employee_ref must use printable ASCII characters")
+        return value
+
     @field_validator("class_refs")
     @classmethod
     def require_unique_classes(cls, values: list[str]) -> list[str]:
@@ -212,6 +219,75 @@ class StaffInvitationActionRequest(RequestModel):
         if re.fullmatch(r"[A-Z][A-Z0-9_]{1,79}", value) is None:
             raise ValueError("reason_code is invalid")
         return value
+
+
+class StaffRosterRow(RequestModel):
+    row_no: int = Field(gt=0, le=200)
+    employee_ref: str = Field(min_length=1, max_length=128)
+    display_name: str = Field(min_length=1, max_length=120)
+    role: Literal["teacher", "psychological_specialist"]
+    class_refs: list[str] = Field(default_factory=list, max_length=50)
+
+    @field_validator("employee_ref")
+    @classmethod
+    def printable_ascii_employee_ref(cls, value: str) -> str:
+        value = value.strip()
+        if not value or not value.isascii() or not value.isprintable():
+            raise ValueError("employee_ref must use printable ASCII characters")
+        return value
+
+    @field_validator("display_name")
+    @classmethod
+    def nonblank_display_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("display_name must not be blank")
+        return value
+
+    @field_validator("class_refs")
+    @classmethod
+    def unique_class_refs(cls, values: list[str]) -> list[str]:
+        normalized = [value.strip() for value in values]
+        if any(not value for value in normalized) or len(set(normalized)) != len(normalized):
+            raise ValueError("class_refs must be nonblank and unique")
+        return normalized
+
+    @model_validator(mode="after")
+    def role_scoped_classes(self) -> StaffRosterRow:
+        if self.role == "teacher" and not self.class_refs:
+            raise ValueError("teacher rows require at least one class")
+        if self.role == "psychological_specialist" and self.class_refs:
+            raise ValueError("psychological specialists cannot receive class scope")
+        return self
+
+
+class StaffRosterImportRequest(RequestModel):
+    rows: list[StaffRosterRow] = Field(min_length=1, max_length=200)
+
+    @model_validator(mode="after")
+    def unique_rows_and_employees(self) -> StaffRosterImportRequest:
+        if len({row.row_no for row in self.rows}) != len(self.rows):
+            raise ValueError("row_no values must be unique")
+        if len({row.employee_ref.casefold() for row in self.rows}) != len(self.rows):
+            raise ValueError("employee_ref values must be unique")
+        return self
+
+
+class StaffRosterCredentialDto(RequestModel):
+    invitation_ref: str
+    user_id: str
+    login_name: str
+    display_name: str
+    role: Literal["teacher", "psychological_specialist"]
+    class_refs: list[str] = Field(default_factory=list, max_length=50)
+    credential: str = Field(min_length=20, max_length=256, repr=False)
+    expires_at: datetime
+
+
+class StaffRosterImportResponse(RequestModel):
+    created_count: int = Field(ge=1, le=200)
+    credentials: list[StaffRosterCredentialDto] = Field(min_length=1, max_length=200)
+    delivery_status: Literal["MANUAL_HANDOFF_REQUIRED"]
 
 
 class RecoveryTicketDto(BaseModel):

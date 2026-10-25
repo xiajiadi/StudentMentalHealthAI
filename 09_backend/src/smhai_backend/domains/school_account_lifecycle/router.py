@@ -38,6 +38,8 @@ from .schemas import (
     StaffInvitationResponseDto,
     StaffRecoveryCredentialRequest,
     StaffRecoveryCredentialResponseDto,
+    StaffRosterImportRequest,
+    StaffRosterImportResponse,
 )
 
 router = APIRouter(tags=["school-account-lifecycle"])
@@ -110,6 +112,36 @@ async def create_staff_invitation(
         trace_id=_trace_id(request),
     )
     return _no_store(_body(request, StaffInvitationResponseDto.model_validate(result)), 201)
+
+
+@router.post(
+    "/school/admin/staff/import",
+    response_model=ApiEnvelope[StaffRosterImportResponse],
+    status_code=201,
+    openapi_extra=CSRF_SECURITY_OPENAPI_EXTRA,
+    include_in_schema=False,
+    responses=problem_responses(
+        ErrorCode.AUTH_SESSION_EXPIRED,
+        ErrorCode.FORBIDDEN,
+        ErrorCode.CSRF_FAILED,
+        ErrorCode.VALIDATION_FAILED,
+        ErrorCode.RESOURCE_NOT_FOUND,
+        ErrorCode.WORKFLOW_CONFLICT,
+    ),
+)
+async def import_staff_roster(
+    request: Request,
+    payload: StaffRosterImportRequest,
+    actor: CsrfActor,
+):
+    container = request.app.state.container
+    result = await container.school_account_lifecycle.import_school_staff_roster(
+        actor,
+        payload.rows,
+        ttl_seconds=container.settings.auth.staff_invitation_ttl_seconds,
+        trace_id=_trace_id(request),
+    )
+    return _no_store(_body(request, StaffRosterImportResponse.model_validate(result)), 201)
 
 
 @router.get(

@@ -15,7 +15,6 @@ from smhai_backend.domains.auth.dependencies import (
     CSRF_SECURITY_OPENAPI_EXTRA,
     CsrfActor,
     CurrentActor,
-    RecentReauthenticatedCsrfActor,
 )
 
 from .schemas import (
@@ -298,7 +297,7 @@ async def get_account_batch(request: Request, batch_ref: str, actor: CurrentActo
 async def issue_initial_credentials(
     request: Request,
     payload: InitialCredentialIssueRequest,
-    actor: RecentReauthenticatedCsrfActor,
+    actor: CsrfActor,
 ):
     result = await request.app.state.container.school_directory.issue_initial_credentials(
         actor,

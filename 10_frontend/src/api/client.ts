@@ -106,7 +106,7 @@ export interface SchoolMember {
 }
 
 export interface SchoolDirectory {
-  school: { school_ref: string; display_name: string | null }
+  school: { school_ref: string; display_name: string | null; data_origin: 'SYNTHETIC' | 'PRODUCTION_PENDING' }
   classes: SchoolClass[]
   members: Array<{
     user_id: string
@@ -188,6 +188,7 @@ export interface LifecycleRosterImport extends LifecycleRosterPreview {
   created_count: number
   skipped_count: number
   status: string
+  accounts: Array<{ row_no: number; user_id: string; display_name: string; class_ref: string; status: 'PENDING_ACTIVATION' | 'ACTIVE' }>
 }
 export interface LifecycleAccountSummary {
   total_accounts: number
@@ -208,8 +209,29 @@ export interface LifecycleCredential {
   class_ref: string
   credential: string
   expires_at: string
-  role?: 'student' | 'teacher'
+  role?: 'student' | 'teacher' | 'psychological_specialist'
   invitation_ref?: string
+}
+export interface LifecycleStaffRosterRow {
+  row_no: number
+  employee_ref: string
+  display_name: string
+  role: 'teacher' | 'psychological_specialist'
+  class_refs: string[]
+}
+export interface LifecycleStaffRosterImport {
+  created_count: number
+  credentials: Array<{
+    invitation_ref: string
+    user_id: string
+    login_name: string
+    display_name: string
+    role: 'teacher' | 'psychological_specialist'
+    class_refs: string[]
+    credential: string
+    expires_at: string
+  }>
+  delivery_status: 'MANUAL_HANDOFF_REQUIRED'
 }
 export interface LifecycleInvitationInput {
   employee_ref: string
@@ -609,6 +631,7 @@ export interface FrontendApi {
   revokeSchoolTaskEnrollment?(taskRef: string, enrollmentRef: string): Promise<ApiEnvelope<SchoolTaskEnrollment>>
   previewLifecycleRoster?(rows: LifecycleRosterRow[]): Promise<ApiEnvelope<LifecycleRosterPreview>>
   importLifecycleRoster?(rows: LifecycleRosterRow[], idempotencyKey: string): Promise<ApiEnvelope<LifecycleRosterImport>>
+  importLifecycleStaff?(rows: LifecycleStaffRosterRow[]): Promise<ApiEnvelope<LifecycleStaffRosterImport>>
   getLifecycleRosterImport?(runRef: string): Promise<ApiEnvelope<LifecycleRosterImport>>
   getLifecycleAccountSummary?(): Promise<ApiEnvelope<LifecycleAccountSummary>>
   issueLifecycleCredentials?(userIds: string[]): Promise<ApiEnvelope<{ credentials: LifecycleCredential[] }>>

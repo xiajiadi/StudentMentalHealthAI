@@ -56,6 +56,38 @@ describe('RealApiProvider account lifecycle endpoints', () => {
     await provider.inviteSchoolStaff({ employee_ref: 'E-1', display_name: '合成教师', role: 'teacher', work_contact: 'synthetic@example.test', verified: true, class_refs: ['C-1'], delivery_channel: 'MANUAL' })
   })
 
+  it('submits a mixed synthetic staff roster and validates its first-login credentials', async () => {
+    const rows = [
+      { row_no: 1, employee_ref: 'T-1', display_name: '合成教师', role: 'teacher' as const, class_refs: ['C-1'] },
+      { row_no: 2, employee_ref: 'P-1', display_name: '合成心理教师', role: 'psychological_specialist' as const, class_refs: [] },
+    ]
+    const { provider, fetchMock } = await providerFor(async (request) => {
+      const url = new URL(request.url)
+      if (url.pathname === '/api/v1/auth/csrf') return envelope({ csrf_token: 'csrf-test' })
+      expect(url.pathname).toBe('/api/v1/school/admin/staff/import')
+      expect(request.method).toBe('POST')
+      expect(request.headers.get('X-CSRF-Token')).toBe('csrf-test')
+      expect(await request.json()).toEqual({ rows })
+      return envelope({
+        created_count: 1,
+        delivery_status: 'MANUAL_HANDOFF_REQUIRED',
+        credentials: [{
+          invitation_ref: 'INV-P-1', user_id: 'USER-P-1', login_name: 'P-1',
+          display_name: '合成心理教师', role: 'psychological_specialist', class_refs: [],
+          credential: 'one-time-credential', expires_at: '2026-11-01T00:00:00Z',
+        }],
+      })
+    })
+
+    await expect(provider.importLifecycleStaff(rows)).resolves.toMatchObject({
+      data: {
+        created_count: 1,
+        credentials: [{ role: 'psychological_specialist', login_name: 'P-1' }],
+      },
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
   it('lists invitations without credentials and supports reason-coded revoke and reissue', async () => {
     const calls: Array<{ method: string; path: string; body?: unknown }> = []
     const { provider, fetchMock } = await providerFor(async (request) => {

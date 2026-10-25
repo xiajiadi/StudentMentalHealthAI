@@ -278,7 +278,11 @@ class SchoolDirectoryPersistenceAdapter:
             ):
                 class_refs_by_member.setdefault(public_id, set()).add(class_ref)
             return {
-                "school": {"school_ref": school.school_ref, "display_name": school.display_name},
+                "school": {
+                    "school_ref": school.school_ref,
+                    "display_name": school.display_name,
+                    "data_origin": school.data_origin,
+                },
                 "classes": [
                     {
                         "class_ref": row[0],
@@ -1381,6 +1385,132 @@ class SchoolDirectoryPersistenceAdapter:
         at = self._utc_now()
         normalized_username = username.strip().casefold()
         async with self._uow() as uow:
+            staff_invitation = await uow.session.scalar(
+                self._select(m.SchoolStaffInvitation)
+                .join(m.Account, m.Account.id == m.SchoolStaffInvitation.account_id)
+                .join(m.School, m.School.id == m.SchoolStaffInvitation.school_id)
+                .where(
+                    func.lower(m.Account.login_name) == normalized_username,
+                    m.School.school_ref == school_ref.strip(),
+                    m.School.status == "ACTIVE",
+                    m.School.data_origin == e.DataOrigin.SYNTHETIC.value,
+                    m.SchoolStaffInvitation.status == "ISSUED",
+                )
+                .with_for_update()
+            )
+            if staff_invitation is not None:
+                account = await uow.session.scalar(
+                    self._select(m.Account)
+                    .where(m.Account.id == staff_invitation.account_id)
+                    .with_for_update()
+                )
+                membership = await uow.session.scalar(
+                    self._select(m.AccountSchoolMembership)
+                    .where(
+                        m.AccountSchoolMembership.id == staff_invitation.membership_id,
+                        m.AccountSchoolMembership.account_id == staff_invitation.account_id,
+                        m.AccountSchoolMembership.school_id == staff_invitation.school_id,
+                        m.AccountSchoolMembership.status == "INACTIVE",
+                    )
+                    .with_for_update()
+                )
+                role = await uow.session.scalar(
+                    self._select(m.MembershipRole)
+                    .where(
+                        m.MembershipRole.id == staff_invitation.membership_role_id,
+                        m.MembershipRole.membership_id == staff_invitation.membership_id,
+                        m.MembershipRole.school_id == staff_invitation.school_id,
+                        m.MembershipRole.role_code == staff_invitation.role_code,
+                        m.MembershipRole.status == "INACTIVE",
+                    )
+                    .with_for_update()
+                )
+                credential = await uow.session.scalar(
+                    self._select(m.SchoolAccountCredential)
+                    .where(
+                        m.SchoolAccountCredential.account_id == staff_invitation.account_id,
+                        m.SchoolAccountCredential.school_id == staff_invitation.school_id,
+                        m.SchoolAccountCredential.resource_ref == staff_invitation.public_id,
+                        m.SchoolAccountCredential.token_hash == token_hash,
+                        m.SchoolAccountCredential.purpose == "STAFF_INVITATION",
+                        m.SchoolAccountCredential.status == "ISSUED",
+                        m.SchoolAccountCredential.expires_at > at,
+                    )
+                    .with_for_update()
+                )
+                if (
+                    account is None
+                    or account.status != e.AccountStatus.SUSPENDED.value
+                    or not account.must_change_password
+                    or account.password_changed_at is not None
+                    or membership is None
+                    or role is None
+                    or credential is None
+                    or staff_invitation.expires_at <= at
+                    or staff_invitation.work_contact_verified_at is None
+                ):
+                    raise invalid
+                class_links = list(
+                    (
+                        await uow.session.scalars(
+                            self._select(m.SchoolStaffInvitationClass)
+                            .where(
+                                m.SchoolStaffInvitationClass.invitation_id
+                                == staff_invitation.id,
+                                m.SchoolStaffInvitationClass.school_id
+                                == staff_invitation.school_id,
+                            )
+                            .order_by(m.SchoolStaffInvitationClass.class_id)
+                            .with_for_update()
+                        )
+                    ).all()
+                )
+                if (
+                    staff_invitation.role_code == "teacher" and not class_links
+                ) or (
+                    staff_invitation.role_code == "psychological_specialist" and class_links
+                ):
+                    raise invalid
+
+                account.password_hash = PasswordHash.recommended().hash(new_password)
+                account.status = e.AccountStatus.ACTIVE.value
+                account.must_change_password = False
+                account.password_changed_at = at
+                account.failed_login_count = 0
+                account.locked_until = None
+                membership.status = "ACTIVE"
+                membership.valid_from = at
+                role.status = "ACTIVE"
+                role.valid_from = at
+                staff_invitation.status = "ACCEPTED"
+                staff_invitation.accepted_at = at
+                credential.status = "CONSUMED"
+                credential.consumed_at = at
+
+                if staff_invitation.role_code == "teacher":
+                    for link in class_links:
+                        await uow.school_operations.add_teacher_role_to_class(
+                            school_id=staff_invitation.school_id,
+                            class_id=link.class_id,
+                            teacher_membership_role_id=role.id,
+                            admin_membership_role_id=(
+                                staff_invitation.issued_by_membership_role_id
+                            ),
+                            at=at,
+                        )
+                await self._revoke_account_sessions(uow, account.id, at)
+                await uow.session.flush()
+                await self._school_directory_audit(
+                    uow,
+                    actor_account_id=None,
+                    action="school_account_lifecycle.staff_invitation.accept",
+                    resource_type="school_staff_invitation",
+                    resource_public_id=staff_invitation.public_id,
+                    trace_id=trace_id,
+                    count=1,
+                )
+                return {"status": "PASSWORD_SET"}
+
             identity = await uow.session.execute(
                 self._select(m.Account.id, m.School.id)
                 .join(

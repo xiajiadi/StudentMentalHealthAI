@@ -5,7 +5,7 @@ import AccountLifecycleWorkspace from '@/views/admin/AccountLifecycleWorkspace.v
 
 const api = vi.hoisted(() => ({
   getLifecycleAccountSummary: vi.fn(), getSchoolAdminDirectory: vi.fn(), listRecoveryRequests: vi.fn(),
-  previewLifecycleRoster: vi.fn(), importLifecycleRoster: vi.fn(), inviteSchoolStaff: vi.fn(),
+  previewLifecycleRoster: vi.fn(), importLifecycleRoster: vi.fn(), importLifecycleStaff: vi.fn(), inviteSchoolStaff: vi.fn(),
   issueLifecycleCredentials: vi.fn(), approveRecoveryRequest: vi.fn(), reauthenticate: vi.fn(),
   listStaffInvitations: vi.fn(), revokeStaffInvitation: vi.fn(), reissueStaffInvitation: vi.fn(),
   issueStaffRecoveryCredential: vi.fn(),
@@ -19,7 +19,7 @@ describe('管理员账号生命周期工作区', () => {
   beforeEach(() => {
     Object.values(api).forEach((mock) => mock.mockReset())
     api.getLifecycleAccountSummary.mockResolvedValue(envelope({ total_accounts: 4, active_accounts: 2, pending_activation: 1, suspended_accounts: 1, classes: 1, invitations_issued: 0, invitations_accepted: 0, invitations_expired: 0, invitations_revoked: 0, recovery_queue_count: 0 }))
-    api.getSchoolAdminDirectory.mockResolvedValue(envelope({ school: { school_ref: 'SCHOOL_SYNTHETIC', display_name: '合成学校' }, classes: [{ class_ref: 'CLASS_SYNTHETIC', status: 'ACTIVE', active_student_count: 1, active_teacher_count: 1, display_name: '合成班级' }], members: [
+    api.getSchoolAdminDirectory.mockResolvedValue(envelope({ school: { school_ref: 'SCHOOL_SYNTHETIC', display_name: '合成学校', data_origin: 'SYNTHETIC' }, classes: [{ class_ref: 'CLASS_SYNTHETIC', status: 'ACTIVE', active_student_count: 1, active_teacher_count: 1, display_name: '合成班级' }], members: [
       { user_id: 'USER_STUDENT', display_name: '合成学生', role: 'student', account_status: 'ACTIVE', provisioning_status: 'PENDING_ACTIVATION' },
     ] }))
     api.listRecoveryRequests.mockResolvedValue(envelope([]))
@@ -35,9 +35,10 @@ describe('管理员账号生命周期工作区', () => {
     wrapper.unmount()
   })
 
-  it('花名册必须先请求服务端预览，通过后才开放确认导入', async () => {
+  it('上传学生名单后自动预览，确认导入时自动签发初始凭据', async () => {
     api.previewLifecycleRoster.mockResolvedValue(envelope({ valid: true, row_count: 1, errors: [], class_groups: [{ class_ref: 'CLASS_SYNTHETIC', row_count: 1 }] }))
-    api.importLifecycleRoster.mockResolvedValue(envelope({ run_ref: 'RUN_SYNTHETIC', valid: true, row_count: 1, errors: [], created_count: 1, skipped_count: 0, status: 'COMPLETED' }))
+    api.importLifecycleRoster.mockResolvedValue(envelope({ run_ref: 'RUN_SYNTHETIC', valid: true, row_count: 1, errors: [], created_count: 1, skipped_count: 0, status: 'COMPLETED', accounts: [{ row_no: 1, user_id: 'USER_STUDENT', display_name: '合成,学生', class_ref: 'CLASS_SYNTHETIC', status: 'PENDING_ACTIVATION' }] }))
+    api.issueLifecycleCredentials.mockResolvedValue(envelope({ credentials: [{ user_id: 'USER_STUDENT', login_name: 'STUDENT_SYNTHETIC', display_name: '合成,学生', class_ref: 'CLASS_SYNTHETIC', credential: 'synthetic-once', expires_at: '2026-10-25T00:00:00Z' }] }))
     const wrapper = mount(AccountLifecycleWorkspace)
     await flushPromises()
     await wrapper.findAll('[role="tab"]')[1]!.trigger('click')
@@ -46,25 +47,26 @@ describe('管理员账号生命周期工作区', () => {
     await fileInput.trigger('change')
     await flushPromises()
     expect(wrapper.text()).toContain('合成,学生')
-    const confirm = wrapper.findAll('button').find((button) => button.text() === '确认导入')!
-    expect((confirm.element as HTMLButtonElement).disabled).toBe(true)
-    await wrapper.findAll('button').find((button) => button.text() === '服务端预览')!.trigger('click')
+    const confirm = wrapper.findAll('button').find((button) => button.text() === '导入并生成初始账号')!
     await flushPromises()
+    expect(api.previewLifecycleRoster).toHaveBeenCalledOnce()
     expect(api.previewLifecycleRoster).toHaveBeenCalledWith([{ row_no: 1, student_number: 'S-1', display_name: '合成,学生', class_ref: 'CLASS_SYNTHETIC', grade_level: '7' }])
     expect((confirm.element as HTMLButtonElement).disabled).toBe(false)
     await confirm.trigger('click')
     await flushPromises()
     expect(api.importLifecycleRoster).toHaveBeenCalledOnce()
-    expect(wrapper.text()).toContain('RUN_SYNTHETIC')
+    expect(api.issueLifecycleCredentials).toHaveBeenCalledWith(['USER_STUDENT'])
+    expect(wrapper.text()).toContain('已导入 1 名学生并生成初始账号')
+    expect(wrapper.findAll('[role="tab"]')[4]!.attributes('aria-selected')).toBe('true')
     wrapper.unmount()
   })
 
-  it('邀请凭据只暂存在页面内存并进入加密下载流程', async () => {
+  it('单个教职工邀请沿用身份核验并提供合成账号 CSV', async () => {
     api.inviteSchoolStaff.mockResolvedValue(envelope({ invitation_ref: 'INV_SYNTHETIC', user_id: 'USER_STAFF', login_name: 'STAFF_SYNTHETIC', credential: 'secret-once', expires_at: '2026-10-25T00:00:00Z', status: 'ISSUED', delivery_channel: 'MANUAL_HANDOFF_REQUIRED' }))
     const wrapper = mount(AccountLifecycleWorkspace)
     await flushPromises()
     await wrapper.findAll('[role="tab"]')[2]!.trigger('click')
-    const inputs = wrapper.findAll('input')
+    const inputs = wrapper.get('form').findAll('input')
     await inputs[0]!.setValue('EMP_SYNTHETIC')
     await inputs[1]!.setValue('合成教师')
     await inputs[2]!.setValue('synthetic@example.test')
@@ -74,9 +76,43 @@ describe('管理员账号生命周期工作区', () => {
     await flushPromises()
     expect(api.inviteSchoolStaff).toHaveBeenCalledWith(expect.objectContaining({ verified: true, delivery_channel: 'MANUAL' }))
     expect(api.reauthenticate).toHaveBeenCalledOnce()
-    expect(wrapper.text()).toContain('加密下载')
+    expect(wrapper.text()).toContain('下载账号 CSV')
     expect(wrapper.text()).toContain('INV_SYNTHETIC')
     expect(wrapper.text()).not.toContain('secret-once')
+    wrapper.unmount()
+  })
+
+  it('教职工名单导入后为普通教师和心理教师生成账号及首次登录凭据', async () => {
+    api.importLifecycleStaff.mockResolvedValue(envelope({
+      created_count: 2,
+      delivery_status: 'MANUAL_HANDOFF_REQUIRED',
+      credentials: [
+        { invitation_ref: 'INV_T', user_id: 'USER_T', login_name: 'T-001', display_name: '合成教师', role: 'teacher', class_refs: ['CLASS_SYNTHETIC'], credential: 'teacher-once', expires_at: '2026-10-25T00:00:00Z' },
+        { invitation_ref: 'INV_P', user_id: 'USER_P', login_name: 'P-001', display_name: '合成心理教师', role: 'psychological_specialist', class_refs: [], credential: 'psych-once', expires_at: '2026-10-25T00:00:00Z' },
+      ],
+    }))
+    const wrapper = mount(AccountLifecycleWorkspace)
+    await flushPromises()
+    await wrapper.findAll('[role="tab"]')[2]!.trigger('click')
+    const fileInput = wrapper.get('input[type="file"]')
+    Object.defineProperty(fileInput.element, 'files', { value: [new File([
+      'employee_ref,display_name,role,class_refs\nT-001,合成教师,teacher,CLASS_SYNTHETIC\nP-001,合成心理教师,psychological_specialist,',
+    ], 'staff.csv', { type: 'text/csv' })] })
+    await fileInput.trigger('change')
+    await flushPromises()
+    expect(wrapper.text()).toContain('已读取 2 行教职工名单')
+    await wrapper.findAll('button').find((button) => button.text() === '导入并生成初始账号')!.trigger('click')
+    await flushPromises()
+    expect(api.importLifecycleStaff).toHaveBeenCalledWith([
+      { row_no: 1, employee_ref: 'T-001', display_name: '合成教师', role: 'teacher', class_refs: ['CLASS_SYNTHETIC'] },
+      { row_no: 2, employee_ref: 'P-001', display_name: '合成心理教师', role: 'psychological_specialist', class_refs: [] },
+    ])
+    expect(api.issueLifecycleCredentials).not.toHaveBeenCalled()
+    expect(wrapper.findAll('[role="tab"]')[4]!.attributes('aria-selected')).toBe('true')
+    expect(wrapper.text()).toContain('心理教师')
+    expect(wrapper.text()).toContain('下载账号 CSV')
+    expect(wrapper.text()).not.toContain('teacher-once')
+    expect(wrapper.text()).not.toContain('psych-once')
     wrapper.unmount()
   })
 
@@ -99,24 +135,56 @@ describe('管理员账号生命周期工作区', () => {
     wrapper.unmount()
   })
 
-  it('发行初始凭据前要求管理员重新认证', async () => {
+  it('为合成账号生成初始凭据时沿用管理员会话', async () => {
     api.issueLifecycleCredentials.mockResolvedValue(envelope({ credentials: [{ user_id: 'USER_STUDENT', login_name: 'STUDENT_SYNTHETIC', display_name: '合成学生', class_ref: 'CLASS_SYNTHETIC', credential: 'synthetic-once', expires_at: '2026-10-25T00:00:00Z' }] }))
     const wrapper = mount(AccountLifecycleWorkspace)
     await flushPromises()
     await wrapper.findAll('[role="tab"]')[4]!.trigger('click')
     await wrapper.get('input[type="checkbox"][aria-label="选择合成学生"]').setValue(true)
-    await wrapper.get('input[type="password"]').setValue('synthetic-admin-password')
-    await wrapper.findAll('button').find((button) => button.text() === '发行凭据')!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text() === '生成初始密码')!.trigger('click')
     await flushPromises()
-    expect(api.reauthenticate).toHaveBeenCalledOnce()
+    expect(api.reauthenticate).not.toHaveBeenCalled()
     expect(api.issueLifecycleCredentials).toHaveBeenCalledWith(['USER_STUDENT'])
     expect(wrapper.text()).not.toContain('synthetic-once')
     wrapper.unmount()
   })
 
+  it('下载的学生 CSV 包含首次登录所需学校编号和地址，凭据不留在页面', async () => {
+    let downloadedBlob: Blob | undefined
+    const createObjectURL = vi.fn((blob: Blob) => { downloadedBlob = blob; return 'blob:synthetic-credentials' })
+    const revokeObjectURL = vi.fn()
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    vi.stubGlobal('URL', { createObjectURL, revokeObjectURL })
+    api.issueLifecycleCredentials.mockResolvedValue(envelope({ credentials: [{
+      user_id: 'USER_STUDENT', login_name: 'STUDENT_SYNTHETIC', display_name: '合成学生',
+      class_ref: 'CLASS_SYNTHETIC', credential: 'synthetic-once', expires_at: '2026-10-25T00:00:00Z',
+    }] }))
+    const wrapper = mount(AccountLifecycleWorkspace)
+    try {
+      await flushPromises()
+      await wrapper.findAll('[role="tab"]')[4]!.trigger('click')
+      await wrapper.get('input[type="checkbox"][aria-label="选择合成学生"]').setValue(true)
+      await wrapper.findAll('button').find((button) => button.text() === '生成初始密码')!.trigger('click')
+      await flushPromises()
+      await wrapper.findAll('button').find((button) => button.text() === '下载账号 CSV')!.trigger('click')
+      const csv = await downloadedBlob!.text()
+      expect(csv).toContain('SCHOOL_SYNTHETIC')
+      expect(csv).toContain('/login')
+      expect(csv).toContain('STUDENT_SYNTHETIC')
+      expect(csv).toContain('synthetic-once')
+      expect(wrapper.text()).not.toContain('synthetic-once')
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(revokeObjectURL).toHaveBeenCalledWith('blob:synthetic-credentials')
+    } finally {
+      wrapper.unmount()
+      anchorClick.mockRestore()
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('筛选并批量签发活跃的合成学生与普通教师账号', async () => {
     api.getSchoolAdminDirectory.mockResolvedValue(envelope({
-      school: { school_ref: 'SCHOOL_SYNTHETIC', display_name: '合成学校' },
+      school: { school_ref: 'SCHOOL_SYNTHETIC', display_name: '合成学校', data_origin: 'SYNTHETIC' },
       classes: [{ class_ref: 'CLASS_SYNTHETIC', status: 'ACTIVE', active_student_count: 1, active_teacher_count: 1, display_name: '合成班级' }],
       members: [
         { user_id: 'USER_STUDENT', display_name: '合成学生', role: 'student', account_status: 'ACTIVE', provisioning_status: 'ACTIVE', class_refs: ['CLASS_SYNTHETIC'] },
@@ -132,10 +200,9 @@ describe('管理员账号生命周期工作区', () => {
     await wrapper.findAll('select')[0]!.setValue('teacher')
     await wrapper.findAll('button').find((button) => button.text() === '选择筛选结果')!.trigger('click')
     expect(wrapper.text()).toContain('已选择 1 人')
-    await wrapper.get('input[type="password"]').setValue('synthetic-admin-password')
-    await wrapper.findAll('button').find((button) => button.text() === '发行凭据')!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text() === '生成初始密码')!.trigger('click')
     await flushPromises()
-    expect(api.reauthenticate).toHaveBeenCalledOnce()
+    expect(api.reauthenticate).not.toHaveBeenCalled()
     expect(api.issueLifecycleCredentials).toHaveBeenCalledWith(['USER_TEACHER'])
     expect(wrapper.text()).toContain('合成教师')
     expect(wrapper.text()).not.toContain('synthetic-once')
@@ -230,7 +297,7 @@ describe('管理员账号生命周期工作区', () => {
       identity_verified: true,
     })
     expect(wrapper.findAll('[role="tab"]')[4]!.attributes('aria-selected')).toBe('true')
-    expect(wrapper.text()).toContain('加密下载')
+    expect(wrapper.text()).toContain('下载账号 CSV')
     expect(wrapper.text()).not.toContain('reset-secret-once')
     wrapper.unmount()
   })
@@ -242,7 +309,7 @@ describe('管理员账号生命周期工作区', () => {
       role: 'student', account_status: 'ACTIVE', provisioning_status: null,
     }))
     api.getSchoolAdminDirectory.mockResolvedValue(envelope({
-      school: { school_ref: 'SCHOOL_SYNTHETIC', display_name: '合成学校' },
+      school: { school_ref: 'SCHOOL_SYNTHETIC', display_name: '合成学校', data_origin: 'SYNTHETIC' },
       classes: [], members,
     }))
     api.updateSchoolAccountStatus.mockResolvedValue(envelope({ status: 'DISABLED' }))

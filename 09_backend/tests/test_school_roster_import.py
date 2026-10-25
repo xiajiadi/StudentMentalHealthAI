@@ -208,6 +208,9 @@ def roster_scope(monkeypatch):
         "school_class_students",
         "school_class_teachers",
         "auth_sessions",
+        "school_staff_invitations",
+        "school_staff_invitation_classes",
+        "school_password_recovery_tickets",
     }
     db_models.Base.metadata.create_all(
         engine,

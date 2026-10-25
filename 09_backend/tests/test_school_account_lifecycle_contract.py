@@ -91,6 +91,33 @@ def test_invitation_requires_manual_confirmation_and_secret_is_masked():
     assert "synthetic-only-one-time-token-value" not in repr(request)
 
 
+def test_psychologist_invitation_requires_ascii_employee_reference():
+    invitation = StaffInvitationRequest.model_validate(
+        {
+            "employee_ref": "PSY-001",
+            "display_name": "合成心理老师",
+            "role": "psychological_specialist",
+            "work_contact": "staff@example.invalid",
+            "verified": True,
+            "class_refs": [],
+            "delivery_channel": "MANUAL",
+        }
+    )
+    assert invitation.role == "psychological_specialist"
+
+    with pytest.raises(ValidationError):
+        StaffInvitationRequest.model_validate(
+            {
+                "employee_ref": "心理老师001",
+                "display_name": "合成心理老师",
+                "role": "psychological_specialist",
+                "work_contact": "staff@example.invalid",
+                "verified": True,
+                "class_refs": [],
+                "delivery_channel": "MANUAL",
+            }
+        )
+
 def test_public_recovery_dto_accepts_only_fixed_reason_codes():
     request = RecoveryRequest(
         school_ref="SCHOOL_SYNTHETIC",

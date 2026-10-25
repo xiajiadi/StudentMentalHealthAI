@@ -372,6 +372,212 @@ class SchoolAccountLifecyclePersistenceAdapter:
                 "expires_at": expires_at,
             }
 
+    async def import_school_staff_roster(
+        self,
+        actor: Any,
+        rows: list[Any],
+        *,
+        ttl_seconds: int,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        """Create synthetic staff invitations and one-time first-login credentials."""
+
+        m = self._db_models
+        e = self._db_enums
+        now = self._utc_now()
+        if not isinstance(ttl_seconds, int) or ttl_seconds <= 0 or not 1 <= len(rows) <= 200:
+            raise error(ErrorCode.VALIDATION_FAILED, detail="staff import size is invalid")
+
+        row_refs = [row.employee_ref.casefold() for row in rows]
+        if len(set(row_refs)) != len(row_refs):
+            raise error(ErrorCode.VALIDATION_FAILED, detail="employee references must be unique")
+
+        async with self._uow() as uow:
+            actor_id, issuer_role_id = await self._school_actor_role(
+                uow, actor, "admin", now, lock=True
+            )
+            school = await uow.session.scalar(
+                self._select(m.School)
+                .where(
+                    m.School.id == actor.school_id,
+                    m.School.school_ref == actor.school_ref,
+                    m.School.status == "ACTIVE",
+                    m.School.data_origin == e.DataOrigin.SYNTHETIC.value,
+                )
+                .with_for_update()
+            )
+            if school is None:
+                raise error(ErrorCode.FORBIDDEN, detail="synthetic staff import is unavailable")
+
+            existing_refs = set(
+                (
+                    await uow.session.scalars(
+                        self._select(m.SchoolStaffInvitation.employee_ref).where(
+                            m.SchoolStaffInvitation.school_id == actor.school_id,
+                            m.SchoolStaffInvitation.employee_ref.in_(
+                                [row.employee_ref for row in rows]
+                            ),
+                        )
+                    )
+                ).all()
+            )
+            login_names = [self._login_name(actor.school_ref, row.employee_ref) for row in rows]
+            existing_logins = set(
+                (
+                    await uow.session.scalars(
+                        self._select(m.Account.login_name).where(
+                            m.Account.login_name.in_(login_names)
+                        )
+                    )
+                ).all()
+            )
+            if existing_refs or existing_logins:
+                raise error(
+                    ErrorCode.WORKFLOW_CONFLICT,
+                    detail="one or more staff accounts already exist",
+                )
+
+            requested_classes = sorted(
+                {class_ref for row in rows for class_ref in row.class_refs}
+            )
+            classes = (
+                list(
+                    (
+                        await uow.session.scalars(
+                            self._select(m.SchoolClass)
+                            .where(
+                                m.SchoolClass.school_id == actor.school_id,
+                                m.SchoolClass.class_ref.in_(requested_classes),
+                                m.SchoolClass.status == "ACTIVE",
+                            )
+                            .order_by(m.SchoolClass.id)
+                            .with_for_update()
+                        )
+                    ).all()
+                )
+                if requested_classes
+                else []
+            )
+            classes_by_ref = {item.class_ref: item for item in classes}
+            if set(classes_by_ref) != set(requested_classes):
+                raise error(
+                    ErrorCode.RESOURCE_NOT_FOUND,
+                    detail="one or more classes were not found",
+                )
+
+            expires_at = now + timedelta(seconds=ttl_seconds)
+            hasher = PasswordHash.recommended()
+            output: list[dict[str, Any]] = []
+            for row in rows:
+                login_name = self._login_name(actor.school_ref, row.employee_ref)
+                invitation_ref = f"INV_{uuid4().hex}"
+                raw_token, token_hash = self._token()
+                account = m.Account(
+                    login_name=login_name,
+                    password_hash=hasher.hash(secrets.token_urlsafe(48)),
+                    status=e.AccountStatus.SUSPENDED.value,
+                    must_change_password=True,
+                )
+                uow.session.add(account)
+                await uow.session.flush()
+                membership = m.AccountSchoolMembership(
+                    account_id=account.id,
+                    school_id=actor.school_id,
+                    display_name=row.display_name,
+                    status="INACTIVE",
+                    valid_from=now,
+                )
+                uow.session.add(membership)
+                await uow.session.flush()
+                role = m.MembershipRole(
+                    membership_id=membership.id,
+                    school_id=actor.school_id,
+                    role_code=row.role,
+                    status="INACTIVE",
+                    valid_from=now,
+                )
+                uow.session.add(role)
+                await uow.session.flush()
+
+                contact = uow.protection.encrypt_json(
+                    {"contact": f"{row.employee_ref}@example.invalid"},
+                    payload_schema_version="school-staff-contact.v1",
+                )
+                invitation = m.SchoolStaffInvitation(
+                    invitation_ref=invitation_ref,
+                    school_id=actor.school_id,
+                    account_id=account.id,
+                    membership_id=membership.id,
+                    membership_role_id=role.id,
+                    issued_by_membership_role_id=issuer_role_id,
+                    role_code=row.role,
+                    employee_ref=row.employee_ref,
+                    status="ISSUED",
+                    delivery_channel="MANUAL",
+                    work_contact_ciphertext=contact.ciphertext,
+                    work_contact_cipher_format_version=contact.cipher_format_version,
+                    work_contact_key_version=contact.key_version,
+                    work_contact_payload_schema_version=contact.payload_schema_version,
+                    work_contact_verified_at=now,
+                    expires_at=expires_at,
+                    trace_id=trace_id,
+                )
+                uow.session.add(invitation)
+                await uow.session.flush()
+                class_refs: list[str] = []
+                for class_ref in row.class_refs:
+                    uow.session.add(
+                        m.SchoolStaffInvitationClass(
+                            invitation_id=invitation.id,
+                            school_id=actor.school_id,
+                            class_id=classes_by_ref[class_ref].id,
+                        )
+                    )
+                    class_refs.append(class_ref)
+                uow.session.add(
+                    m.SchoolAccountCredential(
+                        credential_ref=f"CRED_{uuid4().hex}",
+                        account_id=account.id,
+                        school_id=actor.school_id,
+                        issued_by_membership_role_id=issuer_role_id,
+                        purpose="STAFF_INVITATION",
+                        resource_ref=invitation.public_id,
+                        token_hash=token_hash,
+                        status="ISSUED",
+                        delivery_channel="MANUAL",
+                        expires_at=expires_at,
+                        trace_id=trace_id,
+                    )
+                )
+                await uow.session.flush()
+                await self._audit(
+                    uow,
+                    actor_account_id=actor_id,
+                    action="school_account_lifecycle.staff_roster_import.issue",
+                    resource_type="school_staff_invitation",
+                    resource_ref=invitation.public_id,
+                    trace_id=trace_id,
+                    metadata={"count": 1},
+                )
+                output.append(
+                    {
+                        "invitation_ref": invitation_ref,
+                        "user_id": f"USER_{account.public_id}",
+                        "login_name": login_name,
+                        "display_name": row.display_name,
+                        "role": row.role,
+                        "class_refs": class_refs,
+                        "credential": raw_token,
+                        "expires_at": expires_at,
+                    }
+                )
+            await uow.session.flush()
+            return {
+                "created_count": len(output),
+                "credentials": output,
+                "delivery_status": "MANUAL_HANDOFF_REQUIRED",
+            }
+
     async def list_staff_invitations(self, actor: Any) -> list[dict[str, Any]]:
         m = self._db_models
         now = self._utc_now()

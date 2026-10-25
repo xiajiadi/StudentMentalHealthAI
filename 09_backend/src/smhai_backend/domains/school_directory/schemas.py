@@ -186,6 +186,7 @@ class DirectorySchoolDto(BaseModel):
 
     school_ref: str
     display_name: str | None
+    data_origin: Literal["SYNTHETIC", "PRODUCTION_PENDING"]
 
 
 class DirectoryClassDto(BaseModel):
