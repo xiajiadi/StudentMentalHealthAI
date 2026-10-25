@@ -444,6 +444,18 @@ def test_empty_owned_schema_migrates_only_to_pinned_revision(prepared):
     assert ops.lock_acquisitions == 1
 
 
+def test_0024_schema_contract_excludes_0025_login_lockout_check():
+    database_root = Path(__file__).resolve().parents[2] / "11_database"
+    previous = migration._trusted_current_schema(database_root, "20261016_0024")
+    current = migration._trusted_current_schema(database_root, "20261024_0025")
+    check_name = "ck_accounts_failed_login_count_allowed"
+
+    assert not any(
+        item[0] == check_name for item in previous["accounts"]["checks"]
+    )
+    assert any(item[0] == check_name for item in current["accounts"]["checks"])
+
+
 def test_exact_0024_schema_upgrades_additively_to_0025(prepared):
     _repo, workspace, _marker, db, ops, service, _settings, _reads = prepared
     previous_schema = migration._trusted_current_schema(

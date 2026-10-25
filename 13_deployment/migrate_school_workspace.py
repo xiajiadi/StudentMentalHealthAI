@@ -36,7 +36,11 @@ from resume_school_workspace import (
     PORT as SOURCE_DATABASE_PORT,
 )
 from school_check_names import source_derived_school_check_names
-from school_schema import CURRENT_SCHOOL_MIGRATION_FILE, CURRENT_SCHOOL_REVISION
+from school_schema import (
+    CURRENT_SCHOOL_MIGRATION_FILE,
+    CURRENT_SCHOOL_REVISION,
+    SCHOOL_ACCOUNT_LIFECYCLE_REVISION,
+)
 
 BUILDER_USER = "psynova_builder"
 MIGRATION_TIMEOUT_SECONDS = 900
@@ -646,6 +650,11 @@ def _trusted_current_schema(
                 for constraint in table.constraints
                 if isinstance(constraint, CheckConstraint)
                 and {column.name for column in constraint.columns} <= allowed_columns
+                and not (
+                    revision != SCHOOL_ACCOUNT_LIFECYCLE_REVISION
+                    and table_name == "accounts"
+                    and constraint.name == "ck_accounts_failed_login_count_allowed"
+                )
             }
             indexes = set()
             for index in table.indexes:
