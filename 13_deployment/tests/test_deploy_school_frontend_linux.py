@@ -60,6 +60,23 @@ def test_frontend_build_command_handles_windows_command_wrapper() -> None:
     assert site._frontend_build_command("posix") == ["npm", "run", "build"]
 
 
+def test_git_bytes_reads_the_exact_committed_blob(monkeypatch: pytest.MonkeyPatch) -> None:
+    expected = b"server {\n  listen 443 ssl;\n}\n"
+    commands: list[list[str]] = []
+
+    def check_output(command: list[str], *, stderr: int) -> bytes:
+        commands.append(command)
+        assert stderr == site.subprocess.DEVNULL
+        return expected
+
+    monkeypatch.setattr(site.subprocess, "check_output", check_output)
+
+    actual = site._git_bytes(Path("repo"), "commit-id", "nginx/site.conf")
+
+    assert actual == expected
+    assert commands == [["git", "-C", "repo", "show", "commit-id:nginx/site.conf"]]
+
+
 def test_deploy_lock_uses_private_runtime_directory() -> None:
     assert site.LOCK_PATH == Path("/run/psynova-school-public-deploy/public-site.lock")
 

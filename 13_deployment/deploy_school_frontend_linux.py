@@ -91,6 +91,16 @@ def _git_text(repo_root: Path, *arguments: str) -> str:
         raise DeployError("git_source_unavailable") from None
 
 
+def _git_bytes(repo_root: Path, revision: str, relative_path: str) -> bytes:
+    try:
+        return subprocess.check_output(
+            ["git", "-C", str(repo_root), "show", f"{revision}:{relative_path}"],
+            stderr=subprocess.DEVNULL,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        raise DeployError("git_source_unavailable") from None
+
+
 def _zip_info(name: str) -> zipfile.ZipInfo:
     info = zipfile.ZipInfo(name, date_time=(2020, 1, 1, 0, 0, 0))
     info.compress_type = zipfile.ZIP_DEFLATED
@@ -171,8 +181,8 @@ def _package_files(repo_root: Path) -> tuple[dict[str, bytes], str]:
             raise DeployError("frontend_output_entry_rejected")
         relative = path.relative_to(dist_root).as_posix()
         files[f"web/{relative}"] = path.read_bytes()
-    files["nginx/acme.conf"] = (root / ACME_CONFIG_PATH).read_bytes()
-    files["nginx/https.conf"] = (root / HTTPS_CONFIG_PATH).read_bytes()
+    files["nginx/acme.conf"] = _git_bytes(root, source_commit, ACME_CONFIG_PATH.as_posix())
+    files["nginx/https.conf"] = _git_bytes(root, source_commit, HTTPS_CONFIG_PATH.as_posix())
     _make_manifest(files, source_commit)
     return files, source_commit
 
