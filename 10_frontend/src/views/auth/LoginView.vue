@@ -153,7 +153,7 @@ const submit = async () => {
       <section class="login-visual" aria-label="PsyNova Workspace">
         <div class="login-visual__tile" aria-hidden="true">
           <img class="login-visual__flow-track" src="/assets/psynova/gentle-rightward-flow.svg" alt="" aria-hidden="true">
-          <span>PsyNova 心理工作区</span>
+          <span>PsyNova Workspace</span>
         </div>
       </section>
 
@@ -272,8 +272,8 @@ const submit = async () => {
   min-height: 100svh;
   place-items: center;
   padding: 60px 40px;
-  background: var(--color-bg-gradient);
-  color: var(--color-text-primary);
+  background: linear-gradient(276deg, #f7f7f7 2.53%, #f1f1f3 97.25%);
+  color: #1e1d29;
   font-family: Inter, -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Segoe UI", "Noto Sans", ui-sans-serif, system-ui, sans-serif;
   font-size: 16px;
   font-weight: 500;
@@ -314,8 +314,8 @@ const submit = async () => {
   aspect-ratio: 31 / 27;
   place-items: center;
   overflow: hidden;
-  color: var(--color-text-inverse);
-  background-color: var(--color-primary);
+  color: #fff;
+  background-color: #118edb;
 }
 
 .login-visual__flow-track {
@@ -331,12 +331,13 @@ const submit = async () => {
 .login-visual__tile span {
   position: relative;
   z-index: 1;
-  color: var(--color-text-inverse);
-  font-size: 24px;
+  color: rgb(255 255 255 / 94%);
+  font-size: clamp(25px, 1.35vw, 26px);
   font-weight: 600;
   letter-spacing: -.035em;
   line-height: 1.2;
   text-align: center;
+  text-shadow: 0 1px 10px rgb(8 31 91 / 24%);
 }
 
 .login-side {
@@ -413,38 +414,38 @@ const submit = async () => {
   display: inline-block;
   position: relative;
   width: 100%;
-  padding: 12px 20px;
-  border: .5px solid transparent;
-  border-radius: var(--radius-control);
+  padding: clamp(13px, 0.7vw, 14px) 20px;
+  border: 1px solid transparent;
+  border-radius: 6px;
   outline: none;
-  color: var(--color-text-primary);
-  background: var(--color-surface-muted);
+  color: #1e1d29;
+  background: rgb(24 26 31 / 7%);
   font: inherit;
-  font-size: 16px;
+  font-size: clamp(16px, 0.9vw, 17px);
   font-weight: 500;
   line-height: 1.3;
   transition: all var(--motion-normal) ease-out;
 }
 
 .login-input::placeholder {
-  color: var(--color-text-muted);
+  color: #a0a3ab;
   opacity: 1;
 }
 
 .login-input:focus,
 .login-input:focus-visible {
-  border-color: var(--color-primary);
+  border-color: #3f424a;
   outline: none;
-  color: var(--color-text-primary);
+  color: #1e1d29;
 }
 
 .login-input[aria-invalid='true'] {
-  border-color: var(--color-critical);
+  border-color: #d53633;
 }
 
 .login-field__error {
   margin: 0 2px;
-  color: var(--color-critical);
+  color: #d53633;
   font-size: 12px;
   line-height: 1.4;
 }
@@ -452,10 +453,10 @@ const submit = async () => {
 .login-form__error {
   margin: 0;
   padding: 9px 11px;
-  border: .5px solid var(--color-critical);
-  border-radius: var(--radius-control);
-  color: var(--color-critical);
-  background: var(--color-critical-wash);
+  border: 1px solid rgb(213 54 51 / 18%);
+  border-radius: 6px;
+  color: #a3261b;
+  background: #fff3f1;
   font-size: 12px;
   line-height: 1.5;
 }
