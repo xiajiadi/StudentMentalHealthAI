@@ -1,4 +1,4 @@
-"""Package and safely resume the fixed Linux school Backend source overlay."""
+"""Package and safely resume the synthetic school account lifecycle overlay."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import os
+import socket
 import stat
 import subprocess
 import tempfile
@@ -13,32 +14,60 @@ import time
 import urllib.error
 import urllib.request
 import zipfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 BASE_RELEASE_REVISION = "f3047642aa3466f9b4f210f4f704d57fd2cdf3cc"
-SOURCE_COMMIT = "29f92ecb8ec82a45718fab0943b064482b18bb5f"
+SOURCE_COMMIT = "7533f1f7249bc74918eaa3ee31958d3ab78d5132"
+SERVER_HOSTNAME = "iZ0xic24d9gxb9udjbfo0kZ"
 APP_ROOT = Path("/opt/psynova-school-demo")
 RELEASE_ROOT = APP_ROOT / "release"
 STATE_ROOT = Path("/var/lib/psynova-school-demo")
-STATE_PATH = STATE_ROOT / f"backend-overlay-safety-timeout-{SOURCE_COMMIT[:12]}-state.json"
-BACKUP_ROOT = APP_ROOT / "backups" / f"backend-overlay-safety-timeout-{SOURCE_COMMIT}"
+STATE_PATH = STATE_ROOT / f"backend-overlay-account-lifecycle-{SOURCE_COMMIT[:12]}-state.json"
+BACKUP_ROOT = APP_ROOT / "backups" / f"backend-overlay-account-lifecycle-{SOURCE_COMMIT}"
+LOCK_PATH = Path("/run/lock/psynova-school-account-lifecycle-overlay.lock")
 BUNDLE_PATH = Path(
     "/home/psynova/apps/psynova/staging/linux-school-demo/"
-    f"backend-overlay-safety-timeout-{SOURCE_COMMIT}.zip"
+    f"backend-overlay-account-lifecycle-{SOURCE_COMMIT}.zip"
 )
 SERVICE_NAME = "psynova-school-demo.service"
 HEALTH_URL = "http://127.0.0.1:8088/api/v1/health"
-STATE_SCHEMA = "psynova.school-backend-overlay-state.v1"
-BUNDLE_SCHEMA = "psynova.school-backend-overlay.v1"
+STATE_SCHEMA = "psynova.school-account-lifecycle-overlay-state.v1"
+BUNDLE_SCHEMA = "psynova.school-account-lifecycle-overlay.v1"
 MAX_BUNDLE_BYTES = 2_000_000
 MAX_MEMBER_BYTES = 1_000_000
 HEALTH_WAIT_SECONDS = 90
 
 FILES = {
-    "13_deployment/school_backend_linux.py": {
-        "previous": "e6037c43490738e987fc9839ab4ecb2dcc061006d9c1b26caca05e3db8a9d06c",
-        "target": "f9c1a6d90b1a48748926645df6b9366345999671e81aef2c444b04da5d65e994",
+    "09_backend/src/smhai_backend/adapters/school_account_lifecycle.py": {
+        "previous": "5875f4828187b1cfc025cfb237caed392bef26e298de835ca12ef33891c817ae",
+        "target": "11e88d4a31f714963f0ba378b0d69085441d0c47f68a0ece8b29f95235d93fc8",
+    },
+    "09_backend/src/smhai_backend/adapters/school_directory.py": {
+        "previous": "3ff5ecb1b9c4fcdb5560856f6da42763bc1ef1828bce9b4ce77980407adc32e2",
+        "target": "aa83e32c22ec8b0fd9604cd146f449244ab435f30c103f7ec12846f44d2d81e0",
+    },
+    "09_backend/src/smhai_backend/domains/school_account_lifecycle/router.py": {
+        "previous": "0c95d1bf72f64844be151adc57c3315f675100473c9efa1d96067187d09135dd",
+        "target": "a79c19eac7833bc1f27c47767c4bd9ee0dd34085dec0578fb04d053ade61b0f6",
+    },
+    "09_backend/src/smhai_backend/domains/school_account_lifecycle/schemas.py": {
+        "previous": "dc29593f108f285221675b6ed7d76640923fd60ea87e00eb0c2fd2aa38d0d246",
+        "target": "314c26aff98b2265ae14455fbb15de74b7000879fe1d381b6d1cfeb70d225752",
+    },
+    "09_backend/src/smhai_backend/domains/school_account_lifecycle/service.py": {
+        "previous": "2ea84dacbcf06a98bf239940e3467e5fc1c12817b88c511b53254bfdfbf0eedf",
+        "target": "440ec714d2faecb233d2f0805266ab867795786006616b2760fe181d6b733135",
+    },
+    "09_backend/src/smhai_backend/domains/school_directory/router.py": {
+        "previous": "0e491eaceb92945d6d39f29f81d30972eabd4e20909a78b8aa56d616378e5251",
+        "target": "ee0289a15ff86aa073e621bcdebc95c0b51c1de5f72e1a10d5c33bd7afd436ca",
+    },
+    "09_backend/src/smhai_backend/domains/school_directory/schemas.py": {
+        "previous": "6d7fd7643f7ef1b959ef250e4f50b5aa093d624f83d2c252244c0e70e4699605",
+        "target": "4b6a63f8cd82ca65974d54ec9dcb9bc4b88efe2201234fbb887ecd5d6995a2e0",
     },
 }
 ALLOWED_BUNDLE_NAMES = {"manifest.json", *FILES}
@@ -256,7 +285,27 @@ def _require_owned(path: Path, *, mode: int | None = None, regular: bool = False
     return result
 
 
+def _require_root_snapshot() -> None:
+    path = Path(__file__)
+    _require_owned(path, mode=0o500, regular=True)
+    prefix = "deploy_school_backend_overlay_"
+    suffix = ".py"
+    if not path.name.startswith(prefix) or not path.name.endswith(suffix):
+        raise OverlayError("release_fingerprint_mismatch")
+    expected = path.name[len(prefix) : -len(suffix)]
+    if len(expected) != 64 or any(char not in "0123456789abcdef" for char in expected):
+        raise OverlayError("release_fingerprint_mismatch")
+    try:
+        actual = _sha256(path.read_bytes())
+    except OSError:
+        raise OverlayError("release_fingerprint_unavailable") from None
+    if actual != expected:
+        raise OverlayError("release_fingerprint_mismatch")
+
+
 def _require_release() -> None:
+    if socket.gethostname() != SERVER_HOSTNAME:
+        raise OverlayError("server_identity_mismatch")
     _require_owned(APP_ROOT)
     _require_owned(RELEASE_ROOT)
     revision_path = RELEASE_ROOT / "SOURCE_REVISION"
@@ -563,6 +612,7 @@ def inspect() -> dict[str, object]:
     _require_owned(STATE_ROOT, mode=0o700)
     current = _hash_release_files()
     state = _load_state()
+    _require_private_service_listeners(backend_may_be_down=state is not None)
     status, error_code = _checkpoint_status(current, state)
     if state is not None and status in {"RESUMABLE", "PASS"}:
         _verify_backup(allow_partial=state["phase"] == "BACKUP_PREPARING")
@@ -587,6 +637,37 @@ def inspect() -> dict[str, object]:
             for path, spec in FILES.items()
         },
     }
+
+
+def _require_private_service_listeners(*, backend_may_be_down: bool) -> None:
+    try:
+        result = subprocess.run(
+            ["ss", "-H", "-ltn"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        raise OverlayError("listener_inventory_unavailable") from None
+    if result.returncode != 0:
+        raise OverlayError("listener_inventory_unavailable")
+
+    observed: dict[str, set[str]] = {"3306": set(), "8088": set()}
+    for line in result.stdout.splitlines():
+        columns = line.split()
+        if len(columns) < 4:
+            continue
+        local_address = columns[3]
+        port = local_address.rsplit(":", 1)[-1]
+        if port not in observed:
+            continue
+        address = local_address[: -(len(port) + 1)]
+        if address not in {"127.0.0.1", "[::1]"}:
+            raise OverlayError("private_listener_policy_mismatch")
+        observed[port].add(local_address)
+
+    if not observed["3306"] or (not backend_may_be_down and not observed["8088"]):
+        raise OverlayError("required_loopback_listener_missing")
 
 
 def dry_run() -> dict[str, object]:
@@ -714,6 +795,30 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+@contextmanager
+def _exclusive_lock() -> Iterator[None]:
+    import fcntl
+
+    try:
+        descriptor = os.open(LOCK_PATH, os.O_CREAT | os.O_RDWR, 0o600)
+        os.fchown(descriptor, 0, 0)
+        os.fchmod(descriptor, 0o600)
+    except OSError:
+        raise OverlayError("deployment_lock_unavailable") from None
+    try:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            raise OverlayError("deployment_lock_busy") from None
+        yield
+    finally:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        except OSError:
+            pass
+        os.close(descriptor)
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
@@ -721,14 +826,16 @@ def main(argv: list[str] | None = None) -> int:
             if args.output is None:
                 raise OverlayError("bundle_output_required")
             result = build_package(args.repo_root, args.output)
-        elif args.inspect:
-            result = inspect()
-        elif args.dry_run:
-            result = dry_run()
-        elif args.resume:
-            result = resume()
         else:
-            result = rollback()
+            _require_root()
+            _require_root_snapshot()
+            if args.resume or args.rollback:
+                with _exclusive_lock():
+                    result = resume() if args.resume else rollback()
+            elif args.inspect:
+                result = inspect()
+            else:
+                result = dry_run()
         print(json.dumps(result, sort_keys=True))
         return 0
     except OverlayError as exc:
