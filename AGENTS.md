@@ -2,7 +2,7 @@
 
 > **版本：V4 · 2026-10-11**  
 > **模式：DIRECT CONTROLLER → EXECUTION WORKERS · AUTONOMOUS ENGINEERING**  
-> **适用：`D:\Projects\StudentMentalHealthAI` 及经确认的本项目工作树。**  
+> **适用：当前唯一维护的 PsyNova 仓库及其明确批准的工作树。**
 > 本文件取代旧 V3 的三层调度与逐任务审批规则；不撤销已冻结的安全、Contract、研究和真实数据限制。
 
 ## 1. 使命与当前产品边界
