@@ -104,6 +104,7 @@ class StudentTaskHistoryDto(SchoolOutputDto):
     class_ref: str
     task_status: str
     enrollment_status: str
+    assessment_id: str | None = None
     assessment_status: SchoolAssessmentStatus | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None
@@ -152,6 +153,12 @@ class TeacherTaskProgressDto(SchoolOutputDto):
     completed_count: int
     abandoned_count: int
     invalid_count: int
+
+
+class SpecialistTaskProgressDto(TeacherTaskProgressDto):
+    instrument_id: str
+    instrument_version: str
+    item_bank_version: str | None = None
 
 
 class RevocationDto(SchoolOutputDto):

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import AppSelect from '@/components/app/AppSelect.vue'
+import AppSelectOption from '@/components/app/AppSelectOption.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
@@ -296,12 +298,12 @@ onBeforeUnmount(() => {
       </p>
       <div v-if="detail.status === 'PENDING' && !selectedExpired" class="output-reviews__actions">
         <label for="output-review-target">确认处理</label>
-        <select id="output-review-target" v-model="target" :disabled="!canResolve">
-          <option value="">请选择</option>
-          <option value="REJECTED">拒绝此输出复核</option>
-          <option value="REVOKED">撤销此输出复核</option>
-          <option value="CREATE_HELD_CANDIDATE">转为待审候选（HELD）</option>
-        </select>
+        <AppSelect id="output-review-target" v-model="target" :disabled="!canResolve">
+          <AppSelectOption value="">请选择</AppSelectOption>
+          <AppSelectOption value="REJECTED">拒绝此输出复核</AppSelectOption>
+          <AppSelectOption value="REVOKED">撤销此输出复核</AppSelectOption>
+          <AppSelectOption value="CREATE_HELD_CANDIDATE">转为待审候选（HELD）</AppSelectOption>
+        </AppSelect>
         <label class="output-reviews__confirm">
           <input v-model="confirmed" type="checkbox" :disabled="!canResolve">
           我已查看生成内容与检索来源，并确认上述操作

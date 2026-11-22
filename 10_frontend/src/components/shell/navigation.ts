@@ -30,23 +30,23 @@ export const AcademyEducationIcon = createAcademyIcon('AcademyEducationIcon', 'M
 
 export const workspaceConfig: Partial<Record<Role, WorkspaceConfig>> = {
   student: { title: 'Student Workspace', home: '/student/home', items: [
-    { label: '首页', to: '/student/home', icon: LayoutDashboard },
     { label: '我的测评', to: '/student/assessments', icon: ClipboardList },
-    { label: '测评反馈', to: '/student/feedback', icon: FileCheck2 },
-    { label: '教育支持', to: '/student/support', icon: AcademyEducationIcon },
     { label: '我的记录', to: '/student/history', icon: History },
+    { label: 'AI 对话', to: '/student/support', icon: AcademyEducationIcon },
   ] },
   teacher: { title: 'Teacher Workspace', home: '/teacher/overview', items: [
     { label: '工作概览', to: '/teacher/overview', icon: LayoutDashboard },
     { label: '班级进度', to: '/teacher/classes', icon: UsersRound },
     { label: '测评任务', to: '/teacher/tasks', icon: ClipboardList },
     { label: '数据分析', to: '/teacher/analytics', icon: ChartNoAxesCombined },
+    { label: '班级支持', to: '/teacher/school-support', icon: BookOpenCheck },
   ] },
   psychological_specialist: { title: 'Counselor Workspace', home: '/specialist/overview', items: [
     { label: '工作概览', to: '/specialist/overview', icon: LayoutDashboard },
     { label: '专业资料', to: '/specialist/resources', icon: BookOpenCheck },
     { label: 'CAT 管理', to: '/specialist/cat', icon: Activity },
     { label: '工作事项', to: '/specialist/tasks', icon: FileCheck2 },
+    { label: '学生支持', to: '/specialist/school-support', icon: ListChecks },
   ] },
   school_admin: { title: 'Admin Workspace', home: '/admin/overview', items: [
     { label: '管理概览', to: '/admin/overview', icon: LayoutDashboard },

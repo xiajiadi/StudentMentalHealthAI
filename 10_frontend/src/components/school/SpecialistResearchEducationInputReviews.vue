@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import AppSelect from '@/components/app/AppSelect.vue'
+import AppSelectOption from '@/components/app/AppSelectOption.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
@@ -267,19 +269,19 @@ onBeforeUnmount(() => {
         class="input-reviews__actions"
       >
         <label for="input-review-disposition">确认处理</label>
-        <select id="input-review-disposition" v-model="target" :disabled="!canResolve">
-          <option value="">请选择</option>
-          <option v-if="detail.status === 'PENDING'" value="REJECTED">拒绝此输入复核请求</option>
-          <option
+        <AppSelect id="input-review-disposition" v-model="target" :disabled="!canResolve">
+          <AppSelectOption value="">请选择</AppSelectOption>
+          <AppSelectOption v-if="detail.status === 'PENDING'" value="REJECTED">拒绝此输入复核请求</AppSelectOption>
+          <AppSelectOption
             v-if="detail.status === 'PENDING' && detail.continuation_enabled"
             value="CONTINUATION_AUTHORIZED"
           >
             授权一次继续
-          </option>
-          <option value="REVOKED">
+          </AppSelectOption>
+          <AppSelectOption value="REVOKED">
             {{ detail.status === 'CONTINUATION_AUTHORIZED' ? '撤销未使用的继续授权' : '撤销此待处理记录' }}
-          </option>
-        </select>
+          </AppSelectOption>
+        </AppSelect>
         <label class="input-reviews__confirm">
           <input v-model="confirmed" type="checkbox" :disabled="!canResolve">
           我已核对固定请求，并确认上述操作

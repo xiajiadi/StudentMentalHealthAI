@@ -431,6 +431,13 @@ class SchoolResearchStudentConversationSettings(BaseModel):
         return self
 
 
+class PublicDemoSettings(BaseModel):
+    site_key: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{1,128}$")
+    secret_key: SecretStr | None = Field(default=None, repr=False, min_length=1, max_length=512)
+    hostname: str | None = Field(default=None, pattern=r"^[a-z0-9.-]+$")
+    capacity: int = Field(default=32, ge=1, le=128)
+
+
 class BackendSettings(BaseSettings):
     """Backend-local settings; the frozen config.v1 remains unchanged."""
 
@@ -488,6 +495,7 @@ class BackendSettings(BaseSettings):
     )
     support_deadline_seconds: float = Field(default=80.0, gt=0, le=120)
     auth: AuthSettings = Field(default_factory=AuthSettings)
+    public_demo: PublicDemoSettings = Field(default_factory=PublicDemoSettings)
     rate_limit: RateLimitSettings = Field(default_factory=RateLimitSettings)
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
     post_assessment_worker: PostAssessmentWorkerSettings = Field(
@@ -564,6 +572,18 @@ class BackendSettings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_security(self) -> BackendSettings:
+        public_demo = self.public_demo
+        if any((public_demo.site_key, public_demo.secret_key, public_demo.hostname)) and (
+            not all((public_demo.site_key, public_demo.secret_key, public_demo.hostname))
+            or self.environment != "demo"
+            or self.identity_profile != "school_tenant"
+            or self.persistence_mode != "mysql"
+            or not self.auth.secure_cookie
+            or not self.auth.cookie_name.startswith("__Host-")
+            or self.allowed_origins != [f"https://{public_demo.hostname}"]
+            or public_demo.hostname not in self.allowed_hosts
+        ):
+            raise ValueError("public demo registration requires a configured HTTPS school demo")
         study_configured = (
             self.school_research_study_use_file is not None
             or self.school_research_study_use_sha256 is not None

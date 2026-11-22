@@ -802,11 +802,17 @@ class SchoolDirectoryPersistenceAdapter:
         idempotency,
         trace_id: str,
     ) -> dict[str, Any]:
+        from fastapi.concurrency import run_in_threadpool
         from pwdlib import PasswordHash
 
         m = self._db_models
         e = self._db_enums
         at = self._utc_now()
+        # Suspended accounts cannot sign in. The random pre-activation password
+        # is discarded and each account receives a separate one-time credential.
+        pending_hash = await run_in_threadpool(
+            PasswordHash.recommended().hash, secrets.token_urlsafe(48)
+        )
         try:
             async with self._uow() as uow:
                 actor_account_id, admin_role_id = await self._school_actor_role(
@@ -857,62 +863,82 @@ class SchoolDirectoryPersistenceAdapter:
                         await uow.session.flush()
                         child_batches.append((batch, batch_rows, class_ref))
 
-                hasher = PasswordHash.recommended()
-                for batch, batch_rows, _class_ref in child_batches:
-                    for row in batch_rows:
-                        account = m.Account(
-                            login_name=self._roster_login_name(
-                                actor.school_ref, row.student_number
-                            ),
-                            password_hash=hasher.hash(secrets.token_urlsafe(48)),
-                            status=e.AccountStatus.SUSPENDED.value,
+                staged = [(batch, row) for batch, batch_rows, _ in child_batches for row in batch_rows]
+                accounts = [
+                    m.Account(
+                        login_name=self._roster_login_name(actor.school_ref, row.student_number),
+                        password_hash=pending_hash,
+                        status=e.AccountStatus.SUSPENDED.value,
+                    )
+                    for _, row in staged
+                ]
+                for account in accounts:
+                    uow.session.add(account)
+                await uow.session.flush()
+
+                memberships = [
+                    m.AccountSchoolMembership(
+                        account_id=account.id,
+                        school_id=actor.school_id,
+                        display_name=row.display_name,
+                        status="ACTIVE",
+                        valid_from=at,
+                    )
+                    for account, (_, row) in zip(accounts, staged, strict=True)
+                ]
+                for membership in memberships:
+                    uow.session.add(membership)
+                await uow.session.flush()
+
+                roles = [
+                    m.MembershipRole(
+                        membership_id=membership.id,
+                        school_id=actor.school_id,
+                        role_code="student",
+                        valid_from=at,
+                        status="ACTIVE",
+                    )
+                    for membership in memberships
+                ]
+                subjects = [
+                    m.Subject(
+                        subject_ref=f"SUBJ_{uuid4().hex}",
+                        school_id=actor.school_id,
+                        data_origin=e.DataOrigin.SYNTHETIC.value,
+                    )
+                    for _ in staged
+                ]
+                for role, subject in zip(roles, subjects, strict=True):
+                    uow.session.add(role)
+                    uow.session.add(subject)
+                await uow.session.flush()
+
+                for account, membership, role, subject, (batch, row) in zip(
+                    accounts, memberships, roles, subjects, staged, strict=True
+                ):
+                    uow.session.add(
+                        m.SubjectAccessGrant(
+                            principal_account_id=account.id,
+                            subject_id=subject.id,
+                            school_id=actor.school_id,
+                            relationship_type=e.RelationshipType.SELF.value,
+                            status=e.GrantStatus.ACTIVE.value,
+                            valid_from=at,
                         )
-                        uow.session.add(account)
-                        await uow.session.flush()
-                        membership = m.AccountSchoolMembership(
+                    )
+                    uow.session.add(
+                        m.SchoolAccountProvision(
+                            school_id=actor.school_id,
+                            batch_id=batch.id,
                             account_id=account.id,
-                            school_id=actor.school_id,
-                            display_name=row.display_name,
-                            status="ACTIVE",
-                            valid_from=at,
-                        )
-                        uow.session.add(membership)
-                        await uow.session.flush()
-                        membership_role = await uow.memberships.add_role(
                             membership_id=membership.id,
-                            school_id=actor.school_id,
+                            membership_role_id=role.id,
+                            row_no=row.row_no,
                             role_code="student",
-                            valid_from=at,
-                            status="ACTIVE",
+                            status="PENDING_ACTIVATION",
+                            activated_at=None,
                         )
-                        subject = await uow.subjects.create(
-                            subject_ref=f"SUBJ_{uuid4().hex}",
-                            school_id=actor.school_id,
-                            data_origin=e.DataOrigin.SYNTHETIC,
-                        )
-                        uow.session.add(
-                            m.SubjectAccessGrant(
-                                principal_account_id=account.id,
-                                subject_id=subject.id,
-                                school_id=actor.school_id,
-                                relationship_type=e.RelationshipType.SELF.value,
-                                status=e.GrantStatus.ACTIVE.value,
-                                valid_from=at,
-                            )
-                        )
-                        uow.session.add(
-                            m.SchoolAccountProvision(
-                                school_id=actor.school_id,
-                                batch_id=batch.id,
-                                account_id=account.id,
-                                membership_id=membership.id,
-                                membership_role_id=membership_role.id,
-                                row_no=row.row_no,
-                                role_code="student",
-                                status="PENDING_ACTIVATION",
-                                activated_at=None,
-                            )
-                        )
+                    )
                 await uow.session.flush()
 
                 summary = {
@@ -1306,7 +1332,8 @@ class SchoolDirectoryPersistenceAdapter:
                     old.status = "REVOKED"
                     old.revoked_at = at
 
-                raw_credential = secrets.token_urlsafe(32)
+                # The alphabetic prefix keeps the exact credential intact in spreadsheet exports.
+                raw_credential = "PN-" + secrets.token_urlsafe(32)
                 credential_ref = f"CRED_{uuid4().hex}"
                 credential = m.SchoolAccountCredential(
                     credential_ref=credential_ref,
@@ -1352,6 +1379,53 @@ class SchoolDirectoryPersistenceAdapter:
                 "credentials": response_credentials,
                 "delivery_status": "MANUAL_HANDOFF_REQUIRED",
             }
+
+    async def school_directory_initial_login_school(self, username: str, token_hash: bytes) -> str | None:
+        from sqlalchemy import and_, func, or_
+
+        m = self._db_models
+        e = self._db_enums
+        at = self._utc_now()
+        credential = m.SchoolAccountCredential
+        invitation = m.SchoolStaffInvitation
+        async with self._uow() as uow:
+            return await uow.session.scalar(
+                self._select(m.School.school_ref)
+                .select_from(credential)
+                .join(m.Account, m.Account.id == credential.account_id)
+                .join(m.School, m.School.id == credential.school_id)
+                .outerjoin(
+                    invitation,
+                    and_(
+                        invitation.account_id == credential.account_id,
+                        invitation.school_id == credential.school_id,
+                        invitation.public_id == credential.resource_ref,
+                    ),
+                )
+                .where(
+                    credential.token_hash == token_hash,
+                    credential.status == "ISSUED",
+                    credential.expires_at > at,
+                    func.lower(m.Account.login_name) == username.strip().casefold(),
+                    m.Account.must_change_password.is_(True),
+                    m.Account.password_changed_at.is_(None),
+                    m.School.status == "ACTIVE",
+                    m.School.data_origin == e.DataOrigin.SYNTHETIC.value,
+                    or_(
+                        and_(
+                            credential.purpose == "INITIAL_ACTIVATION",
+                            m.Account.status == e.AccountStatus.ACTIVE.value,
+                        ),
+                        and_(
+                            credential.purpose == "STAFF_INVITATION",
+                            m.Account.status == e.AccountStatus.SUSPENDED.value,
+                            invitation.status == "ISSUED",
+                            invitation.expires_at > at,
+                            invitation.work_contact_verified_at.is_not(None),
+                        ),
+                    ),
+                )
+            )
 
     async def school_directory_complete_initial_credential(
         self,

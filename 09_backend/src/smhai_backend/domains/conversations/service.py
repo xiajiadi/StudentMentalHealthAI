@@ -5,16 +5,18 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Literal, Protocol
+from time import perf_counter
+from typing import Any, Literal, Protocol, TypeVar
 from uuid import uuid4
 
 from pydantic import ValidationError
 
 from smhai_backend.adapters.school_conversations import SchoolConversationsPersistenceAdapter
 from smhai_backend.core.errors import BackendError, ErrorCode, error
+from smhai_backend.core.logging import logger
 from smhai_backend.core.request_context import RequestContext
 from smhai_backend.domains.independent_education_reviews.schemas import (
     IndependentEducationCandidatePayload,
@@ -61,6 +63,17 @@ _TOP_K = 8
 _PROMPT_ID = "PROMPT_independent_education_support_v1"
 _PROMPT_VERSION = "1.0"
 _CONVERSATION_CONTEXT_JSON_MAX_CHARS = 6_000
+_StageResult = TypeVar("_StageResult")
+
+
+async def _timed_stage(stage: str, operation: Awaitable[_StageResult]) -> _StageResult:
+    started = perf_counter()
+    try:
+        return await operation
+    finally:
+        logger().info("education_support_stage", stage=stage, latency_ms=round((perf_counter() - started) * 1000, 2))
+
+
 _ABSTENTION = GenerationContent(
     summary="目前没有找到适用的已审核资料，因此暂时无法提供基于资料的建议。",
     observations=[],
@@ -452,7 +465,7 @@ class IndependentConversationService:
         safety_context = self._safety_context(message, context)
         metadata = self._turn_metadata("input_safety")
         try:
-            input_check = await self.safety.check_input(safety_context, context)
+            input_check = await _timed_stage("input_safety", self.safety.check_input(safety_context, context))
         except Exception as exc:
             await self._finish_dependency_failure(
                 actor,
@@ -535,13 +548,13 @@ class IndependentConversationService:
         retrieval_id = f"RETR_{uuid4().hex}"
         metadata.update({"stage": "retrieval", "retrieval_id": retrieval_id})
         try:
-            retrieval = await self.rag.retrieve(
+            retrieval = await _timed_stage("retrieval", self.rag.retrieve(
                 query=message,
                 target_population=self.lane_policy.target_population,
                 top_k=_TOP_K,
                 retrieval_id=retrieval_id,
                 context=context,
-            )
+            ))
         except Exception as exc:
             await self._finish_dependency_failure(
                 actor,
@@ -685,9 +698,9 @@ class IndependentConversationService:
             },
         }
         try:
-            retrieval_check = await self.safety.check_retrieval(
+            retrieval_check = await _timed_stage("retrieval_safety", self.safety.check_retrieval(
                 retrieval_safety_context, bundle.trusted_chunks(), context
-            )
+            ))
         except Exception as exc:
             await self._finish_dependency_failure(
                 actor,
@@ -757,7 +770,7 @@ class IndependentConversationService:
             },
         ]
         try:
-            candidate = await self.llm.generate(
+            candidate = await _timed_stage("generation", self.llm.generate(
                 context=context,
                 generation_id=generation_id,
                 conversation_id=conversation_id,
@@ -768,7 +781,7 @@ class IndependentConversationService:
                 prompt_version=self.lane_policy.prompt_version,
                 messages=messages,
                 structured_schema=GenerationContent.model_json_schema(),
-            )
+            ))
         except Exception as exc:
             await self._finish_dependency_failure(
                 actor,
@@ -850,9 +863,9 @@ class IndependentConversationService:
             },
         }
         try:
-            output_check = await self.safety.check_output(
+            output_check = await _timed_stage("output_safety", self.safety.check_output(
                 output_safety_context, output_text, context
-            )
+            ))
         except Exception as exc:
             await self._finish_dependency_failure(
                 actor,

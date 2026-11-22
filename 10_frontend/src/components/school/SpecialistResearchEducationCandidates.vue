@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import AppSelect from '@/components/app/AppSelect.vue'
+import AppSelectOption from '@/components/app/AppSelectOption.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
@@ -140,7 +142,7 @@ onBeforeUnmount(() => { alive = false; clear() })
   <AppCard v-if="allowed" class="education-candidates">
     <header><div><h3>AI 教育候选</h3><p>核对原始生成内容与来源中的研究限制，再修订为学生反馈。原候选会保留。</p></div><AppButton variant="quiet" size="sm" :disabled="busy || Boolean(pending)" @click="load(offset)">刷新候选</AppButton></header>
     <div class="education-candidates__controls">
-      <label>查看状态 <select v-model="status" :disabled="busy || Boolean(pending)"><option value="HELD">待核对</option><option value="ADOPTED">已采纳为来源</option><option value="DISCARDED">已弃用</option></select></label>
+      <label>查看状态 <AppSelect v-model="status" :disabled="busy || Boolean(pending)"><AppSelectOption value="HELD">待核对</AppSelectOption><AppSelectOption value="ADOPTED">已采纳为来源</AppSelectOption><AppSelectOption value="DISCARDED">已弃用</AppSelectOption></AppSelect></label>
       <label>批量起始记录 <input v-model.number="batchOffset" type="number" min="0" max="100000" step="1" :disabled="!canWrite"></label>
       <label><input v-model="confirmation" type="radio" value="enqueue" :disabled="!canWrite">确认将此任务下一批最多 25 条完成记录入队</label>
       <AppButton size="sm" :disabled="!canWrite || confirmation !== 'enqueue' || !Number.isInteger(batchOffset) || batchOffset < 0 || batchOffset > 100000" @click="enqueue">提交本批生成</AppButton>

@@ -13,6 +13,7 @@ put ``11_database`` and its isolated environment on ``PYTHONPATH``.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import os
@@ -42,7 +43,7 @@ from smhai_backend.domains.models import (
 )
 
 REQUIRED_DATABASE_REVISION = "20261011_0005"
-REQUIRED_SCHOOL_TENANT_DATABASE_REVISION = "20261024_0025"
+REQUIRED_SCHOOL_TENANT_DATABASE_REVISION = "20261113_0027"
 _SCHOOL_CAT_BANK_DOCUMENT_SCHEMA = "school_cat_bank_document.v1"
 _SCHOOL_CAT_CONFIG_DOCUMENT_SCHEMA = "school_cat_config_document.v1"
 _SCHOOL_POST_ASSESSMENT_POLICY_VERSION = "NO_PERSONALIZED_POLICY_V1"
@@ -150,6 +151,7 @@ class MySqlBackendAdapter:
         repository_root: Path | None = None,
         identity_profile: str = "legacy_demo",
         school_csrf_secret: str | None = None,
+        public_demo_enabled: bool = False,
     ) -> None:
         csrf_secret_bytes = _csrf_secret_for_profile(identity_profile, school_csrf_secret)
         try:
@@ -188,6 +190,7 @@ class MySqlBackendAdapter:
         self.protection = protection
         self._started = False
         self.identity_profile = identity_profile
+        self.public_demo_enabled = public_demo_enabled
         self._idempotency_bodies: dict[tuple[str, str], dict[str, Any]] = {}
         self._metadata_records: list[dict[str, Any]] = []
         self._audit_cache: list[AuditEvent] = []
@@ -197,6 +200,27 @@ class MySqlBackendAdapter:
 
     def _uow(self) -> Any:
         return self._uow_type(self.session_factory, self.protection)
+
+    async def provision_public_demo_school(
+        self, username: str, password: str, claim: str, *, capacity: int
+    ) -> None:
+        from .public_demo import provision_school
+
+        if not self.public_demo_enabled or self.identity_profile != "school_tenant":
+            raise error(ErrorCode.FORBIDDEN, detail="public demo is disabled")
+        hasher = PasswordHash.recommended()
+        owner_hash = await asyncio.to_thread(hasher.hash, password)
+        unused_hash = await asyncio.to_thread(hasher.hash, secrets.token_urlsafe(48))
+        async with self._uow() as uow:
+            await provision_school(
+                uow,
+                username=username,
+                owner_hash=owner_hash,
+                unused_hash=unused_hash,
+                claim=claim,
+                capacity=capacity,
+                now=self._utc_now(),
+            )
 
     @staticmethod
     def _decrypt_school_cat_document(uow: Any, row: Any, schema_version: str) -> dict[str, Any]:
@@ -1296,41 +1320,42 @@ class MySqlBackendAdapter:
             }
 
     async def school_list_class_tasks(
-        self, actor: Any, class_ref: str, *, at: datetime
+        self, actor: Any, class_ref: str | None, *, at: datetime
     ) -> list[dict[str, Any]]:
         from dataclasses import asdict
 
         m = self._db_models
         async with self._uow() as uow:
             await self._school_actor_role(uow, actor, "admin", at)
-            school_class = await uow.session.scalar(
-                self._select(m.SchoolClass).where(
-                    m.SchoolClass.school_id == actor.school_id,
-                    m.SchoolClass.class_ref == class_ref,
+            classes = self._select(m.SchoolClass.id).where(m.SchoolClass.school_id == actor.school_id)
+            statement = (
+                self._select(m.MeasurementTask, m.SchoolClass.class_ref)
+                .join(
+                    m.SchoolClass,
+                    (m.MeasurementTask.class_id == m.SchoolClass.id)
+                    & (m.MeasurementTask.school_id == m.SchoolClass.school_id),
                 )
+                .where(
+                    m.MeasurementTask.school_id == actor.school_id,
+                    m.MeasurementTask.cat_binding_mode.in_(("FIXTURE", "SAVED_VERSION")),
+                )
+                .order_by(m.MeasurementTask.published_at.desc())
             )
-            if school_class is None:
-                raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="class was not found")
-            tasks = (
-                await uow.session.scalars(
-                    self._select(m.MeasurementTask)
-                    .where(
-                        m.MeasurementTask.school_id == actor.school_id,
-                        m.MeasurementTask.class_id == school_class.id,
-                        m.MeasurementTask.cat_binding_mode.in_(("FIXTURE", "SAVED_VERSION")),
-                    )
-                    .order_by(m.MeasurementTask.published_at.desc())
-                )
-            ).all()
+            if class_ref is not None:
+                school_class_id = await uow.session.scalar(classes.where(m.SchoolClass.class_ref == class_ref))
+                if school_class_id is None:
+                    raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="class was not found")
+                statement = statement.where(m.MeasurementTask.class_id == school_class_id)
+            tasks = (await uow.session.execute(statement)).all()
             output = []
-            for task in tasks:
+            for task, task_class_ref in tasks:
                 counts = await uow.school_operations.task_progress_counts(
                     task_id=task.id, school_id=actor.school_id
                 )
                 output.append(
                     {
                         "task_ref": task.task_ref,
-                        "class_ref": class_ref,
+                        "class_ref": task_class_ref,
                         "status": task.status,
                         "opens_at": task.opens_at,
                         "due_at": task.due_at,
@@ -1478,6 +1503,7 @@ class MySqlBackendAdapter:
                     m.SchoolClass.class_ref,
                     m.MeasurementTask.status,
                     m.TaskEnrollment.status,
+                    m.AssessmentSession.assessment_ref,
                     m.AssessmentSession.status,
                     m.AssessmentSession.started_at,
                     m.AssessmentSession.completed_at,
@@ -1568,9 +1594,10 @@ class MySqlBackendAdapter:
                     "class_ref": row[1],
                     "task_status": row[2],
                     "enrollment_status": row[3],
-                    "assessment_status": row[4],
-                    "started_at": row[5],
-                    "completed_at": row[6],
+                    "assessment_id": row[4],
+                    "assessment_status": row[5],
+                    "started_at": row[6],
+                    "completed_at": row[7],
                 }
                 for row in rows
             ]
@@ -1847,12 +1874,13 @@ class MySqlBackendAdapter:
         m = self._db_models
         now = self._utc_now()
         async with self._uow() as uow:
-            account_id, role_id = await self._school_actor_role(uow, actor, "teacher", now)
+            _account_id, role_id = await self._school_actor_role(uow, actor, "teacher", now)
             classes_statement = (
                 self._select(m.SchoolClass.class_ref)
                 .join(m.SchoolClassTeacher, m.SchoolClassTeacher.class_id == m.SchoolClass.id)
                 .where(
                     m.SchoolClass.status == "ACTIVE",
+                    m.SchoolClass.school_id == actor.school_id,
                     m.SchoolClassTeacher.school_id == actor.school_id,
                     m.SchoolClassTeacher.membership_role_id == role_id,
                     m.SchoolClassTeacher.status == "ACTIVE",
@@ -1861,6 +1889,69 @@ class MySqlBackendAdapter:
                     (m.SchoolClassTeacher.valid_until.is_(None))
                     | (m.SchoolClassTeacher.valid_until >= now),
                 )
+            )
+            if class_ref is not None:
+                classes_statement = classes_statement.where(m.SchoolClass.class_ref == class_ref)
+            class_refs = sorted(set((await uow.session.scalars(classes_statement)).all()))
+            if class_ref is not None and not class_refs:
+                raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="class was not found")
+            if not class_refs:
+                return []
+            from dataclasses import asdict
+
+            tasks = (await uow.session.execute(
+                self._select(m.MeasurementTask, m.SchoolClass.class_ref)
+                .join(m.SchoolClass, m.SchoolClass.id == m.MeasurementTask.class_id)
+                .where(
+                    m.MeasurementTask.school_id == actor.school_id,
+                    m.SchoolClass.school_id == actor.school_id,
+                    m.SchoolClass.class_ref.in_(class_refs),
+                )
+                .order_by(m.SchoolClass.class_ref, m.MeasurementTask.published_at.desc(), m.MeasurementTask.task_ref)
+            )).all()
+            counts = await uow.school_operations.task_progress_counts_many(
+                task_ids=[task.id for task, _ in tasks], school_id=actor.school_id
+            )
+            return [
+                {
+                    "class_ref": current_class_ref,
+                    "task_ref": task.task_ref,
+                    "task_status": task.status,
+                    "opens_at": task.opens_at,
+                    "due_at": task.due_at,
+                    **asdict(counts[task.id]),
+                }
+                for task, current_class_ref in tasks
+            ]
+
+    async def school_grade_progress(
+        self, actor: Any, class_ref: str | None = None
+    ) -> list[dict[str, Any]]:
+        m = self._db_models
+        now = self._utc_now()
+        async with self._uow() as uow:
+            _account_id, role_id = await self._school_actor_role(uow, actor, "grade_lead", now)
+            grade_refs = set(
+                (
+                    await uow.session.scalars(
+                        self._select(m.SchoolGradeLeader.grade_ref).where(
+                            m.SchoolGradeLeader.school_id == actor.school_id,
+                            m.SchoolGradeLeader.membership_role_id == role_id,
+                            m.SchoolGradeLeader.status == "ACTIVE",
+                            m.SchoolGradeLeader.revoked_at.is_(None),
+                            m.SchoolGradeLeader.valid_from <= now,
+                            (m.SchoolGradeLeader.valid_until.is_(None))
+                            | (m.SchoolGradeLeader.valid_until >= now),
+                        )
+                    )
+                ).all()
+            )
+            if not grade_refs:
+                return []
+            classes_statement = self._select(m.SchoolClass.class_ref).where(
+                m.SchoolClass.school_id == actor.school_id,
+                m.SchoolClass.grade_ref.in_(tuple(sorted(grade_refs))),
+                m.SchoolClass.status == "ACTIVE",
             )
             if class_ref is not None:
                 classes_statement = classes_statement.where(m.SchoolClass.class_ref == class_ref)
@@ -1896,6 +1987,64 @@ class MySqlBackendAdapter:
                             **asdict(counts),
                         }
                     )
+            return output
+
+    async def school_specialist_progress(self, actor: Any) -> list[dict[str, Any]]:
+        if (
+            self.identity_profile != "school_tenant"
+            or actor.scope_profile != "school_tenant"
+            or actor.role is not BackendRole.PSYCHOLOGICAL_SPECIALIST
+            or actor.school_id is None
+            or actor.school_ref is None
+        ):
+            return []
+        m = self._db_models
+        now = self._utc_now()
+        async with self._uow() as uow:
+            await self._school_actor_role(
+                uow, actor, "psychological_specialist", now
+            )
+            task_rows = (
+                await uow.session.execute(
+                    self._select(
+                        m.MeasurementTask,
+                        m.SchoolClass.class_ref,
+                    )
+                    .join(
+                        m.SchoolClass,
+                        (m.SchoolClass.id == m.MeasurementTask.class_id)
+                        & (m.SchoolClass.school_id == m.MeasurementTask.school_id),
+                    )
+                    .where(
+                        m.MeasurementTask.school_id == actor.school_id,
+                        m.SchoolClass.status == "ACTIVE",
+                    )
+                    .order_by(
+                        m.SchoolClass.class_ref,
+                        m.MeasurementTask.published_at.desc(),
+                    )
+                )
+            ).all()
+            output = []
+            from dataclasses import asdict
+
+            for task, class_ref in task_rows:
+                counts = await uow.school_operations.task_progress_counts(
+                    task_id=task.id, school_id=actor.school_id
+                )
+                output.append(
+                    {
+                        "class_ref": class_ref,
+                        "task_ref": task.task_ref,
+                        "task_status": task.status,
+                        "opens_at": task.opens_at,
+                        "due_at": task.due_at,
+                        **asdict(counts),
+                        "instrument_id": task.instrument_id,
+                        "instrument_version": task.instrument_version,
+                        "item_bank_version": task.item_bank_version,
+                    }
+                )
             return output
 
     async def _ensure_synthetic_fixtures(self) -> None:
@@ -2051,6 +2200,8 @@ class MySqlBackendAdapter:
             ).all()
         )
         if self.identity_profile == "school_tenant":
+            from database_layer.provenance import is_public_demo_school_ref
+
             now = self._utc_now()
             contexts = []
             active_contexts = await uow.memberships.active_contexts(
@@ -2058,6 +2209,8 @@ class MySqlBackendAdapter:
                 at=now,
             )
             for context_id, role_code, school_id, school_ref in active_contexts:
+                if is_public_demo_school_ref(school_ref) and not self.public_demo_enabled:
+                    continue
                 accessible = await uow.memberships.authorized_subject_refs(
                     account_id=account.id,
                     school_id=school_id,
@@ -2661,11 +2814,25 @@ class MySqlBackendAdapter:
                 at = at or self._utc_now()
                 account_id, _role_id = await self._school_actor_role(uow, actor, "student", at)
                 if db_record.task_enrollment_id is not None:
-                    task_enrollment = await uow.school_operations.active_enrollment_for_assessment(
-                        assessment_ref=assessment_id,
-                        student_account_id=account_id,
-                        at=at,
-                    )
+                    session_status = str(
+                        getattr(db_record.status, "value", db_record.status)
+                    ).upper()
+                    if session_status == "COMPLETED":
+                        task_enrollment = (
+                            await uow.school_operations.completed_enrollment_for_post_assessment(
+                                assessment_ref=assessment_id,
+                                student_account_id=account_id,
+                                at=at,
+                            )
+                        )
+                    else:
+                        task_enrollment = None
+                    if task_enrollment is None:
+                        task_enrollment = await uow.school_operations.active_enrollment_for_assessment(
+                            assessment_ref=assessment_id,
+                            student_account_id=account_id,
+                            at=at,
+                        )
                     if task_enrollment is None or task_enrollment.school_id != actor.school_id:
                         return None
                     task = await uow.session.get(m.MeasurementTask, task_enrollment.task_id)

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
 import { Check, ChevronDown, Search } from '@lucide/vue'
+import AppSelect from '@/components/app/AppSelect.vue'
 
 export interface TeacherClassOption {
   value: string
@@ -151,7 +152,11 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutsidePoint
 </script>
 
 <template>
-  <div ref="root" class="teacher-class-select">
+  <div v-if="options.length > 10" class="teacher-class-select">
+    <AppSelect :model-value="modelValue" :options="options" :aria-label="ariaLabel" :disabled="disabled"
+      @update:model-value="emit('update:modelValue', String($event ?? ''))" />
+  </div>
+  <div v-else ref="root" class="teacher-class-select">
     <button
       type="button"
       class="teacher-class-select__trigger"

@@ -1,27 +1,30 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import type { Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StudentPageHero from '@/components/student/StudentPageHero.vue'
 import WorkspaceBreadcrumb from '@/components/student/WorkspaceBreadcrumb.vue'
-import SpecialistWorkspaceAtlas from './SpecialistWorkspaceAtlas.vue'
-import SpecialistTaskReviews from '@/components/school/SpecialistTaskReviews.vue'
-import SpecialistResearchFeedback from '@/components/school/SpecialistResearchFeedback.vue'
-import SpecialistResearchProgrammeCandidates from '@/components/school/SpecialistResearchProgrammeCandidates.vue'
-import SpecialistIndependentEducationReviews from '@/components/school/SpecialistIndependentEducationReviews.vue'
-import SpecialistCatWorkspace from '@/components/school/SpecialistCatWorkspace.vue'
-import SpecialistFlowstage from '@/components/school/SpecialistFlowstage.vue'
-import SchoolResearchSourceCatalog from '@/components/school/SchoolResearchSourceCatalog.vue'
-import SchoolConversationSafetyReviews from '@/components/school/SchoolConversationSafetyReviews.vue'
 import { useSessionStore } from '@/stores/session'
 import {
   isSpecialistWorkflowKey,
   type SpecialistWorkflowKey,
 } from './specialist-workflow-flowstage'
 
+const SpecialistWorkspaceAtlas = defineAsyncComponent(() => import('./SpecialistWorkspaceAtlas.vue'))
+const SpecialistTaskReviews = defineAsyncComponent(() => import('@/components/school/SpecialistTaskReviews.vue'))
+const SpecialistResearchFeedback = defineAsyncComponent(() => import('@/components/school/SpecialistResearchFeedback.vue'))
+const SpecialistResearchProgrammeCandidates = defineAsyncComponent(() => import('@/components/school/SpecialistResearchProgrammeCandidates.vue'))
+const SpecialistIndependentEducationReviews = defineAsyncComponent(() => import('@/components/school/SpecialistIndependentEducationReviews.vue'))
+const SpecialistCatWorkspace = defineAsyncComponent(() => import('@/components/school/SpecialistCatWorkspace.vue'))
+const SpecialistFlowstage = defineAsyncComponent(() => import('@/components/school/SpecialistFlowstage.vue'))
+const SchoolResearchSourceCatalog = defineAsyncComponent(() => import('@/components/school/SchoolResearchSourceCatalog.vue'))
+const PublicDemoResearchCatalog = defineAsyncComponent(() => import('@/components/school/PublicDemoResearchCatalog.vue'))
+const SchoolConversationSafetyReviews = defineAsyncComponent(() => import('@/components/school/SchoolConversationSafetyReviews.vue'))
+
 const route = useRoute()
 const router = useRouter()
 const session = useSessionStore()
+const isPublicDemoSchool = computed(() => /^PUBLICDEMO_[a-f0-9]{64}$/.test(session.user?.activeContext?.schoolRef ?? ''))
 const section = computed(() => String(route.params.section ?? 'overview'))
 const specialistScopeKey = computed(() => [
   session.user?.userId ?? '',
@@ -34,7 +37,7 @@ const page = computed(() => ({
   overview: { eyebrow: '心理专业工作区', title: '工作概览', intro: '八个功能入口，一步直达。' },
   resources: { eyebrow: '专业资料', title: '专业资料', intro: '研究来源、权利信息与专业引用目录' },
   tasks: { eyebrow: '专业工作事项', title: '专业工作事项', intro: '让复杂的专业工作，回到清晰的下一步。' },
-  cat: { eyebrow: '心理工作区', title: 'CAT 实验室', intro: '题库管理、自适应测验工程模拟与研究配置' },
+  cat: { eyebrow: '心理工作区', title: 'CAT 管理', intro: '题库管理、自适应测验工程模拟与研究配置' },
 }[section.value as 'overview' | 'resources' | 'tasks' | 'cat'] ?? { eyebrow: '心理专业工作区', title: '专业工作台', intro: '查看当前可用的专业工作入口。' }))
 
 const taskWorkflow = ref<SpecialistWorkflowKey>('task-reviews')
@@ -112,7 +115,8 @@ watch(specialistScopeKey, () => {
 
       <template v-if="section === 'resources'">
         <section class="specialist-resources" aria-label="专业资料">
-          <SchoolResearchSourceCatalog />
+          <PublicDemoResearchCatalog v-if="isPublicDemoSchool" />
+          <SchoolResearchSourceCatalog v-else />
         </section>
       </template>
 

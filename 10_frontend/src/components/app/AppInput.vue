@@ -3,6 +3,7 @@ withDefaults(defineProps<{
   modelValue: string
   id: string
   label: string
+  labelHidden?: boolean
   type?: string
   placeholder?: string
   autocomplete?: string
@@ -23,7 +24,7 @@ defineEmits<{
 
 <template>
   <label class="app-field" :for="id">
-    <span class="app-field__label">{{ label }}</span>
+    <span class="app-field__label" :class="{ 'sr-only': labelHidden }">{{ label }}</span>
     <input
       :id="id"
       :type="type"

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import AppSelect from '@/components/app/AppSelect.vue'
+import AppSelectOption from '@/components/app/AppSelectOption.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RotateCcw, UserRoundCog } from '@lucide/vue'
 import AppButton from '@/components/app/AppButton.vue'
@@ -221,19 +223,19 @@ onBeforeUnmount(() => {
     <div class="professional-assignments__form">
       <template v-if="props.tasks.length > 1">
         <label for="professional-assignment-task">任务</label>
-        <select id="professional-assignment-task" v-model="selectedTaskRef" :disabled="!props.tasks.length || pending">
-          <option value="" disabled>请选择任务</option>
-          <option v-for="task in props.tasks" :key="task.task_ref" :value="task.task_ref">{{ taskOptionLabel(task) }}</option>
-        </select>
+        <AppSelect id="professional-assignment-task" v-model="selectedTaskRef" :disabled="!props.tasks.length || pending">
+          <AppSelectOption value="" disabled>请选择任务</AppSelectOption>
+          <AppSelectOption v-for="task in props.tasks" :key="task.task_ref" :value="task.task_ref">{{ taskOptionLabel(task) }}</AppSelectOption>
+        </AppSelect>
       </template>
       <label for="professional-assignment-specialist">同校专员</label>
       <div class="professional-assignments__action">
-        <select id="professional-assignment-specialist" v-model="selectedSpecialistId" :disabled="!selectedTask || specialistsState !== 'ready' || !availableSpecialists.length || pending">
-          <option value="">选择专员</option>
-          <option v-for="(specialist, index) in specialists" :key="specialist.user_id" :value="specialist.user_id" :disabled="activeSpecialistIds.has(specialist.user_id)">
+        <AppSelect id="professional-assignment-specialist" v-model="selectedSpecialistId" :disabled="!selectedTask || specialistsState !== 'ready' || !availableSpecialists.length || pending">
+          <AppSelectOption value="">选择专员</AppSelectOption>
+          <AppSelectOption v-for="(specialist, index) in specialists" :key="specialist.user_id" :value="specialist.user_id" :disabled="activeSpecialistIds.has(specialist.user_id)">
             {{ specialist.display_name?.trim() || `专员 ${index + 1}` }}{{ activeSpecialistIds.has(specialist.user_id) ? '，已分配' : '' }}
-          </option>
-        </select>
+          </AppSelectOption>
+        </AppSelect>
         <AppButton size="sm" :disabled="!selectedTask || !selectedSpecialistId || pending || specialistsState !== 'ready' || assignmentsState !== 'ready'" :loading="pending && failedOperation?.kind === 'assign'" @click="assign">分配</AppButton>
       </div>
       <p v-if="specialistsState === 'loading'" class="professional-assignments__hint" aria-busy="true">正在读取同校专员…</p>

@@ -247,6 +247,16 @@ class SchoolDirectoryService:
             actor, user_ids, ttl_seconds=ttl_seconds, trace_id=trace_id
         )
 
+    async def initial_login_school(self, username: str, token_hash: bytes) -> str:
+        school_ref = (
+            await self.persistence.school_directory_initial_login_school(username, token_hash)
+            if self.persistence is not None
+            else None
+        )
+        if school_ref is None:
+            raise error(ErrorCode.AUTH_INVALID_CREDENTIALS, detail="username or password is invalid")
+        return school_ref
+
     async def complete_initial_credential(
         self,
         username: str,

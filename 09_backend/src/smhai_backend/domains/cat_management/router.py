@@ -16,8 +16,10 @@ from smhai_backend.domains.auth.dependencies import (
 )
 
 from .schemas import CatalogResponseDto, SimulationRequestDto, SimulationResponseDto
+from .workbench import router as workbench_router
 
 router = APIRouter(prefix="/school/cat-management", tags=["school-cat-management"])
+router.include_router(workbench_router)
 _ERRORS = problem_responses(
     ErrorCode.AUTH_SESSION_EXPIRED,
     ErrorCode.FORBIDDEN,

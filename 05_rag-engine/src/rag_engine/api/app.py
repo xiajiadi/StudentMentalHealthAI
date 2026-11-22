@@ -17,6 +17,7 @@ from rag_engine.config import RAGConfig
 from rag_engine.domain import stable_digest
 from rag_engine.indexing import KnowledgeCorpusLoader
 from rag_engine.query import DeterministicQueryBuilder
+from rag_engine.research.school_library import router as school_library_router
 from rag_engine.retrieval import RetrievalService
 
 
@@ -181,6 +182,7 @@ def create_app(*, runtime: RagRuntime | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.rag_runtime = runtime
+    app.include_router(school_library_router)
 
     @app.get("/health/live", operation_id="ragLiveHealth")
     async def health_live() -> dict[str, Any]:

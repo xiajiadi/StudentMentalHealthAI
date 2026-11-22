@@ -51,7 +51,9 @@ def build_default_bundle(*, root: Path | None = None) -> RuntimeBundle:
     service = SafetyService(
         privacy=PresidioPrivacyAdapter(),
         nemo=NemoIORailsAdapter(root / "config" / "nemo"),
-        qwen=Qwen3GuardProvider(cache_dir=qwen_cache),
+        qwen=Qwen3GuardProvider(
+            cache_dir=qwen_cache, accelerate_cpu=os.environ.get("SMHAI_QWEN_ACCELERATED_CPU") == "1"
+        ),
         policy=policy,
         review=HumanReviewService(repository),
         crisis_templates=CrisisTemplateRepository(root / "templates" / "crisis"),

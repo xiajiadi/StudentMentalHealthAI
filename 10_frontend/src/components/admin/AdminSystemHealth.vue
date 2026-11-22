@@ -370,7 +370,7 @@ onBeforeUnmount(() => {
                   <small v-if="integrationName(selectedRow.integration) !== selectedRow.integration && selectedRow.integration">{{ selectedRow.integration }}</small>
                 </div>
                 <div><dt>状态码</dt><dd><code>{{ selectedRow.status || '未返回' }}</code></dd></div>
-                <div><dt>数据来源</dt><dd><code>GET /health/dependencies</code></dd></div>
+                <div><dt>数据来源</dt><dd><code>GET /api/v1/health</code></dd></div>
               </dl>
 
               <section class="system-health__check-summary" aria-labelledby="system-health-check-title">

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+from typing import Annotated
 
-from fastapi import APIRouter, Request
+from database_layer.provenance import is_public_demo_school_ref
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -18,8 +20,10 @@ from smhai_backend.domains.auth.dependencies import (
     PUBLIC_SECURITY_OPENAPI_EXTRA,
     CsrfActor,
     CurrentActor,
-    RecentReauthenticatedCsrfActor,
+    recent_reauthenticated_csrf_protected,
 )
+from smhai_backend.domains.models import Actor, BackendRole
+from smhai_backend.domains.school_directory.schemas import DisplayNameRequest
 
 from .schemas import (
     AcceptInvitationRequest,
@@ -36,6 +40,7 @@ from .schemas import (
     StaffInvitationDto,
     StaffInvitationRequest,
     StaffInvitationResponseDto,
+    StaffInvitationSearchRequest,
     StaffRecoveryCredentialRequest,
     StaffRecoveryCredentialResponseDto,
     StaffRosterImportRequest,
@@ -43,6 +48,22 @@ from .schemas import (
 )
 
 router = APIRouter(tags=["school-account-lifecycle"])
+
+
+async def lifecycle_admin_session(request: Request, actor: CsrfActor) -> Actor:
+    if (
+        request.app.state.container.settings.public_demo.site_key is not None
+        and actor.scope_profile == "school_tenant"
+        and actor.role is BackendRole.ADMIN
+        and actor.school_id is not None
+        and actor.school_ref
+        and is_public_demo_school_ref(actor.school_ref)
+    ):
+        return actor
+    return await recent_reauthenticated_csrf_protected(request, actor)
+
+
+LifecycleAdminActor = Annotated[Actor, Depends(lifecycle_admin_session)]
 
 
 def _trace_id(request: Request) -> str:
@@ -102,7 +123,7 @@ async def account_summary(request: Request, actor: CurrentActor):
 async def create_staff_invitation(
     request: Request,
     payload: StaffInvitationRequest,
-    actor: RecentReauthenticatedCsrfActor,
+    actor: LifecycleAdminActor,
 ):
     container = request.app.state.container
     result = await container.school_account_lifecycle.create_staff_invitation(
@@ -150,9 +171,47 @@ async def import_staff_roster(
     include_in_schema=False,
     responses=problem_responses(ErrorCode.AUTH_SESSION_EXPIRED, ErrorCode.FORBIDDEN),
 )
-async def list_staff_invitations(request: Request, actor: CurrentActor):
-    rows = await request.app.state.container.school_account_lifecycle.list_staff_invitations(actor)
-    return JSONResponse(_body(request, [StaffInvitationDto.model_validate(row) for row in rows]))
+async def list_staff_invitations(
+    request: Request,
+    actor: CurrentActor,
+    limit: int = Query(default=500, ge=1, le=500),
+    offset: int = Query(default=0, ge=0, le=100_000),
+):
+    rows = await request.app.state.container.school_account_lifecycle.list_staff_invitations(
+        actor, limit=limit, offset=offset
+    )
+    return _no_store(_body(request, [StaffInvitationDto.model_validate(row) for row in rows]))
+
+
+@router.post(
+    "/school/admin/staff/invitations/search",
+    response_model=ApiEnvelope[list[StaffInvitationDto]],
+    openapi_extra=CSRF_SECURITY_OPENAPI_EXTRA,
+    include_in_schema=False,
+    responses=problem_responses(ErrorCode.AUTH_SESSION_EXPIRED, ErrorCode.FORBIDDEN, ErrorCode.CSRF_FAILED),
+)
+async def search_staff_invitations(request: Request, payload: StaffInvitationSearchRequest, actor: CsrfActor):
+    # Names and identifiers are passed in the body so they don't appear in access-log URLs.
+    rows = await request.app.state.container.school_account_lifecycle.list_staff_invitations(
+        actor, limit=payload.limit, offset=payload.offset, search=payload.search
+    )
+    return _no_store(_body(request, [StaffInvitationDto.model_validate(row) for row in rows]))
+
+
+@router.post(
+    "/school/admin/staff/invitations/{invitation_ref}/name",
+    response_model=ApiEnvelope[dict[str, str]],
+    openapi_extra=CSRF_SECURITY_OPENAPI_EXTRA,
+    include_in_schema=False,
+    responses=problem_responses(ErrorCode.AUTH_SESSION_EXPIRED, ErrorCode.FORBIDDEN, ErrorCode.CSRF_FAILED, ErrorCode.RESOURCE_NOT_FOUND),
+)
+async def set_staff_invitation_name(
+    request: Request, invitation_ref: str, payload: DisplayNameRequest, actor: CsrfActor
+):
+    result = await request.app.state.container.school_account_lifecycle.set_staff_invitation_name(
+        actor, invitation_ref, payload.display_name, trace_id=_trace_id(request)
+    )
+    return _no_store(_body(request, result))
 
 
 @router.post(
@@ -172,7 +231,7 @@ async def revoke_staff_invitation(
     request: Request,
     invitation_ref: str,
     payload: StaffInvitationActionRequest,
-    actor: RecentReauthenticatedCsrfActor,
+    actor: LifecycleAdminActor,
 ):
     result = await request.app.state.container.school_account_lifecycle.revoke_staff_invitation(
         actor,
@@ -200,7 +259,7 @@ async def reissue_staff_invitation(
     request: Request,
     invitation_ref: str,
     payload: StaffInvitationActionRequest,
-    actor: RecentReauthenticatedCsrfActor,
+    actor: LifecycleAdminActor,
 ):
     container = request.app.state.container
     result = await container.school_account_lifecycle.reissue_staff_invitation(
@@ -231,7 +290,7 @@ async def issue_staff_recovery_credential(
     request: Request,
     user_id: str,
     payload: StaffRecoveryCredentialRequest,
-    actor: RecentReauthenticatedCsrfActor,
+    actor: LifecycleAdminActor,
 ):
     container = request.app.state.container
     result = await container.school_account_lifecycle.issue_staff_recovery_credential(
@@ -348,7 +407,7 @@ async def approve_recovery_request(
     request: Request,
     ticket_ref: str,
     payload: RecoveryActionRequest,
-    actor: RecentReauthenticatedCsrfActor,
+    actor: LifecycleAdminActor,
 ):
     container = request.app.state.container
     result = await container.school_account_lifecycle.approve_recovery_request(
@@ -403,7 +462,7 @@ async def set_account_status(
     request: Request,
     user_id: str,
     payload: AccountStatusRequest,
-    actor: RecentReauthenticatedCsrfActor,
+    actor: LifecycleAdminActor,
 ):
     result = await request.app.state.container.school_account_lifecycle.set_account_status(
         actor,

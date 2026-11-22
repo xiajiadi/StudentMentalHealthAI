@@ -9,6 +9,7 @@ import {
   formatPercentagePoints,
   inspectAnalysisCountAnomalies,
   isUsableVerifiedTaskPair,
+  pairPublicDemoTasks,
   toAnalysisTasks,
   validAnalysisTasks,
   type VerifiedTaskPair,
@@ -118,7 +119,9 @@ const selectedZeroDenominatorCount = computed(() => selectedClassRows.value
 const filteredDemoTaskKeys = computed(() => new Set(filteredRows.value.map((row) =>
   JSON.stringify([row.class_ref, row.task_ref]))))
 const comparisonPairs = computed<VerifiedTaskPair[]>(() => {
-  if (!isDemo || !analyticsDemo) return []
+  if (!isDemo || !analyticsDemo) {
+    return pairPublicDemoTasks(filteredRows.value, selectedClass.value, comparisonClass.value)
+  }
 
   const visibleAssignments = analyticsDemo.assignments.filter((assignment) =>
     filteredDemoTaskKeys.value.has(JSON.stringify([assignment.row.class_ref, assignment.row.task_ref])))

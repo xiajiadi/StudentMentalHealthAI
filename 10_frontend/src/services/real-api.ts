@@ -128,6 +128,11 @@ const unwrap = async <T>(operation: () => Promise<unknown>): Promise<ApiEnvelope
   }
 
   if (!isRecord(raw)) throw new RealApiError('API_INVALID_RESPONSE', '接口返回了无法识别的响应。')
+  if (raw.error instanceof RealApiError) throw raw.error
+  if (raw.error instanceof Error && !raw.response) {
+    throw new RealApiError('NETWORK_UNAVAILABLE', '当前无法连接到本地接口，请确认 Backend 正在运行。', true)
+  }
+  if (raw.error instanceof Error) throw new RealApiError('API_INVALID_RESPONSE', '接口返回了无法识别的响应。')
   if (raw.error) throw requestError(raw.error)
   if (typeof raw.request_id === 'string' && 'data' in raw) return raw as unknown as ApiEnvelope<T>
   if (isRecord(raw.data) && typeof raw.data.request_id === 'string' && 'data' in raw.data) {
@@ -1433,6 +1438,28 @@ export class RealApiProvider implements FrontendApi {
     }))
   }
 
+  async requestSchoolSupport(input: IndependentConversationRequest): Promise<ApiEnvelope<unknown>> {
+    const base = '/api/v1/school/support'
+    const cases = `${base}/cases/SSC_(?:[a-f0-9]{32}|DEMO_[0-9]{3})`
+    const actions = `${base}/actions/SSA_(?:[a-f0-9]{32}|DEMO_[0-9]{2}_[0-9]{2})`
+    const allowed = input.method === 'GET'
+      ? [`${base}/students`, `${base}/cases`, `${base}/actions`].includes(input.path)
+        || new RegExp(`^${cases}(?:/assignees)?$`).test(input.path)
+      : input.method === 'POST'
+        && (input.path === `${base}/cases`
+          || new RegExp(`^(?:${cases}/(?:transitions|actions)|${actions}/feedback)$`).test(input.path))
+    if (!allowed) throw new RealApiError('API_INVALID_REQUEST', '学校支持请求地址无效。')
+    if (input.method === 'POST') {
+      if (!input.idempotencyKey?.trim() || !input.body) {
+        throw new RealApiError('API_INVALID_REQUEST', '学校支持请求缺少操作标识或提交内容。')
+      }
+      return this.schoolWrite(input.path, input.body, 'support', input.idempotencyKey)
+    }
+    return unwrap<unknown>(() => apiClient.request({
+      method: 'GET', url: input.path, query: input.query, parseAs: 'json',
+    }))
+  }
+
   async requestProfessionalReview<T>(input: IndependentConversationRequest): Promise<ApiEnvelope<T>> {
     const base = '/api/v1/school/professional-reviews'
     const task = `${base}/tasks/TASK_[A-Za-z0-9][A-Za-z0-9_.-]{0,122}`
@@ -1933,9 +1960,17 @@ export class RealApiProvider implements FrontendApi {
   }
 
   async listSchoolTasks(classRef: string): Promise<ApiEnvelope<SchoolTask[]>> {
+    return this.readSchoolTaskList(`/api/v1/school/classes/${encodeURIComponent(classRef)}/tasks`)
+  }
+
+  async listSchoolTaskIndex(): Promise<ApiEnvelope<SchoolTask[]>> {
+    return this.readSchoolTaskList('/api/v1/school/admin/task-index')
+  }
+
+  private async readSchoolTaskList(url: string): Promise<ApiEnvelope<SchoolTask[]>> {
     const response = await unwrap<unknown>(() => apiClient.request({
       method: 'GET',
-      url: `/api/v1/school/classes/${encodeURIComponent(classRef)}/tasks`,
+      url,
       parseAs: 'json',
     }))
     if (!Array.isArray(response.data)) throw new RealApiError('API_INVALID_RESPONSE', '任务列表格式无法识别。')
@@ -2387,10 +2422,14 @@ export class RealApiProvider implements FrontendApi {
     return unwrap(() => apiClient.request({ method: 'GET', url: '/api/v1/school/admin/accounts/summary', parseAs: 'json' }))
   }
 
-  async listStaffInvitations(): Promise<ApiEnvelope<LifecycleStaffInvitation[]>> {
-    const response = await unwrap<unknown>(() => apiClient.request({
-      method: 'GET', url: '/api/v1/school/admin/staff/invitations', parseAs: 'json',
-    }))
+  async listStaffInvitations(input?: { limit: number; offset: number; search: string }): Promise<ApiEnvelope<LifecycleStaffInvitation[]>> {
+    const url = '/api/v1/school/admin/staff/invitations'
+    const response = input?.search
+      ? await this.lifecycleWrite<unknown>(url + '/search', input)
+      : await unwrap<unknown>(() => apiClient.request({
+        method: 'GET', url, parseAs: 'json',
+        ...(input ? { query: { limit: input.limit, offset: input.offset } } : {}),
+      }))
     if (!Array.isArray(response.data)) throw new RealApiError('API_INVALID_RESPONSE', '教职工邀请列表格式无法识别。')
     const invitations = response.data.map((value): LifecycleStaffInvitation => {
       const allowed = new Set([
@@ -2421,6 +2460,17 @@ export class RealApiProvider implements FrontendApi {
       }
     })
     return { ...response, data: invitations }
+  }
+
+  async updateStaffInvitationName(invitationRef: string, displayName: string): Promise<ApiEnvelope<{ invitation_ref: string; display_name: string }>> {
+    const response = await this.lifecycleWrite<unknown>(
+      `/api/v1/school/admin/staff/invitations/${encodeURIComponent(invitationRef)}/name`,
+      { display_name: displayName },
+    )
+    if (!isRecord(response.data) || response.data.invitation_ref !== invitationRef || response.data.display_name !== displayName) {
+      throw new RealApiError('API_INVALID_RESPONSE', '无法确认教职工姓名已保存')
+    }
+    return { ...response, data: { invitation_ref: invitationRef, display_name: displayName } }
   }
 
   async revokeStaffInvitation(invitationRef: string, reasonCode: string): Promise<ApiEnvelope<{ status: string }>> {
@@ -2488,6 +2538,17 @@ export class RealApiProvider implements FrontendApi {
 
   async completeFirstLogin(input: { school_ref: string; username: string; credential: string; new_password: string; confirm_password: string }): Promise<ApiEnvelope<unknown>> {
     return this.lifecyclePublicWrite('/api/v1/auth/first-login', input)
+  }
+
+  async getInitialLoginSchool(input: { username: string; credential: string }): Promise<string | null> {
+    try {
+      const result = await this.lifecyclePublicWrite<unknown>('/api/v1/auth/initial-login-context', input)
+      if (!isRecord(result.data)) throw new RealApiError('API_INVALID_RESPONSE', '无法确认首次登录信息')
+      return requiredString(result.data, 'school_ref')
+    } catch (error) {
+      if (error instanceof RealApiError && ['auth_invalid_credentials', 'resource_not_found'].includes(error.code)) return null
+      throw error
+    }
   }
 
   async createRecoveryRequest(input: { school_ref: string; username: string; class_ref: string; reason_code: string }): Promise<ApiEnvelope<unknown>> {

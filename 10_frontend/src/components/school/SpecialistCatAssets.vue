@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import AppSelect from '@/components/app/AppSelect.vue'
+import AppSelectOption from '@/components/app/AppSelectOption.vue'
+import { SelectGroup, SelectLabel } from 'reka-ui'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Archive, CircleAlert, FilePlus2, History, RotateCcw, Save, ShieldCheck, X } from '@lucide/vue'
 import AppCard from '@/components/app/AppCard.vue'
@@ -758,10 +761,10 @@ onBeforeUnmount(() => { disposed = true; sequence += 1; clearPrivate() })
         <template v-else-if="tab === 'plans' && configDraft">
           <header class="asset-heading"><div><p class="asset-kicker">{{ planDetail ? `修订 ${planDetail.revision}` : configDraft.model === 'FIXED_FORM' ? 'FIXED QUESTIONNAIRE' : 'NEW CAT PLAN' }}</p><h2>{{ planDetail ? '编辑方案版本' : configDraft.model === 'FIXED_FORM' ? '新建固定问卷方案' : '新建 CAT 方案' }}</h2></div><button class="asset-icon" type="button" aria-label="清除编辑内容" :disabled="busy" @click="clearSelection"><X :size="16" /></button></header>
           <label class="asset-field">方案名称<input v-model="planName" maxlength="120" :disabled="inputLocked"></label>
-          <label class="asset-field">绑定的题库<select :value="bankVersionRef" :disabled="inputLocked" @change="chooseBankVersion(($event.target as HTMLSelectElement).value)"><option value="">选择本校有效题库版本</option><optgroup v-for="bank in banks.filter((entry) => entry.status === 'ACTIVE')" :key="bank.bank_ref" :label="bank.display_name"><option v-for="entry in availableBankVersions.filter((candidate) => candidate.bank.bank_ref === bank.bank_ref)" :key="entry.version.version_ref" :value="entry.version.version_ref">版本 {{ entry.version.version_number }}，{{ entry.version.item_count }} 道</option></optgroup></select><small v-if="selectedBankVersion">固定绑定：{{ selectedBankVersion.version_number }}，{{ selectedBankDocument?.items.length }} 道{{ selectedBankDocument?.measurement_model === 'FIXED_FORM' ? '原题' : '合成题' }}</small></label>
+          <label class="asset-field">绑定的题库<AppSelect :model-value="bankVersionRef" :disabled="inputLocked" @update:model-value="chooseBankVersion($event ?? '')"><AppSelectOption value="">选择本校有效题库版本</AppSelectOption><SelectGroup v-for="bank in banks.filter((entry) => entry.status === 'ACTIVE')" :key="bank.bank_ref"><SelectLabel class="app-select__group-label">{{ bank.display_name }}</SelectLabel><AppSelectOption v-for="entry in availableBankVersions.filter((candidate) => candidate.bank.bank_ref === bank.bank_ref)" :key="entry.version.version_ref" :value="entry.version.version_ref">版本 {{ entry.version.version_number }}，{{ entry.version.item_count }} 道</AppSelectOption></SelectGroup></AppSelect><small v-if="selectedBankVersion">固定绑定：{{ selectedBankVersion.version_number }}，{{ selectedBankDocument?.items.length }} 道{{ selectedBankDocument?.measurement_model === 'FIXED_FORM' ? '原题' : '合成题' }}</small></label>
           <p v-if="!selectedBankVersion" class="asset-inline-note">请先选择题库版本。可在左侧打开题库并查看版本，再回到这里选择。</p>
           <div v-if="configDraft.model === 'GRM'" class="asset-config-grid">
-            <label class="asset-field">估计方法<select v-model="configDraft.estimator" :disabled="inputLocked"><option value="EAP">EAP</option><option value="BM">BM</option></select></label>
+            <label class="asset-field">估计方法<AppSelect v-model="configDraft.estimator" :disabled="inputLocked"><AppSelectOption value="EAP">EAP</AppSelectOption><AppSelectOption value="BM">BM</AppSelectOption></AppSelect></label>
             <label class="asset-field">最少题数<input v-model.number="configDraft.min_items" type="number" min="1" max="100" :disabled="inputLocked"></label>
             <label class="asset-field">最多题数<input v-model.number="configDraft.max_items" type="number" min="1" max="100" :disabled="inputLocked"></label>
             <label class="asset-field">标准误停止阈值<input v-model.number="configDraft.se_threshold" type="number" min="0.000001" step="0.01" :disabled="inputLocked"></label>
@@ -805,7 +808,7 @@ onBeforeUnmount(() => { disposed = true; sequence += 1; clearPrivate() })
             <p v-if="!selectedPlanVersion" class="asset-inline-note">请先选择方案历史版本。</p>
             <template v-else>
               <div class="asset-simulation__binding"><strong>{{ planDetail.display_name }} v{{ selectedPlanVersion.version_number }}</strong><span>题库：{{ simulationBankLabel }}</span><span>配置：{{ selectedPlanVersion.config_document.config_version }}，种子 {{ selectedPlanVersion.config_document.seed }}</span></div>
-              <label class="asset-field asset-simulation__batch">合成样本量<select :value="simulationBatch" :disabled="simulationLocked" @change="changeSimulationBatch(($event.target as HTMLSelectElement).value)"><option :value="100">100</option><option :value="1000">1000</option></select></label>
+              <label class="asset-field asset-simulation__batch">合成样本量<AppSelect :model-value="simulationBatch" :disabled="simulationLocked" @update:model-value="changeSimulationBatch(String($event ?? ''))"><AppSelectOption :value="100">100</AppSelectOption><AppSelectOption :value="1000">1000</AppSelectOption></AppSelect></label>
               <button class="asset-button asset-button--primary" type="button" :disabled="!canRunSavedSimulation" @click="runSavedSimulation">{{ simulationState === 'running' ? '运行中…' : simulationState === 'busy' ? '稍后手动重试' : simulationState === 'error' ? '手动重新运行' : simulationResult ? '再次运行并比较' : '运行已保存版本' }}</button>
               <p v-if="simulationState === 'running'" class="asset-simulation__pending" role="status" aria-busy="true">运行中，较大批次可能需要几分钟。</p>
               <p v-else-if="simulationError" class="asset-simulation__error" role="alert">{{ simulationError }}</p>

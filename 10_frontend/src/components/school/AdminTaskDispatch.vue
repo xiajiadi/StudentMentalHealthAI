@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import AppSelect from '@/components/app/AppSelect.vue'
+import AppSelectOption from '@/components/app/AppSelectOption.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Clock3, ListChecks, Plus, RefreshCw, Search, X } from '@lucide/vue'
 import AppButton from '@/components/app/AppButton.vue'
@@ -206,12 +208,31 @@ const loadTaskData = async (silent = false): Promise<boolean> => {
   listError.value = ''
   notice.value = ''
   try {
-    const response = await listClasses()
+    const index = frontendApi.listSchoolTaskIndex?.().catch((cause: unknown) => {
+      const code = cause && typeof cause === 'object' && 'code' in cause ? String(cause.code).toUpperCase() : ''
+      if (['RESOURCE_NOT_FOUND', 'NOT_FOUND', '404'].includes(code)) return null
+      throw cause
+    })
+    const [response, indexResponse] = await Promise.all([listClasses(), index])
     if (disposed || generation !== taskLoadGeneration) return false
     const classByRef = new Map(response.data.map((item) => [item.class_ref, item]))
     const classRows = [...classByRef.values()]
     classes.value = classRows
     if (classFilter.value !== 'all' && !classByRef.has(classFilter.value)) classFilter.value = 'all'
+
+    if (indexResponse) {
+      const entriesByKey = new Map<string, TaskEntry>()
+      for (const task of indexResponse.data) {
+        const classRow = classByRef.get(task.class_ref)
+        if (!classRow) throw new Error('class_scope_mismatch')
+        const key = entryKey(task)
+        entriesByKey.set(key, { key, task, classLabel: classLabel(classRow) })
+      }
+      entries.value = [...entriesByKey.values()]
+      failedClassRefs.value = []
+      pageState.value = 'ready'
+      return true
+    }
 
     const results = await Promise.allSettled(classRows.map(async (classRow) => {
       const tasksResponse = await listTasks(classRow.class_ref)
@@ -713,7 +734,7 @@ onBeforeUnmount(() => {
         <section v-if="publishStep === 0" class="publish-step-panel">
           <label for="admin-publish-class">目标班级</label>
           <div class="publish-select">
-            <select id="admin-publish-class" v-model="publishClassRef" :disabled="publishPending || !classes.length"><option value="" disabled>请选择班级</option><option v-for="item in classes" :key="item.class_ref" :value="item.class_ref">{{ classLabel(item) }}</option></select>
+            <AppSelect id="admin-publish-class" v-model="publishClassRef" :disabled="publishPending || !classes.length"><AppSelectOption value="" disabled>请选择班级</AppSelectOption><AppSelectOption v-for="item in classes" :key="item.class_ref" :value="item.class_ref">{{ classLabel(item) }}</AppSelectOption></AppSelect>
             <ChevronDown :size="16" aria-hidden="true" />
           </div>
           <span class="publish-step-panel__label">测评配置</span>
@@ -724,7 +745,7 @@ onBeforeUnmount(() => {
           <template v-if="bindingMode === 'SAVED_VERSION'">
             <label for="admin-publish-activation">测评版本</label>
             <div class="publish-select">
-              <select id="admin-publish-activation" v-model="selectedActivationRef" :disabled="activationState !== 'ready' || !activations.length || publishPending"><option value="">请选择已启用版本</option><option v-for="item in activations" :key="item.activation_ref" :value="item.activation_ref">{{ item.plan_name }} v{{ item.plan_version_number }} · {{ item.bank_name }} v{{ item.bank_version_number }}</option></select>
+              <AppSelect id="admin-publish-activation" v-model="selectedActivationRef" :disabled="activationState !== 'ready' || !activations.length || publishPending"><AppSelectOption value="">请选择已启用版本</AppSelectOption><AppSelectOption v-for="item in activations" :key="item.activation_ref" :value="item.activation_ref">{{ item.plan_name }} v{{ item.plan_version_number }} · {{ item.bank_name }} v{{ item.bank_version_number }}</AppSelectOption></AppSelect>
               <ChevronDown :size="16" aria-hidden="true" />
             </div>
             <div v-if="activationState === 'loading'" class="publish-step-panel__message" role="status" aria-busy="true">正在读取已启用版本</div>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import AppSelect from '@/components/app/AppSelect.vue'
+import AppSelectOption from '@/components/app/AppSelectOption.vue'
 /* global AbortController */
 
 import { computed, ref, watch } from 'vue'
@@ -482,23 +484,23 @@ watch(selectedProfileRef, (profileRef) => {
       <template v-else-if="mode === 'specialist'">
         <div class="research-form">
           <label for="research-profile">服务端资料候选</label>
-          <select id="research-profile" v-model="selectedProfileRef" :disabled="pending !== '' || profiles.length === 0">
-            <option value="" disabled>选择一个候选资料</option>
-            <option v-for="profile in profiles" :key="profile.profile_ref" :value="profile.profile_ref">
+          <AppSelect id="research-profile" v-model="selectedProfileRef" :disabled="pending !== '' || profiles.length === 0">
+            <AppSelectOption value="" disabled>选择一个候选资料</AppSelectOption>
+            <AppSelectOption v-for="profile in profiles" :key="profile.profile_ref" :value="profile.profile_ref">
               {{ instrumentLabel(profile.instrument_id, profile.source_population_scope ?? '') }}，{{ populationLabel(profile.source_population_scope, profile.instrument_id) }}，{{ candidateStateLabel(profile.catalog_state) }}
-            </option>
-          </select>
+            </AppSelectOption>
+          </AppSelect>
           <p v-if="selectedProfile" class="research-form__hint">
             {{ instrumentLabel(selectedProfile.instrument_id, selectedProfile.source_population_scope ?? '') }}；{{ populationLabel(selectedProfile.source_population_scope, selectedProfile.instrument_id) }}。来源状态：{{ rightsLabel(selectedRegisteredVersion?.rights_status ?? selectedProfile.rights_status) }}；{{ executionLabel(selectedRegisteredVersion?.execution_status ?? 'CANDIDATE_RESEARCH_ONLY') }}；尚未批准正式发布或运营使用。
           </p>
 
           <label for="research-profile-registered-version">服务端已登记版本</label>
-          <select id="research-profile-registered-version" v-model.number="selectedRegisteredVersionNumber" :disabled="pending !== '' || registeredVersions.length === 0 || versionsState === 'loading'">
-            <option :value="null" disabled>选择已登记版本</option>
-            <option v-for="version in registeredVersions" :key="version.version_number" :value="version.version_number">
+          <AppSelect id="research-profile-registered-version" v-model="selectedRegisteredVersionNumber" :disabled="pending !== '' || registeredVersions.length === 0 || versionsState === 'loading'">
+            <AppSelectOption :value="null" disabled>选择已登记版本</AppSelectOption>
+            <AppSelectOption v-for="version in registeredVersions" :key="version.version_number" :value="version.version_number">
               v{{ version.version_number }}，{{ rightsLabel(version.rights_status) }}，{{ executionLabel(version.execution_status) }}
-            </option>
-          </select>
+            </AppSelectOption>
+          </AppSelect>
           <div v-if="versionsState === 'loading'" class="research-message" role="status">正在读取已登记版本…</div>
           <div v-else-if="versionsState === 'unavailable' || versionsState === 'error'" class="research-message research-message--error" role="status">
             {{ versionsError || '已登记版本目录当前不可读取。' }}
@@ -538,19 +540,19 @@ watch(selectedProfileRef, (profileRef) => {
         <div v-if="bindings.length === 0" class="research-message">服务端当前没有列出公开研究绑定。请先由心理老师完成候选版本核验流程。</div>
         <form v-else class="research-form" @submit.prevent="publishTask">
           <label for="research-class">本校有效班级</label>
-          <select id="research-class" v-model="selectedClassRef" :disabled="pending !== '' || activeClasses.length === 0">
-            <option value="" disabled>选择班级</option>
-            <option v-for="item in activeClasses" :key="item.class_ref" :value="item.class_ref">
+          <AppSelect id="research-class" v-model="selectedClassRef" :disabled="pending !== '' || activeClasses.length === 0">
+            <AppSelectOption value="" disabled>选择班级</AppSelectOption>
+            <AppSelectOption v-for="item in activeClasses" :key="item.class_ref" :value="item.class_ref">
               {{ item.display_name || `班级 ${item.class_ref.slice(-6)}` }}，{{ item.active_student_count }} 名在册学生
-            </option>
-          </select>
+            </AppSelectOption>
+          </AppSelect>
           <label for="research-binding">服务端当前列出的研究绑定</label>
-          <select id="research-binding" v-model="selectedBindingChoice" :disabled="pending !== ''">
-            <option value="" disabled>选择绑定</option>
-            <option v-for="binding in bindings" :key="bindingChoiceKey(binding)" :value="bindingChoiceKey(binding)">
+          <AppSelect id="research-binding" v-model="selectedBindingChoice" :disabled="pending !== ''">
+            <AppSelectOption value="" disabled>选择绑定</AppSelectOption>
+            <AppSelectOption v-for="binding in bindings" :key="bindingChoiceKey(binding)" :value="bindingChoiceKey(binding)">
               {{ instrumentLabel(binding.instrument_id, binding.source_population_scope) }}，v{{ binding.profile_version_number }}，{{ populationLabel(binding.source_population_scope, binding.instrument_id) }}
-            </option>
-          </select>
+            </AppSelectOption>
+          </AppSelect>
           <p v-if="selectedBinding" class="research-form__hint">
             {{ instrumentLabel(selectedBinding.instrument_id, selectedBinding.source_population_scope) }}，{{ populationLabel(selectedBinding.source_population_scope, selectedBinding.instrument_id) }}，已登记版本 v{{ selectedBinding.profile_version_number }}，历史公开作答研究回放，未批准正式发布。实际使用仍由服务端核验。
           </p>

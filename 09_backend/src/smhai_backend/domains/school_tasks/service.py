@@ -92,7 +92,7 @@ class SchoolTaskService:
             idempotency=idempotency,
         )
 
-    async def list_class_tasks(self, actor: Actor, class_ref: str):
+    async def list_class_tasks(self, actor: Actor, class_ref: str | None):
         self._require(actor, BackendRole.ADMIN)
         return await self.persistence.school_list_class_tasks(actor, class_ref, at=utc_now())
 
@@ -152,6 +152,14 @@ class SchoolTaskService:
     async def teacher_progress(self, actor: Actor, class_ref: str | None = None):
         self._require(actor, BackendRole.TEACHER)
         return await self.persistence.school_teacher_progress(actor, class_ref)
+
+    async def grade_progress(self, actor: Actor, class_ref: str | None = None):
+        self._require(actor, BackendRole.GRADE_LEAD)
+        return await self.persistence.school_grade_progress(actor, class_ref)
+
+    async def specialist_progress(self, actor: Actor):
+        self._require(actor, BackendRole.PSYCHOLOGICAL_SPECIALIST)
+        return await self.persistence.school_specialist_progress(actor)
 
     async def revoke_enrollment(
         self, actor: Actor, task_ref: str, enrollment_ref: str, *, idempotency

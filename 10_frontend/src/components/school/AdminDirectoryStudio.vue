@@ -5,7 +5,6 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   Building2,
   Check,
-  ChevronDown,
   ChevronRight,
   CircleAlert,
   CircleHelp,
@@ -26,20 +25,10 @@ import {
   DialogPortal as DrawerDialogPortal,
   DialogRoot as DrawerDialogRoot,
   DialogTitle as DrawerDialogTitle,
-  SelectContent as ImportClassContent,
-  SelectItem as ImportClassItem,
-  SelectItemIndicator as ImportClassItemIndicator,
-  SelectItemText as ImportClassItemText,
-  SelectPortal as ImportClassPortal,
-  SelectRoot as ImportClassRoot,
-  SelectTrigger as ImportClassTrigger,
-  SelectValue as ImportClassValue,
-  SelectViewport as ImportClassViewport,
 } from 'reka-ui'
-import { readSheet as readXlsxSheet } from 'read-excel-file/universal'
-import { readFirstSheet } from 'xls-reader'
 import AppButton from '@/components/app/AppButton.vue'
 import AppDialog from '@/components/app/AppDialog.vue'
+import AppSelect from '@/components/app/AppSelect.vue'
 import AdminWorkspaceFolderCard from '@/components/admin/AdminWorkspaceFolder.vue'
 import AdminMemberCombobox from '@/components/school/AdminMemberCombobox.vue'
 import type {
@@ -73,6 +62,7 @@ type PendingAccount = {
   status: 'PENDING_ACTIVATION'
 }
 
+const props = defineProps<{ loadDirectory?: (allowRecent: boolean) => Promise<SchoolDirectory> }>()
 const emit = defineEmits<{
   'open-credentials': []
 }>()
@@ -81,6 +71,7 @@ const directory = ref<SchoolDirectory | null>(null)
 const directoryState = ref<DirectoryState>('loading')
 const directoryStale = ref(false)
 const candidatesState = ref<DirectoryState>('loading')
+let candidatesLoadedAt = 0
 const students = ref<SchoolMember[]>([])
 const teachers = ref<SchoolMember[]>([])
 const pendingAction = ref('')
@@ -90,6 +81,8 @@ const noticeTone = ref<'success' | 'warning'>('success')
 const view = ref<DirectoryView>('members')
 const memberFilter = ref<MemberFilter>('all')
 const searchTerm = ref('')
+const memberPage = ref(1)
+const memberPageSize = 50
 const selectedMemberId = ref('')
 const selectedClassRef = ref('')
 const detailOpen = ref(false)
@@ -166,34 +159,36 @@ const provisioningStatus = (status: string | null | undefined) => {
   }
 }
 
-const refreshDirectory = async (options: { preserveNotice?: boolean } = {}): Promise<boolean> => {
+const refreshDirectory = async (options: { preserveNotice?: boolean; allowRecent?: boolean } = {}): Promise<boolean> => {
   const generation = ++directoryRequestGeneration
   directoryState.value = 'loading'
   directoryStale.value = false
   pageError.value = ''
   if (!options.preserveNotice) pageNotice.value = ''
-  if (!frontendApi.getSchoolAdminDirectory) {
+  if (!props.loadDirectory && !frontendApi.getSchoolAdminDirectory) {
     directoryState.value = directory.value ? 'ready' : 'error'
     directoryStale.value = Boolean(directory.value)
     pageError.value = '当前运行环境没有提供学校目录服务'
     return false
   }
   try {
-    const result = await frontendApi.getSchoolAdminDirectory()
+    const data = props.loadDirectory
+      ? await props.loadDirectory(options.allowRecent === true)
+      : (await frontendApi.getSchoolAdminDirectory!()).data
     if (isUnmounted || generation !== directoryRequestGeneration) return false
-    directory.value = result.data
+    directory.value = data
     directoryState.value = 'ready'
     directoryStale.value = false
-    if (selectedMemberId.value && !result.data.members.some((member) => member.user_id === selectedMemberId.value)
+    if (selectedMemberId.value && !data.members.some((member) => member.user_id === selectedMemberId.value)
       && !importedBatch.value?.accounts.some((account) => account.user_id === selectedMemberId.value)) {
       selectedMemberId.value = ''
       detailOpen.value = false
     }
-    if (selectedClassRef.value && !result.data.classes.some((item) => item.class_ref === selectedClassRef.value)) {
+    if (selectedClassRef.value && !data.classes.some((item) => item.class_ref === selectedClassRef.value)) {
       selectedClassRef.value = ''
       detailOpen.value = false
     }
-    if (!schoolDialogOpen.value) schoolNameDraft.value = result.data.school.display_name ?? ''
+    if (!schoolDialogOpen.value) schoolNameDraft.value = data.school.display_name ?? ''
     return true
   } catch (error) {
     if (isUnmounted || generation !== directoryRequestGeneration) return false
@@ -224,6 +219,7 @@ const refreshCandidates = async (): Promise<boolean> => {
     students.value = studentResult.data
     teachers.value = teacherResult.data
     candidatesState.value = 'ready'
+    candidatesLoadedAt = Date.now()
     return true
   } catch {
     if (isUnmounted || generation !== candidatesRequestGeneration) return false
@@ -254,7 +250,9 @@ const batchRefreshError = ref(false)
 const refreshAll = async () => {
   pageError.value = ''
   pageNotice.value = ''
-  const results = await Promise.all([refreshDirectory(), refreshCandidates(), refreshImportedBatch()])
+  const results = await Promise.all([
+    refreshDirectory(), selectedClassRef.value ? refreshCandidates() : Promise.resolve(true), refreshImportedBatch(),
+  ])
   if (importedBatch.value && results[2]) batchRefreshError.value = false
 }
 
@@ -282,20 +280,29 @@ const memberCounts = computed(() => ({
   pending: allMembers.value.filter((member) => member.provisioning_status === 'PENDING_ACTIVATION').length,
 }))
 
+const memberSearchIndex = computed(() => [...allMembers.value]
+  .sort((first, second) => first.role.localeCompare(second.role)
+    || (first.display_name ?? '').localeCompare(second.display_name ?? '', 'zh-CN')
+    || first.user_id.localeCompare(second.user_id))
+  .map((member) => ({ member, text: `${member.display_name ?? ''} ${member.user_id}`.toLocaleLowerCase() })))
 const filteredMembers = computed(() => {
   const query = searchTerm.value.trim().toLocaleLowerCase()
-  return [...allMembers.value]
-    .filter((member) => {
+  return memberSearchIndex.value
+    .filter(({ member, text }) => {
       if (memberFilter.value === 'student' && member.role !== 'student') return false
       if (memberFilter.value === 'teacher' && member.role !== 'teacher') return false
       if (memberFilter.value === 'pending' && member.provisioning_status !== 'PENDING_ACTIVATION') return false
-      if (!query) return true
-      return `${member.display_name ?? ''} ${member.user_id}`.toLocaleLowerCase().includes(query)
+      return !query || text.includes(query)
     })
-    .sort((first, second) => first.role.localeCompare(second.role)
-      || (first.display_name ?? '').localeCompare(second.display_name ?? '', 'zh-CN')
-      || first.user_id.localeCompare(second.user_id))
+    .map(({ member }) => member)
 })
+const memberPageCount = computed(() => Math.max(1, Math.ceil(filteredMembers.value.length / memberPageSize)))
+const visibleMembers = computed(() => filteredMembers.value.slice(
+  (memberPage.value - 1) * memberPageSize,
+  memberPage.value * memberPageSize,
+))
+watch([searchTerm, memberFilter], () => { memberPage.value = 1 })
+watch(memberPageCount, (count) => { memberPage.value = Math.min(memberPage.value, count) })
 
 const sortedClasses = computed(() => [...(directory.value?.classes ?? [])]
   .sort((first, second) => className(first).localeCompare(className(second), 'zh-CN')
@@ -471,6 +478,10 @@ const openMember = (member: DirectoryMember, event?: MouseEvent) => {
 }
 
 const openClass = (item: SchoolClass, editName = false, draft = item.display_name ?? '', source?: HTMLButtonElement) => {
+  if (candidatesRequestGeneration === 0 || candidatesState.value === 'error'
+    || (candidatesState.value === 'ready' && Date.now() - candidatesLoadedAt >= 30_000)) {
+    void refreshCandidates()
+  }
   detailCloseFinalizing = false
   closingDetail.value = false
   captureDetailReturnTarget(source)
@@ -734,8 +745,10 @@ const acceptCsvFile = async (event: Event) => {
     if (extension === 'csv') {
       source = new Uint8Array(await file.arrayBuffer())
     } else if (extension === 'xlsx') {
+      const { readSheet: readXlsxSheet } = await import('read-excel-file/universal')
       source = spreadsheetRowsToCsv(await readXlsxSheet(file, { trim: false }))
     } else {
+      const { readFirstSheet } = await import('xls-reader')
       const sheet = readFirstSheet(new Uint8Array(await file.arrayBuffer()))
       if (!sheet) {
         csvClientError.value = 'Excel 文件没有可读取的工作表'
@@ -894,8 +907,7 @@ watch(() => route.query.directoryAction, (value) => {
 }, { immediate: true })
 
 onMounted(() => {
-  void refreshDirectory()
-  void refreshCandidates()
+  void refreshDirectory({ allowRecent: true })
 })
 
 onBeforeUnmount(() => {
@@ -990,7 +1002,7 @@ onBeforeUnmount(() => {
           <table class="directory-studio__table">
             <thead><tr><th scope="col">学校成员</th><th scope="col">角色</th><th scope="col">账号状态</th><th scope="col" class="directory-studio__action-heading"><span class="sr-only">操作</span></th></tr></thead>
             <tbody>
-              <tr v-for="member in filteredMembers" :key="`${member.user_id}:${member.role}`" :class="{ 'directory-studio__row--disabled': directoryStale }">
+              <tr v-for="member in visibleMembers" :key="`${member.user_id}:${member.role}`" :class="{ 'directory-studio__row--disabled': directoryStale }">
                 <td>
                   <button type="button" class="directory-studio__member-trigger" :disabled="directoryStale" @click="openMember(member, $event)">
                     <span class="directory-studio__avatar" :class="`directory-studio__avatar--${member.role}`">{{ member.display_name?.trim()?.slice(0, 1) || roleLabel(member.role).slice(0, 1) }}</span>
@@ -1015,6 +1027,11 @@ onBeforeUnmount(() => {
           <span>{{ allMembers.length ? '更换搜索内容或筛选条件' : '导入账号后，人员会显示在这里' }}</span>
           <button v-if="allMembers.length && (searchTerm || memberFilter !== 'all')" type="button" @click="searchTerm = ''; memberFilter = 'all'">清除筛选</button>
         </div>
+        <nav v-if="memberPageCount > 1" class="directory-studio__pagination" aria-label="人员目录分页">
+          <span aria-live="polite">第 {{ memberPage }} / {{ memberPageCount }} 页</span>
+          <AppButton variant="secondary" size="sm" :disabled="memberPage === 1" @click="memberPage--">上一页</AppButton>
+          <AppButton variant="secondary" size="sm" :disabled="memberPage === memberPageCount" @click="memberPage++">下一页</AppButton>
+        </nav>
       </section>
 
       <section v-else id="directory-classes-panel" key="classes" class="directory-studio__classes" role="tabpanel" aria-labelledby="directory-classes-tab">
@@ -1169,27 +1186,15 @@ onBeforeUnmount(() => {
       <section v-if="importStage === 1" class="directory-import__stage" aria-labelledby="directory-import-stage-one">
         <h3 id="directory-import-stage-one">选择 CSV 或 Excel 文件</h3>
         <p>支持 CSV、XLSX 和 XLS；CSV 使用 UTF-8，Excel 默认读取第一个工作表。文件不超过 500 KiB，表头须为 login_name、display_name、role，最多导入 100 个账号</p>
-        <label class="directory-import__field" id="directory-import-class-label">关联班级 <span>可选</span></label>
-        <ImportClassRoot :model-value="importClassRef || '__no_class__'" :disabled="Boolean(pendingAction) || Boolean(csvIdempotencyKey) || !directory" @update:model-value="updateImportClass($event === '__no_class__' ? '' : String($event ?? ''))">
-          <ImportClassTrigger id="directory-import-class" class="directory-import__class-trigger" aria-labelledby="directory-import-class-label">
-            <ImportClassValue placeholder="不关联班级" />
-            <ChevronDown :size="16" aria-hidden="true" />
-          </ImportClassTrigger>
-          <ImportClassPortal>
-            <ImportClassContent class="directory-import__class-content" position="popper" :side-offset="6" align="start">
-              <ImportClassViewport class="directory-import__class-viewport">
-                <ImportClassItem value="__no_class__" class="directory-import__class-item">
-                  <ImportClassItemText>不关联班级</ImportClassItemText>
-                  <ImportClassItemIndicator class="directory-import__class-indicator"><Check :size="15" aria-hidden="true" /></ImportClassItemIndicator>
-                </ImportClassItem>
-                <ImportClassItem v-for="item in sortedClasses" :key="item.class_ref" :value="item.class_ref" class="directory-import__class-item">
-                  <ImportClassItemText>{{ className(item) }}</ImportClassItemText>
-                  <ImportClassItemIndicator class="directory-import__class-indicator"><Check :size="15" aria-hidden="true" /></ImportClassItemIndicator>
-                </ImportClassItem>
-              </ImportClassViewport>
-            </ImportClassContent>
-          </ImportClassPortal>
-        </ImportClassRoot>
+        <label class="directory-import__field" id="directory-import-class-label" for="directory-import-class">关联班级 <span>可选</span></label>
+        <AppSelect
+          id="directory-import-class"
+          aria-labelledby="directory-import-class-label"
+          :model-value="importClassRef"
+          :options="[{ value: '', label: '不关联班级' }, ...sortedClasses.map(item => ({ value: item.class_ref, label: className(item) }))]"
+          :disabled="Boolean(pendingAction) || Boolean(csvIdempotencyKey) || !directory"
+          @update:model-value="updateImportClass(String($event ?? ''))"
+        />
         <label class="directory-import__file" for="directory-import-file">
           <span class="directory-import__file-icon"><FileSpreadsheet :size="18" aria-hidden="true" /></span>
           <span><strong>{{ csvFileName || '选择导入文件' }}</strong><small>{{ csvRows.length ? `本地格式检查通过，共 ${csvRows.length} 行` : '支持 .csv、.xlsx、.xls；不需要密码列' }}</small></span>
@@ -1234,7 +1239,7 @@ onBeforeUnmount(() => {
   </AppDialog>
 </template>
 <style scoped>
-.directory-studio { --directory-ink: var(--slate-12); --directory-muted: var(--slate-11); --directory-line: var(--slate-5); --directory-blue: var(--cyan-9); --directory-blue-dark: var(--cyan-11); min-width: 0; padding-bottom: 12px; color: var(--directory-ink); font-size: 12px; }
+.directory-studio { --directory-ink: var(--slate-12); --directory-muted: var(--slate-11); --directory-line: var(--slate-5); --directory-blue: var(--cyan-9); --directory-blue-dark: var(--cyan-11); width: 100%; min-width: 0; padding-bottom: 12px; color: var(--directory-ink); font-size: 12px; }
 .directory-studio__header { display: flex; align-items: center; justify-content: flex-end; gap: 24px; margin: 4px 0 10px; }
 .directory-studio__header-actions { display: flex; align-items: center; justify-content: flex-end; gap: 9px; }
 .directory-studio__school-action { display: inline-flex; max-width: min(300px, 30vw); min-height: 38px; align-items: center; gap: 8px; padding: 0 11px; border: 0.5px solid transparent; border-radius: 6px; color: var(--slate-10); background: transparent; font: inherit; font-size: 12px; cursor: pointer; transition: border-color var(--motion-normal) ease-out, color var(--motion-normal) ease-out, background-color var(--motion-normal) ease-out; }
@@ -1275,6 +1280,7 @@ onBeforeUnmount(() => {
 .directory-studio__table-heading h2 { margin: 0; color: var(--directory-ink); font-size: 16px; font-weight: 710; }
 .directory-studio__table-heading p { margin: 4px 0 0; color: var(--slate-9); font-size: 12px; }
 .directory-studio__table-wrap { width: 100%; }
+.directory-studio__pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; padding: 12px 16px; color: var(--slate-11); }
 .directory-studio__table { width: 100%; border-collapse: collapse; table-layout: fixed; text-align: left; }
 .directory-studio__table thead { background: var(--slate-1); }
 .directory-studio__table th { height: 43px; padding: 0 17px; color: var(--slate-9); font-size: 12px; font-weight: 650; }
@@ -1424,19 +1430,6 @@ onBeforeUnmount(() => {
 .directory-import__stage > p { margin: 0; color: var(--slate-9); font-size: 12px; line-height: 1.6; }
 .directory-import__field { display: flex; align-items: center; gap: 8px; margin-top: 3px; color: var(--slate-11); font-size: 12px; font-weight: 650; }
 .directory-import__field span { color: var(--slate-9); font-size: 12px; font-weight: 500; }
-.directory-import__class-trigger { display: flex; width: 100%; min-height: 42px; align-items: center; justify-content: space-between; gap: 10px; padding: 0 12px; border: 0.5px solid var(--slate-5); border-radius: 6px; color: var(--slate-11); background: var(--slate-1); font: inherit; font-size: 12px; text-align: left; cursor: pointer; transition: border-color var(--motion-normal) ease-out, box-shadow var(--motion-normal) ease-out, background var(--motion-normal) ease-out; }
-.directory-import__class-trigger:hover:not(:disabled) { border-color: var(--teal-5); background: var(--cyan-1); }
-.directory-import__class-trigger:focus-visible,.directory-import__class-trigger[data-state='open'] { border-color: var(--cyan-7); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--cyan-10) 9%, transparent); }
-.directory-import__class-trigger:disabled { opacity: .55; cursor: not-allowed; }
-.directory-import__class-trigger > svg { flex: 0 0 auto; color: var(--slate-9); transition: transform var(--motion-normal) ease-out; }
-.directory-import__class-trigger[data-state='open'] > svg { transform: rotate(180deg); }
-:global(.directory-import__class-content) { z-index: 120; width: var(--reka-select-trigger-width, 100%); min-width: min(var(--reka-select-trigger-width, 100%), calc(100vw - 32px)); max-width: calc(100vw - 32px); overflow: hidden; border: 0.5px solid var(--slate-5); border-radius: 6px; background: var(--slate-1); box-shadow: var(--shadow-raised); }
-:global(body > [data-reka-popper-content-wrapper]:has(.directory-import__class-content)) { z-index: 130 !important; }
-:global(.directory-import__class-viewport) { max-height: min(260px, calc(100vh - 180px)); overflow-y: auto; padding: 5px; overscroll-behavior: contain; }
-:global(.directory-import__class-item) { display: flex; min-height: 42px; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 11px; border-radius: 6px; color: var(--slate-11); outline: none; font-size: 12px; cursor: pointer; }
-:global(.directory-import__class-item[data-highlighted]) { color: var(--teal-11); background: var(--cyan-2); }
-:global(.directory-import__class-item[data-disabled]) { opacity: .45; cursor: not-allowed; }
-:global(.directory-import__class-indicator) { display: flex; color: var(--cyan-10); }
 .directory-import__file { display: flex; min-height: 63px; align-items: center; gap: 10px; padding: 10px 11px; border: 0.5px dashed var(--slate-6); border-radius: 6px; background: var(--slate-2); cursor: pointer; }
 .directory-import__file:hover { border-color: var(--cyan-7); background: var(--cyan-2); }
 .directory-import__file-icon { display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; border-radius: 6px; color: var(--cyan-11); background: var(--cyan-2); }

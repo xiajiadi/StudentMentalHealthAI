@@ -1,16 +1,17 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, defineAsyncComponent, nextTick, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import WorkspaceBreadcrumb from '@/components/student/WorkspaceBreadcrumb.vue'
-import AdminSchoolOperations from '@/components/school/AdminSchoolOperations.vue'
-import AdminTaskDispatch from '@/components/school/AdminTaskDispatch.vue'
-import AdminOperationsWorkspace from '@/components/school/AdminOperationsWorkspace.vue'
-import SchoolResearchManagement from '@/components/school/SchoolResearchManagement.vue'
-import AdminOperationsDesk from '@/components/admin/AdminOperationsDesk.vue'
-import AdminDirectoryStudio from '@/components/school/AdminDirectoryStudio.vue'
-import AdminSystemHealth from '@/components/admin/AdminSystemHealth.vue'
-import AccountLifecycleWorkspace from '@/views/admin/AccountLifecycleWorkspace.vue'
 import { useSessionStore } from '@/stores/session'
+
+const AdminSchoolOperations = defineAsyncComponent(() => import('@/components/school/AdminSchoolOperations.vue'))
+const AdminTaskDispatch = defineAsyncComponent(() => import('@/components/school/AdminTaskDispatch.vue'))
+const AdminOperationsWorkspace = defineAsyncComponent(() => import('@/components/school/AdminOperationsWorkspace.vue'))
+const SchoolResearchManagement = defineAsyncComponent(() => import('@/components/school/SchoolResearchManagement.vue'))
+const AdminOperationsDesk = defineAsyncComponent(() => import('@/components/admin/AdminOperationsDesk.vue'))
+const AdminDirectoryStudio = defineAsyncComponent(() => import('@/components/school/AdminDirectoryStudio.vue'))
+const AdminSystemHealth = defineAsyncComponent(() => import('@/components/admin/AdminSystemHealth.vue'))
+const AccountLifecycleWorkspace = defineAsyncComponent(() => import('@/views/admin/AccountLifecycleWorkspace.vue'))
 
 const route = useRoute()
 const session = useSessionStore()
@@ -53,11 +54,11 @@ const openCredentials = async () => {
     </template>
 
     <template v-else-if="section === 'users'">
-      <AccountLifecycleWorkspace ref="lifecycleWorkspace" :key="`${schoolScopeKey}-lifecycle`" />
-      <details class="admin-directory-details">
-        <summary>学校目录维护</summary>
-        <AdminDirectoryStudio :key="schoolScopeKey" @open-credentials="openCredentials" />
-      </details>
+      <AccountLifecycleWorkspace ref="lifecycleWorkspace" :key="`${schoolScopeKey}-lifecycle`">
+        <template #directory="{ loadDirectory }">
+          <AdminDirectoryStudio :key="schoolScopeKey" :load-directory="loadDirectory" @open-credentials="openCredentials" />
+        </template>
+      </AccountLifecycleWorkspace>
     </template>
 
     <template v-else>
@@ -89,7 +90,6 @@ const openCredentials = async () => {
 .admin-overview { min-width: 0; }
 .admin-overview__workflow { margin-top: 36px; scroll-margin-top: calc(var(--layout-topbar) + 20px); }.admin-overview__workflow-heading { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }.admin-overview__workflow-heading > span { color: #6f95a5; font-size: 10px; font-weight: 680; }.admin-overview__workflow-heading h2 { margin: 0; color: var(--color-text-primary); font-size: 19px; font-weight: 720; }
 .admin-task-dispatch,.admin-audit,.admin-settings { display: grid; gap: 16px; min-width: 0; }
-.admin-directory-details { margin: 20px 0; border-top: 1px solid var(--color-border); }.admin-directory-details > summary { padding: 14px 0; color: var(--color-text-secondary); cursor: pointer; font-size: 14px; }.admin-directory-details > summary:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 2px; }
 @keyframes page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 @media(max-width:720px) { .admin-workspace { padding-top: 18px; }.admin-overview__workflow { margin-top: 28px; } }
 </style>

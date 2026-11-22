@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref, watch } from 'vue'
-import { CircleHelp, X } from '@lucide/vue'
+import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { ArrowLeft, CircleHelp, X } from '@lucide/vue'
 import {
   DialogClose,
   DialogContent,
@@ -15,8 +15,10 @@ import { useSessionStore } from '@/stores/session'
 import { useAssessmentStore } from '@/stores/assessment'
 import type { LoginResult } from '@/api/client'
 import { frontendApi } from '@/services/mock-api'
+import { createPublicDemoAccount, isPublicDemoUsername, loadPublicDemoOptions, loadTurnstile, type PublicDemoOptions } from '@/services/public-demo-registration'
 import { useRoute, useRouter } from 'vue-router'
 
+const AppSelect = defineAsyncComponent(() => import('@/components/app/AppSelect.vue'))
 const router = useRouter()
 const route = useRoute()
 const session = useSessionStore()
@@ -30,7 +32,9 @@ const helpOpen = ref(false)
 const errorMessage = ref('')
 const accountError = ref('')
 const passwordError = ref('')
-const authMode = ref<'login' | 'first' | 'recovery' | 'reset' | 'invite'>('login')
+const authMode = ref<'login' | 'first' | 'recovery' | 'reset' | 'invite' | 'demo'>('login')
+const guidedFirstLogin = ref(false)
+const authTitles = { login: '登录工作区', demo: '注册体验账号', first: '首次登录', recovery: '申请账号恢复', reset: '重置密码', invite: '接受教职工邀请' }
 const authSchoolRef = ref('')
 const authUsername = ref('')
 const authClassRef = ref('')
@@ -41,11 +45,57 @@ const newPassword = ref('')
 const confirmPassword = ref('')
 const authNotice = ref('')
 const authModeHeading = ref<HTMLElement | null>(null)
+const publicDemoOptions = ref<PublicDemoOptions | null>(null)
+const demoUsername = ref('')
+const demoAgreement = ref(false)
+const demoChallenge = ref<HTMLElement | null>(null)
+const demoToken = ref('')
+const demoChallengeError = ref('')
+const optionsRequest = new window.AbortController()
+let turnstile: Awaited<ReturnType<typeof loadTurnstile>> | undefined
+let widgetId: string | undefined
+
+const removeChallenge = () => {
+  if (widgetId !== undefined) turnstile?.remove(widgetId)
+  widgetId = undefined
+  demoToken.value = ''
+}
+
+const mountChallenge = async () => {
+  demoChallengeError.value = ''
+  try {
+    const root = demoChallenge.value
+    const options = publicDemoOptions.value
+    if (!root || !options) return
+    const client = await loadTurnstile()
+    if (demoChallenge.value !== root || widgetId !== undefined) return
+    turnstile = client
+    widgetId = client.render(root, {
+      sitekey: options.site_key,
+      action: options.action,
+      language: 'zh-cn',
+      size: root.clientWidth < 300 ? 'compact' : 'flexible',
+      callback: (token) => { demoToken.value = token; demoChallengeError.value = '' },
+      'expired-callback': () => { demoToken.value = '' },
+      'error-callback': () => {
+        demoToken.value = ''
+        demoChallengeError.value = '人机验证暂时不可用，请重试。'
+      },
+    })
+  } catch {
+    if (authMode.value === 'demo') demoChallengeError.value = '人机验证暂时无法加载，请重试。'
+  }
+}
+
 watch(authMode, async (mode) => {
+  if (mode !== 'demo') removeChallenge()
   if (mode !== 'login') { await nextTick(); authModeHeading.value?.focus() }
+  if (mode === 'demo' && authMode.value === 'demo') void mountChallenge()
 })
 const returnToLogin = () => {
   authMode.value = 'login'; authCredential.value = ''; newPassword.value = ''; confirmPassword.value = ''
+  guidedFirstLogin.value = false
+  demoAgreement.value = false; demoUsername.value = ''
   errorMessage.value = ''; authNotice.value = ''
 }
 
@@ -57,9 +107,22 @@ const roleHome: Record<string, string> = {
 const roleLabels: Record<string, string> = {
   student: '学生', teacher: '教师', psychological_specialist: '心理老师', school_admin: '学校管理员',
 }
+const contextOptions = computed(() => (pendingContext.value?.availableContexts ?? []).map((context, index) => ({
+  value: String(index),
+  label: `${context.schoolRef.startsWith('PUBLICDEMO_') ? '合成演示学校' : context.schoolRef}，${roleLabels[context.role]}`,
+})))
 
 onMounted(() => {
   if (session.user?.availableContexts?.length && !session.user.activeContext) pendingContext.value = session.user
+  const setup = route.query.setup
+  if (!pendingContext.value && (setup === 'first' || setup === 'invite' || setup === 'reset')) authMode.value = setup
+  if (!pendingContext.value && import.meta.env.MODE !== 'test' && import.meta.env.VITE_API_MODE !== 'mock') {
+    void loadPublicDemoOptions(optionsRequest.signal).then((options) => { publicDemoOptions.value = options }).catch(() => {})
+  }
+})
+onUnmounted(() => {
+  optionsRequest.abort()
+  removeChallenge()
 })
 
 const enterWorkspace = async (user: LoginResult) => {
@@ -87,8 +150,44 @@ const chooseContext = async () => {
 }
 
 const submit = async () => {
+  if (isLoading.value) return
   errorMessage.value = ''
   authNotice.value = ''
+  if (authMode.value === 'demo') {
+    if (!isPublicDemoUsername(demoUsername.value)) {
+      errorMessage.value = '请输入邮箱，或使用至少 4 位的字母、数字、点、下划线或连字符作为账号。'
+      return
+    }
+    if (newPassword.value.length < 8 || newPassword.value.length > 128 || !newPassword.value.trim()) {
+      errorMessage.value = '请输入 8–128 位密码。'
+      return
+    }
+    if (newPassword.value !== confirmPassword.value) {
+      errorMessage.value = '两次输入的密码不一致，请重新确认。'
+      return
+    }
+    if (!demoToken.value || !demoAgreement.value) {
+      errorMessage.value = '请完成验证，并确认只使用合成数据。'
+      return
+    }
+    isLoading.value = true
+    try {
+      account.value = await createPublicDemoAccount({
+        username: demoUsername.value,
+        password: newPassword.value,
+        turnstile_token: demoToken.value,
+        synthetic_only: demoAgreement.value,
+      })
+      password.value = ''
+      returnToLogin()
+      authNotice.value = '账号创建成功。请使用刚设置的密码登录。'
+    } catch (error) {
+      errorMessage.value = error instanceof Error ? error.message : '注册暂不可用，请稍后再试。'
+      demoToken.value = ''
+      if (widgetId !== undefined) turnstile?.reset(widgetId)
+    } finally { isLoading.value = false }
+    return
+  }
   if (authMode.value !== 'login') {
     if (authMode.value !== 'invite' && (!authSchoolRef.value.trim() || !authUsername.value.trim())) {
       errorMessage.value = '请填写学校编号和账号'
@@ -106,7 +205,9 @@ const submit = async () => {
       if (authMode.value === 'first') {
         if (!frontendApi.completeFirstLogin) throw new Error('首次登录服务暂不可用')
         await frontendApi.completeFirstLogin({ school_ref: authSchoolRef.value.trim(), username: authUsername.value.trim(), credential: authCredential.value, new_password: newPassword.value, confirm_password: confirmPassword.value })
-        authNotice.value = '密码已更新，请返回登录'
+        account.value = authUsername.value.trim()
+        returnToLogin()
+        authNotice.value = '密码已更新，请使用新密码登录'
       } else if (authMode.value === 'recovery') {
         if (!frontendApi.createRecoveryRequest) throw new Error('账号恢复服务暂不可用')
         await frontendApi.createRecoveryRequest({ school_ref: authSchoolRef.value.trim(), username: authUsername.value.trim(), class_ref: authClassRef.value.trim(), reason_code: authReasonCode.value.trim() })
@@ -118,7 +219,8 @@ const submit = async () => {
       } else {
         if (!frontendApi.acceptStaffInvitation) throw new Error('邀请接受服务暂不可用')
         await frontendApi.acceptStaffInvitation({ invitation_ref: authInvitationRef.value.trim(), credential: authCredential.value, new_password: newPassword.value, confirm_password: confirmPassword.value })
-        authNotice.value = '邀请已接受，请使用新密码登录'
+        returnToLogin()
+        authNotice.value = '账号已启用，请使用新密码登录'
       }
       authCredential.value = ''; newPassword.value = ''; confirmPassword.value = ''
     } catch (error) {
@@ -132,7 +234,21 @@ const submit = async () => {
 
   isLoading.value = true
   try {
-    const response = await frontendApi.login({ account: account.value.trim(), password: password.value })
+    const username = account.value.trim()
+    const enteredPassword = password.value
+    if (frontendApi.getInitialLoginSchool && /^(?:PN-)?[A-Za-z0-9_-]{43}$/.test(enteredPassword)) {
+      const schoolRef = await frontendApi.getInitialLoginSchool({ username, credential: enteredPassword })
+      if (schoolRef) {
+        authSchoolRef.value = schoolRef
+        authUsername.value = username
+        authCredential.value = enteredPassword
+        guidedFirstLogin.value = true
+        password.value = ''
+        authMode.value = 'first'
+        return
+      }
+    }
+    const response = await frontendApi.login({ account: username, password: enteredPassword })
     password.value = ''
     if (response.data.availableContexts?.length && !response.data.activeContext) {
       pendingContext.value = response.data
@@ -152,7 +268,7 @@ const submit = async () => {
     <div class="login-content">
       <section class="login-visual" aria-label="PsyNova Workspace">
         <div class="login-visual__tile" aria-hidden="true">
-          <img class="login-visual__flow-track" src="/assets/psynova/gentle-rightward-flow.svg" alt="" aria-hidden="true">
+          <img class="login-visual__flow-track" src="/assets/psynova/gentle-rightward-flow-optimized.svg" alt="" aria-hidden="true" decoding="async">
           <span>PsyNova Workspace</span>
         </div>
       </section>
@@ -163,7 +279,7 @@ const submit = async () => {
             <img src="/assets/psynova/mark.png" alt="" aria-hidden="true">
           </div>
           <div class="login-card__head">
-            <h1 id="login-title">登录工作区</h1>
+            <h1 id="login-title" ref="authModeHeading" tabindex="-1">{{ guidedFirstLogin ? '设置个人密码' : authTitles[pendingContext ? 'login' : authMode] }}</h1>
           </div>
           <form v-if="!pendingContext && authMode === 'login'" class="login-form" novalidate @submit.prevent="submit">
             <div class="login-field">
@@ -198,45 +314,52 @@ const submit = async () => {
             <p v-if="authNotice" class="login-form__success" role="status">{{ authNotice }}</p>
             <AppButton class="login-submit" type="submit" size="md" block :loading="isLoading">登录</AppButton>
           </form>
-          <form v-else-if="!pendingContext" class="login-form login-lifecycle-form" novalidate @submit.prevent="submit">
-            <h2 ref="authModeHeading" tabindex="-1">{{ authMode === 'first' ? '首次登录' : authMode === 'recovery' ? '申请账号恢复' : authMode === 'reset' ? '重置密码' : '接受教职工邀请' }}</h2>
-            <label v-if="authMode !== 'invite'">学校编号<input class="login-input" v-model.trim="authSchoolRef" required autocomplete="organization" aria-label="学校编号"></label>
-            <label v-if="authMode !== 'invite'">账号<input class="login-input" v-model.trim="authUsername" required autocomplete="username" aria-label="账号"></label>
-            <label v-if="authMode === 'recovery'">班级编号<input class="login-input" v-model.trim="authClassRef" required aria-label="班级编号"></label>
-            <label v-if="authMode === 'recovery'">申请原因代码<input class="login-input" v-model.trim="authReasonCode" required aria-label="申请原因代码"></label>
-            <label v-if="authMode === 'invite'">邀请编号<input class="login-input" v-model.trim="authInvitationRef" required aria-label="邀请编号"></label>
+          <form v-else-if="!pendingContext && authMode === 'demo'" class="login-form" novalidate @input="errorMessage = ''" @submit.prevent="submit">
+            <input v-model.trim="demoUsername" class="login-input" required maxlength="128" autocomplete="username" autocapitalize="off" spellcheck="false" aria-label="账号" placeholder="请输入账号或邮箱" :disabled="isLoading">
+            <input v-model="newPassword" class="login-input" required type="password" maxlength="128" autocomplete="new-password" aria-label="密码" placeholder="请输入密码（至少 8 位）" :disabled="isLoading">
+            <input v-model="confirmPassword" class="login-input" required type="password" maxlength="128" autocomplete="new-password" aria-label="确认密码" placeholder="请再次输入密码" :disabled="isLoading">
+            <label class="login-demo-consent"><input v-model="demoAgreement" type="checkbox" :disabled="isLoading"><span>我只使用合成数据，不填写真实学生信息。</span></label>
+            <div ref="demoChallenge"></div>
+            <p v-if="demoChallengeError" class="login-form__error" role="alert">{{ demoChallengeError }}</p>
+            <AppButton v-if="demoChallengeError" variant="quiet" size="sm" @click="removeChallenge(); mountChallenge()">重新加载验证</AppButton>
+            <p v-if="errorMessage" class="login-form__error" role="alert">{{ errorMessage }}</p>
+            <AppButton class="login-submit" type="submit" size="md" block :loading="isLoading">{{ isLoading ? '正在创建体验账号…' : '创建体验账号' }}</AppButton>
+            <AppButton class="login-mode-back" variant="quiet" size="sm" :disabled="isLoading" @click="returnToLogin"><ArrowLeft :size="15" aria-hidden="true" />返回登录</AppButton>
+          </form>
+          <form v-else-if="!pendingContext" class="login-form" novalidate @input="errorMessage = ''" @submit.prevent="submit">
+            <input v-if="authMode !== 'invite' && !guidedFirstLogin" v-model.trim="authSchoolRef" class="login-input" required aria-label="学校编号" placeholder="请输入学校编号">
+            <input v-if="authMode !== 'invite' && !guidedFirstLogin" v-model.trim="authUsername" class="login-input" required autocomplete="username" aria-label="账号" placeholder="请输入账号">
+            <input v-if="authMode === 'recovery'" v-model.trim="authClassRef" class="login-input" required aria-label="班级编号" placeholder="请输入班级编号">
+            <input v-if="authMode === 'recovery'" v-model.trim="authReasonCode" class="login-input" required aria-label="申请原因代码" placeholder="请输入申请原因代码">
+            <input v-if="authMode === 'invite'" v-model.trim="authInvitationRef" class="login-input" required aria-label="邀请编号" placeholder="请输入邀请编号">
             <template v-if="authMode !== 'recovery'">
-              <label>{{ authMode === 'first' ? '初始密码' : '一次性凭据' }}<input class="login-input" v-model="authCredential" required type="password" autocomplete="one-time-code" :aria-label="authMode === 'first' ? '初始密码' : '一次性凭据'"></label>
-              <label>新密码<input class="login-input" v-model="newPassword" required type="password" autocomplete="new-password" aria-label="新密码"></label>
-              <label>确认新密码<input class="login-input" v-model="confirmPassword" required type="password" autocomplete="new-password" aria-label="确认新密码"></label>
+              <input v-if="!guidedFirstLogin" v-model="authCredential" class="login-input" required type="password" autocomplete="one-time-code" :aria-label="authMode === 'first' ? '初始密码' : '一次性凭据'" :placeholder="authMode === 'first' ? '请输入初始密码' : '请输入一次性凭据'">
+              <input v-model="newPassword" class="login-input" required type="password" autocomplete="new-password" aria-label="新密码" placeholder="请输入新密码">
+              <input v-model="confirmPassword" class="login-input" required type="password" autocomplete="new-password" aria-label="确认新密码" placeholder="请再次输入新密码">
             </template>
             <p v-if="errorMessage" class="login-form__error" role="alert" aria-live="assertive">{{ errorMessage }}</p>
             <p v-if="authNotice" class="login-form__success" role="status" aria-live="polite">{{ authNotice }}</p>
             <AppButton class="login-submit" type="submit" size="md" block :loading="isLoading">提交</AppButton>
-            <button class="login-mode-back" type="button" @click="returnToLogin">返回登录</button>
+            <AppButton class="login-mode-back" variant="quiet" size="sm" :disabled="isLoading" @click="returnToLogin"><ArrowLeft :size="15" aria-hidden="true" />返回登录</AppButton>
           </form>
           <form v-else class="login-form school-context-choice" @submit.prevent="chooseContext">
             <label for="school-context">选择学校与角色</label>
-            <select id="school-context" v-model="selectedContext" class="login-input" aria-label="学校与角色">
-              <option disabled value="">请选择</option>
-              <option v-for="(context, index) in pendingContext.availableContexts" :key="`${context.schoolRef}:${context.role}`" :value="String(index)">
-                {{ context.schoolRef }}，{{ roleLabels[context.role] }}
-              </option>
-            </select>
+            <AppSelect id="school-context" v-model="selectedContext" :options="contextOptions" placeholder="请选择" variant="login" :disabled="isLoading" />
             <p v-if="errorMessage" class="login-form__error" role="alert">{{ errorMessage }}</p>
             <AppButton class="login-submit" type="submit" size="md" block :loading="isLoading" :disabled="!selectedContext || !frontendApi.switchActiveContext">继续</AppButton>
           </form>
           <nav v-if="!pendingContext && authMode === 'login'" class="login-lifecycle-links" aria-label="账号帮助">
-            <button type="button" @click="authMode = 'first'; errorMessage = ''; authNotice = ''">首次登录</button>
-            <button type="button" @click="authMode = 'recovery'; errorMessage = ''; authNotice = ''">忘记密码</button>
-            <button type="button" @click="authMode = 'invite'; errorMessage = ''; authNotice = ''">接受教职工邀请</button>
+            <AppButton v-if="publicDemoOptions" variant="quiet" size="sm" @click="authMode = 'demo'; errorMessage = ''; authNotice = ''">注册体验账号</AppButton>
+            <AppButton variant="quiet" size="sm" @click="authMode = 'first'; errorMessage = ''; authNotice = ''">首次登录</AppButton>
+            <AppButton variant="quiet" size="sm" @click="authMode = 'recovery'; errorMessage = ''; authNotice = ''">忘记密码</AppButton>
+            <AppButton variant="quiet" size="sm" @click="authMode = 'invite'; errorMessage = ''; authNotice = ''">接受教职工邀请</AppButton>
           </nav>
-          <button v-if="!pendingContext && authMode === 'recovery'" class="login-mode-switch" type="button" @click="authMode = 'reset'; errorMessage = ''; authNotice = ''">已有管理员批准的恢复凭据？重置密码</button>
+          <AppButton v-if="!pendingContext && authMode === 'recovery'" variant="quiet" size="sm" :disabled="isLoading" @click="authMode = 'reset'; errorMessage = ''; authNotice = ''">已有管理员批准的恢复凭据？重置密码</AppButton>
         </div>
       </section>
     </div>
 
-    <button class="login-help-trigger" type="button" aria-label="帮助" @click="helpOpen = true">
+    <button v-if="authMode !== 'demo'" class="login-help-trigger" type="button" aria-label="帮助" @click="helpOpen = true">
       <CircleHelp :size="18" aria-hidden="true" />
     </button>
 
@@ -396,17 +519,13 @@ const submit = async () => {
   gap: 10px;
 }
 
-.login-lifecycle-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 16px; margin-top: 14px; }
-.login-lifecycle-links button, .login-mode-switch, .login-mode-back { padding: 4px; border: 0; color: var(--color-primary); background: transparent; cursor: pointer; font: inherit; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
+.login-lifecycle-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; margin-top: 8px; }
+.login-mode-back { justify-self: center; }
 .login-page--lifecycle { padding-top: 24px; padding-bottom: 24px; }
 .login-page--lifecycle .login-card { gap: 14px; padding-top: 24px; padding-bottom: 24px; }
-.login-lifecycle-form { gap: 8px; }
-.login-lifecycle-form h2 { margin: 0 0 2px; font-size: 16px; }
-.login-lifecycle-form h2:focus { outline: none; }
-.login-lifecycle-form label { display: grid; gap: 5px; color: var(--color-text-secondary); font-size: 13px; }
-.login-lifecycle-form .login-input { min-height: 46px; padding: 11px 20px; font-size: 16px; }
-.login-lifecycle-form .login-input:focus, .login-lifecycle-form .login-input:focus-visible { border-color: var(--color-primary); outline: none; }
-.login-lifecycle-links button:focus-visible, .login-mode-switch:focus-visible, .login-mode-back:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 2px; }
+.login-demo-consent { display: flex; align-items: center; gap: 8px; color: var(--color-text-secondary); font-size: 13px; line-height: 1.45; cursor: pointer; }
+.login-demo-consent input { flex: 0 0 auto; width: 16px; height: 16px; margin: 0; accent-color: var(--color-primary); }
+.login-lifecycle-links :deep(button:focus-visible), .login-mode-back:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 2px; }
 .login-form__success { margin: 0; padding: 9px 11px; border: .5px solid var(--color-support); color: var(--color-support); background: var(--color-support-wash); font-size: 12px; }
 
 .login-field {

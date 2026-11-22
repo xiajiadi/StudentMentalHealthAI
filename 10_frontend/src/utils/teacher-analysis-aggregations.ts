@@ -1,8 +1,10 @@
 import type { TeacherTaskProgress } from '@/api/client'
 import {
+  publicDemoTaskDefinition,
+  shortTeacherRef,
   taskProgressCount,
-  teacherClassDisplayLabel,
   teacherTaskDisplayLabel,
+  type TeacherOverviewProgressRow,
 } from '@/utils/teacher-task-progress'
 
 export type AnalysisTimeWindow = 'all' | '30' | '90' | '365'
@@ -67,21 +69,27 @@ export const filterTeacherAnalysisRows = (
   })
 }
 
-export const toAnalysisTasks = (rows: TeacherTaskProgress[]): AnalysisTask[] => rows
-  .map((row) => {
+export const toAnalysisTasks = (rows: TeacherOverviewProgressRow[]): AnalysisTask[] => {
+  const classLabels = new Map<string, string>()
+  for (const row of rows) {
+    const label = row.class_label?.trim()
+    if (label && !classLabels.has(row.class_ref)) classLabels.set(row.class_ref, label)
+  }
+  return rows.map((row) => {
     const activeCount = taskProgressCount(row, 'active_enrollment_count')
     const completedCount = taskProgressCount(row, 'completed_count')
     return {
       key: JSON.stringify([row.class_ref, row.task_ref]),
       classRef: row.class_ref,
       taskRef: row.task_ref,
-      classLabel: teacherClassDisplayLabel(row.class_ref, rows),
+      classLabel: classLabels.get(row.class_ref) ?? `班级 ${shortTeacherRef(row.class_ref)}`,
       taskLabel: teacherTaskDisplayLabel(row),
       activeCount,
       completedCount,
       completionRate: activeCount > 0 ? Math.min(100, completedCount / activeCount * 100) : 0,
     }
   })
+}
 
 export const inspectAnalysisCountAnomalies = (rows: TeacherTaskProgress[]): AnalysisCountAnomalies => rows
   .reduce<AnalysisCountAnomalies>((anomalies, row) => {
@@ -119,6 +127,50 @@ export const isUsableVerifiedTaskPair = (pair: VerifiedTaskPair) => {
     && Math.abs(pair.differencePp - (classB.completionRate - classA.completionRate)) <= 0.11
 }
 
+export const pairPublicDemoTasks = (
+  rows: TeacherTaskProgress[],
+  classARef: string,
+  classBRef: string,
+): VerifiedTaskPair[] => {
+  if (!classARef || !classBRef || classARef === classBRef) return []
+  const assignments = new Map<string, {
+    definition: NonNullable<ReturnType<typeof publicDemoTaskDefinition>>
+    classA: SlopeComparisonSide[]
+    classB: SlopeComparisonSide[]
+  }>()
+  for (const row of rows) {
+    if (row.class_ref !== classARef && row.class_ref !== classBRef) continue
+    const definition = publicDemoTaskDefinition(row)
+    if (!definition) continue
+    const key = JSON.stringify([definition.ref, definition.version])
+    const assignment = assignments.get(key) ?? { definition, classA: [], classB: [] }
+    const activeCount = taskProgressCount(row, 'active_enrollment_count')
+    const completedCount = taskProgressCount(row, 'completed_count')
+    const side = row.class_ref === classARef ? assignment.classA : assignment.classB
+    side.push({
+      classRef: row.class_ref,
+      classLabel: definition.classLabel,
+      taskRef: row.task_ref,
+      activeCount,
+      completedCount,
+      completionRate: activeCount ? completedCount / activeCount * 100 : 0,
+    })
+    assignments.set(key, assignment)
+  }
+  return [...assignments].flatMap(([key, { definition, classA, classB }]) => {
+    if (classA.length !== 1 || classB.length !== 1) return []
+    return [{
+      key,
+      taskDefinitionRef: definition.ref,
+      taskDefinitionVersion: definition.version,
+      taskLabel: definition.label,
+      classA: classA[0],
+      classB: classB[0],
+      differencePp: classB[0].completionRate - classA[0].completionRate,
+    }]
+  })
+}
+
 export const validAnalysisTasks = (tasks: AnalysisTask[]) => tasks.filter((task) => task.activeCount > 0)
 
 export const coverageAt = (tasks: AnalysisTask[], threshold: number): CoverageValue | null => {
@@ -134,18 +186,19 @@ export const coverageAt = (tasks: AnalysisTask[], threshold: number): CoverageVa
 export const coverageCurvePoints = (tasks: AnalysisTask[]): [number, number][] => {
   if (!tasks.length) return []
 
-  const rates = [...new Set(tasks.map((task) => task.completionRate))].sort((a, b) => a - b)
-  const ratioAt = (threshold: number) => (coverageAt(tasks, threshold)?.percent ?? 0)
-  const points: [number, number][] = [[0, ratioAt(0)]]
+  const countsByRate = new Map<number, number>()
+  for (const { completionRate } of tasks) {
+    countsByRate.set(completionRate, (countsByRate.get(completionRate) ?? 0) + 1)
+  }
+  const rates = [...countsByRate.keys()].sort((a, b) => a - b)
+  const points: [number, number][] = [[0, 100]]
+  let remaining = tasks.length
 
   for (const rate of rates) {
-    if (rate === 0) {
-      points.push([0, tasks.filter((task) => task.completionRate > 0).length / tasks.length * 100])
-      continue
-    }
-    points.push([rate, ratioAt(rate)])
+    if (rate > 0) points.push([rate, remaining / tasks.length * 100])
+    remaining -= countsByRate.get(rate) ?? 0
     if (rate < 100) {
-      points.push([rate, tasks.filter((task) => task.completionRate > rate).length / tasks.length * 100])
+      points.push([rate, remaining / tasks.length * 100])
     }
   }
 

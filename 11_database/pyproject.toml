@@ -7,6 +7,7 @@ dependencies = [
   "SQLAlchemy==2.0.52",
   "alembic==1.19.2",
   "aiomysql>=0.3,<0.4",
+  "PyMySQL>=1.1,<1.2",
   "cryptography>=45,<47",
 ]
 

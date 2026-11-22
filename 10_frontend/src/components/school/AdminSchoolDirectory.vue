@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import AppSelect from '@/components/app/AppSelect.vue'
+import AppSelectOption from '@/components/app/AppSelectOption.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
@@ -280,10 +282,10 @@ onBeforeUnmount(clearImportState)
         <div class="directory-panel__heading"><h3>批量创建合成账号</h3><span>CSV，最多 100 行</span></div>
         <p class="directory-hint">文件列必须为 login_name、display_name、role。密码列会被拒绝；首次登录凭据需在一次性凭据中批量发行。</p>
         <label class="directory-field" for="school-account-class">可选班级</label>
-        <select id="school-account-class" v-model="selectedClassRef" :disabled="Boolean(pending)">
-          <option value="">不关联班级</option>
-          <option v-for="item in directory.classes" :key="item.class_ref" :value="item.class_ref">{{ item.display_name?.trim() || `班级 ${shortRef(item.class_ref)}` }}</option>
-        </select>
+        <AppSelect id="school-account-class" v-model="selectedClassRef" :disabled="Boolean(pending)">
+          <AppSelectOption value="">不关联班级</AppSelectOption>
+          <AppSelectOption v-for="item in directory.classes" :key="item.class_ref" :value="item.class_ref">{{ item.display_name?.trim() || `班级 ${shortRef(item.class_ref)}` }}</AppSelectOption>
+        </AppSelect>
         <label class="directory-field" for="school-account-csv">CSV 文件（最大 500 KiB）</label>
         <input id="school-account-csv" type="file" accept=".csv,text/csv" :disabled="Boolean(pending)" @change="acceptCsvFile">
         <p v-if="csvError" class="directory-error" role="alert">{{ csvError }}</p>

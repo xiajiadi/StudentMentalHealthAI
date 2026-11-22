@@ -43,6 +43,7 @@ class ActiveContextRequest(BaseModel):
         BackendRole.STUDENT,
         BackendRole.TEACHER,
         BackendRole.PSYCHOLOGICAL_SPECIALIST,
+        BackendRole.GRADE_LEAD,
         BackendRole.ADMIN,
     ]
     school_ref: str = Field(min_length=1, max_length=128)
@@ -66,6 +67,17 @@ class ReauthenticateResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     reauthenticated_at: datetime
+
+
+class InitialLoginContextRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    username: str = Field(min_length=1, max_length=128)
+    credential: SecretStr = Field(min_length=20, max_length=256)
+
+
+class InitialLoginContextResponse(BaseModel):
+    school_ref: str
 
 
 class CompleteInitialLoginRequest(BaseModel):

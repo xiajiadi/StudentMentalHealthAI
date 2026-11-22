@@ -40,6 +40,7 @@ DEFAULT_CAT_PORT = 8180
 # The independent Runtime client enforces a 125-second minimum; keep this
 # launcher aligned with the Linux service's bounded Runtime request window.
 SCHOOL_LLM_READ_TIMEOUT_SECONDS = 135.0
+SCHOOL_SAFETY_READ_TIMEOUT_SECONDS = 45.0
 MIN_SERVICE_PORT = 1024
 MAX_SERVICE_PORT = 65535
 MODULE_ENDPOINTS = {
@@ -182,7 +183,10 @@ def build_school_settings_kwargs(
         "cat": cat_settings,
         "rag": dict(MODULE_ENDPOINTS["rag"]),
         "llm": llm_settings,
-        "safety": dict(MODULE_ENDPOINTS["safety"]),
+        "safety": {
+            **MODULE_ENDPOINTS["safety"],
+            "timeout": {"read": SCHOOL_SAFETY_READ_TIMEOUT_SECONDS},
+        },
     }
 
 

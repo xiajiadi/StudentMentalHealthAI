@@ -6,6 +6,42 @@ export interface TeacherOverviewProgressRow extends TeacherTaskProgress {
   task_group?: string
 }
 
+const publicDemoTaskLabels: Readonly<Record<string, string>> = {
+  BASELINE: '学期基线',
+  ADJUST: '校园适应',
+  ROUTINE: '学习节奏',
+  PEERS: '同伴协作',
+  CAMPUS: '校园体验',
+  COPING: '压力与应对',
+  GOALS: '学习目标',
+}
+
+export const publicDemoTaskDefinition = (row: TeacherTaskProgress) => {
+  const match = /^TASK_([a-f0-9]{64})_(0[1-9]|1[0-2])(?:_(ADJUST|ROUTINE|PEERS|CAMPUS|COPING|GOALS))?$/.exec(row.task_ref)
+  if (!match) return null
+  const [, school, position, topic = 'BASELINE'] = match
+  const index = Number(position) - 1
+  const grade = 7 + Math.floor(index / 4)
+  const classNumber = 1 + index % 4
+  if (row.class_ref !== `DEMO-${grade}-0${classNumber}`) return null
+  return {
+    ref: `PUBLICDEMO_${school}_${topic}`,
+    label: publicDemoTaskLabels[topic],
+    version: topic === 'BASELINE' ? 'public-baseline-v1' : 'public-rounds-v1',
+    classLabel: `${grade} 年级 ${classNumber} 班`,
+  }
+}
+
+export const withTeacherProgressLabels = (row: TeacherTaskProgress): TeacherOverviewProgressRow => {
+  const definition = publicDemoTaskDefinition(row)
+  return definition ? {
+    ...row,
+    class_label: definition.classLabel,
+    task_label: definition.label,
+    task_group: definition.label,
+  } : row
+}
+
 export const teacherChartColors = {
   blue: '#2563eb',
   teal: '#0f766e',

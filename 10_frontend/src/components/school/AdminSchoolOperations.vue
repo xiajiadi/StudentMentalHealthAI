@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import AppSelect from '@/components/app/AppSelect.vue'
+import AppSelectOption from '@/components/app/AppSelectOption.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { CircleHelp, RotateCcw, UsersRound } from '@lucide/vue'
 import AppButton from '@/components/app/AppButton.vue'
@@ -409,10 +411,10 @@ onBeforeUnmount(() => { disposed = true; activationRequestGeneration += 1 })
           <p class="school-form__hint">创建后会显示班级短号，完整编号由系统管理。</p>
           <AppButton class="school-create-class" size="sm" :loading="pending === 'create-class'" @click="createClass">创建班级</AppButton>
           <label class="school-form__label" for="school-class-select">当前班级</label>
-          <select id="school-class-select" v-model="selectedClassRef" :disabled="!classes.length || Boolean(pending)">
-            <option value="" disabled>请选择班级</option>
-            <option v-for="item in classes" :key="item.class_ref" :value="item.class_ref">{{ item.display_name?.trim() || classLabel(item.class_ref) }}，学生 {{ item.active_student_count }}，教师 {{ item.active_teacher_count }}</option>
-          </select>
+          <AppSelect id="school-class-select" v-model="selectedClassRef" :disabled="!classes.length || Boolean(pending)">
+            <AppSelectOption value="" disabled>请选择班级</AppSelectOption>
+            <AppSelectOption v-for="item in classes" :key="item.class_ref" :value="item.class_ref">{{ item.display_name?.trim() || classLabel(item.class_ref) }}，学生 {{ item.active_student_count }}，教师 {{ item.active_teacher_count }}</AppSelectOption>
+          </AppSelect>
           <p v-if="!classes.length" class="school-empty">当前没有可用班级。创建班级后，可分配同校人员并发布任务。</p>
         </AppCard>
 
@@ -420,10 +422,10 @@ onBeforeUnmount(() => { disposed = true; activationRequestGeneration += 1 })
           <div class="school-panel__heading"><UsersRound :size="18" aria-hidden="true" /><div><h3>人员分配</h3><p>选择服务端返回的同校在用账号，不输入学校或角色范围。</p></div></div>
           <div class="school-form">
             <label for="school-student-select">学生</label>
-            <div class="school-form__row"><select id="school-student-select" v-model="selectedStudent" :disabled="!activeClass || Boolean(pending)"><option value="">选择学生</option><option v-for="member in students" :key="member.user_id" :value="member.user_id">{{ member.display_name?.trim() || `学生账号 ${shortRef(member.user_id)}` }}</option></select><AppButton variant="secondary" size="sm" :disabled="!activeClass || !selectedStudent" :loading="pending === 'assign-student'" @click="assignMember('student')">分配</AppButton></div>
+            <div class="school-form__row"><AppSelect id="school-student-select" v-model="selectedStudent" :disabled="!activeClass || Boolean(pending)"><AppSelectOption value="">选择学生</AppSelectOption><AppSelectOption v-for="member in students" :key="member.user_id" :value="member.user_id">{{ member.display_name?.trim() || `学生账号 ${shortRef(member.user_id)}` }}</AppSelectOption></AppSelect><AppButton variant="secondary" size="sm" :disabled="!activeClass || !selectedStudent" :loading="pending === 'assign-student'" @click="assignMember('student')">分配</AppButton></div>
             <p v-if="!students.length" class="school-form__hint">没有可分配的同校学生账号。</p>
             <label for="school-teacher-select">教师</label>
-            <div class="school-form__row"><select id="school-teacher-select" v-model="selectedTeacher" :disabled="!activeClass || Boolean(pending)"><option value="">选择教师</option><option v-for="member in teachers" :key="member.user_id" :value="member.user_id">{{ member.display_name?.trim() || `教师账号 ${shortRef(member.user_id)}` }}</option></select><AppButton variant="secondary" size="sm" :disabled="!activeClass || !selectedTeacher" :loading="pending === 'assign-teacher'" @click="assignMember('teacher')">分配</AppButton></div>
+            <div class="school-form__row"><AppSelect id="school-teacher-select" v-model="selectedTeacher" :disabled="!activeClass || Boolean(pending)"><AppSelectOption value="">选择教师</AppSelectOption><AppSelectOption v-for="member in teachers" :key="member.user_id" :value="member.user_id">{{ member.display_name?.trim() || `教师账号 ${shortRef(member.user_id)}` }}</AppSelectOption></AppSelect><AppButton variant="secondary" size="sm" :disabled="!activeClass || !selectedTeacher" :loading="pending === 'assign-teacher'" @click="assignMember('teacher')">分配</AppButton></div>
             <p v-if="!teachers.length" class="school-form__hint">没有可分配的同校教师账号。</p>
           </div>
         </AppCard>
@@ -440,10 +442,10 @@ onBeforeUnmount(() => { disposed = true; activationRequestGeneration += 1 })
           <section v-if="publishStep === 0" class="school-task-step-panel" aria-labelledby="school-task-step-title">
             <div><span class="school-task-step-panel__eyebrow">第一步</span><h4 id="school-task-step-title">选择班级与测评配置</h4></div>
             <label for="school-task-class">发布班级</label>
-            <select id="school-task-class" v-model="selectedClassRef" :disabled="!classes.length || Boolean(pending)" required>
-              <option value="" disabled>请选择班级</option>
-              <option v-for="item in classes" :key="item.class_ref" :value="item.class_ref">{{ item.display_name?.trim() || classLabel(item.class_ref) }}，学生 {{ item.active_student_count }}，教师 {{ item.active_teacher_count }}</option>
-            </select>
+            <AppSelect id="school-task-class" v-model="selectedClassRef" :disabled="!classes.length || Boolean(pending)" required>
+              <AppSelectOption value="" disabled>请选择班级</AppSelectOption>
+              <AppSelectOption v-for="item in classes" :key="item.class_ref" :value="item.class_ref">{{ item.display_name?.trim() || classLabel(item.class_ref) }}，学生 {{ item.active_student_count }}，教师 {{ item.active_teacher_count }}</AppSelectOption>
+            </AppSelect>
             <fieldset class="school-task-mode" :disabled="Boolean(pending)">
               <legend>测评配置</legend>
               <label><input id="school-task-mode-fixture" v-model="taskBindingMode" type="radio" value="FIXTURE">固定工程模板</label>
@@ -455,10 +457,10 @@ onBeforeUnmount(() => { disposed = true; activationRequestGeneration += 1 })
               <div v-else-if="activationState === 'error'" class="school-empty school-empty--error" role="alert">{{ activationError }}<AppButton variant="secondary" size="sm" type="button" @click="loadEligibleActivations(true)">重新读取</AppButton></div>
               <template v-else>
                 <label for="school-task-activation">已启用版本</label>
-                <select id="school-task-activation" v-model="selectedActivationRef" :disabled="!activeClass || Boolean(pending) || activationState !== 'ready' || !eligibleActivations.length">
-                  <option value="">请选择版本</option>
-                  <option v-for="activation in eligibleActivations" :key="activation.activation_ref" :value="activation.activation_ref">{{ activation.plan_name }} v{{ activation.plan_version_number }}，{{ activation.bank_name }} v{{ activation.bank_version_number }}</option>
-                </select>
+                <AppSelect id="school-task-activation" v-model="selectedActivationRef" :disabled="!activeClass || Boolean(pending) || activationState !== 'ready' || !eligibleActivations.length">
+                  <AppSelectOption value="">请选择版本</AppSelectOption>
+                  <AppSelectOption v-for="activation in eligibleActivations" :key="activation.activation_ref" :value="activation.activation_ref">{{ activation.plan_name }} v{{ activation.plan_version_number }}，{{ activation.bank_name }} v{{ activation.bank_version_number }}</AppSelectOption>
+                </AppSelect>
                 <p v-if="activationState === 'ready' && !eligibleActivations.length" class="school-form__hint">当前没有可用于新任务的启用版本。</p>
                 <AppButton v-if="activationHasMore" variant="secondary" size="sm" type="button" :disabled="activationState === 'loading'" @click="loadEligibleActivations(false)">读取更多版本</AppButton>
               </template>

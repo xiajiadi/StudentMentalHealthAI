@@ -37,6 +37,8 @@ from school_schema import (
     RESEARCH_REVIEW_FEEDBACK_REVISION,
     SCHOOL_ACCOUNT_LIFECYCLE_REVISION,
     SCHOOL_FEEDBACK_PUBLICATION_REVISION,
+    SCHOOL_SUPPORT_REVISION,
+    STUDENT_ACTIONS_GRADE_LEADERS_REVISION,
 )
 
 REVISION_TABLE = "database_alembic_version"
@@ -134,6 +136,18 @@ SCHOOL_ACCOUNT_LIFECYCLE_TABLES = frozenset(
         "school_password_recovery_tickets",
     }
 )
+SCHOOL_SUPPORT_TABLES = frozenset(
+    {
+        "school_support_cases",
+        "school_support_actions",
+        "school_support_events",
+    }
+)
+SCHOOL_GRADE_LEADER_TABLES = frozenset({"school_grade_leaders"})
+SCHOOL_STUDENT_ACTION_COLUMNS = {
+    "school_classes": ("grade_ref",),
+    "school_support_actions": ("recipient_subject_id",),
+}
 SCHOOL_ACCOUNT_LIFECYCLE_COLUMNS = {
     "accounts": (
         "failed_login_count",
@@ -270,6 +284,8 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
         | RESEARCH_EDUCATION_OUTPUT_REVIEW_TABLES
         | INDEPENDENT_EDUCATION_REVIEW_TABLES
         | SCHOOL_ACCOUNT_LIFECYCLE_TABLES
+        | SCHOOL_SUPPORT_TABLES
+        | SCHOOL_GRADE_LEADER_TABLES
     )
     if revision not in SUPPORTED_BACKUP_REVISIONS:
         raise ValueError("Unsupported restore revision")
@@ -277,7 +293,12 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
     # Keep the requested revision so older backups never acquire tables or
     # columns introduced by a later migration.
     requested_revision = revision
-    if revision == SCHOOL_ACCOUNT_LIFECYCLE_REVISION or revision == INDEPENDENT_EDUCATION_REVIEW_REVISION:
+    if revision in {
+        SCHOOL_ACCOUNT_LIFECYCLE_REVISION,
+        SCHOOL_SUPPORT_REVISION,
+        STUDENT_ACTIONS_GRADE_LEADERS_REVISION,
+        INDEPENDENT_EDUCATION_REVIEW_REVISION,
+    }:
         revision = RESEARCH_EDUCATION_OUTPUT_REVIEW_REVISION
     if (
         len(metadata_tables) != len(expected_current)
@@ -291,12 +312,33 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
         if (
             table_name in INDEPENDENT_EDUCATION_REVIEW_TABLES
             and requested_revision
-            not in {INDEPENDENT_EDUCATION_REVIEW_REVISION, SCHOOL_ACCOUNT_LIFECYCLE_REVISION}
+            not in {
+                INDEPENDENT_EDUCATION_REVIEW_REVISION,
+                SCHOOL_ACCOUNT_LIFECYCLE_REVISION,
+                SCHOOL_SUPPORT_REVISION,
+                STUDENT_ACTIONS_GRADE_LEADERS_REVISION,
+            }
         ):
             continue
         if (
             table_name in SCHOOL_ACCOUNT_LIFECYCLE_TABLES
-            and requested_revision != SCHOOL_ACCOUNT_LIFECYCLE_REVISION
+            and requested_revision
+            not in {
+                SCHOOL_ACCOUNT_LIFECYCLE_REVISION,
+                SCHOOL_SUPPORT_REVISION,
+                STUDENT_ACTIONS_GRADE_LEADERS_REVISION,
+            }
+        ):
+            continue
+        if (
+            table_name in SCHOOL_SUPPORT_TABLES
+            and requested_revision
+            not in {SCHOOL_SUPPORT_REVISION, STUDENT_ACTIONS_GRADE_LEADERS_REVISION}
+        ):
+            continue
+        if (
+            table_name in SCHOOL_GRADE_LEADER_TABLES
+            and requested_revision != STUDENT_ACTIONS_GRADE_LEADERS_REVISION
         ):
             continue
         if revision not in {
@@ -478,7 +520,11 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
         columns = tuple(column.name for column in table.columns)
         nullable = frozenset(column.name for column in table.columns if column.nullable)
         lifecycle_columns = SCHOOL_ACCOUNT_LIFECYCLE_COLUMNS.get(table_name, ())
-        if requested_revision != SCHOOL_ACCOUNT_LIFECYCLE_REVISION:
+        if requested_revision not in {
+            SCHOOL_ACCOUNT_LIFECYCLE_REVISION,
+            SCHOOL_SUPPORT_REVISION,
+            STUDENT_ACTIONS_GRADE_LEADERS_REVISION,
+        }:
             columns = tuple(column for column in columns if column not in lifecycle_columns)
             nullable = nullable - set(lifecycle_columns)
         if revision not in {
@@ -604,11 +650,37 @@ def _load_trusted_tables(revision: str = SUPPORTED_REVISION) -> dict[str, TableS
         if revision == SUPPORTED_REVISION and table_name in DIRECTORY_NAME_TABLES:
             columns = tuple(column for column in columns if column != "display_name")
             nullable = nullable - {"display_name"}
-        if requested_revision == SCHOOL_ACCOUNT_LIFECYCLE_REVISION and lifecycle_columns:
+        if requested_revision in {
+            SCHOOL_ACCOUNT_LIFECYCLE_REVISION,
+            SCHOOL_SUPPORT_REVISION,
+            STUDENT_ACTIONS_GRADE_LEADERS_REVISION,
+        } and lifecycle_columns:
             # 0025 appends these fields with ALTER TABLE. Match MySQL's physical
             # order rather than the declarative ORM order.
             columns = tuple(column for column in columns if column not in lifecycle_columns)
             columns += tuple(column for column in lifecycle_columns if column in table.c)
+        student_action_columns = SCHOOL_STUDENT_ACTION_COLUMNS.get(table_name, ())
+        if student_action_columns:
+            if requested_revision == STUDENT_ACTIONS_GRADE_LEADERS_REVISION:
+                columns = tuple(
+                    column for column in columns if column not in student_action_columns
+                )
+                columns += tuple(
+                    column for column in student_action_columns if column in table.c
+                )
+            else:
+                columns = tuple(
+                    column for column in columns if column not in student_action_columns
+                )
+                nullable = nullable - set(student_action_columns)
+        if (
+            requested_revision != STUDENT_ACTIONS_GRADE_LEADERS_REVISION
+            and table_name == "school_support_actions"
+        ):
+            nullable = nullable - {
+                "assigned_teacher_membership_role_id",
+                "assigned_class_teacher_id",
+            }
         primary_key = tuple(column.name for column in table.primary_key.columns)
         foreign_keys = tuple(
             ForeignKeySpec(

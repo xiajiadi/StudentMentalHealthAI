@@ -26,6 +26,8 @@ from .schemas import (
     CompleteInitialLoginRequest,
     CompleteInitialLoginResponse,
     CsrfResponse,
+    InitialLoginContextRequest,
+    InitialLoginContextResponse,
     LoginRequest,
     LoginResponse,
     LogoutResponse,
@@ -103,6 +105,28 @@ async def login(request: Request, payload: LoginRequest) -> JSONResponse:
     response = JSONResponse(content=envelope(request, data), status_code=200)
     _set_session_cookie(response, container.settings, session.session_id)
     return response
+
+
+@router.post(
+    "/initial-login-context",
+    response_model=ApiEnvelope[InitialLoginContextResponse],
+    include_in_schema=False,
+    openapi_extra=PUBLIC_SECURITY_OPENAPI_EXTRA,
+    responses=problem_responses(ErrorCode.AUTH_INVALID_CREDENTIALS, ErrorCode.RATE_LIMITED, ErrorCode.CSRF_FAILED),
+)
+async def initial_login_context(request: Request, payload: InitialLoginContextRequest) -> JSONResponse:
+    container = request.app.state.container
+    validate_mutation_origin(request, container.settings)
+    host = request.client.host if request.client else "unknown"
+    container.rate_limiter.check("login", f"{host}:{credential_identity(payload.username)}")
+    school_ref = await container.school_directory.initial_login_school(
+        payload.username,
+        hashlib.sha256(payload.credential.get_secret_value().encode("utf-8")).digest(),
+    )
+    return JSONResponse(
+        envelope(request, InitialLoginContextResponse(school_ref=school_ref)),
+        headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
+    )
 
 
 @router.post(

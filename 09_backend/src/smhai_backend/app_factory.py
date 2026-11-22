@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,7 +20,9 @@ from smhai_backend.core.errors import (
     validation_error_handler,
 )
 from smhai_backend.core.middleware import RequestContextMiddleware, SecurityHeadersMiddleware
+from smhai_backend.core.rate_limit import InMemoryRateLimiter
 from smhai_backend.domains.assessment.router import router as assessment_router
+from smhai_backend.domains.auth.public_demo import router as public_demo_router
 from smhai_backend.domains.auth.router import router as auth_router
 from smhai_backend.domains.cat_assets.router import router as cat_assets_router
 from smhai_backend.domains.cat_management.router import router as cat_management_router
@@ -73,6 +77,7 @@ from smhai_backend.domains.school_research_sources.router import (
 from smhai_backend.domains.school_research_tasks.router import (
     router as school_research_tasks_router,
 )
+from smhai_backend.domains.school_support.router import router as school_support_router
 from smhai_backend.domains.school_tasks.router import router as school_tasks_router
 from smhai_backend.domains.support.router import router as support_router
 from smhai_backend.domains.teacher.router import router as teacher_router
@@ -122,12 +127,17 @@ def create_app(
     app.add_middleware(RequestContextMiddleware, settings=settings)
     app.include_router(health_router)
     app.include_router(auth_router, prefix=settings.api_prefix)
+    if settings.public_demo.site_key is not None:
+        app.state.public_demo_limiter = InMemoryRateLimiter(max_requests=12, window_seconds=60)
+        app.state.public_demo_writes = asyncio.Semaphore(2)
+        app.include_router(public_demo_router, prefix=settings.api_prefix)
     app.include_router(assessment_router, prefix=settings.api_prefix)
     app.include_router(support_router, prefix=settings.api_prefix)
     # These endpoints are a local M0 projection extension, not a change to the
     # frozen shared api.v1 OpenAPI contract.
     app.include_router(teacher_router, prefix=settings.api_prefix, include_in_schema=False)
     app.include_router(school_tasks_router, prefix=settings.api_prefix, include_in_schema=False)
+    app.include_router(school_support_router, prefix=settings.api_prefix, include_in_schema=False)
     app.include_router(school_research_router, prefix=settings.api_prefix, include_in_schema=False)
     app.include_router(
         school_research_cohorts_router, prefix=settings.api_prefix, include_in_schema=False

@@ -1,6 +1,7 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import type { TeacherTaskProgress } from '@/api/client'
 import { frontendApi } from '@/services/mock-api'
+import { withTeacherProgressLabels } from '@/utils/teacher-task-progress'
 
 export type TeacherTaskProgressState = 'loading' | 'ready' | 'error'
 const teacherPreviewSourceKey = 'psynova.teacher.preview.dataMode'
@@ -68,7 +69,7 @@ export function useTeacherTaskProgress(options: { autoLoad?: boolean; demoMode?:
     try {
       const result = await frontendApi.listTeacherSchoolTaskProgress()
       if (generation !== requestGeneration) return
-      rows.value = result.data
+      rows.value = result.data.map(withTeacherProgressLabels)
       state.value = 'ready'
     } catch (error) {
       if (generation !== requestGeneration) return

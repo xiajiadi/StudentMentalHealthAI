@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import (
     BaseModel,
@@ -221,12 +221,15 @@ class StaffInvitationActionRequest(RequestModel):
         return value
 
 
+MAX_STAFF_ROSTER_ROWS = 3000
+
+
 class StaffRosterRow(RequestModel):
-    row_no: int = Field(gt=0, le=200)
+    row_no: int = Field(gt=0, le=MAX_STAFF_ROSTER_ROWS)
     employee_ref: str = Field(min_length=1, max_length=128)
     display_name: str = Field(min_length=1, max_length=120)
     role: Literal["teacher", "psychological_specialist"]
-    class_refs: list[str] = Field(default_factory=list, max_length=50)
+    class_refs: list[Annotated[str, Field(max_length=128)]] = Field(default_factory=list, max_length=50)
 
     @field_validator("employee_ref")
     @classmethod
@@ -262,7 +265,7 @@ class StaffRosterRow(RequestModel):
 
 
 class StaffRosterImportRequest(RequestModel):
-    rows: list[StaffRosterRow] = Field(min_length=1, max_length=200)
+    rows: list[StaffRosterRow] = Field(min_length=1, max_length=MAX_STAFF_ROSTER_ROWS)
 
     @model_validator(mode="after")
     def unique_rows_and_employees(self) -> StaffRosterImportRequest:
@@ -285,9 +288,23 @@ class StaffRosterCredentialDto(RequestModel):
 
 
 class StaffRosterImportResponse(RequestModel):
-    created_count: int = Field(ge=1, le=200)
-    credentials: list[StaffRosterCredentialDto] = Field(min_length=1, max_length=200)
+    created_count: int = Field(ge=1, le=MAX_STAFF_ROSTER_ROWS)
+    credentials: list[StaffRosterCredentialDto] = Field(min_length=1, max_length=MAX_STAFF_ROSTER_ROWS)
     delivery_status: Literal["MANUAL_HANDOFF_REQUIRED"]
+
+
+class StaffInvitationSearchRequest(RequestModel):
+    search: str = Field(min_length=1, max_length=128)
+    limit: int = Field(default=31, ge=1, le=100)
+    offset: int = Field(default=0, ge=0, le=100_000)
+
+    @field_validator("search")
+    @classmethod
+    def nonblank_search(cls, value: str) -> str:
+        result = value.strip()
+        if not result:
+            raise ValueError("search must not be blank")
+        return result
 
 
 class RecoveryTicketDto(BaseModel):

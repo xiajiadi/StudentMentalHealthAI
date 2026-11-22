@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import AppSelect from '@/components/app/AppSelect.vue'
+import AppSelectOption from '@/components/app/AppSelectOption.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ChevronLeft, ChevronRight, Clock3, Search, ShieldCheck, X } from '@lucide/vue'
 import AppButton from '@/components/app/AppButton.vue'
@@ -185,7 +187,7 @@ function setAssignmentOpen(open: boolean) {
   assignmentBlocked.value = false
 }
 
-function setAssignmentClass(event: Event) {
+function setAssignmentClass(value: string | undefined) {
   const target = event.target
   if (!(target instanceof HTMLSelectElement) || !assignTarget.value) return
   selectedClasses.value = { ...selectedClasses.value, [assignTarget.value.case_ref]: target.value }
@@ -341,15 +343,15 @@ defineExpose({ refresh })
       <div class="safety-assignments__dialog">
         <p class="safety-assignments__dialog-ref">事项 · {{ assignTarget?.case_ref.slice(-6) }}</p>
         <label for="safety-assignment-class">班级</label>
-        <select id="safety-assignment-class" :value="assignTarget ? caseClassValue(assignTarget) : ''" :disabled="busy || Boolean(failedOperation) || assignmentBlocked" @change="setAssignmentClass">
-          <option value="">选择班级</option>
-          <option v-for="item in classes" :key="item.class_ref" :value="item.class_ref">{{ classLabel(item) }}</option>
-        </select>
+        <AppSelect id="safety-assignment-class" :model-value="assignTarget ? caseClassValue(assignTarget) : ''" :disabled="busy || Boolean(failedOperation) || assignmentBlocked" @update:model-value="setAssignmentClass">
+          <AppSelectOption value="">选择班级</AppSelectOption>
+          <AppSelectOption v-for="item in classes" :key="item.class_ref" :value="item.class_ref">{{ classLabel(item) }}</AppSelectOption>
+        </AppSelect>
         <label for="safety-assignment-specialist">专业人员</label>
-        <select id="safety-assignment-specialist" v-model="specialistUserId" :disabled="busy || Boolean(failedOperation) || assignmentBlocked || !specialists.length">
-          <option value="">选择授权心理老师</option>
-          <option v-for="person in specialists" :key="person.user_id" :value="person.user_id">{{ specialistLabel(person) }}</option>
-        </select>
+        <AppSelect id="safety-assignment-specialist" v-model="specialistUserId" :disabled="busy || Boolean(failedOperation) || assignmentBlocked || !specialists.length">
+          <AppSelectOption value="">选择授权心理老师</AppSelectOption>
+          <AppSelectOption v-for="person in specialists" :key="person.user_id" :value="person.user_id">{{ specialistLabel(person) }}</AppSelectOption>
+        </AppSelect>
         <AppStatusCallout v-if="operationError" tone="critical" title="分配未完成" :body="operationError" role="alert" />
         <AppButton v-if="failedOperation" variant="secondary" :disabled="busy" :loading="busy" @click="retryAssignment">使用相同请求安全重试</AppButton>
         <div class="safety-assignments__dialog-actions">

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import AppSelect from '@/components/app/AppSelect.vue'
+import AppSelectOption from '@/components/app/AppSelectOption.vue'
 import { computed, onMounted, ref } from 'vue'
 import { ArrowRight } from '@lucide/vue'
 import { FileCheck2 } from '@lucide/vue'
@@ -55,8 +57,8 @@ onMounted(load)
 
       <AppCard class="queue-filters">
         <div class="queue-filters__label"><Filter :size="16" aria-hidden="true" /><span>筛选当前队列</span></div>
-        <label class="queue-select" for="status-filter"><span>状态</span><select id="status-filter" v-model="statusFilter"><option value="all">全部状态</option><option value="PENDING">待处理</option><option value="IN_REVIEW">复核中</option><option value="APPROVED">已通过</option><option value="REJECTED">已退回</option></select></label>
-        <label class="queue-select" for="priority-filter"><span>优先级</span><select id="priority-filter" v-model="priorityFilter"><option value="all">全部优先级</option><option value="NORMAL">常规</option><option value="HIGH">需要确认</option><option value="CRITICAL">紧急流程</option></select></label>
+        <label class="queue-select" for="status-filter"><span>状态</span><AppSelect id="status-filter" v-model="statusFilter"><AppSelectOption value="all">全部状态</AppSelectOption><AppSelectOption value="PENDING">待处理</AppSelectOption><AppSelectOption value="IN_REVIEW">复核中</AppSelectOption><AppSelectOption value="APPROVED">已通过</AppSelectOption><AppSelectOption value="REJECTED">已退回</AppSelectOption></AppSelect></label>
+        <label class="queue-select" for="priority-filter"><span>优先级</span><AppSelect id="priority-filter" v-model="priorityFilter"><AppSelectOption value="all">全部优先级</AppSelectOption><AppSelectOption value="NORMAL">常规</AppSelectOption><AppSelectOption value="HIGH">需要确认</AppSelectOption><AppSelectOption value="CRITICAL">紧急流程</AppSelectOption></AppSelect></label>
         <span class="queue-filters__count">显示 {{ filteredCases.length }} / {{ data.cases.length }} 条</span>
       </AppCard>
 

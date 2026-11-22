@@ -8,10 +8,12 @@ from datetime import timedelta
 from typing import Any
 from uuid import uuid4
 
+from fastapi.concurrency import run_in_threadpool
 from pwdlib import PasswordHash
 
 from smhai_backend.adapters.school_directory import SchoolDirectoryPersistenceAdapter
 from smhai_backend.core.errors import ErrorCode, error
+from smhai_backend.domains.school_account_lifecycle.schemas import MAX_STAFF_ROSTER_ROWS
 
 STAFF_RECOVERY_RESOURCE_PREFIX = "STAFF_RECOVERY_"
 
@@ -78,7 +80,8 @@ class SchoolAccountLifecyclePersistenceAdapter:
 
     @staticmethod
     def _token() -> tuple[str, bytes]:
-        value = secrets.token_urlsafe(32)
+        # The alphabetic prefix keeps the exact credential intact in spreadsheet exports.
+        value = "PN-" + secrets.token_urlsafe(32)
         return value, hashlib.sha256(value.encode("utf-8")).digest()
 
     @staticmethod
@@ -385,7 +388,11 @@ class SchoolAccountLifecyclePersistenceAdapter:
         m = self._db_models
         e = self._db_enums
         now = self._utc_now()
-        if not isinstance(ttl_seconds, int) or ttl_seconds <= 0 or not 1 <= len(rows) <= 200:
+        if (
+            not isinstance(ttl_seconds, int)
+            or ttl_seconds <= 0
+            or not 1 <= len(rows) <= MAX_STAFF_ROSTER_ROWS
+        ):
             raise error(ErrorCode.VALIDATION_FAILED, detail="staff import size is invalid")
 
         row_refs = [row.employee_ref.casefold() for row in rows]
@@ -466,39 +473,56 @@ class SchoolAccountLifecyclePersistenceAdapter:
                 )
 
             expires_at = now + timedelta(seconds=ttl_seconds)
-            hasher = PasswordHash.recommended()
-            output: list[dict[str, Any]] = []
-            for row in rows:
-                login_name = self._login_name(actor.school_ref, row.employee_ref)
-                invitation_ref = f"INV_{uuid4().hex}"
-                raw_token, token_hash = self._token()
-                account = m.Account(
+            # Suspended accounts cannot log in. Acceptance replaces the discarded
+            # placeholder password after verifying a unique, one-time credential.
+            pending_hash = await run_in_threadpool(
+                PasswordHash.recommended().hash, secrets.token_urlsafe(48)
+            )
+            accounts = [
+                m.Account(
                     login_name=login_name,
-                    password_hash=hasher.hash(secrets.token_urlsafe(48)),
+                    password_hash=pending_hash,
                     status=e.AccountStatus.SUSPENDED.value,
                     must_change_password=True,
                 )
+                for login_name in login_names
+            ]
+            for account in accounts:
                 uow.session.add(account)
-                await uow.session.flush()
-                membership = m.AccountSchoolMembership(
+            await uow.session.flush()
+            memberships = [
+                m.AccountSchoolMembership(
                     account_id=account.id,
                     school_id=actor.school_id,
                     display_name=row.display_name,
                     status="INACTIVE",
                     valid_from=now,
                 )
+                for row, account in zip(rows, accounts, strict=True)
+            ]
+            for membership in memberships:
                 uow.session.add(membership)
-                await uow.session.flush()
-                role = m.MembershipRole(
+            await uow.session.flush()
+            roles = [
+                m.MembershipRole(
                     membership_id=membership.id,
                     school_id=actor.school_id,
                     role_code=row.role,
                     status="INACTIVE",
                     valid_from=now,
                 )
+                for row, membership in zip(rows, memberships, strict=True)
+            ]
+            for role in roles:
                 uow.session.add(role)
-                await uow.session.flush()
+            await uow.session.flush()
 
+            output: list[dict[str, Any]] = []
+            invitations = []
+            token_hashes = []
+            for row, account, membership, role in zip(rows, accounts, memberships, roles, strict=True):
+                invitation_ref = f"INV_{uuid4().hex}"
+                raw_token, token_hash = self._token()
                 contact = uow.protection.encrypt_json(
                     {"contact": f"{row.employee_ref}@example.invalid"},
                     payload_schema_version="school-staff-contact.v1",
@@ -522,9 +546,24 @@ class SchoolAccountLifecyclePersistenceAdapter:
                     expires_at=expires_at,
                     trace_id=trace_id,
                 )
+                invitations.append(invitation)
+                token_hashes.append(token_hash)
+                output.append(
+                    {
+                        "invitation_ref": invitation_ref,
+                        "user_id": f"USER_{account.public_id}",
+                        "login_name": account.login_name,
+                        "display_name": row.display_name,
+                        "role": row.role,
+                        "class_refs": list(row.class_refs),
+                        "credential": raw_token,
+                        "expires_at": expires_at,
+                    }
+                )
+            for invitation in invitations:
                 uow.session.add(invitation)
-                await uow.session.flush()
-                class_refs: list[str] = []
+            await uow.session.flush()
+            for row, invitation, token_hash in zip(rows, invitations, token_hashes, strict=True):
                 for class_ref in row.class_refs:
                     uow.session.add(
                         m.SchoolStaffInvitationClass(
@@ -533,11 +572,10 @@ class SchoolAccountLifecyclePersistenceAdapter:
                             class_id=classes_by_ref[class_ref].id,
                         )
                     )
-                    class_refs.append(class_ref)
                 uow.session.add(
                     m.SchoolAccountCredential(
                         credential_ref=f"CRED_{uuid4().hex}",
-                        account_id=account.id,
+                        account_id=invitation.account_id,
                         school_id=actor.school_id,
                         issued_by_membership_role_id=issuer_role_id,
                         purpose="STAFF_INVITATION",
@@ -549,7 +587,8 @@ class SchoolAccountLifecyclePersistenceAdapter:
                         trace_id=trace_id,
                     )
                 )
-                await uow.session.flush()
+            await uow.session.flush()
+            for invitation in invitations:
                 await self._audit(
                     uow,
                     actor_account_id=actor_id,
@@ -559,30 +598,30 @@ class SchoolAccountLifecyclePersistenceAdapter:
                     trace_id=trace_id,
                     metadata={"count": 1},
                 )
-                output.append(
-                    {
-                        "invitation_ref": invitation_ref,
-                        "user_id": f"USER_{account.public_id}",
-                        "login_name": login_name,
-                        "display_name": row.display_name,
-                        "role": row.role,
-                        "class_refs": class_refs,
-                        "credential": raw_token,
-                        "expires_at": expires_at,
-                    }
-                )
-            await uow.session.flush()
             return {
                 "created_count": len(output),
                 "credentials": output,
                 "delivery_status": "MANUAL_HANDOFF_REQUIRED",
             }
 
-    async def list_staff_invitations(self, actor: Any) -> list[dict[str, Any]]:
+    async def list_staff_invitations(
+        self, actor: Any, *, limit: int = 500, offset: int = 0, search: str = ""
+    ) -> list[dict[str, Any]]:
+        from sqlalchemy import or_
+
         m = self._db_models
         now = self._utc_now()
         async with self._uow() as uow:
             await self._school_actor_role(uow, actor, "admin", now)
+            criteria = [m.SchoolStaffInvitation.school_id == actor.school_id]
+            if search:
+                criteria.append(
+                    or_(
+                        m.SchoolStaffInvitation.employee_ref.icontains(search, autoescape=True),
+                        m.Account.login_name.icontains(search, autoescape=True),
+                        m.AccountSchoolMembership.display_name.icontains(search, autoescape=True),
+                    )
+                )
             rows = (
                 await uow.session.execute(
                     self._select(
@@ -607,9 +646,10 @@ class SchoolAccountLifecyclePersistenceAdapter:
                             m.AccountSchoolMembership.school_id == m.SchoolStaffInvitation.school_id
                         ),
                     )
-                    .where(m.SchoolStaffInvitation.school_id == actor.school_id)
-                    .order_by(m.SchoolStaffInvitation.created_at.desc())
-                    .limit(500)
+                    .where(*criteria)
+                    .order_by(m.SchoolStaffInvitation.created_at.desc(), m.SchoolStaffInvitation.id.desc())
+                    .offset(offset)
+                    .limit(limit)
                 )
             ).all()
             invitation_ids = [row[0] for row in rows]
@@ -659,6 +699,43 @@ class SchoolAccountLifecyclePersistenceAdapter:
                     "expires_at": row[8],
                 }
             return list(grouped.values())
+
+    async def set_staff_invitation_name(
+        self, actor: Any, invitation_ref: str, display_name: str, *, trace_id: str
+    ) -> dict[str, str]:
+        m = self._db_models
+        now = self._utc_now()
+        async with self._uow() as uow:
+            actor_id, _ = await self._school_actor_role(uow, actor, "admin", now, lock=True)
+            membership = await uow.session.scalar(
+                self._select(m.AccountSchoolMembership)
+                .join(
+                    m.SchoolStaffInvitation,
+                    (m.SchoolStaffInvitation.membership_id == m.AccountSchoolMembership.id)
+                    & (m.SchoolStaffInvitation.school_id == m.AccountSchoolMembership.school_id)
+                    & (m.SchoolStaffInvitation.account_id == m.AccountSchoolMembership.account_id),
+                )
+                .where(
+                    m.SchoolStaffInvitation.invitation_ref == invitation_ref,
+                    m.SchoolStaffInvitation.school_id == actor.school_id,
+                    m.SchoolStaffInvitation.status.in_(("ISSUED", "EXPIRED", "ACCEPTED")),
+                    m.AccountSchoolMembership.revoked_at.is_(None),
+                )
+                .with_for_update()
+            )
+            if membership is None:
+                raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="staff invitation was not found")
+            if membership.display_name != display_name:
+                membership.display_name = display_name
+                await self._audit(
+                    uow,
+                    actor_account_id=actor_id,
+                    action="school_account_lifecycle.staff_invitation.rename",
+                    resource_type="school_membership",
+                    resource_ref=membership.public_id,
+                    trace_id=trace_id,
+                )
+            return {"invitation_ref": invitation_ref, "display_name": membership.display_name}
 
     async def revoke_staff_invitation(
         self,

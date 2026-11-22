@@ -153,7 +153,8 @@ class MembershipRole(ResourceIdentityMixin, TimestampMixin, Base):
             ondelete="RESTRICT",
         ),
         CheckConstraint(
-            "role_code IN ('student', 'teacher', 'psychological_specialist', 'admin')",
+            "role_code IN ('student', 'teacher', 'psychological_specialist', "
+            "'admin', 'grade_lead')",
             name="role_allowed",
         ),
         CheckConstraint("status IN ('ACTIVE', 'INACTIVE', 'REVOKED')", name="status_allowed"),
@@ -725,12 +726,14 @@ class SchoolClass(ResourceIdentityMixin, TimestampMixin, Base):
         ),
         CheckConstraint("status IN ('ACTIVE', 'ARCHIVED')", name="status_allowed"),
         Index("ix_school_classes_school_status", "school_id", "status"),
+        Index("ix_school_classes_school_grade_status", "school_id", "grade_ref", "status"),
     )
 
     school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
     class_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
     display_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     grade_level: Mapped[str | None] = mapped_column(ascii_id(32), nullable=True)
+    grade_ref: Mapped[str | None] = mapped_column(ascii_id(64), nullable=True)
     created_by_membership_role_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="ACTIVE", server_default="ACTIVE"
@@ -782,9 +785,7 @@ class SchoolClassTeacher(ResourceIdentityMixin, TimestampMixin, Base):
     __tablename__ = "school_class_teachers"
     __table_args__ = mysql_table_args(
         UniqueConstraint("class_id", "membership_role_id", name="school_class_teacher_unique"),
-        UniqueConstraint(
-            "id", "class_id", "school_id", name="class_teacher_scope_unique"
-        ),
+        UniqueConstraint("id", "class_id", "school_id", name="class_teacher_scope_unique"),
         ForeignKeyConstraint(
             ["class_id", "school_id"],
             ["school_classes.id", "school_classes.school_id"],
@@ -813,6 +814,64 @@ class SchoolClassTeacher(ResourceIdentityMixin, TimestampMixin, Base):
     membership_role_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="ACTIVE", server_default="ACTIVE"
+    )
+    valid_from: Mapped[datetime] = mapped_column(utc_datetime(), nullable=False, default=utc_now)
+    valid_until: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+
+
+class SchoolGradeLeader(ResourceIdentityMixin, TimestampMixin, Base):
+    """Time-bounded school authorization for one grade lead membership role."""
+
+    __tablename__ = "school_grade_leaders"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint(
+            "school_id",
+            "membership_role_id",
+            "grade_ref",
+            name="school_grade_leader_scope_unique",
+        ),
+        CheckConstraint("status IN ('ACTIVE', 'REVOKED')", name="status_allowed"),
+        CheckConstraint(
+            "(status = 'ACTIVE' AND revoked_at IS NULL) OR "
+            "(status = 'REVOKED' AND revoked_at IS NOT NULL)",
+            name="revocation_matches_status",
+        ),
+        CheckConstraint(
+            "valid_until IS NULL OR valid_until >= valid_from",
+            name="validity_ordered",
+        ),
+        ForeignKeyConstraint(
+            ["membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_school_grade_leaders_membership_role_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["school_id"],
+            ["schools.id"],
+            name="fk_school_grade_leaders_school",
+            ondelete="RESTRICT",
+        ),
+        Index(
+            "ix_school_grade_leaders_school_grade_status",
+            "school_id",
+            "grade_ref",
+            "status",
+        ),
+        Index(
+            "ix_school_grade_leaders_role_status",
+            "school_id",
+            "membership_role_id",
+            "status",
+        ),
+    )
+
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    membership_role_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    grade_ref: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    status: Mapped[str] = mapped_column(
+        ascii_id(16), nullable=False, default="ACTIVE", server_default="ACTIVE"
     )
     valid_from: Mapped[datetime] = mapped_column(utc_datetime(), nullable=False, default=utc_now)
     valid_until: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
@@ -4739,6 +4798,370 @@ class SchoolIndependentEducationReviewEvent(ResourceIdentityMixin, Base):
     created_at: Mapped[datetime] = mapped_column(utc_datetime(), nullable=False, default=utc_now)
 
 
+class SchoolSupportCase(ResourceIdentityMixin, TimestampMixin, Base):
+    """School-scoped manual support workflow with encrypted content fields."""
+
+    __tablename__ = "school_support_cases"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("case_ref", name="school_support_case_ref_unique"),
+        UniqueConstraint("id", "school_id", name="school_support_case_id_school_unique"),
+        UniqueConstraint(
+            "id",
+            "school_id",
+            "subject_id",
+            "class_id",
+            "class_student_id",
+            name="school_support_case_scope_unique",
+        ),
+        CheckConstraint("source_type IN ('TEACHER', 'STUDENT')", name="source_type_allowed"),
+        CheckConstraint("LENGTH(category_code) BETWEEN 1 AND 48", name="category_code_length"),
+        CheckConstraint(
+            "status IN ('SUBMITTED', 'TRIAGED', 'PLANNED', 'FOLLOWING', 'REVIEW', 'CLOSED')",
+            name="status_allowed",
+        ),
+        CheckConstraint("version >= 1", name="version_positive"),
+        CheckConstraint(
+            "(status = 'SUBMITTED' AND owner_membership_role_id IS NULL) OR "
+            "(status <> 'SUBMITTED' AND owner_membership_role_id IS NOT NULL)",
+            name="owner_matches_status",
+        ),
+        CheckConstraint(
+            "source_ciphertext IS NOT NULL AND source_cipher_format_version IS NOT NULL "
+            "AND source_key_version IS NOT NULL AND source_payload_schema_version IS NOT NULL",
+            name="source_cipher_envelope",
+        ),
+        CheckConstraint(
+            "(status IN ('SUBMITTED', 'TRIAGED') "
+            "AND professional_plan_ciphertext IS NULL "
+            "AND professional_plan_cipher_format_version IS NULL "
+            "AND professional_plan_key_version IS NULL "
+            "AND professional_plan_payload_schema_version IS NULL) OR "
+            "(status IN ('PLANNED', 'FOLLOWING', 'REVIEW', 'CLOSED') "
+            "AND professional_plan_ciphertext IS NOT NULL "
+            "AND professional_plan_cipher_format_version IS NOT NULL "
+            "AND professional_plan_key_version IS NOT NULL "
+            "AND professional_plan_payload_schema_version IS NOT NULL)",
+            name="plan_cipher_matches_status",
+        ),
+        CheckConstraint(
+            "(status = 'SUBMITTED' AND triaged_at IS NULL AND planned_at IS NULL "
+            "AND following_at IS NULL AND review_requested_at IS NULL AND closed_at IS NULL) OR "
+            "(status = 'TRIAGED' AND triaged_at IS NOT NULL AND planned_at IS NULL "
+            "AND following_at IS NULL AND review_requested_at IS NULL AND closed_at IS NULL) OR "
+            "(status = 'PLANNED' AND triaged_at IS NOT NULL AND planned_at IS NOT NULL "
+            "AND following_at IS NULL AND review_requested_at IS NULL AND closed_at IS NULL) OR "
+            "(status = 'FOLLOWING' AND triaged_at IS NOT NULL AND planned_at IS NOT NULL "
+            "AND following_at IS NOT NULL AND review_requested_at IS NULL "
+            "AND closed_at IS NULL) OR "
+            "(status = 'REVIEW' AND triaged_at IS NOT NULL AND planned_at IS NOT NULL "
+            "AND following_at IS NOT NULL AND review_requested_at IS NOT NULL "
+            "AND closed_at IS NULL) OR "
+            "(status = 'CLOSED' AND triaged_at IS NOT NULL AND planned_at IS NOT NULL "
+            "AND following_at IS NOT NULL AND review_requested_at IS NOT NULL "
+            "AND closed_at IS NOT NULL)",
+            name="state_timestamps_match",
+        ),
+        ForeignKeyConstraint(
+            ["class_student_id", "subject_id", "class_id", "school_id"],
+            [
+                "school_class_students.id",
+                "school_class_students.subject_id",
+                "school_class_students.class_id",
+                "school_class_students.school_id",
+            ],
+            name="fk_school_support_cases_roster_scope",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["class_id", "school_id"],
+            ["school_classes.id", "school_classes.school_id"],
+            name="fk_school_support_cases_class_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["subject_id", "school_id"],
+            ["subjects.id", "subjects.school_id"],
+            name="fk_school_support_cases_subject_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["created_by_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_school_support_cases_creator_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["owner_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_school_support_cases_owner_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["school_id"],
+            ["schools.id"],
+            name="fk_school_support_cases_school",
+            ondelete="RESTRICT",
+        ),
+        Index(
+            "ix_school_support_cases_school_status_created",
+            "school_id",
+            "status",
+            "created_at",
+        ),
+        Index(
+            "ix_school_support_cases_owner_status",
+            "school_id",
+            "owner_membership_role_id",
+            "status",
+            "created_at",
+        ),
+        Index(
+            "ix_school_support_cases_subject_created",
+            "school_id",
+            "subject_id",
+            "created_at",
+        ),
+    )
+
+    case_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    subject_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    class_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    class_student_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    source_type: Mapped[str] = mapped_column(ascii_id(16), nullable=False)
+    category_code: Mapped[str] = mapped_column(ascii_id(48), nullable=False)
+    status: Mapped[str] = mapped_column(
+        ascii_id(16), nullable=False, default="SUBMITTED", server_default="SUBMITTED"
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    created_by_membership_role_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    owner_membership_role_id: Mapped[int | None] = mapped_column(unsigned_id(), nullable=True)
+    source_ciphertext: Mapped[bytes] = mapped_column(mysql.MEDIUMBLOB, nullable=False)
+    source_cipher_format_version: Mapped[str] = mapped_column(ascii_id(32), nullable=False)
+    source_key_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    source_payload_schema_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    professional_plan_ciphertext: Mapped[bytes | None] = mapped_column(
+        mysql.MEDIUMBLOB, nullable=True
+    )
+    professional_plan_cipher_format_version: Mapped[str | None] = mapped_column(
+        ascii_id(32), nullable=True
+    )
+    professional_plan_key_version: Mapped[str | None] = mapped_column(ascii_id(64), nullable=True)
+    professional_plan_payload_schema_version: Mapped[str | None] = mapped_column(
+        ascii_id(64), nullable=True
+    )
+    trace_id: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    triaged_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    planned_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    following_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    review_requested_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    closed_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    retention_due_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+
+
+class SchoolSupportAction(ResourceIdentityMixin, TimestampMixin, Base):
+    """Teacher-facing execution task with encrypted instruction and feedback."""
+
+    __tablename__ = "school_support_actions"
+    __table_args__ = mysql_table_args(
+        UniqueConstraint("action_ref", name="school_support_action_ref_unique"),
+        UniqueConstraint(
+            "id", "case_id", "school_id", name="school_support_action_case_scope_unique"
+        ),
+        CheckConstraint(
+            "status IN ('PENDING', 'SUBMITTED', 'ACCEPTED', 'RETURNED', 'CANCELLED')",
+            name="status_allowed",
+        ),
+        CheckConstraint("version >= 1", name="version_positive"),
+        CheckConstraint(
+            "instruction_ciphertext IS NOT NULL AND instruction_cipher_format_version IS NOT NULL "
+            "AND instruction_key_version IS NOT NULL "
+            "AND instruction_payload_schema_version IS NOT NULL",
+            name="instruction_cipher_envelope",
+        ),
+        CheckConstraint(
+            "(status = 'PENDING' AND feedback_ciphertext IS NULL "
+            "AND feedback_cipher_format_version IS NULL AND feedback_key_version IS NULL "
+            "AND feedback_payload_schema_version IS NULL AND feedback_submitted_at IS NULL) OR "
+            "(status IN ('SUBMITTED', 'ACCEPTED', 'RETURNED') "
+            "AND feedback_ciphertext IS NOT NULL "
+            "AND feedback_cipher_format_version IS NOT NULL "
+            "AND feedback_key_version IS NOT NULL "
+            "AND feedback_payload_schema_version IS NOT NULL "
+            "AND feedback_submitted_at IS NOT NULL) OR "
+            "(status = 'CANCELLED' AND "
+            "((feedback_ciphertext IS NULL AND feedback_cipher_format_version IS NULL "
+            "AND feedback_key_version IS NULL AND feedback_payload_schema_version IS NULL "
+            "AND feedback_submitted_at IS NULL) OR "
+            "(feedback_ciphertext IS NOT NULL AND feedback_cipher_format_version IS NOT NULL "
+            "AND feedback_key_version IS NOT NULL "
+            "AND feedback_payload_schema_version IS NOT NULL "
+            "AND feedback_submitted_at IS NOT NULL)))",
+            name="feedback_cipher_matches_status",
+        ),
+        CheckConstraint(
+            "(status = 'PENDING' AND accepted_at IS NULL AND returned_at IS NULL "
+            "AND cancelled_at IS NULL) OR "
+            "(status = 'SUBMITTED' AND accepted_at IS NULL AND returned_at IS NULL "
+            "AND cancelled_at IS NULL) OR "
+            "(status = 'ACCEPTED' AND accepted_at IS NOT NULL AND returned_at IS NULL "
+            "AND cancelled_at IS NULL) OR "
+            "(status = 'RETURNED' AND accepted_at IS NULL AND returned_at IS NOT NULL "
+            "AND cancelled_at IS NULL) OR "
+            "(status = 'CANCELLED' AND cancelled_at IS NOT NULL "
+            "AND accepted_at IS NULL AND returned_at IS NULL)",
+            name="state_timestamps_match",
+        ),
+        CheckConstraint(
+            "(assigned_teacher_membership_role_id IS NOT NULL "
+            "AND assigned_class_teacher_id IS NOT NULL AND recipient_subject_id IS NULL) OR "
+            "(assigned_teacher_membership_role_id IS NULL "
+            "AND assigned_class_teacher_id IS NULL AND recipient_subject_id IS NOT NULL)",
+            name="target_assignment_complete",
+        ),
+        ForeignKeyConstraint(
+            ["case_id", "school_id", "subject_id", "class_id", "class_student_id"],
+            [
+                "school_support_cases.id",
+                "school_support_cases.school_id",
+                "school_support_cases.subject_id",
+                "school_support_cases.class_id",
+                "school_support_cases.class_student_id",
+            ],
+            name="fk_school_support_actions_case_scope",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["created_by_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_school_support_actions_creator_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["assigned_class_teacher_id", "class_id", "school_id"],
+            [
+                "school_class_teachers.id",
+                "school_class_teachers.class_id",
+                "school_class_teachers.school_id",
+            ],
+            name="fk_school_support_actions_assigned_class_teacher_scope",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["recipient_subject_id", "school_id"],
+            ["subjects.id", "subjects.school_id"],
+            name="fk_school_support_actions_recipient_subject_school",
+            ondelete="RESTRICT",
+        ),
+        Index(
+            "ix_school_support_actions_case_status_created",
+            "case_id",
+            "status",
+            "created_at",
+        ),
+        Index(
+            "ix_school_support_actions_teacher_status_due",
+            "school_id",
+            "assigned_teacher_membership_role_id",
+            "status",
+            "due_at",
+        ),
+        Index(
+            "ix_school_support_actions_student_status_due",
+            "school_id",
+            "recipient_subject_id",
+            "status",
+            "due_at",
+        ),
+    )
+
+    action_ref: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    case_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    subject_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    class_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    class_student_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    created_by_membership_role_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    assigned_teacher_membership_role_id: Mapped[int | None] = mapped_column(
+        unsigned_id(), nullable=True
+    )
+    assigned_class_teacher_id: Mapped[int | None] = mapped_column(
+        unsigned_id(), nullable=True
+    )
+    recipient_subject_id: Mapped[int | None] = mapped_column(unsigned_id(), nullable=True)
+    status: Mapped[str] = mapped_column(
+        ascii_id(16), nullable=False, default="PENDING", server_default="PENDING"
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    due_at: Mapped[datetime] = mapped_column(utc_datetime(), nullable=False)
+    instruction_ciphertext: Mapped[bytes] = mapped_column(mysql.MEDIUMBLOB, nullable=False)
+    instruction_cipher_format_version: Mapped[str] = mapped_column(ascii_id(32), nullable=False)
+    instruction_key_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    instruction_payload_schema_version: Mapped[str] = mapped_column(ascii_id(64), nullable=False)
+    feedback_ciphertext: Mapped[bytes | None] = mapped_column(mysql.MEDIUMBLOB, nullable=True)
+    feedback_cipher_format_version: Mapped[str | None] = mapped_column(ascii_id(32), nullable=True)
+    feedback_key_version: Mapped[str | None] = mapped_column(ascii_id(64), nullable=True)
+    feedback_payload_schema_version: Mapped[str | None] = mapped_column(ascii_id(64), nullable=True)
+    feedback_submitted_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    accepted_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    returned_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    trace_id: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    retention_due_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+
+
+class SchoolSupportEvent(ResourceIdentityMixin, Base):
+    """Append-only content-free support workflow event."""
+
+    __tablename__ = "school_support_events"
+    __table_args__ = mysql_table_args(
+        CheckConstraint(
+            "event_type IN ('CASE_SUBMITTED', 'CASE_TRIAGED', 'CASE_PLANNED', "
+            "'CASE_FOLLOWING', 'CASE_REVIEW_REQUESTED', 'CASE_CLOSED', 'ACTION_CREATED', "
+            "'ACTION_FEEDBACK_SUBMITTED', 'ACTION_ACCEPTED', 'ACTION_RETURNED', "
+            "'ACTION_CANCELLED')",
+            name="event_type_allowed",
+        ),
+        CheckConstraint("version >= 1", name="version_positive"),
+        ForeignKeyConstraint(
+            ["case_id", "school_id"],
+            ["school_support_cases.id", "school_support_cases.school_id"],
+            name="fk_school_support_events_case_school",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["action_id", "case_id", "school_id"],
+            [
+                "school_support_actions.id",
+                "school_support_actions.case_id",
+                "school_support_actions.school_id",
+            ],
+            name="fk_school_support_events_action_scope",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["actor_membership_role_id", "school_id"],
+            ["membership_roles.id", "membership_roles.school_id"],
+            name="fk_school_support_events_actor_school",
+            ondelete="RESTRICT",
+        ),
+        Index("ix_school_support_events_case_created", "case_id", "created_at"),
+        Index("ix_school_support_events_action_created", "action_id", "created_at"),
+    )
+
+    case_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    action_id: Mapped[int | None] = mapped_column(unsigned_id(), nullable=True)
+    school_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    actor_membership_role_id: Mapped[int] = mapped_column(unsigned_id(), nullable=False)
+    event_type: Mapped[str] = mapped_column(ascii_id(32), nullable=False)
+    from_status: Mapped[str | None] = mapped_column(ascii_id(16), nullable=True)
+    to_status: Mapped[str] = mapped_column(ascii_id(16), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    trace_id: Mapped[str] = mapped_column(ascii_id(128), nullable=False)
+    retention_due_at: Mapped[datetime | None] = mapped_column(utc_datetime(), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(utc_datetime(), nullable=False, default=utc_now)
+
+
 class AuditEvent(ResourceIdentityMixin, Base):
     __tablename__ = "audit_events"
     __table_args__ = mysql_table_args(
@@ -4783,6 +5206,7 @@ __all__ = [
     "SchoolAccountBatch",
     "SchoolAccountProvision",
     "SchoolClass",
+    "SchoolGradeLeader",
     "SchoolClassStudent",
     "SchoolClassTeacher",
     "SchoolTaskSpecialistAssignment",
@@ -4801,4 +5225,7 @@ __all__ = [
     "SchoolConversationSafetyEvent",
     "SchoolIndependentEducationReview",
     "SchoolIndependentEducationReviewEvent",
+    "SchoolSupportAction",
+    "SchoolSupportCase",
+    "SchoolSupportEvent",
 ]

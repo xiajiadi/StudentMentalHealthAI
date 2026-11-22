@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { Check, ChevronsUpDown } from '@lucide/vue'
 import {
   ComboboxAnchor,
@@ -14,6 +14,7 @@ import {
   ComboboxViewport,
 } from 'reka-ui'
 import type { SchoolMember } from '@/api/client'
+import { matchesOption } from '@/components/app/option-search'
 
 const props = withDefaults(defineProps<{
   modelValue: string
@@ -33,6 +34,13 @@ const displayValue = (value: unknown) => {
   return member ? `${nameFor(member)} · ${shortRef(member.user_id)}` : ''
 }
 const searchableText = (member: SchoolMember) => `${nameFor(member)} ${member.user_id}`
+const searchTerm = ref('')
+const matchingMembers = computed(() => {
+  const query = searchTerm.value.trim()
+  return !query || query === displayValue(props.modelValue)
+    ? props.members
+    : props.members.filter((member) => matchesOption(nameFor(member), query, member.user_id))
+})
 const updateValue = (value: unknown) => emit('update:modelValue', typeof value === 'string' ? value : '')
 </script>
 
@@ -41,17 +49,20 @@ const updateValue = (value: unknown) => emit('update:modelValue', typeof value =
     :model-value="modelValue || undefined"
     :disabled="disabled"
     :open-on-focus="true"
+    ignore-filter
     :reset-search-term-on-select="true"
     @update:model-value="updateValue"
   >
     <ComboboxAnchor as-child>
       <div class="admin-member-combobox__control">
         <ComboboxInput
+          v-model="searchTerm"
           class="admin-member-combobox__input"
           :display-value="displayValue"
           :aria-label="`搜索并选择${roleName}`"
           :placeholder="`搜索${roleName}姓名或账号编号`"
           autocomplete="off"
+          @focus="($event.target as HTMLInputElement).select()"
         />
         <ComboboxTrigger class="admin-member-combobox__trigger" :aria-label="`显示${roleName}列表`">
           <ChevronsUpDown :size="15" aria-hidden="true" />
@@ -63,7 +74,7 @@ const updateValue = (value: unknown) => emit('update:modelValue', typeof value =
         <ComboboxViewport class="admin-member-combobox__viewport">
           <ComboboxEmpty class="admin-member-combobox__empty">没有匹配的{{ roleName }}账号</ComboboxEmpty>
           <ComboboxItem
-            v-for="member in members"
+            v-for="member in matchingMembers"
             :key="member.user_id"
             :value="member.user_id"
             :text-value="searchableText(member)"

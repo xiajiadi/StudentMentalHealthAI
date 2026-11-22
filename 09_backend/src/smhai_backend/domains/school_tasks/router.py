@@ -25,6 +25,7 @@ from .schemas import (
     EnrollmentDto,
     RevocationDto,
     SchoolMemberDto,
+    SpecialistTaskProgressDto,
     StudentAssessmentMetadataDto,
     StudentAssignmentDto,
     StudentAssignmentRequest,
@@ -233,6 +234,16 @@ async def list_class_tasks(request: Request, class_ref: str, actor: CurrentActor
 
 
 @router.get(
+    "/admin/task-index",
+    response_model=ApiEnvelope[list[TaskDto]],
+    responses=problem_responses(ErrorCode.AUTH_SESSION_EXPIRED, ErrorCode.FORBIDDEN),
+)
+async def list_admin_tasks(request: Request, actor: CurrentActor):
+    rows = await request.app.state.container.school_tasks.list_class_tasks(actor, None)
+    return JSONResponse(_envelope(request, [TaskDto.model_validate(row) for row in rows]))
+
+
+@router.get(
     "/tasks/student",
     response_model=ApiEnvelope[list[StudentTaskDto]],
     responses=problem_responses(ErrorCode.AUTH_SESSION_EXPIRED, ErrorCode.FORBIDDEN),
@@ -346,6 +357,36 @@ async def teacher_task_progress(request: Request, class_ref: str, actor: Current
     rows = await request.app.state.container.school_tasks.teacher_progress(actor, class_ref)
     return JSONResponse(
         _envelope(request, [TeacherTaskProgressDto.model_validate(row) for row in rows])
+    )
+
+
+@router.get(
+    "/grade/task-progress",
+    response_model=ApiEnvelope[list[TeacherTaskProgressDto]],
+    responses=problem_responses(
+        ErrorCode.AUTH_SESSION_EXPIRED, ErrorCode.FORBIDDEN, ErrorCode.RESOURCE_NOT_FOUND
+    ),
+)
+async def grade_task_progress(
+    request: Request,
+    actor: CurrentActor,
+    class_ref: str | None = Query(default=None, min_length=1, max_length=128),
+):
+    rows = await request.app.state.container.school_tasks.grade_progress(actor, class_ref)
+    return JSONResponse(
+        _envelope(request, [TeacherTaskProgressDto.model_validate(row) for row in rows])
+    )
+
+
+@router.get(
+    "/specialist/task-progress",
+    response_model=ApiEnvelope[list[SpecialistTaskProgressDto]],
+    responses=problem_responses(ErrorCode.AUTH_SESSION_EXPIRED, ErrorCode.FORBIDDEN),
+)
+async def specialist_task_progress(request: Request, actor: CurrentActor):
+    rows = await request.app.state.container.school_tasks.specialist_progress(actor)
+    return JSONResponse(
+        _envelope(request, [SpecialistTaskProgressDto.model_validate(row) for row in rows])
     )
 
 

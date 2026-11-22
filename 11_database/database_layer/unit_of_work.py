@@ -22,6 +22,7 @@ from .repositories import (
     SupportRepository,
 )
 from .school_conversation_safety import SchoolConversationSafetyRepository
+from .school_grade_leaders import SchoolGradeLeaderRepository
 from .school_independent_education_reviews import SchoolIndependentEducationReviewRepository
 from .school_post_assessment_jobs import SchoolPostAssessmentJobRepository
 from .school_research_cat import SchoolResearchCatRepository
@@ -39,6 +40,7 @@ from .school_research_review_feedback import (
     SchoolResearchFeedbackRepository,
     SchoolResearchReviewRepository,
 )
+from .school_support import SchoolSupportRepository
 
 
 class SqlAlchemyUnitOfWork:
@@ -79,6 +81,8 @@ class SqlAlchemyUnitOfWork:
         self.research_feedback: SchoolResearchFeedbackRepository | None = None
         self.research_programme_candidates: SchoolResearchProgrammeCandidateRepository | None = None
         self.conversation_safety: SchoolConversationSafetyRepository | None = None
+        self.grade_leaders: SchoolGradeLeaderRepository | None = None
+        self.support_cases: SchoolSupportRepository | None = None
 
     async def __aenter__(self) -> Self:
         self.session = self.session_factory()
@@ -116,6 +120,8 @@ class SqlAlchemyUnitOfWork:
             self.session
         )
         self.conversation_safety = SchoolConversationSafetyRepository(self.session)
+        self.grade_leaders = SchoolGradeLeaderRepository(self.session)
+        self.support_cases = SchoolSupportRepository(self.session, self.protection)
         return self
 
     def _require_session(self) -> AsyncSession:

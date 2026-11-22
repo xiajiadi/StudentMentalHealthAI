@@ -22,7 +22,7 @@ from .models import (
     Subject,
     SubjectAccessGrant,
 )
-from .provenance import SYNTHETIC_SCHOOL_SEED_PROVENANCE_REF
+from .provenance import SYNTHETIC_SCHOOL_SEED_PROVENANCE_REF, is_public_demo_school_ref
 from .repositories import AccountRepository, SchoolMembershipRepository, SubjectRepository
 
 SCHOOL_SEED_SLOTS = tuple(
@@ -338,6 +338,14 @@ async def seed_synthetic_school_contexts(
             schools_by_provenance = await memberships.schools_with_provenance(
                 provenance_ref=SYNTHETIC_SCHOOL_SEED_PROVENANCE_REF
             )
+            schools_by_provenance = [
+                school
+                for school in schools_by_provenance
+                if not (
+                    school.data_origin == DataOrigin.SYNTHETIC.value
+                    and is_public_demo_school_ref(school.school_ref)
+                )
+            ]
             school_memberships: dict[str, list[AccountSchoolMembership]] = {}
             school_subjects: dict[str, list[Subject]] = {}
             for recipe in SYNTHETIC_SCHOOL_RECIPES:

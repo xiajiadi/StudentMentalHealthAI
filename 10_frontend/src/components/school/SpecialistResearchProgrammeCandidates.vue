@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import AppSelect from '@/components/app/AppSelect.vue'
+import AppSelectOption from '@/components/app/AppSelectOption.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { BookOpenCheck, RotateCcw, ShieldCheck } from '@lucide/vue'
 import AppBadge from '@/components/app/AppBadge.vue'
@@ -557,7 +559,7 @@ defineExpose({
         <div class="programme-candidates__batch">
           <h4>批次排队</h4>
           <p>按当前授权事项的服务端规则排入教职工研究模拟任务。批次回执数量可能包含已有任务。</p>
-          <label class="programme-candidates__batch-size">每批数量<select v-model.number="batchSize" :disabled="batchBusy || Boolean(batchRetry)" aria-label="每批生成任务数量"><option v-for="size in BATCH_SIZE_OPTIONS" :key="size" :value="size">{{ size }} 项</option></select></label>
+          <label class="programme-candidates__batch-size">每批数量<AppSelect v-model="batchSize" :disabled="batchBusy || Boolean(batchRetry)" aria-label="每批生成任务数量"><AppSelectOption v-for="size in BATCH_SIZE_OPTIONS" :key="size" :value="size">{{ size }} 项</AppSelectOption></AppSelect></label>
           <label v-if="!batchReceipt || batchReceipt.next_cursor" class="programme-candidates__confirm"><input v-model="batchConfirmation" type="checkbox" :disabled="batchBusy || Boolean(batchRetry)"><span>我确认每批上限为 {{ batchSize }} 项，仅用于此授权事项的教职工研究模拟，不发布学生反馈。</span></label>
           <AppButton v-if="!batchReceipt || batchReceipt.next_cursor" size="sm" :loading="batchBusy" :disabled="!canQueueBatch || !batchConfirmation || Boolean(batchRetry)" @click="queueGenerationBatch(batchReceipt?.next_cursor ?? null)">{{ batchReceipt ? `请求下一批（最多 ${batchSize} 项）` : `请求首批（最多 ${batchSize} 项）` }}</AppButton>
           <p v-else class="programme-candidates__empty">当前授权范围没有更多批次。</p>

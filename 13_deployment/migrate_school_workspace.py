@@ -39,7 +39,11 @@ from school_check_names import source_derived_school_check_names
 from school_schema import (
     CURRENT_SCHOOL_MIGRATION_FILE,
     CURRENT_SCHOOL_REVISION,
+    PREVIOUS_SCHOOL_REVISIONS,
     SCHOOL_ACCOUNT_LIFECYCLE_REVISION,
+    SCHOOL_REVISION_CHAIN,
+    SCHOOL_SUPPORT_REVISION,
+    STUDENT_ACTIONS_GRADE_LEADERS_REVISION,
 )
 
 BUILDER_USER = "psynova_builder"
@@ -585,6 +589,9 @@ def _trusted_current_schema(
             raise ValueError
 
         dialect = mysql.dialect()
+        has_grade_leaders = SCHOOL_REVISION_CHAIN.index(revision) >= SCHOOL_REVISION_CHAIN.index(
+            STUDENT_ACTIONS_GRADE_LEADERS_REVISION
+        )
         schema: dict[str, Any] = {}
         for table_name, table in model_tables.items():
             allowed_columns = set(manifest[table_name])
@@ -651,11 +658,28 @@ def _trusted_current_schema(
                 if isinstance(constraint, CheckConstraint)
                 and {column.name for column in constraint.columns} <= allowed_columns
                 and not (
-                    revision != SCHOOL_ACCOUNT_LIFECYCLE_REVISION
+                    revision
+                    not in {
+                        SCHOOL_ACCOUNT_LIFECYCLE_REVISION,
+                        SCHOOL_SUPPORT_REVISION,
+                        STUDENT_ACTIONS_GRADE_LEADERS_REVISION,
+                    }
                     and table_name == "accounts"
                     and constraint.name == "ck_accounts_failed_login_count_allowed"
                 )
             }
+            if table_name == "membership_roles" and not has_grade_leaders:
+                # The 0003 migration allowed four roles. Revision 0027 replaces
+                # this CHECK when it introduces the grade_lead role.
+                role_check_name = "ck_membership_roles_role_allowed"
+                checks = {check for check in checks if check[0] != role_check_name}
+                checks.add((
+                    role_check_name,
+                    _normalize_check_sql(
+                        "role_code IN ('student', 'teacher', 'psychological_specialist', 'admin')"
+                    ),
+                    True,
+                ))
             indexes = set()
             for index in table.indexes:
                 index_columns = tuple(
@@ -663,10 +687,18 @@ def _trusted_current_schema(
                     for expression in index.expressions
                     if getattr(expression, "name", None)
                 )
+                if not set(index_columns) <= {
+                    name.casefold() for name in allowed_columns
+                } and index.name in {
+                    "ix_school_classes_school_grade_status",
+                    "ix_school_support_actions_student_status_due",
+                }:
+                    continue
                 if (
                     len(index_columns) != len(index.expressions)
                     or not index.name
-                    or not set(index_columns) <= {name.casefold() for name in allowed_columns}
+                    or not set(index_columns)
+                    <= {name.casefold() for name in allowed_columns}
                 ):
                     raise ValueError
                 indexes.add((index.name.casefold(), index_columns, bool(index.unique)))
@@ -1046,11 +1078,11 @@ def _database_state(
                     tables, other_objects, cursor, database_root, CURRENT_SCHOOL_REVISION
                 )
                 return "CURRENT"
-            if revisions == ["20261016_0024"]:
+            if len(revisions) == 1 and revisions[0] in PREVIOUS_SCHOOL_REVISIONS:
                 _verify_current_schema(
-                    tables, other_objects, cursor, database_root, "20261016_0024"
+                    tables, other_objects, cursor, database_root, revisions[0]
                 )
-                return "UPGRADEABLE_0024"
+                return "UPGRADEABLE_PREVIOUS"
             if not revisions:
                 raise MigrationError("PARTIAL_SCHEMA")
             raise MigrationError("UNSUPPORTED_SCHEMA_REVISION")
@@ -1414,7 +1446,7 @@ class SchoolWorkspaceMigrator:
                     "revision": CURRENT_SCHOOL_REVISION,
                     "side_effects": [],
                 }
-            if state not in {"EMPTY", "UPGRADEABLE_0024"}:
+            if state not in {"EMPTY", "UPGRADEABLE_PREVIOUS"}:
                 raise MigrationError("DATABASE_STATE_UNSUPPORTED")
             _require_unprepared_workspace_files(Path(workspace))
 

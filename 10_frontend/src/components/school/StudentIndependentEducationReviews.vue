@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import AppSelect from '@/components/app/AppSelect.vue'
+import AppSelectOption from '@/components/app/AppSelectOption.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RotateCcw } from '@lucide/vue'
 import AppBadge from '@/components/app/AppBadge.vue'
@@ -233,10 +235,10 @@ onBeforeUnmount(() => {
         <header><div><h3>{{ statusLabel(item.status) }}</h3><p>更新于 {{ formatDate(item.updated_at) }}</p></div><AppBadge :tone="item.status === 'PUBLISHED' ? 'teal' : 'support'" dot>{{ statusLabel(item.status) }}</AppBadge></header>
         <div v-if="item.status === 'HELD'" class="independent-education-reviews__share">
           <label :for="`education-reviewer-${item.review_ref}`">选择一位本校心理老师</label>
-          <select :id="`education-reviewer-${item.review_ref}`" v-model="selectedReviewer[item.review_ref]" :disabled="mutationBusy || Boolean(pendingAction)">
-            <option value="">请选择</option>
-            <option v-for="reviewer in reviewers" :key="reviewer.reviewer_ref" :value="reviewer.reviewer_ref">{{ reviewer.display_name }}</option>
-          </select>
+          <AppSelect :id="`education-reviewer-${item.review_ref}`" v-model="selectedReviewer[item.review_ref]" :disabled="mutationBusy || Boolean(pendingAction)">
+            <AppSelectOption value="">请选择</AppSelectOption>
+            <AppSelectOption v-for="reviewer in reviewers" :key="reviewer.reviewer_ref" :value="reviewer.reviewer_ref">{{ reviewer.display_name }}</AppSelectOption>
+          </AppSelect>
           <p v-if="reviewers.length === 0" class="independent-education-reviews__muted">当前没有可选的本校心理老师。</p>
           <label class="independent-education-reviews__consent"><input v-model="shareConsent[item.review_ref]" type="checkbox" :disabled="mutationBusy || Boolean(pendingAction)"><span>我已了解分享范围和撤回影响，并同意仅向上方所选心理老师分享这份草稿及其公开来源。</span></label>
           <AppButton size="sm" :disabled="mutationBusy || Boolean(pendingAction) || !selectedReviewer[item.review_ref] || !shareConsent[item.review_ref]" @click="share(item)">分享给所选心理老师</AppButton>

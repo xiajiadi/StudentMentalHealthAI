@@ -12,13 +12,14 @@ declare module 'vue-router' {
 }
 
 const teacherPreviewMeta = { public: import.meta.env.DEV }
+const loadLoginView = () => import('@/views/auth/LoginView.vue')
 
 const router = createRouter({
   history: createWebHistory(),
   scrollBehavior: (to, _from, savedPosition) => savedPosition ?? (to.hash ? { el: to.hash, behavior: 'smooth' } : { top: 0 }),
   routes: [
     { path: '/', redirect: '/login' },
-    { path: '/login', name: 'login', component: () => import('@/views/auth/LoginView.vue'), meta: { public: true, layout: 'auth' } },
+    { path: '/login', name: 'login', component: loadLoginView, meta: { public: true, layout: 'auth' } },
     { path: '/student', redirect: '/student/home' },
     { path: '/student/home', name: 'student-home', component: () => import('@/views/student/StudentHomeView.vue'), meta: { roles: ['student'], layout: 'workspace' } },
     { path: '/student/assessments', name: 'student-assessments', component: () => import('@/views/student/StudentAssessmentsView.vue'), meta: { roles: ['student'], layout: 'workspace' } },
@@ -32,6 +33,7 @@ const router = createRouter({
     { path: '/student/support', name: 'student-support', component: () => import('@/views/student/SupportChatView.vue'), meta: { roles: ['student'], layout: 'workspace' } },
     { path: '/student/research-support', name: 'student-research-support', component: () => import('@/views/student/ResearchSupportChatView.vue'), meta: { roles: ['student'], layout: 'workspace' } },
     { path: '/student/history', name: 'student-history', component: () => import('@/views/student/StudentHomeView.vue'), meta: { roles: ['student'], layout: 'workspace' } },
+    { path: '/student/school-support', component: () => import('@/views/school/SchoolSupportView.vue'), props: { audience: 'student' }, meta: { roles: ['student'], layout: 'workspace' } },
     { path: '/student/reports/:id', name: 'student-report-detail', component: () => import('@/views/student/StudentResultView.vue'), meta: { roles: ['student'], layout: 'workspace' } },
     { path: '/student/result/:id', name: 'student-result', component: () => import('@/views/student/StudentResultView.vue'), meta: { roles: ['student'], layout: 'workspace' } },
     { path: '/teacher', redirect: '/teacher/overview' },
@@ -42,9 +44,11 @@ const router = createRouter({
     { path: '/teacher/tasks/:classRef/:taskRef', name: 'teacher-task-detail', component: () => import('@/views/teacher/TeacherTaskDetailView.vue'), meta: { roles: ['teacher'], layout: 'workspace', ...teacherPreviewMeta } },
     { path: '/teacher/analytics', name: 'teacher-analytics', component: () => import('@/views/teacher/TeacherAnalyticsView.vue'), meta: { roles: ['teacher'], layout: 'workspace', ...teacherPreviewMeta } },
     { path: '/teacher/recovery', name: 'teacher-recovery-verification', component: () => import('@/views/teacher/TeacherRecoveryVerificationView.vue'), meta: { roles: ['teacher'], layout: 'workspace' } },
+    { path: '/teacher/school-support', component: () => import('@/views/school/SchoolSupportView.vue'), props: { audience: 'teacher' }, meta: { roles: ['teacher'], layout: 'workspace' } },
     { path: '/teacher/students', redirect: '/teacher/classes' },
     { path: '/teacher/students/:id', redirect: '/teacher/classes' },
     { path: '/specialist', redirect: '/specialist/overview' },
+    { path: '/specialist/school-support', component: () => import('@/views/school/SchoolSupportView.vue'), props: { audience: 'specialist' }, meta: { roles: ['psychological_specialist'], layout: 'workspace' } },
     { path: '/specialist/:section(overview|resources|tasks|cat)', name: 'specialist-workspace', component: () => import('@/views/specialist/SpecialistWorkspaceView.vue'), meta: { roles: ['psychological_specialist'], layout: 'workspace' } },
     { path: '/admin', redirect: '/admin/overview' },
     { path: '/admin/:section(overview|users|accounts|tasks|audit|settings)', name: 'admin-workspace', component: () => import('@/views/admin/AdminWorkspaceView.vue'), meta: { roles: ['school_admin'], layout: 'workspace' } },
@@ -57,6 +61,7 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
+  if (to.name === 'login') void loadLoginView().catch(() => {})
   const session = useSessionStore()
   if (to.meta.public && to.name !== 'login') return true
   if (!session.isAuthenticated) {

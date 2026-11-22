@@ -1,20 +1,24 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, defineAsyncComponent, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Bell, ChevronDown, CircleHelp, LogOut, Menu, Search, UserRound, X } from '@lucide/vue'
-import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui'
+import { Bell, ChevronDown, CircleHelp, LogOut, Menu, Search, UserRound } from '@lucide/vue'
 import AppLogo from '@/components/app/AppLogo.vue'
 import RoleSidebar from '@/components/shell/RoleSidebar.vue'
+import WorkspaceRoleGlyph from '@/components/shell/WorkspaceRoleGlyph.vue'
+import type { HelpTopic } from '@/components/shell/workspace-guides'
 import { roleHomes, roleLabels, workspaceConfig } from '@/components/shell/navigation'
 import { frontendApi } from '@/services/mock-api'
+import { useAssessmentStore } from '@/stores/assessment'
 import { useSessionStore } from '@/stores/session'
 import type { Role } from '@/types/contracts'
 
 const router = useRouter()
 const route = useRoute()
 const session = useSessionStore()
+const assessment = useAssessmentStore()
 const sidebarOpen = ref(false)
-const helpOpen = ref(false)
+const WorkspaceHelp = defineAsyncComponent(() => import('@/components/shell/WorkspaceHelp.vue'))
+const helpTopic = ref<HelpTopic | null>(null)
 const accountMenu = ref<HTMLDetailsElement | null>(null)
 const notificationMenu = ref<HTMLDetailsElement | null>(null)
 const searchOpen = ref(false)
@@ -22,6 +26,7 @@ const searchInputFocusedByTab = ref(false)
 const query = ref('')
 const logoutError = ref('')
 const isLoggingOut = ref(false)
+const switchingDemoRole = ref<Role | null>(null)
 
 const currentRole = computed<Role>(() => {
   const pathRole: Array<[string, Role]> = [
@@ -31,6 +36,11 @@ const currentRole = computed<Role>(() => {
 })
 const canSwitchWorkspace = computed(() => Boolean(session.user?.authorizedRoles && session.user.authorizedRoles.length > 1))
 const allowedWorkspaces = computed(() => (session.user?.authorizedRoles ?? []).filter((role) => roleHomes[role]))
+const demoRoleContexts = computed(() => {
+  const schoolRef = session.user?.activeContext?.schoolRef
+  if (!schoolRef?.startsWith('PUBLICDEMO_') || !frontendApi.switchActiveContext) return []
+  return (session.user?.availableContexts ?? []).filter((context) => context.schoolRef === schoolRef)
+})
 const currentWorkspaceTitle = computed(() => workspaceConfig[currentRole.value]?.title ?? 'Student Workspace')
 const navItems = computed(() => {
   const term = query.value.trim().toLocaleLowerCase()
@@ -42,9 +52,9 @@ const closeAccountMenu = () => {
   if (accountMenu.value) accountMenu.value.open = false
 }
 
-const openHelp = () => {
+const openHelp = (topic: HelpTopic = 'manual') => {
   closeAccountMenu()
-  helpOpen.value = true
+  helpTopic.value = topic
 }
 
 const handleShellPointerdown = (event: PointerEvent) => {
@@ -61,8 +71,28 @@ const switchWorkspace = async (role: Role) => {
   if (path) await router.push(path)
 }
 
+const switchDemoRole = async (role: Role) => {
+  const context = demoRoleContexts.value.find((item) => item.role === role)
+  const userId = session.user?.userId
+  if (!context || !frontendApi.switchActiveContext || switchingDemoRole.value || isLoggingOut.value) return
+  switchingDemoRole.value = role
+  logoutError.value = ''
+  try {
+    const { data } = await frontendApi.switchActiveContext(context)
+    if (data.userId !== userId || data.activeContext?.role !== role || data.activeContext.schoolRef !== context.schoolRef) {
+      throw new Error('Demo workspace selection was not confirmed')
+    }
+    assessment.reset()
+    session.signIn(data)
+    closeAccountMenu()
+    await router.push(roleHome(role))
+  } catch {
+    logoutError.value = '暂时无法切换角色，请检查连接后重试。'
+  } finally { switchingDemoRole.value = null }
+}
+
 const logout = async () => {
-  if (isLoggingOut.value) return
+  if (isLoggingOut.value || switchingDemoRole.value) return
   closeAccountMenu()
   logoutError.value = ''
   isLoggingOut.value = true
@@ -134,11 +164,15 @@ const openFirstResult = async () => {
             </div>
             <div class="account-menu__rule"></div>
             <RouterLink v-for="item in workspaceConfig[currentRole]?.items ?? []" :key="item.to + item.label" class="account-menu__item" :to="item.to" @click="closeAccountMenu"><component :is="item.icon" :size="17" aria-hidden="true" /><span>{{ item.label }}</span></RouterLink>
-            <template v-if="canSwitchWorkspace">
-              <button v-for="role in allowedWorkspaces" :key="role" class="account-menu__item" type="button" :disabled="role === currentRole" @click="switchWorkspace(role)"><component :is="workspaceConfig[role]?.items[0]?.icon" :size="17" aria-hidden="true" /><span>{{ workspaceConfig[role]?.title ?? roleLabels[role] }}</span></button>
+            <template v-if="demoRoleContexts.length > 1">
+              <div class="account-menu__rule"></div>
+              <button v-for="context in demoRoleContexts" :key="context.role" class="account-menu__item" type="button" :aria-current="context.role === currentRole && !switchingDemoRole ? 'true' : undefined" :aria-busy="switchingDemoRole === context.role || undefined" :disabled="context.role === currentRole || Boolean(switchingDemoRole) || isLoggingOut" @click="switchDemoRole(context.role)"><WorkspaceRoleGlyph :role="context.role" /><span>{{ switchingDemoRole === context.role ? '正在切换至' : '切换至' }}{{ roleLabels[context.role] }}</span></button>
+            </template>
+            <template v-else-if="canSwitchWorkspace">
+              <button v-for="role in allowedWorkspaces" :key="role" class="account-menu__item" type="button" :aria-current="role === currentRole ? 'true' : undefined" :disabled="role === currentRole" @click="switchWorkspace(role)"><WorkspaceRoleGlyph :role="role" /><span>{{ workspaceConfig[role]?.title ?? roleLabels[role] }}</span></button>
             </template>
             <div class="account-menu__rule"></div>
-            <button class="account-menu__item" type="button" @click="openHelp"><CircleHelp :size="17" aria-hidden="true" /><span>帮助</span></button>
+            <button class="account-menu__item" type="button" @click="openHelp()"><CircleHelp :size="17" aria-hidden="true" /><span>使用手册</span></button>
             <button class="account-menu__item account-menu__logout" type="button" :disabled="isLoggingOut" @click="logout"><LogOut :size="17" aria-hidden="true" /><span>退出登录</span></button>
           </div>
         </details>
@@ -151,32 +185,20 @@ const openFirstResult = async () => {
       <slot />
       <footer class="workspace-footer">
         <nav class="workspace-footer__links" aria-label="页面底部">
-          <button type="button" @click="openHelp">使用手册</button>
-          <span>隐私政策</span>
-          <span>平台规范</span>
-          <span class="workspace-footer__choices"><span>数据选择</span><svg class="workspace-footer__choice-mark" xmlns="http://www.w3.org/2000/svg" width="30" height="14" viewBox="0 0 30 14" fill="none" aria-hidden="true" focusable="false">
+          <button type="button" @click="openHelp()">使用手册</button>
+          <button type="button" @click="openHelp('privacy')">隐私政策</button>
+          <button type="button" @click="openHelp('rules')">平台规范</button>
+          <button class="workspace-footer__choices" type="button" @click="openHelp('data')"><span>数据选择</span><svg class="workspace-footer__choice-mark" xmlns="http://www.w3.org/2000/svg" width="30" height="14" viewBox="0 0 30 14" fill="none" aria-hidden="true" focusable="false">
             <path fill-rule="evenodd" clip-rule="evenodd" d="M7.00313 12.7992H13.8031L16.9031 1.19922H7.00313C3.80313 1.19922 1.20312 3.79922 1.20312 6.99922C1.20312 10.1992 3.80313 12.7992 7.00313 12.7992Z" fill="white" />
             <path fill-rule="evenodd" clip-rule="evenodd" d="M22.2 0H7C3.1 0 0 3.1 0 7C0 10.9 3.1 14 7 14H22.2C26.1 14 29.2 10.9 29.2 7C29.2 3.1 26 0 22.2 0ZM1.2 7C1.2 3.8 3.8 1.2 7 1.2H16.9L13.8 12.8H7C3.8 12.8 1.2 10.2 1.2 7Z" fill="currentColor" />
             <path d="M24.1969 3.99961C24.3969 4.19961 24.3969 4.59961 24.1969 4.79961L22.0969 6.99961L24.2969 9.19961C24.4969 9.39961 24.4969 9.79961 24.2969 9.99961C24.0969 10.1996 23.6969 10.1996 23.4969 9.99961L21.2969 7.79961L19.0969 9.99961C18.8969 10.1996 18.4969 10.1996 18.2969 9.99961C18.0969 9.79961 18.0969 9.39961 18.2969 9.19961L20.3969 6.99961L18.1969 4.79961C17.9969 4.59961 17.9969 4.19961 18.1969 3.99961C18.3969 3.79961 18.7969 3.79961 18.9969 3.99961L21.1969 6.19961L23.3969 3.99961C23.5969 3.79961 23.9969 3.79961 24.1969 3.99961Z" fill="white" />
             <path d="M12.3016 4.09922C12.5016 4.29922 12.6016 4.69922 12.4016 4.89922L8.20156 9.79922C8.10156 9.89922 8.00156 9.99922 7.90156 9.99922C7.70156 10.0992 7.40156 10.0992 7.20156 9.89922L5.00156 7.69922C4.80156 7.49922 4.80156 7.09922 5.00156 6.89922C5.20156 6.69922 5.60156 6.69922 5.80156 6.89922L7.60156 8.59922L11.4016 4.09922C11.6016 3.89922 12.0016 3.89922 12.3016 4.09922Z" fill="currentColor" />
-          </svg></span>
+          </svg></button>
         </nav>
-        <button class="workspace-footer__help" type="button" aria-label="帮助" title="帮助" @click="openHelp"><CircleHelp :size="20" aria-hidden="true" /></button>
+        <button class="workspace-footer__help" type="button" aria-label="帮助" title="帮助" @click="openHelp()"><CircleHelp :size="20" aria-hidden="true" /></button>
       </footer>
     </main>
-    <DialogRoot :open="helpOpen" @update:open="helpOpen = $event">
-      <DialogPortal>
-        <DialogOverlay class="workspace-dialog__overlay" />
-        <DialogContent class="workspace-dialog__content">
-          <DialogClose as-child><button class="workspace-dialog__dismiss" type="button" aria-label="关闭帮助"><X :size="18" aria-hidden="true" /></button></DialogClose>
-          <div class="workspace-dialog__inner">
-            <DialogTitle class="workspace-dialog__title">帮助</DialogTitle>
-            <DialogDescription class="workspace-dialog__description">请使用学校提供的账号和密码。如无法登录或访问工作区，请联系学校信息管理员。可访问的工作区由服务端账号权限决定。</DialogDescription>
-            <DialogClose as-child><button class="workspace-dialog__close" type="button">知道了</button></DialogClose>
-          </div>
-        </DialogContent>
-      </DialogPortal>
-    </DialogRoot>
+    <WorkspaceHelp v-if="helpTopic" :role="currentRole" :topic="helpTopic" @close="helpTopic = null" />
   </div>
 </template>
 
@@ -233,8 +255,9 @@ const openFirstResult = async () => {
 .account-menu__item svg { flex: 0 0 18px; color: #4f5562; }
 .account-menu__item:hover:not(:disabled), .account-menu__item.router-link-active { color: var(--color-primary); background: transparent; }
 .account-menu__item:hover:not(:disabled) svg { color: var(--color-primary); }
-.account-menu__item:disabled { color: var(--color-primary); cursor: default; }
-.account-menu__item:disabled svg { color: var(--color-primary); }
+.account-menu__item:disabled { cursor: default; }
+.account-menu__item:is([aria-current='true'], [aria-busy='true']),
+.account-menu__item:is([aria-current='true'], [aria-busy='true']) svg { color: var(--color-primary); }
 .account-menu__rule { height: 1px; margin: 0 -18px; background: #e4e6ea; }
 .account-menu__logout { min-height: 48px; border-bottom: 0; }
 .account-menu__logout:disabled { opacity: .55; cursor: wait; }
@@ -250,16 +273,16 @@ const openFirstResult = async () => {
 .workspace-footer__choices { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
 .workspace-footer__choice-mark { display: block; width: 30px; height: 14px; flex: 0 0 30px; color: #00b1e2; }
 .workspace-footer__help { width: 22px; height: 24px; flex: 0 0 22px; }
-.workspace-dialog__overlay { position: fixed; z-index: 100; inset: 0; background: rgb(0 0 0 / 80%); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
-.workspace-dialog__content { position: fixed; z-index: 101; top: 50%; left: 50%; width: min(580px, calc(100vw - 32px)); min-height: 300px; padding: 60px 30px 30px; border: 0; border-radius: 12px; outline: none; background: #fff; box-shadow: none; transform: translate(-50%, -50%); }
-.workspace-dialog__dismiss { position: absolute; top: 15px; right: 15px; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 11px; border: 0; border-radius: 50%; color: #1e1d29; background: transparent; cursor: pointer; transition: all .2s ease-in-out; }
-.workspace-dialog__inner { display: grid; width: 100%; min-height: 210px; grid-template-rows: auto minmax(0, 1fr) auto; gap: 30px; }
-.workspace-dialog__title { display: block; margin: 0; color: #1e1d29; font-size: 24px; font-weight: 600; line-height: 1.3; text-align: center; }
-.workspace-dialog__description { display: flex; align-items: center; margin: 0; color: #3f424a; font-size: 16px; font-weight: 500; line-height: 1.6; }
-.workspace-dialog__close { display: flex; width: 100%; min-height: 0; align-items: center; justify-content: center; padding: 10px 15px; border: 1px solid transparent; border-radius: 8px; color: #fff; background: #00b1e2; cursor: pointer; font: inherit; font-size: 14px; font-weight: 600; line-height: 1.3; transition: all .2s ease-in-out; }
-.workspace-dialog__close:hover { background: #33c1e8; }
-.workspace-dialog__close:active { background: #008eb5; }
-.workspace-dialog__dismiss:focus-visible, .workspace-dialog__close:focus-visible { outline: 2px solid #3f424a; outline-offset: 1px; }
+
+
+
+
+
+
+
+
+
+
 @media (max-width: 1200px) {
   .workspace-topbar { padding-right: 24px; padding-left: 24px; }
   .workspace-topbar__menu { display: inline-grid; place-items: center; }
@@ -291,8 +314,8 @@ const openFirstResult = async () => {
   .notification-menu__panel::before { right: 93px; }
 }
 @media (max-width: 860px) {
-  .workspace-dialog__content { min-height: 0; padding: 60px 20px 24px; }
-  .workspace-dialog__inner { min-height: 190px; gap: 24px; }
+
+
 }
 @media (max-width: 575px) {
   .workspace-topbar { padding-right: 12px; padding-left: 12px; }
@@ -300,8 +323,8 @@ const openFirstResult = async () => {
   .workspace-search-wrap { margin-left: auto; }
   .notification-menu__panel { right: 12px; }
   .notification-menu__panel::before { right: 89px; }
-  .workspace-dialog__content { padding: 26px 20px 20px; }
-  .workspace-dialog__content :deep([data-slot="dialog-title"]) { font-size: 20px; }
+
+
   .workspace-footer { column-gap: 12px; }
   .workspace-footer__links { flex: 1 1 calc(100% - 38px); justify-content: flex-end; gap: 10px 14px; }
 }

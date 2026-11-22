@@ -609,6 +609,7 @@ export interface FrontendApi {
   assignSchoolStudent?(classRef: string, studentUserId: string): Promise<ApiEnvelope<unknown>>
   assignSchoolTeacher?(classRef: string, teacherUserId: string): Promise<ApiEnvelope<unknown>>
   listSchoolTasks?(classRef: string): Promise<ApiEnvelope<SchoolTask[]>>
+  listSchoolTaskIndex?(): Promise<ApiEnvelope<SchoolTask[]>>
   publishSchoolTask?(classRef: string, opensAt: string, dueAt: string | null, activationRef?: string | null): Promise<ApiEnvelope<SchoolTask>>
   listStudentSchoolTasks?(): Promise<ApiEnvelope<StudentSchoolTask[]>>
   listStudentSchoolTaskHistory?(): Promise<ApiEnvelope<StudentSchoolTaskHistory[]>>
@@ -636,7 +637,8 @@ export interface FrontendApi {
   getLifecycleAccountSummary?(): Promise<ApiEnvelope<LifecycleAccountSummary>>
   issueLifecycleCredentials?(userIds: string[]): Promise<ApiEnvelope<{ credentials: LifecycleCredential[] }>>
   inviteSchoolStaff?(input: LifecycleInvitationInput): Promise<ApiEnvelope<LifecycleInvitationResult>>
-  listStaffInvitations?(): Promise<ApiEnvelope<LifecycleStaffInvitation[]>>
+  listStaffInvitations?(input?: { limit: number; offset: number; search: string }): Promise<ApiEnvelope<LifecycleStaffInvitation[]>>
+  updateStaffInvitationName?(invitationRef: string, displayName: string): Promise<ApiEnvelope<{ invitation_ref: string; display_name: string }>>
   revokeStaffInvitation?(invitationRef: string, reasonCode: string): Promise<ApiEnvelope<{ status: string }>>
   reissueStaffInvitation?(invitationRef: string, reasonCode: string): Promise<ApiEnvelope<LifecycleInvitationResult>>
   issueStaffRecoveryCredential?(
@@ -645,6 +647,7 @@ export interface FrontendApi {
   ): Promise<ApiEnvelope<LifecycleStaffRecoveryCredential>>
   acceptStaffInvitation?(input: { invitation_ref: string; credential: string; new_password: string; confirm_password: string }): Promise<ApiEnvelope<unknown>>
   completeFirstLogin?(input: { school_ref: string; username: string; credential: string; new_password: string; confirm_password: string }): Promise<ApiEnvelope<unknown>>
+  getInitialLoginSchool?(input: { username: string; credential: string }): Promise<string | null>
   createRecoveryRequest?(input: { school_ref: string; username: string; class_ref: string; reason_code: string }): Promise<ApiEnvelope<unknown>>
   listRecoveryRequests?(): Promise<ApiEnvelope<LifecycleRecoveryTicket[]>>
   verifyRecoveryRequest?(ticketRef: string, reasonCode: string): Promise<ApiEnvelope<unknown>>

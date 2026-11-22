@@ -1,6 +1,10 @@
 <script setup lang="ts">
+import AppDialog from '@/components/app/AppDialog.vue'
+import AppSelect from '@/components/app/AppSelect.vue'
+import AppSelectOption from '@/components/app/AppSelectOption.vue'
 /* global KeyboardEvent, HTMLButtonElement, URL, Blob, File, TextDecoder, TextEncoder, btoa */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import {
   DialogClose,
   DialogContent,
@@ -11,17 +15,35 @@ import {
   DialogTitle,
 } from 'reka-ui'
 import { frontendApi } from '@/services/mock-api'
+import { useSessionStore } from '@/stores/session'
 import type {
   LifecycleAccountSummary, LifecycleCredential, LifecycleRecoveryTicket, LifecycleRosterPreview,
   LifecycleRosterRow, LifecycleStaffInvitation, LifecycleStaffRosterRow, SchoolDirectory,
 } from '@/api/client'
 
-type Section = 'overview' | 'roster' | 'staff' | 'recovery' | 'credentials' | 'status'
+type Section = 'overview' | 'roster' | 'staff' | 'recovery' | 'credentials' | 'status' | 'directory'
 const section = ref<Section>('overview')
+const session = useSessionStore()
+const route = useRoute()
+watch(
+  [() => route.query.directoryView, () => route.query.directoryAction],
+  ([view, action], previous) => {
+    const directoryActions = ['create-class', 'manage-class-people', 'issue-credentials', 'activate-account', 'import-accounts']
+    if ((view === 'classes' && previous?.[0] !== view) || directoryActions.some((item) => item === action)) section.value = 'directory'
+  },
+  { immediate: true },
+)
 const sections: Array<{ id: Section; label: string }> = [
   { id: 'overview', label: '概览' }, { id: 'roster', label: '学生名单' }, { id: 'staff', label: '教职工名单' },
-  { id: 'recovery', label: '安全恢复' }, { id: 'credentials', label: '初始账号' }, { id: 'status', label: '账号状态' },
+  { id: 'credentials', label: '初始账号' }, { id: 'status', label: '账号状态' },
+  { id: 'recovery', label: '安全恢复' }, { id: 'directory', label: '学校目录' },
 ]
+const activeTabIndex = computed(() => sections.findIndex((item) => item.id === section.value))
+const tabIndicatorStyle = computed(() => ({
+  '--tab-index': activeTabIndex.value,
+  '--tab-column': activeTabIndex.value % 3,
+  '--tab-row': Math.floor(activeTabIndex.value / 3),
+}))
 const handleTabKeydown = (event: KeyboardEvent, index: number) => {
   const next = event.key === 'ArrowRight' ? (index + 1) % sections.length
     : event.key === 'ArrowLeft' ? (index + sections.length - 1) % sections.length
@@ -36,19 +58,68 @@ const openCredentials = () => { section.value = 'credentials'; clearFeedback() }
 defineExpose({ openCredentials })
 const summary = ref<LifecycleAccountSummary | null>(null)
 const directory = ref<SchoolDirectory | null>(null)
+let directoryLoadedAt = 0
+let directoryRequest: Promise<SchoolDirectory> | null = null
+const loadDirectory = async (allowRecent = false) => {
+  if (directoryRequest) return directoryRequest
+  if (allowRecent && directory.value && Date.now() - directoryLoadedAt < 10_000) return directory.value
+  if (!frontendApi.getSchoolAdminDirectory) throw new Error('学校目录服务不可用')
+  directoryRequest = frontendApi.getSchoolAdminDirectory()
+    .then(({ data }) => {
+      directory.value = data
+      directoryLoadedAt = Date.now()
+      return data
+    })
+    .finally(() => { directoryRequest = null })
+  return directoryRequest
+}
 const recoveryTickets = ref<LifecycleRecoveryTicket[]>([])
 const staffInvitations = ref<LifecycleStaffInvitation[]>([])
+const staffInvitationSearch = ref('')
+const appliedInvitationSearch = ref('')
+const staffInvitationPage = ref(1)
+const staffInvitationPageSize = 30
+const hasMoreStaffInvitations = ref(false)
+const staffInvitationsLoading = ref(false)
+let staffInvitationRequest = 0
+const staffNameTarget = ref<LifecycleStaffInvitation | null>(null)
+const staffNameDraft = ref('')
+const staffNameError = ref('')
 const busy = ref(false)
+const loadingAccounts = ref(false)
 const error = ref('')
 const notice = ref('')
 const rows = ref<LifecycleRosterRow[]>([])
 const preview = ref<LifecycleRosterPreview | null>(null)
 const rosterRun = ref('')
 const rosterImportKey = ref('')
+const rosterProcessed = ref(0)
+const rosterCreated = ref(0)
+const maxRosterRows = 3000
+const rosterBatchSize = 200
+const rosterPreviewConcurrency = 3
 const pendingCredentialUserIds = ref<string[]>([])
 const staffRows = ref<LifecycleStaffRosterRow[]>([])
 const credentialRows = ref<LifecycleCredential[]>([])
 const credentialPurpose = ref<'initial' | 'recovery'>('initial')
+const credentialExportScope = ref('')
+const credentialExportName = ref('')
+const credentialExportOptions = computed(() => [
+  { value: '', label: '本次全部账号' },
+  ...[...new Set(credentialRows.value.flatMap((row) => row.class_ref.split('、')).filter(Boolean))]
+    .map((value) => ({ value, label: value })),
+])
+const credentialsToExport = computed(() => credentialExportScope.value
+  ? credentialRows.value.filter((row) => row.class_ref.split('、').includes(credentialExportScope.value))
+  : credentialRows.value)
+const matchingIssuedCredentials = computed(() => {
+  const query = credentialExportName.value.trim().toLocaleLowerCase()
+  return credentialsToExport.value.filter((row) =>
+    !query || [row.display_name, row.login_name].some((value) => value?.toLocaleLowerCase().includes(query)))
+})
+watch(credentialExportOptions, (options) => {
+  if (!options.some((option) => option.value === credentialExportScope.value)) credentialExportScope.value = ''
+})
 const passphrase = ref('')
 const credentialSearch = ref('')
 const credentialClassFilter = ref('')
@@ -68,6 +139,7 @@ const reauthPassword = ref('')
 const recoveryReasons = ref<Record<string, string>>({})
 const schoolRef = computed(() => directory.value?.school.school_ref ?? '')
 const isSyntheticDemo = computed(() => directory.value?.school.data_origin === 'SYNTHETIC')
+const usesDemoAdminSession = computed(() => /^PUBLICDEMO_[a-f0-9]{64}$/.test(session.user?.activeContext?.schoolRef ?? ''))
 const credentialCandidates = computed(() => {
   const query = credentialSearch.value.trim().toLocaleLowerCase()
   return (directory.value?.members ?? []).filter((member) => {
@@ -162,29 +234,97 @@ const invitationStatusLabel = (status: LifecycleStaffInvitation['status']) => ({
 })[status]
 const refreshStaffInvitations = async () => {
   if (!frontendApi.listStaffInvitations) return
-  staffInvitations.value = (await frontendApi.listStaffInvitations()).data
+  const request = ++staffInvitationRequest
+  staffInvitationsLoading.value = true
+  try {
+    const result = await frontendApi.listStaffInvitations({
+      limit: staffInvitationPageSize + 1,
+      offset: (staffInvitationPage.value - 1) * staffInvitationPageSize,
+      search: appliedInvitationSearch.value,
+    })
+    if (request !== staffInvitationRequest) return
+    staffInvitations.value = result.data.slice(0, staffInvitationPageSize)
+    hasMoreStaffInvitations.value = result.data.length > staffInvitationPageSize
+  } finally {
+    if (request === staffInvitationRequest) staffInvitationsLoading.value = false
+  }
+}
+const changeInvitationPage = async (page: number, search = appliedInvitationSearch.value) => {
+  const oldPage = staffInvitationPage.value
+  const oldSearch = appliedInvitationSearch.value
+  staffInvitationPage.value = page
+  appliedInvitationSearch.value = search
+  error.value = ''
+  try { await refreshStaffInvitations() }
+  catch (cause) {
+    staffInvitationPage.value = oldPage
+    appliedInvitationSearch.value = oldSearch
+    error.value = cause instanceof Error ? cause.message : '无法读取邀请记录'
+  }
+}
+const beginStaffNameEdit = (item: LifecycleStaffInvitation) => {
+  staffNameTarget.value = item
+  staffNameDraft.value = item.display_name ?? ''
+  staffNameError.value = ''
+}
+const saveStaffName = async () => {
+  const target = staffNameTarget.value
+  const name = staffNameDraft.value.trim()
+  if (busy.value || !target || !name || name === target.display_name || !frontendApi.updateStaffInvitationName) return
+  busy.value = true
+  staffNameError.value = ''
+  try {
+    const result = await frontendApi.updateStaffInvitationName(target.invitation_ref, name)
+    staffInvitations.value = staffInvitations.value.map((item) => item.invitation_ref === target.invitation_ref
+      ? { ...item, display_name: result.data.display_name }
+      : item)
+    if (directory.value) {
+      directory.value = {
+        ...directory.value,
+        members: directory.value.members.map((member) => member.user_id === target.user_id
+          ? { ...member, display_name: result.data.display_name }
+          : member),
+      }
+    }
+    staffNameTarget.value = null
+    notice.value = '姓名已保存'
+    if (appliedInvitationSearch.value) await loadSectionDetails('staff')
+  } catch (cause) {
+    staffNameError.value = cause instanceof Error ? cause.message : '无法保存姓名'
+  } finally { busy.value = false }
 }
 const requireRecentReauthentication = async () => {
+  if (usesDemoAdminSession.value) return
   if (!frontendApi.reauthenticate || !reauthPassword.value) throw new Error('请输入管理员当前密码')
   const currentPassword = reauthPassword.value
   try { await frontendApi.reauthenticate(currentPassword) }
   finally { reauthPassword.value = '' }
 }
 const loadData = async () => {
-  clearFeedback()
-  busy.value = true
+  if (loadingAccounts.value) return
+  loadingAccounts.value = true
   try {
     if (!frontendApi.getLifecycleAccountSummary || !frontendApi.getSchoolAdminDirectory) throw new Error('账号生命周期服务不可用')
-    const [summaryResponse, directoryResponse] = await Promise.all([
-      frontendApi.getLifecycleAccountSummary(), frontendApi.getSchoolAdminDirectory(),
+    const [summaryResponse] = await Promise.all([
+      frontendApi.getLifecycleAccountSummary(), loadDirectory(),
     ])
     summary.value = summaryResponse.data
-    directory.value = directoryResponse.data
-    if (frontendApi.listRecoveryRequests) recoveryTickets.value = (await frontendApi.listRecoveryRequests()).data
-    await refreshStaffInvitations()
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '读取账号信息失败' }
-  finally { busy.value = false }
+  finally { loadingAccounts.value = false }
 }
+
+async function loadSectionDetails(current: Section) {
+  try {
+    if (current === 'staff') await refreshStaffInvitations()
+    if (current === 'recovery' && frontendApi.listRecoveryRequests) {
+      recoveryTickets.value = (await frontendApi.listRecoveryRequests()).data
+    }
+  } catch (cause) {
+    if (section.value === current) error.value = cause instanceof Error ? cause.message : '无法读取账号记录'
+  }
+}
+
+watch(section, (current) => { void loadSectionDetails(current) })
 
 const downloadRosterTemplate = () => {
   const csv = '\uFEFF# psynova_student_roster_template_v1\r\nstudent_number,display_name,class_ref,grade_level\r\n'
@@ -226,12 +366,33 @@ const parseCsvRecords = (text: string): string[][] => {
   return result
 }
 
+const readRosterCsv = async (file: File): Promise<string> => {
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  const decode = (encoding: string) => new TextDecoder(encoding, { fatal: true }).decode(bytes)
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return decode('utf-16le')
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) return decode('utf-16be')
+  try { return decode('utf-8') }
+  catch {
+    if (bytes[0] !== 0xef || bytes[1] !== 0xbb || bytes[2] !== 0xbf) {
+      try { return decode('gb18030') } catch { /* Unsupported encoding */ }
+    }
+    throw new Error('无法读取 CSV 编码，请另存为 CSV UTF-8 后重试')
+  }
+}
+
+let rosterFileAttempt = 0
+let staffFileAttempt = 0
 const parseRosterFile = async (file?: File) => {
+  const attempt = ++rosterFileAttempt
   clearFeedback(); preview.value = null; rosterRun.value = ''; rosterImportKey.value = ''; rows.value = []
+  rosterProcessed.value = 0
+  rosterCreated.value = 0
+  pendingCredentialUserIds.value = []
   if (!file) return
   if (file.size > 1024 * 1024) { error.value = '文件不能超过 1 MiB'; return }
   try {
-    const text = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer()).replace(/^\uFEFF/, '')
+    const text = await readRosterCsv(file)
+    if (attempt !== rosterFileAttempt) return
     const records = parseCsvRecords(text)
     const versionMarker = '# psynova_student_roster_template_v1'
     if (records[0]?.length === 1 && records[0][0]?.startsWith('# psynova_student_roster_template_')) {
@@ -239,22 +400,27 @@ const parseRosterFile = async (file?: File) => {
     }
     const expected = ['student_number', 'display_name', 'class_ref', 'grade_level']
     if (JSON.stringify(records.shift()) !== JSON.stringify(expected)) throw new Error('模板列不匹配')
-    if (records.length < 1 || records.length > 200) throw new Error('导入须包含 1 到 200 行学生记录')
+    if (records.length < 1 || records.length > maxRosterRows) throw new Error('导入须包含 1 到 3000 行学生记录')
     rows.value = records.map((record, index) => {
       if ((record.length !== 3 && record.length !== 4) || record.slice(0, 3).some((cell) => !cell)) throw new Error(`第 ${index + 2} 行信息不完整`)
       return { row_no: index + 1, student_number: record[0]!, display_name: record[1]!, class_ref: record[2]!, ...(record[3] ? { grade_level: record[3] } : {}) }
     })
     notice.value = `已读取 ${rows.value.length} 行，按班级分组预览`
     void previewRoster()
-  } catch (cause) { rows.value = []; error.value = cause instanceof Error ? cause.message : '无法读取文件' }
+  } catch (cause) {
+    if (attempt !== rosterFileAttempt) return
+    rows.value = []; error.value = cause instanceof Error ? cause.message : '无法读取文件'
+  }
 }
 
 const parseStaffFile = async (file?: File) => {
+  const attempt = ++staffFileAttempt
   clearFeedback(); staffRows.value = []
   if (!file) return
   if (file.size > 1024 * 1024) { error.value = '文件不能超过 1 MiB'; return }
   try {
-    const text = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer()).replace(/^\uFEFF/, '')
+    const text = await readRosterCsv(file)
+    if (attempt !== staffFileAttempt) return
     const records = parseCsvRecords(text)
     if (records[0]?.length === 1 && records[0][0]?.startsWith('# psynova_staff_roster_template_')) {
       if (records.shift()?.[0] !== '# psynova_staff_roster_template_v1') throw new Error('教职工模板版本不受支持')
@@ -262,79 +428,134 @@ const parseStaffFile = async (file?: File) => {
     if (JSON.stringify(records.shift()) !== JSON.stringify(['employee_ref', 'display_name', 'role', 'class_refs'])) {
       throw new Error('教职工模板列不匹配')
     }
-    if (records.length < 1 || records.length > 200) throw new Error('名单须包含 1 到 200 行记录')
+    if (records.length < 1 || records.length > maxRosterRows) throw new Error('名单须包含 1 到 3000 行教职工记录')
+    const employeeRows = new Map<string, number>()
     staffRows.value = records.map((record, index) => {
       if (record.length !== 4 || record.slice(0, 3).some((cell) => !cell)) throw new Error(`第 ${index + 2} 行信息不完整`)
+      const employeeRef = record[0]!
+      if (!/^[ -~]{1,128}$/.test(employeeRef)) throw new Error(`第 ${index + 2} 行教职工编号须为 1 到 128 个可打印英文字母、数字或符号`)
+      const employeeKey = employeeRef.toLowerCase()
+      const priorRow = employeeRows.get(employeeKey)
+      if (priorRow !== undefined) throw new Error(`第 ${index + 2} 行与第 ${priorRow} 行的教职工编号重复`)
+      employeeRows.set(employeeKey, index + 2)
+      if (record[1]!.length > 120) throw new Error(`第 ${index + 2} 行姓名不能超过 120 个字符`)
       const role = record[2]
       if (role !== 'teacher' && role !== 'psychological_specialist') throw new Error(`第 ${index + 2} 行角色必须是 teacher 或 psychological_specialist`)
       const classRefs = record[3] ? record[3].split('|').map((value) => value.trim()).filter(Boolean) : []
+      if (classRefs.length > 50 || new Set(classRefs).size !== classRefs.length || classRefs.some((ref) => ref.length > 128)) {
+        throw new Error(`第 ${index + 2} 行班级编号存在重复、过长或超出 50 个`)
+      }
       if (role === 'teacher' && classRefs.length === 0) throw new Error(`第 ${index + 2} 行普通教师必须填写任教班级`)
       if (role === 'psychological_specialist' && classRefs.length > 0) throw new Error(`第 ${index + 2} 行心理老师不能分配普通教师班级范围`)
-      return { row_no: index + 1, employee_ref: record[0]!, display_name: record[1]!, role, class_refs: classRefs }
+      return { row_no: index + 1, employee_ref: employeeRef, display_name: record[1]!, role, class_refs: classRefs }
     })
-    if (new Set(staffRows.value.map((row) => row.employee_ref.toLocaleLowerCase())).size !== staffRows.value.length) {
-      throw new Error('名单中存在重复的教职工编号')
-    }
     notice.value = `已读取 ${staffRows.value.length} 行教职工名单`
-  } catch (cause) { staffRows.value = []; error.value = cause instanceof Error ? cause.message : '无法读取文件' }
+  } catch (cause) {
+    if (attempt !== staffFileAttempt) return
+    staffRows.value = []; error.value = cause instanceof Error ? cause.message : '无法读取文件'
+  }
+}
+
+function rosterBatch(offset: number) {
+  return rows.value.slice(offset, offset + rosterBatchSize).map((row, index) => ({ ...row, row_no: index + 1 }))
 }
 
 const previewRoster = async () => {
   clearFeedback(); busy.value = true
   try {
     if (!frontendApi.previewLifecycleRoster) throw new Error('花名册预览服务不可用')
-    preview.value = (await frontendApi.previewLifecycleRoster(rows.value)).data
+    const errors: LifecycleRosterPreview['errors'] = []
+    const seen = new Set<string>()
+    const groups = new Map<string, number>()
+    for (const row of rows.value) {
+      const number = row.student_number.normalize('NFKC').trim().toUpperCase()
+      if (seen.has(number)) errors.push({ row_no: row.row_no, code: 'DUPLICATE_STUDENT_NUMBER' })
+      seen.add(number)
+      groups.set(row.class_ref, (groups.get(row.class_ref) ?? 0) + 1)
+    }
+    let valid = errors.length === 0
+    if (valid) {
+      const submitPreview = frontendApi.previewLifecycleRoster.bind(frontendApi)
+      const offsets = Array.from({ length: Math.ceil(rows.value.length / rosterBatchSize) }, (_, index) => index * rosterBatchSize)
+      for (let index = 0; index < offsets.length; index += rosterPreviewConcurrency) {
+        const window = offsets.slice(index, index + rosterPreviewConcurrency)
+        const results = await Promise.all(window.map(async (offset) => ({
+          offset, receipt: (await submitPreview(rosterBatch(offset))).data,
+        })))
+        for (const { offset, receipt } of results) {
+          valid = valid && receipt.valid
+          errors.push(...receipt.errors.map((item) => ({ ...item, row_no: item.row_no + offset })))
+        }
+      }
+    }
+    preview.value = {
+      valid,
+      row_count: rows.value.length,
+      errors,
+      class_groups: Array.from(groups, ([class_ref, row_count]) => ({ class_ref, row_count })),
+    }
     if (preview.value.valid && !preview.value.errors.length) notice.value = '预览通过，可确认导入'
     else notice.value = '存在错误或冲突，处理后重新预览'
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '花名册预览失败' }
   finally { busy.value = false }
 }
 
+async function issuePendingRosterCredentials() {
+  if (!pendingCredentialUserIds.value.length) return
+  if (!frontendApi.issueLifecycleCredentials) throw new Error('初始密码生成服务不可用')
+  const issued = (await frontendApi.issueLifecycleCredentials(pendingCredentialUserIds.value)).data
+  credentialRows.value.push(...issued.credentials.map((row) => ({
+    ...row, class_ref: row.class_ref ?? '', role: 'student' as const,
+  })))
+  pendingCredentialUserIds.value = []
+}
+
 const importRoster = async () => {
-  if (!preview.value?.valid || preview.value.errors.length) return
-  clearFeedback(); busy.value = true; credentialRows.value = []; passphrase.value = ''
+  if (!preview.value?.valid || preview.value.errors.length || busy.value) return
+  if (!rosterImportKey.value) {
+    rosterImportKey.value = 'roster-' + crypto.randomUUID()
+    credentialRows.value = []
+    passphrase.value = ''
+    credentialPurpose.value = 'initial'
+  }
+  clearFeedback(); busy.value = true
   try {
     if (!frontendApi.importLifecycleRoster) throw new Error('花名册导入服务不可用')
-    if (!rosterImportKey.value) rosterImportKey.value = `roster-${crypto.randomUUID()}`
-    const result = (await frontendApi.importLifecycleRoster(rows.value, rosterImportKey.value)).data
-    rosterRun.value = result.run_ref
-    const userIds = [...new Set(result.accounts.map((account) => account.user_id))]
-    if (!userIds.length) {
-      notice.value = `名单已处理，新增 ${result.created_count} 个账号`
-      rosterImportKey.value = ''
-      return
+    await issuePendingRosterCredentials()
+    while (rosterProcessed.value < rows.value.length) {
+      const offset = rosterProcessed.value
+      const batch = rosterBatch(offset)
+      const result = (await frontendApi.importLifecycleRoster(batch, rosterImportKey.value + '-' + offset)).data
+      if (result.status !== 'COMPLETED' || result.row_count !== batch.length
+        || result.created_count + result.skipped_count !== batch.length
+        || result.accounts.length !== result.created_count) {
+        throw new Error('未能确认当前批次的导入结果')
+      }
+      rosterRun.value = result.run_ref
+      directoryLoadedAt = 0
+      rosterCreated.value += result.created_count
+      rosterProcessed.value += batch.length
+      pendingCredentialUserIds.value = [...new Set(result.accounts.map((account) => account.user_id))]
+      await issuePendingRosterCredentials()
     }
-    pendingCredentialUserIds.value = userIds
-    credentialUsers.value = userIds
-    section.value = 'credentials'
-    if (!frontendApi.issueLifecycleCredentials) throw new Error('初始密码生成服务不可用')
-    const issued = (await frontendApi.issueLifecycleCredentials(userIds)).data
-    credentialRows.value = issued.credentials.map((row) => ({
-      ...row,
-      class_ref: row.class_ref ?? result.accounts.find((account) => account.user_id === row.user_id)?.class_ref ?? '',
-      role: 'student',
-    }))
-    credentialPurpose.value = 'initial'
     credentialUsers.value = []
-    pendingCredentialUserIds.value = []
     rosterImportKey.value = ''
-    notice.value = `已导入 ${result.created_count} 名学生并生成初始账号，下载后交给对应学生`
+    preview.value = null
+    if (credentialRows.value.length) section.value = 'credentials'
+    notice.value = '已导入 ' + rosterCreated.value + ' 名学生，生成 ' + credentialRows.value.length + ' 份初始凭据'
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '花名册导入或初始密码生成失败'
-    if (pendingCredentialUserIds.value.length) {
-      credentialUsers.value = pendingCredentialUserIds.value
-      section.value = 'credentials'
-      error.value = '名单已导入，初始密码暂未生成；点击“生成初始密码”即可重试'
-    }
-  }
-  finally { busy.value = false }
+    if (rosterProcessed.value > 0) error.value += '；点击「继续导入」可从当前批次恢复'
+  } finally { busy.value = false }
 }
 
 const importStaffRoster = async () => {
-  clearFeedback(); busy.value = true; credentialRows.value = []; passphrase.value = ''
+  if (busy.value) return
+  clearFeedback(); busy.value = true
   try {
     if (!frontendApi.importLifecycleStaff || staffRows.value.length === 0) throw new Error('请选择教职工名单')
     const result = (await frontendApi.importLifecycleStaff(staffRows.value)).data
+    if (result.created_count !== staffRows.value.length) throw new Error('未能确认教职工导入结果')
     credentialRows.value = result.credentials.map((row) => ({
       user_id: row.user_id,
       login_name: row.login_name,
@@ -345,28 +566,13 @@ const importStaffRoster = async () => {
       role: row.role,
       invitation_ref: row.invitation_ref,
     }))
+    passphrase.value = ''
     credentialPurpose.value = 'initial'
     staffRows.value = []
+    directoryLoadedAt = 0
     section.value = 'credentials'
     notice.value = `已导入 ${result.created_count} 名教职工并生成初始账号，下载后交给对应人员`
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '教职工导入失败' }
-  finally { busy.value = false }
-}
-
-const retryCredentialIssue = async () => {
-  clearFeedback(); busy.value = true
-  try {
-    if (!frontendApi.issueLifecycleCredentials || pendingCredentialUserIds.value.length === 0) {
-      throw new Error('没有待生成初始密码的账号')
-    }
-    const issued = (await frontendApi.issueLifecycleCredentials(pendingCredentialUserIds.value)).data
-    credentialRows.value = issued.credentials.map((row) => ({ ...row, class_ref: row.class_ref ?? '', role: 'student' }))
-    credentialPurpose.value = 'initial'
-    credentialUsers.value = []
-    pendingCredentialUserIds.value = []
-    rosterImportKey.value = ''
-    notice.value = `已生成 ${credentialRows.value.length} 个初始账号`
-  } catch (cause) { error.value = cause instanceof Error ? cause.message : '初始密码生成失败' }
   finally { busy.value = false }
 }
 
@@ -501,14 +707,18 @@ const csvCell = (value: unknown) => {
   return `"${text.replaceAll('"', '""')}"`
 }
 
-const downloadInitialCredentialsCsv = () => {
-  if (!credentialRows.value.length || !isSyntheticDemo.value) return
+const downloadInitialCredentialsCsv = (userId?: string) => {
+  const selected = userId
+    ? credentialsToExport.value.filter((row) => row.user_id === userId)
+    : credentialsToExport.value
+  if (!selected.length || !isSyntheticDemo.value) return
   const rows = [
-    ['凭据用途', '角色', '姓名', '班级', '学校编号', '登录地址', '账号', credentialPurpose.value === 'initial' ? '初始密码（首次登录凭据）' : '重置凭据', '有效期至'],
-    ...credentialRows.value.map((item) => [
+    ['凭据用途', '角色', '姓名', '班级', '学校编号', '登录地址', '账号', credentialPurpose.value === 'initial' ? '初始密码（首次登录凭据）' : '重置凭据', '邀请编号', '有效期至'],
+    ...selected.map((item) => [
       credentialPurpose.value === 'initial' ? '首次登录' : '密码重置',
       roleLabel(item.role ?? 'student'), item.display_name, item.class_ref, schoolRef.value,
-      `${window.location.origin}/login`, item.login_name, item.credential, item.expires_at,
+      `${window.location.origin}/login?setup=${credentialPurpose.value === 'recovery' ? 'reset' : item.invitation_ref ? 'invite' : 'first'}`,
+      item.login_name, item.credential, item.invitation_ref, item.expires_at,
     ]),
   ]
   const csv = `\uFEFF${rows.map((row) => row.map(csvCell).join(',')).join('\r\n')}\r\n`
@@ -521,14 +731,23 @@ const downloadInitialCredentialsCsv = () => {
   link.click()
   link.remove()
   window.setTimeout(() => URL.revokeObjectURL(url), 0)
-  credentialRows.value = []
+  const exported = new Set(selected.map((row) => row.user_id))
+  credentialRows.value = credentialRows.value.filter((row) => !exported.has(row.user_id))
+  credentialExportScope.value = ''
   passphrase.value = ''
   notice.value = credentialPurpose.value === 'initial'
     ? '账号文件已下载；初始密码首次使用后失效'
     : '重置凭据文件已下载；凭据首次使用后失效'
 }
 
-const base64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes))
+const base64 = (bytes: Uint8Array) => {
+  const chunkSize = 24 * 1024
+  const chunks: string[] = []
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    chunks.push(btoa(String.fromCharCode(...bytes.subarray(offset, offset + chunkSize))))
+  }
+  return chunks.join('')
+}
 const downloadEncryptedCredentials = async () => {
   clearFeedback()
   if (!credentialRows.value.length || passphrase.value.length < 12) { error.value = '请设置至少 12 位加密口令'; return }
@@ -593,34 +812,42 @@ onUnmounted(() => { credentialRows.value = []; passphrase.value = ''; rows.value
 
 <template>
   <section class="lifecycle" aria-labelledby="lifecycle-title">
-    <header class="lifecycle__head"><h2 id="lifecycle-title">学校账号生命周期</h2><button type="button" class="lifecycle__secondary" :disabled="busy" @click="loadData">刷新</button></header>
-    <nav class="lifecycle__tabs" aria-label="账号生命周期功能" role="tablist">
-      <button v-for="(item, index) in sections" :key="item.id" type="button" role="tab" :aria-selected="section === item.id" :tabindex="section === item.id ? 0 : -1" @keydown="handleTabKeydown($event, index)" @click="section = item.id">{{ item.label }}</button>
+    <header class="lifecycle__head"><div><h1 id="lifecycle-title">学校账号管理</h1><p>导入名单、分发初始账号及管理后续状态。</p></div><button type="button" class="lifecycle__secondary" :disabled="busy || loadingAccounts" @click="clearFeedback(); loadData(); loadSectionDetails(section)">刷新账号数据</button></header>
+    <nav class="lifecycle__tabs" :style="tabIndicatorStyle" aria-label="学校账号管理功能" role="tablist">
+      <span class="lifecycle__tab-indicator" aria-hidden="true" />
+      <button v-for="(item, index) in sections" :id="`school-account-tab-${item.id}`" :key="item.id" type="button" role="tab" :aria-selected="section === item.id" :aria-controls="section === item.id ? 'school-account-panel' : undefined" :tabindex="section === item.id ? 0 : -1" @keydown="handleTabKeydown($event, index)" @click="section = item.id">{{ item.label }}</button>
     </nav>
     <p v-if="error" class="lifecycle__message lifecycle__message--error" role="alert">{{ error }}</p>
     <p v-if="notice" class="lifecycle__message" role="status" aria-live="polite">{{ notice }}</p>
     <p v-if="!apiReady" class="lifecycle__message lifecycle__message--error">账号生命周期服务未连接</p>
 
+    <div id="school-account-panel" role="tabpanel" :aria-labelledby="`school-account-tab-${section}`" tabindex="0">
     <div v-if="section === 'overview'" class="lifecycle__body">
       <div v-if="summary" class="lifecycle__metrics" aria-label="账号汇总">
         <div><span>账号总数</span><strong>{{ summary.total_accounts }}</strong></div><div><span>正常账号</span><strong>{{ summary.active_accounts }}</strong></div><div><span>待首次登录</span><strong>{{ summary.pending_activation }}</strong></div><div><span>已停用</span><strong>{{ summary.suspended_accounts }}</strong></div><div><span>班级</span><strong>{{ summary.classes }}</strong></div>
       </div>
-      <p v-else class="lifecycle__empty">{{ busy ? '正在读取服务端汇总…' : '暂无账号汇总' }}</p>
+      <p v-else class="lifecycle__empty">{{ loadingAccounts ? '正在读取服务端汇总…' : '暂无账号汇总' }}</p>
+      <div class="lifecycle__next">
+        <button type="button" class="lifecycle__primary" @click="section = 'roster'">导入学生名单</button>
+        <button type="button" class="lifecycle__secondary" @click="section = 'staff'">管理教职工</button>
+      </div>
     </div>
 
     <div v-else-if="section === 'roster'" class="lifecycle__body">
       <h3>导入学生名单</h3>
+      <p>下载并填写模板。上传后先核对班级分组和异常行，再生成初始账号。</p>
       <button type="button" class="lifecycle__secondary" @click="downloadRosterTemplate">下载 CSV 模板</button>
-      <label class="lifecycle__field">选择 CSV 文件<input type="file" accept=".csv,text/csv" :disabled="busy" @change="parseRosterFile(($event.target as HTMLInputElement).files?.[0])"></label>
-      <p v-if="rows.length" class="lifecycle__boundary">{{ rows.length }} 条记录，{{ new Set(rows.map((row) => row.class_ref)).size }} 个班级</p>
-      <div v-if="rows.length" class="lifecycle__table-wrap"><table><thead><tr><th>行号</th><th>学号</th><th>姓名</th><th>班级</th><th>年级</th></tr></thead><tbody><tr v-for="row in rows.slice(0, 200)" :key="row.row_no"><td>{{ row.row_no }}</td><td>{{ row.student_number }}</td><td>{{ row.display_name }}</td><td>{{ row.class_ref }}</td><td>{{ row.grade_level || '—' }}</td></tr></tbody></table></div>
+      <label class="lifecycle__field">选择 CSV 文件<input type="file" accept=".csv,text/csv" :disabled="busy || Boolean(rosterImportKey)" @change="parseRosterFile(($event.target as HTMLInputElement).files?.[0])"></label>
+      <p v-if="rows.length" class="lifecycle__boundary">{{ rows.length }} 条记录，预览前 {{ Math.min(rows.length, 30) }} 条</p>
+      <div v-if="rows.length" class="lifecycle__table-wrap"><table><thead><tr><th>行号</th><th>学号</th><th>姓名</th><th>班级</th><th>年级</th></tr></thead><tbody><tr v-for="row in rows.slice(0, 30)" :key="row.row_no"><td>{{ row.row_no }}</td><td>{{ row.student_number }}</td><td>{{ row.display_name }}</td><td>{{ row.class_ref }}</td><td>{{ row.grade_level || '—' }}</td></tr></tbody></table></div>
       <div v-if="preview" class="lifecycle__preview-summary" role="status">
         <span>服务端预览：{{ preview.row_count }} 条</span><span>{{ preview.class_groups?.length ?? 0 }} 个班级</span><span>异常 {{ preview.errors.length }} 条</span>
       </div>
       <div v-if="preview?.class_groups?.length" class="lifecycle__table-wrap lifecycle__table-wrap--summary"><table><thead><tr><th>班级</th><th>人数</th></tr></thead><tbody><tr v-for="group in preview.class_groups" :key="group.class_ref"><td>{{ group.class_ref }}</td><td>{{ group.row_count }}</td></tr></tbody></table></div>
       <ul v-if="preview?.errors.length" class="lifecycle__issues" aria-label="导入异常"><li v-for="(item, index) in preview.errors" :key="`${item.row_no}:${item.code}:${index}`">第 {{ item.row_no }} 条：{{ rosterIssueLabel(item.code) }}</li></ul>
-      <button class="lifecycle__primary" type="button" :disabled="busy || !preview?.valid || Boolean(preview.errors.length)" @click="importRoster">导入并生成初始账号</button>
-      <button v-if="rosterRun" class="lifecycle__secondary" type="button" :disabled="busy" @click="refreshRosterRun">查看导入结果</button>
+      <p v-if="rosterImportKey" role="status">已导入 {{ rosterProcessed }} / {{ rows.length }} 条，已签发 {{ credentialRows.length }} 份初始凭据</p>
+      <button class="lifecycle__primary" type="button" :disabled="busy || !preview?.valid || Boolean(preview.errors.length)" @click="importRoster">{{ rosterImportKey ? '继续导入' : '导入并生成初始账号' }}</button>
+      <button v-if="rosterRun" class="lifecycle__secondary" type="button" :disabled="busy" @click="refreshRosterRun">查看最近一批</button>
     </div>
 
     <div v-else-if="section === 'staff'" class="lifecycle__body">
@@ -628,40 +855,61 @@ onUnmounted(() => { credentialRows.value = []; passphrase.value = ''; rows.value
         <h3>导入普通教师和心理教师名单</h3>
         <button type="button" class="lifecycle__secondary" @click="downloadStaffRosterTemplate">下载 CSV 模板</button>
         <label class="lifecycle__field">选择 CSV 文件<input type="file" accept=".csv,text/csv" :disabled="busy" @change="parseStaffFile(($event.target as HTMLInputElement).files?.[0])"></label>
-        <p>角色填写 teacher 或 psychological_specialist；普通教师班级用竖线分隔，心理教师不填班级。</p>
+        <p>每次最多 3,000 人。普通教师班级用竖线分隔，心理教师不填班级</p>
         <div v-if="staffRows.length" class="lifecycle__boundary">已读取 {{ staffRows.length }} 行，普通教师 {{ staffRows.filter(row => row.role === 'teacher').length }} 人，心理教师 {{ staffRows.filter(row => row.role === 'psychological_specialist').length }} 人</div>
-        <button class="lifecycle__primary" type="button" :disabled="busy || !staffRows.length" @click="importStaffRoster">导入并生成初始账号</button>
+        <button class="lifecycle__primary" type="button" :disabled="busy || !staffRows.length" @click="importStaffRoster">{{ busy ? '正在处理…' : '导入并生成初始账号' }}</button>
       </div>
       <h3>单个教职工邀请</h3>
       <form class="lifecycle__form" @submit.prevent="inviteStaff">
         <label>教职工编号<input v-model.trim="invitation.employee_ref" required maxlength="128" pattern="[\x20-\x7E]+" placeholder="PSY-001" title="请使用英文编号"></label><label>姓名<input v-model.trim="invitation.display_name" required maxlength="120"></label>
-        <label>角色<select v-model="invitation.role" @change="updateInvitationRole"><option value="teacher">普通教师</option><option value="psychological_specialist">心理老师</option></select></label><label>校内联系方式<input v-model.trim="invitation.work_contact" required maxlength="160"></label>
-        <label v-if="invitation.role === 'teacher'" class="lifecycle__field">任教班级<select v-model="invitation.class_refs" multiple size="4"><option v-for="item in directory?.classes ?? []" :key="item.class_ref" :value="item.class_ref">{{ item.display_name || item.class_ref }}</option></select></label>
+        <label>角色<AppSelect v-model="invitation.role" @update:model-value="updateInvitationRole"><AppSelectOption value="teacher">普通教师</AppSelectOption><AppSelectOption value="psychological_specialist">心理老师</AppSelectOption></AppSelect></label><label>校内联系方式<input v-model.trim="invitation.work_contact" required maxlength="160"></label>
+        <label v-if="invitation.role === 'teacher'" class="lifecycle__field">任教班级<AppSelect v-model="invitation.class_refs" multiple><AppSelectOption v-for="item in directory?.classes ?? []" :key="item.class_ref" :value="item.class_ref">{{ item.display_name || item.class_ref }}</AppSelectOption></AppSelect></label>
         <label class="lifecycle__check"><input v-model="invitationVerified" type="checkbox">已核验身份与工作联系方式</label>
         <button class="lifecycle__primary" type="submit" :disabled="busy || !invitationVerified">登记邀请</button>
       </form>
-      <label class="lifecycle__field">管理员当前密码<input v-model="reauthPassword" type="password" autocomplete="current-password"></label>
+      <label v-if="!usesDemoAdminSession" class="lifecycle__field">管理员当前密码<input v-model="reauthPassword" type="password" autocomplete="current-password"></label>
       <h3>邀请记录</h3>
-      <div v-if="staffInvitations.length" class="lifecycle__invitation-list">
+      <form v-if="frontendApi.listStaffInvitations" class="lifecycle__form" @submit.prevent="changeInvitationPage(1, staffInvitationSearch.trim())">
+        <label class="lifecycle__field">搜索邀请<input v-model="staffInvitationSearch" maxlength="128" placeholder="姓名、教职工编号或账号"></label>
+        <button class="lifecycle__secondary" type="submit" :disabled="staffInvitationsLoading || busy">搜索</button>
+      </form>
+      <p v-if="staffInvitationsLoading" role="status">正在读取邀请记录…</p>
+      <div v-else-if="staffInvitations.length" class="lifecycle__invitation-list">
         <article v-for="item in staffInvitations" :key="item.invitation_ref" class="lifecycle__invitation">
           <div class="lifecycle__invitation-identity"><strong>{{ item.display_name || item.login_name }}</strong><span>编号 {{ item.employee_ref }}，账号 {{ item.login_name }}，邀请编号 {{ item.invitation_ref }}</span></div>
           <div><span>{{ roleLabel(item.role) }}</span><span>{{ item.class_refs.length ? item.class_refs.map(classLabel).join('、') : '未分配班级' }}</span></div>
           <div><strong>{{ invitationStatusLabel(item.status) }}</strong><span>有效期至 {{ item.expires_at }}</span></div>
           <div class="lifecycle__invitation-actions">
+            <button v-if="item.status !== 'REVOKED' && frontendApi.updateStaffInvitationName" type="button" class="lifecycle__secondary" :disabled="busy" @click="beginStaffNameEdit(item)">修改姓名</button>
             <button v-if="item.status !== 'ACCEPTED'" type="button" class="lifecycle__secondary" :disabled="busy" @click="reissueStaffInvitation(item)">重签凭据</button>
             <button v-else type="button" class="lifecycle__secondary" :disabled="busy" @click="beginStaffRecovery(item)">重置凭据</button>
             <button v-if="item.status === 'ISSUED' || item.status === 'EXPIRED'" type="button" class="lifecycle__secondary" :disabled="busy" @click="revokeStaffInvitation(item)">撤销邀请</button>
           </div>
         </article>
       </div>
-      <p v-else-if="frontendApi.listStaffInvitations" class="lifecycle__empty">暂无邀请记录</p>
+      <p v-else-if="frontendApi.listStaffInvitations" class="lifecycle__empty">{{ appliedInvitationSearch ? '没有符合条件的邀请' : '暂无邀请记录' }}</p>
       <p v-else class="lifecycle__empty">邀请记录服务暂不可用</p>
+      <div v-if="staffInvitationPage > 1 || hasMoreStaffInvitations" class="lifecycle__actions">
+        <span>第 {{ staffInvitationPage }} 页</span>
+        <button class="lifecycle__secondary" type="button" :disabled="staffInvitationPage === 1 || staffInvitationsLoading || busy" @click="changeInvitationPage(staffInvitationPage - 1)">上一页</button>
+        <button class="lifecycle__secondary" type="button" :disabled="!hasMoreStaffInvitations || staffInvitationsLoading || busy" @click="changeInvitationPage(staffInvitationPage + 1)">下一页</button>
+      </div>
+      <AppDialog :open="Boolean(staffNameTarget)" title="修改教职工姓名" :description="staffNameTarget?.employee_ref" @update:open="value => { if (!value && !busy) staffNameTarget = null }">
+        <form class="lifecycle__form" @submit.prevent="saveStaffName">
+          <label class="lifecycle__field">姓名<input v-model.trim="staffNameDraft" required maxlength="120" autocomplete="off" :disabled="busy"></label>
+          <p v-if="staffNameError" class="lifecycle__error" role="alert">{{ staffNameError }}</p>
+          <div class="lifecycle__actions">
+            <button class="lifecycle__primary" type="submit" :disabled="busy || !staffNameDraft || staffNameDraft === staffNameTarget?.display_name">保存姓名</button>
+            <button class="lifecycle__secondary" type="button" :disabled="busy" @click="staffNameTarget = null">取消</button>
+          </div>
+        </form>
+      </AppDialog>
       <DialogRoot :open="Boolean(staffRecoveryTarget)" @update:open="value => { if (!value) cancelStaffRecovery() }">
         <DialogPortal>
           <DialogOverlay class="lifecycle__modal-backdrop" />
           <DialogContent class="lifecycle__modal">
             <div class="lifecycle__modal-heading"><DialogTitle>重置教职工凭据</DialogTitle><DialogDescription>{{ staffRecoveryTarget?.display_name || staffRecoveryTarget?.login_name }}</DialogDescription></div>
-            <label>核验方式<select v-model="staffRecoveryMethod"><option value="IN_PERSON">当面核验</option><option v-if="staffRecoveryTarget?.role === 'teacher'" value="VERIFIED_WORK_CONTACT">已核验的校内联系方式</option></select></label>
+            <label>核验方式<AppSelect v-model="staffRecoveryMethod"><AppSelectOption value="IN_PERSON">当面核验</AppSelectOption><AppSelectOption v-if="staffRecoveryTarget?.role === 'teacher'" value="VERIFIED_WORK_CONTACT">已核验的校内联系方式</AppSelectOption></AppSelect></label>
             <label>原因代码<input v-model.trim="staffRecoveryReasonCode" required maxlength="80"></label>
             <label class="lifecycle__check"><input v-model="staffRecoveryVerified" type="checkbox">已完成身份核验</label>
             <div class="lifecycle__actions"><DialogClose as-child><button type="button" class="lifecycle__secondary" :disabled="busy">取消</button></DialogClose><button type="button" class="lifecycle__primary" :disabled="busy || !staffRecoveryVerified" @click="issueStaffRecoveryCredential">签发一次性凭据</button></div>
@@ -673,7 +921,7 @@ onUnmounted(() => { credentialRows.value = []; passphrase.value = ''; rows.value
     <div v-else-if="section === 'recovery'" class="lifecycle__body">
       <h3>安全恢复请求</h3><p>教师核验后，由管理员审批</p>
       <div class="lifecycle__form lifecycle__form--inline"><label>学生账号<input v-model="accountSelection" autocomplete="off"></label><label>班级编号<input v-model="accountReason" autocomplete="off"></label><label>申请原因代码<input v-model="recoveryReason" autocomplete="off"></label><button type="button" class="lifecycle__primary" :disabled="busy" @click="createStudentRecoveryRequest">提交学生申请</button></div>
-      <label>管理员当前密码<input v-model="reauthPassword" type="password" autocomplete="current-password"></label>
+      <label v-if="!usesDemoAdminSession" class="lifecycle__field">管理员当前密码<input v-model="reauthPassword" type="password" autocomplete="current-password"></label>
       <div v-if="recoveryTickets.length" class="lifecycle__tickets"><article v-for="ticket in recoveryTickets" :key="ticket.ticket_ref"><div><strong>{{ ticket.display_name }}</strong><span>{{ ticket.username }}，{{ ticket.class_ref || '未关联班级' }}</span><small>状态：{{ ticket.status }}，提交 {{ ticket.created_at }}</small></div><label>处理原因代码<input v-model.trim="recoveryReasons[ticket.ticket_ref]" required></label><div class="lifecycle__actions"><button type="button" class="lifecycle__primary" :disabled="busy" @click="approveRecovery(ticket)">管理员审批</button></div></article></div>
       <p v-else-if="frontendApi.listRecoveryRequests" class="lifecycle__empty">暂无待处理请求</p>
       <p v-else class="lifecycle__empty">恢复请求服务不可用</p>
@@ -682,8 +930,8 @@ onUnmounted(() => { credentialRows.value = []; passphrase.value = ''; rows.value
     <div v-else-if="section === 'credentials'" class="lifecycle__body">
       <h3>初始账号</h3><p v-if="isSyntheticDemo">初始密码仅能使用一次；首次登录时设置个人密码</p><p v-else>初始账号仅暂存在本页，请加密下载</p>
       <div class="lifecycle__credential-tools">
-        <label>账号角色<select v-model="credentialRoleFilter"><option value="all">全部</option><option value="student">学生</option><option value="teacher">普通教师</option></select></label>
-        <label>班级筛选<select v-model="credentialClassFilter"><option value="">全部班级</option><option value="__unassigned__">未分配班级</option><option v-for="item in directory?.classes ?? []" :key="item.class_ref" :value="item.class_ref">{{ item.display_name || item.class_ref }}</option></select></label>
+        <label>账号角色<AppSelect v-model="credentialRoleFilter"><AppSelectOption value="all">全部</AppSelectOption><AppSelectOption value="student">学生</AppSelectOption><AppSelectOption value="teacher">普通教师</AppSelectOption></AppSelect></label>
+        <label>班级筛选<AppSelect v-model="credentialClassFilter"><AppSelectOption value="">全部班级</AppSelectOption><AppSelectOption value="__unassigned__">未分配班级</AppSelectOption><AppSelectOption v-for="item in directory?.classes ?? []" :key="item.class_ref" :value="item.class_ref">{{ item.display_name || item.class_ref }}</AppSelectOption></AppSelect></label>
         <label>搜索账号<input v-model.trim="credentialSearch" type="search" autocomplete="off" placeholder="姓名或账号编号"></label>
       </div>
       <div class="lifecycle__selection-tools"><span>符合筛选 {{ credentialCandidates.length }} 人，已选择 {{ selectedCredentialCount }} 人</span><button type="button" class="lifecycle__secondary" :disabled="!credentialPageRows.length" @click="selectCurrentCredentialPage">选择当前页</button><button type="button" class="lifecycle__secondary" :disabled="!credentialCandidates.length || credentialCandidates.length > 200" @click="selectCredentialCandidates">选择筛选结果</button><button type="button" class="lifecycle__secondary" :disabled="!credentialUsers.length" @click="credentialUsers = []">清空选择</button></div>
@@ -691,35 +939,69 @@ onUnmounted(() => { credentialRows.value = []; passphrase.value = ''; rows.value
       <div v-if="credentialPageRows.length" class="lifecycle__table-wrap"><table><thead><tr><th scope="col">选择</th><th scope="col">姓名</th><th scope="col">角色</th><th scope="col">班级</th><th scope="col">账号编号</th></tr></thead><tbody><tr v-for="item in credentialPageRows" :key="item.user_id"><td><input type="checkbox" :checked="credentialUsers.includes(item.user_id)" :aria-label="`选择${item.display_name || item.user_id}`" @change="toggleCredentialUser(item.user_id, ($event.target as HTMLInputElement).checked)"></td><td>{{ item.display_name || '未填写姓名' }}</td><td>{{ roleLabel(item.role) }}</td><td>{{ item.class_refs?.map(classLabel).join('、') || '未分配' }}</td><td>{{ item.user_id }}</td></tr></tbody></table></div>
       <p v-else class="lifecycle__empty">没有符合条件的账号</p>
       <div class="lifecycle__selection-tools" aria-label="凭据名单分页"><span>第 {{ credentialPage }} / {{ credentialPageCount }} 页</span><button type="button" class="lifecycle__secondary" :disabled="credentialPage <= 1" @click="credentialPage -= 1">上一页</button><button type="button" class="lifecycle__secondary" :disabled="credentialPage >= credentialPageCount" @click="credentialPage += 1">下一页</button></div>
-      <button v-if="pendingCredentialUserIds.length" type="button" class="lifecycle__primary" :disabled="busy" @click="retryCredentialIssue">生成初始密码</button>
+      <button v-if="rosterImportKey" type="button" class="lifecycle__primary" :disabled="busy" @click="section = 'roster'">返回学生名单继续导入</button>
       <button v-else-if="!credentialRows.length" type="button" class="lifecycle__primary" :disabled="busy || !credentialUsers.length" @click="issueCredentials">生成初始密码</button>
-      <button v-if="credentialRows.length && isSyntheticDemo" type="button" class="lifecycle__primary" @click="downloadInitialCredentialsCsv">下载账号 CSV</button>
+      <div v-if="credentialRows.length && isSyntheticDemo" class="lifecycle__credential-tools">
+        <label for="credential-export-scope">下载范围<AppSelect id="credential-export-scope" v-model="credentialExportScope" :options="credentialExportOptions" /></label>
+        <button type="button" class="lifecycle__primary" :disabled="!credentialsToExport.length" @click="downloadInitialCredentialsCsv()">下载账号 CSV（{{ credentialsToExport.length }} 份）</button>
+      </div>
       <label v-if="credentialRows.length && !isSyntheticDemo" class="lifecycle__field">加密口令（至少 12 位）<input v-model="passphrase" type="password" autocomplete="new-password" minlength="12"></label>
       <button v-if="credentialRows.length && !isSyntheticDemo" type="button" class="lifecycle__primary" :disabled="passphrase.length < 12" @click="downloadEncryptedCredentials">加密下载</button>
-      <ul v-if="credentialRows.length" class="lifecycle__credential-records"><li v-for="row in credentialRows" :key="row.user_id">{{ row.display_name }}（{{ roleLabel(row.role ?? 'student') }}，{{ row.login_name }}）<template v-if="row.invitation_ref">，邀请编号 {{ row.invitation_ref }}</template>，凭据已暂存，有效期至 {{ row.expires_at }}</li></ul>
+      <label v-if="credentialRows.length && isSyntheticDemo" class="lifecycle__field">查找已签发账号<input v-model="credentialExportName" type="search" placeholder="姓名或登录账号"></label>
+      <p v-if="matchingIssuedCredentials.length > 30">已匹配 {{ matchingIssuedCredentials.length }} 份，显示前 30 份</p>
+      <ul v-if="matchingIssuedCredentials.length" class="lifecycle__credential-records">
+        <li v-for="row in matchingIssuedCredentials.slice(0, 30)" :key="row.user_id">
+          {{ row.display_name }}（{{ roleLabel(row.role ?? 'student') }}，{{ row.login_name }}）
+          <template v-if="row.invitation_ref">，邀请编号 {{ row.invitation_ref }}</template>
+          <time :datetime="row.expires_at">，有效期至 {{ row.expires_at }}</time>
+          <button v-if="isSyntheticDemo" type="button" class="lifecycle__secondary" :aria-label="`下载 ${row.display_name || row.login_name} 的账号`" @click="downloadInitialCredentialsCsv(row.user_id)">下载</button>
+        </li>
+      </ul>
+    </div>
+
+    <div v-else-if="section === 'directory'" class="lifecycle__body lifecycle__directory">
+      <slot name="directory" :load-directory="loadDirectory" />
     </div>
 
     <div v-else class="lifecycle__body">
-      <h3>账号状态</h3><p>操作前需重新认证，恢复不会扩大原有权限</p>
+      <h3>账号状态</h3><p>{{ usesDemoAdminSession ? '恢复账号后仍按原有权限访问。' : '操作前需重新认证。恢复账号后仍按原有权限访问。' }}</p>
       <label class="lifecycle__field">搜索账号<input v-model.trim="statusSearch" type="search" autocomplete="off" placeholder="姓名或账号编号"></label>
       <div v-if="statusPageRows.length" class="lifecycle__table-wrap"><table><thead><tr><th scope="col">选择</th><th scope="col">成员</th><th scope="col">账号</th><th scope="col">角色</th><th scope="col">状态</th></tr></thead><tbody><tr v-for="item in statusPageRows" :key="item.user_id"><td><input type="radio" name="account-status-selection" :checked="statusSelection === item.user_id" :aria-label="`选择账号 ${item.display_name || item.user_id} ${item.user_id}`" @change="statusSelection = item.user_id"></td><td>{{ item.display_name || '未填写姓名' }}</td><td>{{ item.user_id }}</td><td>{{ roleLabel(item.role) }}</td><td>{{ memberStatusLabel(item) }}</td></tr></tbody></table></div>
       <p v-else class="lifecycle__empty">没有匹配账号</p>
       <div class="lifecycle__selection-tools" aria-label="账号列表分页"><span>{{ statusCandidates.length }} 个账号，第 {{ statusPage }} / {{ statusPageCount }} 页</span><button type="button" class="lifecycle__secondary" :disabled="statusPage <= 1" @click="statusPage -= 1">上一页</button><button type="button" class="lifecycle__secondary" :disabled="statusPage >= statusPageCount" @click="statusPage += 1">下一页</button></div>
-      <label class="lifecycle__field">原因代码<input v-model.trim="statusReason" required maxlength="80" autocomplete="off"></label><label class="lifecycle__field">管理员当前密码<input v-model="reauthPassword" type="password" autocomplete="current-password" required></label>
+      <label class="lifecycle__field">原因代码<input v-model.trim="statusReason" required maxlength="80" autocomplete="off"></label>
+      <label v-if="!usesDemoAdminSession" class="lifecycle__field">管理员当前密码<input v-model="reauthPassword" type="password" autocomplete="current-password" required></label>
       <button type="button" class="lifecycle__primary" :disabled="busy || !statusSelection" @click="changeAccountStatus('DISABLED')">停用账号</button><button type="button" class="lifecycle__secondary" :disabled="busy || !statusSelection" @click="changeAccountStatus('ACTIVE')">恢复账号</button>
+    </div>
     </div>
   </section>
 </template>
 
 <style scoped>
 .lifecycle { display: grid; gap: 16px; margin-bottom: 24px; padding: 16px; border: .5px solid var(--color-border); border-radius: var(--radius-card); background: var(--color-surface); color: var(--color-text-primary); font-size: 12px; }
-.lifecycle__head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }.lifecycle__head h2 { margin: 0; font-size: 24px; line-height: 1.35; font-weight: 600; }
-.lifecycle__tabs { display: flex; gap: 5px; overflow-x: auto; border-bottom: .5px solid var(--color-border); }.lifecycle__tabs button { min-height: 38px; padding: 0 12px; border: 0; border-bottom: .5px solid transparent; color: var(--color-text-secondary); background: transparent; font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap; }.lifecycle__tabs button[aria-selected="true"] { border-bottom-color: var(--color-primary); color: var(--color-primary); }
+.lifecycle__head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.lifecycle__head h1 { margin: 0; font-family: var(--font-display); font-size: 24px; line-height: 1.35; font-weight: 650; }
+.lifecycle__head p { margin: 5px 0 0; color: var(--color-text-secondary); font-size: 14px; }
+.lifecycle__tabs { position: relative; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; padding: 4px; border: 1px solid var(--color-border); border-radius: var(--radius-card); background: var(--color-surface-muted); }
+.lifecycle__tabs button { position: relative; min-height: 38px; padding: 0 8px; border: 1px solid transparent; border-radius: var(--radius-control); color: var(--color-text-secondary); background: transparent; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; transition: color var(--motion-fast); }
+.lifecycle__tabs button:hover { color: var(--color-primary); }
+.lifecycle__tabs button[aria-selected="true"] { color: var(--color-primary); }
+.lifecycle__tab-indicator { position: absolute; inset: 4px auto auto 4px; width: calc((100% - 32px) / 7); height: 38px; border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--color-surface); box-shadow: var(--shadow-rest); transform: translateX(calc(var(--tab-index) * (100% + 4px))); transition: transform 220ms ease; pointer-events: none; }
+.lifecycle__body.lifecycle__directory { width: 100%; min-width: 0; justify-items: stretch; }
+.lifecycle__next { display: flex; flex-wrap: wrap; gap: 10px; }
+.lifecycle input:not([type="checkbox"], [type="radio"]):focus, .lifecycle select:focus {
+  border-color: var(--color-primary);
+  outline: 2px solid color-mix(in srgb, var(--color-primary) 26%, transparent);
+  outline-offset: 1px;
+}
+.lifecycle input[type="checkbox"], .lifecycle input[type="radio"] { min-height: auto; accent-color: var(--color-primary); }
 .lifecycle__body { display: grid; align-content: start; justify-items: start; gap: 12px; min-width: 0; }.lifecycle__body h3 { margin: 0; font-size: 16px; }.lifecycle__body > p { margin: 0; color: var(--color-text-secondary); font-size: 12px; }.lifecycle__metrics { display: grid; width: 100%; grid-template-columns: repeat(auto-fit,minmax(130px,1fr)); border: .5px solid var(--color-border); }.lifecycle__metrics div { display: grid; gap: 8px; padding: 12px; border-right: .5px solid var(--color-border); border-bottom: .5px solid var(--color-border); }.lifecycle__metrics span { color: var(--color-text-muted); font-size: 12px; }.lifecycle__metrics strong { font-size: 24px; font-weight: 600; }.lifecycle__boundary { padding: 10px 12px; background: var(--color-info-wash); }
 .lifecycle__staff-import { display: grid; width: 100%; gap: 10px; padding: 12px; border: .5px solid var(--color-border); background: var(--color-surface-muted); }
 .lifecycle__message { margin: 0; padding: 9px 11px; border: .5px solid var(--color-border); color: var(--color-text-secondary); font-size: 12px; }.lifecycle__message--error { border-color: var(--color-critical); color: var(--color-critical); background: var(--color-critical-wash); }.lifecycle__empty { color: var(--color-text-muted); font-size: 12px; }.lifecycle__primary,.lifecycle__secondary { min-height: 36px; padding: 0 12px; border: .5px solid var(--color-border-strong); border-radius: var(--radius-button); color: var(--color-text-primary); background: var(--color-surface); font: inherit; font-size: 12px; cursor: pointer; }.lifecycle__primary { border-color: var(--color-primary); color: var(--color-text-inverse); background: var(--color-primary); }.lifecycle button:disabled { cursor: not-allowed; opacity: .55; }.lifecycle button:focus-visible,.lifecycle input:focus-visible,.lifecycle select:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 2px; }
 .lifecycle__preview-summary { display: flex; flex-wrap: wrap; gap: 16px; color: var(--color-text-secondary); }
 .lifecycle__credential-tools,.lifecycle__selection-tools { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; width: 100%; }
+.lifecycle__credential-tools label { display: grid; gap: 7px; flex: 0 1 220px; min-width: min(160px, 100%); color: var(--color-text-secondary); font-size: 13px; }
+.lifecycle__credential-tools input { min-height: 46px; width: 100%; }
 .lifecycle__selection-tools { align-items: center; }
 .lifecycle__field,.lifecycle__form label,.lifecycle__tickets label { display: grid; gap: 5px; min-width: min(100%,240px); color: var(--color-text-secondary); font-size: 12px; }.lifecycle input,.lifecycle select { min-height: 36px; padding: 6px 9px; border: .5px solid var(--color-border-strong); border-radius: var(--radius-control); color: var(--color-text-primary); background: var(--color-surface); font: inherit; font-size: 12px; }.lifecycle input[type="file"] { min-height: 40px; }.lifecycle select[multiple] { min-width: min(100%,420px); height: auto; }.lifecycle__form { display: grid; width: 100%; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 12px; }.lifecycle__check { display: flex !important; grid-column: 1/-1; align-items: center; }.lifecycle__check input { min-height: auto; }.lifecycle__form--inline { grid-template-columns: repeat(auto-fit,minmax(190px,1fr)); align-items: end; }
 .lifecycle__table-wrap { width: 100%; max-height: 340px; overflow: auto; border: .5px solid var(--color-border); }.lifecycle table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; }.lifecycle th,.lifecycle td { padding: 8px; border-bottom: .5px solid var(--color-border); }.lifecycle th { position: sticky; top: 0; background: var(--color-surface-muted); }.lifecycle__issues { display: grid; gap: 5px; margin: 0; padding-left: 20px; color: var(--color-critical); font-size: 12px; }.lifecycle__tickets { display: grid; width: 100%; gap: 9px; }.lifecycle__tickets article { display: grid; grid-template-columns: minmax(160px,1fr) minmax(160px,1fr) auto; align-items: end; gap: 12px; padding: 12px 0; border-bottom: .5px solid var(--color-border); }.lifecycle__tickets article > div:first-child { display: grid; gap: 4px; font-size: 12px; }.lifecycle__tickets span,.lifecycle__tickets small { color: var(--color-text-muted); font-size: 12px; }.lifecycle__actions { display: flex; gap: 6px; }
@@ -731,5 +1013,6 @@ onUnmounted(() => { credentialRows.value = []; passphrase.value = ''; rows.value
 .lifecycle__modal label:not(.lifecycle__check) { display: grid; gap: 5px; color: var(--color-text-secondary); font-size: 12px; }
 .lifecycle__modal input:not([type="checkbox"]),.lifecycle__modal select { min-height: 36px; padding: 0 9px; border: .5px solid var(--color-border); border-radius: var(--radius-control); color: var(--color-text-primary); background: var(--color-surface); font: inherit; }
 .lifecycle__modal :focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 2px; }
-@media(max-width:700px) { .lifecycle { padding: 12px; }.lifecycle__tabs { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); overflow: visible; }.lifecycle__tabs button { min-width: 0; padding: 0 4px; white-space: normal; }.lifecycle__tickets article,.lifecycle__invitation { grid-template-columns: 1fr; }.lifecycle__head h2 { font-size: 16px; } }
+@media(max-width:700px) { .lifecycle { padding: 12px; }.lifecycle__tabs { grid-template-columns: repeat(3,minmax(0,1fr)); grid-auto-rows: 38px; }.lifecycle__tab-indicator { width: calc((100% - 16px) / 3); transform: translate(calc(var(--tab-column) * (100% + 4px)), calc(var(--tab-row) * 42px)); }.lifecycle__tabs button { min-width: 0; padding: 0 4px; }.lifecycle__tickets article,.lifecycle__invitation { grid-template-columns: 1fr; }.lifecycle__head { align-items: flex-start; flex-wrap: wrap; }.lifecycle__head h1 { font-size: 20px; } }
+@media (prefers-reduced-motion: reduce) { .lifecycle__tab-indicator, .lifecycle__tabs button { transition: none; } }
 </style>

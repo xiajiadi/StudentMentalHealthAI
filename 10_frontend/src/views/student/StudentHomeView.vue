@@ -7,6 +7,7 @@ import StudentRefreshButton from '@/components/app/StudentRefreshButton.vue'
 import StudentPageHero from '@/components/student/StudentPageHero.vue'
 import StudentHistoryLibrary from '@/components/student/StudentHistoryLibrary.vue'
 import StudentAssessmentsView from '@/views/student/StudentAssessmentsView.vue'
+import StudentConversationHistory from '@/components/student/StudentConversationHistory.vue'
 import WorkspaceBreadcrumb from '@/components/student/WorkspaceBreadcrumb.vue'
 import { studentFeatureCards, studentPageArt, studentPageBannerCopy, studentPageTitles } from '@/data/student-feature-cards'
 import { frontendApi } from '@/services/mock-api'
@@ -21,7 +22,7 @@ const route = useRoute()
 const router = useRouter()
 const state = ref<'loading' | 'ready' | 'error'>('loading')
 const reports = ref<ReportSummary[]>([])
-const historyCategory = ref<'assessment' | 'feedback' | 'support'>('assessment')
+const historyCategory = ref<'assessment' | 'feedback' | 'support' | 'conversations'>('assessment')
 const errorMessage = ref('')
 const historyError = ref('')
 const historyRequestGeneration = ref(0)
@@ -139,6 +140,7 @@ const historyCategoryOptions = [
   { value: 'assessment', label: '我的测评' },
   { value: 'feedback', label: '测评反馈' },
   { value: 'support', label: '教育支持' },
+  { value: 'conversations', label: 'AI 对话' },
 ] as const
 const historyFloatingVisible = ref(false)
 const historyHeaderElement = ref<HTMLElement | null>(null)
@@ -543,6 +545,8 @@ onUnmounted(() => {
             </details>
           </template>
         </StudentHistoryLibrary>
+
+        <StudentConversationHistory v-else-if="historyCategory === 'conversations'" />
 
         <StudentHistoryLibrary
           v-else

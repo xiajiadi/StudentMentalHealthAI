@@ -1061,6 +1061,14 @@ class SchoolOperationsRepository:
     async def task_progress_counts(
         self, *, task_id: int, school_id: int
     ) -> TaskProgressCounts:
+        counts = await self.task_progress_counts_many(task_ids=[task_id], school_id=school_id)
+        return counts[task_id]
+
+    async def task_progress_counts_many(
+        self, *, task_ids: list[int], school_id: int
+    ) -> dict[int, TaskProgressCounts]:
+        if not task_ids:
+            return {}
         active = TaskEnrollment.status == "ACTIVE"
         research_task = MeasurementTask.cat_binding_mode == "RESEARCH_PROFILE"
         normal_task = MeasurementTask.cat_binding_mode != "RESEARCH_PROFILE"
@@ -1070,6 +1078,7 @@ class SchoolOperationsRepository:
         )
         statement = (
             select(
+                MeasurementTask.id,
                 func.count(TaskEnrollment.id).label("published_enrollment_count"),
                 func.sum(case((active, 1), else_=0)).label("active_enrollment_count"),
                 func.sum(case((TaskEnrollment.status == "REVOKED", 1), else_=0)).label(
@@ -1143,13 +1152,16 @@ class SchoolOperationsRepository:
                 & (SchoolResearchSession.school_id == MeasurementTask.school_id)
                 & (SchoolResearchSession.class_id == MeasurementTask.class_id),
             )
-            .where(MeasurementTask.id == task_id, MeasurementTask.school_id == school_id)
+            .where(MeasurementTask.id.in_(task_ids), MeasurementTask.school_id == school_id)
             .group_by(MeasurementTask.id)
         )
-        row = (await self.session.execute(statement)).one_or_none()
-        if row is None:
+        rows = (await self.session.execute(statement)).all()
+        if len(rows) != len(set(task_ids)):
             raise NotFound("measurement task was not found")
-        return TaskProgressCounts(*(int(value or 0) for value in row))
+        return {
+            task_id: TaskProgressCounts(*(int(value or 0) for value in values))
+            for task_id, *values in rows
+        }
 
     async def _require_active_role(
         self,

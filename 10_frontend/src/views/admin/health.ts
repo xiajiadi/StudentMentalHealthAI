@@ -1,5 +1,5 @@
 import { createClient, createConfig } from '@/api/generated/client'
-import { healthDependencies } from '@/api/generated/sdk.gen'
+import { getHealth } from '@/api/generated/sdk.gen'
 import type { DependencyStatusDto } from '@/api/generated/types.gen'
 
 const healthClient = createClient(createConfig({
@@ -8,14 +8,14 @@ const healthClient = createClient(createConfig({
 }))
 
 export async function readDependencyHealth(): Promise<Record<string, DependencyStatusDto>> {
-  const response = await healthDependencies({ client: healthClient })
+  const response = await getHealth({ client: healthClient })
   if (response.error) {
     const status = response.response?.status
     const kind = status === 401 ? 'unauthorized' : status === 403 ? 'forbidden' : 'request'
     throw new DependencyHealthReadError(kind)
   }
-  const dependencies = response.data?.data
-  if (!isRecord(dependencies)) {
+  const dependencies = response.data?.data?.dependencies
+  if (!isRecord(dependencies) || Object.keys(dependencies).length === 0) {
     throw new DependencyHealthReadError('invalid-response')
   }
   for (const [key, value] of Object.entries(dependencies)) {

@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import AuthLayout from '@/layouts/AuthLayout.vue'
 import FocusLayout from '@/layouts/FocusLayout.vue'
-import WorkspaceLayout from '@/layouts/WorkspaceLayout.vue'
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 const route = useRoute()
 const router = useRouter()
+const WorkspaceLayout = defineAsyncComponent(() => import('@/layouts/WorkspaceLayout.vue'))
 const routeProgressVisible = ref(false)
 const routeProgressComplete = ref(false)
 let routeProgressStartTimer: ReturnType<typeof setTimeout> | undefined

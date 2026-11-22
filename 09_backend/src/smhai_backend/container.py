@@ -41,6 +41,7 @@ from smhai_backend.adapters.school_post_assessment import (
 from smhai_backend.adapters.school_professional_reviews import (
     SchoolProfessionalReviewPersistenceAdapter,
 )
+from smhai_backend.adapters.school_support import SchoolSupportPersistenceAdapter
 from smhai_backend.core.async_utils import maybe_await
 from smhai_backend.core.config import (
     BackendSettings,
@@ -67,6 +68,7 @@ from smhai_backend.domains.school_account_lifecycle.service import (
 )
 from smhai_backend.domains.school_directory.service import SchoolDirectoryService
 from smhai_backend.domains.school_feedback.service import SchoolFeedbackService
+from smhai_backend.domains.school_support.service import SchoolSupportService
 from smhai_backend.domains.school_tasks.service import SchoolTaskService
 from smhai_backend.domains.support.service import SupportOrchestrator
 from smhai_backend.domains.teacher.service import TeacherDashboardService
@@ -159,6 +161,7 @@ class BackendContainer:
     professional_reviews: SchoolProfessionalReviewService | None = None
     school_feedback: SchoolFeedbackService | None = None
     school_conversation_safety: Any | None = None
+    school_support: SchoolSupportService | None = None
     school_research_feedback: Any | None = None
     school_operations_audit: Any | None = None
     school_research_sources: Any | None = None
@@ -463,6 +466,7 @@ def build_container(
         persistence = MySqlBackendAdapter(
             repository_root=Path(__file__).resolve().parents[3],
             identity_profile=settings.identity_profile,
+            public_demo_enabled=settings.public_demo.site_key is not None,
             school_csrf_secret=(
                 settings.school_csrf_secret.get_secret_value()
                 if settings.identity_profile == "school_tenant"
@@ -589,6 +593,13 @@ def build_container(
     school_conversation_safety = SchoolConversationSafetyService(
         persistence=(
             SchoolConversationSafetyPersistenceAdapter(persistence)
+            if persistence is not None and settings.identity_profile == "school_tenant"
+            else None
+        )
+    )
+    school_support = SchoolSupportService(
+        persistence=(
+            SchoolSupportPersistenceAdapter(persistence)
             if persistence is not None and settings.identity_profile == "school_tenant"
             else None
         )
@@ -1042,6 +1053,7 @@ def build_container(
         professional_reviews=professional_reviews,
         school_feedback=school_feedback,
         school_conversation_safety=school_conversation_safety,
+        school_support=school_support,
         school_research_feedback=school_research_feedback,
         school_operations_audit=school_operations_audit,
         school_research_sources=school_research_sources,

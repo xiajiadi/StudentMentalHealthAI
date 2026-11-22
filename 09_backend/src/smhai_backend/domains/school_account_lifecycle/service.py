@@ -50,9 +50,21 @@ class SchoolAccountLifecycleService:
             actor, rows, ttl_seconds=ttl_seconds, trace_id=trace_id
         )
 
-    async def list_staff_invitations(self, actor: Actor) -> list[dict[str, Any]]:
+    async def list_staff_invitations(
+        self, actor: Actor, *, limit: int = 500, offset: int = 0, search: str = ""
+    ) -> list[dict[str, Any]]:
         self._require_school_role(actor, BackendRole.ADMIN)
-        return await self._require_store().list_staff_invitations(actor)
+        return await self._require_store().list_staff_invitations(
+            actor, limit=limit, offset=offset, search=search
+        )
+
+    async def set_staff_invitation_name(
+        self, actor: Actor, invitation_ref: str, display_name: str, *, trace_id: str
+    ) -> dict[str, str]:
+        self._require_school_role(actor, BackendRole.ADMIN)
+        return await self._require_store().set_staff_invitation_name(
+            actor, invitation_ref, display_name, trace_id=trace_id
+        )
 
     async def revoke_staff_invitation(
         self,

@@ -238,7 +238,8 @@ const classCompletionOption = computed<EChartsOption>(() => ({
   series: [{
     name: '完成率', type: 'bar', data: classStats.value.map((item) => ({ value: item.rate, itemStyle: { color: completionColorForRate(item.rate) } })), barMaxWidth: 42,
     itemStyle: { color: '#39b0c7', borderRadius: [5, 5, 0, 0] },
-    label: { show: true, position: 'top', color: '#477f91', fontSize: 10, fontWeight: 700, formatter: (params) => `${Number(params.value).toFixed(1)}%` },
+    label: { show: true, position: 'top', color: '#477f91', fontSize: classStats.value.length > 8 ? 9 : 10, fontWeight: 700, formatter: (params) => `${Number(params.value).toFixed(1)}%` },
+    labelLayout: { hideOverlap: true },
     emphasis: { focus: 'series', itemStyle: { color: '#16a5bf' } },
   }],
 }))
@@ -316,7 +317,8 @@ const heatmapOption = computed<EChartsOption>(() => ({
       const point = Array.isArray(params) ? params[0] : params
       const value = Array.isArray(point?.value) ? point.value : []
       const task = heatmapCells.value.taskLabels[Number(value[0])] ?? '任务'
-      const className = heatmapCells.value.classLabels[Number(value[1])] ?? '班级'
+      const classRef = heatmapCells.value.classLabels[Number(value[1])]
+      const className = classRef ? classLabel(classRef) : '班级'
       return `${className}，${task}<br/>完成率：${Number(value[2]).toFixed(1)}%<br/>已完成：${value[4]} / ${value[3]} 人次`
     },
   },
@@ -331,11 +333,14 @@ const heatmapOption = computed<EChartsOption>(() => ({
   },
   visualMap: { dimension: 2, min: 0, max: 100, calculable: false, show: false, inRange: { color: [...heatmapCompletionColors] } },
   series: [{
-    name: '完成率', type: 'heatmap', data: heatmapCells.value.data,
+    name: '完成率', type: 'heatmap',
+    data: heatmapCells.value.data.map((value) => ({
+      value,
+      label: { color: value[2] < 62 ? '#15364c' : '#fff' },
+    })),
     label: {
       show: true,
       formatter: (params) => `${Number((params.value as number[])[2]).toFixed(0)}%`,
-      color: '#fff',
       fontSize: 9,
       fontWeight: 700,
     },

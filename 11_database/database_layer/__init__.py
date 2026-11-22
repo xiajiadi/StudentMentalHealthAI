@@ -32,6 +32,11 @@ from .school_conversation_safety import (
     SchoolConversationSafetyError,
     SchoolConversationSafetyRepository,
 )
+from .school_grade_leaders import (
+    SchoolGradeLeaderDTO,
+    SchoolGradeLeaderError,
+    SchoolGradeLeaderRepository,
+)
 from .school_research_cohorts import (
     ResearchCohortCaseAssignment,
     ResearchCohortErrorCode,
@@ -76,6 +81,17 @@ from .school_seed import (
     SyntheticSchoolSeedError,
     SyntheticSchoolSeedResult,
     seed_synthetic_school_contexts,
+)
+from .school_support import (
+    ACTION_STATUSES,
+    CASE_STATUSES,
+    SchoolSupportActionContentDTO,
+    SchoolSupportActionDTO,
+    SchoolSupportCaseContentDTO,
+    SchoolSupportCaseDTO,
+    SchoolSupportError,
+    SchoolSupportEventDTO,
+    SchoolSupportRepository,
 )
 from .unit_of_work import SqlAlchemyUnitOfWork
 
@@ -133,6 +149,18 @@ __all__ = [
     "SchoolResearchProgrammeCandidateRepository",
     "ConversationSafetyCaseDTO",
     "ConversationSafetyEventDTO",
+    "ACTION_STATUSES",
+    "CASE_STATUSES",
+    "SchoolSupportActionContentDTO",
+    "SchoolSupportActionDTO",
+    "SchoolSupportCaseContentDTO",
+    "SchoolSupportCaseDTO",
+    "SchoolSupportError",
+    "SchoolSupportEventDTO",
+    "SchoolSupportRepository",
+    "SchoolGradeLeaderDTO",
+    "SchoolGradeLeaderError",
+    "SchoolGradeLeaderRepository",
     "SchoolConversationSafetyError",
     "SchoolConversationSafetyRepository",
     "WindowsDpapiKeyProvider",
