@@ -468,6 +468,8 @@ def _install(args: argparse.Namespace) -> dict[str, Any]:
         if setup.get("status") not in {"INITIALIZED", "ALREADY_INITIALIZED"}:
             raise LauncherError("LOCAL_SCHOOL_SETUP_UNVERIFIED", "school_setup")
         application = _start(args, marker)
+        if application.get("status") == "RUNNING" and not _application_ready(application):
+            application = _lifecycle(["status", "--workspace", str(args.workspace)], "lifecycle")
         if not _application_ready(application):
             raise LauncherError("LOCAL_SCHOOL_APPLICATION_NOT_READY", "lifecycle")
         return {

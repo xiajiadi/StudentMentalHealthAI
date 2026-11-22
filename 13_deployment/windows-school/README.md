@@ -5,7 +5,7 @@
 ## 安装与登录
 
 1. 下载该预览发布中的 `PsyNova-School-Windows-x64-Preview.exe`，用对应的 `SHA256SUMS.txt` 核对文件。
-2. 在可以访问官方软件源的 Windows 电脑上双击安装程序。程序创建独立 MySQL 实例，启动本机服务并打开登录页。
+2. 在可以访问官方软件源的 Windows 电脑上双击安装程序。程序创建独立 MySQL 实例，启动本机服务并打开登录页。MySQL 依赖 [Microsoft Visual C++ 运行库](https://dev.mysql.com/doc/refman/8.4/en/windows-installation.html)，检查学校电脑上已安装该组件。
 3. 用安装时的 Windows 用户在 PowerShell 执行下面的命令，查看初始管理员账号和密码。
 4. 打开 [本机登录](http://127.0.0.1:4178/login)，登录后进入“账号管理”。使用合成名单测试导入与分班。
 
@@ -20,7 +20,7 @@ $workspace = Join-Path $root '.StudentMentalHealthAI-school-install-20261123-v2-
 
 ## 适用范围
 
-当前预览通过本机地址访问，使用内置合成 CAT 样例开展安装验收。可以用 `--prepare-qwen` 下载并校验 Qwen 2.5 7B 和 Ollama，需额外约 6.2 GB 下载流量及解压空间。该选项准备模型文件。校内 HTTPS、本地 Qwen 推理、资料检索和安全服务的完整联调属于正式安装版的验收范围。
+当前预览通过本机地址访问，使用内置合成 CAT 样例开展安装验收。EXE 未加代码签名，下载后请核对 SHA256。可以用 `--prepare-qwen` 下载并校验 Qwen 2.5 7B 和 Ollama，需额外约 6.2 GB 下载流量及解压空间。该选项准备模型文件。校内 HTTPS、本地 Qwen 推理、资料检索和安全服务的完整联调属于正式安装版的验收范围。
 
 ## 从源码构建
 
