@@ -17,8 +17,8 @@ PsyNova 把学校账号、测评发布、班级进度和专业支持放在同一
 | 用途 | 公网注册，走通四角色操作 | 学校独立安装，建立自己的组织和账号 |
 | 初始数据 | 每个注册账号获得独立合成学校、样例班级和测评任务 | 从空业务库开始，首次配置学校和管理员 |
 | 登录 | 公网体验账号和学校角色选择 | 由学校发放账号或初始凭据 |
-| AI 推理 | 当前公网环境使用 DeepSeek，并经安全检查和资料检索 | 采用学校机器上的 Qwen 和本地服务配置，下载及运行条件以安装说明为准 |
-| 入口 | [公网登录](https://psynova.top/login) | [发布和安装状态](https://github.com/xiajiadi/StudentMentalHealthAI/releases) |
+| AI 推理 | 当前公网环境使用 DeepSeek，并经安全检查和资料检索 | Windows 预览包提供 Qwen 下载选项，本地推理、检索和安全服务待联调验收 |
+| 入口 | [公网登录](https://psynova.top/login) · [固定基线](https://github.com/xiajiadi/StudentMentalHealthAI/releases/tag/v2.0.0) | [Windows 空库预览包](https://github.com/xiajiadi/StudentMentalHealthAI/releases/tag/v2.0.0-school-preview.1) |
 
 2.0 的线上界面基线来自已部署的 Vue 发布包。后端、数据库契约和安全服务的现场核对范围见[版本记录](13_deployment/VERSION_2.md)。
 
@@ -42,7 +42,7 @@ PsyNova 把学校账号、测评发布、班级进度和专业支持放在同一
 | 要找什么 | 去哪里 |
 | --- | --- |
 | 产品介绍和截图 | [site](site/) |
-| 部署入口、验证和版本差异 | [13_deployment](13_deployment/) · [2.0 版本记录](13_deployment/VERSION_2.md) |
+| 部署入口、验证和版本差异 | [2.0 版本记录](13_deployment/VERSION_2.md) · [公网部署](13_deployment/PUBLIC_DEMO.md) · [学校安装预览说明](https://github.com/xiajiadi/StudentMentalHealthAI/tree/v2.0.0-school-preview.1/13_deployment/windows-school) |
 | 用户界面与工作区 | [Vue 前端](10_frontend/) |
 | 应用接口、鉴权和数据 | [后端](09_backend/) · [数据库](11_database/) · [接口契约](CONTRACTS.md) |
 | 测评、检索、模型与安全 | [CAT](01_cat-engine/) · [RAG](05_rag-engine/) · [模型运行时](06_llm-runtime/) · [安全检查](08_safety-engine/) |

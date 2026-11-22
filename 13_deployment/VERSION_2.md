@@ -15,8 +15,8 @@
 
 学校版与体验版共用产品基线。本地安装目标是独立业务库，启用前由管理员配置学校、初始账号和权限，由学校内网的 HTTPS 地址提供服务。学生、班级、测评、作答、会话和学校自有资料从空库开始。
 
-现有 [Vue Windows 核心候选](VUE_OFFLINE_CORE.md) 用于合成环境验收。学校本地完整版以发布条目中的受验证安装资产为准。学校上线前还需核对本地推理硬件、数据审批和备份恢复。
+现有 [Windows 空库预览](https://github.com/xiajiadi/StudentMentalHealthAI/releases/tag/v2.0.0-school-preview.1) 用于合成环境验收，代码单独维护在 `xiajiadi/psynova-school-v2`。已验证本机空库、管理员登录和重复启动。学校正式安装版还需验证校内 HTTPS、本地 Qwen、检索、安全服务和备份恢复。
 
 ## 维护入口
 
-原版 Vue 源码在 `10_frontend/`。历史 React 开发保留在 `10_frontend_react/`，适合按历史分支回看。产品介绍由 `site/` 生成到 `gh-pages` 分支，站点图片取自合成学校实际界面。
+当前 Vue 源码在 `10_frontend/`，按编号浏览业务模块。产品介绍由 `site/` 发布到 `gh-pages` 分支，站点图片取自合成学校实际界面。
