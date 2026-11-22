@@ -1212,14 +1212,19 @@ if ($null -eq $p) { 'null'; exit 0 }
         backend_port: int,
         preview_output_dir: Path,
         *,
+        frontend_edition: str = "react",
         timeout: float = 360.0,
     ) -> None:
         node = shutil.which("node")
-        vue_tsc = (
-            repo / "10_frontend" / "node_modules" / "vue-tsc" / "bin" / "vue-tsc.js"
-        )
-        vite = repo / "10_frontend" / "node_modules" / "vite" / "bin" / "vite.js"
-        if not node or not vue_tsc.is_file() or not vite.is_file():
+        frontend_root = repo / _frontend_dirname(frontend_edition)
+        if frontend_edition == "vue":
+            typescript = frontend_root / "node_modules" / "vue-tsc" / "bin" / "vue-tsc.js"
+            typecheck_flags = ["--noEmit"]
+        else:
+            typescript = frontend_root / "node_modules" / "typescript" / "bin" / "tsc"
+            typecheck_flags = ["-b"]
+        vite = frontend_root / "node_modules" / "vite" / "bin" / "vite.js"
+        if not node or not typescript.is_file() or not vite.is_file():
             raise LifecycleError(
                 "Existing Node and frontend project dependencies are required"
             )
@@ -1232,19 +1237,18 @@ if ($null -eq $p) { 'null'; exit 0 }
         env = _sanitize_environment()
         env.update(
             {
-                "VITE_API_MODE": "real",
-                "VITE_API_BASE_URL": f"http://127.0.0.1:{backend_port}",
+                "PSYNOVA_BACKEND_ORIGIN": f"http://127.0.0.1:{backend_port}",
             }
         )
         commands = (
-            [node, str(vue_tsc), "--noEmit"],
+            [node, str(typescript), *typecheck_flags],
             [node, str(vite), "build", "--outDir", str(preview_output_dir)],
         )
         for argv in commands:
             try:
                 subprocess.run(
                     _safe_argv(list(argv)),
-                    cwd=repo / "10_frontend",
+                    cwd=frontend_root,
                     env=env,
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.DEVNULL,
@@ -1594,12 +1598,14 @@ class SchoolAppLifecycle:
         frontend_port: int = DEFAULT_FRONTEND_PORT,
         llm_profile: str = "default",
         frontend_mode: str,
+        frontend_edition: str = "react",
         enable_standard_cat: bool = False,
         standard_cat_port: int = DEFAULT_STANDARD_CAT_PORT,
     ) -> dict[str, Any]:
         target = self._workspace(workspace)
         _validate_ports(backend_port, frontend_port)
         _validate_options(llm_profile, frontend_mode)
+        _frontend_dirname(frontend_edition)
         standard_cat_config = self._standard_cat_config(
             enable_standard_cat, standard_cat_port, backend_port, frontend_port
         )
@@ -1625,6 +1631,7 @@ class SchoolAppLifecycle:
             "frontend_port": frontend_port,
             "llm_profile": llm_profile,
             "frontend_mode": frontend_mode,
+            "frontend_edition": frontend_edition,
             "frontend_api_mode": "real",
             "external_modules": {
                 "cat": "UNVERIFIED",
@@ -1644,6 +1651,7 @@ class SchoolAppLifecycle:
         frontend_port: int = DEFAULT_FRONTEND_PORT,
         llm_profile: str = "default",
         frontend_mode: str,
+        frontend_edition: str = "react",
         timeout: float = START_TIMEOUT_SECONDS,
         research_config: Mapping[str, object] | None = None,
         student_research_config: Mapping[str, object] | None = None,
@@ -1659,6 +1667,7 @@ class SchoolAppLifecycle:
         target = self._workspace(workspace)
         _validate_ports(backend_port, frontend_port)
         _validate_options(llm_profile, frontend_mode)
+        frontend_root = self.repo / _frontend_dirname(frontend_edition)
         research_config = _validated_research_config(research_config, target)
         student_research_config = _validated_student_research_config(
             student_research_config
@@ -1770,7 +1779,9 @@ class SchoolAppLifecycle:
         )
         if frontend_mode == "preview":
             assert preview_output_dir is not None
-            self.ops.build_frontend(self.repo, backend_port, preview_output_dir)
+            self.ops.build_frontend(
+                self.repo, backend_port, preview_output_dir, frontend_edition=frontend_edition
+            )
             preview_output_dir = _verify_preview_output_dir(
                 str(preview_output_dir), target
             )
@@ -1793,6 +1804,7 @@ class SchoolAppLifecycle:
             "frontend_port": frontend_port,
             "llm_profile": llm_profile,
             "frontend_mode": frontend_mode,
+            "frontend_edition": frontend_edition,
             "parent": _identity(parent_identity),
             "services": [],
             "external_modules": {
@@ -1905,11 +1917,11 @@ class SchoolAppLifecycle:
             if preview_output_dir is not None:
                 _verify_preview_output_dir(str(preview_output_dir), target)
             frontend_argv = self._frontend_argv(
-                frontend_mode, frontend_port, preview_output_dir
+                frontend_mode, frontend_port, preview_output_dir, frontend_edition
             )
             frontend = self.ops.spawn(
                 frontend_argv,
-                cwd=self.repo / "10_frontend",
+                cwd=frontend_root,
                 env=_frontend_environment(backend_port),
             )
             self._record_spawn(
@@ -2071,6 +2083,7 @@ class SchoolAppLifecycle:
             "frontend_port": frontend_port,
             "llm_profile": llm_profile,
             "frontend_mode": frontend_mode,
+            "frontend_edition": manifest.get("frontend_edition", "react"),
             "research_config": research_values,
             "research_cat_port": (
                 research_config.port if research_config is not None else None
@@ -2132,6 +2145,7 @@ class SchoolAppLifecycle:
             "frontend_port": restored["frontend_port"],
             "llm_profile": restored["llm_profile"],
             "frontend_mode": restored["frontend_mode"],
+            "frontend_edition": restored["frontend_edition"],
             "standard_cat_enabled": restored["enable_standard_cat"],
             "standard_cat_port": restored["standard_cat_port"]
             if restored["enable_standard_cat"]
@@ -2172,6 +2186,7 @@ class SchoolAppLifecycle:
             frontend_port=restored["frontend_port"],
             llm_profile=restored["llm_profile"],
             frontend_mode=restored["frontend_mode"],
+            frontend_edition=restored["frontend_edition"],
             timeout=timeout,
             research_config=restored["research_config"],
             student_research_config=restored["student_research_config"],
@@ -2315,6 +2330,8 @@ class SchoolAppLifecycle:
             "manifest_is_current_revision": (
                 manifest.get("required_revision") == CURRENT_SCHOOL_REVISION
             ),
+            "frontend_edition": manifest.get("frontend_edition", "react"),
+            "llm_profile": manifest.get("llm_profile"),
             "frontend_artifact_scope": (
                 "DEV_SERVER"
                 if manifest.get("frontend_mode") != "preview"
@@ -2947,10 +2964,11 @@ class SchoolAppLifecycle:
         _atomic_write(manifest_path, manifest)
 
     def _frontend_argv(
-        self, mode: str, port: int, preview_output_dir: Path | None = None
+        self, mode: str, port: int, preview_output_dir: Path | None = None,
+        frontend_edition: str = "react",
     ) -> list[str]:
         node = shutil.which("node")
-        vite = self.repo / "10_frontend" / "node_modules" / "vite" / "bin" / "vite.js"
+        vite = self.repo / _frontend_dirname(frontend_edition) / "node_modules" / "vite" / "bin" / "vite.js"
         if not node or not vite.is_file():
             raise LifecycleError("Existing Node and Vite installation are required")
         command = "preview" if mode == "preview" else "--host"
@@ -3226,6 +3244,8 @@ class SchoolAppLifecycle:
             raise LifecycleError("Lifecycle manifest service list is invalid")
         _validate_ports(manifest.get("backend_port"), manifest.get("frontend_port"))
         _validate_options(manifest.get("llm_profile"), manifest.get("frontend_mode"))
+        frontend_edition = manifest.get("frontend_edition", "react")
+        frontend_dirname = _frontend_dirname(frontend_edition)
         research_config = _research_config_from_manifest(
             manifest,
             target,
@@ -3357,7 +3377,7 @@ class SchoolAppLifecycle:
                 argv = service["argv"]
                 expected_vite = str(
                     self.repo
-                    / "10_frontend"
+                    / frontend_dirname
                     / "node_modules"
                     / "vite"
                     / "bin"
@@ -3386,6 +3406,7 @@ class SchoolAppLifecycle:
                     manifest["frontend_mode"],
                     manifest["frontend_port"],
                     preview_output_dir,
+                    frontend_edition,
                 )
                 expected_executable = expected_node
                 if service.get("base_executable") is not None:
@@ -3645,8 +3666,7 @@ def _frontend_environment(backend_port: int) -> dict[str, str]:
     environment = _sanitize_environment()
     environment.update(
         {
-            "VITE_API_MODE": "real",
-            "VITE_API_BASE_URL": f"http://127.0.0.1:{backend_port}",
+            "PSYNOVA_BACKEND_ORIGIN": f"http://127.0.0.1:{backend_port}",
         }
     )
     return environment
@@ -3700,6 +3720,14 @@ def _validate_options(profile: str, frontend_mode: str) -> None:
         )
 
 
+def _frontend_dirname(edition: str) -> str:
+    if edition == "vue":
+        return "10_frontend"
+    if edition == "react":
+        return "10_frontend_react"
+    raise LifecycleError("Unsupported frontend edition")
+
+
 def _public_status(manifest: dict[str, Any]) -> dict[str, Any]:
     result = {
         "status": manifest.get("state"),
@@ -3708,6 +3736,7 @@ def _public_status(manifest: dict[str, Any]) -> dict[str, Any]:
         "frontend_port": manifest.get("frontend_port"),
         "llm_profile": manifest.get("llm_profile"),
         "frontend_mode": manifest.get("frontend_mode"),
+        "frontend_edition": manifest.get("frontend_edition", "react"),
         "services": [
             {
                 **{
@@ -3854,6 +3883,7 @@ def build_parser() -> argparse.ArgumentParser:
         command.add_argument(
             "--frontend-mode", choices=("dev", "preview"), required=True
         )
+        command.add_argument("--frontend-edition", choices=("vue", "react"), default="react")
         command.add_argument("--enable-standard-cat", action="store_true")
         command.add_argument(
             "--standard-cat-port", type=int, default=DEFAULT_STANDARD_CAT_PORT
@@ -3908,6 +3938,7 @@ def main(argv: list[str] | None = None) -> int:
                 frontend_port=args.frontend_port,
                 llm_profile=args.llm_profile,
                 frontend_mode=args.frontend_mode,
+                frontend_edition=args.frontend_edition,
                 enable_standard_cat=args.enable_standard_cat,
                 standard_cat_port=args.standard_cat_port,
             )
@@ -3989,6 +4020,7 @@ def main(argv: list[str] | None = None) -> int:
                 frontend_port=args.frontend_port,
                 llm_profile=args.llm_profile,
                 frontend_mode=args.frontend_mode,
+                frontend_edition=args.frontend_edition,
                 timeout=args.timeout,
                 research_config=research_config,
                 student_research_config=student_research_config,

@@ -16,10 +16,11 @@ STANDARD_CAT_SOURCE_RELATIVE = Path("01_cat-engine/src/cat_engine")
 STANDARD_CAT_ENTRYPOINT_RELATIVE = Path("01_cat-engine/src/cat_engine/api/app.py")
 STANDARD_CAT_PROJECT_FILE = Path("01_cat-engine/pyproject.toml")
 STANDARD_CAT_PYTHON_RELATIVE = Path("01_cat-engine/.venv/Scripts/python.exe")
+# Pins for the shared v2.0.0 source and synthetic assets, using Git's LF bytes.
 STANDARD_CAT_SOURCE_SHA256 = "eb993e7c3de8d61a101e3a9d7787ebb6e204ea02071f2361372267d0cf15995e"
-STANDARD_CAT_ENTRYPOINT_SHA256 = "801cd17db9487d503b86da5f2fcff1754c7ad576e204db42f2bc5b98a2bb8f24"
-STANDARD_CAT_CONFIG_SHA256 = "78f9922930e40a8f9f8c436a644e5c7b9548d9d4f32377d30f143619f3f09e8a"
-STANDARD_CAT_BANK_SHA256 = "e73d4d8f3732d690f0b248f28ff19b6bbabbb7f8834abf2a57a4d0ba3353585e"
+STANDARD_CAT_ENTRYPOINT_SHA256 = "f92345a15666241490d87e1dfbedbbce771e99e6f51d5bc2eb71e4849631c490"
+STANDARD_CAT_CONFIG_SHA256 = "e7da9e073f2cc5fc5ed28c4118c456feda0b798866ea3ca8623193f0224be8a4"
+STANDARD_CAT_BANK_SHA256 = "250fa3f9868c73e2e1c962ffb78e0308d8d13e8144168ac19edfb7174da9fa56"
 FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 
 
@@ -65,11 +66,7 @@ class StandardCATConfig:
 
 
 def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for block in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
 
 
 def _is_reparse_or_symlink(path: Path) -> bool:

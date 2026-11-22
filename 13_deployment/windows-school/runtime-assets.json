@@ -1,0 +1,20 @@
+{
+  "node": {
+    "url": "https://nodejs.org/dist/v24.15.0/node-v24.15.0-win-x64.zip",
+    "sha256": "cc5149eabd53779ce1e7bdc5401643622d0c7e6800ade18928a767e940bb0e62",
+    "subdir": "node-v24.15.0-win-x64"
+  },
+  "powershell": {
+    "url": "https://github.com/PowerShell/PowerShell/releases/download/v7.5.3/PowerShell-7.5.3-win-x64.zip",
+    "sha256": "31588931dfcb752d1943f5e633a55337e2f12af0803d670db6d90c5937222818"
+  },
+  "mysql": {
+    "url": "https://cdn.mysql.com/archives/mysql-8.4/mysql-8.4.8-winx64.zip",
+    "sha256": "53685bb61a1efc5ecc1b35c1b6bd0d30ba799f4943a1ef2c34df464f5a774c7f",
+    "subdir": "mysql-8.4.8-winx64"
+  },
+  "ollama": {
+    "url": "https://github.com/ollama/ollama/releases/download/v0.33.3/ollama-windows-amd64.zip",
+    "sha256": "52cb36a62e7e501f61514f60212dec7117b6c098811357585e02fffe32d2fcd7"
+  }
+}
