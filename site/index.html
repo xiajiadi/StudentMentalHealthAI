@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="PsyNova 校园心育平台，连接测评任务、班级进度、专业支持和学校账号管理">
+  <meta name="theme-color" content="#f2fafc">
+  <title>PsyNova · 校园心育平台</title>
+  <link rel="icon" href="./assets/mark.png">
+  <link rel="stylesheet" href="./site.css">
+</head>
+<body>
+  <a class="skip" href="#main">跳到主要内容</a>
+  <header class="top">
+    <div class="wrap top-inner">
+      <a class="brand" href="./" aria-label="PsyNova 首页"><img src="./assets/wordmark.png" alt="PsyNova" width="124" height="35"></a>
+      <nav aria-label="产品导航">
+        <a href="#workspaces">角色工作区</a>
+        <a href="#editions">部署方式</a>
+        <a class="repo-link" href="https://github.com/xiajiadi/StudentMentalHealthAI">GitHub</a>
+      </nav>
+    </div>
+  </header>
+  <main id="main">
+    <section class="hero wrap" aria-labelledby="headline">
+      <div class="hero-copy">
+        <img class="mark" src="./assets/mark.png" width="68" height="68" alt="">
+        <h1 id="headline">PsyNova 校园心育平台</h1>
+        <p>从组织测评、跟进班级进度，到复核与教育支持，四个角色在各自的工作区完成日常工作</p>
+        <div class="actions">
+          <a class="button primary" href="https://psynova.top/login">体验四个工作区</a>
+          <a class="button secondary" href="#editions">了解学校部署</a>
+        </div>
+      </div>
+      <figure class="hero-shot">
+        <img src="./assets/teacher-overview.webp" width="1280" height="940" alt="普通教师工作概览，显示测评状态、班级完成率、截止压力和任务热力图" fetchpriority="high">
+        <figcaption><span>普通教师 · 工作概览</span><span>合成演示学校</span></figcaption>
+      </figure>
+    </section>
+
+    <section class="wrap section" id="workspaces" aria-labelledby="roles-heading">
+      <h2 id="roles-heading">四个角色的工作区</h2>
+      <div class="role-grid">
+        <article><h3>学校管理员</h3><p>导入名单、安排班级和初始账号，发布测评并跟进学校运营</p></article>
+        <article><h3>心理教师</h3><p>管理专业资料、CAT 题库与方案，处理专业复核和学生支持请求</p></article>
+        <article><h3>普通教师</h3><p>查看授权班级的任务汇总、日历和完成率，提交学生支持转介</p></article>
+        <article><h3>学生</h3><p>开始或继续个人测评，查看获准发布的反馈，使用有资料来源的教育支持</p></article>
+      </div>
+      <div class="gallery">
+        <figure><a href="./assets/teacher-calendar.webp"><img src="./assets/teacher-calendar.webp" width="1000" height="690" alt="测评任务月历与当日日程" loading="lazy"></a><figcaption>从日历查看测评任务与截止日期</figcaption></figure>
+        <figure><a href="./assets/teacher-analysis.webp"><img src="./assets/teacher-analysis.webp" width="1000" height="690" alt="两班同主题任务完成率对照" loading="lazy"></a><figcaption>对照授权班级的同主题测评进度</figcaption></figure>
+      </div>
+      <details class="manual-gallery">
+        <summary>展开其他角色的界面示例</summary>
+        <div class="gallery">
+          <figure><a href="./assets/admin-accounts.webp"><img src="./assets/admin-accounts.webp" width="1100" height="595" alt="管理员查看合成学校账号与班级总数" loading="lazy"></a><figcaption>学校管理员 · 账号管理</figcaption></figure>
+          <figure><a href="./assets/specialist-cat.webp"><img src="./assets/specialist-cat.webp" width="1100" height="594" alt="心理教师进入题库中心、测评设计和仿真实验" loading="lazy"></a><figcaption>心理教师 · CAT 管理</figcaption></figure>
+          <figure><a href="./assets/student-workspace.webp"><img src="./assets/student-workspace.webp" width="1057" height="650" alt="学生主页导航与测评、反馈、教育支持和成长记录入口" loading="lazy"></a><figcaption>学生 · 工作区首页</figcaption></figure>
+        </div>
+      </details>
+    </section>
+
+    <section class="edition-backdrop" id="editions" aria-labelledby="editions-heading">
+      <div class="wrap section">
+        <h2 id="editions-heading">选择部署方式</h2>
+        <div class="editions">
+          <article>
+            <h3>线上体验版</h3>
+            <p>注册体验账号后，系统为你准备一所独立的合成学校。可切换四个角色，查看样例班级、测评任务和进度</p>
+            <a class="button primary" href="https://psynova.top/login">打开线上体验</a>
+          </article>
+          <article>
+            <h3>学校本地版</h3>
+            <p>以 2.0 线上快照为基线。学校从空业务库初始化，使用独立的账号、数据和本地推理配置</p>
+            <a class="button secondary" href="https://github.com/xiajiadi/StudentMentalHealthAI/releases">查看版本与部署状态</a>
+          </article>
+        </div>
+        <p class="boundary">体验环境仅使用合成数据。测评完成、教育支持与专业复核在各自的权限范围内运行</p>
+      </div>
+    </section>
+  </main>
+  <footer><div class="wrap footer-inner"><img src="./assets/wordmark.png" alt="PsyNova" width="105" height="29"><a href="https://github.com/xiajiadi/StudentMentalHealthAI#readme">阅读项目说明</a></div></footer>
+</body>
+</html>
