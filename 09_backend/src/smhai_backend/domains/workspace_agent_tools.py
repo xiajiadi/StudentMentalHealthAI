@@ -95,6 +95,14 @@ TOOLS = {
         (TEACHER,),
         TaskWindow,
     ),
+    "make_class_progress_report": Tool(
+        "生成班级统计简报",
+        "Use this for a teacher asking for a class assignment progress report or export. "
+        "Fetch the current authorized task data and create a downloadable Markdown report "
+        "with verified counts and the completion ratio. No prose or data arguments are needed.",
+        (TEACHER,),
+        TaskWindow,
+    ),
     "review_tasks": Tool(
         "查询专业复核任务",
         "List tasks the specialist is authorized to review, without results.",
@@ -215,7 +223,9 @@ async def execute_tool(request: Request, actor: Actor, name: str, arguments: Bas
                     {"ready_for_student": True},
                 )
         raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="assessment task is unavailable")
-    if name == "class_progress" and isinstance(arguments, TaskWindow):
+    if name in {"class_progress", "make_class_progress_report"} and isinstance(
+        arguments, TaskWindow
+    ):
         from datetime import timedelta, timezone
 
         from .school_tasks.schemas import TeacherTaskProgressDto
@@ -249,7 +259,8 @@ async def execute_tool(request: Request, actor: Actor, name: str, arguments: Bas
         completions = sum(row["completed"] for row in rows)
         enrollments = sum(row["total"] for row in rows)
         view = {"kind": "class_progress", "rows": rows[:30], "total": len(rows)}
-        if arguments.include_report:
+        with_report = arguments.include_report or name == "make_class_progress_report"
+        if with_report:
             ratio = f"{completions / enrollments:.1%}" if enrollments else "无可计算分母"
             view["artifact"] = {
                 "filename": "class-assessment-progress.md",
@@ -268,7 +279,7 @@ async def execute_tool(request: Request, actor: Actor, name: str, arguments: Bas
                 "tasks": len(rows),
                 "completions": completions,
                 "enrollments": enrollments,
-                "artifact_ready": arguments.include_report,
+                "artifact_ready": with_report,
                 "counts_by_class": dict(
                     Counter(_alias("class", row["label"]) for row in rows[:30])
                 ),

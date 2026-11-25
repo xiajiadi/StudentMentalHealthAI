@@ -411,7 +411,7 @@ async def test_agent_prepares_publication_that_requires_school_admin_confirmatio
 async def test_teacher_export_comes_from_scoped_database_counts(client, model_lane):
     model, _ = model_lane
     model.side_effect = [
-        assistant_step(tool="class_progress", arguments='{"include_report":true}'),
+        assistant_step(tool="make_class_progress_report"),
         assistant_step(text="班级简报已生成"),
     ]
     headers = await login(client)

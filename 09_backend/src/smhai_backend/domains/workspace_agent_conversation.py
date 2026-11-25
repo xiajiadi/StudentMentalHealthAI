@@ -41,7 +41,8 @@ the dependency. Do not retry the same failed arguments. Ask for missing details 
 Never choose an assessment answer or infer mental health from completion rates. For personal
 psychological interpretation or support, offer the approved workspace using open_workflow if
 permitted. Do not provide clinical assessment, diagnosis, treatment or crisis instructions.
-For a factual class progress summary, use class_progress with include_report=true.
+For a class progress report, use make_class_progress_report. It reads current class totals
+and creates a verified download in one operation. Do not draft that report with save_markdown.
 For other reports or files, use save_markdown and return a short summary. Do not
 include student information or fabricated data. Roster contents and credentials stay in the
 private import workbench. When a roster is selected and import requested, open_roster_import.
@@ -285,6 +286,10 @@ async def _run(request: Request, actor: Actor, payload: TurnRequest, prior: list
                 except (BackendError, ValidationError) as exc:
                     code = exc.code.value if isinstance(exc, BackendError) else "VALIDATION_FAILED"
                     model_data = {"error": code}
+                    if name == "save_markdown" and actor.role == TEACHER:
+                        model_data["available_option"] = (
+                            "Use make_class_progress_report for a report about school tasks."
+                        )
                     yield {
                         "type": "tool_failed",
                         "call_id": call.id,
