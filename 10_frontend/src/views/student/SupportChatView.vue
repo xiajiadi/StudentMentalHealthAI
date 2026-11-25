@@ -389,7 +389,7 @@ onMounted(() => {
       <AppCard v-if="!props.embedded || historyOpen" class="conversation-sidebar" aria-label="教育支持会话列表">
         <div class="conversation-sidebar__heading">
           <h2>我的会话</h2>
-          <AppButton size="sm" :loading="creating" :disabled="creating || sending || loadingList || (props.embedded && needsRetry)" aria-label="新建会话" @click="createConversation">
+          <AppButton v-if="!props.embedded" size="sm" :loading="creating" :disabled="creating || sending || loadingList" aria-label="新建会话" @click="createConversation">
             <Plus :size="15" aria-hidden="true" />新建
           </AppButton>
         </div>
@@ -664,7 +664,8 @@ onMounted(() => {
 .education-support--embedded .conversation-workspace:not(.conversation-workspace--history) { grid-template-columns: minmax(0, 1fr); }
 .education-support--embedded .conversation-panel { height: auto; min-height: 0; }
 .education-support--embedded .conversation-starting { min-height: 0; }
-.education-support--embedded .conversation-scroll { max-height: 52dvh; }
+.education-support--embedded .conversation-scroll { flex: 0 1 auto; max-height: 52dvh; }
+.education-support--embedded .conversation-list { max-height: 34dvh; }
 .education-support--embedded .conversation-scroll:empty { display: none; }
 .support-heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
 .support-title { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 16px; }

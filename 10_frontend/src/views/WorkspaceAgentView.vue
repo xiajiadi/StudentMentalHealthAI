@@ -42,7 +42,7 @@ const workspaces: Record<WorkspaceRole, Workspace> = {
     ],
     records: [
       { label: '我的心理测评', to: '/student/assessments', icon: ClipboardList, note: '查看待完成任务' },
-      { label: '最近的支持对话', to: '/student/workspace?chat=1&history=1#workspace-agent-composer', icon: MessagesSquare, note: '继续上次对话' },
+      { label: '最近的支持对话', to: '/student/workspace?chat=1&history=1#workspace-agent-conversation', icon: MessagesSquare, note: '继续上次对话' },
       { label: '我的测评反馈', to: '/student/feedback', icon: FileCheck2, note: '查看已发布反馈' },
     ],
   },
@@ -344,6 +344,7 @@ function dateLabel(value: string) {
         v-if="role === 'student'"
         v-show="chatVisible"
         :key="workspaceScope + researchMode"
+        id="workspace-agent-conversation"
         ref="chat"
         :research-mode="researchMode"
         embedded
@@ -541,5 +542,5 @@ function dateLabel(value: string) {
 .workspace-agent__error { color: var(--color-attention); font-size: 13px; }
 .workspace-agent__chat-status { margin: 8px 4px 0; color: var(--color-text-secondary); font-size: 13px; }
 .workspace-agent__attachment { max-height: 40vh; overflow: auto; padding: 12px; border-radius: var(--radius-control); background: var(--color-surface-muted); font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
-#workspace-agent-composer { scroll-margin-top: 88px; }
+#workspace-agent-composer, #workspace-agent-conversation { scroll-margin-top: 88px; }
 </style>
