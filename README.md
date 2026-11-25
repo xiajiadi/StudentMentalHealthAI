@@ -46,4 +46,4 @@ PsyNova 把学校账号、测评发布、班级进度和专业支持放在同一
 | 用户界面与工作区 | [Vue 前端](10_frontend/) |
 | 应用接口、鉴权和数据 | [后端](09_backend/) · [数据库](11_database/) · [接口契约](CONTRACTS.md) |
 | 测评、检索、模型与安全 | [CAT](01_cat-engine/) · [RAG](05_rag-engine/) · [模型运行时](06_llm-runtime/) · [安全检查](08_safety-engine/) |
-| 架构和维护指引 | [架构](ARCHITECTURE.md) · [模块索引](MODULES.md) |
+| 接口与模块 | [机器可读接口](00_architecture/) · [模块索引](MODULES.md) |

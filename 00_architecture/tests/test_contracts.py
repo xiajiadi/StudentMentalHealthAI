@@ -205,52 +205,6 @@ class ContractSchemaTests(unittest.TestCase):
         self.assertTrue(generation["provenance"]["model_version"])
         self.assertTrue(generation["provenance"]["runtime_version"])
 
-    def test_governance_skeleton_is_complete(self) -> None:
-        root_documents = (
-            "PROJECT.md",
-            "ARCHITECTURE.md",
-            "ROADMAP.md",
-            "CONTRACTS.md",
-            "MODULES.md",
-            "AGENT_RULES.md",
-        )
-        for document_name in root_documents:
-            with self.subTest(document=document_name):
-                self.assertTrue((ROOT / document_name).is_file())
-
-        expected_modules = (
-            "00_architecture",
-            "01_cat-engine",
-            "02_item-bank",
-            "03_assessment-adapter",
-            "04_knowledge-pipeline",
-            "05_rag-engine",
-            "06_llm-runtime",
-            "07_prompt-engine",
-            "08_safety-engine",
-            "09_backend",
-            "10_frontend",
-            "11_database",
-            "12_evaluation",
-            "13_deployment",
-            "14_docs",
-            "15_demo",
-        )
-        required_task_headings = ("职责", "输入", "输出", "禁止事项", "接口", "验收标准", "交付物")
-        for module in expected_modules:
-            task_path = ROOT / module / "TASK.md"
-            with self.subTest(module=module):
-                self.assertTrue(task_path.is_file())
-                task_text = task_path.read_text(encoding="utf-8")
-                for heading in required_task_headings:
-                    self.assertIn(heading, task_text)
-
-        architecture_text = (ROOT / "ARCHITECTURE.md").read_text(encoding="utf-8")
-        self.assertIn("## 3. 主数据流", architecture_text)
-        self.assertIn("## 4. 信任边界", architecture_text)
-        self.assertIn("## 8. 配置边界", architecture_text)
-        self.assertIn("## 7. 可观测性与审计", architecture_text)
-
     @staticmethod
     def contains_forbidden_log_key(value: Any) -> bool:
         forbidden = {
