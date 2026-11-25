@@ -46,7 +46,7 @@ const visibleLimit = ref(6)
 const emptyIconComponent = computed(() => {
   const target = props.emptyIcon === 'feedback'
     ? '/student/feedback'
-    : props.emptyIcon === 'support' ? '/student/support' : '/student/history'
+    : props.emptyIcon === 'support' ? '/student/workspace?chat=1' : '/student/history'
   return workspaceConfig.student?.items.find((item) => item.to === target)?.icon ?? History
 })
 const cardsPerPage = computed(() => viewMode.value === 'grid' ? 6 : 4)

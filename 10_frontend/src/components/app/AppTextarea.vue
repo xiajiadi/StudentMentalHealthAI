@@ -8,6 +8,7 @@ withDefaults(defineProps<{
   rows?: number
   maxlength?: number
   hideLabel?: boolean
+  readonly?: boolean
 }>(), {
   placeholder: '',
   hint: '',
@@ -26,6 +27,7 @@ defineEmits<{
       :id="id"
       :rows="rows"
       :maxlength="maxlength"
+      :readonly="readonly"
       :value="modelValue"
       :placeholder="placeholder"
       class="app-textarea"

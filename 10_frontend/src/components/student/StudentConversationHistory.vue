@@ -71,7 +71,7 @@ async function load(append = false) {
 }
 
 function openConversation(item: StudentHistoryLibraryItem) {
-  void router.push({ name: 'student-support', query: { conversation: item.ref } })
+  void router.push({ name: 'student-workspace', query: { conversation: item.ref } })
 }
 
 watch(

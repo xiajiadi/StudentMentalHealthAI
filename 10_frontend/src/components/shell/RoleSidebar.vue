@@ -14,7 +14,6 @@ const route = useRoute()
 
 const config = computed(() => workspaceConfig[props.role] ?? workspaceConfig.student!)
 const isActive = (to: string) => route.path === to || route.path.startsWith(`${to}/`)
-  || (to === '/student/support' && route.path === '/student/research-support')
 const closeMobile = () => emit('update:mobileOpen', false)
 </script>
 

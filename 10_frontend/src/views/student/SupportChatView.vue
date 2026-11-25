@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useSessionStore } from '@/stores/session'
 import { educationTopics, type EducationTopic } from '@/services/workspace-agent'
@@ -23,13 +23,13 @@ import {
   type IndependentTurnReceipt,
 } from '@/services/independent-conversations'
 
-const props = withDefaults(defineProps<{ researchMode?: boolean }>(), { researchMode: false })
+const props = defineProps<{ researchMode?: boolean; embedded?: boolean }>()
 const conversationApi = props.researchMode ? researchConversations : independentConversations
 const researchAvailable = ref(false)
 const conversations = ref<IndependentConversation[]>([])
 const selectedConversationId = ref('')
 const detail = ref<IndependentConversationDetail | null>(null)
-const loadingList = ref(true)
+const loadingList = ref(!props.embedded)
 const loadingDetail = ref(false)
 const creating = ref(false)
 const sending = ref(false)
@@ -51,6 +51,7 @@ const receipt = ref<IndependentTurnReceipt | null>(null)
 const conversationHasMore = ref(false)
 const supportMessageInput = ref<HTMLTextAreaElement | null>(null)
 const supportScroll = ref<HTMLElement | null>(null)
+const historyOpen = ref(false)
 const suggestedPrompts = [
   '帮我安排本周复习计划',
   '学习压力大时，我可以怎么调整？',
@@ -62,6 +63,8 @@ let pendingCreateKey = ''
 let failedSubmission: { conversationId: string; text: string; key: string } | null = null
 let detailRequestSequence = 0
 let messagePageRequestSequence = 0
+let disposed = false
+onUnmounted(() => { disposed = true })
 
 const selectedConversation = computed(() =>
   conversations.value.find((item) => item.conversationId === selectedConversationId.value)
@@ -209,18 +212,19 @@ const loadMoreMessages = async (direction: 'earlier' | 'later') => {
 }
 
 const createConversation = async () => {
-  if (creating.value || sending.value) return
+  if (disposed || creating.value || sending.value) return
   creating.value = true
   createError.value = ''
   try {
     if (!pendingCreateKey) pendingCreateKey = newConversationIdempotencyKey()
     const created = await conversationApi.create(pendingCreateKey)
+    if (disposed) return
     pendingCreateKey = ''
     selectedConversationId.value = created.conversationId
     receipt.value = null
     updateConversation(created)
     await openConversation(created.conversationId)
-    await loadConversations()
+    if (!disposed && (!props.embedded || historyOpen.value)) await loadConversations()
   } catch (error) {
     createError.value = error instanceof Error ? error.message : '暂时无法创建会话。请使用同一请求重试。'
   } finally {
@@ -247,10 +251,10 @@ const initializeConversation = async () => {
 }
 
 const handleSend = async () => {
-  if (!canSend.value) return
+  if (disposed || !canSend.value) return false
   const conversationId = selectedConversationId.value
   const text = failedSubmission?.conversationId === conversationId ? failedSubmission.text : draft.value.trim()
-  if (!text) return
+  if (!text) return false
   const pageLimit = detail.value?.limit ?? 20
   const latestOffset = Math.floor((detail.value?.totalTurns ?? 0) / pageLimit) * pageLimit
   sending.value = true
@@ -265,6 +269,7 @@ const handleSend = async () => {
       submission.text,
       submission.key,
     )
+    if (disposed) return false
     if (props.researchMode && selectedConversationId.value === conversationId && receipt.value.status !== 'requested') {
       educationReviewRefreshToken.value += 1
     }
@@ -273,13 +278,34 @@ const handleSend = async () => {
     await openConversation(conversationId, latestOffset)
     await nextTick()
     if (supportScroll.value) supportScroll.value.scrollTop = supportScroll.value.scrollHeight
-    await loadConversations()
+    if (!disposed && (!props.embedded || historyOpen.value)) await loadConversations()
+    return true
   } catch (error) {
     sendError.value = error instanceof Error ? error.message : '消息未确认，请使用同一请求重试。'
+    return false
   } finally {
     sending.value = false
   }
 }
+
+async function showHistory(conversationId?: string) {
+  historyOpen.value = true
+  await loadConversations()
+  if (disposed || sending.value || creating.value) return
+  const choice = conversationId || conversations.value[0]?.conversationId
+  if (choice && (conversationId || !selectedConversationId.value)) await openConversation(choice)
+}
+
+async function submitFromWorkspace(text: string) {
+  if (!selectedConversationId.value) await createConversation()
+  draft.value = text
+  return handleSend()
+}
+
+const needsRetry = computed(() => Boolean(sendError.value && failedSubmission))
+const composerBlocked = computed(() => creating.value || sending.value || loadingDetail.value
+  || (Boolean(selectedConversationId.value) && !canSend.value))
+defineExpose({ showHistory, submitFromWorkspace, researchAvailable, needsRetry, composerBlocked })
 
 function handleComposerKey(event: KeyboardEvent) {
   if (event.key !== 'Enter' || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey
@@ -306,7 +332,7 @@ const useSuggestedPrompt = async (prompt: string) => {
 }
 
 onMounted(() => {
-  void initializeConversation()
+  if (!props.embedded) void initializeConversation()
   if (!props.researchMode) {
     void researchConversationCapability().then((enabled) => { researchAvailable.value = enabled }).catch(() => {
       researchAvailable.value = false
@@ -316,8 +342,8 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="content-wrap content-wrap--student education-support">
-    <template v-if="props.researchMode">
+  <div class="education-support" :class="props.embedded ? 'education-support--embedded' : 'content-wrap content-wrap--student'">
+    <template v-if="!props.embedded && props.researchMode">
       <header class="support-heading">
         <div>
           <span class="support-kicker">学生空间，教育支持</span>
@@ -330,7 +356,7 @@ onMounted(() => {
         </div>
       </header>
     </template>
-    <template v-else>
+    <template v-else-if="!props.embedded">
       <WorkspaceBreadcrumb current="教育支持" />
       <h1 class="sr-only">教育支持</h1>
       <p v-if="syntheticPublicExperience" class="conversation-muted">体验时请使用虚构内容，避免填写真实个人信息</p>
@@ -355,11 +381,15 @@ onMounted(() => {
       body="请在会话列表中打开对应对话，并使用同一请求重试后再继续发送。"
     />
 
-    <div class="conversation-workspace">
-      <AppCard class="conversation-sidebar" aria-label="教育支持会话列表">
+    <div v-if="props.embedded" class="conversation-tools">
+      <AppButton size="sm" variant="quiet" :aria-expanded="historyOpen" @click="historyOpen ? historyOpen = false : showHistory()">会话记录</AppButton>
+      <AppButton size="sm" variant="quiet" :disabled="creating || sending || loadingList || needsRetry" @click="createConversation"><Plus :size="15" aria-hidden="true" />新对话</AppButton>
+    </div>
+    <div class="conversation-workspace" :class="{ 'conversation-workspace--history': historyOpen }">
+      <AppCard v-if="!props.embedded || historyOpen" class="conversation-sidebar" aria-label="教育支持会话列表">
         <div class="conversation-sidebar__heading">
           <h2>我的会话</h2>
-          <AppButton size="sm" :loading="creating" :disabled="creating || sending || loadingList" aria-label="新建会话" @click="createConversation">
+          <AppButton size="sm" :loading="creating" :disabled="creating || sending || loadingList || (props.embedded && needsRetry)" aria-label="新建会话" @click="createConversation">
             <Plus :size="15" aria-hidden="true" />新建
           </AppButton>
         </div>
@@ -378,7 +408,7 @@ onMounted(() => {
               :data-conversation-id="conversation.conversationId"
               :class="{ 'conversation-list__item--selected': selectedConversationId === conversation.conversationId }"
               :aria-pressed="selectedConversationId === conversation.conversationId"
-              :disabled="sending || creating"
+              :disabled="sending || creating || (props.embedded && needsRetry)"
               @click="selectConversation(conversation.conversationId)"
             >
               <span class="conversation-list__icon"><MessageCircle :size="17" aria-hidden="true" /></span>
@@ -402,11 +432,11 @@ onMounted(() => {
         </AppButton>
       </AppCard>
 
-      <AppCard class="conversation-panel" aria-label="当前教育支持对话">
+      <AppCard v-if="!props.embedded || selectedConversationId || creating || listError || createError" class="conversation-panel" aria-label="当前教育支持对话">
         <div v-if="!selectedConversationId" class="conversation-starting">
           <p v-if="loadingList || creating" class="conversation-muted" role="status">正在准备对话<AppLoadingDots /></p>
           <AppStatusCallout v-else-if="listError" tone="attention" title="会话暂时无法打开" :body="listError">
-            <AppButton size="sm" variant="secondary" @click="initializeConversation">重试</AppButton>
+            <AppButton size="sm" variant="secondary" @click="props.embedded ? showHistory() : initializeConversation()">重试</AppButton>
           </AppStatusCallout>
           <AppStatusCallout v-else-if="createError" tone="attention" title="暂时无法开始对话" :body="createError">
             <AppButton size="sm" variant="secondary" :loading="creating" @click="createConversation">使用同一请求重试</AppButton>
@@ -438,7 +468,7 @@ onMounted(() => {
             <div v-else-if="detail" class="conversation-thread" aria-live="polite">
               <AppButton v-if="hasEarlierMessages" variant="quiet" size="sm" :loading="loadingMore" :disabled="sending || creating" @click="loadMoreMessages('earlier')">加载更早的对话</AppButton>
               <AppButton v-if="hasLaterMessages" variant="quiet" size="sm" :loading="loadingMore" :disabled="sending || creating" @click="loadMoreMessages('later')">加载更多对话</AppButton>
-              <div v-if="detail.messages.length === 0" class="conversation-thread__empty">
+              <div v-if="detail.messages.length === 0 && !props.embedded" class="conversation-thread__empty">
                 <div class="conversation-thread__welcome">
                   <h3>有什么学习问题想一起梳理？</h3>
                   <p>可以从复习安排、学习压力或目标规划开始。</p>
@@ -585,7 +615,8 @@ onMounted(() => {
             </AppStatusCallout>
           </div>
 
-          <form v-if="selectedConversation && selectedConversation.status !== 'closed' && selectedConversation.status !== 'archived'" class="conversation-composer" @submit.prevent="handleSend">
+          <p v-if="props.embedded && sendError" class="conversation-muted" role="alert">{{ sendError }} 请用同一请求重试</p>
+          <form v-if="!props.embedded && selectedConversation && selectedConversation.status !== 'closed' && selectedConversation.status !== 'archived'" class="conversation-composer" @submit.prevent="handleSend">
             <div class="conversation-composer__row">
               <label class="sr-only" for="support-message">写下你的问题</label>
               <textarea
@@ -611,7 +642,7 @@ onMounted(() => {
               <p v-else id="support-message-help">教育支持不提供诊断或治疗建议，请勿填写姓名、学号等身份信息</p>
             </div>
           </form>
-          <p v-else-if="selectedConversation" class="conversation-muted">这段会话已结束，无法继续发送消息。</p>
+          <p v-else-if="selectedConversation?.status === 'closed' || selectedConversation?.status === 'archived'" class="conversation-muted">这段会话已结束，可以新建对话</p>
         </template>
       </AppCard>
     </div>
@@ -628,6 +659,13 @@ onMounted(() => {
 
 <style scoped>
 .education-support { padding-top: 0; padding-bottom: 64px; }
+.education-support--embedded { min-width: 0; padding-bottom: 12px; }
+.conversation-tools { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.education-support--embedded .conversation-workspace:not(.conversation-workspace--history) { grid-template-columns: minmax(0, 1fr); }
+.education-support--embedded .conversation-panel { height: auto; min-height: 0; }
+.education-support--embedded .conversation-starting { min-height: 0; }
+.education-support--embedded .conversation-scroll { max-height: 52dvh; }
+.education-support--embedded .conversation-scroll:empty { display: none; }
 .support-heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
 .support-title { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 16px; }
 .support-kicker { color: var(--color-support); font-size: 11px; font-weight: 800; letter-spacing: .1em; }

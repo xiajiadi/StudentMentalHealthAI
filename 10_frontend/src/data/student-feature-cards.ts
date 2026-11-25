@@ -19,7 +19,7 @@ export const studentFeatureCards = [
     tag: '教育支持',
     title: '有困惑，就聊聊',
     description: '学习、生活与人际相处的难题，都可以从一次对话说起。',
-    to: '/student/support',
+    to: '/student/workspace?chat=1',
     image: '/assets/psynova/academy-feature-education-support.png',
     imageAlt: '橙色、紫色与粉色交织的柔和渐变',
   },

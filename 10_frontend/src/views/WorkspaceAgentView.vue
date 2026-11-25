@@ -1,15 +1,17 @@
 <script setup lang="ts">
 /* global AbortController */
 import { computed, nextTick, onUnmounted, ref, watch, type Component } from 'vue'
+import { useRoute } from 'vue-router'
 import { ArrowUp, ArrowUpRight, BookOpen, CalendarDays, CalendarHeart, ChartNoAxesCombined, ChevronRight, ClipboardCheck, ClipboardList, FileCheck2, FileUp, FolderOpen, HeartHandshake, Inbox, Layers, MessagesSquare, Network, Paperclip, Plus, Send, Server, ShieldCheck, Sparkles, Square, UsersRound } from '@lucide/vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
 import AppDialog from '@/components/app/AppDialog.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import AppTextarea from '@/components/app/AppTextarea.vue'
-import { runWorkspaceAgent, type WorkspaceAgentResult } from '@/services/workspace-agent'
+import { educationTopics, runWorkspaceAgent, type EducationTopic, type WorkspaceAgentResult } from '@/services/workspace-agent'
 import { useSessionStore } from '@/stores/session'
 import type { Role } from '@/types/contracts'
+import SupportChatView from '@/views/student/SupportChatView.vue'
 
 type WorkspaceRole = 'student' | 'teacher' | 'psychological_specialist' | 'school_admin'
 type Entry = { label: string; to: string; icon: Component; note?: string }
@@ -34,13 +36,13 @@ const workspaces: Record<WorkspaceRole, Workspace> = {
     sectionTitle: '继续探索',
     entries: [
       { label: '开始心理测评', to: '/student/assessments', icon: ClipboardCheck, note: '开始或继续作答' },
-      { label: '学习心理知识', to: '/student/support?topic=small_steps', icon: BookOpen, note: '从学习目标与压力应对开始' },
-      { label: '获取心理支持', to: '/student/support', icon: HeartHandshake, note: '打开教育支持对话' },
+      { label: '学习心理知识', to: '/student/knowledge', icon: BookOpen, note: '了解情绪、压力和睡眠' },
+      { label: '获取心理支持', to: '/student/workspace?chat=1#workspace-agent-composer', icon: HeartHandshake, note: '和智能体聊聊' },
       { label: '联系心理教师', to: '/student/school-support', icon: CalendarHeart, note: '查看校内支持渠道' },
     ],
     records: [
       { label: '我的心理测评', to: '/student/assessments', icon: ClipboardList, note: '查看待完成任务' },
-      { label: '最近的支持对话', to: '/student/support', icon: MessagesSquare, note: '继续上次对话' },
+      { label: '最近的支持对话', to: '/student/workspace?chat=1&history=1#workspace-agent-composer', icon: MessagesSquare, note: '继续上次对话' },
       { label: '我的测评反馈', to: '/student/feedback', icon: FileCheck2, note: '查看已发布反馈' },
     ],
   },
@@ -100,6 +102,7 @@ const workspaces: Record<WorkspaceRole, Workspace> = {
   },
 }
 const session = useSessionStore()
+const route = useRoute()
 function isWorkspaceRole(role: Role | null): role is WorkspaceRole {
   return role != null && Object.hasOwn(workspaces, role)
 }
@@ -108,6 +111,16 @@ const role = computed<WorkspaceRole>(() => isWorkspaceRole(session.role) ? sessi
 const config = computed(() => workspaces[role.value])
 const isPublicDemo = computed(() => session.user?.activeContext?.schoolRef.startsWith('PUBLICDEMO_'))
 const command = ref('')
+const chat = ref<InstanceType<typeof SupportChatView>>()
+const chatVisible = ref(false)
+const chatSending = ref(false)
+const researchMode = computed(() => route.query.mode === 'research')
+const workspaceScope = computed(() => JSON.stringify([session.user?.userId, session.user?.activeContext?.schoolRef, role.value]))
+const maxCommandLength = computed(() => role.value === 'student' ? 20000 : 160)
+const fileInput = ref<HTMLInputElement>()
+const attachmentOpen = ref(false)
+const attachment = ref<{ name: string; content: string }>()
+const attachmentError = ref('')
 const overview = ref<WorkspaceAgentResult | null>(null)
 const result = ref<WorkspaceAgentResult | null>(null)
 const overviewLoading = ref(false)
@@ -143,7 +156,7 @@ async function loadOverview() {
   }
 }
 
-watch(() => [session.user?.userId, session.user?.activeContext?.schoolRef, role.value], () => {
+watch(workspaceScope, () => {
   taskRequest?.abort()
   command.value = ''
   result.value = null
@@ -153,6 +166,9 @@ watch(() => [session.user?.userId, session.user?.activeContext?.schoolRef, role.
   confirming.value = false
   confirmOpen.value = false
   examplesOpen.value = false
+  chatSending.value = false
+  attachmentOpen.value = false
+  attachment.value = undefined
   if (session.user?.activeContext) void loadOverview()
   else {
     overviewRequest?.abort()
@@ -161,14 +177,51 @@ watch(() => [session.user?.userId, session.user?.activeContext?.schoolRef, role.
   }
 }, { immediate: true })
 
+watch(() => [route.query.chat, route.query.conversation, route.query.history, route.query.topic, route.query.mode, workspaceScope.value], async () => {
+  if (role.value !== 'student') return
+  const { chat: open, conversation, history, topic } = route.query
+  chatVisible.value = Boolean(open || conversation || history || topic || researchMode.value)
+  if (typeof topic === 'string' && Object.hasOwn(educationTopics, topic)) {
+    command.value = educationTopics[topic as EducationTopic]
+  }
+  await nextTick()
+  if (typeof conversation === 'string' || history === '1') {
+    await chat.value?.showHistory(typeof conversation === 'string' ? conversation : undefined)
+  } else if (open === '1') {
+    responseArea.value?.querySelector('textarea')?.focus({ preventScroll: true })
+  }
+}, { immediate: true, flush: 'post' })
+
 onUnmounted(() => {
   overviewRequest?.abort()
   taskRequest?.abort()
 })
 
+async function sendChat(text: string) {
+  const scope = workspaceScope.value
+  chatVisible.value = true
+  chatSending.value = true
+  const conversationMode = researchMode.value
+  try {
+    if (await chat.value?.submitFromWorkspace(text)
+        && workspaceScope.value === scope && researchMode.value === conversationMode
+        && command.value.trim() === text) command.value = ''
+  } finally {
+    if (workspaceScope.value === scope) chatSending.value = false
+  }
+}
+
 async function run() {
   const text = command.value.trim()
-  if (!text || running.value || confirming.value) return
+  if (!text || running.value || chatSending.value || confirming.value || chat.value?.composerBlocked) return
+  const isStudent = role.value === 'student'
+  const taskQuery = /^(?:(?:查看)?我的测评(?:任务)?|还有哪些测评(?:没做)?|继续测评)$/.test(text.replace(/[？?。！!]+$/, '').trim())
+  if (isStudent && (researchMode.value || chat.value?.needsRetry || !taskQuery)) {
+    formError.value = ''
+    result.value = null
+    await sendChat(text)
+    return
+  }
   const request = new AbortController()
   taskRequest = request
   running.value = true
@@ -178,6 +231,7 @@ async function run() {
     const data = await runWorkspaceAgent({ operation: 'run', text }, request.signal)
     if (!request.signal.aborted) {
       result.value = data
+      if (isStudent && command.value.trim() === text) command.value = ''
       if (data.kind.endsWith('_tasks') || data.kind === 'class_progress') overview.value = data
     }
   } catch {
@@ -185,6 +239,54 @@ async function run() {
   } finally {
     if (!request.signal.aborted) running.value = false
   }
+}
+
+function handleComposerKey(event: KeyboardEvent) {
+  if (role.value !== 'student' && !event.ctrlKey && !event.metaKey) return
+  if (event.key !== 'Enter' || event.shiftKey || event.altKey || event.isComposing || event.keyCode === 229) return
+  event.preventDefault()
+  if (!event.repeat) void run()
+}
+
+function chooseAttachment() {
+  attachmentError.value = ''
+  fileInput.value?.click()
+}
+
+async function readAttachment(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  input.value = ''
+  const scope = workspaceScope.value
+  attachment.value = undefined
+  try {
+    if (!/\.(txt|md|markdown)$/i.test(file.name) || file.size > 16 * 1024) {
+      throw new Error('请选择不超过 16 KB 的 TXT 或 Markdown 文件')
+    }
+    const content = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer()).trim()
+    if (!content || /[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(content)) throw new Error()
+    if (workspaceScope.value === scope) {
+      attachment.value = { name: file.name, content }
+      attachmentOpen.value = true
+    }
+  } catch (error) {
+    if (workspaceScope.value === scope) attachmentError.value = error instanceof Error && error.message.startsWith('请选择')
+      ? error.message : '无法读取文本，请检查文件是否为空或使用 UTF-8 编码'
+  }
+}
+
+function insertAttachment() {
+  if (!attachment.value || chatSending.value || chat.value?.needsRetry) return
+  const text = [command.value.trim(), attachment.value.content].filter(Boolean).join('\n\n')
+  if (text.length > maxCommandLength.value) {
+    attachmentError.value = '内容超过输入框字数上限，请缩短后再试'
+    return
+  }
+  command.value = text
+  attachmentOpen.value = false
+  attachment.value = undefined
+  void nextTick(() => responseArea.value?.querySelector('textarea')?.focus())
 }
 
 function cancelRun() {
@@ -238,47 +340,58 @@ function dateLabel(value: string) {
     </header>
 
     <section aria-label="PsyNova Agent">
-      <form ref="responseArea" class="workspace-agent__composer" @submit.prevent="run">
+      <SupportChatView
+        v-if="role === 'student'"
+        v-show="chatVisible"
+        :key="workspaceScope + researchMode"
+        ref="chat"
+        :research-mode="researchMode"
+        embedded
+      />
+      <form id="workspace-agent-composer" ref="responseArea" class="workspace-agent__composer" @submit.prevent="run">
         <AppTextarea
           id="workspace-agent-input"
           v-model="command"
-          label="输入任务"
+          :label="role === 'student' ? '输入消息' : '输入任务'"
           :placeholder="config.example"
-          :maxlength="160"
+          :maxlength="maxCommandLength"
+          :readonly="chatSending || chat?.needsRetry"
           :rows="2"
           hide-label
-          @keydown.ctrl.enter.prevent="run"
-          @keydown.meta.enter.prevent="run"
+          @keydown="handleComposerKey"
         />
         <div class="workspace-agent__controls">
           <div class="workspace-agent__tools">
-            <AppButton class="workspace-agent__tool" variant="quiet" aria-label="任务示例" title="任务示例" @click="examplesOpen = true">
+            <AppButton class="workspace-agent__tool" variant="quiet" aria-label="任务示例" title="任务示例" :disabled="chatSending || chat?.needsRetry" @click="examplesOpen = true">
               <Plus :size="20" aria-hidden="true" />
             </AppButton>
-            <RouterLink v-if="role === 'school_admin'" class="workspace-agent__tool workspace-agent__tool-link" to="/admin/users" aria-label="导入名单" title="导入名单">
+            <input ref="fileInput" type="file" accept=".txt,.md,.markdown" hidden @change="readAttachment" />
+            <AppButton class="workspace-agent__tool" variant="quiet" aria-label="添加附件" title="添加附件" :disabled="chatSending || chat?.needsRetry" @click="chooseAttachment">
               <Paperclip :size="20" aria-hidden="true" />
-            </RouterLink>
+            </AppButton>
           </div>
           <span class="workspace-agent__name"><Sparkles :size="17" aria-hidden="true" />PsyNova Agent</span>
           <AppButton v-if="running" class="workspace-agent__tool" variant="quiet" aria-label="取消查询" title="取消查询" @click="cancelRun">
             <Square :size="16" aria-hidden="true" />
           </AppButton>
-          <AppButton v-else class="workspace-agent__send" type="submit" :disabled="!command.trim() || confirming" aria-label="发送任务" title="发送任务">
+          <AppButton v-else class="workspace-agent__send" type="submit" :loading="chatSending" :disabled="(!command.trim() && !chat?.needsRetry) || confirming || chat?.composerBlocked" :aria-label="role === 'student' ? (chat?.needsRetry ? '重试发送' : '发送消息') : '发送任务'">
             <ArrowUp :size="21" aria-hidden="true" />
           </AppButton>
         </div>
       </form>
+      <p v-if="chatSending" class="workspace-agent__chat-status" role="status">正在回复…</p>
+      <p v-if="attachmentError && !attachmentOpen" class="workspace-agent__error" role="alert">{{ attachmentError }}</p>
+      <div v-if="role === 'student' && !chatSending && !chat?.needsRetry && (researchMode || chat?.researchAvailable)" class="workspace-agent__chat-links">
+        <RouterLink v-if="researchMode" :to="{ name: 'student-workspace', query: { chat: '1' } }">返回日常对话</RouterLink>
+        <RouterLink v-else :to="{ name: 'student-workspace', query: { mode: 'research' } }">高中场景研究演示</RouterLink>
+      </div>
 
       <AppCard v-if="running || result || (formError && !confirmOpen)" class="workspace-agent__response" aria-live="polite">
         <p v-if="running">正在查询</p>
         <AppStatusCallout v-else-if="formError && !confirmOpen" tone="attention" :title="formError" />
         <template v-else-if="result?.kind === 'unknown'">
           <p>试试输入框里的任务示例</p>
-          <RouterLink v-if="role === 'student'" class="workspace-agent__link" to="/student/support">打开教育支持对话 <ChevronRight :size="16" /></RouterLink>
         </template>
-        <RouterLink v-else-if="result?.kind === 'education_topic' && result.topic" class="workspace-agent__link" :to="{ path: '/student/support', query: { topic: result.topic } }">
-          在教育支持中提问 <ChevronRight :size="16" />
-        </RouterLink>
         <div v-else-if="result?.kind === 'preview_class'" class="workspace-agent__receipt">
           <span>新建班级 {{ result.class_ref }}</span>
           <AppButton variant="secondary" @click="formError = ''; confirmOpen = true">核对并确认</AppButton>
@@ -345,6 +458,20 @@ function dateLabel(value: string) {
       </div>
     </AppDialog>
     <AppDialog
+      :open="attachmentOpen"
+      title="附件预览"
+      :description="role === 'student' ? '请先检查内容，移除姓名、学号等个人信息' : '文件内容在当前页面预览'"
+      @update:open="attachmentOpen = $event; if (!$event) attachment = undefined"
+    >
+      <strong>{{ attachment?.name }}</strong>
+      <pre class="workspace-agent__attachment">{{ attachment?.content }}</pre>
+      <p v-if="attachmentError" class="workspace-agent__error" role="alert">{{ attachmentError }}</p>
+      <div class="workspace-agent__confirm">
+        <AppButton variant="secondary" @click="attachmentOpen = false; attachment = undefined">关闭</AppButton>
+        <AppButton v-if="role === 'student'" @click="insertAttachment">插入到输入框</AppButton>
+      </div>
+    </AppDialog>
+    <AppDialog
       :open="confirmOpen"
       title="确认新建班级"
       :description="`班级编号 ${result?.class_ref || ''}`"
@@ -372,8 +499,6 @@ function dateLabel(value: string) {
 .workspace-agent__controls { display: flex; align-items: center; gap: clamp(6px, 1.7vw, 12px); min-width: 0; }
 .workspace-agent__tools { display: flex; align-items: center; flex: 1; min-width: 0; }
 .workspace-agent__tool, .workspace-agent__send { display: inline-grid; width: 44px; height: 44px; padding: 0; flex: 0 0 44px; place-items: center; }
-.workspace-agent__tool-link { color: var(--color-text-secondary); border-radius: var(--radius-button); }
-.workspace-agent__tool-link:hover { background: var(--color-surface-muted); color: var(--color-text-primary); }
 .workspace-agent__send { border-radius: 50%; }
 .workspace-agent__name, .workspace-agent__link { display: inline-flex; align-items: center; gap: 6px; }
 .workspace-agent__name { color: var(--color-text-secondary); font-size: clamp(13px, 1.9vw, 17px); white-space: nowrap; }
@@ -411,4 +536,10 @@ function dateLabel(value: string) {
 .workspace-agent__records li a > svg { color: var(--color-text-muted); }
 .workspace-agent__confirm, .workspace-agent__examples { display: flex; flex-wrap: wrap; gap: 8px; }
 .workspace-agent__confirm { justify-content: flex-end; margin-top: 12px; }
+.workspace-agent__chat-links { display: flex; justify-content: flex-end; color: var(--color-primary-active); font-size: 13px; }
+.workspace-agent__chat-links a { padding-block: 8px; }
+.workspace-agent__error { color: var(--color-attention); font-size: 13px; }
+.workspace-agent__chat-status { margin: 8px 4px 0; color: var(--color-text-secondary); font-size: 13px; }
+.workspace-agent__attachment { max-height: 40vh; overflow: auto; padding: 12px; border-radius: var(--radius-control); background: var(--color-surface-muted); font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
+#workspace-agent-composer { scroll-margin-top: 88px; }
 </style>
