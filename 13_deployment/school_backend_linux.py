@@ -65,6 +65,7 @@ def _build_school_backend_settings(csrf_secret: str):
         port=DEFAULT_BACKEND_PORT,
         docs_enabled=False,
         school_csrf_secret=csrf_secret,
+        workspace_agent_store=os.environ.get("PSYNOVA_WORKSPACE_AGENT_STORE"),
         allowed_origins=(
             [public_origin]
             if public_origin is not None

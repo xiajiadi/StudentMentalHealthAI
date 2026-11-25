@@ -22,7 +22,8 @@ import type {
 } from '@/api/client'
 
 type Section = 'overview' | 'roster' | 'staff' | 'recovery' | 'credentials' | 'status' | 'directory'
-const section = ref<Section>('overview')
+const props = defineProps<{ embeddedRoster?: boolean; initialRosterFile?: File }>()
+const section = ref<Section>(props.embeddedRoster ? 'roster' : 'overview')
 const session = useSessionStore()
 const route = useRoute()
 watch(
@@ -33,11 +34,14 @@ watch(
   },
   { immediate: true },
 )
-const sections: Array<{ id: Section; label: string }> = [
+const allSections: Array<{ id: Section; label: string }> = [
   { id: 'overview', label: '概览' }, { id: 'roster', label: '学生名单' }, { id: 'staff', label: '教职工名单' },
   { id: 'credentials', label: '初始账号' }, { id: 'status', label: '账号状态' },
   { id: 'recovery', label: '安全恢复' }, { id: 'directory', label: '学校目录' },
 ]
+const sections = props.embeddedRoster
+  ? allSections.filter((item) => item.id === 'roster' || item.id === 'credentials')
+  : allSections
 const activeTabIndex = computed(() => sections.findIndex((item) => item.id === section.value))
 const tabIndicatorStyle = computed(() => ({
   '--tab-index': activeTabIndex.value,
@@ -396,14 +400,21 @@ const parseRosterFile = async (file?: File) => {
   if (!file) return
   if (file.size > 1024 * 1024) { error.value = '文件不能超过 1 MiB'; return }
   try {
-    const text = await readRosterCsv(file)
+    const expected = ['student_number', 'display_name', 'class_ref', 'grade_level']
+    let records: string[][]
+    if (/\.xlsx$/i.test(file.name)) {
+      const { readSheet } = await import('read-excel-file/universal')
+      const cells = await readSheet(await file.arrayBuffer())
+      if (cells.length > maxRosterRows + 2) throw new Error('导入须包含 1 到 3000 行学生记录')
+      records = cells.map((row) => row.map((cell) => cell == null ? '' : String(cell).trim()))
+    } else {
+      records = parseCsvRecords(await readRosterCsv(file))
+    }
     if (attempt !== rosterFileAttempt) return
-    const records = parseCsvRecords(text)
     const versionMarker = '# psynova_student_roster_template_v1'
     if (records[0]?.length === 1 && records[0][0]?.startsWith('# psynova_student_roster_template_')) {
       if (records.shift()?.[0] !== versionMarker) throw new Error('花名册模板版本不受支持')
     }
-    const expected = ['student_number', 'display_name', 'class_ref', 'grade_level']
     if (JSON.stringify(records.shift()) !== JSON.stringify(expected)) throw new Error('模板列不匹配')
     if (records.length < 1 || records.length > maxRosterRows) throw new Error('导入须包含 1 到 3000 行学生记录')
     rows.value = records.map((record, index) => {
@@ -859,7 +870,10 @@ const approveRecovery = async (ticket: LifecycleRecoveryTicket) => {
   finally { busy.value = false }
 }
 
-onMounted(loadData)
+onMounted(() => {
+  void loadData()
+  if (props.embeddedRoster && props.initialRosterFile) void parseRosterFile(props.initialRosterFile)
+})
 onUnmounted(() => { credentialRows.value = []; passphrase.value = ''; rows.value = []; staffRows.value = [] })
 </script>
 
@@ -890,7 +904,7 @@ onUnmounted(() => { credentialRows.value = []; passphrase.value = ''; rows.value
       <h3>导入学生名单</h3>
       <p>下载模板，填写学号、姓名、班级名称（或已有编号）和年级。上传后核对预览，确认即可自动建班、归班并生成初始账号。</p>
       <button type="button" class="lifecycle__secondary" @click="downloadRosterTemplate">下载 CSV 模板</button>
-      <label class="lifecycle__field">选择 CSV 文件<input type="file" accept=".csv,text/csv" :disabled="busy || Boolean(rosterImportKey)" @change="parseRosterFile(($event.target as HTMLInputElement).files?.[0])"></label>
+      <label class="lifecycle__field">选择 CSV 或 XLSX 文件<input type="file" accept=".csv,.xlsx" :disabled="busy || Boolean(rosterImportKey)" @change="parseRosterFile(($event.target as HTMLInputElement).files?.[0])"></label>
       <p v-if="rows.length" class="lifecycle__boundary">{{ rows.length }} 条记录，预览前 {{ Math.min(rows.length, 30) }} 条</p>
       <div v-if="rows.length" class="lifecycle__table-wrap"><table><thead><tr><th>行号</th><th>学号</th><th>姓名</th><th>班级</th><th>年级</th></tr></thead><tbody><tr v-for="row in rows.slice(0, 30)" :key="row.row_no"><td>{{ row.row_no }}</td><td>{{ row.student_number }}</td><td>{{ row.display_name }}</td><td>{{ row.class_ref }}</td><td>{{ row.grade_level || '—' }}</td></tr></tbody></table></div>
       <div v-if="preview" class="lifecycle__preview-summary" role="status">

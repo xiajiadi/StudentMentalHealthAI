@@ -496,6 +496,7 @@ class BackendSettings(BaseSettings):
     support_deadline_seconds: float = Field(default=80.0, gt=0, le=120)
     auth: AuthSettings = Field(default_factory=AuthSettings)
     public_demo: PublicDemoSettings = Field(default_factory=PublicDemoSettings)
+    workspace_agent_store: str | None = Field(default=None, repr=False)
     rate_limit: RateLimitSettings = Field(default_factory=RateLimitSettings)
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
     post_assessment_worker: PostAssessmentWorkerSettings = Field(

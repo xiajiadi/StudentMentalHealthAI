@@ -11,12 +11,14 @@ import { useAssessmentStore } from '@/stores/assessment'
 import { useSessionStore } from '@/stores/session'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 
+const props = defineProps<{ embeddedAssessmentId?: string }>()
+const emit = defineEmits<{ completed: [assessmentId: string] }>()
 const router = useRouter()
 const route = useRoute()
 const assessment = useAssessmentStore()
 const session = useSessionStore()
 const selectedResponse = ref('')
-const pageState = ref<'loading' | 'ready' | 'error' | 'assigned'>('loading')
+const pageState = ref<'loading' | 'ready' | 'error' | 'assigned' | 'submitted'>('loading')
 const isSubmitting = ref(false)
 const isCompleting = ref(false)
 const errorMessage = ref('')
@@ -36,7 +38,8 @@ const load = async () => {
   pageState.value = 'loading'
   errorMessage.value = ''
   try {
-    const routeAssessmentId = typeof route.params.id === 'string' ? route.params.id : undefined
+    const routeAssessmentId = props.embeddedAssessmentId
+      ?? (typeof route.params.id === 'string' ? route.params.id : undefined)
     const existing = routeAssessmentId
       ? undefined
       : (await (frontendApi.listAssessmentEntries
@@ -114,6 +117,11 @@ const complete = async () => {
     if (!(await saveSelectedResponse()) || !canComplete.value) return
     const response = await frontendApi.completeAssessment(assessment.assessmentId)
     assessment.reset()
+    if (props.embeddedAssessmentId) {
+      pageState.value = 'submitted'
+      emit('completed', response.data.assessment_id)
+      return
+    }
     await router.push(`/student/assessment/${encodeURIComponent(response.data.assessment_id)}/result`)
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '测评完成状态没有保存，请稍后重试。'
@@ -122,8 +130,8 @@ const complete = async () => {
   }
 }
 
-watch(() => route.params.id, () => {
-  if (route.name === 'student-assessment' || route.name === 'student-assessment-resume') {
+watch(() => [props.embeddedAssessmentId, route.params.id], () => {
+  if (props.embeddedAssessmentId || route.name === 'student-assessment' || route.name === 'student-assessment-resume') {
     selectedResponse.value = ''
     void load()
   }
@@ -132,8 +140,9 @@ onBeforeRouteLeave(saveSelectedResponse)
 </script>
 
 <template>
-  <div class="assessment-page">
-    <div v-if="pageState === 'loading'" class="assessment-loading" aria-busy="true" aria-label="正在准备测评">
+  <div class="assessment-page" :class="{ 'assessment-page--embedded': embeddedAssessmentId }">
+    <AppStatusCallout v-if="pageState === 'submitted'" tone="support" title="已保存测评作答" body="反馈将按学校发布流程出现在测评反馈中" />
+    <div v-else-if="pageState === 'loading'" class="assessment-loading" aria-busy="true" aria-label="正在准备测评">
       <div class="skeleton skeleton--question"></div>
       <div class="skeleton skeleton--option"></div>
       <div class="skeleton skeleton--option"></div>

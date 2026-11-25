@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/* global AbortController */
+/* global AbortController, DragEvent, Event, File, HTMLInputElement, KeyboardEvent, TextDecoder */
 import { computed, nextTick, onUnmounted, ref, watch, type Component } from 'vue'
 import { useRoute } from 'vue-router'
 import { ArrowUp, ArrowUpRight, BookOpen, CalendarDays, CalendarHeart, ChartNoAxesCombined, ChevronRight, ClipboardCheck, ClipboardList, FileCheck2, FileUp, FolderOpen, HeartHandshake, Inbox, Layers, MessagesSquare, Network, Paperclip, Plus, Send, Server, ShieldCheck, Sparkles, Square, UsersRound } from '@lucide/vue'
@@ -12,6 +12,7 @@ import { educationTopics, runWorkspaceAgent, type EducationTopic, type Workspace
 import { useSessionStore } from '@/stores/session'
 import type { Role } from '@/types/contracts'
 import SupportChatView from '@/views/student/SupportChatView.vue'
+import WorkspaceConversation from '@/components/workspace/WorkspaceConversation.vue'
 
 type WorkspaceRole = 'student' | 'teacher' | 'psychological_specialist' | 'school_admin'
 type Entry = { label: string; to: string; icon: Component; note?: string }
@@ -115,8 +116,14 @@ const chat = ref<InstanceType<typeof SupportChatView>>()
 const chatVisible = ref(false)
 const chatSending = ref(false)
 const researchMode = computed(() => route.query.mode === 'research')
+const workspaceAgent = ref<InstanceType<typeof WorkspaceConversation>>()
+const agentBusy = ref(false)
+const rosterFile = ref<File>()
+const catFile = ref<File>()
+const agentMode = computed(() => isPublicDemo.value && !researchMode.value
+  && !(role.value === 'student' && (route.query.chat || route.query.history || route.query.conversation || route.query.topic)))
 const workspaceScope = computed(() => JSON.stringify([session.user?.userId, session.user?.activeContext?.schoolRef, role.value]))
-const maxCommandLength = computed(() => role.value === 'student' ? 20000 : 160)
+const maxCommandLength = computed(() => agentMode.value ? 3000 : role.value === 'student' ? 20000 : 160)
 const fileInput = ref<HTMLInputElement>()
 const attachmentOpen = ref(false)
 const attachment = ref<{ name: string; content: string }>()
@@ -139,6 +146,12 @@ const suggestedCommands = computed(() => {
 
 let overviewRequest: AbortController | undefined
 let taskRequest: AbortController | undefined
+const taskPrompts: Record<WorkspaceRole, readonly string[]> = {
+  student: ['看看我还有哪些测评要完成', '打开心理知识学习工作台', '打开学校心理支持入口', '帮我查看学校的支持渠道'],
+  teacher: ['查看最近的班级测评完成情况', '帮我查一下班里有哪些测评任务和截止时间', '按任务汇总我们班的测评完成情况', '打开学生支持转介工作台'],
+  psychological_specialist: ['查一下我有哪些授权测评可以复核，再打开专业复核工作台', '打开学生支持工作台', '打开专业资料工作台', '打开 CAT 题库和测评方案工作台'],
+  school_admin: ['核对学校学生账号数和各班级人数', '打开学生名单导入工作台，准备自动分班和初始账号', '打开测评发布工作台，我要准备一个新测评', '打开系统状态工作台'],
+}
 
 async function loadOverview() {
   overviewRequest?.abort()
@@ -169,6 +182,9 @@ watch(workspaceScope, () => {
   chatSending.value = false
   attachmentOpen.value = false
   attachment.value = undefined
+  rosterFile.value = undefined
+  catFile.value = undefined
+  agentBusy.value = false
   if (session.user?.activeContext) void loadOverview()
   else {
     overviewRequest?.abort()
@@ -213,6 +229,11 @@ async function sendChat(text: string) {
 
 async function run() {
   const text = command.value.trim()
+  if (agentMode.value) {
+    if (!text || agentBusy.value) return
+    if (await workspaceAgent.value?.submit(text) && command.value.trim() === text) command.value = ''
+    return
+  }
   if (!text || running.value || chatSending.value || confirming.value || chat.value?.composerBlocked) return
   const isStudent = role.value === 'student'
   const taskQuery = /^(?:(?:查看)?我的测评(?:任务)?|还有哪些测评(?:没做)?|继续测评)$/.test(text.replace(/[？?。！!]+$/, '').trim())
@@ -242,7 +263,7 @@ async function run() {
 }
 
 function handleComposerKey(event: KeyboardEvent) {
-  if (role.value !== 'student' && !event.ctrlKey && !event.metaKey) return
+  if (!agentMode.value && role.value !== 'student' && !event.ctrlKey && !event.metaKey) return
   if (event.key !== 'Enter' || event.shiftKey || event.altKey || event.isComposing || event.keyCode === 229) return
   event.preventDefault()
   if (!event.repeat) void run()
@@ -260,12 +281,24 @@ async function readAttachment(event: Event) {
   input.value = ''
   const scope = workspaceScope.value
   attachment.value = undefined
+  if (agentMode.value) {
+    if (role.value === 'school_admin' && /\.(csv|xlsx)$/i.test(file.name)) {
+      selectRoster(file)
+      return
+    }
+    if (role.value === 'psychological_specialist' && /\.(csv|json)$/i.test(file.name)) {
+      selectCatBank(file)
+      return
+    }
+  }
   try {
     if (!/\.(txt|md|markdown)$/i.test(file.name) || file.size > 16 * 1024) {
       throw new Error('请选择不超过 16 KB 的 TXT 或 Markdown 文件')
     }
     const content = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer()).trim()
-    if (!content || /[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(content)) throw new Error()
+    const hasControlCharacter = Array.from(content).some((character) =>
+      character.charCodeAt(0) < 32 && !['\t', '\r', '\n'].includes(character))
+    if (!content || hasControlCharacter) throw new Error()
     if (workspaceScope.value === scope) {
       attachment.value = { name: file.name, content }
       attachmentOpen.value = true
@@ -289,7 +322,48 @@ function insertAttachment() {
   void nextTick(() => responseArea.value?.querySelector('textarea')?.focus())
 }
 
+function selectRoster(file: File) {
+  if (!/\.(csv|xlsx)$/i.test(file.name) || file.size > 1024 * 1024) {
+    attachmentError.value = '请选择不超过 1 MiB 的 CSV 或 XLSX 学生名单'
+    return
+  }
+  rosterFile.value = file
+  attachmentError.value = ''
+  if (!command.value.trim()) command.value = '帮我检查这份学生名单，准备导入、分班和生成初始账号'
+}
+
+function selectCatBank(file: File) {
+  if (!/\.(csv|json)$/i.test(file.name) || file.size > 1_500_000) {
+    attachmentError.value = '请选择不超过 1.5 MB 的 JSON 或 CSV 题库'
+    return
+  }
+  catFile.value = file
+  attachmentError.value = ''
+  if (!command.value.trim()) command.value = '帮我在当前会话中打开并检查这份 CAT 题库'
+}
+
+const acceptsPrivateFile = computed(() => agentMode.value
+  && (role.value === 'school_admin' || role.value === 'psychological_specialist'))
+const attachmentFormats = computed(() => !agentMode.value ? '.txt,.md,.markdown' : ({
+  school_admin: '.csv,.xlsx,.txt,.md,.markdown',
+  psychological_specialist: '.csv,.json,.txt,.md,.markdown',
+  teacher: '.txt,.md,.markdown',
+  student: '.txt,.md,.markdown',
+}[role.value]))
+
+function handlePrivateDrop(event: DragEvent) {
+  if (!acceptsPrivateFile.value || agentBusy.value) return
+  event.preventDefault()
+  const file = event.dataTransfer?.files[0]
+  if (file && role.value === 'school_admin') selectRoster(file)
+  if (file && role.value === 'psychological_specialist') selectCatBank(file)
+}
+
 function cancelRun() {
+  if (agentMode.value) {
+    workspaceAgent.value?.cancel()
+    return
+  }
   taskRequest?.abort()
   running.value = false
 }
@@ -320,6 +394,12 @@ async function useExample(value: string) {
   responseArea.value?.querySelector('textarea')?.focus()
 }
 
+async function startQuickTask(index: number) {
+  if (agentBusy.value) return
+  command.value = taskPrompts[role.value][index] ?? config.value.example
+  await run()
+}
+
 const statusLabels: Record<string, string> = {
   not_started: '待开始', created: '待继续', in_progress: '进行中',
   completed: '已完成', abandoned: '已结束', invalid: '已失效',
@@ -340,8 +420,19 @@ function dateLabel(value: string) {
     </header>
 
     <section aria-label="PsyNova Agent">
+      <WorkspaceConversation
+        v-if="agentMode"
+        :key="workspaceScope"
+        ref="workspaceAgent"
+        :role="role"
+        :roster-file="rosterFile"
+        :cat-file="catFile"
+        @busy="agentBusy = $event"
+        @changed="loadOverview"
+        @support="$router.push({ name: 'student-workspace', query: { chat: '1' } })"
+      />
       <SupportChatView
-        v-if="role === 'student'"
+        v-if="role === 'student' && !agentMode"
         v-show="chatVisible"
         :key="workspaceScope + researchMode"
         id="workspace-agent-conversation"
@@ -349,7 +440,7 @@ function dateLabel(value: string) {
         :research-mode="researchMode"
         embedded
       />
-      <form id="workspace-agent-composer" ref="responseArea" class="workspace-agent__composer" @submit.prevent="run">
+      <form id="workspace-agent-composer" ref="responseArea" class="workspace-agent__composer" @submit.prevent="run" @dragover="(event) => { if (acceptsPrivateFile) event.preventDefault() }" @drop="handlePrivateDrop">
         <AppTextarea
           id="workspace-agent-input"
           v-model="command"
@@ -366,24 +457,29 @@ function dateLabel(value: string) {
             <AppButton class="workspace-agent__tool" variant="quiet" aria-label="任务示例" title="任务示例" :disabled="chatSending || chat?.needsRetry" @click="examplesOpen = true">
               <Plus :size="20" aria-hidden="true" />
             </AppButton>
-            <input ref="fileInput" type="file" accept=".txt,.md,.markdown" hidden @change="readAttachment" />
-            <AppButton class="workspace-agent__tool" variant="quiet" aria-label="添加附件" title="添加附件" :disabled="chatSending || chat?.needsRetry" @click="chooseAttachment">
+            <input ref="fileInput" type="file" :accept="attachmentFormats" hidden @change="readAttachment" />
+            <AppButton class="workspace-agent__tool" variant="quiet" aria-label="添加附件" title="添加附件" :disabled="agentBusy || chatSending || chat?.needsRetry" @click="chooseAttachment">
               <Paperclip :size="20" aria-hidden="true" />
             </AppButton>
           </div>
           <span class="workspace-agent__name"><Sparkles :size="17" aria-hidden="true" />PsyNova Agent</span>
-          <AppButton v-if="running" class="workspace-agent__tool" variant="quiet" aria-label="取消查询" title="取消查询" @click="cancelRun">
+          <AppButton v-if="running || agentBusy" class="workspace-agent__tool" variant="quiet" aria-label="取消任务" title="取消任务" @click="cancelRun">
             <Square :size="16" aria-hidden="true" />
           </AppButton>
           <AppButton v-else class="workspace-agent__send" type="submit" :loading="chatSending" :disabled="(!command.trim() && !chat?.needsRetry) || confirming || chat?.composerBlocked" :aria-label="role === 'student' ? (chat?.needsRetry ? '重试发送' : '发送消息') : '发送任务'">
             <ArrowUp :size="21" aria-hidden="true" />
           </AppButton>
         </div>
+        <div v-if="agentMode && (rosterFile || catFile)" class="workspace-agent__receipt">
+          <span>{{ (rosterFile || catFile)?.name }}</span>
+          <AppButton variant="quiet" :disabled="agentBusy" @click="rosterFile = undefined; catFile = undefined">移除附件</AppButton>
+        </div>
       </form>
       <p v-if="chatSending" class="workspace-agent__chat-status" role="status">正在回复…</p>
       <p v-if="attachmentError && !attachmentOpen" class="workspace-agent__error" role="alert">{{ attachmentError }}</p>
-      <div v-if="role === 'student' && !chatSending && !chat?.needsRetry && (researchMode || chat?.researchAvailable)" class="workspace-agent__chat-links">
-        <RouterLink v-if="researchMode" :to="{ name: 'student-workspace', query: { chat: '1' } }">返回日常对话</RouterLink>
+      <div v-if="role === 'student' && !chatSending && !chat?.needsRetry && (researchMode || isPublicDemo || chat?.researchAvailable)" class="workspace-agent__chat-links">
+        <RouterLink v-if="!agentMode && isPublicDemo" :to="{ name: 'student-workspace' }">返回智能体对话</RouterLink>
+        <RouterLink v-else-if="researchMode" :to="{ name: 'student-workspace', query: { chat: '1' } }">返回日常对话</RouterLink>
         <RouterLink v-else :to="{ name: 'student-workspace', query: { mode: 'research' } }">高中场景研究演示</RouterLink>
       </div>
 
@@ -414,14 +510,19 @@ function dateLabel(value: string) {
 
     <nav class="workspace-agent__quick" aria-label="常用功能">
       <AppCard v-for="(entry, index) in config.entries" :key="entry.label" class="workspace-agent__tile" :class="'workspace-agent__tile--' + index">
-        <RouterLink :aria-label="entry.label" :to="entry.to" class="workspace-agent__entry">
+        <component
+          :is="agentMode ? 'button' : 'RouterLink'"
+          :aria-label="entry.label"
+          v-bind="agentMode ? { type: 'button', disabled: agentBusy, onClick: () => startQuickTask(index) } : { to: entry.to }"
+          class="workspace-agent__entry"
+        >
           <div class="workspace-agent__tile-top">
             <span class="workspace-agent__tile-icon"><component :is="entry.icon" :size="22" aria-hidden="true" /></span>
             <ArrowUpRight :size="16" aria-hidden="true" />
           </div>
           <strong>{{ entry.label }}</strong>
           <small v-if="entry.note">{{ entry.note }}</small>
-        </RouterLink>
+        </component>
       </AppCard>
     </nav>
 
@@ -469,7 +570,7 @@ function dateLabel(value: string) {
       <p v-if="attachmentError" class="workspace-agent__error" role="alert">{{ attachmentError }}</p>
       <div class="workspace-agent__confirm">
         <AppButton variant="secondary" @click="attachmentOpen = false; attachment = undefined">关闭</AppButton>
-        <AppButton v-if="role === 'student'" @click="insertAttachment">插入到输入框</AppButton>
+        <AppButton v-if="role === 'student' || agentMode" @click="insertAttachment">插入到输入框</AppButton>
       </div>
     </AppDialog>
     <AppDialog
@@ -522,6 +623,7 @@ function dateLabel(value: string) {
 .workspace-agent__entry strong, .workspace-agent__record-copy strong { color: var(--color-text-primary); font-size: clamp(14px, 1.65vw, 19px); font-weight: 600; overflow-wrap: anywhere; }
 .workspace-agent__entry small, .workspace-agent__record-copy small { color: var(--color-text-secondary); font-size: clamp(11px, 1.35vw, 14px); line-height: 1.4; overflow-wrap: anywhere; }
 .workspace-agent__entry:hover, .workspace-agent__entry:focus-visible { border-color: currentColor; }
+button.workspace-agent__entry { width: 100%; text-align: start; background: transparent; cursor: pointer; }
 .workspace-agent__tasks { display: grid; gap: 8px; min-width: 0; }
 .workspace-agent__task-head h2 { margin: 0; font-size: clamp(17px, 2vw, 23px); font-weight: 690; }
 .workspace-agent__all { min-height: 44px; padding: 0 0 0 10px; }

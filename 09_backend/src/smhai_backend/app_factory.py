@@ -82,6 +82,8 @@ from smhai_backend.domains.school_tasks.router import router as school_tasks_rou
 from smhai_backend.domains.support.router import router as support_router
 from smhai_backend.domains.teacher.router import router as teacher_router
 from smhai_backend.domains.workspace_agent import router as workspace_agent_router
+from smhai_backend.domains.workspace_agent_conversation import router as workspace_conversation_router
+from smhai_backend.domains.workspace_agent_history import WorkspaceHistory
 from smhai_backend.lifespan import make_lifespan
 
 
@@ -105,6 +107,9 @@ def create_app(
         lifespan=make_lifespan(container),
     )
     app.state.container = container
+    app.state.workspace_history = (
+        WorkspaceHistory(settings.workspace_agent_store) if settings.workspace_agent_store else None
+    )
     app.add_exception_handler(BackendError, backend_error_handler)
     app.add_exception_handler(RequestValidationError, validation_error_handler)
     app.add_exception_handler(Exception, unhandled_error_handler)
@@ -139,6 +144,9 @@ def create_app(
     app.include_router(teacher_router, prefix=settings.api_prefix, include_in_schema=False)
     app.include_router(school_tasks_router, prefix=settings.api_prefix, include_in_schema=False)
     app.include_router(workspace_agent_router, prefix=settings.api_prefix, include_in_schema=False)
+    app.include_router(
+        workspace_conversation_router, prefix=settings.api_prefix, include_in_schema=False
+    )
     app.include_router(school_support_router, prefix=settings.api_prefix, include_in_schema=False)
     app.include_router(school_research_router, prefix=settings.api_prefix, include_in_schema=False)
     app.include_router(

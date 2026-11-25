@@ -1,0 +1,308 @@
+"""Role-scoped tools with separate browser and provider projections."""
+
+from __future__ import annotations
+
+import hashlib
+from collections import Counter
+from dataclasses import dataclass
+from datetime import UTC, date, datetime
+from typing import Literal
+from uuid import uuid4
+
+from fastapi import Request
+from pydantic import BaseModel, ConfigDict, Field
+
+from smhai_backend.core.errors import ErrorCode, error
+from smhai_backend.domains.models import Actor, BackendRole
+from smhai_backend.domains.school_directory.schemas import SchoolDirectoryDto
+
+from .workspace_agent import _ensure_demo_admin, _signature, _snapshot
+
+STUDENT = BackendRole.STUDENT
+TEACHER = BackendRole.TEACHER
+SPECIALIST = BackendRole.PSYCHOLOGICAL_SPECIALIST
+ADMIN = BackendRole.ADMIN
+
+
+class Arguments(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class TaskWindow(Arguments):
+    opens_from: date | None = None
+    opens_through: date | None = None
+
+
+class StudentTask(Arguments):
+    task: str = Field(pattern=r"^assessment-[a-f0-9]{12}$")
+
+
+class NewClass(Arguments):
+    class_ref: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,47}$")
+
+
+class Draft(Arguments):
+    filename: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,55}\.md$")
+    markdown: str = Field(min_length=1, max_length=3800)
+
+
+class Panel(Arguments):
+    workflow: Literal[
+        "review", "cat", "resources", "support", "knowledge", "feedback", "publish", "system"
+    ]
+
+
+@dataclass(frozen=True, slots=True)
+class Tool:
+    label: str
+    description: str
+    roles: tuple[BackendRole, ...]
+    args: type[Arguments] = Arguments
+
+    def definition(self, name: str) -> dict:
+        return {
+            "type": "function",
+            "function": {
+                "name": name,
+                "description": self.description,
+                "parameters": self.args.model_json_schema(),
+            },
+        }
+
+
+_ALL = (STUDENT, TEACHER, SPECIALIST, ADMIN)
+TOOLS = {
+    "list_student_assessments": Tool(
+        "查询待完成测评",
+        "Read the student's assigned assessments with current status and due dates.",
+        (STUDENT,),
+    ),
+    "open_student_assessment": Tool(
+        "准备测评界面",
+        "Show an assessment consent and start component. Use the task alias from "
+        "list_student_assessments. Only the student can start and answer.",
+        (STUDENT,),
+        StudentTask,
+    ),
+    "class_progress": Tool(
+        "查询授权班级进度",
+        "Read task-level class completion counts. Both optional date boundaries "
+        "refer to the task opening date in China Standard Time.",
+        (TEACHER,),
+        TaskWindow,
+    ),
+    "review_tasks": Tool(
+        "查询专业复核任务",
+        "List tasks the specialist is authorized to review, without results.",
+        (SPECIALIST,),
+    ),
+    "school_tasks": Tool(
+        "查询学校测评任务",
+        "Read this school's published tasks and enrollment totals.",
+        (ADMIN,),
+    ),
+    "school_student_counts": Tool(
+        "核对学生账号和班级人数",
+        "Read actual school student account counts and class memberships.",
+        (ADMIN,),
+    ),
+    "preview_new_class": Tool(
+        "预览新建班级",
+        "Prepare a confirmation for a synthetic class code supplied by the user. "
+        "Only the user can confirm the write.",
+        (ADMIN,),
+        NewClass,
+    ),
+    "open_roster_import": Tool(
+        "打开名单导入工作台",
+        "Open the roster preview, import and credential download component. "
+        "It handles the selected roster privately. The user must confirm the import.",
+        (ADMIN,),
+    ),
+    "open_workflow": Tool(
+        "准备业务工作台",
+        "Show an authorized embedded workflow: review and cat are for specialists, "
+        "resources for specialists, support for students, teachers and specialists, knowledge "
+        "and feedback for students, publish and system for school administrators. "
+        "Content in the panel is private and does not go to the model.",
+        _ALL,
+        Panel,
+    ),
+    "save_markdown": Tool(
+        "生成 Markdown 文件",
+        "Create a downloadable Markdown document. Use verified figures from "
+        "tools. It must contain no personal information or private psychological material.",
+        _ALL,
+        Draft,
+    ),
+}
+_PANEL_ROLES = {
+    "review": (SPECIALIST,),
+    "cat": (SPECIALIST,),
+    "resources": (SPECIALIST,),
+    "support": (STUDENT, TEACHER, SPECIALIST),
+    "knowledge": (STUDENT,),
+    "feedback": (STUDENT,),
+    "publish": (ADMIN,),
+    "system": (ADMIN,),
+}
+_STATES = {
+    "PUBLISHED",
+    "REVOKED",
+    "CLOSED",
+    "ACTIVE",
+    "INACTIVE",
+    "not_started",
+    "created",
+    "in_progress",
+    "completed",
+    "abandoned",
+    "invalid",
+}
+
+
+def _alias(prefix: str, ref: str) -> str:
+    return prefix + "-" + hashlib.sha256(ref.encode()).hexdigest()[:12]
+
+
+def _date(value: datetime | None) -> str | None:
+    return value.isoformat() if value else None
+
+
+async def execute_tool(request: Request, actor: Actor, name: str, arguments: Arguments):
+    """Return (browser component, model data). Only explicitly projected fields leave."""
+    container = request.app.state.container
+    if name in {"list_student_assessments", "review_tasks", "school_tasks"}:
+        snapshot = await _snapshot(request, actor, limit=24)
+        rows = [row.model_dump(mode="json") for row in snapshot.rows]
+        model_rows = [
+            {
+                "task": _alias("assessment", row.ref),
+                "status": row.status if row.status in _STATES else None,
+                "due_at": _date(row.due_at),
+                "total": row.total,
+            }
+            for row in snapshot.rows
+        ]
+        return (
+            {"kind": snapshot.kind, "rows": rows, "total": snapshot.total},
+            {"rows": model_rows, "total": snapshot.total, "shown": len(model_rows)},
+        )
+    if name == "open_student_assessment" and isinstance(arguments, StudentTask):
+        snapshot = await _snapshot(request, actor, limit=24)
+        for row in snapshot.rows:
+            if _alias("assessment", row.ref) == arguments.task and row.status in {
+                "not_started",
+                "created",
+                "in_progress",
+            }:
+                return (
+                    {"kind": "assessment_picker", "task_ref": row.ref, "due_at": _date(row.due_at)},
+                    {"ready_for_student": True},
+                )
+        raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="assessment task is unavailable")
+    if name == "class_progress" and isinstance(arguments, TaskWindow):
+        from datetime import timedelta, timezone
+
+        from .school_tasks.schemas import TeacherTaskProgressDto
+
+        if (
+            arguments.opens_from
+            and arguments.opens_through
+            and arguments.opens_from > arguments.opens_through
+        ):
+            raise error(ErrorCode.VALIDATION_FAILED, detail="invalid date range")
+        china = timezone(timedelta(hours=8))
+        rows = []
+        for source in await container.school_tasks.teacher_progress(actor):
+            item = TeacherTaskProgressDto.model_validate(source)
+            local_date = item.opens_at.astimezone(china).date()
+            if arguments.opens_from and local_date < arguments.opens_from:
+                continue
+            if arguments.opens_through and local_date > arguments.opens_through:
+                continue
+            rows.append(
+                {
+                    "ref": item.task_ref,
+                    "label": item.class_ref,
+                    "due_at": _date(item.due_at),
+                    "completed": item.completed_count,
+                    "total": item.active_enrollment_count,
+                    "status": item.task_status,
+                }
+            )
+        return (
+            {"kind": "class_progress", "rows": rows[:30], "total": len(rows)},
+            {
+                "tasks": len(rows),
+                "completions": sum(row["completed"] for row in rows),
+                "enrollments": sum(row["total"] for row in rows),
+                "counts_by_class": dict(
+                    Counter(_alias("class", row["label"]) for row in rows[:30])
+                ),
+                "rows": [
+                    {
+                        "class": _alias("class", row["label"]),
+                        "completed": row["completed"],
+                        "total": row["total"],
+                        "due_at": row["due_at"],
+                    }
+                    for row in rows[:30]
+                ],
+            },
+        )
+    if name == "school_student_counts":
+        directory = SchoolDirectoryDto.model_validate(
+            await container.school_directory.get_directory(actor)
+        )
+        counts = Counter(
+            member.account_status for member in directory.members if member.role == "student"
+        )
+        return (
+            {
+                "kind": "school_student_counts",
+                "total": sum(counts.values()),
+                "active": counts["ACTIVE"],
+                "rows": [
+                    {
+                        "ref": item.class_ref,
+                        "label": item.display_name or item.class_ref,
+                        "total": item.active_student_count,
+                    }
+                    for item in directory.classes[:60]
+                ],
+                "class_count": len(directory.classes),
+            },
+            {
+                "total_students": sum(counts.values()),
+                "active_accounts": counts["ACTIVE"],
+                "class_count": len(directory.classes),
+                "memberships": sum(item.active_student_count for item in directory.classes),
+                "classes": [
+                    {
+                        "class": _alias("class", item.class_ref),
+                        "active_students": item.active_student_count,
+                    }
+                    for item in directory.classes[:60]
+                ],
+            },
+        )
+    if name == "preview_new_class" and isinstance(arguments, NewClass):
+        _ensure_demo_admin(request, actor)
+        class_ref = arguments.class_ref
+        content = f"{int(datetime.now(UTC).timestamp()) + 300}.{uuid4().hex}.{class_ref}"
+        return (
+            {
+                "kind": "preview_class",
+                "class_ref": class_ref,
+                "token": f"{content}.{_signature(request, actor, content)}",
+            },
+            {"confirmation_required": True},
+        )
+    if name == "open_roster_import":
+        return {"kind": "roster_import"}, {"confirmation_required": True, "workbench_ready": True}
+    if name == "open_workflow" and isinstance(arguments, Panel):
+        if actor.role not in _PANEL_ROLES[arguments.workflow]:
+            raise error(ErrorCode.FORBIDDEN, detail="workflow is not available to this role")
+        return {"kind": "workflow", "workflow": arguments.workflow}, {"workbench_ready": True}
+    raise error(ErrorCode.VALIDATION_FAILED, detail="tool arguments are invalid")

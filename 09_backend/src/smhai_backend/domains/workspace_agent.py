@@ -111,7 +111,7 @@ def _respond(request: Request, data: ToolResult):
     return {"request_id": ctx.request_id, "trace_id": ctx.trace_id, "data": data}
 
 
-async def _snapshot(request: Request, actor: Actor) -> ToolResult:
+async def _snapshot(request: Request, actor: Actor, *, limit: int = _LIMIT) -> ToolResult:
     container = request.app.state.container
     service = container.school_tasks
     if actor.role is BackendRole.STUDENT:
@@ -124,7 +124,7 @@ async def _snapshot(request: Request, actor: Actor) -> ToolResult:
                 status=item.assessment_status or "not_started",
                 due_at=item.due_at,
             )
-            for item in source[:_LIMIT]
+            for item in source[:limit]
         ]
     elif actor.role is BackendRole.TEACHER:
         source = [
@@ -140,7 +140,7 @@ async def _snapshot(request: Request, actor: Actor) -> ToolResult:
                 completed=item.completed_count,
                 total=item.active_enrollment_count,
             )
-            for item in source[:_LIMIT]
+            for item in source[:limit]
         ]
     elif actor.role is BackendRole.PSYCHOLOGICAL_SPECIALIST:
         if container.professional_reviews is None:
@@ -151,7 +151,7 @@ async def _snapshot(request: Request, actor: Actor) -> ToolResult:
         ]
         rows = [
             ToolRow(ref=item.task_ref, label=item.class_display_name or item.class_ref)
-            for item in source[:_LIMIT]
+            for item in source[:limit]
         ]
     else:
         source = [
@@ -165,7 +165,7 @@ async def _snapshot(request: Request, actor: Actor) -> ToolResult:
                 due_at=item.due_at,
                 total=item.active_enrollment_count,
             )
-            for item in source[:_LIMIT]
+            for item in source[:limit]
         ]
     return ToolResult(kind=_ROLE_TO_TOOL[actor.role], rows=rows, total=len(source))
 

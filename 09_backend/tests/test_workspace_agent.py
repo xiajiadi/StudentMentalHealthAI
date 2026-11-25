@@ -1,5 +1,6 @@
 """HTTP integration checks for workspace role, CSRF and confirmation boundaries."""
 
+import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -8,6 +9,7 @@ import pytest
 from pwdlib import PasswordHash
 
 from smhai_backend.domains.models import BackendRole, SchoolRoleContext, SyntheticUser
+from smhai_backend.domains.workspace_agent_history import WorkspaceHistory
 
 BASE = "/api/v1/workspace-agent"
 FIRST = "PUBLICDEMO_" + "a" * 64
@@ -186,3 +188,150 @@ async def test_unrecognized_input_does_not_enter_a_tool_or_model(client, tools):
     tools.list_student_tasks.assert_not_called()
     topic = await client.post(f"{BASE}/run", headers=headers, json={"text": "帮我制定复习计划"})
     assert topic.json()["data"]["topic"] == "weekly_plan"
+
+
+@pytest.fixture
+def model_lane(app, tools, tmp_path, monkeypatch):
+    history = WorkspaceHistory(str(tmp_path / "workspace.sqlite3"))
+    monkeypatch.setattr(app.state, "workspace_history", history)
+    container = app.state.container
+
+    async def check_input(context, _):
+        return SimpleNamespace(
+            decision=SimpleNamespace(
+                action="PROCEED",
+                requires_human=False,
+                disclosure_policy="SUMMARY" if context["actor_role"] == "TEACHER" else "FULL",
+            ),
+            sanitized_text=context["current_user_message"],
+        )
+
+    async def check_output(context, candidate, _context):
+        return SimpleNamespace(
+            decision=SimpleNamespace(
+                action="PROCEED",
+                requires_human=False,
+                disclosure_policy="SUMMARY" if context["actor_role"] == "TEACHER" else "FULL",
+            ),
+            sanitized_text=candidate,
+        )
+
+    safety = SimpleNamespace(
+        label="REAL_HTTP",
+        check_input=AsyncMock(side_effect=check_input),
+        check_output=AsyncMock(side_effect=check_output),
+        close=AsyncMock(),
+    )
+    model = AsyncMock()
+    monkeypatch.setattr(container, "safety", safety)
+    monkeypatch.setattr(
+        container, "llm", SimpleNamespace(workspace_agent_step=model, close=AsyncMock())
+    )
+    return model, safety
+
+
+def assistant_step(*, tool=None, arguments="{}", text=None):
+    calls = (
+        []
+        if tool is None
+        else [
+            {
+                "id": "call_" + tool,
+                "type": "function",
+                "function": {"name": tool, "arguments": arguments},
+            }
+        ]
+    )
+    return {
+        "model": "deepseek-flash",
+        "completion_id": "synthetic-model-receipt",
+        "message": {"role": "assistant", "tool_calls": calls, "content": text},
+    }
+
+
+async def test_model_selects_role_scoped_tools_and_uses_results(client, tools, model_lane):
+    model, _ = model_lane
+    url = f"{BASE}/conversation"
+    headers = await login(client)
+    await select(client, headers, "STUDENT")
+    assert (
+        await client.post(f"{url}/turn", json={"text": "问候", "synthetic_only": True})
+    ).status_code == 403
+
+    async def model_step(messages, definitions, _context):
+        assert "preview_new_class" not in {entry["function"]["name"] for entry in definitions}
+        if messages[-1]["role"] != "tool":
+            return assistant_step(tool="list_student_assessments")
+        result = json.loads(messages[-1]["content"])
+        if "rows" in result:
+            assert "TASK_workspace" not in messages[-1]["content"]
+            assert "must-not-leak" not in messages[-1]["content"]
+            return assistant_step(
+                tool="open_student_assessment",
+                arguments=json.dumps({"task": result["rows"][0]["task"]}),
+            )
+        assert result == {"ready_for_student": True}
+        return assistant_step(text="已准备测评，请阅读说明后继续")
+
+    model.side_effect = model_step
+    response = await client.post(
+        f"{url}/turn",
+        headers=headers,
+        json={"text": "哪项测验还得处理？帮我选出一项并打开说明", "synthetic_only": True},
+    )
+    assert response.status_code == 200
+    events = [json.loads(line) for line in response.text.splitlines()]
+    assert events[-1]["status"] == "completed"
+    assert [event["view"]["kind"] for event in events if event["type"] == "tool_result"] == [
+        "student_tasks",
+        "assessment_picker",
+    ]
+    assert model.await_count == 3
+    assert all(
+        call.args[0].school_ref == FIRST for call in tools.list_student_tasks.await_args_list
+    )
+    assert (await client.get(url)).json()["data"]["events"] == events
+    await select(client, headers, "ADMIN")
+    assert (await client.get(url)).json()["data"]["events"] == []
+    await select(client, headers, "ADMIN", SECOND)
+    assert (await client.get(url)).json()["data"]["events"] == []
+
+
+async def test_unapproved_input_never_reaches_provider_or_history(client, model_lane):
+    model, safety = model_lane
+    safety.check_input.side_effect = None
+    safety.check_input.return_value = SimpleNamespace(
+        decision=SimpleNamespace(action="REVIEW_REQUIRED", requires_human=True),
+    )
+    headers = await login(client)
+    await select(client, headers, "STUDENT")
+    url = f"{BASE}/conversation"
+    response = await client.post(
+        f"{url}/turn",
+        headers=headers,
+        json={"text": "PRIVATE_FIXTURE_TEST", "synthetic_only": True},
+    )
+    assert response.status_code == 200
+    assert '"status": "blocked"' in response.text
+    model.assert_not_awaited()
+    assert "PRIVATE_FIXTURE_TEST" not in (await client.get(url)).text
+
+
+async def test_model_cannot_call_hidden_tool_and_can_recover(client, tools, model_lane):
+    model, _ = model_lane
+    model.side_effect = [
+        assistant_step(tool="preview_new_class", arguments='{"class_ref":"DENIED"}'),
+        assistant_step(text="当前角色无法新建班级"),
+    ]
+    headers = await login(client)
+    await select(client, headers, "TEACHER")
+    response = await client.post(
+        f"{BASE}/conversation/turn",
+        headers=headers,
+        json={"text": "请创建班级 DENIED", "synthetic_only": True},
+    )
+    events = [json.loads(line) for line in response.text.splitlines()]
+    assert any(event.get("code") == "forbidden" for event in events)
+    assert events[-1]["status"] == "completed"
+    assert model.await_args.args[0][-1]["content"] == '{"error": "forbidden"}'
+    tools.create_class.assert_not_called()

@@ -6,7 +6,7 @@ import AppSelect from '@/components/app/AppSelect.vue'
 import { catExport, catRequest, type Bank, type Curves, type Design, type DesignConfig, type Experiment, type Session } from '@/services/cat-workbench'
 
 const modes = { banks: '题库中心', designs: '测评设计', sessions: '合成施测', experiments: '仿真实验' }
-const props = defineProps<{ openExperiments?: boolean }>()
+const props = defineProps<{ openExperiments?: boolean; initialBankFile?: File }>()
 const mode = ref<keyof typeof modes>(props.openExperiments ? 'experiments' : 'banks')
 watch(() => props.openExperiments, (open) => { if (open) mode.value = 'experiments' })
 const banks = ref<Bank[]>([])
@@ -22,8 +22,14 @@ const designBank = ref('')
 const sessionDesign = ref('')
 const experimentBank = ref('')
 const schemes = ref<string[]>([])
-const file = ref<File>()
-const importName = ref('')
+const file = ref<File | undefined>(props.initialBankFile)
+const importName = ref(props.initialBankFile?.name.replace(/\.[^.]+$/, '').slice(0, 100) || '')
+watch(() => props.initialBankFile, (selected) => {
+  if (!selected || busy.value) return
+  file.value = selected
+  importName.value = selected.name.replace(/\.[^.]+$/, '').slice(0, 100)
+  mode.value = 'banks'
+})
 const busy = ref(false)
 const available = ref(false)
 const problem = ref('')
@@ -190,6 +196,7 @@ onActivated(() => {
           <AppButton :disabled="busy" @click="action(async () => { const result = await catRequest<Bank>('/banks/demo', {}); await reload(); await openBank(result.id) })">创建合成题库</AppButton>
           <form class="cat-workbench__form" @submit.prevent="action(importBank)">
             <label>导入 JSON 或 CSV<input type="file" accept=".json,.csv" @change="file = ($event.target as HTMLInputElement).files?.[0]"></label>
+            <p v-if="initialBankFile && file === initialBankFile">对话中选择的文件 {{ file.name }}</p>
             <label v-if="file?.name.toLowerCase().endsWith('.csv')">CSV 题库名称<input v-model="importName" required maxlength="100"></label>
             <AppButton type="submit" variant="secondary" :disabled="!file || busy">导入题库</AppButton>
           </form>

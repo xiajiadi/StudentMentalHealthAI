@@ -1,4 +1,4 @@
-/* global AbortSignal */
+/* global AbortSignal, TextDecoder */
 
 import { realApiProvider } from './real-api'
 
@@ -35,4 +35,68 @@ export async function runWorkspaceAgent(
   signal?: AbortSignal,
 ) {
   return (await realApiProvider.requestWorkspaceAgent<WorkspaceAgentResult>(request, signal)).data
+}
+
+export type WorkflowPanel = 'review' | 'cat' | 'resources' | 'support' | 'knowledge' | 'feedback' | 'publish' | 'system'
+export type WorkspaceAttachment = 'student_roster' | 'cat_bank'
+export type WorkspaceAgentView =
+  | { kind: 'student_tasks' | 'class_progress' | 'review_tasks' | 'school_tasks' | 'school_student_counts'; rows: WorkspaceAgentRow[]; total: number; class_count?: number; active?: number }
+  | { kind: 'assessment_picker'; task_ref: string; due_at: string | null }
+  | { kind: 'preview_class'; class_ref: string; token: string }
+  | { kind: 'roster_import' }
+  | { kind: 'workflow'; workflow: WorkflowPanel }
+  | { kind: 'markdown'; filename: string; markdown: string }
+
+export type WorkspaceEvent = { run_id: string } & (
+  | { type: 'start'; trace_id: string }
+  | { type: 'status'; status: 'screening' | 'model' | 'checking_response' }
+  | { type: 'user' | 'answer'; text: string }
+  | { type: 'tool_started'; label: string; call_id: string }
+  | { type: 'tool_result'; label: string; call_id: string; view: WorkspaceAgentView }
+  | { type: 'tool_failed'; label: string; call_id: string; code: string }
+  | { type: 'safety'; text?: string; support: boolean }
+  | { type: 'end'; status: 'completed' | 'blocked' | 'failed' | 'interrupted' | 'step_limit'; code?: string }
+)
+
+export async function loadWorkspaceConversation(signal?: AbortSignal) {
+  const response = await realApiProvider.requestWorkspaceConversation('history', undefined, signal)
+  return (await response.json()).data as { events: WorkspaceEvent[]; active: boolean }
+}
+
+export async function resetWorkspaceConversation() {
+  await realApiProvider.requestWorkspaceConversation('reset')
+}
+
+export async function sendWorkspaceTurn(
+  text: string,
+  attachment: WorkspaceAttachment | undefined,
+  onEvent: (event: WorkspaceEvent) => void,
+  signal: AbortSignal,
+) {
+  const response = await realApiProvider.requestWorkspaceConversation('turn', {
+    text, synthetic_only: true, ...(attachment ? { attachment } : {}),
+  }, signal)
+  if (!response.body) throw new Error('连接未返回会话数据')
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let ended = false
+  try {
+    while (true) {
+      const chunk = await reader.read()
+      if (chunk.done) break
+      buffer += decoder.decode(chunk.value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() ?? ''
+      for (const line of lines) {
+        if (!line) continue
+        const event = JSON.parse(line) as WorkspaceEvent
+        onEvent(event)
+        if (event.type === 'end') ended = true
+      }
+    }
+  } finally {
+    reader.releaseLock()
+  }
+  if (!ended) throw new Error('连接中断，可重新读取会话后继续')
 }

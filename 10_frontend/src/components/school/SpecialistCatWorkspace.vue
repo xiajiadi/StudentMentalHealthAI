@@ -7,6 +7,7 @@ import SpecialistCatAssets from '@/components/school/SpecialistCatAssets.vue'
 import SchoolResearchManagement from '@/components/school/SchoolResearchManagement.vue'
 import { useSessionStore } from '@/stores/session'
 const IndependentCatWorkbench = defineAsyncComponent(() => import('./IndependentCatWorkbench.vue'))
+defineProps<{ initialBankFile?: File }>()
 
 type CatWorkspaceMode = 'simulation' | 'assets' | 'research-management'
 
@@ -43,7 +44,7 @@ async function selectMode(value: string) {
 
 <template>
   <section class="cat-lab" aria-label="CAT 管理">
-    <IndependentCatWorkbench v-if="demoWorkbench" :key="demoStart" :open-experiments="demoStart === 'experiments'" />
+    <IndependentCatWorkbench v-if="demoWorkbench" :key="demoStart" :open-experiments="demoStart === 'experiments'" :initial-bank-file="initialBankFile" />
     <section v-else class="cat-lab__workbench" aria-label="CAT 工作模式">
       <TabsRoot :model-value="activeMode" class="cat-lab__tabs" @update:model-value="selectMode">
         <TabsList class="cat-lab__tabs-list" aria-label="CAT 工作模式">

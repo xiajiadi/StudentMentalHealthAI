@@ -124,6 +124,20 @@ class HttpLLMRuntimeClient(LongLivedHttpClient):
 
     label = "REAL_HTTP"
 
+    async def workspace_agent_step(self, messages, tools, context: RequestContext):
+        headers = self._internal_auth_headers()
+        if headers is None:
+            raise error(ErrorCode.DEPENDENCY_UNAVAILABLE, detail="agent runtime is unavailable")
+        try:
+            return await self.post_json(
+                "/internal/llm/workspace-agent/step",
+                {"messages": messages, "tools": tools},
+                context=context,
+                headers=headers,
+            )
+        except UpstreamError as exc:
+            raise translate_upstream_error(exc) from exc
+
     async def generate(
         self,
         *,

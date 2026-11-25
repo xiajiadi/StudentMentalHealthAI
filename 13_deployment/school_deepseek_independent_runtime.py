@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.concurrency import run_in_threadpool
+from pydantic import BaseModel, ConfigDict, Field
 from school_independent_runtime import (
     IndependentGenerationDto,
     _result_payload,
@@ -18,6 +19,13 @@ DEEPSEEK_CONTRACT_MODEL_ID = "MODEL_deepseek_flash_education_support"
 DEEPSEEK_PROVIDER_ID = "deepseek"
 DEEPSEEK_PROVIDER_MODEL_ID = "deepseek-flash"
 ROUTE_PATH = "/internal/llm/independent-generations"
+
+
+class WorkspaceStepDto(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    messages: list[dict[str, Any]] = Field(min_length=2, max_length=48)
+    tools: list[dict[str, Any]] = Field(min_length=1, max_length=24)
 
 
 def _resolve_deepseek_default(runtime: Any) -> Any:
@@ -51,7 +59,9 @@ def attach_deepseek_independent_route(app: FastAPI, runtime: Any) -> None:
     """Attach one buffered education-generation route behind Runtime auth middleware."""
 
     @app.post(ROUTE_PATH, operation_id="deepSeekIndependentStudentGenerations")
-    async def independent_generation(payload: IndependentGenerationDto) -> dict[str, Any]:
+    async def independent_generation(
+        payload: IndependentGenerationDto,
+    ) -> dict[str, Any]:
         from llm_runtime.errors import LLMRuntimeError
 
         model = _resolve_deepseek_default(runtime)
@@ -64,6 +74,30 @@ def attach_deepseek_independent_route(app: FastAPI, runtime: Any) -> None:
                 detail=exc.to_dict(),
             ) from exc
         return _result_payload(result, payload)
+
+    @app.post("/internal/llm/workspace-agent/step", include_in_schema=False)
+    async def workspace_step(payload: WorkspaceStepDto) -> dict[str, Any]:
+        from llm_runtime.errors import LLMRuntimeError
+        from llm_runtime.providers.deepseek import DeepSeekProvider
+
+        if len(payload.model_dump_json()) > 64_000:
+            raise HTTPException(
+                status_code=413, detail="workspace context is too large"
+            )
+        model = _resolve_deepseek_default(runtime)
+        try:
+            provider = runtime.service.provider_registry.resolve(model.provider)
+            if not isinstance(provider, DeepSeekProvider):
+                raise HTTPException(
+                    status_code=503, detail="workspace model unavailable"
+                )
+            return await run_in_threadpool(
+                provider.workspace_agent_step, payload.messages, payload.tools
+            )
+        except LLMRuntimeError as exc:
+            raise HTTPException(
+                status_code=_status_for_error(exc), detail=exc.code.value
+            ) from exc
 
 
 __all__ = [

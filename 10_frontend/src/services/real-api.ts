@@ -1,4 +1,4 @@
-/* global AbortSignal */
+/* global AbortSignal, Headers, URL */
 
 import {
   createAssessment,
@@ -1452,6 +1452,29 @@ export class RealApiProvider implements FrontendApi {
       signal,
       ...(body ? { body, headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrfToken } } : {}),
     }))
+  }
+
+  async requestWorkspaceConversation(
+    operation: 'history' | 'turn' | 'reset',
+    body?: { text: string; synthetic_only: true; attachment?: 'student_roster' | 'cat_bank' },
+    signal?: AbortSignal,
+  ): Promise<Response> {
+    const apiOrigin = new URL(apiBaseUrl, window.location.href)
+    const base = new URL('/api/v1/workspace-agent/conversation', apiOrigin)
+    if (operation !== 'history') base.pathname += '/' + operation
+    const headers = new Headers({ Accept: operation === 'turn' ? 'application/x-ndjson' : 'application/json' })
+    if (operation !== 'history') headers.set('X-CSRF-Token', await this.ensureCsrfToken())
+    if (body) headers.set('Content-Type', 'application/json')
+    const response = await fetch(base, {
+      method: operation === 'history' ? 'GET' : 'POST',
+      credentials: 'include', cache: 'no-store', headers, signal,
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    })
+    if (!response.ok) {
+      const problem = await response.json().catch(() => ({}))
+      throw new RealApiError(problem.code ?? 'DEPENDENCY_UNAVAILABLE', '工作区请求暂时不可用')
+    }
+    return response
   }
 
   async requestSchoolSupport(input: IndependentConversationRequest): Promise<ApiEnvelope<unknown>> {

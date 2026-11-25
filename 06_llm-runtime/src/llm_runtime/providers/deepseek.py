@@ -85,6 +85,40 @@ class DeepSeekProvider(LLMProvider):
                 raw[index] = 0
         return cls(api_key, timeout_seconds=timeout_seconds)
 
+    def workspace_agent_step(
+        self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        payload = self._request_json(
+            "POST",
+            "/chat/completions",
+            {
+                "model": _MODEL_ID,
+                "messages": messages,
+                "tools": tools,
+                "tool_choice": "auto",
+                "thinking": {"type": "disabled"},
+                "max_tokens": 2048,
+                "temperature": 0.1,
+                "stream": False,
+            },
+            timeout=28.0,
+        )
+        choices = payload.get("choices")
+        if not isinstance(choices, list) or not choices or not isinstance(choices[0], Mapping):
+            raise self._protocol_error("DeepSeek returned no completion choice.")
+        message = choices[0].get("message")
+        if not isinstance(message, Mapping) or message.get("role") != "assistant":
+            raise self._protocol_error("DeepSeek returned an invalid assistant message.")
+        return {
+            "model": payload.get("model"),
+            "completion_id": payload.get("id"),
+            "message": {
+                "role": "assistant",
+                "content": message.get("content"),
+                "tool_calls": message.get("tool_calls") or [],
+            },
+        }
+
     def discover_models(self) -> list[dict[str, Any]]:
         payload = self._request_json("GET", "/models", timeout=self.timeout_seconds)
         raw_models = payload.get("data")
