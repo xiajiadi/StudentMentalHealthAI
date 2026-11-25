@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { RotateCcw } from '@lucide/vue'
 import { RadioGroupIndicator, RadioGroupItem, RadioGroupRoot } from 'reka-ui'
 import AppButton from '@/components/app/AppButton.vue'
@@ -122,7 +122,12 @@ const complete = async () => {
   }
 }
 
-onMounted(load)
+watch(() => route.params.id, () => {
+  if (route.name === 'student-assessment' || route.name === 'student-assessment-resume') {
+    selectedResponse.value = ''
+    void load()
+  }
+}, { immediate: true })
 onBeforeRouteLeave(saveSelectedResponse)
 </script>
 

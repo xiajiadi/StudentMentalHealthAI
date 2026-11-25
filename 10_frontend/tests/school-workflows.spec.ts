@@ -378,6 +378,22 @@ describe('学校测评任务页面', () => {
     wrapper.unmount()
   })
 
+  it('学生首页能直接开始已分配但尚未生成会话的测评', async () => {
+    const router = await makeStudentRouter()
+    api.listStudentSchoolTasks.mockResolvedValueOnce(envelope([task]))
+    api.startStudentSchoolTask.mockResolvedValueOnce(envelope({
+      task_ref: task.task_ref, assessment_id: 'ASSESS_synthetic_1', status: 'in_progress',
+    }))
+    const wrapper = mount(StudentAssignedTasks, {
+      props: { focusEntry: true, autoStartTask: true },
+      global: { plugins: [router] },
+    })
+    await flushPromises()
+    expect(api.startStudentSchoolTask).toHaveBeenCalledExactlyOnceWith(task.task_ref)
+    expect(router.currentRoute.value.fullPath).toBe('/student/assessment/ASSESS_synthetic_1')
+    wrapper.unmount()
+  })
+
   it('学生双击任务只发送一次启动请求并进入既有测评路由', async () => {
     const router = await makeStudentRouter()
     let completeStart: ((value: ReturnType<typeof envelope>) => void) | undefined

@@ -129,8 +129,8 @@ const makeRouter = async (path: string) => {
     history: createMemoryHistory(),
     routes: [
       { path: '/student/assessment/:id/result', component: AssessmentResultView },
-      { path: '/student/assessment/:id', component: AssessmentView },
-      { path: '/student/assessment', component: AssessmentView },
+      { path: '/student/assessment/:id', name: 'student-assessment-resume', component: AssessmentView },
+      { path: '/student/assessment', name: 'student-assessment', component: AssessmentView },
       { path: '/student/assessments', component: StudentAssessmentsView },
       { path: '/student/home', component: StudentHomeView },
       { path: '/student/history', component: StudentHomeView },
@@ -217,6 +217,26 @@ describe('学生演示闭环页面', () => {
     expect(wrapper.text()).toContain('学校任务选择入口')
     expect(api.startAssessment).not.toHaveBeenCalled()
     wrapper.unmount()
+  })
+
+  it('选择已分配任务后在当前测评页面加载该会话', async () => {
+    const router = await makeRouter('/student/assessment')
+    const pinia = createPinia()
+    useSessionStore(pinia).signIn({
+      userId: 'USER_synthetic_school', role: 'student', subjectId: 'SUBJ_synthetic_school',
+      displayName: '合成学生', initials: 'S',
+      activeContext: { role: 'student', schoolRef: 'SCHOOL_synthetic_alpha' },
+    })
+    const view = mount(AssessmentView, {
+      global: { plugins: [router, pinia], stubs: { StudentAssignedTasks: true } },
+    })
+    await flushPromises()
+    expect(api.startAssessment).not.toHaveBeenCalled()
+    await router.push('/student/assessment/' + assessment.assessment_id)
+    await flushPromises()
+    expect(api.startAssessment).toHaveBeenCalledExactlyOnceWith(assessment.assessment_id)
+    expect(view.find('[role="radio"]').exists()).toBe(true)
+    view.unmount()
   })
 
   it('首页根据登录名称问候，并展示不可点击的四卡片功能介绍', async () => {

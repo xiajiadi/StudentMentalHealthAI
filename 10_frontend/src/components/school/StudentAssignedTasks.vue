@@ -30,6 +30,7 @@ const statusLabel = (task: StudentSchoolTask) => {
   if (task.status.toUpperCase() !== 'PUBLISHED') return '暂不可开始'
   return '待开始'
 }
+const isUnstarted = (task: StudentSchoolTask) => task.assessment_status === null || task.assessment_status === 'created'
 const actionLabel = (task: StudentSchoolTask) => task.assessment_status === 'completed'
   ? '查看完成记录'
   : task.assessment_id ? '继续任务' : '开始任务'
@@ -60,12 +61,12 @@ const load = async () => {
     const result = await frontendApi.listStudentSchoolTasks()
     if (generation !== requestGeneration.value) return
     const availableTasks = props.focusEntry
-      ? result.data.filter((task) => task.status.toUpperCase() === 'PUBLISHED' && (task.assessment_status === 'created' || task.assessment_status === 'in_progress'))
+      ? result.data.filter((task) => task.status.toUpperCase() === 'PUBLISHED' && (isUnstarted(task) || task.assessment_status === 'in_progress'))
       : result.data
     tasks.value = availableTasks
     state.value = 'ready'
     if (props.focusEntry && props.autoStartTask) {
-      const singleStartableTask = availableTasks.filter((task) => task.assessment_status === 'created')
+      const singleStartableTask = availableTasks.filter(isUnstarted)
       if (singleStartableTask.length === 1) void openTask(singleStartableTask[0])
     }
   } catch (error) {
