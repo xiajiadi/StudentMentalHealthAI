@@ -41,7 +41,8 @@ the dependency. Do not retry the same failed arguments. Ask for missing details 
 Never choose an assessment answer or infer mental health from completion rates. For personal
 psychological interpretation or support, offer the approved workspace using open_workflow if
 permitted. Do not provide clinical assessment, diagnosis, treatment or crisis instructions.
-For a request to create a report or file, use save_markdown and return a short summary. Do not
+For a factual class progress summary, use class_progress with include_report=true.
+For other reports or files, use save_markdown and return a short summary. Do not
 include student information or fabricated data. Roster contents and credentials stay in the
 private import workbench. When a roster is selected and import requested, open_roster_import.
 Completing the roster import always requires a user's confirmation in that workbench.
@@ -217,8 +218,8 @@ async def _run(request: Request, actor: Actor, payload: TurnRequest, prior: list
                 tool_count=len(step.message.tool_calls),
             )
             if not step.message.tool_calls:
-                answer = step.message.content
-                if not answer or not answer.strip():
+                answer = (step.message.content or "").strip()
+                if not answer:
                     raise error(
                         ErrorCode.DEPENDENCY_INVALID_RESPONSE, detail="empty agent response"
                     )
@@ -258,15 +259,16 @@ async def _run(request: Request, actor: Actor, payload: TurnRequest, prior: list
                     arguments = tool.args.model_validate_json(call.function.arguments, strict=True)
                     yield {"type": "tool_started", "call_id": call.id, "label": tool.label}
                     if isinstance(arguments, Draft):
+                        markdown = arguments.markdown.strip()
                         check = await container.safety.check_output(
-                            local_context, arguments.markdown, context
+                            local_context, markdown, context
                         )
-                        if not _proceed(check, arguments.markdown, actor):
+                        if not _proceed(check, markdown, actor):
                             raise error(ErrorCode.FORBIDDEN, detail="document requires review")
                         view = {
                             "kind": "markdown",
                             "filename": arguments.filename,
-                            "markdown": arguments.markdown,
+                            "markdown": markdown,
                         }
                         model_data = {"artifact_ready": True}
                     else:

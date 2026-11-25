@@ -49,7 +49,7 @@ export type TaskPublicationPreview = {
   token: string
 }
 export type WorkspaceAgentView =
-  | { kind: 'student_tasks' | 'class_progress' | 'review_tasks' | 'school_tasks' | 'school_student_counts'; rows: WorkspaceAgentRow[]; total: number; class_count?: number; active?: number }
+  | { kind: 'student_tasks' | 'class_progress' | 'review_tasks' | 'school_tasks' | 'school_student_counts'; rows: WorkspaceAgentRow[]; total: number; class_count?: number; active?: number; artifact?: { filename: string; markdown: string } }
   | { kind: 'assessment_picker'; task_ref: string; due_at: string | null }
   | { kind: 'preview_class'; class_ref: string; token: string }
   | TaskPublicationPreview

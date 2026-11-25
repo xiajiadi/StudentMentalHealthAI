@@ -270,6 +270,7 @@ defineExpose({ submit, cancel })
                 <AppButton v-if="event.view.kind === 'student_tasks' && ['not_started', 'created', 'in_progress'].includes(row.status || '')" variant="secondary" @click="selectAssessment(row.ref)">打开测评</AppButton>
               </li>
             </ul>
+            <AppButton v-if="event.view.artifact" variant="secondary" @click="download(event.view.artifact.filename, event.view.artifact.markdown)">下载班级统计简报</AppButton>
           </template>
           <AppButton v-else-if="event.view.kind === 'assessment_picker'" variant="secondary" @click="selectAssessment(event.view.task_ref)">阅读说明并打开测评</AppButton>
           <div v-else-if="event.view.kind === 'preview_class'" class="agent-thread__inline">

@@ -33,6 +33,7 @@ class Arguments(BaseModel):
 class TaskWindow(Arguments):
     active_from: date | None = None
     active_through: date | None = None
+    include_report: bool = False
 
 
 class StudentTask(Arguments):
@@ -89,7 +90,8 @@ TOOLS = {
     "class_progress": Tool(
         "查询授权班级进度",
         "Read task-level class completion counts. Optional dates select tasks whose open period "
-        "overlaps those inclusive dates in China Standard Time. Counts are current totals.",
+        "overlaps those inclusive dates in China Standard Time. Counts are current totals. "
+        "Set include_report=true if the teacher requests a downloadable factual progress summary.",
         (TEACHER,),
         TaskWindow,
     ),
@@ -244,12 +246,29 @@ async def execute_tool(request: Request, actor: Actor, name: str, arguments: Bas
                     "status": item.task_status,
                 }
             )
+        completions = sum(row["completed"] for row in rows)
+        enrollments = sum(row["total"] for row in rows)
+        view = {"kind": "class_progress", "rows": rows[:30], "total": len(rows)}
+        if arguments.include_report:
+            ratio = f"{completions / enrollments:.1%}" if enrollments else "无可计算分母"
+            view["artifact"] = {
+                "filename": "class-assessment-progress.md",
+                "markdown": (
+                    "# 班级测评完成情况\n\n"
+                    f"- 授权任务数：{len(rows)}\n"
+                    f"- 已提交人次：{completions}\n"
+                    f"- 有效参测人次：{enrollments}\n"
+                    f"- 任务完成率：{ratio}\n\n"
+                    "数据来自本次查询。同一名学生在不同任务中的参测分别计数。\n"
+                ),
+            }
         return (
-            {"kind": "class_progress", "rows": rows[:30], "total": len(rows)},
+            view,
             {
                 "tasks": len(rows),
-                "completions": sum(row["completed"] for row in rows),
-                "enrollments": sum(row["total"] for row in rows),
+                "completions": completions,
+                "enrollments": enrollments,
+                "artifact_ready": arguments.include_report,
                 "counts_by_class": dict(
                     Counter(_alias("class", row["label"]) for row in rows[:30])
                 ),

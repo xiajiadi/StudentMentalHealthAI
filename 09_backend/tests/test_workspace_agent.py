@@ -406,3 +406,23 @@ async def test_agent_prepares_publication_that_requires_school_admin_confirmatio
     assert first.kwargs["idempotency"] == second.kwargs["idempotency"]
     assert first.args[0].school_ref == FIRST
     assert first.kwargs["due_at"] == deadline
+
+
+async def test_teacher_export_comes_from_scoped_database_counts(client, model_lane):
+    model, _ = model_lane
+    model.side_effect = [
+        assistant_step(tool="class_progress", arguments='{"include_report":true}'),
+        assistant_step(text="班级简报已生成"),
+    ]
+    headers = await login(client)
+    await select(client, headers, "TEACHER")
+    response = await client.post(
+        f"{BASE}/conversation/turn",
+        headers=headers,
+        json={"text": "把现有任务完成数量做成一份简报", "synthetic_only": True},
+    )
+    events = [json.loads(line) for line in response.text.splitlines()]
+    view = next(event["view"] for event in events if event["type"] == "tool_result")
+    assert view["artifact"]["filename"] == "class-assessment-progress.md"
+    assert "任务完成率：40.0%" in view["artifact"]["markdown"]
+    assert "must-not-leak" not in view["artifact"]["markdown"]
