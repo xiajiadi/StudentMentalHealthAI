@@ -429,6 +429,11 @@ const parseRosterFile = async (file?: File) => {
   }
 }
 
+watch(() => props.initialRosterFile, (file) => {
+  if (!props.embeddedRoster || !file || busy.value || rosterImportKey.value) return
+  void parseRosterFile(file)
+})
+
 const parseStaffFile = async (file?: File) => {
   const attempt = ++staffFileAttempt
   clearFeedback(); staffRows.value = []

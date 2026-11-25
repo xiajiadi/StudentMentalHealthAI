@@ -1,7 +1,7 @@
 """HTTP integration checks for workspace role, CSRF and confirmation boundaries."""
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -79,6 +79,32 @@ def tools(app, monkeypatch):
                 "status": "ACTIVE",
                 "active_student_count": 0,
                 "active_teacher_count": 0,
+            }
+        ),
+        list_classes=AsyncMock(
+            return_value=[
+                {
+                    "class_ref": "QA-class",
+                    "display_name": "合成班",
+                    "status": "ACTIVE",
+                    "active_student_count": 5,
+                    "active_teacher_count": 1,
+                }
+            ]
+        ),
+        publish_task=AsyncMock(
+            return_value={
+                "class_ref": "QA-class",
+                "task_ref": "TASK_workspace_published",
+                "status": "PUBLISHED",
+                "opens_at": now,
+                "due_at": now + timedelta(days=3),
+                "published_at": now,
+                "instrument_id": "synthetic.instrument",
+                "instrument_version": "1",
+                "published_enrollment_count": 5,
+                "active_enrollment_count": 5,
+                "revoked_enrollment_count": 0,
             }
         ),
     )
@@ -335,3 +361,48 @@ async def test_model_cannot_call_hidden_tool_and_can_recover(client, tools, mode
     assert events[-1]["status"] == "completed"
     assert model.await_args.args[0][-1]["content"] == '{"error": "forbidden"}'
     tools.create_class.assert_not_called()
+
+
+async def test_agent_prepares_publication_that_requires_school_admin_confirmation(
+    client,
+    tools,
+    model_lane,
+):
+    model, _ = model_lane
+    deadline = datetime.now(UTC) + timedelta(days=3)
+    model.side_effect = [
+        assistant_step(
+            tool="preview_assessment_publication",
+            arguments=json.dumps({"class_designation": "合成班", "due_at": deadline.isoformat()}),
+        ),
+        assistant_step(text="已准备发布预览"),
+    ]
+    headers = await login(client)
+    await select(client, headers, "ADMIN")
+    base = f"{BASE}/conversation"
+    response = await client.post(
+        f"{base}/turn",
+        headers=headers,
+        json={"text": "为合成班准备校内默认测评，三天后截止", "synthetic_only": True},
+    )
+    events = [json.loads(line) for line in response.text.splitlines()]
+    preview = next(event["view"] for event in events if event["type"] == "tool_result")
+    assert preview["kind"] == "preview_task"
+    assert preview["class_ref"] == "QA-class"
+    assert preview["enrolled"] == 5
+    tools.publish_task.assert_not_awaited()
+    path = f"{base}/confirm-publication"
+    assert (await client.post(path, json={"token": preview["token"]})).status_code == 403
+    await select(client, headers, "ADMIN", SECOND)
+    assert (
+        await client.post(path, headers=headers, json={"token": preview["token"]})
+    ).status_code == 409
+    await select(client, headers, "ADMIN")
+    for _ in range(2):
+        receipt = await client.post(path, headers=headers, json={"token": preview["token"]})
+        assert receipt.status_code == 200
+        assert receipt.json()["data"]["task_ref"] == "TASK_workspace_published"
+    first, second = tools.publish_task.await_args_list
+    assert first.kwargs["idempotency"] == second.kwargs["idempotency"]
+    assert first.args[0].school_ref == FIRST
+    assert first.kwargs["due_at"] == deadline

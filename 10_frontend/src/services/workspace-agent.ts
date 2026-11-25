@@ -39,10 +39,20 @@ export async function runWorkspaceAgent(
 
 export type WorkflowPanel = 'review' | 'cat' | 'resources' | 'support' | 'knowledge' | 'feedback' | 'publish' | 'system'
 export type WorkspaceAttachment = 'student_roster' | 'cat_bank'
+export type TaskPublicationPreview = {
+  kind: 'preview_task'
+  class_ref: string
+  class_label: string
+  opens_at: string
+  due_at: string
+  enrolled: number
+  token: string
+}
 export type WorkspaceAgentView =
   | { kind: 'student_tasks' | 'class_progress' | 'review_tasks' | 'school_tasks' | 'school_student_counts'; rows: WorkspaceAgentRow[]; total: number; class_count?: number; active?: number }
   | { kind: 'assessment_picker'; task_ref: string; due_at: string | null }
   | { kind: 'preview_class'; class_ref: string; token: string }
+  | TaskPublicationPreview
   | { kind: 'roster_import' }
   | { kind: 'workflow'; workflow: WorkflowPanel }
   | { kind: 'markdown'; filename: string; markdown: string }
@@ -65,6 +75,11 @@ export async function loadWorkspaceConversation(signal?: AbortSignal) {
 
 export async function resetWorkspaceConversation() {
   await realApiProvider.requestWorkspaceConversation('reset')
+}
+
+export async function confirmWorkspacePublication(token: string) {
+  const response = await realApiProvider.requestWorkspaceConversation('confirm-publication', { token })
+  return (await response.json()).data as { task_ref: string; status: string }
 }
 
 export async function sendWorkspaceTurn(

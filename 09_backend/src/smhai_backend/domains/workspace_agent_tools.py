@@ -17,6 +17,8 @@ from smhai_backend.domains.models import Actor, BackendRole
 from smhai_backend.domains.school_directory.schemas import SchoolDirectoryDto
 
 from .workspace_agent import _ensure_demo_admin, _signature, _snapshot
+from .workspace_agent_publishing import TaskPreview
+from .workspace_agent_publishing import preview as preview_publication
 
 STUDENT = BackendRole.STUDENT
 TEACHER = BackendRole.TEACHER
@@ -29,8 +31,8 @@ class Arguments(BaseModel):
 
 
 class TaskWindow(Arguments):
-    opens_from: date | None = None
-    opens_through: date | None = None
+    active_from: date | None = None
+    active_through: date | None = None
 
 
 class StudentTask(Arguments):
@@ -57,7 +59,7 @@ class Tool:
     label: str
     description: str
     roles: tuple[BackendRole, ...]
-    args: type[Arguments] = Arguments
+    args: type[BaseModel] = Arguments
 
     def definition(self, name: str) -> dict:
         return {
@@ -86,8 +88,8 @@ TOOLS = {
     ),
     "class_progress": Tool(
         "查询授权班级进度",
-        "Read task-level class completion counts. Both optional date boundaries "
-        "refer to the task opening date in China Standard Time.",
+        "Read task-level class completion counts. Optional dates select tasks whose open period "
+        "overlaps those inclusive dates in China Standard Time. Counts are current totals.",
         (TEACHER,),
         TaskWindow,
     ),
@@ -112,6 +114,16 @@ TOOLS = {
         "Only the user can confirm the write.",
         (ADMIN,),
         NewClass,
+    ),
+    "preview_assessment_publication": Tool(
+        "预览测评发布",
+        "Preview the default synthetic school assessment publication for an existing class. "
+        "Use the class alias from school_student_counts, or the exact user-provided class name. "
+        "Include a deadline as ISO 8601 with its offset. If the user requests immediate opening, "
+        "omit opens_at. Never use this for a custom CAT plan or a real school. "
+        "Ask for confirmation through the preview card.",
+        (ADMIN,),
+        TaskPreview,
     ),
     "open_roster_import": Tool(
         "打开名单导入工作台",
@@ -169,7 +181,7 @@ def _date(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
 
 
-async def execute_tool(request: Request, actor: Actor, name: str, arguments: Arguments):
+async def execute_tool(request: Request, actor: Actor, name: str, arguments: BaseModel):
     """Return (browser component, model data). Only explicitly projected fields leave."""
     container = request.app.state.container
     if name in {"list_student_assessments", "review_tasks", "school_tasks"}:
@@ -207,19 +219,20 @@ async def execute_tool(request: Request, actor: Actor, name: str, arguments: Arg
         from .school_tasks.schemas import TeacherTaskProgressDto
 
         if (
-            arguments.opens_from
-            and arguments.opens_through
-            and arguments.opens_from > arguments.opens_through
+            arguments.active_from
+            and arguments.active_through
+            and arguments.active_from > arguments.active_through
         ):
             raise error(ErrorCode.VALIDATION_FAILED, detail="invalid date range")
         china = timezone(timedelta(hours=8))
         rows = []
         for source in await container.school_tasks.teacher_progress(actor):
             item = TeacherTaskProgressDto.model_validate(source)
-            local_date = item.opens_at.astimezone(china).date()
-            if arguments.opens_from and local_date < arguments.opens_from:
+            opened = item.opens_at.astimezone(china).date()
+            due = item.due_at.astimezone(china).date() if item.due_at else None
+            if arguments.active_from and due and due < arguments.active_from:
                 continue
-            if arguments.opens_through and local_date > arguments.opens_through:
+            if arguments.active_through and opened > arguments.active_through:
                 continue
             rows.append(
                 {
@@ -301,6 +314,10 @@ async def execute_tool(request: Request, actor: Actor, name: str, arguments: Arg
         )
     if name == "open_roster_import":
         return {"kind": "roster_import"}, {"confirmation_required": True, "workbench_ready": True}
+    if name == "preview_assessment_publication" and isinstance(arguments, TaskPreview):
+        return await preview_publication(
+            request, actor, arguments, class_alias=lambda ref: _alias("class", ref)
+        )
     if name == "open_workflow" and isinstance(arguments, Panel):
         if actor.role not in _PANEL_ROLES[arguments.workflow]:
             raise error(ErrorCode.FORBIDDEN, detail="workflow is not available to this role")

@@ -20,6 +20,8 @@ from smhai_backend.domains.auth.dependencies import CsrfActor, CurrentActor
 from smhai_backend.domains.models import Actor
 
 from .workspace_agent import _check_actor
+from .workspace_agent_publishing import TaskConfirmation
+from .workspace_agent_publishing import confirm as confirm_publication
 from .workspace_agent_tools import ADMIN, SPECIALIST, STUDENT, TEACHER, TOOLS, Draft, execute_tool
 
 router = APIRouter(prefix="/workspace-agent/conversation", tags=["workspace-agent"])
@@ -323,6 +325,16 @@ async def conversation(request: Request, actor: CurrentActor):
 @router.post("/reset", status_code=204)
 async def reset(request: Request, actor: CsrfActor):
     _history(request, actor).reset(_owner(actor))
+
+
+@router.post("/confirm-publication")
+async def publish_task(request: Request, payload: TaskConfirmation, actor: CsrfActor):
+    _history(request, actor)
+    request.app.state.container.rate_limiter.check("support", actor.user_id)
+    result = await confirm_publication(request, actor, payload.token)
+    context = current_request_context(request)
+    log.info("workspace_agent_publication_confirmed", trace_id=context.trace_id)
+    return {"data": result.model_dump(mode="json")}
 
 
 @router.post("/turn")

@@ -180,13 +180,15 @@ def _ensure_demo_admin(request: Request, actor: Actor) -> None:
         raise error(ErrorCode.FORBIDDEN, detail="synthetic administrator context required")
 
 
-def _signature(request: Request, actor: Actor, content: str) -> str:
+def _signature(
+    request: Request, actor: Actor, content: str, *, purpose: str = "workspace-agent/create-class/v1"
+) -> str:
     session = request.state.session
     settings = request.app.state.container.settings
     key = school_csrf_secret_bytes(settings.school_csrf_secret)
     message = fingerprint(
         {
-            "purpose": "workspace-agent/create-class/v1",
+            "purpose": purpose,
             "actor": actor.user_id,
             "school": actor.school_id,
             "school_ref": actor.school_ref,

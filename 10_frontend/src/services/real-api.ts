@@ -1455,8 +1455,8 @@ export class RealApiProvider implements FrontendApi {
   }
 
   async requestWorkspaceConversation(
-    operation: 'history' | 'turn' | 'reset',
-    body?: { text: string; synthetic_only: true; attachment?: 'student_roster' | 'cat_bank' },
+    operation: 'history' | 'turn' | 'reset' | 'confirm-publication',
+    body?: { text: string; synthetic_only: true; attachment?: 'student_roster' | 'cat_bank' } | { token: string },
     signal?: AbortSignal,
   ): Promise<Response> {
     const apiOrigin = new URL(apiBaseUrl, window.location.href)

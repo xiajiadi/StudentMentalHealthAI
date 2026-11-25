@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /* global AbortController, Blob, URL, File */
-import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { Check, RotateCcw } from '@lucide/vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
@@ -9,8 +9,8 @@ import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import WorkspaceAnswer from './WorkspaceAnswer.vue'
 import { frontendApi } from '@/services/mock-api'
 import {
-  loadWorkspaceConversation, resetWorkspaceConversation, runWorkspaceAgent, sendWorkspaceTurn,
-  type WorkflowPanel, type WorkspaceEvent,
+  confirmWorkspacePublication, loadWorkspaceConversation, resetWorkspaceConversation,
+  runWorkspaceAgent, sendWorkspaceTurn, type TaskPublicationPreview, type WorkflowPanel, type WorkspaceEvent,
 } from '@/services/workspace-agent'
 
 const props = defineProps<{
@@ -54,7 +54,6 @@ const events = ref<WorkspaceEvent[]>([])
 const timeline = computed(() => events.value.filter((event) => !['start', 'status', 'tool_started'].includes(event.type)
   && (event.type !== 'end' || event.status in finishLabels)))
 const running = ref(false)
-const checkingHistory = ref(true)
 const progress = ref('')
 const message = ref('')
 const consent = ref(false)
@@ -67,15 +66,21 @@ const assessmentComplete = ref(false)
 const pendingClass = ref<{ class_ref: string; token: string }>()
 const submittedClasses = ref(new Set<string>())
 const classBusy = ref(false)
+const pendingPublication = ref<TaskPublicationPreview>()
+const publicationBusy = ref(false)
+const publishedTokens = ref(new Set<string>())
 const lastText = ref('')
 const viewport = ref<HTMLElement>()
 let runRequest: AbortController | undefined
 const historyRequest = new AbortController()
 let disposed = false
 let consentDecision: ((accepted: boolean) => void) | undefined
+let initialHistory: Promise<void> | undefined
 
 const audience = computed(() => props.role === 'psychological_specialist' ? 'specialist' : props.role)
 const latestPanel = computed(() => panel.value && panel.value !== 'roster' ? panels[panel.value] : undefined)
+watch(() => props.rosterFile, (file) => { if (file) panel.value = 'roster' })
+watch(() => props.catFile, (file) => { if (file) panel.value = 'cat' })
 
 async function refresh() {
   const previous = await loadWorkspaceConversation(historyRequest.signal)
@@ -84,14 +89,10 @@ async function refresh() {
   if (previous.active) message.value = '此工作区正在处理任务，可稍后刷新会话'
 }
 
-onMounted(async () => {
-  try {
-    await refresh()
-  } catch {
+onMounted(() => {
+  initialHistory = refresh().catch(() => {
     if (!disposed) message.value = '暂时无法读取智能体会话'
-  } finally {
-    checkingHistory.value = false
-  }
+  })
 })
 onUnmounted(() => {
   disposed = true
@@ -108,7 +109,8 @@ function decideConsent(accepted: boolean) {
 }
 
 async function submit(text: string) {
-  if (running.value || checkingHistory.value || consentOpen.value || !text.trim()) return false
+  await initialHistory
+  if (disposed || running.value || consentOpen.value || !text.trim()) return false
   if (!consent.value) {
     consentOpen.value = true
     if (!await new Promise<boolean>((resolve) => { consentDecision = resolve })) return false
@@ -202,6 +204,25 @@ async function confirmClass() {
   }
 }
 
+async function publishTask() {
+  const preview = pendingPublication.value
+  if (!preview || publicationBusy.value) return
+  publicationBusy.value = true
+  message.value = ''
+  try {
+    const receipt = await confirmWorkspacePublication(preview.token)
+    if (receipt.status !== 'PUBLISHED' || !receipt.task_ref) throw new Error()
+    publishedTokens.value.add(preview.token)
+    pendingPublication.value = undefined
+    emit('changed')
+  } catch {
+    message.value = '暂时无法核实发布结果，请查询学校任务'
+    pendingPublication.value = undefined
+  } finally {
+    publicationBusy.value = false
+  }
+}
+
 function download(filename: string, markdown: string) {
   const href = URL.createObjectURL(new Blob([markdown], { type: 'text/markdown;charset=utf-8' }))
   const link = document.createElement('a')
@@ -255,6 +276,10 @@ defineExpose({ submit, cancel })
             <span>{{ event.view.class_ref }}</span>
             <AppButton variant="secondary" :disabled="submittedClasses.has(event.view.token)" @click="pendingClass = event.view">{{ submittedClasses.has(event.view.token) ? '已创建' : '核对并确认' }}</AppButton>
           </div>
+          <div v-else-if="event.view.kind === 'preview_task'" class="agent-thread__inline">
+            <span>{{ event.view.class_label }} · {{ event.view.enrolled }} 名学生</span>
+            <AppButton variant="secondary" :disabled="publishedTokens.has(event.view.token)" @click="pendingPublication = event.view">{{ publishedTokens.has(event.view.token) ? '已发布' : '核对发布计划' }}</AppButton>
+          </div>
           <AppButton v-else-if="event.view.kind === 'roster_import'" variant="secondary" @click="panel = 'roster'">打开名单预览</AppButton>
           <AppButton v-else-if="event.view.kind === 'workflow'" variant="secondary" @click="panel = event.view.workflow">打开{{ panelLabels[event.view.workflow] }}</AppButton>
           <AppButton v-else-if="event.view.kind === 'markdown'" variant="secondary" @click="download(event.view.filename, event.view.markdown)">下载 {{ event.view.filename }}</AppButton>
@@ -291,6 +316,15 @@ defineExpose({ submit, cancel })
   </AppDialog>
   <AppDialog :open="Boolean(pendingClass)" title="确认创建班级" :description="pendingClass?.class_ref" @update:open="(open) => { if (!open && !classBusy) pendingClass = undefined }">
     <div class="agent-thread__inline"><AppButton variant="secondary" :disabled="classBusy" @click="pendingClass = undefined">返回</AppButton><AppButton :loading="classBusy" @click="confirmClass">确认创建</AppButton></div>
+  </AppDialog>
+  <AppDialog :open="Boolean(pendingPublication)" title="确认发布学校测评" @update:open="(open) => { if (!open && !publicationBusy) pendingPublication = undefined }">
+    <template v-if="pendingPublication">
+      <p>学校默认合成测评 · {{ pendingPublication.class_label }}</p>
+      <p>开放 {{ new Date(pendingPublication.opens_at).toLocaleString('zh-CN') }}</p>
+      <p>截止 {{ new Date(pendingPublication.due_at).toLocaleString('zh-CN') }}</p>
+      <p>当前班级 {{ pendingPublication.enrolled }} 名学生</p>
+    </template>
+    <div class="agent-thread__inline"><AppButton variant="secondary" :disabled="publicationBusy" @click="pendingPublication = undefined">返回</AppButton><AppButton :loading="publicationBusy" @click="publishTask">确认发布</AppButton></div>
   </AppDialog>
 </template>
 
