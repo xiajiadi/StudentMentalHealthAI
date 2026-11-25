@@ -653,15 +653,47 @@ class SchoolDirectoryPersistenceAdapter:
 
         m = self._db_models
         class_refs = sorted({row.class_ref for row in rows})
-        class_query = self._select(m.SchoolClass).where(
-            m.SchoolClass.school_id == actor.school_id,
-            m.SchoolClass.class_ref.in_(class_refs),
-            m.SchoolClass.status == "ACTIVE",
-        ).order_by(m.SchoolClass.class_ref)
-        if lock_classes:
-            class_query = class_query.with_for_update()
-        classes = list((await uow.session.scalars(class_query)).all())
-        classes_by_ref = {school_class.class_ref: school_class for school_class in classes}
+        # class_ref is ASCII in MySQL. Never bind a Unicode name to that
+        # column: MySQL can raise 1271 instead of reporting a missing class.
+        ascii_refs = [ref for ref in class_refs if ref.isascii()]
+        classes_by_ref = {}
+        if ascii_refs:
+            class_query = self._select(m.SchoolClass).where(
+                m.SchoolClass.school_id == actor.school_id,
+                m.SchoolClass.class_ref.in_(ascii_refs),
+                m.SchoolClass.status == "ACTIVE",
+            ).order_by(m.SchoolClass.class_ref)
+            if lock_classes:
+                class_query = class_query.with_for_update()
+            classes = list((await uow.session.scalars(class_query)).all())
+            classes_by_ref = {school_class.class_ref: school_class for school_class in classes}
+
+        # Exact active IDs take precedence. Otherwise resolve only a unique,
+        # exact display name within the current school. The display_name
+        # column supports Unicode; do not rely on its case-insensitive collation.
+        unresolved = set(class_refs) - classes_by_ref.keys()
+        if unresolved:
+            name_query = self._select(m.SchoolClass).where(
+                m.SchoolClass.school_id == actor.school_id,
+                m.SchoolClass.display_name.in_(sorted(unresolved)),
+                m.SchoolClass.status == "ACTIVE",
+            ).order_by(m.SchoolClass.class_ref)
+            if lock_classes:
+                name_query = name_query.with_for_update()
+            candidates = {}
+            ambiguous = set()
+            for school_class in (await uow.session.scalars(name_query)).all():
+                name = school_class.display_name
+                if name not in unresolved:
+                    continue
+                if name in candidates:
+                    ambiguous.add(name)
+                candidates[name] = school_class
+            classes_by_ref.update(
+                (name, school_class)
+                for name, school_class in candidates.items()
+                if name not in ambiguous
+            )
         errors: list[dict[str, object]] = []
         login_names: list[str] = []
         for row in rows:
@@ -842,7 +874,13 @@ class SchoolDirectoryPersistenceAdapter:
 
                 grouped: dict[str, list[Any]] = defaultdict(list)
                 for row in rows:
-                    grouped[row.class_ref].append(row)
+                    canonical_ref = classes_by_ref[row.class_ref].class_ref
+                    grouped[canonical_ref].append(row)
+                # Name aliases and IDs for the same class must share one batch.
+                classes_by_ref = {
+                    school_class.class_ref: school_class
+                    for school_class in classes_by_ref.values()
+                }
 
                 run_ref = f"ROSTER_{uuid4().hex}"
                 child_batches: list[tuple[Any, list[Any], str]] = []

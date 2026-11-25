@@ -449,6 +449,59 @@ async def test_preview_handles_200_rows_across_classes_and_reports_unknown_or_gr
 
 
 @pytest.mark.asyncio
+async def test_roster_unicode_names_resolve_or_report_unavailable(roster_scope):
+    service = SchoolDirectoryService(persistence=roster_scope.adapter)
+    payload = _payload([
+        _row(1, "NAME-1", "甲班", grade_level="G7"),
+        _row(2, "NAME-2", "不存在的班"),
+        _row(3, "NAME-3", "停用班"),
+        _row(4, "NAME-4", "甲班", grade_level="G8"),
+        _row(5, "NAME-5", "CLASS_B"),
+    ])
+    result = await service.preview_roster_import(roster_scope.actor, payload.rows)
+    assert not result["valid"]
+    assert {item["row_no"]: item["code"] for item in result["errors"]} == {
+        2: "CLASS_UNAVAILABLE",
+        3: "CLASS_UNAVAILABLE",
+        4: "GRADE_LEVEL_MISMATCH",
+    }
+
+
+@pytest.mark.asyncio
+async def test_roster_name_alias_and_id_share_canonical_class(roster_scope):
+    service = SchoolDirectoryService(persistence=roster_scope.adapter)
+    payload = _payload([
+        _row(1, "ALIAS-1", "甲班", grade_level="G7"),
+        _row(2, "ALIAS-2", "CLASS_A", grade_level="G7"),
+    ])
+    assert (await service.preview_roster_import(roster_scope.actor, payload.rows))["valid"]
+    result = await service.import_roster(
+        roster_scope.actor,
+        payload.rows,
+        source_sha256=None,
+        idempotency=_idempotency(roster_scope.actor, "alias-import", payload),
+        trace_id="TRACE_ALIAS_IMPORT",
+    )
+    assert result["created_count"] == 2
+    assert {item["class_ref"] for item in result["accounts"]} == {"CLASS_A"}
+    assert result["class_groups"] == [{"class_ref": "CLASS_A", "row_count": 2}]
+    assert len(result["child_batch_refs"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_roster_ambiguous_display_name_is_not_guessed(roster_scope):
+    classes = roster_scope.session.scalars(
+        select(db_models.SchoolClass).where(db_models.SchoolClass.class_ref == "CLASS_B")
+    ).one()
+    classes.display_name = "甲班"
+    roster_scope.session.commit()
+    service = SchoolDirectoryService(persistence=roster_scope.adapter)
+    payload = _payload([_row(1, "AMBIG-1", "甲班"), _row(2, "AMBIG-2", "CLASS_A")])
+    result = await service.preview_roster_import(roster_scope.actor, payload.rows)
+    assert result["errors"] == [{"row_no": 1, "code": "CLASS_UNAVAILABLE"}]
+
+
+@pytest.mark.asyncio
 async def test_import_replays_one_parent_run_and_conflicts_on_changed_payload(roster_scope):
     service = SchoolDirectoryService(persistence=roster_scope.adapter)
     rows = [
