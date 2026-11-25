@@ -42,10 +42,16 @@ class SchoolTaskService:
             raise error(ErrorCode.VALIDATION_FAILED, detail="unsupported school member role")
         return await self.persistence.school_list_members(actor, role, at=utc_now())
 
-    async def create_class(self, actor: Actor, class_ref: str, *, idempotency):
+    async def create_class(
+        self, actor: Actor, class_ref: str, *, idempotency, agent_trace_id: str | None = None
+    ):
         self._require(actor, BackendRole.ADMIN)
         return await self.persistence.school_create_class(
-            actor, class_ref, at=utc_now(), idempotency=idempotency
+            actor,
+            class_ref,
+            at=utc_now(),
+            idempotency=idempotency,
+            **({"agent_trace_id": agent_trace_id} if agent_trace_id else {}),
         )
 
     async def assign_student(

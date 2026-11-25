@@ -1438,6 +1438,22 @@ export class RealApiProvider implements FrontendApi {
     }))
   }
 
+  async requestWorkspaceAgent<T>(
+    request: { operation: 'snapshot' } | { operation: 'run'; text: string } | { operation: 'confirm'; token: string },
+    signal?: AbortSignal,
+  ): Promise<ApiEnvelope<T>> {
+    const operation = request.operation
+    const body = operation === 'run' ? { text: request.text }
+      : operation === 'confirm' ? { token: request.token } : undefined
+    if (body) await this.ensureCsrfToken()
+    return unwrap<T>(() => apiClient.request({
+      method: body ? 'POST' : 'GET',
+      url: '/api/v1/workspace-agent/' + operation,
+      signal,
+      ...(body ? { body, headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrfToken } } : {}),
+    }))
+  }
+
   async requestSchoolSupport(input: IndependentConversationRequest): Promise<ApiEnvelope<unknown>> {
     const base = '/api/v1/school/support'
     const cases = `${base}/cases/SSC_(?:[a-f0-9]{32}|DEMO_[0-9]{3})`

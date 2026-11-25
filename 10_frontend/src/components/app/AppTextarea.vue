@@ -6,6 +6,8 @@ withDefaults(defineProps<{
   placeholder?: string
   hint?: string
   rows?: number
+  maxlength?: number
+  hideLabel?: boolean
 }>(), {
   placeholder: '',
   hint: '',
@@ -19,10 +21,11 @@ defineEmits<{
 
 <template>
   <label class="app-field" :for="id">
-    <span class="app-field__label">{{ label }}</span>
+    <span class="app-field__label" :class="{ 'sr-only': hideLabel }">{{ label }}</span>
     <textarea
       :id="id"
       :rows="rows"
+      :maxlength="maxlength"
       :value="modelValue"
       :placeholder="placeholder"
       class="app-textarea"

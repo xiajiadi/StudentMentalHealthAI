@@ -815,7 +815,13 @@ class MySqlBackendAdapter:
             ]
 
     async def school_create_class(
-        self, actor: Any, class_ref: str, *, at: datetime, idempotency=None
+        self,
+        actor: Any,
+        class_ref: str,
+        *,
+        at: datetime,
+        idempotency=None,
+        agent_trace_id: str | None = None,
     ) -> dict[str, Any]:
         async with self._uow() as uow:
             account_id, role_id = await self._school_actor_role(uow, actor, "admin", at)
@@ -846,6 +852,16 @@ class MySqlBackendAdapter:
             await self._school_idempotency_complete(
                 uow, claim, resource_type="school_class", result_ref=row.public_id
             )
+            if agent_trace_id is not None:
+                await uow.audit.append(
+                    action="workspace_agent.class.created",
+                    resource_type="school_class",
+                    resource_public_id=row.public_id,
+                    result=self._db_enums.AuditResult.SUCCESS,
+                    trace_id=agent_trace_id,
+                    actor_account_id=account_id,
+                    safe_metadata={"source": "workspace_agent"},
+                )
             return {
                 "class_ref": row.class_ref,
                 "status": row.status,

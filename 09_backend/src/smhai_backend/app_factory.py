@@ -81,6 +81,7 @@ from smhai_backend.domains.school_support.router import router as school_support
 from smhai_backend.domains.school_tasks.router import router as school_tasks_router
 from smhai_backend.domains.support.router import router as support_router
 from smhai_backend.domains.teacher.router import router as teacher_router
+from smhai_backend.domains.workspace_agent import router as workspace_agent_router
 from smhai_backend.lifespan import make_lifespan
 
 
@@ -137,6 +138,7 @@ def create_app(
     # frozen shared api.v1 OpenAPI contract.
     app.include_router(teacher_router, prefix=settings.api_prefix, include_in_schema=False)
     app.include_router(school_tasks_router, prefix=settings.api_prefix, include_in_schema=False)
+    app.include_router(workspace_agent_router, prefix=settings.api_prefix, include_in_schema=False)
     app.include_router(school_support_router, prefix=settings.api_prefix, include_in_schema=False)
     app.include_router(school_research_router, prefix=settings.api_prefix, include_in_schema=False)
     app.include_router(

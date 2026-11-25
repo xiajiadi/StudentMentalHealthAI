@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { roleHomes } from '@/components/shell/navigation'
 import type { Role } from '@/types/contracts'
 import { useSessionStore } from '@/stores/session'
 import { frontendApi } from '@/services/mock-api'
@@ -7,11 +8,13 @@ declare module 'vue-router' {
   interface RouteMeta {
     public?: boolean
     roles?: Role[]
+    agentHome?: boolean
     layout?: 'auth' | 'student' | 'teacher' | 'reviewer' | 'workspace' | 'focus'
   }
 }
 
 const teacherPreviewMeta = { public: import.meta.env.DEV }
+const loadWorkspaceAgent = () => import('@/views/WorkspaceAgentView.vue')
 const loadLoginView = () => import('@/views/auth/LoginView.vue')
 
 const router = createRouter({
@@ -21,6 +24,7 @@ const router = createRouter({
     { path: '/', redirect: '/login' },
     { path: '/login', name: 'login', component: loadLoginView, meta: { public: true, layout: 'auth' } },
     { path: '/student', redirect: '/student/home' },
+    { path: '/student/workspace', component: loadWorkspaceAgent, meta: { roles: ['student'], layout: 'workspace', agentHome: true } },
     { path: '/student/home', name: 'student-home', component: () => import('@/views/student/StudentHomeView.vue'), meta: { roles: ['student'], layout: 'workspace' } },
     { path: '/student/assessments', name: 'student-assessments', component: () => import('@/views/student/StudentAssessmentsView.vue'), meta: { roles: ['student'], layout: 'workspace' } },
     { path: '/student/feedback', name: 'student-feedback', component: () => import('@/views/student/StudentFeedbackView.vue'), meta: { roles: ['student'], layout: 'workspace' } },
@@ -36,7 +40,8 @@ const router = createRouter({
     { path: '/student/school-support', component: () => import('@/views/school/SchoolSupportView.vue'), props: { audience: 'student' }, meta: { roles: ['student'], layout: 'workspace' } },
     { path: '/student/reports/:id', name: 'student-report-detail', component: () => import('@/views/student/StudentResultView.vue'), meta: { roles: ['student'], layout: 'workspace' } },
     { path: '/student/result/:id', name: 'student-result', component: () => import('@/views/student/StudentResultView.vue'), meta: { roles: ['student'], layout: 'workspace' } },
-    { path: '/teacher', redirect: '/teacher/overview' },
+    { path: '/teacher', redirect: '/teacher/workspace' },
+    { path: '/teacher/workspace', component: loadWorkspaceAgent, meta: { roles: ['teacher'], layout: 'workspace', agentHome: true } },
     { path: '/teacher/overview', name: 'teacher-overview', component: () => import('@/views/teacher/TeacherOverviewView.vue'), meta: { roles: ['teacher'], layout: 'workspace', ...teacherPreviewMeta } },
     { path: '/teacher/classes', name: 'teacher-classes', component: () => import('@/views/teacher/TeacherStudentsView.vue'), meta: { roles: ['teacher'], layout: 'workspace', ...teacherPreviewMeta } },
     { path: '/teacher/classes/:classRef', name: 'teacher-class-detail', component: () => import('@/views/teacher/TeacherClassDetailView.vue'), meta: { roles: ['teacher'], layout: 'workspace', ...teacherPreviewMeta } },
@@ -47,10 +52,12 @@ const router = createRouter({
     { path: '/teacher/school-support', component: () => import('@/views/school/SchoolSupportView.vue'), props: { audience: 'teacher' }, meta: { roles: ['teacher'], layout: 'workspace' } },
     { path: '/teacher/students', redirect: '/teacher/classes' },
     { path: '/teacher/students/:id', redirect: '/teacher/classes' },
-    { path: '/specialist', redirect: '/specialist/overview' },
+    { path: '/specialist', redirect: '/specialist/workspace' },
+    { path: '/specialist/workspace', component: loadWorkspaceAgent, meta: { roles: ['psychological_specialist'], layout: 'workspace', agentHome: true } },
     { path: '/specialist/school-support', component: () => import('@/views/school/SchoolSupportView.vue'), props: { audience: 'specialist' }, meta: { roles: ['psychological_specialist'], layout: 'workspace' } },
     { path: '/specialist/:section(overview|resources|tasks|cat)', name: 'specialist-workspace', component: () => import('@/views/specialist/SpecialistWorkspaceView.vue'), meta: { roles: ['psychological_specialist'], layout: 'workspace' } },
-    { path: '/admin', redirect: '/admin/overview' },
+    { path: '/admin', redirect: '/admin/workspace' },
+    { path: '/admin/workspace', component: loadWorkspaceAgent, meta: { roles: ['school_admin'], layout: 'workspace', agentHome: true } },
     { path: '/admin/:section(overview|users|accounts|tasks|audit|settings)', name: 'admin-workspace', component: () => import('@/views/admin/AdminWorkspaceView.vue'), meta: { roles: ['school_admin'], layout: 'workspace' } },
     { path: '/reviewer', redirect: '/reviewer/queue' },
     { path: '/reviewer/queue', name: 'reviewer-queue', component: () => import('@/views/reviewer/ReviewQueueView.vue'), meta: { roles: ['reviewer'], layout: 'workspace' } },
@@ -77,7 +84,7 @@ router.beforeEach(async (to) => {
     return to.name === 'login' ? true : { name: 'login', query: { redirect: to.fullPath } }
   }
   if (to.meta.public) {
-    if (to.name === 'login' && session.role) return roleHome(session.role)
+    if (to.name === 'login' && session.role) return roleHomes[session.role]
     return true
   }
   if (!session.isAuthenticated) {
@@ -86,16 +93,9 @@ router.beforeEach(async (to) => {
   const allowedRoles = to.meta.roles
   const authorizedRoles = session.user?.availableContexts?.length ? [] : session.user?.authorizedRoles ?? []
   if (allowedRoles && !allowedRoles.some((role) => role === session.role || authorizedRoles.includes(role))) {
-    return session.role ? roleHome(session.role) : { name: 'login' }
+    return session.role ? roleHomes[session.role] : { name: 'login' }
   }
   return true
 })
-
-function roleHome(role: Role) {
-  const routes: Record<Role, string> = {
-    student: '/student/home', teacher: '/teacher/overview', psychological_specialist: '/specialist/overview', school_admin: '/admin/overview', reviewer: '/reviewer/queue',
-  }
-  return routes[role]
-}
 
 export default router

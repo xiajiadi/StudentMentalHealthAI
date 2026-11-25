@@ -483,7 +483,10 @@ onUnmounted(() => {
             </article>
           </RouterLink>
         </div>
-        <RouterLink class="student-feature__action" :to="{ path: '/student/assessment', query: { startAssigned: '1' } }">开始测评</RouterLink>
+        <div class="student-feature__actions">
+          <RouterLink class="student-feature__action" :to="{ path: '/student/assessment', query: { startAssigned: '1' } }">开始测评</RouterLink>
+          <RouterLink class="student-feature__action" to="/student/workspace">打开智能体</RouterLink>
+        </div>
       </section>
     </template>
     <template v-else>
@@ -626,7 +629,8 @@ onUnmounted(() => {
 .student-feature-card__tag { color: #00a9dd; font-family: var(--font-sans); font-size: 16px; font-weight: 500; line-height: 1.6; }
 .student-feature-card h3 { margin: 0; color: #1e1d29; font-family: var(--font-sans); font-size: 26px; font-weight: 700; line-height: 1.55; overflow-wrap: anywhere; text-wrap: balance; }
 .student-feature-card p { margin: 0; color: #171923; font-family: var(--font-sans); font-size: 16px; font-weight: 400; line-height: 1.6; }
-.student-feature__action { display: flex; width: fit-content; min-height: 40px; align-items: center; justify-content: center; margin: 48px auto 0; padding: 9px 15px; border: 1px solid #41434b; border-radius: 8px; color: #1e1d29; background: #fff; font-family: var(--font-sans); font-size: 14px; font-weight: 600; line-height: 1.4; text-decoration: none; transition: background-color var(--motion-fast), color var(--motion-fast); }
+.student-feature__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 48px; }
+.student-feature__action { display: flex; width: fit-content; min-height: 40px; align-items: center; justify-content: center; padding: 9px 15px; border: 1px solid #41434b; border-radius: 8px; color: #1e1d29; background: #fff; font-family: var(--font-sans); font-size: 14px; font-weight: 600; line-height: 1.4; text-decoration: none; transition: background-color var(--motion-fast), color var(--motion-fast); }
 .student-feature__action:hover { color: #1e1d29; background: rgb(0 0 0 / 5%); }
 .student-feature__action:focus-visible { outline: 2px solid #249de0; outline-offset: 3px; }
 .student-loading { padding-top: 18px; }
@@ -661,7 +665,7 @@ onUnmounted(() => {
   .student-feature-card { min-height: 0; }
   .student-feature-card__content { padding: 20px 22px 24px; }
   .student-feature-card h3 { font-size: 24px; }
-  .student-feature__action { margin-top: 32px; }
+  .student-feature__actions { margin-top: 32px; }
   .history-collection { margin-top: 14px; }
   .history-tabs { min-height: 54px; gap: 4px; padding: 8px 12px; }
   .history-tabs button { min-height: 36px; padding: 0 11px; font-size: 12px; }

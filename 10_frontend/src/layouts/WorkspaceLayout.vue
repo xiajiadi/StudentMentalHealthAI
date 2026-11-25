@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Bell, ChevronDown, CircleHelp, LogOut, Menu, Search, UserRound } from '@lucide/vue'
+import { Bell, ChevronDown, CircleHelp, LogOut, Menu, PanelRight, Search, UserRound } from '@lucide/vue'
 import AppLogo from '@/components/app/AppLogo.vue'
 import RoleSidebar from '@/components/shell/RoleSidebar.vue'
+import WorkspaceCredit from '@/components/shell/WorkspaceCredit.vue'
 import WorkspaceRoleGlyph from '@/components/shell/WorkspaceRoleGlyph.vue'
 import type { HelpTopic } from '@/components/shell/workspace-guides'
 import { roleHomes, roleLabels, workspaceConfig } from '@/components/shell/navigation'
@@ -120,13 +121,16 @@ const openFirstResult = async () => {
 </script>
 
 <template>
-  <div class="workspace-shell app-shell" @keydown.capture.tab="searchInputFocusedByTab = true" @pointerdown.capture="handleShellPointerdown">
+  <div class="workspace-shell app-shell" :class="{ 'workspace-shell--agent': route.meta.agentHome }" @keydown.capture.tab="searchInputFocusedByTab = true" @pointerdown.capture="handleShellPointerdown">
     <header class="workspace-topbar">
       <RouterLink class="workspace-topbar__brand" :to="roleHome(currentRole) || '/login'">
         <AppLogo compact />
-        <span class="workspace-topbar__title">{{ currentWorkspaceTitle }}</span>
+        <span v-if="route.meta.agentHome" class="workspace-topbar__agent-brand">
+          <strong>PsyNova</strong><small>{{ currentWorkspaceTitle }}</small>
+        </span>
+        <span v-else class="workspace-topbar__title">{{ currentWorkspaceTitle }}</span>
       </RouterLink>
-      <div class="workspace-search-wrap">
+      <div v-if="!route.meta.agentHome" class="workspace-search-wrap">
         <label class="workspace-search"><Search :size="16" aria-hidden="true" /><input v-model="query" :class="{ 'search-input-focused-by-tab': searchInputFocusedByTab }" type="search" aria-label="Search" placeholder="Search" @focus="searchOpen = true" @keydown.enter.prevent="openFirstResult" @keydown.esc="searchOpen = false" /><button v-if="query" type="button" aria-label="清除搜索" @click="query = ''; searchOpen = true">×</button></label>
         <div v-if="searchOpen && query" class="workspace-search__results" role="listbox" aria-label="导航搜索结果">
           <RouterLink v-for="item in navItems" :key="item.to + item.label" :to="item.to" role="option" @click="query = ''; searchOpen = false"><component :is="item.icon" :size="16" aria-hidden="true" /><span>{{ item.label }}</span></RouterLink>
@@ -134,7 +138,7 @@ const openFirstResult = async () => {
         </div>
       </div>
       <div class="workspace-topbar__actions">
-        <details ref="notificationMenu" class="notification-menu">
+        <details v-if="!route.meta.agentHome" ref="notificationMenu" class="notification-menu">
           <summary aria-label="Notification" title="Notification"><Bell :size="18" aria-hidden="true" /></summary>
           <section class="notification-menu__panel" role="dialog" aria-label="Notification">
             <header class="notification-menu__header">
@@ -176,14 +180,15 @@ const openFirstResult = async () => {
             <button class="account-menu__item account-menu__logout" type="button" :disabled="isLoggingOut" @click="logout"><LogOut :size="17" aria-hidden="true" /><span>退出登录</span></button>
           </div>
         </details>
-        <button class="workspace-topbar__menu" type="button" aria-label="打开工作区导航" title="打开工作区导航" @click="sidebarOpen = true"><Menu :size="19" aria-hidden="true" /></button>
+        <button class="workspace-topbar__menu" type="button" aria-label="打开工作区导航" title="打开工作区导航" @click="sidebarOpen = true"><PanelRight v-if="route.meta.agentHome" :size="20" aria-hidden="true" /><Menu v-else :size="19" aria-hidden="true" /></button>
       </div>
     </header>
-    <RoleSidebar v-model:mobile-open="sidebarOpen" :role="currentRole" />
+    <RoleSidebar v-model:mobile-open="sidebarOpen" :role="currentRole" :dialog-only="Boolean(route.meta.agentHome)" />
     <main class="workspace-main" :class="{ 'workspace-main--teacher-overview': route.name === 'teacher-overview', 'workspace-main--teacher-classes': route.name === 'teacher-classes', 'workspace-main--teacher-tasks': route.name === 'teacher-tasks', 'workspace-main--teacher-analytics': route.name === 'teacher-analytics', 'workspace-main--admin-overview': route.name === 'admin-workspace' && route.params.section === 'overview', 'workspace-main--admin-tasks': route.name === 'admin-workspace' && route.params.section === 'tasks' }">
       <div v-if="logoutError" class="workspace-error" role="alert">{{ logoutError }}</div>
-      <slot />
+      <slot :open-navigation="() => { sidebarOpen = true }" />
       <footer class="workspace-footer">
+        <WorkspaceCredit v-if="route.meta.agentHome" class="workspace-footer__agent-credit" />
         <nav class="workspace-footer__links" aria-label="页面底部">
           <button type="button" @click="openHelp()">使用手册</button>
           <button type="button" @click="openHelp('privacy')">隐私政策</button>
@@ -327,5 +332,37 @@ const openFirstResult = async () => {
 
   .workspace-footer { column-gap: 12px; }
   .workspace-footer__links { flex: 1 1 calc(100% - 38px); justify-content: flex-end; gap: 10px 14px; }
+}
+.workspace-shell--agent .workspace-topbar {
+  max-width: none;
+  justify-content: space-between;
+  padding-inline: clamp(16px, 3vw, 38px);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+.workspace-topbar__agent-brand { display: grid; gap: 2px; line-height: 1.12; }
+.workspace-topbar__agent-brand strong { font: 700 20px/1.1 var(--font-display); }
+.workspace-topbar__agent-brand small { color: var(--color-text-secondary); font-size: 12px; }
+.workspace-shell--agent .workspace-topbar__actions { display: flex; align-items: center; margin-left: auto; }
+.workspace-shell--agent .workspace-topbar__menu { display: inline-grid; place-items: center; }
+.workspace-shell--agent .workspace-main { width: 100%; max-width: none; margin-left: 0; min-height: 100dvh; }
+.workspace-shell--agent .workspace-footer {
+  display: grid;
+  max-width: none;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  justify-content: center;
+  gap: 4px 12px;
+  padding: 12px 18px 16px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+.workspace-shell--agent .workspace-footer__links { grid-area: 2 / 2; justify-content: center; }
+.workspace-shell--agent .workspace-footer__agent-credit { grid-area: 1 / 2; justify-self: center; }
+.workspace-shell--agent .workspace-footer__help { grid-area: 2 / 3; }
+@media (max-width: 500px) {
+  .workspace-shell--agent .workspace-topbar__brand { gap: 7px; }
+  .workspace-shell--agent .workspace-topbar__agent-brand strong { font-size: 17px; }
+  .workspace-shell--agent .workspace-topbar__agent-brand small { font-size: 11px; }
+  .workspace-shell--agent .workspace-footer { gap: 4px; }
 }
 </style>

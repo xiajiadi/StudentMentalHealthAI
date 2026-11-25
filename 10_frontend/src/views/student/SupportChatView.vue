@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import { useSessionStore } from '@/stores/session'
+import { educationTopics, type EducationTopic } from '@/services/workspace-agent'
 import { MessageCircle, Plus, RotateCcw, Send } from '@lucide/vue'
 import AppBadge from '@/components/app/AppBadge.vue'
 import AppButton from '@/components/app/AppButton.vue'
@@ -37,7 +39,14 @@ const listError = ref('')
 const detailError = ref('')
 const sendError = ref('')
 const createError = ref('')
-const draft = ref('')
+const route = useRoute()
+const topic = route.query.topic
+const session = useSessionStore()
+const syntheticPublicExperience = computed(() => session.user?.activeContext?.schoolRef.startsWith('PUBLICDEMO_'))
+const draft = ref(
+  !props.researchMode && typeof topic === 'string' && Object.hasOwn(educationTopics, topic)
+    ? educationTopics[topic as EducationTopic] : '',
+)
 const receipt = ref<IndependentTurnReceipt | null>(null)
 const conversationHasMore = ref(false)
 const supportMessageInput = ref<HTMLTextAreaElement | null>(null)
@@ -219,7 +228,6 @@ const createConversation = async () => {
   }
 }
 
-const route = useRoute()
 const initializeConversation = async () => {
   if (creating.value || sending.value) return
   await loadConversations()
@@ -325,6 +333,7 @@ onMounted(() => {
     <template v-else>
       <WorkspaceBreadcrumb current="教育支持" />
       <h1 class="sr-only">教育支持</h1>
+      <p v-if="syntheticPublicExperience" class="conversation-muted">体验时请使用虚构内容，避免填写真实个人信息</p>
       <header v-if="researchAvailable" class="support-title">
         <RouterLink class="support-back" to="/student/research-support">进入高中场景研究演示</RouterLink>
       </header>

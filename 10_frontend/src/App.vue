@@ -1,4 +1,5 @@
 <script setup lang="ts">
+/* global setTimeout, clearTimeout */
 import AuthLayout from '@/layouts/AuthLayout.vue'
 import FocusLayout from '@/layouts/FocusLayout.vue'
 import { computed, defineAsyncComponent, onBeforeUnmount, ref } from 'vue'
@@ -71,10 +72,10 @@ const layout = computed(() => {
     :class="{ 'route-progress--complete': routeProgressComplete }"
     aria-hidden="true"
   ></div>
-  <component :is="layout">
+  <component :is="layout" v-slot="layoutActions">
     <RouterView v-slot="{ Component }">
       <Transition name="route" mode="out-in">
-        <component :is="Component" />
+        <component :is="Component" v-bind="route.meta.agentHome ? layoutActions : {}" />
       </Transition>
     </RouterView>
   </component>

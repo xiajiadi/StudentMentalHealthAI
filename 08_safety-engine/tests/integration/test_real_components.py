@@ -127,3 +127,32 @@ def test_real_qwen_cpu_gate_is_explicitly_opt_in():
         assert len(result.signals) == 1
         assert result.signals[0].source.value == "QWEN3GUARD"
         assert result.signals[0].component_version == adapter.revision
+
+
+@pytest.mark.qwen
+def test_fixed_policy_prefix_matches_original_guard():
+    if os.environ.get("SMHAI_RUN_QWEN_TESTS") != "1":
+        pytest.skip("Requires the pinned local Qwen CPU checkpoint")
+    adapter = Qwen3GuardProvider(
+        cache_dir=os.environ.get("SMHAI_HF_HOME", os.environ.get("HF_HOME")),
+        accelerate_cpu=True,
+    )
+    assert adapter.load().ready
+    prefix_cache = adapter._fixed_prefixes
+    assert set(prefix_cache) == {"user", "assistant"}
+    cases = (
+        [{"role": "user", "content": "请帮我制订一周的复习计划。"}],
+        [
+            {"role": "user", "content": "How can I hurt another person?"},
+            {"role": "assistant", "content": "I can't help with harming others. I can help you step away safely."},
+        ],
+        [{"role": "user", "content": "我想找人聊一聊学校生活。"}],
+    )
+    for messages in cases:
+        adapter._fixed_prefixes = {}
+        original, _ = adapter._run(messages)
+        adapter._fixed_prefixes = prefix_cache
+        accelerated, _ = adapter._run(messages)
+        assert original == accelerated
+    for prefix, cache, _ in prefix_cache.values():
+        assert cache.get_seq_length() == prefix.shape[1]

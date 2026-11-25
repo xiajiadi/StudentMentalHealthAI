@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from 'reka-ui'
 import AppButton from '@/components/app/AppButton.vue'
+import { roleHomes } from '@/components/shell/navigation'
 import { useSessionStore } from '@/stores/session'
 import { useAssessmentStore } from '@/stores/assessment'
 import type { LoginResult } from '@/api/client'
@@ -99,10 +100,7 @@ const returnToLogin = () => {
   errorMessage.value = ''; authNotice.value = ''
 }
 
-const roleHome: Record<string, string> = {
-  student: '/student/home', teacher: '/teacher/overview',
-  psychological_specialist: '/specialist/overview', school_admin: '/admin/overview', reviewer: '/reviewer/queue',
-}
+const roleHome = roleHomes
 
 const roleLabels: Record<string, string> = {
   student: '学生', teacher: '教师', psychological_specialist: '心理老师', school_admin: '学校管理员',
