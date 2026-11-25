@@ -99,6 +99,7 @@ const maxRosterRows = 3000
 const rosterBatchSize = 200
 const rosterPreviewConcurrency = 3
 const pendingCredentialUserIds = ref<string[]>([])
+const rosterCredentialDetails = ref<Record<string, { studentNumber: string; className: string }>>({})
 const staffRows = ref<LifecycleStaffRosterRow[]>([])
 const credentialRows = ref<LifecycleCredential[]>([])
 const credentialPurpose = ref<'initial' | 'recovery'>('initial')
@@ -192,7 +193,10 @@ const rosterIssueLabels: Record<string, string> = {
   STUDENT_NUMBER_UNAVAILABLE: '学号已被使用',
   BLANK_DISPLAY_NAME: '姓名不能为空',
   FORMULA_LIKE_VALUE: '姓名含电子表格公式内容',
-  CLASS_UNAVAILABLE: '班级不存在或已停用',
+  CLASS_UNAVAILABLE: '班级已停用或编号无效',
+  CLASS_NAME_INVALID: '班级名称无效（最多120字符）',
+  CLASS_NAME_AMBIGUOUS: '班级名称重复，请填写年级或准确的班级编号',
+  GRADE_LEVEL_INVALID: '年级格式无效，请填写数字、年级代码或常用中文年级',
   GRADE_LEVEL_MISMATCH: '年级与班级不一致',
 }
 const rosterIssueLabel = (code: string) => rosterIssueLabels[code] ?? '记录无法导入'
@@ -388,6 +392,7 @@ const parseRosterFile = async (file?: File) => {
   rosterProcessed.value = 0
   rosterCreated.value = 0
   pendingCredentialUserIds.value = []
+  rosterCredentialDetails.value = {}
   if (!file) return
   if (file.size > 1024 * 1024) { error.value = '文件不能超过 1 MiB'; return }
   try {
@@ -457,7 +462,20 @@ const parseStaffFile = async (file?: File) => {
 }
 
 function rosterBatch(offset: number) {
-  return rows.value.slice(offset, offset + rosterBatchSize).map((row, index) => ({ ...row, row_no: index + 1 }))
+  // Propagate a supplied grade to blank entries in the same named class,
+  // including when they fall into different request batches.
+  const suppliedGrades = new Map<string, string>()
+  for (const row of rows.value) {
+    if (row.grade_level && !suppliedGrades.has(row.class_ref)) {
+      suppliedGrades.set(row.class_ref, row.grade_level)
+    }
+  }
+  return rows.value.slice(offset, offset + rosterBatchSize).map((row, index) => ({
+    ...row,
+    ...(row.grade_level || suppliedGrades.has(row.class_ref)
+      ? { grade_level: row.grade_level || suppliedGrades.get(row.class_ref) } : {}),
+    row_no: index + 1,
+  }))
 }
 
 const previewRoster = async () => {
@@ -467,6 +485,9 @@ const previewRoster = async () => {
     const errors: LifecycleRosterPreview['errors'] = []
     const seen = new Set<string>()
     const groups = new Map<string, number>()
+    const plans = new Map<string, NonNullable<LifecycleRosterPreview['class_plan']>[number]>()
+    const grades = new Map<string, Set<string>>()
+    const planByInput = new Map<string, string>()
     for (const row of rows.value) {
       const number = row.student_number.normalize('NFKC').trim().toUpperCase()
       if (seen.has(number)) errors.push({ row_no: row.row_no, code: 'DUPLICATE_STUDENT_NUMBER' })
@@ -485,7 +506,25 @@ const previewRoster = async () => {
         for (const { offset, receipt } of results) {
           valid = valid && receipt.valid
           errors.push(...receipt.errors.map((item) => ({ ...item, row_no: item.row_no + offset })))
+          for (const plan of receipt.class_plan ?? []) {
+            planByInput.set(plan.input_ref, plan.class_ref)
+            const existing = plans.get(plan.class_ref)
+            plans.set(plan.class_ref, existing
+              ? { ...existing, row_count: existing.row_count + plan.row_count }
+              : { ...plan })
+            const known = grades.get(plan.class_ref) ?? new Set<string>()
+            if (plan.grade_level) known.add(plan.grade_level)
+            grades.set(plan.class_ref, known)
+          }
         }
+      }
+    }
+    const conflicting = new Set([...grades].filter(([, values]) => values.size > 1).map(([id]) => id))
+    if (conflicting.size) {
+      valid = false
+      for (const row of rows.value) {
+        const canonicalRef = planByInput.get(row.class_ref)
+        if (canonicalRef && conflicting.has(canonicalRef)) errors.push({ row_no: row.row_no, code: 'GRADE_LEVEL_MISMATCH' })
       }
     }
     preview.value = {
@@ -493,6 +532,7 @@ const previewRoster = async () => {
       row_count: rows.value.length,
       errors,
       class_groups: Array.from(groups, ([class_ref, row_count]) => ({ class_ref, row_count })),
+      class_plan: [...plans.values()],
     }
     if (preview.value.valid && !preview.value.errors.length) notice.value = '预览通过，可确认导入'
     else notice.value = '存在错误或冲突，处理后重新预览'
@@ -505,7 +545,7 @@ async function issuePendingRosterCredentials() {
   if (!frontendApi.issueLifecycleCredentials) throw new Error('初始密码生成服务不可用')
   const issued = (await frontendApi.issueLifecycleCredentials(pendingCredentialUserIds.value)).data
   credentialRows.value.push(...issued.credentials.map((row) => ({
-    ...row, class_ref: row.class_ref ?? '', role: 'student' as const,
+    ...row, class_ref: rosterCredentialDetails.value[row.user_id]?.className || row.class_ref || '', role: 'student' as const,
   })))
   pendingCredentialUserIds.value = []
 }
@@ -517,6 +557,8 @@ const importRoster = async () => {
     credentialRows.value = []
     passphrase.value = ''
     credentialPurpose.value = 'initial'
+    credentialExportScope.value = ''
+    credentialExportName.value = ''
   }
   clearFeedback(); busy.value = true
   try {
@@ -535,6 +577,15 @@ const importRoster = async () => {
       directoryLoadedAt = 0
       rosterCreated.value += result.created_count
       rosterProcessed.value += batch.length
+      for (const account of result.accounts) {
+        const original = batch[account.row_no - 1]
+        if (original) {
+          const plan = preview.value?.class_plan?.find((item) => item.class_ref === account.class_ref)
+          rosterCredentialDetails.value[account.user_id] = {
+            studentNumber: original.student_number, className: plan?.display_name || original.class_ref,
+          }
+        }
+      }
       pendingCredentialUserIds.value = [...new Set(result.accounts.map((account) => account.user_id))]
       await issuePendingRosterCredentials()
     }
@@ -542,7 +593,7 @@ const importRoster = async () => {
     rosterImportKey.value = ''
     preview.value = null
     if (credentialRows.value.length) section.value = 'credentials'
-    notice.value = '已导入 ' + rosterCreated.value + ' 名学生，生成 ' + credentialRows.value.length + ' 份初始凭据'
+    notice.value = '已导入 ' + rosterCreated.value + ' 名学生并生成初始账号（' + credentialRows.value.length + ' 份凭据）'
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '花名册导入或初始密码生成失败'
     if (rosterProcessed.value > 0) error.value += '；点击「继续导入」可从当前批次恢复'
@@ -711,12 +762,13 @@ const downloadInitialCredentialsCsv = (userId?: string) => {
   const selected = userId
     ? credentialsToExport.value.filter((row) => row.user_id === userId)
     : credentialsToExport.value
-  if (!selected.length || !isSyntheticDemo.value) return
+  if (!selected.length || !isSyntheticDemo.value || busy.value || rosterImportKey.value) return
+  const hasRosterNumbers = selected.some((item) => rosterCredentialDetails.value[item.user_id])
   const rows = [
-    ['凭据用途', '角色', '姓名', '班级', '学校编号', '登录地址', '账号', credentialPurpose.value === 'initial' ? '初始密码（首次登录凭据）' : '重置凭据', '邀请编号', '有效期至'],
+    ['凭据用途', '角色', ...(hasRosterNumbers ? ['学号'] : []), '姓名', '班级', '学校编号', '登录地址', '账号', credentialPurpose.value === 'initial' ? '初始密码（首次登录凭据）' : '重置凭据', '邀请编号', '有效期至'],
     ...selected.map((item) => [
       credentialPurpose.value === 'initial' ? '首次登录' : '密码重置',
-      roleLabel(item.role ?? 'student'), item.display_name, item.class_ref, schoolRef.value,
+      roleLabel(item.role ?? 'student'), ...(hasRosterNumbers ? [rosterCredentialDetails.value[item.user_id]?.studentNumber || ''] : []), item.display_name, item.class_ref, schoolRef.value,
       `${window.location.origin}/login?setup=${credentialPurpose.value === 'recovery' ? 'reset' : item.invitation_ref ? 'invite' : 'first'}`,
       item.login_name, item.credential, item.invitation_ref, item.expires_at,
     ]),
@@ -733,6 +785,7 @@ const downloadInitialCredentialsCsv = (userId?: string) => {
   window.setTimeout(() => URL.revokeObjectURL(url), 0)
   const exported = new Set(selected.map((row) => row.user_id))
   credentialRows.value = credentialRows.value.filter((row) => !exported.has(row.user_id))
+  for (const id of exported) delete rosterCredentialDetails.value[id]
   credentialExportScope.value = ''
   passphrase.value = ''
   notice.value = credentialPurpose.value === 'initial'
@@ -835,17 +888,18 @@ onUnmounted(() => { credentialRows.value = []; passphrase.value = ''; rows.value
 
     <div v-else-if="section === 'roster'" class="lifecycle__body">
       <h3>导入学生名单</h3>
-      <p>下载并填写模板。上传后先核对班级分组和异常行，再生成初始账号。</p>
+      <p>下载模板，填写学号、姓名、班级名称（或已有编号）和年级。上传后核对预览，确认即可自动建班、归班并生成初始账号。</p>
       <button type="button" class="lifecycle__secondary" @click="downloadRosterTemplate">下载 CSV 模板</button>
       <label class="lifecycle__field">选择 CSV 文件<input type="file" accept=".csv,text/csv" :disabled="busy || Boolean(rosterImportKey)" @change="parseRosterFile(($event.target as HTMLInputElement).files?.[0])"></label>
       <p v-if="rows.length" class="lifecycle__boundary">{{ rows.length }} 条记录，预览前 {{ Math.min(rows.length, 30) }} 条</p>
       <div v-if="rows.length" class="lifecycle__table-wrap"><table><thead><tr><th>行号</th><th>学号</th><th>姓名</th><th>班级</th><th>年级</th></tr></thead><tbody><tr v-for="row in rows.slice(0, 30)" :key="row.row_no"><td>{{ row.row_no }}</td><td>{{ row.student_number }}</td><td>{{ row.display_name }}</td><td>{{ row.class_ref }}</td><td>{{ row.grade_level || '—' }}</td></tr></tbody></table></div>
       <div v-if="preview" class="lifecycle__preview-summary" role="status">
-        <span>服务端预览：{{ preview.row_count }} 条</span><span>{{ preview.class_groups?.length ?? 0 }} 个班级</span><span>异常 {{ preview.errors.length }} 条</span>
+        <span>服务端预览：{{ preview.row_count }} 条</span><span>{{ preview.class_plan?.length || preview.class_groups?.length || 0 }} 个班级</span><span v-if="preview.class_plan?.length">新建 {{ preview.class_plan.filter((item) => item.action === 'CREATE').length }} 个</span><span>异常 {{ preview.errors.length }} 条</span>
       </div>
-      <div v-if="preview?.class_groups?.length" class="lifecycle__table-wrap lifecycle__table-wrap--summary"><table><thead><tr><th>班级</th><th>人数</th></tr></thead><tbody><tr v-for="group in preview.class_groups" :key="group.class_ref"><td>{{ group.class_ref }}</td><td>{{ group.row_count }}</td></tr></tbody></table></div>
+      <div v-if="preview?.class_plan?.length" class="lifecycle__table-wrap lifecycle__table-wrap--summary"><table><thead><tr><th>班级</th><th>年级</th><th>人数</th><th>处理方式</th></tr></thead><tbody><tr v-for="group in preview.class_plan" :key="group.class_ref"><td>{{ group.display_name }}</td><td>{{ group.grade_level || '—' }}</td><td>{{ group.row_count }}</td><td>{{ group.action === 'CREATE' ? '自动新建' : '复用已有班级' }}</td></tr></tbody></table></div>
+      <div v-else-if="preview?.class_groups?.length" class="lifecycle__table-wrap lifecycle__table-wrap--summary"><table><thead><tr><th>班级</th><th>人数</th></tr></thead><tbody><tr v-for="group in preview.class_groups" :key="group.class_ref"><td>{{ group.class_ref }}</td><td>{{ group.row_count }}</td></tr></tbody></table></div>
       <ul v-if="preview?.errors.length" class="lifecycle__issues" aria-label="导入异常"><li v-for="(item, index) in preview.errors" :key="`${item.row_no}:${item.code}:${index}`">第 {{ item.row_no }} 条：{{ rosterIssueLabel(item.code) }}</li></ul>
-      <p v-if="rosterImportKey" role="status">已导入 {{ rosterProcessed }} / {{ rows.length }} 条，已签发 {{ credentialRows.length }} 份初始凭据</p>
+      <p v-if="rosterImportKey" role="status">已处理 {{ rosterProcessed }} / {{ rows.length }} 条，已签发 {{ credentialRows.length }} 份初始凭据，请在处理完成后下载</p>
       <button class="lifecycle__primary" type="button" :disabled="busy || !preview?.valid || Boolean(preview.errors.length)" @click="importRoster">{{ rosterImportKey ? '继续导入' : '导入并生成初始账号' }}</button>
       <button v-if="rosterRun" class="lifecycle__secondary" type="button" :disabled="busy" @click="refreshRosterRun">查看最近一批</button>
     </div>
@@ -943,7 +997,7 @@ onUnmounted(() => { credentialRows.value = []; passphrase.value = ''; rows.value
       <button v-else-if="!credentialRows.length" type="button" class="lifecycle__primary" :disabled="busy || !credentialUsers.length" @click="issueCredentials">生成初始密码</button>
       <div v-if="credentialRows.length && isSyntheticDemo" class="lifecycle__credential-tools">
         <label for="credential-export-scope">下载范围<AppSelect id="credential-export-scope" v-model="credentialExportScope" :options="credentialExportOptions" /></label>
-        <button type="button" class="lifecycle__primary" :disabled="!credentialsToExport.length" @click="downloadInitialCredentialsCsv()">下载账号 CSV（{{ credentialsToExport.length }} 份）</button>
+        <button type="button" class="lifecycle__primary" :disabled="busy || Boolean(rosterImportKey) || !credentialsToExport.length" @click="downloadInitialCredentialsCsv()">下载账号 CSV（{{ credentialsToExport.length }} 份）</button>
       </div>
       <label v-if="credentialRows.length && !isSyntheticDemo" class="lifecycle__field">加密口令（至少 12 位）<input v-model="passphrase" type="password" autocomplete="new-password" minlength="12"></label>
       <button v-if="credentialRows.length && !isSyntheticDemo" type="button" class="lifecycle__primary" :disabled="passphrase.length < 12" @click="downloadEncryptedCredentials">加密下载</button>
@@ -954,7 +1008,7 @@ onUnmounted(() => { credentialRows.value = []; passphrase.value = ''; rows.value
           {{ row.display_name }}（{{ roleLabel(row.role ?? 'student') }}，{{ row.login_name }}）
           <template v-if="row.invitation_ref">，邀请编号 {{ row.invitation_ref }}</template>
           <time :datetime="row.expires_at">，有效期至 {{ row.expires_at }}</time>
-          <button v-if="isSyntheticDemo" type="button" class="lifecycle__secondary" :aria-label="`下载 ${row.display_name || row.login_name} 的账号`" @click="downloadInitialCredentialsCsv(row.user_id)">下载</button>
+          <button v-if="isSyntheticDemo" type="button" class="lifecycle__secondary" :disabled="busy || Boolean(rosterImportKey)" :aria-label="`下载 ${row.display_name || row.login_name} 的账号`" @click="downloadInitialCredentialsCsv(row.user_id)">下载</button>
         </li>
       </ul>
     </div>

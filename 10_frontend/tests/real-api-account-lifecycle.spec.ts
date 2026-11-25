@@ -20,14 +20,14 @@ async function providerFor(handler: (request: TestRequest) => Response | Promise
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.resetModules() })
 
 describe('RealApiProvider account lifecycle endpoints', () => {
-  it('requests real account summary and sends roster v1 rows to server preview', async () => {
+  it('requests real account summary and opts into auto-creating classes for roster preview', async () => {
     const { provider, fetchMock } = await providerFor(async (request) => {
       const url = new URL(request.url)
       if (url.pathname === '/api/v1/auth/csrf') return envelope({ csrf_token: 'csrf-test' })
       if (url.pathname === '/api/v1/school/admin/accounts/summary') return envelope({ total_accounts: 12, active_accounts: 8, pending_activation: 3, suspended_accounts: 1, classes: 2, invitations_issued: 2, invitations_accepted: 1, invitations_expired: 0, invitations_revoked: 1, recovery_queue_count: 3 })
       if (url.pathname === '/api/v1/school/admin/roster/preview') {
         expect(request.method).toBe('POST')
-        expect(await request.json()).toEqual({ rows: [{ row_no: 1, student_number: 'S-1', display_name: '合成学生', class_ref: 'C-1' }] })
+        expect(await request.json()).toEqual({ rows: [{ row_no: 1, student_number: 'S-1', display_name: '合成学生', class_ref: 'C-1' }], auto_create_classes: true })
         return envelope({ valid: true, row_count: 1, errors: [], class_groups: [{ class_ref: 'C-1', row_count: 1 }] })
       }
       throw new Error(`Unexpected lifecycle endpoint: ${url.pathname}`)
@@ -43,6 +43,7 @@ describe('RealApiProvider account lifecycle endpoints', () => {
       if (url.pathname === '/api/v1/auth/csrf') return envelope({ csrf_token: 'csrf-test' })
       if (url.pathname === '/api/v1/school/admin/roster/import') {
         expect(request.headers.get('Idempotency-Key')).toBe('roster-test-key')
+        expect(await request.json()).toMatchObject({ auto_create_classes: true })
         expect(request.headers.get('X-CSRF-Token')).toBe('csrf-test')
         return envelope({ run_ref: 'RUN-1', status: 'QUEUED', row_count: 1, created_count: 0, skipped_count: 0, valid: true, errors: [] })
       }

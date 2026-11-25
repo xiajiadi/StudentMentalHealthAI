@@ -893,3 +893,113 @@ async def test_concurrent_first_login_replay_consumes_credential_at_most_once(ro
     assert outcomes.count({"status": "PASSWORD_SET"}) == 1
     assert outcomes.count(ErrorCode.AUTH_INVALID_CREDENTIALS) == 1
     assert roster_scope.session.query(db_models.SchoolAccountCredential).one().status == "CONSUMED"
+
+
+@pytest.mark.asyncio
+async def test_auto_class_roster_800_rows_four_batches_and_credentials(roster_scope):
+    service = SchoolDirectoryService(persistence=roster_scope.adapter)
+    names = [f"合成心理{i}班" for i in range(1, 6)]
+    rows = [
+        _row(index % 200 + 1, f"AUTO-{index:04}", names[index % 5], grade_level="大二")
+        for index in range(800)
+    ]
+    start_count = roster_scope.session.query(db_models.SchoolClass).count()
+    payloads = [_payload(rows[i:i+200], auto_create_classes=True) for i in range(0, 800, 200)]
+    for payload in payloads:
+        preview = await service.preview_roster_import(
+            roster_scope.actor, payload.rows, auto_create_classes=True
+        )
+        assert preview["valid"]
+        assert len(preview["class_plan"]) == 5
+        assert all(item["action"] == "CREATE" for item in preview["class_plan"])
+        assert all(item["grade_level"] == "U2" for item in preview["class_plan"])
+    assert roster_scope.session.query(db_models.SchoolClass).count() == start_count
+    all_users = set()
+    all_credentials = set()
+    for i, payload in enumerate(payloads):
+        key = _idempotency(roster_scope.actor, f"auto-batch-{i}", payload)
+        result = await service.import_roster(
+            roster_scope.actor, payload.rows, source_sha256=None, idempotency=key,
+            trace_id="TRACE_AUTO", auto_create_classes=True,
+        )
+        assert result["created_count"] == 200
+        assert result["summary"]["new_class_count"] == (5 if i == 0 else 0)
+        refs = [item["user_id"] for item in result["accounts"]]
+        assert not all_users.intersection(refs)
+        all_users.update(refs)
+        issued = await service.issue_initial_credentials(
+            roster_scope.actor, refs, ttl_seconds=3600, trace_id="TRACE_AUTO_ISSUE",
+        )
+        tokens = [item["credential"] for item in issued["credentials"]]
+        assert len(tokens) == 200 and not all_credentials.intersection(tokens)
+        all_credentials.update(tokens)
+    assert len(all_users) == len(all_credentials) == 800
+    assert roster_scope.session.query(db_models.SchoolClass).count() == start_count + 5
+    assert roster_scope.session.query(db_models.SchoolClassStudent).count() == 800
+    created = roster_scope.session.scalars(
+        select(db_models.SchoolClass).where(db_models.SchoolClass.display_name.in_(names))
+    ).all()
+    assert all(item.class_ref.isascii() and item.grade_ref == "GRADE_U2" for item in created)
+    assert {item.display_name for item in created} == set(names)
+    # Replaying an already committed batch never duplicates a class or account.
+    replay = await service.import_roster(
+        roster_scope.actor, payloads[0].rows, source_sha256=None,
+        idempotency=_idempotency(roster_scope.actor, "auto-batch-0", payloads[0]),
+        trace_id="TRACE_AUTO_REPLAY", auto_create_classes=True,
+    )
+    assert replay["created_count"] == 200
+    assert roster_scope.session.query(db_models.SchoolAccountProvision).count() == 800
+    assert roster_scope.session.query(db_models.SchoolClass).count() == start_count + 5
+
+
+@pytest.mark.asyncio
+async def test_auto_class_reuses_name_and_id_and_rejects_conflicts(roster_scope):
+    service = SchoolDirectoryService(persistence=roster_scope.adapter)
+    rows = _payload([
+        _row(1, "MIX-1", "甲班", grade_level="初一"),
+        _row(2, "MIX-2", "CLASS_A", grade_level="7"),
+        _row(3, "MIX-3", "合成新班", grade_level="2024级"),
+    ])
+    preview = await service.preview_roster_import(
+        roster_scope.actor, rows.rows, auto_create_classes=True
+    )
+    assert preview["valid"]
+    assert [item["action"] for item in preview["class_plan"]].count("CREATE") == 1
+    assert [item["class_ref"] for item in preview["class_plan"]].count("CLASS_A") == 2
+    conflict = _payload([
+        _row(1, "BAD-1", "停用班"),
+        _row(2, "BAD-2", "合成冲突班", grade_level="高一"),
+        _row(3, "BAD-3", "合成冲突班", grade_level="高二"),
+        _row(4, "BAD-4", "合成未知年级", grade_level="未知年级"),
+    ])
+    preview = await service.preview_roster_import(
+        roster_scope.actor, conflict.rows, auto_create_classes=True
+    )
+    assert not preview["valid"]
+    assert {item["row_no"]: item["code"] for item in preview["errors"]} == {
+        1: "CLASS_UNAVAILABLE", 2: "GRADE_LEVEL_MISMATCH",
+        3: "GRADE_LEVEL_MISMATCH", 4: "GRADE_LEVEL_INVALID",
+    }
+
+
+@pytest.mark.asyncio
+async def test_auto_class_creation_rolls_back_with_failed_account_import(roster_scope):
+    service = SchoolDirectoryService(persistence=roster_scope.adapter)
+    payload = _payload([_row(1, "ROLL-1", "合成回滚班")], auto_create_classes=True)
+    original = roster_scope.adapter._school_directory_audit
+
+    async def fail_final_audit(*args, **kwargs):
+        if kwargs.get("action") == "school_directory.import_roster":
+            raise RuntimeError("synthetic audit failure")
+        await original(*args, **kwargs)
+
+    roster_scope.adapter._school_directory_audit = fail_final_audit
+    with pytest.raises(RuntimeError, match="synthetic audit failure"):
+        await service.import_roster(
+            roster_scope.actor, payload.rows, source_sha256=None,
+            idempotency=_idempotency(roster_scope.actor, "auto-rollback", payload),
+            trace_id="TRACE_AUTO_ROLLBACK", auto_create_classes=True,
+        )
+    assert roster_scope.session.query(db_models.SchoolClass).count() == 3
+    assert roster_scope.session.query(db_models.SchoolAccountProvision).count() == 0
+    assert roster_scope.session.query(db_models.SchoolRosterImportRun).count() == 0

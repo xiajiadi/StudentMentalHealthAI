@@ -177,11 +177,20 @@ export interface LifecycleRosterRow {
   class_ref: string
   grade_level?: string
 }
+export interface LifecycleRosterClassPlan {
+  input_ref: string
+  class_ref: string
+  display_name: string
+  grade_level: string | null
+  action: 'CREATE' | 'REUSE'
+  row_count: number
+}
 export interface LifecycleRosterPreview {
   valid: boolean
   row_count: number
   errors: Array<{ row_no: number; code: string; message?: string }>
   class_groups?: Array<{ class_ref: string; row_count: number }>
+  class_plan?: LifecycleRosterClassPlan[]
 }
 export interface LifecycleRosterImport extends LifecycleRosterPreview {
   run_ref: string

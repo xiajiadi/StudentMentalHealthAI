@@ -220,7 +220,8 @@ async def import_accounts(request: Request, payload: AccountBatchRequest, actor:
 )
 async def preview_roster(request: Request, payload: SchoolRosterImportRequest, actor: CurrentActor):
     result = await request.app.state.container.school_directory.preview_roster_import(
-        actor, payload.rows, source_sha256=payload.source_sha256
+        actor, payload.rows, source_sha256=payload.source_sha256,
+        auto_create_classes=payload.auto_create_classes,
     )
     return JSONResponse(
         _envelope(request, SchoolRosterImportPreviewDto.model_validate(result))
@@ -244,7 +245,13 @@ async def import_roster(request: Request, payload: SchoolRosterImportRequest, ac
         actor,
         payload.rows,
         source_sha256=payload.source_sha256,
-        idempotency=_roster_idempotency(actor, key, payload.model_dump(mode="json")),
+        auto_create_classes=payload.auto_create_classes,
+        idempotency=_roster_idempotency(
+            actor, key, payload.model_dump(
+                mode="json",
+                exclude={"auto_create_classes"} if not payload.auto_create_classes else set(),
+            )
+        ),
         trace_id=_trace_id(request),
     )
     if "errors" in result:

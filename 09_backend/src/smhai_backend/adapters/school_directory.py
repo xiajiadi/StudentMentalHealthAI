@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import secrets
+import unicodedata
+from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
 from uuid import uuid4
@@ -15,6 +18,50 @@ def _database_public_id(value: str, prefix: str) -> str:
     if not value.startswith(f"{prefix}_"):
         raise ValueError(f"unsupported {prefix} reference")
     return value.removeprefix(f"{prefix}_")
+
+
+@dataclass(frozen=True)
+class _RosterNewClass:
+    class_ref: str
+    display_name: str
+    grade_level: str | None
+
+
+def _roster_grade(value: str | None) -> str | None:
+    """Translate common school-grade labels to ASCII without guessing unknown labels."""
+    if value is None:
+        return None
+    value = unicodedata.normalize("NFKC", value).strip()
+    aliases = {
+        "一年级": "1", "二年级": "2", "三年级": "3", "四年级": "4",
+        "五年级": "5", "六年级": "6", "七年级": "7", "八年级": "8",
+        "九年级": "9", "初一": "7", "初二": "8", "初三": "9",
+        "高一": "10", "高二": "11", "高三": "12",
+        "大一": "U1", "大二": "U2", "大三": "U3", "大四": "U4",
+    }
+    if value in aliases:
+        return aliases[value]
+    if re.fullmatch(r"[0-9]{4}级", value):
+        return "COHORT_" + value[:-1]
+    if re.fullmatch(r"[0-9]{1,2}\s*年级", value):
+        return str(int(value.split("年")[0].strip()))
+    if re.fullmatch(r"G?[0-9]{1,2}", value.upper()):
+        return str(int(value.upper().removeprefix("G")))
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_ -]{0,31}", value):
+        return value.upper()
+    raise ValueError("unsupported roster grade")
+
+
+def _existing_roster_grade(value: str | None) -> str | None:
+    try:
+        return _roster_grade(value)
+    except ValueError:
+        # Existing ASCII codes may predate the new input grammar.
+        return value
+
+
+def _roster_new_class_ref(name: str) -> str:
+    return "ROSTER_CLASS_" + hashlib.sha256(name.encode("utf-8")).hexdigest()
 
 
 class SchoolDirectoryImportRejected(Exception):
@@ -728,6 +775,139 @@ class SchoolDirectoryPersistenceAdapter:
                     )
         return errors, classes_by_ref
 
+    async def _school_roster_class_plan(self, uow, actor, rows, *, lock_classes: bool):
+        """Plan exact matches or new classes, keeping all IDs school-local.
+
+        Serialize auto-import commits on the school row before resolving names.
+        The unique (school_id, class_ref) constraint also guards deterministic IDs.
+        """
+        from collections import defaultdict
+
+        m = self._db_models
+        if lock_classes:
+            await uow.session.scalar(
+                self._select(m.School.id).where(m.School.id == actor.school_id).with_for_update()
+            )
+        # Query using the school ID only, never send Chinese input to ASCII columns.
+        query = self._select(m.SchoolClass).where(
+            m.SchoolClass.school_id == actor.school_id
+        ).order_by(m.SchoolClass.class_ref)
+        if lock_classes:
+            query = query.with_for_update()
+        classes = list((await uow.session.scalars(query)).all())
+        by_ref = {item.class_ref: item for item in classes}
+        by_name = defaultdict(list)
+        for item in classes:
+            if item.display_name:
+                by_name[item.display_name].append(item)
+        grouped = defaultdict(list)
+        for row in rows:
+            grouped[row.class_ref].append(row)
+        errors = []
+        resolved = {}
+        planned = {}
+        plan = []
+        for name, group in sorted(grouped.items()):
+            def reject(code, group=group):
+                errors.extend({"row_no": row.row_no, "code": code} for row in group)
+
+            grades = set()
+            invalid_grade = False
+            for row in group:
+                try:
+                    grade = _roster_grade(row.grade_level)
+                except ValueError:
+                    errors.append({"row_no": row.row_no, "code": "GRADE_LEVEL_INVALID"})
+                    invalid_grade = True
+                    continue
+                if grade is not None:
+                    grades.add(grade)
+            if invalid_grade:
+                continue
+            if len(grades) > 1:
+                reject("GRADE_LEVEL_MISMATCH")
+                continue
+            grade = next(iter(grades), None)
+            if name in by_ref:
+                candidates = [by_ref[name]]
+            else:
+                candidates = by_name.get(name, [])
+                if len(candidates) > 1 and grade is not None:
+                    matching = [
+                        item for item in candidates
+                        if item.grade_level is not None
+                        and _existing_roster_grade(item.grade_level) == grade
+                    ]
+                    if matching:
+                        candidates = matching
+            if len(candidates) > 1:
+                reject("CLASS_NAME_AMBIGUOUS")
+                continue
+            if candidates:
+                item = candidates[0]
+                if item.status != "ACTIVE":
+                    reject("CLASS_UNAVAILABLE")
+                    continue
+                if grade is not None and item.grade_level is not None:
+                    matches = _existing_roster_grade(item.grade_level) == grade
+                    if not matches:
+                        reject("GRADE_LEVEL_MISMATCH")
+                        continue
+                resolved[name] = item
+                action = "REUSE"
+                class_ref = item.class_ref
+                display_name = item.display_name or item.class_ref
+                grade = _existing_roster_grade(item.grade_level) if item.grade_level else grade
+            else:
+                if (len(name) > 120 or not name.isprintable()
+                    or re.match(r"^\s*[=+\-@]", name)):
+                    reject("CLASS_NAME_INVALID")
+                    continue
+                # An unknown generated reference is likely a stale ID, not a name.
+                if name.startswith("ROSTER_CLASS_"):
+                    reject("CLASS_UNAVAILABLE")
+                    continue
+                class_ref = _roster_new_class_ref(name)
+                if class_ref in by_ref:
+                    reject("CLASS_UNAVAILABLE")
+                    continue
+                display_name = name
+                planned[name] = _RosterNewClass(class_ref, name, grade)
+                action = "CREATE"
+            plan.append({
+                "input_ref": name, "class_ref": class_ref, "display_name": display_name,
+                "grade_level": grade, "action": action, "row_count": len(group),
+            })
+        # Aliases resolving to one ID must not introduce contradictory grades.
+        grade_by_ref = defaultdict(set)
+        for item in plan:
+            if item["grade_level"] is not None:
+                grade_by_ref[item["class_ref"]].add(item["grade_level"])
+        for item in plan:
+            if len(grade_by_ref[item["class_ref"]]) > 1:
+                errors.extend(
+                    {"row_no": row.row_no, "code": "GRADE_LEVEL_MISMATCH"}
+                    for row in grouped[item["input_ref"]]
+                )
+        # Retain the existing school-scoped stable login collision check.
+        from sqlalchemy import func
+
+        login_names = {
+            self._roster_login_name(actor.school_ref, row.student_number).casefold(): row
+            for row in rows
+        }
+        if login_names:
+            found = (await uow.session.scalars(
+                self._select(func.lower(m.Account.login_name)).where(
+                    func.lower(m.Account.login_name).in_(list(login_names))
+                )
+            )).all()
+            errors.extend(
+                {"row_no": login_names[name].row_no, "code": "STUDENT_NUMBER_UNAVAILABLE"}
+                for name in found
+            )
+        return errors, resolved, planned, plan
+
     @staticmethod
     def _roster_login_name(school_ref: str, student_number: str) -> str:
         from smhai_backend.domains.school_directory.service import roster_login_name
@@ -735,12 +915,21 @@ class SchoolDirectoryPersistenceAdapter:
         return roster_login_name(school_ref, student_number)
 
     async def school_roster_import_preview(
-        self, actor: Any, rows, *, source_sha256: str | None = None
+        self, actor: Any, rows, *, source_sha256: str | None = None,
+        auto_create_classes: bool = False,
     ) -> dict[str, Any]:
         del source_sha256  # A preview is read-only and the digest is not a validation input.
         now = self._utc_now()
         async with self._uow() as uow:
             await self._school_actor_role(uow, actor, "admin", now)
+            if auto_create_classes:
+                errors, _, _, plan = await self._school_roster_class_plan(
+                    uow, actor, rows, lock_classes=False
+                )
+                return {
+                    "valid": not errors, "row_count": len(rows),
+                    "errors": errors, "class_plan": plan,
+                }
             errors, _classes = await self._school_roster_preflight_errors(
                 uow, actor, rows, lock_classes=False
             )
@@ -833,6 +1022,7 @@ class SchoolDirectoryPersistenceAdapter:
         source_sha256: str | None,
         idempotency,
         trace_id: str,
+        auto_create_classes: bool = False,
     ) -> dict[str, Any]:
         from fastapi.concurrency import run_in_threadpool
         from pwdlib import PasswordHash
@@ -864,11 +1054,37 @@ class SchoolDirectoryPersistenceAdapter:
                         uow, actor, claim.record.result_public_id
                     )
 
-                errors, classes_by_ref = await self._school_roster_preflight_errors(
-                    uow, actor, rows, lock_classes=True
-                )
+                planned = {}
+                if auto_create_classes:
+                    errors, classes_by_ref, planned, _plan = await self._school_roster_class_plan(
+                        uow, actor, rows, lock_classes=True
+                    )
+                else:
+                    errors, classes_by_ref = await self._school_roster_preflight_errors(
+                        uow, actor, rows, lock_classes=True
+                    )
                 if errors:
                     raise SchoolDirectoryImportRejected(errors)
+
+                for name, spec in sorted(planned.items()):
+                    item = m.SchoolClass(
+                        school_id=actor.school_id,
+                        class_ref=spec.class_ref,
+                        display_name=spec.display_name,
+                        grade_level=spec.grade_level,
+                        grade_ref=f"GRADE_{spec.grade_level}" if spec.grade_level else None,
+                        created_by_membership_role_id=admin_role_id,
+                        status="ACTIVE",
+                    )
+                    uow.session.add(item)
+                    await uow.session.flush()
+                    classes_by_ref[name] = item
+                    await self._school_directory_audit(
+                        uow, actor_account_id=actor_account_id,
+                        action="school_directory.create_roster_class",
+                        resource_type="school_class",
+                        resource_public_id=item.public_id, trace_id=trace_id,
+                    )
 
                 from collections import defaultdict
 
@@ -901,7 +1117,9 @@ class SchoolDirectoryPersistenceAdapter:
                         await uow.session.flush()
                         child_batches.append((batch, batch_rows, class_ref))
 
-                staged = [(batch, row) for batch, batch_rows, _ in child_batches for row in batch_rows]
+                staged = [
+                    (batch, row) for batch, batch_rows, _ in child_batches for row in batch_rows
+                ]
                 accounts = [
                     m.Account(
                         login_name=self._roster_login_name(actor.school_ref, row.student_number),
@@ -983,6 +1201,7 @@ class SchoolDirectoryPersistenceAdapter:
                     "class_count": len(grouped),
                     "batch_count": len(child_batches),
                     "student_count": len(rows),
+                    **({"new_class_count": len(planned)} if auto_create_classes else {}),
                 }
                 run = m.SchoolRosterImportRun(
                     run_ref=run_ref,
@@ -1418,7 +1637,9 @@ class SchoolDirectoryPersistenceAdapter:
                 "delivery_status": "MANUAL_HANDOFF_REQUIRED",
             }
 
-    async def school_directory_initial_login_school(self, username: str, token_hash: bytes) -> str | None:
+    async def school_directory_initial_login_school(
+        self, username: str, token_hash: bytes
+    ) -> str | None:
         from sqlalchemy import and_, func, or_
 
         m = self._db_models

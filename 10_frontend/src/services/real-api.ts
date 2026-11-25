@@ -2407,11 +2407,11 @@ export class RealApiProvider implements FrontendApi {
   }
 
   async previewLifecycleRoster(rows: LifecycleRosterRow[]): Promise<ApiEnvelope<LifecycleRosterPreview>> {
-    return this.lifecycleWrite('/api/v1/school/admin/roster/preview', { rows })
+    return this.lifecycleWrite('/api/v1/school/admin/roster/preview', { rows, auto_create_classes: true })
   }
 
   async importLifecycleRoster(rows: LifecycleRosterRow[], idempotencyKey: string): Promise<ApiEnvelope<LifecycleRosterImport>> {
-    return this.lifecycleWrite('/api/v1/school/admin/roster/import', { rows }, idempotencyKey)
+    return this.lifecycleWrite('/api/v1/school/admin/roster/import', { rows, auto_create_classes: true }, idempotencyKey)
   }
 
   async getLifecycleRosterImport(runRef: string): Promise<ApiEnvelope<LifecycleRosterImport>> {

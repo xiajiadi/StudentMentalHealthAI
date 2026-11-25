@@ -171,7 +171,10 @@ class SchoolDirectoryService:
             return {"valid": False, "row_count": len(rows), "errors": result["errors"]}
         return result
 
-    async def preview_roster_import(self, actor: Actor, rows, *, source_sha256: str | None = None):
+    async def preview_roster_import(
+        self, actor: Actor, rows, *, source_sha256: str | None = None,
+        auto_create_classes: bool = False,
+    ):
         self._require_admin(actor)
         assert actor.school_ref is not None
         errors = validate_roster_rows(actor.school_ref, rows)
@@ -183,7 +186,8 @@ class SchoolDirectoryService:
                 "class_groups": _roster_class_groups(rows),
             }
         result = await self.persistence.school_roster_import_preview(
-            actor, rows, source_sha256=source_sha256
+            actor, rows, source_sha256=source_sha256,
+            auto_create_classes=auto_create_classes,
         )
         result["class_groups"] = _roster_class_groups(rows)
         return result
@@ -196,6 +200,7 @@ class SchoolDirectoryService:
         source_sha256: str | None,
         idempotency,
         trace_id: str,
+        auto_create_classes: bool = False,
     ):
         self._require_admin(actor)
         assert actor.school_ref is not None
@@ -211,6 +216,7 @@ class SchoolDirectoryService:
             actor,
             rows,
             source_sha256=source_sha256,
+            auto_create_classes=auto_create_classes,
             idempotency=idempotency,
             trace_id=trace_id,
         )
@@ -254,7 +260,9 @@ class SchoolDirectoryService:
             else None
         )
         if school_ref is None:
-            raise error(ErrorCode.AUTH_INVALID_CREDENTIALS, detail="username or password is invalid")
+            raise error(
+                ErrorCode.AUTH_INVALID_CREDENTIALS, detail="username or password is invalid"
+            )
         return school_ref
 
     async def complete_initial_credential(

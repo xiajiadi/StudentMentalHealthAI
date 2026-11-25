@@ -90,6 +90,7 @@ class SchoolRosterImportRow(SchoolDirectoryRequest):
 class SchoolRosterImportRequest(SchoolDirectoryRequest):
     rows: list[SchoolRosterImportRow] = Field(min_length=1, max_length=200)
     source_sha256: str | None = Field(default=None, min_length=64, max_length=64)
+    auto_create_classes: bool = False
 
     @field_validator("source_sha256")
     @classmethod
@@ -114,6 +115,9 @@ class SchoolRosterImportErrorDto(BaseModel):
         "FORMULA_LIKE_VALUE",
         "CLASS_UNAVAILABLE",
         "GRADE_LEVEL_MISMATCH",
+        "CLASS_NAME_INVALID",
+        "CLASS_NAME_AMBIGUOUS",
+        "GRADE_LEVEL_INVALID",
     ]
 
 
@@ -124,12 +128,24 @@ class SchoolRosterClassGroupDto(BaseModel):
     row_count: int = Field(ge=0, le=200)
 
 
+class SchoolRosterClassPlanDto(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    input_ref: str = Field(min_length=1, max_length=128)
+    class_ref: str = Field(min_length=1, max_length=128)
+    display_name: str = Field(min_length=1, max_length=128)
+    grade_level: str | None = None
+    action: Literal["CREATE", "REUSE"]
+    row_count: int = Field(ge=1, le=200)
+
+
 class SchoolRosterImportPreviewDto(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     valid: bool
     row_count: int = Field(ge=0, le=200)
     errors: list[SchoolRosterImportErrorDto]
+    class_plan: list[SchoolRosterClassPlanDto] = Field(default_factory=list, max_length=200)
     class_groups: list[SchoolRosterClassGroupDto] = Field(default_factory=list, max_length=200)
 
 
