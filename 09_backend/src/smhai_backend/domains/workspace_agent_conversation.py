@@ -14,15 +14,25 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from smhai_backend.core.errors import BackendError, ErrorCode, error
-from smhai_backend.core.idempotency import fingerprint
 from smhai_backend.core.request_context import current_request_context
 from smhai_backend.domains.auth.dependencies import CsrfActor, CurrentActor
 from smhai_backend.domains.models import Actor
 
+from . import workspace_agent_cat as cat_workflow
 from .workspace_agent import _check_actor
+from .workspace_agent_history import workspace_owner as _owner
 from .workspace_agent_publishing import TaskConfirmation
 from .workspace_agent_publishing import confirm as confirm_publication
-from .workspace_agent_tools import ADMIN, SPECIALIST, STUDENT, TEACHER, TOOLS, Draft, execute_tool
+from .workspace_agent_tools import (
+    ADMIN,
+    SPECIALIST,
+    STUDENT,
+    TEACHER,
+    TOOLS,
+    Draft,
+    execute_tool,
+    preview_cat_handoff,
+)
 
 router = APIRouter(prefix="/workspace-agent/conversation", tags=["workspace-agent"])
 log = structlog.get_logger(__name__)
@@ -47,8 +57,12 @@ For other reports or files, use save_markdown and return a short summary. Do not
 include student information or fabricated data. Roster contents and credentials stay in the
 private import workbench. When a roster is selected and import requested, open_roster_import.
 Completing the roster import always requires a user's confirmation in that workbench.
-If a CAT bank is attached, use open_workflow with workflow "cat" to let the specialist
-inspect and confirm it in the CAT workbench. The file contents are not available to you."""
+For a school CAT JSON attachment, use inspect_cat_attachment, then prepare_cat_draft if asked
+for a plan. Ask for the intended class or deadline if missing. Only a specialist can confirm
+saving and separately approve synthetic eligibility. An administrator can list approved CAT
+handoffs and preview publication. Never use the default assessment tool for a CAT handoff.
+CAT source documents remain on the school server. The independent CAT workbench is available
+for other formats and simulations."""
 
 
 class TurnRequest(BaseModel):
@@ -56,6 +70,7 @@ class TurnRequest(BaseModel):
     text: str = Field(min_length=1, max_length=3000)
     synthetic_only: Literal[True]
     attachment: Literal["student_roster", "cat_bank"] | None = None
+    cat_attachment_ref: str | None = Field(default=None, pattern=cat_workflow.REF)
 
 
 class FunctionCall(BaseModel):
@@ -79,17 +94,6 @@ class ModelStep(BaseModel):
     model: str = Field(pattern=r"^[A-Za-z0-9_./-]{1,128}$")
     completion_id: str = Field(pattern=r"^[A-Za-z0-9_.:-]{1,180}$")
     message: ModelMessage
-
-
-def _owner(actor: Actor) -> str:
-    return fingerprint(
-        {
-            "actor": actor.user_id,
-            "school": actor.school_id,
-            "school_ref": actor.school_ref,
-            "role": actor.role.value,
-        }
-    )
 
 
 def _history(request: Request, actor: Actor):
@@ -170,7 +174,7 @@ def _context_messages(actor: Actor, history: list[dict], payload: TurnRequest) -
             )
     attachment_note = {
         (ADMIN, "student_roster"): "\n[Workspace UI: a private roster file is selected.]",
-        (SPECIALIST, "cat_bank"): "\n[Workspace UI: a private CAT bank file is selected.]",
+        (SPECIALIST, "cat_bank"): "\n[Workspace UI: a private school CAT document is attached.]",
     }.get((actor.role, payload.attachment), "")
     messages.append({"role": "user", "content": payload.text + attachment_note})
     return messages
@@ -273,7 +277,13 @@ async def _run(request: Request, actor: Actor, payload: TurnRequest, prior: list
                         }
                         model_data = {"artifact_ready": True}
                     else:
-                        view, model_data = await execute_tool(request, actor, name, arguments)
+                        view, model_data = await execute_tool(
+                            request,
+                            actor,
+                            name,
+                            arguments,
+                            cat_attachment_ref=payload.cat_attachment_ref,
+                        )
                     # Keep the rendered role-specific details local, including browser-only tokens.
                     yield {
                         "type": "tool_result",
@@ -286,6 +296,25 @@ async def _run(request: Request, actor: Actor, payload: TurnRequest, prior: list
                 except (BackendError, ValidationError) as exc:
                     code = exc.code.value if isinstance(exc, BackendError) else "VALIDATION_FAILED"
                     model_data = {"error": code}
+                    if isinstance(exc, ValidationError) and tool is not None:
+                        model_data["invalid_fields"] = [
+                            item["loc"][0]
+                            for item in exc.errors(include_input=False)[:6]
+                            if item["loc"] and item["loc"][0] in tool.args.model_fields
+                        ]
+                    if name in {"inspect_cat_attachment", "prepare_cat_draft"}:
+                        if (
+                            isinstance(exc, BackendError)
+                            and exc.code == ErrorCode.RESOURCE_NOT_FOUND
+                        ):
+                            model_data["next_step"] = (
+                                "Ask the specialist to attach a school CAT JSON file."
+                            )
+                        elif code == ErrorCode.VALIDATION_FAILED.value:
+                            model_data["next_step"] = (
+                                "Check the bank and compatible CAT configuration. "
+                                "Use the school template only for a synthetic engineering draft."
+                            )
                     if name == "save_markdown" and actor.role == TEACHER:
                         model_data["available_option"] = (
                             "Use make_class_progress_report for a report about school tasks."
@@ -318,6 +347,15 @@ async def _run(request: Request, actor: Actor, payload: TurnRequest, prior: list
 async def conversation(request: Request, actor: CurrentActor):
     history = _history(request, actor)
     events, active = history.read(_owner(actor))
+    if actor.role == SPECIALIST:
+        current, _ = cat_workflow.drafts(request, actor)
+        drafts = {draft["draft_ref"]: draft for draft in current["drafts"]}
+        for event in events:
+            view = event.get("view", {})
+            if view.get("kind") == "cat_draft" and view["draft_ref"] in drafts:
+                event["view"] = drafts[view["draft_ref"]]
+            elif view.get("kind") == "cat_drafts":
+                view["drafts"] = [drafts.get(row["draft_ref"], row) for row in view["drafts"]]
     return JSONResponse(
         {
             "data": {
@@ -342,6 +380,36 @@ async def publish_task(request: Request, payload: TaskConfirmation, actor: CsrfA
     context = current_request_context(request)
     log.info("workspace_agent_publication_confirmed", trace_id=context.trace_id)
     return {"data": result.model_dump(mode="json")}
+
+
+@router.post("/cat-attachment", status_code=201)
+async def upload_cat(request: Request, actor: CsrfActor):
+    _history(request, actor)
+    request.app.state.container.rate_limiter.check("support", actor.user_id)
+    return {"data": {"ref": await cat_workflow.upload(request, actor)}}
+
+
+@router.post("/save-cat-draft")
+async def save_cat(request: Request, payload: cat_workflow.CatDraftAction, actor: CsrfActor):
+    _history(request, actor)
+    request.app.state.container.rate_limiter.check("support", actor.user_id)
+    return {"data": await cat_workflow.save(request, actor, payload.draft_ref)}
+
+
+@router.post("/approve-cat-draft")
+async def approve_cat(request: Request, payload: cat_workflow.CatDraftAction, actor: CsrfActor):
+    _history(request, actor)
+    request.app.state.container.rate_limiter.check("support", actor.user_id)
+    return {"data": await cat_workflow.approve(request, actor, payload.draft_ref)}
+
+
+@router.post("/preview-cat-handoff")
+async def preview_cat(
+    request: Request, payload: cat_workflow.CatHandoffSelection, actor: CsrfActor
+):
+    _history(request, actor)
+    view, _ = await preview_cat_handoff(request, actor, payload.handoff_ref)
+    return {"data": view}
 
 
 @router.post("/turn")

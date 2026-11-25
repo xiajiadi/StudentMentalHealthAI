@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer'
+import { readFile } from 'node:fs/promises'
 import { expect, test, type Page } from '@playwright/test'
 
 const origin = process.env.PSYNOVA_AGENT_QA_ORIGIN
@@ -96,4 +97,56 @@ test('a roster creates real synthetic accounts and returns a credential download
   const directory = (await response.json()).data
   expect(directory.classes.some((row: { display_name: string }) => row.display_name === className)).toBe(true)
   expect(directory.members.some((row: { display_name: string }) => row.display_name === studentName)).toBe(true)
+})
+
+test('a specialist approves a synthetic CAT plan and an administrator publishes it', async ({ page }) => {
+  const className = process.env.PSYNOVA_AGENT_QA_CLASS
+  test.skip(process.env.PSYNOVA_AGENT_QA_WRITE !== '1' || !className, 'Requires a dedicated synthetic class')
+  test.setTimeout(240_000)
+  await signIn(page)
+  await chooseRole(page, 'PSYCHOLOGICAL_SPECIALIST', '/specialist/workspace')
+  const bank = new URL('../../01_cat-engine/fixtures/synthetic_item_bank.v1.json', import.meta.url)
+  const configuration = new URL('../../01_cat-engine/fixtures/demo_cat_config.v1.json', import.meta.url)
+  const [bankText, configText] = await Promise.all([readFile(bank, 'utf8'), readFile(configuration, 'utf8')])
+  const plan = '合成工程验证' + Date.now()
+  const due = new Date(Date.now() + 7 * 24 * 60 * 60 * 1_000).toISOString().split('.')[0] + 'Z'
+  await page.locator('#workspace-agent-composer input[type="file"]').setInputFiles({
+    name: 'synthetic-cat.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({ bank_document: JSON.parse(bankText), config_document: JSON.parse(configText) })),
+  })
+  const results = await ask(page, `验证这份合成工程附件，并用附件里的配置准备 CAT 草案。方案名称为 ${plan}，班级为 ${className}，截止 ${due}（UTC）。`, '发送任务')
+  expect(results.map((event) => event.view?.kind ?? event.code ?? event.type)).toContain('cat_inspection')
+  const draft = results.find((event) => event.view?.kind === 'cat_draft')?.view
+  expect(draft).toMatchObject({ plan_name: plan, configuration: 'attachment', state: 'PREVIEW' })
+  let card = page.locator('.cat-draft').filter({ hasText: plan }).last()
+  await card.getByRole('button', { name: '保存题库和方案' }).click()
+  const saving = page.waitForResponse((response) => response.url().endsWith('/conversation/save-cat-draft'))
+  await page.getByRole('button', { name: '确认保存', exact: true }).click()
+  const saved = await (await saving).json()
+  expect(saved.data).toMatchObject({ draft_ref: draft.draft_ref, state: 'SAVED' })
+  await card.getByRole('button', { name: '审阅合成施测资格' }).click()
+  const approving = page.waitForResponse((response) => response.url().endsWith('/conversation/approve-cat-draft'))
+  await page.getByRole('button', { name: '确认批准并交接' }).click()
+  const approved = await (await approving).json()
+  expect(approved.data).toMatchObject({ draft_ref: draft.draft_ref, state: 'APPROVED' })
+  await chooseRole(page, 'ADMIN', '/admin/workspace')
+  const handoffs = await ask(page, '查看本校已经批准且等待发布的 CAT 交接', '发送任务')
+  expect(handoffs.some((event) => event.view?.kind === 'cat_handoffs')).toBe(true)
+  card = page.locator('.cat-draft').filter({ hasText: plan }).last()
+  await card.getByRole('button', { name: '核对 CAT 发布' }).click()
+  const confirmation = page.getByRole('dialog', { name: '确认发布学校测评' })
+  await expect(confirmation.getByText(`${plan} · ${className}`, { exact: true })).toBeVisible()
+  const publishing = page.waitForResponse((response) => response.url().endsWith('/conversation/confirm-publication'))
+  await confirmation.getByRole('button', { name: '确认发布', exact: true }).click()
+  const published = await (await publishing).json()
+  const task = published.data
+  expect(task).toMatchObject({ plan_name: plan, activation_ref: expect.stringMatching(/^CACT_/), plan_version_number: 1 })
+  expect(new Date(task.due_at).toISOString()).toBe(new Date(due).toISOString())
+  const index = await page.request.get(origin + '/api/v1/school/admin/task-index')
+  expect(index.ok()).toBe(true)
+  expect((await index.json()).data).toContainEqual(expect.objectContaining({
+    task_ref: task.task_ref, activation_ref: task.activation_ref, class_ref: task.class_ref, status: task.status,
+  }))
+  await expect(card).toContainText('已发布')
 })

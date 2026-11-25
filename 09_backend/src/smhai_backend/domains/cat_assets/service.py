@@ -18,6 +18,7 @@ from smhai_backend.domains.cat_assets.schemas import (
     PlanVersionRequest,
     SavedSimulationRequestDto,
     SavedSimulationResponseDto,
+    ValidatedAssetsResponseDto,
 )
 from smhai_backend.domains.models import Actor, BackendRole
 
@@ -73,6 +74,23 @@ class SchoolCatAssetService:
     async def template(self, actor: Actor):
         self._require_specialist(actor)
         return await self.persistence.school_cat_assets_template(actor)
+
+    async def validate_documents(
+        self, actor: Actor, bank_document: dict, *, config_document: dict | None
+    ) -> ValidatedAssetsResponseDto:
+        self._require_specialist(actor)
+        bank = self._bounded_document(bank_document, field="bank_document")
+        if config_document is not None:
+            config_document = self._bounded_document(config_document, field="config_document")
+        validated = await self.persistence.school_cat_assets_validate(
+            actor, bank, config_document=config_document
+        )
+        try:
+            return ValidatedAssetsResponseDto.model_validate(validated)
+        except ValidationError as exc:
+            raise error(
+                ErrorCode.DEPENDENCY_INVALID_RESPONSE, detail="CAT validation response is invalid"
+            ) from exc
 
     async def list_banks(self, actor: Actor, *, limit: int, skip: int):
         self._require_specialist(actor)

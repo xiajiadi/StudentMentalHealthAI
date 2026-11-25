@@ -7,10 +7,12 @@ import AppCard from '@/components/app/AppCard.vue'
 import AppDialog from '@/components/app/AppDialog.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import WorkspaceAnswer from './WorkspaceAnswer.vue'
+import WorkspaceCatDraft from './WorkspaceCatDraft.vue'
 import { frontendApi } from '@/services/mock-api'
 import {
   confirmWorkspacePublication, loadWorkspaceConversation, resetWorkspaceConversation,
-  runWorkspaceAgent, sendWorkspaceTurn, type TaskPublicationPreview, type WorkflowPanel, type WorkspaceEvent,
+  previewWorkspaceCatHandoff, runWorkspaceAgent, sendWorkspaceTurn, updateWorkspaceCat,
+  uploadWorkspaceCat, type CatDraft, type TaskPublicationPreview, type WorkflowPanel, type WorkspaceEvent,
 } from '@/services/workspace-agent'
 
 const props = defineProps<{
@@ -69,6 +71,9 @@ const classBusy = ref(false)
 const pendingPublication = ref<TaskPublicationPreview>()
 const publicationBusy = ref(false)
 const publishedTokens = ref(new Set<string>())
+const catReceipts = ref(new Map<string, CatDraft>())
+const pendingCat = ref<{ draft: CatDraft; action: 'save' | 'approve' }>()
+const catBusy = ref(false)
 const lastText = ref('')
 const viewport = ref<HTMLElement>()
 let runRequest: AbortController | undefined
@@ -76,11 +81,15 @@ const historyRequest = new AbortController()
 let disposed = false
 let consentDecision: ((accepted: boolean) => void) | undefined
 let initialHistory: Promise<void> | undefined
+let uploadedCat: { file: File; ref: string } | undefined
 
 const audience = computed(() => props.role === 'psychological_specialist' ? 'specialist' : props.role)
 const latestPanel = computed(() => panel.value && panel.value !== 'roster' ? panels[panel.value] : undefined)
 watch(() => props.rosterFile, (file) => { if (file) panel.value = 'roster' })
-watch(() => props.catFile, (file) => { if (file) panel.value = 'cat' })
+watch(() => props.catFile, (file) => {
+  uploadedCat = undefined
+  if (file && /\.csv$/i.test(file.name)) panel.value = 'cat'
+})
 
 async function refresh() {
   const previous = await loadWorkspaceConversation(historyRequest.signal)
@@ -124,7 +133,24 @@ async function submit(text: string) {
   running.value = true
   emit('busy', true)
   try {
-    const attachment = props.rosterFile ? 'student_roster' : props.catFile ? 'cat_bank' : undefined
+    const file = props.catFile
+    let catRef: string | undefined
+    if (file && /\.json$/i.test(file.name)) {
+      progress.value = '正在上传合成题库'
+      try {
+        if (uploadedCat?.file !== file) {
+          const submitted = await uploadWorkspaceCat(file, request.signal)
+          uploadedCat = { file, ref: submitted.ref }
+        }
+        catRef = uploadedCat.ref
+      } catch {
+        if (!disposed && !request.signal.aborted) {
+          message.value = '题库上传失败。请检查是否为学校合成 GRM JSON（最多 240 KiB），或稍后重试'
+        }
+        return false
+      }
+    }
+    const attachment = props.rosterFile ? 'student_roster' : catRef ? 'cat_bank' : undefined
     await sendWorkspaceTurn(text, attachment, (event) => {
       if (disposed || request.signal.aborted) return
       events.value.push(event)
@@ -133,7 +159,7 @@ async function submit(text: string) {
       if (event.type === 'tool_result' && event.view.kind === 'roster_import') panel.value = 'roster'
       if (event.type === 'tool_result' && props.catFile && event.view.kind === 'workflow' && event.view.workflow === 'cat') panel.value = 'cat'
       void nextTick(() => { if (viewport.value) viewport.value.scrollTop = viewport.value.scrollHeight })
-    }, request.signal)
+    }, request.signal, catRef)
     return true
   } catch {
     if (!disposed) {
@@ -223,6 +249,39 @@ async function publishTask() {
   }
 }
 
+async function handleCat(draft: CatDraft, action: 'save' | 'approve' | 'publish') {
+  if (catBusy.value) return
+  if (action !== 'publish') {
+    pendingCat.value = { draft, action }
+    return
+  }
+  catBusy.value = true
+  message.value = ''
+  try {
+    pendingPublication.value = await previewWorkspaceCatHandoff(draft.draft_ref)
+  } catch {
+    message.value = '无法准备发布。请核对班级、截止时间和方案批准状态'
+  } finally {
+    catBusy.value = false
+  }
+}
+
+async function confirmCat() {
+  const pending = pendingCat.value
+  if (!pending || catBusy.value) return
+  catBusy.value = true
+  message.value = ''
+  try {
+    const receipt = await updateWorkspaceCat(pending.draft.draft_ref, pending.action)
+    catReceipts.value.set(receipt.draft_ref, receipt)
+    pendingCat.value = undefined
+  } catch {
+    message.value = '暂时无法确认操作结果。可重试或重新查询草案状态'
+  } finally {
+    catBusy.value = false
+  }
+}
+
 function download(filename: string, markdown: string) {
   const href = URL.createObjectURL(new Blob([markdown], { type: 'text/markdown;charset=utf-8' }))
   const link = document.createElement('a')
@@ -233,7 +292,8 @@ function download(filename: string, markdown: string) {
 }
 
 function cancel() { runRequest?.abort() }
-defineExpose({ submit, cancel })
+function openIndependentCat() { panel.value = 'cat' }
+defineExpose({ submit, cancel, openIndependentCat })
 </script>
 
 <template>
@@ -281,6 +341,15 @@ defineExpose({ submit, cancel })
             <span>{{ event.view.class_label }} · {{ event.view.enrolled }} 名学生</span>
             <AppButton variant="secondary" :disabled="publishedTokens.has(event.view.token)" @click="pendingPublication = event.view">{{ publishedTokens.has(event.view.token) ? '已发布' : '核对发布计划' }}</AppButton>
           </div>
+          <div v-else-if="event.view.kind === 'cat_inspection'">
+            <strong>题库结构验证通过</strong>
+            <p>{{ event.view.item_count }} 道题 · {{ event.view.dimension_count }} 个维度 · {{ event.view.attachment_has_config ? '包含方案配置' : '可选学校合成工程模板' }}</p>
+          </div>
+          <WorkspaceCatDraft v-else-if="event.view.kind === 'cat_draft'" :draft="catReceipts.get(event.view.draft_ref) || event.view" :administrator="false" :busy="catBusy" @action="handleCat" />
+          <div v-else-if="event.view.kind === 'cat_drafts' || event.view.kind === 'cat_handoffs'">
+            <p v-if="!event.view.drafts.length">当前没有可查看的 CAT 草案</p>
+            <WorkspaceCatDraft v-for="draft in event.view.drafts" :key="draft.draft_ref" :draft="catReceipts.get(draft.draft_ref) || draft" :administrator="event.view.kind === 'cat_handoffs'" :busy="catBusy" @action="handleCat" />
+          </div>
           <AppButton v-else-if="event.view.kind === 'roster_import'" variant="secondary" @click="panel = 'roster'">打开名单预览</AppButton>
           <AppButton v-else-if="event.view.kind === 'workflow'" variant="secondary" @click="panel = event.view.workflow">打开{{ panelLabels[event.view.workflow] }}</AppButton>
           <AppButton v-else-if="event.view.kind === 'markdown'" variant="secondary" @click="download(event.view.filename, event.view.markdown)">下载 {{ event.view.filename }}</AppButton>
@@ -320,12 +389,18 @@ defineExpose({ submit, cancel })
   </AppDialog>
   <AppDialog :open="Boolean(pendingPublication)" title="确认发布学校测评" @update:open="(open) => { if (!open && !publicationBusy) pendingPublication = undefined }">
     <template v-if="pendingPublication">
-      <p>学校默认合成测评 · {{ pendingPublication.class_label }}</p>
+      <p>{{ pendingPublication.plan_label || '学校默认合成测评' }} · {{ pendingPublication.class_label }}</p>
       <p>开放 {{ new Date(pendingPublication.opens_at).toLocaleString('zh-CN') }}</p>
       <p>截止 {{ new Date(pendingPublication.due_at).toLocaleString('zh-CN') }}</p>
       <p>当前班级 {{ pendingPublication.enrolled }} 名学生</p>
     </template>
     <div class="agent-thread__inline"><AppButton variant="secondary" :disabled="publicationBusy" @click="pendingPublication = undefined">返回</AppButton><AppButton :loading="publicationBusy" @click="publishTask">确认发布</AppButton></div>
+  </AppDialog>
+  <AppDialog :open="Boolean(pendingCat)" :title="pendingCat?.action === 'approve' ? '批准合成施测并交接' : '确认保存 CAT 草案'" @update:open="(open) => { if (!open && !catBusy) pendingCat = undefined }">
+    <p v-if="pendingCat">{{ pendingCat.draft.plan_name }} · {{ pendingCat.draft.class_designation }}</p>
+    <p v-if="pendingCat?.action === 'approve'">本次批准限合成工程施测。班级和时间由学校管理员核对并发布</p>
+    <p v-else>将保存题库和方案的首版。保存后可以审阅合成施测资格</p>
+    <div class="agent-thread__inline"><AppButton variant="secondary" :disabled="catBusy" @click="pendingCat = undefined">返回</AppButton><AppButton :loading="catBusy" @click="confirmCat">{{ pendingCat?.action === 'approve' ? '确认批准并交接' : '确认保存' }}</AppButton></div>
   </AppDialog>
 </template>
 

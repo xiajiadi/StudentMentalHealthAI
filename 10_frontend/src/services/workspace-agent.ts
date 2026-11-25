@@ -1,4 +1,4 @@
-/* global AbortSignal, TextDecoder */
+/* global AbortSignal, Blob, TextDecoder */
 
 import { realApiProvider } from './real-api'
 
@@ -47,12 +47,29 @@ export type TaskPublicationPreview = {
   due_at: string
   enrolled: number
   token: string
+  plan_label?: string | null
+}
+export type CatDraft = {
+  kind: 'cat_draft'
+  draft_ref: string
+  state: 'PREVIEW' | 'SAVED' | 'APPROVED' | 'PUBLISHED'
+  plan_name: string
+  class_designation: string
+  opens_at: string
+  due_at: string
+  configuration: 'attachment' | 'school_template'
+  item_count: number
+  min_items: number
+  max_items: number
 }
 export type WorkspaceAgentView =
   | { kind: 'student_tasks' | 'class_progress' | 'review_tasks' | 'school_tasks' | 'school_student_counts'; rows: WorkspaceAgentRow[]; total: number; class_count?: number; active?: number; artifact?: { filename: string; markdown: string } }
   | { kind: 'assessment_picker'; task_ref: string; due_at: string | null }
   | { kind: 'preview_class'; class_ref: string; token: string }
   | TaskPublicationPreview
+  | CatDraft
+  | { kind: 'cat_inspection'; item_count: number; dimension_count: number; attachment_has_config: boolean }
+  | { kind: 'cat_drafts' | 'cat_handoffs'; drafts: CatDraft[] }
   | { kind: 'roster_import' }
   | { kind: 'workflow'; workflow: WorkflowPanel }
   | { kind: 'markdown'; filename: string; markdown: string }
@@ -82,14 +99,33 @@ export async function confirmWorkspacePublication(token: string) {
   return (await response.json()).data as { task_ref: string; status: string }
 }
 
+export async function uploadWorkspaceCat(file: Blob, signal: AbortSignal) {
+  const response = await realApiProvider.requestWorkspaceConversation('cat-attachment', file, signal)
+  return (await response.json()).data as { ref: string }
+}
+
+export async function updateWorkspaceCat(draftRef: string, action: 'save' | 'approve') {
+  const response = await realApiProvider.requestWorkspaceConversation(
+    action === 'save' ? 'save-cat-draft' : 'approve-cat-draft', { draft_ref: draftRef },
+  )
+  return (await response.json()).data as CatDraft
+}
+
+export async function previewWorkspaceCatHandoff(ref: string) {
+  const response = await realApiProvider.requestWorkspaceConversation('preview-cat-handoff', { handoff_ref: ref })
+  return (await response.json()).data as TaskPublicationPreview
+}
+
 export async function sendWorkspaceTurn(
   text: string,
   attachment: WorkspaceAttachment | undefined,
   onEvent: (event: WorkspaceEvent) => void,
   signal: AbortSignal,
+  catAttachmentRef?: string,
 ) {
   const response = await realApiProvider.requestWorkspaceConversation('turn', {
     text, synthetic_only: true, ...(attachment ? { attachment } : {}),
+    ...(catAttachmentRef ? { cat_attachment_ref: catAttachmentRef } : {}),
   }, signal)
   if (!response.body) throw new Error('连接未返回会话数据')
   const reader = response.body.getReader()

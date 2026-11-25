@@ -1,4 +1,4 @@
-/* global AbortSignal, Headers, URL */
+/* global AbortSignal, Blob, Headers, URL */
 
 import {
   createAssessment,
@@ -1455,8 +1455,9 @@ export class RealApiProvider implements FrontendApi {
   }
 
   async requestWorkspaceConversation(
-    operation: 'history' | 'turn' | 'reset' | 'confirm-publication',
-    body?: { text: string; synthetic_only: true; attachment?: 'student_roster' | 'cat_bank' } | { token: string },
+    operation: 'history' | 'turn' | 'reset' | 'confirm-publication' | 'cat-attachment'
+      | 'save-cat-draft' | 'approve-cat-draft' | 'preview-cat-handoff',
+    body?: object,
     signal?: AbortSignal,
   ): Promise<Response> {
     const apiOrigin = new URL(apiBaseUrl, window.location.href)
@@ -1468,7 +1469,7 @@ export class RealApiProvider implements FrontendApi {
     const response = await fetch(base, {
       method: operation === 'history' ? 'GET' : 'POST',
       credentials: 'include', cache: 'no-store', headers, signal,
-      ...(body ? { body: JSON.stringify(body) } : {}),
+      ...(body ? { body: operation === 'cat-attachment' ? body as Blob : JSON.stringify(body) } : {}),
     })
     if (!response.ok) {
       const problem = await response.json().catch(() => ({}))

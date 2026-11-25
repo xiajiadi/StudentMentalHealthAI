@@ -9,15 +9,31 @@ from time import time
 from uuid import uuid4
 
 from smhai_backend.core.errors import ErrorCode, error
+from smhai_backend.core.idempotency import fingerprint
+from smhai_backend.domains.models import Actor
+
+from .workspace_agent_cat_store import WorkspaceCatStore
 
 _RETENTION_SECONDS = 7 * 24 * 60 * 60
 _LEASE_SECONDS = 210
 _MAX_EVENTS = 160
 
 
+def workspace_owner(actor: Actor) -> str:
+    return fingerprint(
+        {
+            "actor": actor.user_id,
+            "school": actor.school_id,
+            "school_ref": actor.school_ref,
+            "role": actor.role.value,
+        }
+    )
+
+
 class WorkspaceHistory:
     def __init__(self, path: str) -> None:
         self.path = path
+        self.cat = WorkspaceCatStore(path)
         with closing(self.connect()) as db, db:
             db.execute(
                 """CREATE TABLE IF NOT EXISTS workspace_history (

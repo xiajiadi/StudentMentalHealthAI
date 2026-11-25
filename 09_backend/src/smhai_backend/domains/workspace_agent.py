@@ -181,7 +181,11 @@ def _ensure_demo_admin(request: Request, actor: Actor) -> None:
 
 
 def _signature(
-    request: Request, actor: Actor, content: str, *, purpose: str = "workspace-agent/create-class/v1"
+    request: Request,
+    actor: Actor,
+    content: str,
+    *,
+    purpose: str = "workspace-agent/create-class/v1",
 ) -> str:
     session = request.state.session
     settings = request.app.state.container.settings

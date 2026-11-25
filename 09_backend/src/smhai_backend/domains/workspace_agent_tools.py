@@ -16,6 +16,7 @@ from smhai_backend.core.errors import ErrorCode, error
 from smhai_backend.domains.models import Actor, BackendRole
 from smhai_backend.domains.school_directory.schemas import SchoolDirectoryDto
 
+from . import workspace_agent_cat as cat_workflow
 from .workspace_agent import _ensure_demo_admin, _signature, _snapshot
 from .workspace_agent_publishing import TaskPreview
 from .workspace_agent_publishing import preview as preview_publication
@@ -108,6 +109,39 @@ TOOLS = {
         "List tasks the specialist is authorized to review, without results.",
         (SPECIALIST,),
     ),
+    "inspect_cat_attachment": Tool(
+        "验证合成 CAT 题库",
+        "Validate a private school GRM JSON attachment using the real CAT engine. "
+        "This is read-only and returns item counts and whether a configuration was supplied.",
+        (SPECIALIST,),
+    ),
+    "prepare_cat_draft": Tool(
+        "准备 CAT 方案和任务草案",
+        "Prepare a private task handoff using the validated CAT file. Requires a class "
+        "designation, plan name and deadline with timezone. Use attachment configuration "
+        "when present, otherwise show the existing school engineering template in the "
+        "preview. The specialist must separately confirm saving and synthetic eligibility. "
+        "Only a school administrator can publish the task.",
+        (SPECIALIST,),
+        cat_workflow.CatDraftProposal,
+    ),
+    "list_cat_drafts": Tool(
+        "查找我的 CAT 草案",
+        "Resume a CAT handoff and check its real status after a specialist approval.",
+        (SPECIALIST,),
+    ),
+    "list_cat_handoffs": Tool(
+        "查找已批准的 CAT 任务交接",
+        "List synthetic school CAT task handoffs already approved by this school's specialist.",
+        (ADMIN,),
+    ),
+    "preview_cat_publication": Tool(
+        "核对 CAT 任务发布",
+        "Prepare a confirmation for a specific handoff from list_cat_handoffs. "
+        "The class, dates and approved CAT version come from the handoff.",
+        (ADMIN,),
+        cat_workflow.CatHandoffSelection,
+    ),
     "school_tasks": Tool(
         "查询学校测评任务",
         "Read this school's published tasks and enrollment totals.",
@@ -191,9 +225,34 @@ def _date(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
 
 
-async def execute_tool(request: Request, actor: Actor, name: str, arguments: BaseModel):
+async def preview_cat_handoff(request: Request, actor: Actor, ref: str):
+    return await preview_publication(
+        request, actor, None, class_alias=lambda key: _alias("class", key), handoff_ref=ref
+    )
+
+
+async def execute_tool(
+    request: Request,
+    actor: Actor,
+    name: str,
+    arguments: BaseModel,
+    *,
+    cat_attachment_ref: str | None = None,
+):
     """Return (browser component, model data). Only explicitly projected fields leave."""
     container = request.app.state.container
+    if name == "inspect_cat_attachment":
+        return await cat_workflow.inspect(request, actor, cat_attachment_ref)
+    if name == "prepare_cat_draft" and isinstance(arguments, cat_workflow.CatDraftProposal):
+        return await cat_workflow.prepare(request, actor, arguments, cat_attachment_ref)
+    if name == "list_cat_drafts":
+        return cat_workflow.drafts(request, actor)
+    if name == "list_cat_handoffs":
+        return cat_workflow.handoffs(request, actor)
+    if name == "preview_cat_publication" and isinstance(
+        arguments, cat_workflow.CatHandoffSelection
+    ):
+        return await preview_cat_handoff(request, actor, arguments.handoff_ref)
     if name in {"list_student_assessments", "review_tasks", "school_tasks"}:
         snapshot = await _snapshot(request, actor, limit=24)
         rows = [row.model_dump(mode="json") for row in snapshot.rows]

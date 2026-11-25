@@ -339,7 +339,9 @@ function selectCatBank(file: File) {
   }
   catFile.value = file
   attachmentError.value = ''
-  if (!command.value.trim()) command.value = '帮我在当前会话中打开并检查这份 CAT 题库'
+  if (!command.value.trim()) command.value = /\.json$/i.test(file.name)
+    ? '帮我验证这份合成 CAT 题库'
+    : '请打开独立 CAT 工作台，核对我选中的 CSV'
 }
 
 const acceptsPrivateFile = computed(() => agentMode.value
@@ -472,6 +474,7 @@ function dateLabel(value: string) {
         </div>
         <div v-if="agentMode && (rosterFile || catFile)" class="workspace-agent__receipt">
           <span>{{ (rosterFile || catFile)?.name }}</span>
+          <AppButton v-if="catFile" variant="quiet" :disabled="agentBusy" @click="workspaceAgent?.openIndependentCat()">打开独立 CAT 工作台</AppButton>
           <AppButton variant="quiet" :disabled="agentBusy" @click="rosterFile = undefined; catFile = undefined">移除附件</AppButton>
         </div>
       </form>

@@ -2,6 +2,7 @@
 
 import json
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -16,6 +17,7 @@ FIRST = "PUBLICDEMO_" + "a" * 64
 SECOND = "PUBLICDEMO_" + "b" * 64
 ACCOUNT = "workspace-qa"
 PASSWORD = "qa-only-synthetic-password"
+FIXTURES = Path(__file__).resolve().parents[2] / "01_cat-engine" / "fixtures"
 
 
 @pytest.fixture
@@ -426,3 +428,178 @@ async def test_teacher_export_comes_from_scoped_database_counts(client, model_la
     assert view["artifact"]["filename"] == "class-assessment-progress.md"
     assert "任务完成率：40.0%" in view["artifact"]["markdown"]
     assert "must-not-leak" not in view["artifact"]["markdown"]
+
+
+async def test_cat_file_plan_approval_and_school_publication(
+    client, app, tools, model_lane, monkeypatch
+):
+    model, _ = model_lane
+    base = f"{BASE}/conversation"
+    headers = await login(client)
+    await select(client, headers, "PSYCHOLOGICAL_SPECIALIST")
+    bank = json.loads((FIXTURES / "synthetic_item_bank.v1.json").read_text(encoding="utf-8"))
+    config = json.loads((FIXTURES / "demo_cat_config.v1.json").read_text(encoding="utf-8"))
+    response = await client.post(
+        f"{base}/cat-attachment",
+        headers=headers,
+        json={"bank_document": bank, "config_document": config},
+    )
+    assert response.status_code == 201
+    upload_ref = response.json()["data"]["ref"]
+    now = datetime.now(UTC)
+    due = now + timedelta(days=3)
+    stamp = now.isoformat()
+    bid = "CBVER_10000000-0000-0000-0000-000000000000"
+    pid = "CPVER_10000000-0000-0000-0000-000000000000"
+    aid = "CACT_10000000-0000-0000-0000-000000000000"
+    flags = {"engineering_only": True, "psychological_interpretation_allowed": False}
+    bank_count = len(bank["items"])
+    version = {"version_number": 1, "created_at": stamp}
+    meta = {"created_at": stamp, "updated_at": stamp, "revision": 1, "status": "ACTIVE"}
+    activation = {
+        "activation_ref": aid,
+        "plan_version_ref": pid,
+        "bank_version_ref": bid,
+        "plan_name": "合成验收方案",
+        "bank_name": "合成验收题库",
+        "plan_version_number": 1,
+        "bank_version_number": 1,
+        "status": "ACTIVE",
+        "revision": 1,
+        "created_at": stamp,
+        "revoked_at": None,
+    }
+    assets = SimpleNamespace(
+        validate_documents=AsyncMock(
+            return_value=SimpleNamespace(
+                item_count=bank_count,
+                dimension_count=1,
+                config_document=config,
+            )
+        ),
+        create_bank=AsyncMock(
+            return_value={
+                **flags,
+                "version_ref": bid,
+                "bank": {
+                    **meta,
+                    "bank_ref": "CBANK_10000000-0000-0000-0000-000000000000",
+                    "display_name": "合成验收题库",
+                    "versions": [
+                        {
+                            **version,
+                            "version_ref": bid,
+                            "item_count": bank_count,
+                            "dimension_count": 1,
+                        },
+                    ],
+                },
+            }
+        ),
+        create_plan=AsyncMock(
+            return_value={
+                **flags,
+                "version_ref": pid,
+                "plan": {
+                    **meta,
+                    "plan_ref": "CPLAN_10000000-0000-0000-0000-000000000000",
+                    "display_name": "合成验收方案",
+                    "versions": [{**version, "version_ref": pid}],
+                },
+            }
+        ),
+        create_activation=AsyncMock(return_value={**flags, "activation": activation}),
+        list_activations=AsyncMock(
+            return_value={
+                **flags,
+                "items": [activation],
+                "has_more": False,
+            }
+        ),
+    )
+    monkeypatch.setattr(app.state.container, "cat_assets", assets)
+    model.side_effect = [
+        assistant_step(tool="inspect_cat_attachment"),
+        assistant_step(
+            tool="prepare_cat_draft",
+            arguments=json.dumps(
+                {
+                    "plan_name": "合成验收方案",
+                    "class_designation": "合成班",
+                    "due_at": due.isoformat(),
+                    "configuration": "attachment",
+                }
+            ),
+        ),
+        assistant_step(text="已准备方案草案"),
+    ]
+    response = await client.post(
+        f"{base}/turn",
+        headers=headers,
+        json={
+            "text": "请校验附件并给合成班准备测评方案",
+            "synthetic_only": True,
+            "attachment": "cat_bank",
+            "cat_attachment_ref": upload_ref,
+        },
+    )
+    events = [json.loads(line) for line in response.text.splitlines()]
+    views = [event["view"] for event in events if event["type"] == "tool_result"]
+    assert [view["kind"] for view in views] == ["cat_inspection", "cat_draft"]
+    assert views[0]["item_count"] == bank_count
+    assert views[1]["state"] == "PREVIEW"
+    for call in model.await_args_list:
+        prompt = json.dumps(call.args[0], ensure_ascii=False)
+        assert bank["items"][0]["stem"] not in prompt
+        assert upload_ref not in prompt
+    draft = {"draft_ref": views[1]["draft_ref"]}
+    assets.create_bank.assert_not_awaited()
+    assert (
+        await client.post(f"{base}/approve-cat-draft", headers=headers, json=draft)
+    ).status_code == 409
+    saved = await client.post(f"{base}/save-cat-draft", headers=headers, json=draft)
+    assert saved.json()["data"]["state"] == "SAVED"
+    assets.create_activation.assert_not_awaited()
+    approved = await client.post(f"{base}/approve-cat-draft", headers=headers, json=draft)
+    assert approved.json()["data"]["state"] == "APPROVED"
+    assets.create_activation.assert_awaited_once()
+    assert tools.publish_task.await_count == 0
+    assert (
+        await client.post(
+            f"{base}/preview-cat-handoff",
+            headers=headers,
+            json={"handoff_ref": draft["draft_ref"]},
+        )
+    ).status_code == 403
+    await select(client, headers, "ADMIN", SECOND)
+    assert (
+        await client.post(
+            f"{base}/preview-cat-handoff",
+            headers=headers,
+            json={"handoff_ref": draft["draft_ref"]},
+        )
+    ).status_code == 404
+    await select(client, headers, "ADMIN")
+    preview = await client.post(
+        f"{base}/preview-cat-handoff",
+        headers=headers,
+        json={"handoff_ref": draft["draft_ref"]},
+    )
+    assert preview.status_code == 200
+    assert preview.json()["data"]["class_ref"] == "QA-class"
+    assert preview.json()["data"]["plan_label"] == "合成验收方案"
+    tools.publish_task.return_value["activation_ref"] = aid
+    tools.publish_task.return_value["due_at"] = due
+    confirmed = await client.post(
+        f"{base}/confirm-publication",
+        headers=headers,
+        json={"token": preview.json()["data"]["token"]},
+    )
+    assert confirmed.status_code == 200
+    assert confirmed.json()["data"]["activation_ref"] == aid
+    assert tools.publish_task.await_args.kwargs["due_at"] == due
+    assert tools.publish_task.await_args.kwargs["activation_ref"] == aid
+    await select(client, headers, "PSYCHOLOGICAL_SPECIALIST")
+    replay = await client.post(f"{base}/save-cat-draft", headers=headers, json=draft)
+    assert replay.json()["data"]["state"] == "PUBLISHED"
+    assets.create_bank.assert_awaited_once()
