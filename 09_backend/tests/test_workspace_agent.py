@@ -560,6 +560,61 @@ async def test_school_library_tool_returns_only_counts(client, model_lane, monke
     assert json.loads(model.await_args.args[0][-1]["content"]) == {"total": 1, "chunks": 1}
 
 
+async def test_education_articles_only_reaches_model_for_selected_topics(client, model_lane):
+    model, _ = model_lane
+    url = f"{BASE}/conversation/turn"
+    headers = await login(client)
+    await select(client, headers, "TEACHER")
+    topic_query = {"text": "准备一份学习压力的班会活动", "synthetic_only": True}
+
+    async def model_step(messages, definitions, _context):
+        assert "read_education_articles" in {item["function"]["name"] for item in definitions}
+        if messages[-1]["role"] == "tool":
+            articles = json.loads(messages[-1]["content"])["articles"]
+            assert [article["id"] for article in articles] == ["stress"]
+            assert articles[0]["url"] == (
+                "https://www.who.int/zh/news-room/questions-and-answers/item/stress"
+            )
+            assert articles[0]["paragraphs"]
+            return assistant_step(text="可以从一个小步骤开始")
+        assert "安排一点休息" not in json.dumps(messages, ensure_ascii=False)
+        return assistant_step(
+            tool="read_education_articles", arguments='{"topics":["stress","stress"]}'
+        )
+
+    model.side_effect = model_step
+    response = await client.post(url, headers=headers, json=topic_query)
+    assert response.status_code == 200
+    events = [json.loads(line) for line in response.text.splitlines()]
+    views = [event["view"] for event in events if event["type"] == "tool_result"]
+    assert views == [{"kind": "education_articles", "topics": ["stress"]}]
+    assert events[-1]["status"] == "completed"
+
+    model.reset_mock()
+    model.side_effect = [
+        assistant_step(tool="read_education_articles", arguments='{"topics":["private_case"]}'),
+        assistant_step(text="看不到那份材料"),
+    ]
+    rejected = await client.post(url, headers=headers, json=topic_query)
+    events = [json.loads(line) for line in rejected.text.splitlines()]
+    assert [event["code"] for event in events if event["type"] == "tool_failed"] == [
+        "VALIDATION_FAILED"
+    ]
+    assert not any(event["type"] == "tool_result" for event in events)
+
+    await select(client, headers, "ADMIN")
+    model.side_effect = [
+        assistant_step(tool="read_education_articles", arguments='{"topics":["stress"]}'),
+        assistant_step(text="当前角色无法使用该工具"),
+    ]
+    forbidden = await client.post(url, headers=headers, json=topic_query)
+    events = [json.loads(line) for line in forbidden.text.splitlines()]
+    assert [event["code"] for event in events if event["type"] == "tool_failed"] == ["forbidden"]
+    assert "read_education_articles" not in {
+        item["function"]["name"] for item in model.call_args_list[-2].args[1]
+    }
+
+
 async def test_workspace_csv_summary_is_scoped_and_supplied_only_on_tool_call(client, model_lane):
     model, _ = model_lane
     summary = {

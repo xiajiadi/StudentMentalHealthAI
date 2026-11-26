@@ -69,6 +69,7 @@ export type WorkspaceAgentView =
   | { kind: 'assessment_picker'; task_ref: string; due_at: string | null }
   | { kind: 'feedback_index'; total: number }
   | { kind: 'feedback_picker'; feedback_ref: string }
+  | { kind: 'education_articles'; topics: string[] }
   | { kind: 'school_library_inventory'; total: number; chunks: number }
   | ({ kind: 'table_statistics' } & WorkspaceTableSummary)
   | { kind: 'preview_class'; class_ref: string; token: string }

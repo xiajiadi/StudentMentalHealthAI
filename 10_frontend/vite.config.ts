@@ -1,8 +1,12 @@
-import { defineConfig, type Plugin } from 'vite'
+import { defineConfig, searchForWorkspaceRoot, type Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
 import { createReadStream, readFileSync } from 'node:fs'
 import { fileURLToPath, URL } from 'node:url'
+
+const educationArticles = fileURLToPath(new URL(
+  '../09_backend/src/smhai_backend/domains/student_education_articles.json', import.meta.url,
+))
 
 function workspaceImageAssets(): Plugin {
   const directory = 'assets/ocr-v7'
@@ -49,6 +53,7 @@ export default defineConfig(() => {
       host: '127.0.0.1',
       port: 4173,
       proxy,
+      fs: { allow: [searchForWorkspaceRoot(process.cwd()), educationArticles] },
     },
     preview: {
       host: '127.0.0.1',
@@ -58,6 +63,7 @@ export default defineConfig(() => {
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),
+        '@student-education-articles': educationArticles,
       },
     },
   }

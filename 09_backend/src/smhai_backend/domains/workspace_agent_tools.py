@@ -23,6 +23,7 @@ from smhai_backend.domains.school_support.schemas import SupportCasePageDto, Sup
 
 from . import workspace_agent_cat as cat_workflow
 from .workspace_agent import _ensure_demo_admin, _signature, _snapshot
+from .workspace_agent_education import EducationTopic, student_education_articles
 from .workspace_agent_publishing import TaskPreview
 from .workspace_agent_publishing import preview as preview_publication
 from .workspace_agent_table import WorkspaceTableSummary
@@ -49,6 +50,10 @@ class StudentTask(Arguments):
 
 class PublishedFeedbackSelection(Arguments):
     selection: str = Field(pattern=r"^(latest|feedback-[a-f0-9]{12})$")
+
+
+class EducationTopics(Arguments):
+    topics: list[EducationTopic] = Field(min_length=1, max_length=3)
 
 
 class NewClass(Arguments):
@@ -98,6 +103,15 @@ TOOLS = {
         "and statistics or show the downloadable statistics CSV. Do not infer "
         "original values, column names, or relationships between rows from these aggregates.",
         (STUDENT, TEACHER),
+    ),
+    "read_education_articles": Tool(
+        "查阅心理科普资料",
+        "Read the relevant published PsyNova school education articles. Topics: emotions "
+        "for naming feelings, stress for study demands, sleep for everyday routines, "
+        "support for talking to a trusted adult. Use for general education or classroom "
+        "activities on these topics, never for personal diagnoses or assessments.",
+        (STUDENT, TEACHER, SPECIALIST),
+        EducationTopics,
     ),
     "list_student_assessments": Tool(
         "查询待完成测评",
@@ -317,6 +331,13 @@ async def execute_tool(
     if name == "inspect_attached_table" and table_summary is not None:
         data = table_summary.model_dump(mode="json")
         return {"kind": "table_statistics", **data}, data
+    if name == "read_education_articles" and isinstance(arguments, EducationTopics):
+        topics = list(dict.fromkeys(arguments.topics))
+        articles = student_education_articles()
+        return (
+            {"kind": "education_articles", "topics": topics},
+            {"articles": [articles[topic] for topic in topics]},
+        )
     if name == "inspect_school_library":
         path = library.library_path(actor.school_ref)
         records = await run_in_threadpool(library.list_documents, path)

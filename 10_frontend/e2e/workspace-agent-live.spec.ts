@@ -1,5 +1,7 @@
+/* global HTMLTextAreaElement */
 import { Buffer } from 'node:buffer'
 import { readFile } from 'node:fs/promises'
+import { URL } from 'node:url'
 import { expect, test, type Page } from '@playwright/test'
 
 const origin = process.env.PSYNOVA_AGENT_QA_ORIGIN
@@ -92,6 +94,49 @@ test('the public learner and teacher use live tools under their own roles', asyn
   expect(teacher.some((event) => event.view?.kind === 'class_progress')).toBe(true)
   expect(teacher.some((event) => event.view?.kind === 'student_tasks')).toBe(false)
   await expect(page.getByText(/授权班级测评进度 · /).last()).toBeVisible()
+})
+
+test('the learner retrieves published education on demand and keeps arithmetic independent', async ({ page }) => {
+  test.setTimeout(180_000)
+  await signIn(page)
+  await chooseRole(page, 'STUDENT', '/student/workspace')
+  const education = await ask(page, '学习压力这方面，PsyNova 有哪篇科普可以看看？', '发送消息')
+  expect(education.find((event) => event.view?.kind === 'education_articles')?.view.topics).toContain('stress')
+  const summary = page.getByText('忙不过来时，先找一个能做的小步骤', { exact: true }).last()
+  await summary.click()
+  await expect(page.getByRole('link', { name: '世界卫生组织｜压力', exact: true }).last())
+    .toHaveAttribute('href', 'https://www.who.int/zh/news-room/questions-and-answers/item/stress')
+  await page.reload()
+  await expect(summary).toBeVisible()
+  const math = await ask(page, '算一下 23 加 19，直接给出答案', '发送消息', false)
+  expect(math.some((event) => event.view?.kind === 'education_articles')).toBe(false)
+  expect(math.find((event) => event.type === 'answer')?.text).toContain('42')
+})
+
+test('the teacher combines verified class counts and education material in a classroom task', async ({ page }) => {
+  test.setTimeout(180_000)
+  await signIn(page)
+  await chooseRole(page, 'TEACHER', '/teacher/workspace')
+  const rawProgress = await page.request.get(origin + '/api/v1/school/teacher/task-progress')
+  expect(rawProgress.ok()).toBe(true)
+  const tasks = (await rawProgress.json()).data as { completed_count: number; active_enrollment_count: number }[]
+  const completions = tasks.reduce((sum, task) => sum + task.completed_count, 0)
+  const enrollments = tasks.reduce((sum, task) => sum + task.active_enrollment_count, 0)
+  const report = await ask(page,
+    '请给我可下载的班级测评进度简报，再参考平台关于学习压力的科普，另做一个五分钟班会活动的 Markdown 文件',
+    '发送任务',
+  )
+  const progress = report.find((event) => event.view?.kind === 'class_progress')?.view
+  expect(progress?.total).toBe(tasks.length)
+  expect(progress?.artifact?.markdown).toContain(`已提交人次：${completions}\n`)
+  expect(progress?.artifact?.markdown).toContain(`有效参测人次：${enrollments}\n`)
+  expect(report.find((event) => event.view?.kind === 'education_articles')?.view.topics).toContain('stress')
+  const activity = report.find((event) => event.view?.kind === 'markdown')?.view
+  expect(activity?.markdown).toMatch(/班会|活动/)
+  expect(activity?.markdown).toContain('世界卫生组织')
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: `下载 ${activity.filename}`, exact: true }).last().click()
+  expect(await readFile((await download).path(), 'utf8')).toBe(activity.markdown)
 })
 
 test('published school feedback is read in the learner conversation over the private route', async ({ page }) => {

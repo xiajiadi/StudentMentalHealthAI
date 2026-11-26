@@ -10,6 +10,7 @@ import WorkspaceAnswer from './WorkspaceAnswer.vue'
 import WorkspaceCatDraft from './WorkspaceCatDraft.vue'
 import { frontendApi } from '@/services/mock-api'
 import { supportCaseStates, supportCategories, type TeacherReferral } from '@/services/school-support'
+import { articlesForTopics } from '@/services/student-education'
 import type { WorkspaceTableSummary } from '@/services/workspace-table'
 import {
   confirmWorkspacePublication, loadWorkspaceConversation, resetWorkspaceConversation,
@@ -408,6 +409,13 @@ defineExpose({ submit, cancel, openIndependentCat, openSchoolLibrary })
             <AppButton v-if="event.view.total" variant="secondary" @click="openFeedback()">在会话中查看反馈</AppButton>
           </template>
           <AppButton v-else-if="event.view.kind === 'feedback_picker'" variant="secondary" @click="openFeedback(event.view.feedback_ref)">在会话中阅读反馈</AppButton>
+          <div v-else-if="event.view.kind === 'education_articles'" class="agent-thread__sources">
+            <details v-for="article in articlesForTopics(event.view.topics)" :key="article.id">
+              <summary>{{ article.title }}</summary>
+              <p v-for="paragraph in article.paragraphs" :key="paragraph">{{ paragraph }}</p>
+              <a :href="article.url" target="_blank" rel="noopener noreferrer">{{ article.source }}</a>
+            </details>
+          </div>
           <template v-else-if="event.view.kind === 'school_library_inventory'">
             <strong>本校资料库 · {{ event.view.total }} 份资料</strong>
             <small>{{ event.view.chunks }} 个可检索片段</small>
@@ -534,5 +542,9 @@ defineExpose({ submit, cancel, openIndependentCat, openSchoolLibrary })
 .agent-thread__rows { display: grid; gap: 4px; list-style: none; padding: 0; margin: 0; }
 .agent-thread__rows li { display: flex; gap: 8px 14px; align-items: center; flex-wrap: wrap; border-top: 1px solid var(--color-border); padding-top: 7px; }
 .agent-thread__rows li small { color: var(--color-text-secondary); }
+.agent-thread__sources { display: grid; gap: 8px; overflow-wrap: anywhere; }
+.agent-thread__sources summary { font-weight: 600; cursor: pointer; }
+.agent-thread__sources p { margin: 7px 0; }
+.agent-thread__sources a { color: var(--color-primary-active); text-decoration: underline; }
 .agent-thread__problem { color: var(--color-text-secondary); }
 </style>
