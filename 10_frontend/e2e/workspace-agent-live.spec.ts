@@ -344,6 +344,21 @@ test('a learner reads bar heights from an uploaded chart and sends only the revi
 
 test('a learner previews a handwritten formula privately and asks the model to solve the reviewed text', async ({ page }) => {
   test.setTimeout(180_000)
+  await page.addInitScript(() => {
+    const target = window as typeof window & { formulaPayload?: { signature: string; sourceName: boolean } }
+    const originalFetch = window.fetch.bind(window)
+    window.fetch = async (resource, options) => {
+      const location = typeof resource === 'string' ? resource : 'url' in resource ? resource.url : resource.href
+      if (location.endsWith('/conversation/formula-preview') && options?.body instanceof window.Blob) {
+        const bytes = new Uint8Array(await options.body.arrayBuffer())
+        target.formulaPayload = {
+          signature: Array.from(bytes.slice(0, 8), (byte) => byte.toString(16).padStart(2, '0')).join(''),
+          sourceName: new window.TextDecoder().decode(bytes).includes('synthetic-formula-private.png'),
+        }
+      }
+      return originalFetch(resource, options)
+    }
+  })
   await signIn(page)
   await chooseRole(page, 'STUDENT', '/student/workspace')
   await page.setViewportSize({ width: 390, height: 844 })
@@ -413,10 +428,10 @@ test('a learner previews a handwritten formula privately and asks the model to s
   const formula = await pending
   expect(formula.ok()).toBe(true)
   expect(formula.headers()['cache-control']).toBe('no-store')
-  const binary = formula.request().postDataBuffer()!
   expect(new URL(formula.url()).origin).toBe(origin)
-  expect(binary.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
-  expect(binary.includes(Buffer.from('synthetic-formula-private.png'))).toBe(false)
+  expect((await formula.request().allHeaders())['content-type']).toBe('application/octet-stream')
+  const encoded = await page.evaluate(() => (window as typeof window & { formulaPayload?: unknown }).formulaPayload)
+  expect(encoded).toEqual({ signature: '89504e470d0a1a0a', sourceName: false })
   await expect(editor).toHaveValue(/\\frac\s*\{\s*3\s*\}\s*\{\s*4\s*\}\s*\+\s*\\frac\s*\{\s*1\s*\}\s*\{\s*2\s*\}/)
   const after = await page.request.get(origin + '/api/v1/workspace-agent/conversation')
   expect((await after.json()).data.events).toEqual(historyBefore)
