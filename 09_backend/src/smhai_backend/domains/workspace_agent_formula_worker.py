@@ -53,6 +53,7 @@ def recognize(payload: bytes, model: Path) -> str:
     from tokenizers import Tokenizer
 
     pixels = _read_pixels(payload)
+    ort.disable_telemetry_events()
     options = ort.SessionOptions()
     options.intra_op_num_threads = 1
     options.inter_op_num_threads = 1
