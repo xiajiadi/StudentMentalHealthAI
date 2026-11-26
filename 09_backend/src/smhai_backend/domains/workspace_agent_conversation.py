@@ -5,11 +5,13 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import datetime, timedelta, timezone
+from tempfile import TemporaryFile
 from typing import Literal
 
 import structlog
 from database_layer.provenance import is_public_demo_school_ref
 from fastapi import APIRouter, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -17,6 +19,7 @@ from smhai_backend.core.errors import BackendError, ErrorCode, error
 from smhai_backend.core.request_context import current_request_context
 from smhai_backend.domains.auth.dependencies import CsrfActor, CurrentActor
 from smhai_backend.domains.models import Actor
+from smhai_backend.domains.school_research_sources import library
 
 from . import workspace_agent_cat as cat_workflow
 from .workspace_agent import _check_actor
@@ -38,6 +41,8 @@ from .workspace_agent_tools import (
 router = APIRouter(prefix="/workspace-agent/conversation", tags=["workspace-agent"])
 log = structlog.get_logger(__name__)
 _CHINA = timezone(timedelta(hours=8))
+_DOCUMENT_PREVIEW_BYTES = 5 * 1024 * 1024
+_DOCUMENT_PREVIEW_CHARACTERS = 12_000
 _SAFETY_ROLES = {STUDENT: "STUDENT", TEACHER: "TEACHER", SPECIALIST: "REVIEWER", ADMIN: "SYSTEM"}
 _SYSTEM = """You are PsyNova in a synthetic school workspace. Reply in the user's language.
 Use tools for actual business data. Never claim a write, import, assessment or professional review
@@ -68,6 +73,8 @@ the student and reviews the observations before submitting in the private suppor
 For a specialist organizing pending work, use professional_review_queue for assigned review
 records and specialist_support_status for support requests. Treat counts as workflow states.
 Keep personalized professional conclusions and plans in the human-led private workflows.
+For a specialist checking imported school material, use inspect_school_library. The private
+school library interface is available for reviewing, searching, and confirming imports.
 For a school CAT JSON attachment, use inspect_cat_attachment, then prepare_cat_draft if asked
 for a plan. Ask for the intended class or deadline if missing. Only a specialist can confirm
 saving and separately approve synthetic eligibility. An administrator can list approved CAT
@@ -76,7 +83,8 @@ CAT source documents remain on the school server. The independent CAT workbench 
 for other formats and simulations."""
 
 _LIVE_LOOKUPS = {
-    "class_progress", "list_cat_drafts", "list_cat_handoffs", "list_published_feedback",
+    "class_progress", "inspect_school_library", "list_cat_drafts", "list_cat_handoffs",
+    "list_published_feedback",
     "list_student_assessments", "make_class_progress_report", "open_published_feedback",
     "professional_review_queue", "review_tasks", "school_student_counts", "school_tasks",
     "specialist_support_status", "teacher_support_status",
@@ -436,6 +444,33 @@ async def conversation(request: Request, actor: CurrentActor):
 @router.post("/reset", status_code=204)
 async def reset(request: Request, actor: CsrfActor):
     _history(request, actor).reset(_owner(actor))
+
+
+@router.post("/document-preview/{kind}")
+async def preview_document(request: Request, kind: Literal["pdf", "docx"], actor: CsrfActor):
+    _history(request, actor)
+    request.app.state.container.rate_limiter.check("support", actor.user_id)
+    if request.headers.get("content-type") != "application/octet-stream":
+        raise error(ErrorCode.VALIDATION_FAILED, detail="binary document required")
+    if library.EXTRACTION_SLOTS.locked():
+        raise error(
+            ErrorCode.DEPENDENCY_UNAVAILABLE, detail="document preview is busy", retryable=True
+        )
+    async with library.EXTRACTION_SLOTS:
+        with TemporaryFile() as file:
+            size = 0
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > _DOCUMENT_PREVIEW_BYTES:
+                    raise error(ErrorCode.VALIDATION_FAILED, detail="document preview is too large")
+                await run_in_threadpool(file.write, chunk)
+            if size == 0:
+                raise error(ErrorCode.VALIDATION_FAILED, detail="empty document")
+            body = await run_in_threadpool(library.extract_document_text, file, f".{kind}")
+    return JSONResponse(
+        {"data": {"text": body[:_DOCUMENT_PREVIEW_CHARACTERS], "characters": len(body)}},
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.post("/confirm-publication")

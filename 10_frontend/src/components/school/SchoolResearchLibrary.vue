@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+/* global File, HTMLInputElement, BodyInit, DragEvent */
+import { onMounted, ref, watch } from 'vue'
 import { FileText, Upload } from '@lucide/vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppDialog from '@/components/app/AppDialog.vue'
@@ -9,7 +10,7 @@ type Document = { ref: string; title: string; layer: Layer; imported_at: string;
 type Match = { ref: string; title: string; layer: Layer; ordinal: number; text: string }
 const labels = { policy: '政策与实施', theory: '理论与研究', intervention: '预防与干预' }
 const endpoint = '/api/v1/school/research-sources/library'
-const props = defineProps<{ showResults: boolean; showEmpty: boolean }>()
+const props = defineProps<{ showResults: boolean; showEmpty: boolean; initialFile?: File }>()
 const showImport = defineModel<boolean>('showImport', { required: true })
 const emit = defineEmits<{ imported: [] }>()
 const maxFiles = 10
@@ -65,7 +66,7 @@ async function loadDocuments() {
   }
 }
 
-function chooseFiles(next: FileList | null | undefined) {
+function chooseFiles(next: ArrayLike<File> | null | undefined) {
   if (!next?.length) return
   message.value = ''
   problem.value = ''
@@ -77,6 +78,8 @@ function chooseFiles(next: FileList | null | undefined) {
   })
   if (files.length > maxFiles) problem.value = `每批最多 ${maxFiles} 个文件，已选中前 ${maxFiles} 个。`
 }
+
+watch(() => props.initialFile, (file) => { if (file) chooseFiles([file]) }, { immediate: true })
 
 function acceptDrop(event: DragEvent) {
   dragging.value = false

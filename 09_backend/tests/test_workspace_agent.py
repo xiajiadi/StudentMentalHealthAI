@@ -2,14 +2,17 @@
 
 import json
 from datetime import UTC, datetime, timedelta
+from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+from zipfile import ZipFile
 
 import pytest
 from pwdlib import PasswordHash
 
 from smhai_backend.domains.models import BackendRole, SchoolRoleContext, SyntheticUser
+from smhai_backend.domains.school_research_sources import library
 from smhai_backend.domains.workspace_agent_history import WorkspaceHistory
 
 BASE = "/api/v1/workspace-agent"
@@ -504,6 +507,57 @@ async def test_model_cannot_call_hidden_tool_and_can_recover(client, tools, mode
     assert events[-1]["status"] == "completed"
     assert model.await_args.args[0][-1]["content"] == '{"error": "forbidden"}'
     tools.create_class.assert_not_called()
+
+
+async def test_document_preview_extracts_private_text_without_entering_history(client, model_lane):
+    model, _ = model_lane
+    source = BytesIO()
+    paragraphs = ["Private sample from an isolated document", "测评用合成段落" * 2000]
+    with ZipFile(source, "w") as writer:
+        writer.writestr(
+            "word/document.xml",
+            '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+            + "".join(f"<w:p><w:r><w:t>{text}</w:t></w:r></w:p>" for text in paragraphs)
+            + "</w:document>",
+        )
+    headers = await login(client)
+    await select(client, headers, "STUDENT")
+    binary = {**headers, "Content-Type": "application/octet-stream"}
+    url = f"{BASE}/conversation"
+    result = await client.post(
+        f"{url}/document-preview/docx", headers=binary, content=source.getvalue(),
+    )
+    assert result.status_code == 200
+    assert result.headers["cache-control"] == "no-store"
+    assert result.json()["data"]["text"].startswith(paragraphs[0])
+    assert len(result.json()["data"]["text"]) == 12_000
+    assert result.json()["data"]["characters"] == len("\n".join(paragraphs))
+    malformed = await client.post(f"{url}/document-preview/pdf", headers=binary, content=b"bad")
+    assert malformed.status_code >= 400
+    assert (await client.get(url)).json()["data"]["events"] == []
+    model.assert_not_awaited()
+
+
+async def test_school_library_tool_returns_only_counts(client, model_lane, monkeypatch, tmp_path):
+    model, _ = model_lane
+    monkeypatch.setenv("SMHAI_DEMO_LIBRARY_DIRECTORY", str(tmp_path))
+    with (tmp_path / "sample.txt").open("w+b") as source:
+        source.write(b"Worksheet material for the isolated fixture about revision planning.")
+        library.add_document(library.library_path(FIRST), "PRIVATE_TITLE.txt", source, "test")
+    model.side_effect = [
+        assistant_step(tool="inspect_school_library"),
+        assistant_step(text="已核对本校资料库"),
+    ]
+    headers = await login(client)
+    await select(client, headers, "PSYCHOLOGICAL_SPECIALIST")
+    result = await client.post(
+        f"{BASE}/conversation/turn",
+        headers=headers,
+        json={"text": "查看资料库数量", "synthetic_only": True},
+    )
+    assert "school_library_inventory" in result.text
+    assert "PRIVATE_TITLE" not in result.text
+    assert json.loads(model.await_args.args[0][-1]["content"]) == {"total": 1, "chunks": 1}
 
 
 async def test_teacher_referral_draft_is_private_and_does_not_submit(

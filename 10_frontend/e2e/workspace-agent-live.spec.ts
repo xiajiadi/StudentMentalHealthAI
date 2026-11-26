@@ -55,6 +55,26 @@ async function ask(page: Page, prompt: string, label: string, consentRequired = 
   return events.filter((event: { run_id: string }) => event.run_id === newestRun)
 }
 
+function textPdf(text: string): Buffer {
+  const stream = `BT /F1 12 Tf 72 700 Td (${text}) Tj ET\n`
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    `<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}endstream`,
+  ]
+  let pdf = '%PDF-1.4\n'
+  const offsets = objects.map((object, index) => {
+    const offset = Buffer.byteLength(pdf)
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`
+    return offset.toString().padStart(10, '0') + ' 00000 n \n'
+  })
+  const start = Buffer.byteLength(pdf)
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.join('')}trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${start}\n%%EOF\n`
+  return Buffer.from(pdf)
+}
+
 test('the public learner and teacher use live tools under their own roles', async ({ page }) => {
   test.setTimeout(180_000)
   await signIn(page)
@@ -151,6 +171,76 @@ test('a learner reads a synthetic worksheet image locally and asks the model abo
   const reply = await ask(page, `给出这道算式的结果\n\n${text}`, '发送消息')
   expect((await sent).postDataJSON()).toEqual({ text: `给出这道算式的结果\n\n${text}`, synthetic_only: true })
   expect(reply.find((event) => event.type === 'answer')?.text).toMatch(/\b15\b|十五/)
+})
+
+test('a learner extracts a PDF and sends only the selected worksheet excerpt', async ({ page }) => {
+  test.setTimeout(150_000)
+  await signIn(page)
+  await chooseRole(page, 'STUDENT', '/student/workspace')
+  const marker = 'WS_PRIVATE_SPAN_DO_NOT_SEND'
+  const extraction = page.waitForResponse((response) => response.url().endsWith('/document-preview/pdf'))
+  await page.locator('#workspace-agent-composer input[type="file"]').setInputFiles({
+    name: 'synthetic-text.pdf', mimeType: 'application/pdf',
+    buffer: textPdf(`Practice worksheet. Solve 13 + 29. Discard this footer ${marker}`),
+  })
+  const previewResponse = await extraction
+  expect(previewResponse.ok()).toBe(true)
+  expect(previewResponse.headers()['cache-control']).toBe('no-store')
+  const preview = page.getByRole('dialog', { name: '文档文字预览' })
+  const editor = preview.getByRole('textbox', { name: '提取的文字' })
+  await expect(editor).toHaveValue(new RegExp(marker))
+  const excerpt = '13 + 29'
+  await editor.evaluate((field, selected) => {
+    const input = field as HTMLTextAreaElement
+    const start = input.value.indexOf(selected)
+    input.setSelectionRange(start, start + selected.length)
+  }, excerpt)
+  await preview.getByRole('button', { name: '插入到输入框' }).click()
+  await expect(page.locator('#workspace-agent-input')).toHaveValue(excerpt)
+  const sent = page.waitForRequest((request) => request.url().endsWith('/workspace-agent/conversation/turn'))
+  const events = await ask(page, '请计算这个算式并给出结果\n\n' + excerpt, '发送消息')
+  const turn = await sent
+  expect(turn.postDataJSON()).toEqual({ text: '请计算这个算式并给出结果\n\n' + excerpt, synthetic_only: true })
+  expect(events.find((event) => event.type === 'answer')?.text).toMatch(/\b42\b|四十二/)
+  const history = await page.request.get(origin + '/api/v1/workspace-agent/conversation')
+  expect(await history.text()).not.toContain(marker)
+})
+
+test('a specialist confirms a PDF import and checks the real private library from chat', async ({ page }) => {
+  test.skip(process.env.PSYNOVA_AGENT_QA_WRITE !== '1', 'Requires a dedicated synthetic school')
+  test.setTimeout(180_000)
+  await signIn(page)
+  await chooseRole(page, 'PSYCHOLOGICAL_SPECIALIST', '/specialist/workspace')
+  const marker = 'workspaceworksheet' + Date.now().toString(36)
+  const title = 'synthetic-' + marker
+  const endpoint = origin + '/api/v1/school/research-sources/library/documents'
+  await page.locator('#workspace-agent-composer input[type="file"]').setInputFiles({
+    name: title + '.pdf', mimeType: 'application/pdf',
+    buffer: textPdf('Synthetic classroom reference for organizing revision work. ' + marker),
+  })
+  const preview = page.getByRole('dialog', { name: '文档文字预览' })
+  await expect(preview.getByRole('textbox', { name: '提取的文字' })).toHaveValue(new RegExp(marker))
+  await preview.getByRole('button', { name: '核对并入库' }).click()
+  const dialog = page.getByRole('dialog', { name: '导入资料' })
+  const submit = dialog.getByRole('button', { name: '批量导入' })
+  await expect(submit).toBeDisabled()
+  expect((await (await page.request.get(endpoint)).json()).data.items.some((item: { title: string }) => item.title === title)).toBe(false)
+  await dialog.getByRole('checkbox').check()
+  const importReceipt = page.waitForResponse((response) => response.url() === endpoint && response.request().method() === 'POST')
+  await submit.click()
+  expect((await importReceipt).status()).toBe(201)
+  await expect(page.getByRole('list', { name: '已导入的本校资料' }).getByText(title, { exact: true })).toBeVisible()
+  const inventory = (await (await page.request.get(endpoint)).json()).data.items as { title: string; chunk_count: number }[]
+  expect(inventory.some((item) => item.title === title && item.chunk_count > 0)).toBe(true)
+  const events = await ask(page, '查一下本校资料库现在有多少份资料，提取了多少个片段', '发送任务')
+  expect(events.find((event) => event.view?.kind === 'school_library_inventory')?.view).toMatchObject({
+    total: inventory.length, chunks: inventory.reduce((sum, item) => sum + item.chunk_count, 0),
+  })
+  expect(JSON.stringify(events)).not.toContain(marker)
+  await page.getByRole('button', { name: '查看本校资料库' }).last().click()
+  await page.getByRole('textbox', { name: '检索本校资料' }).fill(marker)
+  await page.getByRole('button', { name: '检索', exact: true }).click()
+  await expect(page.getByRole('list', { name: '匹配的资料片段' }).getByText(new RegExp(marker)).last()).toBeVisible()
 })
 
 test('a synthetic learner resumes and submits a real assessment inside the conversation', async ({ page }) => {

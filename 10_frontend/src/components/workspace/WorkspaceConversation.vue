@@ -28,6 +28,7 @@ const panels = {
   review: defineAsyncComponent(() => import('@/components/school/SpecialistTaskReviews.vue')),
   cat: defineAsyncComponent(() => import('@/components/school/SpecialistCatWorkspace.vue')),
   resources: defineAsyncComponent(() => import('@/components/school/SchoolResearchSourceCatalog.vue')),
+  library: defineAsyncComponent(() => import('@/components/school/SchoolResearchLibrary.vue')),
   support: defineAsyncComponent(() => import('@/views/school/SchoolSupportView.vue')),
   knowledge: defineAsyncComponent(() => import('@/views/student/StudentKnowledgeView.vue')),
   feedback: defineAsyncComponent(() => import('@/views/student/StudentFeedbackView.vue')),
@@ -35,7 +36,7 @@ const panels = {
   system: defineAsyncComponent(() => import('@/components/admin/AdminSystemHealth.vue')),
 }
 const panelLabels = {
-  review: '专业复核', cat: 'CAT 题库与方案', resources: '专业资料', support: '学校支持',
+  review: '专业复核', cat: 'CAT 题库与方案', resources: '专业资料', library: '本校资料库', support: '学校支持',
   knowledge: '心理知识', feedback: '测评反馈', roster: '学生名单导入',
   publish: '测评发布', system: '系统状态',
 }
@@ -64,6 +65,10 @@ const consentOpen = ref(false)
 const panel = ref<WorkflowPanel | 'roster'>()
 const feedbackRef = ref<string>()
 const reviewTaskRef = ref<string>()
+const libraryFile = ref<File>()
+const libraryImport = ref(false)
+const libraryQuery = ref('')
+const schoolLibrary = ref<{ search: (query: string) => Promise<void> }>()
 const referral = ref<{ key: string; draft: TeacherReferral }>()
 const assessmentTask = ref('')
 const assessmentId = ref('')
@@ -205,7 +210,17 @@ function openPanel(workflow?: WorkflowPanel) {
   referral.value = undefined
   feedbackRef.value = undefined
   reviewTaskRef.value = undefined
+  libraryFile.value = undefined
+  libraryImport.value = false
+  libraryQuery.value = ''
   panel.value = workflow
+}
+
+function openSchoolLibrary(file?: File) {
+  if (props.role !== 'psychological_specialist') return
+  openPanel('library')
+  libraryFile.value = file
+  libraryImport.value = Boolean(file)
 }
 
 function openFeedback(ref?: string) {
@@ -324,7 +339,7 @@ function download(filename: string, markdown: string) {
 
 function cancel() { runRequest?.abort() }
 function openIndependentCat() { panel.value = 'cat' }
-defineExpose({ submit, cancel, openIndependentCat })
+defineExpose({ submit, cancel, openIndependentCat, openSchoolLibrary })
 </script>
 
 <template>
@@ -369,6 +384,11 @@ defineExpose({ submit, cancel, openIndependentCat })
             <AppButton v-if="event.view.total" variant="secondary" @click="openFeedback()">在会话中查看反馈</AppButton>
           </template>
           <AppButton v-else-if="event.view.kind === 'feedback_picker'" variant="secondary" @click="openFeedback(event.view.feedback_ref)">在会话中阅读反馈</AppButton>
+          <template v-else-if="event.view.kind === 'school_library_inventory'">
+            <strong>本校资料库 · {{ event.view.total }} 份资料</strong>
+            <small>{{ event.view.chunks }} 个可检索片段</small>
+            <AppButton variant="secondary" @click="openSchoolLibrary()">查看本校资料库</AppButton>
+          </template>
           <div v-else-if="event.view.kind === 'preview_class'" class="agent-thread__inline">
             <span>{{ event.view.class_ref }}</span>
             <AppButton variant="secondary" :disabled="submittedClasses.has(event.view.token)" @click="pendingClass = event.view">{{ submittedClasses.has(event.view.token) ? '已创建' : '核对并确认' }}</AppButton>
@@ -442,6 +462,14 @@ defineExpose({ submit, cancel, openIndependentCat })
       <Roster v-if="panel === 'roster'" embedded-roster :initial-roster-file="rosterFile" />
       <component :is="panels.feedback" v-else-if="panel === 'feedback'" :key="feedbackRef || 'feedback'" embedded :initial-feedback-ref="feedbackRef" @support="openPanel('support')" />
       <component :is="panels.review" v-else-if="panel === 'review'" :key="reviewTaskRef || 'review'" :initial-task-ref="reviewTaskRef" />
+      <template v-else-if="panel === 'library'">
+        <form class="agent-thread__inline" @submit.prevent="schoolLibrary?.search(libraryQuery)">
+          <input v-model="libraryQuery" aria-label="检索本校资料" maxlength="160" placeholder="输入检索词" />
+          <AppButton type="submit" variant="secondary" :disabled="!libraryQuery.trim()">检索</AppButton>
+          <AppButton variant="quiet" @click="libraryImport = true">导入资料</AppButton>
+        </form>
+        <component :is="panels.library" ref="schoolLibrary" v-model:show-import="libraryImport" :show-results="true" :show-empty="true" :initial-file="libraryFile" />
+      </template>
       <component :is="latestPanel" v-else-if="latestPanel" :key="panel === 'support' ? referral?.key || panel : panel" v-bind="panel === 'support' ? { audience, initialReferral: referral?.draft } : panel === 'cat' ? { initialBankFile: catFile } : {}" />
     </AppCard>
   </section>

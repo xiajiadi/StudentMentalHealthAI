@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -23,6 +24,7 @@ from smhai_backend.core.errors import ErrorCode, error
 
 MAX_UPLOAD = 50 * 1024 * 1024
 MAX_DOCUMENTS = 32
+EXTRACTION_SLOTS = asyncio.Semaphore(2)
 _TERMS = re.compile(r"[\u3400-\u9fff]+|[^\W_]+", re.UNICODE)
 _LAYERS = {
     "policy": ("政策", "制度", "规范", "实施框架", "权益", "policy", "guideline", "framework", "implementation"),
@@ -40,7 +42,7 @@ def library_path(school_ref: str) -> Path:
     return Path(directory) / f"{name}.sqlite"
 
 
-def _extract(content: BinaryIO, suffix: str) -> str:
+def extract_document_text(content: BinaryIO, suffix: str) -> str:
     worker = Path(__file__).with_name("library_extract.py")
     args = [sys.executable, "-I", str(worker), suffix]
     if suffix == ".pdf" and (wheel := os.environ.get("SMHAI_DEMO_LIBRARY_PDF_WHEEL")):
@@ -124,7 +126,7 @@ def add_document(path: Path, filename: str, content: BinaryIO, reviewer_ref: str
         _require_capacity(db)
 
     title = Path(filename).stem
-    text = _extract(content, suffix)
+    text = extract_document_text(content, suffix)
     chunks = [text[start:start + 880].strip() for start in range(0, len(text), 780)]
     chunks = [chunk for chunk in chunks if chunk]
     document = (

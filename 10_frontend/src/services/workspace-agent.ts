@@ -38,7 +38,7 @@ export async function runWorkspaceAgent(
   return (await realApiProvider.requestWorkspaceAgent<WorkspaceAgentResult>(request, signal)).data
 }
 
-export type WorkflowPanel = 'review' | 'cat' | 'resources' | 'support' | 'knowledge' | 'feedback' | 'publish' | 'system'
+export type WorkflowPanel = 'review' | 'cat' | 'resources' | 'library' | 'support' | 'knowledge' | 'feedback' | 'publish' | 'system'
 export type WorkspaceAttachment = 'student_roster' | 'cat_bank'
 export type TaskPublicationPreview = {
   kind: 'preview_task'
@@ -68,6 +68,7 @@ export type WorkspaceAgentView =
   | { kind: 'assessment_picker'; task_ref: string; due_at: string | null }
   | { kind: 'feedback_index'; total: number }
   | { kind: 'feedback_picker'; feedback_ref: string }
+  | { kind: 'school_library_inventory'; total: number; chunks: number }
   | { kind: 'preview_class'; class_ref: string; token: string }
   | TaskPublicationPreview
   | CatDraft
@@ -108,6 +109,11 @@ export async function confirmWorkspacePublication(token: string) {
 export async function uploadWorkspaceCat(file: Blob, signal: AbortSignal) {
   const response = await realApiProvider.requestWorkspaceConversation('cat-attachment', file, signal)
   return (await response.json()).data as { ref: string }
+}
+
+export async function previewWorkspaceDocument(file: Blob, kind: 'pdf' | 'docx', signal: AbortSignal) {
+  const response = await realApiProvider.requestWorkspaceConversation(`document-preview/${kind}`, file, signal)
+  return (await response.json()).data as { text: string; characters: number }
 }
 
 export async function updateWorkspaceCat(draftRef: string, action: 'save' | 'approve') {

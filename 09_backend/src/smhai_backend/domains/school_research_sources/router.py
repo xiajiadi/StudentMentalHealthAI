@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import re
 from tempfile import TemporaryFile
 from typing import Any
@@ -24,7 +23,6 @@ from .schemas import ResearchSourceCatalogPageDto, ResearchSourceDetailDto
 router = APIRouter(prefix="/school/research-sources", tags=["school-research-sources"])
 _SOURCE_REF = r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
 _LIBRARY_REF = re.compile(r"LIB_[a-f0-9]{32}\Z")
-_UPLOAD_SLOTS = asyncio.Semaphore(2)
 
 
 def _library_path(request: Request, actor: CurrentActor):
@@ -67,9 +65,9 @@ async def import_library_document(request: Request, actor: CsrfActor):
         or not 1 <= len(encoded_name) <= 1800
     ):
         raise error(ErrorCode.VALIDATION_FAILED, detail="reviewed document is required")
-    if _UPLOAD_SLOTS.locked():
+    if library.EXTRACTION_SLOTS.locked():
         raise error(ErrorCode.DEPENDENCY_UNAVAILABLE, detail="document processing is busy", retryable=True)
-    async with _UPLOAD_SLOTS:
+    async with library.EXTRACTION_SLOTS:
         with TemporaryFile() as content:
             size = 0
             async for chunk in request.stream():

@@ -10,6 +10,7 @@ from typing import Literal
 from uuid import uuid4
 
 from fastapi import Request
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field
 
 from smhai_backend.core.errors import ErrorCode, error
@@ -17,6 +18,7 @@ from smhai_backend.domains.models import Actor, BackendRole
 from smhai_backend.domains.professional_reviews.schemas import ProfessionalReviewQueueTaskDto
 from smhai_backend.domains.school_directory.schemas import SchoolDirectoryDto
 from smhai_backend.domains.school_feedback.schemas import StudentFeedbackListDto
+from smhai_backend.domains.school_research_sources import library
 from smhai_backend.domains.school_support.schemas import SupportCasePageDto, SupportCategoryCode
 
 from . import workspace_agent_cat as cat_workflow
@@ -64,7 +66,8 @@ class ReferralDraft(Arguments):
 
 class Panel(Arguments):
     workflow: Literal[
-        "review", "cat", "resources", "support", "knowledge", "feedback", "publish", "system"
+        "review", "cat", "resources", "library", "support", "knowledge", "feedback",
+        "publish", "system",
     ]
 
 
@@ -163,6 +166,12 @@ TOOLS = {
         "case-specific notes and human plans. Workflow statuses are not risk findings.",
         (SPECIALIST,),
     ),
+    "inspect_school_library": Tool(
+        "核对本校资料库",
+        "Count active reviewed documents and indexed text fragments in this school's private "
+        "library. Titles, contents, and uploaded files are unavailable to the model.",
+        (SPECIALIST,),
+    ),
     "inspect_cat_attachment": Tool(
         "验证合成 CAT 题库",
         "Validate a private school GRM JSON attachment using the real CAT engine. "
@@ -232,8 +241,8 @@ TOOLS = {
     "open_workflow": Tool(
         "准备业务工作台",
         "Show an authorized embedded workflow: review and cat are for specialists, "
-        "resources for specialists, support for students, teachers and specialists, knowledge "
-        "and feedback for students, publish and system for school administrators. "
+        "resources and library for specialists, support for students, teachers and specialists, "
+        "knowledge and feedback for students, publish and system for school administrators. "
         "Content in the panel is private and does not go to the model.",
         _ALL,
         Panel,
@@ -250,6 +259,7 @@ _PANEL_ROLES = {
     "review": (SPECIALIST,),
     "cat": (SPECIALIST,),
     "resources": (SPECIALIST,),
+    "library": (SPECIALIST,),
     "support": (STUDENT, TEACHER, SPECIALIST),
     "knowledge": (STUDENT,),
     "feedback": (STUDENT,),
@@ -295,6 +305,13 @@ async def execute_tool(
 ):
     """Return (browser component, model data). Only explicitly projected fields leave."""
     container = request.app.state.container
+    if name == "inspect_school_library":
+        path = library.library_path(actor.school_ref)
+        records = await run_in_threadpool(library.list_documents, path)
+        summary = {
+            "total": len(records), "chunks": sum(record["chunk_count"] for record in records),
+        }
+        return {"kind": "school_library_inventory", **summary}, summary
     if name in {"list_published_feedback", "open_published_feedback"}:
         if container.school_feedback is None:
             raise error(ErrorCode.DEPENDENCY_UNAVAILABLE, detail="school feedback is unavailable")

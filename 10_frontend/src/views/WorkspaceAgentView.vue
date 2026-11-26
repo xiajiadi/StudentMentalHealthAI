@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/* global AbortController, DragEvent, Event, File, HTMLInputElement, KeyboardEvent, TextDecoder */
+/* global AbortController, DragEvent, Event, File, HTMLInputElement, HTMLTextAreaElement, KeyboardEvent, TextDecoder */
 import { computed, nextTick, onUnmounted, ref, watch, type Component } from 'vue'
 import { useRoute } from 'vue-router'
 import { ArrowUp, ArrowUpRight, BookOpen, CalendarDays, CalendarHeart, ChartNoAxesCombined, ChevronRight, ClipboardCheck, ClipboardList, FileCheck2, FileUp, FolderOpen, HeartHandshake, Inbox, Layers, MessagesSquare, Network, Paperclip, Plus, Send, Server, ShieldCheck, Sparkles, Square, UsersRound } from '@lucide/vue'
@@ -8,7 +8,7 @@ import AppCard from '@/components/app/AppCard.vue'
 import AppDialog from '@/components/app/AppDialog.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import AppTextarea from '@/components/app/AppTextarea.vue'
-import { educationTopics, runWorkspaceAgent, type EducationTopic, type WorkspaceAgentResult } from '@/services/workspace-agent'
+import { educationTopics, previewWorkspaceDocument, runWorkspaceAgent, type EducationTopic, type WorkspaceAgentResult } from '@/services/workspace-agent'
 import { useSessionStore } from '@/stores/session'
 import type { Role } from '@/types/contracts'
 import SupportChatView from '@/views/student/SupportChatView.vue'
@@ -126,9 +126,10 @@ const workspaceScope = computed(() => JSON.stringify([session.user?.userId, sess
 const maxCommandLength = computed(() => agentMode.value ? 3000 : role.value === 'student' ? 20000 : 160)
 const fileInput = ref<HTMLInputElement>()
 const attachmentOpen = ref(false)
-const attachment = ref<{ name: string; content: string; image?: boolean }>()
+type DocumentPreview = { file: File; characters: number; previewLength: number }
+const attachment = ref<{ name: string; content: string; image?: boolean; document?: DocumentPreview }>()
 const attachmentError = ref('')
-const attachmentReading = ref(false)
+const attachmentReading = ref<false | 'image' | 'document'>(false)
 const overview = ref<WorkspaceAgentResult | null>(null)
 const result = ref<WorkspaceAgentResult | null>(null)
 const overviewLoading = ref(false)
@@ -200,7 +201,7 @@ watch(workspaceScope, () => {
 watch(agentMode, (enabled) => {
   if (enabled) return
   cancelAttachmentRead()
-  if (attachment.value?.image) {
+  if (attachment.value?.image || attachment.value?.document) {
     attachmentOpen.value = false
     attachment.value = undefined
   }
@@ -319,12 +320,20 @@ async function openAttachment(file: File) {
   const request = new AbortController()
   attachmentRequest = request
   const image = agentMode.value && /\.(png|jpe?g|webp)$/i.test(file.name)
+  const kind = agentMode.value ? /\.(docx|pdf)$/i.exec(file.name)?.[1]?.toLowerCase() : undefined
   try {
     let content: string
+    let documentPreview: DocumentPreview | undefined
     if (image) {
-      attachmentReading.value = true
+      attachmentReading.value = 'image'
       const { readWorkspaceImage } = await import('@/services/workspace-image-text')
       content = await readWorkspaceImage(file, request.signal)
+    } else if (kind === 'pdf' || kind === 'docx') {
+      if (!file.size || file.size > 5 * 1024 * 1024) throw new Error('请选择不超过 5 MiB 的 PDF 或 DOCX')
+      attachmentReading.value = 'document'
+      const result = await previewWorkspaceDocument(file, kind, request.signal)
+      content = result.text
+      documentPreview = { file, characters: result.characters, previewLength: Array.from(content).length }
     } else {
       if (!/\.(txt|md|markdown)$/i.test(file.name) || file.size > 16 * 1024) {
         throw new Error('请选择不超过 16 KB 的 TXT 或 Markdown 文件')
@@ -335,7 +344,7 @@ async function openAttachment(file: File) {
       character.charCodeAt(0) < 32 && !['\t', '\r', '\n'].includes(character))
     if (!content || hasControlCharacter) throw new Error()
     if (!request.signal.aborted) {
-      attachment.value = { name: file.name, content, image }
+      attachment.value = { name: file.name, content, image, document: documentPreview }
       attachmentOpen.value = true
     }
   } catch (error) {
@@ -343,7 +352,8 @@ async function openAttachment(file: File) {
       const known = error instanceof Error && /^(请选择|图片中未识别到文字)/.test(error.message)
       attachmentError.value = known ? error.message : image
         ? '图片识别未能完成，请检查图片后重试'
-        : '无法读取文本，请检查文件是否为空或使用 UTF-8 编码'
+        : kind ? '无法提取文字，请检查文档是否可选取文字、受密码保护或损坏'
+          : '无法读取文本，请检查文件是否为空或使用 UTF-8 编码'
     }
   } finally {
     if (attachmentRequest === request) attachmentReading.value = false
@@ -352,15 +362,27 @@ async function openAttachment(file: File) {
 
 function insertAttachment() {
   if (!attachment.value || chatSending.value || chat.value?.needsRetry) return
-  const text = [command.value.trim(), attachment.value.content].filter(Boolean).join('\n\n')
+  const editor = document.getElementById('workspace-attachment-excerpt') as HTMLTextAreaElement | null
+  const selected = editor?.value.slice(editor.selectionStart, editor.selectionEnd).trim()
+  const text = [command.value.trim(), selected || attachment.value.content.trim()].filter(Boolean).join('\n\n')
   if (text.length > maxCommandLength.value) {
-    attachmentError.value = '内容超过输入框字数上限，请缩短后再试'
+    attachmentError.value = '内容超过输入框字数上限，请选中需要的段落后再试'
     return
   }
   command.value = text
   attachmentOpen.value = false
   attachment.value = undefined
   void nextTick(() => responseArea.value?.querySelector('textarea')?.focus())
+}
+
+async function reviewDocumentForLibrary() {
+  const file = attachment.value?.document?.file
+  if (role.value !== 'psychological_specialist' || !file) return
+  const scope = workspaceScope.value
+  attachmentOpen.value = false
+  attachment.value = undefined
+  await nextTick()
+  if (workspaceScope.value === scope) workspaceAgent.value?.openSchoolLibrary(file)
 }
 
 function selectRoster(file: File) {
@@ -388,7 +410,7 @@ function selectCatBank(file: File) {
 const attachmentFormats = computed(() => {
   const text = '.txt,.md,.markdown'
   if (!agentMode.value) return text
-  return text + ',.png,.jpg,.jpeg,.webp' + ({
+  return text + ',.png,.jpg,.jpeg,.webp,.pdf,.docx' + ({
     school_admin: ',.csv,.xlsx', psychological_specialist: ',.csv,.json', teacher: '', student: '',
   }[role.value])
 })
@@ -512,8 +534,8 @@ function dateLabel(value: string) {
           </AppButton>
         </div>
         <div v-if="attachmentReading" class="workspace-agent__receipt">
-          <span role="status">正在这台设备上识别文字</span>
-          <AppButton variant="quiet" @click="cancelAttachmentRead">取消识别</AppButton>
+          <span role="status">{{ attachmentReading === 'image' ? '正在这台设备上识别文字' : '正在学校服务中提取文字' }}</span>
+          <AppButton variant="quiet" @click="cancelAttachmentRead">取消处理</AppButton>
         </div>
         <div v-if="agentMode && (rosterFile || catFile)" class="workspace-agent__receipt">
           <span>{{ (rosterFile || catFile)?.name }}</span>
@@ -607,16 +629,18 @@ function dateLabel(value: string) {
     </AppDialog>
     <AppDialog
       :open="attachmentOpen"
-      :title="attachment?.image ? '图片文字预览' : '附件预览'"
-      :description="attachment?.image ? '文字在这台设备上识别。请核对内容并删除个人信息后再插入' : role === 'student' ? '请先检查内容，移除姓名、学号等个人信息' : '文件内容在当前页面预览'"
+      :title="attachment?.image ? '图片文字预览' : attachment?.document ? '文档文字预览' : '附件预览'"
+      :description="attachment?.image ? '文字在这台设备上识别。请核对内容并删除个人信息后再插入' : attachment?.document ? '可选中要交给智能体处理的段落。插入前请移除个人信息和未经授权的内容' : role === 'student' ? '请先检查内容，移除姓名、学号等个人信息' : '文件内容在当前页面预览'"
       @update:open="attachmentOpen = $event; if (!$event) attachment = undefined"
     >
       <strong>{{ attachment?.name }}</strong>
-      <AppTextarea v-if="attachment?.image" v-model="attachment.content" label="识别出的文字" :rows="5" :maxlength="3000" />
+      <small v-if="attachment?.document && attachment.document.characters > attachment.document.previewLength">显示前 {{ attachment.document.previewLength }} 字，共提取 {{ attachment.document.characters }} 字</small>
+      <AppTextarea v-if="attachment?.image || attachment?.document" id="workspace-attachment-excerpt" v-model="attachment.content" :label="attachment.image ? '识别出的文字' : '提取的文字'" :rows="5" :maxlength="attachment.image ? 3000 : 12000" />
       <pre v-else class="workspace-agent__attachment">{{ attachment?.content }}</pre>
       <p v-if="attachmentError" class="workspace-agent__error" role="alert">{{ attachmentError }}</p>
       <div class="workspace-agent__confirm">
         <AppButton variant="secondary" @click="attachmentOpen = false; attachment = undefined">关闭</AppButton>
+        <AppButton v-if="attachment?.document && role === 'psychological_specialist'" variant="secondary" @click="reviewDocumentForLibrary">核对并入库</AppButton>
         <AppButton v-if="role === 'student' || agentMode" @click="insertAttachment">插入到输入框</AppButton>
       </div>
     </AppDialog>

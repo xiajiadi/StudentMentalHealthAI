@@ -1456,7 +1456,8 @@ export class RealApiProvider implements FrontendApi {
 
   async requestWorkspaceConversation(
     operation: 'history' | 'turn' | 'reset' | 'confirm-publication' | 'cat-attachment'
-      | 'save-cat-draft' | 'approve-cat-draft' | 'preview-cat-handoff',
+      | 'save-cat-draft' | 'approve-cat-draft' | 'preview-cat-handoff'
+      | 'document-preview/pdf' | 'document-preview/docx',
     body?: object,
     signal?: AbortSignal,
   ): Promise<Response> {
@@ -1465,11 +1466,12 @@ export class RealApiProvider implements FrontendApi {
     if (operation !== 'history') base.pathname += '/' + operation
     const headers = new Headers({ Accept: operation === 'turn' ? 'application/x-ndjson' : 'application/json' })
     if (operation !== 'history') headers.set('X-CSRF-Token', await this.ensureCsrfToken())
-    if (body) headers.set('Content-Type', 'application/json')
+    const binaryPreview = operation.startsWith('document-preview/')
+    if (body) headers.set('Content-Type', binaryPreview ? 'application/octet-stream' : 'application/json')
     const response = await fetch(base, {
       method: operation === 'history' ? 'GET' : 'POST',
       credentials: 'include', cache: 'no-store', headers, signal,
-      ...(body ? { body: operation === 'cat-attachment' ? body as Blob : JSON.stringify(body) } : {}),
+      ...(body ? { body: operation === 'cat-attachment' || binaryPreview ? body as Blob : JSON.stringify(body) } : {}),
     })
     if (!response.ok) {
       const problem = await response.json().catch(() => ({}))
