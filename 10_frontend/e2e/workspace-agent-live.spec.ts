@@ -71,6 +71,47 @@ test('the public learner and teacher use live tools under their own roles', asyn
   await expect(page.getByText(/授权班级测评进度 · /).last()).toBeVisible()
 })
 
+test('a learner reads a synthetic worksheet image locally and asks the model about its text', async ({ page }) => {
+  test.setTimeout(180_000)
+  await signIn(page)
+  await chooseRole(page, 'STUDENT', '/student/workspace')
+  const image = await page.evaluate(() => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 820
+    canvas.height = 340
+    const context = canvas.getContext('2d')!
+    context.fillStyle = 'white'
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    context.fillStyle = 'black'
+    context.font = '72px Arial'
+    context.fillText('7 + 8', 80, 185)
+    return canvas.toDataURL('image/png').split(',')[1]
+  })
+  const imageBuffer = Buffer.from(image, 'base64')
+  const writes: string[] = []
+  const workerRequests: string[] = []
+  page.context().on('request', (request) => {
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method())) writes.push(new URL(request.url()).pathname)
+    if (request.url().includes('/assets/ocr-v7/')) workerRequests.push(request.url())
+  })
+  await page.locator('#workspace-agent-composer input[type="file"]').setInputFiles({
+    name: 'synthetic-worksheet.png', mimeType: 'image/png', buffer: imageBuffer,
+  })
+  const preview = page.getByRole('dialog', { name: '图片文字预览' })
+  await expect(preview).toBeVisible({ timeout: 60_000 })
+  await expect(preview.getByRole('textbox', { name: '识别出的文字' })).toHaveValue(/7\s*\+\s*8/)
+  expect(writes).toEqual([])
+  expect(workerRequests.some((url) => url.endsWith('/worker.min.js'))).toBe(true)
+  expect(workerRequests.every((url) => new URL(url).origin === origin)).toBe(true)
+  const composer = page.locator('#workspace-agent-input')
+  await preview.getByRole('button', { name: '插入到输入框' }).click()
+  const text = await composer.inputValue()
+  const sent = page.waitForRequest((request) => request.url().endsWith('/workspace-agent/conversation/turn'))
+  const reply = await ask(page, `给出这道算式的结果\n\n${text}`, '发送消息')
+  expect((await sent).postDataJSON()).toEqual({ text: `给出这道算式的结果\n\n${text}`, synthetic_only: true })
+  expect(reply.find((event) => event.type === 'answer')?.text).toMatch(/\b15\b|十五/)
+})
+
 test('a synthetic learner resumes and submits a real assessment inside the conversation', async ({ page }) => {
   test.skip(process.env.PSYNOVA_AGENT_QA_WRITE !== '1', 'Requires a dedicated synthetic school')
   test.setTimeout(270_000)

@@ -126,8 +126,9 @@ const workspaceScope = computed(() => JSON.stringify([session.user?.userId, sess
 const maxCommandLength = computed(() => agentMode.value ? 3000 : role.value === 'student' ? 20000 : 160)
 const fileInput = ref<HTMLInputElement>()
 const attachmentOpen = ref(false)
-const attachment = ref<{ name: string; content: string }>()
+const attachment = ref<{ name: string; content: string; image?: boolean }>()
 const attachmentError = ref('')
+const attachmentReading = ref(false)
 const overview = ref<WorkspaceAgentResult | null>(null)
 const result = ref<WorkspaceAgentResult | null>(null)
 const overviewLoading = ref(false)
@@ -146,6 +147,7 @@ const suggestedCommands = computed(() => {
 
 let overviewRequest: AbortController | undefined
 let taskRequest: AbortController | undefined
+let attachmentRequest: AbortController | undefined
 const taskPrompts: Record<WorkspaceRole, readonly string[]> = {
   student: ['看看我还有哪些测评要完成', '打开心理知识学习工作台', '打开学校心理支持入口', '帮我查看学校的支持渠道'],
   teacher: ['查看最近的班级测评完成情况', '帮我查一下班里有哪些测评任务和截止时间', '按任务汇总我们班的测评完成情况', '打开学生支持转介工作台'],
@@ -180,8 +182,10 @@ watch(workspaceScope, () => {
   confirmOpen.value = false
   examplesOpen.value = false
   chatSending.value = false
+  cancelAttachmentRead()
   attachmentOpen.value = false
   attachment.value = undefined
+  attachmentError.value = ''
   rosterFile.value = undefined
   catFile.value = undefined
   agentBusy.value = false
@@ -192,6 +196,15 @@ watch(workspaceScope, () => {
     overviewError.value = false
   }
 }, { immediate: true })
+
+watch(agentMode, (enabled) => {
+  if (enabled) return
+  cancelAttachmentRead()
+  if (attachment.value?.image) {
+    attachmentOpen.value = false
+    attachment.value = undefined
+  }
+})
 
 watch(() => [route.query.chat, route.query.conversation, route.query.history, route.query.topic, route.query.mode, workspaceScope.value], async () => {
   if (role.value !== 'student') return
@@ -211,6 +224,7 @@ watch(() => [route.query.chat, route.query.conversation, route.query.history, ro
 onUnmounted(() => {
   overviewRequest?.abort()
   taskRequest?.abort()
+  attachmentRequest?.abort()
 })
 
 async function sendChat(text: string) {
@@ -279,8 +293,19 @@ async function readAttachment(event: Event) {
   const file = input.files?.[0]
   if (!file) return
   input.value = ''
-  const scope = workspaceScope.value
+  await openAttachment(file)
+}
+
+function cancelAttachmentRead() {
+  attachmentRequest?.abort()
+  attachmentReading.value = false
+}
+
+async function openAttachment(file: File) {
+  cancelAttachmentRead()
   attachment.value = undefined
+  attachmentOpen.value = false
+  attachmentError.value = ''
   if (agentMode.value) {
     if (role.value === 'school_admin' && /\.(csv|xlsx)$/i.test(file.name)) {
       selectRoster(file)
@@ -291,21 +316,37 @@ async function readAttachment(event: Event) {
       return
     }
   }
+  const request = new AbortController()
+  attachmentRequest = request
+  const image = agentMode.value && /\.(png|jpe?g|webp)$/i.test(file.name)
   try {
-    if (!/\.(txt|md|markdown)$/i.test(file.name) || file.size > 16 * 1024) {
-      throw new Error('请选择不超过 16 KB 的 TXT 或 Markdown 文件')
+    let content: string
+    if (image) {
+      attachmentReading.value = true
+      const { readWorkspaceImage } = await import('@/services/workspace-image-text')
+      content = await readWorkspaceImage(file, request.signal)
+    } else {
+      if (!/\.(txt|md|markdown)$/i.test(file.name) || file.size > 16 * 1024) {
+        throw new Error('请选择不超过 16 KB 的 TXT 或 Markdown 文件')
+      }
+      content = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer()).trim()
     }
-    const content = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer()).trim()
     const hasControlCharacter = Array.from(content).some((character) =>
       character.charCodeAt(0) < 32 && !['\t', '\r', '\n'].includes(character))
     if (!content || hasControlCharacter) throw new Error()
-    if (workspaceScope.value === scope) {
-      attachment.value = { name: file.name, content }
+    if (!request.signal.aborted) {
+      attachment.value = { name: file.name, content, image }
       attachmentOpen.value = true
     }
   } catch (error) {
-    if (workspaceScope.value === scope) attachmentError.value = error instanceof Error && error.message.startsWith('请选择')
-      ? error.message : '无法读取文本，请检查文件是否为空或使用 UTF-8 编码'
+    if (!request.signal.aborted) {
+      const known = error instanceof Error && /^(请选择|图片中未识别到文字)/.test(error.message)
+      attachmentError.value = known ? error.message : image
+        ? '图片识别未能完成，请检查图片后重试'
+        : '无法读取文本，请检查文件是否为空或使用 UTF-8 编码'
+    }
+  } finally {
+    if (attachmentRequest === request) attachmentReading.value = false
   }
 }
 
@@ -344,21 +385,19 @@ function selectCatBank(file: File) {
     : '请打开独立 CAT 工作台，核对我选中的 CSV'
 }
 
-const acceptsPrivateFile = computed(() => agentMode.value
-  && (role.value === 'school_admin' || role.value === 'psychological_specialist'))
-const attachmentFormats = computed(() => !agentMode.value ? '.txt,.md,.markdown' : ({
-  school_admin: '.csv,.xlsx,.txt,.md,.markdown',
-  psychological_specialist: '.csv,.json,.txt,.md,.markdown',
-  teacher: '.txt,.md,.markdown',
-  student: '.txt,.md,.markdown',
-}[role.value]))
+const attachmentFormats = computed(() => {
+  const text = '.txt,.md,.markdown'
+  if (!agentMode.value) return text
+  return text + ',.png,.jpg,.jpeg,.webp' + ({
+    school_admin: ',.csv,.xlsx', psychological_specialist: ',.csv,.json', teacher: '', student: '',
+  }[role.value])
+})
 
-function handlePrivateDrop(event: DragEvent) {
-  if (!acceptsPrivateFile.value || agentBusy.value) return
+function handleAttachmentDrop(event: DragEvent) {
+  if (!agentMode.value) return
   event.preventDefault()
   const file = event.dataTransfer?.files[0]
-  if (file && role.value === 'school_admin') selectRoster(file)
-  if (file && role.value === 'psychological_specialist') selectCatBank(file)
+  if (file && !agentBusy.value && !attachmentReading.value) void openAttachment(file)
 }
 
 function cancelRun() {
@@ -442,7 +481,7 @@ function dateLabel(value: string) {
         :research-mode="researchMode"
         embedded
       />
-      <form id="workspace-agent-composer" ref="responseArea" class="workspace-agent__composer" @submit.prevent="run" @dragover="(event) => { if (acceptsPrivateFile) event.preventDefault() }" @drop="handlePrivateDrop">
+      <form id="workspace-agent-composer" ref="responseArea" class="workspace-agent__composer" @submit.prevent="run" @dragover="(event) => { if (agentMode) event.preventDefault() }" @drop="handleAttachmentDrop">
         <AppTextarea
           id="workspace-agent-input"
           v-model="command"
@@ -460,7 +499,7 @@ function dateLabel(value: string) {
               <Plus :size="20" aria-hidden="true" />
             </AppButton>
             <input ref="fileInput" type="file" :accept="attachmentFormats" hidden @change="readAttachment" />
-            <AppButton class="workspace-agent__tool" variant="quiet" aria-label="添加附件" title="添加附件" :disabled="agentBusy || chatSending || chat?.needsRetry" @click="chooseAttachment">
+            <AppButton class="workspace-agent__tool" variant="quiet" aria-label="添加附件" title="添加附件" :disabled="agentBusy || attachmentReading || chatSending || chat?.needsRetry" @click="chooseAttachment">
               <Paperclip :size="20" aria-hidden="true" />
             </AppButton>
           </div>
@@ -471,6 +510,10 @@ function dateLabel(value: string) {
           <AppButton v-else class="workspace-agent__send" type="submit" :loading="chatSending" :disabled="(!command.trim() && !chat?.needsRetry) || confirming || chat?.composerBlocked" :aria-label="role === 'student' ? (chat?.needsRetry ? '重试发送' : '发送消息') : '发送任务'">
             <ArrowUp :size="21" aria-hidden="true" />
           </AppButton>
+        </div>
+        <div v-if="attachmentReading" class="workspace-agent__receipt">
+          <span role="status">正在这台设备上识别文字</span>
+          <AppButton variant="quiet" @click="cancelAttachmentRead">取消识别</AppButton>
         </div>
         <div v-if="agentMode && (rosterFile || catFile)" class="workspace-agent__receipt">
           <span>{{ (rosterFile || catFile)?.name }}</span>
@@ -564,12 +607,13 @@ function dateLabel(value: string) {
     </AppDialog>
     <AppDialog
       :open="attachmentOpen"
-      title="附件预览"
-      :description="role === 'student' ? '请先检查内容，移除姓名、学号等个人信息' : '文件内容在当前页面预览'"
+      :title="attachment?.image ? '图片文字预览' : '附件预览'"
+      :description="attachment?.image ? '文字在这台设备上识别。请核对内容并删除个人信息后再插入' : role === 'student' ? '请先检查内容，移除姓名、学号等个人信息' : '文件内容在当前页面预览'"
       @update:open="attachmentOpen = $event; if (!$event) attachment = undefined"
     >
       <strong>{{ attachment?.name }}</strong>
-      <pre class="workspace-agent__attachment">{{ attachment?.content }}</pre>
+      <AppTextarea v-if="attachment?.image" v-model="attachment.content" label="识别出的文字" :rows="5" :maxlength="3000" />
+      <pre v-else class="workspace-agent__attachment">{{ attachment?.content }}</pre>
       <p v-if="attachmentError" class="workspace-agent__error" role="alert">{{ attachmentError }}</p>
       <div class="workspace-agent__confirm">
         <AppButton variant="secondary" @click="attachmentOpen = false; attachment = undefined">关闭</AppButton>
