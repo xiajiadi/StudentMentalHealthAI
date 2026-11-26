@@ -213,8 +213,7 @@ describe('学生演示闭环页面', () => {
       global: { plugins: [router, pinia], stubs: { StudentAssignedTasks: { template: '<div>学校任务选择入口</div>' } } },
     })
     await flushPromises()
-    expect(wrapper.text()).toContain('选择学校测评任务')
-    expect(wrapper.text()).toContain('学校任务选择入口')
+    expect(wrapper.get('[aria-label="学校测评任务"]').text()).toContain('学校任务选择入口')
     expect(api.startAssessment).not.toHaveBeenCalled()
     wrapper.unmount()
   })
@@ -535,6 +534,24 @@ describe('学生演示闭环页面', () => {
     await wrapper.get('button.app-button--primary').trigger('click')
     await flushPromises()
     expect(api.completeAssessment).toHaveBeenCalledWith(assessment.assessment_id)
+  })
+
+  it('会话中的测评完成后交回当前工作区，不跳转旧结果页', async () => {
+    api.startAssessment.mockResolvedValue(envelope(assessmentState({ can_complete: true, question: null })))
+    const router = await makeRouter('/student/home')
+    const wrapper = mount(AssessmentView, {
+      props: { embeddedAssessmentId: assessment.assessment_id },
+      global: { plugins: [router, createPinia()] },
+    })
+    await flushPromises()
+
+    await wrapper.get('button.app-button--primary').trigger('click')
+    await flushPromises()
+
+    expect(api.completeAssessment).toHaveBeenCalledExactlyOnceWith(assessment.assessment_id)
+    expect(wrapper.emitted('completed')).toEqual([[assessment.assessment_id]])
+    expect(router.currentRoute.value.fullPath).toBe('/student/home')
+    wrapper.unmount()
   })
 
   it('完成前保存失败时不结束测评或跳转结果页', async () => {

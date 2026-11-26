@@ -594,39 +594,63 @@ test('a synthetic learner resumes and submits a real assessment inside the conve
   const selected = await ask(page, '继续刚才查到的测评，已有进度的优先，否则打开最早截止的一项', '发送消息', false)
   const taskRef = selected.find((event) => event.view?.kind === 'assessment_picker')?.view.task_ref
   expect(taskRef).toBeTruthy()
+  const picker = page.getByRole('button', { name: '阅读说明并打开测评' }).last()
+  const confirmStart = page.getByRole('button', { name: '我已阅读，开始或继续' })
+  const startTask = async () => {
+    await picker.click()
+    const started = page.waitForResponse((response) => response.url().endsWith(`/school/tasks/${taskRef}/start`))
+    await confirmStart.click()
+    const response = await started
+    expect(response.ok()).toBe(true)
+    return (await response.json()).data
+  }
   await page.reload()
-  await page.getByRole('button', { name: '阅读说明并打开测评' }).last().click()
-  const started = page.waitForResponse((response) => response.url().endsWith(`/school/tasks/${taskRef}/start`))
-  await page.getByRole('button', { name: '我已阅读，开始或继续' }).click()
-  const startResponse = await started
-  expect(startResponse.ok()).toBe(true)
-  const initial = (await startResponse.json()).data
+  const initial = await startTask()
   const { assessment_id: assessmentId } = initial
   const assessment = page.locator('.assessment-page--embedded')
   await expect(assessment).toBeVisible()
   const finish = assessment.getByRole('button', { name: /^(完成|完成测评)$/ })
-  await expect(assessment.getByRole('radio').first().or(finish).first()).toBeVisible()
-  let saved = 0
-  while (!(await finish.isVisible()) && saved < (initial.max_items ?? 30)) {
+  const choice = assessment.getByRole('radio').first()
+  await expect(choice.or(finish).first()).toBeVisible()
+  let progress = initial.answered_count
+  const saveAnswer = async () => {
     const response = page.waitForResponse((reply) => reply.url().endsWith(`/assessments/${assessmentId}/responses`))
-    await assessment.getByRole('radio').first().click()
+    await choice.click()
     await assessment.getByRole('button', { name: '下一题' }).click()
     expect((await response).ok()).toBe(true)
-    saved += 1
-    await expect(assessment.getByText(`已记录 ${initial.answered_count + saved} 项`, { exact: true })).toBeVisible()
+    progress += 1
+    await expect(assessment.getByText(`已记录 ${progress} 项`, { exact: true })).toBeVisible()
   }
+  if (await choice.isVisible()) await saveAnswer()
+  expect(progress).toBeGreaterThan(0)
+  await page.reload()
+  expect(await startTask()).toMatchObject({ assessment_id: assessmentId, answered_count: progress })
+  await expect(assessment.getByText(`已记录 ${progress} 项`, { exact: true })).toBeVisible()
+  while (!(await finish.isVisible()) && progress < (initial.max_items ?? 30)) await saveAnswer()
+
   const completion = page.waitForResponse((response) => response.url().endsWith(`/assessments/${assessmentId}/complete`))
   await finish.click()
   const completed = await completion
   expect(completed.ok()).toBe(true)
   expect((await completed.json()).data).toMatchObject({ assessment_id: assessmentId, status: 'completed' })
-  await expect(assessment.getByText('已保存测评作答')).toBeVisible()
+  await expect(page.getByText('已保存测评作答')).toBeVisible()
   await expect(page.getByRole('button', { name: '查看已发布反馈' })).toBeVisible()
   const history = await page.request.get(origin + '/api/v1/school/tasks/student/history')
   expect(history.ok()).toBe(true)
   expect((await history.json()).data).toContainEqual(expect.objectContaining({
     task_ref: taskRef, assessment_id: assessmentId, assessment_status: 'completed',
   }))
+
+  await page.reload()
+  const assessmentWrites: string[] = []
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && /\/(?:school\/tasks|assessments)\//.test(request.url())) assessmentWrites.push(request.url())
+  })
+  await picker.click()
+  await expect(page.getByText('已保存测评作答')).toBeVisible()
+  await expect(page.getByRole('button', { name: '查看已发布反馈' })).toBeVisible()
+  await expect(confirmStart).toHaveCount(0)
+  expect(assessmentWrites).toEqual([])
 })
 
 test('a roster creates real synthetic accounts and returns a credential download', async ({ page }) => {

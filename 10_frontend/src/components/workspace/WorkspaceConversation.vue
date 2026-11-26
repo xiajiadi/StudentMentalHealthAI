@@ -84,6 +84,7 @@ const schoolLibrary = ref<{ search: (query: string) => Promise<void> }>()
 const referral = ref<{ key: string; draft: TeacherReferral }>()
 const assessmentTask = ref('')
 const assessmentId = ref('')
+const assessmentChecking = ref(false)
 const assessmentStarting = ref(false)
 const assessmentComplete = ref(false)
 const pendingClass = ref<{ class_ref: string; token: string }>()
@@ -216,10 +217,23 @@ async function reset() {
   }
 }
 
-function selectAssessment(taskRef: string) {
+async function selectAssessment(taskRef: string) {
+  if (assessmentChecking.value || assessmentStarting.value || assessmentTask.value === taskRef) return
   assessmentId.value = ''
   assessmentComplete.value = false
   assessmentTask.value = taskRef
+  message.value = ''
+  if (!frontendApi.listStudentSchoolTaskHistory) return
+
+  assessmentChecking.value = true
+  try {
+    const history = await frontendApi.listStudentSchoolTaskHistory()
+    assessmentComplete.value = history.data.some((entry) => entry.task_ref === taskRef && entry.assessment_status === 'completed')
+  } catch {
+    // The original start endpoint still checks permission and current task status.
+  } finally {
+    assessmentChecking.value = false
+  }
 }
 
 function openPanel(workflow?: WorkflowPanel | RosterPanel) {
@@ -256,12 +270,13 @@ function openTeacherReferral(draft: TeacherReferral, key: string) {
 }
 
 async function startAssessment() {
-  if (!assessmentTask.value || assessmentStarting.value || !frontendApi.startStudentSchoolTask) return
+  if (!assessmentTask.value || assessmentChecking.value || assessmentStarting.value || assessmentComplete.value || !frontendApi.startStudentSchoolTask) return
   assessmentStarting.value = true
   message.value = ''
   try {
     const result = await frontendApi.startStudentSchoolTask(assessmentTask.value)
-    assessmentId.value = result.data.assessment_id
+    if (result.data.status === 'completed') assessmentComplete.value = true
+    else assessmentId.value = result.data.assessment_id
   } catch {
     message.value = '无法打开该测评，可能已截止或已完成，请重新查询'
   } finally {
@@ -412,12 +427,12 @@ defineExpose({ submit, cancel, openIndependentCat, openSchoolLibrary })
                 </template>
                 <small v-else-if="typeof row.total === 'number'">{{ row.total }} 人</small>
                 <small v-else-if="row.status">{{ statuses[row.status] || row.status }}</small>
-                <AppButton v-if="event.view.kind === 'student_tasks' && ['not_started', 'created', 'in_progress'].includes(row.status || '')" variant="secondary" @click="selectAssessment(row.ref)">打开测评</AppButton>
+                <AppButton v-if="event.view.kind === 'student_tasks' && ['not_started', 'created', 'in_progress', 'completed'].includes(row.status || '')" variant="secondary" :disabled="assessmentChecking || assessmentStarting" @click="selectAssessment(row.ref)">{{ row.status === 'completed' ? '查看完成记录' : '打开测评' }}</AppButton>
               </li>
             </ul>
             <AppButton v-if="event.view.artifact" variant="secondary" @click="download(event.view.artifact.filename, event.view.artifact.markdown)">下载班级统计简报</AppButton>
           </template>
-          <AppButton v-else-if="event.view.kind === 'assessment_picker'" variant="secondary" @click="selectAssessment(event.view.task_ref)">阅读说明并打开测评</AppButton>
+          <AppButton v-else-if="event.view.kind === 'assessment_picker'" variant="secondary" :disabled="assessmentChecking || assessmentStarting" @click="selectAssessment(event.view.task_ref)">阅读说明并打开测评</AppButton>
           <template v-else-if="event.view.kind === 'feedback_index'">
             <strong>{{ event.view.total ? `已发布反馈 · ${event.view.total} 份` : '暂时没有已发布的反馈' }}</strong>
             <AppButton v-if="event.view.total" variant="secondary" @click="openFeedback()">在会话中查看反馈</AppButton>
@@ -523,13 +538,17 @@ defineExpose({ submit, cancel, openIndependentCat, openSchoolLibrary })
       <AppButton v-if="lastText && !running" variant="quiet" @click="submit(lastText)">重试任务</AppButton>
     </div>
     <AppCard v-if="assessmentTask" class="agent-thread__card">
-      <header class="agent-thread__inline"><strong>心理测评</strong><AppButton variant="quiet" :disabled="assessmentStarting" @click="assessmentTask = ''; assessmentId = ''">暂时退出</AppButton></header>
-      <template v-if="!assessmentId">
+      <header class="agent-thread__inline"><strong>心理测评</strong><AppButton variant="quiet" :disabled="assessmentChecking || assessmentStarting" @click="assessmentTask = ''; assessmentId = ''">{{ assessmentComplete ? '收起测评' : '暂时退出' }}</AppButton></header>
+      <p v-if="assessmentChecking" role="status">正在核对测评进度</p>
+      <template v-else-if="assessmentComplete">
+        <AppStatusCallout tone="support" title="已保存测评作答" body="反馈将按学校发布流程出现在测评反馈中" />
+        <AppButton variant="secondary" @click="openFeedback()">查看已发布反馈</AppButton>
+      </template>
+      <template v-else-if="!assessmentId">
         <p>请按自己的实际情况选答，已提交的题目会保存。你可以暂时退出并稍后继续</p>
         <AppButton :loading="assessmentStarting" @click="startAssessment">我已阅读，开始或继续</AppButton>
       </template>
       <Assessment v-else :key="assessmentId" :embedded-assessment-id="assessmentId" @completed="assessmentComplete = true; emit('changed')" />
-      <AppButton v-if="assessmentComplete" variant="secondary" @click="openFeedback()">查看已发布反馈</AppButton>
     </AppCard>
     <AppCard v-if="panel" class="agent-thread__card">
       <header class="agent-thread__inline"><strong>{{ panelLabels[panel] }}</strong><AppButton variant="quiet" :disabled="rosterWorkbench?.busy" @click="openPanel()">收起工作台</AppButton></header>

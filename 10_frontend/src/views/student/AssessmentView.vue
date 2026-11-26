@@ -18,7 +18,7 @@ const route = useRoute()
 const assessment = useAssessmentStore()
 const session = useSessionStore()
 const selectedResponse = ref('')
-const pageState = ref<'loading' | 'ready' | 'error' | 'assigned' | 'submitted'>('loading')
+const pageState = ref<'loading' | 'ready' | 'error' | 'assigned'>('loading')
 const isSubmitting = ref(false)
 const isCompleting = ref(false)
 const errorMessage = ref('')
@@ -118,7 +118,6 @@ const complete = async () => {
     const response = await frontendApi.completeAssessment(assessment.assessmentId)
     assessment.reset()
     if (props.embeddedAssessmentId) {
-      pageState.value = 'submitted'
       emit('completed', response.data.assessment_id)
       return
     }
@@ -141,8 +140,7 @@ onBeforeRouteLeave(saveSelectedResponse)
 
 <template>
   <div class="assessment-page" :class="{ 'assessment-page--embedded': embeddedAssessmentId }">
-    <AppStatusCallout v-if="pageState === 'submitted'" tone="support" title="已保存测评作答" body="反馈将按学校发布流程出现在测评反馈中" />
-    <div v-else-if="pageState === 'loading'" class="assessment-loading" aria-busy="true" aria-label="正在准备测评">
+    <div v-if="pageState === 'loading'" class="assessment-loading" aria-busy="true" aria-label="正在准备测评">
       <div class="skeleton skeleton--question"></div>
       <div class="skeleton skeleton--option"></div>
       <div class="skeleton skeleton--option"></div>
