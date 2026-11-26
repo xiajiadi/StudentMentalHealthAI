@@ -603,8 +603,11 @@ async def test_admin_audit_reads_requested_pages_and_keeps_only_query_for_next_t
     current_offset = 0
 
     async def model_step(messages, definitions, _context):
-        names = {item["function"]["name"] for item in definitions}
-        assert "read_school_audit" in names
+        audit_tool = next(
+            item["function"] for item in definitions
+            if item["function"]["name"] == "read_school_audit"
+        )
+        assert "limit" in audit_tool["parameters"]["required"]
         assert row_id not in json.dumps(messages)
         if messages[-1]["role"] == "tool":
             result = json.loads(messages[-1]["content"])

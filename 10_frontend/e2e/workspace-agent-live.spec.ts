@@ -566,8 +566,10 @@ test('an administrator checks real system dependencies and pages through the sch
   await expect(page.getByRole('list', { name: '系统依赖状态' }).last().getByText('安全校验')).toBeVisible()
   await expect(page.getByRole('list', { name: '本校运营记录' }).last().getByText(/发布测评任务/)).toBeVisible()
 
+  await page.reload()
+  await expect(page.getByText(/从第 1 条起/).last()).toBeVisible()
   const second = await compareAudit(1)
-  const next = await ask(page, '刚才查的运营记录往后翻一条，类别保持不变', '发送任务', false)
+  const next = await ask(page, '刚才查的运营记录往后翻一条，类别保持不变', '发送任务')
   const nextAudit = next.find((event) => event.view?.kind === 'school_audit')?.view
   expect(nextAudit?.query).toEqual({ category: 'task', limit: 1, offset: 1 })
   expect(nextAudit?.items).toEqual(second.items.map(withoutReference))
@@ -577,6 +579,7 @@ test('an administrator checks real system dependencies and pages through the sch
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391)
 
   await chooseRole(page, 'TEACHER', '/teacher/workspace')
+  await expect(page.getByRole('list', { name: '本校运营记录' })).toHaveCount(0)
   expect((await page.request.get(origin + '/api/v1/school/operations-audit')).status()).toBe(403)
 })
 

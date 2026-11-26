@@ -63,7 +63,11 @@ class EducationTopics(Arguments):
 class AuditPage(Arguments):
     category: AuditCategory | None = None
     offset: int = Field(default=0, ge=0, le=10_000)
-    limit: int = Field(default=10, ge=1, le=50)
+    limit: int = Field(
+        ge=1, le=50,
+        description="Use the requested number of records. If unspecified use 10, or keep the "
+        "previous page size for a pagination request.",
+    )
 
 
 class NewClass(Arguments):
@@ -287,6 +291,7 @@ TOOLS = {
         "读取本校运营记录",
         "Read a page of the school's authorized operations audit, newest first. Filter by "
         "organization, class, member, account_batch, account, or task. Offset starts at 0. "
+        "Set limit to the requested record count, including 1 for only the most recent record. "
         "Use the previous query's offset plus limit for the next page. The browser receives "
         "the full authorized page, while you receive page counts and up to five latest "
         "metadata entries. Avoid school-wide totals or claiming coverage outside this audit.",
