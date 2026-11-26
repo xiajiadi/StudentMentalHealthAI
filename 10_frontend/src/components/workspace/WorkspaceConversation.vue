@@ -370,7 +370,21 @@ defineExpose({ submit, cancel, openIndependentCat, openSchoolLibrary })
         </div>
         <AppCard v-else-if="event.type === 'tool_result'" class="agent-thread__card">
           <p class="agent-thread__receipt"><Check :size="17" />{{ event.label }}</p>
-          <template v-if="'rows' in event.view">
+          <template v-if="event.view.kind === 'table_statistics'">
+            <strong>表格统计 · {{ event.view.rows }} 行数据</strong>
+            <div class="agent-thread__table">
+              <table aria-label="所选列的统计结果">
+                <thead><tr><th>列号</th><th>数字个数</th><th>最小值</th><th>最大值</th><th>平均值</th><th>合计</th></tr></thead>
+                <tbody>
+                  <tr v-for="column in event.view.columns" :key="column.column">
+                    <th scope="row">第 {{ column.column }} 列</th><td>{{ column.count }}</td><td>{{ column.min }}</td><td>{{ column.max }}</td><td>{{ column.mean }}</td><td>{{ column.sum }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <AppButton variant="secondary" @click="downloadTable(event.view)">下载统计 CSV</AppButton>
+          </template>
+          <template v-else-if="'rows' in event.view">
             <strong>{{ headings[event.view.kind] }} · {{ event.view.total }}{{ event.view.kind === 'school_student_counts' ? ' 名学生' : ' 项' }}</strong>
             <small v-if="event.view.kind === 'school_student_counts'">{{ event.view.class_count }} 个班级 · {{ event.view.active }} 个在用账号</small>
             <ul v-if="event.view.rows.length" class="agent-thread__rows">
@@ -398,20 +412,6 @@ defineExpose({ submit, cancel, openIndependentCat, openSchoolLibrary })
             <strong>本校资料库 · {{ event.view.total }} 份资料</strong>
             <small>{{ event.view.chunks }} 个可检索片段</small>
             <AppButton variant="secondary" @click="openSchoolLibrary()">查看本校资料库</AppButton>
-          </template>
-          <template v-else-if="event.view.kind === 'table_statistics'">
-            <strong>表格统计 · {{ event.view.rows }} 行数据</strong>
-            <div class="agent-thread__table">
-              <table aria-label="所选列的统计结果">
-                <thead><tr><th>列号</th><th>数字个数</th><th>最小值</th><th>最大值</th><th>平均值</th><th>合计</th></tr></thead>
-                <tbody>
-                  <tr v-for="column in event.view.columns" :key="column.column">
-                    <th scope="row">第 {{ column.column }} 列</th><td>{{ column.count }}</td><td>{{ column.min }}</td><td>{{ column.max }}</td><td>{{ column.mean }}</td><td>{{ column.sum }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <AppButton variant="secondary" @click="downloadTable(event.view)">下载统计 CSV</AppButton>
           </template>
           <div v-else-if="event.view.kind === 'preview_class'" class="agent-thread__inline">
             <span>{{ event.view.class_ref }}</span>
