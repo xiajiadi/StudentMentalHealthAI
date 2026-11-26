@@ -172,20 +172,23 @@ describe('RealApiProvider school task endpoints', () => {
       if (url.pathname === '/api/v1/school/tasks/student/history') return envelope([
         {
           task_ref: 'TASK_1', class_ref: 'CLASS_1', task_status: 'EXPIRED', enrollment_status: 'REVOKED',
-          assessment_status: 'completed', started_at: '2026-10-01T09:00:00Z', completed_at: '2026-10-01T09:10:00Z',
+          assessment_id: 'ASSESS_1', assessment_status: 'completed',
+          started_at: '2026-10-01T09:00:00Z', completed_at: '2026-10-01T09:10:00Z',
         },
         { task_ref: 'TASK_2', class_ref: 'CLASS_1', task_status: 'CLOSED', enrollment_status: 'ACTIVE' },
       ])
       throw new Error('unexpected route')
     })
 
-    await expect(provider.listStudentSchoolTaskHistory()).resolves.toMatchObject({ data: [{
+    const result = await provider.listStudentSchoolTaskHistory()
+    expect(result).toMatchObject({ data: [{
       task_ref: 'TASK_1', task_status: 'EXPIRED', enrollment_status: 'REVOKED',
       assessment_status: 'completed', started_at: '2026-10-01T09:00:00Z', completed_at: '2026-10-01T09:10:00Z',
     }, {
       task_ref: 'TASK_2', task_status: 'CLOSED', enrollment_status: 'ACTIVE',
       assessment_status: null, started_at: null, completed_at: null,
     }] })
+    expect(result.data[0]).not.toHaveProperty('assessment_id')
     expect(new URLConstructor(fetchMock.mock.calls[0]![0].url).pathname).toBe('/api/v1/school/tasks/student/history')
   })
 

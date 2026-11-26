@@ -976,7 +976,7 @@ const mapStudentSchoolTask = (value: unknown): StudentSchoolTask => {
 const mapStudentSchoolTaskHistory = (value: unknown): StudentSchoolTaskHistory => {
   const allowed = new Set([
     'task_ref', 'class_ref', 'task_status', 'enrollment_status',
-    'assessment_status', 'started_at', 'completed_at',
+    'assessment_id', 'assessment_status', 'started_at', 'completed_at',
   ])
   if (!isRecord(value) || Object.keys(value).some((key) => !allowed.has(key))) {
     throw new RealApiError('API_INVALID_RESPONSE', '任务历史包含不支持的信息，已停止展示。')
@@ -984,6 +984,9 @@ const mapStudentSchoolTaskHistory = (value: unknown): StudentSchoolTaskHistory =
   const assessmentStatus = value.assessment_status
   if (assessmentStatus !== null && assessmentStatus !== undefined && !isAssessmentStatus(assessmentStatus)) {
     throw new RealApiError('API_INVALID_RESPONSE', '任务历史状态格式无法识别。')
+  }
+  if (value.assessment_id !== null && value.assessment_id !== undefined && typeof value.assessment_id !== 'string') {
+    throw new RealApiError('API_INVALID_RESPONSE', '任务历史会话格式无法识别。')
   }
   return {
     task_ref: requiredString(value, 'task_ref'),

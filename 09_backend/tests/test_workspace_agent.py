@@ -329,6 +329,56 @@ async def test_model_selects_role_scoped_tools_and_uses_results(client, tools, m
     assert (await client.get(url)).json()["data"]["events"] == []
 
 
+@pytest.mark.parametrize(
+    ("selection", "expected"),
+    [("earliest_due", "TASK_soon"), ("resume_or_earliest_due", "TASK_started")],
+)
+async def test_student_selects_by_due_or_progress_across_all_authorized_assignments(
+    client, tools, model_lane, selection, expected
+):
+    model, _ = model_lane
+    headers = await login(client)
+    await select(client, headers, "STUDENT")
+    seed = tools.list_student_tasks.return_value[0]
+    due = datetime.now(UTC) + timedelta(days=1)
+    tools.list_student_tasks.return_value = [
+        {**seed, "task_ref": f"TASK_regular_{i:02}", "due_at": due + timedelta(days=i + 1)}
+        for i in range(25)
+    ] + [
+        {**seed, "task_ref": "TASK_completed", "due_at": due, "assessment_status": "completed"},
+        {**seed, "task_ref": "TASK_no_due", "due_at": None},
+        {**seed, "task_ref": "TASK_soon", "due_at": due + timedelta(hours=1)},
+        {**seed, "task_ref": "TASK_started", "due_at": None, "assessment_status": "in_progress"},
+    ]
+
+    async def model_step(messages, _definitions, _context):
+        if messages[-1]["role"] != "tool":
+            return assistant_step(tool="list_student_assessments")
+        result = json.loads(messages[-1]["content"])
+        if "rows" in result:
+            assert result["total"] == 29
+            assert len(result["rows"]) == 24
+            assert result["rows"][0]["due_at"] == (due + timedelta(hours=1)).isoformat()
+            assert not any(row["status"] == "in_progress" for row in result["rows"])
+            return assistant_step(
+                tool="open_student_assessment", arguments=json.dumps({"task": selection})
+            )
+        assert result == {"ready_for_student": True}
+        return assistant_step(text="请阅读说明后继续")
+
+    model.side_effect = model_step
+    response = await client.post(
+        f"{BASE}/conversation/turn",
+        headers=headers,
+        json={"text": "请按我的测评安排打开一项", "synthetic_only": True},
+    )
+    assert response.status_code == 200
+    events = [json.loads(line) for line in response.text.splitlines()]
+    results = [event["view"] for event in events if event["type"] == "tool_result"]
+    assert results[-1]["kind"] == "assessment_picker"
+    assert results[-1]["task_ref"] == expected
+
+
 async def test_unapproved_input_never_reaches_provider_or_history(client, model_lane):
     model, safety = model_lane
     safety.check_input.side_effect = None

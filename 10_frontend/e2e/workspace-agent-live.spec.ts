@@ -588,12 +588,24 @@ test('a synthetic learner resumes and submits a real assessment inside the conve
   test.setTimeout(270_000)
   await signIn(page)
   await chooseRole(page, 'STUDENT', '/student/workspace')
+  const assigned = await page.request.get(origin + '/api/v1/school/tasks/student')
+  expect(assigned.ok()).toBe(true)
+  const openTasks = ((await assigned.json()).data as {
+    task_ref: string; assessment_status: string | null; due_at: string | null
+  }[]).filter((task) => [null, 'created', 'in_progress'].includes(task.assessment_status))
+  const expectedTask = openTasks.sort((first, second) => {
+    const dueTime = (task: typeof first) => task.due_at ? Date.parse(task.due_at) : Number.MAX_SAFE_INTEGER
+    return Number(second.assessment_status === 'in_progress') - Number(first.assessment_status === 'in_progress')
+      || dueTime(first) - dueTime(second)
+      || first.task_ref.localeCompare(second.task_ref)
+  })[0]
+  expect(expectedTask, 'A dedicated synthetic learner needs an open assessment').toBeTruthy()
   const listed = await ask(page, '看看我现在还有哪些测评待做', '发送消息')
   const tasks = listed.find((event) => event.view?.kind === 'student_tasks')?.view.rows
   expect(tasks?.some((row: { status: string }) => ['created', 'in_progress', 'not_started'].includes(row.status))).toBe(true)
   const selected = await ask(page, '继续刚才查到的测评，已有进度的优先，否则打开最早截止的一项', '发送消息', false)
   const taskRef = selected.find((event) => event.view?.kind === 'assessment_picker')?.view.task_ref
-  expect(taskRef).toBeTruthy()
+  expect(taskRef).toBe(expectedTask.task_ref)
   const picker = page.getByRole('button', { name: '阅读说明并打开测评' }).last()
   const confirmStart = page.getByRole('button', { name: '我已阅读，开始或继续' })
   const startTask = async () => {
@@ -651,6 +663,36 @@ test('a synthetic learner resumes and submits a real assessment inside the conve
   await expect(page.getByRole('button', { name: '查看已发布反馈' })).toBeVisible()
   await expect(confirmStart).toHaveCount(0)
   expect(assessmentWrites).toEqual([])
+})
+
+test('a learner reopens a completed school assessment without starting another session', async ({ page }) => {
+  test.setTimeout(120_000)
+  await signIn(page)
+  await chooseRole(page, 'STUDENT', '/student/workspace')
+  const result = await ask(page, '核对我目前的测评任务和完成状态，包括已经交卷的测评', '发送消息')
+  const tasks = result.find((event) => event.view?.kind === 'student_tasks')?.view.rows
+  const completed = tasks?.filter((row: { status: string }) => row.status === 'completed')
+  expect(completed?.length).toBeGreaterThan(0)
+
+  await page.reload()
+  const writes: string[] = []
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && /\/(?:school\/tasks|assessments)\//.test(request.url())) writes.push(request.url())
+  })
+  const history = page.waitForResponse((response) => response.url().endsWith('/school/tasks/student/history'))
+  const completedButton = page.getByRole('button', { name: '查看完成记录' })
+  const taskList = page.getByRole('list').filter({ has: completedButton }).last()
+  await taskList.getByRole('button', { name: '查看完成记录' }).first().click()
+  const response = await history
+  expect(response.ok()).toBe(true)
+  expect((await response.json()).data).toContainEqual(expect.objectContaining({
+    task_ref: completed[0].ref,
+    assessment_status: 'completed',
+  }))
+  await expect(page.getByText('已保存测评作答')).toBeVisible()
+  await expect(page.getByRole('button', { name: '查看已发布反馈' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '我已阅读，开始或继续' })).toHaveCount(0)
+  expect(writes).toEqual([])
 })
 
 test('a roster creates real synthetic accounts and returns a credential download', async ({ page }) => {

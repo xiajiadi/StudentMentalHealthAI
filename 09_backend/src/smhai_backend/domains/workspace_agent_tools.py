@@ -26,7 +26,7 @@ from smhai_backend.domains.school_research_sources import library
 from smhai_backend.domains.school_support.schemas import SupportCasePageDto, SupportCategoryCode
 
 from . import workspace_agent_cat as cat_workflow
-from .workspace_agent import _ensure_demo_admin, _signature, _snapshot
+from .workspace_agent import STARTABLE_ASSESSMENT_STATES, _ensure_demo_admin, _signature, _snapshot
 from .workspace_agent_education import EducationTopic, student_education_articles
 from .workspace_agent_publishing import TaskPreview
 from .workspace_agent_publishing import preview as preview_publication
@@ -49,7 +49,7 @@ class TaskWindow(Arguments):
 
 
 class StudentTask(Arguments):
-    task: str = Field(pattern=r"^assessment-[a-f0-9]{12}$")
+    task: str = Field(pattern=r"^(assessment-[a-f0-9]{12}|earliest_due|resume_or_earliest_due)$")
 
 
 class PublishedFeedbackSelection(Arguments):
@@ -134,8 +134,11 @@ TOOLS = {
     ),
     "open_student_assessment": Tool(
         "准备测评界面",
-        "Show an assessment consent and start component. Use the task alias from "
-        "list_student_assessments. Only the student can start and answer.",
+        "Show an assessment consent and start component. For a specific task use its alias "
+        "from list_student_assessments. Use earliest_due when asked for the nearest deadline, "
+        "or resume_or_earliest_due when asked to resume a started task before choosing the "
+        "nearest deadline. These choices check every current assignment. Only the student can "
+        "start and answer.",
         (STUDENT,),
         StudentTask,
     ),
@@ -509,18 +512,27 @@ async def execute_tool(
             {"rows": model_rows, "total": snapshot.total, "shown": len(model_rows)},
         )
     if name == "open_student_assessment" and isinstance(arguments, StudentTask):
-        snapshot = await _snapshot(request, actor, limit=24)
-        for row in snapshot.rows:
-            if _alias("assessment", row.ref) == arguments.task and row.status in {
-                "not_started",
-                "created",
-                "in_progress",
-            }:
-                return (
-                    {"kind": "assessment_picker", "task_ref": row.ref, "due_at": _date(row.due_at)},
-                    {"ready_for_student": True},
-                )
-        raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="assessment task is unavailable")
+        snapshot = await _snapshot(request, actor, limit=None)
+        available = [row for row in snapshot.rows if row.status in STARTABLE_ASSESSMENT_STATES]
+        earliest_due = next((row for row in available if row.due_at is not None), None)
+        if arguments.task == "earliest_due":
+            selected = earliest_due
+        elif arguments.task == "resume_or_earliest_due":
+            selected = next((row for row in available if row.status == "in_progress"), earliest_due)
+        else:
+            selected = next(
+                (row for row in available if _alias("assessment", row.ref) == arguments.task), None
+            )
+        if selected is None:
+            raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="assessment task is unavailable")
+        return (
+            {
+                "kind": "assessment_picker",
+                "task_ref": selected.ref,
+                "due_at": _date(selected.due_at),
+            },
+            {"ready_for_student": True},
+        )
     if name in {"class_progress", "make_class_progress_report"} and isinstance(
         arguments, TaskWindow
     ):

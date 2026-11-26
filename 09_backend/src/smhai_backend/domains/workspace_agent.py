@@ -54,6 +54,7 @@ _KNOWLEDGE = {
     "学习压力大时该怎么办": "study_stress",
 }
 _LIMIT = 4
+STARTABLE_ASSESSMENT_STATES = {"not_started", "created", "in_progress"}
 
 
 class RunRequest(BaseModel):
@@ -111,13 +112,20 @@ def _respond(request: Request, data: ToolResult):
     return {"request_id": ctx.request_id, "trace_id": ctx.trace_id, "data": data}
 
 
-async def _snapshot(request: Request, actor: Actor, *, limit: int = _LIMIT) -> ToolResult:
+async def _snapshot(request: Request, actor: Actor, *, limit: int | None = _LIMIT) -> ToolResult:
     container = request.app.state.container
     service = container.school_tasks
     if actor.role is BackendRole.STUDENT:
         source = [
             StudentTaskDto.model_validate(row) for row in await service.list_student_tasks(actor)
         ]
+        source.sort(
+            key=lambda item: (
+                (item.assessment_status or "not_started") not in STARTABLE_ASSESSMENT_STATES,
+                item.due_at or datetime.max.replace(tzinfo=UTC),
+                item.task_ref,
+            )
+        )
         rows = [
             ToolRow(
                 ref=item.task_ref,
