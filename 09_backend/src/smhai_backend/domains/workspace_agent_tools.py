@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from smhai_backend.core.errors import ErrorCode, error
 from smhai_backend.domains.models import Actor, BackendRole
 from smhai_backend.domains.professional_reviews.schemas import ProfessionalReviewQueueTaskDto
+from smhai_backend.domains.school_account_lifecycle.schemas import LifecycleAccountSummaryDto
 from smhai_backend.domains.school_directory.schemas import SchoolDirectoryDto
 from smhai_backend.domains.school_feedback.schemas import StudentFeedbackListDto
 from smhai_backend.domains.school_research_sources import library
@@ -258,6 +259,19 @@ TOOLS = {
         "打开名单导入工作台",
         "Open the roster preview, import and credential download component. "
         "It handles the selected roster privately. The user must confirm the import.",
+        (ADMIN,),
+    ),
+    "open_staff_roster_import": Tool(
+        "准备教职工名单预览",
+        "Open the private staff CSV workbench. It validates ordinary teacher and specialist "
+        "records locally. The administrator must confirm the import before the school service "
+        "creates invitations and one-time credentials. Never request names or credentials in chat.",
+        (ADMIN,),
+    ),
+    "staff_invitation_status": Tool(
+        "查询教职工邀请状态",
+        "Read the school's current counts of pending, accepted, expired and revoked staff "
+        "invitations. These are invitation counts, not the number of staff currently employed.",
         (ADMIN,),
     ),
     "open_workflow": Tool(
@@ -589,6 +603,22 @@ async def execute_tool(
         )
     if name == "open_roster_import":
         return {"kind": "roster_import"}, {"confirmation_required": True, "workbench_ready": True}
+    if name == "open_staff_roster_import":
+        return (
+            {"kind": "staff_roster_import"},
+            {"confirmation_required": True, "workbench_ready": True},
+        )
+    if name == "staff_invitation_status":
+        summary = LifecycleAccountSummaryDto.model_validate(
+            await container.school_account_lifecycle.account_summary(actor)
+        )
+        counts = {
+            "issued": summary.invitations_issued,
+            "accepted": summary.invitations_accepted,
+            "expired": summary.invitations_expired,
+            "revoked": summary.invitations_revoked,
+        }
+        return {"kind": name, **counts}, counts
     if name == "preview_assessment_publication" and isinstance(arguments, TaskPreview):
         return await preview_publication(
             request, actor, arguments, class_alias=lambda ref: _alias("class", ref)

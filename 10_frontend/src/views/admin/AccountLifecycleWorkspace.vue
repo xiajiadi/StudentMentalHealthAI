@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { parseCsvRecords, readCsvText } from '@/services/csv-import'
+import { STAFF_ROSTER_COLUMNS, STAFF_ROSTER_MARKER } from '@/services/school-roster-file'
 import AppDialog from '@/components/app/AppDialog.vue'
 import AppSelect from '@/components/app/AppSelect.vue'
 import AppSelectOption from '@/components/app/AppSelectOption.vue'
@@ -23,13 +24,14 @@ import type {
 } from '@/api/client'
 
 type Section = 'overview' | 'roster' | 'staff' | 'recovery' | 'credentials' | 'status' | 'directory'
-const props = defineProps<{ embeddedRoster?: boolean; initialRosterFile?: File }>()
-const section = ref<Section>(props.embeddedRoster ? 'roster' : 'overview')
+const props = defineProps<{ embeddedSection?: 'roster' | 'staff'; initialRosterFile?: File }>()
+const section = ref<Section>(props.embeddedSection ?? 'overview')
 const session = useSessionStore()
 const route = useRoute()
 watch(
   [() => route.query.directoryView, () => route.query.directoryAction],
   ([view, action], previous) => {
+    if (props.embeddedSection) return
     const directoryActions = ['create-class', 'manage-class-people', 'issue-credentials', 'activate-account', 'import-accounts']
     if ((view === 'classes' && previous?.[0] !== view) || directoryActions.some((item) => item === action)) section.value = 'directory'
   },
@@ -40,8 +42,8 @@ const allSections: Array<{ id: Section; label: string }> = [
   { id: 'credentials', label: '初始账号' }, { id: 'status', label: '账号状态' },
   { id: 'recovery', label: '安全恢复' }, { id: 'directory', label: '学校目录' },
 ]
-const sections = props.embeddedRoster
-  ? allSections.filter((item) => item.id === 'roster' || item.id === 'credentials')
+const sections = props.embeddedSection
+  ? allSections.filter((item) => item.id === props.embeddedSection || item.id === 'credentials')
   : allSections
 const activeTabIndex = computed(() => sections.findIndex((item) => item.id === section.value))
 const tabIndicatorStyle = computed(() => ({
@@ -60,7 +62,6 @@ const handleTabKeydown = (event: KeyboardEvent, index: number) => {
   tabs?.[next]?.focus()
 }
 const openCredentials = () => { section.value = 'credentials'; clearFeedback() }
-defineExpose({ openCredentials })
 const summary = ref<LifecycleAccountSummary | null>(null)
 const directory = ref<SchoolDirectory | null>(null)
 let directoryLoadedAt = 0
@@ -91,6 +92,7 @@ const staffNameTarget = ref<LifecycleStaffInvitation | null>(null)
 const staffNameDraft = ref('')
 const staffNameError = ref('')
 const busy = ref(false)
+defineExpose({ openCredentials, busy })
 const loadingAccounts = ref(false)
 const error = ref('')
 const notice = ref('')
@@ -106,6 +108,12 @@ const rosterPreviewConcurrency = 3
 const pendingCredentialUserIds = ref<string[]>([])
 const rosterCredentialDetails = ref<Record<string, { studentNumber: string; className: string }>>({})
 const staffRows = ref<LifecycleStaffRosterRow[]>([])
+const confirmStaffImport = ref(false)
+const staffClassIssues = computed(() => {
+  if (props.embeddedSection !== 'staff' || !directory.value) return []
+  const available = new Set(directory.value.classes.filter((item) => item.status === 'ACTIVE').map((item) => item.class_ref))
+  return staffRows.value.filter((row) => row.class_refs.some((ref) => !available.has(ref)))
+})
 const credentialRows = ref<LifecycleCredential[]>([])
 const credentialPurpose = ref<'initial' | 'recovery'>('initial')
 const credentialExportScope = ref('')
@@ -324,7 +332,7 @@ const loadData = async () => {
 
 async function loadSectionDetails(current: Section) {
   try {
-    if (current === 'staff') await refreshStaffInvitations()
+    if (current === 'staff' && !props.embeddedSection) await refreshStaffInvitations()
     if (current === 'recovery' && frontendApi.listRecoveryRequests) {
       recoveryTickets.value = (await frontendApi.listRecoveryRequests()).data
     }
@@ -343,7 +351,7 @@ const downloadRosterTemplate = () => {
 }
 
 const downloadStaffRosterTemplate = () => {
-  const csv = '\uFEFF# psynova_staff_roster_template_v1\r\nemployee_ref,display_name,role,class_refs\r\n'
+  const csv = `\uFEFF${STAFF_ROSTER_MARKER}\r\n${STAFF_ROSTER_COLUMNS.join(',')}\r\n`
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
   const link = document.createElement('a')
   link.href = url; link.download = 'psynova-staff-roster-template-v1.csv'; link.click(); URL.revokeObjectURL(url)
@@ -390,13 +398,9 @@ const parseRosterFile = async (file?: File) => {
   }
 }
 
-watch(() => props.initialRosterFile, (file) => {
-  if (!props.embeddedRoster || !file || busy.value || rosterImportKey.value) return
-  void parseRosterFile(file)
-})
-
 const parseStaffFile = async (file?: File) => {
   const attempt = ++staffFileAttempt
+  confirmStaffImport.value = false
   clearFeedback(); staffRows.value = []
   if (!file) return
   if (file.size > 1024 * 1024) { error.value = '文件不能超过 1 MiB'; return }
@@ -405,9 +409,9 @@ const parseStaffFile = async (file?: File) => {
     if (attempt !== staffFileAttempt) return
     const records = parseCsvRecords(text)
     if (records[0]?.length === 1 && records[0][0]?.startsWith('# psynova_staff_roster_template_')) {
-      if (records.shift()?.[0] !== '# psynova_staff_roster_template_v1') throw new Error('教职工模板版本不受支持')
+      if (records.shift()?.[0] !== STAFF_ROSTER_MARKER) throw new Error('教职工模板版本不受支持')
     }
-    if (JSON.stringify(records.shift()) !== JSON.stringify(['employee_ref', 'display_name', 'role', 'class_refs'])) {
+    if (JSON.stringify(records.shift()) !== JSON.stringify(STAFF_ROSTER_COLUMNS)) {
       throw new Error('教职工模板列不匹配')
     }
     if (records.length < 1 || records.length > maxRosterRows) throw new Error('名单须包含 1 到 3000 行教职工记录')
@@ -437,6 +441,14 @@ const parseStaffFile = async (file?: File) => {
     staffRows.value = []; error.value = cause instanceof Error ? cause.message : '无法读取文件'
   }
 }
+
+function readAttachedRoster(file?: File) {
+  if (busy.value || rosterImportKey.value) return
+  if (props.embeddedSection === 'staff') void parseStaffFile(file)
+  if (props.embeddedSection === 'roster' && file) void parseRosterFile(file)
+}
+
+watch(() => props.initialRosterFile, readAttachedRoster)
 
 function rosterBatch(offset: number) {
   // Propagate a supplied grade to blank entries in the same named class,
@@ -578,7 +590,8 @@ const importRoster = async () => {
 }
 
 const importStaffRoster = async () => {
-  if (busy.value) return
+  if (busy.value || staffClassIssues.value.length) return
+  confirmStaffImport.value = false
   clearFeedback(); busy.value = true
   try {
     if (!frontendApi.importLifecycleStaff || staffRows.value.length === 0) throw new Error('请选择教职工名单')
@@ -838,9 +851,16 @@ const approveRecovery = async (ticket: LifecycleRecoveryTicket) => {
 
 onMounted(() => {
   void loadData()
-  if (props.embeddedRoster && props.initialRosterFile) void parseRosterFile(props.initialRosterFile)
+  if (props.initialRosterFile) readAttachedRoster(props.initialRosterFile)
 })
-onUnmounted(() => { credentialRows.value = []; passphrase.value = ''; rows.value = []; staffRows.value = [] })
+onUnmounted(() => {
+  rosterFileAttempt++
+  staffFileAttempt++
+  credentialRows.value = []
+  passphrase.value = ''
+  rows.value = []
+  staffRows.value = []
+})
 </script>
 
 <template>
@@ -891,8 +911,32 @@ onUnmounted(() => { credentialRows.value = []; passphrase.value = ''; rows.value
         <label class="lifecycle__field">选择 CSV 文件<input type="file" accept=".csv,text/csv" :disabled="busy" @change="parseStaffFile(($event.target as HTMLInputElement).files?.[0])"></label>
         <p>每次最多 3,000 人。普通教师班级用竖线分隔，心理教师不填班级</p>
         <div v-if="staffRows.length" class="lifecycle__boundary">已读取 {{ staffRows.length }} 行，普通教师 {{ staffRows.filter(row => row.role === 'teacher').length }} 人，心理教师 {{ staffRows.filter(row => row.role === 'psychological_specialist').length }} 人</div>
-        <button class="lifecycle__primary" type="button" :disabled="busy || !staffRows.length" @click="importStaffRoster">{{ busy ? '正在处理…' : '导入并生成初始账号' }}</button>
+        <template v-if="embeddedSection === 'staff' && staffRows.length">
+          <p>核对前 {{ Math.min(staffRows.length, 30) }} 条记录</p>
+          <div class="lifecycle__table-wrap">
+            <table aria-label="教职工名单预览">
+              <thead><tr><th>编号</th><th>姓名</th><th>角色</th><th>任教班级</th></tr></thead>
+              <tbody>
+                <tr v-for="row in staffRows.slice(0, 30)" :key="row.row_no">
+                  <td>{{ row.employee_ref }}</td><td>{{ row.display_name }}</td><td>{{ roleLabel(row.role) }}</td>
+                  <td>{{ row.class_refs.map(classLabel).join('、') || '—' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <ul v-if="staffClassIssues.length" class="lifecycle__issues" aria-label="教职工名单异常">
+            <li v-for="row in staffClassIssues.slice(0, 30)" :key="row.row_no">第 {{ row.row_no + 1 }} 行包含本校不可用的任教班级</li>
+          </ul>
+        </template>
+        <button class="lifecycle__primary" type="button" :disabled="busy || !staffRows.length || Boolean(staffClassIssues.length)" @click="embeddedSection === 'staff' ? confirmStaffImport = true : importStaffRoster()">{{ busy ? '正在处理…' : embeddedSection === 'staff' ? '核对并导入' : '导入并生成初始账号' }}</button>
+        <AppDialog :open="confirmStaffImport" title="确认导入教职工" :description="`为 ${staffRows.length} 名教职工建立校园账号并签发一次性凭据`" @update:open="value => { if (!value) confirmStaffImport = false }">
+          <div class="lifecycle__actions">
+            <button type="button" class="lifecycle__secondary" @click="confirmStaffImport = false">返回核对</button>
+            <button type="button" class="lifecycle__primary" :disabled="busy || !staffRows.length || Boolean(staffClassIssues.length)" @click="importStaffRoster">确认导入</button>
+          </div>
+        </AppDialog>
       </div>
+      <template v-if="!embeddedSection">
       <h3>单个教职工邀请</h3>
       <form class="lifecycle__form" @submit.prevent="inviteStaff">
         <label>教职工编号<input v-model.trim="invitation.employee_ref" required maxlength="128" pattern="[\x20-\x7E]+" placeholder="PSY-001" title="请使用英文编号"></label><label>姓名<input v-model.trim="invitation.display_name" required maxlength="120"></label>
@@ -950,6 +994,7 @@ onUnmounted(() => { credentialRows.value = []; passphrase.value = ''; rows.value
           </DialogContent>
         </DialogPortal>
       </DialogRoot>
+      </template>
     </div>
 
     <div v-else-if="section === 'recovery'" class="lifecycle__body">

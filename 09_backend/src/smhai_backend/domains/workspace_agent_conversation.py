@@ -72,8 +72,10 @@ For a class progress report, use make_class_progress_report. It reads current cl
 and creates a verified download in one operation. Do not draft that report with save_markdown.
 For other reports or files, use save_markdown and return a short summary. Do not
 include student information or fabricated data. Roster contents and credentials stay in the
-private import workbench. When a roster is selected and import requested, open_roster_import.
-Completing the roster import always requires a user's confirmation in that workbench.
+private import workbench. Use open_roster_import for students and open_staff_roster_import for
+staff CSV. The private attachment type indicates the selected template. Ask for a replacement if
+it conflicts with the request. Only an administrator can confirm import in the workbench. Use
+staff_invitation_status for a fresh check of staff invitations and pending activation.
 For a teacher requesting a support referral, use prepare_teacher_referral. The teacher selects
 the student and reviews the observations before submitting in the private support form.
 For a specialist organizing pending work, use professional_review_queue for assigned review
@@ -93,7 +95,7 @@ _LIVE_LOOKUPS = {
     "list_published_feedback",
     "list_student_assessments", "make_class_progress_report", "open_published_feedback",
     "professional_review_queue", "review_tasks", "school_student_counts", "school_tasks",
-    "specialist_support_status", "teacher_support_status",
+    "specialist_support_status", "staff_invitation_status", "teacher_support_status",
 }
 _LOOKUP_REF_FIELDS = {
     "list_student_assessments": ("rows", "task"),
@@ -109,7 +111,7 @@ class TurnRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     text: str = Field(min_length=1, max_length=3000)
     synthetic_only: Literal[True]
-    attachment: Literal["student_roster", "cat_bank"] | None = None
+    attachment: Literal["student_roster", "staff_roster", "cat_bank"] | None = None
     cat_attachment_ref: str | None = Field(default=None, pattern=cat_workflow.REF)
     table_summary: WorkspaceTableSummary | None = None
 
@@ -236,6 +238,7 @@ def _context_messages(actor: Actor, history: list[dict], payload: TurnRequest) -
             )
     attachment_note = {
         (ADMIN, "student_roster"): "\n[Workspace UI: a private roster file is selected.]",
+        (ADMIN, "staff_roster"): "\n[Workspace UI: a private staff roster CSV is selected.]",
         (SPECIALIST, "cat_bank"): "\n[Workspace UI: a private school CAT document is attached.]",
     }.get((actor.role, payload.attachment), "")
     if payload.table_summary is not None:
@@ -275,6 +278,8 @@ async def _run(request: Request, actor: Actor, payload: TurnRequest, prior: list
         name: tool for name, tool in TOOLS.items()
         if actor.role in tool.roles
         and (name != "inspect_attached_table" or payload.table_summary is not None)
+        and (name != "open_roster_import" or payload.attachment != "staff_roster")
+        and (name != "open_staff_roster_import" or payload.attachment != "student_roster")
     }
     definitions = [tool.definition(name) for name, tool in available.items()]
     async with asyncio.timeout(145):
@@ -530,6 +535,8 @@ async def preview_cat(
 @router.post("/turn")
 async def turn(request: Request, payload: TurnRequest, actor: CsrfActor):
     history = _history(request, actor)
+    if payload.attachment in {"student_roster", "staff_roster"} and actor.role != ADMIN:
+        raise error(ErrorCode.FORBIDDEN, detail="roster is unavailable for this workspace")
     if payload.table_summary is not None and (
         actor.role not in {STUDENT, TEACHER} or payload.attachment
     ):

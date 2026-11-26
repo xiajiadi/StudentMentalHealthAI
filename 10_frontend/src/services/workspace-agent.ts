@@ -1,6 +1,7 @@
 /* global AbortSignal, Blob, TextDecoder */
 
 import { realApiProvider } from './real-api'
+import type { RosterKind } from './school-roster-file'
 import type { WorkspaceTableSummary } from './workspace-table'
 import type { CaseStatus, TeacherReferral } from './school-support'
 
@@ -40,7 +41,7 @@ export async function runWorkspaceAgent(
 }
 
 export type WorkflowPanel = 'review' | 'cat' | 'resources' | 'library' | 'support' | 'knowledge' | 'feedback' | 'publish' | 'system'
-export type WorkspaceAttachment = 'student_roster' | 'cat_bank'
+export type WorkspaceAttachment = RosterKind | 'cat_bank'
 export type TaskPublicationPreview = {
   kind: 'preview_task'
   class_ref: string
@@ -81,6 +82,8 @@ export type WorkspaceAgentView =
   | { kind: 'teacher_support_status' | 'specialist_support_status'; total: number; shown: number; counts: Partial<Record<CaseStatus, number>> }
   | { kind: 'professional_review_queue'; task_count: number; open_count: number; in_review_count: number; tasks: { task_ref: string; class_label: string; open_count: number; in_review_count: number }[] }
   | { kind: 'roster_import' }
+  | { kind: 'staff_roster_import' }
+  | { kind: 'staff_invitation_status'; issued: number; accepted: number; expired: number; revoked: number }
   | { kind: 'workflow'; workflow: WorkflowPanel }
   | { kind: 'markdown'; filename: string; markdown: string }
 

@@ -509,6 +509,75 @@ async def test_model_cannot_call_hidden_tool_and_can_recover(client, tools, mode
     tools.create_class.assert_not_called()
 
 
+async def test_staff_import_keeps_rows_private_and_rechecks_school_invitation_counts(
+    client, app, model_lane, monkeypatch
+):
+    model, _ = model_lane
+    summary = {
+        "total_accounts": 20, "active_accounts": 18, "pending_activation": 2,
+        "suspended_accounts": 2, "classes": 1, "invitations_issued": 2,
+        "invitations_accepted": 4, "invitations_expired": 1, "invitations_revoked": 0,
+        "recovery_queue_count": 3,
+    }
+    lifecycle = SimpleNamespace(
+        account_summary=AsyncMock(return_value=summary),
+        import_school_staff_roster=AsyncMock(),
+    )
+    monkeypatch.setattr(app.state.container, "school_account_lifecycle", lifecycle)
+    headers = await login(client)
+    url = f"{BASE}/conversation/turn"
+    attach = {"text": "核对教职工名单", "synthetic_only": True, "attachment": "staff_roster"}
+    await select(client, headers, "TEACHER")
+    assert (await client.post(url, headers=headers, json=attach)).status_code == 403
+    model.assert_not_awaited()
+    await select(client, headers, "ADMIN")
+
+    async def prepare(messages, definitions, _context):
+        names = {item["function"]["name"] for item in definitions}
+        assert "open_staff_roster_import" in names
+        assert "open_roster_import" not in names
+        if messages[-1]["role"] == "tool":
+            assert json.loads(messages[-1]["content"]) == {
+                "confirmation_required": True, "workbench_ready": True,
+            }
+            return assistant_step(text="已打开预览，请核对")
+        return assistant_step(tool="open_staff_roster_import")
+
+    model.side_effect = prepare
+    started = await client.post(url, headers=headers, json=attach)
+    events = [json.loads(line) for line in started.text.splitlines()]
+    assert [event["view"] for event in events if event["type"] == "tool_result"] == [
+        {"kind": "staff_roster_import"}
+    ]
+    lifecycle.import_school_staff_roster.assert_not_awaited()
+
+    async def read_status(messages, definitions, _context):
+        assert "staff_invitation_status" in {item["function"]["name"] for item in definitions}
+        if messages[-1]["role"] == "tool":
+            assert json.loads(messages[-1]["content"]) == {
+                "issued": summary["invitations_issued"], "accepted": 4, "expired": 1, "revoked": 0,
+            }
+            return assistant_step(text="已核对学校邀请状态")
+        return assistant_step(tool="staff_invitation_status")
+
+    model.side_effect = read_status
+    for expected in (2, 3):
+        summary["invitations_issued"] = expected
+        checked = await client.post(
+            url,
+            headers=headers,
+            json={"text": "重新查询待接受的教职工邀请", "synthetic_only": True},
+        )
+        events = [json.loads(line) for line in checked.text.splitlines()]
+        assert [event["view"] for event in events if event["type"] == "tool_result"] == [
+            {"kind": "staff_invitation_status", "issued": expected,
+             "accepted": 4, "expired": 1, "revoked": 0}
+        ]
+    assert lifecycle.account_summary.await_count == 2
+    calls = lifecycle.account_summary.await_args_list
+    assert {call.args[0].school_ref for call in calls} == {FIRST}
+
+
 async def test_document_preview_extracts_private_text_without_entering_history(client, model_lane):
     model, _ = model_lane
     source = BytesIO()

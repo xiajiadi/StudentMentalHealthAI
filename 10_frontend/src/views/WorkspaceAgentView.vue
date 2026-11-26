@@ -15,6 +15,7 @@ import SupportChatView from '@/views/student/SupportChatView.vue'
 import WorkspaceConversation from '@/components/workspace/WorkspaceConversation.vue'
 import WorkspaceTablePreview from '@/components/workspace/WorkspaceTablePreview.vue'
 import { WORKBOOK_INVALID, type LocalWorkspaceSheet, type WorkspaceTableSummary } from '@/services/workspace-table'
+import { identifyRosterFile, type RosterAttachment } from '@/services/school-roster-file'
 
 type WorkspaceRole = 'student' | 'teacher' | 'psychological_specialist' | 'school_admin'
 type Entry = { label: string; to: string; icon: Component; note?: string }
@@ -120,7 +121,7 @@ const chatSending = ref(false)
 const researchMode = computed(() => route.query.mode === 'research')
 const workspaceAgent = ref<InstanceType<typeof WorkspaceConversation>>()
 const agentBusy = ref(false)
-const rosterFile = ref<File>()
+const roster = ref<RosterAttachment>()
 const catFile = ref<File>()
 const agentMode = computed(() => isPublicDemo.value && !researchMode.value
   && !(role.value === 'student' && (route.query.chat || route.query.history || route.query.conversation || route.query.topic)))
@@ -131,7 +132,7 @@ const attachmentOpen = ref(false)
 type DocumentPreview = { file: File; characters: number; previewLength: number }
 const attachment = ref<{ name: string; content: string; image?: boolean; document?: DocumentPreview }>()
 const attachmentError = ref('')
-const attachmentReading = ref<false | 'image' | 'document' | 'table'>(false)
+const attachmentReading = ref<false | 'image' | 'document' | 'table' | 'roster'>(false)
 const tablePreview = ref<{ name: string; sheets: LocalWorkspaceSheet[] }>()
 const tableSummary = ref<WorkspaceTableSummary>()
 const overview = ref<WorkspaceAgentResult | null>(null)
@@ -193,7 +194,7 @@ watch(workspaceScope, () => {
   attachmentError.value = ''
   tablePreview.value = undefined
   tableSummary.value = undefined
-  rosterFile.value = undefined
+  roster.value = undefined
   catFile.value = undefined
   agentBusy.value = false
   if (session.user?.activeContext) void loadOverview()
@@ -253,7 +254,7 @@ async function sendChat(text: string) {
 async function run() {
   const text = command.value.trim()
   if (agentMode.value) {
-    if (!text || agentBusy.value) return
+    if (!text || agentBusy.value || attachmentReading.value) return
     if (await workspaceAgent.value?.submit(text) && command.value.trim() === text) command.value = ''
     return
   }
@@ -319,7 +320,7 @@ async function openAttachment(file: File) {
   tableSummary.value = undefined
   if (agentMode.value) {
     if (role.value === 'school_admin' && /\.(csv|xlsx)$/i.test(file.name)) {
-      selectRoster(file)
+      await selectRoster(file)
       return
     }
     if (role.value === 'psychological_specialist' && /\.(csv|json)$/i.test(file.name)) {
@@ -418,14 +419,21 @@ async function reviewDocumentForLibrary() {
   if (workspaceScope.value === scope) workspaceAgent.value?.openSchoolLibrary(file)
 }
 
-function selectRoster(file: File) {
+async function selectRoster(file: File) {
   if (!/\.(csv|xlsx)$/i.test(file.name) || file.size > 1024 * 1024) {
-    attachmentError.value = '请选择不超过 1 MiB 的 CSV 或 XLSX 学生名单'
+    attachmentError.value = '请选择不超过 1 MiB 的 CSV 或 XLSX 名单'
     return
   }
-  rosterFile.value = file
-  attachmentError.value = ''
-  if (!command.value.trim()) command.value = '帮我检查这份学生名单，准备导入、分班和生成初始账号'
+  const request = new AbortController()
+  attachmentRequest = request
+  attachmentReading.value = 'roster'
+  const kind = await identifyRosterFile(file)
+  if (attachmentRequest === request) attachmentReading.value = false
+  if (request.signal.aborted) return
+  roster.value = { file, kind }
+  if (!command.value.trim()) command.value = kind === 'staff_roster'
+    ? '帮我核对这份教职工名单，准备导入并生成初始凭据'
+    : '帮我检查这份学生名单，准备导入、分班和生成初始账号'
 }
 
 function selectCatBank(file: File) {
@@ -521,7 +529,7 @@ function dateLabel(value: string) {
         :key="workspaceScope"
         ref="workspaceAgent"
         :role="role"
-        :roster-file="rosterFile"
+        :roster="roster"
         :cat-file="catFile"
         :table-summary="tableSummary"
         @busy="agentBusy = $event"
@@ -563,22 +571,22 @@ function dateLabel(value: string) {
           <AppButton v-if="running || agentBusy" class="workspace-agent__tool" variant="quiet" aria-label="取消任务" title="取消任务" @click="cancelRun">
             <Square :size="16" aria-hidden="true" />
           </AppButton>
-          <AppButton v-else class="workspace-agent__send" type="submit" :loading="chatSending" :disabled="(!command.trim() && !chat?.needsRetry) || confirming || chat?.composerBlocked" :aria-label="role === 'student' ? (chat?.needsRetry ? '重试发送' : '发送消息') : '发送任务'">
+          <AppButton v-else class="workspace-agent__send" type="submit" :loading="chatSending" :disabled="(!command.trim() && !chat?.needsRetry) || confirming || Boolean(attachmentReading) || chat?.composerBlocked" :aria-label="role === 'student' ? (chat?.needsRetry ? '重试发送' : '发送消息') : '发送任务'">
             <ArrowUp :size="21" aria-hidden="true" />
           </AppButton>
         </div>
         <div v-if="attachmentReading" class="workspace-agent__receipt">
-          <span role="status">{{ attachmentReading === 'image' ? '正在这台设备上识别文字' : attachmentReading === 'table' ? '正在这台设备上计算表格' : '正在学校服务中提取文字' }}</span>
+          <span role="status">{{ attachmentReading === 'image' ? '正在这台设备上识别文字' : attachmentReading === 'table' ? '正在这台设备上计算表格' : attachmentReading === 'roster' ? '正在这台设备上核对名单格式' : '正在学校服务中提取文字' }}</span>
           <AppButton variant="quiet" @click="cancelAttachmentRead">取消处理</AppButton>
         </div>
         <div v-if="tableSummary" class="workspace-agent__receipt">
           <span>已选表格统计 · {{ tableSummary.columns.length }} 列</span>
           <AppButton variant="quiet" :disabled="agentBusy" @click="tableSummary = undefined">移除表格统计</AppButton>
         </div>
-        <div v-if="agentMode && (rosterFile || catFile)" class="workspace-agent__receipt">
-          <span>{{ (rosterFile || catFile)?.name }}</span>
+        <div v-if="agentMode && (roster || catFile)" class="workspace-agent__receipt">
+          <span>{{ (roster?.file || catFile)?.name }}</span>
           <AppButton v-if="catFile" variant="quiet" :disabled="agentBusy" @click="workspaceAgent?.openIndependentCat()">打开独立 CAT 工作台</AppButton>
-          <AppButton variant="quiet" :disabled="agentBusy" @click="rosterFile = undefined; catFile = undefined">移除附件</AppButton>
+          <AppButton variant="quiet" :disabled="agentBusy" @click="roster = undefined; catFile = undefined">移除附件</AppButton>
         </div>
       </form>
       <p v-if="chatSending" class="workspace-agent__chat-status" role="status">正在回复…</p>

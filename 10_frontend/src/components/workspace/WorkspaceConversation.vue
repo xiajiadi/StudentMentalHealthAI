@@ -11,6 +11,7 @@ import WorkspaceCatDraft from './WorkspaceCatDraft.vue'
 import { frontendApi } from '@/services/mock-api'
 import { supportCaseStates, supportCategories, type TeacherReferral } from '@/services/school-support'
 import { articlesForTopics } from '@/services/student-education'
+import type { RosterAttachment } from '@/services/school-roster-file'
 import type { WorkspaceTableSummary } from '@/services/workspace-table'
 import {
   confirmWorkspacePublication, loadWorkspaceConversation, resetWorkspaceConversation,
@@ -19,7 +20,7 @@ import {
 } from '@/services/workspace-agent'
 
 const props = defineProps<{
-  rosterFile?: File
+  roster?: RosterAttachment
   catFile?: File
   tableSummary?: WorkspaceTableSummary
   role: 'student' | 'teacher' | 'psychological_specialist' | 'school_admin'
@@ -27,6 +28,7 @@ const props = defineProps<{
 const emit = defineEmits<{ busy: [value: boolean]; support: []; changed: [] }>()
 const Assessment = defineAsyncComponent(() => import('@/views/student/AssessmentView.vue'))
 const Roster = defineAsyncComponent(() => import('@/views/admin/AccountLifecycleWorkspace.vue'))
+type RosterPanel = 'roster' | 'staff'
 const panels = {
   review: defineAsyncComponent(() => import('@/components/school/SpecialistTaskReviews.vue')),
   cat: defineAsyncComponent(() => import('@/components/school/SpecialistCatWorkspace.vue')),
@@ -40,7 +42,7 @@ const panels = {
 }
 const panelLabels = {
   review: '专业复核', cat: 'CAT 题库与方案', resources: '专业资料', library: '本校资料库', support: '学校支持',
-  knowledge: '心理知识', feedback: '测评反馈', roster: '学生名单导入',
+  knowledge: '心理知识', feedback: '测评反馈', roster: '学生名单导入', staff: '教职工名单导入',
   publish: '测评发布', system: '系统状态',
 }
 const headings = {
@@ -65,7 +67,8 @@ const progress = ref('')
 const message = ref('')
 const consent = ref(false)
 const consentOpen = ref(false)
-const panel = ref<WorkflowPanel | 'roster'>()
+const panel = ref<WorkflowPanel | RosterPanel>()
+const rosterWorkbench = ref<{ busy: boolean }>()
 const feedbackRef = ref<string>()
 const reviewTaskRef = ref<string>()
 const libraryFile = ref<File>()
@@ -96,8 +99,11 @@ let initialHistory: Promise<void> | undefined
 let uploadedCat: { file: File; ref: string } | undefined
 
 const audience = computed(() => props.role === 'psychological_specialist' ? 'specialist' : props.role)
-const latestPanel = computed(() => panel.value && panel.value !== 'roster' ? panels[panel.value] : undefined)
-watch(() => props.rosterFile, (file) => { if (file) panel.value = 'roster' })
+const latestPanel = computed(() => panel.value && panel.value !== 'roster' && panel.value !== 'staff'
+  ? panels[panel.value] : undefined)
+watch(() => props.roster, (roster) => {
+  if (roster?.kind === 'student_roster') openPanel('roster')
+})
 watch(() => props.catFile, (file) => {
   uploadedCat = undefined
   if (file && /\.csv$/i.test(file.name)) panel.value = 'cat'
@@ -131,7 +137,7 @@ function decideConsent(accepted: boolean) {
 
 async function submit(text: string) {
   await initialHistory
-  if (disposed || running.value || consentOpen.value || !text.trim()) return false
+  if (disposed || running.value || rosterWorkbench.value?.busy || consentOpen.value || !text.trim()) return false
   if (!consent.value) {
     consentOpen.value = true
     if (!await new Promise<boolean>((resolve) => { consentDecision = resolve })) return false
@@ -162,13 +168,14 @@ async function submit(text: string) {
         return false
       }
     }
-    const attachment = props.rosterFile ? 'student_roster' : catRef ? 'cat_bank' : undefined
+    const attachment = props.roster?.kind ?? (catRef ? 'cat_bank' : undefined)
     await sendWorkspaceTurn(text, attachment, (event) => {
       if (disposed || request.signal.aborted) return
       events.value.push(event)
       if (event.type === 'status') progress.value = progressLabels[event.status]
       if (event.type === 'tool_started') progress.value = event.label
-      if (event.type === 'tool_result' && event.view.kind === 'roster_import') panel.value = 'roster'
+      if (event.type === 'tool_result' && event.view.kind === 'roster_import') openPanel('roster')
+      if (event.type === 'tool_result' && event.view.kind === 'staff_roster_import') openPanel('staff')
       if (event.type === 'tool_result' && props.catFile && event.view.kind === 'workflow' && event.view.workflow === 'cat') panel.value = 'cat'
       void nextTick(() => { if (viewport.value) viewport.value.scrollTop = viewport.value.scrollHeight })
     }, request.signal, catRef, props.tableSummary)
@@ -209,7 +216,8 @@ function selectAssessment(taskRef: string) {
   assessmentTask.value = taskRef
 }
 
-function openPanel(workflow?: WorkflowPanel) {
+function openPanel(workflow?: WorkflowPanel | RosterPanel) {
+  if (rosterWorkbench.value?.busy) return
   referral.value = undefined
   feedbackRef.value = undefined
   reviewTaskRef.value = undefined
@@ -464,7 +472,12 @@ defineExpose({ submit, cancel, openIndependentCat, openSchoolLibrary })
             </ul>
             <AppButton variant="secondary" @click="openPanel('review')">查看所有已指派任务</AppButton>
           </template>
-          <AppButton v-else-if="event.view.kind === 'roster_import'" variant="secondary" @click="panel = 'roster'">打开名单预览</AppButton>
+          <AppButton v-else-if="event.view.kind === 'roster_import'" variant="secondary" @click="openPanel('roster')">打开名单预览</AppButton>
+          <AppButton v-else-if="event.view.kind === 'staff_roster_import'" variant="secondary" @click="openPanel('staff')">打开教职工名单预览</AppButton>
+          <template v-else-if="event.view.kind === 'staff_invitation_status'">
+            <strong>本校教职工邀请</strong>
+            <p>待接受 {{ event.view.issued }} · 已接受 {{ event.view.accepted }} · 已过期 {{ event.view.expired }} · 已撤销 {{ event.view.revoked }}</p>
+          </template>
           <AppButton v-else-if="event.view.kind === 'workflow'" variant="secondary" @click="openPanel(event.view.workflow)">打开{{ panelLabels[event.view.workflow] }}</AppButton>
           <AppButton v-else-if="event.view.kind === 'markdown'" variant="secondary" @click="download(event.view.filename, event.view.markdown)">下载 {{ event.view.filename }}</AppButton>
         </AppCard>
@@ -490,8 +503,8 @@ defineExpose({ submit, cancel, openIndependentCat, openSchoolLibrary })
       <AppButton v-if="assessmentComplete" variant="secondary" @click="openFeedback()">查看已发布反馈</AppButton>
     </AppCard>
     <AppCard v-if="panel" class="agent-thread__card">
-      <header class="agent-thread__inline"><strong>{{ panelLabels[panel] }}</strong><AppButton variant="quiet" @click="openPanel()">收起工作台</AppButton></header>
-      <Roster v-if="panel === 'roster'" embedded-roster :initial-roster-file="rosterFile" />
+      <header class="agent-thread__inline"><strong>{{ panelLabels[panel] }}</strong><AppButton variant="quiet" :disabled="rosterWorkbench?.busy" @click="openPanel()">收起工作台</AppButton></header>
+      <Roster v-if="panel === 'roster' || panel === 'staff'" :key="panel" ref="rosterWorkbench" :embedded-section="panel" :initial-roster-file="roster?.kind === (panel === 'staff' ? 'staff_roster' : 'student_roster') ? roster.file : undefined" />
       <component :is="panels.feedback" v-else-if="panel === 'feedback'" :key="feedbackRef || 'feedback'" embedded :initial-feedback-ref="feedbackRef" @support="openPanel('support')" />
       <component :is="panels.review" v-else-if="panel === 'review'" :key="reviewTaskRef || 'review'" :initial-task-ref="reviewTaskRef" />
       <template v-else-if="panel === 'library'">

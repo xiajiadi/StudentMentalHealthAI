@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import time
+from types import SimpleNamespace
+
 import pytest
+from fastapi import Request
 from pydantic import SecretStr, ValidationError
 
 from smhai_backend.app_factory import create_app
 from smhai_backend.core.errors import BackendError, ErrorCode
+from smhai_backend.domains.auth.dependencies import csrf_protected
 from smhai_backend.domains.models import Actor, BackendRole
-from smhai_backend.domains.school_account_lifecycle.router import router
+from smhai_backend.domains.school_account_lifecycle.router import lifecycle_admin_session, router
 from smhai_backend.domains.school_account_lifecycle.schemas import (
     AcceptInvitationRequest,
     RecoveryRequest,
@@ -33,23 +38,61 @@ def test_all_lifecycle_paths_are_registered_without_expanding_openapi():
     assert "/api/v1/school/admin/accounts/summary" not in app.openapi()["paths"]
 
 
-def test_invitation_mutations_require_recent_reauthentication_and_csrf():
+def test_invitation_mutations_use_the_csrf_protected_admin_session():
     sensitive_paths = {
         "/school/admin/staff/invitations",
         "/school/admin/staff/invitations/{invitation_ref}/revoke",
         "/school/admin/staff/invitations/{invitation_ref}/reissue",
     }
+    checked = set()
     for route in router.routes:
         route_methods = getattr(route, "methods", set())
         if getattr(route, "path", None) not in sensitive_paths or "POST" not in route_methods:
             continue
         dependant = getattr(route, "dependant", None)
-        names = {
-            dependency.call.__name__
-            for dependency in getattr(dependant, "dependencies", [])
-            if getattr(getattr(dependency, "call", None), "__name__", None) is not None
-        }
-        assert "recent_reauthenticated_csrf_protected" in names
+        admin = next(
+            dependency for dependency in dependant.dependencies
+            if dependency.call is lifecycle_admin_session
+        )
+        assert any(dependency.call is csrf_protected for dependency in admin.dependencies)
+        checked.add(route.path)
+    assert checked == sensitive_paths
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("public_enabled", "school_ref", "role", "recent", "allowed"),
+    [
+        (True, "PUBLICDEMO_" + "a" * 64, BackendRole.ADMIN, False, True),
+        (False, "PUBLICDEMO_" + "a" * 64, BackendRole.ADMIN, False, False),
+        (True, "PUBLICDEMO_" + "a" * 64, BackendRole.TEACHER, False, False),
+        (True, "SCHOOL_SYNTHETIC", BackendRole.ADMIN, False, False),
+        (True, "SCHOOL_SYNTHETIC", BackendRole.ADMIN, True, True),
+    ],
+)
+async def test_invitation_session_reauthenticates_outside_the_public_demo(
+    app, monkeypatch, public_enabled, school_ref, role, recent, allowed,
+):
+    monkeypatch.setattr(
+        app.state.container.settings.public_demo,
+        "site_key",
+        "test-site-key" if public_enabled else None,
+    )
+    actor = Actor(
+        user_id="USER_synthetic", username="synthetic", role=role, subject_id=None,
+        scope_profile="school_tenant", school_id=1, school_ref=school_ref,
+    )
+    request = Request({
+        "type": "http",
+        "app": app,
+        "state": {"session": SimpleNamespace(reauthenticated_at=time.time() if recent else None)},
+    })
+    if allowed:
+        assert await lifecycle_admin_session(request, actor) is actor
+    else:
+        with pytest.raises(BackendError) as denied:
+            await lifecycle_admin_session(request, actor)
+        assert denied.value.code is ErrorCode.FORBIDDEN
 
 
 def test_invitation_requires_manual_confirmation_and_secret_is_masked():

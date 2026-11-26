@@ -449,6 +449,91 @@ test('an administrator keeps Excel rosters in the private import workflow', asyn
   await expect(page.getByRole('dialog', { name: '选择表格统计' })).toHaveCount(0)
 })
 
+test('an administrator confirms a private staff roster, downloads credentials and rechecks the live state', async ({ page }) => {
+  test.skip(process.env.PSYNOVA_AGENT_QA_WRITE !== '1', 'Requires a dedicated synthetic school')
+  test.setTimeout(210_000)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await signIn(page)
+  await chooseRole(page, 'ADMIN', '/admin/workspace')
+  const originalSummary = async () => {
+    const response = await page.request.get(origin + '/api/v1/school/admin/accounts/summary')
+    expect(response.ok()).toBe(true)
+    return (await response.json()).data
+  }
+  const before = await originalSummary()
+  const directory = await page.request.get(origin + '/api/v1/school/admin/directory')
+  expect(directory.ok()).toBe(true)
+  const currentClass = (await directory.json()).data.classes.find((item: { status: string }) => item.status === 'ACTIVE')
+  expect(Boolean(currentClass)).toBe(true)
+  const suffix = String(Date.now())
+  const staffRef = `STAFF-QA-${suffix}`
+  const rows = [
+    [staffRef + '-T', '合成名单教师', 'teacher', currentClass.class_ref],
+    [staffRef + '-P', '合成名单心理教师', 'psychological_specialist', ''],
+  ]
+  const csv = 'employee_ref,display_name,role,class_refs\r\n'
+    + rows.map((row) => row.map((value) => `"${value.replaceAll('"', '""')}"`).join(',')).join('\r\n')
+  const importWrites: string[] = []
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && request.url().endsWith('/school/admin/staff/import')) importWrites.push(request.url())
+  })
+  await page.locator('#workspace-agent-composer input[type="file"]').setInputFiles({
+    name: 'synthetic-staff-roster.csv', mimeType: 'text/csv', buffer: Buffer.from(csv),
+  })
+  const outbound = page.waitForRequest((request) => request.url().endsWith('/workspace-agent/conversation/turn'))
+  const prepared = await ask(page, '把刚附上的教职工名单整理成让我核对的预览，准备发放首登凭据', '发送任务')
+  const request = await outbound
+  expect(request.postDataJSON().attachment).toBe('staff_roster')
+  expect(request.postData()?.includes(staffRef)).toBe(false)
+  expect(request.postData()).not.toMatch(/synthetic-staff-roster|合成名单教师|employee_ref/)
+  expect(prepared.some((event) => event.view?.kind === 'staff_roster_import')).toBe(true)
+  const preview = page.getByRole('table', { name: '教职工名单预览' })
+  await expect(preview.getByText(rows[0][1], { exact: true })).toBeVisible()
+  await expect(preview.getByText(rows[1][1], { exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: '核对并导入', exact: true }).click()
+  const confirmation = page.getByRole('dialog', { name: '确认导入教职工' })
+  await confirmation.getByRole('button', { name: '返回核对' }).click()
+  expect(importWrites).toHaveLength(0)
+  await page.getByRole('button', { name: '核对并导入', exact: true }).click()
+  const response = page.waitForResponse((result) => result.url().endsWith('/school/admin/staff/import'))
+  await confirmation.getByRole('button', { name: '确认导入', exact: true }).click()
+  const importResult = await response
+  expect(importResult.status()).toBe(201)
+  expect(importResult.headers()['cache-control']).toBe('no-store')
+  expect(importWrites).toHaveLength(1)
+  const imported = (await importResult.json()).data
+  const credentials = imported.credentials as { employee_ref: string; role: string; login_name: string; credential: string; invitation_ref: string }[]
+  expect(imported.created_count).toBe(rows.length)
+  expect(credentials.map((row) => row.role).sort()).toEqual(['psychological_specialist', 'teacher'])
+  await expect(page.getByText(/已导入 2 名教职工/)).toBeVisible()
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: '下载账号 CSV（2 份）', exact: true }).click()
+  const file = await download
+  const contents = await readFile(await file.path(), 'utf8')
+  expect(file.suggestedFilename()).toBe('psynova-initial-accounts.csv')
+  expect(credentials.every((row) => row.credential.length > 0 && contents.includes(row.login_name) && contents.includes(row.credential))).toBe(true)
+
+  const after = await originalSummary()
+  expect(after.invitations_issued).toBe(before.invitations_issued + rows.length)
+  const counts = await ask(page, '刚才操作完，学校里现在还有多少教职工邀请在等接受？', '发送任务', false)
+  expect(counts.find((event) => event.view?.kind === 'staff_invitation_status')?.view).toMatchObject({
+    issued: after.invitations_issued, accepted: after.invitations_accepted,
+    expired: after.invitations_expired, revoked: after.invitations_revoked,
+  })
+  const history = await page.request.get(origin + '/api/v1/workspace-agent/conversation')
+  expect(history.ok()).toBe(true)
+  const saved = await history.text()
+  expect(saved.includes(staffRef)).toBe(false)
+  expect(credentials.some((row) => saved.includes(row.credential) || saved.includes(row.login_name))).toBe(false)
+
+  await page.goto(origin + '/admin/users')
+  await page.getByRole('tab', { name: '教职工名单' }).click()
+  await page.getByRole('textbox', { name: '搜索邀请' }).fill(rows[1][0])
+  await page.getByRole('button', { name: '搜索', exact: true }).click()
+  await expect(page.getByText(rows[1][1], { exact: true })).toBeVisible()
+})
+
 test('a synthetic learner resumes and submits a real assessment inside the conversation', async ({ page }) => {
   test.skip(process.env.PSYNOVA_AGENT_QA_WRITE !== '1', 'Requires a dedicated synthetic school')
   test.setTimeout(270_000)
