@@ -1460,7 +1460,7 @@ export class RealApiProvider implements FrontendApi {
   async requestWorkspaceConversation(
     operation: 'history' | 'turn' | 'reset' | 'confirm-publication' | 'cat-attachment'
       | 'save-cat-draft' | 'approve-cat-draft' | 'preview-cat-handoff'
-      | 'document-preview/pdf' | 'document-preview/docx',
+      | 'document-preview/pdf' | 'document-preview/docx' | 'formula-preview',
     body?: object,
     signal?: AbortSignal,
   ): Promise<Response> {
@@ -1469,7 +1469,7 @@ export class RealApiProvider implements FrontendApi {
     if (operation !== 'history') base.pathname += '/' + operation
     const headers = new Headers({ Accept: operation === 'turn' ? 'application/x-ndjson' : 'application/json' })
     if (operation !== 'history') headers.set('X-CSRF-Token', await this.ensureCsrfToken())
-    const binaryPreview = operation.startsWith('document-preview/')
+    const binaryPreview = operation === 'formula-preview' || operation.startsWith('document-preview/')
     if (body) headers.set('Content-Type', binaryPreview ? 'application/octet-stream' : 'application/json')
     const response = await fetch(base, {
       method: operation === 'history' ? 'GET' : 'POST',

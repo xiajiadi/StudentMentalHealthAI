@@ -22,6 +22,7 @@ from smhai_backend.domains.models import Actor
 from smhai_backend.domains.school_research_sources import library
 
 from . import workspace_agent_cat as cat_workflow
+from . import workspace_agent_formula as formula_reader
 from .workspace_agent import _check_actor
 from .workspace_agent_history import workspace_owner as _owner
 from .workspace_agent_publishing import TaskConfirmation
@@ -496,6 +497,30 @@ async def preview_document(request: Request, kind: Literal["pdf", "docx"], actor
         {"data": {"text": body[:_DOCUMENT_PREVIEW_CHARACTERS], "characters": len(body)}},
         headers={"Cache-Control": "no-store"},
     )
+
+
+@router.post("/formula-preview")
+async def preview_formula(request: Request, actor: CsrfActor):
+    _history(request, actor)
+    request.app.state.container.rate_limiter.check("support", actor.user_id)
+    if request.headers.get("content-type") != "application/octet-stream":
+        raise error(ErrorCode.VALIDATION_FAILED, detail="binary formula image required")
+    content = bytearray()
+    async for chunk in request.stream():
+        if len(content) + len(chunk) > formula_reader.MAX_BYTES:
+            raise error(ErrorCode.VALIDATION_FAILED, detail="formula image is too large")
+        content.extend(chunk)
+    if not content.startswith(formula_reader.PNG_SIGNATURE):
+        raise error(ErrorCode.VALIDATION_FAILED, detail="PNG formula image required")
+    if formula_reader.FORMULA_SLOTS.locked():
+        raise error(
+            ErrorCode.DEPENDENCY_UNAVAILABLE, detail="formula preview is busy", retryable=True
+        )
+    async with formula_reader.FORMULA_SLOTS:
+        text = await run_in_threadpool(formula_reader.extract_formula, bytes(content))
+    context = current_request_context(request)
+    log.info("workspace_agent_formula_preview", trace_id=context.trace_id)
+    return JSONResponse({"data": {"text": text}}, headers={"Cache-Control": "no-store"})
 
 
 @router.post("/confirm-publication")

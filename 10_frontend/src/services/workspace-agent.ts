@@ -125,6 +125,13 @@ export async function previewWorkspaceDocument(file: Blob, kind: 'pdf' | 'docx',
   return (await response.json()).data as { text: string; characters: number }
 }
 
+export async function previewWorkspaceFormula(image: Blob, signal: AbortSignal): Promise<string> {
+  const response = await realApiProvider.requestWorkspaceConversation('formula-preview', image, signal)
+  const data = (await response.json()).data
+  if (typeof data?.text !== 'string' || !data.text.trim() || data.text.length > 700) throw new Error('公式识别结果无法读取')
+  return data.text
+}
+
 export async function updateWorkspaceCat(draftRef: string, action: 'save' | 'approve') {
   const response = await realApiProvider.requestWorkspaceConversation(
     action === 'save' ? 'save-cat-draft' : 'approve-cat-draft', { draft_ref: draftRef },

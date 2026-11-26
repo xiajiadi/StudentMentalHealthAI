@@ -342,6 +342,94 @@ test('a learner reads bar heights from an uploaded chart and sends only the revi
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391)
 })
 
+test('a learner previews a handwritten formula privately and asks the model to solve the reviewed text', async ({ page }) => {
+  test.setTimeout(180_000)
+  await signIn(page)
+  await chooseRole(page, 'STUDENT', '/student/workspace')
+  await page.setViewportSize({ width: 390, height: 844 })
+  const before = await page.request.get(origin + '/api/v1/workspace-agent/conversation')
+  expect(before.ok()).toBe(true)
+  const historyBefore = (await before.json()).data.events
+  const writePaths: string[] = []
+  page.context().on('request', (request) => {
+    if (request.method() === 'POST') writePaths.push(new URL(request.url()).pathname)
+  })
+
+  const upload = async (withFormula: boolean) => {
+    const image = await page.evaluate((drawFormula) => {
+      const canvas = document.createElement('canvas')
+      canvas.width = 322
+      canvas.height = 164
+      const context = canvas.getContext('2d')!
+      context.fillStyle = 'white'
+      context.fillRect(0, 0, 322, 164)
+      context.strokeStyle = '#15212f'
+      context.lineWidth = 5
+      context.lineJoin = 'round'
+
+      const stroke = (points: [number, number][], left = 0, top = 0) => {
+        context.beginPath()
+        points.forEach(([x, y], index) => {
+          if (index === 0) context.moveTo(x + left, y + top)
+          else context.lineTo(x + left, y + top)
+        })
+        context.stroke()
+      }
+      if (drawFormula) {
+        stroke([[3, 8], [12, 3], [27, 4], [31, 12], [27, 21], [17, 25], [30, 29], [34, 38], [29, 45], [15, 49], [3, 45]], 62, 17)
+        stroke([[45, 78], [113, 76]])
+        stroke([[22, 4], [4, 30], [33, 31]], 63, 91)
+        stroke([[26, 9], [25, 50]], 63, 91)
+        stroke([[135, 78], [182, 78]])
+        stroke([[158, 56], [157, 100]])
+        stroke([[3, 16], [14, 4], [15, 48]], 225, 17)
+        stroke([[208, 78], [276, 76]])
+        stroke([[3, 14], [8, 5], [20, 3], [28, 9], [31, 18], [24, 32], [9, 46], [32, 46]], 226, 91)
+      }
+      return canvas.toDataURL('image/png').split(',')[1]
+    }, withFormula)
+    await page.locator('#workspace-agent-composer input[type="file"]').setInputFiles({
+      name: 'synthetic-formula-private.png', mimeType: 'image/png', buffer: Buffer.from(image, 'base64'),
+    })
+  }
+  const preview = page.getByRole('dialog', { name: '图片文字预览' })
+  const recognize = preview.getByRole('button', { name: '交给学校服务识别公式' })
+  const editor = preview.getByRole('textbox', { name: '识别出的文字' })
+  await upload(false)
+  await expect(preview).toBeVisible({ timeout: 60_000 })
+  expect(writePaths).toEqual([])
+  const rejected = page.waitForResponse((response) => response.url().endsWith('/conversation/formula-preview'))
+  await recognize.click()
+  expect((await rejected).status()).toBe(422)
+  await expect(preview.getByRole('alert')).toContainText('没有读到清楚的公式')
+  await expect(preview.getByRole('button', { name: '插入到输入框' })).toBeDisabled()
+  await preview.getByRole('button', { name: '关闭', exact: true }).click()
+
+  await upload(true)
+  await expect(recognize).toBeVisible({ timeout: 60_000 })
+  expect(writePaths).toHaveLength(1)
+  const pending = page.waitForResponse((response) => response.url().endsWith('/conversation/formula-preview'))
+  await recognize.click()
+  const formula = await pending
+  expect(formula.ok()).toBe(true)
+  expect(formula.headers()['cache-control']).toBe('no-store')
+  const binary = formula.request().postDataBuffer()!
+  expect(new URL(formula.url()).origin).toBe(origin)
+  expect(binary.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
+  expect(binary.includes(Buffer.from('synthetic-formula-private.png'))).toBe(false)
+  await expect(editor).toHaveValue(/\\frac\s*\{\s*3\s*\}\s*\{\s*4\s*\}\s*\+\s*\\frac\s*\{\s*1\s*\}\s*\{\s*2\s*\}/)
+  const after = await page.request.get(origin + '/api/v1/workspace-agent/conversation')
+  expect((await after.json()).data.events).toEqual(historyBefore)
+  await preview.getByRole('button', { name: '插入到输入框' }).click()
+  const text = await page.locator('#workspace-agent-input').inputValue()
+  const prompt = `给出这道分数加法的最简结果\n\n${text}`
+  const sent = page.waitForRequest((request) => request.url().endsWith('/conversation/turn'))
+  const events = await ask(page, prompt, '发送消息')
+  expect((await sent).postDataJSON()).toEqual({ text: prompt, synthetic_only: true })
+  expect(events.find((event) => event.type === 'answer')?.text).toMatch(/1\.25|5\s*\/\s*4|\\frac\s*\{5\}\s*\{4\}|四分之五/)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391)
+})
+
 test('a learner extracts a PDF and sends only the selected worksheet excerpt', async ({ page }) => {
   test.setTimeout(150_000)
   await signIn(page)

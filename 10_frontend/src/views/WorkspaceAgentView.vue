@@ -8,7 +8,7 @@ import AppCard from '@/components/app/AppCard.vue'
 import AppDialog from '@/components/app/AppDialog.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import AppTextarea from '@/components/app/AppTextarea.vue'
-import { educationTopics, previewWorkspaceDocument, runWorkspaceAgent, type EducationTopic, type WorkspaceAgentResult } from '@/services/workspace-agent'
+import { educationTopics, previewWorkspaceDocument, previewWorkspaceFormula, runWorkspaceAgent, type EducationTopic, type WorkspaceAgentResult } from '@/services/workspace-agent'
 import { useSessionStore } from '@/stores/session'
 import type { Role } from '@/types/contracts'
 import SupportChatView from '@/views/student/SupportChatView.vue'
@@ -130,9 +130,9 @@ const maxCommandLength = computed(() => agentMode.value ? 3000 : role.value === 
 const fileInput = ref<HTMLInputElement>()
 const attachmentOpen = ref(false)
 type DocumentPreview = { file: File; characters: number; previewLength: number }
-const attachment = ref<{ name: string; content: string; image?: boolean; chart?: string; document?: DocumentPreview }>()
+const attachment = ref<{ name: string; content: string; image?: File; chart?: string; document?: DocumentPreview }>()
 const attachmentError = ref('')
-const attachmentReading = ref<false | 'image' | 'document' | 'table' | 'roster'>(false)
+const attachmentReading = ref<false | 'image' | 'document' | 'table' | 'roster' | 'formula'>(false)
 const tablePreview = ref<{ name: string; sheets: LocalWorkspaceSheet[] }>()
 const tableSummary = ref<WorkspaceTableSummary>()
 const overview = ref<WorkspaceAgentResult | null>(null)
@@ -371,9 +371,9 @@ async function openAttachment(file: File) {
     }
     const hasControlCharacter = Array.from(content).some((character) =>
       character.charCodeAt(0) < 32 && !['\t', '\r', '\n'].includes(character))
-    if (!content || hasControlCharacter) throw new Error()
+    if ((!content && !image) || hasControlCharacter) throw new Error()
     if (!request.signal.aborted) {
-      attachment.value = { name: file.name, content, image, chart, document: documentPreview }
+      attachment.value = { name: file.name, content, image: image ? file : undefined, chart, document: documentPreview }
       attachmentOpen.value = true
     }
   } catch (error) {
@@ -391,6 +391,36 @@ async function openAttachment(file: File) {
   }
 }
 
+async function readFormula() {
+  const preview = attachment.value
+  if (!preview?.image || attachmentReading.value) return
+  const request = new AbortController()
+  attachmentRequest = request
+  attachmentReading.value = 'formula'
+  attachmentError.value = ''
+  try {
+    const { encodeWorkspaceFormulaImage } = await import('@/services/workspace-image-text')
+    const prepared = await encodeWorkspaceFormulaImage(preview.image, request.signal)
+    const text = await previewWorkspaceFormula(prepared, request.signal)
+    if (!request.signal.aborted && attachment.value === preview) preview.content = text
+  } catch (error) {
+    if (!request.signal.aborted) {
+      const code = error && typeof error === 'object' && 'code' in error ? String(error.code).toLowerCase() : ''
+      attachmentError.value = code === 'dependency_unavailable'
+        ? '学校公式识别暂不可用，请稍后再试'
+        : '没有读到清楚的公式，请裁剪出一道公式后再试'
+    }
+  } finally {
+    if (attachmentRequest === request) attachmentReading.value = false
+  }
+}
+
+function closeAttachment() {
+  cancelAttachmentRead()
+  attachmentOpen.value = false
+  attachment.value = undefined
+}
+
 function confirmTable(summary: WorkspaceTableSummary) {
   tableSummary.value = summary
   tablePreview.value = undefined
@@ -398,7 +428,7 @@ function confirmTable(summary: WorkspaceTableSummary) {
 }
 
 function insertAttachment() {
-  if (!attachment.value || chatSending.value || chat.value?.needsRetry) return
+  if (!attachment.value?.content.trim() || attachmentReading.value || chatSending.value || chat.value?.needsRetry) return
   const editor = document.getElementById('workspace-attachment-excerpt') as HTMLTextAreaElement | null
   const selected = editor?.value.slice(editor.selectionStart, editor.selectionEnd).trim()
   const text = [command.value.trim(), selected || attachment.value.content.trim()].filter(Boolean).join('\n\n')
@@ -578,7 +608,7 @@ function dateLabel(value: string) {
             <ArrowUp :size="21" aria-hidden="true" />
           </AppButton>
         </div>
-        <div v-if="attachmentReading" class="workspace-agent__receipt">
+      <div v-if="attachmentReading && attachmentReading !== 'formula'" class="workspace-agent__receipt">
           <span role="status">{{ attachmentReading === 'image' ? '正在这台设备上读取图片' : attachmentReading === 'table' ? '正在这台设备上计算表格' : attachmentReading === 'roster' ? '正在这台设备上核对名单格式' : '正在学校服务中提取文字' }}</span>
           <AppButton variant="quiet" @click="cancelAttachmentRead">取消处理</AppButton>
         </div>
@@ -681,18 +711,22 @@ function dateLabel(value: string) {
       :open="attachmentOpen"
       :title="attachment?.image ? '图片文字预览' : attachment?.document ? '文档文字预览' : '附件预览'"
       :description="attachment?.image ? '图片在这台设备上处理。请核对内容并删除个人信息后再插入' : attachment?.document ? '可选中要交给智能体处理的段落。插入前请移除个人信息和未经授权的内容' : role === 'student' ? '请先检查内容，移除姓名、学号等个人信息' : '文件内容在当前页面预览'"
-      @update:open="attachmentOpen = $event; if (!$event) attachment = undefined"
+      @update:open="(open) => { if (!open) closeAttachment() }"
     >
       <strong>{{ attachment?.name }}</strong>
       <small v-if="attachment?.document && attachment.document.characters > attachment.document.previewLength">显示前 {{ attachment.document.previewLength }} 字，共提取 {{ attachment.document.characters }} 字</small>
       <AppTextarea v-if="attachment?.image || attachment?.document" id="workspace-attachment-excerpt" v-model="attachment.content" :label="attachment.image ? '识别出的文字' : '提取的文字'" :rows="5" :maxlength="attachment.image ? 3000 : 12000" />
       <pre v-else class="workspace-agent__attachment">{{ attachment?.content }}</pre>
+      <p v-if="attachmentReading === 'formula'" role="status">学校服务正在识别公式</p>
+      <small v-else-if="attachment?.image && !attachment.content.trim()">暂无可插入的文字</small>
+      <small v-if="attachment?.image">公式识别会把图片交给学校服务。请只使用裁剪好的一道合成练习公式</small>
       <p v-if="attachmentError" class="workspace-agent__error" role="alert">{{ attachmentError }}</p>
       <div class="workspace-agent__confirm">
-        <AppButton variant="secondary" @click="attachmentOpen = false; attachment = undefined">关闭</AppButton>
-        <AppButton v-if="attachment?.chart && attachment.content !== attachment.chart" variant="secondary" @click="attachment.content = attachment.chart">使用柱状图读数</AppButton>
+        <AppButton variant="secondary" @click="closeAttachment">关闭</AppButton>
+        <AppButton v-if="attachment?.chart && attachment.content !== attachment.chart" variant="secondary" :disabled="Boolean(attachmentReading)" @click="attachment.content = attachment.chart">使用柱状图读数</AppButton>
+        <AppButton v-if="attachment?.image" variant="secondary" :loading="attachmentReading === 'formula'" @click="readFormula">交给学校服务识别公式</AppButton>
         <AppButton v-if="attachment?.document && role === 'psychological_specialist'" variant="secondary" @click="reviewDocumentForLibrary">核对并入库</AppButton>
-        <AppButton v-if="role === 'student' || agentMode" @click="insertAttachment">插入到输入框</AppButton>
+        <AppButton v-if="role === 'student' || agentMode" :disabled="Boolean(attachmentReading) || !attachment?.content.trim()" @click="insertAttachment">插入到输入框</AppButton>
       </div>
     </AppDialog>
     <AppDialog

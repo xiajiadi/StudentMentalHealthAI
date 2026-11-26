@@ -11,9 +11,11 @@ from zipfile import ZipFile
 import pytest
 from pwdlib import PasswordHash
 
+from smhai_backend.domains import workspace_agent_formula
 from smhai_backend.domains.models import BackendRole, SchoolRoleContext, SyntheticUser
 from smhai_backend.domains.school_operations_audit.service import SchoolOperationsAuditService
 from smhai_backend.domains.school_research_sources import library
+from smhai_backend.domains.workspace_agent_formula_worker import _checked_formula
 from smhai_backend.domains.workspace_agent_history import WorkspaceHistory
 
 BASE = "/api/v1/workspace-agent"
@@ -770,6 +772,45 @@ async def test_document_preview_extracts_private_text_without_entering_history(c
     assert malformed.status_code >= 400
     assert (await client.get(url)).json()["data"]["events"] == []
     model.assert_not_awaited()
+
+
+async def test_formula_preview_requires_a_session_and_keeps_formula_out_of_history(
+    client, model_lane, monkeypatch
+):
+    model, _ = model_lane
+    calls = []
+    formula = r"\frac { 3 } { 4 } + \frac { 1 } { 2 }"
+
+    def extract(content):
+        calls.append(content)
+        return formula
+
+    monkeypatch.setattr(workspace_agent_formula, "extract_formula", extract)
+    url = f"{BASE}/conversation/formula-preview"
+    image = workspace_agent_formula.PNG_SIGNATURE + b"formula-preview-fixture"
+    assert (await client.post(url, content=image)).status_code == 401
+    headers = await login(client)
+    await select(client, headers, "STUDENT")
+    binary = {**headers, "Content-Type": "application/octet-stream"}
+    for rejected in (b"not a PNG", image.ljust(workspace_agent_formula.MAX_BYTES + 1, b"0")):
+        assert (await client.post(url, headers=binary, content=rejected)).status_code == 422
+    assert (await client.post(url, headers=headers, content=image)).status_code == 422
+    assert calls == []
+
+    result = await client.post(url, headers=binary, content=image)
+    assert result.status_code == 200
+    assert result.headers["cache-control"] == "no-store"
+    assert result.json()["data"] == {"text": formula}
+    assert calls == [image]
+    history = await client.get(f"{BASE}/conversation")
+    assert history.json()["data"]["events"] == []
+    model.assert_not_awaited()
+
+
+@pytest.mark.parametrize("formula", ("", "x^2 + \ufffd", r"\frac{1}{2", "a\nb"))
+def test_formula_worker_rejects_incomplete_or_unreadable_output(formula):
+    with pytest.raises(ValueError):
+        _checked_formula(formula)
 
 
 async def test_school_library_tool_returns_only_counts(client, model_lane, monkeypatch, tmp_path):
