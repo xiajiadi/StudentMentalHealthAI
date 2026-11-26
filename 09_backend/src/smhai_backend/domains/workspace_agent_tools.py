@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from smhai_backend.core.errors import ErrorCode, error
 from smhai_backend.domains.models import Actor, BackendRole
 from smhai_backend.domains.school_directory.schemas import SchoolDirectoryDto
+from smhai_backend.domains.school_feedback.schemas import StudentFeedbackListDto
 from smhai_backend.domains.school_support.schemas import SupportCasePageDto, SupportCategoryCode
 
 from . import workspace_agent_cat as cat_workflow
@@ -40,6 +41,10 @@ class TaskWindow(Arguments):
 
 class StudentTask(Arguments):
     task: str = Field(pattern=r"^assessment-[a-f0-9]{12}$")
+
+
+class PublishedFeedbackSelection(Arguments):
+    selection: str = Field(pattern=r"^(latest|feedback-[a-f0-9]{12})$")
 
 
 class NewClass(Arguments):
@@ -93,6 +98,21 @@ TOOLS = {
         "list_student_assessments. Only the student can start and answer.",
         (STUDENT,),
         StudentTask,
+    ),
+    "list_published_feedback": Tool(
+        "核对已发布的测评反馈",
+        "Read how many feedback records the current student can view and obtain aliases of "
+        "the newest records. The student sees the details privately in the browser.",
+        (STUDENT,),
+    ),
+    "open_published_feedback": Tool(
+        "准备阅读已发布反馈",
+        "Open a published school feedback inside the student's conversation. Use latest for "
+        "the most recently published record, or an alias from list_published_feedback. "
+        "The result card offers help reading the record. Feedback text stays in the school "
+        "workflow and is unavailable to the language model.",
+        (STUDENT,),
+        PublishedFeedbackSelection,
     ),
     "class_progress": Tool(
         "查询授权班级进度",
@@ -261,6 +281,37 @@ async def execute_tool(
 ):
     """Return (browser component, model data). Only explicitly projected fields leave."""
     container = request.app.state.container
+    if name in {"list_published_feedback", "open_published_feedback"}:
+        if container.school_feedback is None:
+            raise error(ErrorCode.DEPENDENCY_UNAVAILABLE, detail="school feedback is unavailable")
+        page = StudentFeedbackListDto.model_validate(
+            await container.school_feedback.list_student_feedback(actor, limit=12)
+        )
+        if isinstance(arguments, PublishedFeedbackSelection):
+            if arguments.selection == "latest":
+                selected = page.items[0] if page.items else None
+            else:
+                selected = next(
+                    (
+                        row for row in page.items
+                        if arguments.selection == _alias("feedback", row.feedback_ref)
+                    ),
+                    None,
+                )
+                if selected is None:
+                    raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="published feedback not found")
+            if selected is not None:
+                return (
+                    {"kind": "feedback_picker", "feedback_ref": selected.feedback_ref},
+                    {"ready_for_student": True},
+                )
+        return (
+            {"kind": "feedback_index", "total": page.total},
+            {
+                "total": page.total,
+                "newest_first": [_alias("feedback", row.feedback_ref) for row in page.items],
+            },
+        )
     if name == "prepare_teacher_referral" and isinstance(arguments, ReferralDraft):
         return (
             {

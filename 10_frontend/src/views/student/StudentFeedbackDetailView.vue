@@ -14,11 +14,13 @@ import { useRoute } from 'vue-router'
 
 const route = useRoute()
 const session = useSessionStore()
+const props = defineProps<{ embeddedFeedbackRef?: string }>()
+const emit = defineEmits<{ support: [] }>()
 const state = ref<'loading' | 'ready' | 'error'>('loading')
 const feedback = ref<{ title: string; body: string; published_at: string | null } | null>(null)
 const errorMessage = ref('')
 let requestGeneration = 0
-const isPreviewRoute = () => import.meta.env.DEV && route.params.id === 'demo' && route.query.preview === '1'
+const isPreviewRoute = () => !props.embeddedFeedbackRef && import.meta.env.DEV && route.params.id === 'demo' && route.query.preview === '1'
 const previewFeedback = {
   title: '学习节奏与安排',
   body: '如果最近想整理学习安排，可以先选一件最想完成的事，把它拆成几个容易开始的小步骤，再给第一步留出一个具体时间。之后可以回看哪种安排更适合自己。',
@@ -33,7 +35,7 @@ const formatDate = (value: string) => {
 
 const load = async () => {
   const generation = ++requestGeneration
-  const feedbackRef = typeof route.params.id === 'string' ? route.params.id : ''
+  const feedbackRef = props.embeddedFeedbackRef ?? (typeof route.params.id === 'string' ? route.params.id : '')
   state.value = 'loading'
   feedback.value = null
   errorMessage.value = ''
@@ -56,7 +58,7 @@ const load = async () => {
 }
 
 watch(
-  () => [route.params.id, route.query.preview, session.user?.userId ?? null, session.user?.activeContext?.schoolRef ?? null] as const,
+  () => [props.embeddedFeedbackRef, route.params.id, route.query.preview, session.user?.userId, session.user?.activeContext] as const,
   () => { void load() },
   { immediate: true },
 )
@@ -65,14 +67,24 @@ onBeforeUnmount(() => { requestGeneration += 1 })
 </script>
 
 <template>
-  <div class="content-wrap content-wrap--student feedback-detail">
-    <WorkspaceBreadcrumb v-if="state !== 'ready'" current="反馈详情" :parent="{ label: '测评反馈', to: '/student/feedback' }" />
+  <div class="feedback-detail" :class="{ 'content-wrap content-wrap--student': !embeddedFeedbackRef }">
+    <WorkspaceBreadcrumb v-if="!embeddedFeedbackRef && state !== 'ready'" current="反馈详情" :parent="{ label: '测评反馈', to: '/student/feedback' }" />
     <div v-if="state === 'loading'" class="feedback-detail__loading" aria-busy="true" aria-label="正在加载反馈详情">
       <span></span><i></i><i></i><section></section>
     </div>
     <AppStatusCallout v-else-if="state === 'error'" tone="critical" title="这条反馈暂时无法打开" :body="errorMessage">
       <AppButton variant="secondary" size="sm" @click="load"><RotateCcw :size="15" aria-hidden="true" />重新加载</AppButton>
     </AppStatusCallout>
+    <div v-else-if="feedback && embeddedFeedbackRef" class="feedback-detail__section">
+      <h3>{{ feedback.title }}</h3>
+      <small v-if="feedback.published_at">学校已审核发布 · {{ formatDate(feedback.published_at) }}</small>
+      <AppCard class="feedback-detail__body"><p>{{ feedback.body }}</p></AppCard>
+      <details>
+        <summary>怎么读这份反馈</summary>
+        <p>先看老师写下的观察和建议。如果有明确的下一步，可以记下来。对意思或适用范围有疑问时，可以请学校协助说明</p>
+        <AppButton variant="secondary" @click="emit('support')">查看学校支持</AppButton>
+      </details>
+    </div>
     <StudentRecordDetailLayout
       v-else-if="feedback"
       current="反馈详情"

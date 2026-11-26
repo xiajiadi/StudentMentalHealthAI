@@ -62,6 +62,7 @@ const message = ref('')
 const consent = ref(false)
 const consentOpen = ref(false)
 const panel = ref<WorkflowPanel | 'roster'>()
+const feedbackRef = ref<string>()
 const referral = ref<{ key: string; draft: TeacherReferral }>()
 const assessmentTask = ref('')
 const assessmentId = ref('')
@@ -201,7 +202,13 @@ function selectAssessment(taskRef: string) {
 
 function openPanel(workflow?: WorkflowPanel) {
   referral.value = undefined
+  feedbackRef.value = undefined
   panel.value = workflow
+}
+
+function openFeedback(ref?: string) {
+  openPanel('feedback')
+  feedbackRef.value = ref
 }
 
 function openTeacherReferral(draft: TeacherReferral, key: string) {
@@ -350,6 +357,11 @@ defineExpose({ submit, cancel, openIndependentCat })
             <AppButton v-if="event.view.artifact" variant="secondary" @click="download(event.view.artifact.filename, event.view.artifact.markdown)">下载班级统计简报</AppButton>
           </template>
           <AppButton v-else-if="event.view.kind === 'assessment_picker'" variant="secondary" @click="selectAssessment(event.view.task_ref)">阅读说明并打开测评</AppButton>
+          <template v-else-if="event.view.kind === 'feedback_index'">
+            <strong>{{ event.view.total ? `已发布反馈 · ${event.view.total} 份` : '暂时没有已发布的反馈' }}</strong>
+            <AppButton v-if="event.view.total" variant="secondary" @click="openFeedback()">在会话中查看反馈</AppButton>
+          </template>
+          <AppButton v-else-if="event.view.kind === 'feedback_picker'" variant="secondary" @click="openFeedback(event.view.feedback_ref)">在会话中阅读反馈</AppButton>
           <div v-else-if="event.view.kind === 'preview_class'" class="agent-thread__inline">
             <span>{{ event.view.class_ref }}</span>
             <AppButton variant="secondary" :disabled="submittedClasses.has(event.view.token)" @click="pendingClass = event.view">{{ submittedClasses.has(event.view.token) ? '已创建' : '核对并确认' }}</AppButton>
@@ -403,11 +415,12 @@ defineExpose({ submit, cancel, openIndependentCat })
         <AppButton :loading="assessmentStarting" @click="startAssessment">我已阅读，开始或继续</AppButton>
       </template>
       <Assessment v-else :key="assessmentId" :embedded-assessment-id="assessmentId" @completed="assessmentComplete = true; emit('changed')" />
-      <AppButton v-if="assessmentComplete" variant="secondary" @click="panel = 'feedback'">查看已发布反馈</AppButton>
+      <AppButton v-if="assessmentComplete" variant="secondary" @click="openFeedback()">查看已发布反馈</AppButton>
     </AppCard>
     <AppCard v-if="panel" class="agent-thread__card">
       <header class="agent-thread__inline"><strong>{{ panelLabels[panel] }}</strong><AppButton variant="quiet" @click="openPanel()">收起工作台</AppButton></header>
       <Roster v-if="panel === 'roster'" embedded-roster :initial-roster-file="rosterFile" />
+      <component :is="panels.feedback" v-else-if="panel === 'feedback'" :key="feedbackRef || 'feedback'" embedded :initial-feedback-ref="feedbackRef" @support="openPanel('support')" />
       <component :is="latestPanel" v-else-if="latestPanel" :key="panel === 'support' ? referral?.key || panel : panel" v-bind="panel === 'support' ? { audience, initialReferral: referral?.draft } : panel === 'cat' ? { initialBankFile: catFile } : {}" />
     </AppCard>
   </section>

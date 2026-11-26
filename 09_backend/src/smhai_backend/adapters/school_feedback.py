@@ -543,7 +543,7 @@ class SchoolFeedbackPersistenceAdapter(SchoolProfessionalReviewPersistenceAdapte
         """Return only refs whose scope and SELF grant are currently visible."""
         m = self._db_models
         return (
-            self._select(m.SchoolFeedbackRecord.feedback_ref)
+            self._select(m.SchoolFeedbackRecord.feedback_ref, m.SchoolFeedbackRecord.published_at)
             .join(
                 m.SchoolProfessionalReviewCase,
                 m.SchoolProfessionalReviewCase.id == m.SchoolFeedbackRecord.review_case_id,
@@ -629,7 +629,10 @@ class SchoolFeedbackPersistenceAdapter(SchoolProfessionalReviewPersistenceAdapte
             refs = list(
                 (
                     await uow.session.scalars(
-                        base.order_by(m.SchoolFeedbackRecord.feedback_ref.desc())
+                        base.order_by(
+                            m.SchoolFeedbackRecord.published_at.desc(),
+                            m.SchoolFeedbackRecord.feedback_ref.desc(),
+                        )
                         .offset(offset)
                         .limit(limit)
                     )

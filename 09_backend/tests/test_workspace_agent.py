@@ -375,6 +375,78 @@ async def test_validated_tool_context_survives_filtered_answer(client, model_lan
     assert "TASK_workspace" not in prompt
 
 
+async def test_student_feedback_resolves_only_visible_publications_without_model_content(
+    client, app, model_lane, monkeypatch
+):
+    model, _ = model_lane
+    stamp = datetime.now(UTC)
+    feedback = {
+        "feedback_ref": "FEED_private_fixture",
+        "assessment_ref": "ASSESS_private_fixture",
+        "level": "L3",
+        "synthetic_only": True,
+        "content_revision": 1,
+        "state_version": 2,
+        "status": "PUBLISHED",
+        "title": "PRIVATE_FEEDBACK_TITLE",
+        "body": "PRIVATE_FEEDBACK_BODY",
+        "created_at": stamp,
+        "published_at": stamp,
+    }
+    service = SimpleNamespace(list_student_feedback=AsyncMock(
+        return_value={"total": 1, "items": [feedback]}
+    ))
+    monkeypatch.setattr(app.state.container, "school_feedback", service)
+
+    async def model_step(messages, tools, _context):
+        assert "list_published_feedback" in {tool["function"]["name"] for tool in tools}
+        serialized = json.dumps(messages)
+        for key in ("feedback_ref", "assessment_ref", "title", "body"):
+            assert feedback[key] not in serialized
+        if messages[-1]["role"] != "tool":
+            return assistant_step(tool="list_published_feedback")
+        result = json.loads(messages[-1]["content"])
+        if result.get("newest_first"):
+            return assistant_step(
+                tool="open_published_feedback",
+                arguments=json.dumps({"selection": result["newest_first"][0]}),
+            )
+        assert result == {"ready_for_student": True}
+        return assistant_step(text="已准备好阅读已发布的反馈")
+
+    model.side_effect = model_step
+    headers = await login(client)
+    url = f"{BASE}/conversation"
+    await select(client, headers, "STUDENT")
+    response = await client.post(
+        f"{url}/turn", headers=headers, json={"text": "打开我的反馈", "synthetic_only": True}
+    )
+    views = [
+        event["view"] for line in response.text.splitlines()
+        if (event := json.loads(line))["type"] == "tool_result"
+    ]
+    assert views == [
+        {"kind": "feedback_index", "total": 1},
+        {"kind": "feedback_picker", "feedback_ref": feedback["feedback_ref"]},
+    ]
+    history = (await client.get(url)).text
+    assert feedback["body"] not in history
+    assert feedback["title"] not in history
+    assert service.list_student_feedback.await_count == 2
+    assert service.list_student_feedback.await_args.args[0].school_ref == FIRST
+
+    await select(client, headers, "TEACHER")
+    model.side_effect = [
+        assistant_step(tool="list_published_feedback"),
+        assistant_step(text="当前工作区无法查看学生反馈"),
+    ]
+    unauthorized = await client.post(
+        f"{url}/turn", headers=headers, json={"text": "查学生反馈", "synthetic_only": True}
+    )
+    assert '"code": "forbidden"' in unauthorized.text
+    assert service.list_student_feedback.await_count == 2
+
+
 async def test_model_cannot_call_hidden_tool_and_can_recover(client, tools, model_lane):
     model, _ = model_lane
     model.side_effect = [

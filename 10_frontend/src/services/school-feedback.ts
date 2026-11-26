@@ -222,6 +222,7 @@ async function request(input: RequestOptions): Promise<unknown> {
     response = await fetch(url.toString(), {
       method: input.method,
       credentials: 'include',
+      cache: 'no-store',
       headers,
       ...(input.body ? { body: JSON.stringify(input.body) } : {}),
     })

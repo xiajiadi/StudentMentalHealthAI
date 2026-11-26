@@ -71,6 +71,42 @@ test('the public learner and teacher use live tools under their own roles', asyn
   await expect(page.getByText(/授权班级测评进度 · /).last()).toBeVisible()
 })
 
+test('published school feedback is read in the learner conversation over the private route', async ({ page }) => {
+  test.skip(process.env.PSYNOVA_AGENT_QA_FEEDBACK !== '1', 'Requires an approved fixture in the synthetic learner account')
+  test.setTimeout(180_000)
+  await signIn(page)
+  await chooseRole(page, 'STUDENT', '/student/workspace')
+  const list = await page.request.get(origin + '/api/v1/school/feedback/student')
+  expect(list.ok()).toBe(true)
+  const available = (await list.json()).data
+  expect(available.total).toBeGreaterThan(0)
+  const current = available.items[0]
+  expect(current.status).toBe('PUBLISHED')
+  const tasks = await ask(page, '请打开老师最近发布的测评反馈，我想在会话里阅读', '发送消息')
+  expect(tasks.some((event) => event.view?.kind === 'feedback_picker' && event.view.feedback_ref === current.feedback_ref)).toBe(true)
+  await page.reload()
+  const history = await page.request.get(origin + '/api/v1/workspace-agent/conversation')
+  expect(history.ok()).toBe(true)
+  const savedText = await history.text()
+  expect(savedText).not.toContain(current.title)
+  expect(savedText).not.toContain(current.body)
+  const privateRead = page.waitForResponse((reply) => reply.url().endsWith('/school/feedback/student/' + current.feedback_ref))
+  await page.getByRole('button', { name: '在会话中阅读反馈' }).last().click()
+  const result = await privateRead
+  expect(result.ok()).toBe(true)
+  expect(result.headers()['cache-control']).toBe('no-store')
+  await expect(page.getByRole('heading', { name: current.title, exact: true })).toBeVisible()
+  await expect(page.getByText(current.body, { exact: true })).toBeVisible()
+  await expect(page).toHaveURL(origin + '/student/workspace')
+  await page.getByText('怎么读这份反馈', { exact: true }).click()
+  await page.getByRole('button', { name: '查看学校支持' }).click()
+  await expect(page.getByRole('heading', { name: '提交求助请求' })).toBeVisible()
+  await expect(page).toHaveURL(origin + '/student/workspace')
+  await chooseRole(page, 'TEACHER', '/teacher/workspace')
+  const denied = await page.request.get(origin + '/api/v1/school/feedback/student/' + current.feedback_ref)
+  expect(denied.status()).toBe(403)
+})
+
 test('a learner reads a synthetic worksheet image locally and asks the model about its text', async ({ page }) => {
   test.setTimeout(180_000)
   await signIn(page)

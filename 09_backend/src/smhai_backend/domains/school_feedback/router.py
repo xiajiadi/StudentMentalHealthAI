@@ -43,7 +43,8 @@ def _response(request: Request, data):
             "request_id": context.request_id,
             "trace_id": context.trace_id,
             "data": jsonable_encoder(data),
-        }
+        },
+        headers={"Cache-Control": "no-store"},
     )
 
 
