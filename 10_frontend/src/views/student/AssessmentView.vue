@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { RotateCcw } from '@lucide/vue'
 import { RadioGroupIndicator, RadioGroupItem, RadioGroupRoot } from 'reka-ui'
 import AppButton from '@/components/app/AppButton.vue'
@@ -22,6 +22,8 @@ const pageState = ref<'loading' | 'ready' | 'error' | 'assigned'>('loading')
 const isSubmitting = ref(false)
 const isCompleting = ref(false)
 const errorMessage = ref('')
+let assessmentGeneration = 0
+let pendingSubmission: Promise<boolean> | null = null
 
 const question = computed(() => assessment.question)
 const canComplete = computed(() => assessment.canComplete && assessment.answeredCount > 0)
@@ -35,8 +37,13 @@ const progressMaximum = computed(() => Math.max(
 const progressValue = computed(() => Math.min(assessment.answeredCount, progressMaximum.value))
 
 const load = async () => {
+  const generation = ++assessmentGeneration
   pageState.value = 'loading'
   errorMessage.value = ''
+  selectedResponse.value = ''
+  isSubmitting.value = false
+  isCompleting.value = false
+  pendingSubmission = null
   try {
     const routeAssessmentId = props.embeddedAssessmentId
       ?? (typeof route.params.id === 'string' ? route.params.id : undefined)
@@ -46,12 +53,14 @@ const load = async () => {
           ? frontendApi.listAssessmentEntries({ status: 'in_progress', limit: 1 })
           : frontendApi.listAssessments({ status: 'in_progress', limit: 1 })))
         .data.find((item) => item.status === 'in_progress')
+    if (generation !== assessmentGeneration) return
     if (!routeAssessmentId && !existing && session.user?.activeContext) {
       assessment.reset()
       pageState.value = 'assigned'
       return
     }
     const response = await frontendApi.startAssessment(routeAssessmentId || existing?.assessment_id)
+    if (generation !== assessmentGeneration) return
     assessment.start({
       assessmentId: response.data.assessment_id,
       subjectId: response.data.subject_id,
@@ -63,12 +72,11 @@ const load = async () => {
     })
     pageState.value = 'ready'
   } catch (error) {
+    if (generation !== assessmentGeneration) return
     pageState.value = 'error'
     errorMessage.value = error instanceof Error ? error.message : '测评会话没有准备好，请重试。'
   }
 }
-
-let pendingSubmission: Promise<boolean> | null = null
 
 const saveSelectedResponse = () => {
   if (pendingSubmission) return pendingSubmission
@@ -78,11 +86,13 @@ const saveSelectedResponse = () => {
   const responseValue = selectedResponse.value
   if (!currentQuestion || !assessmentId || !responseValue) return Promise.resolve(true)
 
+  const generation = assessmentGeneration
   isSubmitting.value = true
   errorMessage.value = ''
   pendingSubmission = (async () => {
     try {
       const response = await frontendApi.submitAssessmentResponse(assessmentId, currentQuestion.item_id, responseValue)
+      if (generation !== assessmentGeneration || assessment.assessmentId !== assessmentId) return false
       assessment.update({
         question: response.data.question,
         currentIndex: response.data.current_index,
@@ -92,13 +102,16 @@ const saveSelectedResponse = () => {
       selectedResponse.value = ''
       return true
     } catch (error) {
-      errorMessage.value = error instanceof Error ? error.message : '答案暂时没有保存，请重试。'
+      if (generation === assessmentGeneration) {
+        errorMessage.value = error instanceof Error ? error.message : '答案暂时没有保存，请重试。'
+      }
       return false
-    } finally {
-      isSubmitting.value = false
     }
   })().finally(() => {
-    pendingSubmission = null
+    if (generation === assessmentGeneration) {
+      isSubmitting.value = false
+      pendingSubmission = null
+    }
   })
 
   return pendingSubmission
@@ -110,12 +123,15 @@ const submitResponse = async () => {
 }
 
 const complete = async () => {
-  if (!assessment.assessmentId || !canComplete.value) return
+  const assessmentId = assessment.assessmentId
+  if (!assessmentId || !canComplete.value || isCompleting.value) return
+  const generation = assessmentGeneration
   isCompleting.value = true
   errorMessage.value = ''
   try {
-    if (!(await saveSelectedResponse()) || !canComplete.value) return
-    const response = await frontendApi.completeAssessment(assessment.assessmentId)
+    if (!(await saveSelectedResponse()) || generation !== assessmentGeneration || assessment.assessmentId !== assessmentId || !canComplete.value) return
+    const response = await frontendApi.completeAssessment(assessmentId)
+    if (generation !== assessmentGeneration || assessment.assessmentId !== assessmentId) return
     assessment.reset()
     if (props.embeddedAssessmentId) {
       emit('completed', response.data.assessment_id)
@@ -123,19 +139,23 @@ const complete = async () => {
     }
     await router.push(`/student/assessment/${encodeURIComponent(response.data.assessment_id)}/result`)
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '测评完成状态没有保存，请稍后重试。'
+    if (generation === assessmentGeneration) {
+      errorMessage.value = error instanceof Error ? error.message : '测评完成状态没有保存，请稍后重试。'
+    }
   } finally {
-    isCompleting.value = false
+    if (generation === assessmentGeneration) isCompleting.value = false
   }
 }
 
 watch(() => [props.embeddedAssessmentId, route.params.id], () => {
   if (props.embeddedAssessmentId || route.name === 'student-assessment' || route.name === 'student-assessment-resume') {
-    selectedResponse.value = ''
     void load()
   }
 }, { immediate: true })
 onBeforeRouteLeave(saveSelectedResponse)
+onBeforeUnmount(() => {
+  assessmentGeneration += 1
+})
 </script>
 
 <template>

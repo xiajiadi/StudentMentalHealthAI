@@ -554,6 +554,57 @@ describe('学生演示闭环页面', () => {
     wrapper.unmount()
   })
 
+  it('切换测评时，较早的加载结果不会覆盖当前题目', async () => {
+    const previous = deferred<ApiEnvelope<AssessmentState>>()
+    const nextId = 'ASSESS_SYNTHETIC_002'
+    const nextQuestion = { ...question, item_id: 'ITEM_next', prompt: '另一份测评的第一题' }
+    api.startAssessment
+      .mockReturnValueOnce(previous.promise)
+      .mockResolvedValueOnce(envelope(assessmentState({ assessment_id: nextId, question: nextQuestion })))
+    const router = await makeRouter(`/student/assessment/${assessment.assessment_id}`)
+    const wrapper = mount(AssessmentView, { global: { plugins: [router, createPinia()] } })
+    await router.push(`/student/assessment/${nextId}`)
+    await flushPromises()
+    expect(wrapper.get('#question-title').text()).toBe(nextQuestion.prompt)
+
+    previous.resolve(envelope(assessmentState()))
+    await flushPromises()
+
+    expect(wrapper.get('#question-title').text()).toBe(nextQuestion.prompt)
+    wrapper.unmount()
+  })
+
+  it('已退出的会话测评保存返回后，不会覆盖另一份测评的作答状态', async () => {
+    const previous = deferred<ApiEnvelope<AssessmentState>>()
+    const nextId = 'ASSESS_SYNTHETIC_002'
+    const nextQuestion = { ...question, item_id: 'ITEM_next', prompt: '另一份测评的第一题' }
+    api.startAssessment.mockImplementation(async (assessmentId: string) => envelope(
+      assessmentId === nextId ? assessmentState({ assessment_id: nextId, question: nextQuestion }) : assessmentState(),
+    ))
+    api.submitAssessmentResponse.mockReturnValueOnce(previous.promise)
+    const router = await makeRouter('/student/home')
+    const pinia = createPinia()
+    const open = (embeddedAssessmentId: string) => mount(AssessmentView, {
+      props: { embeddedAssessmentId }, global: { plugins: [router, pinia] },
+    })
+    const first = open(assessment.assessment_id)
+    await flushPromises()
+    await first.get('[role="radio"]').trigger('click')
+    await first.get('button.app-button--primary').trigger('click')
+    expect(api.submitAssessmentResponse).toHaveBeenCalledExactlyOnceWith(assessment.assessment_id, question.item_id, '1')
+    first.unmount()
+
+    const second = open(nextId)
+    await flushPromises()
+    expect(second.get('#question-title').text()).toBe(nextQuestion.prompt)
+    previous.resolve(envelope(assessmentState({ answered_count: 2 })))
+    await flushPromises()
+
+    expect(second.get('#question-title').text()).toBe(nextQuestion.prompt)
+    expect(second.text()).toContain('已记录 1 项')
+    second.unmount()
+  })
+
   it('完成前保存失败时不结束测评或跳转结果页', async () => {
     api.startAssessment.mockResolvedValue(envelope(assessmentState({ can_complete: true })))
     api.submitAssessmentResponse.mockRejectedValueOnce(new Error('保存失败'))
