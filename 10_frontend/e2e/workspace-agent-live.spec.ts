@@ -262,6 +262,37 @@ test('a teacher edits a referral draft and confirms a real support request', asy
   })
 })
 
+test('a specialist sees real pending review counts and opens the assigned task from chat', async ({ page }) => {
+  test.skip(process.env.PSYNOVA_AGENT_QA_REVIEW_PENDING !== '1', 'Requires a pending assigned review fixture')
+  test.setTimeout(180_000)
+  await signIn(page)
+  await chooseRole(page, 'PSYCHOLOGICAL_SPECIALIST', '/specialist/workspace')
+  const events = await ask(page, '整理我当前指派的待处理复核记录，按测评任务查看数量', '发送任务')
+  const resultKinds = events.map((event) => event.view?.kind ?? event.code ?? event.type)
+  expect(resultKinds).toContain('professional_review_queue')
+  const queue = events.find((event) => event.view?.kind === 'professional_review_queue')?.view
+  expect(queue.open_count + queue.in_review_count).toBeGreaterThan(0)
+  const task = queue.tasks[0]
+  const work = '/api/v1/school/professional-reviews/tasks/' + encodeURIComponent(task.task_ref)
+  let open = 0
+  let reviewing = 0
+  for (let offset = 0; ; offset += 50) {
+    const list = await page.request.get(origin + work + `/cases?offset=${offset}&limit=50`)
+    expect(list.ok()).toBe(true)
+    const { items, total } = (await list.json()).data
+    open += items.filter((item: { status: string }) => item.status === 'OPEN').length
+    reviewing += items.filter((item: { status: string }) => item.status === 'IN_REVIEW').length
+    if (offset + 50 >= total) break
+  }
+  expect(task).toMatchObject({ open_count: open, in_review_count: reviewing })
+  const cases = page.waitForResponse((response) => response.url().startsWith(origin + work + '/cases?'))
+  const buttons = page.getByRole('button', { name: '查看该任务复核记录' })
+  await buttons.nth(await buttons.count() - queue.tasks.length).click()
+  expect((await cases).ok()).toBe(true)
+  await expect(page.getByRole('heading', { name: '复核记录', exact: true })).toBeVisible()
+  await expect(page).toHaveURL(origin + '/specialist/workspace')
+})
+
 test('a specialist approves a synthetic CAT plan and an administrator publishes it', async ({ page }) => {
   const className = process.env.PSYNOVA_AGENT_QA_CLASS
   test.skip(process.env.PSYNOVA_AGENT_QA_WRITE !== '1' || !className, 'Requires a dedicated synthetic class')

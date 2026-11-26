@@ -99,6 +99,11 @@ class ProfessionalReviewTaskDto(ProfessionalReviewOutput):
     published_at: datetime
 
 
+class ProfessionalReviewQueueTaskDto(ProfessionalReviewTaskDto):
+    open_count: StrictInt = Field(ge=0)
+    in_review_count: StrictInt = Field(ge=0)
+
+
 class ProfessionalEligibleEnrollmentDto(ProfessionalReviewOutput):
     enrollment_ref: StrictStr = Field(min_length=1, max_length=128)
     assessment_ref: StrictStr = Field(min_length=1, max_length=128)

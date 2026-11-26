@@ -63,6 +63,9 @@ private import workbench. When a roster is selected and import requested, open_r
 Completing the roster import always requires a user's confirmation in that workbench.
 For a teacher requesting a support referral, use prepare_teacher_referral. The teacher selects
 the student and reviews the observations before submitting in the private support form.
+For a specialist organizing pending work, use professional_review_queue for assigned review
+records and specialist_support_status for support requests. Treat counts as workflow states.
+Keep personalized professional conclusions and plans in the human-led private workflows.
 For a school CAT JSON attachment, use inspect_cat_attachment, then prepare_cat_draft if asked
 for a plan. Ask for the intended class or deadline if missing. Only a specialist can confirm
 saving and separately approve synthetic eligibility. An administrator can list approved CAT

@@ -74,7 +74,8 @@ export type WorkspaceAgentView =
   | { kind: 'cat_inspection'; item_count: number; dimension_count: number; attachment_has_config: boolean }
   | { kind: 'cat_drafts' | 'cat_handoffs'; drafts: CatDraft[] }
   | ({ kind: 'teacher_referral' } & TeacherReferral)
-  | { kind: 'teacher_support_status'; total: number; shown: number; counts: Partial<Record<CaseStatus, number>> }
+  | { kind: 'teacher_support_status' | 'specialist_support_status'; total: number; shown: number; counts: Partial<Record<CaseStatus, number>> }
+  | { kind: 'professional_review_queue'; task_count: number; open_count: number; in_review_count: number; tasks: { task_ref: string; class_label: string; open_count: number; in_review_count: number }[] }
   | { kind: 'roster_import' }
   | { kind: 'workflow'; workflow: WorkflowPanel }
   | { kind: 'markdown'; filename: string; markdown: string }

@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from smhai_backend.core.errors import ErrorCode, error
 from smhai_backend.domains.models import Actor, BackendRole
+from smhai_backend.domains.professional_reviews.schemas import ProfessionalReviewQueueTaskDto
 from smhai_backend.domains.school_directory.schemas import SchoolDirectoryDto
 from smhai_backend.domains.school_feedback.schemas import StudentFeedbackListDto
 from smhai_backend.domains.school_support.schemas import SupportCasePageDto, SupportCategoryCode
@@ -147,6 +148,19 @@ TOOLS = {
     "review_tasks": Tool(
         "查询专业复核任务",
         "List tasks the specialist is authorized to review, without results.",
+        (SPECIALIST,),
+    ),
+    "professional_review_queue": Tool(
+        "整理专业复核待办",
+        "Count saved OPEN and IN_REVIEW cases across current task assignments, and prepare "
+        "private workbench links. These are workflow counts, not mental health risk findings, "
+        "and do not cover eligible assessments without an opened case.",
+        (SPECIALIST,),
+    ),
+    "specialist_support_status": Tool(
+        "整理学校支持事项",
+        "Count the newest authorized support cases by status. Provide a private workbench for "
+        "case-specific notes and human plans. Workflow statuses are not risk findings.",
         (SPECIALIST,),
     ),
     "inspect_cat_attachment": Tool(
@@ -321,7 +335,37 @@ async def execute_tool(
             },
             {"draft_ready": True, "requires_teacher_confirmation": True},
         )
-    if name == "teacher_support_status":
+    if name == "professional_review_queue":
+        if container.professional_reviews is None:
+            raise error(
+                ErrorCode.DEPENDENCY_UNAVAILABLE, detail="professional reviews are unavailable"
+            )
+        queue = [
+            ProfessionalReviewQueueTaskDto.model_validate(row)
+            for row in await container.professional_reviews.pending_queue(actor)
+        ]
+        summary = {
+            "task_count": len(queue),
+            "open_count": sum(row.open_count for row in queue),
+            "in_review_count": sum(row.in_review_count for row in queue),
+        }
+        return (
+            {
+                "kind": "professional_review_queue",
+                **summary,
+                "tasks": [
+                    {
+                        "task_ref": row.task_ref,
+                        "class_label": row.class_display_name or row.class_ref,
+                        "open_count": row.open_count,
+                        "in_review_count": row.in_review_count,
+                    }
+                    for row in queue[:20]
+                ],
+            },
+            summary,
+        )
+    if name in {"teacher_support_status", "specialist_support_status"}:
         if container.school_support is None:
             raise error(ErrorCode.DEPENDENCY_UNAVAILABLE, detail="school support is unavailable")
         page = SupportCasePageDto.model_validate(
@@ -332,7 +376,7 @@ async def execute_tool(
             "shown": len(page.items),
             "counts": dict(Counter(row.status for row in page.items)),
         }
-        return {"kind": "teacher_support_status", **summary}, summary
+        return {"kind": name, **summary}, summary
     if name == "inspect_cat_attachment":
         return await cat_workflow.inspect(request, actor, cat_attachment_ref)
     if name == "prepare_cat_draft" and isinstance(arguments, cat_workflow.CatDraftProposal):

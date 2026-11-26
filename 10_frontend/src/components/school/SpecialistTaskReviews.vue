@@ -16,6 +16,7 @@ import {
   type ProfessionalReviewTask,
 } from '@/services/professional-reviews'
 
+const props = defineProps<{ initialTaskRef?: string }>()
 const pageSize = 10
 const tasks = ref<ProfessionalReviewTask[]>([])
 const tasksState = ref<'loading' | 'ready' | 'error'>('loading')
@@ -325,7 +326,12 @@ defineExpose({
   selectFlowstageItem,
 })
 
-onMounted(() => { void loadTasks() })
+onMounted(async () => {
+  await loadTasks()
+  if (props.initialTaskRef && tasks.value.some((task) => task.task_ref === props.initialTaskRef)) {
+    await selectTask(props.initialTaskRef)
+  }
+})
 onBeforeUnmount(() => {
   ++tasksSequence
   clearPrivateState()

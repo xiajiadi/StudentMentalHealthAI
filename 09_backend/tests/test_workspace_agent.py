@@ -525,6 +525,43 @@ async def test_teacher_referral_draft_is_private_and_does_not_submit(
     )
 
 
+async def test_specialist_review_queue_only_exposes_workflow_counts_to_model(
+    client, app, model_lane, monkeypatch
+):
+    model, _ = model_lane
+    review = SimpleNamespace(pending_queue=AsyncMock(return_value=[{
+        "task_ref": "TASK_private_review_fixture",
+        "class_ref": "CLASS_private_fixture",
+        "class_display_name": "PRIVATE_REVIEW_CLASS_LABEL",
+        "published_at": datetime.now(UTC),
+        "open_count": 4,
+        "in_review_count": 2,
+    }]))
+    monkeypatch.setattr(app.state.container, "professional_reviews", review)
+    headers = await login(client)
+    await select(client, headers, "PSYCHOLOGICAL_SPECIALIST")
+    model.side_effect = [
+        assistant_step(tool="professional_review_queue"),
+        assistant_step(text="复核待办已整理"),
+    ]
+    response = await client.post(
+        f"{BASE}/conversation/turn",
+        headers=headers,
+        json={"text": "看一下我分配到的复核待办", "synthetic_only": True},
+    )
+    views = [
+        event["view"] for line in response.text.splitlines()
+        if (event := json.loads(line))["type"] == "tool_result"
+    ]
+    assert views[0]["tasks"][0]["task_ref"] == "TASK_private_review_fixture"
+    assert review.pending_queue.await_args.args[0].school_ref == FIRST
+    messages = model.await_args.args[0]
+    assert json.loads(messages[-1]["content"]) == {
+        "task_count": 1, "open_count": 4, "in_review_count": 2,
+    }
+    assert "PRIVATE_REVIEW_CLASS_LABEL" not in json.dumps(messages)
+
+
 async def test_agent_prepares_publication_that_requires_school_admin_confirmation(
     client,
     tools,

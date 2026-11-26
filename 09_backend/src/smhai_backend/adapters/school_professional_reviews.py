@@ -939,6 +939,72 @@ class SchoolProfessionalReviewPersistenceAdapter:
                 if isinstance(public_id, str) and public_id
             ]
 
+    def _assigned_task_query(self, actor: Any, specialist_role_id: int, now: datetime):
+        m = self._db_models
+        return (
+            self._select(
+                m.MeasurementTask.task_ref,
+                m.SchoolClass.class_ref,
+                m.SchoolClass.display_name,
+                m.MeasurementTask.published_at,
+            )
+            .join(
+                m.SchoolClass,
+                (m.SchoolClass.id == m.MeasurementTask.class_id)
+                & (m.SchoolClass.school_id == m.MeasurementTask.school_id),
+            )
+            .join(
+                m.School,
+                m.School.id == m.MeasurementTask.school_id,
+            )
+            .join(
+                m.SchoolTaskSpecialistAssignment,
+                (m.SchoolTaskSpecialistAssignment.task_id == m.MeasurementTask.id)
+                & (
+                    m.SchoolTaskSpecialistAssignment.school_id
+                    == m.MeasurementTask.school_id
+                )
+                & (m.SchoolTaskSpecialistAssignment.class_id == m.MeasurementTask.class_id),
+            )
+            .join(
+                m.MembershipRole,
+                m.MembershipRole.id
+                == m.SchoolTaskSpecialistAssignment.specialist_membership_role_id,
+            )
+            .join(
+                m.AccountSchoolMembership,
+                m.AccountSchoolMembership.id == m.MembershipRole.membership_id,
+            )
+            .join(m.Account, m.Account.id == m.AccountSchoolMembership.account_id)
+            .where(
+                m.MeasurementTask.school_id == actor.school_id,
+                m.School.school_ref == actor.school_ref,
+                m.School.status == "ACTIVE",
+                m.School.data_origin == self._db_enums.DataOrigin.SYNTHETIC.value,
+                m.MeasurementTask.status.in_(("PUBLISHED", "CLOSED")),
+                m.SchoolTaskSpecialistAssignment.status == "ACTIVE",
+                m.SchoolTaskSpecialistAssignment.revoked_at.is_(None),
+                m.SchoolTaskSpecialistAssignment.specialist_membership_role_id
+                == specialist_role_id,
+                m.MembershipRole.school_id == actor.school_id,
+                m.MembershipRole.role_code == "psychological_specialist",
+                m.MembershipRole.status == "ACTIVE",
+                m.MembershipRole.revoked_at.is_(None),
+                m.MembershipRole.valid_from <= now,
+                (m.MembershipRole.valid_until.is_(None))
+                | (m.MembershipRole.valid_until >= now),
+                m.AccountSchoolMembership.school_id == actor.school_id,
+                m.AccountSchoolMembership.status == "ACTIVE",
+                m.AccountSchoolMembership.revoked_at.is_(None),
+                m.AccountSchoolMembership.valid_from <= now,
+                (m.AccountSchoolMembership.valid_until.is_(None))
+                | (m.AccountSchoolMembership.valid_until >= now),
+                m.Account.public_id == _public_id(actor.user_id, "USER"),
+                m.Account.status == self._db_enums.AccountStatus.ACTIVE.value,
+            )
+            .distinct()
+        )
+
     async def school_professional_review_list_tasks(self, actor: Any) -> list[dict[str, Any]]:
         """List task and class labels for tasks actively assigned to this specialist."""
         now = self._utc_now()
@@ -949,68 +1015,9 @@ class SchoolProfessionalReviewPersistenceAdapter:
             )
             rows = (
                 await uow.session.execute(
-                    self._select(
-                        m.MeasurementTask.task_ref,
-                        m.SchoolClass.class_ref,
-                        m.SchoolClass.display_name,
-                        m.MeasurementTask.published_at,
+                    self._assigned_task_query(actor, specialist_role_id, now).order_by(
+                        m.MeasurementTask.published_at, m.MeasurementTask.task_ref
                     )
-                    .join(
-                        m.SchoolClass,
-                        (m.SchoolClass.id == m.MeasurementTask.class_id)
-                        & (m.SchoolClass.school_id == m.MeasurementTask.school_id),
-                    )
-                    .join(
-                        m.School,
-                        m.School.id == m.MeasurementTask.school_id,
-                    )
-                    .join(
-                        m.SchoolTaskSpecialistAssignment,
-                        (m.SchoolTaskSpecialistAssignment.task_id == m.MeasurementTask.id)
-                        & (
-                            m.SchoolTaskSpecialistAssignment.school_id
-                            == m.MeasurementTask.school_id
-                        )
-                        & (m.SchoolTaskSpecialistAssignment.class_id == m.MeasurementTask.class_id),
-                    )
-                    .join(
-                        m.MembershipRole,
-                        m.MembershipRole.id
-                        == m.SchoolTaskSpecialistAssignment.specialist_membership_role_id,
-                    )
-                    .join(
-                        m.AccountSchoolMembership,
-                        m.AccountSchoolMembership.id == m.MembershipRole.membership_id,
-                    )
-                    .join(m.Account, m.Account.id == m.AccountSchoolMembership.account_id)
-                    .where(
-                        m.MeasurementTask.school_id == actor.school_id,
-                        m.School.school_ref == actor.school_ref,
-                        m.School.status == "ACTIVE",
-                        m.School.data_origin == self._db_enums.DataOrigin.SYNTHETIC.value,
-                        m.MeasurementTask.status.in_(("PUBLISHED", "CLOSED")),
-                        m.SchoolTaskSpecialistAssignment.status == "ACTIVE",
-                        m.SchoolTaskSpecialistAssignment.revoked_at.is_(None),
-                        m.SchoolTaskSpecialistAssignment.specialist_membership_role_id
-                        == specialist_role_id,
-                        m.MembershipRole.school_id == actor.school_id,
-                        m.MembershipRole.role_code == "psychological_specialist",
-                        m.MembershipRole.status == "ACTIVE",
-                        m.MembershipRole.revoked_at.is_(None),
-                        m.MembershipRole.valid_from <= now,
-                        (m.MembershipRole.valid_until.is_(None))
-                        | (m.MembershipRole.valid_until >= now),
-                        m.AccountSchoolMembership.school_id == actor.school_id,
-                        m.AccountSchoolMembership.status == "ACTIVE",
-                        m.AccountSchoolMembership.revoked_at.is_(None),
-                        m.AccountSchoolMembership.valid_from <= now,
-                        (m.AccountSchoolMembership.valid_until.is_(None))
-                        | (m.AccountSchoolMembership.valid_until >= now),
-                        m.Account.public_id == _public_id(actor.user_id, "USER"),
-                        m.Account.status == self._db_enums.AccountStatus.ACTIVE.value,
-                    )
-                    .distinct()
-                    .order_by(m.MeasurementTask.published_at, m.MeasurementTask.task_ref)
                 )
             ).all()
             return [
@@ -1021,6 +1028,88 @@ class SchoolProfessionalReviewPersistenceAdapter:
                     "published_at": published_at,
                 }
                 for task_ref, class_ref, class_display_name, published_at in rows
+            ]
+
+    async def school_professional_review_pending_queue(self, actor: Any) -> list[dict[str, Any]]:
+        """Count pending review records across all current specialist assignments."""
+        from sqlalchemy import case, func
+
+        now = self._utc_now()
+        m = self._db_models
+        review = m.SchoolProfessionalReviewCase
+        enrollment = m.TaskEnrollment
+        assessment = m.AssessmentSession
+        subject = m.Subject
+        async with self._uow() as uow:
+            _, specialist_role_id = await self._require_actor(
+                uow, actor, "psychological_specialist", now
+            )
+            assigned = (
+                self._assigned_task_query(actor, specialist_role_id, now)
+                .add_columns(
+                    m.MeasurementTask.id.label("task_id"), m.SchoolClass.id.label("class_id")
+                )
+                .subquery()
+            )
+            public_columns = (
+                assigned.c.task_ref,
+                assigned.c.class_ref,
+                assigned.c.display_name.label("class_display_name"),
+                assigned.c.published_at,
+            )
+            statement = (
+                self._select(
+                    *public_columns,
+                    func.sum(case((review.status == "OPEN", 1), else_=0)).label("open_count"),
+                    func.sum(case((review.status == "IN_REVIEW", 1), else_=0)).label(
+                        "in_review_count"
+                    ),
+                )
+                .select_from(assigned)
+                .join(
+                    review,
+                    (review.task_id == assigned.c.task_id)
+                    & (review.class_id == assigned.c.class_id)
+                    & (review.school_id == actor.school_id),
+                )
+                .join(
+                    enrollment,
+                    (enrollment.id == review.task_enrollment_id)
+                    & (enrollment.task_id == review.task_id)
+                    & (enrollment.class_id == review.class_id)
+                    & (enrollment.school_id == review.school_id)
+                    & (enrollment.subject_id == review.subject_id),
+                )
+                .join(
+                    assessment,
+                    (assessment.id == review.assessment_session_id)
+                    & (assessment.task_enrollment_id == enrollment.id)
+                    & (assessment.subject_id == enrollment.subject_id),
+                )
+                .join(
+                    subject,
+                    (subject.id == enrollment.subject_id)
+                    & (subject.school_id == enrollment.school_id),
+                )
+                .where(
+                    review.status.in_(("OPEN", "IN_REVIEW")),
+                    enrollment.status == "ACTIVE",
+                    enrollment.revoked_at.is_(None),
+                    assessment.status == self._db_enums.AssessmentStatus.COMPLETED.value,
+                    subject.status == self._db_enums.SubjectStatus.ACTIVE.value,
+                    subject.data_origin == self._db_enums.DataOrigin.SYNTHETIC.value,
+                )
+                .group_by(*public_columns)
+                .order_by(assigned.c.published_at.desc(), assigned.c.task_ref)
+            )
+            rows = (await uow.session.execute(statement)).mappings().all()
+            return [
+                {
+                    **row,
+                    "open_count": int(row["open_count"]),
+                    "in_review_count": int(row["in_review_count"]),
+                }
+                for row in rows
             ]
 
     async def school_professional_review_list_eligible_enrollments(

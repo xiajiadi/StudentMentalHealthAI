@@ -63,6 +63,7 @@ const consent = ref(false)
 const consentOpen = ref(false)
 const panel = ref<WorkflowPanel | 'roster'>()
 const feedbackRef = ref<string>()
+const reviewTaskRef = ref<string>()
 const referral = ref<{ key: string; draft: TeacherReferral }>()
 const assessmentTask = ref('')
 const assessmentId = ref('')
@@ -203,12 +204,18 @@ function selectAssessment(taskRef: string) {
 function openPanel(workflow?: WorkflowPanel) {
   referral.value = undefined
   feedbackRef.value = undefined
+  reviewTaskRef.value = undefined
   panel.value = workflow
 }
 
 function openFeedback(ref?: string) {
   openPanel('feedback')
   feedbackRef.value = ref
+}
+
+function openReviewTask(taskRef: string) {
+  openPanel('review')
+  reviewTaskRef.value = taskRef
 }
 
 function openTeacherReferral(draft: TeacherReferral, key: string) {
@@ -384,13 +391,26 @@ defineExpose({ submit, cancel, openIndependentCat })
             <p>{{ event.view.observation }}</p>
             <AppButton variant="secondary" @click="openTeacherReferral(event.view, event.run_id + ':' + event.call_id)">核对转介草案</AppButton>
           </template>
-          <template v-else-if="event.view.kind === 'teacher_support_status'">
+          <template v-else-if="event.view.kind === 'teacher_support_status' || event.view.kind === 'specialist_support_status'">
             <strong>授权支持请求 · {{ event.view.total }} 项</strong>
             <small v-if="event.view.shown < event.view.total">以下统计最近 {{ event.view.shown }} 项</small>
             <ul v-if="event.view.shown" class="agent-thread__rows">
               <li v-for="(count, status) in event.view.counts" :key="status">{{ supportCaseStates[status] }} · {{ count }} 项</li>
             </ul>
             <AppButton variant="secondary" @click="openPanel('support')">查看支持记录</AppButton>
+          </template>
+          <template v-else-if="event.view.kind === 'professional_review_queue'">
+            <strong>已建复核记录 · {{ event.view.open_count + event.view.in_review_count }} 项待处理</strong>
+            <small>{{ event.view.open_count }} 项待开始 · {{ event.view.in_review_count }} 项处理中</small>
+            <small v-if="event.view.task_count > event.view.tasks.length">显示最新 {{ event.view.tasks.length }} 项测评任务</small>
+            <ul v-if="event.view.tasks.length" class="agent-thread__rows">
+              <li v-for="task in event.view.tasks" :key="task.task_ref">
+                <span>{{ task.class_label }}</span>
+                <small>{{ task.open_count }} 项待开始 · {{ task.in_review_count }} 项处理中</small>
+                <AppButton variant="secondary" @click="openReviewTask(task.task_ref)">查看该任务复核记录</AppButton>
+              </li>
+            </ul>
+            <AppButton variant="secondary" @click="openPanel('review')">查看所有已指派任务</AppButton>
           </template>
           <AppButton v-else-if="event.view.kind === 'roster_import'" variant="secondary" @click="panel = 'roster'">打开名单预览</AppButton>
           <AppButton v-else-if="event.view.kind === 'workflow'" variant="secondary" @click="openPanel(event.view.workflow)">打开{{ panelLabels[event.view.workflow] }}</AppButton>
@@ -421,6 +441,7 @@ defineExpose({ submit, cancel, openIndependentCat })
       <header class="agent-thread__inline"><strong>{{ panelLabels[panel] }}</strong><AppButton variant="quiet" @click="openPanel()">收起工作台</AppButton></header>
       <Roster v-if="panel === 'roster'" embedded-roster :initial-roster-file="rosterFile" />
       <component :is="panels.feedback" v-else-if="panel === 'feedback'" :key="feedbackRef || 'feedback'" embedded :initial-feedback-ref="feedbackRef" @support="openPanel('support')" />
+      <component :is="panels.review" v-else-if="panel === 'review'" :key="reviewTaskRef || 'review'" :initial-task-ref="reviewTaskRef" />
       <component :is="latestPanel" v-else-if="latestPanel" :key="panel === 'support' ? referral?.key || panel : panel" v-bind="panel === 'support' ? { audience, initialReferral: referral?.draft } : panel === 'cat' ? { initialBankFile: catFile } : {}" />
     </AppCard>
   </section>

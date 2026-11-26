@@ -19,6 +19,7 @@ from smhai_backend.domains.professional_reviews.schemas import (
     ProfessionalEligibleEnrollmentListDto,
     ProfessionalReviewCaseDto,
     ProfessionalReviewCaseListDto,
+    ProfessionalReviewQueueTaskDto,
     ProfessionalReviewTaskDto,
     ProfessionalSpecialistDto,
     ReviewCaseCreateRequest,
@@ -176,6 +177,11 @@ class SchoolProfessionalReviewService:
         self._require_specialist(actor)
         rows = await self.persistence.school_professional_review_list_tasks(actor)
         return self._project_many(ProfessionalReviewTaskDto, rows)
+
+    async def pending_queue(self, actor: Actor):
+        self._require_specialist(actor)
+        rows = await self.persistence.school_professional_review_pending_queue(actor)
+        return self._project_many(ProfessionalReviewQueueTaskDto, rows)
 
     async def list_eligible_enrollments(
         self, actor: Actor, task_ref: str, *, offset: int, limit: int
