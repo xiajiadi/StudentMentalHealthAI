@@ -1,4 +1,4 @@
-import articles from '@student-education-articles'
+import articles from '../../../09_backend/src/smhai_backend/domains/student_education_articles.json'
 
 export const studentEducationArticles = articles
 

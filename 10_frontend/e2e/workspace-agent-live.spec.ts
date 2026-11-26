@@ -108,7 +108,7 @@ test('the learner retrieves published education on demand and keeps arithmetic i
     .toHaveAttribute('href', 'https://www.who.int/zh/news-room/questions-and-answers/item/stress')
   await page.reload()
   await expect(summary).toBeVisible()
-  const math = await ask(page, '算一下 23 加 19，直接给出答案', '发送消息', false)
+  const math = await ask(page, '算一下 23 加 19，直接给出答案', '发送消息')
   expect(math.some((event) => event.view?.kind === 'education_articles')).toBe(false)
   expect(math.find((event) => event.type === 'answer')?.text).toContain('42')
 })
@@ -136,7 +136,43 @@ test('the teacher combines verified class counts and education material in a cla
   expect(activity?.markdown).toContain('世界卫生组织')
   const download = page.waitForEvent('download')
   await page.getByRole('button', { name: `下载 ${activity.filename}`, exact: true }).last().click()
-  expect(await readFile((await download).path(), 'utf8')).toBe(activity.markdown)
+  const document = await download
+  expect(await readFile(await document.path(), 'utf8')).toBe(activity.markdown)
+})
+
+test('cancelling a live task releases the conversation and lets the teacher retry', async ({ page }) => {
+  test.setTimeout(180_000)
+  await signIn(page)
+  await chooseRole(page, 'TEACHER', '/teacher/workspace')
+  const progress = await page.request.get(origin + '/api/v1/school/teacher/task-progress')
+  expect(progress.ok()).toBe(true)
+  const expectedTasks = (await progress.json()).data.length
+  await page.locator('#workspace-agent-input').fill('查一下我有权限查看的班级测评进度')
+  await page.getByRole('button', { name: '发送任务', exact: true }).click()
+  await page.getByRole('button', { name: '同意并发送' }).click()
+  await expect(page.getByRole('status').filter({ hasText: '正在检查输入' })).toBeVisible({ timeout: 30_000 })
+  await page.getByRole('button', { name: '取消任务' }).click()
+
+  const readHistory = async () => {
+    const response = await page.request.get(origin + '/api/v1/workspace-agent/conversation')
+    expect(response.ok()).toBe(true)
+    return (await response.json()).data
+  }
+  await expect.poll(async () => {
+    const history = await readHistory()
+    return { active: history.active, status: history.events.at(-1)?.status }
+  }, { timeout: 20_000 }).toEqual({ active: false, status: 'interrupted' })
+  const interruptedRun = (await readHistory()).events.at(-1).run_id
+  await page.getByRole('button', { name: '重试任务' }).click()
+  await expect.poll(async () => {
+    const history = await readHistory()
+    const latest = history.events.at(-1)
+    return latest?.run_id !== interruptedRun && latest?.type === 'end' && latest.status
+  }, { timeout: 100_000 }).toBe('completed')
+  const history = await readHistory()
+  const finishedRun = history.events.at(-1).run_id
+  const result = history.events.find((event) => event.run_id === finishedRun && event.view?.kind === 'class_progress')
+  expect(result?.view.total).toBe(expectedTasks)
 })
 
 test('published school feedback is read in the learner conversation over the private route', async ({ page }) => {

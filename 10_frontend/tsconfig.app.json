@@ -14,10 +14,7 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "skipLibCheck": true,
     "baseUrl": ".",
-    "paths": {
-      "@/*": ["./src/*"],
-      "@student-education-articles": ["../09_backend/src/smhai_backend/domains/student_education_articles.json"]
-    }
+    "paths": { "@/*": ["./src/*"] }
   },
   "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.vue", "tests/**/*.ts", "e2e/**/*.ts"]
 }
