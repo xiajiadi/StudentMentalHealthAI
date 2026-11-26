@@ -375,6 +375,45 @@ async def test_validated_tool_context_survives_filtered_answer(client, model_lan
     assert "TASK_workspace" not in prompt
 
 
+async def test_business_turn_follow_up_keeps_references_without_old_status_or_answer(
+    client, tools, model_lane
+):
+    model, _ = model_lane
+    headers = await login(client)
+    await select(client, headers, "STUDENT")
+    url = f"{BASE}/conversation/turn"
+    row = {**tools.list_student_tasks.return_value[0], "assessment_status": "completed"}
+    tools.list_student_tasks.return_value = [row]
+    model.side_effect = [
+        assistant_step(tool="list_student_assessments"),
+        assistant_step(text="旧查询只有已完成的测评"),
+    ]
+    await client.post(url, headers=headers, json={"text": "查目前的测评", "synthetic_only": True})
+
+    async def refreshed(messages, _definitions, _context):
+        if messages[-1]["role"] == "tool":
+            assert json.loads(messages[-1]["content"])["total"] == 2
+            return assistant_step(text="已核对当前列表")
+        previous = [item["content"] for item in messages if item["role"] == "assistant"]
+        assert not any("旧查询只有已完成的测评" in content for content in previous)
+        history = next(content for content in previous if "list_student_assessments" in content)
+        assert "refresh_required" in history
+        assert "prior_references" in history
+        assert "completed" not in history
+        return assistant_step(tool="list_student_assessments")
+
+    model.side_effect = refreshed
+    tools.list_student_tasks.return_value = [
+        row,
+        {**row, "task_ref": "TASK_new", "assessment_status": None},
+    ]
+    response = await client.post(
+        url, headers=headers, json={"text": "现在还有哪些测评要做", "synthetic_only": True}
+    )
+    events = [json.loads(line) for line in response.text.splitlines()]
+    assert any(event.get("view", {}).get("total") == 2 for event in events)
+
+
 async def test_student_feedback_resolves_only_visible_publications_without_model_content(
     client, app, model_lane, monkeypatch
 ):

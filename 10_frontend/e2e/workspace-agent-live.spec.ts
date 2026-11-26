@@ -59,8 +59,11 @@ test('the public learner and teacher use live tools under their own roles', asyn
   test.setTimeout(180_000)
   await signIn(page)
   await chooseRole(page, 'STUDENT', '/student/workspace')
+  const liveTasks = await page.request.get(origin + '/api/v1/school/tasks/student')
+  expect(liveTasks.ok()).toBe(true)
+  const actualTaskCount = (await liveTasks.json()).data.length
   const student = await ask(page, '查一下我现在能做的测评任务。', '发送消息')
-  expect(student.some((event) => event.view?.kind === 'student_tasks')).toBe(true)
+  expect(student.find((event) => event.view?.kind === 'student_tasks')?.view.total).toBe(actualTaskCount)
   await expect(page.getByText(/我的测评任务 · /).last()).toBeVisible()
   await page.reload()
   await expect(page.getByText(/我的测评任务 · /).last()).toBeVisible()
@@ -291,6 +294,14 @@ test('a specialist sees real pending review counts and opens the assigned task f
   expect((await cases).ok()).toBe(true)
   await expect(page.getByRole('heading', { name: '复核记录', exact: true })).toBeVisible()
   await expect(page).toHaveURL(origin + '/specialist/workspace')
+  const support = await page.request.get(origin + '/api/v1/school/support/cases?limit=50')
+  expect(support.ok()).toBe(true)
+  const authorized = (await support.json()).data
+  const supportEvents = await ask(page, '再核对一下我有权查看的学校支持请求处理状态', '发送任务', false)
+  expect(supportEvents.find((event) => event.view?.kind === 'specialist_support_status')?.view).toMatchObject({
+    total: authorized.total,
+    shown: authorized.items.length,
+  })
 })
 
 test('a specialist approves a synthetic CAT plan and an administrator publishes it', async ({ page }) => {
