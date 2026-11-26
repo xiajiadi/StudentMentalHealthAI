@@ -68,7 +68,7 @@ const assessmentComplete = ref(false)
 const pendingClass = ref<{ class_ref: string; token: string }>()
 const submittedClasses = ref(new Set<string>())
 const classBusy = ref(false)
-const pendingPublication = ref<TaskPublicationPreview>()
+const pendingPublication = ref<TaskPublicationPreview & { catDraft?: CatDraft }>()
 const publicationBusy = ref(false)
 const publishedTokens = ref(new Set<string>())
 const catReceipts = ref(new Map<string, CatDraft>())
@@ -239,6 +239,10 @@ async function publishTask() {
     const receipt = await confirmWorkspacePublication(preview.token)
     if (receipt.status !== 'PUBLISHED' || !receipt.task_ref) throw new Error()
     publishedTokens.value.add(preview.token)
+    if (preview.catDraft) {
+      const draft = preview.catDraft
+      catReceipts.value.set(draft.draft_ref, { ...draft, state: 'PUBLISHED' })
+    }
     pendingPublication.value = undefined
     emit('changed')
   } catch {
@@ -258,7 +262,8 @@ async function handleCat(draft: CatDraft, action: 'save' | 'approve' | 'publish'
   catBusy.value = true
   message.value = ''
   try {
-    pendingPublication.value = await previewWorkspaceCatHandoff(draft.draft_ref)
+    const preview = await previewWorkspaceCatHandoff(draft.draft_ref)
+    pendingPublication.value = { ...preview, catDraft: draft }
   } catch {
     message.value = '无法准备发布。请核对班级、截止时间和方案批准状态'
   } finally {

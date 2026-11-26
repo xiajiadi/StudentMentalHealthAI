@@ -356,6 +356,19 @@ async def conversation(request: Request, actor: CurrentActor):
                 event["view"] = drafts[view["draft_ref"]]
             elif view.get("kind") == "cat_drafts":
                 view["drafts"] = [drafts.get(row["draft_ref"], row) for row in view["drafts"]]
+    elif actor.role == ADMIN:
+        handoffs = [
+            draft
+            for event in events
+            if (view := event.get("view", {})).get("kind") == "cat_handoffs"
+            for draft in view["drafts"]
+        ]
+        published = history.cat.published_handoff_refs(
+            actor.school_ref, {draft["draft_ref"] for draft in handoffs}
+        )
+        for draft in handoffs:
+            if draft["draft_ref"] in published:
+                draft["state"] = "PUBLISHED"
     return JSONResponse(
         {
             "data": {

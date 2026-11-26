@@ -135,6 +135,17 @@ class WorkspaceCatStore:
                     (json.dumps(data), ref),
                 )
 
+    def published_handoff_refs(self, school: str, refs: set[str]) -> set[str]:
+        if not refs:
+            return set()
+        with closing(self.connect()) as db:
+            rows = db.execute(
+                """SELECT ref FROM workspace_cat_draft WHERE school=? AND state='PUBLISHED'
+                   AND ref IN (SELECT value FROM json_each(?))""",
+                (school, json.dumps(sorted(refs))),
+            ).fetchall()
+        return {row[0] for row in rows}
+
     def specialist_drafts(self, owner: str):
         with closing(self.connect()) as db:
             rows = db.execute(

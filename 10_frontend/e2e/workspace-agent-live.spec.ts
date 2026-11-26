@@ -36,13 +36,15 @@ async function chooseRole(page: Page, role: Role, workspace: string) {
   await page.goto(origin + workspace)
 }
 
-async function ask(page: Page, prompt: string, label: string) {
+async function ask(page: Page, prompt: string, label: string, consentRequired = true) {
   await page.locator('#workspace-agent-input').fill(prompt)
   const pending = page.waitForResponse((response) => response.url().endsWith('/workspace-agent/conversation/turn'), {
     timeout: 40_000,
   })
   await page.getByRole('button', { name: label }).click()
-  await page.getByRole('button', { name: '同意并发送' }).click({ timeout: 10_000 })
+  if (consentRequired) {
+    await page.getByRole('button', { name: '同意并发送' }).click({ timeout: 10_000 })
+  }
   const response = await pending
   expect(response.ok()).toBe(true)
   await expect(page.getByRole('button', { name: '取消任务' })).toHaveCount(0, { timeout: 100_000 })
@@ -67,6 +69,52 @@ test('the public learner and teacher use live tools under their own roles', asyn
   expect(teacher.some((event) => event.view?.kind === 'class_progress')).toBe(true)
   expect(teacher.some((event) => event.view?.kind === 'student_tasks')).toBe(false)
   await expect(page.getByText(/授权班级测评进度 · /).last()).toBeVisible()
+})
+
+test('a synthetic learner resumes and submits a real assessment inside the conversation', async ({ page }) => {
+  test.skip(process.env.PSYNOVA_AGENT_QA_WRITE !== '1', 'Requires a dedicated synthetic school')
+  test.setTimeout(270_000)
+  await signIn(page)
+  await chooseRole(page, 'STUDENT', '/student/workspace')
+  const listed = await ask(page, '看看我现在还有哪些测评待做', '发送消息')
+  const tasks = listed.find((event) => event.view?.kind === 'student_tasks')?.view.rows
+  expect(tasks?.some((row: { status: string }) => ['created', 'in_progress', 'not_started'].includes(row.status))).toBe(true)
+  const selected = await ask(page, '继续刚才查到的测评，已有进度的优先，否则打开最早截止的一项', '发送消息', false)
+  const taskRef = selected.find((event) => event.view?.kind === 'assessment_picker')?.view.task_ref
+  expect(taskRef).toBeTruthy()
+  await page.reload()
+  await page.getByRole('button', { name: '阅读说明并打开测评' }).last().click()
+  const started = page.waitForResponse((response) => response.url().endsWith(`/school/tasks/${taskRef}/start`))
+  await page.getByRole('button', { name: '我已阅读，开始或继续' }).click()
+  const startResponse = await started
+  expect(startResponse.ok()).toBe(true)
+  const initial = (await startResponse.json()).data
+  const { assessment_id: assessmentId } = initial
+  const assessment = page.locator('.assessment-page--embedded')
+  await expect(assessment).toBeVisible()
+  const finish = assessment.getByRole('button', { name: /^(完成|完成测评)$/ })
+  await expect(assessment.getByRole('radio').first().or(finish).first()).toBeVisible()
+  let saved = 0
+  while (!(await finish.isVisible()) && saved < (initial.max_items ?? 30)) {
+    const response = page.waitForResponse((reply) => reply.url().endsWith(`/assessments/${assessmentId}/responses`))
+    await assessment.getByRole('radio').first().click()
+    await assessment.getByRole('button', { name: '下一题' }).click()
+    expect((await response).ok()).toBe(true)
+    saved += 1
+    await expect(assessment.getByText(`已记录 ${initial.answered_count + saved} 项`, { exact: true })).toBeVisible()
+  }
+  const completion = page.waitForResponse((response) => response.url().endsWith(`/assessments/${assessmentId}/complete`))
+  await finish.click()
+  const completed = await completion
+  expect(completed.ok()).toBe(true)
+  expect((await completed.json()).data).toMatchObject({ assessment_id: assessmentId, status: 'completed' })
+  await expect(assessment.getByText('已保存测评作答')).toBeVisible()
+  await expect(page.getByRole('button', { name: '查看已发布反馈' })).toBeVisible()
+  const history = await page.request.get(origin + '/api/v1/school/tasks/student/history')
+  expect(history.ok()).toBe(true)
+  expect((await history.json()).data).toContainEqual(expect.objectContaining({
+    task_ref: taskRef, assessment_id: assessmentId, assessment_status: 'completed',
+  }))
 })
 
 test('a roster creates real synthetic accounts and returns a credential download', async ({ page }) => {
@@ -108,14 +156,16 @@ test('a specialist approves a synthetic CAT plan and an administrator publishes 
   const bank = new URL('../../01_cat-engine/fixtures/synthetic_item_bank.v1.json', import.meta.url)
   const configuration = new URL('../../01_cat-engine/fixtures/demo_cat_config.v1.json', import.meta.url)
   const [bankText, configText] = await Promise.all([readFile(bank, 'utf8'), readFile(configuration, 'utf8')])
-  const plan = '合成工程验证' + Date.now()
-  const due = new Date(Date.now() + 7 * 24 * 60 * 60 * 1_000).toISOString().split('.')[0] + 'Z'
+  const plan = '合成工程验证' + Date.now().toString(36)
+  const due = new Date(Date.now() + 7 * 24 * 60 * 60 * 1_000)
+  due.setUTCHours(12, 0, 0, 0)
+  const dueDate = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', dateStyle: 'long' }).format(due)
   await page.locator('#workspace-agent-composer input[type="file"]').setInputFiles({
     name: 'synthetic-cat.json',
     mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify({ bank_document: JSON.parse(bankText), config_document: JSON.parse(configText) })),
   })
-  const results = await ask(page, `验证这份合成工程附件，并用附件里的配置准备 CAT 草案。方案名称为 ${plan}，班级为 ${className}，截止 ${due}（UTC）。`, '发送任务')
+  const results = await ask(page, `请检查合成题库并使用附件配置准备方案。方案名称是 ${plan}，班级是 ${className}，截止时间是北京时间${dueDate}晚上八点。`, '发送任务')
   expect(results.map((event) => event.view?.kind ?? event.code ?? event.type)).toContain('cat_inspection')
   const draft = results.find((event) => event.view?.kind === 'cat_draft')?.view
   expect(draft).toMatchObject({ plan_name: plan, configuration: 'attachment', state: 'PREVIEW' })
@@ -142,11 +192,13 @@ test('a specialist approves a synthetic CAT plan and an administrator publishes 
   const published = await (await publishing).json()
   const task = published.data
   expect(task).toMatchObject({ plan_name: plan, activation_ref: expect.stringMatching(/^CACT_/), plan_version_number: 1 })
-  expect(new Date(task.due_at).toISOString()).toBe(new Date(due).toISOString())
+  expect(new Date(task.due_at).toISOString()).toBe(due.toISOString())
   const index = await page.request.get(origin + '/api/v1/school/admin/task-index')
   expect(index.ok()).toBe(true)
   expect((await index.json()).data).toContainEqual(expect.objectContaining({
     task_ref: task.task_ref, activation_ref: task.activation_ref, class_ref: task.class_ref, status: task.status,
   }))
+  await expect(card).toContainText('已发布')
+  await page.reload()
   await expect(card).toContainText('已发布')
 })

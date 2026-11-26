@@ -580,6 +580,19 @@ async def test_cat_file_plan_approval_and_school_publication(
         )
     ).status_code == 404
     await select(client, headers, "ADMIN")
+    model.side_effect = [
+        assistant_step(tool="list_cat_handoffs"),
+        assistant_step(text="已找到交接"),
+    ]
+    admin_turn = await client.post(
+        f"{base}/turn", headers=headers, json={"text": "查看待发布交接", "synthetic_only": True}
+    )
+    admin_views = [
+        row["view"]
+        for line in admin_turn.text.splitlines()
+        if (row := json.loads(line))["type"] == "tool_result"
+    ]
+    assert admin_views[0]["drafts"][0]["state"] == "APPROVED"
     preview = await client.post(
         f"{base}/preview-cat-handoff",
         headers=headers,
@@ -599,6 +612,12 @@ async def test_cat_file_plan_approval_and_school_publication(
     assert confirmed.json()["data"]["activation_ref"] == aid
     assert tools.publish_task.await_args.kwargs["due_at"] == due
     assert tools.publish_task.await_args.kwargs["activation_ref"] == aid
+    admin_history = await client.get(base)
+    admin_receipts = [
+        event["view"] for event in admin_history.json()["data"]["events"]
+        if event["type"] == "tool_result"
+    ]
+    assert admin_receipts[0]["drafts"][0]["state"] == "PUBLISHED"
     await select(client, headers, "PSYCHOLOGICAL_SPECIALIST")
     replay = await client.post(f"{base}/save-cat-draft", headers=headers, json=draft)
     assert replay.json()["data"]["state"] == "PUBLISHED"
