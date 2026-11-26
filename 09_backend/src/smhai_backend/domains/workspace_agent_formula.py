@@ -16,7 +16,7 @@ PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
 
 def extract_formula(content: bytes) -> str:
-    directory = os.environ.get("SMHAI_DEMO_FORMULA_DIRECTORY")
+    directory = os.environ.get("PSYNOVA_WORKSPACE_FORMULA_DIRECTORY")
     if not directory:
         raise error(ErrorCode.DEPENDENCY_UNAVAILABLE, detail="formula recognition is unavailable")
     root = Path(directory)
