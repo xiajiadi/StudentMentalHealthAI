@@ -6,6 +6,9 @@ import AppCard from '@/components/app/AppCard.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import TeacherClassSelect, { type TeacherClassOption } from '@/components/teacher/TeacherClassSelect.vue'
 import { frontendApi } from '@/services/mock-api'
+import {
+  auditActionLabel as actionLabel, auditCategoryLabel as categoryLabel, auditResultLabel as resultLabel,
+} from '@/services/school-operations-display'
 import type { SchoolOperationsAuditCategory, SchoolOperationsAuditEvent } from '@/api/client'
 
 type LoadState = 'loading' | 'ready' | 'error'
@@ -18,35 +21,13 @@ const emit = defineEmits<{
 
 const categories: Array<{ value: SchoolOperationsAuditCategory | ''; label: string }> = [
   { value: '', label: '全部类别' },
-  { value: 'organization', label: '学校' },
-  { value: 'class', label: '班级' },
-  { value: 'member', label: '成员' },
-  { value: 'account_batch', label: '账号批次' },
-  { value: 'account', label: '账号' },
-  { value: 'task', label: '任务' },
+  ...Object.entries(categoryLabel).map(([value, label]) => ({ value: value as SchoolOperationsAuditCategory, label })),
 ]
 const categoryOptions: TeacherClassOption[] = categories.map(({ value, label }) => ({ value, label }))
 const resultOptions: TeacherClassOption[] = [
   { value: '', label: '全部结果' },
-  { value: 'SUCCESS', label: '成功' },
-  { value: 'FAILURE', label: '失败' },
-  { value: 'DENIED', label: '未获授权' },
+  ...Object.entries(resultLabel).map(([value, label]) => ({ value, label })),
 ]
-const categoryLabel: Record<SchoolOperationsAuditCategory, string> = {
-  organization: '学校', class: '班级', member: '成员',
-  account_batch: '账号批次', account: '账号', task: '任务',
-}
-const actionLabel: Record<SchoolOperationsAuditEvent['action'], string> = {
-  'school_directory.rename_school': '调整学校名称',
-  'school_directory.rename_class': '调整班级名称',
-  'school_directory.rename_member': '调整成员名称',
-  'school_directory.import_accounts': '导入账号批次',
-  'school_directory.activate_account': '激活账号',
-  'school_tasks.task.published': '发布测评任务',
-}
-const resultLabel: Record<SchoolOperationsAuditEvent['result'], string> = {
-  SUCCESS: '成功', FAILURE: '失败', DENIED: '未获授权',
-}
 const resultTone: Record<SchoolOperationsAuditEvent['result'], string> = {
   SUCCESS: 'audit-result--success', FAILURE: 'audit-result--failure', DENIED: 'audit-result--denied',
 }

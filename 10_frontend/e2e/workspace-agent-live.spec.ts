@@ -534,6 +534,52 @@ test('an administrator confirms a private staff roster, downloads credentials an
   await expect(page.getByText(rows[1][1], { exact: true })).toBeVisible()
 })
 
+test('an administrator checks real system dependencies and pages through the school audit', async ({ page }) => {
+  test.setTimeout(210_000)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await signIn(page)
+  await chooseRole(page, 'ADMIN', '/admin/workspace')
+  const apiHealth = await page.request.get(origin + '/api/v1/health')
+  expect(apiHealth.ok()).toBe(true)
+  const health = (await apiHealth.json()).data.dependencies as Record<string, { status: string }>
+  const compareAudit = async (offset: number) => {
+    const response = await page.request.get(origin + `/api/v1/school/operations-audit?category=task&limit=1&offset=${offset}`)
+    expect(response.ok()).toBe(true)
+    return (await response.json()).data
+  }
+  const original = await compareAudit(0)
+  expect(original.items).toHaveLength(1)
+  expect(original.has_more).toBe(true)
+  const events = await ask(page, '请查一下系统依赖目前的状态，也给我本校最新一条测评任务发布的运营记录', '发送任务')
+  const diagnostics = events.find((event) => event.view?.kind === 'system_health')?.view
+  expect(diagnostics?.statuses).toEqual(Object.fromEntries(Object.entries(health).map(([key, value]) => [
+    key, value.status,
+  ])))
+  const audit = events.find((event) => event.view?.kind === 'school_audit')?.view
+  expect(audit?.query).toEqual({ category: 'task', limit: 1, offset: 0 })
+  const withoutReference = ({ event_ref, ...item }: Record<string, unknown>) => {
+    expect(typeof event_ref).toBe('string')
+    return item
+  }
+  expect(audit?.items).toEqual(original.items.map(withoutReference))
+  expect(JSON.stringify(events)).not.toContain(original.items[0].event_ref)
+  await expect(page.getByRole('list', { name: '系统依赖状态' }).last().getByText('安全校验')).toBeVisible()
+  await expect(page.getByRole('list', { name: '本校运营记录' }).last().getByText(/发布测评任务/)).toBeVisible()
+
+  const second = await compareAudit(1)
+  const next = await ask(page, '刚才查的运营记录往后翻一条，类别保持不变', '发送任务', false)
+  const nextAudit = next.find((event) => event.view?.kind === 'school_audit')?.view
+  expect(nextAudit?.query).toEqual({ category: 'task', limit: 1, offset: 1 })
+  expect(nextAudit?.items).toEqual(second.items.map(withoutReference))
+  expect(nextAudit?.has_more).toBe(second.has_more)
+  await page.reload()
+  await expect(page.getByText(/从第 2 条起/).last()).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391)
+
+  await chooseRole(page, 'TEACHER', '/teacher/workspace')
+  expect((await page.request.get(origin + '/api/v1/school/operations-audit')).status()).toBe(403)
+})
+
 test('a synthetic learner resumes and submits a real assessment inside the conversation', async ({ page }) => {
   test.skip(process.env.PSYNOVA_AGENT_QA_WRITE !== '1', 'Requires a dedicated synthetic school')
   test.setTimeout(270_000)

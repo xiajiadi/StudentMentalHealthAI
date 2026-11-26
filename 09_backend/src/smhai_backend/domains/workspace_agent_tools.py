@@ -13,12 +13,15 @@ from fastapi import Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field
 
+from smhai_backend.core.api_models import DependencyStatusDto
 from smhai_backend.core.errors import ErrorCode, error
+from smhai_backend.core.request_context import current_request_context
 from smhai_backend.domains.models import Actor, BackendRole
 from smhai_backend.domains.professional_reviews.schemas import ProfessionalReviewQueueTaskDto
 from smhai_backend.domains.school_account_lifecycle.schemas import LifecycleAccountSummaryDto
 from smhai_backend.domains.school_directory.schemas import SchoolDirectoryDto
 from smhai_backend.domains.school_feedback.schemas import StudentFeedbackListDto
+from smhai_backend.domains.school_operations_audit.schemas import AuditCategory
 from smhai_backend.domains.school_research_sources import library
 from smhai_backend.domains.school_support.schemas import SupportCasePageDto, SupportCategoryCode
 
@@ -55,6 +58,12 @@ class PublishedFeedbackSelection(Arguments):
 
 class EducationTopics(Arguments):
     topics: list[EducationTopic] = Field(min_length=1, max_length=3)
+
+
+class AuditPage(Arguments):
+    category: AuditCategory | None = None
+    offset: int = Field(default=0, ge=0, le=10_000)
+    limit: int = Field(default=10, ge=1, le=50)
 
 
 class NewClass(Arguments):
@@ -274,6 +283,23 @@ TOOLS = {
         "invitations. These are invitation counts, not the number of staff currently employed.",
         (ADMIN,),
     ),
+    "read_school_audit": Tool(
+        "读取本校运营记录",
+        "Read a page of the school's authorized operations audit, newest first. Filter by "
+        "organization, class, member, account_batch, account, or task. Offset starts at 0. "
+        "Use the previous query's offset plus limit for the next page. The browser receives "
+        "the full authorized page, while you receive page counts and up to five latest "
+        "metadata entries. Avoid school-wide totals or claiming coverage outside this audit.",
+        (ADMIN,),
+        AuditPage,
+    ),
+    "read_system_health": Tool(
+        "检查系统依赖状态",
+        "Read the current dependency status from the same service as the system health page. "
+        "Distinguish unavailable, intentionally disabled, and unknown states. Readiness "
+        "does not prove a real business operation will succeed.",
+        (ADMIN,),
+    ),
     "open_workflow": Tool(
         "准备业务工作台",
         "Show an authorized embedded workflow: review and cat are for specialists, "
@@ -301,6 +327,14 @@ _PANEL_ROLES = {
     "feedback": (STUDENT,),
     "publish": (ADMIN,),
     "system": (ADMIN,),
+}
+_HEALTH_DEPENDENCIES = (
+    "cat", "rag", "llm_runtime", "safety", "post_assessment_worker",
+    "research_education_worker", "research_programme_worker",
+    "research_general_education_draft_worker",
+)
+_HEALTH_STATES = {
+    "READY", "AVAILABLE", "UNAVAILABLE", "DEFERRED", "DISABLED", "STARTING", "UNKNOWN",
 }
 _STATES = {
     "PUBLISHED",
@@ -619,6 +653,36 @@ async def execute_tool(
             "revoked": summary.invitations_revoked,
         }
         return {"kind": name, **counts}, counts
+    if name == "read_school_audit" and isinstance(arguments, AuditPage):
+        if container.school_operations_audit is None:
+            raise error(ErrorCode.DEPENDENCY_UNAVAILABLE, detail="school audit is unavailable")
+        page = await container.school_operations_audit.list_events(
+            actor, offset=arguments.offset, limit=arguments.limit, category=arguments.category
+        )
+        rows = [item.model_dump(mode="json", exclude={"event_ref"}) for item in page.items]
+        query = arguments.model_dump(mode="json")
+        summary = {
+            "query": query,
+            "visible_count": len(rows),
+            "has_more": page.has_more,
+        }
+        return (
+            {"kind": "school_audit", "items": rows, **summary},
+            {
+                **summary,
+                "results_on_page": dict(Counter(item.result for item in page.items)),
+                "latest_records": rows[:5],
+            },
+        )
+    if name == "read_system_health":
+        matrix = await container.dependency_matrix(current_request_context(request))
+        statuses = {}
+        for key in _HEALTH_DEPENDENCIES:
+            value = DependencyStatusDto.model_validate(matrix[key]) if key in matrix else None
+            status = value.status.strip().upper() if value else "UNKNOWN"
+            statuses[key] = status if status in _HEALTH_STATES else "UNKNOWN"
+        snapshot = {"checked_at": datetime.now(UTC).isoformat(), "statuses": statuses}
+        return {"kind": "system_health", **snapshot}, snapshot
     if name == "preview_assessment_publication" and isinstance(arguments, TaskPreview):
         return await preview_publication(
             request, actor, arguments, class_alias=lambda ref: _alias("class", ref)

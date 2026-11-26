@@ -12,6 +12,9 @@ import { frontendApi } from '@/services/mock-api'
 import { supportCaseStates, supportCategories, type TeacherReferral } from '@/services/school-support'
 import { articlesForTopics } from '@/services/student-education'
 import type { RosterAttachment } from '@/services/school-roster-file'
+import {
+  auditActionLabel, auditCategoryLabel, auditResultLabel, dependencyNames, dependencyStatusLabels,
+} from '@/services/school-operations-display'
 import type { WorkspaceTableSummary } from '@/services/workspace-table'
 import {
   confirmWorkspacePublication, loadWorkspaceConversation, resetWorkspaceConversation,
@@ -49,6 +52,9 @@ const headings = {
   student_tasks: '我的测评任务', class_progress: '授权班级测评进度',
   review_tasks: '可复核测评', school_tasks: '学校测评任务', school_student_counts: '学生账号和分班人数',
 }
+const operationsTime = new Intl.DateTimeFormat('zh-CN', {
+  dateStyle: 'short', timeStyle: 'medium', timeZone: 'Asia/Shanghai', hour12: false,
+})
 const statuses: Record<string, string> = {
   not_started: '待开始', created: '待继续', in_progress: '进行中', completed: '已完成',
   abandoned: '已结束', invalid: '已失效', PUBLISHED: '已发布', CLOSED: '已关闭', REVOKED: '已撤回',
@@ -477,6 +483,29 @@ defineExpose({ submit, cancel, openIndependentCat, openSchoolLibrary })
           <template v-else-if="event.view.kind === 'staff_invitation_status'">
             <strong>本校教职工邀请</strong>
             <p>待接受 {{ event.view.issued }} · 已接受 {{ event.view.accepted }} · 已过期 {{ event.view.expired }} · 已撤销 {{ event.view.revoked }}</p>
+          </template>
+          <template v-else-if="event.view.kind === 'school_audit'">
+            <strong>本校运营记录 · {{ event.view.query.category ? auditCategoryLabel[event.view.query.category] : '全部类别' }}</strong>
+            <small>从第 {{ event.view.query.offset + 1 }} 条起 · 本页 {{ event.view.visible_count }} 条<span v-if="event.view.has_more"> · 后面还有记录</span></small>
+            <ul v-if="event.view.items.length" class="agent-thread__rows" aria-label="本校运营记录">
+              <li v-for="(row, index) in event.view.items" :key="index">
+                <span>{{ auditActionLabel[row.action] }} · {{ auditResultLabel[row.result] }}</span>
+                <time :datetime="row.created_at">{{ operationsTime.format(new Date(row.created_at)) }}</time>
+                <small v-if="row.record_count !== null">{{ row.record_count }} 个账号</small>
+              </li>
+            </ul>
+            <p v-else>这个范围内没有记录</p>
+          </template>
+          <template v-else-if="event.view.kind === 'system_health'">
+            <strong>系统依赖状态</strong>
+            <small>检查时间 <time :datetime="event.view.checked_at">{{ operationsTime.format(new Date(event.view.checked_at)) }}</time></small>
+            <ul class="agent-thread__rows" aria-label="系统依赖状态">
+              <li v-for="(status, key) in event.view.statuses" :key="key">
+                <span>{{ dependencyNames[key] }}</span>
+                <small>{{ dependencyStatusLabels[status] }}</small>
+              </li>
+            </ul>
+            <AppButton variant="secondary" @click="openPanel('system')">查看系统详情</AppButton>
           </template>
           <AppButton v-else-if="event.view.kind === 'workflow'" variant="secondary" @click="openPanel(event.view.workflow)">打开{{ panelLabels[event.view.workflow] }}</AppButton>
           <AppButton v-else-if="event.view.kind === 'markdown'" variant="secondary" @click="download(event.view.filename, event.view.markdown)">下载 {{ event.view.filename }}</AppButton>

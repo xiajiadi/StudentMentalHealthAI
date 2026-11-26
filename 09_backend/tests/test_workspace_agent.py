@@ -12,6 +12,7 @@ import pytest
 from pwdlib import PasswordHash
 
 from smhai_backend.domains.models import BackendRole, SchoolRoleContext, SyntheticUser
+from smhai_backend.domains.school_operations_audit.service import SchoolOperationsAuditService
 from smhai_backend.domains.school_research_sources import library
 from smhai_backend.domains.workspace_agent_history import WorkspaceHistory
 
@@ -576,6 +577,117 @@ async def test_staff_import_keeps_rows_private_and_rechecks_school_invitation_co
     assert lifecycle.account_summary.await_count == 2
     calls = lifecycle.account_summary.await_args_list
     assert {call.args[0].school_ref for call in calls} == {FIRST}
+
+
+async def test_admin_audit_reads_requested_pages_and_keeps_only_query_for_next_turn(
+    client, app, model_lane, monkeypatch
+):
+    model, _ = model_lane
+    row_id = "c9096f3e-caf6-440b-a732-10df405b74e9"
+    persistence = SimpleNamespace(school_operations_audit_list=AsyncMock(side_effect=[
+        {"items": [{
+            "event_ref": row_id,
+            "created_at": datetime(2026, 11, 26, 8, tzinfo=UTC),
+            "action": "school_tasks.task.published",
+            "result": "SUCCESS",
+            "actor_name": "private-operator",
+            "resource": "private-task-id",
+        }], "has_more": True},
+        {"items": [], "has_more": False},
+    ]))
+    monkeypatch.setattr(app.state.container, "school_operations_audit",
+                        SchoolOperationsAuditService(persistence=persistence))
+    headers = await login(client)
+    await select(client, headers, "ADMIN")
+    url = f"{BASE}/conversation/turn"
+    current_offset = 0
+
+    async def model_step(messages, definitions, _context):
+        names = {item["function"]["name"] for item in definitions}
+        assert "read_school_audit" in names
+        assert row_id not in json.dumps(messages)
+        if messages[-1]["role"] == "tool":
+            result = json.loads(messages[-1]["content"])
+            assert result["query"] == {"category": "task", "offset": current_offset, "limit": 1}
+            assert "private-operator" not in messages[-1]["content"]
+            assert "private-task-id" not in messages[-1]["content"]
+            assert result["visible_count"] == 1 - current_offset
+            return assistant_step(text="已查询本页运营记录")
+        if current_offset:
+            earlier = next(
+                item["content"] for item in messages
+                if item["content"].startswith("Prior tool result (read_school_audit)")
+            )
+            assert json.loads(earlier.split(": ", 1)[1]) == {
+                "refresh_required": True,
+                "previous_query": {"category": "task", "offset": 0, "limit": 1},
+            }
+        return assistant_step(
+            tool="read_school_audit",
+            arguments=json.dumps({"category": "task", "offset": current_offset, "limit": 1}),
+        )
+
+    model.side_effect = model_step
+    for current_offset, prompt in enumerate(("查本校最近一条任务运营记录", "同一类别下一条")):
+        response = await client.post(url, headers=headers, json={
+            "text": prompt, "synthetic_only": True,
+        })
+        events = [json.loads(line) for line in response.text.splitlines()]
+        view = next(event["view"] for event in events if event["type"] == "tool_result")
+        assert view["kind"] == "school_audit"
+        assert view["query"]["offset"] == current_offset
+        assert len(view["items"]) == 1 - current_offset
+        assert row_id not in response.text and "private-operator" not in response.text
+    reads = persistence.school_operations_audit_list.await_args_list
+    assert [call.args[0].school_ref for call in reads] == [FIRST, FIRST]
+    assert [call.kwargs for call in reads] == [
+        {"offset": 0, "limit": 1, "category": "task"},
+        {"offset": 1, "limit": 1, "category": "task"},
+    ]
+
+
+async def test_system_health_projects_fixed_names_and_states_for_admin_only(
+    client, app, model_lane, monkeypatch
+):
+    model, _ = model_lane
+    raw = {
+        "cat": {"status": "READY", "integration": "private-url"},
+        "post_assessment_worker": {"status": "DISABLED", "integration": "LOCAL_OUTBOX"},
+        "safety": {"status": "private-upstream-text", "integration": "REAL_HTTP"},
+        "private-service-name": {"status": "READY", "integration": "PRIVATE"},
+    }
+    matrix = AsyncMock(return_value=raw)
+    monkeypatch.setattr(type(app.state.container), "dependency_matrix", matrix)
+    headers = await login(client)
+    url = f"{BASE}/conversation/turn"
+    body = {"text": "查系统依赖情况", "synthetic_only": True}
+    await select(client, headers, "TEACHER")
+
+    async def denied(messages, definitions, _context):
+        names = {item["function"]["name"] for item in definitions}
+        assert {"read_system_health", "read_school_audit"}.isdisjoint(names)
+        if messages[-1]["role"] == "tool":
+            assert json.loads(messages[-1]["content"]) == {"error": "forbidden"}
+            return assistant_step(text="当前角色无法查看此状态")
+        return assistant_step(tool="read_system_health")
+
+    model.side_effect = denied
+    response = await client.post(url, headers=headers, json=body)
+    assert '"code": "forbidden"' in response.text
+    matrix.assert_not_awaited()
+
+    await select(client, headers, "ADMIN")
+    model.side_effect = [
+        assistant_step(tool="read_system_health"),
+        assistant_step(text="已查询当前依赖状态"),
+    ]
+    response = await client.post(url, headers=headers, json=body)
+    result = json.loads(model.await_args.args[0][-1]["content"])
+    assert result["statuses"]["cat"] == "READY"
+    assert result["statuses"]["post_assessment_worker"] == "DISABLED"
+    assert result["statuses"]["safety"] == result["statuses"]["rag"] == "UNKNOWN"
+    assert "private-" not in response.text and "private-" not in json.dumps(result)
+    matrix.assert_awaited_once()
 
 
 async def test_document_preview_extracts_private_text_without_entering_history(client, model_lane):

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+/* global HTMLButtonElement */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Activity, Check, CircleHelp, RefreshCw, Search, Server, X, ChevronDown } from '@lucide/vue'
 import type { DependencyStatusDto } from '@/api/generated/types.gen'
@@ -6,6 +7,7 @@ import AppBadge from '@/components/app/AppBadge.vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
 import { DependencyHealthReadError, readDependencyHealth, type DependencyHealthReadErrorKind } from '@/views/admin/health'
+import { dependencyNames, dependencyStatusLabels } from '@/services/school-operations-display'
 
 type PageState = 'loading' | 'ready' | 'refreshing' | 'error'
 type HealthCategory = 'normal' | 'attention' | 'unknown' | 'unconfigured'
@@ -20,17 +22,6 @@ type HealthRow = DependencyStatusDto & {
   summary: string
 }
 type Snapshot = { dependencies: Record<string, DependencyStatusDto>; fetchedAt: Date }
-
-const dependencyNames: Record<string, string> = {
-  cat: 'CAT 测评',
-  rag: 'RAG 检索',
-  llm_runtime: 'LLM 运行时',
-  safety: '安全校验',
-  post_assessment_worker: '测后处理',
-  research_education_worker: '研究教育任务',
-  research_programme_worker: '研究项目任务',
-  research_general_education_draft_worker: '通用教育草稿',
-}
 
 const integrationNames: Record<string, string> = {
   REAL_HTTP: 'HTTP 服务',
@@ -92,24 +83,25 @@ const updateStatusFilterIndicator = async () => {
 
 function describeStatus(rawStatus: string): Pick<HealthRow, 'category' | 'label' | 'tone' | 'summary'> {
   const status = rawStatus.trim().toUpperCase()
+  const label = dependencyStatusLabels[status] ?? dependencyStatusLabels.UNKNOWN
   if (status === 'READY' || status === 'AVAILABLE') {
-    return { category: 'normal', label: '正常', tone: 'teal', summary: '服务端返回正常状态。' }
+    return { category: 'normal', label, tone: 'teal', summary: '服务端返回正常状态。' }
   }
   if (status === 'UNAVAILABLE') {
-    return { category: 'attention', label: '需关注', tone: 'amber', summary: '服务端报告此依赖当前不可用。' }
+    return { category: 'attention', label, tone: 'amber', summary: '服务端报告此依赖当前不可用。' }
   }
   if (status === 'DEFERRED') {
-    return { category: 'unconfigured', label: '未配置', tone: 'blue', summary: '服务端将此依赖标记为未配置。' }
+    return { category: 'unconfigured', label, tone: 'blue', summary: '服务端将此依赖标记为未配置。' }
   }
   if (status === 'DISABLED') {
-    return { category: 'unconfigured', label: '已关闭', tone: 'neutral', summary: '服务端将此依赖标记为已关闭。' }
+    return { category: 'unconfigured', label, tone: 'neutral', summary: '服务端将此依赖标记为已关闭。' }
   }
   if (status === 'STARTING') {
-    return { category: 'unknown', label: '启动中', tone: 'neutral', summary: '服务端报告此依赖正在启动。' }
+    return { category: 'unknown', label, tone: 'neutral', summary: '服务端报告此依赖正在启动。' }
   }
   return {
     category: 'unknown',
-    label: '未知',
+    label,
     tone: 'neutral',
     summary: status ? `服务端返回未识别状态“${rawStatus}”。` : '服务端未返回状态码。',
   }

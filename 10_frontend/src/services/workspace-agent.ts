@@ -1,6 +1,7 @@
 /* global AbortSignal, Blob, TextDecoder */
 
 import { realApiProvider } from './real-api'
+import type { SchoolOperationsAuditCategory, SchoolOperationsAuditEvent } from '@/api/client'
 import type { RosterKind } from './school-roster-file'
 import type { WorkspaceTableSummary } from './workspace-table'
 import type { CaseStatus, TeacherReferral } from './school-support'
@@ -84,6 +85,8 @@ export type WorkspaceAgentView =
   | { kind: 'roster_import' }
   | { kind: 'staff_roster_import' }
   | { kind: 'staff_invitation_status'; issued: number; accepted: number; expired: number; revoked: number }
+  | { kind: 'school_audit'; items: Omit<SchoolOperationsAuditEvent, 'event_ref'>[]; query: { offset: number; limit: number; category: SchoolOperationsAuditCategory | null }; visible_count: number; has_more: boolean }
+  | { kind: 'system_health'; statuses: Record<string, string>; checked_at: string }
   | { kind: 'workflow'; workflow: WorkflowPanel }
   | { kind: 'markdown'; filename: string; markdown: string }
 

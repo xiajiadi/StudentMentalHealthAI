@@ -76,6 +76,9 @@ private import workbench. Use open_roster_import for students and open_staff_ros
 staff CSV. The private attachment type indicates the selected template. Ask for a replacement if
 it conflicts with the request. Only an administrator can confirm import in the workbench. Use
 staff_invitation_status for a fresh check of staff invitations and pending activation.
+For administrators checking operational history or component status, use read_school_audit or
+read_system_health. For audit follow-ups, keep the previous category and page size unless the user
+changes them. Only the currently queried page supports statements about the records shown.
 For a teacher requesting a support referral, use prepare_teacher_referral. The teacher selects
 the student and reviews the observations before submitting in the private support form.
 For a specialist organizing pending work, use professional_review_queue for assigned review
@@ -95,7 +98,8 @@ _LIVE_LOOKUPS = {
     "list_published_feedback",
     "list_student_assessments", "make_class_progress_report", "open_published_feedback",
     "professional_review_queue", "review_tasks", "school_student_counts", "school_tasks",
-    "specialist_support_status", "staff_invitation_status", "teacher_support_status",
+    "read_school_audit", "read_system_health", "specialist_support_status",
+    "staff_invitation_status", "teacher_support_status",
 }
 _LOOKUP_REF_FIELDS = {
     "list_student_assessments": ("rows", "task"),
@@ -217,6 +221,8 @@ def _context_messages(actor: Actor, history: list[dict], payload: TurnRequest) -
                 data = {"refresh_required": True}
                 if tool == "list_published_feedback":
                     data["feedback_aliases"] = snapshot.get("newest_first", [])
+                elif tool == "read_school_audit":
+                    data["previous_query"] = snapshot.get("query")
                 elif tool in _LOOKUP_REF_FIELDS:
                     collection, key = _LOOKUP_REF_FIELDS[tool]
                     data["prior_references"] = [
