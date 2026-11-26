@@ -243,6 +243,51 @@ test('a specialist confirms a PDF import and checks the real private library fro
   await expect(page.getByRole('list', { name: '匹配的资料片段' }).getByText(new RegExp(marker)).last()).toBeVisible()
 })
 
+test('a teacher shares only selected CSV aggregates and downloads the exact statistics', async ({ page }) => {
+  test.setTimeout(150_000)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await signIn(page)
+  await chooseRole(page, 'TEACHER', '/teacher/workspace')
+  const marker = 'WS_PRIVATE_ROW_DO_NOT_SEND'
+  await page.locator('#workspace-agent-composer input[type="file"]').setInputFiles({
+    name: 'synthetic-practice.csv', mimeType: 'text/csv',
+    buffer: Buffer.from(`Label,StudyMinutes,Questions\n${marker},15,3\nsampleB,30,4\nsampleC,45,5\nsampleD,,6\n`),
+  })
+  const preview = page.getByRole('dialog', { name: '选择表格统计' })
+  await preview.getByRole('checkbox', { name: /第 2 列 · StudyMinutes/ }).check()
+  await preview.getByRole('button', { name: '使用所选统计' }).click()
+  const sent = page.waitForRequest((request) => request.url().endsWith('/workspace-agent/conversation/turn'))
+  const summary = { rows: 4, columns: [{ column: 2, count: 3, min: 15, max: 45, mean: 30, sum: 90 }] }
+  const events = await ask(page, '核对所选列的表格汇总，并生成可下载的统计表', '发送任务')
+  const request = await sent
+  expect(request.postDataJSON().table_summary).toEqual(summary)
+  expect(request.postData()).not.toMatch(new RegExp(`${marker}|StudyMinutes|Questions|synthetic-practice`))
+  expect(events.find((event) => event.view?.kind === 'table_statistics')?.view).toMatchObject(summary)
+  await expect(page.getByRole('table', { name: '所选列的统计结果' }).last().getByText('90', { exact: true })).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391)
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: '下载统计 CSV' }).last().click()
+  const artifact = await download
+  expect(artifact.suggestedFilename()).toBe('表格统计.csv')
+  expect((await readFile(await artifact.path(), 'utf-8')).split(/\r?\n/)).toEqual([
+    '\uFEFF列号,数据行数,数字个数,最小值,最大值,平均值,合计', '2,4,3,15,45,30,90',
+  ])
+})
+
+test('an administrator still sends a CSV roster through the roster preview', async ({ page }) => {
+  test.setTimeout(90_000)
+  await signIn(page)
+  await chooseRole(page, 'ADMIN', '/admin/workspace')
+  const suffix = String(Date.now())
+  await page.locator('#workspace-agent-composer input[type="file"]').setInputFiles({
+    name: 'synthetic-roster-preview.csv', mimeType: 'text/csv',
+    buffer: Buffer.from('student_number,display_name,class_ref,grade_level\n' +
+      `QA-${suffix},合成预览学生,合成预览班${suffix},高一\n`),
+  })
+  await expect(page.getByText('服务端预览：1 条')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('dialog', { name: '选择表格统计' })).toHaveCount(0)
+})
+
 test('a synthetic learner resumes and submits a real assessment inside the conversation', async ({ page }) => {
   test.skip(process.env.PSYNOVA_AGENT_QA_WRITE !== '1', 'Requires a dedicated synthetic school')
   test.setTimeout(270_000)

@@ -26,6 +26,7 @@ from .workspace_agent import _check_actor
 from .workspace_agent_history import workspace_owner as _owner
 from .workspace_agent_publishing import TaskConfirmation
 from .workspace_agent_publishing import confirm as confirm_publication
+from .workspace_agent_table import WorkspaceTableSummary
 from .workspace_agent_tools import (
     ADMIN,
     SPECIALIST,
@@ -105,6 +106,7 @@ class TurnRequest(BaseModel):
     synthetic_only: Literal[True]
     attachment: Literal["student_roster", "cat_bank"] | None = None
     cat_attachment_ref: str | None = Field(default=None, pattern=cat_workflow.REF)
+    table_summary: WorkspaceTableSummary | None = None
 
 
 class FunctionCall(BaseModel):
@@ -231,6 +233,8 @@ def _context_messages(actor: Actor, history: list[dict], payload: TurnRequest) -
         (ADMIN, "student_roster"): "\n[Workspace UI: a private roster file is selected.]",
         (SPECIALIST, "cat_bank"): "\n[Workspace UI: a private school CAT document is attached.]",
     }.get((actor.role, payload.attachment), "")
+    if payload.table_summary is not None:
+        attachment_note += "\n[Workspace UI: use inspect_attached_table for the CSV summary.]"
     messages.append({"role": "user", "content": payload.text + attachment_note})
     return messages
 
@@ -262,7 +266,11 @@ async def _run(request: Request, actor: Actor, payload: TurnRequest, prior: list
 
     yield {"type": "user", "text": payload.text}
     messages = _context_messages(actor, prior, payload)
-    available = {name: tool for name, tool in TOOLS.items() if actor.role in tool.roles}
+    available = {
+        name: tool for name, tool in TOOLS.items()
+        if actor.role in tool.roles
+        and (name != "inspect_attached_table" or payload.table_summary is not None)
+    }
     definitions = [tool.definition(name) for name, tool in available.items()]
     async with asyncio.timeout(145):
         for _ in range(5):
@@ -344,6 +352,7 @@ async def _run(request: Request, actor: Actor, payload: TurnRequest, prior: list
                             name,
                             arguments,
                             cat_attachment_ref=payload.cat_attachment_ref,
+                            table_summary=payload.table_summary,
                         )
                     # Keep the rendered role-specific details local, including browser-only tokens.
                     yield {
@@ -516,6 +525,10 @@ async def preview_cat(
 @router.post("/turn")
 async def turn(request: Request, payload: TurnRequest, actor: CsrfActor):
     history = _history(request, actor)
+    if payload.table_summary is not None and (
+        actor.role not in {STUDENT, TEACHER} or payload.attachment
+    ):
+        raise error(ErrorCode.FORBIDDEN, detail="table summary is unavailable for this workspace")
     container = request.app.state.container
     container.rate_limiter.check("support", actor.user_id)
     owner = _owner(actor)

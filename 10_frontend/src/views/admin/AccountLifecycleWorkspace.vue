@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import { parseCsvRecords, readCsvText } from '@/services/csv-import'
 import AppDialog from '@/components/app/AppDialog.vue'
 import AppSelect from '@/components/app/AppSelect.vue'
 import AppSelectOption from '@/components/app/AppSelectOption.vue'
-/* global KeyboardEvent, HTMLButtonElement, URL, Blob, File, TextDecoder, TextEncoder, btoa */
+/* global KeyboardEvent, HTMLButtonElement, URL, Blob, File, TextEncoder, btoa */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
@@ -348,46 +349,6 @@ const downloadStaffRosterTemplate = () => {
   link.href = url; link.download = 'psynova-staff-roster-template-v1.csv'; link.click(); URL.revokeObjectURL(url)
 }
 
-const parseCsvRecords = (text: string): string[][] => {
-  const result: string[][] = []
-  let record: string[] = []; let field = ''; let quoted = false
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index]!
-    if (quoted) {
-      if (char === '"' && text[index + 1] === '"') { field += '"'; index += 1 }
-      else if (char === '"') quoted = false
-      else field += char
-    } else if (char === '"') {
-      if (field) throw new Error('CSV 引号格式错误')
-      quoted = true
-    } else if (char === ',') { record.push(field.trim()); field = '' }
-    else if (char === '\n' || char === '\r') {
-      if (char === '\r' && text[index + 1] === '\n') index += 1
-      record.push(field.trim()); field = ''
-      if (record.some((value) => value)) result.push(record)
-      record = []
-    } else field += char
-  }
-  if (quoted) throw new Error('CSV 存在未闭合的引号')
-  record.push(field.trim())
-  if (record.some((value) => value)) result.push(record)
-  return result
-}
-
-const readRosterCsv = async (file: File): Promise<string> => {
-  const bytes = new Uint8Array(await file.arrayBuffer())
-  const decode = (encoding: string) => new TextDecoder(encoding, { fatal: true }).decode(bytes)
-  if (bytes[0] === 0xff && bytes[1] === 0xfe) return decode('utf-16le')
-  if (bytes[0] === 0xfe && bytes[1] === 0xff) return decode('utf-16be')
-  try { return decode('utf-8') }
-  catch {
-    if (bytes[0] !== 0xef || bytes[1] !== 0xbb || bytes[2] !== 0xbf) {
-      try { return decode('gb18030') } catch { /* Unsupported encoding */ }
-    }
-    throw new Error('无法读取 CSV 编码，请另存为 CSV UTF-8 后重试')
-  }
-}
-
 let rosterFileAttempt = 0
 let staffFileAttempt = 0
 const parseRosterFile = async (file?: File) => {
@@ -408,7 +369,7 @@ const parseRosterFile = async (file?: File) => {
       if (cells.length > maxRosterRows + 2) throw new Error('导入须包含 1 到 3000 行学生记录')
       records = cells.map((row) => row.map((cell) => cell == null ? '' : String(cell).trim()))
     } else {
-      records = parseCsvRecords(await readRosterCsv(file))
+      records = parseCsvRecords(await readCsvText(file))
     }
     if (attempt !== rosterFileAttempt) return
     const versionMarker = '# psynova_student_roster_template_v1'
@@ -440,7 +401,7 @@ const parseStaffFile = async (file?: File) => {
   if (!file) return
   if (file.size > 1024 * 1024) { error.value = '文件不能超过 1 MiB'; return }
   try {
-    const text = await readRosterCsv(file)
+    const text = await readCsvText(file)
     if (attempt !== staffFileAttempt) return
     const records = parseCsvRecords(text)
     if (records[0]?.length === 1 && records[0][0]?.startsWith('# psynova_staff_roster_template_')) {

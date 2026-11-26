@@ -560,6 +560,40 @@ async def test_school_library_tool_returns_only_counts(client, model_lane, monke
     assert json.loads(model.await_args.args[0][-1]["content"]) == {"total": 1, "chunks": 1}
 
 
+async def test_workspace_csv_summary_is_scoped_and_supplied_only_on_tool_call(client, model_lane):
+    model, _ = model_lane
+    summary = {
+        "rows": 4,
+        "columns": [{"column": 2, "count": 3, "min": 15, "max": 45, "mean": 30, "sum": 90}],
+    }
+
+    async def model_step(messages, definitions, _context):
+        assert "inspect_attached_table" in {item["function"]["name"] for item in definitions}
+        if messages[-1]["role"] == "tool":
+            assert json.loads(messages[-1]["content"]) == summary
+            return assistant_step(text="已准备列统计")
+        assert '"sum": 90' not in json.dumps(messages, ensure_ascii=False)
+        return assistant_step(tool="inspect_attached_table")
+
+    model.side_effect = model_step
+    headers = await login(client)
+    await select(client, headers, "TEACHER")
+    url = f"{BASE}/conversation/turn"
+    turn = {"text": "读取这张表的统计", "synthetic_only": True, "table_summary": summary}
+    response = await client.post(url, headers=headers, json=turn)
+    views = [
+        event["view"] for line in response.text.splitlines()
+        if (event := json.loads(line))["type"] == "tool_result"
+    ]
+    assert views == [{"kind": "table_statistics", **summary}]
+    invalid = await client.post(url, headers=headers, json={
+        **turn, "table_summary": {**summary, "rows": 1},
+    })
+    assert invalid.status_code == 422
+    await select(client, headers, "ADMIN")
+    assert (await client.post(url, headers=headers, json=turn)).status_code == 403
+
+
 async def test_teacher_referral_draft_is_private_and_does_not_submit(
     client, app, model_lane, monkeypatch
 ):

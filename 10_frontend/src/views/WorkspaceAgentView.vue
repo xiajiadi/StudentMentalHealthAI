@@ -13,6 +13,8 @@ import { useSessionStore } from '@/stores/session'
 import type { Role } from '@/types/contracts'
 import SupportChatView from '@/views/student/SupportChatView.vue'
 import WorkspaceConversation from '@/components/workspace/WorkspaceConversation.vue'
+import WorkspaceTablePreview from '@/components/workspace/WorkspaceTablePreview.vue'
+import type { LocalWorkspaceTable, WorkspaceTableSummary } from '@/services/workspace-table'
 
 type WorkspaceRole = 'student' | 'teacher' | 'psychological_specialist' | 'school_admin'
 type Entry = { label: string; to: string; icon: Component; note?: string }
@@ -129,7 +131,9 @@ const attachmentOpen = ref(false)
 type DocumentPreview = { file: File; characters: number; previewLength: number }
 const attachment = ref<{ name: string; content: string; image?: boolean; document?: DocumentPreview }>()
 const attachmentError = ref('')
-const attachmentReading = ref<false | 'image' | 'document'>(false)
+const attachmentReading = ref<false | 'image' | 'document' | 'table'>(false)
+const tablePreview = ref<{ name: string; table: LocalWorkspaceTable }>()
+const tableSummary = ref<WorkspaceTableSummary>()
 const overview = ref<WorkspaceAgentResult | null>(null)
 const result = ref<WorkspaceAgentResult | null>(null)
 const overviewLoading = ref(false)
@@ -187,6 +191,8 @@ watch(workspaceScope, () => {
   attachmentOpen.value = false
   attachment.value = undefined
   attachmentError.value = ''
+  tablePreview.value = undefined
+  tableSummary.value = undefined
   rosterFile.value = undefined
   catFile.value = undefined
   agentBusy.value = false
@@ -201,6 +207,8 @@ watch(workspaceScope, () => {
 watch(agentMode, (enabled) => {
   if (enabled) return
   cancelAttachmentRead()
+  tablePreview.value = undefined
+  tableSummary.value = undefined
   if (attachment.value?.image || attachment.value?.document) {
     attachmentOpen.value = false
     attachment.value = undefined
@@ -307,6 +315,8 @@ async function openAttachment(file: File) {
   attachment.value = undefined
   attachmentOpen.value = false
   attachmentError.value = ''
+  tablePreview.value = undefined
+  tableSummary.value = undefined
   if (agentMode.value) {
     if (role.value === 'school_admin' && /\.(csv|xlsx)$/i.test(file.name)) {
       selectRoster(file)
@@ -321,7 +331,15 @@ async function openAttachment(file: File) {
   attachmentRequest = request
   const image = agentMode.value && /\.(png|jpe?g|webp)$/i.test(file.name)
   const kind = agentMode.value ? /\.(docx|pdf)$/i.exec(file.name)?.[1]?.toLowerCase() : undefined
+  const csv = agentMode.value && ['student', 'teacher'].includes(role.value) && /\.csv$/i.test(file.name)
   try {
+    if (csv) {
+      attachmentReading.value = 'table'
+      const { readWorkspaceCsv } = await import('@/services/workspace-table')
+      const table = await readWorkspaceCsv(file)
+      if (!request.signal.aborted) tablePreview.value = { name: file.name, table }
+      return
+    }
     let content: string
     let documentPreview: DocumentPreview | undefined
     if (image) {
@@ -352,12 +370,19 @@ async function openAttachment(file: File) {
       const known = error instanceof Error && /^(请选择|图片中未识别到文字)/.test(error.message)
       attachmentError.value = known ? error.message : image
         ? '图片识别未能完成，请检查图片后重试'
-        : kind ? '无法提取文字，请检查文档是否可选取文字、受密码保护或损坏'
+        : csv ? 'CSV 暂时无法读取，请检查编码、列数和引号'
+          : kind ? '无法提取文字，请检查文档是否可选取文字、受密码保护或损坏'
           : '无法读取文本，请检查文件是否为空或使用 UTF-8 编码'
     }
   } finally {
     if (attachmentRequest === request) attachmentReading.value = false
   }
+}
+
+function confirmTable(summary: WorkspaceTableSummary) {
+  tableSummary.value = summary
+  tablePreview.value = undefined
+  if (!command.value.trim()) command.value = '请解读这份表格的统计摘要，并给我可下载的统计表'
 }
 
 function insertAttachment() {
@@ -411,7 +436,7 @@ const attachmentFormats = computed(() => {
   const text = '.txt,.md,.markdown'
   if (!agentMode.value) return text
   return text + ',.png,.jpg,.jpeg,.webp,.pdf,.docx' + ({
-    school_admin: ',.csv,.xlsx', psychological_specialist: ',.csv,.json', teacher: '', student: '',
+    school_admin: ',.csv,.xlsx', psychological_specialist: ',.csv,.json', teacher: ',.csv', student: ',.csv',
   }[role.value])
 })
 
@@ -490,6 +515,7 @@ function dateLabel(value: string) {
         :role="role"
         :roster-file="rosterFile"
         :cat-file="catFile"
+        :table-summary="tableSummary"
         @busy="agentBusy = $event"
         @changed="loadOverview"
         @support="$router.push({ name: 'student-workspace', query: { chat: '1' } })"
@@ -534,8 +560,12 @@ function dateLabel(value: string) {
           </AppButton>
         </div>
         <div v-if="attachmentReading" class="workspace-agent__receipt">
-          <span role="status">{{ attachmentReading === 'image' ? '正在这台设备上识别文字' : '正在学校服务中提取文字' }}</span>
+          <span role="status">{{ attachmentReading === 'image' ? '正在这台设备上识别文字' : attachmentReading === 'table' ? '正在这台设备上计算表格' : '正在学校服务中提取文字' }}</span>
           <AppButton variant="quiet" @click="cancelAttachmentRead">取消处理</AppButton>
+        </div>
+        <div v-if="tableSummary" class="workspace-agent__receipt">
+          <span>已选表格统计 · {{ tableSummary.columns.length }} 列</span>
+          <AppButton variant="quiet" :disabled="agentBusy" @click="tableSummary = undefined">移除表格统计</AppButton>
         </div>
         <div v-if="agentMode && (rosterFile || catFile)" class="workspace-agent__receipt">
           <span>{{ (rosterFile || catFile)?.name }}</span>
@@ -627,6 +657,7 @@ function dateLabel(value: string) {
         </AppButton>
       </div>
     </AppDialog>
+    <WorkspaceTablePreview v-if="tablePreview" :name="tablePreview.name" :table="tablePreview.table" @close="tablePreview = undefined" @confirm="confirmTable" />
     <AppDialog
       :open="attachmentOpen"
       :title="attachment?.image ? '图片文字预览' : attachment?.document ? '文档文字预览' : '附件预览'"

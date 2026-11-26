@@ -1,6 +1,7 @@
 /* global AbortSignal, Blob, TextDecoder */
 
 import { realApiProvider } from './real-api'
+import type { WorkspaceTableSummary } from './workspace-table'
 import type { CaseStatus, TeacherReferral } from './school-support'
 
 export type EducationTopic = 'weekly_plan' | 'small_steps' | 'study_stress'
@@ -69,6 +70,7 @@ export type WorkspaceAgentView =
   | { kind: 'feedback_index'; total: number }
   | { kind: 'feedback_picker'; feedback_ref: string }
   | { kind: 'school_library_inventory'; total: number; chunks: number }
+  | ({ kind: 'table_statistics' } & WorkspaceTableSummary)
   | { kind: 'preview_class'; class_ref: string; token: string }
   | TaskPublicationPreview
   | CatDraft
@@ -134,10 +136,12 @@ export async function sendWorkspaceTurn(
   onEvent: (event: WorkspaceEvent) => void,
   signal: AbortSignal,
   catAttachmentRef?: string,
+  tableSummary?: WorkspaceTableSummary,
 ) {
   const response = await realApiProvider.requestWorkspaceConversation('turn', {
     text, synthetic_only: true, ...(attachment ? { attachment } : {}),
     ...(catAttachmentRef ? { cat_attachment_ref: catAttachmentRef } : {}),
+    ...(tableSummary ? { table_summary: tableSummary } : {}),
   }, signal)
   if (!response.body) throw new Error('连接未返回会话数据')
   const reader = response.body.getReader()

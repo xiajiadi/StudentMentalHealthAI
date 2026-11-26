@@ -25,6 +25,7 @@ from . import workspace_agent_cat as cat_workflow
 from .workspace_agent import _ensure_demo_admin, _signature, _snapshot
 from .workspace_agent_publishing import TaskPreview
 from .workspace_agent_publishing import preview as preview_publication
+from .workspace_agent_table import WorkspaceTableSummary
 
 STUDENT = BackendRole.STUDENT
 TEACHER = BackendRole.TEACHER
@@ -91,6 +92,13 @@ class Tool:
 
 _ALL = (STUDENT, TEACHER, SPECIALIST, ADMIN)
 TOOLS = {
+    "inspect_attached_table": Tool(
+        "读取表格统计摘要",
+        "Read the numeric summary calculated in the browser. Explain its column numbers, counts, "
+        "and statistics or show the downloadable statistics CSV. Do not infer "
+        "original values, column names, or relationships between rows from these aggregates.",
+        (STUDENT, TEACHER),
+    ),
     "list_student_assessments": Tool(
         "查询待完成测评",
         "Read the student's assigned assessments with current status and due dates.",
@@ -302,9 +310,13 @@ async def execute_tool(
     arguments: BaseModel,
     *,
     cat_attachment_ref: str | None = None,
+    table_summary: WorkspaceTableSummary | None = None,
 ):
     """Return (browser component, model data). Only explicitly projected fields leave."""
     container = request.app.state.container
+    if name == "inspect_attached_table" and table_summary is not None:
+        data = table_summary.model_dump(mode="json")
+        return {"kind": "table_statistics", **data}, data
     if name == "inspect_school_library":
         path = library.library_path(actor.school_ref)
         records = await run_in_threadpool(library.list_documents, path)

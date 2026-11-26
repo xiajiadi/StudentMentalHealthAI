@@ -10,6 +10,7 @@ import WorkspaceAnswer from './WorkspaceAnswer.vue'
 import WorkspaceCatDraft from './WorkspaceCatDraft.vue'
 import { frontendApi } from '@/services/mock-api'
 import { supportCaseStates, supportCategories, type TeacherReferral } from '@/services/school-support'
+import type { WorkspaceTableSummary } from '@/services/workspace-table'
 import {
   confirmWorkspacePublication, loadWorkspaceConversation, resetWorkspaceConversation,
   previewWorkspaceCatHandoff, runWorkspaceAgent, sendWorkspaceTurn, updateWorkspaceCat,
@@ -19,6 +20,7 @@ import {
 const props = defineProps<{
   rosterFile?: File
   catFile?: File
+  tableSummary?: WorkspaceTableSummary
   role: 'student' | 'teacher' | 'psychological_specialist' | 'school_admin'
 }>()
 const emit = defineEmits<{ busy: [value: boolean]; support: []; changed: [] }>()
@@ -168,7 +170,7 @@ async function submit(text: string) {
       if (event.type === 'tool_result' && event.view.kind === 'roster_import') panel.value = 'roster'
       if (event.type === 'tool_result' && props.catFile && event.view.kind === 'workflow' && event.view.workflow === 'cat') panel.value = 'cat'
       void nextTick(() => { if (viewport.value) viewport.value.scrollTop = viewport.value.scrollHeight })
-    }, request.signal, catRef)
+    }, request.signal, catRef, props.tableSummary)
     return true
   } catch {
     if (!disposed) {
@@ -328,13 +330,21 @@ async function confirmCat() {
   }
 }
 
-function download(filename: string, markdown: string) {
-  const href = URL.createObjectURL(new Blob([markdown], { type: 'text/markdown;charset=utf-8' }))
+function download(filename: string, content: string, type = 'text/markdown;charset=utf-8') {
+  const href = URL.createObjectURL(new Blob([content], { type }))
   const link = document.createElement('a')
   link.href = href
   link.download = filename
   link.click()
   window.setTimeout(() => URL.revokeObjectURL(href), 2000)
+}
+
+function downloadTable(summary: WorkspaceTableSummary) {
+  const lines = ['列号,数据行数,数字个数,最小值,最大值,平均值,合计']
+  for (const { column, count, min, max, mean, sum } of summary.columns) {
+    lines.push([column, summary.rows, count, min, max, mean, sum].join(','))
+  }
+  download('表格统计.csv', '\uFEFF' + lines.join('\r\n'), 'text/csv;charset=utf-8')
 }
 
 function cancel() { runRequest?.abort() }
@@ -388,6 +398,20 @@ defineExpose({ submit, cancel, openIndependentCat, openSchoolLibrary })
             <strong>本校资料库 · {{ event.view.total }} 份资料</strong>
             <small>{{ event.view.chunks }} 个可检索片段</small>
             <AppButton variant="secondary" @click="openSchoolLibrary()">查看本校资料库</AppButton>
+          </template>
+          <template v-else-if="event.view.kind === 'table_statistics'">
+            <strong>表格统计 · {{ event.view.rows }} 行数据</strong>
+            <div class="agent-thread__table">
+              <table aria-label="所选列的统计结果">
+                <thead><tr><th>列号</th><th>数字个数</th><th>最小值</th><th>最大值</th><th>平均值</th><th>合计</th></tr></thead>
+                <tbody>
+                  <tr v-for="column in event.view.columns" :key="column.column">
+                    <th scope="row">第 {{ column.column }} 列</th><td>{{ column.count }}</td><td>{{ column.min }}</td><td>{{ column.max }}</td><td>{{ column.mean }}</td><td>{{ column.sum }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <AppButton variant="secondary" @click="downloadTable(event.view)">下载统计 CSV</AppButton>
           </template>
           <div v-else-if="event.view.kind === 'preview_class'" class="agent-thread__inline">
             <span>{{ event.view.class_ref }}</span>
@@ -497,6 +521,9 @@ defineExpose({ submit, cancel, openIndependentCat, openSchoolLibrary })
 </template>
 
 <style scoped>
+.agent-thread__table { min-width: 0; overflow-x: auto; }
+.agent-thread__table table { width: 100%; border-collapse: collapse; text-align: start; font-variant-numeric: tabular-nums; }
+.agent-thread__table th, .agent-thread__table td { padding: 6px 8px; border-bottom: 1px solid var(--color-border); white-space: nowrap; }
 .agent-thread { display: grid; gap: 12px; margin-bottom: 14px; min-width: 0; }
 .agent-thread__head, .agent-thread__inline { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
 .agent-thread__timeline { display: grid; gap: 10px; max-height: min(64vh, 720px); overflow: auto; padding: 2px; }
