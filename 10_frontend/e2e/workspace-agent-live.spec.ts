@@ -82,8 +82,10 @@ test('published school feedback is read in the learner conversation over the pri
   expect(available.total).toBeGreaterThan(0)
   const current = available.items[0]
   expect(current.status).toBe('PUBLISHED')
-  const tasks = await ask(page, '请打开老师最近发布的测评反馈，我想在会话里阅读', '发送消息')
-  expect(tasks.some((event) => event.view?.kind === 'feedback_picker' && event.view.feedback_ref === current.feedback_ref)).toBe(true)
+  const tasks = await ask(page, '查一下已发布的学校反馈，打开最新的一份', '发送消息')
+  const resultKinds = tasks.map((event) => event.view?.kind ?? event.code ?? event.type)
+  expect(resultKinds).toContain('feedback_picker')
+  expect(tasks.find((event) => event.view?.kind === 'feedback_picker')?.view.feedback_ref).toBe(current.feedback_ref)
   await page.reload()
   const history = await page.request.get(origin + '/api/v1/workspace-agent/conversation')
   expect(history.ok()).toBe(true)
