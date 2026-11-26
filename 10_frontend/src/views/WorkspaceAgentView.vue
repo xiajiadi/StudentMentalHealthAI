@@ -130,7 +130,7 @@ const maxCommandLength = computed(() => agentMode.value ? 3000 : role.value === 
 const fileInput = ref<HTMLInputElement>()
 const attachmentOpen = ref(false)
 type DocumentPreview = { file: File; characters: number; previewLength: number }
-const attachment = ref<{ name: string; content: string; image?: boolean; document?: DocumentPreview }>()
+const attachment = ref<{ name: string; content: string; image?: boolean; chart?: string; document?: DocumentPreview }>()
 const attachmentError = ref('')
 const attachmentReading = ref<false | 'image' | 'document' | 'table' | 'roster'>(false)
 const tablePreview = ref<{ name: string; sheets: LocalWorkspaceSheet[] }>()
@@ -349,11 +349,14 @@ async function openAttachment(file: File) {
       return
     }
     let content: string
+    let chart: string | undefined
     let documentPreview: DocumentPreview | undefined
     if (image) {
       attachmentReading.value = 'image'
       const { readWorkspaceImage } = await import('@/services/workspace-image-text')
-      content = await readWorkspaceImage(file, request.signal)
+      const result = await readWorkspaceImage(file, request.signal)
+      content = result.text
+      chart = result.chart
     } else if (kind === 'pdf' || kind === 'docx') {
       if (!file.size || file.size > 5 * 1024 * 1024) throw new Error('请选择不超过 5 MiB 的 PDF 或 DOCX')
       attachmentReading.value = 'document'
@@ -370,7 +373,7 @@ async function openAttachment(file: File) {
       character.charCodeAt(0) < 32 && !['\t', '\r', '\n'].includes(character))
     if (!content || hasControlCharacter) throw new Error()
     if (!request.signal.aborted) {
-      attachment.value = { name: file.name, content, image, document: documentPreview }
+      attachment.value = { name: file.name, content, image, chart, document: documentPreview }
       attachmentOpen.value = true
     }
   } catch (error) {
@@ -576,7 +579,7 @@ function dateLabel(value: string) {
           </AppButton>
         </div>
         <div v-if="attachmentReading" class="workspace-agent__receipt">
-          <span role="status">{{ attachmentReading === 'image' ? '正在这台设备上识别文字' : attachmentReading === 'table' ? '正在这台设备上计算表格' : attachmentReading === 'roster' ? '正在这台设备上核对名单格式' : '正在学校服务中提取文字' }}</span>
+          <span role="status">{{ attachmentReading === 'image' ? '正在这台设备上读取图片' : attachmentReading === 'table' ? '正在这台设备上计算表格' : attachmentReading === 'roster' ? '正在这台设备上核对名单格式' : '正在学校服务中提取文字' }}</span>
           <AppButton variant="quiet" @click="cancelAttachmentRead">取消处理</AppButton>
         </div>
         <div v-if="tableSummary" class="workspace-agent__receipt">
@@ -677,7 +680,7 @@ function dateLabel(value: string) {
     <AppDialog
       :open="attachmentOpen"
       :title="attachment?.image ? '图片文字预览' : attachment?.document ? '文档文字预览' : '附件预览'"
-      :description="attachment?.image ? '文字在这台设备上识别。请核对内容并删除个人信息后再插入' : attachment?.document ? '可选中要交给智能体处理的段落。插入前请移除个人信息和未经授权的内容' : role === 'student' ? '请先检查内容，移除姓名、学号等个人信息' : '文件内容在当前页面预览'"
+      :description="attachment?.image ? '图片在这台设备上处理。请核对内容并删除个人信息后再插入' : attachment?.document ? '可选中要交给智能体处理的段落。插入前请移除个人信息和未经授权的内容' : role === 'student' ? '请先检查内容，移除姓名、学号等个人信息' : '文件内容在当前页面预览'"
       @update:open="attachmentOpen = $event; if (!$event) attachment = undefined"
     >
       <strong>{{ attachment?.name }}</strong>
@@ -687,6 +690,7 @@ function dateLabel(value: string) {
       <p v-if="attachmentError" class="workspace-agent__error" role="alert">{{ attachmentError }}</p>
       <div class="workspace-agent__confirm">
         <AppButton variant="secondary" @click="attachmentOpen = false; attachment = undefined">关闭</AppButton>
+        <AppButton v-if="attachment?.chart && attachment.content !== attachment.chart" variant="secondary" @click="attachment.content = attachment.chart">使用柱状图读数</AppButton>
         <AppButton v-if="attachment?.document && role === 'psychological_specialist'" variant="secondary" @click="reviewDocumentForLibrary">核对并入库</AppButton>
         <AppButton v-if="role === 'student' || agentMode" @click="insertAttachment">插入到输入框</AppButton>
       </div>

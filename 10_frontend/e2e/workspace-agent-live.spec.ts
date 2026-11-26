@@ -268,6 +268,80 @@ test('a learner reads a synthetic worksheet image locally and asks the model abo
   expect(reply.find((event) => event.type === 'answer')?.text).toMatch(/\b15\b|十五/)
 })
 
+test('a learner reads bar heights from an uploaded chart and sends only the reviewed estimates', async ({ page }) => {
+  test.setTimeout(180_000)
+  await signIn(page)
+  await chooseRole(page, 'STUDENT', '/student/workspace')
+  await page.setViewportSize({ width: 390, height: 840 })
+
+  const writes: string[] = []
+  page.context().on('request', (request) => {
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method())) writes.push(new URL(request.url()).pathname)
+  })
+  const uploadChart = async (includeZero: boolean) => {
+    const image = await page.evaluate((zero) => {
+      const canvas = document.createElement('canvas')
+      canvas.width = 860
+      canvas.height = 560
+      const context = canvas.getContext('2d')!
+      context.fillStyle = 'white'
+      context.fillRect(0, 0, canvas.width, canvas.height)
+      const baseline = 460
+      const ticks = zero ? [0, 20, 40, 60, 80, 100] : [20, 40, 60, 80, 100]
+      context.font = '28px Arial'
+      context.textBaseline = 'middle'
+      for (const tick of ticks) {
+        const y = baseline - tick * 4
+        context.strokeStyle = '#e7e9ef'
+        context.beginPath()
+        context.moveTo(120, y)
+        context.lineTo(800, y)
+        context.stroke()
+        context.fillStyle = '#171c25'
+        context.textAlign = 'right'
+        context.fillText(String(tick), 95, y)
+      }
+      for (const [index, label] of ['Alpha', 'Beta', 'Gamma'].entries()) {
+        const height = [80, 160, 280][index]
+        const left = 168 + index * 213
+        context.fillStyle = '#225bd0'
+        context.fillRect(left, baseline - height, 106, height)
+        context.fillStyle = '#171c25'
+        context.textAlign = 'center'
+        context.fillText(label, left + 53, 494)
+      }
+      return canvas.toDataURL('image/png').split(',')[1]
+    }, includeZero)
+    await page.locator('#workspace-agent-composer input[type="file"]').setInputFiles({
+      name: 'synthetic-chart-preview.png', mimeType: 'image/png', buffer: Buffer.from(image, 'base64'),
+    })
+  }
+  const preview = page.getByRole('dialog', { name: '图片文字预览' })
+  const useChart = preview.getByRole('button', { name: '使用柱状图读数' })
+  await uploadChart(false)
+  await expect(preview).toBeVisible({ timeout: 60_000 })
+  await expect(useChart).toHaveCount(0)
+  await preview.getByRole('button', { name: '关闭', exact: true }).click()
+
+  await uploadChart(true)
+  await expect(useChart).toBeVisible({ timeout: 60_000 })
+  await useChart.click()
+  const editor = preview.getByRole('textbox', { name: '识别出的文字' })
+  await expect(editor).toHaveValue('柱状图读数（按刻度和柱高估算）\n第 1 根（Alpha）约 20\n第 2 根（Beta）约 40\n第 3 根（Gamma）约 70')
+  await preview.getByRole('button', { name: '插入到输入框' }).click()
+  expect(writes).toEqual([])
+
+  const text = await page.locator('#workspace-agent-input').inputValue()
+  const prompt = `图中哪组最高，读数约是多少？\n\n${text}`
+  const sent = page.waitForRequest((request) => request.url().endsWith('/workspace-agent/conversation/turn'))
+  const events = await ask(page, prompt, '发送消息')
+  expect((await sent).postDataJSON()).toEqual({ text: prompt, synthetic_only: true })
+  const answer = events.find((event) => event.type === 'answer')?.text
+  expect(answer).toMatch(/Gamma/i)
+  expect(answer).toMatch(/\b70\b|七十/)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391)
+})
+
 test('a learner extracts a PDF and sends only the selected worksheet excerpt', async ({ page }) => {
   test.setTimeout(150_000)
   await signIn(page)
