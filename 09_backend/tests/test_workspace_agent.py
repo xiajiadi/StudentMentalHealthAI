@@ -345,6 +345,36 @@ async def test_unapproved_input_never_reaches_provider_or_history(client, model_
     assert "PRIVATE_FIXTURE_TEST" not in (await client.get(url)).text
 
 
+async def test_validated_tool_context_survives_filtered_answer(client, model_lane):
+    model, safety = model_lane
+    output_check = safety.check_output.side_effect
+    safety.check_output.side_effect = [
+        SimpleNamespace(decision=SimpleNamespace(action="BLOCK", disclosure_policy="NONE"))
+    ]
+    headers = await login(client)
+    await select(client, headers, "STUDENT")
+    url = f"{BASE}/conversation"
+    model.side_effect = [
+        assistant_step(tool="list_student_assessments"),
+        assistant_step(text="FILTERED_FIXTURE_ONLY"),
+    ]
+    response = await client.post(
+        f"{url}/turn", headers=headers, json={"text": "查询待办", "synthetic_only": True}
+    )
+    assert '"status": "blocked"' in response.text
+    assert "FILTERED_FIXTURE_ONLY" not in response.text
+    safety.check_output.side_effect = output_check
+    model.side_effect = [assistant_step(text="我可以继续核对")]
+    response = await client.post(
+        f"{url}/turn", headers=headers, json={"text": "继续刚才的查询", "synthetic_only": True}
+    )
+    assert '"status": "completed"' in response.text
+    prompt = json.dumps(model.await_args.args[0], ensure_ascii=False)
+    assert "Prior tool result (list_student_assessments)" in prompt
+    assert "FILTERED_FIXTURE_ONLY" not in prompt
+    assert "TASK_workspace" not in prompt
+
+
 async def test_model_cannot_call_hidden_tool_and_can_recover(client, tools, model_lane):
     model, _ = model_lane
     model.side_effect = [
