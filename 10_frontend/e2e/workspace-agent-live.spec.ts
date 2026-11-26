@@ -188,6 +188,42 @@ test('a roster creates real synthetic accounts and returns a credential download
   expect(directory.members.some((row: { display_name: string }) => row.display_name === studentName)).toBe(true)
 })
 
+test('a teacher edits a referral draft and confirms a real support request', async ({ page }) => {
+  test.skip(process.env.PSYNOVA_AGENT_QA_WRITE !== '1', 'Requires a dedicated synthetic school')
+  test.setTimeout(240_000)
+  await signIn(page)
+  await chooseRole(page, 'TEACHER', '/teacher/workspace')
+  const prepared = await ask(page, '请根据这条合成观察准备同伴相处转介草案：这位同学近两次小组讨论都坐在一旁，没有参与讨论。', '发送任务')
+  const draft = prepared.find((event) => event.view?.kind === 'teacher_referral')?.view
+  expect(draft).toMatchObject({ category_code: 'PEER_RELATION', observation: expect.stringMatching(/小组/) })
+  await page.reload()
+  await page.getByRole('button', { name: '核对转介草案' }).last().click()
+  const observation = page.getByRole('textbox', { name: '观察记录' })
+  await expect(observation).toHaveValue(draft.observation)
+  const submit = page.getByRole('button', { name: '提交支持请求' })
+  await expect(submit).toBeDisabled()
+  await page.locator('#support-student').click()
+  await page.getByRole('option').first().click()
+  const edited = '合成验证记录：近两次课堂小组活动都坐在一旁，有待教师进一步了解'
+  await observation.fill(edited)
+  const created = page.waitForResponse((response) =>
+    response.request().method() === 'POST' && response.url().endsWith('/api/v1/school/support/cases'),
+  )
+  await submit.click()
+  const receipt = await created
+  expect(receipt.status()).toBe(201)
+  expect(receipt.request().postDataJSON()).toMatchObject({ content: edited, category_code: 'PEER_RELATION' })
+  const { case_ref: caseRef, status } = (await receipt.json()).data
+  expect(status).toBe('SUBMITTED')
+  const actual = await page.request.get(origin + '/api/v1/school/support/cases')
+  expect(actual.ok()).toBe(true)
+  expect((await actual.json()).data.items).toContainEqual(expect.objectContaining({ case_ref: caseRef, status }))
+  const checked = await ask(page, '查一下我有多少条支持请求以及各自的处理状态', '发送任务')
+  expect(checked.find((event) => event.view?.kind === 'teacher_support_status')?.view).toMatchObject({
+    counts: { SUBMITTED: expect.any(Number) },
+  })
+})
+
 test('a specialist approves a synthetic CAT plan and an administrator publishes it', async ({ page }) => {
   const className = process.env.PSYNOVA_AGENT_QA_CLASS
   test.skip(process.env.PSYNOVA_AGENT_QA_WRITE !== '1' || !className, 'Requires a dedicated synthetic class')

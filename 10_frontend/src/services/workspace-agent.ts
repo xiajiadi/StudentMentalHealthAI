@@ -1,6 +1,7 @@
 /* global AbortSignal, Blob, TextDecoder */
 
 import { realApiProvider } from './real-api'
+import type { CaseStatus, TeacherReferral } from './school-support'
 
 export type EducationTopic = 'weekly_plan' | 'small_steps' | 'study_stress'
 
@@ -70,6 +71,8 @@ export type WorkspaceAgentView =
   | CatDraft
   | { kind: 'cat_inspection'; item_count: number; dimension_count: number; attachment_has_config: boolean }
   | { kind: 'cat_drafts' | 'cat_handoffs'; drafts: CatDraft[] }
+  | ({ kind: 'teacher_referral' } & TeacherReferral)
+  | { kind: 'teacher_support_status'; total: number; shown: number; counts: Partial<Record<CaseStatus, number>> }
   | { kind: 'roster_import' }
   | { kind: 'workflow'; workflow: WorkflowPanel }
   | { kind: 'markdown'; filename: string; markdown: string }

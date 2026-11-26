@@ -9,6 +9,7 @@ import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import WorkspaceAnswer from './WorkspaceAnswer.vue'
 import WorkspaceCatDraft from './WorkspaceCatDraft.vue'
 import { frontendApi } from '@/services/mock-api'
+import { supportCaseStates, supportCategories, type TeacherReferral } from '@/services/school-support'
 import {
   confirmWorkspacePublication, loadWorkspaceConversation, resetWorkspaceConversation,
   previewWorkspaceCatHandoff, runWorkspaceAgent, sendWorkspaceTurn, updateWorkspaceCat,
@@ -61,6 +62,7 @@ const message = ref('')
 const consent = ref(false)
 const consentOpen = ref(false)
 const panel = ref<WorkflowPanel | 'roster'>()
+const referral = ref<{ key: string; draft: TeacherReferral }>()
 const assessmentTask = ref('')
 const assessmentId = ref('')
 const assessmentStarting = ref(false)
@@ -195,6 +197,16 @@ function selectAssessment(taskRef: string) {
   assessmentId.value = ''
   assessmentComplete.value = false
   assessmentTask.value = taskRef
+}
+
+function openPanel(workflow?: WorkflowPanel) {
+  referral.value = undefined
+  panel.value = workflow
+}
+
+function openTeacherReferral(draft: TeacherReferral, key: string) {
+  referral.value = { draft, key }
+  panel.value = 'support'
 }
 
 async function startAssessment() {
@@ -355,8 +367,21 @@ defineExpose({ submit, cancel, openIndependentCat })
             <p v-if="!event.view.drafts.length">当前没有可查看的 CAT 草案</p>
             <WorkspaceCatDraft v-for="draft in event.view.drafts" :key="draft.draft_ref" :draft="catReceipts.get(draft.draft_ref) || draft" :administrator="event.view.kind === 'cat_handoffs'" :busy="catBusy" @action="handleCat" />
           </div>
+          <template v-else-if="event.view.kind === 'teacher_referral'">
+            <strong>{{ supportCategories[event.view.category_code] }} · 支持转介草案</strong>
+            <p>{{ event.view.observation }}</p>
+            <AppButton variant="secondary" @click="openTeacherReferral(event.view, event.run_id + ':' + event.call_id)">核对转介草案</AppButton>
+          </template>
+          <template v-else-if="event.view.kind === 'teacher_support_status'">
+            <strong>授权支持请求 · {{ event.view.total }} 项</strong>
+            <small v-if="event.view.shown < event.view.total">以下统计最近 {{ event.view.shown }} 项</small>
+            <ul v-if="event.view.shown" class="agent-thread__rows">
+              <li v-for="(count, status) in event.view.counts" :key="status">{{ supportCaseStates[status] }} · {{ count }} 项</li>
+            </ul>
+            <AppButton variant="secondary" @click="openPanel('support')">查看支持记录</AppButton>
+          </template>
           <AppButton v-else-if="event.view.kind === 'roster_import'" variant="secondary" @click="panel = 'roster'">打开名单预览</AppButton>
-          <AppButton v-else-if="event.view.kind === 'workflow'" variant="secondary" @click="panel = event.view.workflow">打开{{ panelLabels[event.view.workflow] }}</AppButton>
+          <AppButton v-else-if="event.view.kind === 'workflow'" variant="secondary" @click="openPanel(event.view.workflow)">打开{{ panelLabels[event.view.workflow] }}</AppButton>
           <AppButton v-else-if="event.view.kind === 'markdown'" variant="secondary" @click="download(event.view.filename, event.view.markdown)">下载 {{ event.view.filename }}</AppButton>
         </AppCard>
         <p v-else-if="event.type === 'tool_failed'" class="agent-thread__problem">{{ event.label }}未完成 · {{ event.code }}</p>
@@ -381,9 +406,9 @@ defineExpose({ submit, cancel, openIndependentCat })
       <AppButton v-if="assessmentComplete" variant="secondary" @click="panel = 'feedback'">查看已发布反馈</AppButton>
     </AppCard>
     <AppCard v-if="panel" class="agent-thread__card">
-      <header class="agent-thread__inline"><strong>{{ panelLabels[panel] }}</strong><AppButton variant="quiet" @click="panel = undefined">收起工作台</AppButton></header>
+      <header class="agent-thread__inline"><strong>{{ panelLabels[panel] }}</strong><AppButton variant="quiet" @click="openPanel()">收起工作台</AppButton></header>
       <Roster v-if="panel === 'roster'" embedded-roster :initial-roster-file="rosterFile" />
-      <component :is="latestPanel" v-else-if="latestPanel" :key="panel" v-bind="panel === 'support' ? { audience } : panel === 'cat' ? { initialBankFile: catFile } : {}" />
+      <component :is="latestPanel" v-else-if="latestPanel" :key="panel === 'support' ? referral?.key || panel : panel" v-bind="panel === 'support' ? { audience, initialReferral: referral?.draft } : panel === 'cat' ? { initialBankFile: catFile } : {}" />
     </AppCard>
   </section>
   <AppDialog :open="consentOpen" title="合成学校智能体" description="通过安全检查的消息会用于 DeepSeek 推理。请使用虚构内容，名单请作为文件添加" @update:open="(open) => { if (!open) decideConsent(false) }">

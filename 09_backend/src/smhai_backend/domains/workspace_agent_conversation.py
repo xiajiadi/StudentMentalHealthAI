@@ -30,6 +30,7 @@ from .workspace_agent_tools import (
     TEACHER,
     TOOLS,
     Draft,
+    ReferralDraft,
     execute_tool,
     preview_cat_handoff,
 )
@@ -58,6 +59,8 @@ For other reports or files, use save_markdown and return a short summary. Do not
 include student information or fabricated data. Roster contents and credentials stay in the
 private import workbench. When a roster is selected and import requested, open_roster_import.
 Completing the roster import always requires a user's confirmation in that workbench.
+For a teacher requesting a support referral, use prepare_teacher_referral. The teacher selects
+the student and reviews the observations before submitting in the private support form.
 For a school CAT JSON attachment, use inspect_cat_attachment, then prepare_cat_draft if asked
 for a plan. Ask for the intended class or deadline if missing. Only a specialist can confirm
 saving and separately approve synthetic eligibility. An administrator can list approved CAT
@@ -265,17 +268,23 @@ async def _run(request: Request, actor: Actor, payload: TurnRequest, prior: list
                         raise error(ErrorCode.FORBIDDEN, detail="tool is unavailable")
                     arguments = tool.args.model_validate_json(call.function.arguments, strict=True)
                     yield {"type": "tool_started", "call_id": call.id, "label": tool.label}
-                    if isinstance(arguments, Draft):
-                        markdown = arguments.markdown.strip()
-                        check = await container.safety.check_output(
-                            local_context, markdown, context
+                    if isinstance(arguments, (Draft, ReferralDraft)):
+                        candidate = (
+                            arguments.markdown
+                            if isinstance(arguments, Draft)
+                            else arguments.observation
                         )
-                        if not _proceed(check, markdown, actor):
+                        candidate = candidate.strip()
+                        check = await container.safety.check_output(
+                            local_context, candidate, context
+                        )
+                        if not _proceed(check, candidate, actor):
                             raise error(ErrorCode.FORBIDDEN, detail="document requires review")
+                    if isinstance(arguments, Draft):
                         view = {
                             "kind": "markdown",
                             "filename": arguments.filename,
-                            "markdown": markdown,
+                            "markdown": arguments.markdown.strip(),
                         }
                         model_data = {"artifact_ready": True}
                     else:

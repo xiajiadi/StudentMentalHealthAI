@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from smhai_backend.core.errors import ErrorCode, error
 from smhai_backend.domains.models import Actor, BackendRole
 from smhai_backend.domains.school_directory.schemas import SchoolDirectoryDto
+from smhai_backend.domains.school_support.schemas import SupportCasePageDto, SupportCategoryCode
 
 from . import workspace_agent_cat as cat_workflow
 from .workspace_agent import _ensure_demo_admin, _signature, _snapshot
@@ -48,6 +49,11 @@ class NewClass(Arguments):
 class Draft(Arguments):
     filename: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,55}\.md$")
     markdown: str = Field(min_length=1, max_length=3800)
+
+
+class ReferralDraft(Arguments):
+    category_code: SupportCategoryCode
+    observation: str = Field(min_length=1, max_length=1500, pattern=r"\S")
 
 
 class Panel(Arguments):
@@ -103,6 +109,20 @@ TOOLS = {
         "with verified counts and the completion ratio. No prose or data arguments are needed.",
         (TEACHER,),
         TaskWindow,
+    ),
+    "prepare_teacher_referral": Tool(
+        "准备教师支持转介草案",
+        "Draft a teacher referral using only the concrete classroom observations supplied "
+        "by the teacher. Ask for observations if absent. Leave the student's identity to "
+        "the private form. Do not infer psychological risk, add facts, or submit the referral.",
+        (TEACHER,),
+        ReferralDraft,
+    ),
+    "teacher_support_status": Tool(
+        "查询教师支持请求状态",
+        "Read the teacher's authorized school support requests and count current statuses "
+        "on the newest page. The private support workbench can show the individual records.",
+        (TEACHER,),
     ),
     "review_tasks": Tool(
         "查询专业复核任务",
@@ -241,6 +261,27 @@ async def execute_tool(
 ):
     """Return (browser component, model data). Only explicitly projected fields leave."""
     container = request.app.state.container
+    if name == "prepare_teacher_referral" and isinstance(arguments, ReferralDraft):
+        return (
+            {
+                "kind": "teacher_referral",
+                "category_code": arguments.category_code,
+                "observation": arguments.observation.strip(),
+            },
+            {"draft_ready": True, "requires_teacher_confirmation": True},
+        )
+    if name == "teacher_support_status":
+        if container.school_support is None:
+            raise error(ErrorCode.DEPENDENCY_UNAVAILABLE, detail="school support is unavailable")
+        page = SupportCasePageDto.model_validate(
+            await container.school_support.list_cases(actor, limit=50)
+        )
+        summary = {
+            "total": page.total,
+            "shown": len(page.items),
+            "counts": dict(Counter(row.status for row in page.items)),
+        }
+        return {"kind": "teacher_support_status", **summary}, summary
     if name == "inspect_cat_attachment":
         return await cat_workflow.inspect(request, actor, cat_attachment_ref)
     if name == "prepare_cat_draft" and isinstance(arguments, cat_workflow.CatDraftProposal):

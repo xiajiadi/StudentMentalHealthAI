@@ -10,10 +10,13 @@ import { roleHomes } from '@/components/shell/navigation'
 import { useSessionStore } from '@/stores/session'
 import {
   schoolSupport, supportActionStates, supportCaseStates, supportCategories, supportError,
-  supportPageSize, supportRequestKey, type SupportAction, type SupportCase,
+  supportPageSize, supportRequestKey, type SupportAction, type SupportCase, type TeacherReferral,
 } from '@/services/school-support'
 
-const { audience } = defineProps<{ audience: 'student' | 'teacher' | 'specialist' }>()
+const { audience, initialReferral } = defineProps<{
+  audience: 'student' | 'teacher' | 'specialist'
+  initialReferral?: TeacherReferral
+}>()
 const session = useSessionStore()
 const router = useRouter()
 const titles = { student: '向学校求助', teacher: '班级支持', specialist: '学生支持' }
@@ -39,8 +42,10 @@ const readError = ref('')
 const detailError = ref('')
 const assigneeError = ref('')
 const studentKey = ref('')
-const category = ref<keyof typeof supportCategories>('LEARNING_SUPPORT')
-const content = ref('')
+const category = ref<keyof typeof supportCategories>(
+  audience === 'teacher' && initialReferral ? initialReferral.category_code : 'LEARNING_SUPPORT',
+)
+const content = ref(audience === 'teacher' ? initialReferral?.observation ?? '' : '')
 const plan = ref('')
 const recipient = ref('')
 const instructions = ref('')
@@ -214,6 +219,7 @@ onScopeDispose(() => { live = false })
     <AppCard v-if="audience !== 'specialist'">
       <form class="school-support__panel" @submit.prevent="submit((key) => schoolSupport.create(category, content.trim(), key, student), () => { content = '' })">
         <h2>{{ audience === 'teacher' ? '提交支持转介' : '提交求助请求' }}</h2>
+        <p v-if="audience === 'teacher' && initialReferral">请选择学生，核对并编辑观察记录，再提交请求</p>
         <div v-if="audience === 'teacher'" class="school-support__field">
           <label for="support-student">选择学生</label>
           <AppSelect id="support-student" v-model="studentKey" :options="studentOptions" :disabled="locked || !studentOptions.length"

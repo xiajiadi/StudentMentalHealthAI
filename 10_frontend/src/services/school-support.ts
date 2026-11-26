@@ -29,7 +29,8 @@ export const supportActionStates = {
 } as const
 
 type Category = keyof typeof supportCategories
-type CaseStatus = keyof typeof supportCaseStates
+export type CaseStatus = keyof typeof supportCaseStates
+export type TeacherReferral = { category_code: Category; observation: string }
 type ActionStatus = keyof typeof supportActionStates
 type Row = Record<string, unknown>
 

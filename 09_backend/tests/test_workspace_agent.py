@@ -395,6 +395,64 @@ async def test_model_cannot_call_hidden_tool_and_can_recover(client, tools, mode
     tools.create_class.assert_not_called()
 
 
+async def test_teacher_referral_draft_is_private_and_does_not_submit(
+    client, app, model_lane, monkeypatch
+):
+    model, safety = model_lane
+    observation = "近两次小组活动时坐在一旁"
+    now = datetime.now(UTC)
+    service = SimpleNamespace(
+        create_case=AsyncMock(),
+        list_cases=AsyncMock(
+            return_value={
+                "total": 1,
+                "items": [
+                    {
+                        "case_ref": "SSC_private_fixture",
+                        "source": "TEACHER_REFERRAL",
+                        "category_code": "PEER_RELATION",
+                        "status": "SUBMITTED",
+                        "state_version": 1,
+                        "created_at": now,
+                        "updated_at": now,
+                    },
+                ],
+            }
+        ),
+    )
+    monkeypatch.setattr(app.state.container, "school_support", service)
+    model.side_effect = [
+        assistant_step(
+            tool="prepare_teacher_referral",
+            arguments=json.dumps({"category_code": "PEER_RELATION", "observation": observation}),
+        ),
+        assistant_step(tool="teacher_support_status"),
+        assistant_step(text="草案和记录状态已准备"),
+    ]
+    headers = await login(client)
+    await select(client, headers, "TEACHER")
+    response = await client.post(
+        f"{BASE}/conversation/turn",
+        headers=headers,
+        json={"text": "准备合成支持草案并核对请求进度", "synthetic_only": True},
+    )
+    views = [
+        event["view"] for line in response.text.splitlines()
+        if (event := json.loads(line))["type"] == "tool_result"
+    ]
+    assert views == [
+        {"kind": "teacher_referral", "category_code": "PEER_RELATION", "observation": observation},
+        {"kind": "teacher_support_status", "total": 1, "shown": 1, "counts": {"SUBMITTED": 1}},
+    ]
+    assert any(call.args[1] == observation for call in safety.check_output.await_args_list)
+    assert service.list_cases.await_args.args[0].school_ref == FIRST
+    service.create_case.assert_not_awaited()
+    tool_data = [row["content"] for row in model.await_args.args[0] if row["role"] == "tool"]
+    assert all(
+        "SSC_private_fixture" not in content and observation not in content for content in tool_data
+    )
+
+
 async def test_agent_prepares_publication_that_requires_school_admin_confirmation(
     client,
     tools,
