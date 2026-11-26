@@ -239,7 +239,7 @@ def _context_messages(actor: Actor, history: list[dict], payload: TurnRequest) -
         (SPECIALIST, "cat_bank"): "\n[Workspace UI: a private school CAT document is attached.]",
     }.get((actor.role, payload.attachment), "")
     if payload.table_summary is not None:
-        attachment_note += "\n[Workspace UI: use inspect_attached_table for the CSV summary.]"
+        attachment_note += "\n[Workspace UI: call inspect_attached_table for the table summary.]"
     messages.append({"role": "user", "content": payload.text + attachment_note})
     return messages
 

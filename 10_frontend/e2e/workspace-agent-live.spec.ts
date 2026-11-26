@@ -3,6 +3,7 @@ import { Buffer } from 'node:buffer'
 import { readFile } from 'node:fs/promises'
 import { URL } from 'node:url'
 import { expect, test, type Page } from '@playwright/test'
+import { workbook } from '../tests/fixtures/workbook'
 
 const origin = process.env.PSYNOVA_AGENT_QA_ORIGIN
 const account = process.env.PSYNOVA_AGENT_QA_USERNAME
@@ -377,6 +378,72 @@ test('an administrator still sends a CSV roster through the roster preview', asy
     name: 'synthetic-roster-preview.csv', mimeType: 'text/csv',
     buffer: Buffer.from('student_number,display_name,class_ref,grade_level\n' +
       `QA-${suffix},合成预览学生,合成预览班${suffix},高一\n`),
+  })
+  await expect(page.getByText('服务端预览：1 条')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('dialog', { name: '选择表格统计' })).toHaveCount(0)
+})
+
+test('a learner selects an Excel sheet locally and sends only that sheet’s selected statistics', async ({ page }) => {
+  test.setTimeout(150_000)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await signIn(page)
+  await chooseRole(page, 'STUDENT', '/student/workspace')
+  const writes: string[] = []
+  page.on('request', (request) => {
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method())) writes.push(new URL(request.url()).pathname)
+  })
+  const file = workbook([
+    { name: '不发送的工作表一', rows: [['PrivateMinutes'], [17], [43]] },
+    { name: '不发送的工作表二', rows: [
+      ['Label', 'StudyMinutes', 'Questions'],
+      ['WS_XLSX_PRIVATE_TEXT', 12, 110],
+      ['PracticeB', -3, 120],
+      ['PracticeC', '30', 130],
+      ['PracticeD', 9, 140],
+    ] },
+  ])
+  await page.locator('#workspace-agent-composer input[type="file"]').setInputFiles({
+    name: 'local-practice.xlsx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    buffer: Buffer.from(file),
+  })
+  const preview = page.getByRole('dialog', { name: '选择表格统计' })
+  await preview.getByRole('checkbox', { name: /PrivateMinutes/ }).check()
+  await preview.getByRole('combobox', { name: '选择工作表' }).selectOption({ label: '不发送的工作表二' })
+  await expect(preview.getByRole('button', { name: '使用所选统计' })).toBeDisabled()
+  await preview.getByRole('checkbox', { name: /第 2 列 · StudyMinutes/ }).check()
+  await preview.getByRole('button', { name: '使用所选统计' }).click()
+  expect(writes).toEqual([])
+  const sent = page.waitForRequest((request) => request.url().endsWith('/workspace-agent/conversation/turn'))
+  const events = await ask(page, '帮我核对刚才选中的统计值，整理出一份可以下载的表', '发送消息')
+  const request = await sent
+  const summary = { rows: 4, columns: [{ column: 2, count: 3, min: -3, max: 12, mean: 6, sum: 18 }] }
+  expect(request.postDataJSON().table_summary).toEqual(summary)
+  const privateFields = /WS_XLSX_PRIVATE_TEXT|StudyMinutes|Questions|PrivateMinutes|local-practice|不发送的工作表/
+  expect(request.postData()).not.toMatch(privateFields)
+  expect(JSON.stringify(events)).not.toMatch(privateFields)
+  expect(events.find((event) => event.view?.kind === 'table_statistics')?.view).toMatchObject(summary)
+  await page.reload()
+  await expect(page.getByRole('table', { name: '所选列的统计结果' }).last()).toBeVisible()
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: '下载统计 CSV' }).last().click()
+  const result = await download
+  expect((await readFile(await result.path(), 'utf8')).split(/\r?\n/).at(-1)).toBe('2,4,3,-3,12,6,18')
+})
+
+test('an administrator keeps Excel rosters in the private import workflow', async ({ page }) => {
+  test.setTimeout(90_000)
+  await signIn(page)
+  await chooseRole(page, 'ADMIN', '/admin/workspace')
+  const suffix = String(Date.now())
+  const file = workbook([{ name: '学生名单', rows: [
+    ['student_number', 'display_name', 'class_ref', 'grade_level'],
+    [`EX-${suffix}`, '合成预览学生', `合成预览班${suffix}`, '高一'],
+  ] }])
+  await page.locator('#workspace-agent-composer input[type="file"]').setInputFiles({
+    name: 'synthetic-roster-preview.xlsx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    buffer: Buffer.from(file),
   })
   await expect(page.getByText('服务端预览：1 条')).toBeVisible({ timeout: 30_000 })
   await expect(page.getByRole('dialog', { name: '选择表格统计' })).toHaveCount(0)

@@ -14,7 +14,7 @@ import type { Role } from '@/types/contracts'
 import SupportChatView from '@/views/student/SupportChatView.vue'
 import WorkspaceConversation from '@/components/workspace/WorkspaceConversation.vue'
 import WorkspaceTablePreview from '@/components/workspace/WorkspaceTablePreview.vue'
-import type { LocalWorkspaceTable, WorkspaceTableSummary } from '@/services/workspace-table'
+import { WORKBOOK_INVALID, type LocalWorkspaceSheet, type WorkspaceTableSummary } from '@/services/workspace-table'
 
 type WorkspaceRole = 'student' | 'teacher' | 'psychological_specialist' | 'school_admin'
 type Entry = { label: string; to: string; icon: Component; note?: string }
@@ -132,7 +132,7 @@ type DocumentPreview = { file: File; characters: number; previewLength: number }
 const attachment = ref<{ name: string; content: string; image?: boolean; document?: DocumentPreview }>()
 const attachmentError = ref('')
 const attachmentReading = ref<false | 'image' | 'document' | 'table'>(false)
-const tablePreview = ref<{ name: string; table: LocalWorkspaceTable }>()
+const tablePreview = ref<{ name: string; sheets: LocalWorkspaceSheet[] }>()
 const tableSummary = ref<WorkspaceTableSummary>()
 const overview = ref<WorkspaceAgentResult | null>(null)
 const result = ref<WorkspaceAgentResult | null>(null)
@@ -331,13 +331,20 @@ async function openAttachment(file: File) {
   attachmentRequest = request
   const image = agentMode.value && /\.(png|jpe?g|webp)$/i.test(file.name)
   const kind = agentMode.value ? /\.(docx|pdf)$/i.exec(file.name)?.[1]?.toLowerCase() : undefined
-  const csv = agentMode.value && ['student', 'teacher'].includes(role.value) && /\.csv$/i.test(file.name)
+  const tableFormat = agentMode.value && ['student', 'teacher'].includes(role.value)
+    && /\.(csv|xlsx)$/i.exec(file.name)?.[1].toLowerCase()
   try {
-    if (csv) {
+    if (tableFormat) {
       attachmentReading.value = 'table'
-      const { readWorkspaceCsv } = await import('@/services/workspace-table')
-      const table = await readWorkspaceCsv(file)
-      if (!request.signal.aborted) tablePreview.value = { name: file.name, table }
+      let sheets: LocalWorkspaceSheet[]
+      if (tableFormat === 'xlsx') {
+        const { readWorkspaceXlsx } = await import('@/services/workspace-workbook-client')
+        sheets = await readWorkspaceXlsx(file, request.signal)
+      } else {
+        const { readWorkspaceCsv } = await import('@/services/workspace-table')
+        sheets = [{ name: '', table: await readWorkspaceCsv(file) }]
+      }
+      if (!request.signal.aborted) tablePreview.value = { name: file.name, sheets }
       return
     }
     let content: string
@@ -367,10 +374,11 @@ async function openAttachment(file: File) {
     }
   } catch (error) {
     if (!request.signal.aborted) {
-      const known = error instanceof Error && /^(请选择|图片中未识别到文字)/.test(error.message)
+      const known = error instanceof Error && /^(请选择|图片中未识别到文字|Excel 暂时无法读取)/.test(error.message)
       attachmentError.value = known ? error.message : image
         ? '图片识别未能完成，请检查图片后重试'
-        : csv ? 'CSV 暂时无法读取，请检查编码、列数和引号'
+        : tableFormat === 'csv' ? 'CSV 暂时无法读取，请检查编码、列数和引号'
+          : tableFormat === 'xlsx' ? WORKBOOK_INVALID
           : kind ? '无法提取文字，请检查文档是否可选取文字、受密码保护或损坏'
           : '无法读取文本，请检查文件是否为空或使用 UTF-8 编码'
     }
@@ -436,7 +444,7 @@ const attachmentFormats = computed(() => {
   const text = '.txt,.md,.markdown'
   if (!agentMode.value) return text
   return text + ',.png,.jpg,.jpeg,.webp,.pdf,.docx' + ({
-    school_admin: ',.csv,.xlsx', psychological_specialist: ',.csv,.json', teacher: ',.csv', student: ',.csv',
+    school_admin: ',.csv,.xlsx', psychological_specialist: ',.csv,.json', teacher: ',.csv,.xlsx', student: ',.csv,.xlsx',
   }[role.value])
 })
 
@@ -657,7 +665,7 @@ function dateLabel(value: string) {
         </AppButton>
       </div>
     </AppDialog>
-    <WorkspaceTablePreview v-if="tablePreview" :name="tablePreview.name" :table="tablePreview.table" @close="tablePreview = undefined" @confirm="confirmTable" />
+    <WorkspaceTablePreview v-if="tablePreview" :name="tablePreview.name" :sheets="tablePreview.sheets" @close="tablePreview = undefined" @confirm="confirmTable" />
     <AppDialog
       :open="attachmentOpen"
       :title="attachment?.image ? '图片文字预览' : attachment?.document ? '文档文字预览' : '附件预览'"

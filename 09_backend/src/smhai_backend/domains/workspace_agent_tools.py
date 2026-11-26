@@ -101,7 +101,7 @@ TOOLS = {
         "读取表格统计摘要",
         "Read the numeric summary calculated in the browser. Explain its column numbers, counts, "
         "and statistics or show the downloadable statistics CSV. Do not infer "
-        "original values, column names, or relationships between rows from these aggregates.",
+        "original values, workbook or sheet names, column names, or relationships between rows.",
         (STUDENT, TEACHER),
     ),
     "read_education_articles": Tool(
