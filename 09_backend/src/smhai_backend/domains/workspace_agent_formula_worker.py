@@ -35,6 +35,8 @@ def _checked_formula(text: str) -> str:
         raise ValueError("unreadable formula")
     if not re.search(r"[0-9+\-=×÷√∫∑^_\\]", text):
         raise ValueError("no distinct formula")
+    if re.search(r"(?:^|[=+−\-({])\s*(?:\\\s+)?(?:[×÷·]|\\(?:cdot|times|div)\b)", text):
+        raise ValueError("operator without a left operand")
     depth = 0
     for brace in re.findall(r"(?<!\\)[{}]", text):
         depth += 1 if brace == "{" else -1

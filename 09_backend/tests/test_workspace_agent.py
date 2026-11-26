@@ -807,7 +807,7 @@ async def test_formula_preview_requires_a_session_and_keeps_formula_out_of_histo
     model.assert_not_awaited()
 
 
-@pytest.mark.parametrize("formula", ("", "x^2 + \ufffd", r"\frac{1}{2", "a\nb"))
+@pytest.mark.parametrize("formula", ("", "x^2 + \ufffd", r"\frac{1}{2", "a\nb", r"x^2 + \ · 3"))
 def test_formula_worker_rejects_incomplete_or_unreadable_output(formula):
     with pytest.raises(ValueError):
         _checked_formula(formula)
