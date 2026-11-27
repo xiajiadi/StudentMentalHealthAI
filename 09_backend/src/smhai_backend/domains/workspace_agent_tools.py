@@ -221,7 +221,7 @@ TOOLS = {
     ),
     "inspect_cat_attachment": Tool(
         "验证合成 CAT 题库",
-        "Validate a private school GRM JSON attachment using the real CAT engine. "
+        "Validate a private school GRM attachment using the real CAT engine. "
         "This is read-only and returns item counts and whether a configuration was supplied.",
         (SPECIALIST,),
     ),

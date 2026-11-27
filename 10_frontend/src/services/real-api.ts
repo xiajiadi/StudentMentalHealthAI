@@ -106,6 +106,13 @@ export class RealApiError extends Error {
   }
 }
 
+const workspaceCatCsvErrors: Readonly<Record<string, string>> = {
+  'CAT CSV columns are invalid': 'CSV 表头需要包含 id、stem、model、a、thresholds 和 options，content 可选',
+  'CAT CSV exceeds 100 items': 'CSV 题库最多包含 100 道题',
+  'CAT CSV has no items': 'CSV 题库没有题目记录',
+  'CAT CSV exceeds normalized size limit': 'CSV 转换后超过题库大小上限，请缩小题库后重试',
+}
+
 const isRecord = (value: unknown): value is UnknownRecord => Boolean(value) && typeof value === 'object'
 
 const requestError = (value: unknown): RealApiError => {
@@ -1465,14 +1472,16 @@ export class RealApiProvider implements FrontendApi {
   ): Promise<Response> {
     const apiOrigin = new URL(apiBaseUrl, window.location.href)
     const base = new URL('/api/v1/workspace-agent/conversation', apiOrigin)
+    const catCsv = operation === 'cat-attachment' && body instanceof Blob && body.type === 'text/csv'
     if (operation !== 'history') base.pathname += '/' + operation
     if (operation === 'history' && historyVersion) base.searchParams.set('since', historyVersion)
+    if (catCsv) base.searchParams.set('synthetic_only', 'true')
     const readOnly = operation === 'history' || operation.startsWith('task-feedback/')
       || operation.startsWith('feedback-measurement/')
     const headers = new Headers({ Accept: operation === 'turn' ? 'application/x-ndjson' : 'application/json' })
     if (!readOnly) headers.set('X-CSRF-Token', await this.ensureCsrfToken())
     const binaryPreview = operation === 'formula-preview' || operation.startsWith('document-preview/')
-    if (body) headers.set('Content-Type', binaryPreview ? 'application/octet-stream' : 'application/json')
+    if (body) headers.set('Content-Type', catCsv ? 'text/csv' : binaryPreview ? 'application/octet-stream' : 'application/json')
     const response = await fetch(base, {
       method: readOnly ? 'GET' : 'POST',
       credentials: 'include', cache: 'no-store', headers, signal,
@@ -1480,6 +1489,15 @@ export class RealApiProvider implements FrontendApi {
     })
     if (!response.ok) {
       const problem = await response.json().catch(() => ({}))
+      if (catCsv && typeof problem.detail === 'string') {
+        const record = /^CAT CSV record ([1-9][0-9]{0,2}) is invalid$/.exec(problem.detail)
+        if (record) {
+          throw new RealApiError('VALIDATION_FAILED', `第 ${record[1]} 条题目记录有误，请检查题目编号、GRM 参数和选项`)
+        }
+        if (Object.hasOwn(workspaceCatCsvErrors, problem.detail)) {
+          throw new RealApiError('VALIDATION_FAILED', workspaceCatCsvErrors[problem.detail])
+        }
+      }
       throw new RealApiError(problem.code ?? 'DEPENDENCY_UNAVAILABLE', '工作区请求暂时不可用')
     }
     return response

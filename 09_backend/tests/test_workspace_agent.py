@@ -1,9 +1,10 @@
 """HTTP integration checks for workspace role, CSRF and confirmation boundaries."""
 
 import asyncio
+import csv
 import json
 from datetime import UTC, datetime, timedelta
-from io import BytesIO
+from io import BytesIO, StringIO
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -1416,8 +1417,57 @@ async def test_teacher_export_comes_from_scoped_database_counts(client, model_la
     assert "must-not-leak" not in view["artifact"]["markdown"]
 
 
+def cat_csv(items: list[dict]) -> bytes:
+    stream = StringIO(newline="")
+    writer = csv.writer(stream)
+    writer.writerow(["id", "stem", "model", "a", "thresholds", "options", "content"])
+    for item in items:
+        writer.writerow([
+            item["item_id"], item["stem"], item["model"], item["parameters"]["a"],
+            json.dumps(item["parameters"]["thresholds"]), json.dumps(item["response_options"]),
+            "practice",
+        ])
+    return stream.getvalue().encode("utf-8-sig")
+
+
+async def test_cat_csv_requires_confirmation_and_rejects_invalid_records_before_storing(
+    client, app, model_lane
+):
+    model, _ = model_lane
+    bank = json.loads((FIXTURES / "synthetic_item_bank.v1.json").read_text(encoding="utf-8"))
+    private_marker = "private-synthetic-row-marker"
+    item = {**bank["items"][0], "stem": private_marker}
+    duplicate = {**item, "item_id": item["item_id"].removeprefix("ITEM_")}
+    session_headers = await login(client)
+    headers = {**session_headers, "Content-Type": "text/csv"}
+    route = f"{BASE}/conversation/cat-attachment"
+    confirmed = route + "?synthetic_only=true"
+    await select(client, session_headers, "TEACHER")
+    forbidden = await client.post(confirmed, headers=headers, content=cat_csv([item]))
+    assert forbidden.status_code == 403
+    await select(client, session_headers, "PSYCHOLOGICAL_SPECIALIST")
+    unchecked = await client.post(route, headers=headers, content=cat_csv([item]))
+    assert unchecked.json()["detail"] == "CAT CSV needs synthetic confirmation"
+    for candidate, detail in [
+        (b"id,id,stem,model,a,thresholds,options", "CAT CSV columns are invalid"),
+        (cat_csv([item, duplicate]), "CAT CSV record 2 is invalid"),
+        (cat_csv([{**item, "model": "2PL"}]), "CAT CSV record 1 is invalid"),
+        (
+            cat_csv([{**item, "parameters": {"a": 1, "thresholds": [0, 4, 2, 6]}}]),
+            "CAT CSV record 1 is invalid",
+        ),
+    ]:
+        invalid = await client.post(confirmed, headers=headers, content=candidate)
+        assert invalid.json()["detail"] == detail
+        assert private_marker not in invalid.text
+    with app.state.workspace_history.cat.connect() as db:
+        assert db.execute("SELECT COUNT(*) FROM workspace_cat_attachment").fetchone()[0] == 0
+    model.assert_not_awaited()
+
+
+@pytest.mark.parametrize("file_format", ["json", "csv"])
 async def test_cat_file_plan_approval_and_school_publication(
-    client, app, tools, model_lane, monkeypatch
+    client, app, tools, model_lane, monkeypatch, file_format
 ):
     model, _ = model_lane
     base = f"{BASE}/conversation"
@@ -1425,11 +1475,18 @@ async def test_cat_file_plan_approval_and_school_publication(
     await select(client, headers, "PSYCHOLOGICAL_SPECIALIST")
     bank = json.loads((FIXTURES / "synthetic_item_bank.v1.json").read_text(encoding="utf-8"))
     config = json.loads((FIXTURES / "demo_cat_config.v1.json").read_text(encoding="utf-8"))
-    response = await client.post(
-        f"{base}/cat-attachment",
-        headers=headers,
-        json={"bank_document": bank, "config_document": config},
-    )
+    if file_format == "csv":
+        response = await client.post(
+            f"{base}/cat-attachment?synthetic_only=true",
+            headers={**headers, "Content-Type": "text/csv; charset=utf-8"},
+            content=cat_csv(bank["items"]),
+        )
+    else:
+        response = await client.post(
+            f"{base}/cat-attachment",
+            headers=headers,
+            json={"bank_document": bank, "config_document": config},
+        )
     assert response.status_code == 201
     upload_ref = response.json()["data"]["ref"]
     now = datetime.now(UTC)
@@ -1456,6 +1513,10 @@ async def test_cat_file_plan_approval_and_school_publication(
         "revoked_at": None,
     }
     assets = SimpleNamespace(
+        template=AsyncMock(return_value={
+            **flags, "bank_document": bank, "config_document": config,
+            "item_count": bank_count, "dimension_count": 1,
+        }),
         validate_documents=AsyncMock(
             return_value=SimpleNamespace(
                 item_count=bank_count,
@@ -1513,7 +1574,7 @@ async def test_cat_file_plan_approval_and_school_publication(
                     "plan_name": "合成验收方案",
                     "class_designation": "合成班",
                     "due_at": due.isoformat(),
-                    "configuration": "attachment",
+                    "configuration": "school_template" if file_format == "csv" else "attachment",
                 }
             ),
         ),
@@ -1533,7 +1594,19 @@ async def test_cat_file_plan_approval_and_school_publication(
     views = [event["view"] for event in events if event["type"] == "tool_result"]
     assert [view["kind"] for view in views] == ["cat_inspection", "cat_draft"]
     assert views[0]["item_count"] == bank_count
+    assert views[0]["attachment_has_config"] == (file_format == "json")
     assert views[1]["state"] == "PREVIEW"
+    if file_format == "csv":
+        parsed = assets.validate_documents.await_args_list[0].args[1]
+        assert parsed["metadata"] == {
+            "synthetic": True, "intended_use": "engineering_test_only",
+            "psychological_interpretation_allowed": False,
+        }
+        assert parsed["dimensions"] == ["demo_trait"]
+        assert parsed["items"][0]["parameters"] == bank["items"][0]["parameters"]
+        assert parsed["items"][0]["scoring"] == bank["items"][0]["scoring"]
+        assert parsed["items"][0]["stem"] not in response.text
+        assets.template.assert_awaited_once()
     for call in model.await_args_list:
         prompt = json.dumps(call.args[0], ensure_ascii=False)
         assert bank["items"][0]["stem"] not in prompt

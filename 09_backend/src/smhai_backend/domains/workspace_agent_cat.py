@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import csv
+import io
 import json
+import math
+import re
 from datetime import UTC, datetime
 from typing import Literal
 
@@ -25,6 +29,8 @@ from .workspace_agent_history import workspace_owner
 
 MAX_CAT_UPLOAD = 240 * 1024
 REF = r"^[a-f0-9]{32}$"
+_CSV_COLUMNS = {"id", "stem", "model", "a", "thresholds", "options"}
+_CSV_ID = re.compile(r"ITEM_[A-Za-z0-9_.-]{1,122}\Z")
 
 
 class CatDraftProposal(BaseModel):
@@ -74,15 +80,98 @@ def _unique_fields(pairs: list[tuple[str, object]]) -> dict:
     return fields
 
 
+def _csv_item(row: dict, seen: set[str]) -> dict:
+    if set(row) - (_CSV_COLUMNS | {"content"}) or any(
+        not isinstance(value, str) for value in row.values()
+    ):
+        raise ValueError
+    identifier, stem = row["id"].strip(), row["stem"].strip()
+    item_id = identifier if identifier.startswith("ITEM_") else f"ITEM_{identifier}"
+    discrimination = float(row["a"])
+    thresholds = json.loads(row["thresholds"])
+    options = json.loads(row["options"])
+    if (
+        not _CSV_ID.fullmatch(item_id) or item_id in seen
+        or not 1 <= len(stem) <= 2000 or "\x00" in stem
+        or row["model"].strip().upper() != "GRM"
+        or not (0 < discrimination <= 10)
+        or not isinstance(options, list) or not 2 <= len(options) <= 10
+        or any(not isinstance(value, str) or not value.strip() or len(value) > 160
+               or "\x00" in value for value in options)
+        or len(set(options)) != len(options)
+        or not isinstance(thresholds, list) or len(thresholds) != len(options) - 1
+        or any(type(value) not in {int, float} or not math.isfinite(value) for value in thresholds)
+        or sorted(set(thresholds)) != thresholds
+    ):
+        raise ValueError
+    seen.add(item_id)
+    return {
+        "item_id": item_id,
+        "dimension": "demo_trait",
+        "stem": stem,
+        "response_type": "likert",
+        "response_options": options,
+        "scoring": {option: index for index, option in enumerate(options)},
+        "model": "GRM",
+        "parameters": {"a": discrimination, "thresholds": thresholds},
+        "source": "workspace_synthetic_csv",
+        "status": "synthetic",
+    }
+
+
+def _csv_document(body: bytearray) -> dict:
+    reader = csv.DictReader(io.StringIO(body.decode("utf-8-sig"), newline=""), strict=True)
+    header = reader.fieldnames or []
+    if len(header) != len(set(header)) or not _CSV_COLUMNS <= set(header) <= (
+        _CSV_COLUMNS | {"content"}
+    ):
+        raise error(ErrorCode.VALIDATION_FAILED, detail="CAT CSV columns are invalid")
+    seen: set[str] = set()
+    items: list[dict] = []
+    for row in reader:
+        if len(items) >= 100:
+            raise error(ErrorCode.VALIDATION_FAILED, detail="CAT CSV exceeds 100 items")
+        try:
+            items.append(_csv_item(row, seen))
+        except (ValueError, OverflowError, RecursionError):
+            raise error(
+                ErrorCode.VALIDATION_FAILED, detail=f"CAT CSV record {len(items) + 1} is invalid"
+            ) from None
+    if not items:
+        raise error(ErrorCode.VALIDATION_FAILED, detail="CAT CSV has no items")
+    digest = fingerprint(items)[:24]
+    return {
+        "item_bank_id": f"ITEMBANK_workspace_csv_{digest}",
+        "version": f"synthetic.csv.{digest}",
+        "instrument_id": "CURRENT_SYNTHETIC_GRM",
+        "target_population": "SYNTHETIC_STUDENT_DEMO",
+        "measurement_model": "GRM",
+        "dimensions": ["demo_trait"],
+        "status": "published",
+        "metadata": {
+            "synthetic": True,
+            "intended_use": "engineering_test_only",
+            "psychological_interpretation_allowed": False,
+        },
+        "items": items,
+    }
+
+
 async def upload(request: Request, actor: Actor) -> str:
     _specialist(actor)
+    is_csv = request.headers.get("content-type", "").split(";", 1)[0].strip().lower() == "text/csv"
+    if is_csv and request.query_params.getlist("synthetic_only") != ["true"]:
+        raise error(ErrorCode.VALIDATION_FAILED, detail="CAT CSV needs synthetic confirmation")
     body = bytearray()
     async for chunk in request.stream():
         if len(body) + len(chunk) > MAX_CAT_UPLOAD:
             raise error(ErrorCode.VALIDATION_FAILED, detail="CAT upload exceeds the size limit")
         body.extend(chunk)
     try:
-        value = json.loads(body.decode("utf-8-sig"), object_pairs_hook=_unique_fields)
+        value = (
+            _csv_document(body) if is_csv
+            else json.loads(body.decode("utf-8-sig"), object_pairs_hook=_unique_fields)
+        )
         if not isinstance(value, dict):
             raise ValueError
         if "bank_document" in value:
@@ -104,10 +193,18 @@ async def upload(request: Request, actor: Actor) -> str:
             raise ValueError
         document = {"bank_document": bank, "config_document": config}
         # Reject non-finite numbers and any JSON input too deep to normalize.
-        json.dumps(document, ensure_ascii=False, allow_nan=False).encode("utf-8")
-    except (ValueError, RecursionError):
+        encoded = json.dumps(
+            document, ensure_ascii=False, allow_nan=False, separators=(",", ":")
+        ).encode("utf-8")
+        if is_csv and len(encoded) > MAX_CAT_UPLOAD:
+            raise error(ErrorCode.VALIDATION_FAILED, detail="CAT CSV exceeds normalized size limit")
+    except (ValueError, RecursionError, csv.Error):
+        detail = (
+            "CAT CSV could not be read"
+            if is_csv else "Expected a synthetic school GRM JSON document"
+        )
         raise error(
-            ErrorCode.VALIDATION_FAILED, detail="Expected a synthetic school GRM JSON document"
+            ErrorCode.VALIDATION_FAILED, detail=detail,
         ) from None
     return _store(request).upload(workspace_owner(actor), document)
 

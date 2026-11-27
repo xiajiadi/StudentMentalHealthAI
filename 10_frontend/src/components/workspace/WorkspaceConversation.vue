@@ -26,6 +26,7 @@ import {
 const props = defineProps<{
   roster?: RosterAttachment
   catFile?: File
+  catCsvConfirmed?: boolean
   tableSummary?: WorkspaceTableSummary
   role: 'student' | 'teacher' | 'psychological_specialist' | 'school_admin'
   scope: string
@@ -226,11 +227,14 @@ function decideConsent(accepted: boolean) {
 async function submit(text: string) {
   await initialHistory
   if (disposed || scopeBlocked.value || running.value || rosterWorkbench.value?.busy || consentOpen.value || !text.trim()) return false
+  const file = props.catFile
+  const csv = Boolean(file && /\.csv$/i.test(file.name))
+  if (csv && !props.catCsvConfirmed) return false
   if (!consent.value) {
     consentOpen.value = true
     if (!await new Promise<boolean>((resolve) => { consentDecision = resolve })) return false
   }
-  if (disposed) return false
+  if (disposed || props.catFile !== file || (csv && !props.catCsvConfirmed)) return false
   const request = new AbortController()
   runRequest = request
   lastText.value = text
@@ -239,19 +243,20 @@ async function submit(text: string) {
   progress.value = '正在连接'
   sending.value = true
   try {
-    const file = props.catFile
     let catRef: string | undefined
-    if (file && /\.json$/i.test(file.name)) {
+    if (file) {
       progress.value = '正在上传合成题库'
       try {
         if (uploadedCat?.file !== file) {
-          const submitted = await uploadWorkspaceCat(file, request.signal)
+          const submitted = await uploadWorkspaceCat(csv ? file.slice(0, file.size, 'text/csv') : file, request.signal)
           uploadedCat = { file, ref: submitted.ref }
         }
         catRef = uploadedCat.ref
-      } catch {
+      } catch (cause) {
         if (!disposed && !request.signal.aborted) {
-          message.value = '题库上传失败。请检查是否为学校合成 GRM JSON（最多 240 KiB），或稍后重试'
+          message.value = cause instanceof RealApiError && cause.message !== '工作区请求暂时不可用'
+            ? cause.message
+            : '题库上传失败，请检查合成 GRM JSON 或 UTF-8 CSV 的格式和大小（最多 240 KiB），也可稍后重试'
         }
         return false
       }

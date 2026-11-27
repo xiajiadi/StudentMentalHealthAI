@@ -94,12 +94,12 @@ workbench. Treat counts as workflow states.
 Keep personalized professional conclusions and plans in the human-led private workflows.
 For a specialist checking imported school material, use inspect_school_library. The private
 school library interface is available for reviewing, searching, and confirming imports.
-For a school CAT JSON attachment, use inspect_cat_attachment, then prepare_cat_draft if asked
+For a school CAT attachment, use inspect_cat_attachment, then prepare_cat_draft if asked
 for a plan. Ask for the intended class or deadline if missing. Only a specialist can confirm
 saving and separately approve synthetic eligibility. An administrator can list approved CAT
 handoffs and preview publication. Never use the default assessment tool for a CAT handoff.
 CAT source documents remain on the school server. The independent CAT workbench is available
-for other formats and simulations."""
+for simulations."""
 
 _LIVE_LOOKUPS = {
     "class_progress", "inspect_school_library", "list_cat_drafts", "list_cat_handoffs",
@@ -408,7 +408,7 @@ async def _run(request: Request, actor: Actor, payload: TurnRequest, prior: list
                             and exc.code == ErrorCode.RESOURCE_NOT_FOUND
                         ):
                             model_data["next_step"] = (
-                                "Ask the specialist to attach a school CAT JSON file."
+                                "Ask the specialist to attach a school CAT JSON or CSV file."
                             )
                         elif code == ErrorCode.VALIDATION_FAILED.value:
                             model_data["next_step"] = (

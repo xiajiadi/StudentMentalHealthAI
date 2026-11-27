@@ -1490,6 +1490,7 @@ test('a specialist reviews facts and saves an authorized synthetic support plan'
 
 test('a specialist approves a synthetic CAT plan and an administrator publishes it', async ({ page }) => {
   const className = process.env.PSYNOVA_AGENT_QA_CLASS
+  const useCsv = process.env.PSYNOVA_AGENT_QA_CAT_CSV === '1'
   test.skip(process.env.PSYNOVA_AGENT_QA_WRITE !== '1' || !className, 'Requires a dedicated synthetic class')
   test.setTimeout(240_000)
   await signIn(page)
@@ -1497,19 +1498,79 @@ test('a specialist approves a synthetic CAT plan and an administrator publishes 
   const bank = new URL('../../01_cat-engine/fixtures/synthetic_item_bank.v1.json', import.meta.url)
   const configuration = new URL('../../01_cat-engine/fixtures/demo_cat_config.v1.json', import.meta.url)
   const [bankText, configText] = await Promise.all([readFile(bank, 'utf8'), readFile(configuration, 'utf8')])
+  const source = JSON.parse(bankText).items as {
+    item_id: string; stem: string; model: string; response_options: string[];
+    parameters: { a: number; thresholds: number[] }
+  }[]
   const plan = '合成工程验证' + Date.now().toString(36)
   const due = new Date(Date.now() + 7 * 24 * 60 * 60 * 1_000)
   due.setUTCHours(12, 0, 0, 0)
   const dueDate = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', dateStyle: 'long' }).format(due)
-  await page.locator('#workspace-agent-composer input[type="file"]').setInputFiles({
-    name: 'synthetic-cat.json',
-    mimeType: 'application/json',
-    buffer: Buffer.from(JSON.stringify({ bank_document: JSON.parse(bankText), config_document: JSON.parse(configText) })),
-  })
-  const results = await ask(page, `请检查合成题库并使用附件配置准备方案。方案名称是 ${plan}，班级是 ${className}，截止时间是北京时间${dueDate}晚上八点。`, '发送任务')
+  const uploadField = page.locator('#workspace-agent-composer input[type="file"]')
+  const csvMarker = '合成练习素材 CSVPRIVATEQA'
+  const writes: string[] = []
+  if (useCsv) {
+    await page.setViewportSize({ width: 390, height: 840 })
+    page.on('request', (request) => {
+      if (request.method() === 'POST') writes.push(new URL(request.url()).pathname)
+    })
+    const csvField = (value: string | number) => '"' + String(value).replaceAll('"', '""') + '"'
+    const chooseCsv = (invalid: boolean) => {
+      const rows = source.map((item, index) => [
+        item.item_id,
+        index === 0 ? csvMarker + '，带逗号和换行\n第二行' : item.stem,
+        invalid && index === 1 ? '2PL' : item.model,
+        item.parameters.a,
+        JSON.stringify(item.parameters.thresholds),
+        JSON.stringify(item.response_options),
+        'practice',
+      ].map(csvField).join(','))
+      return uploadField.setInputFiles({
+        name: 'synthetic-private-cat.csv', mimeType: 'text/csv',
+        buffer: Buffer.from('\ufeffid,stem,model,a,thresholds,options,content\r\n' + rows.join('\r\n')),
+      })
+    }
+    await chooseCsv(true)
+    const send = page.getByRole('button', { name: '发送任务' })
+    const consent = page.getByRole('checkbox', { name: '我确认这份 CSV 是仅供工程演示的合成题库' })
+    await expect(send).toBeDisabled()
+    expect(writes).toEqual([])
+    await consent.check()
+    const rejected = page.waitForResponse((reply) => new URL(reply.url()).pathname.endsWith('/conversation/cat-attachment'))
+    await send.click()
+    await page.getByRole('button', { name: '同意并发送' }).click()
+    expect((await rejected).status()).toBe(422)
+    await expect(page.getByText('第 2 条题目记录有误，请检查题目编号、GRM 参数和选项')).toBeVisible()
+    expect(writes.filter((path) => path.endsWith('/conversation/turn'))).toEqual([])
+    await chooseCsv(false)
+    await expect(consent).not.toBeChecked()
+    await expect(send).toBeDisabled()
+    await consent.check()
+  } else {
+    await uploadField.setInputFiles({
+      name: 'synthetic-cat.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify({ bank_document: JSON.parse(bankText), config_document: JSON.parse(configText) })),
+    })
+  }
+  const purpose = useCsv ? '学校已有的合成工程模板' : '附件配置'
+  const privateTurn = page.waitForRequest((request) => request.url().endsWith('/conversation/turn'))
+  const results = await ask(page, `请检查合成题库并使用${purpose}准备方案。方案名称是 ${plan}，班级是 ${className}，截止时间是北京时间${dueDate}晚上八点。`, '发送任务', !useCsv)
   expect(results.map((event) => event.view?.kind ?? event.code ?? event.type)).toContain('cat_inspection')
+  if (useCsv) {
+    const payload = (await privateTurn).postDataJSON()
+    expect(payload.attachment).toBe('cat_bank')
+    expect(payload.cat_attachment_ref).toMatch(/^[a-f0-9]{32}$/)
+    expect(JSON.stringify(payload)).not.toContain(csvMarker)
+    expect(JSON.stringify(results)).not.toContain(csvMarker)
+    expect(results.find((event) => event.view?.kind === 'cat_inspection')?.view).toMatchObject({
+      item_count: source.length, dimension_count: 1, attachment_has_config: false,
+    })
+    expect(writes.filter((path) => /save-cat-draft|approve-cat-draft|confirm-publication/.test(path))).toEqual([])
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391)
+  }
   const draft = results.find((event) => event.view?.kind === 'cat_draft')?.view
-  expect(draft).toMatchObject({ plan_name: plan, configuration: 'attachment', state: 'PREVIEW' })
+  expect(draft).toMatchObject({ plan_name: plan, configuration: useCsv ? 'school_template' : 'attachment', state: 'PREVIEW' })
   let card = page.locator('.cat-draft').filter({ hasText: plan }).last()
   await card.getByRole('button', { name: '保存题库和方案' }).click()
   const saving = page.waitForResponse((response) => response.url().endsWith('/conversation/save-cat-draft'))
@@ -1521,6 +1582,28 @@ test('a specialist approves a synthetic CAT plan and an administrator publishes 
   await page.getByRole('button', { name: '确认批准并交接' }).click()
   const approved = await (await approving).json()
   expect(approved.data).toMatchObject({ draft_ref: draft.draft_ref, state: 'APPROVED' })
+  let activationRef: string | undefined
+  if (useCsv) {
+    const list = await page.request.get(origin + '/api/v1/school/cat-assets/activations')
+    expect(list.ok()).toBe(true)
+    const { items } = (await list.json()).data
+    const active = items.find((item: { plan_name: string }) => item.plan_name === plan)
+    expect(active?.status).toBe('ACTIVE')
+    activationRef = active.activation_ref
+    const asset = await page.request.get(origin + '/api/v1/school/cat-assets/bank-versions/' + active.bank_version_ref)
+    expect(asset.ok()).toBe(true)
+    const document = (await asset.json()).data.bank_document
+    expect(document.items).toHaveLength(source.length)
+    expect(document.items[0]).toMatchObject({
+      item_id: source[0].item_id,
+      stem: csvMarker + '，带逗号和换行\n第二行',
+      parameters: source[0].parameters,
+      response_options: source[0].response_options,
+    })
+    expect(document.metadata).toMatchObject({
+      synthetic: true, intended_use: 'engineering_test_only', psychological_interpretation_allowed: false,
+    })
+  }
   await chooseRole(page, 'ADMIN', '/admin/workspace')
   const handoffs = await ask(page, '查看本校已经批准且等待发布的 CAT 交接', '发送任务')
   expect(handoffs.some((event) => event.view?.kind === 'cat_handoffs')).toBe(true)
@@ -1533,6 +1616,7 @@ test('a specialist approves a synthetic CAT plan and an administrator publishes 
   const published = await (await publishing).json()
   const task = published.data
   expect(task).toMatchObject({ plan_name: plan, activation_ref: expect.stringMatching(/^CACT_/), plan_version_number: 1 })
+  if (activationRef) expect(task.activation_ref).toBe(activationRef)
   expect(new Date(task.due_at).toISOString()).toBe(due.toISOString())
   const index = await page.request.get(origin + '/api/v1/school/admin/task-index')
   expect(index.ok()).toBe(true)

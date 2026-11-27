@@ -124,6 +124,8 @@ const workspaceAgent = ref<InstanceType<typeof WorkspaceConversation>>()
 const agentBusy = ref(false)
 const roster = ref<RosterAttachment>()
 const catFile = ref<File>()
+const catCsvConfirmed = ref(false)
+const catFileIsCsv = computed(() => Boolean(catFile.value && /\.csv$/i.test(catFile.value.name)))
 const agentMode = computed(() => isPublicDemo.value && !researchMode.value
   && !(role.value === 'student' && (route.query.chat || route.query.history || route.query.conversation || route.query.topic)))
 const workspaceScope = computed(() => JSON.stringify([session.user?.userId, session.user?.activeContext?.schoolRef, role.value]))
@@ -203,6 +205,7 @@ watch(workspaceScope, () => {
   tableSummary.value = undefined
   roster.value = undefined
   catFile.value = undefined
+  catCsvConfirmed.value = false
   agentBusy.value = false
   if (session.user?.activeContext) void loadOverview()
   else {
@@ -261,7 +264,7 @@ async function sendChat(text: string) {
 async function run() {
   const text = command.value.trim()
   if (agentMode.value) {
-    if (!text || agentBusy.value || attachmentReading.value) return
+    if (!text || agentBusy.value || attachmentReading.value || (catFileIsCsv.value && !catCsvConfirmed.value)) return
     if (await workspaceAgent.value?.submit(text) && command.value.trim() === text) command.value = ''
     return
   }
@@ -482,10 +485,9 @@ function selectCatBank(file: File) {
     return
   }
   catFile.value = file
+  catCsvConfirmed.value = false
   attachmentError.value = ''
-  if (!command.value.trim()) command.value = /\.json$/i.test(file.name)
-    ? '帮我验证这份合成 CAT 题库'
-    : '请打开独立 CAT 工作台，核对我选中的 CSV'
+  if (!command.value.trim()) command.value = '帮我验证这份合成 CAT 题库'
 }
 
 const attachmentFormats = computed(() => {
@@ -572,6 +574,7 @@ function dateLabel(value: string) {
         :scope="workspaceScope"
         :roster="roster"
         :cat-file="catFile"
+        :cat-csv-confirmed="catCsvConfirmed"
         :table-summary="tableSummary"
         @busy="agentBusy = $event"
         @changed="loadOverview"
@@ -612,7 +615,7 @@ function dateLabel(value: string) {
           <AppButton v-if="running || agentBusy" class="workspace-agent__tool" variant="quiet" aria-label="取消任务" title="取消任务" @click="cancelRun">
             <Square :size="16" aria-hidden="true" />
           </AppButton>
-          <AppButton v-else class="workspace-agent__send" type="submit" :loading="chatSending" :disabled="(!command.trim() && !chat?.needsRetry) || confirming || Boolean(attachmentReading) || chat?.composerBlocked" :aria-label="role === 'student' ? (chat?.needsRetry ? '重试发送' : '发送消息') : '发送任务'">
+          <AppButton v-else class="workspace-agent__send" type="submit" :loading="chatSending" :disabled="(!command.trim() && !chat?.needsRetry) || confirming || Boolean(attachmentReading) || chat?.composerBlocked || (catFileIsCsv && !catCsvConfirmed)" :aria-label="role === 'student' ? (chat?.needsRetry ? '重试发送' : '发送消息') : '发送任务'">
             <ArrowUp :size="21" aria-hidden="true" />
           </AppButton>
         </div>
@@ -629,6 +632,10 @@ function dateLabel(value: string) {
           <AppButton v-if="catFile" variant="quiet" :disabled="agentBusy" @click="workspaceAgent?.openIndependentCat()">打开独立 CAT 工作台</AppButton>
           <AppButton variant="quiet" :disabled="agentBusy" @click="roster = undefined; catFile = undefined">移除附件</AppButton>
         </div>
+        <label v-if="agentMode && catFileIsCsv" class="workspace-agent__cat-confirm">
+          <input v-model="catCsvConfirmed" type="checkbox" :disabled="agentBusy" />
+          我确认这份 CSV 是仅供工程演示的合成题库
+        </label>
       </form>
       <p v-if="chatSending" class="workspace-agent__chat-status" role="status">正在回复…</p>
       <p v-if="attachmentError && !attachmentOpen" class="workspace-agent__error" role="alert">{{ attachmentError }}</p>
@@ -778,6 +785,7 @@ function dateLabel(value: string) {
 .workspace-agent__notice { display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--color-text-secondary); font-size: 12px; }
 .workspace-agent__response { display: grid; gap: 8px; margin-top: 10px; padding: 14px; border: 1px solid var(--color-border); font-size: 14px; }
 .workspace-agent__receipt, .workspace-agent__task-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.workspace-agent__cat-confirm { display: flex; align-items: center; gap: 8px; color: var(--color-text-secondary); font-size: 13px; }
 .workspace-agent__data { display: grid; gap: 6px; padding: 0; }
 .workspace-agent__data li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-block: 6px; border-top: 1px solid var(--color-border); }
 .workspace-agent__data small { color: var(--color-text-secondary); }
