@@ -785,6 +785,8 @@ function dateLabel(value: string) {
 .workspace-agent__notice { display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--color-text-secondary); font-size: 12px; }
 .workspace-agent__response { display: grid; gap: 8px; margin-top: 10px; padding: 14px; border: 1px solid var(--color-border); font-size: 14px; }
 .workspace-agent__receipt, .workspace-agent__task-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.workspace-agent__composer .workspace-agent__receipt { flex-wrap: wrap; }
+.workspace-agent__composer .workspace-agent__receipt > span { min-width: 0; overflow-wrap: anywhere; }
 .workspace-agent__cat-confirm { display: flex; align-items: center; gap: 8px; color: var(--color-text-secondary); font-size: 13px; }
 .workspace-agent__data { display: grid; gap: 6px; padding: 0; }
 .workspace-agent__data li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-block: 6px; border-top: 1px solid var(--color-border); }
