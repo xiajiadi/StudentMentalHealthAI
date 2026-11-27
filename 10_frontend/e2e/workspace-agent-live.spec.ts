@@ -1,4 +1,4 @@
-/* global HTMLTextAreaElement */
+/* global HTMLImageElement, HTMLTextAreaElement */
 import { Buffer } from 'node:buffer'
 import { readFile } from 'node:fs/promises'
 import { URL } from 'node:url'
@@ -357,6 +357,111 @@ test('a learner reads bar heights from an uploaded chart and sends only the revi
   expect(answer).toMatch(/Gamma/i)
   expect(answer).toMatch(/\b70\b|七十/)
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391)
+})
+
+test('a learner reads a single line locally and checks the highest point with the agent', async ({ page }) => {
+  test.setTimeout(180_000)
+  await signIn(page)
+  await chooseRole(page, 'STUDENT', '/student/workspace')
+  await page.setViewportSize({ width: 390, height: 840 })
+  const writes: string[] = []
+  page.context().on('request', (request) => {
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method())) writes.push(new URL(request.url()).pathname)
+  })
+  const upload = async (twoLines: boolean) => {
+    const encoded = await page.evaluate((multiple) => {
+      const canvas = document.createElement('canvas')
+      canvas.width = 860
+      canvas.height = 560
+      const ctx = canvas.getContext('2d')!
+      ctx.fillStyle = '#fff'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      const y = (value: number) => 440 - (value - 20) * 5
+      const x = (index: number) => 164 + index * 184
+      ctx.font = '28px Arial'
+      ctx.textBaseline = 'middle'
+      for (const tick of [20, 40, 60, 80]) {
+        ctx.strokeStyle = '#dce0e5'
+        ctx.beginPath()
+        ctx.moveTo(118, y(tick))
+        ctx.lineTo(790, y(tick))
+        ctx.stroke()
+        ctx.fillStyle = '#171c25'
+        ctx.textAlign = 'right'
+        ctx.fillText(String(tick), 91, y(tick))
+      }
+      ctx.textAlign = 'center'
+      for (const [index, label] of ['April', 'May', 'June', 'July'].entries()) {
+        ctx.fillText(label, x(index), 477)
+      }
+      const curve = (values: number[], color: string) => {
+        ctx.strokeStyle = color
+        ctx.lineWidth = 5
+        ctx.lineCap = 'round'
+        ctx.lineJoin = 'round'
+        ctx.beginPath()
+        ctx.moveTo(x(0), y(values[0]))
+        for (let index = 1; index < values.length; index += 1) ctx.lineTo(x(index), y(values[index]))
+        ctx.stroke()
+        ctx.fillStyle = color
+        for (const [index, value] of values.entries()) {
+          ctx.beginPath()
+          ctx.arc(x(index), y(value), 7, 0, Math.PI * 2)
+          ctx.fill()
+        }
+      }
+      curve([30, 53, 37, 68], '#225bd0')
+      if (multiple) curve([62, 70, 58, 51], '#e3781a')
+      return canvas.toDataURL('image/png').split(',')[1]
+    }, twoLines)
+    await page.locator('#workspace-agent-composer input[type="file"]').setInputFiles({
+      name: 'synthetic-line-chart.png', mimeType: 'image/png', buffer: Buffer.from(encoded, 'base64'),
+    })
+  }
+  const preview = page.getByRole('dialog', { name: '图片文字预览' })
+  const useChart = preview.getByRole('button', { name: '使用折线图读数' })
+  await upload(true)
+  await expect(preview).toBeVisible({ timeout: 60_000 })
+  await expect(useChart).toHaveCount(0)
+  await preview.getByRole('button', { name: '关闭', exact: true }).click()
+
+  await upload(false)
+  await expect(useChart).toBeVisible({ timeout: 60_000 })
+  await preview.getByText('查看原图', { exact: true }).click()
+  const original = preview.getByRole('img', { name: '所选图片原图' })
+  await expect(original).toBeVisible()
+  await expect(original).toHaveAttribute('src', /^blob:/)
+  await expect.poll(() => original.evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBe(860)
+  await preview.getByText('查看原图', { exact: true }).click()
+  await useChart.click()
+  const editor = preview.getByRole('textbox', { name: '识别出的文字' })
+  const estimates = (await editor.inputValue()).split('\n')
+  expect(estimates[0]).toContain('折线图读数')
+  expect(estimates).toHaveLength(5)
+  for (const [index, [label, value]] of [['April', 30], ['May', 53], ['June', 37], ['July', 68]].entries()) {
+    const estimate = estimates[index + 1]
+    expect(estimate).toContain(label)
+    expect(Math.abs(Number(estimate.split('约 ').at(-1)) - Number(value))).toBeLessThanOrEqual(1)
+  }
+  await preview.getByRole('button', { name: '插入到输入框' }).click()
+  expect(writes).toEqual([])
+  const reviewed = await page.locator('#workspace-agent-input').inputValue()
+  const prompt = `从这张图看，哪一个月份的数据最高，约是多少？\n\n${reviewed}`
+  const sent = page.waitForRequest((request) => request.url().endsWith('/workspace-agent/conversation/turn'))
+  const events = await ask(page, prompt, '发送消息')
+  expect((await sent).postDataJSON()).toEqual({ text: prompt, synthetic_only: true })
+  const answer = events.find((event) => event.type === 'answer')?.text
+  expect(answer).toMatch(/July|7\s*月|七月/i)
+  expect(answer).toMatch(/\b6[789]\b|六十[七八九]/)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391)
+
+  await chooseRole(page, 'TEACHER', '/teacher/workspace')
+  writes.length = 0
+  await upload(false)
+  await expect(useChart).toBeVisible({ timeout: 60_000 })
+  await useChart.click()
+  await expect(editor).toHaveValue(reviewed)
+  expect(writes).toEqual([])
 })
 
 test('a learner previews a handwritten formula privately and asks the model to solve the reviewed text', async ({ page }) => {

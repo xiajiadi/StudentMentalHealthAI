@@ -1,7 +1,11 @@
 /* global AbortSignal, Blob, File, URL, createImageBitmap */
 
 import { createWorker, OEM, PSM, type Page } from 'tesseract.js'
-import { detectWorkspaceBarChart, readWorkspaceBarChart } from './workspace-image-chart'
+import {
+  detectWorkspaceBarChart, readWorkspaceBarChart, readWorkspaceLineChart, workspaceChartRaster,
+} from './workspace-image-chart'
+
+export type WorkspaceChartPreview = { kind: 'bar' | 'line'; text: string }
 
 function readWords(page: Page) {
   return page.blocks?.flatMap((block) => block.paragraphs.flatMap((paragraph) =>
@@ -9,7 +13,7 @@ function readWords(page: Page) {
   )) ?? []
 }
 
-export async function readWorkspaceImage(file: File, signal: AbortSignal): Promise<{ text: string; chart?: string }> {
+export async function readWorkspaceImage(file: File, signal: AbortSignal): Promise<{ text: string; chart?: WorkspaceChartPreview }> {
   if (!file.size || file.size > 4 * 1024 * 1024) {
     throw new Error('请选择不超过 4 MiB 的 PNG、JPEG 或 WebP 图片')
   }
@@ -53,20 +57,22 @@ export async function readWorkspaceImage(file: File, signal: AbortSignal): Promi
     if (!content) return { text: '' }
     if (content.length > 3_000) throw new Error('请选择只包含所需文字的图片')
     const words = readWords(result.data)
-    const barChart = detectWorkspaceBarChart(bitmap, words)
-    if (!barChart) return { text: content }
-
-    let chart = readWorkspaceBarChart(barChart, words)
-    if (!chart) {
+    const raster = workspaceChartRaster(bitmap, words)
+    if (!raster) return { text: content }
+    const barChart = detectWorkspaceBarChart(raster, words)
+    let barValues = barChart && readWorkspaceBarChart(barChart, words)
+    if (barChart && !barValues) {
       await Promise.race([worker.setParameters({
         tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
         tessedit_char_whitelist: '0123456789.%−-',
       }), interruption])
       const rectangle = { left: 0, top: 0, width: barChart.axisWidth, height: bitmap.height }
       const axis = await Promise.race([worker.recognize(file, { rectangle }, { blocks: true }), interruption])
-      chart = readWorkspaceBarChart(barChart, words, readWords(axis.data))
+      barValues = readWorkspaceBarChart(barChart, words, readWords(axis.data))
     }
-    return { text: content, chart }
+    if (barValues) return { text: content, chart: { kind: 'bar', text: barValues } }
+    const lineValues = readWorkspaceLineChart(raster, words)
+    return { text: content, chart: lineValues ? { kind: 'line', text: lineValues } : undefined }
   } finally {
     expired = true
     bitmap.close()

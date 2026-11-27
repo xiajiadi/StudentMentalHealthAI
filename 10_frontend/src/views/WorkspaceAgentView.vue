@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/* global AbortController, DragEvent, Event, File, HTMLInputElement, HTMLTextAreaElement, KeyboardEvent, TextDecoder */
+/* global AbortController, DragEvent, Event, File, HTMLInputElement, HTMLTextAreaElement, KeyboardEvent, TextDecoder, URL */
 import { computed, nextTick, onUnmounted, ref, watch, type Component } from 'vue'
 import { useRoute } from 'vue-router'
 import { ArrowUp, ArrowUpRight, BookOpen, CalendarDays, CalendarHeart, ChartNoAxesCombined, ChevronRight, ClipboardCheck, ClipboardList, FileCheck2, FileUp, FolderOpen, HeartHandshake, Inbox, Layers, MessagesSquare, Network, Paperclip, Plus, Send, Server, ShieldCheck, Sparkles, Square, UsersRound } from '@lucide/vue'
@@ -16,6 +16,7 @@ import WorkspaceConversation from '@/components/workspace/WorkspaceConversation.
 import WorkspaceTablePreview from '@/components/workspace/WorkspaceTablePreview.vue'
 import { WORKBOOK_INVALID, type LocalWorkspaceSheet, type WorkspaceTableSummary } from '@/services/workspace-table'
 import { identifyRosterFile, type RosterAttachment } from '@/services/school-roster-file'
+import type { WorkspaceChartPreview } from '@/services/workspace-image-text'
 
 type WorkspaceRole = 'student' | 'teacher' | 'psychological_specialist' | 'school_admin'
 type Entry = { label: string; to: string; icon: Component; note?: string }
@@ -130,7 +131,13 @@ const maxCommandLength = computed(() => agentMode.value ? 3000 : role.value === 
 const fileInput = ref<HTMLInputElement>()
 const attachmentOpen = ref(false)
 type DocumentPreview = { file: File; characters: number; previewLength: number }
-const attachment = ref<{ name: string; content: string; image?: File; chart?: string; document?: DocumentPreview }>()
+const attachment = ref<{ name: string; content: string; image?: File; chart?: WorkspaceChartPreview; document?: DocumentPreview }>()
+const attachmentImageUrl = ref('')
+watch(() => attachment.value?.image, (image, _previous, onCleanup) => {
+  const url = image ? URL.createObjectURL(image) : ''
+  attachmentImageUrl.value = url
+  if (url) onCleanup(() => URL.revokeObjectURL(url))
+})
 const attachmentError = ref('')
 const attachmentReading = ref<false | 'image' | 'document' | 'table' | 'roster' | 'formula'>(false)
 const tablePreview = ref<{ name: string; sheets: LocalWorkspaceSheet[] }>()
@@ -349,7 +356,7 @@ async function openAttachment(file: File) {
       return
     }
     let content: string
-    let chart: string | undefined
+    let chart: WorkspaceChartPreview | undefined
     let documentPreview: DocumentPreview | undefined
     if (image) {
       attachmentReading.value = 'image'
@@ -714,6 +721,10 @@ function dateLabel(value: string) {
       @update:open="(open) => { if (!open) closeAttachment() }"
     >
       <strong>{{ attachment?.name }}</strong>
+      <details v-if="attachmentImageUrl">
+        <summary>查看原图</summary>
+        <img class="workspace-agent__image-original" :src="attachmentImageUrl" alt="所选图片原图" loading="lazy">
+      </details>
       <small v-if="attachment?.document && attachment.document.characters > attachment.document.previewLength">显示前 {{ attachment.document.previewLength }} 字，共提取 {{ attachment.document.characters }} 字</small>
       <AppTextarea v-if="attachment?.image || attachment?.document" id="workspace-attachment-excerpt" v-model="attachment.content" :label="attachment.image ? '识别出的文字' : '提取的文字'" :rows="5" :maxlength="attachment.image ? 3000 : 12000" />
       <pre v-else class="workspace-agent__attachment">{{ attachment?.content }}</pre>
@@ -723,7 +734,9 @@ function dateLabel(value: string) {
       <p v-if="attachmentError" class="workspace-agent__error" role="alert">{{ attachmentError }}</p>
       <div class="workspace-agent__confirm">
         <AppButton variant="secondary" @click="closeAttachment">关闭</AppButton>
-        <AppButton v-if="attachment?.chart && attachment.content !== attachment.chart" variant="secondary" :disabled="Boolean(attachmentReading)" @click="attachment.content = attachment.chart">使用柱状图读数</AppButton>
+        <AppButton v-if="attachment?.chart && attachment.content !== attachment.chart.text" variant="secondary" :disabled="Boolean(attachmentReading)" @click="attachment.content = attachment.chart.text">
+          {{ attachment.chart.kind === 'line' ? '使用折线图读数' : '使用柱状图读数' }}
+        </AppButton>
         <AppButton v-if="attachment?.image" variant="secondary" :loading="attachmentReading === 'formula'" @click="readFormula">交给学校服务识别公式</AppButton>
         <AppButton v-if="attachment?.document && role === 'psychological_specialist'" variant="secondary" @click="reviewDocumentForLibrary">核对并入库</AppButton>
         <AppButton v-if="role === 'student' || agentMode" :disabled="Boolean(attachmentReading) || !attachment?.content.trim()" @click="insertAttachment">插入到输入框</AppButton>
@@ -800,5 +813,6 @@ button.workspace-agent__entry { width: 100%; text-align: start; background: tran
 .workspace-agent__error { color: var(--color-attention); font-size: 13px; }
 .workspace-agent__chat-status { margin: 8px 4px 0; color: var(--color-text-secondary); font-size: 13px; }
 .workspace-agent__attachment { max-height: 40vh; overflow: auto; padding: 12px; border-radius: var(--radius-control); background: var(--color-surface-muted); font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
+.workspace-agent__image-original { display: block; max-inline-size: 100%; max-block-size: min(38vh, 260px); object-fit: contain; margin-block-start: 8px; }
 #workspace-agent-composer, #workspace-agent-conversation { scroll-margin-top: 88px; }
 </style>
