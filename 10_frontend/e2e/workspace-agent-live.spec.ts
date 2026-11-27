@@ -305,7 +305,7 @@ test('published school feedback is read in the learner conversation over the pri
     expect(found.excerpts.every((item: { text: string }) => current.body.includes(item.text))).toBe(true)
     await expect(page.getByText('老师建议原文', { exact: true })).toBeVisible()
 
-    expect(await lookup('明天厦门会下雨吗')).toEqual({ status: 'unmatched', excerpts: [] })
+    expect(await lookup('三角形的面积公式是什么')).toEqual({ status: 'unmatched', excerpts: [] })
     await expect(page.getByText('这份反馈没有找到能直接对应你问题的原句')).toBeVisible()
     expect(await lookup('我现在想自杀，已经有了具体计划')).toEqual({ status: 'needs_support', excerpts: [] })
     await expect(page.getByText('可以请学校心理教师继续协助你')).toBeVisible()
