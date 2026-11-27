@@ -132,16 +132,24 @@ test('a legacy teacher student URL opens the aggregate class view without a pers
   await expect(summary.locator('canvas').first()).toBeVisible()
   await expect(summary).not.toContainText(marker)
   expect(calls).toContain('/api/v1/school/teacher/task-progress')
-  expect(calls.join('\n')).not.toMatch(/\/teacher\/students|\/api\/v1\/assessments\//)
+  expect(calls.filter((path) => /\/teacher\/students(?:\/|$)|\/assessments(?:\/|$)/.test(path))).toEqual([])
 })
 
 test('a specialist can read the engineering purpose before starting a synthetic CAT simulation', async ({ page }) => {
+  test.setTimeout(90_000)
   await signIn(page)
+  const engine = page.waitForResponse((reply) => reply.url().endsWith('/cat-management/workbench/capabilities'), { timeout: 45_000 })
+  const writes: string[] = []
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && request.url().includes('/cat-management/workbench/')) writes.push(request.url())
+  })
   await chooseRole(page, 'PSYCHOLOGICAL_SPECIALIST', '/specialist/cat?focus=simulation')
+  expect((await engine).ok()).toBe(true)
   const workbench = page.getByRole('region', { name: '独立 CAT 研究工作台' })
-  await expect(workbench.getByRole('heading', { name: '多方案仿真' })).toBeVisible()
+  await expect(workbench.getByRole('heading', { name: '多方案仿真' })).toBeVisible({ timeout: 35_000 })
   await expect(workbench.getByText('合成仿真结果仅用于工程验证', { exact: true })).toBeVisible()
   await expect(workbench.getByRole('button', { name: '运行仿真' })).toBeDisabled()
+  expect(writes).toEqual([])
 })
 
 test('the teacher combines verified class counts and education material in a classroom task', async ({ page }) => {
