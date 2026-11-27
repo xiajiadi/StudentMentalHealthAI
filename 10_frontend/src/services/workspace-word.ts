@@ -63,10 +63,10 @@ function textRuns(token: Token, style?: IRunOptions): ParagraphChild[] {
 
 function wordTable(table: Tokens.Table) {
   const rows = [table.header, ...table.rows]
-  const weight = table.header.map((_, index) => Math.min(24, Math.max(5, ...rows.map((row) =>
+  const weight = table.header.map((_, index) => Math.min(42, Math.max(4, ...rows.map((row) =>
     Array.from(row[index]?.text ?? '').length))))
   const totalWeight = weight.reduce((sum, value) => sum + value, 0)
-  const minimum = Math.min(1050, Math.floor(textWidth / weight.length))
+  const minimum = Math.min(830, Math.floor(textWidth / weight.length))
   const flexibleWidth = textWidth - minimum * weight.length
   const widths = weight.map((value) => minimum + Math.floor(flexibleWidth * value / totalWeight))
   widths[widths.length - 1] += textWidth - widths.reduce((sum, value) => sum + value, 0)
@@ -75,7 +75,7 @@ function wordTable(table: Tokens.Table) {
     layout: TableLayoutType.FIXED,
     width: { size: textWidth, type: WidthType.DXA },
     columnWidths: widths,
-    margins: { top: 90, bottom: 90, left: 125, right: 125 },
+    margins: { top: 75, bottom: 75, left: 125, right: 125 },
     borders: {
       top: border, bottom: border, left: border, right: border,
       insideHorizontal: border, insideVertical: border,
@@ -117,6 +117,7 @@ function listBlocks(list: Tokens.List, numbering: Numbering, depth: number): Blo
     const hasOpening = first?.type === 'text' || first?.type === 'paragraph'
     const opening = new Paragraph({
       numbering: { reference, level: 0 },
+      spacing: { after: 65, line: 270 },
       children: [
         ...(item.task ? [new TextRun(item.checked ? '☑ ' : '☐ ')] : []),
         ...(hasOpening ? textRuns(first) : []),
@@ -183,10 +184,10 @@ export async function workspaceWordDocument(markdown: string): Promise<Blob> {
     numbering: { config: numbering },
     styles: {
       default: {
-        document: { run: { font, size: 22, color: '000000' }, paragraph: { spacing: { after: 130, line: 330 } } },
-        title: headingStyle(40, 0, 300),
-        heading1: headingStyle(30, 250, 130),
-        heading2: headingStyle(26, 190, 110),
+        document: { run: { font, size: 22, color: '000000' }, paragraph: { spacing: { after: 110, line: 292 } } },
+        title: headingStyle(40, 0, 255),
+        heading1: headingStyle(30, 200, 105),
+        heading2: headingStyle(26, 175, 100),
         heading3: headingStyle(24, 150, 100),
         heading4: headingStyle(23, 150, 100),
         heading5: headingStyle(22, 150, 100),
@@ -194,7 +195,7 @@ export async function workspaceWordDocument(markdown: string): Promise<Blob> {
       },
       paragraphStyles: [
         { id: 'ReportTableText', name: 'Table text', basedOn: 'Normal',
-          paragraph: { spacing: { before: 0, after: 0, line: 290 } }, run: { font, size: 21 } },
+          paragraph: { spacing: { before: 0, after: 0, line: 270 } }, run: { font, size: 21 } },
         { id: 'ReportCode', name: 'Code', basedOn: 'Normal',
           run: { font: { ...font, ascii: 'Consolas', hAnsi: 'Consolas' }, size: 21 } },
       ],

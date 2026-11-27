@@ -120,6 +120,7 @@ test('the teacher combines verified class counts and education material in a cla
   test.setTimeout(180_000)
   await signIn(page)
   await chooseRole(page, 'TEACHER', '/teacher/workspace')
+  await page.setViewportSize({ width: 390, height: 840 })
   const rawProgress = await page.request.get(origin + '/api/v1/school/teacher/task-progress')
   expect(rawProgress.ok()).toBe(true)
   const tasks = (await rawProgress.json()).data as { completed_count: number; active_enrollment_count: number }[]
@@ -168,6 +169,7 @@ test('the teacher combines verified class counts and education material in a cla
   expect(wordActivity.document).toContain('世界卫生组织')
   expect(wordActivity.relationships).toContain('https://www.who.int/')
   expect(sessionWrites).toEqual([])
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391)
 })
 
 test('cancelling a live task releases the conversation and lets the teacher retry', async ({ page }) => {
