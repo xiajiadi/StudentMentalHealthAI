@@ -807,6 +807,33 @@ async def test_formula_preview_requires_a_session_and_keeps_formula_out_of_histo
     model.assert_not_awaited()
 
 
+async def test_task_feedback_returns_only_the_published_reference_for_the_student(
+    client, app, model_lane, monkeypatch
+):
+    model, _ = model_lane
+    lookup = AsyncMock(side_effect=["FEED_private_match", None])
+    monkeypatch.setattr(
+        app.state.container,
+        "school_feedback",
+        SimpleNamespace(latest_student_feedback_for_task=lookup),
+    )
+    path = f"{BASE}/conversation/task-feedback"
+    assert (await client.get(f"{path}/TASK_match")).status_code == 401
+    headers = await login(client)
+    await select(client, headers, "STUDENT")
+    match = await client.get(f"{path}/TASK_match")
+    assert match.status_code == 200
+    assert match.headers["cache-control"] == "no-store"
+    assert match.json() == {"data": {"feedback_ref": "FEED_private_match"}}
+    assert (await client.get(f"{path}/TASK_pending")).json() == {"data": {"feedback_ref": None}}
+    assert [call.args[1] for call in lookup.await_args_list] == ["TASK_match", "TASK_pending"]
+    assert all(call.args[0].school_ref == FIRST for call in lookup.await_args_list)
+    await select(client, headers, "TEACHER")
+    assert (await client.get(f"{path}/TASK_match")).status_code == 403
+    assert lookup.await_count == 2
+    model.assert_not_awaited()
+
+
 @pytest.mark.parametrize("formula", ("", "x^2 + \ufffd", r"\frac{1}{2", "a\nb", r"x^2 + \ · 3"))
 def test_formula_worker_rejects_incomplete_or_unreadable_output(formula):
     with pytest.raises(ValueError):

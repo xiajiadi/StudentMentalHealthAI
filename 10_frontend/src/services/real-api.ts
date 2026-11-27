@@ -1460,19 +1460,20 @@ export class RealApiProvider implements FrontendApi {
   async requestWorkspaceConversation(
     operation: 'history' | 'turn' | 'reset' | 'confirm-publication' | 'cat-attachment'
       | 'save-cat-draft' | 'approve-cat-draft' | 'preview-cat-handoff'
-      | 'document-preview/pdf' | 'document-preview/docx' | 'formula-preview',
+      | 'document-preview/pdf' | 'document-preview/docx' | 'formula-preview' | `task-feedback/${string}`,
     body?: object,
     signal?: AbortSignal,
   ): Promise<Response> {
     const apiOrigin = new URL(apiBaseUrl, window.location.href)
     const base = new URL('/api/v1/workspace-agent/conversation', apiOrigin)
     if (operation !== 'history') base.pathname += '/' + operation
+    const readOnly = operation === 'history' || operation.startsWith('task-feedback/')
     const headers = new Headers({ Accept: operation === 'turn' ? 'application/x-ndjson' : 'application/json' })
-    if (operation !== 'history') headers.set('X-CSRF-Token', await this.ensureCsrfToken())
+    if (!readOnly) headers.set('X-CSRF-Token', await this.ensureCsrfToken())
     const binaryPreview = operation === 'formula-preview' || operation.startsWith('document-preview/')
     if (body) headers.set('Content-Type', binaryPreview ? 'application/octet-stream' : 'application/json')
     const response = await fetch(base, {
-      method: operation === 'history' ? 'GET' : 'POST',
+      method: readOnly ? 'GET' : 'POST',
       credentials: 'include', cache: 'no-store', headers, signal,
       ...(body ? { body: operation === 'cat-attachment' || binaryPreview ? body as Blob : JSON.stringify(body) } : {}),
     })

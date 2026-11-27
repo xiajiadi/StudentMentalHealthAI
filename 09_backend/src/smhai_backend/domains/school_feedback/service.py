@@ -261,3 +261,11 @@ class SchoolFeedbackService:
                 detail="feedback data is unavailable",
             )
         return projected
+
+    async def latest_student_feedback_for_task(self, actor: Actor, task_ref: str) -> str | None:
+        self._require_student(actor)
+        result = await self._port().school_feedback_list_student(
+            actor, limit=1, task_ref=task_ref
+        )
+        page = self._project_list(StudentFeedbackListDto, result, StudentFeedbackDto, 1)
+        return page["items"][0]["feedback_ref"] if page["items"] else None

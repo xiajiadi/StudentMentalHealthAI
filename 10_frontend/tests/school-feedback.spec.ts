@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { createRouter, createMemoryHistory } from 'vue-router'
 import { RealApiError } from '@/services/real-api'
 import type { SchoolFeedback, StudentSchoolFeedback } from '@/services/school-feedback'
 
@@ -15,7 +16,9 @@ const feedback = vi.hoisted(() => ({
   publish: vi.fn(),
   revoke: vi.fn(),
   listStudent: vi.fn(),
+  getStudent: vi.fn(),
 }))
+const findTaskFeedback = vi.hoisted(() => vi.fn())
 const keyFactory = vi.hoisted(() => vi.fn(() => 'school-feedback-synthetic-key'))
 
 vi.mock('@/services/mock-api', () => ({ frontendApi: api }))
@@ -23,6 +26,7 @@ vi.mock('@/services/school-feedback', () => ({
   schoolFeedback: feedback,
   newSchoolFeedbackIdempotencyKey: keyFactory,
 }))
+vi.mock('@/services/workspace-agent', () => ({ findWorkspaceTaskFeedback: findTaskFeedback }))
 
 import SpecialistFeedbackPanel from '@/components/school/SpecialistFeedbackPanel.vue'
 import StudentFeedbackView from '@/views/student/StudentFeedbackView.vue'
@@ -103,6 +107,21 @@ describe('SpecialistFeedbackPanel interactions', () => {
     )
     expect(wrapper.text()).toContain('草稿')
     expect(wrapper.text()).toContain('修订 1')
+    wrapper.unmount()
+  })
+
+  it('includes the specialist’s optional next step inside the same reviewable revision', async () => {
+    feedback.createDraft.mockResolvedValue(specialistDto())
+    const wrapper = mountPanel()
+    await flushPromises()
+    await wrapper.get('#feedback-title').setValue('合成练习反馈')
+    await wrapper.get('#feedback-body').setValue('教师审核正文')
+    await wrapper.get('#feedback-next-steps').setValue('记录一个想在下次交流时问的问题')
+    await wrapper.get('form.feedback-draft').trigger('submit')
+    await flushPromises()
+    expect(feedback.createDraft).toHaveBeenCalledWith(
+      'PCR_synthetic_case', 3, '合成练习反馈', '教师审核正文\n\n【老师建议的下一步】\n记录一个想在下次交流时问的问题', 'school-feedback-synthetic-key',
+    )
     wrapper.unmount()
   })
 
@@ -228,6 +247,30 @@ describe('StudentFeedbackView published feedback section', () => {
     api.listAssessments.mockResolvedValue({ data: [] })
     api.listReports.mockResolvedValue({ data: { items: [] } })
     feedback.listStudent.mockResolvedValue({ items: [studentDto()], total: 1 })
+  })
+
+  it('opens the exact task publication and shows only the next step authored in that revision', async () => {
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }] })
+    await router.push('/')
+    findTaskFeedback.mockResolvedValueOnce('FEED_synthetic_1').mockResolvedValueOnce(undefined)
+    feedback.getStudent.mockResolvedValueOnce(studentDto({
+      body: '已发布正文\n\n【老师建议的下一步】\n记录一个想在下次交流时问的问题',
+    }))
+    const wrapper = mount(StudentFeedbackView, {
+      props: { embedded: true, initialTaskRef: 'TASK_synthetic_1' },
+      global: { plugins: [createPinia(), router] },
+    })
+    await flushPromises()
+    expect(findTaskFeedback).toHaveBeenCalledExactlyOnceWith('TASK_synthetic_1')
+    expect(feedback.getStudent).toHaveBeenCalledExactlyOnceWith('FEED_synthetic_1')
+    expect(feedback.listStudent).not.toHaveBeenCalled()
+    expect(wrapper.get('.feedback-detail__body').text()).toBe('已发布正文')
+    expect(wrapper.get('details').text()).toContain('记录一个想在下次交流时问的问题')
+    await wrapper.get('[aria-label="核对本次测评的反馈"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('这项测评暂未发布反馈')
+    expect(wrapper.text()).not.toContain('记录一个想在下次交流时问的问题')
+    wrapper.unmount()
   })
 
   it('renders only published plaintext, synthetic L3 label, timestamp and keeps L1 completion metadata', async () => {

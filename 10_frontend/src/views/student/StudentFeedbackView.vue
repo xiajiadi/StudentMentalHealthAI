@@ -9,11 +9,12 @@ import type { StudentHistoryLibraryItem } from '@/components/student/history-lib
 import { studentPageArt, studentPageBannerCopy, studentPageTitles } from '@/data/student-feature-cards'
 import { useSessionStore } from '@/stores/session'
 import { schoolFeedback, type StudentSchoolFeedback } from '@/services/school-feedback'
+import { findWorkspaceTaskFeedback } from '@/services/workspace-agent'
 import { userFacingApiError } from '@/utils/user-facing-errors'
 import { useRouter } from 'vue-router'
 import StudentFeedbackDetailView from './StudentFeedbackDetailView.vue'
 
-const props = defineProps<{ embedded?: boolean; initialFeedbackRef?: string }>()
+const props = defineProps<{ embedded?: boolean; initialFeedbackRef?: string; initialTaskRef?: string }>()
 const emit = defineEmits<{ support: [] }>()
 const selectedFeedback = ref(props.initialFeedbackRef)
 
@@ -63,9 +64,16 @@ const loadSchoolFeedback = async () => {
   schoolFeedbackRows.value = []
   schoolFeedbackError.value = ''
   try {
-    const result = await schoolFeedback.listStudent()
-    if (generation !== schoolFeedbackGeneration.value) return
-    schoolFeedbackRows.value = result.items
+    if (props.initialTaskRef) {
+      selectedFeedback.value = undefined
+      const reference = await findWorkspaceTaskFeedback(props.initialTaskRef)
+      if (generation !== schoolFeedbackGeneration.value) return
+      selectedFeedback.value = reference
+    } else {
+      const result = await schoolFeedback.listStudent()
+      if (generation !== schoolFeedbackGeneration.value) return
+      schoolFeedbackRows.value = result.items
+    }
     schoolFeedbackState.value = 'ready'
   } catch (error) {
     if (generation !== schoolFeedbackGeneration.value) return
@@ -118,12 +126,13 @@ onMounted(() => {
     />
 
     <div v-if="embedded && selectedFeedback" class="feedback-section feedback-section--embedded">
-      <AppButton variant="quiet" @click="backToList">返回反馈列表</AppButton>
+      <AppButton v-if="!initialTaskRef" variant="quiet" @click="backToList">返回反馈列表</AppButton>
+      <StudentRefreshButton v-else :loading="schoolFeedbackState === 'loading'" aria-label="核对本次测评的反馈" @click="loadSchoolFeedback" />
       <StudentFeedbackDetailView :embedded-feedback-ref="selectedFeedback" @support="emit('support')" />
     </div>
     <section v-else class="feedback-section published-feedback" :class="{ 'feedback-section--embedded': embedded }" aria-labelledby="published-feedback-title">
       <header class="feedback-section__heading">
-        <div><h2 id="published-feedback-title">已发布的学生测评反馈</h2></div>
+        <div><h2 id="published-feedback-title">{{ initialTaskRef ? '本次测评反馈' : '已发布的学生测评反馈' }}</h2></div>
         <StudentRefreshButton :loading="schoolFeedbackState === 'loading'" aria-label="刷新已发布反馈" @click="loadSchoolFeedback" />
       </header>
       <StudentHistoryLibrary
@@ -133,7 +142,7 @@ onMounted(() => {
         :loading="schoolFeedbackState === 'loading'"
         :error="schoolFeedbackError"
         error-title="已发布反馈暂时无法加载"
-        empty-title="目前没有单独发布的反馈"
+        :empty-title="initialTaskRef ? '这项测评暂未发布反馈' : '目前没有单独发布的反馈'"
         empty-description="学校审核并发布后，反馈会显示在这里"
         empty-icon="feedback"
         @retry="loadSchoolFeedback"

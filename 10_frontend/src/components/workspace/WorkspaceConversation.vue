@@ -76,6 +76,7 @@ const consentOpen = ref(false)
 const panel = ref<WorkflowPanel | RosterPanel>()
 const rosterWorkbench = ref<{ busy: boolean }>()
 const feedbackRef = ref<string>()
+const feedbackTaskRef = ref<string>()
 const reviewTaskRef = ref<string>()
 const libraryFile = ref<File>()
 const libraryImport = ref(false)
@@ -240,6 +241,7 @@ function openPanel(workflow?: WorkflowPanel | RosterPanel) {
   if (rosterWorkbench.value?.busy) return
   referral.value = undefined
   feedbackRef.value = undefined
+  feedbackTaskRef.value = undefined
   reviewTaskRef.value = undefined
   libraryFile.value = undefined
   libraryImport.value = false
@@ -257,6 +259,11 @@ function openSchoolLibrary(file?: File) {
 function openFeedback(ref?: string) {
   openPanel('feedback')
   feedbackRef.value = ref
+}
+
+function openTaskFeedback() {
+  openPanel('feedback')
+  feedbackTaskRef.value = assessmentTask.value
 }
 
 function openReviewTask(taskRef: string) {
@@ -542,7 +549,7 @@ defineExpose({ submit, cancel, openIndependentCat, openSchoolLibrary })
       <p v-if="assessmentChecking" role="status">正在核对测评进度</p>
       <template v-else-if="assessmentComplete">
         <AppStatusCallout tone="support" title="已保存测评作答" body="反馈将按学校发布流程出现在测评反馈中" />
-        <AppButton variant="secondary" @click="openFeedback()">查看已发布反馈</AppButton>
+        <AppButton variant="secondary" @click="openTaskFeedback">查看本次测评反馈</AppButton>
       </template>
       <template v-else-if="!assessmentId">
         <p>请按自己的实际情况选答，已提交的题目会保存。你可以暂时退出并稍后继续</p>
@@ -553,7 +560,7 @@ defineExpose({ submit, cancel, openIndependentCat, openSchoolLibrary })
     <AppCard v-if="panel" class="agent-thread__card">
       <header class="agent-thread__inline"><strong>{{ panelLabels[panel] }}</strong><AppButton variant="quiet" :disabled="rosterWorkbench?.busy" @click="openPanel()">收起工作台</AppButton></header>
       <Roster v-if="panel === 'roster' || panel === 'staff'" :key="panel" ref="rosterWorkbench" :embedded-section="panel" :initial-roster-file="roster?.kind === (panel === 'staff' ? 'staff_roster' : 'student_roster') ? roster.file : undefined" />
-      <component :is="panels.feedback" v-else-if="panel === 'feedback'" :key="feedbackRef || 'feedback'" embedded :initial-feedback-ref="feedbackRef" @support="openPanel('support')" />
+      <component :is="panels.feedback" v-else-if="panel === 'feedback'" :key="feedbackTaskRef || feedbackRef || 'feedback'" embedded :initial-feedback-ref="feedbackRef" :initial-task-ref="feedbackTaskRef" @support="openPanel('support')" />
       <component :is="panels.review" v-else-if="panel === 'review'" :key="reviewTaskRef || 'review'" :initial-task-ref="reviewTaskRef" />
       <template v-else-if="panel === 'library'">
         <form class="agent-thread__inline" @submit.prevent="schoolLibrary?.search(libraryQuery)">

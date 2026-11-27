@@ -614,7 +614,7 @@ class SchoolFeedbackPersistenceAdapter(SchoolProfessionalReviewPersistenceAdapte
         row = await self._feedback(uow, actor, feedback_ref, case=case)
         return self._projection(row, case, assessment, student=True)
 
-    async def school_feedback_list_student(self, actor, *, offset=0, limit=50):
+    async def school_feedback_list_student(self, actor, *, offset=0, limit=50, task_ref=None):
         from sqlalchemy import func
 
         m = self._db_models
@@ -622,6 +622,8 @@ class SchoolFeedbackPersistenceAdapter(SchoolProfessionalReviewPersistenceAdapte
         async with self._uow() as uow:
             account_id, _ = await self._actor(uow, actor, "student", now)
             base = self._student_candidates(actor, account_id, now)
+            if task_ref is not None:
+                base = base.where(m.MeasurementTask.task_ref == task_ref)
             total = int(
                 await uow.session.scalar(self._select(func.count()).select_from(base.subquery()))
                 or 0

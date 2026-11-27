@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises'
 import { URL } from 'node:url'
 import { expect, test, type Page } from '@playwright/test'
 import { workbook } from '../tests/fixtures/workbook'
+import { readSchoolFeedbackContent } from '../src/services/school-feedback-content'
 
 const origin = process.env.PSYNOVA_AGENT_QA_ORIGIN
 const account = process.env.PSYNOVA_AGENT_QA_USERNAME
@@ -200,6 +201,17 @@ test('published school feedback is read in the learner conversation over the pri
   expect(available.total).toBeGreaterThan(0)
   const current = available.items[0]
   expect(current.status).toBe('PUBLISHED')
+  const completed = await page.request.get(origin + '/api/v1/school/tasks/student/history')
+  expect(completed.ok()).toBe(true)
+  const task = (await completed.json()).data.find((row: { assessment_id: string }) => row.assessment_id === current.assessment_ref)
+  expect(task?.task_ref).toBeTruthy()
+  const taskPath = '/api/v1/workspace-agent/conversation/task-feedback/' + task.task_ref
+  const linked = await page.request.get(origin + taskPath)
+  expect(linked.ok()).toBe(true)
+  expect(linked.headers()['cache-control']).toBe('no-store')
+  expect((await linked.json()).data).toEqual({ feedback_ref: current.feedback_ref })
+  const reviewed = readSchoolFeedbackContent(current.body)
+  if (process.env.PSYNOVA_AGENT_QA_FEEDBACK_STEPS === '1') expect(reviewed.nextSteps).toBeTruthy()
   const tasks = await ask(page, '查一下已发布的学校反馈，打开最新的一份', '发送消息')
   const resultKinds = tasks.map((event) => event.view?.kind ?? event.code ?? event.type)
   expect(resultKinds).toContain('feedback_picker')
@@ -216,15 +228,20 @@ test('published school feedback is read in the learner conversation over the pri
   expect(result.ok()).toBe(true)
   expect(result.headers()['cache-control']).toBe('no-store')
   await expect(page.getByRole('heading', { name: current.title, exact: true })).toBeVisible()
-  await expect(page.getByText(current.body, { exact: true })).toBeVisible()
+  await expect(page.getByText(reviewed.body, { exact: true })).toBeVisible()
   await expect(page).toHaveURL(origin + '/student/workspace')
   await page.getByText('怎么读这份反馈', { exact: true }).click()
+  if (reviewed.nextSteps) {
+    await expect(page.getByRole('heading', { name: '老师建议的下一步' })).toBeVisible()
+    await expect(page.getByText(reviewed.nextSteps, { exact: true })).toBeVisible()
+  }
   await page.getByRole('button', { name: '查看学校支持' }).click()
   await expect(page.getByRole('heading', { name: '提交求助请求' })).toBeVisible()
   await expect(page).toHaveURL(origin + '/student/workspace')
   await chooseRole(page, 'TEACHER', '/teacher/workspace')
   const denied = await page.request.get(origin + '/api/v1/school/feedback/student/' + current.feedback_ref)
   expect(denied.status()).toBe(403)
+  expect((await page.request.get(origin + taskPath)).status()).toBe(403)
 })
 
 test('a learner reads a synthetic worksheet image locally and asks the model about its text', async ({ page }) => {
@@ -823,7 +840,7 @@ test('a synthetic learner resumes and submits a real assessment inside the conve
   expect(completed.ok()).toBe(true)
   expect((await completed.json()).data).toMatchObject({ assessment_id: assessmentId, status: 'completed' })
   await expect(page.getByText('已保存测评作答')).toBeVisible()
-  await expect(page.getByRole('button', { name: '查看已发布反馈' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '查看本次测评反馈' })).toBeVisible()
   const history = await page.request.get(origin + '/api/v1/school/tasks/student/history')
   expect(history.ok()).toBe(true)
   expect((await history.json()).data).toContainEqual(expect.objectContaining({
@@ -837,7 +854,7 @@ test('a synthetic learner resumes and submits a real assessment inside the conve
   })
   await picker.click()
   await expect(page.getByText('已保存测评作答')).toBeVisible()
-  await expect(page.getByRole('button', { name: '查看已发布反馈' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '查看本次测评反馈' })).toBeVisible()
   await expect(confirmStart).toHaveCount(0)
   expect(assessmentWrites).toEqual([])
 })
@@ -867,7 +884,20 @@ test('a learner reopens a completed school assessment without starting another s
     assessment_status: 'completed',
   }))
   await expect(page.getByText('已保存测评作答')).toBeVisible()
-  await expect(page.getByRole('button', { name: '查看已发布反馈' })).toBeVisible()
+  const receipt = page.getByRole('button', { name: '查看本次测评反馈' })
+  await expect(receipt).toBeVisible()
+  const exactRead = page.waitForResponse((reply) => reply.url().endsWith(`/conversation/task-feedback/${completed[0].ref}`))
+  await receipt.click()
+  const publication = (await (await exactRead).json()).data.feedback_ref
+  if (publication === null) await expect(page.getByText('这项测评暂未发布反馈')).toBeVisible()
+  else {
+    const feedback = await page.request.get(origin + `/api/v1/school/feedback/student/${publication}`)
+    expect(feedback.ok()).toBe(true)
+    const detail = (await feedback.json()).data
+    const items = (await response.json()).data
+    expect(detail.assessment_ref).toBe(items.find((item: { task_ref: string }) => item.task_ref === completed[0].ref)?.assessment_id)
+    await expect(page.getByRole('heading', { name: detail.title, exact: true })).toBeVisible()
+  }
   await expect(page.getByRole('button', { name: '我已阅读，开始或继续' })).toHaveCount(0)
   expect(writes).toEqual([])
 })

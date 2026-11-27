@@ -10,7 +10,7 @@ from typing import Literal
 
 import structlog
 from database_layer.provenance import is_public_demo_school_ref
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Path, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -496,6 +496,24 @@ async def preview_document(request: Request, kind: Literal["pdf", "docx"], actor
     return JSONResponse(
         {"data": {"text": body[:_DOCUMENT_PREVIEW_CHARACTERS], "characters": len(body)}},
         headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.get("/task-feedback/{task_ref}")
+async def task_feedback(
+    request: Request,
+    actor: CurrentActor,
+    task_ref: str = Path(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"),
+):
+    _history(request, actor)
+    if actor.role != STUDENT:
+        raise error(ErrorCode.FORBIDDEN, detail="student feedback access required")
+    service = request.app.state.container.school_feedback
+    if service is None:
+        raise error(ErrorCode.DEPENDENCY_UNAVAILABLE, detail="school feedback is unavailable")
+    reference = await service.latest_student_feedback_for_task(actor, task_ref)
+    return JSONResponse(
+        {"data": {"feedback_ref": reference}}, headers={"Cache-Control": "no-store"}
     )
 
 

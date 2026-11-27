@@ -132,6 +132,16 @@ export async function previewWorkspaceFormula(image: Blob, signal: AbortSignal):
   return data.text
 }
 
+export async function findWorkspaceTaskFeedback(taskRef: string): Promise<string | undefined> {
+  const response = await realApiProvider.requestWorkspaceConversation(`task-feedback/${encodeURIComponent(taskRef)}`)
+  const reference = (await response.json()).data?.feedback_ref
+  if (reference === null) return undefined
+  if (typeof reference !== 'string' || !/^FEED_[A-Za-z0-9][A-Za-z0-9_.-]{0,122}$/.test(reference)) {
+    throw new Error('暂时无法核对本次测评的反馈')
+  }
+  return reference
+}
+
 export async function updateWorkspaceCat(draftRef: string, action: 'save' | 'approve') {
   const response = await realApiProvider.requestWorkspaceConversation(
     action === 'save' ? 'save-cat-draft' : 'approve-cat-draft', { draft_ref: draftRef },

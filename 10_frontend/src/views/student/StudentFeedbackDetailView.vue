@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { RotateCcw } from '@lucide/vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
@@ -8,6 +8,7 @@ import StudentRecordDetailLayout from '@/components/student/StudentRecordDetailL
 import WorkspaceBreadcrumb from '@/components/student/WorkspaceBreadcrumb.vue'
 import { studentPageArt } from '@/data/student-feature-cards'
 import { schoolFeedback } from '@/services/school-feedback'
+import { readSchoolFeedbackContent } from '@/services/school-feedback-content'
 import { useSessionStore } from '@/stores/session'
 import { userFacingApiError } from '@/utils/user-facing-errors'
 import { useRoute } from 'vue-router'
@@ -18,6 +19,7 @@ const props = defineProps<{ embeddedFeedbackRef?: string }>()
 const emit = defineEmits<{ support: [] }>()
 const state = ref<'loading' | 'ready' | 'error'>('loading')
 const feedback = ref<{ title: string; body: string; published_at: string | null } | null>(null)
+const reviewedContent = computed(() => readSchoolFeedbackContent(feedback.value?.body ?? ''))
 const errorMessage = ref('')
 let requestGeneration = 0
 const isPreviewRoute = () => !props.embeddedFeedbackRef && import.meta.env.DEV && route.params.id === 'demo' && route.query.preview === '1'
@@ -78,10 +80,14 @@ onBeforeUnmount(() => { requestGeneration += 1 })
     <div v-else-if="feedback && embeddedFeedbackRef" class="feedback-detail__section">
       <h3>{{ feedback.title }}</h3>
       <small v-if="feedback.published_at">学校已审核发布 · {{ formatDate(feedback.published_at) }}</small>
-      <AppCard class="feedback-detail__body"><p>{{ feedback.body }}</p></AppCard>
+      <AppCard class="feedback-detail__body"><p>{{ reviewedContent.body }}</p></AppCard>
       <details>
         <summary>怎么读这份反馈</summary>
-        <p>先看老师写下的观察和建议。如果有明确的下一步，可以记下来。对意思或适用范围有疑问时，可以请学校协助说明</p>
+        <AppCard v-if="reviewedContent.nextSteps" class="feedback-detail__body">
+          <h4>老师建议的下一步</h4>
+          <p>{{ reviewedContent.nextSteps }}</p>
+        </AppCard>
+        <p v-else>这份反馈没有单独列出下一步。如果需要了解建议的含义或适用范围，可以请学校协助说明</p>
         <AppButton variant="secondary" @click="emit('support')">查看学校支持</AppButton>
       </details>
     </div>

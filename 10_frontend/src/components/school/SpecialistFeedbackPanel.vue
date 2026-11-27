@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { getActivePinia } from 'pinia'
 import { RotateCcw } from '@lucide/vue'
 import AppBadge from '@/components/app/AppBadge.vue'
@@ -13,6 +13,7 @@ import {
   type SchoolFeedback,
 } from '@/services/school-feedback'
 import { RealApiError } from '@/services/real-api'
+import { schoolFeedbackContent } from '@/services/school-feedback-content'
 
 const props = defineProps<{
   caseRef: string
@@ -28,6 +29,8 @@ const total = ref(0)
 const errorMessage = ref('')
 const title = ref('')
 const body = ref('')
+const nextSteps = ref('')
+const completeBody = computed(() => schoolFeedbackContent(body.value, nextSteps.value))
 const busy = ref(false)
 const confirmation = ref('')
 const conflict = ref(false)
@@ -57,6 +60,7 @@ function clearPrivateState() {
   total.value = 0
   title.value = ''
   body.value = ''
+  nextSteps.value = ''
   confirmation.value = ''
   failedRequest.value = null
 }
@@ -68,6 +72,7 @@ async function load() {
   total.value = 0
   title.value = ''
   body.value = ''
+  nextSteps.value = ''
   confirmation.value = ''
   failedRequest.value = null
   errorMessage.value = ''
@@ -110,6 +115,7 @@ async function execute(label: string, run: () => Promise<SchoolFeedback>) {
     if (label === '建立草稿') {
       title.value = ''
       body.value = ''
+      nextSteps.value = ''
     }
     await refreshAfterWrite()
   } catch (error) {
@@ -136,9 +142,10 @@ async function execute(label: string, run: () => Promise<SchoolFeedback>) {
 }
 
 function createDraft() {
-  if (props.caseStatus !== 'APPROVED' || !title.value.trim() || !body.value.trim() || busy.value || failedRequest.value) return
+  if (props.caseStatus !== 'APPROVED' || !title.value.trim() || !body.value.trim()
+    || completeBody.value.length > 2000 || busy.value || failedRequest.value) return
   const requestTitle = title.value
-  const requestBody = body.value
+  const requestBody = completeBody.value
   const expectedCaseVersion = props.caseVersion
   const caseRef = props.caseRef
   const key = newSchoolFeedbackIdempotencyKey()
@@ -256,7 +263,9 @@ onBeforeUnmount(() => {
         <input id="feedback-title" v-model="title" maxlength="120" required :disabled="busy || Boolean(failedRequest)" placeholder="输入简短标题">
         <label for="feedback-body">正文</label>
         <textarea id="feedback-body" v-model="body" maxlength="2000" rows="4" required :disabled="busy || Boolean(failedRequest)" placeholder="只写可供当前学生查看的合成教育反馈，不要粘贴复核备注。" />
-        <div class="feedback-draft__footer"><small>{{ title.length }}/120，{{ body.length }}/2000</small><AppButton type="submit" size="sm" :loading="busy" :disabled="!title.trim() || !body.trim() || Boolean(failedRequest)">建立草稿</AppButton></div>
+        <label for="feedback-next-steps">给学生的下一步（可选）</label>
+        <textarea id="feedback-next-steps" v-model="nextSteps" maxlength="1000" rows="2" :disabled="busy || Boolean(failedRequest)" />
+        <div class="feedback-draft__footer"><small>{{ title.length }}/120，正文与下一步共 {{ completeBody.length }}/2000</small><AppButton type="submit" size="sm" :loading="busy" :disabled="!title.trim() || !body.trim() || completeBody.length > 2000 || Boolean(failedRequest)">建立草稿</AppButton></div>
       </form>
     </template>
 
