@@ -7,15 +7,17 @@ import AppSelect from '@/components/app/AppSelect.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import WorkspaceBreadcrumb from '@/components/student/WorkspaceBreadcrumb.vue'
 import { roleHomes } from '@/components/shell/navigation'
+import { studentEducationArticles } from '@/services/student-education'
 import { useSessionStore } from '@/stores/session'
 import {
   schoolSupport, supportActionStates, supportCaseStates, supportCategories, supportError,
   supportPageSize, supportRequestKey, type SupportAction, type SupportCase, type TeacherReferral,
 } from '@/services/school-support'
 
-const { audience, initialReferral } = defineProps<{
+const { audience, initialReferral, preparePlan } = defineProps<{
   audience: 'student' | 'teacher' | 'specialist'
   initialReferral?: TeacherReferral
+  preparePlan?: boolean
 }>()
 const session = useSessionStore()
 const router = useRouter()
@@ -47,6 +49,12 @@ const category = ref<keyof typeof supportCategories>(
 )
 const content = ref(audience === 'teacher' ? initialReferral?.observation ?? '' : '')
 const plan = ref('')
+const planTopic = ref('')
+const planArticle = computed(() => studentEducationArticles.find((article) => article.id === planTopic.value))
+const planResources = [
+  { value: '', label: '暂不选资料' },
+  ...studentEducationArticles.map((article) => ({ value: article.id, label: article.title })),
+]
 const recipient = ref('')
 const instructions = ref('')
 const due = ref('')
@@ -139,10 +147,27 @@ async function openCase(ref: string) {
 
 function selectCase(ref: string) {
   plan.value = ''
+  planTopic.value = ''
   recipient.value = ''
   instructions.value = ''
   due.value = ''
   void openCase(ref)
+}
+
+function draftSupportPlan() {
+  const item = current.value
+  if (!item || audience !== 'specialist' || item.status !== 'TRIAGED' || plan.value.trim() || locked.value) return
+  const source = item.source === 'STUDENT_REQUEST' ? '学生主动求助' : '教师转介'
+  const facts = `已核对事实\n${source} · ${supportCategories[item.category]} · ${supportCaseStates[item.status]}。记录更新于 ${dateFormatter.format(new Date(item.updatedAt))}`
+  const unknowns = [
+    '待向学生核实',
+    '先确认请求描述是否仍适用、学生希望获得哪类支持，以及希望由谁联系',
+    '当前请求未附授权测评结论。若需结合测评，请先核对获授权的正式复核记录',
+  ].join('\n')
+  const decisions = '待心理教师确认\n记录学生同意的支持事项、负责人、下一次联系时间和复核方式'
+  const article = planArticle.value
+  const references = article ? `可供沟通参考的通用科普\n${article.title}\n${article.source}\n${article.url}` : ''
+  plan.value = [facts, unknowns, decisions, references].filter(Boolean).join('\n\n')
 }
 
 type Operation = (key: string) => Promise<unknown>
@@ -238,6 +263,7 @@ onScopeDispose(() => { live = false })
     <AppCard>
       <section class="school-support__panel">
         <h2>支持请求</h2>
+        <p v-if="audience === 'specialist' && preparePlan">选择一条授权请求。受理后可根据该请求准备可编辑的草案</p>
         <p v-if="loading" role="status">正在读取支持请求。</p>
         <ul v-else-if="cases?.items.length">
           <li v-for="item in cases.items" :key="item.caseRef">
@@ -265,6 +291,15 @@ onScopeDispose(() => { live = false })
           <p v-if="current.plan" class="school-support__body">{{ current.plan }}</p>
           <AppButton v-if="current.status === 'SUBMITTED'" :disabled="locked" @click="transition('TRIAGED')">受理请求</AppButton>
           <template v-if="current.status === 'TRIAGED'">
+            <div v-if="preparePlan" class="school-support__panel">
+              <h3>准备支持计划草案</h3>
+              <div class="school-support__field">
+                <label for="support-plan-topic">供沟通参考的科普资料</label>
+                <AppSelect id="support-plan-topic" v-model="planTopic" :options="planResources" placeholder="选择资料" :disabled="locked || Boolean(plan.trim())" />
+              </div>
+              <a v-if="planArticle" :href="planArticle.url" target="_blank" rel="noopener noreferrer">{{ planArticle.source }}</a>
+              <AppButton variant="secondary" :disabled="locked || Boolean(plan.trim())" @click="draftSupportPlan">生成可编辑草案</AppButton>
+            </div>
             <label>专业支持计划<textarea v-model="plan" maxlength="4000" :disabled="locked"></textarea></label>
             <AppButton :disabled="locked || !plan.trim()" @click="transition('PLANNED')">保存计划</AppButton>
           </template>

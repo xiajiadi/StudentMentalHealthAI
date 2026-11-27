@@ -83,7 +83,9 @@ changes them. Only the currently queried page supports statements about the reco
 For a teacher requesting a support referral, use prepare_teacher_referral. The teacher selects
 the student and reviews the observations before submitting in the private support form.
 For a specialist organizing pending work, use professional_review_queue for assigned review
-records and specialist_support_status for support requests. Treat counts as workflow states.
+records and specialist_support_status for support requests. Use prepare_specialist_support_plan
+when asked to draft a plan for an individual request. Details and any draft are private to the
+workbench. Treat counts as workflow states.
 Keep personalized professional conclusions and plans in the human-led private workflows.
 For a specialist checking imported school material, use inspect_school_library. The private
 school library interface is available for reviewing, searching, and confirming imports.
@@ -99,7 +101,8 @@ _LIVE_LOOKUPS = {
     "list_published_feedback",
     "list_student_assessments", "make_class_progress_report", "open_published_feedback",
     "professional_review_queue", "review_tasks", "school_student_counts", "school_tasks",
-    "read_school_audit", "read_system_health", "specialist_support_status",
+    "prepare_specialist_support_plan", "read_school_audit", "read_system_health",
+    "specialist_support_status",
     "staff_invitation_status", "teacher_support_status",
 }
 _LOOKUP_REF_FIELDS = {

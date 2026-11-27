@@ -205,6 +205,14 @@ TOOLS = {
         "case-specific notes and human plans. Workflow statuses are not risk findings.",
         (SPECIALIST,),
     ),
+    "prepare_specialist_support_plan": Tool(
+        "准备专业支持计划草案",
+        "Check current authorized school support requests and prepare a private draft workbench. "
+        "Use for requests to draft or arrange an individual support plan. The specialist selects "
+        "the case, checks facts and missing evidence, edits and confirms any plan. Never infer a "
+        "mental health finding, treatment, or risk from case status or referral category.",
+        (SPECIALIST,),
+    ),
     "inspect_school_library": Tool(
         "核对本校资料库",
         "Count active reviewed documents and indexed text fragments in this school's private "
@@ -471,7 +479,9 @@ async def execute_tool(
             },
             summary,
         )
-    if name in {"teacher_support_status", "specialist_support_status"}:
+    if name in {
+        "teacher_support_status", "specialist_support_status", "prepare_specialist_support_plan",
+    }:
         if container.school_support is None:
             raise error(ErrorCode.DEPENDENCY_UNAVAILABLE, detail="school support is unavailable")
         page = SupportCasePageDto.model_validate(
@@ -482,6 +492,8 @@ async def execute_tool(
             "shown": len(page.items),
             "counts": dict(Counter(row.status for row in page.items)),
         }
+        if name == "prepare_specialist_support_plan":
+            return {"kind": "specialist_support_plan", **summary}, summary
         return {"kind": name, **summary}, summary
     if name == "inspect_cat_attachment":
         return await cat_workflow.inspect(request, actor, cat_attachment_ref)

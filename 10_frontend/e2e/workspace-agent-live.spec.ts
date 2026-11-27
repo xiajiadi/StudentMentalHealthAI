@@ -1007,6 +1007,79 @@ test('a specialist sees real pending review counts and opens the assigned task f
   })
 })
 
+test('a specialist reviews facts and saves an authorized synthetic support plan', async ({ page }) => {
+  test.skip(process.env.PSYNOVA_AGENT_QA_WRITE !== '1', 'Requires a dedicated synthetic school')
+  test.setTimeout(200_000)
+  await signIn(page)
+  await chooseRole(page, 'TEACHER', '/teacher/workspace')
+  const support = '/api/v1/school/support'
+  const directory = await page.request.get(origin + support + '/students')
+  expect(directory.ok()).toBe(true)
+  const student = (await directory.json()).data.items[0]
+  expect(student?.student_ref).toBeTruthy()
+  const csrf = await page.request.get(origin + '/api/v1/auth/csrf')
+  const observation = `合成流程验证 ${Date.now()}，课堂学习安排需要进一步向学生核对`
+  const created = await page.request.post(origin + support + '/cases', {
+    headers: { Origin: origin!, 'X-CSRF-Token': (await csrf.json()).data.csrf_token, 'Idempotency-Key': `qa-support-plan-${Date.now()}` },
+    data: { category_code: 'LEARNING_SUPPORT', content: observation, student_ref: student.student_ref, class_ref: student.class_ref },
+  })
+  expect(created.status()).toBe(201)
+  const item = (await created.json()).data
+  const casePath = support + '/cases/' + item.case_ref
+
+  await chooseRole(page, 'PSYCHOLOGICAL_SPECIALIST', '/specialist/workspace')
+  const events = await ask(page, '请为授权的学校支持请求准备一份专业支持计划草案，我要查看依据后再决定是否保存', '发送任务')
+  const tool = events.find((event) => event.view?.kind === 'specialist_support_plan')?.view
+  expect(tool?.counts.SUBMITTED).toBeGreaterThan(0)
+  expect(JSON.stringify(events)).not.toContain(item.case_ref)
+  expect(JSON.stringify(events)).not.toContain(observation)
+
+  await page.reload()
+  await page.getByRole('button', { name: '打开支持计划草案' }).last().click()
+  await page.getByRole('button', { name: new RegExp(item.case_ref.slice(-8)) }).click()
+  await expect(page.getByText(observation, { exact: true })).toBeVisible()
+  const triaged = page.waitForResponse((response) => response.url().endsWith(casePath + '/transitions'))
+  await page.getByRole('button', { name: '受理请求' }).click()
+  expect((await (await triaged).json()).data.status).toBe('TRIAGED')
+  await page.locator('#support-plan-topic').click()
+  await page.getByRole('option', { name: '忙不过来时，先找一个能做的小步骤' }).click()
+  await expect(page.getByRole('link', { name: '世界卫生组织｜压力' })).toHaveAttribute('href', /who\.int/)
+
+  const changes: string[] = []
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && request.url().endsWith(casePath + '/transitions')) changes.push(request.url())
+  })
+  await page.getByRole('button', { name: '生成可编辑草案' }).click()
+  const plan = page.getByRole('textbox', { name: '专业支持计划' })
+  await expect(plan).toHaveValue(/教师转介 · 学习适应 · 已受理/)
+  const draft = await plan.inputValue()
+  expect(draft).toContain('当前请求未附授权测评结论')
+  expect(draft).toContain('待心理教师确认')
+  expect(draft).toContain('https://www.who.int/')
+  expect(draft).not.toContain(observation)
+  expect(changes).toEqual([])
+
+  const final = draft + '\n\n合成验证补充｜由校内演示负责人先确认学生是否愿意参加后续沟通'
+  await plan.fill(final)
+  const pending = page.waitForResponse((response) => response.url().endsWith(casePath + '/transitions'))
+  await page.getByRole('button', { name: '保存计划' }).click()
+  const saved = await pending
+  expect(saved.ok()).toBe(true)
+  expect((await saved.json()).data).toMatchObject({ status: 'PLANNED', plan: final })
+  expect(changes).toHaveLength(1)
+  const check = await page.request.get(origin + casePath)
+  expect((await check.json()).data).toMatchObject({ status: 'PLANNED', plan: final })
+  const history = await page.request.get(origin + '/api/v1/workspace-agent/conversation')
+  const serialized = await history.text()
+  expect(serialized).not.toContain(observation)
+  expect(serialized).not.toContain('合成验证补充')
+
+  await chooseRole(page, 'TEACHER', '/teacher/workspace')
+  const teacherCopy = await page.request.get(origin + casePath)
+  expect(teacherCopy.ok()).toBe(true)
+  expect((await teacherCopy.json()).data.plan).toBeNull()
+})
+
 test('a specialist approves a synthetic CAT plan and an administrator publishes it', async ({ page }) => {
   const className = process.env.PSYNOVA_AGENT_QA_CLASS
   test.skip(process.env.PSYNOVA_AGENT_QA_WRITE !== '1' || !className, 'Requires a dedicated synthetic class')

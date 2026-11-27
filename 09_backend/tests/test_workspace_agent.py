@@ -834,6 +834,47 @@ async def test_task_feedback_returns_only_the_published_reference_for_the_studen
     model.assert_not_awaited()
 
 
+async def test_support_plan_tool_only_exposes_workflow_totals(client, app, model_lane, monkeypatch):
+    model, _ = model_lane
+    support = SimpleNamespace(list_cases=AsyncMock(return_value={
+        "items": [{
+            "case_ref": "SSC_" + "a" * 32,
+            "source": "TEACHER_REFERRAL",
+            "category_code": "PEER_RELATION",
+            "status": "TRIAGED",
+            "state_version": 2,
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
+        }],
+        "total": 1,
+    }))
+    monkeypatch.setattr(app.state.container, "school_support", support)
+    headers = await login(client)
+    await select(client, headers, "PSYCHOLOGICAL_SPECIALIST")
+
+    async def step(messages, definitions, _context):
+        available = {item["function"]["name"] for item in definitions}
+        assert "prepare_specialist_support_plan" in available
+        if messages[-1]["role"] == "tool":
+            assert json.loads(messages[-1]["content"]) == {
+                "shown": 1, "total": 1, "counts": {"TRIAGED": 1},
+            }
+            return assistant_step(text="可进一步核对这项支持请求")
+        return assistant_step(tool="prepare_specialist_support_plan")
+
+    model.side_effect = step
+    response = await client.post(
+        f"{BASE}/conversation/turn", headers=headers,
+        json={"text": "为授权支持请求准备一份可确认的计划草案", "synthetic_only": True},
+    )
+    assert response.status_code == 200
+    assert "specialist_support_plan" in response.text
+    assert "SSC_" not in response.text
+    assert "PEER_RELATION" not in response.text
+    support.list_cases.assert_awaited_once()
+    assert support.list_cases.await_args.args[0].school_ref == FIRST
+
+
 @pytest.mark.parametrize("formula", ("", "x^2 + \ufffd", r"\frac{1}{2", "a\nb", r"x^2 + \ · 3"))
 def test_formula_worker_rejects_incomplete_or_unreadable_output(formula):
     with pytest.raises(ValueError):
