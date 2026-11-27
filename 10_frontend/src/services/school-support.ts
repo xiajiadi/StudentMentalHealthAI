@@ -160,6 +160,17 @@ export const schoolSupport = {
   async detail(caseRef: string) {
     return detail(await read(`/cases/${reference(caseRef, casePattern)}`), caseRef)
   },
+  async planEvidence(caseRef: string) {
+    const data = record(await read(`/cases/${reference(caseRef, casePattern)}/plan-evidence`), ['feedback'])
+    if (data.feedback === null) return null
+    const feedback = record(data.feedback, ['title', 'body', 'published_at', 'content_revision'])
+    return {
+      title: text(feedback.title, 120),
+      body: text(feedback.body, 2000),
+      publishedAt: date(feedback.published_at),
+      revision: version(feedback.content_revision),
+    }
+  },
   async assignees(caseRef: string) {
     return page(await read(`/cases/${reference(caseRef, casePattern)}/assignees`), (item) => {
       const row = record(item, ['teacher_user_id', 'display_name'])

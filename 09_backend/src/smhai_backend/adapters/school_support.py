@@ -6,9 +6,7 @@ import re
 from datetime import datetime
 from typing import Any
 
-from smhai_backend.adapters.school_professional_reviews import (
-    SchoolProfessionalReviewPersistenceAdapter,
-)
+from smhai_backend.adapters.school_feedback import SchoolFeedbackPersistenceAdapter
 from smhai_backend.core.errors import BackendError, ErrorCode, error
 from smhai_backend.domains.models import BackendRole
 from smhai_backend.domains.school_support.service import (
@@ -74,7 +72,7 @@ class SchoolSupportPersistenceAdapter:
     """Compose the shared tenant/idempotency port with support workflow reads."""
 
     def __init__(self, persistence: Any) -> None:
-        self._reviews = SchoolProfessionalReviewPersistenceAdapter(persistence)
+        self._reviews = SchoolFeedbackPersistenceAdapter(persistence)
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._reviews, name)
@@ -1095,6 +1093,20 @@ class SchoolSupportPersistenceAdapter:
             return await self._case_detail(
                 uow, actor, case, role_id=role_id, role=role, now=now
             )
+
+    async def support_plan_evidence(self, actor: Any, case_ref: str) -> dict[str, Any]:
+        now = self._utc_now()
+        async with self._uow() as uow:
+            account_id, role_id = await self._require_actor(
+                uow, actor, "psychological_specialist", now, lock=True
+            )
+            case = await self._case(uow, actor, case_ref, lock=True)
+            if case.owner_membership_role_id != role_id or case.status != "TRIAGED":
+                raise _not_found()
+            feedback = await self._reviews.latest_assigned_published_feedback(
+                uow, actor, case, account_id, role_id, now
+            )
+            return {"feedback": feedback}
 
     async def support_transition_case(
         self,

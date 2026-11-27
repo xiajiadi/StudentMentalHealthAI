@@ -21,6 +21,7 @@ from .schemas import (
     SupportCasePageDto,
     SupportCaseReceiptDto,
     SupportCaseSummaryDto,
+    SupportPlanEvidenceDto,
     SupportStudentDto,
     SupportStudentListDto,
     SupportTransitionRequest,
@@ -246,6 +247,11 @@ class SchoolSupportService:
         )
         row = await self._port().support_get_case(actor, case_ref)
         return self._project(SupportCaseDetailDto, row)
+
+    async def plan_evidence(self, actor: Actor, case_ref: str):
+        self._require_school_actor(actor, BackendRole.PSYCHOLOGICAL_SPECIALIST)
+        result = await self._port().support_plan_evidence(actor, case_ref)
+        return self._project(SupportPlanEvidenceDto, result)
 
     async def transition_case(
         self,

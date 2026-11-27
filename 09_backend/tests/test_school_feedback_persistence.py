@@ -189,3 +189,64 @@ async def test_feedback_event_uses_real_audit_repository_metadata_allowlist():
     assert audit.safe_metadata == {"source": "school_feedback", "state": "PUBLISHED", "count": 1}
     assert audit.action == "school_feedback.published"
     assert session.flush.await_count == 2
+
+
+@pytest.mark.parametrize("different_subject", [False, True])
+@pytest.mark.asyncio
+async def test_support_evidence_binds_current_subject_and_only_audits_metadata(
+    different_subject, monkeypatch
+):
+    from database_layer import enums, models
+    from database_layer.repositories import AuditRepository
+    from sqlalchemy import select
+    from sqlalchemy.dialects import mysql
+
+    adapter, row, case, assessment = fixture_adapter()
+    adapter._directory._persistence._select = select
+    adapter._db_models = models
+    adapter._db_enums = enums
+    case.subject_id = row.subject_id + int(different_subject)
+    case.class_id = row.class_id
+    support_case = SimpleNamespace(
+        subject_id=row.subject_id, class_id=row.class_id, class_student_id=20
+    )
+    actor = SimpleNamespace(
+        school_id=row.school_id, school_ref="PUBLICDEMO_QA", user_id="USER_fixture"
+    )
+    adapter._case_for_feedback = AsyncMock(return_value=case)
+    adapter._scope = AsyncMock(return_value=(case, assessment))
+    adapter._feedback = AsyncMock(return_value=row)
+    session = SimpleNamespace(
+        scalar=AsyncMock(return_value=row.feedback_ref), add=Mock(), flush=AsyncMock()
+    )
+    uow = SimpleNamespace(session=session, audit=AuditRepository(session))
+    monkeypatch.setattr(
+        "smhai_backend.adapters.school_feedback.get_request_context",
+        lambda: SimpleNamespace(trace_id="TRACE_support_evidence_fixture"),
+    )
+    if different_subject:
+        with pytest.raises(BackendError) as raised:
+            await adapter.latest_assigned_published_feedback(
+                uow, actor, support_case, 8, 9, row.created_at
+            )
+        assert raised.value.code is ErrorCode.RESOURCE_NOT_FOUND
+        adapter.protection.decrypt_json.assert_not_called()
+        session.add.assert_not_called()
+    else:
+        result = await adapter.latest_assigned_published_feedback(
+            uow, actor, support_case, 8, 9, row.created_at
+        )
+        assert result == {
+            "title": "合成反馈",
+            "body": "合成工程样例，不含测量结论。",
+            "published_at": row.published_at,
+            "content_revision": 1,
+        }
+        audit = session.add.call_args.args[0]
+        assert audit.action == "school_feedback.support_plan_read"
+        assert audit.safe_metadata == {
+            "source": "school_feedback", "state": "PUBLISHED", "count": 1
+        }
+    assert adapter._scope.await_args.kwargs["class_student_id"] == support_case.class_student_id
+    query = str(session.scalar.await_args.args[0].compile(dialect=mysql.dialect()))
+    assert "JOIN (SELECT DISTINCT" in query

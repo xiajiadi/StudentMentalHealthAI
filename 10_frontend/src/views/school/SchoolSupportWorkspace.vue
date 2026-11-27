@@ -8,6 +8,7 @@ import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import WorkspaceBreadcrumb from '@/components/student/WorkspaceBreadcrumb.vue'
 import { roleHomes } from '@/components/shell/navigation'
 import { studentEducationArticles } from '@/services/student-education'
+import { readSchoolFeedbackContent } from '@/services/school-feedback-content'
 import { useSessionStore } from '@/stores/session'
 import {
   schoolSupport, supportActionStates, supportCaseStates, supportCategories, supportError,
@@ -49,6 +50,11 @@ const category = ref<keyof typeof supportCategories>(
 )
 const content = ref(audience === 'teacher' ? initialReferral?.observation ?? '' : '')
 const plan = ref('')
+const planEvidence = ref<Awaited<ReturnType<typeof schoolSupport.planEvidence>>>()
+const evidenceLoading = ref(false)
+const evidenceError = ref('')
+const includeEvidence = ref(false)
+const feedbackText = computed(() => planEvidence.value && readSchoolFeedbackContent(planEvidence.value.body))
 const planTopic = ref('')
 const planArticle = computed(() => studentEducationArticles.find((article) => article.id === planTopic.value))
 const planResources = [
@@ -119,6 +125,10 @@ async function openCase(ref: string) {
   assignees.value = []
   detailLoading.value = Boolean(ref)
   closeConfirmed.value = false
+  planEvidence.value = undefined
+  evidenceLoading.value = false
+  evidenceError.value = ''
+  includeEvidence.value = false
   if (!ref) return
   try {
     const item = await schoolSupport.detail(ref)
@@ -154,20 +164,48 @@ function selectCase(ref: string) {
   void openCase(ref)
 }
 
+async function loadPlanEvidence() {
+  const item = current.value
+  if (!item || item.status !== 'TRIAGED' || locked.value || evidenceLoading.value) return
+  const request = detailRequest
+  evidenceLoading.value = true
+  evidenceError.value = ''
+  includeEvidence.value = false
+  planEvidence.value = undefined
+  try {
+    const result = await schoolSupport.planEvidence(item.caseRef)
+    if (live && request === detailRequest) planEvidence.value = result
+  } catch (cause) {
+    if (live && request === detailRequest) {
+      checkSession(cause)
+      evidenceError.value = supportError(cause)
+    }
+  } finally {
+    if (live && request === detailRequest) evidenceLoading.value = false
+  }
+}
+
 function draftSupportPlan() {
   const item = current.value
-  if (!item || audience !== 'specialist' || item.status !== 'TRIAGED' || plan.value.trim() || locked.value) return
+  if (!item || audience !== 'specialist' || item.status !== 'TRIAGED' || plan.value.trim() || locked.value || evidenceLoading.value) return
   const source = item.source === 'STUDENT_REQUEST' ? '学生主动求助' : '教师转介'
   const facts = `已核对事实\n${source} · ${supportCategories[item.category]} · ${supportCaseStates[item.status]}。记录更新于 ${dateFormatter.format(new Date(item.updatedAt))}`
+  const reviewed = includeEvidence.value ? planEvidence.value : null
+  const evidence = reviewed
+    ? `已核对的测评反馈\n《${reviewed.title}》第 ${reviewed.revision} 版，发布于 ${dateFormatter.format(new Date(reviewed.publishedAt))}\n请结合反馈和学生当前情况，由心理教师确认哪些建议适用于本次请求`
+    : ''
+  const evidenceGap = reviewed
+    ? '本次草案尚未核对获批风险规则'
+    : '当前草案未引用授权的测评反馈。若需结合测评，请先核对获授权的正式复核记录'
   const unknowns = [
     '待向学生核实',
     '先确认请求描述是否仍适用、学生希望获得哪类支持，以及希望由谁联系',
-    '当前请求未附授权测评结论。若需结合测评，请先核对获授权的正式复核记录',
+    evidenceGap,
   ].join('\n')
   const decisions = '待心理教师确认\n记录学生同意的支持事项、负责人、下一次联系时间和复核方式'
   const article = planArticle.value
   const references = article ? `可供沟通参考的通用科普\n${article.title}\n${article.source}\n${article.url}` : ''
-  plan.value = [facts, unknowns, decisions, references].filter(Boolean).join('\n\n')
+  plan.value = [facts, evidence, unknowns, decisions, references].filter(Boolean).join('\n\n')
 }
 
 type Operation = (key: string) => Promise<unknown>
@@ -294,11 +332,27 @@ onScopeDispose(() => { live = false })
             <div v-if="preparePlan" class="school-support__panel">
               <h3>准备支持计划草案</h3>
               <div class="school-support__field">
+                <AppButton variant="secondary" :disabled="locked || evidenceLoading || Boolean(plan.trim())" @click="loadPlanEvidence">核对已发布测评反馈</AppButton>
+                <p v-if="evidenceLoading" role="status">正在核对授权的测评反馈</p>
+                <AppStatusCallout v-else-if="evidenceError" tone="attention" title="未能读取测评反馈" :body="evidenceError" />
+                <p v-else-if="planEvidence === null" role="status">在这条请求和你当前的测评指派范围内，没有可引用的已发布反馈</p>
+                <section v-else-if="planEvidence && feedbackText" class="school-support__panel" aria-label="已发布测评反馈">
+                  <h4>{{ planEvidence.title }}</h4>
+                  <p>第 {{ planEvidence.revision }} 版 · {{ dateFormatter.format(new Date(planEvidence.publishedAt)) }}</p>
+                  <p class="school-support__body">{{ feedbackText.body }}</p>
+                  <template v-if="feedbackText.nextSteps">
+                    <h4>老师建议的下一步</h4>
+                    <p class="school-support__body">{{ feedbackText.nextSteps }}</p>
+                  </template>
+                  <label class="school-support__actions"><input v-model="includeEvidence" type="checkbox" :disabled="locked || Boolean(plan.trim())"> 将这份反馈列为计划依据</label>
+                </section>
+              </div>
+              <div class="school-support__field">
                 <label for="support-plan-topic">供沟通参考的科普资料</label>
                 <AppSelect id="support-plan-topic" v-model="planTopic" :options="planResources" placeholder="选择资料" :disabled="locked || Boolean(plan.trim())" />
               </div>
               <a v-if="planArticle" :href="planArticle.url" target="_blank" rel="noopener noreferrer">{{ planArticle.source }}</a>
-              <AppButton variant="secondary" :disabled="locked || Boolean(plan.trim())" @click="draftSupportPlan">生成可编辑草案</AppButton>
+              <AppButton variant="secondary" :disabled="locked || evidenceLoading || Boolean(plan.trim())" @click="draftSupportPlan">生成可编辑草案</AppButton>
             </div>
             <label>专业支持计划<textarea v-model="plan" maxlength="4000" :disabled="locked"></textarea></label>
             <AppButton :disabled="locked || !plan.trim()" @click="transition('PLANNED')">保存计划</AppButton>

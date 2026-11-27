@@ -1490,7 +1490,7 @@ export class RealApiProvider implements FrontendApi {
     const actions = `${base}/actions/SSA_(?:[a-f0-9]{32}|DEMO_[0-9]{2}_[0-9]{2})`
     const allowed = input.method === 'GET'
       ? [`${base}/students`, `${base}/cases`, `${base}/actions`].includes(input.path)
-        || new RegExp(`^${cases}(?:/assignees)?$`).test(input.path)
+        || new RegExp(`^${cases}(?:/(?:assignees|plan-evidence))?$`).test(input.path)
       : input.method === 'POST'
         && (input.path === `${base}/cases`
           || new RegExp(`^(?:${cases}/(?:transitions|actions)|${actions}/feedback)$`).test(input.path))

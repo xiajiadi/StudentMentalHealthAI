@@ -26,6 +26,7 @@ from .schemas import (
     SupportCaseDetailDto,
     SupportCasePageDto,
     SupportCaseReceiptDto,
+    SupportPlanEvidenceDto,
     SupportStudentListDto,
     SupportTransitionRequest,
 )
@@ -166,6 +167,18 @@ async def create_case(
 )
 async def get_case(request: Request, case_ref: str, actor: CurrentActor):
     return _response(request, await _service(request).get_case(actor, case_ref))
+
+
+@router.get(
+    "/cases/{case_ref}/plan-evidence",
+    response_model=ApiEnvelope[SupportPlanEvidenceDto],
+    responses=_ERRORS,
+    include_in_schema=False,
+)
+async def get_plan_evidence(request: Request, case_ref: str, actor: CurrentActor):
+    response = _response(request, await _service(request).plan_evidence(actor, case_ref))
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
 
 
 @router.get(

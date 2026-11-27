@@ -54,7 +54,9 @@ class SchoolFeedbackPersistenceAdapter(SchoolProfessionalReviewPersistenceAdapte
             raise _missing()
         return row
 
-    async def _scope(self, uow, actor, case, now, *, student_account_id=None):
+    async def _scope(
+        self, uow, actor, case, now, *, student_account_id=None, class_student_id=None
+    ):
         """Lock roster -> enrollment -> class -> task -> subject -> SELF -> case.
 
         Completion feedback remains readable after a task's due date or closure.
@@ -70,7 +72,9 @@ class SchoolFeedbackPersistenceAdapter(SchoolProfessionalReviewPersistenceAdapte
                 m.TaskEnrollment.class_id == case.class_id,
             )
         )
-        if enrollment is None:
+        if enrollment is None or (
+            class_student_id is not None and enrollment.class_student_id != class_student_id
+        ):
             raise _missing()
         roster = await uow.session.scalar(
             self._select(m.SchoolClassStudent)
@@ -539,8 +543,8 @@ class SchoolFeedbackPersistenceAdapter(SchoolProfessionalReviewPersistenceAdapte
                 "total": total,
             }
 
-    def _student_candidates(self, actor, account_id, now):
-        """Return only refs whose scope and SELF grant are currently visible."""
+    def _published_candidates(self, actor, now):
+        """Find published records within an active assessment and roster scope."""
         m = self._db_models
         return (
             self._select(m.SchoolFeedbackRecord.feedback_ref, m.SchoolFeedbackRecord.published_at)
@@ -557,7 +561,6 @@ class SchoolFeedbackPersistenceAdapter(SchoolProfessionalReviewPersistenceAdapte
             .join(m.SchoolClass, m.SchoolClass.id == m.SchoolFeedbackRecord.class_id)
             .join(m.MeasurementTask, m.MeasurementTask.id == m.SchoolFeedbackRecord.task_id)
             .join(m.Subject, m.Subject.id == m.SchoolFeedbackRecord.subject_id)
-            .join(m.SubjectAccessGrant, m.SubjectAccessGrant.subject_id == m.Subject.id)
             .join(
                 m.AssessmentSession,
                 m.AssessmentSession.id == m.SchoolFeedbackRecord.assessment_session_id,
@@ -578,20 +581,29 @@ class SchoolFeedbackPersistenceAdapter(SchoolProfessionalReviewPersistenceAdapte
                 m.MeasurementTask.status.in_(("PUBLISHED", "CLOSED")),
                 m.Subject.status == self._db_enums.SubjectStatus.ACTIVE.value,
                 m.Subject.data_origin == self._db_enums.DataOrigin.SYNTHETIC.value,
-                m.SubjectAccessGrant.school_id == actor.school_id,
-                m.SubjectAccessGrant.principal_account_id == account_id,
-                m.SubjectAccessGrant.relationship_type == "SELF",
-                m.SubjectAccessGrant.status == "ACTIVE",
-                m.SubjectAccessGrant.revoked_at.is_(None),
-                m.SubjectAccessGrant.valid_from <= now,
-                (m.SubjectAccessGrant.valid_until.is_(None))
-                | (m.SubjectAccessGrant.valid_until >= now),
                 m.AssessmentSession.status == self._db_enums.AssessmentStatus.COMPLETED.value,
+            )
+        )
+
+    def _student_candidates(self, actor, account_id, now):
+        """Return only refs whose scope and SELF grant are currently visible."""
+        grant = self._db_models.SubjectAccessGrant
+        return (
+            self._published_candidates(actor, now)
+            .join(grant, grant.subject_id == self._db_models.Subject.id)
+            .where(
+                grant.school_id == actor.school_id,
+                grant.principal_account_id == account_id,
+                grant.relationship_type == "SELF",
+                grant.status == "ACTIVE",
+                grant.revoked_at.is_(None),
+                grant.valid_from <= now,
+                grant.valid_until.is_(None) | (grant.valid_until >= now),
             )
             .distinct()
         )
 
-    async def _student_read(self, uow, actor, account_id, feedback_ref, now):
+    async def _case_for_feedback(self, uow, actor, feedback_ref):
         m = self._db_models
         _public_id(feedback_ref, "FEED")
         candidate = await uow.session.scalar(
@@ -608,11 +620,68 @@ class SchoolFeedbackPersistenceAdapter(SchoolProfessionalReviewPersistenceAdapte
         )
         if candidate is None:
             raise _missing()
+        return candidate
+
+    async def _student_read(self, uow, actor, account_id, feedback_ref, now):
+        candidate = await self._case_for_feedback(uow, actor, feedback_ref)
         case, assessment = await self._scope(
             uow, actor, candidate, now, student_account_id=account_id
         )
         row = await self._feedback(uow, actor, feedback_ref, case=case)
         return self._projection(row, case, assessment, student=True)
+
+    async def latest_assigned_published_feedback(
+        self, uow, actor, support_case, account_id, role_id, now
+    ):
+        """Read one published revision for the same enrollment scope after support authorization."""
+        m = self._db_models
+        feedback = m.SchoolFeedbackRecord
+        review = m.SchoolProfessionalReviewCase
+        assigned = (
+            self._assigned_task_query(actor, role_id, now)
+            .add_columns(m.MeasurementTask.id.label("task_id"))
+            .subquery()
+        )
+        ref = await uow.session.scalar(
+            self._published_candidates(actor, now)
+            .join_from(m.MeasurementTask, assigned, assigned.c.task_id == m.MeasurementTask.id)
+            .where(
+                feedback.subject_id == support_case.subject_id,
+                feedback.class_id == support_case.class_id,
+                m.TaskEnrollment.class_student_id == support_case.class_student_id,
+                feedback.synthetic_only.is_(True),
+                feedback.level == "L3",
+                review.status == "APPROVED",
+                feedback.case_version == review.version,
+            )
+            .order_by(feedback.published_at.desc(), feedback.id.desc())
+            .limit(1)
+        )
+        if ref is None:
+            return None
+        candidate = await self._case_for_feedback(uow, actor, ref)
+        case, assessment = await self._scope(
+            uow, actor, candidate, now, class_student_id=support_case.class_student_id
+        )
+        row = await self._feedback(uow, actor, ref, case=case)
+        if (
+            case.subject_id != support_case.subject_id
+            or case.class_id != support_case.class_id
+            or case.status != "APPROVED"
+            or row.case_version != case.version
+        ):
+            raise _missing()
+        result = self._projection(row, case, assessment, student=True)
+        await uow.audit.append(
+            action="school_feedback.support_plan_read",
+            resource_type=_RESOURCE,
+            resource_public_id=ref,
+            result=self._db_enums.AuditResult.SUCCESS,
+            trace_id=get_request_context().trace_id,
+            actor_account_id=account_id,
+            safe_metadata={"source": "school_feedback", "state": "PUBLISHED", "count": 1},
+        )
+        return {key: result[key] for key in ("title", "body", "published_at", "content_revision")}
 
     async def school_feedback_list_student(self, actor, *, offset=0, limit=50, task_ref=None):
         from sqlalchemy import func

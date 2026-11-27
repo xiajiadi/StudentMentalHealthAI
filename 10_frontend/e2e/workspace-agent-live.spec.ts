@@ -1027,6 +1027,22 @@ test('a specialist reviews facts and saves an authorized synthetic support plan'
   test.skip(process.env.PSYNOVA_AGENT_QA_WRITE !== '1', 'Requires a dedicated synthetic school')
   test.setTimeout(200_000)
   await signIn(page)
+  let expectedFeedback
+  let feedbackScope
+  if (process.env.PSYNOVA_AGENT_QA_SUPPORT_EVIDENCE === '1') {
+    await chooseRole(page, 'STUDENT', '/student/workspace')
+    const [list, history, session] = await Promise.all([
+      page.request.get(origin + '/api/v1/school/feedback/student'),
+      page.request.get(origin + '/api/v1/school/tasks/student/history'),
+      page.request.get(origin + '/api/v1/auth/me'),
+    ])
+    expect([list.ok(), history.ok(), session.ok()]).toEqual([true, true, true])
+    expectedFeedback = (await list.json()).data.items[0]
+    expect(expectedFeedback).toBeTruthy()
+    const task = (await history.json()).data.find((row: { assessment_id: string }) => row.assessment_id === expectedFeedback.assessment_ref)
+    feedbackScope = { student_ref: (await session.json()).data.subject_id, class_ref: task?.class_ref }
+    expect(Boolean(feedbackScope.student_ref && feedbackScope.class_ref)).toBe(true)
+  }
   await chooseRole(page, 'TEACHER', '/teacher/workspace')
   const support = '/api/v1/school/support'
   const replay = process.env.PSYNOVA_AGENT_QA_UNCLAIMED_SUPPORT_REF
@@ -1043,7 +1059,10 @@ test('a specialist reviews facts and saves an authorized synthetic support plan'
   } else {
     const directory = await page.request.get(origin + support + '/students')
     expect(directory.ok()).toBe(true)
-    const student = (await directory.json()).data.items[0]
+    const students = (await directory.json()).data.items
+    const student = feedbackScope
+      ? students.find((row: { student_ref: string; class_ref: string }) => row.student_ref === feedbackScope.student_ref && row.class_ref === feedbackScope.class_ref)
+      : students[0]
     expect(student?.student_ref).toBeTruthy()
     const csrf = await page.request.get(origin + '/api/v1/auth/csrf')
     observation = `合成流程验证 ${Date.now()}，课堂学习安排需要进一步向学生核对`
@@ -1055,8 +1074,10 @@ test('a specialist reviews facts and saves an authorized synthetic support plan'
     item = (await created.json()).data
   }
   const casePath = support + '/cases/' + item.case_ref
+  const evidencePath = casePath + '/plan-evidence'
 
   await chooseRole(page, 'PSYCHOLOGICAL_SPECIALIST', '/specialist/workspace')
+  expect((await page.request.get(origin + evidencePath)).status()).toBe(404)
   const events = await ask(page, '请为授权的学校支持请求准备一份专业支持计划草案，我要查看依据后再决定是否保存', '发送任务')
   const tool = events.find((event) => event.view?.kind === 'specialist_support_plan')?.view
   expect(tool?.counts.SUBMITTED).toBeGreaterThan(0)
@@ -1071,6 +1092,25 @@ test('a specialist reviews facts and saves an authorized synthetic support plan'
   await page.getByRole('button', { name: '受理请求' }).click()
   expect((await (await triaged).json()).data.status).toBe('TRIAGED')
   await expect(page.getByText(observation, { exact: true })).toBeVisible()
+  if (expectedFeedback) {
+    const pendingEvidence = page.waitForResponse((response) => response.url().endsWith(evidencePath))
+    await page.getByRole('button', { name: '核对已发布测评反馈' }).click()
+    const evidence = await pendingEvidence
+    expect(evidence.ok()).toBe(true)
+    expect(evidence.headers()['cache-control']).toContain('no-store')
+    const { feedback } = (await evidence.json()).data
+    expect(feedback).toEqual({
+      title: expectedFeedback.title,
+      body: expectedFeedback.body,
+      published_at: expectedFeedback.published_at,
+      content_revision: expectedFeedback.content_revision,
+    })
+    const reviewed = readSchoolFeedbackContent(expectedFeedback.body)
+    const panel = page.getByRole('region', { name: '已发布测评反馈' })
+    await expect(panel.getByText(reviewed.body, { exact: true })).toBeVisible()
+    if (reviewed.nextSteps) await expect(panel.getByText(reviewed.nextSteps, { exact: true })).toBeVisible()
+    await panel.getByRole('checkbox', { name: '将这份反馈列为计划依据' }).check()
+  }
   await page.locator('#support-plan-topic').click()
   await page.getByRole('option', { name: '忙不过来时，先找一个能做的小步骤' }).click()
   await expect(page.getByRole('link', { name: '世界卫生组织｜压力' })).toHaveAttribute('href', /who\.int/)
@@ -1083,7 +1123,13 @@ test('a specialist reviews facts and saves an authorized synthetic support plan'
   const plan = page.getByRole('textbox', { name: '专业支持计划' })
   await expect(plan).toHaveValue(/教师转介 · 学习适应 · 已受理/)
   const draft = await plan.inputValue()
-  expect(draft).toContain('当前请求未附授权测评结论')
+  if (expectedFeedback) {
+    expect(draft).toContain(expectedFeedback.title)
+    expect(draft).toContain('本次草案尚未核对获批风险规则')
+    expect(draft).not.toContain(readSchoolFeedbackContent(expectedFeedback.body).body)
+  } else {
+    expect(draft).toContain('当前草案未引用授权的测评反馈')
+  }
   expect(draft).toContain('待心理教师确认')
   expect(draft).toContain('https://www.who.int/')
   expect(draft).not.toContain(observation)
@@ -1103,8 +1149,13 @@ test('a specialist reviews facts and saves an authorized synthetic support plan'
   const serialized = await history.text()
   expect(serialized).not.toContain(observation)
   expect(serialized).not.toContain('合成验证补充')
+  if (expectedFeedback) {
+    expect(serialized).not.toContain(expectedFeedback.title)
+    expect(serialized).not.toContain(expectedFeedback.body)
+  }
 
   await chooseRole(page, 'TEACHER', '/teacher/workspace')
+  expect((await page.request.get(origin + evidencePath)).status()).toBe(403)
   const teacherCopy = await page.request.get(origin + casePath)
   expect(teacherCopy.ok()).toBe(true)
   expect((await teacherCopy.json()).data.plan).toBeNull()

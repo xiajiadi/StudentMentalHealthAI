@@ -116,6 +116,7 @@ class _SupportOutput(BaseModel):
         "assigned_at",
         "closed_at",
         "due_at",
+        "published_at",
         mode="after",
         check_fields=False,
     )
@@ -200,3 +201,14 @@ class SupportCaseReceiptDto(_SupportOutput):
     state_version: StrictInt = Field(ge=1, le=2_147_483_647)
     created_at: datetime
     updated_at: datetime
+
+
+class SupportPlanFeedbackDto(_SupportOutput):
+    title: StrictStr = Field(min_length=1, max_length=120)
+    body: StrictStr = Field(min_length=1, max_length=2000)
+    published_at: datetime
+    content_revision: StrictInt = Field(ge=1, le=2_147_483_647)
+
+
+class SupportPlanEvidenceDto(SupportModel):
+    feedback: SupportPlanFeedbackDto | None
