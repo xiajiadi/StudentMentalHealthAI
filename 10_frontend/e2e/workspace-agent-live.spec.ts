@@ -3,6 +3,7 @@ import { Buffer } from 'node:buffer'
 import { readFile } from 'node:fs/promises'
 import { URL } from 'node:url'
 import { expect, test, type Page } from '@playwright/test'
+import { strFromU8, unzipSync } from 'fflate'
 import { workbook } from '../tests/fixtures/workbook'
 import { readSchoolFeedbackContent } from '../src/services/school-feedback-content'
 
@@ -125,7 +126,7 @@ test('the teacher combines verified class counts and education material in a cla
   const completions = tasks.reduce((sum, task) => sum + task.completed_count, 0)
   const enrollments = tasks.reduce((sum, task) => sum + task.active_enrollment_count, 0)
   const report = await ask(page,
-    '请给我可下载的班级测评进度简报，再参考平台关于学习压力的科普，另做一个五分钟班会活动的 Markdown 文件',
+    '请给我可编辑的 Word 班级测评进度简报，再参考平台关于学习压力的科普，另做一个 Word 五分钟班会活动。请用表格列出活动各阶段，附可点击的原始资料链接',
     '发送任务',
   )
   const progress = report.find((event) => event.view?.kind === 'class_progress')?.view
@@ -140,6 +141,33 @@ test('the teacher combines verified class counts and education material in a cla
   await page.getByRole('button', { name: `下载 ${activity.filename}`, exact: true }).last().click()
   const document = await download
   expect(await readFile(await document.path(), 'utf8')).toBe(activity.markdown)
+  const sessionWrites: string[] = []
+  page.on('request', (request) => {
+    if (request.method() === 'POST') sessionWrites.push(new URL(request.url()).pathname)
+  })
+  await page.reload()
+  const exportWord = async (label: string, filename: string) => {
+    const pending = page.waitForEvent('download')
+    await page.getByRole('button', { name: label, exact: true }).last().click()
+    const result = await pending
+    expect(result.suggestedFilename()).toBe(filename)
+    const saved = test.info().outputPath(filename)
+    await result.saveAs(saved)
+    const files = unzipSync(new Uint8Array(await readFile(saved)))
+    return {
+      document: strFromU8(files['word/document.xml']),
+      relationships: strFromU8(files['word/_rels/document.xml.rels']),
+    }
+  }
+  const wordReport = await exportWord('下载班级统计 Word', 'class-assessment-progress.docx')
+  expect(wordReport.document).toContain(`已提交人次：${completions}`)
+  expect(wordReport.document).toContain(`有效参测人次：${enrollments}`)
+  const basename = activity.filename.replace(/\.md$/i, '')
+  const wordActivity = await exportWord(`下载 Word · ${basename}`, basename + '.docx')
+  expect(wordActivity.document).toContain('<w:tbl>')
+  expect(wordActivity.document).toContain('世界卫生组织')
+  expect(wordActivity.relationships).toContain('https://www.who.int/')
+  expect(sessionWrites).toEqual([])
 })
 
 test('cancelling a live task releases the conversation and lets the teacher retry', async ({ page }) => {

@@ -70,16 +70,18 @@ scores, or responses here. Do not provide clinical assessment, diagnosis, treatm
 instructions in model-generated content.
 When a general psychology question or classroom activity matches the published education topics,
 use read_education_articles if available. Use the returned article material and source attribution.
-The result card already links to the sources. If writing a requested document, include the
-relevant source names. Do not claim sources on topics the tool does not cover. Do not call this
-tool for unrelated learning, calculations, files, or school reporting.
+The result card already links to the sources. In a requested document, cite relevant source
+names and link to the exact public URLs returned by the tool. Do not claim sources on topics
+the tool does not cover. Do not use it for unrelated learning, calculations or school reporting.
 For a class progress report, use make_class_progress_report. It reads current class totals
 and creates a verified download in one operation. Do not draft that report with save_markdown.
-For other reports or files, use save_markdown and return a short summary. Do not
-include student information or fabricated data. Roster contents and credentials stay in the
-private import workbench. Use open_roster_import for students and open_staff_roster_import for
-staff CSV. The private attachment type indicates the selected template. Ask for a replacement if
-it conflicts with the request. Only an administrator can confirm import in the workbench. Use
+For other documents, use save_markdown and return a short summary. The result cards provide
+editable Word (.docx) and Markdown downloads, including when Word is requested. Provide Markdown
+as tool input. Do not include student information or fabricated data. Roster contents and
+credentials stay in the private import workbench. Use open_roster_import for students and
+open_staff_roster_import for staff CSV. The private attachment type indicates the template.
+Ask for a replacement if it conflicts with the request. Only an administrator can confirm
+import in the workbench. Use
 staff_invitation_status for a fresh check of staff invitations and pending activation.
 For administrators checking operational history or component status, use read_school_audit or
 read_system_health. For audit follow-ups, keep the previous category and page size unless the user
@@ -374,7 +376,7 @@ async def _run(request: Request, actor: Actor, payload: TurnRequest, prior: list
                             "filename": arguments.filename,
                             "markdown": arguments.markdown.strip(),
                         }
-                        model_data = {"artifact_ready": True}
+                        model_data = {"artifact_ready": True, "download_formats": ["docx", "md"]}
                     else:
                         view, model_data = await execute_tool(
                             request,

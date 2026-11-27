@@ -469,13 +469,30 @@ async function confirmCat() {
   }
 }
 
-function download(filename: string, content: string, type = 'text/markdown;charset=utf-8') {
-  const href = URL.createObjectURL(new Blob([content], { type }))
+function download(filename: string, content: string | Blob, type = 'text/markdown;charset=utf-8') {
+  const blob = typeof content === 'string' ? new Blob([content], { type }) : content
+  const href = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = href
   link.download = filename
   link.click()
   window.setTimeout(() => URL.revokeObjectURL(href), 2000)
+}
+
+const wordExporting = ref(false)
+async function downloadWord(filename: string, markdown: string) {
+  if (wordExporting.value || scopeBlocked.value) return
+  wordExporting.value = true
+  message.value = ''
+  try {
+    const { workspaceWordDocument } = await import('@/services/workspace-word')
+    const document = await workspaceWordDocument(markdown)
+    if (!disposed && !scopeBlocked.value) download(filename.replace(/\.md$/i, '') + '.docx', document)
+  } catch {
+    if (!disposed) message.value = '暂时无法下载 Word 文档，可以重试或下载 Markdown'
+  } finally {
+    if (!disposed) wordExporting.value = false
+  }
 }
 
 function downloadTable(summary: WorkspaceTableSummary) {
@@ -561,7 +578,10 @@ defineExpose({ submit, cancel, openIndependentCat, openSchoolLibrary })
                 <AppButton v-if="event.view.kind === 'student_tasks' && ['not_started', 'created', 'in_progress', 'completed'].includes(row.status || '')" variant="secondary" :disabled="assessmentChecking || assessmentStarting" @click="selectAssessment(row.ref)">{{ row.status === 'completed' ? '查看完成记录' : '打开测评' }}</AppButton>
               </li>
             </ul>
-            <AppButton v-if="event.view.artifact" variant="secondary" @click="download(event.view.artifact.filename, event.view.artifact.markdown)">下载班级统计简报</AppButton>
+            <div v-if="event.view.artifact" class="agent-thread__inline">
+              <AppButton variant="secondary" @click="download(event.view.artifact.filename, event.view.artifact.markdown)">下载班级统计简报</AppButton>
+              <AppButton variant="secondary" :disabled="wordExporting" @click="downloadWord(event.view.artifact.filename, event.view.artifact.markdown)">下载班级统计 Word</AppButton>
+            </div>
           </template>
           <AppButton v-else-if="event.view.kind === 'assessment_picker'" variant="secondary" :disabled="assessmentChecking || assessmentStarting" @click="selectAssessment(event.view.task_ref)">阅读说明并打开测评</AppButton>
           <template v-else-if="event.view.kind === 'feedback_index'">
@@ -657,7 +677,10 @@ defineExpose({ submit, cancel, openIndependentCat, openSchoolLibrary })
             <AppButton variant="secondary" @click="openPanel('system')">查看系统详情</AppButton>
           </template>
           <AppButton v-else-if="event.view.kind === 'workflow'" variant="secondary" @click="openPanel(event.view.workflow)">打开{{ panelLabels[event.view.workflow] }}</AppButton>
-          <AppButton v-else-if="event.view.kind === 'markdown'" variant="secondary" @click="download(event.view.filename, event.view.markdown)">下载 {{ event.view.filename }}</AppButton>
+          <div v-else-if="event.view.kind === 'markdown'" class="agent-thread__inline">
+            <AppButton variant="secondary" @click="download(event.view.filename, event.view.markdown)">下载 {{ event.view.filename }}</AppButton>
+            <AppButton variant="secondary" :disabled="wordExporting" @click="downloadWord(event.view.filename, event.view.markdown)">下载 Word · {{ event.view.filename.replace(/\.md$/i, '') }}</AppButton>
+          </div>
         </AppCard>
         <p v-else-if="event.type === 'tool_failed'" class="agent-thread__problem">{{ event.label }}未完成 · {{ event.code }}</p>
         <AppStatusCallout v-else-if="event.type === 'safety'" tone="attention" :title="event.text || '本条消息或回复需要额外的安全检查'">

@@ -168,7 +168,7 @@ TOOLS = {
     "make_class_progress_report": Tool(
         "生成班级统计简报",
         "Use this for a teacher asking for a class assignment progress report or export. "
-        "Fetch the current authorized task data and create a downloadable Markdown report "
+        "Fetch current authorized task data and create a Word or Markdown report "
         "with verified counts and the completion ratio. No prose or data arguments are needed.",
         (TEACHER,),
         TaskWindow,
@@ -326,9 +326,10 @@ TOOLS = {
         Panel,
     ),
     "save_markdown": Tool(
-        "生成 Markdown 文件",
-        "Create a downloadable Markdown document. Use verified figures from "
-        "tools. It must contain no personal information or private psychological material.",
+        "生成可下载文档",
+        "Create a document with Word and Markdown downloads. Supply Markdown content, "
+        "using verified figures and sources from tools. Include no personal information "
+        "or private psychological material.",
         _ALL,
         Draft,
     ),
@@ -604,6 +605,7 @@ async def execute_tool(
                 "completions": completions,
                 "enrollments": enrollments,
                 "artifact_ready": with_report,
+                "download_formats": ["docx", "md"] if with_report else [],
                 "counts_by_class": dict(
                     Counter(_alias("class", row["label"]) for row in rows[:30])
                 ),
