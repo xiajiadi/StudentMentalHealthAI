@@ -35,7 +35,7 @@ describe('首次登录与安全恢复表单', () => {
     await wrapper.get('form').trigger('submit')
     await flushPromises()
     expect(api.completeFirstLogin).toHaveBeenCalledWith({ school_ref: 'SCHOOL_SYNTHETIC', username: 'STUDENT_SYNTHETIC', credential: 'one-time', new_password: 'new-password', confirm_password: 'new-password' })
-    expect(wrapper.text()).toContain('密码已更新，请返回登录')
+    expect(wrapper.text()).toContain('密码已更新，请使用新密码登录')
     wrapper.unmount()
   })
 

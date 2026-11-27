@@ -44,7 +44,9 @@ function prepare(role: 'teacher' | 'psychological_specialist' = 'psychological_s
   })
   catApi.getCatalog.mockResolvedValue(catalog)
   catApi.runSimulation.mockResolvedValue(result)
-  const wrapper = mount(SpecialistCatManagement, { global: { plugins: [pinia] } })
+  const wrapper = mount(SpecialistCatManagement, {
+    global: { plugins: [pinia], stubs: { CatSimulationStopChart: true } },
+  })
   return { wrapper, session }
 }
 
@@ -65,7 +67,7 @@ describe('specialist CAT management workspace', () => {
     const { wrapper } = prepare('teacher')
     await flushPromises()
     expect(catApi.getCatalog).not.toHaveBeenCalled()
-    expect(wrapper.text()).toContain('无法查看CAT配置')
+    expect(wrapper.text()).toContain('无法查看 CAT 配置')
     wrapper.unmount()
   })
 
@@ -76,11 +78,11 @@ describe('specialist CAT management workspace', () => {
     expect(catApi.getCatalog).toHaveBeenCalledOnce()
     expect(wrapper.text()).toContain('题库信息暂不可用')
     expect(wrapper.text()).not.toContain('private backend detail')
-    expect(wrapper.find('.cat-workbench').exists()).toBe(false)
+    expect(wrapper.find('.cat-simulation-workbench').exists()).toBe(false)
     await wrapper.get('.cat-button--quiet').trigger('click')
     await flushPromises()
     expect(catApi.getCatalog).toHaveBeenCalledTimes(2)
-    expect(wrapper.find('.cat-workbench').exists()).toBe(true)
+    expect(wrapper.find('.cat-simulation-workbench').exists()).toBe(true)
     wrapper.unmount()
   })
 
@@ -88,14 +90,14 @@ describe('specialist CAT management workspace', () => {
     const { wrapper } = prepare()
     await flushPromises()
     expect(catApi.getCatalog).toHaveBeenCalledOnce()
-    expect(wrapper.text()).toContain('题库版本')
+    expect(wrapper.text()).toContain('当前题库')
     expect(wrapper.text()).toContain('v0.1')
     expect(wrapper.text()).toContain('18 道')
-    expect(wrapper.text()).toContain('心理学解释已关闭')
+    expect(wrapper.text()).toContain('模拟结果仅用于工程验证')
     expect(wrapper.text()).not.toContain('BANK_SYNTHETIC_1')
 
     await wrapper.get('input[value="1000"]').setValue()
-    expect(wrapper.find('.cat-results').exists()).toBe(false)
+    expect(wrapper.find('.cat-metric-list').exists()).toBe(false)
     catApi.runSimulation.mockResolvedValueOnce({ ...result, n_examinees: 1000 })
     await wrapper.get('.cat-button--primary').trigger('click')
     await flushPromises()
@@ -103,7 +105,8 @@ describe('specialist CAT management workspace', () => {
     expect(catApi.runSimulation).toHaveBeenCalledWith(catalog, 1000)
     expect(wrapper.text()).toContain('1,000')
     expect(wrapper.text()).toContain('均方根误差 RMSE')
-    expect(wrapper.text()).toContain('停止原因汇总')
+    expect(wrapper.getComponent({ name: 'CatSimulationStopChart' }).props('rows'))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ count: 76 })]))
     expect(wrapper.text()).not.toContain('subject_id')
     expect(wrapper.text()).not.toContain('BANK_SYNTHETIC_1')
     wrapper.unmount()
@@ -135,7 +138,7 @@ describe('specialist CAT management workspace', () => {
     catApi.runSimulation.mockRejectedValueOnce(Object.assign(new Error('private backend detail'), { code: 'FORBIDDEN' }))
     await wrapper.get('.cat-button--primary').trigger('click')
     await flushPromises()
-    expect(wrapper.text()).toContain('无法查看CAT配置')
+    expect(wrapper.text()).toContain('无法查看 CAT 配置')
     expect(wrapper.text()).not.toContain('偏差 Bias')
     expect(wrapper.text()).not.toContain('private backend detail')
     wrapper.unmount()
@@ -147,7 +150,7 @@ describe('specialist CAT management workspace', () => {
     let resolveRun!: (value: typeof result) => void
     catApi.runSimulation.mockReturnValueOnce(new Promise((resolve) => { resolveRun = resolve }))
     await wrapper.get('.cat-button--primary').trigger('click')
-    expect(wrapper.text()).toContain('运行中，较大批次可能需要数分钟。')
+    expect(wrapper.get('.cat-analysis-state[aria-busy="true"]').text()).toContain('正在运行模拟')
 
     catApi.getCatalog.mockResolvedValueOnce({
       ...catalog,
@@ -160,7 +163,7 @@ describe('specialist CAT management workspace', () => {
     await flushPromises()
     expect(catApi.getCatalog).toHaveBeenCalledTimes(2)
     expect(wrapper.text()).toContain('v0.2')
-    expect(wrapper.find('.cat-results').exists()).toBe(false)
+    expect(wrapper.find('.cat-metric-list').exists()).toBe(false)
 
     resolveRun(result)
     await flushPromises()

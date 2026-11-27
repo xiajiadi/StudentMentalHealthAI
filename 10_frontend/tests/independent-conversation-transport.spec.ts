@@ -122,7 +122,7 @@ describe('independent conversation API transport', () => {
 
     await expect(provider.requestIndependentConversation({
       method: 'GET', path: '/api/v1/student/conversations', query: { offset: 0, limit: 20 },
-    })).rejects.toMatchObject({ code: 'API_ERROR' })
+    })).rejects.toMatchObject({ code: 'NETWORK_UNAVAILABLE', retryable: true })
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })

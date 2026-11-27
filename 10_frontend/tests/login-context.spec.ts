@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import AppSelect from '@/components/app/AppSelect.vue'
 import router from '@/router'
 import LoginView from '@/views/auth/LoginView.vue'
 import { frontendApi } from '@/services/mock-api'
@@ -13,12 +14,17 @@ const contexts = [
 ]
 const pending: LoginResult = { userId: 'USER_context', role: 'student', subjectId: null, displayName: '合成账号', initials: 'S', availableContexts: contexts, activeContext: null }
 const response = (data: LoginResult) => ({ request_id: 'REQ_context', trace_id: 'TRACE_context', data })
+const originalSwitch = frontendApi.switchActiveContext
 
 beforeEach(async () => {
   setActivePinia(createPinia())
   await router.push('/login')
 })
-afterEach(() => { vi.restoreAllMocks(); delete frontendApi.switchActiveContext })
+afterEach(() => {
+  vi.restoreAllMocks()
+  if (originalSwitch) frontendApi.switchActiveContext = originalSwitch
+  else delete frontendApi.switchActiveContext
+})
 
 it('offers only server-authorized contexts after authentication, then enters the confirmed role', async () => {
   vi.spyOn(frontendApi, 'login').mockResolvedValue(response(pending))
@@ -32,14 +38,18 @@ it('offers only server-authorized contexts after authentication, then enters the
     await wrapper.get('form').trigger('submit')
     await flushPromises()
     expect(wrapper.find('#password').exists()).toBe(false)
-    expect(wrapper.findAll('#school-context option')).toHaveLength(3)
+    const select = wrapper.getComponent(AppSelect)
+    expect(select.props('options')).toEqual([
+      expect.objectContaining({ value: '0', label: expect.stringContaining('SYNTHETIC_ALPHA') }),
+      expect.objectContaining({ value: '1', label: expect.stringContaining('SYNTHETIC_BETA') }),
+    ])
     expect(useSessionStore().isAuthenticated).toBe(false)
-    await wrapper.get('#school-context').setValue('1')
+    select.vm.$emit('update:modelValue', '1')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
     expect(choose).toHaveBeenCalledWith(contexts[1])
     expect(useSessionStore().role).toBe('teacher')
-    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('teacher-overview'))
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/teacher/workspace'))
   } finally { wrapper.unmount() }
 })
 
@@ -52,7 +62,7 @@ it('keeps selection pending when the returned active context is not the selected
     await wrapper.get('#password').setValue('synthetic-only')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
-    await wrapper.get('#school-context').setValue('0')
+    wrapper.getComponent(AppSelect).vm.$emit('update:modelValue', '0')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
     expect(useSessionStore().isAuthenticated).toBe(false)

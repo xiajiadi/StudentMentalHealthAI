@@ -1,4 +1,5 @@
 <script setup lang="ts">
+/* global File, clearTimeout, setTimeout */
 import { computed, onActivated, onDeactivated, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
@@ -279,6 +280,7 @@ onActivated(() => {
       <div v-else class="cat-workbench__split">
         <AppCard class="cat-workbench__card">
           <h3>多方案仿真</h3>
+          <p>合成仿真结果仅用于工程验证</p>
           <form class="cat-workbench__form" @submit.prevent="action(createExperiment)">
             <label for="cat-experiment-bank">题库<AppSelect id="cat-experiment-bank" v-model="experimentBank" placeholder="选择题库" :options="bankOptions" @update:model-value="schemes = []" /></label>
             <label for="cat-experiment-schemes">方案（最多四个）<AppSelect id="cat-experiment-schemes" v-model="schemes" multiple placeholder="选择方案" :options="experimentDesigns" :disabled="!experimentBank" /></label>

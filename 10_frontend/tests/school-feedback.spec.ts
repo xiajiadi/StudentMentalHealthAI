@@ -273,20 +273,26 @@ describe('StudentFeedbackView published feedback section', () => {
     wrapper.unmount()
   })
 
-  it('renders only published plaintext, synthetic L3 label, timestamp and keeps L1 completion metadata', async () => {
+  it('opens a published feedback body only when requested and keeps assessment metadata in its own workflow', async () => {
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }] })
+    await router.push('/')
+    feedback.getStudent.mockResolvedValueOnce(studentDto())
     const wrapper = mount(StudentFeedbackView, {
-      global: { plugins: [createPinia()], stubs: { RouterLink: true } },
+      props: { embedded: true },
+      global: { plugins: [createPinia(), router] },
     })
     await flushPromises()
-    expect(wrapper.text()).toContain('已发布的学生反馈')
-    expect(wrapper.text()).toContain('合成演示，L3')
-    expect(wrapper.text()).toContain('只对当前学生可见的合成正文。')
-    expect(wrapper.text()).toContain('已完成的合成测评')
-    expect(wrapper.text()).toContain('发布于')
-    expect(wrapper.find('.feedback-section--completed').text()).toContain('暂无测量报告')
-    expect(wrapper.find('.feedback-section--completed').text()).toContain('这项测评尚未提供可查看的测量报告')
-    expect(wrapper.text()).not.toContain('当前没有获准发布的反馈')
+    expect(wrapper.text()).toContain('已发布的学生测评反馈')
+    expect(wrapper.text()).toContain('已发布的合成反馈')
+    expect(wrapper.text()).not.toContain('只对当前学生可见的合成正文。')
+    expect(feedback.getStudent).not.toHaveBeenCalled()
+    await wrapper.findAll('button').find((button) => button.text() === '查看详情')!.trigger('click')
+    await flushPromises()
+    expect(feedback.getStudent).toHaveBeenCalledExactlyOnceWith('FEED_synthetic_1')
+    expect(wrapper.get('.feedback-detail__body').text()).toBe('只对当前学生可见的合成正文。')
+    expect(wrapper.text()).toContain('学校已审核发布')
     expect(wrapper.text()).not.toContain('PCR_')
+    expect(api.listAssessmentEntries).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 
@@ -301,15 +307,20 @@ describe('StudentFeedbackView published feedback section', () => {
     wrapper.unmount()
   })
 
-  it('shows feedback API errors separately and preserves existing completion metadata', async () => {
+  it('shows a retryable feedback API error without fetching assessments or substituting old data', async () => {
     feedback.listStudent.mockRejectedValue(new RealApiError('NETWORK_UNAVAILABLE', 'network unavailable', true))
     const wrapper = mount(StudentFeedbackView, {
       global: { plugins: [createPinia()], stubs: { RouterLink: true } },
     })
     await flushPromises()
     expect(wrapper.text()).toContain('已发布反馈暂时无法加载')
-    expect(wrapper.text()).toContain('已完成的合成测评')
     expect(wrapper.text()).not.toContain('只对当前学生可见的合成正文。')
+    expect(api.listAssessmentEntries).not.toHaveBeenCalled()
+    expect(feedback.getStudent).not.toHaveBeenCalled()
+    feedback.listStudent.mockResolvedValueOnce({ items: [studentDto()], total: 1 })
+    await wrapper.findAll('button').find((button) => button.text() === '重新加载')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('已发布的合成反馈')
     wrapper.unmount()
   })
 
@@ -330,7 +341,7 @@ describe('StudentFeedbackView published feedback section', () => {
       activeContext: { role: 'student', schoolRef: 'SCHOOL_ALPHA_SYNTHETIC' },
     })
     await flushPromises()
-    expect(wrapper.text()).toContain('只对当前学生可见的合成正文。')
+    expect(wrapper.text()).toContain('已发布的合成反馈')
     session.signIn({
       userId: 'USER_synthetic_student', role: 'student', subjectId: 'SUBJ_synthetic',
       displayName: 'Synthetic Student', initials: 'S',
@@ -338,7 +349,7 @@ describe('StudentFeedbackView published feedback section', () => {
     })
     await flushPromises()
     expect(feedback.listStudent).toHaveBeenCalledTimes(3)
-    expect(wrapper.text()).not.toContain('只对当前学生可见的合成正文。')
+    expect(wrapper.text()).not.toContain('已发布的合成反馈')
     wrapper.unmount()
   })
 })

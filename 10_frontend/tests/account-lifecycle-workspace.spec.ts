@@ -1,7 +1,11 @@
-/* global File, HTMLButtonElement */
-import { flushPromises, mount } from '@vue/test-utils'
+/* global Blob, File, FileReader, HTMLAnchorElement, HTMLButtonElement */
+import { flushPromises, mount, type GlobalMountOptions } from '@vue/test-utils'
+import { createPinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createMemoryHistory, createRouter } from 'vue-router'
+import AppSelect from '@/components/app/AppSelect.vue'
 import AccountLifecycleWorkspace from '@/views/admin/AccountLifecycleWorkspace.vue'
+import { useSessionStore } from '@/stores/session'
 
 const api = vi.hoisted(() => ({
   getLifecycleAccountSummary: vi.fn(), getSchoolAdminDirectory: vi.fn(), listRecoveryRequests: vi.fn(),
@@ -14,6 +18,21 @@ const api = vi.hoisted(() => ({
 vi.mock('@/services/mock-api', () => ({ frontendApi: api }))
 
 const envelope = <T,>(data: T) => ({ request_id: 'REQ_UI', trace_id: 'TRACE_UI', data })
+
+async function mountLifecycle(stubs?: GlobalMountOptions['stubs']) {
+  const pinia = createPinia()
+  useSessionStore(pinia).signIn({
+    userId: 'USER_SYNTHETIC_ADMIN', role: 'school_admin', subjectId: null,
+    displayName: '合成管理员', initials: '管',
+    activeContext: { role: 'school_admin', schoolRef: 'SCHOOL_SYNTHETIC' },
+  })
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/admin/users', component: AccountLifecycleWorkspace }],
+  })
+  await router.push('/admin/users')
+  return mount(AccountLifecycleWorkspace, { global: { plugins: [pinia, router], stubs } })
+}
 
 describe('管理员账号生命周期工作区', () => {
   beforeEach(() => {
@@ -28,7 +47,7 @@ describe('管理员账号生命周期工作区', () => {
   })
 
   it('只展示后端汇总和账号元数据', async () => {
-    const wrapper = mount(AccountLifecycleWorkspace)
+    const wrapper = await mountLifecycle()
     await flushPromises()
     expect(wrapper.text()).toContain('账号总数')
     expect(wrapper.text()).not.toContain('原始回答内容')
@@ -39,9 +58,9 @@ describe('管理员账号生命周期工作区', () => {
     api.previewLifecycleRoster.mockResolvedValue(envelope({ valid: true, row_count: 1, errors: [], class_groups: [{ class_ref: 'CLASS_SYNTHETIC', row_count: 1 }] }))
     api.importLifecycleRoster.mockResolvedValue(envelope({ run_ref: 'RUN_SYNTHETIC', valid: true, row_count: 1, errors: [], created_count: 1, skipped_count: 0, status: 'COMPLETED', accounts: [{ row_no: 1, user_id: 'USER_STUDENT', display_name: '合成,学生', class_ref: 'CLASS_SYNTHETIC', status: 'PENDING_ACTIVATION' }] }))
     api.issueLifecycleCredentials.mockResolvedValue(envelope({ credentials: [{ user_id: 'USER_STUDENT', login_name: 'STUDENT_SYNTHETIC', display_name: '合成,学生', class_ref: 'CLASS_SYNTHETIC', credential: 'synthetic-once', expires_at: '2026-10-25T00:00:00Z' }] }))
-    const wrapper = mount(AccountLifecycleWorkspace)
+    const wrapper = await mountLifecycle()
     await flushPromises()
-    await wrapper.findAll('[role="tab"]')[1]!.trigger('click')
+    await wrapper.get('#school-account-tab-roster').trigger('click')
     const fileInput = wrapper.get('input[type="file"]')
     Object.defineProperty(fileInput.element, 'files', { value: [new File(['# psynova_student_roster_template_v1\nstudent_number,display_name,class_ref,grade_level\nS-1,"合成,学生",CLASS_SYNTHETIC,7'], 'roster.csv', { type: 'text/csv' })] })
     await fileInput.trigger('change')
@@ -57,15 +76,15 @@ describe('管理员账号生命周期工作区', () => {
     expect(api.importLifecycleRoster).toHaveBeenCalledOnce()
     expect(api.issueLifecycleCredentials).toHaveBeenCalledWith(['USER_STUDENT'])
     expect(wrapper.text()).toContain('已导入 1 名学生并生成初始账号')
-    expect(wrapper.findAll('[role="tab"]')[4]!.attributes('aria-selected')).toBe('true')
+    expect(wrapper.get('#school-account-tab-credentials').attributes('aria-selected')).toBe('true')
     wrapper.unmount()
   })
 
   it('单个教职工邀请沿用身份核验并提供合成账号 CSV', async () => {
     api.inviteSchoolStaff.mockResolvedValue(envelope({ invitation_ref: 'INV_SYNTHETIC', user_id: 'USER_STAFF', login_name: 'STAFF_SYNTHETIC', credential: 'secret-once', expires_at: '2026-10-25T00:00:00Z', status: 'ISSUED', delivery_channel: 'MANUAL_HANDOFF_REQUIRED' }))
-    const wrapper = mount(AccountLifecycleWorkspace)
+    const wrapper = await mountLifecycle()
     await flushPromises()
-    await wrapper.findAll('[role="tab"]')[2]!.trigger('click')
+    await wrapper.get('#school-account-tab-staff').trigger('click')
     const inputs = wrapper.get('form').findAll('input')
     await inputs[0]!.setValue('EMP_SYNTHETIC')
     await inputs[1]!.setValue('合成教师')
@@ -91,9 +110,9 @@ describe('管理员账号生命周期工作区', () => {
         { invitation_ref: 'INV_P', user_id: 'USER_P', login_name: 'P-001', display_name: '合成心理教师', role: 'psychological_specialist', class_refs: [], credential: 'psych-once', expires_at: '2026-10-25T00:00:00Z' },
       ],
     }))
-    const wrapper = mount(AccountLifecycleWorkspace)
+    const wrapper = await mountLifecycle()
     await flushPromises()
-    await wrapper.findAll('[role="tab"]')[2]!.trigger('click')
+    await wrapper.get('#school-account-tab-staff').trigger('click')
     const fileInput = wrapper.get('input[type="file"]')
     Object.defineProperty(fileInput.element, 'files', { value: [new File([
       'employee_ref,display_name,role,class_refs\nT-001,合成教师,teacher,CLASS_SYNTHETIC\nP-001,合成心理教师,psychological_specialist,',
@@ -108,7 +127,7 @@ describe('管理员账号生命周期工作区', () => {
       { row_no: 2, employee_ref: 'P-001', display_name: '合成心理教师', role: 'psychological_specialist', class_refs: [] },
     ])
     expect(api.issueLifecycleCredentials).not.toHaveBeenCalled()
-    expect(wrapper.findAll('[role="tab"]')[4]!.attributes('aria-selected')).toBe('true')
+    expect(wrapper.get('#school-account-tab-credentials').attributes('aria-selected')).toBe('true')
     expect(wrapper.text()).toContain('心理教师')
     expect(wrapper.text()).toContain('下载账号 CSV')
     expect(wrapper.text()).not.toContain('teacher-once')
@@ -119,9 +138,9 @@ describe('管理员账号生命周期工作区', () => {
   it('管理员恢复队列只提供管理员审批，不提供教师核验操作', async () => {
     api.listRecoveryRequests.mockResolvedValue(envelope([{ ticket_ref: 'TICKET_SYNTHETIC', user_id: 'USER_STUDENT', username: 'STUDENT_SYNTHETIC', display_name: '合成学生', class_ref: 'CLASS_SYNTHETIC', role: 'student', status: 'TEACHER_VERIFIED', created_at: '2026-10-24T00:00:00Z' }]))
     api.approveRecoveryRequest.mockResolvedValue(envelope({ credential: 'synthetic-once', expires_at: '2026-10-25T00:00:00Z' }))
-    const wrapper = mount(AccountLifecycleWorkspace)
+    const wrapper = await mountLifecycle()
     await flushPromises()
-    await wrapper.findAll('[role="tab"]')[3]!.trigger('click')
+    await wrapper.get('#school-account-tab-recovery').trigger('click')
     expect(wrapper.text()).toContain('教师核验后，由管理员审批')
     expect(wrapper.text()).not.toContain('教师验证')
     expect(wrapper.text()).toContain('管理员审批')
@@ -137,9 +156,9 @@ describe('管理员账号生命周期工作区', () => {
 
   it('为合成账号生成初始凭据时沿用管理员会话', async () => {
     api.issueLifecycleCredentials.mockResolvedValue(envelope({ credentials: [{ user_id: 'USER_STUDENT', login_name: 'STUDENT_SYNTHETIC', display_name: '合成学生', class_ref: 'CLASS_SYNTHETIC', credential: 'synthetic-once', expires_at: '2026-10-25T00:00:00Z' }] }))
-    const wrapper = mount(AccountLifecycleWorkspace)
+    const wrapper = await mountLifecycle()
     await flushPromises()
-    await wrapper.findAll('[role="tab"]')[4]!.trigger('click')
+    await wrapper.get('#school-account-tab-credentials').trigger('click')
     await wrapper.get('input[type="checkbox"][aria-label="选择合成学生"]').setValue(true)
     await wrapper.findAll('button').find((button) => button.text() === '生成初始密码')!.trigger('click')
     await flushPromises()
@@ -159,21 +178,27 @@ describe('管理员账号生命周期工作区', () => {
       user_id: 'USER_STUDENT', login_name: 'STUDENT_SYNTHETIC', display_name: '合成学生',
       class_ref: 'CLASS_SYNTHETIC', credential: 'synthetic-once', expires_at: '2026-10-25T00:00:00Z',
     }] }))
-    const wrapper = mount(AccountLifecycleWorkspace)
+    const wrapper = await mountLifecycle()
     try {
       await flushPromises()
-      await wrapper.findAll('[role="tab"]')[4]!.trigger('click')
+      await wrapper.get('#school-account-tab-credentials').trigger('click')
       await wrapper.get('input[type="checkbox"][aria-label="选择合成学生"]').setValue(true)
       await wrapper.findAll('button').find((button) => button.text() === '生成初始密码')!.trigger('click')
       await flushPromises()
-      await wrapper.findAll('button').find((button) => button.text() === '下载账号 CSV')!.trigger('click')
-      const csv = await downloadedBlob!.text()
+      await wrapper.findAll('button').find((button) => button.text().startsWith('下载账号 CSV'))!.trigger('click')
+      expect(downloadedBlob).toBeDefined()
+      const csv = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(String(reader.result))
+        reader.onerror = () => reject(reader.error)
+        reader.readAsText(downloadedBlob!)
+      })
       expect(csv).toContain('SCHOOL_SYNTHETIC')
       expect(csv).toContain('/login')
       expect(csv).toContain('STUDENT_SYNTHETIC')
       expect(csv).toContain('synthetic-once')
       expect(wrapper.text()).not.toContain('synthetic-once')
-      await new Promise((resolve) => setTimeout(resolve, 0))
+      await new Promise((resolve) => window.setTimeout(resolve, 0))
       expect(revokeObjectURL).toHaveBeenCalledWith('blob:synthetic-credentials')
     } finally {
       wrapper.unmount()
@@ -192,12 +217,13 @@ describe('管理员账号生命周期工作区', () => {
       ],
     }))
     api.issueLifecycleCredentials.mockResolvedValue(envelope({ credentials: [{ user_id: 'USER_TEACHER', login_name: 'TEACHER_SYNTHETIC', display_name: '合成教师', class_ref: 'CLASS_SYNTHETIC', credential: 'synthetic-once', expires_at: '2026-10-25T00:00:00Z' }] }))
-    const wrapper = mount(AccountLifecycleWorkspace)
+    const wrapper = await mountLifecycle()
     await flushPromises()
-    await wrapper.findAll('[role="tab"]')[4]!.trigger('click')
+    await wrapper.get('#school-account-tab-credentials').trigger('click')
     expect(wrapper.text()).toContain('普通教师')
     expect(wrapper.text()).toContain('合成教师')
-    await wrapper.findAll('select')[0]!.setValue('teacher')
+    wrapper.get('.lifecycle__credential-tools').getComponent(AppSelect).vm.$emit('update:modelValue', 'teacher')
+    await flushPromises()
     await wrapper.findAll('button').find((button) => button.text() === '选择筛选结果')!.trigger('click')
     expect(wrapper.text()).toContain('已选择 1 人')
     await wrapper.findAll('button').find((button) => button.text() === '生成初始密码')!.trigger('click')
@@ -221,9 +247,9 @@ describe('管理员账号生命周期工作区', () => {
       status: 'ISSUED', delivery_channel: 'MANUAL_HANDOFF_REQUIRED', credential: 'secret-once',
       expires_at: '2026-10-25T00:00:00Z',
     }))
-    const wrapper = mount(AccountLifecycleWorkspace)
+    const wrapper = await mountLifecycle()
     await flushPromises()
-    await wrapper.findAll('[role="tab"]')[2]!.trigger('click')
+    await wrapper.get('#school-account-tab-staff').trigger('click')
     expect(wrapper.text()).toContain('合成教师')
     expect(wrapper.text()).toContain('已过期')
     expect(wrapper.text()).not.toContain('secret-once')
@@ -232,7 +258,7 @@ describe('管理员账号生命周期工作区', () => {
     await flushPromises()
     expect(api.reauthenticate).toHaveBeenCalledOnce()
     expect(api.reissueStaffInvitation).toHaveBeenCalledWith('INV_SYNTHETIC', 'ADMINISTRATIVE_REISSUE')
-    expect(wrapper.findAll('[role="tab"]')[4]!.attributes('aria-selected')).toBe('true')
+    expect(wrapper.get('#school-account-tab-credentials').attributes('aria-selected')).toBe('true')
     expect(wrapper.text()).toContain('凭据已暂存')
     expect(wrapper.text()).toContain('INV_SYNTHETIC')
     expect(wrapper.find('.lifecycle__credential-records').exists()).toBe(true)
@@ -249,9 +275,9 @@ describe('管理员账号生命周期工作区', () => {
       created_at: '2026-10-24T00:00:00Z', expires_at: '2026-10-25T00:00:00Z',
     }]))
     api.revokeStaffInvitation.mockResolvedValue(envelope({ status: 'REVOKED' }))
-    const wrapper = mount(AccountLifecycleWorkspace)
+    const wrapper = await mountLifecycle()
     await flushPromises()
-    await wrapper.findAll('[role="tab"]')[2]!.trigger('click')
+    await wrapper.get('#school-account-tab-staff').trigger('click')
     await wrapper.get('input[autocomplete="current-password"]').setValue('synthetic-admin-password')
     await wrapper.findAll('button').find((button) => button.text() === '撤销邀请')!.trigger('click')
     await flushPromises()
@@ -273,7 +299,7 @@ describe('管理员账号生命周期工作区', () => {
       delivery_channel: 'MANUAL_HANDOFF_REQUIRED', credential: 'reset-secret-once',
       expires_at: '2026-10-25T00:15:00Z',
     }))
-    const wrapper = mount(AccountLifecycleWorkspace, { global: { stubs: {
+    const wrapper = await mountLifecycle({
       DialogRoot: { props: { open: Boolean }, template: '<div v-if="open"><slot /></div>' },
       DialogPortal: { template: '<div><slot /></div>' },
       DialogOverlay: { template: '<div />' },
@@ -281,9 +307,9 @@ describe('管理员账号生命周期工作区', () => {
       DialogTitle: { template: '<h2><slot /></h2>' },
       DialogDescription: { template: '<p><slot /></p>' },
       DialogClose: { template: '<div><slot /></div>' },
-    } } })
+    })
     await flushPromises()
-    await wrapper.findAll('[role="tab"]')[2]!.trigger('click')
+    await wrapper.get('#school-account-tab-staff').trigger('click')
     await wrapper.get('input[autocomplete="current-password"]').setValue('synthetic-admin-password')
     await wrapper.findAll('button').find((button) => button.text() === '重置凭据')!.trigger('click')
     const dialog = wrapper.get('[role="dialog"]')
@@ -296,7 +322,7 @@ describe('管理员账号生命周期工作区', () => {
       verification_method: 'IN_PERSON',
       identity_verified: true,
     })
-    expect(wrapper.findAll('[role="tab"]')[4]!.attributes('aria-selected')).toBe('true')
+    expect(wrapper.get('#school-account-tab-credentials').attributes('aria-selected')).toBe('true')
     expect(wrapper.text()).toContain('下载账号 CSV')
     expect(wrapper.text()).not.toContain('reset-secret-once')
     wrapper.unmount()
@@ -313,9 +339,9 @@ describe('管理员账号生命周期工作区', () => {
       classes: [], members,
     }))
     api.updateSchoolAccountStatus.mockResolvedValue(envelope({ status: 'DISABLED' }))
-    const wrapper = mount(AccountLifecycleWorkspace)
+    const wrapper = await mountLifecycle()
     await flushPromises()
-    await wrapper.findAll('[role="tab"]')[5]!.trigger('click')
+    await wrapper.get('#school-account-tab-status').trigger('click')
     expect(wrapper.findAll('.lifecycle__table-wrap tbody tr')).toHaveLength(25)
     expect(wrapper.find('select').exists()).toBe(false)
     await wrapper.get('input[type="search"]').setValue('USER_200')

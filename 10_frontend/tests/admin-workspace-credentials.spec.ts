@@ -25,9 +25,10 @@ describe('AdminWorkspaceView one-time credential handoff', () => {
     })
     api.listSchoolMembers.mockResolvedValue({ request_id: 'REQ_admin_directory', trace_id: 'TRACE_admin_directory', data: [] })
     const LifecycleStub = defineComponent({
-      setup(_props, { expose }) {
+      setup(_props, { expose, slots }) {
         expose({ openCredentials })
-        return () => h('div', { class: 'lifecycle-stub' })
+        const loadDirectory = async () => (await api.getSchoolAdminDirectory()).data
+        return () => h('div', { class: 'lifecycle-stub' }, slots.directory?.({ loadDirectory }))
       },
     })
     const router = createRouter({
@@ -42,7 +43,7 @@ describe('AdminWorkspaceView one-time credential handoff', () => {
         stubs: { AccountLifecycleWorkspace: LifecycleStub },
       },
     })
-    await flushPromises()
+    await vi.dynamicImportSettled()
     await flushPromises()
     await wrapper.get('.directory-studio__pending-list button').trigger('click')
     await nextTick()

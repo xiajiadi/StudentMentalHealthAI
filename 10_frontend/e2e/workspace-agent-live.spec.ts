@@ -116,6 +116,34 @@ test('the learner retrieves published education on demand and keeps arithmetic i
   expect(math.find((event) => event.type === 'answer')?.text).toContain('42')
 })
 
+test('a legacy teacher student URL opens the aggregate class view without a personal record request', async ({ page }) => {
+  await signIn(page)
+  await chooseRole(page, 'TEACHER', '/teacher/workspace')
+  const calls: string[] = []
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname
+    if (path.startsWith('/api/v1/')) calls.push(path)
+  })
+  const marker = 'SUBJ_synthetic_teacher_legacy_route'
+  await page.goto(origin + '/teacher/students/' + marker)
+  await expect(page).toHaveURL(origin + '/teacher/classes')
+  const summary = page.getByRole('main', { name: '教师工作区，班级进度' })
+  await expect(summary.getByText('当前授权班级', { exact: true })).toBeVisible()
+  await expect(summary.locator('canvas').first()).toBeVisible()
+  await expect(summary).not.toContainText(marker)
+  expect(calls).toContain('/api/v1/school/teacher/task-progress')
+  expect(calls.join('\n')).not.toMatch(/\/teacher\/students|\/api\/v1\/assessments\//)
+})
+
+test('a specialist can read the engineering purpose before starting a synthetic CAT simulation', async ({ page }) => {
+  await signIn(page)
+  await chooseRole(page, 'PSYCHOLOGICAL_SPECIALIST', '/specialist/cat?focus=simulation')
+  const workbench = page.getByRole('region', { name: '独立 CAT 研究工作台' })
+  await expect(workbench.getByRole('heading', { name: '多方案仿真' })).toBeVisible()
+  await expect(workbench.getByText('合成仿真结果仅用于工程验证', { exact: true })).toBeVisible()
+  await expect(workbench.getByRole('button', { name: '运行仿真' })).toBeDisabled()
+})
+
 test('the teacher combines verified class counts and education material in a classroom task', async ({ page }) => {
   test.setTimeout(180_000)
   await signIn(page)

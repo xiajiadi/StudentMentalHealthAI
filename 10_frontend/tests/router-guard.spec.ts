@@ -40,7 +40,7 @@ describe('角色路由守卫', () => {
   it('角色不能跨越自己的工作区', async () => {
     useSessionStore().signIn({ userId: 'USER_demo_teacher', role: 'teacher', subjectId: null, displayName: '演示教师', initials: '师' })
     await router.push('/reviewer/queue')
-    expect(router.currentRoute.value.name).toBe('teacher-overview')
+    expect(router.currentRoute.value.path).toBe('/teacher/workspace')
   })
 
   it('未激活学校身份时保留登录后的选择页面', async () => {
@@ -56,7 +56,7 @@ describe('角色路由守卫', () => {
     const current = { role: 'teacher' as const, schoolRef: 'SYNTHETIC_ALPHA' }
     useSessionStore().signIn({ userId: 'USER_context', role: 'teacher', authorizedRoles: ['teacher', 'student'], subjectId: null, displayName: '合成账号', initials: 'S', availableContexts: [current, { role: 'student', schoolRef: 'SYNTHETIC_ALPHA' }], activeContext: current })
     await router.push('/student/assessments')
-    expect(router.currentRoute.value.name).toBe('teacher-overview')
+    expect(router.currentRoute.value.path).toBe('/teacher/workspace')
   })
 
   it('允许复核员进入安全复核队列', async () => {
@@ -71,7 +71,7 @@ describe('角色路由守卫', () => {
     expect(router.currentRoute.value.name).toBe('specialist-workspace')
     expect(router.currentRoute.value.meta.roles).toEqual(['psychological_specialist'])
     await router.push('/reviewer/queue')
-    expect(router.currentRoute.value.name).toBe('specialist-workspace')
+    expect(router.currentRoute.value.path).toBe('/specialist/workspace')
   })
 
   it('学校管理员进入管理工作区且不能进入安全复核队列', async () => {
@@ -80,6 +80,6 @@ describe('角色路由守卫', () => {
     expect(router.currentRoute.value.name).toBe('admin-workspace')
     expect(router.currentRoute.value.meta.roles).toEqual(['school_admin'])
     await router.push('/reviewer/queue')
-    expect(router.currentRoute.value.name).toBe('admin-workspace')
+    expect(router.currentRoute.value.path).toBe('/admin/workspace')
   })
 })

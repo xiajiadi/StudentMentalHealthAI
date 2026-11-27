@@ -263,7 +263,7 @@ onBeforeUnmount(() => {
           <Beaker v-else :size="16" aria-hidden="true" />
           {{ simulationState === 'running' ? '模拟运行中…' : runLabel }}
         </button>
-        <p class="cat-config-note"><ShieldCheck :size="14" aria-hidden="true" />配置只读；运行由当前账号手动发起。</p>
+        <p class="cat-config-note"><ShieldCheck :size="14" aria-hidden="true" />配置只读，模拟结果仅用于工程验证</p>
       </aside>
 
       <section class="cat-analysis" aria-labelledby="cat-analysis-title">
