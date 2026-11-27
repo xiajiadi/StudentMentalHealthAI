@@ -1045,7 +1045,8 @@ test('a specialist reviews facts and saves an authorized synthetic support plan'
   }
   await chooseRole(page, 'TEACHER', '/teacher/workspace')
   const support = '/api/v1/school/support'
-  const replay = process.env.PSYNOVA_AGENT_QA_UNCLAIMED_SUPPORT_REF
+  const resumeTriaged = process.env.PSYNOVA_AGENT_QA_TRIAGED_SUPPORT_REF
+  const replay = resumeTriaged ?? process.env.PSYNOVA_AGENT_QA_UNCLAIMED_SUPPORT_REF
   let item
   let observation: string
   if (replay) {
@@ -1053,7 +1054,7 @@ test('a specialist reviews facts and saves an authorized synthetic support plan'
     const detail = await page.request.get(origin + support + '/cases/' + replay)
     expect(detail.ok()).toBe(true)
     item = (await detail.json()).data
-    expect(item.status).toBe('SUBMITTED')
+    expect(item.status).toBe(resumeTriaged ? 'TRIAGED' : 'SUBMITTED')
     observation = item.content
     expect(observation).toMatch(/^合成流程验证 \d+，课堂学习安排需要进一步向学生核对$/)
   } else {
@@ -1077,20 +1078,22 @@ test('a specialist reviews facts and saves an authorized synthetic support plan'
   const evidencePath = casePath + '/plan-evidence'
 
   await chooseRole(page, 'PSYCHOLOGICAL_SPECIALIST', '/specialist/workspace')
-  expect((await page.request.get(origin + evidencePath)).status()).toBe(404)
+  if (!resumeTriaged) expect((await page.request.get(origin + evidencePath)).status()).toBe(404)
   const events = await ask(page, '请为授权的学校支持请求准备一份专业支持计划草案，我要查看依据后再决定是否保存', '发送任务')
   const tool = events.find((event) => event.view?.kind === 'specialist_support_plan')?.view
-  expect(tool?.counts.SUBMITTED).toBeGreaterThan(0)
+  expect(tool?.counts[resumeTriaged ? 'TRIAGED' : 'SUBMITTED']).toBeGreaterThan(0)
   expect(JSON.stringify(events)).not.toContain(item.case_ref)
   expect(JSON.stringify(events)).not.toContain(observation)
 
   await page.reload()
   await page.getByRole('button', { name: '打开支持计划草案' }).last().click()
   await page.getByRole('button', { name: new RegExp(item.case_ref.slice(-8)) }).click()
-  await expect(page.getByText(observation, { exact: true })).toHaveCount(0)
-  const triaged = page.waitForResponse((response) => response.url().endsWith(casePath + '/transitions'))
-  await page.getByRole('button', { name: '受理请求' }).click()
-  expect((await (await triaged).json()).data.status).toBe('TRIAGED')
+  if (!resumeTriaged) {
+    await expect(page.getByText(observation, { exact: true })).toHaveCount(0)
+    const triaged = page.waitForResponse((response) => response.url().endsWith(casePath + '/transitions'))
+    await page.getByRole('button', { name: '受理请求' }).click()
+    expect((await (await triaged).json()).data.status).toBe('TRIAGED')
+  }
   await expect(page.getByText(observation, { exact: true })).toBeVisible()
   if (expectedFeedback) {
     const pendingEvidence = page.waitForResponse((response) => response.url().endsWith(evidencePath))
@@ -1102,9 +1105,10 @@ test('a specialist reviews facts and saves an authorized synthetic support plan'
     expect(feedback).toEqual({
       title: expectedFeedback.title,
       body: expectedFeedback.body,
-      published_at: expectedFeedback.published_at,
+      published_at: expect.any(String),
       content_revision: expectedFeedback.content_revision,
     })
+    expect(feedback.published_at.replace(/\+00:00$/, 'Z')).toBe(expectedFeedback.published_at.replace(/\+00:00$/, 'Z'))
     const reviewed = readSchoolFeedbackContent(expectedFeedback.body)
     const panel = page.getByRole('region', { name: '已发布测评反馈' })
     await expect(panel.getByText(reviewed.body, { exact: true })).toBeVisible()
