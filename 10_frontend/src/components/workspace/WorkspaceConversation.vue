@@ -498,12 +498,14 @@ defineExpose({ submit, cancel, openIndependentCat, openSchoolLibrary })
           <template v-else-if="event.view.kind === 'professional_review_queue'">
             <strong>已建复核记录 · {{ event.view.open_count + event.view.in_review_count }} 项待处理</strong>
             <small>{{ event.view.open_count }} 项待开始 · {{ event.view.in_review_count }} 项处理中</small>
+            <small v-if="event.view.unfiled_count !== undefined">已完成测评中，{{ event.view.unfiled_count }} 份尚未建立复核记录，需人工查看</small>
             <small v-if="event.view.task_count > event.view.tasks.length">显示最新 {{ event.view.tasks.length }} 项测评任务</small>
             <ul v-if="event.view.tasks.length" class="agent-thread__rows">
               <li v-for="task in event.view.tasks" :key="task.task_ref">
                 <span>{{ task.class_label }}</span>
                 <small>{{ task.open_count }} 项待开始 · {{ task.in_review_count }} 项处理中</small>
-                <AppButton variant="secondary" @click="openReviewTask(task.task_ref)">查看该任务复核记录</AppButton>
+                <small v-if="task.unfiled_count !== undefined">{{ task.unfiled_count }} 份已完成测评未建立复核记录</small>
+                <AppButton variant="secondary" @click="openReviewTask(task.task_ref)">查看该任务测评与复核</AppButton>
               </li>
             </ul>
             <AppButton variant="secondary" @click="openPanel('review')">查看所有已指派任务</AppButton>

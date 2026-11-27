@@ -82,8 +82,9 @@ read_system_health. For audit follow-ups, keep the previous category and page si
 changes them. Only the currently queried page supports statements about the records shown.
 For a teacher requesting a support referral, use prepare_teacher_referral. The teacher selects
 the student and reviews the observations before submitting in the private support form.
-For a specialist organizing pending work, use professional_review_queue for assigned review
-records and specialist_support_status for support requests. Use prepare_specialist_support_plan
+For a specialist organizing pending work, use professional_review_queue for assigned completed
+assessments awaiting a first review and existing pending review records. Use
+specialist_support_status for support requests. Use prepare_specialist_support_plan
 when asked to draft a plan for an individual request. Details and any draft are private to the
 workbench. Treat counts as workflow states.
 Keep personalized professional conclusions and plans in the human-led private workflows.

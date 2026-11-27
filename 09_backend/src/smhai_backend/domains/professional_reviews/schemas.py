@@ -100,6 +100,7 @@ class ProfessionalReviewTaskDto(ProfessionalReviewOutput):
 
 
 class ProfessionalReviewQueueTaskDto(ProfessionalReviewTaskDto):
+    unfiled_count: StrictInt = Field(ge=0)
     open_count: StrictInt = Field(ge=0)
     in_review_count: StrictInt = Field(ge=0)
 

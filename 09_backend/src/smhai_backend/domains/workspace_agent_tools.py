@@ -194,9 +194,9 @@ TOOLS = {
     ),
     "professional_review_queue": Tool(
         "整理专业复核待办",
-        "Count saved OPEN and IN_REVIEW cases across current task assignments, and prepare "
-        "private workbench links. These are workflow counts, not mental health risk findings, "
-        "and do not cover eligible assessments without an opened case.",
+        "Summarize eligible completed assessments without a review record and saved OPEN or "
+        "IN_REVIEW cases across current task assignments. Open private workbench links for "
+        "human review. Use these counts only to describe workflow progress.",
         (SPECIALIST,),
     ),
     "specialist_support_status": Tool(
@@ -460,6 +460,7 @@ async def execute_tool(
         ]
         summary = {
             "task_count": len(queue),
+            "unfiled_count": sum(row.unfiled_count for row in queue),
             "open_count": sum(row.open_count for row in queue),
             "in_review_count": sum(row.in_review_count for row in queue),
         }
@@ -471,6 +472,7 @@ async def execute_tool(
                     {
                         "task_ref": row.task_ref,
                         "class_label": row.class_display_name or row.class_ref,
+                        "unfiled_count": row.unfiled_count,
                         "open_count": row.open_count,
                         "in_review_count": row.in_review_count,
                     }

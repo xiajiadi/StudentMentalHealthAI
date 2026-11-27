@@ -973,28 +973,44 @@ test('a specialist sees real pending review counts and opens the assigned task f
   test.setTimeout(180_000)
   await signIn(page)
   await chooseRole(page, 'PSYCHOLOGICAL_SPECIALIST', '/specialist/workspace')
-  const events = await ask(page, '整理我当前指派的待处理复核记录，按测评任务查看数量', '发送任务')
+  const events = await ask(page, '整理我当前指派的测评复核待办，按任务查看已有待办和测评已完成但尚未建立复核的数量', '发送任务')
   const resultKinds = events.map((event) => event.view?.kind ?? event.code ?? event.type)
   expect(resultKinds).toContain('professional_review_queue')
   const queue = events.find((event) => event.view?.kind === 'professional_review_queue')?.view
   expect(queue.open_count + queue.in_review_count).toBeGreaterThan(0)
-  const task = queue.tasks[0]
+  expect(queue.unfiled_count).toBeGreaterThan(0)
+  const awaitingReviewIndex = queue.tasks.findIndex((row: { unfiled_count: number }) => row.unfiled_count > 0)
+  expect(awaitingReviewIndex).toBeGreaterThanOrEqual(0)
+  const task = queue.tasks[awaitingReviewIndex]
   const work = '/api/v1/school/professional-reviews/tasks/' + encodeURIComponent(task.task_ref)
+  let unfiledCount = 0
+  for (let offset = 0; ; offset += 50) {
+    const list = await page.request.get(origin + work + `/eligible-enrollments?offset=${offset}&limit=50`)
+    expect(list.ok()).toBe(true)
+    const { items, total } = (await list.json()).data
+    unfiledCount += items.filter((item: { case_ref: string | null }) => item.case_ref === null).length
+    if (offset + 50 >= total) break
+  }
+  expect(task.unfiled_count).toBe(unfiledCount)
+  const existing = queue.tasks.find((row: { open_count: number; in_review_count: number }) => row.open_count + row.in_review_count > 0)
+  expect(existing).toBeTruthy()
+  const existingWork = '/api/v1/school/professional-reviews/tasks/' + encodeURIComponent(existing.task_ref)
   let open = 0
   let reviewing = 0
   for (let offset = 0; ; offset += 50) {
-    const list = await page.request.get(origin + work + `/cases?offset=${offset}&limit=50`)
+    const list = await page.request.get(origin + existingWork + `/cases?offset=${offset}&limit=50`)
     expect(list.ok()).toBe(true)
     const { items, total } = (await list.json()).data
     open += items.filter((item: { status: string }) => item.status === 'OPEN').length
     reviewing += items.filter((item: { status: string }) => item.status === 'IN_REVIEW').length
     if (offset + 50 >= total) break
   }
-  expect(task).toMatchObject({ open_count: open, in_review_count: reviewing })
+  expect(existing).toMatchObject({ open_count: open, in_review_count: reviewing })
   const cases = page.waitForResponse((response) => response.url().startsWith(origin + work + '/cases?'))
-  const buttons = page.getByRole('button', { name: '查看该任务复核记录' })
-  await buttons.nth(await buttons.count() - queue.tasks.length).click()
+  const buttons = page.getByRole('button', { name: '查看该任务测评与复核' })
+  await buttons.nth(await buttons.count() - queue.tasks.length + awaitingReviewIndex).click()
   expect((await cases).ok()).toBe(true)
+  await expect(page.getByRole('heading', { name: '已完成记录', exact: true })).toBeVisible()
   await expect(page.getByRole('heading', { name: '复核记录', exact: true })).toBeVisible()
   await expect(page).toHaveURL(origin + '/specialist/workspace')
   const support = await page.request.get(origin + '/api/v1/school/support/cases?limit=50')

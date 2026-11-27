@@ -81,7 +81,20 @@ export type WorkspaceAgentView =
   | { kind: 'cat_drafts' | 'cat_handoffs'; drafts: CatDraft[] }
   | ({ kind: 'teacher_referral' } & TeacherReferral)
   | { kind: 'teacher_support_status' | 'specialist_support_status' | 'specialist_support_plan'; total: number; shown: number; counts: Partial<Record<CaseStatus, number>> }
-  | { kind: 'professional_review_queue'; task_count: number; open_count: number; in_review_count: number; tasks: { task_ref: string; class_label: string; open_count: number; in_review_count: number }[] }
+  | {
+    kind: 'professional_review_queue'
+    task_count: number
+    unfiled_count?: number
+    open_count: number
+    in_review_count: number
+    tasks: {
+      task_ref: string
+      class_label: string
+      unfiled_count?: number
+      open_count: number
+      in_review_count: number
+    }[]
+  }
   | { kind: 'roster_import' }
   | { kind: 'staff_roster_import' }
   | { kind: 'staff_invitation_status'; issued: number; accepted: number; expired: number; revoked: number }

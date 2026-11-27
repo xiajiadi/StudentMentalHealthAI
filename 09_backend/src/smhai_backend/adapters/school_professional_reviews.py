@@ -1030,16 +1030,53 @@ class SchoolProfessionalReviewPersistenceAdapter:
                 for task_ref, class_ref, class_display_name, published_at in rows
             ]
 
+    def _eligible_review_rows(self, statement, school_id: int):
+        """Apply the same enrollment and assessment scope to the picker and queue."""
+        m = self._db_models
+        enrollment = m.TaskEnrollment
+        assessment = m.AssessmentSession
+        subject = m.Subject
+        review = m.SchoolProfessionalReviewCase
+        return (
+            statement.select_from(enrollment)
+            .join(
+                assessment,
+                (assessment.task_enrollment_id == enrollment.id)
+                & (assessment.subject_id == enrollment.subject_id),
+            )
+            .join(
+                subject,
+                (subject.id == enrollment.subject_id)
+                & (subject.school_id == enrollment.school_id),
+            )
+            .outerjoin(
+                review,
+                (review.task_enrollment_id == enrollment.id)
+                & (review.task_id == enrollment.task_id)
+                & (review.school_id == enrollment.school_id)
+                & (review.class_id == enrollment.class_id)
+                & (review.subject_id == enrollment.subject_id)
+                & (review.assessment_session_id == assessment.id),
+            )
+            .where(
+                enrollment.school_id == school_id,
+                enrollment.status == "ACTIVE",
+                enrollment.revoked_at.is_(None),
+                assessment.status == self._db_enums.AssessmentStatus.COMPLETED.value,
+                assessment.completed_at.is_not(None),
+                subject.status == self._db_enums.SubjectStatus.ACTIVE.value,
+                subject.data_origin == self._db_enums.DataOrigin.SYNTHETIC.value,
+            )
+        )
+
     async def school_professional_review_pending_queue(self, actor: Any) -> list[dict[str, Any]]:
-        """Count pending review records across all current specialist assignments."""
+        """Count eligible assessments awaiting a first review and pending cases."""
         from sqlalchemy import case, func
 
         now = self._utc_now()
         m = self._db_models
         review = m.SchoolProfessionalReviewCase
         enrollment = m.TaskEnrollment
-        assessment = m.AssessmentSession
-        subject = m.Subject
         async with self._uow() as uow:
             _, specialist_role_id = await self._require_actor(
                 uow, actor, "psychological_specialist", now
@@ -1058,47 +1095,24 @@ class SchoolProfessionalReviewPersistenceAdapter:
                 assigned.c.published_at,
             )
             statement = (
-                self._select(
-                    *public_columns,
-                    func.sum(case((review.status == "OPEN", 1), else_=0)).label("open_count"),
-                    func.sum(case((review.status == "IN_REVIEW", 1), else_=0)).label(
-                        "in_review_count"
+                self._eligible_review_rows(
+                    self._select(
+                        *public_columns,
+                        func.sum(case((review.id.is_(None), 1), else_=0)).label("unfiled_count"),
+                        func.sum(case((review.status == "OPEN", 1), else_=0)).label("open_count"),
+                        func.sum(case((review.status == "IN_REVIEW", 1), else_=0)).label(
+                            "in_review_count"
+                        ),
                     ),
+                    actor.school_id,
                 )
-                .select_from(assigned)
-                .join(
-                    review,
-                    (review.task_id == assigned.c.task_id)
-                    & (review.class_id == assigned.c.class_id)
-                    & (review.school_id == actor.school_id),
-                )
-                .join(
+                .join_from(
                     enrollment,
-                    (enrollment.id == review.task_enrollment_id)
-                    & (enrollment.task_id == review.task_id)
-                    & (enrollment.class_id == review.class_id)
-                    & (enrollment.school_id == review.school_id)
-                    & (enrollment.subject_id == review.subject_id),
+                    assigned,
+                    (assigned.c.task_id == enrollment.task_id)
+                    & (assigned.c.class_id == enrollment.class_id),
                 )
-                .join(
-                    assessment,
-                    (assessment.id == review.assessment_session_id)
-                    & (assessment.task_enrollment_id == enrollment.id)
-                    & (assessment.subject_id == enrollment.subject_id),
-                )
-                .join(
-                    subject,
-                    (subject.id == enrollment.subject_id)
-                    & (subject.school_id == enrollment.school_id),
-                )
-                .where(
-                    review.status.in_(("OPEN", "IN_REVIEW")),
-                    enrollment.status == "ACTIVE",
-                    enrollment.revoked_at.is_(None),
-                    assessment.status == self._db_enums.AssessmentStatus.COMPLETED.value,
-                    subject.status == self._db_enums.SubjectStatus.ACTIVE.value,
-                    subject.data_origin == self._db_enums.DataOrigin.SYNTHETIC.value,
-                )
+                .where(review.id.is_(None) | review.status.in_(("OPEN", "IN_REVIEW")))
                 .group_by(*public_columns)
                 .order_by(assigned.c.published_at.desc(), assigned.c.task_ref)
             )
@@ -1106,6 +1120,7 @@ class SchoolProfessionalReviewPersistenceAdapter:
             return [
                 {
                     **row,
+                    "unfiled_count": int(row["unfiled_count"]),
                     "open_count": int(row["open_count"]),
                     "in_review_count": int(row["in_review_count"]),
                 }
@@ -1136,47 +1151,17 @@ class SchoolProfessionalReviewPersistenceAdapter:
             await self._require_actor(uow, actor, "psychological_specialist", now)
             task = await self._task(uow, actor, task_ref, lock=False)
             await self._active_assignment(uow, actor, task, at=now, lock=False)
-            base = (
+            base = self._eligible_review_rows(
                 self._select(
                     m.TaskEnrollment.public_id,
                     m.AssessmentSession.assessment_ref,
                     m.AssessmentSession.completed_at,
                     m.SchoolProfessionalReviewCase.review_ref,
-                )
-                .join(
-                    m.AssessmentSession,
-                    (m.AssessmentSession.task_enrollment_id == m.TaskEnrollment.id)
-                    & (m.AssessmentSession.subject_id == m.TaskEnrollment.subject_id),
-                )
-                .join(
-                    m.Subject,
-                    (m.Subject.id == m.TaskEnrollment.subject_id)
-                    & (m.Subject.school_id == m.TaskEnrollment.school_id),
-                )
-                .outerjoin(
-                    m.SchoolProfessionalReviewCase,
-                    (m.SchoolProfessionalReviewCase.task_enrollment_id == m.TaskEnrollment.id)
-                    & (m.SchoolProfessionalReviewCase.task_id == m.TaskEnrollment.task_id)
-                    & (m.SchoolProfessionalReviewCase.school_id == m.TaskEnrollment.school_id)
-                    & (m.SchoolProfessionalReviewCase.class_id == m.TaskEnrollment.class_id)
-                    & (m.SchoolProfessionalReviewCase.subject_id == m.TaskEnrollment.subject_id)
-                    & (
-                        m.SchoolProfessionalReviewCase.assessment_session_id
-                        == m.AssessmentSession.id
-                    ),
-                )
-                .where(
-                    m.TaskEnrollment.task_id == task.id,
-                    m.TaskEnrollment.school_id == actor.school_id,
-                    m.TaskEnrollment.class_id == task.class_id,
-                    m.TaskEnrollment.status == "ACTIVE",
-                    m.TaskEnrollment.revoked_at.is_(None),
-                    m.AssessmentSession.status == self._db_enums.AssessmentStatus.COMPLETED.value,
-                    m.AssessmentSession.completed_at.is_not(None),
-                    m.Subject.school_id == actor.school_id,
-                    m.Subject.status == self._db_enums.SubjectStatus.ACTIVE.value,
-                    m.Subject.data_origin == self._db_enums.DataOrigin.SYNTHETIC.value,
-                )
+                ),
+                actor.school_id,
+            ).where(
+                m.TaskEnrollment.task_id == task.id,
+                m.TaskEnrollment.class_id == task.class_id,
             )
             total = int(
                 await uow.session.scalar(

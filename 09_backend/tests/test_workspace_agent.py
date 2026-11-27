@@ -1059,6 +1059,7 @@ async def test_specialist_review_queue_only_exposes_workflow_counts_to_model(
         "class_ref": "CLASS_private_fixture",
         "class_display_name": "PRIVATE_REVIEW_CLASS_LABEL",
         "published_at": datetime.now(UTC),
+        "unfiled_count": 3,
         "open_count": 4,
         "in_review_count": 2,
     }]))
@@ -1079,10 +1080,11 @@ async def test_specialist_review_queue_only_exposes_workflow_counts_to_model(
         if (event := json.loads(line))["type"] == "tool_result"
     ]
     assert views[0]["tasks"][0]["task_ref"] == "TASK_private_review_fixture"
+    assert views[0]["tasks"][0]["unfiled_count"] == views[0]["unfiled_count"] == 3
     assert review.pending_queue.await_args.args[0].school_ref == FIRST
     messages = model.await_args.args[0]
     assert json.loads(messages[-1]["content"]) == {
-        "task_count": 1, "open_count": 4, "in_review_count": 2,
+        "task_count": 1, "unfiled_count": 3, "open_count": 4, "in_review_count": 2,
     }
     assert "PRIVATE_REVIEW_CLASS_LABEL" not in json.dumps(messages)
 
