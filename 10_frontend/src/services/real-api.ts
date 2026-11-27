@@ -1460,7 +1460,8 @@ export class RealApiProvider implements FrontendApi {
   async requestWorkspaceConversation(
     operation: 'history' | 'turn' | 'cancel' | 'reset' | 'confirm-publication' | 'cat-attachment'
       | 'save-cat-draft' | 'approve-cat-draft' | 'preview-cat-handoff'
-      | 'document-preview/pdf' | 'document-preview/docx' | 'formula-preview' | `task-feedback/${string}`,
+      | 'document-preview/pdf' | 'document-preview/docx' | 'formula-preview' | `task-feedback/${string}`
+      | `feedback-guide/${string}`,
     body?: object,
     signal?: AbortSignal,
     historyVersion?: string,

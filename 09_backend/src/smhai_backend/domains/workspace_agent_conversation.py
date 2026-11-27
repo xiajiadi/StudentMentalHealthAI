@@ -22,6 +22,7 @@ from smhai_backend.domains.models import Actor
 from smhai_backend.domains.school_research_sources import library
 
 from . import workspace_agent_cat as cat_workflow
+from . import workspace_agent_feedback_guide as feedback_guide
 from . import workspace_agent_formula as formula_reader
 from .workspace_agent import _check_actor
 from .workspace_agent_history import workspace_owner as _owner
@@ -537,6 +538,56 @@ async def task_feedback(
     reference = await service.latest_student_feedback_for_task(actor, task_ref)
     return JSONResponse(
         {"data": {"feedback_ref": reference}}, headers={"Cache-Control": "no-store"}
+    )
+
+
+@router.post("/feedback-guide/{feedback_ref}", include_in_schema=False)
+async def guide_feedback(
+    request: Request,
+    payload: feedback_guide.FeedbackGuideQuestion,
+    actor: CsrfActor,
+    feedback_ref: str = Path(pattern=r"^FEED_[A-Za-z0-9][A-Za-z0-9_.-]{0,122}$"),
+):
+    _history(request, actor)
+    if actor.role != STUDENT:
+        raise error(ErrorCode.FORBIDDEN, detail="feedback guide is unavailable for this role")
+    container = request.app.state.container
+    if container.school_feedback is None:
+        raise error(ErrorCode.DEPENDENCY_UNAVAILABLE, detail="school feedback is unavailable")
+    context = current_request_context(request)
+    container.rate_limiter.check("support", actor.user_id)
+    record = await container.school_feedback.get_student_feedback(actor, feedback_ref)
+    if record["content_revision"] != payload.content_revision:
+        raise error(ErrorCode.WORKFLOW_CONFLICT, detail="feedback revision changed")
+
+    local_context = _safety_context(actor, payload.question, context)
+    check = await container.safety.check_input(local_context, context)
+    if not _proceed(check, payload.question, actor):
+        outcome, excerpts = "needs_support", []
+    else:
+        if formula_reader.FORMULA_SLOTS.locked():
+            raise error(
+                ErrorCode.DEPENDENCY_UNAVAILABLE,
+                detail="private feedback guide is busy",
+                retryable=True,
+            )
+        async with formula_reader.FORMULA_SLOTS:
+            excerpts = await run_in_threadpool(
+                feedback_guide.find_feedback_passages, payload.question, record["body"]
+            )
+        # Authorization and publication may have changed while the worker was running.
+        await container.school_feedback.get_student_feedback(actor, feedback_ref)
+        outcome = "matched" if excerpts else "unmatched"
+    log.info(
+        "workspace_agent_feedback_guide",
+        trace_id=context.trace_id,
+        outcome=outcome,
+        excerpt_count=len(excerpts),
+        model=feedback_guide.MODEL if outcome != "needs_support" else None,
+    )
+    return JSONResponse(
+        {"data": {"status": outcome, "excerpts": excerpts}},
+        headers={"Cache-Control": "private, no-store"},
     )
 
 

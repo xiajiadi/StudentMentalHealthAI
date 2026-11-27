@@ -164,6 +164,29 @@ export async function findWorkspaceTaskFeedback(taskRef: string): Promise<string
   return reference
 }
 
+export type FeedbackGuide = {
+  status: 'matched' | 'unmatched' | 'needs_support'
+  excerpts: { source: 'feedback' | 'next_steps'; text: string }[]
+}
+
+export async function readWorkspaceFeedbackGuide(
+  feedbackRef: string, revision: number, question: string, signal: AbortSignal,
+): Promise<FeedbackGuide> {
+  if (!/^FEED_[A-Za-z0-9][A-Za-z0-9_.-]{0,122}$/.test(feedbackRef)) throw new Error('反馈编号不可用')
+  const response = await realApiProvider.requestWorkspaceConversation(
+    `feedback-guide/${feedbackRef}`, { content_revision: revision, question }, signal,
+  )
+  const data = (await response.json()).data as FeedbackGuide
+  if (!data || !['matched', 'unmatched', 'needs_support'].includes(data.status)
+    || !Array.isArray(data.excerpts) || data.excerpts.length > 2
+    || (data.status === 'matched') !== Boolean(data.excerpts.length)
+    || data.excerpts.some((item) => !item || !['feedback', 'next_steps'].includes(item.source)
+      || typeof item.text !== 'string' || !item.text.trim() || item.text.length > 480)) {
+    throw new Error('校内导读返回格式无效')
+  }
+  return data
+}
+
 export async function updateWorkspaceCat(draftRef: string, action: 'save' | 'approve') {
   const response = await realApiProvider.requestWorkspaceConversation(
     action === 'save' ? 'save-cat-draft' : 'approve-cat-draft', { draft_ref: draftRef },

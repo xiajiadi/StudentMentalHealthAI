@@ -13,7 +13,7 @@ import pytest
 from pwdlib import PasswordHash
 
 from smhai_backend.core.errors import BackendError
-from smhai_backend.domains import workspace_agent_formula
+from smhai_backend.domains import workspace_agent_feedback_guide, workspace_agent_formula
 from smhai_backend.domains.models import BackendRole, SchoolRoleContext, SyntheticUser
 from smhai_backend.domains.school_operations_audit.service import SchoolOperationsAuditService
 from smhai_backend.domains.school_research_sources import library
@@ -451,6 +451,59 @@ def test_lost_worker_lease_becomes_an_interruption_and_fences_old_events(tmp_pat
     assert new_run != run and prior == events
     with pytest.raises(BackendError, match="workflow_conflict"):
         history.append("synthetic-owner", run, {"type": "answer", "text": "已过期"})
+
+
+async def test_feedback_guide_uses_the_published_revision_and_stays_out_of_the_model_lane(
+    client, app, model_lane, monkeypatch
+):
+    model, safety = model_lane
+    headers = await login(client)
+    await select(client, headers, "STUDENT")
+    source = "这是一条合成反馈。\n\n【老师建议的下一步】\n写下一个想向老师核对的问题。"
+    reference = "FEED_synthetic_guide"
+    school = SimpleNamespace(get_student_feedback=AsyncMock(return_value={
+        "content_revision": 2, "body": source,
+    }))
+    monkeypatch.setattr(app.state.container, "school_feedback", school)
+    scores = []
+
+    def rank(question, passages):
+        scores.append((question, passages))
+        return [0.81, 0.31]
+
+    monkeypatch.setattr(workspace_agent_feedback_guide, "_scores", rank)
+    route = f"{BASE}/conversation/feedback-guide/{reference}"
+    question = "该怎么准备要问老师的内容"
+    payload = {"content_revision": 2, "question": question}
+    wrong_revision = await client.post(
+        route, headers=headers, json={**payload, "content_revision": 1}
+    )
+    assert wrong_revision.status_code == 409
+    assert scores == []
+    safety.check_input.assert_not_awaited()
+
+    result = await client.post(route, headers=headers, json=payload)
+    assert result.status_code == 200
+    assert result.headers["cache-control"] == "private, no-store"
+    assert result.json()["data"] == {
+        "status": "matched",
+        "excerpts": [{"source": "next_steps", "text": "写下一个想向老师核对的问题。"}],
+    }
+    assert scores == [(question, ["写下一个想向老师核对的问题。", "这是一条合成反馈。"])]
+    assert school.get_student_feedback.await_count == 3
+    assert all(call.args[1] == reference for call in school.get_student_feedback.await_args_list)
+    assert (await client.get(f"{BASE}/conversation")).json()["data"]["events"] == []
+
+    safety.check_input.side_effect = None
+    safety.check_input.return_value = SimpleNamespace(
+        decision=SimpleNamespace(action="BLOCK", requires_human=True, disclosure_policy="NONE"),
+    )
+    blocked = await client.post(route, headers=headers, json=payload)
+    assert blocked.json()["data"] == {"status": "needs_support", "excerpts": []}
+    assert len(scores) == 1
+    await select(client, headers, "TEACHER")
+    assert (await client.post(route, headers=headers, json=payload)).status_code == 403
+    model.assert_not_awaited()
 
 
 @pytest.mark.parametrize(

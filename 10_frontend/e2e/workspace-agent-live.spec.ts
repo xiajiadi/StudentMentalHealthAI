@@ -276,6 +276,46 @@ test('published school feedback is read in the learner conversation over the pri
     await expect(page.getByRole('heading', { name: '老师建议的下一步' })).toBeVisible()
     await expect(page.getByText(reviewed.nextSteps, { exact: true })).toBeVisible()
   }
+  const guidePath = '/api/v1/workspace-agent/conversation/feedback-guide/' + current.feedback_ref
+  const verifyGuide = process.env.PSYNOVA_AGENT_QA_FEEDBACK_GUIDE === '1'
+  if (verifyGuide) {
+    await page.setViewportSize({ width: 390, height: 840 })
+    const writes: string[] = []
+    page.on('request', (request) => {
+      if (request.method() === 'POST') writes.push(new URL(request.url()).pathname)
+    })
+    const question = '想请学校老师解释，我该从哪里联系'
+    await page.getByRole('button', { name: '在这份反馈里查找' }).click()
+    const field = page.getByRole('textbox', { name: '你想确认什么' })
+    const lookup = async (query: string) => {
+      await field.fill(query)
+      const response = page.waitForResponse((reply) => reply.url().endsWith(guidePath))
+      await page.getByRole('button', { name: '查找相关原文' }).click()
+      const result = await response
+      expect(result.ok()).toBe(true)
+      expect(result.headers()['cache-control']).toContain('no-store')
+      expect(result.request().postDataJSON()).toEqual({ content_revision: current.content_revision, question: query })
+      return (await result.json()).data
+    }
+    const found = await lookup(question)
+    expect(found.status).toBe('matched')
+    expect(found.excerpts.length).toBeGreaterThan(0)
+    expect(found.excerpts[0].source).toBe('next_steps')
+    expect(reviewed.nextSteps).toContain(found.excerpts[0].text)
+    expect(found.excerpts.every((item: { text: string }) => current.body.includes(item.text))).toBe(true)
+    await expect(page.getByText('老师建议原文', { exact: true })).toBeVisible()
+
+    expect(await lookup('明天厦门会下雨吗')).toEqual({ status: 'unmatched', excerpts: [] })
+    await expect(page.getByText('这份反馈没有找到能直接对应你问题的原句')).toBeVisible()
+    expect(await lookup('我现在想自杀，已经有了具体计划')).toEqual({ status: 'needs_support', excerpts: [] })
+    await expect(page.getByText('可以请学校心理教师继续协助你')).toBeVisible()
+    expect(writes).toEqual([guidePath, guidePath, guidePath])
+    const afterGuide = await page.request.get(origin + '/api/v1/workspace-agent/conversation')
+    const transcript = await afterGuide.text()
+    expect(transcript).not.toContain(question)
+    expect(transcript).not.toContain(JSON.stringify(current.body).slice(1, -1))
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391)
+  }
   await page.getByRole('button', { name: '查看学校支持' }).click()
   await expect(page.getByRole('heading', { name: '提交求助请求' })).toBeVisible()
   await expect(page).toHaveURL(origin + '/student/workspace')
@@ -283,6 +323,14 @@ test('published school feedback is read in the learner conversation over the pri
   const denied = await page.request.get(origin + '/api/v1/school/feedback/student/' + current.feedback_ref)
   expect(denied.status()).toBe(403)
   expect((await page.request.get(origin + taskPath)).status()).toBe(403)
+  if (verifyGuide) {
+    const csrf = await page.request.get(origin + '/api/v1/auth/csrf')
+    const forbidden = await page.request.post(origin + guidePath, {
+      headers: { Origin: origin!, 'X-CSRF-Token': (await csrf.json()).data.csrf_token },
+      data: { content_revision: current.content_revision, question: '查找已发布反馈原文' },
+    })
+    expect(forbidden.status()).toBe(403)
+  }
 })
 
 test('a learner asks the school to clarify the exact published feedback revision', async ({ page }) => {

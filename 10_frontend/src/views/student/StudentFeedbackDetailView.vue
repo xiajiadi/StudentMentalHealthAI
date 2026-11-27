@@ -17,6 +17,7 @@ import { useRoute, useRouter } from 'vue-router'
 const route = useRoute()
 const router = useRouter()
 const session = useSessionStore()
+const guideEnabled = computed(() => session.user?.activeContext?.schoolRef.startsWith('PUBLICDEMO_'))
 const props = defineProps<{ embeddedFeedbackRef?: string }>()
 const emit = defineEmits<{ support: [] }>()
 const state = ref<'loading' | 'ready' | 'error'>('loading')
@@ -97,6 +98,7 @@ onBeforeUnmount(() => { requestGeneration += 1 })
           :key="feedback.feedback_ref"
           :feedback-ref="feedback.feedback_ref"
           :revision="feedback.content_revision"
+          :guide-enabled="guideEnabled"
         />
         <AppButton variant="secondary" @click="emit('support')">查看学校支持</AppButton>
       </details>
@@ -127,6 +129,7 @@ onBeforeUnmount(() => { requestGeneration += 1 })
             :key="feedback.feedback_ref"
             :feedback-ref="feedback.feedback_ref"
             :revision="feedback.content_revision"
+            :guide-enabled="guideEnabled"
           />
           <AppButton variant="secondary" @click="router.push('/student/school-support')">查看学校支持</AppButton>
         </div>
