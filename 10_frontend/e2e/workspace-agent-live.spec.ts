@@ -1013,18 +1013,31 @@ test('a specialist reviews facts and saves an authorized synthetic support plan'
   await signIn(page)
   await chooseRole(page, 'TEACHER', '/teacher/workspace')
   const support = '/api/v1/school/support'
-  const directory = await page.request.get(origin + support + '/students')
-  expect(directory.ok()).toBe(true)
-  const student = (await directory.json()).data.items[0]
-  expect(student?.student_ref).toBeTruthy()
-  const csrf = await page.request.get(origin + '/api/v1/auth/csrf')
-  const observation = `合成流程验证 ${Date.now()}，课堂学习安排需要进一步向学生核对`
-  const created = await page.request.post(origin + support + '/cases', {
-    headers: { Origin: origin!, 'X-CSRF-Token': (await csrf.json()).data.csrf_token, 'Idempotency-Key': `qa-support-plan-${Date.now()}` },
-    data: { category_code: 'LEARNING_SUPPORT', content: observation, student_ref: student.student_ref, class_ref: student.class_ref },
-  })
-  expect(created.status()).toBe(201)
-  const item = (await created.json()).data
+  const replay = process.env.PSYNOVA_AGENT_QA_UNCLAIMED_SUPPORT_REF
+  let item
+  let observation: string
+  if (replay) {
+    expect(replay).toMatch(/^SSC_[a-f0-9]{32}$/)
+    const detail = await page.request.get(origin + support + '/cases/' + replay)
+    expect(detail.ok()).toBe(true)
+    item = (await detail.json()).data
+    expect(item.status).toBe('SUBMITTED')
+    observation = item.content
+    expect(observation).toMatch(/^合成流程验证 \d+，课堂学习安排需要进一步向学生核对$/)
+  } else {
+    const directory = await page.request.get(origin + support + '/students')
+    expect(directory.ok()).toBe(true)
+    const student = (await directory.json()).data.items[0]
+    expect(student?.student_ref).toBeTruthy()
+    const csrf = await page.request.get(origin + '/api/v1/auth/csrf')
+    observation = `合成流程验证 ${Date.now()}，课堂学习安排需要进一步向学生核对`
+    const created = await page.request.post(origin + support + '/cases', {
+      headers: { Origin: origin!, 'X-CSRF-Token': (await csrf.json()).data.csrf_token, 'Idempotency-Key': `qa-support-plan-${Date.now()}` },
+      data: { category_code: 'LEARNING_SUPPORT', content: observation, student_ref: student.student_ref, class_ref: student.class_ref },
+    })
+    expect(created.status()).toBe(201)
+    item = (await created.json()).data
+  }
   const casePath = support + '/cases/' + item.case_ref
 
   await chooseRole(page, 'PSYCHOLOGICAL_SPECIALIST', '/specialist/workspace')
@@ -1037,10 +1050,11 @@ test('a specialist reviews facts and saves an authorized synthetic support plan'
   await page.reload()
   await page.getByRole('button', { name: '打开支持计划草案' }).last().click()
   await page.getByRole('button', { name: new RegExp(item.case_ref.slice(-8)) }).click()
-  await expect(page.getByText(observation, { exact: true })).toBeVisible()
+  await expect(page.getByText(observation, { exact: true })).toHaveCount(0)
   const triaged = page.waitForResponse((response) => response.url().endsWith(casePath + '/transitions'))
   await page.getByRole('button', { name: '受理请求' }).click()
   expect((await (await triaged).json()).data.status).toBe('TRIAGED')
+  await expect(page.getByText(observation, { exact: true })).toBeVisible()
   await page.locator('#support-plan-topic').click()
   await page.getByRole('option', { name: '忙不过来时，先找一个能做的小步骤' }).click()
   await expect(page.getByRole('link', { name: '世界卫生组织｜压力' })).toHaveAttribute('href', /who\.int/)
