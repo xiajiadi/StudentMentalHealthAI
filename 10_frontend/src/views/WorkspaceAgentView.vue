@@ -569,6 +569,7 @@ function dateLabel(value: string) {
         :key="workspaceScope"
         ref="workspaceAgent"
         :role="role"
+        :scope="workspaceScope"
         :roster="roster"
         :cat-file="catFile"
         :table-summary="tableSummary"

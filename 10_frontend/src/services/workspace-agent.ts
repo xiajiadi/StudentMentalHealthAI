@@ -104,7 +104,7 @@ export type WorkspaceAgentView =
   | { kind: 'markdown'; filename: string; markdown: string }
 
 export type WorkspaceEvent = { run_id: string } & (
-  | { type: 'start'; trace_id: string }
+  | { type: 'start'; trace_id: string; requires_attachment?: boolean }
   | { type: 'status'; status: 'screening' | 'model' | 'checking_response' }
   | { type: 'user' | 'answer'; text: string }
   | { type: 'tool_started'; label: string; call_id: string }
@@ -114,9 +114,18 @@ export type WorkspaceEvent = { run_id: string } & (
   | { type: 'end'; status: 'completed' | 'blocked' | 'failed' | 'interrupted' | 'step_limit'; code?: string }
 )
 
-export async function loadWorkspaceConversation(signal?: AbortSignal) {
-  const response = await realApiProvider.requestWorkspaceConversation('history', undefined, signal)
-  return (await response.json()).data as { events: WorkspaceEvent[]; active: boolean }
+export async function loadWorkspaceConversation(signal?: AbortSignal, version?: string) {
+  const response = await realApiProvider.requestWorkspaceConversation('history', undefined, signal, version)
+  return (await response.json()).data as {
+    events: WorkspaceEvent[] | null
+    active_run_id: string | null
+    revision: string
+    scope: { user_id: string; school_ref: string; role: string }
+  }
+}
+
+export async function cancelWorkspaceTurn(runId: string, signal: AbortSignal) {
+  await realApiProvider.requestWorkspaceConversation('cancel', { run_id: runId }, signal)
 }
 
 export async function resetWorkspaceConversation() {

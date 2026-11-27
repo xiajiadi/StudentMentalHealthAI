@@ -10,7 +10,7 @@ from typing import Literal
 
 import structlog
 from database_layer.provenance import is_public_demo_school_ref
-from fastapi import APIRouter, Path, Request
+from fastapi import APIRouter, Path, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -123,6 +123,11 @@ class TurnRequest(BaseModel):
     attachment: Literal["student_roster", "staff_roster", "cat_bank"] | None = None
     cat_attachment_ref: str | None = Field(default=None, pattern=cat_workflow.REF)
     table_summary: WorkspaceTableSummary | None = None
+
+
+class CancelTurnRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    run_id: str = Field(pattern=r"^[0-9a-f]{32}$")
 
 
 class FunctionCall(BaseModel):
@@ -435,10 +440,12 @@ async def _run(request: Request, actor: Actor, payload: TurnRequest, prior: list
 
 
 @router.get("")
-async def conversation(request: Request, actor: CurrentActor):
+async def conversation(
+    request: Request, actor: CurrentActor, since: str | None = Query(default=None, max_length=80)
+):
     history = _history(request, actor)
-    events, active = history.read(_owner(actor))
-    if actor.role == SPECIALIST:
+    events, active_run, revision = history.read(_owner(actor), since)
+    if events is not None and actor.role == SPECIALIST:
         current, _ = cat_workflow.drafts(request, actor)
         drafts = {draft["draft_ref"]: draft for draft in current["drafts"]}
         for event in events:
@@ -447,7 +454,7 @@ async def conversation(request: Request, actor: CurrentActor):
                 event["view"] = drafts[view["draft_ref"]]
             elif view.get("kind") == "cat_drafts":
                 view["drafts"] = [drafts.get(row["draft_ref"], row) for row in view["drafts"]]
-    elif actor.role == ADMIN:
+    elif events is not None and actor.role == ADMIN:
         handoffs = [
             draft
             for event in events
@@ -463,8 +470,18 @@ async def conversation(request: Request, actor: CurrentActor):
     return JSONResponse(
         {
             "data": {
-                "events": [event for event in events if event["type"] != "model_context"],
-                "active": active,
+                "events": (
+                    [event for event in events if event["type"] != "model_context"]
+                    if events is not None else None
+                ),
+                "active": active_run is not None,
+                "active_run_id": active_run,
+                "revision": revision,
+                "scope": {
+                    "user_id": actor.user_id,
+                    "school_ref": actor.school_ref,
+                    "role": actor.role,
+                },
             }
         },
         headers={"Cache-Control": "no-store"},
@@ -599,31 +616,60 @@ async def turn(request: Request, payload: TurnRequest, actor: CsrfActor):
     owner = _owner(actor)
     run_id, prior = history.acquire(owner)
     context = current_request_context(request)
+    key = (owner, run_id)
+    delivery: asyncio.Queue[bytes | None] = asyncio.Queue()
 
-    def record(event: dict) -> bytes:
+    def record(event: dict) -> None:
         history.append(owner, run_id, event)
-        return (json.dumps({**event, "run_id": run_id}, ensure_ascii=False) + "\n").encode()
+        if event["type"] != "model_context":
+            line = json.dumps({**event, "run_id": run_id}, ensure_ascii=False)
+            delivery.put_nowait((line + "\n").encode())
 
-    async def stream():
-        ended = False
+    async def execute():
+        terminal = {"type": "end", "status": "interrupted"}
         try:
-            yield record({"type": "start", "trace_id": context.trace_id})
             async with asyncio.timeout(195):
                 async for event in _run(request, actor, payload, prior):
-                    line = record(event)
-                    ended = event["type"] == "end"
-                    if event["type"] != "model_context":
-                        yield line
+                    if event["type"] == "end":
+                        terminal = event
+                    else:
+                        record(event)
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
             code = exc.code.value if isinstance(exc, BackendError) else type(exc).__name__
+            if isinstance(exc, TimeoutError):
+                code = ErrorCode.DEPENDENCY_TIMEOUT.value
             log.warning("workspace_agent_run_failed", trace_id=context.trace_id, error_code=code)
-            line = record({"type": "end", "status": "failed", "code": code})
-            ended = True
-            yield line
+            terminal = {"type": "end", "status": "failed", "code": code}
         finally:
-            if not ended:
-                history.append(owner, run_id, {"type": "end", "status": "interrupted"})
+            record(terminal)
 
+    def released(task: asyncio.Task[None]) -> None:
+        history.running.pop(key, None)
+        try:
+            if task.cancelled():
+                # A task cancelled before its coroutine started never executes its finally block.
+                _events, active_run, _revision = history.read(owner)
+                if active_run == run_id:
+                    record({"type": "end", "status": "interrupted"})
+            elif task.exception() is not None:
+                log.error("workspace_agent_run_storage_failed", trace_id=context.trace_id)
+        finally:
+            delivery.put_nowait(None)
+
+    async def stream():
+        while (line := await delivery.get()) is not None:
+            yield line
+
+    record({
+        "type": "start",
+        "trace_id": context.trace_id,
+        "requires_attachment": payload.attachment is not None or payload.table_summary is not None,
+    })
+    task = asyncio.create_task(execute())
+    history.running[key] = task
+    task.add_done_callback(released)
     return StreamingResponse(
         stream(),
         media_type="application/x-ndjson",
@@ -632,3 +678,11 @@ async def turn(request: Request, payload: TurnRequest, actor: CsrfActor):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.post("/cancel", status_code=204)
+async def cancel_turn(request: Request, payload: CancelTurnRequest, actor: CsrfActor):
+    history = _history(request, actor)
+    task = history.running.get((_owner(actor), payload.run_id))
+    if task is not None:
+        task.cancel()

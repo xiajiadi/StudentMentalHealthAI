@@ -177,6 +177,47 @@ test('cancelling a live task releases the conversation and lets the teacher retr
   expect(result?.view.total).toBe(expectedTasks)
 })
 
+test('a teacher reconnects to the same live run after reloading the workplace', async ({ page }) => {
+  test.setTimeout(180_000)
+  await signIn(page)
+  await chooseRole(page, 'TEACHER', '/teacher/workspace')
+  const progress = await page.request.get(origin + '/api/v1/school/teacher/task-progress')
+  expect(progress.ok()).toBe(true)
+  const expectedTasks = (await progress.json()).data.length
+  let starts = 0
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && request.url().endsWith('/workspace-agent/conversation/turn')) starts += 1
+  })
+  const readHistory = async () => {
+    const response = await page.request.get(origin + '/api/v1/workspace-agent/conversation')
+    expect(response.ok()).toBe(true)
+    return (await response.json()).data
+  }
+  await page.locator('#workspace-agent-input').fill('核对我当前班级测评任务的完成进度，给我业务查询结果')
+  await page.getByRole('button', { name: '发送任务', exact: true }).click()
+  await page.getByRole('button', { name: '同意并发送' }).click()
+  await expect(page.getByRole('status').filter({ hasText: '正在检查输入' })).toBeVisible({ timeout: 30_000 })
+  const running = await readHistory()
+  expect(running.active).toBe(true)
+  expect(running.active_run_id).toMatch(/^[0-9a-f]{32}$/)
+
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await expect.poll(async () => {
+    const state = await readHistory()
+    return state.events.at(-1)
+  }, { timeout: 100_000 }).toMatchObject({ type: 'end', status: 'completed', run_id: running.active_run_id })
+  await expect(page.getByText(`授权班级测评进度 · ${expectedTasks} 项`, { exact: true }).last()).toBeVisible()
+  await expect(page.getByRole('button', { name: '取消任务' })).toHaveCount(0, { timeout: 100_000 })
+  const finished = await readHistory()
+  const runId = running.active_run_id
+  expect(finished.active_run_id).toBeNull()
+  expect(finished.events.at(-1)).toMatchObject({ type: 'end', status: 'completed', run_id: runId })
+  const results = finished.events.filter((event) => event.run_id === runId && event.view?.kind === 'class_progress')
+  expect(results).toHaveLength(1)
+  expect(results[0].view.total).toBe(expectedTasks)
+  expect(starts).toBe(1)
+})
+
 test('an urgent synthetic learner message goes through school safety before any model tool', async ({ page }) => {
   test.setTimeout(180_000)
   await signIn(page)

@@ -9,6 +9,7 @@ import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import WorkspaceAnswer from './WorkspaceAnswer.vue'
 import WorkspaceCatDraft from './WorkspaceCatDraft.vue'
 import { frontendApi } from '@/services/mock-api'
+import { RealApiError } from '@/services/real-api'
 import { supportCaseStates, supportCategories, type TeacherReferral } from '@/services/school-support'
 import { articlesForTopics } from '@/services/student-education'
 import type { RosterAttachment } from '@/services/school-roster-file'
@@ -17,7 +18,7 @@ import {
 } from '@/services/school-operations-display'
 import type { WorkspaceTableSummary } from '@/services/workspace-table'
 import {
-  confirmWorkspacePublication, loadWorkspaceConversation, resetWorkspaceConversation,
+  cancelWorkspaceTurn, confirmWorkspacePublication, loadWorkspaceConversation, resetWorkspaceConversation,
   previewWorkspaceCatHandoff, runWorkspaceAgent, sendWorkspaceTurn, updateWorkspaceCat,
   uploadWorkspaceCat, type CatDraft, type TaskPublicationPreview, type WorkflowPanel, type WorkspaceEvent,
 } from '@/services/workspace-agent'
@@ -27,6 +28,7 @@ const props = defineProps<{
   catFile?: File
   tableSummary?: WorkspaceTableSummary
   role: 'student' | 'teacher' | 'psychological_specialist' | 'school_admin'
+  scope: string
 }>()
 const emit = defineEmits<{ busy: [value: boolean]; support: []; changed: [] }>()
 const Assessment = defineAsyncComponent(() => import('@/views/student/AssessmentView.vue'))
@@ -68,7 +70,11 @@ const finishLabels = {
 const events = ref<WorkspaceEvent[]>([])
 const timeline = computed(() => events.value.filter((event) => !['start', 'status', 'tool_started'].includes(event.type)
   && (event.type !== 'end' || event.status in finishLabels)))
-const running = ref(false)
+const sending = ref(false)
+const activeRun = ref<string>()
+const stopping = ref(false)
+const scopeBlocked = ref(false)
+const running = computed(() => sending.value || Boolean(activeRun.value))
 const progress = ref('')
 const message = ref('')
 const consent = ref(false)
@@ -99,9 +105,26 @@ const catReceipts = ref(new Map<string, CatDraft>())
 const pendingCat = ref<{ draft: CatDraft; action: 'save' | 'approve' }>()
 const catBusy = ref(false)
 const lastText = ref('')
+const lastSentRun = ref('')
+const failedRun = computed(() => {
+  const event = events.value.at(-1)
+  return event?.type === 'end' && ['failed', 'interrupted'].includes(event.status) ? event.run_id : undefined
+})
+const retryNeedsAttachment = computed(() => Boolean(failedRun.value && events.value.some((event) =>
+  event.run_id === failedRun.value && event.type === 'start' && event.requires_attachment)))
+const retryText = computed(() => {
+  if (!failedRun.value || retryNeedsAttachment.value) return ''
+  if (failedRun.value === lastSentRun.value) return lastText.value
+  const user = events.value.findLast((event) => event.run_id === failedRun.value && event.type === 'user')
+  return user?.type === 'user' ? user.text : ''
+})
 const viewport = ref<HTMLElement>()
 let runRequest: AbortController | undefined
 const historyRequest = new AbortController()
+let pollTimer: number | undefined
+let refreshSequence = 0
+let historyVersion: string | undefined
+let awaitingStart = false
 let disposed = false
 let consentDecision: ((accepted: boolean) => void) | undefined
 let initialHistory: Promise<void> | undefined
@@ -118,20 +141,76 @@ watch(() => props.catFile, (file) => {
   if (file && /\.csv$/i.test(file.name)) panel.value = 'cat'
 })
 
-async function refresh() {
-  const previous = await loadWorkspaceConversation(historyRequest.signal)
-  if (disposed) return
-  events.value = previous.events
-  if (previous.active) message.value = '此工作区正在处理任务，可稍后刷新会话'
+function showProgress(event: WorkspaceEvent) {
+  if (event.type === 'status') progress.value = progressLabels[event.status]
+  if (event.type === 'tool_started') progress.value = event.label
 }
 
+function historyFailure(cause: unknown, fallback: string) {
+  if (disposed) return
+  const code = cause instanceof RealApiError ? cause.code.toLowerCase() : ''
+  if (['auth_session_expired', 'auth_session_revoked', 'forbidden'].includes(code)) {
+    scopeBlocked.value = true
+    events.value = []
+    activeRun.value = undefined
+    stopping.value = false
+    lastText.value = lastSentRun.value = ''
+    panel.value = undefined
+    assessmentTask.value = assessmentId.value = ''
+    message.value = '工作区访问已变化，请重新登录或切换到当前角色'
+    return
+  }
+  message.value = fallback
+}
+
+async function refresh(incremental = false) {
+  const sequence = ++refreshSequence
+  const previous = await loadWorkspaceConversation(historyRequest.signal, incremental ? historyVersion : undefined)
+  if (disposed || sequence !== refreshSequence) return
+  const { user_id, school_ref, role } = previous.scope
+  if (JSON.stringify([user_id, school_ref, role === 'ADMIN' ? 'school_admin' : role.toLowerCase()]) !== props.scope) {
+    throw new RealApiError('forbidden', '当前会话与工作区不一致')
+  }
+  scopeBlocked.value = false
+  historyVersion = previous.revision
+  if (previous.events) events.value = previous.events
+  activeRun.value = previous.active_run_id ?? undefined
+  if (!activeRun.value) {
+    stopping.value = false
+    return
+  }
+  const step = events.value.findLast((event) => event.run_id === activeRun.value
+    && (event.type === 'status' || event.type === 'tool_started'))
+  progress.value = '正在恢复任务进度'
+  if (step) showProgress(step)
+}
+
+function scheduleProgressRead() {
+  window.clearTimeout(pollTimer)
+  if (disposed || !activeRun.value || sending.value) return
+  pollTimer = window.setTimeout(async () => {
+    try {
+      await refresh(true)
+      if (!disposed) message.value = ''
+    } catch (cause) {
+      historyFailure(cause, '连接暂时中断，恢复后会继续读取任务进度')
+    } finally {
+      scheduleProgressRead()
+    }
+  }, 1500)
+}
+
+watch([activeRun, sending], scheduleProgressRead)
+watch(running, (value) => emit('busy', value))
+
 onMounted(() => {
-  initialHistory = refresh().catch(() => {
-    if (!disposed) message.value = '暂时无法读取智能体会话'
+  initialHistory = refresh().catch((cause) => {
+    historyFailure(cause, '暂时无法读取智能体会话')
   })
 })
 onUnmounted(() => {
   disposed = true
+  window.clearTimeout(pollTimer)
   historyRequest.abort()
   runRequest?.abort()
   consentDecision?.(false)
@@ -146,7 +225,7 @@ function decideConsent(accepted: boolean) {
 
 async function submit(text: string) {
   await initialHistory
-  if (disposed || running.value || rosterWorkbench.value?.busy || consentOpen.value || !text.trim()) return false
+  if (disposed || scopeBlocked.value || running.value || rosterWorkbench.value?.busy || consentOpen.value || !text.trim()) return false
   if (!consent.value) {
     consentOpen.value = true
     if (!await new Promise<boolean>((resolve) => { consentDecision = resolve })) return false
@@ -155,10 +234,10 @@ async function submit(text: string) {
   const request = new AbortController()
   runRequest = request
   lastText.value = text
+  lastSentRun.value = ''
   message.value = ''
   progress.value = '正在连接'
-  running.value = true
-  emit('busy', true)
+  sending.value = true
   try {
     const file = props.catFile
     let catRef: string | undefined
@@ -178,11 +257,20 @@ async function submit(text: string) {
       }
     }
     const attachment = props.roster?.kind ?? (catRef ? 'cat_bank' : undefined)
+    awaitingStart = true
     await sendWorkspaceTurn(text, attachment, (event) => {
       if (disposed || request.signal.aborted) return
       events.value.push(event)
-      if (event.type === 'status') progress.value = progressLabels[event.status]
-      if (event.type === 'tool_started') progress.value = event.label
+      if (event.type === 'start') {
+        awaitingStart = false
+        activeRun.value = lastSentRun.value = event.run_id
+        if (stopping.value) void requestStop(event.run_id)
+      }
+      if (event.type === 'end' && activeRun.value === event.run_id) {
+        activeRun.value = undefined
+        stopping.value = false
+      }
+      showProgress(event)
       if (event.type === 'tool_result' && event.view.kind === 'roster_import') openPanel('roster')
       if (event.type === 'tool_result' && event.view.kind === 'staff_roster_import') openPanel('staff')
       if (event.type === 'tool_result' && props.catFile && event.view.kind === 'workflow' && event.view.workflow === 'cat') panel.value = 'cat'
@@ -191,21 +279,22 @@ async function submit(text: string) {
     return true
   } catch {
     if (!disposed) {
-      message.value = request.signal.aborted ? '已停止接收回复' : '连接中断，可刷新会话后继续'
-      await refresh().catch(() => undefined)
+      message.value = request.signal.aborted ? '已取消附件上传' : '连接中断，正在核对已提交的任务'
+      await refresh().catch((cause) => historyFailure(cause, '连接中断，可刷新对话后继续'))
+      if (!disposed && !activeRun.value && !failedRun.value && !scopeBlocked.value) message.value = '连接中断，可刷新对话后继续'
     }
     return false
   } finally {
     if (!disposed) {
-      running.value = false
-      emit('busy', false)
+      awaitingStart = false
+      sending.value = false
     }
   }
 }
 
 async function reload() {
   message.value = ''
-  try { await refresh() } catch { message.value = '暂时无法读取智能体会话' }
+  try { await refresh() } catch (cause) { historyFailure(cause, '暂时无法读取智能体会话') }
 }
 
 async function reset() {
@@ -214,6 +303,7 @@ async function reset() {
     events.value = []
     message.value = ''
     lastText.value = ''
+    lastSentRun.value = ''
   } catch {
     message.value = '暂时无法清空会话，请稍后重试'
   }
@@ -391,7 +481,29 @@ function downloadTable(summary: WorkspaceTableSummary) {
   download('表格统计.csv', '\uFEFF' + lines.join('\r\n'), 'text/csv;charset=utf-8')
 }
 
-function cancel() { runRequest?.abort() }
+async function requestStop(runId: string) {
+  try {
+    await cancelWorkspaceTurn(runId, historyRequest.signal)
+    if (!disposed && !sending.value) await refresh()
+  } catch {
+    if (!disposed) {
+      stopping.value = false
+      message.value = '暂时无法确认任务是否停止，请稍后重试'
+    }
+  }
+}
+
+function cancel() {
+  if (stopping.value) return
+  if (activeRun.value) {
+    stopping.value = true
+    void requestStop(activeRun.value)
+  } else if (awaitingStart) {
+    stopping.value = true
+  } else {
+    runRequest?.abort()
+  }
+}
 function openIndependentCat() { panel.value = 'cat' }
 defineExpose({ submit, cancel, openIndependentCat, openSchoolLibrary })
 </script>
@@ -546,14 +658,15 @@ defineExpose({ submit, cancel, openIndependentCat, openSchoolLibrary })
         <AppStatusCallout v-else-if="event.type === 'safety'" tone="attention" :title="event.text || '本条消息或回复需要额外的安全检查'">
           <AppButton v-if="event.support" variant="secondary" @click="emit('support')">打开学生支持对话</AppButton>
         </AppStatusCallout>
-        <p v-else-if="event.type === 'end' && event.status in finishLabels" class="agent-thread__problem">{{ finishLabels[event.status as keyof typeof finishLabels] }}</p>
+        <p v-else-if="event.type === 'end' && event.status in finishLabels" class="agent-thread__problem">{{ event.code === 'dependency_timeout' ? '服务响应超时，可重试任务' : finishLabels[event.status as keyof typeof finishLabels] }}</p>
       </template>
     </div>
-    <p v-if="running" role="status">{{ progress }}…</p>
+    <p v-if="running" role="status">{{ stopping ? '正在停止任务' : progress }}…</p>
     <div v-if="message" class="agent-thread__inline">
       <p class="agent-thread__problem" role="alert">{{ message }}</p>
-      <AppButton v-if="lastText && !running" variant="quiet" @click="submit(lastText)">重试任务</AppButton>
     </div>
+    <p v-if="retryNeedsAttachment && !running">重新添加附件后可继续任务</p>
+    <AppButton v-if="retryText && !running" variant="quiet" @click="submit(retryText)">重试任务</AppButton>
     <AppCard v-if="assessmentTask" class="agent-thread__card">
       <header class="agent-thread__inline"><strong>心理测评</strong><AppButton variant="quiet" :disabled="assessmentChecking || assessmentStarting" @click="assessmentTask = ''; assessmentId = ''">{{ assessmentComplete ? '收起测评' : '暂时退出' }}</AppButton></header>
       <p v-if="assessmentChecking" role="status">正在核对测评进度</p>

@@ -20,7 +20,12 @@ def make_lifespan(container: BackendContainer):
             app.state.lifecycle_started = True
             yield
         finally:
-            await container.close()
+            try:
+                history = getattr(app.state, "workspace_history", None)
+                if history is not None:
+                    await history.stop_runs()
+            finally:
+                await container.close()
             app.state.lifecycle_started = False
 
     return lifespan

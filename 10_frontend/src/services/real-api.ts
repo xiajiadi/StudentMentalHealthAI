@@ -1458,15 +1458,17 @@ export class RealApiProvider implements FrontendApi {
   }
 
   async requestWorkspaceConversation(
-    operation: 'history' | 'turn' | 'reset' | 'confirm-publication' | 'cat-attachment'
+    operation: 'history' | 'turn' | 'cancel' | 'reset' | 'confirm-publication' | 'cat-attachment'
       | 'save-cat-draft' | 'approve-cat-draft' | 'preview-cat-handoff'
       | 'document-preview/pdf' | 'document-preview/docx' | 'formula-preview' | `task-feedback/${string}`,
     body?: object,
     signal?: AbortSignal,
+    historyVersion?: string,
   ): Promise<Response> {
     const apiOrigin = new URL(apiBaseUrl, window.location.href)
     const base = new URL('/api/v1/workspace-agent/conversation', apiOrigin)
     if (operation !== 'history') base.pathname += '/' + operation
+    if (operation === 'history' && historyVersion) base.searchParams.set('since', historyVersion)
     const readOnly = operation === 'history' || operation.startsWith('task-feedback/')
     const headers = new Headers({ Accept: operation === 'turn' ? 'application/x-ndjson' : 'application/json' })
     if (!readOnly) headers.set('X-CSRF-Token', await this.ensureCsrfToken())

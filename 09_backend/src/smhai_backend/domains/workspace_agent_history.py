@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sqlite3
 from contextlib import closing
@@ -17,6 +18,7 @@ from .workspace_agent_cat_store import WorkspaceCatStore
 _RETENTION_SECONDS = 7 * 24 * 60 * 60
 _LEASE_SECONDS = 210
 _MAX_EVENTS = 160
+_MAX_CONCURRENT_RUNS = 12
 
 
 def workspace_owner(actor: Actor) -> str:
@@ -34,6 +36,7 @@ class WorkspaceHistory:
     def __init__(self, path: str) -> None:
         self.path = path
         self.cat = WorkspaceCatStore(path)
+        self.running: dict[tuple[str, str], asyncio.Task[None]] = {}
         with closing(self.connect()) as db, db:
             db.execute(
                 """CREATE TABLE IF NOT EXISTS workspace_history (
@@ -45,21 +48,33 @@ class WorkspaceHistory:
     def connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.path, timeout=2)
 
-    def read(self, owner: str) -> tuple[list[dict], bool]:
+    def read(
+        self, owner: str, since: str | None = None
+    ) -> tuple[list[dict] | None, str | None, str]:
         with closing(self.connect()) as db:
             row = db.execute(
                 "SELECT events, run, updated FROM workspace_history WHERE owner=?",
                 (owner,),
             ).fetchone()
-        if row is None or row[2] < time() - _RETENTION_SECONDS:
-            return [], False
+        now = time()
+        if row is None or row[2] < now - _RETENTION_SECONDS:
+            return (None if since == "empty" else []), None, "empty"
+        active_run = row[1] if row[2] >= now - _LEASE_SECONDS else None
+        revision = f"{row[2]:.9f}-{active_run or 'idle'}"
+        if since == revision:
+            return None, active_run, revision
         events = json.loads(row[0])
-        active = bool(row[1] and row[2] >= time() - _LEASE_SECONDS)
-        if row[1] and not active:
+        if row[1] and active_run is None:
             events.append({"type": "end", "status": "interrupted", "run_id": row[1]})
-        return events, active
+        return events, active_run, revision
 
     def acquire(self, owner: str) -> tuple[str, list[dict]]:
+        if len(self.running) >= _MAX_CONCURRENT_RUNS:
+            raise error(
+                ErrorCode.DEPENDENCY_UNAVAILABLE,
+                detail="workspace is busy",
+                retryable=True,
+            )
         with closing(self.connect()) as db, db:
             db.execute("BEGIN IMMEDIATE")
             now = time()
@@ -112,3 +127,10 @@ class WorkspaceHistory:
             if row and row[0] and row[1] >= time() - _LEASE_SECONDS:
                 raise error(ErrorCode.WORKFLOW_CONFLICT, detail="a workspace run is active")
             db.execute("DELETE FROM workspace_history WHERE owner=?", (owner,))
+
+    async def stop_runs(self) -> None:
+        tasks = tuple(self.running.values())
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)

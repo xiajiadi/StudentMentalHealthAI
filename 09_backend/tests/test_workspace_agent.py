@@ -1,5 +1,6 @@
 """HTTP integration checks for workspace role, CSRF and confirmation boundaries."""
 
+import asyncio
 import json
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
@@ -11,6 +12,7 @@ from zipfile import ZipFile
 import pytest
 from pwdlib import PasswordHash
 
+from smhai_backend.core.errors import BackendError
 from smhai_backend.domains import workspace_agent_formula
 from smhai_backend.domains.models import BackendRole, SchoolRoleContext, SyntheticUser
 from smhai_backend.domains.school_operations_audit.service import SchoolOperationsAuditService
@@ -329,6 +331,126 @@ async def test_model_selects_role_scoped_tools_and_uses_results(client, tools, m
     assert (await client.get(url)).json()["data"]["events"] == []
     await select(client, headers, "ADMIN", SECOND)
     assert (await client.get(url)).json()["data"]["events"] == []
+
+
+async def test_disconnected_client_recovers_the_same_run_and_does_not_execute_it_twice(
+    client, tools, model_lane
+):
+    model, _ = model_lane
+    path = f"{BASE}/conversation"
+    headers = await login(client)
+    await select(client, headers, "TEACHER")
+    model_entered = asyncio.Event()
+    continue_model = asyncio.Event()
+
+    async def slow_model(messages, _definitions, _context):
+        if messages[-1]["role"] == "tool":
+            return assistant_step(text="已核对授权班级")
+        model_entered.set()
+        await continue_model.wait()
+        return assistant_step(tool="class_progress")
+
+    model.side_effect = slow_model
+    payload = {"text": "查我的班级测评进度", "synthetic_only": True}
+    delivery = asyncio.create_task(client.post(f"{path}/turn", headers=headers, json=payload))
+    try:
+        await asyncio.wait_for(model_entered.wait(), 3)
+        active = (await client.get(path)).json()["data"]
+        run_id = active["active_run_id"]
+        assert active["active"] is True and run_id
+        cursor = {"since": active["revision"]}
+        unchanged = (await client.get(path, params=cursor)).json()["data"]
+        assert unchanged["events"] is None and unchanged["active_run_id"] == run_id
+        delivery.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await delivery
+        assert (await client.get(path)).json()["data"]["active_run_id"] == run_id
+        conflict = await client.post(f"{path}/turn", headers=headers, json=payload)
+        assert conflict.status_code == 409
+        continue_model.set()
+        for _ in range(40):
+            recovered = (await client.get(path, params=cursor)).json()["data"]
+            if not recovered["active"]:
+                break
+            await asyncio.sleep(0.01)
+        assert recovered["active_run_id"] is None
+        assert recovered["events"][-1] == {
+            "run_id": run_id, "type": "end", "status": "completed",
+        }
+        tools.teacher_progress.assert_awaited_once()
+        assert model.await_count == 2
+    finally:
+        continue_model.set()
+        if not delivery.done():
+            delivery.cancel()
+            await asyncio.gather(delivery, return_exceptions=True)
+
+
+async def test_only_the_owner_can_cancel_active_task_and_timeout_allows_new_turn(
+    client, model_lane
+):
+    model, _ = model_lane
+    path = f"{BASE}/conversation"
+    headers = await login(client)
+    await select(client, headers, "ADMIN")
+    model_entered = asyncio.Event()
+
+    async def slow_model(*_args):
+        model_entered.set()
+        await asyncio.Event().wait()
+
+    model.side_effect = slow_model
+    payload = {"text": "查系统状态", "synthetic_only": True}
+    delivery = asyncio.create_task(client.post(f"{path}/turn", headers=headers, json=payload))
+    try:
+        await asyncio.wait_for(model_entered.wait(), 3)
+        run_id = (await client.get(path)).json()["data"]["active_run_id"]
+        await select(client, headers, "ADMIN", SECOND)
+        assert (await client.get(path)).json()["data"]["active_run_id"] is None
+        wrong_scope = await client.post(f"{path}/cancel", headers=headers, json={"run_id": run_id})
+        assert wrong_scope.status_code == 204
+        await select(client, headers, "ADMIN")
+        assert (await client.get(path)).json()["data"]["active_run_id"] == run_id
+        assert (await client.post(f"{path}/cancel", json={"run_id": run_id})).status_code == 403
+        cancelled = await client.post(f"{path}/cancel", headers=headers, json={"run_id": run_id})
+        assert cancelled.status_code == 204
+        response = await asyncio.wait_for(delivery, 3)
+        assert json.loads(response.text.splitlines()[-1]) == {
+            "run_id": run_id, "type": "end", "status": "interrupted",
+        }
+    finally:
+        if not delivery.done():
+            delivery.cancel()
+            await asyncio.gather(delivery, return_exceptions=True)
+
+    model.side_effect = [TimeoutError(), assistant_step(text="已重新处理")]
+    failed = await client.post(f"{path}/turn", headers=headers, json=payload)
+    terminal = json.loads(failed.text.splitlines()[-1])
+    assert terminal["status"] == "failed"
+    assert terminal["code"] == "dependency_timeout"
+    retry = await client.post(f"{path}/turn", headers=headers, json=payload)
+    complete = json.loads(retry.text.splitlines()[-1])
+    assert complete["status"] == "completed"
+    assert complete["run_id"] != terminal["run_id"]
+    assert (await client.get(path)).json()["data"]["active"] is False
+
+
+def test_lost_worker_lease_becomes_an_interruption_and_fences_old_events(tmp_path, monkeypatch):
+    now = 1000
+    monkeypatch.setattr("smhai_backend.domains.workspace_agent_history.time", lambda: now)
+    history = WorkspaceHistory(str(tmp_path / "lost-worker.sqlite3"))
+    run, _ = history.acquire("synthetic-owner")
+    history.append("synthetic-owner", run, {"type": "user", "text": "查班级任务"})
+    _, active, revision = history.read("synthetic-owner")
+    assert active == run
+    now += 220
+    events, active, _ = history.read("synthetic-owner", revision)
+    assert active is None
+    assert events[-1] == {"type": "end", "status": "interrupted", "run_id": run}
+    new_run, prior = history.acquire("synthetic-owner")
+    assert new_run != run and prior == events
+    with pytest.raises(BackendError, match="workflow_conflict"):
+        history.append("synthetic-owner", run, {"type": "answer", "text": "已过期"})
 
 
 @pytest.mark.parametrize(
