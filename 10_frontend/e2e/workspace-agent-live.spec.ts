@@ -278,6 +278,51 @@ test('published school feedback is read in the learner conversation over the pri
   }
   const guidePath = '/api/v1/workspace-agent/conversation/feedback-guide/' + current.feedback_ref
   const verifyGuide = process.env.PSYNOVA_AGENT_QA_FEEDBACK_GUIDE === '1'
+  const measurementPath = '/api/v1/workspace-agent/conversation/feedback-measurement/' + current.feedback_ref
+  const verifyMeasurement = process.env.PSYNOVA_AGENT_QA_FEEDBACK_MEASUREMENT === '1'
+  if (verifyMeasurement) {
+    await page.setViewportSize({ width: 390, height: 840 })
+    const official = await page.request.get(origin + '/api/v1/assessments/' + current.assessment_ref)
+    expect(official.ok()).toBe(true)
+    const stored = (await official.json()).data
+    const transcript = (await (await page.request.get(origin + '/api/v1/workspace-agent/conversation')).json()).data.events
+    const response = page.waitForResponse((reply) => reply.url().endsWith(measurementPath))
+    await page.getByRole('button', { name: '查看本次测量记录' }).click()
+    const reply = await response
+    expect(reply.ok()).toBe(true)
+    expect(reply.request().method()).toBe('GET')
+    expect(reply.headers()['cache-control']).toBe('private, no-store')
+    const projection = (await reply.json()).data
+    const dimensions = Object.entries(stored.dimensions as Record<string, {
+      theta: number | null; se: number | null; score: number | null; interpretation_status: string
+    }>)
+    expect(dimensions.some(([, value]) => value.interpretation_status === 'estimated')).toBe(true)
+    expect(dimensions.every(([, value]) => value.score === null)).toBe(true)
+    expect(projection).toEqual({
+      status: 'engineering',
+      completed_at: stored.timestamps.completed_at,
+      answered_count: stored.response_summary.items_answered,
+      item_bank_version: stored.provenance.item_bank_version,
+      dimensions: dimensions.map(([label, value]) => ({
+        label,
+        estimate: value.interpretation_status === 'estimated' ? value.theta : null,
+        standard_error: value.interpretation_status === 'estimated' && value.theta !== null ? value.se : null,
+      })),
+    })
+    await expect(page.getByRole('heading', { name: '本次测量记录', exact: true })).toBeVisible()
+    for (const item of projection.dimensions) {
+      const result = page.locator('.feedback-measurement__dimension').filter({
+        has: page.getByText(item.label, { exact: true }),
+      })
+      await expect(result.getByText(String(item.estimate ?? '数据不足'), { exact: true }).first()).toBeVisible()
+      await expect(result.getByText(String(item.standard_error ?? '记录未提供'), { exact: true }).first()).toBeVisible()
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391)
+    const afterMeasurement = await page.request.get(origin + '/api/v1/workspace-agent/conversation')
+    expect((await afterMeasurement.json()).data.events).toEqual(transcript)
+    const absent = await page.request.get(origin + measurementPath + '_missing')
+    expect(absent.status()).toBe(404)
+  }
   if (verifyGuide) {
     await page.setViewportSize({ width: 390, height: 840 })
     const writes: string[] = []
@@ -323,6 +368,7 @@ test('published school feedback is read in the learner conversation over the pri
   const denied = await page.request.get(origin + '/api/v1/school/feedback/student/' + current.feedback_ref)
   expect(denied.status()).toBe(403)
   expect((await page.request.get(origin + taskPath)).status()).toBe(403)
+  if (verifyMeasurement) expect((await page.request.get(origin + measurementPath)).status()).toBe(403)
   if (verifyGuide) {
     const csrf = await page.request.get(origin + '/api/v1/auth/csrf')
     const forbidden = await page.request.post(origin + guidePath, {
@@ -330,6 +376,10 @@ test('published school feedback is read in the learner conversation over the pri
       data: { content_revision: current.content_revision, question: '查找已发布反馈原文' },
     })
     expect(forbidden.status()).toBe(403)
+  }
+  if (verifyMeasurement) {
+    await chooseRole(page, 'PSYCHOLOGICAL_SPECIALIST', '/specialist/workspace')
+    expect((await page.request.get(origin + measurementPath)).status()).toBe(403)
   }
 })
 

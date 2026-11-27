@@ -1117,13 +1117,11 @@ const mapAssessment = (value: unknown, assessmentId: string): Assessment => {
   const dimensions: Assessment['dimensions'] = {}
   for (const [key, rawValue] of Object.entries(rawDimensions)) {
     const dimension = isRecord(rawValue) ? rawValue : {}
-    const theta = typeof dimension.theta === 'number' ? dimension.theta : 0
-    const score = typeof dimension.score === 'number' ? dimension.score : null
     const band = dimension.band === 'attention' || dimension.band === 'normal' ? dimension.band : 'unknown'
     dimensions[key] = {
-      theta,
-      se: typeof dimension.se === 'number' ? dimension.se : 0,
-      score,
+      theta: typeof dimension.theta === 'number' && Number.isFinite(dimension.theta) ? dimension.theta : null,
+      se: typeof dimension.se === 'number' && Number.isFinite(dimension.se) ? dimension.se : null,
+      score: typeof dimension.score === 'number' && Number.isFinite(dimension.score) ? dimension.score : null,
       band,
       interpretation_status: dimension.interpretation_status === 'estimated' || dimension.interpretation_status === 'insufficient_data'
         ? dimension.interpretation_status
@@ -1295,12 +1293,11 @@ const mapReport = (rawReport: unknown, rawAssessment: unknown): StudentReportVie
     title: `从一个小步骤开始 ${index + 1}`,
     body: suggestion.text,
   })) || []
-  const dimensions = Object.entries(assessment.dimensions).map(([key, dimension], index) => ({
-    key,
-    label: `维度 ${String.fromCharCode(65 + index)}，合成占位`,
-    value: dimension.score ?? Math.max(0, Math.min(100, Math.round(50 + dimension.theta * 12))),
-    helper: '结构估计，非诊断',
-  }))
+  const dimensions = Object.entries(assessment.dimensions).flatMap(([key, { score }], index) =>
+    score !== null && score >= 0 && score <= 100
+      ? [{ key, label: `维度 ${String.fromCharCode(65 + index)}，合成占位`, value: score, helper: '合成测评记录' }]
+      : [],
+  )
   return {
     fixtureLabel: SYNTHETIC_FIXTURE_LABEL,
     report: {
@@ -1461,7 +1458,7 @@ export class RealApiProvider implements FrontendApi {
     operation: 'history' | 'turn' | 'cancel' | 'reset' | 'confirm-publication' | 'cat-attachment'
       | 'save-cat-draft' | 'approve-cat-draft' | 'preview-cat-handoff'
       | 'document-preview/pdf' | 'document-preview/docx' | 'formula-preview' | `task-feedback/${string}`
-      | `feedback-guide/${string}`,
+      | `feedback-guide/${string}` | `feedback-measurement/${string}`,
     body?: object,
     signal?: AbortSignal,
     historyVersion?: string,
@@ -1471,6 +1468,7 @@ export class RealApiProvider implements FrontendApi {
     if (operation !== 'history') base.pathname += '/' + operation
     if (operation === 'history' && historyVersion) base.searchParams.set('since', historyVersion)
     const readOnly = operation === 'history' || operation.startsWith('task-feedback/')
+      || operation.startsWith('feedback-measurement/')
     const headers = new Headers({ Accept: operation === 'turn' ? 'application/x-ndjson' : 'application/json' })
     if (!readOnly) headers.set('X-CSRF-Token', await this.ensureCsrfToken())
     const binaryPreview = operation === 'formula-preview' || operation.startsWith('document-preview/')

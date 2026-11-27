@@ -506,6 +506,93 @@ async def test_feedback_guide_uses_the_published_revision_and_stays_out_of_the_m
     model.assert_not_awaited()
 
 
+async def test_feedback_measurement_reads_exact_owned_record_without_model(
+    client, app, model_lane, monkeypatch
+):
+    model, safety = model_lane
+    headers = await login(client)
+    await select(client, headers, "STUDENT")
+    reference = "FEED_synthetic_measurement"
+    assessment_ref = "ASSESS_synthetic_measurement"
+    record = SimpleNamespace(data_origin="SYNTHETIC", assessment={
+        "schema_version": "assessment.v1",
+        "assessment_id": assessment_ref,
+        "subject_id": "SUBJ_synthetic_measurement",
+        "instrument": {"instrument_id": "demo", "version": "1"},
+        "population_scope": "SYNTHETIC",
+        "status": "completed",
+        "dimensions": {
+            "DIM_A": {
+                "theta": -0.2, "se": 0.45, "score": None, "band": "unknown",
+                "interpretation_status": "estimated", "items_answered": 8,
+            },
+            "DIM_B": {
+                "theta": None, "se": None, "score": None, "band": "unknown",
+                "interpretation_status": "insufficient_data", "items_answered": 0,
+            },
+        },
+        "risk": {
+            "level": "normal", "need_human_review": False,
+            "reason_codes": ["SYNTHETIC_ENGINEERING_FIXTURE"],
+            "ruleset_id": "RULESET_synthetic_cat_v1",
+        },
+        "response_summary": {"items_answered": 8, "duration_seconds": 30},
+        "provenance": {
+            "source_adapter": "cat_engine", "adapter_version": "1",
+            "cat_engine_version": "1", "item_bank_version": "demo-v1",
+        },
+        "timestamps": {
+            "started_at": "2026-11-27T09:00:00Z", "completed_at": "2026-11-27T09:00:30Z",
+        },
+    })
+    school = SimpleNamespace(get_student_feedback=AsyncMock(return_value={
+        "assessment_ref": assessment_ref,
+    }))
+    monkeypatch.setattr(app.state.container, "school_feedback", school)
+    assessment = AsyncMock(return_value=record)
+    monkeypatch.setattr(app.state.container.assessments, "get_for_actor", assessment)
+    route = f"{BASE}/conversation/feedback-measurement/{reference}"
+    result = await client.get(route)
+    assert result.status_code == 200
+    assert result.headers["cache-control"] == "private, no-store"
+    assert result.json()["data"] == {
+        "status": "engineering", "completed_at": "2026-11-27T09:00:30Z",
+        "answered_count": 8, "item_bank_version": "demo-v1",
+        "dimensions": [
+            {"label": "DIM_A", "estimate": -0.2, "standard_error": 0.45},
+            {"label": "DIM_B", "estimate": None, "standard_error": None},
+        ],
+    }
+    assert school.get_student_feedback.await_args.args[1] == reference
+    assert assessment.await_args.args[1] == assessment_ref
+    assert assessment.await_args.kwargs["action"] == "assessment:read"
+    assert (await client.get(f"{BASE}/conversation")).json()["data"]["events"] == []
+
+    record.assessment["risk"]["ruleset_id"] = "RULESET_unknown"
+    hidden = (await client.get(route)).json()["data"]
+    assert (hidden["status"], hidden["dimensions"]) == ("not_displayable", [])
+    for dimension in record.assessment["dimensions"].values():
+        dimension.update(theta=None, se=None, interpretation_status="not_scored")
+    unscored = (await client.get(route)).json()["data"]
+    assert (unscored["status"], unscored["dimensions"]) == ("unscored", [])
+
+    record.data_origin = "REAL"
+    assert (await client.get(route)).status_code == 404
+    record.data_origin = "SYNTHETIC"
+    record.assessment["assessment_id"] = "ASSESS_some_other_record"
+    assert (await client.get(route)).status_code == 404
+
+    assessment.reset_mock()
+    school.get_student_feedback.reset_mock()
+    for role in ("TEACHER", "PSYCHOLOGICAL_SPECIALIST"):
+        await select(client, headers, role)
+        assert (await client.get(route)).status_code == 403
+    assessment.assert_not_awaited()
+    school.get_student_feedback.assert_not_awaited()
+    model.assert_not_awaited()
+    safety.check_input.assert_not_awaited()
+
+
 @pytest.mark.parametrize(
     ("selection", "expected"),
     [("earliest_due", "TASK_soon"), ("resume_or_earliest_due", "TASK_started")],

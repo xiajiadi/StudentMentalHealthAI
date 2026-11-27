@@ -123,7 +123,7 @@ onBeforeUnmount(() => { requestGeneration += 1 })
       <section id="data" class="result-section" aria-labelledby="data-title">
         <div class="result-section__heading"><span class="result-section__index">02</span><div><span class="section-label">Data / 数据</span><h2 id="data-title">{{ data.data.title }}</h2></div></div>
         <p class="result-section__description">{{ data.data.body }}</p>
-        <AppCard class="data-panel" raised>
+        <AppCard v-if="data.data.dimensions.length" class="data-panel" raised>
           <div class="data-panel__chart"><DimensionRadar :dimensions="data.data.dimensions" /></div>
           <div class="data-panel__list" aria-label="测评结构文字摘要">
             <div v-for="dimension in data.data.dimensions" :key="dimension.key" class="data-dimension">
@@ -133,6 +133,7 @@ onBeforeUnmount(() => { requestGeneration += 1 })
             </div>
           </div>
         </AppCard>
+        <AppStatusCallout v-else tone="info" title="本次记录没有可展示的维度分数" />
       </section>
 
       <section id="action" class="result-section" aria-labelledby="action-title">

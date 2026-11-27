@@ -169,6 +169,36 @@ export type FeedbackGuide = {
   excerpts: { source: 'feedback' | 'next_steps'; text: string }[]
 }
 
+export type FeedbackMeasurement = {
+  status: 'engineering' | 'unscored' | 'not_displayable'
+  completed_at: string
+  answered_count: number
+  item_bank_version: string
+  dimensions: { label: string; estimate: number | null; standard_error: number | null }[]
+}
+
+export async function readWorkspaceFeedbackMeasurement(
+  feedbackRef: string, signal: AbortSignal,
+): Promise<FeedbackMeasurement> {
+  if (!/^FEED_[A-Za-z0-9][A-Za-z0-9_.-]{0,122}$/.test(feedbackRef)) throw new Error('反馈编号不可用')
+  const response = await realApiProvider.requestWorkspaceConversation(
+    `feedback-measurement/${feedbackRef}`, undefined, signal,
+  )
+  const data = (await response.json()).data as FeedbackMeasurement
+  if (!data || !['engineering', 'unscored', 'not_displayable'].includes(data.status)
+    || typeof data.completed_at !== 'string' || !Number.isFinite(Date.parse(data.completed_at))
+    || !Number.isSafeInteger(data.answered_count) || data.answered_count < 0
+    || typeof data.item_bank_version !== 'string' || !Array.isArray(data.dimensions)
+    || (data.status !== 'engineering' && data.dimensions.length > 0)
+    || data.dimensions.some((item) => !item || typeof item.label !== 'string'
+      || (item.estimate !== null && !Number.isFinite(item.estimate))
+      || (item.standard_error !== null
+        && (item.estimate === null || !Number.isFinite(item.standard_error) || item.standard_error < 0)))) {
+    throw new Error('测量记录返回格式无效')
+  }
+  return data
+}
+
 export async function readWorkspaceFeedbackGuide(
   feedbackRef: string, revision: number, question: string, signal: AbortSignal,
 ): Promise<FeedbackGuide> {

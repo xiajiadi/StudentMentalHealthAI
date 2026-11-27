@@ -5,6 +5,7 @@ import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
 import FeedbackClarification from '@/components/student/FeedbackClarification.vue'
+import FeedbackMeasurement from '@/components/student/FeedbackMeasurement.vue'
 import StudentRecordDetailLayout from '@/components/student/StudentRecordDetailLayout.vue'
 import WorkspaceBreadcrumb from '@/components/student/WorkspaceBreadcrumb.vue'
 import { studentPageArt } from '@/data/student-feature-cards'
@@ -17,7 +18,7 @@ import { useRoute, useRouter } from 'vue-router'
 const route = useRoute()
 const router = useRouter()
 const session = useSessionStore()
-const guideEnabled = computed(() => session.user?.activeContext?.schoolRef.startsWith('PUBLICDEMO_'))
+const isSyntheticSchool = computed(() => session.user?.activeContext?.schoolRef.startsWith('PUBLICDEMO_'))
 const props = defineProps<{ embeddedFeedbackRef?: string }>()
 const emit = defineEmits<{ support: [] }>()
 const state = ref<'loading' | 'ready' | 'error'>('loading')
@@ -93,12 +94,13 @@ onBeforeUnmount(() => { requestGeneration += 1 })
           <p>{{ reviewedContent.nextSteps }}</p>
         </AppCard>
         <p v-else>这份反馈没有单独列出下一步。如果需要了解建议的含义或适用范围，可以请学校协助说明</p>
+        <FeedbackMeasurement v-if="isSyntheticSchool && feedback.feedback_ref" :key="feedback.feedback_ref" :feedback-ref="feedback.feedback_ref" />
         <FeedbackClarification
           v-if="feedback.feedback_ref && feedback.content_revision"
           :key="feedback.feedback_ref"
           :feedback-ref="feedback.feedback_ref"
           :revision="feedback.content_revision"
-          :guide-enabled="guideEnabled"
+          :guide-enabled="isSyntheticSchool"
         />
         <AppButton variant="secondary" @click="emit('support')">查看学校支持</AppButton>
       </details>
@@ -129,7 +131,7 @@ onBeforeUnmount(() => { requestGeneration += 1 })
             :key="feedback.feedback_ref"
             :feedback-ref="feedback.feedback_ref"
             :revision="feedback.content_revision"
-            :guide-enabled="guideEnabled"
+            :guide-enabled="isSyntheticSchool"
           />
           <AppButton variant="secondary" @click="router.push('/student/school-support')">查看学校支持</AppButton>
         </div>
@@ -141,6 +143,7 @@ onBeforeUnmount(() => { requestGeneration += 1 })
           <div><span>{{ isPreviewRoute() ? '内容性质' : '反馈级别' }}</span><strong>{{ isPreviewRoute() ? '合成样例' : 'L3' }}</strong></div>
           <div><span>{{ isPreviewRoute() ? '使用说明' : '发布时间' }}</span><strong>{{ isPreviewRoute() ? '非正式反馈' : formatDate(feedback.published_at) }}</strong></div>
         </AppCard>
+        <FeedbackMeasurement v-if="isSyntheticSchool && feedback.feedback_ref" :key="feedback.feedback_ref" :feedback-ref="feedback.feedback_ref" />
       </section>
     </StudentRecordDetailLayout>
   </div>

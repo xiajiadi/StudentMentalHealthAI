@@ -32,8 +32,8 @@ export interface ApiErrorShape {
 }
 
 export interface AssessmentDimension {
-  theta: number
-  se: number
+  theta: number | null
+  se: number | null
   score: number | null
   band: 'unknown' | 'normal' | 'attention'
   interpretation_status: 'estimated' | 'insufficient_data' | 'not_scored'

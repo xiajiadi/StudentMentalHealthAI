@@ -26,6 +26,7 @@ from . import workspace_agent_feedback_guide as feedback_guide
 from . import workspace_agent_formula as formula_reader
 from .workspace_agent import _check_actor
 from .workspace_agent_history import workspace_owner as _owner
+from .workspace_agent_measurement import feedback_measurement
 from .workspace_agent_publishing import TaskConfirmation
 from .workspace_agent_publishing import confirm as confirm_publication
 from .workspace_agent_table import WorkspaceTableSummary
@@ -538,6 +539,40 @@ async def task_feedback(
     reference = await service.latest_student_feedback_for_task(actor, task_ref)
     return JSONResponse(
         {"data": {"feedback_ref": reference}}, headers={"Cache-Control": "no-store"}
+    )
+
+
+@router.get("/feedback-measurement/{feedback_ref}", include_in_schema=False)
+async def read_feedback_measurement(
+    request: Request,
+    actor: CurrentActor,
+    feedback_ref: str = Path(pattern=r"^FEED_[A-Za-z0-9][A-Za-z0-9_.-]{0,122}$"),
+):
+    _history(request, actor)
+    if actor.role != STUDENT:
+        raise error(ErrorCode.FORBIDDEN, detail="measurement record is unavailable for this role")
+    container = request.app.state.container
+    if container.school_feedback is None:
+        raise error(ErrorCode.DEPENDENCY_UNAVAILABLE, detail="school feedback is unavailable")
+    feedback = await container.school_feedback.get_student_feedback(actor, feedback_ref)
+    context = current_request_context(request)
+    record = await container.assessments.get_for_actor(
+        actor,
+        feedback["assessment_ref"],
+        action="assessment:read",
+        request_id=context.request_id,
+        trace_id=context.trace_id,
+    )
+    data = feedback_measurement(record, feedback["assessment_ref"])
+    log.info(
+        "workspace_agent_feedback_measurement",
+        trace_id=context.trace_id,
+        status=data.status,
+        dimension_count=len(data.dimensions),
+    )
+    return JSONResponse(
+        {"data": data.model_dump(mode="json")},
+        headers={"Cache-Control": "private, no-store"},
     )
 
 
