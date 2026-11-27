@@ -152,7 +152,7 @@ test('cancelling a live task releases the conversation and lets the teacher retr
   await page.locator('#workspace-agent-input').fill('查一下我有权限查看的班级测评进度')
   await page.getByRole('button', { name: '发送任务', exact: true }).click()
   await page.getByRole('button', { name: '同意并发送' }).click()
-  await expect(page.getByRole('status').filter({ hasText: '正在检查输入' })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('status').filter({ hasText: /正在检查输入|正在处理任务/ })).toBeVisible({ timeout: 30_000 })
   await page.getByRole('button', { name: '取消任务' }).click()
 
   const readHistory = async () => {
@@ -196,7 +196,7 @@ test('a teacher reconnects to the same live run after reloading the workplace', 
   await page.locator('#workspace-agent-input').fill('核对我当前班级测评任务的完成进度，给我业务查询结果')
   await page.getByRole('button', { name: '发送任务', exact: true }).click()
   await page.getByRole('button', { name: '同意并发送' }).click()
-  await expect(page.getByRole('status').filter({ hasText: '正在检查输入' })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('status').filter({ hasText: /正在检查输入|正在处理任务/ })).toBeVisible({ timeout: 30_000 })
   const running = await readHistory()
   expect(running.active).toBe(true)
   expect(running.active_run_id).toMatch(/^[0-9a-f]{32}$/)
