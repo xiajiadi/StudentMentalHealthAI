@@ -1626,4 +1626,10 @@ test('a specialist approves a synthetic CAT plan and an administrator publishes 
   await expect(card).toContainText('已发布')
   await page.reload()
   await expect(card).toContainText('已发布')
+  if (useCsv) {
+    expect(task.published_enrollment_count).toBeGreaterThan(0)
+    const assigned = await page.request.get(origin + '/api/v1/school/tasks/' + task.task_ref + '/enrollments')
+    expect(assigned.ok()).toBe(true)
+    expect((await assigned.json()).data).toHaveLength(task.published_enrollment_count)
+  }
 })
