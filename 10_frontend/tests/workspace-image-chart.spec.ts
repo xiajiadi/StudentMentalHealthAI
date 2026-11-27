@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { readWorkspaceLineChart, type ChartWord } from '@/services/workspace-image-chart'
 
+const blue = [25, 90, 200, 255]
+const orange = [227, 120, 26, 255]
+const months = ['April', 'May', 'June']
+
 function word(text: string, x: number, y: number, width = 28): ChartWord {
   return {
     text, confidence: 95,
@@ -13,16 +17,26 @@ function fixture(ticks: string[]) {
   const height = 330
   const raster = { data: new Uint8ClampedArray(width * height * 4), width, height, scale: 1 }
   const words = ticks.map((tick, index) => word(tick, 10, 30 + index * 80))
-  const points = [{ x: 90, y: 210 }, { x: 240, y: 110 }, { x: 390, y: 70 }]
-  points.forEach(({ x }, index) => words.push(word(['April', 'May', 'June'][index], x - 18, 299, 36)))
-  for (let index = 1; index < points.length; index += 1) {
-    const first = points[index - 1], last = points[index]
-    for (let x = first.x; x <= last.x; x += 1) {
-      const y = Math.round(first.y + (last.y - first.y) * (x - first.x) / (last.x - first.x))
-      raster.data.set([25, 90, 200, 255], (y * width + x) * 4)
+  const labels = [90, 240, 390]
+  labels.forEach((x, index) => words.push(word(months[index], x - 18, 299, 36)))
+  function stroke(heights: number[], color: number[]) {
+    for (let index = 1; index < labels.length; index += 1) {
+      const left = labels[index - 1], right = labels[index]
+      const first = heights[index - 1], last = heights[index]
+      for (let x = left; x <= right; x += 1) {
+        const y = Math.round(first + (last - first) * (x - left) / (right - left))
+        raster.data.set(color, (y * width + x) * 4)
+      }
     }
   }
-  return { raster, words }
+  function legend(title: string, x: number, color: number[]) {
+    words.push(word(title, x, 11, 46))
+    for (let column = x - 28; column < x - 7; column += 1) {
+      raster.data.set(color, (11 * width + column) * 4)
+    }
+  }
+  stroke([210, 110, 70], blue)
+  return { raster, words, stroke, legend }
 }
 
 describe('workspace line chart estimates', () => {
@@ -42,6 +56,46 @@ describe('workspace line chart estimates', () => {
     for (let y = 0; y < raster.height; y += 1) {
       for (let x = 166; x <= 178; x += 1) raster.data[(y * raster.width + x) * 4 + 3] = 0
     }
+    expect(readWorkspaceLineChart(raster, words)).toBeUndefined()
+  })
+
+  it('reads two separate colors, associates their legend labels and follows them through a crossing', () => {
+    const { raster, words, stroke, legend } = fixture(['30', '10', '-10', '-30'])
+    for (let x = 236; x <= 244; x += 1) {
+      for (let y = 90; y <= 140; y += 1) raster.data[(y * raster.width + x) * 4 + 3] = 0
+    }
+    stroke([100, 110, 150], orange)
+    legend('North', 150, blue)
+    legend('South', 290, orange)
+    const lines = readWorkspaceLineChart(raster, words)?.split('\n').slice(1)
+    expect(lines).toHaveLength(8)
+    expect(lines?.slice(0, 5)).toEqual([
+      '橙线 · South', 'April 约 12.5', 'May 约 10', 'June 约 0', '蓝线 · North',
+    ])
+    expect(lines?.[5]).toBe('April 约 -15')
+    expect(Math.abs(Number(lines?.[6].split('约 ')[1]) - 10)).toBeLessThan(0.3)
+    expect(lines?.[7]).toBe('June 约 20')
+  })
+
+  it('keeps three series identifiable by color when no legend is available', () => {
+    const { raster, words, stroke } = fixture(['30', '10', '-10', '-30'])
+    stroke([150, 160, 165], orange)
+    stroke([243, 230, 220], [30, 155, 78, 255])
+    const result = readWorkspaceLineChart(raster, words)?.split('\n').slice(1)
+    expect(result?.filter((line) => line.endsWith('线'))).toEqual(['橙线', '绿线', '蓝线'])
+    expect(result).toHaveLength(12)
+  })
+
+  it('does not estimate when the same hue belongs to two lines', () => {
+    const { raster, words, stroke } = fixture(['30', '10', '-10', '-30'])
+    stroke([230, 180, 120], blue)
+    expect(readWorkspaceLineChart(raster, words)).toBeUndefined()
+  })
+
+  it('does not apply the left scale to a chart with a separate right scale', () => {
+    const { raster, words, stroke } = fixture(['30', '10', '-10', '-30'])
+    stroke([150, 160, 165], orange)
+    words.push(word('60%', 430, 30), word('40%', 430, 110), word('20%', 430, 190))
     expect(readWorkspaceLineChart(raster, words)).toBeUndefined()
   })
 })

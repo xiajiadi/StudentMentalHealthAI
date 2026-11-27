@@ -141,8 +141,136 @@ function lineLabels(words: LocatedWord[], axisRight: number, bottom: number, hei
   return labels
 }
 
+const hueBins = 36
+
+function pixelHue(data: Uint8ClampedArray, offset: number) {
+  if (!isColored(data, offset)) return -1
+  const red = data[offset], green = data[offset + 1], blue = data[offset + 2]
+  const peak = Math.max(red, green, blue)
+  const range = peak - Math.min(red, green, blue)
+  const sector = peak === red ? (green - blue) / range
+    : peak === green ? 2 + (blue - red) / range : 4 + (red - green) / range
+  return (Math.round(sector * 6) + hueBins) % hueBins
+}
+
+function hueDistance(a: number, b: number) {
+  const difference = Math.abs(a - b)
+  return Math.min(difference, hueBins - difference)
+}
+
+type Plot = { left: number; right: number; top: number; bottom: number }
+
+function plotTracks({ data, width }: ChartRaster, { left, right, top, bottom }: Plot) {
+  const columns = right - left + 1
+  const height = bottom - top + 1
+  const pixels = new Int8Array(height * columns).fill(-1)
+  const histogram = new Uint32Array(hueBins)
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < columns; x += 1) {
+      const hue = pixelHue(data, ((top + y) * width + left + x) * 4)
+      pixels[y * columns + x] = hue
+      if (hue >= 0) histogram[hue] += 1
+    }
+  }
+  // Antialiased stroke edges may spill into adjacent bins.
+  const peaks: number[] = []
+  const candidates = Array.from(histogram, (count, hue) => ({ count, hue }))
+    .sort((a, b) => b.count - a.count)
+  for (const { hue, count } of candidates) {
+    if (count < columns * 0.5) break
+    if (peaks.every((peak) => hueDistance(peak, hue) > 3)) peaks.push(hue)
+  }
+  if (!peaks.length || peaks.length > 4) return
+  const groups = Array.from(histogram, (_, hue) => {
+    const nearest = peaks.reduce((best, peak) =>
+      hueDistance(peak, hue) < hueDistance(best, hue) ? peak : best)
+    return hueDistance(nearest, hue) <= 2 ? peaks.indexOf(nearest) : -1
+  })
+  const tracks = peaks.map((hue) => ({ hue, centers: new Float64Array(columns).fill(NaN) }))
+  const maxStrokeHeight = Math.max(16, (height - 1) * 0.07)
+  const first = new Int16Array(tracks.length)
+  const last = new Int16Array(tracks.length)
+  const counts = new Int16Array(tracks.length)
+  let otherColorColumns = 0
+  for (let x = 0; x < columns; x += 1) {
+    first.fill(-1)
+    counts.fill(0)
+    let otherColor = false
+    for (let y = 0; y < height; y += 1) {
+      const hue = pixels[y * columns + x]
+      if (hue < 0) continue
+      const group = groups[hue]
+      if (group < 0) {
+        otherColor = true
+        continue
+      }
+      if (first[group] < 0) first[group] = y
+      last[group] = y
+      counts[group] += 1
+    }
+    if (otherColor) otherColorColumns += 1
+    for (const [i, { centers }] of tracks.entries()) {
+      if (!counts[i]) continue
+      const band = last[i] - first[i]
+      if (band > maxStrokeHeight || band + 1 - counts[i] > 2
+        || first[i] === 0 || last[i] === height - 1) return
+      const center = top + (first[i] + last[i]) / 2
+      if (Math.abs(center - centers[x - 1]) > maxStrokeHeight) return
+      centers[x] = center
+    }
+  }
+  if (otherColorColumns > columns / 4) return
+  for (const track of tracks) {
+    const { centers } = track
+    for (let i = 0; i < columns; i += 1) {
+      if (Number.isFinite(centers[i])) continue
+      const start = i
+      while (i + 1 < columns && Number.isNaN(centers[i + 1])) i += 1
+      const gap = i - start + 1
+      if (gap <= 3) continue
+      const previous = centers[start - 1], next = centers[i + 1]
+      if (gap > 14 || !Number.isFinite(previous) || !Number.isFinite(next)
+        || Math.abs(previous - next) > maxStrokeHeight) return
+      const middle = Math.floor((start + i) / 2)
+      const between = (x: number) => previous + (next - previous) * (x - start + 1) / (gap + 1)
+      const crossed = tracks.some((other) => other !== track
+        && (previous - other.centers[start - 1]) * (next - other.centers[i + 1]) < 0
+        && Math.abs(between(middle) - other.centers[middle]) <= 5)
+      if (!crossed) return
+      for (let x = start; x <= i; x += 1) centers[x] = between(x)
+    }
+  }
+  return tracks.sort((a, b) => a.hue - b.hue)
+}
+
+const colorNames = [
+  [15, '红'], [45, '橙'], [70, '黄'], [165, '绿'], [195, '青'],
+  [250, '蓝'], [295, '紫'], [345, '粉'],
+] as const
+
+function lineCaption(hue: number, raster: ChartRaster, words: LocatedWord[], top: number) {
+  const { data, width } = raster
+  const color = colorNames.find(([upper]) => hue * 10 < upper)?.[1] ?? '红'
+  const legendWords = words.filter((word) => word.y >= 6 && word.y < top - 6
+    && word.left >= 15 && word.right <= width && /\p{L}/u.test(word.text))
+  const labels = legendWords.filter((word) => {
+    const x = Math.floor(word.left), y = Math.round(word.y)
+    // Look for a short horizontal swatch immediately before the legend text.
+    for (let row = y - 5; row <= y + 5; row += 1) {
+      let run = 0
+      for (let column = Math.max(0, x - 60); column < x - 2; column += 1) {
+        const pixel = pixelHue(data, (row * width + column) * 4)
+        run = pixel >= 0 && hueDistance(pixel, hue) <= 2 ? run + 1 : 0
+        if (run >= 9 && column >= x - 25) return true
+      }
+    }
+    return false
+  })
+  return { color, name: labels.length === 1 ? labels[0].text : undefined }
+}
+
 export function readWorkspaceLineChart(raster: ChartRaster, words: ChartWord[]): string | undefined {
-  const { data, width, height, scale } = raster
+  const { width, height, scale } = raster
   const positioned = locateWords(words, scale)
   const axis = lineAxis(positioned, width)
   if (!axis) return
@@ -154,40 +282,35 @@ export function readWorkspaceLineChart(raster: ChartRaster, words: ChartWord[]):
 
   const top = Math.max(0, Math.floor(highest.y - 7))
   const bottom = Math.min(height - 1, Math.ceil(lowest.y + 7))
-  const centers = new Map<number, number>()
-  const maxStrokeHeight = Math.max(16, (bottom - top) * 0.07)
-  let gap = 0
-  for (let x = left; x <= right; x += 1) {
-    let first = -1, last = -1, coloredPixels = 0
-    for (let y = top; y <= bottom; y += 1) {
-      if (!isColored(data, (y * width + x) * 4)) continue
-      if (first < 0) first = y
-      last = y
-      coloredPixels += 1
-    }
-    if (first < 0) {
-      // A few edge pixels may be missing when a label is slightly wider on one side.
-      gap += 1
-      if (gap > 3) return
-      continue
-    }
-    if (last - first > maxStrokeHeight || last - first + 1 - coloredPixels > 2
-      || first === top || last === bottom) return
-    gap = 0
-    centers.set(x, (first + last) / 2)
-  }
+  const rightTicks = positioned.filter((word) => word.left > right + 12 && word.y >= top
+    && word.y <= bottom && linearTickPattern.test(word.text))
+  if (rightTicks.some((tick, index) => rightTicks.slice(index + 1).some((other) =>
+    Math.abs(tick.y - other.y) >= 10 && (Math.abs(tick.left - other.left) <= 10
+      || Math.abs(tick.right - other.right) <= 10)))) return
+  const tracks = plotTracks(raster, { left, right, top, bottom })
+  if (!tracks) return
+
   const precision = Math.max(0, Math.min(2, Math.ceil(-Math.log10(unitsPerPixel))))
   const format = new Intl.NumberFormat('en-US', { useGrouping: false, maximumFractionDigits: precision })
-  const output = []
-  for (const label of labels) {
-    const x = Math.round(label.x)
-    const y = centers.get(x) ?? centers.get(x - 1) ?? centers.get(x + 1)
-      ?? centers.get(x - 2) ?? centers.get(x + 2)
-    if (y === undefined) return
-    const value = lowest.value + (lowest.y - y) * unitsPerPixel
-    output.push(`${label.text} 约 ${format.format(value)}${lowest.percent ? '%' : ''}`)
+  const output = ['折线图读数（按刻度和识别到的彩色线估算）']
+  const captions = tracks.map(({ hue }) => lineCaption(hue, raster, positioned, top))
+  for (const [index, { hue, centers }] of tracks.entries()) {
+    if (tracks.length > 1) {
+      const { color, name } = captions[index]
+      const repeatedColor = captions.filter((caption) => caption.color === color).length > 1
+      const reference = repeatedColor ? `${color}线（色相约 ${hue * 10}°）` : `${color}线`
+      output.push(name ? `${reference} · ${name}` : reference)
+    }
+    for (const label of labels) {
+      const x = Math.round(label.x) - left
+      const y = [0, -1, 1, -2, 2].map((offset) => centers[x + offset]).find(Number.isFinite)
+      if (y === undefined) return
+      const value = lowest.value + (lowest.y - y) * unitsPerPixel
+      output.push(`${label.text} 约 ${format.format(value)}${lowest.percent ? '%' : ''}`)
+    }
   }
-  return ['折线图读数（按刻度和识别到的彩色线估算）', ...output].join('\n')
+  const text = output.join('\n')
+  if (text.length <= 2_900) return text
 }
 
 export function readWorkspaceBarChart(chart: BarChart, words: ChartWord[], axisWords = words): string | undefined {

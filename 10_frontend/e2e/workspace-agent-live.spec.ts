@@ -577,8 +577,8 @@ test('a learner reads bar heights from an uploaded chart and sends only the revi
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391)
 })
 
-test('a learner reads a single line locally and checks the highest point with the agent', async ({ page }) => {
-  test.setTimeout(180_000)
+test('a learner reads line charts locally and compares their series with the agent', async ({ page }) => {
+  test.setTimeout(220_000)
   await signIn(page)
   await chooseRole(page, 'STUDENT', '/student/workspace')
   await page.setViewportSize({ width: 390, height: 840 })
@@ -586,8 +586,8 @@ test('a learner reads a single line locally and checks the highest point with th
   page.context().on('request', (request) => {
     if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method())) writes.push(new URL(request.url()).pathname)
   })
-  const upload = async (twoLines: boolean) => {
-    const encoded = await page.evaluate((multiple) => {
+  const upload = async (mode: 'single' | 'multiple' | 'same-color') => {
+    const encoded = await page.evaluate((mode) => {
       const canvas = document.createElement('canvas')
       canvas.width = 860
       canvas.height = 560
@@ -629,21 +629,30 @@ test('a learner reads a single line locally and checks the highest point with th
         }
       }
       curve([30, 53, 37, 68], '#225bd0')
-      if (multiple) curve([62, 70, 58, 51], '#e3781a')
+      if (mode !== 'single') {
+        curve([62, 70, 58, 51], mode === 'same-color' ? '#225bd0' : '#e3781a')
+        ctx.textAlign = 'left'
+        for (const [label, center, color] of [['North', 210, '#225bd0'], ['South', 450, '#e3781a']] as const) {
+          ctx.fillStyle = color
+          ctx.fillRect(center - 43, 65, 32, 6)
+          ctx.fillStyle = '#171c25'
+          ctx.fillText(label, center, 68)
+        }
+      }
       return canvas.toDataURL('image/png').split(',')[1]
-    }, twoLines)
+    }, mode)
     await page.locator('#workspace-agent-composer input[type="file"]').setInputFiles({
       name: 'synthetic-line-chart.png', mimeType: 'image/png', buffer: Buffer.from(encoded, 'base64'),
     })
   }
   const preview = page.getByRole('dialog', { name: '图片文字预览' })
   const useChart = preview.getByRole('button', { name: '使用折线图读数' })
-  await upload(true)
+  await upload('same-color')
   await expect(preview).toBeVisible({ timeout: 60_000 })
   await expect(useChart).toHaveCount(0)
   await preview.getByRole('button', { name: '关闭', exact: true }).click()
 
-  await upload(false)
+  await upload('single')
   await expect(useChart).toBeVisible({ timeout: 60_000 })
   await preview.getByText('查看原图', { exact: true }).click()
   const original = preview.getByRole('img', { name: '所选图片原图' })
@@ -661,24 +670,45 @@ test('a learner reads a single line locally and checks the highest point with th
     expect(estimate).toContain(label)
     expect(Math.abs(Number(estimate.split('约 ').at(-1)) - Number(value))).toBeLessThanOrEqual(1)
   }
+  const single = await editor.inputValue()
+  await preview.getByRole('button', { name: '关闭', exact: true }).click()
+
+  await upload('multiple')
+  await expect(useChart).toBeVisible({ timeout: 60_000 })
+  await useChart.click()
+  const series = (await editor.inputValue()).split('\n')
+  expect(series).toHaveLength(11)
+  for (const [color, legend, values] of [
+    ['蓝线', 'North', [30, 53, 37, 68]],
+    ['橙线', 'South', [62, 70, 58, 51]],
+  ] as const) {
+    const start = series.findIndex((line) => line.startsWith(color))
+    expect(start).toBeGreaterThan(0)
+    expect(series[start]).toContain(legend)
+    for (const [index, label] of ['April', 'May', 'June', 'July'].entries()) {
+      const estimate = series[start + index + 1]
+      expect(estimate).toContain(label)
+      expect(Math.abs(Number(estimate.split('约 ').at(-1)) - values[index])).toBeLessThanOrEqual(1)
+    }
+  }
   await preview.getByRole('button', { name: '插入到输入框' }).click()
   expect(writes).toEqual([])
   const reviewed = await page.locator('#workspace-agent-input').inputValue()
-  const prompt = `从这张图看，哪一个月份的数据最高，约是多少？\n\n${reviewed}`
+  const prompt = `根据两组图上读数，哪一个月 North 首次高于 South，约高多少？\n\n${reviewed}`
   const sent = page.waitForRequest((request) => request.url().endsWith('/workspace-agent/conversation/turn'))
   const events = await ask(page, prompt, '发送消息')
   expect((await sent).postDataJSON()).toEqual({ text: prompt, synthetic_only: true })
   const answer = events.find((event) => event.type === 'answer')?.text
   expect(answer).toMatch(/July|7\s*月|七月/i)
-  expect(answer).toMatch(/\b6[789]\b|六十[七八九]/)
+  expect(answer).toMatch(/\b1[5-9]\b|十[五六七八九]/)
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391)
 
   await chooseRole(page, 'TEACHER', '/teacher/workspace')
   writes.length = 0
-  await upload(false)
+  await upload('single')
   await expect(useChart).toBeVisible({ timeout: 60_000 })
   await useChart.click()
-  await expect(editor).toHaveValue(reviewed)
+  await expect(editor).toHaveValue(single)
   expect(writes).toEqual([])
 })
 
